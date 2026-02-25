@@ -24,6 +24,65 @@
       z-index: 10;
     }
     #back:hover { background: rgba(255,255,255,0.1); }
+    #source-btn {
+      position: fixed;
+      top: 58px; left: 20px;
+      background: rgba(0,0,0,0.5);
+      color: rgba(255,255,255,0.7);
+      font-family: -apple-system, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 8px 16px;
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      z-index: 10;
+      white-space: nowrap;
+    }
+    #source-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    #source-panel {
+      position: fixed;
+      top: 0; left: 0;
+      width: 420px;
+      max-width: 90vw;
+      height: 100vh;
+      background: rgba(8,8,16,0.92);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid rgba(255,255,255,0.08);
+      z-index: 9;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+    }
+    #source-panel.open { transform: translateX(0); }
+    #source-panel h3 {
+      font-family: -apple-system, sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.3);
+      padding: 110px 20px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    #source-code {
+      overflow-y: auto;
+      flex: 1;
+      padding: 16px 20px 40px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre;
+      color: #cdd;
+    }
+    /* Syntax highlight classes */
+    #source-code .kw  { color: #c792ea; }
+    #source-code .bi  { color: #82aaff; }
+    #source-code .num { color: #f78c6c; }
+    #source-code .cmt { color: #546e7a; font-style: italic; }
     #label {
       position: fixed;
       bottom: 20px; right: 20px;
@@ -38,6 +97,13 @@
 </head>
 <body>
   <a id="back" href="../">← Back</a>
+  <button id="source-btn" onclick="toggleSource()">{ } View Shader</button>
+
+  <div id="source-panel">
+    <h3>Fragment Shader · GLSL</h3>
+    <div id="source-code"></div>
+  </div>
+
   <canvas id="c"></canvas>
   <div id="label">WebGL · GLSL Fragment Shader<br>Raymarched SDF · Phong Lighting</div>
 
@@ -223,6 +289,41 @@
     }
     window.addEventListener('resize', resize);
     resize();
+
+    // --- Shader source panel ---
+    function highlight(src) {
+      // Escape HTML, then apply colour spans in order
+      let s = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      // Comments first (so keywords inside comments don't get coloured)
+      s = s.replace(/(\/\/[^\n]*)/g, '<span class="cmt">$1</span>');
+      // Keywords
+      const kw = /\b(precision|highp|mediump|lowp|uniform|attribute|varying|void|float|int|bool|vec2|vec3|vec4|mat2|mat3|mat4|return|if|else|for|break|continue|true|false|const)\b/g;
+      s = s.replace(kw, (m, _, offset) => {
+        // Don't highlight inside already-inserted spans
+        const before = s.slice(0, offset);
+        const openSpans = (before.match(/<span/g) || []).length;
+        const closeSpans = (before.match(/<\/span>/g) || []).length;
+        return openSpans > closeSpans ? m : `<span class="kw">${m}</span>`;
+      });
+      // Built-ins
+      const bi = /\b(sin|cos|tan|asin|acos|atan|pow|exp|log|sqrt|abs|sign|floor|ceil|fract|mod|min|max|clamp|mix|step|smoothstep|length|distance|dot|cross|normalize|reflect|refract)\b/g;
+      s = s.replace(bi, '<span class="bi">$1</span>');
+      // Numbers
+      s = s.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+      return s;
+    }
+
+    let panelOpen = false;
+    function toggleSource() {
+      panelOpen = !panelOpen;
+      const panel = document.getElementById('source-panel');
+      const btn   = document.getElementById('source-btn');
+      panel.classList.toggle('open', panelOpen);
+      btn.textContent = panelOpen ? '{ } Hide Shader' : '{ } View Shader';
+      if (panelOpen && !document.getElementById('source-code').innerHTML) {
+        document.getElementById('source-code').innerHTML = highlight(frag);
+      }
+    }
 
     const t0 = performance.now();
     function frame() {
