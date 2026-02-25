@@ -53,6 +53,11 @@
       background: rgba(255,80,80,0.85);
       color: #fff;
     }
+    #help-btn {
+      background: rgba(255,255,255,0.3);
+      color: #fff;
+      padding: 14px 18px;
+    }
     #count {
       background: rgba(0,0,0,0.5);
       color: #fff;
@@ -83,6 +88,21 @@
       padding: 10px 28px;
       pointer-events: all;
     }
+    #https-warning {
+      position: fixed;
+      top: 20px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(200,60,60,0.9);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-size: 13px;
+      text-align: center;
+      z-index: 1001;
+      max-width: 300px;
+      backdrop-filter: blur(6px);
+      display: none;
+    }
     .crosshair {
       position: fixed;
       top: 50%; left: 50%;
@@ -102,11 +122,15 @@
 </head>
 <body>
 
+<div id="https-warning">
+  Camera requires HTTPS. Please serve this page over a secure connection.
+</div>
+
 <div id="marker-hint">
   <h3>📦 AR Cube Placer</h3>
   <p>Point your camera at a <strong>flat surface</strong> (table or floor).<br><br>
   Tap <strong>"Place Cube"</strong> to drop a cube where the crosshair points.</p>
-  <button onclick="document.getElementById('marker-hint').style.display='none'">Got it!</button>
+  <button id="hint-dismiss-btn">Got it!</button>
 </div>
 
 <div class="crosshair"></div>
@@ -115,8 +139,9 @@
   <div id="hint">Point at a flat surface and tap Place Cube</div>
   <div id="count">Cubes placed: 0</div>
   <div id="btn-row">
-    <button id="place-btn" onclick="placeCube()">📦 Place Cube</button>
-    <button id="clear-btn" onclick="clearCubes()">🗑 Clear</button>
+    <button id="place-btn">📦 Place Cube</button>
+    <button id="clear-btn">🗑 Clear</button>
+    <button id="help-btn">?</button>
   </div>
 </div>
 
@@ -130,7 +155,6 @@
   <!-- Camera -->
   <a-camera
     id="cam"
-    gps-camera
     rotation-reader
     look-controls="enabled: false"
     arjs-look-controls="smoothingFactor: 0.1"
@@ -149,12 +173,30 @@
 </a-scene>
 
 <script>
+  const MAX_CUBES = 50;
   let cubeCount = 0;
-  let colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F'];
+  const colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F'];
   let markerVisible = false;
-  let markerPosition = null;
+  let lastPlaceTime = 0;
 
-  // Track marker position
+  // Warn if not on a secure origin (camera won't work over plain HTTP)
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    document.getElementById('https-warning').style.display = 'block';
+  }
+
+  // Intro modal: dismiss and re-open
+  document.getElementById('hint-dismiss-btn').addEventListener('click', () => {
+    document.getElementById('marker-hint').style.display = 'none';
+  });
+  document.getElementById('help-btn').addEventListener('click', () => {
+    document.getElementById('marker-hint').style.display = 'block';
+  });
+
+  // Button handlers
+  document.getElementById('place-btn').addEventListener('click', placeCube);
+  document.getElementById('clear-btn').addEventListener('click', clearCubes);
+
+  // Track marker visibility
   const marker = document.getElementById('hiro-marker');
   marker.addEventListener('markerFound', () => {
     markerVisible = true;
@@ -165,20 +207,30 @@
     document.getElementById('hint').textContent = 'Point at a flat surface and tap Place Cube';
   });
 
-  // Fallback: place cube in front of camera if no marker
   function getCameraForwardPosition(distance = 1.5) {
+    if (typeof THREE === 'undefined') return null;
     const cam = document.getElementById('cam');
     const camEl = cam.object3D;
     const dir = new THREE.Vector3(0, 0, -1);
     dir.applyQuaternion(camEl.quaternion);
-    dir.y = -0.5; // angle downward
+    dir.y = -0.5;
     dir.normalize();
-    const pos = camEl.position.clone().addScaledVector(dir, distance);
-    return pos;
+    return camEl.position.clone().addScaledVector(dir, distance);
+  }
+
+  function updateCount() {
+    const n = document.getElementById('cube-container').children.length;
+    document.getElementById('count').textContent = `Cubes placed: ${n}`;
   }
 
   function placeCube() {
     const container = document.getElementById('cube-container');
+
+    if (container.children.length >= MAX_CUBES) {
+      document.getElementById('hint').textContent = `Max ${MAX_CUBES} cubes reached — clear some first`;
+      return;
+    }
+
     const cube = document.createElement('a-box');
     const color = colors[cubeCount % colors.length];
     const size = 0.1 + Math.random() * 0.05;
@@ -186,14 +238,15 @@
     let pos;
 
     if (markerVisible) {
-      // Place relative to marker
-      const markerObj = marker.object3D;
       const worldPos = new THREE.Vector3();
-      markerObj.getWorldPosition(worldPos);
-      pos = `${worldPos.x.toFixed(3)} ${(worldPos.y + size/2).toFixed(3)} ${worldPos.z.toFixed(3)}`;
+      marker.object3D.getWorldPosition(worldPos);
+      // Spread cubes around the marker instead of stacking at its origin
+      const offsetX = (Math.random() - 0.5) * 0.3;
+      const offsetZ = (Math.random() - 0.5) * 0.3;
+      pos = `${(worldPos.x + offsetX).toFixed(3)} ${(worldPos.y + size / 2).toFixed(3)} ${(worldPos.z + offsetZ).toFixed(3)}`;
     } else {
-      // Place in front of camera
       const p = getCameraForwardPosition(1.5 + Math.random() * 0.5);
+      if (!p) return;
       pos = `${p.x.toFixed(3)} ${p.y.toFixed(3)} ${p.z.toFixed(3)}`;
     }
 
@@ -204,19 +257,15 @@
     cube.setAttribute('color', color);
     cube.setAttribute('material', `color: ${color}; metalness: 0.2; roughness: 0.6; opacity: 0.95`);
     cube.setAttribute('shadow', 'cast: true; receive: true');
-
-    // Animate in
     cube.setAttribute('animation__scale', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 300; easing: easeOutBack');
-    cube.setAttribute('animation__rot', `property: rotation; to: 0 ${Math.random()*360} 0; dur: 300; easing: easeOutCubic`);
+    cube.setAttribute('animation__rot', `property: rotation; to: 0 ${Math.random() * 360} 0; dur: 300; easing: easeOutCubic`);
 
     container.appendChild(cube);
     cubeCount++;
-    document.getElementById('count').textContent = `Cubes placed: ${cubeCount}`;
+    updateCount();
 
-    // Haptic feedback on mobile
     if (navigator.vibrate) navigator.vibrate(50);
 
-    // Button feedback
     const btn = document.getElementById('place-btn');
     btn.style.background = 'rgba(100,200,100,0.95)';
     btn.textContent = '✓ Placed!';
@@ -228,20 +277,24 @@
 
   function clearCubes() {
     const container = document.getElementById('cube-container');
-    // Animate out then remove
-    Array.from(container.children).forEach(el => {
+    // Snapshot children before any async removal to avoid race if called again quickly
+    const children = Array.from(container.children);
+    if (children.length === 0) return;
+    children.forEach(el => {
       el.setAttribute('animation__out', 'property: scale; to: 0 0 0; dur: 200; easing: easeInBack');
-      setTimeout(() => el.parentNode && el.parentNode.removeChild(el), 220);
+      setTimeout(() => el.parentNode?.removeChild(el), 250);
     });
-    cubeCount = 0;
+    // Reset display immediately; DOM children removed after animation
     document.getElementById('count').textContent = 'Cubes placed: 0';
-    if (navigator.vibrate) navigator.vibrate([30,30,30]);
+    if (navigator.vibrate) navigator.vibrate([30, 30, 30]);
   }
 
-  // Also allow tapping screen to place
+  // Tap anywhere on the scene to place a cube, debounced to prevent accidental rapid placement
   document.querySelector('a-scene').addEventListener('click', (e) => {
-    if (e.target.id === 'place-btn' || e.target.id === 'clear-btn') return;
     if (e.target.closest('#ui') || e.target.closest('#marker-hint')) return;
+    const now = Date.now();
+    if (now - lastPlaceTime < 500) return;
+    lastPlaceTime = now;
     placeCube();
   });
 </script>
