@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAT Collision Detection</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0d;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .back-link {
+    display: inline-block;
+    position: fixed;
+    top: 20px;
+    left: 24px;
+    color: #555;
+    text-decoration: none;
+    font-size: 14px;
+    z-index: 100;
+  }
+  .back-link:hover { color: #888; }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+
+  .page-header {
+    margin-bottom: 56px;
+  }
+
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    color: #999;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 600px;
+  }
+
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+
+  p {
+    color: #999;
+    line-height: 1.7;
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
+  p:last-child { margin-bottom: 0; }
+
+  .highlight-blue { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+
+  pre {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    color: #a8e6cf;
+    padding: 16px;
+    border-radius: 8px;
+    font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+
+  .canvas-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 20px 0;
+  }
+
+  canvas {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    display: block;
+    max-width: 100%;
+    cursor: grab;
+  }
+  canvas:active { cursor: grabbing; }
+
+  .canvas-label {
+    font-size: 13px;
+    color: #555;
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  .canvas-label.green { color: #50dc96; }
+  .canvas-label.red { color: #dc5050; }
+
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+    width: 100%;
+    max-width: 640px;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .slider-label {
+    color: #999;
+    font-size: 13px;
+    min-width: 160px;
+  }
+
+  input[type=range] {
+    flex: 1;
+    accent-color: #5b9bd5;
+  }
+
+  .slider-val {
+    color: #5b9bd5;
+    font-size: 13px;
+    min-width: 32px;
+    text-align: right;
+    font-family: monospace;
+  }
+
+  .btn {
+    display: inline-block;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: border-color 0.15s, color 0.15s;
+    font-family: inherit;
+  }
+  .btn:hover { border-color: #555; color: #fff; }
+  .btn:active { background: #222; }
+
+  .legend {
+    font-size: 13px;
+    color: #555;
+    margin-top: 10px;
+  }
+
+  .legend .blue { color: #5b9bd5; }
+  .legend .amber { color: #e8a838; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid #1a1a1a;
+    margin: 48px 0;
+  }
+
+  footer {
+    border-top: 1px solid #1a1a1a;
+    padding-top: 32px;
+    color: #555;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  footer a { color: #555; }
+  footer a:hover { color: #888; }
+
+  #demo4-state {
+    font-size: 13px;
+    color: #555;
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  #demo6-state {
+    font-size: 13px;
+    color: #555;
+    margin-top: 8px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<a href="../" class="back-link">← Back</a>
+
+<div class="page">
+
+  <header class="page-header">
+    <h1>SAT Collision Detection</h1>
+    <p class="subtitle">An interactive walkthrough of the Separating Axis Theorem and collision response — based on the <a href="https://dyn4j.org/2010/01/sat/" style="color:#5b9bd5;text-decoration:none;">dyn4j tutorial</a> and <a href="https://www.metanetsoftware.com/technique/tutorialA.html" style="color:#5b9bd5;text-decoration:none;">N game physics guide</a>.</p>
+  </header>
+
+  <!-- Section 1 -->
+  <section class="section">
+    <h2 class="section-title">1. What is the Separating Axis Theorem?</h2>
+    <p>SAT states: if two convex shapes are <em>not</em> colliding, you can always find at least one axis where their projected "shadows" don't overlap. Equivalently — if every possible separating axis shows overlapping projections, the shapes must be intersecting.</p>
+    <p>The key properties: SAT only works with <strong style="color:#fff">convex shapes</strong>. A separating axis is just a direction (a unit vector). You project both shapes onto that direction as 1D intervals, and check if those intervals are disjoint.</p>
+    <p>Drag either shape below to separate them. When a gap exists, the algorithm finds the separating axis instantly.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c1" width="640" height="320"></canvas>
+      <div id="c1-label" class="canvas-label">Drag a shape to separate them</div>
+    </div>
+  </section>
+
+  <!-- Section 2 -->
+  <section class="section">
+    <h2 class="section-title">2. Projecting Shapes onto an Axis</h2>
+    <p>To test a given axis, take every vertex of a shape, compute its <strong style="color:#fff">dot product</strong> with the axis direction vector, and record the minimum and maximum values. This gives a 1D interval — the shape's "shadow" on that axis.</p>
+
+    <pre>min = dot(axis, vertices[0])
+max = min
+for each vertex v:
+    p = dot(axis, v)
+    if p &lt; min: min = p
+    if p &gt; max: max = p
+return Projection(min, max)</pre>
+
+    <p>Drag the handle at the end of the axis line below to rotate it. Dotted lines show each vertex being projected, and the thick colored segment shows the resulting [min, max] interval.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c2" width="640" height="260"></canvas>
+      <div id="c2-angle" class="canvas-label">Axis angle: 0°</div>
+    </div>
+  </section>
+
+  <!-- Section 3 -->
+  <section class="section">
+    <h2 class="section-title">3. Finding the Axes to Test</h2>
+    <p>You don't need to test every possible direction — only axes that are <strong style="color:#fff">perpendicular to each shape's edges</strong>. For two polygons with M and N sides, you test at most M+N axes. This is the insight that makes SAT practical.</p>
+
+    <pre>axes = []
+for i in range(len(vertices)):
+    edge = vertices[(i+1) % len] - vertices[i]
+    normal = perpendicular(edge)  // (-edge.y, edge.x)
+    axes.append(normalize(normal))</pre>
+
+    <p>Note: parallel edges produce the same axis — so a rectangle only needs <strong style="color:#fff">2</strong> unique test axes, not 4.</p>
+    <p>Below: <span class="highlight-blue">blue arrows</span> are Shape A's edge normals, <span class="highlight-amber">amber arrows</span> are Shape B's. Drag either shape.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c3" width="640" height="280"></canvas>
+      <div id="c3-label" class="canvas-label">Drag a shape</div>
+    </div>
+    <div class="legend">
+      <span class="blue">■ Shape A edge normals</span> &nbsp;|&nbsp; <span class="amber">■ Shape B edge normals</span>
+    </div>
+  </section>
+
+  <!-- Section 4 -->
+  <section class="section">
+    <h2 class="section-title">4. Overlap Detection &amp; the MTV</h2>
+    <p>For each axis, project both shapes and measure the overlap of their intervals. If any axis gives a negative overlap — the shapes are separated on that axis, so no collision. If all axes overlap, they're colliding.</p>
+
+    <pre>overlap = min(projA.max, projB.max) - max(projA.min, projB.min)
+if overlap &lt; 0: no collision on this axis (shapes separated)</pre>
+
+    <p>Track the axis with the <strong style="color:#fff">smallest positive overlap</strong> — that's the <strong style="color:#fff">Minimum Translation Vector (MTV)</strong>: the shortest push needed to separate the shapes. The MTV is that axis direction scaled by that overlap amount, directed from A toward B.</p>
+    <p>Start the shapes overlapping, then hit "Resolve Collision" to push them apart.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c4" width="640" height="300"></canvas>
+      <div id="c4-state" class="canvas-label">Drag shapes to overlap, then resolve</div>
+    </div>
+    <button class="btn" id="c4-btn">Resolve Collision</button>
+  </section>
+
+  <!-- Section 5 -->
+  <section class="section">
+    <h2 class="section-title">5. Collision Response — Bounce &amp; Friction</h2>
+    <p>Once we have the MTV (collision normal + depth), we apply a physical response. First, project the object out of the collision along the MTV. Then decompose its velocity into a <strong style="color:#fff">normal component</strong> (perpendicular to the contact surface) and a <strong style="color:#fff">tangential component</strong> (along the surface). Scale each separately.</p>
+
+    <pre>v_normal  = dot(velocity, normal) * normal   // perpendicular to surface
+v_tangent = velocity - v_normal              // along surface
+
+new_velocity = -bounce * v_normal + (1 - friction) * v_tangent</pre>
+
+    <p>The <span class="highlight-blue">bounce</span> coefficient (0–1) controls elasticity: 1.0 = perfectly elastic, 0.0 = no bounce. <span class="highlight-amber">Friction</span> reduces the tangential (sliding) velocity on each contact.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c5" width="640" height="320"></canvas>
+      <div class="canvas-label">Animated — ball bounces with gravity</div>
+    </div>
+    <div class="controls">
+      <div class="slider-row">
+        <span class="slider-label">Bounce (elasticity)</span>
+        <input type="range" id="bounce-slider" min="0" max="1" step="0.01" value="0.7">
+        <span class="slider-val" id="bounce-val">0.70</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Friction</span>
+        <input type="range" id="friction-slider" min="0" max="1" step="0.01" value="0.2">
+        <span class="slider-val" id="friction-val">0.20</span>
+      </div>
+    </div>
+    <button class="btn" id="c5-reset">Reset Ball</button>
+  </section>
+
+  <!-- Section 6 -->
+  <section class="section">
+    <h2 class="section-title">6. Circle vs Polygon</h2>
+    <p>Circles are special — they have infinitely many potential separating axes. The trick: the only <em>extra</em> axis you need to test (beyond all polygon edge normals) is the axis from the <strong style="color:#fff">closest polygon vertex to the circle center</strong>.</p>
+    <p>Steps:</p>
+    <p>1. Test all polygon edge normals (same as polygon-polygon SAT)<br>
+    2. Find the closest polygon vertex to the circle center<br>
+    3. Add the vertex→center direction as one extra axis<br>
+    4. Project the circle: its interval on any axis is <code style="color:#a8e6cf;background:#0a0a0a;padding:2px 5px;border-radius:3px;">[dot(center,axis) - r, dot(center,axis) + r]</code></p>
+    <p>When colliding, the <span class="highlight-amber">closest vertex</span> is highlighted and the extra axis is drawn. Drag either shape.</p>
+
+    <div class="canvas-wrap">
+      <canvas id="c6" width="640" height="280"></canvas>
+      <div id="c6-state" class="canvas-label">Drag the circle or polygon</div>
+    </div>
+  </section>
+
+  <footer>
+    Based on the SAT tutorial by <a href="https://dyn4j.org/2010/01/sat/">William Bittle (dyn4j.org)</a> and the N physics tutorial by <a href="https://www.metanetsoftware.com/technique/tutorialA.html">Metanet Software</a>.
+  </footer>
+
+</div>
+
+<script>
+// ============================================================
+// MATH HELPERS
+// ============================================================
+const dot  = (a, b) => a.x * b.x + a.y * b.y;
+const sub  = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+const add  = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+const scale = (v, s) => ({ x: v.x * s, y: v.y * s });
+const len  = v => Math.sqrt(v.x * v.x + v.y * v.y);
+const normalize = v => { const l = len(v) || 1; return { x: v.x / l, y: v.y / l }; };
+const perp = v => ({ x: -v.y, y: v.x });
+const neg  = v => ({ x: -v.x, y: -v.y });
+
+function projectPoly(verts, axis) {
+  let mn = dot(axis, verts[0]), mx = mn;
+  for (let i = 1; i < verts.length; i++) {
+    const p = dot(axis, verts[i]);
+    if (p < mn) mn = p;
+    if (p > mx) mx = p;
+  }
+  return { min: mn, max: mx };
+}
+
+function projectCircle(center, radius, axis) {
+  const c = dot(axis, center);
+  return { min: c - radius, max: c + radius };
+}
+
+function overlap(a, b) {
+  return Math.min(a.max, b.max) - Math.max(a.min, b.min);
+}
+
+function satPolygons(vertsA, vertsB) {
+  // Returns { colliding, mtv: {axis, depth} } or { colliding: false, sep: {axis} }
+  let minDepth = Infinity, mtvAxis = null;
+  const axes = [...getAxes(vertsA), ...getAxes(vertsB)];
+  for (const axis of axes) {
+    const pA = projectPoly(vertsA, axis);
+    const pB = projectPoly(vertsB, axis);
+    const ov = overlap(pA, pB);
+    if (ov < 0) return { colliding: false, sepAxis: axis };
+    if (ov < minDepth) { minDepth = ov; mtvAxis = axis; }
+  }
+  // Ensure MTV points from A centroid toward B centroid
+  const cA = centroid(vertsA), cB = centroid(vertsB);
+  const d = sub(cB, cA);
+  if (dot(d, mtvAxis) < 0) mtvAxis = neg(mtvAxis);
+  return { colliding: true, mtv: { axis: mtvAxis, depth: minDepth } };
+}
+
+function satCirclePoly(circle, verts) {
+  // Returns { colliding, mtv, closestVert }
+  const axes = getAxes(verts);
+  let minDepth = Infinity, mtvAxis = null;
+
+  // Test polygon edge normals
+  for (const axis of axes) {
+    const pA = projectPoly(verts, axis);
+    const pB = projectCircle(circle.pos, circle.r, axis);
+    const ov = overlap(pA, pB);
+    if (ov < 0) return { colliding: false };
+    if (ov < minDepth) { minDepth = ov; mtvAxis = axis; }
+  }
+
+  // Extra axis: closest vertex to circle center
+  let closestIdx = 0, closestDist = Infinity;
+  for (let i = 0; i < verts.length; i++) {
+    const d = len(sub(verts[i], circle.pos));
+    if (d < closestDist) { closestDist = d; closestIdx = i; }
+  }
+  const extraAxis = normalize(sub(circle.pos, verts[closestIdx]));
+  const pA = projectPoly(verts, extraAxis);
+  const pB = projectCircle(circle.pos, circle.r, extraAxis);
+  const ov = overlap(pA, pB);
+  if (ov < 0) return { colliding: false, closestVert: verts[closestIdx] };
+  if (ov < minDepth) { minDepth = ov; mtvAxis = extraAxis; }
+
+  // Ensure MTV points from poly center toward circle
+  const cP = centroid(verts);
+  const d = sub(circle.pos, cP);
+  if (dot(d, mtvAxis) < 0) mtvAxis = neg(mtvAxis);
+
+  return { colliding: true, mtv: { axis: mtvAxis, depth: minDepth }, closestVert: verts[closestIdx] };
+}
+
+function getAxes(verts) {
+  const axes = [];
+  for (let i = 0; i < verts.length; i++) {
+    const e = sub(verts[(i + 1) % verts.length], verts[i]);
+    axes.push(normalize(perp(e)));
+  }
+  return axes;
+}
+
+function centroid(verts) {
+  let x = 0, y = 0;
+  for (const v of verts) { x += v.x; y += v.y; }
+  return { x: x / verts.length, y: y / verts.length };
+}
+
+function pointInPoly(pt, verts) {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const xi = verts[i].x, yi = verts[i].y;
+    const xj = verts[j].x, yj = verts[j].y;
+    if (((yi > pt.y) !== (yj > pt.y)) && (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// Generate polygon vertices centered at origin
+function makePoly(sides, rx, ry, angleOffset) {
+  const verts = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Math.PI * 2 + (angleOffset || 0);
+    verts.push({ x: Math.cos(a) * rx, y: Math.sin(a) * ry });
+  }
+  return verts;
+}
+
+function translateVerts(verts, pos) {
+  return verts.map(v => add(v, pos));
+}
+
+function rotateVerts(verts, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return verts.map(v => ({ x: v.x * c - v.y * s, y: v.x * s + v.y * c }));
+}
+
+// ============================================================
+// CANVAS SETUP HELPER
+// ============================================================
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || canvas.width;
+  const h = canvas.clientHeight || canvas.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h, dpr };
+}
+
+function drawArrow(ctx, from, to, color, width) {
+  const d = sub(to, from);
+  const l = len(d);
+  if (l < 2) return;
+  const n = normalize(d);
+  const hw = 6, hl = 10;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width || 1.5;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x - n.x * hl, to.y - n.y * hl);
+  ctx.stroke();
+  ctx.beginPath();
+  const tip = to;
+  const base = { x: tip.x - n.x * hl, y: tip.y - n.y * hl };
+  const side1 = { x: base.x - n.y * hw, y: base.y + n.x * hw };
+  const side2 = { x: base.x + n.y * hw, y: base.y - n.x * hw };
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(side1.x, side1.y);
+  ctx.lineTo(side2.x, side2.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPoly(ctx, verts, fillColor, strokeColor, lineWidth) {
+  ctx.beginPath();
+  ctx.moveTo(verts[0].x, verts[0].y);
+  for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = lineWidth || 1.5;
+  ctx.stroke();
+}
+
+// ============================================================
+// DEMO 1 — Drag to separate
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c1');
+  const label = document.getElementById('c1-label');
+
+  const pentBase = makePoly(5, 52, 52, -Math.PI / 2);
+  const rectBase = rotateVerts(makePoly(4, 60, 38), 0.45);
+
+  let posA = { x: w * 0.38, y: h * 0.5 };
+  let posB = { x: w * 0.62, y: h * 0.5 };
+
+  let drag = null; // { shape: 'A'|'B', ox, oy }
+
+  function getVertsA() { return translateVerts(pentBase, posA); }
+  function getVertsB() { return translateVerts(rectBase, posB); }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const vA = getVertsA(), vB = getVertsB();
+    const result = satPolygons(vA, vB);
+
+    const aFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(91,155,213,0.2)';
+    const aStroke = result.colliding ? '#dc5050' : '#5b9bd5';
+    const bFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(232,168,56,0.2)';
+    const bStroke = result.colliding ? '#dc5050' : '#e8a838';
+
+    // Draw edge normals dimly
+    for (const verts of [vA, vB]) {
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i], b = verts[(i + 1) % verts.length];
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const e = sub(b, a);
+        const n = normalize(perp(e));
+        const tip = { x: mid.x + n.x * 18, y: mid.y + n.y * 18 };
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        drawArrow(ctx, mid, tip, '#888', 1);
+        ctx.restore();
+      }
+    }
+
+    drawPoly(ctx, vA, aFill, aStroke, 2);
+    drawPoly(ctx, vB, bFill, bStroke, 2);
+
+    // Separating axis line
+    if (!result.colliding && result.sepAxis) {
+      const ax = result.sepAxis;
+      const cx = (posA.x + posB.x) / 2, cy = (posA.y + posB.y) / 2;
+      const len2 = 280;
+      const p1 = { x: cx - ax.x * len2, y: cy - ax.y * len2 };
+      const p2 = { x: cx + ax.x * len2, y: cy + ax.y * len2 };
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = '#50dc96';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      ctx.restore();
+      ctx.save();
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillStyle = '#50dc96';
+      ctx.globalAlpha = 0.9;
+      ctx.fillText('Separating axis found', cx + 10, cy - 14);
+      ctx.restore();
+    }
+
+    // Label
+    if (result.colliding) {
+      label.textContent = 'All axes overlap — COLLISION';
+      label.className = 'canvas-label red';
+    } else {
+      label.textContent = 'Separating axis found — no collision';
+      label.className = 'canvas-label green';
+    }
+
+    // Shape labels
+    ctx.save();
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.fillStyle = result.colliding ? '#dc5050' : '#5b9bd5';
+    ctx.fillText('A', posA.x - 4, posA.y + 4);
+    ctx.fillStyle = result.colliding ? '#dc5050' : '#e8a838';
+    ctx.fillText('B', posB.x - 4, posB.y + 4);
+    ctx.restore();
+  }
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  });
+  canvas.addEventListener('mouseup', () => drag = null);
+  canvas.addEventListener('mouseleave', () => drag = null);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drag) return; const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => drag = null);
+
+  draw();
+})();
+
+// ============================================================
+// DEMO 2 — Projection visualizer
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c2');
+  const angleLabel = document.getElementById('c2-angle');
+
+  // Hexagon centered at left area
+  const hexBase = makePoly(6, 62, 62, 0);
+  const hexPos = { x: w * 0.28, y: h * 0.5 };
+
+  let axisAngle = 0; // radians
+  const axisOrigin = { x: w * 0.5, y: h * 0.5 };
+  const handleDist = w * 0.42;
+
+  function getHandle() {
+    return {
+      x: axisOrigin.x + Math.cos(axisAngle) * handleDist,
+      y: axisOrigin.y + Math.sin(axisAngle) * handleDist
+    };
+  }
+
+  let draggingHandle = false;
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const hexVerts = translateVerts(hexBase, hexPos);
+    const axis = { x: Math.cos(axisAngle), y: Math.sin(axisAngle) };
+
+    // Draw axis line
+    const axLen = w * 0.48;
+    const a1 = { x: axisOrigin.x - axis.x * axLen, y: axisOrigin.y - axis.y * axLen };
+    const a2 = { x: axisOrigin.x + axis.x * axLen, y: axisOrigin.y + axis.y * axLen };
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y); ctx.stroke();
+    ctx.restore();
+
+    // Compute projections
+    const dots = hexVerts.map(v => dot(axis, v));
+    const minDot = Math.min(...dots), maxDot = Math.max(...dots);
+
+    // Draw dotted lines from each vertex to its projection on the axis
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(91,155,213,0.4)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < hexVerts.length; i++) {
+      const v = hexVerts[i];
+      const t = dot(axis, v);
+      const proj = { x: axisOrigin.x + axis.x * (t - dot(axis, axisOrigin)), y: axisOrigin.y + axis.y * (t - dot(axis, axisOrigin)) };
+      // Simpler: project v onto the axis line
+      const proj2 = add(axisOrigin, scale(axis, dot(sub(v, axisOrigin), axis)));
+      ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(proj2.x, proj2.y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Draw projection interval on axis
+    const projMin = add(axisOrigin, scale(axis, dot(sub(hexVerts.find((_,i) => dots[i] === minDot) || hexVerts[0], axisOrigin), axis)));
+    const projMax = add(axisOrigin, scale(axis, dot(sub(hexVerts.find((_,i) => dots[i] === maxDot) || hexVerts[0], axisOrigin), axis)));
+
+    // Recalculate properly
+    let pMin, pMax;
+    {
+      let minVal = Infinity, maxVal = -Infinity;
+      let pMinV, pMaxV;
+      for (const v of hexVerts) {
+        const t = dot(sub(v, axisOrigin), axis);
+        if (t < minVal) { minVal = t; pMinV = v; }
+        if (t > maxVal) { maxVal = t; pMaxV = v; }
+      }
+      pMin = add(axisOrigin, scale(axis, minVal));
+      pMax = add(axisOrigin, scale(axis, maxVal));
+    }
+
+    ctx.save();
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pMin.x, pMin.y); ctx.lineTo(pMax.x, pMax.y); ctx.stroke();
+    ctx.restore();
+
+    // Min/max labels
+    const perp2 = { x: -axis.y, y: axis.x };
+    ctx.save();
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = '#5b9bd5';
+    const off = 14;
+    ctx.fillText('min', pMin.x + perp2.x * off - 10, pMin.y + perp2.y * off + 4);
+    ctx.fillText('max', pMax.x + perp2.x * off - 10, pMax.y + perp2.y * off + 4);
+    ctx.restore();
+
+    // Min/max dots
+    ctx.save();
+    ctx.fillStyle = '#5b9bd5';
+    for (const p of [pMin, pMax]) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Draw polygon
+    drawPoly(ctx, hexVerts, 'rgba(91,155,213,0.2)', '#5b9bd5', 2);
+
+    // Draw vertex dots
+    ctx.save();
+    ctx.fillStyle = '#5b9bd5';
+    for (const v of hexVerts) {
+      ctx.beginPath(); ctx.arc(v.x, v.y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Handle
+    const handle = getHandle();
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(handle.x, handle.y, 8, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Axis direction arrow on axis
+    drawArrow(ctx, axisOrigin, add(axisOrigin, scale(axis, 50)), '#777', 1.5);
+
+    angleLabel.textContent = `Axis angle: ${Math.round(axisAngle * 180 / Math.PI)}°  |  Drag the white handle to rotate the axis`;
+  }
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function hitHandle(p) {
+    const h = getHandle();
+    return len(sub(p, h)) < 16;
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    if (hitHandle(getPos(e))) draggingHandle = true;
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!draggingHandle) return;
+    const p = getPos(e);
+    axisAngle = Math.atan2(p.y - axisOrigin.y, p.x - axisOrigin.x);
+    draw();
+  });
+  canvas.addEventListener('mouseup', () => draggingHandle = false);
+  canvas.addEventListener('mouseleave', () => draggingHandle = false);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); if (hitHandle(getPos(e))) draggingHandle = true; }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!draggingHandle) return;
+    const p = getPos(e); axisAngle = Math.atan2(p.y - axisOrigin.y, p.x - axisOrigin.x); draw();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => draggingHandle = false);
+
+  draw();
+})();
+
+// ============================================================
+// DEMO 3 — Edge normals + axis overlap panel
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c3');
+  const label = document.getElementById('c3-label');
+
+  const pentBase = makePoly(5, 50, 50, -Math.PI / 2);
+  const triBase = makePoly(3, 55, 55, -Math.PI / 2);
+
+  let posA = { x: w * 0.32, y: h * 0.5 };
+  let posB = { x: w * 0.68, y: h * 0.5 };
+  let drag = null;
+
+  function getVertsA() { return translateVerts(pentBase, posA); }
+  function getVertsB() { return translateVerts(triBase, posB); }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const vA = getVertsA(), vB = getVertsB();
+    const result = satPolygons(vA, vB);
+
+    const aFill = result.colliding ? 'rgba(220,80,80,0.18)' : 'rgba(91,155,213,0.18)';
+    const aStroke = result.colliding ? '#dc5050' : '#5b9bd5';
+    const bFill = result.colliding ? 'rgba(220,80,80,0.18)' : 'rgba(232,168,56,0.18)';
+    const bStroke = result.colliding ? '#dc5050' : '#e8a838';
+
+    drawPoly(ctx, vA, aFill, aStroke, 2);
+    drawPoly(ctx, vB, bFill, bStroke, 2);
+
+    // Draw edge normals for A (blue)
+    const axesA = getAxes(vA);
+    for (let i = 0; i < vA.length; i++) {
+      const a = vA[i], b = vA[(i + 1) % vA.length];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const n = axesA[i];
+      drawArrow(ctx, mid, { x: mid.x + n.x * 26, y: mid.y + n.y * 26 }, '#5b9bd5', 1.5);
+    }
+
+    // Draw edge normals for B (amber)
+    const axesB = getAxes(vB);
+    for (let i = 0; i < vB.length; i++) {
+      const a = vB[i], b = vB[(i + 1) % vB.length];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const n = axesB[i];
+      drawArrow(ctx, mid, { x: mid.x + n.x * 26, y: mid.y + n.y * 26 }, '#e8a838', 1.5);
+    }
+
+    // Axis overlap panel (right side)
+    const panelX = w - 110, panelY = 14;
+    const barW = 80, barH = 8, gap = 14;
+    ctx.save();
+    ctx.font = '10px -apple-system, sans-serif';
+
+    const allAxes = [
+      ...axesA.map((ax, i) => ({ ax, color: '#5b9bd5', label: `A${i}` })),
+      ...axesB.map((ax, i) => ({ ax, color: '#e8a838', label: `B${i}` })),
+    ];
+
+    let py = panelY + 16;
+    ctx.fillStyle = '#333';
+    ctx.fillText('Axis overlaps', panelX, panelY + 11);
+    for (const { ax, color, label: lbl } of allAxes) {
+      const pA = projectPoly(vA, ax);
+      const pB = projectPoly(vB, ax);
+      const ov = overlap(pA, pB);
+      const totalSpan = Math.max(pA.max, pB.max) - Math.min(pA.min, pB.min);
+      const frac = Math.max(0, Math.min(1, ov / (totalSpan || 1)));
+
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(panelX, py, barW, barH);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(panelX, py, barW, barH);
+
+      if (ov < 0) {
+        ctx.fillStyle = '#50dc96';
+        ctx.fillRect(panelX, py, barW * 0.08, barH);
+      } else {
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(panelX, py, barW * frac, barH);
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.fillStyle = '#555';
+      ctx.fillText(lbl, panelX - 20, py + 7);
+      py += gap;
+    }
+    ctx.restore();
+
+    if (result.colliding) {
+      label.textContent = 'All axes overlap — COLLISION';
+      label.className = 'canvas-label red';
+    } else {
+      label.textContent = 'Gap found on an axis — no collision';
+      label.className = 'canvas-label green';
+    }
+  }
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  });
+  canvas.addEventListener('mouseup', () => drag = null);
+  canvas.addEventListener('mouseleave', () => drag = null);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drag) return; const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => drag = null);
+
+  draw();
+})();
+
+// ============================================================
+// DEMO 4 — MTV visualization
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c4');
+  const stateLabel = document.getElementById('c4-state');
+  const btn = document.getElementById('c4-btn');
+
+  const pentBase = makePoly(5, 50, 50, -Math.PI / 2);
+  const rectBase = rotateVerts(makePoly(4, 55, 38), 0.3);
+
+  let posA = { x: w * 0.4, y: h * 0.5 };
+  let posB = { x: w * 0.58, y: h * 0.5 };
+  let drag = null;
+
+  function getVertsA() { return translateVerts(pentBase, posA); }
+  function getVertsB() { return translateVerts(rectBase, posB); }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const vA = getVertsA(), vB = getVertsB();
+    const result = satPolygons(vA, vB);
+
+    const aFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(91,155,213,0.2)';
+    const aStroke = result.colliding ? '#dc5050' : '#5b9bd5';
+    const bFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(232,168,56,0.2)';
+    const bStroke = result.colliding ? '#dc5050' : '#e8a838';
+
+    drawPoly(ctx, vA, aFill, aStroke, 2);
+    drawPoly(ctx, vB, bFill, bStroke, 2);
+
+    // Shape labels
+    ctx.save();
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.fillStyle = aStroke; ctx.fillText('A', posA.x - 4, posA.y + 5);
+    ctx.fillStyle = bStroke; ctx.fillText('B', posB.x - 4, posB.y + 5);
+    ctx.restore();
+
+    if (result.colliding && result.mtv) {
+      const { axis, depth } = result.mtv;
+      const mtvVec = scale(axis, depth);
+      const from = posB;
+      const to = { x: posB.x + mtvVec.x * 2.2, y: posB.y + mtvVec.y * 2.2 };
+      drawArrow(ctx, from, to, '#50dc96', 2.5);
+
+      // Label
+      ctx.save();
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillStyle = '#50dc96';
+      const midX = (from.x + to.x) / 2 + 8;
+      const midY = (from.y + to.y) / 2 - 8;
+      ctx.fillText(`MTV  ${depth.toFixed(1)}px`, midX, midY);
+      ctx.restore();
+
+      stateLabel.textContent = `Colliding — MTV depth: ${depth.toFixed(2)}px`;
+      stateLabel.className = 'canvas-label red';
+      btn.textContent = 'Resolve Collision';
+      btn.disabled = false;
+    } else {
+      stateLabel.textContent = 'No collision — drag shapes to overlap';
+      stateLabel.className = 'canvas-label green';
+      btn.textContent = 'Resolve Collision';
+      btn.disabled = true;
+    }
+  }
+
+  btn.addEventListener('click', () => {
+    const vA = getVertsA(), vB = getVertsB();
+    const result = satPolygons(vA, vB);
+    if (result.colliding && result.mtv) {
+      const { axis, depth } = result.mtv;
+      posB = { x: posB.x + axis.x * (depth + 2), y: posB.y + axis.y * (depth + 2) };
+      draw();
+    }
+  });
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  });
+  canvas.addEventListener('mouseup', () => drag = null);
+  canvas.addEventListener('mouseleave', () => drag = null);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e);
+    if (pointInPoly(p, getVertsA())) drag = { shape: 'A', ox: posA.x - p.x, oy: posA.y - p.y };
+    else if (pointInPoly(p, getVertsB())) drag = { shape: 'B', ox: posB.x - p.x, oy: posB.y - p.y };
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drag) return; const p = getPos(e);
+    if (drag.shape === 'A') posA = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else posB = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => drag = null);
+
+  draw();
+})();
+
+// ============================================================
+// DEMO 5 — Bouncing ball with gravity + bounce + friction
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c5');
+
+  const bounceSlider = document.getElementById('bounce-slider');
+  const frictionSlider = document.getElementById('friction-slider');
+  const bounceVal = document.getElementById('bounce-val');
+  const frictionVal = document.getElementById('friction-val');
+  const resetBtn = document.getElementById('c5-reset');
+
+  bounceSlider.addEventListener('input', () => { bounceVal.textContent = parseFloat(bounceSlider.value).toFixed(2); });
+  frictionSlider.addEventListener('input', () => { frictionVal.textContent = parseFloat(frictionSlider.value).toFixed(2); });
+
+  const GRAVITY = 0.38;
+  const RADIUS = 18;
+  const MARGIN = 14;
+
+  // Boundary walls (as rectangles edges)
+  const walls = {
+    left: MARGIN,
+    right: w - MARGIN,
+    top: MARGIN,
+    bottom: h - MARGIN,
+  };
+
+  // Two angled ramps
+  const ramps = [
+    { x1: w * 0.1, y1: h * 0.55, x2: w * 0.38, y2: h * 0.72 },
+    { x1: w * 0.62, y1: h * 0.62, x2: w * 0.9, y2: h * 0.45 },
+  ];
+
+  let ball = {};
+
+  function resetBall() {
+    ball = {
+      x: w / 2 + (Math.random() - 0.5) * 60,
+      y: MARGIN + RADIUS + 10,
+      vx: (Math.random() - 0.5) * 3,
+      vy: 1,
+    };
+  }
+  resetBall();
+
+  resetBtn.addEventListener('click', resetBall);
+
+  function reflectVelocity(vx, vy, nx, ny) {
+    const bounce = parseFloat(bounceSlider.value);
+    const friction = parseFloat(frictionSlider.value);
+    // Normal component
+    const vDotN = vx * nx + vy * ny;
+    const vnx = vDotN * nx, vny = vDotN * ny;
+    // Tangential component
+    const vtx = vx - vnx, vty = vy - vny;
+    return {
+      vx: -bounce * vnx + (1 - friction) * vtx,
+      vy: -bounce * vny + (1 - friction) * vty,
+    };
+  }
+
+  function closestPointOnSegment(px, py, ax, ay, bx, by) {
+    const abx = bx - ax, aby = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby)));
+    return { x: ax + t * abx, y: ay + t * aby, t };
+  }
+
+  function update() {
+    ball.vy += GRAVITY;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // Wall collisions
+    if (ball.x - RADIUS < walls.left) {
+      ball.x = walls.left + RADIUS;
+      const r = reflectVelocity(ball.vx, ball.vy, 1, 0);
+      ball.vx = r.vx; ball.vy = r.vy;
+    }
+    if (ball.x + RADIUS > walls.right) {
+      ball.x = walls.right - RADIUS;
+      const r = reflectVelocity(ball.vx, ball.vy, -1, 0);
+      ball.vx = r.vx; ball.vy = r.vy;
+    }
+    if (ball.y - RADIUS < walls.top) {
+      ball.y = walls.top + RADIUS;
+      const r = reflectVelocity(ball.vx, ball.vy, 0, 1);
+      ball.vx = r.vx; ball.vy = r.vy;
+    }
+    if (ball.y + RADIUS > walls.bottom) {
+      ball.y = walls.bottom - RADIUS;
+      const r = reflectVelocity(ball.vx, ball.vy, 0, -1);
+      ball.vx = r.vx; ball.vy = r.vy;
+    }
+
+    // Ramp collisions
+    for (const ramp of ramps) {
+      const cp = closestPointOnSegment(ball.x, ball.y, ramp.x1, ramp.y1, ramp.x2, ramp.y2);
+      const dx = ball.x - cp.x, dy = ball.y - cp.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < RADIUS) {
+        const nx = dx / dist, ny = dy / dist;
+        // Push out
+        ball.x = cp.x + nx * (RADIUS + 0.5);
+        ball.y = cp.y + ny * (RADIUS + 0.5);
+        const r = reflectVelocity(ball.vx, ball.vy, nx, ny);
+        ball.vx = r.vx; ball.vy = r.vy;
+      }
+    }
+
+    // Speed cap
+    const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    if (spd > 22) { ball.vx *= 22 / spd; ball.vy *= 22 / spd; }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    // Boundary
+    ctx.save();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(walls.left, walls.top, walls.right - walls.left, walls.bottom - walls.top);
+    ctx.restore();
+
+    // Ramps
+    ctx.save();
+    ctx.strokeStyle = '#e8a838';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (const ramp of ramps) {
+      ctx.beginPath();
+      ctx.moveTo(ramp.x1, ramp.y1);
+      ctx.lineTo(ramp.x2, ramp.y2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Ball
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(91,155,213,0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Velocity arrow
+    const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    if (spd > 0.5) {
+      const arrowLen = Math.min(spd * 3, 55);
+      const vn = { x: ball.vx / spd, y: ball.vy / spd };
+      drawArrow(ctx,
+        { x: ball.x, y: ball.y },
+        { x: ball.x + vn.x * arrowLen, y: ball.y + vn.y * arrowLen },
+        '#50dc96', 2
+      );
+    }
+
+    // Gravity label
+    ctx.save();
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = '#444';
+    ctx.fillText(`g = ${GRAVITY}  v = (${ball.vx.toFixed(1)}, ${ball.vy.toFixed(1)})`, walls.left + 6, walls.top + 14);
+    ctx.restore();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+// ============================================================
+// DEMO 6 — Circle vs Polygon
+// ============================================================
+(function() {
+  const { canvas, ctx, w, h } = setupCanvas('c6');
+  const stateLabel = document.getElementById('c6-state');
+
+  const pentBase = makePoly(5, 55, 55, -Math.PI / 2);
+  let polyPos = { x: w * 0.64, y: h * 0.5 };
+  let circlePos = { x: w * 0.30, y: h * 0.5 };
+  const circleR = 38;
+
+  let drag = null; // { type: 'circle'|'poly', ox, oy }
+
+  function getVerts() { return translateVerts(pentBase, polyPos); }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const verts = getVerts();
+    const circle = { pos: circlePos, r: circleR };
+    const result = satCirclePoly(circle, verts);
+
+    const polyFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(232,168,56,0.2)';
+    const polyStroke = result.colliding ? '#dc5050' : '#e8a838';
+    const circleFill = result.colliding ? 'rgba(220,80,80,0.2)' : 'rgba(91,155,213,0.2)';
+    const circleStroke = result.colliding ? '#dc5050' : '#5b9bd5';
+
+    // Draw polygon
+    drawPoly(ctx, verts, polyFill, polyStroke, 2);
+
+    // Draw circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(circlePos.x, circlePos.y, circleR, 0, Math.PI * 2);
+    ctx.fillStyle = circleFill; ctx.fill();
+    ctx.strokeStyle = circleStroke; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+
+    // Polygon edge normals (gray/dim)
+    const axes = getAxes(verts);
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const n = axes[i];
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      drawArrow(ctx, mid, { x: mid.x + n.x * 22, y: mid.y + n.y * 22 }, '#e8a838', 1.2);
+      ctx.restore();
+    }
+
+    if (result.closestVert) {
+      const cv = result.closestVert;
+      const isColliding = result.colliding;
+
+      // Highlight closest vertex
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cv.x, cv.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#e8a838';
+      ctx.globalAlpha = isColliding ? 1 : 0.5;
+      ctx.fill();
+      ctx.restore();
+
+      // Extra axis
+      const extraAxis = normalize(sub(circlePos, cv));
+      const mid = { x: (circlePos.x + cv.x) / 2, y: (circlePos.y + cv.y) / 2 };
+      const axLen = 70;
+      const p1 = { x: mid.x - extraAxis.x * axLen, y: mid.y - extraAxis.y * axLen };
+      const p2 = { x: mid.x + extraAxis.x * axLen, y: mid.y + extraAxis.y * axLen };
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#e8a838';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = isColliding ? 0.9 : 0.4;
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      ctx.restore();
+
+      // Label "extra axis"
+      ctx.save();
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.fillStyle = '#e8a838';
+      ctx.globalAlpha = isColliding ? 0.9 : 0.4;
+      ctx.fillText('extra axis', p2.x + 4, p2.y + 4);
+      ctx.restore();
+    }
+
+    // MTV arrow
+    if (result.colliding && result.mtv) {
+      const { axis, depth } = result.mtv;
+      const mtvVec = scale(axis, depth);
+      const from = circlePos;
+      const to = { x: circlePos.x + mtvVec.x * 2, y: circlePos.y + mtvVec.y * 2 };
+      drawArrow(ctx, from, to, '#50dc96', 2.5);
+      ctx.save();
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillStyle = '#50dc96';
+      ctx.fillText(`MTV ${depth.toFixed(1)}px`, to.x + 6, to.y);
+      ctx.restore();
+
+      stateLabel.textContent = `Colliding — MTV depth: ${depth.toFixed(2)}px`;
+      stateLabel.className = 'canvas-label red';
+    } else {
+      stateLabel.textContent = 'No collision — drag either shape';
+      stateLabel.className = 'canvas-label green';
+    }
+  }
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function hitCircle(p) {
+    return len(sub(p, circlePos)) <= circleR + 8;
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const p = getPos(e);
+    if (hitCircle(p)) drag = { type: 'circle', ox: circlePos.x - p.x, oy: circlePos.y - p.y };
+    else if (pointInPoly(p, getVerts())) drag = { type: 'poly', ox: polyPos.x - p.x, oy: polyPos.y - p.y };
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const p = getPos(e);
+    if (drag.type === 'circle') circlePos = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else polyPos = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  });
+  canvas.addEventListener('mouseup', () => drag = null);
+  canvas.addEventListener('mouseleave', () => drag = null);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e);
+    if (hitCircle(p)) drag = { type: 'circle', ox: circlePos.x - p.x, oy: circlePos.y - p.y };
+    else if (pointInPoly(p, getVerts())) drag = { type: 'poly', ox: polyPos.x - p.x, oy: polyPos.y - p.y };
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drag) return; const p = getPos(e);
+    if (drag.type === 'circle') circlePos = { x: p.x + drag.ox, y: p.y + drag.oy };
+    else polyPos = { x: p.x + drag.ox, y: p.y + drag.oy };
+    draw();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => drag = null);
+
+  draw();
+})();
+</script>
+</body>
+</html>
