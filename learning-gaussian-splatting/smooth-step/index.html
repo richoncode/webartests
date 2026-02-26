@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>smoothStep &amp; Differentiable Parameters</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0d;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .back-link {
+    position: fixed;
+    top: 20px;
+    left: 24px;
+    color: #555;
+    text-decoration: none;
+    font-size: 14px;
+    z-index: 100;
+  }
+  .back-link:hover { color: #888; }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+
+  .page-header {
+    margin-bottom: 56px;
+  }
+
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    color: #999;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 600px;
+  }
+
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  p {
+    color: #999;
+    line-height: 1.7;
+    margin-bottom: 12px;
+  }
+
+  pre {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    color: #a8e6cf;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin-bottom: 20px;
+    white-space: pre;
+  }
+
+  canvas {
+    display: block;
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 640px;
+    margin: 20px auto;
+  }
+
+  .demo-label {
+    text-align: center;
+    font-size: 13px;
+    color: #555;
+    margin-top: -12px;
+    margin-bottom: 20px;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: center;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-group label {
+    font-size: 12px;
+    color: #555;
+  }
+
+  .control-group input[type=range] {
+    width: 160px;
+    accent-color: #5b9bd5;
+  }
+
+  .control-group .value {
+    font-size: 12px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d3d; border-color: #5b9bd5; color: #5b9bd5; }
+
+  .highlight-blue  { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .highlight-red   { color: #dc5050; }
+  .highlight-purple{ color: #c792ea; }
+
+  .math { font-style: italic; color: #c8d8f0; }
+
+  ul {
+    color: #999;
+    padding-left: 20px;
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+
+  ul li { margin-bottom: 4px; }
+
+  code {
+    background: #1a1a1a;
+    color: #a8e6cf;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .stuck-label {
+    text-align: center;
+    font-size: 13px;
+    color: #dc5050;
+    margin-bottom: 8px;
+    min-height: 20px;
+  }
+
+  .step-eqs {
+    max-width: 640px;
+    margin: 0 auto 16px;
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.9;
+  }
+  .step-eqs .eq-line { display: flex; gap: 8px; align-items: baseline; }
+  .step-eqs .eq-label { color: #555; width: 130px; flex-shrink: 0; }
+  .step-eqs .eq-value { color: #e8a838; }
+
+  .swatch-row {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .swatch-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .swatch-block .swatch-label { font-size: 12px; color: #555; }
+  .swatch-rect {
+    width: 120px;
+    height: 80px;
+    border-radius: 10px;
+    border: 1px solid #333;
+  }
+  .swatch-rgb {
+    font-size: 11px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>smoothStep &amp; Differentiable Parameters</h1>
+    <p class="subtitle">A smooth Hermite interpolation that keeps optimisable parameters in valid ranges — and how the <code>[Differentiable]</code> attribute enables automatic differentiation in Slang.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SHADER CODE
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">The Slang Code</div>
+    <pre>[Differentiable]
+vector&lt;float, N&gt; smoothStep&lt;let N : int&gt;(vector&lt;float, N&gt; x, vector&lt;float, N&gt; minval, vector&lt;float, N&gt; maxval)
+{
+    vector&lt;float, N&gt; y = clamp((x - minval) / (maxval - minval), 0.f, 1.f);
+    return y * y * (3.f - 2.f * y);
+}
+
+[Differentiable]
+float smoothStep(float x, float minval, float maxval)
+{
+    float y = clamp((x - minval) / (maxval - minval), 0.f, 1.f);
+    return y * y * (3.f - 2.f * y);
+}</pre>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1 — Hard Clamp vs smoothStep
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">1. The Problem: Hard Clamp vs Smooth Clamp</div>
+
+    <p>When training a model (like a Gaussian Splat), parameters are updated by gradient descent. If a parameter goes out of its valid range, a <strong>hard clamp</strong> (<code>clamp(x, 0, 1)</code>) fixes the value but makes the gradient <strong>zero</strong> outside the range — the optimiser has no signal to bring it back. <code>smoothStep</code> solves this by using a smooth polynomial that:</p>
+    <ul>
+      <li>Maps <span class="math">[minval, maxval]</span> → <span class="math">[0, 1]</span></li>
+      <li>Has <strong>zero derivative at both endpoints</strong> (so the output never overshoots)</li>
+      <li>Has <strong>non-zero gradients</strong> throughout the input domain (the optimiser always has a useful signal)</li>
+    </ul>
+
+    <canvas id="canvas1" width="640" height="280"></canvas>
+    <div class="demo-label">Drag the vertical cursor. Drag sliders to change the valid range.</div>
+
+    <div id="readout1" style="text-align:center; font-size:13px; color:#888; margin-top:-8px; margin-bottom:16px; font-variant-numeric: tabular-nums;">x = 0.30 | clamp → 0.30 | smoothStep → 0.216</div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>minval</label>
+        <input type="range" id="s1min" min="-1" max="2" step="0.01" value="0">
+        <span class="value" id="s1minVal">0.00</span>
+      </div>
+      <div class="control-group">
+        <label>maxval</label>
+        <input type="range" id="s1max" min="-1" max="2" step="0.01" value="1">
+        <span class="value" id="s1maxVal">1.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2 — Formula Step by Step
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">2. The Formula Step by Step</div>
+
+    <p><strong>Step 1 — Normalise:</strong></p>
+    <pre>t = clamp((x - minval) / (maxval - minval), 0, 1)</pre>
+    <p>This maps the input range to <span class="math">[0, 1]</span>. Outside the range, it clamps to 0 or 1.</p>
+
+    <p><strong>Step 2 — Hermite polynomial:</strong></p>
+    <pre>output = t² · (3 - 2t)</pre>
+    <p>This is the cubic Hermite basis function H₁(t). It satisfies:</p>
+    <ul>
+      <li>H₁(0) = 0,  H₁(1) = 1</li>
+      <li>H₁′(0) = 0,  H₁′(1) = 0  ← <span class="highlight-blue">zero derivatives at endpoints</span></li>
+    </ul>
+
+    <p><strong>The derivative:</strong></p>
+    <pre>d(output)/dt = 6t(1 - t)</pre>
+    <p>This is maximised at <span class="math">t = 0.5</span> (steepest slope in the middle) and exactly 0 at <span class="math">t = 0</span> and <span class="math">t = 1</span>.</p>
+
+    <canvas id="canvas2" width="640" height="300"></canvas>
+    <div class="demo-label">Drag the cursor to see each step of the computation.</div>
+
+    <div class="step-eqs" id="stepEqs">
+      <div class="eq-line">
+        <span class="eq-label">Step 1 — t =</span>
+        <span class="eq-value" id="eq2step1">clamp((0.30 - 0) / (1 - 0), 0, 1) = 0.300</span>
+      </div>
+      <div class="eq-line">
+        <span class="eq-label">Step 2 — output =</span>
+        <span class="eq-value" id="eq2step2">0.300² × (3 - 2×0.300) = 0.216</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>minval</label>
+        <input type="range" id="s2min" min="-1" max="2" step="0.01" value="0">
+        <span class="value" id="s2minVal">0.00</span>
+      </div>
+      <div class="control-group">
+        <label>maxval</label>
+        <input type="range" id="s2max" min="-1" max="2" step="0.01" value="1">
+        <span class="value" id="s2maxVal">1.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3 — Derivative: Why Gradients Don't Vanish
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">3. The Derivative: Why Gradients Don't Vanish</div>
+
+    <p>The derivative of <code>smoothStep</code> with respect to the <strong>input x</strong> is:</p>
+    <pre>d(smoothStep)/dx = 6t(1-t) / (maxval - minval)    where t = clamp(...)</pre>
+    <p>This is a bell-shaped curve (zero at the boundaries, maximum at the midpoint). Crucially, even when x is slightly outside the valid range, the gradient is not a cliff — it smoothly approaches zero.</p>
+
+    <p>Compare to hard clamp:</p>
+    <ul>
+      <li>Outside range: gradient = 0 (dead zone — no learning signal)</li>
+      <li>At boundary: gradient is discontinuous</li>
+    </ul>
+
+    <div class="toggle-row" id="toggleRow3">
+      <button class="active" data-key="ss">smoothStep (blue)</button>
+      <button class="active" data-key="dss">derivative of smoothStep (purple)</button>
+      <button class="active" data-key="hc">hard clamp (red)</button>
+      <button class="active" data-key="dhc">derivative of clamp (dark red)</button>
+    </div>
+
+    <canvas id="canvas3" width="640" height="320"></canvas>
+    <div class="demo-label">Drag the cursor to see values. Toggle curves with the buttons above.</div>
+
+    <div id="readout3" style="text-align:center; font-size:13px; color:#888; margin-bottom:16px; font-variant-numeric:tabular-nums;">x = 0.30 | smoothStep = 0.216 | derivative = 0.882</div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>minval</label>
+        <input type="range" id="s3min" min="-1" max="2" step="0.01" value="0">
+        <span class="value" id="s3minVal">0.00</span>
+      </div>
+      <div class="control-group">
+        <label>maxval</label>
+        <input type="range" id="s3max" min="-1" max="2" step="0.01" value="1">
+        <span class="value" id="s3maxVal">1.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 4 — [Differentiable] and Automatic Differentiation
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">4. [Differentiable] and Automatic Differentiation</div>
+
+    <p>The <code>[Differentiable]</code> attribute in Slang tells the compiler that this function can be <strong>automatically differentiated</strong> — the compiler generates the derivative code for you. This is essential for training Gaussian Splats via gradient descent.</p>
+
+    <p>When <code>smoothStep</code> is used inside a loss function, the compiler:</p>
+    <ul>
+      <li>Traces the forward pass: <code>output = smoothStep(x, min, max)</code></li>
+      <li>Generates the backward pass: <code>d_x += d_output * 6t(1-t)/(max-min)</code></li>
+    </ul>
+
+    <p>Without <code>[Differentiable]</code>, you'd have to implement the derivative manually and risk errors.</p>
+
+    <pre>[Differentiable]
+float computeOpacity(float rawParam)
+{
+    return smoothStep(rawParam, 0.f, 1.f);
+}
+
+// The compiler generates this derivative automatically:
+// d(rawParam) += d(opacity) * 6t(1-t)   where t = clamp(rawParam, 0, 1)</pre>
+
+    <canvas id="canvas4" width="640" height="300"></canvas>
+    <div class="demo-label">Animated gradient descent. Watch the parameter converge to the target.</div>
+
+    <div class="stuck-label" id="stuckLabel"></div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Learning rate</label>
+        <input type="range" id="s4lr" min="0.001" max="0.5" step="0.001" value="0.05">
+        <span class="value" id="s4lrVal">0.050</span>
+      </div>
+      <div class="control-group">
+        <label>Target output</label>
+        <input type="range" id="s4target" min="0.1" max="0.9" step="0.01" value="0.7">
+        <span class="value" id="s4targetVal">0.70</span>
+      </div>
+      <div class="control-group">
+        <label>Starting x (outside range)</label>
+        <input type="range" id="s4startx" min="-0.5" max="1.5" step="0.01" value="-0.3">
+        <span class="value" id="s4startxVal">-0.30</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="btnSS4" class="active">Use smoothStep</button>
+      <button id="btnHC4">Use hard clamp</button>
+      <button id="btnReset4">Reset</button>
+    </div>
+
+    <div id="readout4" style="font-size:13px; color:#888; font-variant-numeric:tabular-nums; max-width:640px; margin:0 auto 12px; text-align:center;">Step 0 | x = -0.300 | output = 0.000 | loss = 0.490</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 5 — The Vector Variant
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">5. The Vector Variant</div>
+
+    <p>The generic version <code>vector&lt;float, N&gt; smoothStep&lt;let N : int&gt;(...)</code> applies smoothStep <strong>component-wise</strong> to a vector. In Slang, <code>&lt;let N : int&gt;</code> is a generic integer parameter — the function works for float2, float3, float4 without code duplication.</p>
+
+    <p>Use cases in Gaussian Splatting:</p>
+    <ul>
+      <li>Clamping an RGB colour vector: each channel independently mapped to <span class="math">[0, 1]</span></li>
+      <li>Clamping a 3D position: each coordinate kept in a valid scene region</li>
+      <li>Clamping scale parameters: prevents Gaussian splats from collapsing or exploding</li>
+    </ul>
+
+    <canvas id="canvas5" width="640" height="160"></canvas>
+    <div class="demo-label">Per-channel S-curves. The dot shows each channel's current position.</div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>R raw</label>
+        <input type="range" id="s5r" min="-0.5" max="1.5" step="0.01" value="0.8">
+        <span class="value" id="s5rVal">0.80</span>
+      </div>
+      <div class="control-group">
+        <label>G raw</label>
+        <input type="range" id="s5g" min="-0.5" max="1.5" step="0.01" value="0.3">
+        <span class="value" id="s5gVal">0.30</span>
+      </div>
+      <div class="control-group">
+        <label>B raw</label>
+        <input type="range" id="s5b" min="-0.5" max="1.5" step="0.01" value="-0.1">
+        <span class="value" id="s5bVal">-0.10</span>
+      </div>
+    </div>
+
+    <div class="swatch-row" id="swatchRow">
+      <div class="swatch-block">
+        <div class="swatch-label">Before smoothStep (hard clamped)</div>
+        <div class="swatch-rect" id="swatchBefore"></div>
+        <div class="swatch-rgb" id="swatchBeforeRgb"></div>
+      </div>
+      <div class="swatch-block">
+        <div class="swatch-label">After smoothStep</div>
+        <div class="swatch-rect" id="swatchAfter"></div>
+        <div class="swatch-rgb" id="swatchAfterRgb"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .page -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+// Core maths helpers
+// ─────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function smoothStepFn(x, minval, maxval) {
+  if (maxval === minval) return 0;
+  const t = clamp((x - minval) / (maxval - minval), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function smoothStepDerivative(x, minval, maxval) {
+  if (maxval === minval) return 0;
+  const t = clamp((x - minval) / (maxval - minval), 0, 1);
+  return 6 * t * (1 - t) / (maxval - minval);
+}
+
+function hardClampFn(x) { return clamp(x, 0, 1); }
+function hardClampDerivative(x) { return (x >= 0 && x <= 1) ? 1 : 0; }
+
+// ─────────────────────────────────────────────────────────────────
+// Canvas + DPR helpers
+// ─────────────────────────────────────────────────────────────────
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const cssW = canvas.offsetWidth || parseInt(canvas.getAttribute('width'));
+  const cssH = canvas.offsetHeight || parseInt(canvas.getAttribute('height'));
+  canvas.width  = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, W: cssW, H: cssH, dpr };
+}
+
+function worldToCanvas(wx, wy, xMin, xMax, yMin, yMax, W, H) {
+  const cx = ((wx - xMin) / (xMax - xMin)) * W;
+  const cy = H - ((wy - yMin) / (yMax - yMin)) * H;
+  return [cx, cy];
+}
+
+function canvasToWorld(cx, cy, xMin, xMax, yMin, yMax, W, H) {
+  const wx = xMin + (cx / W) * (xMax - xMin);
+  const wy = yMin + ((H - cy) / H) * (yMax - yMin);
+  return [wx, wy];
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color, width=1.5) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 2) return;
+  const nx = dx/len, ny = dy/len;
+  const hLen = 8, hWid = 4;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hLen*nx + hWid*ny, y2 - hLen*ny - hWid*nx);
+  ctx.lineTo(x2 - hLen*nx - hWid*ny, y2 - hLen*ny + hWid*nx);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGrid(ctx, W, H, xMin, xMax, yMin, yMax, gridVals) {
+  ctx.save();
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  for (const v of gridVals.x) {
+    const [cx] = worldToCanvas(v, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+  }
+  for (const v of gridVals.y) {
+    const [, cy] = worldToCanvas(0, v, xMin, xMax, yMin, yMax, W, H);
+    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAxes(ctx, W, H, xMin, xMax, yMin, yMax) {
+  ctx.save();
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  const [, cy0] = worldToCanvas(0, 0, xMin, xMax, yMin, yMax, W, H);
+  const [cx0]   = worldToCanvas(0, 0, xMin, xMax, yMin, yMax, W, H);
+  // x-axis
+  if (cy0 >= 0 && cy0 <= H) {
+    ctx.beginPath(); ctx.moveTo(0, cy0); ctx.lineTo(W, cy0); ctx.stroke();
+  }
+  // y-axis
+  if (cx0 >= 0 && cx0 <= W) {
+    ctx.beginPath(); ctx.moveTo(cx0, 0); ctx.lineTo(cx0, H); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function labelAxes(ctx, W, H, xMin, xMax, yMin, yMax, xTicks, yTicks) {
+  ctx.save();
+  ctx.fillStyle = '#444';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const [, cy0] = worldToCanvas(0, 0, xMin, xMax, yMin, yMax, W, H);
+  const yLabelY = clamp(cy0 + 4, 0, H - 14);
+  for (const v of xTicks) {
+    const [cx] = worldToCanvas(v, 0, xMin, xMax, yMin, yMax, W, H);
+    if (cx > 10 && cx < W - 10) ctx.fillText(v.toFixed(1), cx, yLabelY);
+  }
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  const [cx0] = worldToCanvas(0, 0, xMin, xMax, yMin, yMax, W, H);
+  const xLabelX = clamp(cx0 - 4, 14, W);
+  for (const v of yTicks) {
+    const [, cy] = worldToCanvas(0, v, xMin, xMax, yMin, yMax, W, H);
+    if (cy > 4 && cy < H - 4) ctx.fillText(v.toFixed(1), xLabelX, cy);
+  }
+  ctx.restore();
+}
+
+function plotCurve(ctx, fn, xMin, xMax, yMin, yMax, W, H, steps=400) {
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const wx = xMin + (i/steps) * (xMax - xMin);
+    const wy = fn(wx);
+    const [cx, cy] = worldToCanvas(wx, wy, xMin, xMax, yMin, yMax, W, H);
+    if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+}
+
+function fmt2(v) { return v.toFixed(2); }
+function fmt3(v) { return v.toFixed(3); }
+
+// ─────────────────────────────────────────────────────────────────
+// DEMO 1 — Hard clamp vs smoothStep
+// ─────────────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('canvas1');
+  const readout = document.getElementById('readout1');
+  const s1min = document.getElementById('s1min');
+  const s1max = document.getElementById('s1max');
+  const s1minVal = document.getElementById('s1minVal');
+  const s1maxVal = document.getElementById('s1maxVal');
+
+  let { ctx, W, H } = setupCanvas(canvas);
+  const xMin = -0.5, xMax = 1.5, yMin = -0.2, yMax = 1.2;
+  let cursorX = 0.3;
+  let dragging = false;
+
+  function getMinMax() {
+    let mn = parseFloat(s1min.value);
+    let mx = parseFloat(s1max.value);
+    if (mn >= mx) mx = mn + 0.01;
+    return [mn, mx];
+  }
+
+  function draw() {
+    const [mn, mx] = getMinMax();
+    ctx.clearRect(0, 0, W, H);
+
+    // valid range shading
+    const [x1c] = worldToCanvas(mn, 0, xMin, xMax, yMin, yMax, W, H);
+    const [x2c] = worldToCanvas(mx, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.fillStyle = 'rgba(91,155,213,0.05)';
+    ctx.fillRect(x1c, 0, x2c - x1c, H);
+
+    drawGrid(ctx, W, H, xMin, xMax, yMin, yMax, { x: [-0.5, 0, 0.5, 1, 1.5], y: [0, 0.5, 1] });
+    drawAxes(ctx, W, H, xMin, xMax, yMin, yMax);
+    labelAxes(ctx, W, H, xMin, xMax, yMin, yMax, [-0.5, 0, 0.5, 1, 1.5], [-0.2, 0, 0.5, 1, 1.2]);
+
+    // "valid range" label
+    const midX = (x1c + x2c) / 2;
+    ctx.fillStyle = 'rgba(91,155,213,0.4)';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('valid range', midX, 6);
+
+    // Hard clamp curve (red dashed)
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#dc5050';
+    ctx.lineWidth = 2;
+    plotCurve(ctx, x => clamp((x - mn) / (mx - mn), 0, 1), xMin, xMax, yMin, yMax, W, H);
+    ctx.restore();
+
+    // smoothStep curve (blue solid)
+    ctx.save();
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2.5;
+    plotCurve(ctx, x => smoothStepFn(x, mn, mx), xMin, xMax, yMin, yMax, W, H);
+    ctx.restore();
+
+    // Boundary annotations
+    for (const bx of [mn, mx]) {
+      // smoothStep: f'=0 marker
+      const ssY = smoothStepFn(bx, mn, mx);
+      const [cx, cy] = worldToCanvas(bx, ssY, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#5b9bd5';
+      ctx.fill();
+      ctx.fillStyle = 'rgba(91,155,213,0.8)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = bx < (mn + mx) / 2 ? 'left' : 'right';
+      ctx.textBaseline = 'bottom';
+      const lx = bx < (mn + mx) / 2 ? cx + 6 : cx - 6;
+      ctx.fillText("f\u2032=0", lx, cy - 3);
+
+      // Hard clamp: discontinuous marker
+      const hcY = clamp((bx - mn) / (mx - mn), 0, 1);
+      const [hcx, hcy] = worldToCanvas(bx, hcY, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath();
+      ctx.arc(hcx, hcy, 4, 0, Math.PI * 2);
+      ctx.strokeStyle = '#dc5050';
+      ctx.lineWidth = 1.5;
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Cursor line
+    const [ccx] = worldToCanvas(cursorX, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.save();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(ccx, 0); ctx.lineTo(ccx, H); ctx.stroke();
+    ctx.restore();
+
+    // Dots on each curve at cursor
+    const ssAtCursor = smoothStepFn(cursorX, mn, mx);
+    const hcAtCursor = clamp((cursorX - mn) / (mx - mn), 0, 1);
+
+    const [dcx1, dcy1] = worldToCanvas(cursorX, ssAtCursor, xMin, xMax, yMin, yMax, W, H);
+    ctx.beginPath(); ctx.arc(dcx1, dcy1, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#5b9bd5'; ctx.fill();
+
+    const [dcx2, dcy2] = worldToCanvas(cursorX, hcAtCursor, xMin, xMax, yMin, yMax, W, H);
+    ctx.beginPath(); ctx.arc(dcx2, dcy2, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#dc5050'; ctx.fill();
+
+    // Legend
+    ctx.save();
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    // smoothStep
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(W-130, 20); ctx.lineTo(W-100, 20); ctx.stroke();
+    ctx.fillStyle = '#5b9bd5';
+    ctx.textAlign = 'left';
+    ctx.fillText('smoothStep', W-96, 20);
+    // hard clamp
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle = '#dc5050';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(W-130, 38); ctx.lineTo(W-100, 38); ctx.stroke();
+    ctx.fillStyle = '#dc5050';
+    ctx.fillText('hard clamp', W-96, 38);
+    ctx.restore();
+
+    readout.textContent = `x = ${fmt2(cursorX)} | clamp \u2192 ${fmt3(hcAtCursor)} | smoothStep \u2192 ${fmt3(ssAtCursor)}`;
+  }
+
+  function getEventX(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const cssX = clientX - rect.left;
+    const [wx] = canvasToWorld(cssX, 0, xMin, xMax, yMin, yMax, W, H);
+    return clamp(wx, xMin, xMax);
+  }
+
+  canvas.addEventListener('mousedown', e => { dragging = true; cursorX = getEventX(e); draw(); });
+  canvas.addEventListener('mousemove', e => { if (dragging) { cursorX = getEventX(e); draw(); } });
+  canvas.addEventListener('mouseup',   () => dragging = false);
+  canvas.addEventListener('mouseleave',() => dragging = false);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); dragging = true; cursorX = getEventX(e); draw(); }, {passive:false});
+  canvas.addEventListener('touchmove',  e => { e.preventDefault(); if (dragging) { cursorX = getEventX(e); draw(); } }, {passive:false});
+  canvas.addEventListener('touchend',   () => dragging = false);
+
+  function onSlider() {
+    s1minVal.textContent = fmt2(parseFloat(s1min.value));
+    s1maxVal.textContent = fmt2(parseFloat(s1max.value));
+    draw();
+  }
+  s1min.addEventListener('input', onSlider);
+  s1max.addEventListener('input', onSlider);
+
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// DEMO 2 — Step-by-step decomposition
+// ─────────────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('canvas2');
+  const eq1 = document.getElementById('eq2step1');
+  const eq2 = document.getElementById('eq2step2');
+  const s2min = document.getElementById('s2min');
+  const s2max = document.getElementById('s2max');
+  const s2minVal = document.getElementById('s2minVal');
+  const s2maxVal = document.getElementById('s2maxVal');
+
+  let { ctx, W, H } = setupCanvas(canvas);
+  const xMin = -0.5, xMax = 1.5, yMin = -0.2, yMax = 1.2;
+  let cursorX = 0.3;
+  let dragging = false;
+
+  const PAD_L = 56, PAD_R = 24, PAD_T = 24, PAD_B = 36;
+  const gW = W - PAD_L - PAD_R;
+  const gH = H - PAD_T - PAD_B;
+
+  function wx2cx(wx) { return PAD_L + ((wx - xMin) / (xMax - xMin)) * gW; }
+  function wy2cy(wy) { return PAD_T + gH - ((wy - yMin) / (yMax - yMin)) * gH; }
+  function cx2wx(cx) { return xMin + ((cx - PAD_L) / gW) * (xMax - xMin); }
+
+  function getMinMax() {
+    let mn = parseFloat(s2min.value);
+    let mx = parseFloat(s2max.value);
+    if (mn >= mx) mx = mn + 0.01;
+    return [mn, mx];
+  }
+
+  function draw() {
+    const [mn, mx] = getMinMax();
+    ctx.clearRect(0, 0, W, H);
+
+    // valid range shading
+    const x1c = wx2cx(mn), x2c = wx2cx(mx);
+    ctx.fillStyle = 'rgba(91,155,213,0.05)';
+    ctx.fillRect(x1c, PAD_T, x2c - x1c, gH);
+
+    // grid
+    ctx.save();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    for (const v of [-0.5, 0, 0.5, 1, 1.5]) {
+      const cx = wx2cx(v);
+      ctx.beginPath(); ctx.moveTo(cx, PAD_T); ctx.lineTo(cx, PAD_T + gH); ctx.stroke();
+    }
+    for (const v of [0, 0.5, 1]) {
+      const cy = wy2cy(v);
+      ctx.beginPath(); ctx.moveTo(PAD_L, cy); ctx.lineTo(PAD_L + gW, cy); ctx.stroke();
+    }
+    ctx.restore();
+
+    // axes
+    ctx.save();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    const cy0 = wy2cy(0), cx0 = wx2cx(0);
+    ctx.beginPath(); ctx.moveTo(PAD_L, cy0); ctx.lineTo(PAD_L + gW, cy0); ctx.stroke();
+    if (cx0 >= PAD_L && cx0 <= PAD_L + gW) {
+      ctx.beginPath(); ctx.moveTo(cx0, PAD_T); ctx.lineTo(cx0, PAD_T + gH); ctx.stroke();
+    }
+    ctx.restore();
+
+    // axis labels
+    ctx.save();
+    ctx.fillStyle = '#444';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (const v of [-0.5, 0, 0.5, 1, 1.5]) {
+      ctx.fillText(v.toFixed(1), wx2cx(v), cy0 + 4);
+    }
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (const v of [0, 0.5, 1]) {
+      ctx.fillText(v.toFixed(1), PAD_L - 4, wy2cy(v));
+    }
+    ctx.restore();
+
+    // smoothStep curve
+    ctx.save();
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 400; i++) {
+      const wx = xMin + (i/400) * (xMax - xMin);
+      const wy = smoothStepFn(wx, mn, mx);
+      const cx = wx2cx(wx), cy = wy2cy(wy);
+      if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // t = normalised value
+    const t_raw = (mn === mx) ? 0 : (cursorX - mn) / (mx - mn);
+    const t = clamp(t_raw, 0, 1);
+    const output = t * t * (3 - 2 * t);
+
+    // Cursor line
+    const cx_cur = wx2cx(cursorX);
+    ctx.save();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cx_cur, PAD_T); ctx.lineTo(cx_cur, PAD_T + gH); ctx.stroke();
+    ctx.restore();
+
+    // Horizontal dotted line from curve to Y axis
+    const cy_out = wy2cy(output);
+    ctx.save();
+    ctx.strokeStyle = '#e8a838';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(PAD_L, cy_out); ctx.lineTo(cx_cur, cy_out); ctx.stroke();
+    // output tick on Y axis
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#e8a838';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(PAD_L - 5, cy_out); ctx.lineTo(PAD_L, cy_out); ctx.stroke();
+    ctx.fillStyle = '#e8a838';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(fmt3(output), PAD_L - 8, cy_out);
+    ctx.restore();
+
+    // t step: intermediate horizontal guide
+    const cy_t = wy2cy(t);
+    ctx.save();
+    ctx.strokeStyle = '#50dc96';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(PAD_L, cy_t); ctx.lineTo(cx_cur, cy_t); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#50dc96';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(PAD_L - 5, cy_t); ctx.lineTo(PAD_L, cy_t); ctx.stroke();
+    ctx.restore();
+
+    // Dot on curve
+    ctx.beginPath();
+    ctx.arc(cx_cur, cy_out, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#5b9bd5';
+    ctx.fill();
+
+    // Annotation box
+    const bw = 230, bh = 58;
+    let bx = cx_cur + 12;
+    let by = cy_out - bh / 2;
+    if (bx + bw > W) bx = cx_cur - bw - 12;
+    if (by < PAD_T) by = PAD_T + 4;
+    if (by + bh > H) by = H - bh - 4;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,10,10,0.92)';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#50dc96';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const tRawStr = t_raw.toFixed(3);
+    const tStr = t.toFixed(3);
+    ctx.fillText(`t = clamp(${fmt2(cursorX)}\u2212${fmt2(mn)})/(${fmt2(mx)}\u2212${fmt2(mn)}) = ${tStr}`, bx + 10, by + 9);
+    ctx.fillStyle = '#e8a838';
+    ctx.fillText(`out = ${tStr}\u00B2 \u00D7 (3\u22122\u00D7${tStr}) = ${fmt3(output)}`, bx + 10, by + 30);
+    ctx.restore();
+
+    // Update equation readout below canvas
+    eq1.textContent = `clamp((${fmt2(cursorX)} \u2212 ${fmt2(mn)}) / (${fmt2(mx)} \u2212 ${fmt2(mn)}), 0, 1) = ${fmt3(t)}`;
+    eq2.textContent = `${fmt3(t)}\u00B2 \u00D7 (3 \u2212 2\u00D7${fmt3(t)}) = ${fmt3(output)}`;
+  }
+
+  function getEventX(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const cssX = clientX - rect.left;
+    const wx = cx2wx(cssX);
+    return clamp(wx, xMin, xMax);
+  }
+
+  canvas.addEventListener('mousedown', e => { dragging = true; cursorX = getEventX(e); draw(); });
+  canvas.addEventListener('mousemove', e => { if (dragging) { cursorX = getEventX(e); draw(); } });
+  canvas.addEventListener('mouseup',   () => dragging = false);
+  canvas.addEventListener('mouseleave',() => dragging = false);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); dragging = true; cursorX = getEventX(e); draw(); }, {passive:false});
+  canvas.addEventListener('touchmove',  e => { e.preventDefault(); if (dragging) { cursorX = getEventX(e); draw(); } }, {passive:false});
+  canvas.addEventListener('touchend',   () => dragging = false);
+
+  function onSlider() {
+    s2minVal.textContent = fmt2(parseFloat(s2min.value));
+    s2maxVal.textContent = fmt2(parseFloat(s2max.value));
+    draw();
+  }
+  s2min.addEventListener('input', onSlider);
+  s2max.addEventListener('input', onSlider);
+
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// DEMO 3 — Function + derivative together
+// ─────────────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('canvas3');
+  const readout = document.getElementById('readout3');
+  const s3min = document.getElementById('s3min');
+  const s3max = document.getElementById('s3max');
+  const s3minVal = document.getElementById('s3minVal');
+  const s3maxVal = document.getElementById('s3maxVal');
+  const toggleRow = document.getElementById('toggleRow3');
+
+  let { ctx, W, H } = setupCanvas(canvas);
+  const xMin = -0.5, xMax = 1.5, yMin = -0.2, yMax = 1.4;
+  let cursorX = 0.3;
+  let dragging = false;
+
+  const show = { ss: true, dss: true, hc: true, dhc: true };
+
+  toggleRow.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.key;
+      show[k] = !show[k];
+      btn.classList.toggle('active', show[k]);
+      draw();
+    });
+  });
+
+  function getMinMax() {
+    let mn = parseFloat(s3min.value);
+    let mx = parseFloat(s3max.value);
+    if (mn >= mx) mx = mn + 0.01;
+    return [mn, mx];
+  }
+
+  function draw() {
+    const [mn, mx] = getMinMax();
+    ctx.clearRect(0, 0, W, H);
+
+    // valid range shading
+    const [x1c] = worldToCanvas(mn, 0, xMin, xMax, yMin, yMax, W, H);
+    const [x2c] = worldToCanvas(mx, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.fillStyle = 'rgba(91,155,213,0.05)';
+    ctx.fillRect(x1c, 0, x2c - x1c, H);
+
+    drawGrid(ctx, W, H, xMin, xMax, yMin, yMax, { x: [-0.5,0,0.5,1,1.5], y: [0,0.5,1] });
+    drawAxes(ctx, W, H, xMin, xMax, yMin, yMax);
+    labelAxes(ctx, W, H, xMin, xMax, yMin, yMax, [-0.5,0,0.5,1,1.5], [0,0.5,1]);
+
+    // Hard clamp derivative: rectangle (value = 1 inside range)
+    if (show.dhc) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(180,40,40,0.1)';
+      ctx.fillRect(x1c, worldToCanvas(0,1,xMin,xMax,yMin,yMax,W,H)[1], x2c-x1c, worldToCanvas(0,0,xMin,xMax,yMin,yMax,W,H)[1]-worldToCanvas(0,1,xMin,xMax,yMin,yMax,W,H)[1]);
+      ctx.setLineDash([4,4]);
+      ctx.strokeStyle = 'rgba(180,40,40,0.7)';
+      ctx.lineWidth = 1.5;
+      plotCurve(ctx, x => {
+        if (x < mn || x > mx) return 0;
+        return 1 / (mx - mn);
+      }, xMin, xMax, yMin, yMax, W, H);
+      ctx.restore();
+    }
+
+    // Hard clamp curve (red dashed)
+    if (show.hc) {
+      ctx.save();
+      ctx.setLineDash([4,4]);
+      ctx.strokeStyle = '#dc5050';
+      ctx.lineWidth = 2;
+      plotCurve(ctx, x => clamp((x - mn)/(mx - mn), 0, 1), xMin, xMax, yMin, yMax, W, H);
+      ctx.restore();
+    }
+
+    // smoothStep derivative (purple dashed)
+    if (show.dss) {
+      ctx.save();
+      ctx.setLineDash([5,3]);
+      ctx.strokeStyle = '#c792ea';
+      ctx.lineWidth = 2;
+      plotCurve(ctx, x => smoothStepDerivative(x, mn, mx), xMin, xMax, yMin, yMax, W, H);
+      ctx.restore();
+    }
+
+    // smoothStep curve (blue solid)
+    if (show.ss) {
+      ctx.save();
+      ctx.strokeStyle = '#5b9bd5';
+      ctx.lineWidth = 2.5;
+      plotCurve(ctx, x => smoothStepFn(x, mn, mx), xMin, xMax, yMin, yMax, W, H);
+      ctx.restore();
+    }
+
+    // Cursor line
+    const [ccx] = worldToCanvas(cursorX, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.save();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(ccx, 0); ctx.lineTo(ccx, H); ctx.stroke();
+    ctx.restore();
+
+    const ssVal  = smoothStepFn(cursorX, mn, mx);
+    const dssVal = smoothStepDerivative(cursorX, mn, mx);
+    const hcVal  = clamp((cursorX - mn)/(mx - mn), 0, 1);
+    const dhcVal = (cursorX >= mn && cursorX <= mx) ? 1/(mx-mn) : 0;
+
+    if (show.ss) {
+      const [dcx, dcy] = worldToCanvas(cursorX, ssVal, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath(); ctx.arc(dcx, dcy, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#5b9bd5'; ctx.fill();
+    }
+    if (show.dss) {
+      const [dcx, dcy] = worldToCanvas(cursorX, dssVal, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath(); ctx.arc(dcx, dcy, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#c792ea'; ctx.fill();
+    }
+    if (show.hc) {
+      const [dcx, dcy] = worldToCanvas(cursorX, hcVal, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath(); ctx.arc(dcx, dcy, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#dc5050'; ctx.fill();
+    }
+
+    // Legend
+    ctx.save();
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    const entries = [
+      { label:'smoothStep', color:'#5b9bd5', dash:[] },
+      { label:'d/dx smoothStep', color:'#c792ea', dash:[5,3] },
+      { label:'hard clamp', color:'#dc5050', dash:[4,4] },
+      { label:'d/dx clamp', color:'rgba(180,40,40,0.7)', dash:[4,4] },
+    ];
+    let ly = 14;
+    for (const e of entries) {
+      ctx.setLineDash(e.dash);
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W-150, ly); ctx.lineTo(W-120, ly); ctx.stroke();
+      ctx.fillStyle = e.color;
+      ctx.textAlign = 'left';
+      ctx.fillText(e.label, W-116, ly);
+      ly += 18;
+    }
+    ctx.restore();
+
+    readout.textContent = `x = ${fmt2(cursorX)} | smoothStep = ${fmt3(ssVal)} | d/dx = ${fmt3(dssVal)}`;
+  }
+
+  function getEventX(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const cssX = clientX - rect.left;
+    const [wx] = canvasToWorld(cssX, 0, xMin, xMax, yMin, yMax, W, H);
+    return clamp(wx, xMin, xMax);
+  }
+
+  canvas.addEventListener('mousedown', e => { dragging = true; cursorX = getEventX(e); draw(); });
+  canvas.addEventListener('mousemove', e => { if (dragging) { cursorX = getEventX(e); draw(); } });
+  canvas.addEventListener('mouseup',   () => dragging = false);
+  canvas.addEventListener('mouseleave',() => dragging = false);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); dragging = true; cursorX = getEventX(e); draw(); }, {passive:false});
+  canvas.addEventListener('touchmove',  e => { e.preventDefault(); if (dragging) { cursorX = getEventX(e); draw(); } }, {passive:false});
+  canvas.addEventListener('touchend',   () => dragging = false);
+
+  function onSlider() {
+    s3minVal.textContent = fmt2(parseFloat(s3min.value));
+    s3maxVal.textContent = fmt2(parseFloat(s3max.value));
+    draw();
+  }
+  s3min.addEventListener('input', onSlider);
+  s3max.addEventListener('input', onSlider);
+
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// DEMO 4 — Gradient descent simulation
+// ─────────────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('canvas4');
+  const stuckLabel = document.getElementById('stuckLabel');
+  const readout4 = document.getElementById('readout4');
+  const s4lr = document.getElementById('s4lr');
+  const s4target = document.getElementById('s4target');
+  const s4startx = document.getElementById('s4startx');
+  const s4lrVal = document.getElementById('s4lrVal');
+  const s4targetVal = document.getElementById('s4targetVal');
+  const s4startxVal = document.getElementById('s4startxVal');
+  const btnSS4 = document.getElementById('btnSS4');
+  const btnHC4 = document.getElementById('btnHC4');
+  const btnReset4 = document.getElementById('btnReset4');
+
+  let { ctx, W, H } = setupCanvas(canvas);
+  const xMin = -0.6, xMax = 1.6, yMin = -0.15, yMax = 1.15;
+
+  let useSmooth = true;
+  let paramX = -0.3;
+  let trail = [];
+  let step = 0;
+  let animId = null;
+  let running = true;
+
+  const TRAIL_MAX = 30;
+
+  function getControls() {
+    return {
+      lr: parseFloat(s4lr.value),
+      target: parseFloat(s4target.value),
+      startX: parseFloat(s4startx.value),
+    };
+  }
+
+  function resetSim() {
+    const { startX } = getControls();
+    paramX = startX;
+    trail = [];
+    step = 0;
+    running = true;
+    stuckLabel.textContent = '';
+  }
+
+  function outputFn(x) {
+    if (useSmooth) return smoothStepFn(x, 0, 1);
+    return clamp(x, 0, 1);
+  }
+
+  function gradFn(x) {
+    if (useSmooth) return smoothStepDerivative(x, 0, 1);
+    return (x >= 0 && x <= 1) ? 1 : 0;
+  }
+
+  function stepSim() {
+    if (!running) return;
+    const { lr, target } = getControls();
+    const out = outputFn(paramX);
+    const loss = (out - target) * (out - target);
+    const dLoss_dOut = 2 * (out - target);
+    const dOut_dX = gradFn(paramX);
+    const grad = dLoss_dOut * dOut_dX;
+
+    if (Math.abs(grad) < 1e-8) {
+      running = false;
+      if (!useSmooth && (paramX < 0 || paramX > 1)) {
+        stuckLabel.textContent = 'Stuck — zero gradient (parameter outside valid range)';
+      } else {
+        stuckLabel.textContent = '';
+      }
+    }
+
+    trail.push({ x: paramX, y: out, loss });
+    if (trail.length > TRAIL_MAX) trail.shift();
+
+    paramX -= lr * grad;
+    step++;
+  }
+
+  function draw() {
+    const { target } = getControls();
+    ctx.clearRect(0, 0, W, H);
+
+    // grid
+    drawGrid(ctx, W, H, xMin, xMax, yMin, yMax, { x:[-0.5,0,0.5,1,1.5], y:[0,0.5,1] });
+    drawAxes(ctx, W, H, xMin, xMax, yMin, yMax);
+    labelAxes(ctx, W, H, xMin, xMax, yMin, yMax, [-0.5,0,0.5,1,1.5], [0,0.5,1]);
+
+    // valid range shading
+    const [x1c] = worldToCanvas(0, 0, xMin, xMax, yMin, yMax, W, H);
+    const [x2c] = worldToCanvas(1, 0, xMin, xMax, yMin, yMax, W, H);
+    ctx.fillStyle = 'rgba(91,155,213,0.05)';
+    ctx.fillRect(x1c, 0, x2c - x1c, H);
+
+    // target line
+    const [, tcy] = worldToCanvas(0, target, xMin, xMax, yMin, yMax, W, H);
+    ctx.save();
+    ctx.strokeStyle = '#50dc96';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(0, tcy); ctx.lineTo(W, tcy); ctx.stroke();
+    ctx.fillStyle = '#50dc96';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`target = ${fmt2(target)}`, 8, tcy - 3);
+    ctx.restore();
+
+    // smoothStep or clamp curve
+    ctx.save();
+    ctx.strokeStyle = useSmooth ? '#5b9bd5' : '#dc5050';
+    ctx.lineWidth = 2;
+    plotCurve(ctx, x => outputFn(x), xMin, xMax, yMin, yMax, W, H);
+    ctx.restore();
+
+    // Trail (fading dots)
+    for (let i = 0; i < trail.length; i++) {
+      const alpha = (i + 1) / TRAIL_MAX;
+      const [cx, cy] = worldToCanvas(trail[i].x, trail[i].y, xMin, xMax, yMin, yMax, W, H);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(91,155,213,${alpha * 0.5})`;
+      ctx.fill();
+    }
+
+    // Current dot
+    const out = outputFn(paramX);
+    const [cx, cy] = worldToCanvas(paramX, out, xMin, xMax, yMin, yMax, W, H);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#5b9bd5';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Gradient arrow
+    const grad = gradFn(paramX);
+    const dLoss_dOut = 2 * (out - target);
+    const fullGrad = dLoss_dOut * grad;
+    const { lr } = getControls();
+    const arrowLen = clamp(-fullGrad * lr * 80, -60, 60);
+    if (Math.abs(arrowLen) > 1) {
+      drawArrow(ctx, cx, cy, cx + arrowLen, cy, '#e8a838', 2);
+    }
+
+    // Stuck indicator
+    if (!running && !useSmooth && (paramX < 0 || paramX > 1)) {
+      ctx.save();
+      ctx.strokeStyle = '#dc5050';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 14, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const loss = (out - target) * (out - target);
+    readout4.textContent = `Step ${step} | x = ${fmt3(paramX)} | output = ${fmt3(out)} | loss = ${fmt3(loss)}`;
+  }
+
+  let lastTime = 0;
+  const FPS = 30;
+  const INTERVAL = 1000 / FPS;
+
+  function loop(ts) {
+    animId = requestAnimationFrame(loop);
+    if (ts - lastTime < INTERVAL) return;
+    lastTime = ts;
+    if (running) stepSim();
+    draw();
+  }
+
+  btnSS4.addEventListener('click', () => {
+    useSmooth = true;
+    btnSS4.classList.add('active');
+    btnHC4.classList.remove('active');
+    resetSim();
+  });
+  btnHC4.addEventListener('click', () => {
+    useSmooth = false;
+    btnHC4.classList.add('active');
+    btnSS4.classList.remove('active');
+    resetSim();
+  });
+  btnReset4.addEventListener('click', () => {
+    resetSim();
+  });
+
+  function onSlider() {
+    s4lrVal.textContent   = parseFloat(s4lr.value).toFixed(3);
+    s4targetVal.textContent = fmt2(parseFloat(s4target.value));
+    s4startxVal.textContent = fmt2(parseFloat(s4startx.value));
+  }
+  s4lr.addEventListener('input', onSlider);
+  s4target.addEventListener('input', onSlider);
+  s4startx.addEventListener('input', onSlider);
+
+  resetSim();
+  requestAnimationFrame(loop);
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// DEMO 5 — Vector smoothStep on RGB
+// ─────────────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('canvas5');
+  const s5r = document.getElementById('s5r');
+  const s5g = document.getElementById('s5g');
+  const s5b = document.getElementById('s5b');
+  const s5rVal = document.getElementById('s5rVal');
+  const s5gVal = document.getElementById('s5gVal');
+  const s5bVal = document.getElementById('s5bVal');
+  const swatchBefore = document.getElementById('swatchBefore');
+  const swatchAfter = document.getElementById('swatchAfter');
+  const swatchBeforeRgb = document.getElementById('swatchBeforeRgb');
+  const swatchAfterRgb = document.getElementById('swatchAfterRgb');
+
+  let { ctx, W, H } = setupCanvas(canvas);
+
+  const COLORS = ['#dc5050', '#50dc96', '#5b9bd5'];
+  const LABELS = ['R', 'G', 'B'];
+
+  function getValues() {
+    return [parseFloat(s5r.value), parseFloat(s5g.value), parseFloat(s5b.value)];
+  }
+
+  function draw() {
+    const vals = getValues();
+    ctx.clearRect(0, 0, W, H);
+
+    const nCh = 3;
+    const padX = 20, padY = 16;
+    const spacing = 8;
+    const graphW = (W - padX * 2 - spacing * (nCh - 1)) / nCh;
+    const graphH = H - padY * 2;
+
+    const xMin = -0.5, xMax = 1.5, yMin = -0.1, yMax = 1.1;
+
+    for (let ch = 0; ch < nCh; ch++) {
+      const gx = padX + ch * (graphW + spacing);
+      const gy = padY;
+
+      // local coords helpers
+      function lx2cx(wx) { return gx + ((wx - xMin) / (xMax - xMin)) * graphW; }
+      function ly2cy(wy) { return gy + graphH - ((wy - yMin) / (yMax - yMin)) * graphH; }
+
+      // background
+      ctx.fillStyle = '#0a0a0a';
+      ctx.beginPath();
+      ctx.roundRect(gx, gy, graphW, graphH, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#1e1e1e';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // grid
+      ctx.save();
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 1;
+      for (const v of [0, 0.5, 1]) {
+        const cx2 = lx2cx(v);
+        ctx.beginPath(); ctx.moveTo(cx2, gy); ctx.lineTo(cx2, gy + graphH); ctx.stroke();
+        const cy2 = ly2cy(v);
+        ctx.beginPath(); ctx.moveTo(gx, cy2); ctx.lineTo(gx + graphW, cy2); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Channel S-curve
+      ctx.save();
+      ctx.strokeStyle = COLORS[ch];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i <= 300; i++) {
+        const wx = xMin + (i/300) * (xMax - xMin);
+        const wy = smoothStepFn(wx, 0, 1);
+        const lcx = lx2cx(wx), lcy = ly2cy(wy);
+        if (i === 0) ctx.moveTo(lcx, lcy); else ctx.lineTo(lcx, lcy);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Dot on curve
+      const rawV = vals[ch];
+      const outV = smoothStepFn(rawV, 0, 1);
+      const dotX = lx2cx(rawV);
+      const dotY = ly2cy(outV);
+
+      // Vertical cursor at rawV
+      ctx.save();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(dotX, gy); ctx.lineTo(dotX, gy + graphH); ctx.stroke();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS[ch];
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // Label + value
+      ctx.save();
+      ctx.fillStyle = COLORS[ch];
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`${LABELS[ch]}`, gx + 5, gy + 5);
+      ctx.fillStyle = '#666';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${fmt3(rawV)} → ${fmt3(outV)}`, gx + graphW/2, gy + graphH - 14);
+      ctx.restore();
+    }
+  }
+
+  function updateSwatches() {
+    const [r, g, b] = getValues();
+    const rHC = clamp(r, 0, 1), gHC = clamp(g, 0, 1), bHC = clamp(b, 0, 1);
+    const rSS = smoothStepFn(r, 0, 1), gSS = smoothStepFn(g, 0, 1), bSS = smoothStepFn(b, 0, 1);
+
+    const toByte = v => Math.round(v * 255);
+
+    swatchBefore.style.background = `rgb(${toByte(rHC)},${toByte(gHC)},${toByte(bHC)})`;
+    swatchAfter.style.background  = `rgb(${toByte(rSS)},${toByte(gSS)},${toByte(bSS)})`;
+
+    swatchBeforeRgb.innerHTML = `R: ${fmt3(rHC)}<br>G: ${fmt3(gHC)}<br>B: ${fmt3(bHC)}`;
+    swatchAfterRgb.innerHTML  = `R: ${fmt3(rSS)}<br>G: ${fmt3(gSS)}<br>B: ${fmt3(bSS)}`;
+  }
+
+  function onSlider() {
+    s5rVal.textContent = fmt2(parseFloat(s5r.value));
+    s5gVal.textContent = fmt2(parseFloat(s5g.value));
+    s5bVal.textContent = fmt2(parseFloat(s5b.value));
+    draw();
+    updateSwatches();
+  }
+
+  s5r.addEventListener('input', onSlider);
+  s5g.addEventListener('input', onSlider);
+  s5b.addEventListener('input', onSlider);
+
+  draw();
+  updateSwatches();
+})();
+</script>
+</body>
+</html>
