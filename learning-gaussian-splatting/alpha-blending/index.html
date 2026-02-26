@@ -1172,6 +1172,7 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
         drawBlendScene();
         updateStepStates();
       });
+      alphaSlider.addEventListener('pointerdown', e => e.stopPropagation());
 
       const alphaVal = document.createElement('span');
       alphaVal.className = 'layer-alpha-val';
@@ -1199,6 +1200,7 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
 
       // Drag events
       item.addEventListener('dragstart', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') { e.preventDefault(); return; }
         dragSrc = i;
         e.dataTransfer.effectAllowed = 'move';
         item.style.opacity = '0.5';
@@ -1243,28 +1245,42 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
 
   // ── Canvas drawing ───────────────────────────────────────────────
   function drawBlendScene() {
-    ctx.clearRect(0, 0, W, H);
-
     const { states } = blendLayers(layers);
     const N = layers.length;
 
-    // Layout: N+1 state boxes arranged horizontally with arrows between
-    const boxW = 64;
-    const boxH = 40;
-    const arrowW = 40;
-    const totalItems = N + 1;
-    const rowW = totalItems * boxW + N * arrowW;
-    const startX = Math.max(12, (W - rowW) / 2);
-    const rowY = H / 2 - boxH / 2;
+    // Layout constants
+    const boxW = 64, boxH = 40, arrowW = 40;
+    const ITEMS_PER_ROW = 5;
+    const numRows = Math.ceil((N + 1) / ITEMS_PER_ROW);
+    const rowSlotH = 130; // vertical space per row (box + chip above + label below)
+    const newCssH = numRows * rowSlotH + 20;
+
+    // Resize canvas height when rows change
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas._cssH !== newCssH) {
+      canvas._cssH = newCssH;
+      canvas.height = Math.round(newCssH * dpr);
+      canvas.style.height = newCssH + 'px';
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    }
+
+    const W = canvas._cssW;
+    const H = canvas._cssH;
+    ctx.clearRect(0, 0, W, H);
 
     // Background
     drawCheckerboard(ctx, 0, 0, W, H, 18);
 
-    // Draw state boxes and arrows
+    // Draw state boxes and arrows — wrapping into multiple rows
     for (let i = 0; i <= N; i++) {
-      const s = states[i];
-      const sx = startX + i * (boxW + arrowW);
-      const sy = rowY;
+      const rowIdx = Math.floor(i / ITEMS_PER_ROW);
+      const colIdx = i % ITEMS_PER_ROW;
+      const itemsInRow = Math.min(ITEMS_PER_ROW, N + 1 - rowIdx * ITEMS_PER_ROW);
+      const rowW = itemsInRow * boxW + (itemsInRow - 1) * arrowW;
+      const startX = Math.max(8, (W - rowW) / 2);
+      const sx = startX + colIdx * (boxW + arrowW);
+      const sy = 30 + rowIdx * rowSlotH;
 
       // State box — composite over dark bg for display
       const dispR = s.r + s.a * 0.04;
@@ -1298,8 +1314,9 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
       ctx.font = '10px monospace';
       ctx.fillText(`\u03b1=${s.a.toFixed(2)}`, sx + boxW / 2, sy + boxH / 2 + 4);
 
-      // Arrow to next state
-      if (i < N) {
+      // Arrow to next state (only within the same row)
+      const isLastInRow = (colIdx === ITEMS_PER_ROW - 1) || (i === N);
+      if (i < N && !isLastInRow) {
         const ax = sx + boxW + 2;
         const ay = sy + boxH / 2;
         const aw = arrowW - 4;
@@ -1350,31 +1367,27 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
     }
 
     // Final composite preview
+    // Final composite preview — small swatch in bottom-right corner
     const lastState = states[N];
-    const previewX = W - 80;
-    const previewY = 8;
-    const previewW = 72;
-    const previewH = H - 16;
+    const previewW = 56, previewH = 36;
+    const previewX = W - previewW - 8;
+    const previewY = H - previewH - 16;
 
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(previewX, previewY, previewW, previewH, 6);
+    ctx.roundRect(previewX, previewY, previewW, previewH, 5);
     ctx.clip();
-    // White background for preview
     ctx.fillStyle = '#fff';
     ctx.fillRect(previewX, previewY, previewW, previewH);
-    // Accumulated colour over white
     ctx.fillStyle = rgbCSS(lastState.r, lastState.g, lastState.b);
     ctx.globalAlpha = 1 - lastState.a;
     ctx.fillRect(previewX, previewY, previewW, previewH);
     ctx.restore();
-
-    ctx.strokeStyle = '#444';
+    ctx.strokeStyle = '#555';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(previewX, previewY, previewW, previewH, 6);
+    ctx.roundRect(previewX, previewY, previewW, previewH, 5);
     ctx.stroke();
-
     ctx.font = '10px -apple-system, sans-serif';
     ctx.fillStyle = '#555';
     ctx.textAlign = 'center';
