@@ -1,0 +1,1935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alpha Blending &amp; the Rendering Pass</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0d;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .back-link {
+    position: fixed;
+    top: 20px;
+    left: 24px;
+    color: #555;
+    text-decoration: none;
+    font-size: 14px;
+    z-index: 100;
+  }
+  .back-link:hover { color: #888; }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+
+  .page-header {
+    margin-bottom: 56px;
+  }
+
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    color: #999;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 600px;
+  }
+
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  p {
+    color: #999;
+    line-height: 1.7;
+    margin-bottom: 12px;
+  }
+
+  pre {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    color: #a8e6cf;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin-bottom: 20px;
+    white-space: pre;
+  }
+
+  canvas {
+    display: block;
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 640px;
+    margin: 20px auto;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: center;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-group label {
+    font-size: 12px;
+    color: #555;
+  }
+
+  .control-group input[type=range] {
+    width: 160px;
+    accent-color: #5b9bd5;
+  }
+
+  .control-group .value {
+    font-size: 12px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+
+  .highlight-blue  { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .highlight-red   { color: #dc5050; }
+
+  /* Extra layout helpers */
+  .formula-box {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #ccc;
+    line-height: 2;
+  }
+
+  .formula-box .formula-line {
+    font-family: 'SFMono-Regular', 'Fira Code', 'Fira Mono', monospace;
+    display: block;
+  }
+
+  .term-explanation {
+    margin: 0 0 20px 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .term-explanation li {
+    color: #999;
+    font-size: 14px;
+    padding: 6px 0 6px 16px;
+    border-left: 2px solid #222;
+    margin-bottom: 8px;
+  }
+
+  .inline-code {
+    font-family: 'SFMono-Regular', 'Fira Code', monospace;
+    font-size: 12px;
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    color: #a8e6cf;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .annotated-code {
+    position: relative;
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    font-family: 'SFMono-Regular', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 2;
+  }
+
+  .annotated-code .code-line {
+    display: flex;
+    gap: 16px;
+    align-items: baseline;
+  }
+
+  .annotated-code .code-text {
+    color: #a8e6cf;
+    white-space: pre;
+  }
+
+  .annotated-code .code-note {
+    color: #555;
+    font-size: 12px;
+    font-style: italic;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Demo 2 layer list */
+  #layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .layer-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .layer-item:active { cursor: grabbing; }
+  .layer-item.drag-over { border-color: #5b9bd5; }
+
+  .layer-item .layer-index {
+    font-size: 11px;
+    color: #444;
+    width: 16px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .layer-item input[type=color] {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .layer-item .layer-alpha-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .layer-item .layer-alpha-wrap label {
+    font-size: 11px;
+    color: #444;
+  }
+
+  .layer-item .layer-alpha-wrap input[type=range] {
+    width: 100%;
+    accent-color: #5b9bd5;
+  }
+
+  .layer-item .layer-alpha-val {
+    font-size: 11px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+    width: 34px;
+    text-align: right;
+  }
+
+  .layer-item .layer-delete {
+    background: none;
+    border: none;
+    color: #444;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .layer-item .layer-delete:hover { color: #dc5050; background: none; border: none; }
+
+  /* Step states display */
+  .step-states {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    margin-bottom: 16px;
+  }
+
+  .step-state-box {
+    background: #0f0f0f;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #666;
+    min-width: 120px;
+  }
+
+  .step-state-box .step-label {
+    color: #444;
+    margin-bottom: 4px;
+  }
+
+  .step-state-box .step-rgb {
+    color: #888;
+    font-family: monospace;
+    font-size: 11px;
+  }
+
+  .step-state-box .step-alpha {
+    color: #5b9bd5;
+    font-family: monospace;
+    font-size: 11px;
+  }
+
+  /* Section 4 pass boxes */
+  .pass-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .pass-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .pass-row-label {
+    font-size: 11px;
+    color: #555;
+    width: 80px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .pass-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .pass-chip .chip-color {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 2px solid #222;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .pass-chip .chip-label {
+    font-size: 10px;
+    color: #555;
+    font-family: monospace;
+  }
+
+  .pass-chip.recovered .chip-color {
+    border-color: #50dc96;
+    box-shadow: 0 0 8px rgba(80, 220, 150, 0.4);
+  }
+
+  .pass-arrow {
+    font-size: 18px;
+    color: #333;
+    flex-shrink: 0;
+    line-height: 36px;
+    margin-top: 0;
+    align-self: center;
+    padding-bottom: 18px;
+  }
+
+  .pass-state-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 72px;
+  }
+
+  .pass-state-box .state-rect {
+    width: 56px;
+    height: 36px;
+    border-radius: 5px;
+    border: 1px solid #333;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .pass-state-box .state-rect.highlight {
+    border-color: #50dc96;
+    box-shadow: 0 0 8px rgba(80, 220, 150, 0.5);
+  }
+
+  .pass-state-box .state-label {
+    font-size: 10px;
+    color: #555;
+    font-family: monospace;
+    text-align: center;
+  }
+
+  /* Inline color preview */
+  .color-preview {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid #333;
+    vertical-align: middle;
+    margin-right: 3px;
+  }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>Alpha Blending &amp; the Rendering Pass</h1>
+    <p class="subtitle">How Gaussian Splatting composites sorted blobs into a final pixel — and how the backward pass undoes each blend step to propagate gradients.</p>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SLANG SOURCE
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">The Slang Code</div>
+    <p>This entire page unpacks the following Slang shader code, which implements the alpha-blending forward pass and its analytic inverse for backpropagation.</p>
+<pre>[Differentiable]
+float4 preMult(float4 pixel) {
+    return float4(pixel.rgb * pixel.a, pixel.a);
+}
+
+[Differentiable]
+float4 alphaBlend(float4 pixel, float4 gval) {
+    gval = preMult(gval);
+    return float4(
+        pixel.rgb + gval.rgb * pixel.a,
+        pixel.a * (1 - gval.a));
+}
+
+float4 undoAlphaBlend(float4 pixel, float4 gval) {
+    gval = preMult(gval);
+    var oldPixelAlpha = pixel.a / (1 - gval.a);
+    return float4(
+        pixel.rgb - gval.rgb * oldPixelAlpha,
+        oldPixelAlpha);
+}
+
+struct PixelState : IDifferentiable {
+    float4 value;
+    uint finalCount;
+};
+
+[Differentiable]
+PixelState transformPixelState(PixelState pixel, float4 gval) {
+    var newState = alphaBlend(pixel.value, gval);
+    if (pixel.value.a &lt; 1.f / 255.f)
+        return { pixel.value, pixel.finalCount };
+    return { newState, pixel.finalCount + 1 };
+}
+
+PixelState undoPixelState(PixelState nextState, uint index, float4 gval) {
+    if (index &gt; nextState.finalCount)
+        return { nextState.value, nextState.finalCount };
+    return { undoAlphaBlend(nextState.value, gval), nextState.finalCount - 1 };
+}</pre>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SECTION 1 — PREMULTIPLIED ALPHA
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section" id="s1">
+    <div class="section-title">1 — Premultiplied Alpha</div>
+
+    <p>Standard RGBA stores colour and transparency as independent values: <span class="highlight-blue">(r, g, b, a)</span>. <strong style="color:#fff">Premultiplied alpha</strong> folds the alpha into the colour channels: <span class="highlight-amber">(r&middot;a, g&middot;a, b&middot;a, a)</span>.</p>
+
+    <p>The <span class="inline-code">preMult</span> function converts straight alpha to premultiplied before every blend step. This matters because the blending formula adds the Gaussian's contribution scaled by <em>remaining transparency</em> — and that formula only produces the right answer when the source colour is already premultiplied.</p>
+
+    <p>The practical consequence is visible at transparent edges. Without premultiplying, the blending arithmetic inadvertently mixes in a dark halo from the zeroed-out RGB values at near-zero alpha. With premultiplying, those near-transparent pixels contribute almost nothing and the compositing is clean.</p>
+
+    <p>The effect is most dramatic at extreme alpha values — slide alpha below 0.3 or above 0.7 to see the difference clearly.</p>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Red</label>
+        <input type="range" id="s1r" min="0" max="1" step="0.01" value="1.0">
+        <span class="value" id="s1r-val">1.00</span>
+      </div>
+      <div class="control-group">
+        <label>Green</label>
+        <input type="range" id="s1g" min="0" max="1" step="0.01" value="0.2">
+        <span class="value" id="s1g-val">0.20</span>
+      </div>
+      <div class="control-group">
+        <label>Blue</label>
+        <input type="range" id="s1b" min="0" max="1" step="0.01" value="0.2">
+        <span class="value" id="s1b-val">0.20</span>
+      </div>
+      <div class="control-group">
+        <label>Alpha</label>
+        <input type="range" id="s1a" min="0.01" max="1" step="0.01" value="0.5">
+        <span class="value" id="s1a-val">0.50</span>
+      </div>
+    </div>
+
+    <canvas id="canvas1" width="640" height="200"></canvas>
+
+    <p style="font-size:13px; color:#555; text-align:center; margin-top:-12px;">
+      Left: without premultiplying &nbsp;|&nbsp; Right: with <span class="inline-code">preMult</span>
+    </p>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SECTION 2 — THE BLENDING FORMULA
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section" id="s2">
+    <div class="section-title">2 — The Blending Formula</div>
+
+    <p>Each Gaussian splatted onto a pixel is blended in using <span class="inline-code">alphaBlend</span>. The accumulator <span class="inline-code">pixel</span> starts at <span class="inline-code">(0, 0, 0, 1)</span> — black colour with <em>full remaining transparency</em> (not full opacity). As Gaussians are blended in, colour accumulates and the remaining transparency shrinks toward zero.</p>
+
+    <div class="formula-box">
+      <span class="formula-line"><span class="highlight-amber">premult_gval</span> = (<span class="highlight-blue">gval.rgb</span> &times; <span class="highlight-blue">gval.a</span> , &nbsp;<span class="highlight-blue">gval.a</span>)</span>
+      <span class="formula-line"><span class="highlight-green">new_rgb</span> &nbsp; = pixel.rgb + <span class="highlight-amber">premult_gval.rgb</span> &times; <span style="color:#c792ea">pixel.a</span></span>
+      <span class="formula-line"><span class="highlight-green">new_alpha</span> = <span style="color:#c792ea">pixel.a</span> &times; (1 &minus; <span class="highlight-blue">gval.a</span>)</span>
+    </div>
+
+    <ul class="term-explanation">
+      <li>
+        <span class="highlight-green">new_rgb</span>: add the Gaussian's premultiplied colour scaled by <span style="color:#c792ea">pixel.a</span> — the "room left" in the accumulator. When <span style="color:#c792ea">pixel.a</span> = 1 (nothing composited yet) the Gaussian contributes fully; as more Gaussians pile up, <span style="color:#c792ea">pixel.a</span> shrinks and later Gaussians contribute less.
+      </li>
+      <li>
+        <span class="highlight-green">new_alpha</span>: multiply remaining transparency by how much the new Gaussian <em>doesn't</em> cover (1 &minus; gval.a). A fully opaque Gaussian (<span class="highlight-blue">gval.a</span>=1) zeroes out all remaining room; a very transparent one barely affects it.
+      </li>
+    </ul>
+
+    <p>Build up a stack of Gaussians below. Drag layers to reorder them — because the blending is order-dependent, reordering changes the result.</p>
+
+    <div id="layer-list"></div>
+
+    <div class="controls">
+      <button id="add-gaussian-btn">Add Gaussian</button>
+      <button id="reset-layers-btn">Reset</button>
+    </div>
+
+    <canvas id="canvas2" width="640" height="320"></canvas>
+
+    <div class="step-states" id="step-states-display"></div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SECTION 3 — TERMINATION CONDITION
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section" id="s3">
+    <div class="section-title">3 — The Termination Condition</div>
+
+    <p><span class="inline-code">transformPixelState</span> wraps <span class="inline-code">alphaBlend</span> with an early-exit guard:</p>
+
+<pre>[Differentiable]
+PixelState transformPixelState(PixelState pixel, float4 gval) {
+    var newState = alphaBlend(pixel.value, gval);
+    if (pixel.value.a &lt; 1.f / 255.f)
+        return { pixel.value, pixel.finalCount };
+    return { newState, pixel.finalCount + 1 };
+}</pre>
+
+    <p>When <span class="inline-code">pixel.value.a</span> falls below <span class="highlight-amber">1/255 &asymp; 0.004</span>, the pixel is effectively opaque — no further Gaussians can contribute any visible colour. Blending is halted and <span class="inline-code">finalCount</span> is frozen at the index of the last Gaussian that actually mattered.</p>
+
+    <p>Two reasons this matters:</p>
+
+    <ul class="term-explanation">
+      <li><strong style="color:#ccc">Efficiency:</strong> Gaussians sorted beyond <span class="inline-code">finalCount</span> are completely skipped. In a dense scene with many overlapping blobs this can eliminate a large fraction of blending work.</li>
+      <li><strong style="color:#ccc">Numerical safety:</strong> The backward pass divides by <span class="inline-code">(1 - gval.a)</span>. If blending were allowed to continue until <span class="inline-code">pixel.a</span> reached exactly zero, the inverse would divide by zero or produce denormal values. The threshold keeps the denominator away from danger.</li>
+    </ul>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Number of Gaussians</label>
+        <input type="range" id="s3n" min="5" max="30" step="1" value="15">
+        <span class="value" id="s3n-val">15</span>
+      </div>
+      <div class="control-group">
+        <label>Average opacity per blob</label>
+        <input type="range" id="s3op" min="0.05" max="0.5" step="0.01" value="0.15">
+        <span class="value" id="s3op-val">0.15</span>
+      </div>
+      <div class="control-group" style="flex-direction:row; align-items:center; gap:8px;">
+        <button id="s3-animate-btn">Animate</button>
+      </div>
+    </div>
+
+    <canvas id="canvas3" width="640" height="240"></canvas>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SECTION 4 — REVERSING THE BLEND
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section" id="s4">
+    <div class="section-title">4 — Reversing the Blend (Backward Pass)</div>
+
+    <p>During backpropagation, the renderer needs to recover the accumulator state <em>before</em> each Gaussian was blended — so gradients can be propagated back through each step. <span class="inline-code">undoAlphaBlend</span> inverts the blend analytically.</p>
+
+    <p><strong style="color:#fff">Deriving the inverse:</strong></p>
+
+    <div class="formula-box">
+      <span class="formula-line" style="color:#555">// Forward (known):</span>
+      <span class="formula-line"><span class="highlight-green">new_alpha</span> = <span style="color:#c792ea">old_alpha</span> &times; (1 &minus; <span class="highlight-blue">gval.a</span>)</span>
+      <span class="formula-line">&nbsp;</span>
+      <span class="formula-line" style="color:#555">// Invert for old_alpha:</span>
+      <span class="formula-line"><span style="color:#c792ea">old_alpha</span> = <span class="highlight-green">new_alpha</span> &divide; (1 &minus; <span class="highlight-blue">gval.a</span>)</span>
+      <span class="formula-line">&nbsp;</span>
+      <span class="formula-line" style="color:#555">// Forward (known):</span>
+      <span class="formula-line"><span class="highlight-green">new_rgb</span> = <span style="color:#c792ea">old_rgb</span> + <span class="highlight-amber">premult_gval.rgb</span> &times; <span style="color:#c792ea">old_alpha</span></span>
+      <span class="formula-line">&nbsp;</span>
+      <span class="formula-line" style="color:#555">// Invert for old_rgb (substitute old_alpha from above):</span>
+      <span class="formula-line"><span style="color:#c792ea">old_rgb</span> = <span class="highlight-green">new_rgb</span> &minus; <span class="highlight-amber">premult_gval.rgb</span> &times; <span style="color:#c792ea">old_alpha</span></span>
+    </div>
+
+    <p>Note: <span class="inline-code">old_alpha</span> is divided from <span class="highlight-green">new_alpha</span>. If <span class="highlight-blue">gval.a</span> = 1 then the denominator is zero and <span style="color:#c792ea">old_alpha</span> would be infinite. The termination threshold in <span class="inline-code">transformPixelState</span> prevents the pixel from ever reaching a state that would require such an inversion.</p>
+
+    <p>Step through the forward and backward passes below. Each forward step adds a Gaussian; each backward step analytically recovers the state before that Gaussian was blended in.</p>
+
+    <div class="controls">
+      <button id="s4-step-btn">Step forward</button>
+      <button id="s4-reset-btn">Reset</button>
+      <span style="font-size:13px; color:#555;" id="s4-step-label">Step 0 / 0</span>
+    </div>
+
+    <canvas id="canvas4" width="640" height="360"></canvas>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SECTION 5 — undoPixelState & finalCount
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="section" id="s5">
+    <div class="section-title">5 — <span class="inline-code">undoPixelState</span> and <span class="inline-code">finalCount</span></div>
+
+    <p>The backward pass doesn't simply walk every Gaussian in reverse order. It uses <span class="inline-code">finalCount</span> — stored in <span class="inline-code">PixelState</span> — to know exactly how many blends actually happened. Gaussian indices beyond <span class="inline-code">finalCount</span> are silently skipped.</p>
+
+<pre>PixelState undoPixelState(PixelState nextState, uint index, float4 gval) {
+    if (index &gt; nextState.finalCount)
+        return { nextState.value, nextState.finalCount };  // skip
+    return { undoAlphaBlend(nextState.value, gval), nextState.finalCount - 1 };
+}</pre>
+
+    <p>A concrete example with <span class="inline-code">finalCount = 7</span>:</p>
+
+    <div class="annotated-code">
+      <div class="code-line">
+        <span class="code-text" style="color:#555">// Backward pass, walking from highest index down to 1:</span>
+      </div>
+      <div class="code-line">
+        <span class="code-text"><span class="highlight-red">index = 8</span>&nbsp;&nbsp;&nbsp;&gt;&nbsp;&nbsp;nextState.finalCount (7)</span>
+        <span class="code-note">→ skip — this blend never happened</span>
+      </div>
+      <div class="code-line">
+        <span class="code-text"><span class="highlight-amber">index = 7</span>&nbsp;&nbsp;&nbsp;&le;&nbsp;&nbsp;nextState.finalCount (7)</span>
+        <span class="code-note">→ undo blend, finalCount becomes 6</span>
+      </div>
+      <div class="code-line">
+        <span class="code-text"><span class="highlight-amber">index = 6</span>&nbsp;&nbsp;&nbsp;&le;&nbsp;&nbsp;nextState.finalCount (6)</span>
+        <span class="code-note">→ undo blend, finalCount becomes 5</span>
+      </div>
+      <div class="code-line">
+        <span class="code-text"><span class="highlight-green">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;...</span></span>
+      </div>
+      <div class="code-line">
+        <span class="code-text"><span class="highlight-amber">index = 1</span>&nbsp;&nbsp;&nbsp;&le;&nbsp;&nbsp;nextState.finalCount (1)</span>
+        <span class="code-note">→ undo blend, finalCount becomes 0</span>
+      </div>
+    </div>
+
+    <p>The check <span class="inline-code">index &gt; nextState.finalCount</span> is evaluated on the <em>current</em> state, not the original. As each undo decrements <span class="inline-code">finalCount</span>, the guard naturally keeps pace with the walk — no extra bookkeeping needed.</p>
+
+    <p>This design also handles the degenerate case where a pixel never reached opacity saturation: <span class="inline-code">finalCount</span> just equals the total number of Gaussians, and every step is undone normally.</p>
+  </div>
+
+</div><!-- /.page -->
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function setupHDPICanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth  || parseInt(canvas.getAttribute('width'));
+  const cssH = canvas.clientHeight || parseInt(canvas.getAttribute('height'));
+  canvas.width  = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._cssW = cssW;
+  canvas._cssH = cssH;
+  canvas._dpr  = dpr;
+  return ctx;
+}
+
+function drawCheckerboard(ctx, x, y, w, h, size) {
+  size = size || 16;
+  const cols = Math.ceil(w / size);
+  const rows = Math.ceil(h / size);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const even = (r + c) % 2 === 0;
+      ctx.fillStyle = even ? '#1a1a1a' : '#111';
+      ctx.fillRect(x + c * size, y + r * size, size, size);
+    }
+  }
+}
+
+// Alpha blend (premultiplied). pixel = accumulator {r,g,b,a}, gval = gaussian {r,g,b,a}
+// Returns new accumulator.
+function alphaBlend(pixel, gval) {
+  // preMult gval
+  const pr = gval.r * gval.a;
+  const pg = gval.g * gval.a;
+  const pb = gval.b * gval.a;
+  const pa = gval.a;
+  return {
+    r: pixel.r + pr * pixel.a,
+    g: pixel.g + pg * pixel.a,
+    b: pixel.b + pb * pixel.a,
+    a: pixel.a * (1 - pa)
+  };
+}
+
+// Undo one alpha blend step analytically
+function undoBlend(pixel, gval) {
+  const pr = gval.r * gval.a;
+  const pg = gval.g * gval.a;
+  const pb = gval.b * gval.a;
+  const pa = gval.a;
+  const oldA = pixel.a / (1 - pa);
+  return {
+    r: pixel.r - pr * oldA,
+    g: pixel.g - pg * oldA,
+    b: pixel.b - pb * oldA,
+    a: oldA
+  };
+}
+
+// Blend an array of layers [{r,g,b,a}] from front to back, returning intermediate states.
+// Initial accumulator: (0,0,0,1) — transparent black (remaining alpha = 1)
+function blendLayers(layers) {
+  const THRESHOLD = 1 / 255;
+  let pixel = { r: 0, g: 0, b: 0, a: 1 };
+  const states = [{ ...pixel }];
+  let finalCount = 0;
+  for (let i = 0; i < layers.length; i++) {
+    if (pixel.a < THRESHOLD) {
+      states.push({ ...pixel });
+    } else {
+      pixel = alphaBlend(pixel, layers[i]);
+      finalCount = i + 1;
+      states.push({ ...pixel });
+    }
+  }
+  return { states, finalCount };
+}
+
+// Convert accumulator state to displayable RGB (composite over white background)
+// The accumulator stores (accumulated_colour, remaining_alpha).
+// Final colour = accumulated_rgb + white * remaining_alpha
+function stateToDisplayRGB(s) {
+  const r = s.r + s.a;  // add white (1,1,1) * remaining alpha
+  const g = s.g + s.a;
+  const b = s.b + s.a;
+  return { r: Math.min(1, r), g: Math.min(1, g), b: Math.min(1, b) };
+}
+
+function stateToDisplayRGBDark(s) {
+  // composite over dark background #0a0a0a ~ 0.04
+  const bg = 0.04;
+  return {
+    r: Math.min(1, s.r + s.a * bg),
+    g: Math.min(1, s.g + s.a * bg),
+    b: Math.min(1, s.b + s.a * bg)
+  };
+}
+
+function rgbCSS(r, g, b) {
+  return `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
+}
+
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
+  radius = radius || 4;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, radius);
+  ctx.clip();
+  // checkerboard behind swatch
+  drawCheckerboard(ctx, x, y, w, h, 8);
+  ctx.fillStyle = `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},${a})`;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, radius);
+  ctx.stroke();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 1 — Straight vs Premultiplied
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function() {
+  const canvas = document.getElementById('canvas1');
+  const ctx = setupHDPICanvas(canvas);
+  const W = canvas._cssW;
+  const H = canvas._cssH;
+
+  let sr = 1.0, sg = 0.2, sb = 0.2, sa = 0.5;
+
+  function getControl(id) { return parseFloat(document.getElementById(id).value); }
+
+  function drawScene() {
+    ctx.clearRect(0, 0, W, H);
+    sr = getControl('s1r');
+    sg = getControl('s1g');
+    sb = getControl('s1b');
+    sa = getControl('s1a');
+
+    const halfW = W / 2;
+    const cx = halfW / 2;
+    const cy = H / 2;
+    const radius = Math.min(halfW, H) * 0.38;
+
+    // ── left half: wrong (no premult) ──────────────────────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, halfW, H);
+    ctx.clip();
+
+    drawCheckerboard(ctx, 0, 0, halfW, H, 14);
+
+    // Draw a soft circle using ImageData for per-pixel blending
+    const imgData = ctx.getImageData(0, 0, halfW * canvas._dpr, H * canvas._dpr);
+    // We already drew the checkerboard — but getImageData after scale is tricky.
+    // Use a second approach: draw via filled circles with alpha steps.
+    // Actually, build raw pixel loop on a temp canvas.
+    ctx.restore();
+
+    // ── Use two offscreen canvases for the soft circles ──
+    // Left (wrong):
+    {
+      const off = document.createElement('canvas');
+      off.width = Math.round(halfW * canvas._dpr);
+      off.height = Math.round(H * canvas._dpr);
+      const octx = off.getContext('2d');
+      const scaleF = canvas._dpr;
+
+      // Draw checker
+      const csize = 14 * scaleF;
+      const cols = Math.ceil(off.width / csize);
+      const rows = Math.ceil(off.height / csize);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          octx.fillStyle = (r + c) % 2 === 0 ? '#1a1a1a' : '#111';
+          octx.fillRect(c * csize, r * csize, csize, csize);
+        }
+      }
+
+      // Draw soft circle pixel by pixel
+      const id = octx.getImageData(0, 0, off.width, off.height);
+      const d = id.data;
+      const rcx = (halfW / 2) * scaleF;
+      const rcy = (H / 2) * scaleF;
+      const rr  = radius * scaleF;
+
+      for (let py = 0; py < off.height; py++) {
+        for (let px = 0; px < off.width; px++) {
+          const dist = Math.sqrt((px - rcx) ** 2 + (py - rcy) ** 2);
+          if (dist >= rr) continue;
+          // soft falloff
+          const t = 1 - dist / rr;
+          const circleAlpha = sa * Math.pow(t, 0.6); // pixel alpha
+
+          const idx = (py * off.width + px) * 4;
+          const bgR = d[idx]   / 255;
+          const bgG = d[idx+1] / 255;
+          const bgB = d[idx+2] / 255;
+
+          // WRONG: straight over — pretend source is (sr*circleAlpha, sg*circleAlpha, sb*circleAlpha)
+          // but use straight alpha formula src*a + dst*(1-a)
+          const outR = sr * circleAlpha + bgR * (1 - circleAlpha);
+          const outG = sg * circleAlpha + bgG * (1 - circleAlpha);
+          const outB = sb * circleAlpha + bgB * (1 - circleAlpha);
+
+          d[idx]   = Math.round(clamp01(outR) * 255);
+          d[idx+1] = Math.round(clamp01(outG) * 255);
+          d[idx+2] = Math.round(clamp01(outB) * 255);
+          d[idx+3] = 255;
+        }
+      }
+      octx.putImageData(id, 0, 0);
+
+      ctx.drawImage(off, 0, 0, halfW, H);
+    }
+
+    // Right (correct with preMult):
+    {
+      const off = document.createElement('canvas');
+      off.width  = Math.round(halfW * canvas._dpr);
+      off.height = Math.round(H * canvas._dpr);
+      const octx = off.getContext('2d');
+      const scaleF = canvas._dpr;
+
+      const csize = 14 * scaleF;
+      const cols = Math.ceil(off.width / csize);
+      const rows = Math.ceil(off.height / csize);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          octx.fillStyle = (r + c) % 2 === 0 ? '#1a1a1a' : '#111';
+          octx.fillRect(c * csize, r * csize, csize, csize);
+        }
+      }
+
+      const id = octx.getImageData(0, 0, off.width, off.height);
+      const d = id.data;
+      const rcx = (halfW / 2) * scaleF;
+      const rcy = (H / 2) * scaleF;
+      const rr  = radius * scaleF;
+
+      for (let py = 0; py < off.height; py++) {
+        for (let px = 0; px < off.width; px++) {
+          const dist = Math.sqrt((px - rcx) ** 2 + (py - rcy) ** 2);
+          if (dist >= rr) continue;
+          const t = 1 - dist / rr;
+          const circleAlpha = sa * Math.pow(t, 0.6);
+
+          const idx = (py * off.width + px) * 4;
+          const bgR = d[idx]   / 255;
+          const bgG = d[idx+1] / 255;
+          const bgB = d[idx+2] / 255;
+
+          // CORRECT: premultiply first, then add to background
+          // premult source: (sr*circleAlpha, sg*circleAlpha, sb*circleAlpha)
+          // blend: dst + src_premult * (1 - dst_alpha)
+          // But we're compositing a source over a background (dst is opaque).
+          // Correct formula: src_premult + dst*(1 - circleAlpha)
+          const outR = (sr * circleAlpha) + bgR * (1 - circleAlpha);
+          const outG = (sg * circleAlpha) + bgG * (1 - circleAlpha);
+          const outB = (sb * circleAlpha) + bgB * (1 - circleAlpha);
+
+          d[idx]   = Math.round(clamp01(outR) * 255);
+          d[idx+1] = Math.round(clamp01(outG) * 255);
+          d[idx+2] = Math.round(clamp01(outB) * 255);
+          d[idx+3] = 255;
+        }
+      }
+
+      // The "wrong" rendering artificially darkens by treating source colour
+      // as if it were 0 at full transparency. We demonstrate this by
+      // drawing the wrong side with RGB values that HAVEN'T been premultiplied
+      // but are used in a premultiplied-aware compositor.
+      // We need to redo the left side correctly showing the artifact.
+
+      octx.putImageData(id, 0, 0);
+      ctx.drawImage(off, halfW, 0, halfW, H);
+    }
+
+    // ── Redo left side to actually show the artifact ──────────────
+    // The artifact occurs when you have a premultiplied compositor but
+    // pass it straight-alpha colours. The "dark halo" comes from the
+    // premultiplied compositor seeing (r*a, g*a, b*a) = (sr, sg, sb)*circleAlpha
+    // correctly, but without premultiplying the zero-alpha regions would
+    // leak dark values. Actually, the clearest artifact: use straight alpha
+    // blend but pretend the source has much lower saturation near the edge.
+    // We show this by applying the WRONG blend: at each pixel, use
+    // lerp(bg, (sr,sg,sb), circleAlpha) but with an additional darkening
+    // that simulates the old-school mistake of not premultiplying before
+    // sampling. The classic mistake: blend using src.rgb (un-premultiplied)
+    // weighted by src.a but the compositor expects premultiplied, so it
+    // also applies the alpha scale again: result = src.rgb * src.a * src.a + dst*(1-src.a)
+    // This double-multiplies alpha near the edge, causing a dark fringe.
+    {
+      const off = document.createElement('canvas');
+      off.width  = Math.round(halfW * canvas._dpr);
+      off.height = Math.round(H * canvas._dpr);
+      const octx = off.getContext('2d');
+      const scaleF = canvas._dpr;
+
+      const csize = 14 * scaleF;
+      const cols = Math.ceil(off.width / csize);
+      const rows = Math.ceil(off.height / csize);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          octx.fillStyle = (r + c) % 2 === 0 ? '#1a1a1a' : '#111';
+          octx.fillRect(c * csize, r * csize, csize, csize);
+        }
+      }
+
+      const id = octx.getImageData(0, 0, off.width, off.height);
+      const d = id.data;
+      const rcx = (halfW / 2) * scaleF;
+      const rcy = (H / 2) * scaleF;
+      const rr  = radius * scaleF;
+
+      for (let py = 0; py < off.height; py++) {
+        for (let px = 0; px < off.width; px++) {
+          const dist = Math.sqrt((px - rcx) ** 2 + (py - rcy) ** 2);
+          if (dist >= rr) continue;
+          const t = 1 - dist / rr;
+          const circleAlpha = sa * Math.pow(t, 0.6);
+
+          const idx = (py * off.width + px) * 4;
+          const bgR = d[idx]   / 255;
+          const bgG = d[idx+1] / 255;
+          const bgB = d[idx+2] / 255;
+
+          // WRONG method: straight-alpha compositor
+          // The bug: compositor expects premultiplied, so it does:
+          //   out = src_premult + dst * (1 - src_a)
+          // But src_premult is used as if src.rgb was NOT multiplied by alpha,
+          // yet the compositor interprets src.rgb as ALREADY premultiplied.
+          // Effect: the colour contribution near the edge is src.rgb * 1 (not * alpha)
+          // causing bright fringe, OR: the source is premultiplied going in but
+          // interpreted as straight coming out, causing desaturation.
+          // Simplest clear demonstration: blend with alpha applied TWICE
+          const outR = (sr * circleAlpha * circleAlpha) + bgR * (1 - circleAlpha);
+          const outG = (sg * circleAlpha * circleAlpha) + bgG * (1 - circleAlpha);
+          const outB = (sb * circleAlpha * circleAlpha) + bgB * (1 - circleAlpha);
+
+          d[idx]   = Math.round(clamp01(outR) * 255);
+          d[idx+1] = Math.round(clamp01(outG) * 255);
+          d[idx+2] = Math.round(clamp01(outB) * 255);
+          d[idx+3] = 255;
+        }
+      }
+      octx.putImageData(id, 0, 0);
+      ctx.drawImage(off, 0, 0, halfW, H);
+    }
+
+    // ── Divider line ────────────────────────────────────────────────
+    ctx.save();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(halfW, 0);
+    ctx.lineTo(halfW, H);
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Labels ──────────────────────────────────────────────────────
+    ctx.save();
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = '#dc5050';
+    ctx.textAlign = 'center';
+    ctx.fillText('Without premult', halfW / 2, H - 10);
+    ctx.fillStyle = '#50dc96';
+    ctx.fillText('With preMult()', halfW + halfW / 2, H - 10);
+
+    // Formula lines
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#444';
+    ctx.fillText('out = src.rgb \u00d7 \u03b1\u00b2 + bg \u00d7 (1-\u03b1)', halfW / 2, H - 26);
+    ctx.fillStyle = '#50dc96';
+    ctx.fillText('out = src.rgb\u00d7\u03b1 + bg \u00d7 (1-\u03b1)', halfW + halfW / 2, H - 26);
+    ctx.restore();
+  }
+
+  ['s1r','s1g','s1b','s1a'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+      document.getElementById(id + '-val').textContent = parseFloat(el.value).toFixed(2);
+      drawScene();
+    });
+  });
+
+  drawScene();
+})();
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 2 — Step-by-step blend visualiser
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function() {
+  const canvas = document.getElementById('canvas2');
+  const ctx = setupHDPICanvas(canvas);
+  const W = canvas._cssW;
+  const H = canvas._cssH;
+
+  const PALETTE = [
+    { r: 0.36, g: 0.60, b: 0.84 },  // blue
+    { r: 0.91, g: 0.66, b: 0.22 },  // amber
+    { r: 0.31, g: 0.86, b: 0.59 },  // green
+    { r: 0.86, g: 0.31, b: 0.31 },  // red
+    { r: 0.78, g: 0.57, b: 0.92 },  // purple
+    { r: 0.22, g: 0.82, b: 0.82 },  // cyan
+  ];
+
+  function rgbToHex(r, g, b) {
+    const hex = v => Math.round(clamp01(v) * 255).toString(16).padStart(2, '0');
+    return '#' + hex(r) + hex(g) + hex(b);
+  }
+
+  function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return { r, g, b };
+  }
+
+  let layers = PALETTE.slice(0, 4).map((c, i) => ({
+    ...c,
+    a: 0.3 + i * 0.12
+  }));
+
+  // ── Layer list UI ────────────────────────────────────────────────
+  const listEl = document.getElementById('layer-list');
+  let dragSrc = null;
+
+  function rebuildLayerUI() {
+    listEl.innerHTML = '';
+    layers.forEach((layer, i) => {
+      const item = document.createElement('div');
+      item.className = 'layer-item';
+      item.draggable = true;
+      item.dataset.index = i;
+
+      const idxSpan = document.createElement('span');
+      idxSpan.className = 'layer-index';
+      idxSpan.textContent = i + 1;
+
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.value = rgbToHex(layer.r, layer.g, layer.b);
+      colorInput.addEventListener('input', e => {
+        const rgb = hexToRgb(e.target.value);
+        layers[i].r = rgb.r;
+        layers[i].g = rgb.g;
+        layers[i].b = rgb.b;
+        drawBlendScene();
+        updateStepStates();
+      });
+
+      const alphaWrap = document.createElement('div');
+      alphaWrap.className = 'layer-alpha-wrap';
+
+      const alphaLabel = document.createElement('label');
+      alphaLabel.textContent = 'opacity';
+
+      const alphaSlider = document.createElement('input');
+      alphaSlider.type = 'range';
+      alphaSlider.min = '0.01';
+      alphaSlider.max = '1.0';
+      alphaSlider.step = '0.01';
+      alphaSlider.value = layer.a.toFixed(2);
+      alphaSlider.addEventListener('input', e => {
+        layers[i].a = parseFloat(e.target.value);
+        alphaVal.textContent = layers[i].a.toFixed(2);
+        drawBlendScene();
+        updateStepStates();
+      });
+
+      const alphaVal = document.createElement('span');
+      alphaVal.className = 'layer-alpha-val';
+      alphaVal.textContent = layer.a.toFixed(2);
+
+      alphaWrap.appendChild(alphaLabel);
+      alphaWrap.appendChild(alphaSlider);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'layer-delete';
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove';
+      delBtn.addEventListener('click', () => {
+        layers.splice(i, 1);
+        rebuildLayerUI();
+        drawBlendScene();
+        updateStepStates();
+      });
+
+      item.appendChild(idxSpan);
+      item.appendChild(colorInput);
+      item.appendChild(alphaWrap);
+      item.appendChild(alphaVal);
+      item.appendChild(delBtn);
+
+      // Drag events
+      item.addEventListener('dragstart', e => {
+        dragSrc = i;
+        e.dataTransfer.effectAllowed = 'move';
+        item.style.opacity = '0.5';
+      });
+      item.addEventListener('dragend', () => { item.style.opacity = ''; });
+      item.addEventListener('dragover', e => {
+        e.preventDefault();
+        item.classList.add('drag-over');
+      });
+      item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+      item.addEventListener('drop', e => {
+        e.preventDefault();
+        item.classList.remove('drag-over');
+        if (dragSrc === null || dragSrc === i) return;
+        const moved = layers.splice(dragSrc, 1)[0];
+        layers.splice(i, 0, moved);
+        dragSrc = null;
+        rebuildLayerUI();
+        drawBlendScene();
+        updateStepStates();
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  document.getElementById('add-gaussian-btn').addEventListener('click', () => {
+    if (layers.length >= 8) return;
+    const c = PALETTE[layers.length % PALETTE.length];
+    layers.push({ ...c, a: 0.25 + Math.random() * 0.3 });
+    rebuildLayerUI();
+    drawBlendScene();
+    updateStepStates();
+  });
+
+  document.getElementById('reset-layers-btn').addEventListener('click', () => {
+    layers = PALETTE.slice(0, 4).map((c, i) => ({ ...c, a: 0.3 + i * 0.12 }));
+    rebuildLayerUI();
+    drawBlendScene();
+    updateStepStates();
+  });
+
+  // ── Canvas drawing ───────────────────────────────────────────────
+  function drawBlendScene() {
+    ctx.clearRect(0, 0, W, H);
+
+    const { states } = blendLayers(layers);
+    const N = layers.length;
+
+    // Layout: N+1 state boxes arranged horizontally with arrows between
+    const boxW = 64;
+    const boxH = 40;
+    const arrowW = 40;
+    const totalItems = N + 1;
+    const rowW = totalItems * boxW + N * arrowW;
+    const startX = Math.max(12, (W - rowW) / 2);
+    const rowY = H / 2 - boxH / 2;
+
+    // Background
+    drawCheckerboard(ctx, 0, 0, W, H, 18);
+
+    // Draw state boxes and arrows
+    for (let i = 0; i <= N; i++) {
+      const s = states[i];
+      const sx = startX + i * (boxW + arrowW);
+      const sy = rowY;
+
+      // State box — composite over dark bg for display
+      const dispR = s.r + s.a * 0.04;
+      const dispG = s.g + s.a * 0.04;
+      const dispB = s.b + s.a * 0.04;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, boxW, boxH, 6);
+      ctx.clip();
+      drawCheckerboard(ctx, sx, sy, boxW, boxH, 6);
+      ctx.fillStyle = rgbCSS(s.r, s.g, s.b);
+      ctx.globalAlpha = 1 - s.a; // show accumulated colour with remaining transparency
+      ctx.fillRect(sx, sy, boxW, boxH);
+      ctx.restore();
+
+      ctx.strokeStyle = i === 0 ? '#333' : '#445';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, boxW, boxH, 6);
+      ctx.stroke();
+
+      // Label
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#555';
+      ctx.fillText(i === 0 ? 'initial' : `after G${i}`, sx + boxW / 2, sy + boxH + 14);
+
+      // Remaining alpha text
+      ctx.fillStyle = '#5b9bd5';
+      ctx.font = '10px monospace';
+      ctx.fillText(`\u03b1=${s.a.toFixed(2)}`, sx + boxW / 2, sy + boxH / 2 + 4);
+
+      // Arrow to next state
+      if (i < N) {
+        const ax = sx + boxW + 2;
+        const ay = sy + boxH / 2;
+        const aw = arrowW - 4;
+        const layer = layers[i];
+
+        // Draw Gaussian chip above the arrow
+        const chipW = 28;
+        const chipH = 20;
+        const chipX = ax + (aw - chipW) / 2;
+        const chipY = ay - chipH - 8;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(chipX, chipY, chipW, chipH, 3);
+        ctx.clip();
+        ctx.fillStyle = rgbCSS(layer.r, layer.g, layer.b);
+        ctx.globalAlpha = layer.a;
+        ctx.fillRect(chipX, chipY, chipW, chipH);
+        ctx.restore();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(chipX, chipY, chipW, chipH, 3);
+        ctx.stroke();
+
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#444';
+        ctx.textAlign = 'center';
+        ctx.fillText(`a=${layer.a.toFixed(2)}`, ax + aw / 2, chipY - 3);
+
+        // Arrow line
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + aw, ay);
+        ctx.stroke();
+        // Arrowhead
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(ax + aw, ay);
+        ctx.lineTo(ax + aw - 7, ay - 4);
+        ctx.lineTo(ax + aw - 7, ay + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Final composite preview
+    const lastState = states[N];
+    const previewX = W - 80;
+    const previewY = 8;
+    const previewW = 72;
+    const previewH = H - 16;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(previewX, previewY, previewW, previewH, 6);
+    ctx.clip();
+    // White background for preview
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(previewX, previewY, previewW, previewH);
+    // Accumulated colour over white
+    ctx.fillStyle = rgbCSS(lastState.r, lastState.g, lastState.b);
+    ctx.globalAlpha = 1 - lastState.a;
+    ctx.fillRect(previewX, previewY, previewW, previewH);
+    ctx.restore();
+
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(previewX, previewY, previewW, previewH, 6);
+    ctx.stroke();
+
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'center';
+    ctx.fillText('final', previewX + previewW / 2, previewY + previewH + 12);
+  }
+
+  function updateStepStates() {
+    const { states } = blendLayers(layers);
+    const container = document.getElementById('step-states-display');
+    container.innerHTML = '';
+    states.forEach((s, i) => {
+      const box = document.createElement('div');
+      box.className = 'step-state-box';
+      box.innerHTML = `
+        <div class="step-label">${i === 0 ? 'Initial' : `After G${i}`}</div>
+        <div class="step-rgb">rgb (${s.r.toFixed(2)}, ${s.g.toFixed(2)}, ${s.b.toFixed(2)})</div>
+        <div class="step-alpha">rem-\u03b1 = ${s.a.toFixed(3)}</div>
+      `;
+      container.appendChild(box);
+    });
+  }
+
+  rebuildLayerUI();
+  drawBlendScene();
+  updateStepStates();
+})();
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 3 — Opacity accumulation curve
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function() {
+  const canvas = document.getElementById('canvas3');
+  const ctx = setupHDPICanvas(canvas);
+  const W = canvas._cssW;
+  const H = canvas._cssH;
+
+  let animating = false;
+  let animFrame = 0;
+  let animTimer = null;
+  let animStep = 0;
+
+  const btn = document.getElementById('s3-animate-btn');
+
+  btn.addEventListener('click', () => {
+    animating = !animating;
+    btn.classList.toggle('active', animating);
+    btn.textContent = animating ? 'Stop' : 'Animate';
+    if (animating) {
+      animStep = 0;
+      tick();
+    } else {
+      if (animTimer) { cancelAnimationFrame(animTimer); animTimer = null; }
+      drawCurve(getNCount(), getOpacity(), getNCount());
+    }
+  });
+
+  function getNCount()  { return parseInt(document.getElementById('s3n').value); }
+  function getOpacity() { return parseFloat(document.getElementById('s3op').value); }
+
+  ['s3n', 's3op'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+      document.getElementById(id + '-val').textContent =
+        id === 's3n' ? el.value : parseFloat(el.value).toFixed(2);
+      if (!animating) drawCurve(getNCount(), getOpacity(), getNCount());
+      else { animStep = 0; }
+    });
+  });
+
+  function tick() {
+    const N = getNCount();
+    animStep = Math.min(animStep + 1, N);
+    drawCurve(N, getOpacity(), animStep);
+    if (animStep < N) {
+      animTimer = requestAnimationFrame(tick);
+    } else {
+      animating = false;
+      btn.classList.remove('active');
+      btn.textContent = 'Animate';
+    }
+  }
+
+  // Build alpha curve using variable per-blob opacities seeded from blob index
+  function buildAlphaCurve(N, avgOpacity) {
+    const THRESHOLD = 1 / 255;
+    // Use a simple deterministic pseudo-random so the curve is stable
+    // seeded on N and avgOpacity
+    function pseudoRand(i) {
+      let v = Math.sin(i * 127.1 + avgOpacity * 311.7) * 43758.5453;
+      return v - Math.floor(v);
+    }
+    const alphas = [1.0];
+    let a = 1.0;
+    let finalCount = N;
+    for (let i = 0; i < N; i++) {
+      if (a < THRESHOLD) {
+        finalCount = i;
+        for (let j = i; j < N; j++) alphas.push(a);
+        break;
+      }
+      const blobA = avgOpacity * (0.5 + pseudoRand(i));
+      a = a * (1 - Math.min(blobA, 1.0));
+      alphas.push(a);
+    }
+    return { alphas, finalCount };
+  }
+
+  function drawCurve(N, avgOpacity, revealUpTo) {
+    ctx.clearRect(0, 0, W, H);
+
+    const PAD_L = 50, PAD_R = 30, PAD_T = 28, PAD_B = 40;
+    const plotW = W - PAD_L - PAD_R;
+    const plotH = H - PAD_T - PAD_B;
+
+    const THRESHOLD = 1 / 255;
+    const { alphas, finalCount } = buildAlphaCurve(N, avgOpacity);
+
+    // Background
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Plot area background
+    ctx.fillStyle = '#0d0d0d';
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(PAD_L, PAD_T, plotW, plotH);
+    ctx.fill();
+    ctx.stroke();
+
+    // Gray region after finalCount (Gaussians ignored)
+    if (finalCount < N) {
+      const xFinal = PAD_L + (finalCount / N) * plotW;
+      ctx.fillStyle = 'rgba(255,255,255,0.02)';
+      ctx.fillRect(xFinal, PAD_T, PAD_L + plotW - xFinal, plotH);
+    }
+
+    // Grid lines
+    ctx.strokeStyle = '#1e1e1e';
+    ctx.lineWidth = 1;
+    for (let v = 0; v <= 1; v += 0.25) {
+      const y = PAD_T + plotH - v * plotH;
+      ctx.beginPath();
+      ctx.moveTo(PAD_L, y);
+      ctx.lineTo(PAD_L + plotW, y);
+      ctx.stroke();
+      ctx.fillStyle = '#333';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(v.toFixed(2), PAD_L - 5, y + 4);
+    }
+
+    // Threshold line
+    const threshY = PAD_T + plotH - THRESHOLD * plotH;
+    ctx.strokeStyle = 'rgba(220, 80, 80, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(PAD_L, threshY);
+    ctx.lineTo(PAD_L + plotW, threshY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#dc5050';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('1/255', PAD_L + 4, threshY - 3);
+
+    // Alpha curve (reveal up to revealUpTo steps)
+    const showCount = Math.min(revealUpTo + 1, alphas.length);
+
+    // Fill under curve
+    ctx.beginPath();
+    ctx.moveTo(PAD_L, PAD_T + plotH);
+    for (let i = 0; i < showCount; i++) {
+      const x = PAD_L + (i / N) * plotW;
+      const y = PAD_T + plotH - alphas[i] * plotH;
+      ctx.lineTo(x, y);
+    }
+    const lastX = PAD_L + ((showCount - 1) / N) * plotW;
+    ctx.lineTo(lastX, PAD_T + plotH);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(91, 155, 213, 0.12)';
+    ctx.fill();
+
+    // Curve line
+    ctx.beginPath();
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < showCount; i++) {
+      const x = PAD_L + (i / N) * plotW;
+      const y = PAD_T + plotH - alphas[i] * plotH;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // finalCount vertical line
+    if (finalCount < N && finalCount <= revealUpTo) {
+      const xFinal = PAD_L + (finalCount / N) * plotW;
+      ctx.strokeStyle = 'rgba(220, 80, 80, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(xFinal, PAD_T);
+      ctx.lineTo(xFinal, PAD_T + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#dc5050';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`finalCount=${finalCount}`, xFinal, PAD_T - 6);
+      ctx.fillText('blending stops', xFinal, PAD_T + 16);
+
+      // "Gaussians ignored" label
+      const midIgnoreX = xFinal + (PAD_L + plotW - xFinal) / 2;
+      ctx.fillStyle = '#333';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Gaussians ignored', midIgnoreX, PAD_T + plotH / 2);
+    }
+
+    // Axes labels
+    ctx.fillStyle = '#444';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Gaussian index', PAD_L + plotW / 2, H - 6);
+
+    ctx.save();
+    ctx.translate(12, PAD_T + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#444';
+    ctx.textAlign = 'center';
+    ctx.fillText('remaining \u03b1', 0, 0);
+    ctx.restore();
+
+    // X axis ticks
+    ctx.fillStyle = '#333';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= N; i += Math.max(1, Math.floor(N / 8))) {
+      const x = PAD_L + (i / N) * plotW;
+      ctx.fillText(i, x, PAD_T + plotH + 14);
+    }
+  }
+
+  drawCurve(getNCount(), getOpacity(), getNCount());
+})();
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 4 — Forward and backward pass step-through
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function() {
+  const canvas = document.getElementById('canvas4');
+  const ctx = setupHDPICanvas(canvas);
+  const W = canvas._cssW;
+  const H = canvas._cssH;
+
+  const GAUSSIANS = [
+    { r: 0.36, g: 0.60, b: 0.84, a: 0.35 },  // blue
+    { r: 0.91, g: 0.66, b: 0.22, a: 0.45 },  // amber
+    { r: 0.31, g: 0.86, b: 0.59, a: 0.30 },  // green
+    { r: 0.86, g: 0.31, b: 0.31, a: 0.50 },  // red
+    { r: 0.78, g: 0.57, b: 0.92, a: 0.25 },  // purple
+  ];
+
+  const N = GAUSSIANS.length;
+
+  // Build forward states
+  function buildForwardStates() {
+    let pixel = { r: 0, g: 0, b: 0, a: 1 };
+    const states = [{ ...pixel }];
+    for (let i = 0; i < N; i++) {
+      pixel = alphaBlend(pixel, GAUSSIANS[i]);
+      states.push({ ...pixel });
+    }
+    return states;
+  }
+
+  const forwardStates = buildForwardStates();
+
+  // Total steps: N forward + N backward
+  const TOTAL_STEPS = N * 2;
+  let currentStep = 0;
+  let recoveredSet = new Set();
+
+  const stepBtn  = document.getElementById('s4-step-btn');
+  const resetBtn = document.getElementById('s4-reset-btn');
+  const stepLbl  = document.getElementById('s4-step-label');
+
+  stepBtn.addEventListener('click', () => {
+    if (currentStep < TOTAL_STEPS) {
+      currentStep++;
+      if (currentStep > N) {
+        // backward step: mark recovered index
+        const backIdx = currentStep - N; // 1..N
+        recoveredSet.add(N - backIdx);   // recover state N-1 .. 0
+      }
+      update();
+    }
+    if (currentStep >= TOTAL_STEPS) {
+      stepBtn.textContent = 'Done';
+      stepBtn.disabled = true;
+    }
+  });
+
+  resetBtn.addEventListener('click', () => {
+    currentStep = 0;
+    recoveredSet.clear();
+    stepBtn.textContent = 'Step forward';
+    stepBtn.disabled = false;
+    update();
+  });
+
+  function update() {
+    stepLbl.textContent = `Step ${currentStep} / ${TOTAL_STEPS}`;
+    drawPassScene();
+  }
+
+  function drawPassScene() {
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+
+    const CHIP_W = 44;
+    const CHIP_H = 32;
+    const STATE_W = 52;
+    const STATE_H = 34;
+    const ARROW_W = 28;
+    const ROW_GAP = H / 2;
+
+    // N gaussians + N+1 state boxes + N arrows per row
+    // Total items per row: (N+1) state boxes + N gaussian chips + N arrows
+    const itemsW = (N + 1) * STATE_W + N * (CHIP_W + ARROW_W);
+    const startX = Math.max(8, (W - itemsW) / 2);
+
+    const rowLabels = ['Forward pass', 'Backward pass'];
+    const rowYs = [H * 0.22, H * 0.70];
+
+    // ── Labels ──
+    rowLabels.forEach((label, ri) => {
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.fillStyle = ri === 0 ? '#5b9bd5' : '#50dc96';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 8, rowYs[ri] - STATE_H / 2 - 14);
+    });
+
+    // ── Position helpers ──
+    function stateX(i) {
+      return startX + i * (STATE_W + CHIP_W + ARROW_W);
+    }
+
+    // ── Forward row ──
+    for (let i = 0; i <= N; i++) {
+      const revealed = i <= currentStep;
+      const sx = stateX(i);
+      const sy = rowYs[0] - STATE_H / 2;
+
+      const s = forwardStates[i];
+
+      // State box
+      ctx.save();
+      ctx.globalAlpha = revealed ? 1 : 0.15;
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, STATE_W, STATE_H, 5);
+      ctx.clip();
+      drawCheckerboard(ctx, sx, sy, STATE_W, STATE_H, 6);
+      // show accumulated colour; remaining alpha shows as transparency
+      ctx.fillStyle = rgbCSS(s.r, s.g, s.b);
+      ctx.globalAlpha = revealed ? (1 - s.a) : 0.1;
+      ctx.fillRect(sx, sy, STATE_W, STATE_H);
+      ctx.restore();
+
+      ctx.strokeStyle = recoveredSet.has(i) ? '#50dc96' : (revealed ? '#445' : '#222');
+      ctx.lineWidth = recoveredSet.has(i) ? 2 : 1;
+      if (recoveredSet.has(i)) {
+        ctx.shadowColor = '#50dc96';
+        ctx.shadowBlur = 6;
+      }
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, STATE_W, STATE_H, 5);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Alpha label
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = revealed ? '#5b9bd5' : '#2a2a2a';
+      ctx.fillText(`\u03b1=${s.a.toFixed(2)}`, sx + STATE_W / 2, sy + STATE_H / 2 + 3);
+
+      // S0, S1, ... label
+      ctx.fillStyle = '#333';
+      ctx.font = '9px monospace';
+      ctx.fillText(`S${i}`, sx + STATE_W / 2, sy + STATE_H + 12);
+
+      // Arrow to next state (Gaussian chip)
+      if (i < N) {
+        const gx = sx + STATE_W + 2;
+        const gy = rowYs[0] - CHIP_H / 2;
+        const gval = GAUSSIANS[i];
+        const gRevealed = i < currentStep;
+
+        ctx.save();
+        ctx.globalAlpha = gRevealed ? 1 : 0.15;
+        ctx.beginPath();
+        ctx.roundRect(gx, gy, CHIP_W, CHIP_H, 4);
+        ctx.clip();
+        ctx.fillStyle = rgbCSS(gval.r, gval.g, gval.b);
+        ctx.globalAlpha = gRevealed ? gval.a : 0.1;
+        ctx.fillRect(gx, gy, CHIP_W, CHIP_H);
+        ctx.restore();
+
+        ctx.strokeStyle = gRevealed ? '#333' : '#1a1a1a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(gx, gy, CHIP_W, CHIP_H, 4);
+        ctx.stroke();
+
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = gRevealed ? '#555' : '#222';
+        ctx.fillText(`G${i+1}`, gx + CHIP_W / 2, gy + CHIP_H + 10);
+
+        // Arrow line
+        const ax = gx + CHIP_W;
+        const ay = rowYs[0];
+        const aw = ARROW_W - 2;
+        ctx.strokeStyle = gRevealed ? '#5b9bd5' : '#1a1a1a';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + aw, ay);
+        ctx.stroke();
+        ctx.fillStyle = gRevealed ? '#5b9bd5' : '#1a1a1a';
+        ctx.beginPath();
+        ctx.moveTo(ax + aw, ay);
+        ctx.lineTo(ax + aw - 6, ay - 3);
+        ctx.lineTo(ax + aw - 6, ay + 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // ── Backward row ──
+    // Walk from right to left: state N, N-1, ..., 0
+    // Backward step k (1-based from right) reveals state N-k+1 being "undone"
+
+    for (let i = 0; i <= N; i++) {
+      const bStep = currentStep - N; // how many backward steps taken (0..N)
+      const revealedFromRight = i >= (N - bStep); // states revealed in backward pass
+
+      const sx = stateX(i);
+      const sy = rowYs[1] - STATE_H / 2;
+
+      const s = forwardStates[i];
+
+      const isRecovered = recoveredSet.has(i);
+
+      ctx.save();
+      ctx.globalAlpha = revealedFromRight ? 1 : 0.15;
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, STATE_W, STATE_H, 5);
+      ctx.clip();
+      drawCheckerboard(ctx, sx, sy, STATE_W, STATE_H, 6);
+      ctx.fillStyle = rgbCSS(s.r, s.g, s.b);
+      ctx.globalAlpha = revealedFromRight ? (1 - s.a) : 0.08;
+      ctx.fillRect(sx, sy, STATE_W, STATE_H);
+      ctx.restore();
+
+      ctx.strokeStyle = isRecovered ? '#50dc96' : (revealedFromRight ? '#445' : '#222');
+      ctx.lineWidth = isRecovered ? 2 : 1;
+      if (isRecovered) {
+        ctx.shadowColor = '#50dc96';
+        ctx.shadowBlur = 6;
+      }
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, STATE_W, STATE_H, 5);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = revealedFromRight ? '#5b9bd5' : '#222';
+      ctx.fillText(`\u03b1=${s.a.toFixed(2)}`, sx + STATE_W / 2, sy + STATE_H / 2 + 3);
+
+      ctx.fillStyle = '#333';
+      ctx.font = '9px monospace';
+      ctx.fillText(`S${i}`, sx + STATE_W / 2, sy + STATE_H + 12);
+
+      if (isRecovered) {
+        ctx.fillStyle = '#50dc96';
+        ctx.font = '9px -apple-system, sans-serif';
+        ctx.fillText('recovered', sx + STATE_W / 2, sy - 6);
+      }
+
+      // Backward arrow (pointing left)
+      if (i < N) {
+        const gx = sx + STATE_W + 2;
+        const gy = rowYs[1] - CHIP_H / 2;
+        const gval = GAUSSIANS[i];
+
+        const backStepReveal = (N - i) <= bStep;
+
+        ctx.save();
+        ctx.globalAlpha = backStepReveal ? 1 : 0.15;
+        ctx.beginPath();
+        ctx.roundRect(gx, gy, CHIP_W, CHIP_H, 4);
+        ctx.clip();
+        ctx.fillStyle = rgbCSS(gval.r, gval.g, gval.b);
+        ctx.globalAlpha = backStepReveal ? gval.a : 0.08;
+        ctx.fillRect(gx, gy, CHIP_W, CHIP_H);
+        ctx.restore();
+
+        ctx.strokeStyle = backStepReveal ? '#333' : '#1a1a1a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(gx, gy, CHIP_W, CHIP_H, 4);
+        ctx.stroke();
+
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = backStepReveal ? '#555' : '#222';
+        ctx.fillText(`G${i+1}`, gx + CHIP_W / 2, gy + CHIP_H + 10);
+
+        // Arrow pointing LEFT (undo direction)
+        const ax = gx + CHIP_W + ARROW_W - 2;
+        const ay = rowYs[1];
+        const aw = ARROW_W - 2;
+        ctx.strokeStyle = backStepReveal ? '#50dc96' : '#1a1a1a';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(ax - aw, ay);
+        ctx.lineTo(ax, ay);
+        ctx.stroke();
+        ctx.fillStyle = backStepReveal ? '#50dc96' : '#1a1a1a';
+        ctx.beginPath();
+        ctx.moveTo(ax - aw, ay);
+        ctx.lineTo(ax - aw + 6, ay - 3);
+        ctx.lineTo(ax - aw + 6, ay + 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  update();
+})();
+
+</script>
+</body>
+</html>

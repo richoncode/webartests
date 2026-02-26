@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU Parallel Algorithms</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
+  .back-link:hover { color: #888; }
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 24px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #999; font-size: 15px; line-height: 1.7; max-width: 600px; }
+  .section { margin-bottom: 64px; }
+  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  p { color: #999; line-height: 1.7; margin-bottom: 12px; }
+  pre { background: #0a0a0a; border: 1px solid #222; color: #a8e6cf; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; white-space: pre; }
+  canvas { display: block; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; width: 100%; max-width: 640px; margin: 20px auto; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
+  .control-group { display: flex; flex-direction: column; gap: 4px; }
+  .control-group label { font-size: 12px; color: #555; }
+  .control-group input[type=range] { width: 160px; accent-color: #5b9bd5; }
+  .control-group .value { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  .highlight-blue { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .highlight-red { color: #dc5050; }
+  .page-header { margin-bottom: 56px; }
+  .info-box { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  .info-box p { margin: 0; }
+  .step-label { font-size: 12px; color: #555; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .status-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .status-pill { background: #111; border: 1px solid #222; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #666; }
+  .status-pill span { color: #ccc; }
+  ul { color: #999; line-height: 1.7; margin-bottom: 12px; padding-left: 20px; }
+  ul li { margin-bottom: 4px; }
+  .canvas-label { font-size: 12px; color: #555; text-align: center; margin-top: -12px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>GPU Parallel Algorithms</h1>
+    <p class="subtitle">Three workgroup-level algorithms used in Gaussian Splatting: binary reduction for gradient accumulation, compare-and-swap for floating-point atomics, and bitonic sort for ordering blobs by depth.</p>
+  </div>
+
+  <!-- SHADER CODE -->
+  <div class="section">
+    <div class="section-title">The Shader Code</div>
+    <p>These three functions appear in the Gaussian Splatting backward pass shader. Each solves a different parallel coordination problem that arises when hundreds of threads share state.</p>
+<pre>// Binary reduction to accumulate per-thread gradients across the workgroup
+void loadFloat_bwd(uint idx, uint localDispatchIdx, float dOut)
+{
+    if (abs(dOut) < 10.f)
+        reductionBuffer[localDispatchIdx] = dOut;
+    else
+        reductionBuffer[localDispatchIdx] = 10.f * sign(dOut);
+
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint stride = (WG_X * WG_Y) / 2; stride > 0; stride /= 2)
+    {
+        if (localDispatchIdx < stride)
+            reductionBuffer[localDispatchIdx] += reductionBuffer[localDispatchIdx + stride];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (localDispatchIdx == 0)
+        atomicAccumulate(reductionBuffer[0], idx);
+}
+
+// CAS loop for floating-point atomic accumulation
+void atomicAccumulate(float val, uint idx)
+{
+    if (val == 0.f) return;
+    for (;;)
+    {
+        uint oldInt = derivBuffer[idx].load();
+        float oldFloat = asfloat(oldInt);
+        float newFloat = oldFloat + val;
+        uint newInt = asuint(newFloat);
+        if (derivBuffer[idx].compareExchange(oldInt, newInt) == oldInt)
+            break;
+    }
+}
+
+// Bitonic sort (parallel workgroup sort)
+SortedShortList bitonicSort(PaddedShortList, uint localIdx)
+{
+    GroupMemoryBarrierWithGroupSync();
+    for (uint k = 2; k <= GAUSSIANS_PER_BLOCK; k *= 2)
+    {
+        for (uint j = k / 2; j > 0; j /= 2)
+        {
+            for (uint i = localIdx; i < GAUSSIANS_PER_BLOCK; i += WG_X * WG_Y)
+            {
+                uint l = i ^ j;
+                if (l > i)
+                {
+                    if ((((i & k) == 0) && (blobs[i] > blobs[l])) ||
+                        (((i & k) != 0) && (blobs[i] < blobs[l])))
+                    {
+                        var temp = blobs[i]; blobs[i] = blobs[l]; blobs[l] = temp;
+                    }
+                }
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+    }
+    return { 0 };
+}</pre>
+  </div>
+
+  <!-- SECTION 1: WORKGROUPS -->
+  <div class="section">
+    <div class="section-title">1. Workgroups and Shared Memory</div>
+    <p>Before diving into the algorithms, it helps to understand the GPU execution model they operate within.</p>
+    <p>A <span class="highlight-blue">workgroup</span> is a collection of threads (e.g. 16×16 = 256 threads) that execute together on a single compute unit. What makes workgroups special is that all threads within one can access a small, extremely fast region of memory called <span class="highlight-amber">group-shared memory</span> — also known as workgroup memory or LDS (Local Data Store).</p>
+    <p>Because threads execute in parallel and may write to shared memory at different times, <span class="highlight-green">GroupMemoryBarrierWithGroupSync()</span> acts as a checkpoint: no thread is allowed to proceed past it until every thread in the workgroup has reached the same barrier. This is the mechanism that makes the following algorithms correct.</p>
+    <p>In this shader: <code style="color:#a8e6cf">WG_X * WG_Y</code> threads share <code style="color:#a8e6cf">reductionBuffer[]</code> (for gradients) and <code style="color:#a8e6cf">blobs[]</code> (for sorting).</p>
+
+    <canvas id="wgDiagram" height="160"></canvas>
+    <p class="canvas-label">8×4 workgroup — 32 threads sharing group-shared memory. The barrier line ensures writes are visible to all threads before any read proceeds.</p>
+  </div>
+
+  <!-- SECTION 2: BINARY REDUCTION -->
+  <div class="section">
+    <div class="section-title">2. Binary Tree Reduction</div>
+    <p>Each thread in a workgroup has computed a gradient <code style="color:#a8e6cf">dOut</code> for a shared Gaussian parameter. We need the <strong style="color:#fff">sum of all gradients</strong> across the workgroup. A naive sequential sum would take O(N) steps in series. Binary tree reduction does it in <span class="highlight-green">O(log₂N) parallel rounds</span>.</p>
+    <p><strong style="color:#fff">How it works:</strong></p>
+    <ul>
+      <li>Round 1 (stride = N/2): thread 0 adds thread N/2, thread 1 adds thread N/2+1, etc. — N/2 additions happen simultaneously.</li>
+      <li>Round 2 (stride = N/4): thread 0 adds thread N/4, thread 1 adds thread N/4+1, etc.</li>
+      <li>Continue halving the stride each round until stride = 1.</li>
+      <li>After log₂(N) rounds, thread 0 holds the total sum of all values.</li>
+    </ul>
+    <p>With N=16 threads that is only <span class="highlight-green">4 rounds</span> rather than 15 sequential additions.</p>
+    <p>Notice the <span class="highlight-amber">gradient clamping</span> step before reduction: each gradient is clamped to [−10, +10]. Unclamped gradients can grow very large during early training, causing the optimiser to take wildly oversized steps. Clamping prevents this <em>exploding gradient</em> problem without zeroing out the signal entirely.</p>
+
+    <div class="info-box">
+      <p><span class="highlight-blue">Clamped values (first row)</span> — each gradient is clamped to [−10, +10] before entering the reduction buffer.</p>
+    </div>
+
+    <canvas id="reductionCanvas" height="380"></canvas>
+
+    <div class="status-row">
+      <div class="status-pill">Round: <span id="reductionRoundLabel">—</span></div>
+      <div class="status-pill">Stride: <span id="reductionStrideLabel">—</span></div>
+      <div class="status-pill">Active threads: <span id="reductionActiveLabel">—</span></div>
+      <div class="status-pill">Thread 0 value: <span id="reductionThread0Label">—</span></div>
+    </div>
+
+    <div class="controls">
+      <button id="reductionNext">Next Step</button>
+      <button id="reductionRunAll">Run All</button>
+      <button id="reductionReset">Reset</button>
+      <button id="reductionRandomize">Randomize</button>
+    </div>
+  </div>
+
+  <!-- SECTION 3: CAS -->
+  <div class="section">
+    <div class="section-title">3. Compare-and-Swap Floating-Point Atomics</div>
+    <p>After reduction, thread 0 of each workgroup calls <code style="color:#a8e6cf">atomicAccumulate</code> to add its result to a global gradient buffer that is shared between workgroups. The problem: GPU shading languages do not provide a built-in floating-point atomic add. We have to build one.</p>
+    <p><strong style="color:#fff">The compare-and-swap (CAS) loop:</strong></p>
+    <ul>
+      <li>Read the current value as raw integer bits (using <code style="color:#a8e6cf">asfloat</code> / <code style="color:#a8e6cf">asuint</code> to bitcast).</li>
+      <li>Compute the desired new value = old + delta.</li>
+      <li>Attempt the swap: <code style="color:#a8e6cf">compareExchange(oldInt, newInt)</code> only writes if the value is still <code style="color:#a8e6cf">oldInt</code>. Returns the actual old value.</li>
+      <li>If the returned value equals <code style="color:#a8e6cf">oldInt</code>, no other thread modified it — success, break.</li>
+      <li>If not, another thread changed it between our read and write — retry from step 1.</li>
+    </ul>
+    <p><span class="highlight-amber">Bitcasting</span>: <code style="color:#a8e6cf">asuint(3.14f)</code> reinterprets the same 32 bits as a uint integer — no numeric conversion, just a type-pun. This is valid because IEEE 754 floats are 32-bit values just like uint32, so we can use integer CAS to protect a float slot. Example: <code style="color:#a8e6cf">1.2f → 0x3F99999A → 1.2f</code>.</p>
+
+    <canvas id="casCanvas" height="300"></canvas>
+
+    <div class="status-row">
+      <div class="status-pill">Counter: <span id="casCounterLabel">0.0</span></div>
+      <div class="status-pill">Expected final: <span id="casExpectedLabel">—</span></div>
+      <div class="status-pill">Step: <span id="casStepLabel">0</span></div>
+    </div>
+
+    <div class="controls">
+      <button id="casNext">Next CAS Attempt</button>
+      <button id="casReset">Reset</button>
+    </div>
+  </div>
+
+  <!-- SECTION 4: BITONIC SORT -->
+  <div class="section">
+    <div class="section-title">4. Bitonic Sort</div>
+    <p>Gaussian splats must be composited <span class="highlight-amber">back-to-front</span> so that alpha blending produces correct results — a closer translucent splat must be drawn on top of a farther one, not under it. Before blending, the shader sorts each workgroup's short-list of Gaussians by depth using a bitonic sort.</p>
+    <p><strong style="color:#fff">What is a bitonic sequence?</strong> A sequence that first monotonically increases then monotonically decreases (or vice versa). Bitonic sort builds and merges such sequences until the whole array is sorted.</p>
+    <p><strong style="color:#fff">The algorithm:</strong></p>
+    <ul>
+      <li>Outer loop doubles <code style="color:#a8e6cf">k</code> from 2 to N — each iteration handles a merge stage.</li>
+      <li>Inner loop halves <code style="color:#a8e6cf">j</code> from k/2 down to 1 — each iteration is one pass of comparisons.</li>
+      <li>Each pass: compare element <code style="color:#a8e6cf">i</code> with element <code style="color:#a8e6cf">l = i XOR j</code>. The XOR pairing is what produces the right comparison distance at each level.</li>
+      <li>The swap direction alternates: <code style="color:#a8e6cf">(i & k) == 0</code> means sort this bitonic block ascending, otherwise descending — the alternation is what builds nested bitonic sequences.</li>
+    </ul>
+    <p>Complexity: <span class="highlight-green">O(log²N)</span> total passes, each pass is O(1) per thread in parallel. For N=16 that is 10 passes, versus 15 steps for a serial sort — and all comparisons within a pass happen simultaneously on GPU.</p>
+
+    <canvas id="bitonicCanvas" height="360"></canvas>
+
+    <div class="status-row">
+      <div class="status-pill">Step: <span id="bitonicStepLabel">0</span> / <span id="bitonicTotalLabel">—</span></div>
+      <div class="status-pill">k = <span id="bitonicKLabel">—</span></div>
+      <div class="status-pill">j = <span id="bitonicJLabel">—</span></div>
+      <div class="status-pill">Swaps: <span id="bitonicSwapLabel">0</span></div>
+    </div>
+
+    <div class="controls">
+      <button id="bitonicNext">Next Step</button>
+      <button id="bitonicRunAll">Run All</button>
+      <button id="bitonicReset">Reset</button>
+    </div>
+
+    <p style="margin-top: 24px;">The diagram below shows the complete comparison network for N=8. Each horizontal line is an element position; each vertical connector is a compare-and-swap pair. Reading left-to-right, the columns form the passes of the algorithm.</p>
+
+    <canvas id="bitonicNetwork" height="200"></canvas>
+    <p class="canvas-label">Bitonic sort comparison network for N=8. Connectors show which pairs are compared in each pass; direction (up/down arrow) shows the required sort order for that block.</p>
+  </div>
+
+  <!-- SECTION 5: WHY TOGETHER -->
+  <div class="section">
+    <div class="section-title">5. Why These Algorithms Together</div>
+    <p>In the Gaussian Splatting pipeline, each of the three algorithms occupies a distinct role in the forward/backward pass:</p>
+    <ul>
+      <li><span class="highlight-amber">bitonicSort</span> — sorts the short-list of Gaussian indices by depth so that alpha blending in the forward pass produces a correct image.</li>
+      <li><span class="highlight-blue">Binary reduction</span> — after blending, the backward pass distributes gradient across all threads; reduction sums those per-thread contributions into one value per workgroup.</li>
+      <li><span class="highlight-green">CAS loop</span> — thread 0 of each workgroup writes its summed gradient to global memory; the CAS loop ensures this is safe when multiple workgroups update the same Gaussian's parameter simultaneously.</li>
+    </ul>
+    <p>Together they form a pipeline: sort first (forward), then accumulate gradients safely (backward). Each algorithm is chosen because it maps efficiently onto GPU parallelism — none of them would be used in CPU code.</p>
+
+    <canvas id="flowCanvas" height="120"></canvas>
+    <p class="canvas-label">Pipeline flow showing the three algorithms in sequence through the forward and backward passes.</p>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssH + 'px';
+  const w = canvas.offsetWidth || 640;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h: cssH, dpr };
+}
+
+function rand(min, max) { return min + Math.random() * (max - min); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
+
+// ─────────────────────────────────────────────
+// Section 1: Workgroup Diagram
+// ─────────────────────────────────────────────
+(function() {
+  const { ctx, w, h } = setupCanvas('wgDiagram', 640, 160);
+  const cols = 8, rows = 4;
+  const cellW = 32, cellH = 20;
+  const gridX = (w - cols * cellW) / 2;
+  const gridY = 14;
+  const memBarY = gridY + rows * cellH + 30;
+  const memCellW = 16, memCellH = 14;
+  const memX = (w - 32 * memCellW) / 2;
+
+  // Draw threads grid
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      const x = gridX + c * cellW;
+      const y = gridY + r * cellH;
+      ctx.fillStyle = '#1a2d40';
+      ctx.strokeStyle = '#5b9bd5';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x + 1, y + 1, cellW - 2, cellH - 2, 2);
+      ctx.fill();
+      ctx.stroke();
+      if (idx < 4 || idx === 31) {
+        ctx.fillStyle = '#5b9bd5';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('t' + idx, x + cellW / 2, y + cellH / 2 + 3);
+      } else if (idx === 4) {
+        ctx.fillStyle = '#555';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('...', x + cellW / 2, y + cellH / 2 + 3);
+      }
+    }
+  }
+
+  // Label "Threads (WG_X=8 × WG_Y=4)"
+  ctx.fillStyle = '#444';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Threads  (WG_X=8 × WG_Y=4 = 32 threads)', gridX, gridY - 4);
+
+  // Barrier line
+  const barrierY = gridY + rows * cellH + 10;
+  ctx.strokeStyle = '#e8a838';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(gridX - 4, barrierY);
+  ctx.lineTo(gridX + cols * cellW + 4, barrierY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e8a838';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('GroupMemoryBarrierWithGroupSync()', w / 2, barrierY - 3);
+
+  // Arrows from a few threads down to memory cells
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  for (let c = 0; c < cols; c++) {
+    const tx = gridX + c * cellW + cellW / 2;
+    const ty = gridY + rows * cellH - 2;
+    const mx = memX + c * memCellW + memCellW / 2;
+    const my = memBarY;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty + 4);
+    ctx.lineTo(mx, my - 2);
+    ctx.strokeStyle = '#2a3a4a';
+    ctx.stroke();
+  }
+
+  // Shared memory bar
+  ctx.fillStyle = '#444';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Shared Memory  (reductionBuffer[32])', memX, memBarY - 4);
+
+  for (let i = 0; i < 32; i++) {
+    const x = memX + i * memCellW;
+    const y = memBarY;
+    ctx.fillStyle = '#101c14';
+    ctx.strokeStyle = '#50dc96';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(x + 1, y + 1, memCellW - 2, memCellH - 2);
+    ctx.fill();
+    ctx.stroke();
+    if (i < 3 || i === 31) {
+      ctx.fillStyle = '#50dc96';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('[' + i + ']', x + memCellW / 2, y + memCellH / 2 + 3);
+    }
+  }
+})();
+
+// ─────────────────────────────────────────────
+// Section 2: Binary Reduction Demo
+// ─────────────────────────────────────────────
+(function() {
+  const N = 16;
+  let originalValues = [], clampedValues = [], currentValues = [], stepIndex = 0;
+  let runAllTimer = null;
+
+  // Reduction steps: each step = stride value
+  const strides = [8, 4, 2, 1]; // log2(16) = 4 steps
+
+  function randomize() {
+    originalValues = Array.from({ length: N }, () => rand(-12, 12));
+    reset();
+  }
+
+  function reset() {
+    clampedValues = originalValues.map(v => clamp(v, -10, 10));
+    currentValues = [...clampedValues];
+    stepIndex = 0;
+    if (runAllTimer) { cancelAnimationFrame(runAllTimer); runAllTimer = null; }
+    updateLabels();
+    draw();
+  }
+
+  function updateLabels() {
+    const done = stepIndex >= strides.length;
+    document.getElementById('reductionRoundLabel').textContent = done ? 'Done' : (stepIndex + 1) + ' / ' + strides.length;
+    document.getElementById('reductionStrideLabel').textContent = done ? '—' : strides[stepIndex] || '—';
+    const active = done ? 1 : (stepIndex === 0 ? N : N / Math.pow(2, stepIndex));
+    document.getElementById('reductionActiveLabel').textContent = done ? '1' : String(N / Math.pow(2, stepIndex));
+    document.getElementById('reductionThread0Label').textContent = fmt(currentValues[0]);
+  }
+
+  function nextStep() {
+    if (stepIndex >= strides.length) return;
+    const stride = strides[stepIndex];
+    for (let i = 0; i < stride; i++) {
+      currentValues[i] = currentValues[i] + currentValues[i + stride];
+    }
+    // Zero out the upper half that was consumed
+    for (let i = stride; i < N; i++) {
+      currentValues[i] = 0;
+    }
+    stepIndex++;
+    updateLabels();
+    draw();
+  }
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('reductionCanvas', 640, 380);
+    const barZone = { x: 30, y: 60, w: w - 40, h: 200 };
+    const clampZone = { x: 30, y: 10, w: w - 40, h: 36 };
+
+    // ── Clamped mini-row ──
+    ctx.fillStyle = '#5b9bd5';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Clamped input (gradient clamped to [−10, +10]):', clampZone.x, clampZone.y + 11);
+    const miniBarW = (clampZone.w - 20) / N;
+    for (let i = 0; i < N; i++) {
+      const x = clampZone.x + 20 + i * miniBarW;
+      const cv = clampedValues[i];
+      const barH = Math.abs(cv) / 10 * 12;
+      const barY = clampZone.y + 20 + (cv < 0 ? 0 : -barH);
+      ctx.fillStyle = cv >= 0 ? '#1d3d5a' : '#3d1d1d';
+      ctx.fillRect(x + 1, barY, miniBarW - 2, barH);
+      ctx.strokeStyle = cv >= 0 ? '#5b9bd5' : '#dc5050';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x + 1, barY, miniBarW - 2, barH);
+    }
+
+    // ── Main bar chart ──
+    const barW = (barZone.w - 20) / N;
+    const midY = barZone.y + barZone.h / 2;
+    const maxVal = 10;
+    const scale = (barZone.h / 2 - 20) / maxVal;
+
+    // Zero line
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(barZone.x, midY);
+    ctx.lineTo(barZone.x + barZone.w, midY);
+    ctx.stroke();
+
+    // Active threshold: stepIndex determines which bars are still active
+    const activeCount = stepIndex < strides.length ? N / Math.pow(2, stepIndex) : 1;
+
+    // Highlight pairs for the CURRENT (upcoming) step
+    const highlightStride = stepIndex < strides.length ? strides[stepIndex] : 0;
+
+    for (let i = 0; i < N; i++) {
+      const x = barZone.x + 10 + i * barW;
+      const v = currentValues[i];
+      const isActive = i < activeCount;
+      const isInPair = highlightStride > 0 && (i < highlightStride || (i >= highlightStride && i < highlightStride * 2));
+      const isPairPartner = highlightStride > 0 && i >= highlightStride && i < highlightStride * 2;
+
+      let barColor, borderColor;
+      if (!isActive && stepIndex < strides.length) {
+        barColor = '#181818';
+        borderColor = '#333';
+      } else if (isPairPartner) {
+        barColor = '#2a1d0a';
+        borderColor = '#e8a838';
+      } else if (isInPair) {
+        barColor = '#1a2d1a';
+        borderColor = '#50dc96';
+      } else {
+        barColor = v >= 0 ? '#1d3d5a' : '#3d1d1d';
+        borderColor = v >= 0 ? '#5b9bd5' : '#dc5050';
+      }
+
+      const barH = Math.max(2, Math.abs(v) * scale);
+      const barTop = v >= 0 ? midY - barH : midY;
+
+      ctx.fillStyle = barColor;
+      ctx.fillRect(x + 1, barTop, barW - 2, barH);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 1, barTop, barW - 2, barH);
+
+      // Value label above/below bar
+      if (isActive || stepIndex === strides.length) {
+        ctx.fillStyle = isActive ? '#ccc' : '#666';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        const labelY = v >= 0 ? barTop - 3 : barTop + barH + 10;
+        if (Math.abs(v) > 0.01) {
+          ctx.fillText(v.toFixed(1), x + barW / 2, labelY);
+        }
+      }
+
+      // Thread index below
+      ctx.fillStyle = isActive ? '#555' : '#333';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(i, x + barW / 2, barZone.y + barZone.h + 12);
+    }
+
+    // Draw pair arcs for current step
+    if (highlightStride > 0) {
+      ctx.strokeStyle = '#50dc96';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 2]);
+      for (let i = 0; i < highlightStride; i++) {
+        const x1 = barZone.x + 10 + i * barW + barW / 2;
+        const x2 = barZone.x + 10 + (i + highlightStride) * barW + barW / 2;
+        ctx.beginPath();
+        ctx.arc((x1 + x2) / 2, midY + 6, (x2 - x1) / 2, Math.PI, 0);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    // Labels
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Thread index →', barZone.x, barZone.y + barZone.h + 24);
+
+    // Result box at bottom
+    const resY = barZone.y + barZone.h + 36;
+    const trueSum = clampedValues.reduce((a, b) => a + b, 0);
+    ctx.fillStyle = '#111';
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barZone.x, resY, barZone.w, 56, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('True sum of clamped values: ' + trueSum.toFixed(4), barZone.x + 12, resY + 18);
+
+    ctx.fillStyle = stepIndex >= strides.length ? '#50dc96' : '#888';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Thread 0 current value: ' + fmt(currentValues[0]), barZone.x + 12, resY + 36);
+
+    if (stepIndex >= strides.length) {
+      ctx.fillStyle = '#50dc96';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Reduction complete — ready for atomicAccumulate()', barZone.x + barZone.w - 8, resY + 36);
+    }
+  }
+
+  randomize(); // initialise with random values
+
+  document.getElementById('reductionNext').addEventListener('click', nextStep);
+  document.getElementById('reductionReset').addEventListener('click', reset);
+  document.getElementById('reductionRandomize').addEventListener('click', randomize);
+  document.getElementById('reductionRunAll').addEventListener('click', function() {
+    if (runAllTimer) return;
+    function step() {
+      if (stepIndex >= strides.length) { runAllTimer = null; return; }
+      nextStep();
+      runAllTimer = requestAnimationFrame(() => setTimeout(step, 350));
+    }
+    step();
+  });
+
+  // Redraw on resize
+  window.addEventListener('resize', draw);
+})();
+
+// ─────────────────────────────────────────────
+// Section 3: CAS Visualiser
+// ─────────────────────────────────────────────
+(function() {
+  const deltas = [1.2, 0.8, 2.1, 0.5];
+  const nThreads = 4;
+  let counter = 0.0;
+  let stepIdx = 0;
+
+  // Each CAS attempt is: { thread, readVal, newVal, success }
+  // We simulate: thread 0 always goes first, then others retry until success.
+  // Generate the full sequence of attempts upfront.
+  let attempts = [];
+
+  function buildAttempts() {
+    attempts = [];
+    let cur = 0.0;
+    // Simple simulation: each thread reads current counter, tries, only one succeeds per "round"
+    // Thread ordering: 0,1,2,3 in first round, but threads 1,2,3 see counter changed
+    // Then each retries in turn
+    for (let t = 0; t < nThreads; t++) {
+      // Simulate: first all 4 read simultaneously (they all read `cur` at this point)
+      if (t === 0) {
+        // In first round, all 4 threads read same initial value simultaneously
+        // We'll model each thread's first attempt as reading `cur` before any writes
+      }
+      const readVal = cur; // this thread re-reads current
+      const newVal = readVal + deltas[t];
+      attempts.push({ thread: t, readVal, newVal, success: true });
+      cur = newVal;
+    }
+    // Add initial "all-read" steps — let's represent it as: first 4 steps show all reading, then 4 CAS attempts
+    // Rebuild: interleave "read" and "swap" phases
+    attempts = [];
+    cur = 0.0;
+    let threadsDone = Array(nThreads).fill(false);
+    let threadReads = Array(nThreads).fill(null);
+    // Phase 1: all 4 read counter simultaneously (they all read 0.0)
+    for (let t = 0; t < nThreads; t++) {
+      threadReads[t] = 0.0; // all read initial value
+      attempts.push({ phase: 'read', thread: t, readVal: 0.0 });
+    }
+    // Now CAS in sequence: thread 0 succeeds, others fail, then retry
+    let currentCounter = 0.0;
+    for (let t = 0; t < nThreads; t++) {
+      // Thread t attempts CAS with its last read value
+      const readVal = threadReads[t];
+      const newVal = readVal + deltas[t];
+      const success = (readVal === currentCounter);
+      attempts.push({ phase: 'cas', thread: t, readVal, newVal, success, counterBefore: currentCounter });
+      if (success) {
+        currentCounter = newVal;
+        threadsDone[t] = true;
+      } else {
+        // Thread t needs to retry: re-read and try again
+        threadReads[t] = currentCounter;
+        const retryReadVal = currentCounter;
+        const retryNewVal = retryReadVal + deltas[t];
+        attempts.push({ phase: 'retry-read', thread: t, readVal: retryReadVal });
+        attempts.push({ phase: 'cas', thread: t, readVal: retryReadVal, newVal: retryNewVal, success: true, counterBefore: currentCounter });
+        currentCounter = retryNewVal;
+      }
+    }
+  }
+
+  buildAttempts();
+
+  const expectedFinal = deltas.reduce((a, b) => a + b, 0);
+
+  function getCounterAfterStep(s) {
+    let c = 0.0;
+    for (let i = 0; i <= s && i < attempts.length; i++) {
+      const a = attempts[i];
+      if (a.phase === 'cas' && a.success) c = a.newVal;
+    }
+    return c;
+  }
+
+  function reset() {
+    stepIdx = 0;
+    counter = 0.0;
+    buildAttempts();
+    document.getElementById('casCounterLabel').textContent = '0.0000';
+    document.getElementById('casExpectedLabel').textContent = expectedFinal.toFixed(4);
+    document.getElementById('casStepLabel').textContent = '0 / ' + attempts.length;
+    draw(-1);
+  }
+
+  function nextStep() {
+    if (stepIdx >= attempts.length) return;
+    counter = getCounterAfterStep(stepIdx);
+    document.getElementById('casCounterLabel').textContent = counter.toFixed(4);
+    document.getElementById('casExpectedLabel').textContent = expectedFinal.toFixed(4);
+    document.getElementById('casStepLabel').textContent = (stepIdx + 1) + ' / ' + attempts.length;
+    draw(stepIdx);
+    stepIdx++;
+  }
+
+  function draw(activeStep) {
+    const { ctx, w, h } = setupCanvas('casCanvas', 640, 300);
+    const threadColors = ['#5b9bd5', '#e8a838', '#50dc96', '#c792ea'];
+
+    // Central counter cell
+    const cX = w / 2, cY = 60;
+    const cW = 140, cH = 48;
+    ctx.fillStyle = '#111';
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(cX - cW / 2, cY - cH / 2, cW, cH, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(counter.toFixed(4), cX, cY + 6);
+    ctx.fillStyle = '#555';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Shared counter (derivBuffer[idx])', cX, cY - cH / 2 - 6);
+
+    // Bitcast annotation
+    ctx.fillStyle = '#333';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('1.2f = 0x3F99999A (IEEE 754 bits)', cX + cW / 2 + 16, cY - 4);
+    ctx.fillText('asuint(1.2f) → uint CAS → asfloat()', cX + cW / 2 + 16, cY + 12);
+
+    // Thread lanes
+    const laneH = 44;
+    const laneX = 20;
+    const laneW = w - 200;
+    const startY = 110;
+
+    for (let t = 0; t < nThreads; t++) {
+      const ly = startY + t * laneH;
+      const col = threadColors[t];
+
+      // Lane background
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(laneX, ly, laneW - 40, laneH - 6, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Thread label
+      ctx.fillStyle = col;
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Thread ' + t + '  +' + deltas[t].toFixed(1), laneX + 10, ly + 14);
+
+      // Find the last completed attempt for this thread up to activeStep
+      let lastAttempt = null;
+      for (let i = 0; i <= activeStep && i < attempts.length; i++) {
+        if (attempts[i].thread === t) lastAttempt = attempts[i];
+      }
+
+      if (lastAttempt) {
+        const a = lastAttempt;
+        let stateText = '';
+        let stateColor = '#666';
+
+        if (a.phase === 'read' || a.phase === 'retry-read') {
+          stateText = 'read: ' + a.readVal.toFixed(4);
+          stateColor = '#888';
+        } else if (a.phase === 'cas') {
+          if (a.success) {
+            stateText = a.readVal.toFixed(3) + ' + ' + deltas[t].toFixed(1) + ' = ' + a.newVal.toFixed(3) + '  ✓ SUCCESS';
+            stateColor = '#50dc96';
+          } else {
+            stateText = 'CAS failed (counter changed) — retrying...';
+            stateColor = '#dc5050';
+          }
+        }
+
+        ctx.fillStyle = stateColor;
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(stateText, laneX + 10, ly + 30);
+
+        // Flash border if this was the active step
+        if (activeStep >= 0 && attempts[activeStep] && attempts[activeStep].thread === t) {
+          ctx.strokeStyle = stateColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(laneX, ly, laneW - 40, laneH - 6, 6);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#333';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('waiting...', laneX + 10, ly + 30);
+      }
+
+      // Arrow to counter
+      if (activeStep >= 0 && attempts[activeStep] && attempts[activeStep].thread === t) {
+        const arrowY = ly + laneH / 2 - 3;
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(laneX + laneW - 40, arrowY);
+        ctx.lineTo(cX - cW / 2 - 4, cY + (t - 1.5) * 8);
+        ctx.stroke();
+      }
+    }
+
+    // Completion
+    if (activeStep >= attempts.length - 1 && attempts.length > 0) {
+      ctx.fillStyle = '#50dc96';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('All ' + nThreads + ' threads accumulated. Final: ' + counter.toFixed(4) + ' = expected ' + expectedFinal.toFixed(4), w / 2, startY + nThreads * laneH + 14);
+    }
+  }
+
+  reset();
+
+  document.getElementById('casNext').addEventListener('click', nextStep);
+  document.getElementById('casReset').addEventListener('click', reset);
+  window.addEventListener('resize', () => draw(stepIdx - 1));
+})();
+
+// ─────────────────────────────────────────────
+// Section 4: Bitonic Sort
+// ─────────────────────────────────────────────
+(function() {
+  const N = 16;
+  let values = [], originalValues = [];
+  let steps = []; // Each step: { k, j, pairs: [{i, l, willSwap}] }
+  let stepIdx = 0;
+  let swappedPairs = []; // pairs swapped in the last step
+  let runTimer = null;
+
+  function randomizeValues() {
+    originalValues = Array.from({ length: N }, () => Math.round(rand(5, 95)));
+    reset();
+  }
+
+  function buildSteps(vals) {
+    const arr = [...vals];
+    steps = [];
+    for (let k = 2; k <= N; k *= 2) {
+      for (let j = k / 2; j > 0; j = Math.floor(j / 2)) {
+        const pairs = [];
+        for (let i = 0; i < N; i++) {
+          const l = i ^ j;
+          if (l > i) {
+            const ascending = (i & k) === 0;
+            const shouldSwap = ascending ? arr[i] > arr[l] : arr[i] < arr[l];
+            pairs.push({ i, l, willSwap: shouldSwap });
+            if (shouldSwap) {
+              const tmp = arr[i]; arr[i] = arr[l]; arr[l] = tmp;
+            }
+          }
+        }
+        steps.push({ k, j, pairs });
+      }
+    }
+  }
+
+  function reset() {
+    values = [...originalValues];
+    swappedPairs = [];
+    buildSteps(originalValues);
+    stepIdx = 0;
+    if (runTimer) { cancelAnimationFrame(runTimer); runTimer = null; }
+    updateLabels();
+    draw();
+  }
+
+  function applyStep(idx) {
+    const s = steps[idx];
+    swappedPairs = [];
+    for (const p of s.pairs) {
+      if (p.willSwap) {
+        const tmp = values[p.i]; values[p.i] = values[p.l]; values[p.l] = tmp;
+        swappedPairs.push(p.i, p.l);
+      }
+    }
+  }
+
+  function nextStep() {
+    if (stepIdx >= steps.length) return;
+    applyStep(stepIdx);
+    stepIdx++;
+    updateLabels();
+    draw();
+  }
+
+  function updateLabels() {
+    const total = steps.length;
+    document.getElementById('bitonicStepLabel').textContent = stepIdx;
+    document.getElementById('bitonicTotalLabel').textContent = total;
+    if (stepIdx < steps.length) {
+      const s = steps[stepIdx];
+      document.getElementById('bitonicKLabel').textContent = s.k;
+      document.getElementById('bitonicJLabel').textContent = s.j;
+    } else {
+      document.getElementById('bitonicKLabel').textContent = 'done';
+      document.getElementById('bitonicJLabel').textContent = 'done';
+    }
+    const totalSwaps = swappedPairs.length / 2; // each swap contributes 2 indices
+    document.getElementById('bitonicSwapLabel').textContent = totalSwaps;
+  }
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('bitonicCanvas', 640, 360);
+    const barZone = { x: 30, y: 30, w: w - 50, h: 260 };
+    const barW = barZone.w / N;
+    const maxVal = 100;
+
+    // Progress bar
+    const prog = stepIdx / steps.length;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.roundRect(barZone.x, 6, barZone.w, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = '#5b9bd5';
+    ctx.beginPath();
+    ctx.roundRect(barZone.x, 6, barZone.w * prog, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = '#444';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Step ' + stepIdx + ' / ' + steps.length, barZone.x + barZone.w, 22);
+
+    // Current step pairs to highlight
+    const currentPairs = stepIdx < steps.length ? steps[stepIdx].pairs : [];
+    const pairSet = new Set();
+    const swapSet = new Set();
+    currentPairs.forEach(p => { pairSet.add(p.i); pairSet.add(p.l); if (p.willSwap) { swapSet.add(p.i); swapSet.add(p.l); } });
+
+    for (let i = 0; i < N; i++) {
+      const x = barZone.x + i * barW;
+      const v = values[i];
+      const barH = (v / maxVal) * (barZone.h - 30);
+      const barTop = barZone.y + barZone.h - 30 - barH;
+      const wasPrev = swappedPairs.includes(i);
+      const isCurrent = pairSet.has(i);
+      const willSwap = swapSet.has(i);
+
+      let fill, border;
+      if (stepIdx >= steps.length) {
+        // Sorted — show green gradient by height
+        fill = '#0d2a1a';
+        border = '#50dc96';
+      } else if (willSwap) {
+        fill = '#2a1d0a';
+        border = '#e8a838';
+      } else if (isCurrent) {
+        fill = '#1a2d40';
+        border = '#5b9bd5';
+      } else if (wasPrev) {
+        fill = '#1a2a1a';
+        border = '#3d7a5a';
+      } else {
+        fill = '#222';
+        border = '#444';
+      }
+
+      ctx.fillStyle = fill;
+      ctx.fillRect(x + 1, barTop, barW - 2, barH);
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 1, barTop, barW - 2, barH);
+
+      // Value label inside/above bar
+      ctx.fillStyle = isCurrent || stepIdx >= steps.length ? '#ccc' : '#555';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(v, x + barW / 2, barTop - 2);
+
+      // Index below
+      ctx.fillStyle = '#444';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(i, x + barW / 2, barZone.y + barZone.h - 4);
+    }
+
+    // Draw comparison connectors for current step
+    if (stepIdx < steps.length) {
+      const s = steps[stepIdx];
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 2]);
+      currentPairs.forEach(p => {
+        const x1 = barZone.x + p.i * barW + barW / 2;
+        const x2 = barZone.x + p.l * barW + barW / 2;
+        ctx.strokeStyle = p.willSwap ? '#e8a838' : '#5b9bd5';
+        ctx.beginPath();
+        ctx.arc((x1 + x2) / 2, barZone.y + barZone.h - 10, (x2 - x1) / 2, Math.PI, 0);
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+
+    // Info panel
+    const infoY = barZone.y + barZone.h + 8;
+    ctx.fillStyle = '#111';
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barZone.x, infoY, barZone.w, 52, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    if (stepIdx < steps.length) {
+      const s = steps[stepIdx];
+      ctx.fillStyle = '#5b9bd5';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Outer k=' + s.k + '  Inner j=' + s.j + '  — comparing at distance ' + s.j, barZone.x + 12, infoY + 16);
+      ctx.fillStyle = '#666';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Pairs: ' + currentPairs.length + '  |  Swaps: ' + currentPairs.filter(p => p.willSwap).length + '  |  Legend:  ', barZone.x + 12, infoY + 34);
+      ctx.fillStyle = '#5b9bd5';
+      ctx.fillText('comparing (no swap)', barZone.x + 190, infoY + 34);
+      ctx.fillStyle = '#e8a838';
+      ctx.fillText('  swapping', barZone.x + 320, infoY + 34);
+    } else {
+      ctx.fillStyle = '#50dc96';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sort complete — ' + N + ' values sorted ascending in ' + steps.length + ' passes', w / 2, infoY + 24);
+      // Verify
+      const sorted = [...values].every((v, i, a) => i === 0 || a[i - 1] <= v);
+      ctx.fillStyle = sorted ? '#50dc96' : '#dc5050';
+      ctx.fillText(sorted ? 'Verified: array is sorted correctly.' : 'Error: array is not sorted.', w / 2, infoY + 40);
+    }
+  }
+
+  randomizeValues();
+
+  document.getElementById('bitonicNext').addEventListener('click', nextStep);
+  document.getElementById('bitonicReset').addEventListener('click', randomizeValues);
+  document.getElementById('bitonicRunAll').addEventListener('click', function() {
+    if (runTimer) return;
+    function step() {
+      if (stepIdx >= steps.length) { runTimer = null; return; }
+      nextStep();
+      runTimer = requestAnimationFrame(() => setTimeout(step, 300));
+    }
+    step();
+  });
+
+  window.addEventListener('resize', draw);
+})();
+
+// ─────────────────────────────────────────────
+// Section 4b: Bitonic Network Diagram (N=8)
+// ─────────────────────────────────────────────
+(function() {
+  const { ctx, w, h } = setupCanvas('bitonicNetwork', 640, 200);
+  const N = 8;
+  // Precompute all passes for N=8
+  const passes = [];
+  const arr = Array.from({ length: N }, (_, i) => i);
+  for (let k = 2; k <= N; k *= 2) {
+    for (let j = k / 2; j > 0; j = Math.floor(j / 2)) {
+      const pairs = [];
+      for (let i = 0; i < N; i++) {
+        const l = i ^ j;
+        if (l > i) {
+          const ascending = (i & k) === 0;
+          pairs.push({ i, l, ascending });
+        }
+      }
+      passes.push({ k, j, pairs });
+    }
+  }
+  // Total passes for N=8: log2(8)*(log2(8)+1)/2 = 6
+
+  const marginX = 40, marginY = 20;
+  const laneH = (h - marginY * 2) / (N - 1);
+  const passW = (w - marginX * 2) / (passes.length + 1);
+
+  // Draw lanes (horizontal lines for each element position)
+  for (let i = 0; i < N; i++) {
+    const y = marginY + i * laneH;
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(marginX, y);
+    ctx.lineTo(w - marginX, y);
+    ctx.stroke();
+
+    // Element label
+    ctx.fillStyle = '#444';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('pos ' + i, marginX - 4, y + 4);
+  }
+
+  // Draw pass columns
+  const passCols = ['#5b9bd5', '#e8a838', '#50dc96', '#c792ea', '#dc5050', '#5b9bd5'];
+  passes.forEach((pass, pi) => {
+    const x = marginX + (pi + 1) * passW;
+    pass.pairs.forEach(p => {
+      const y1 = marginY + p.i * laneH;
+      const y2 = marginY + p.l * laneH;
+      const col = passCols[pi % passCols.length];
+
+      // Connector line
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, y2);
+      ctx.stroke();
+
+      // Dots
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x, y1, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y2, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Arrow to indicate sort direction
+      const arrowY = p.ascending ? y2 : y1;
+      const dir = p.ascending ? -1 : 1;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, arrowY + dir * 6);
+      ctx.lineTo(x, arrowY + dir * 2);
+      ctx.lineTo(x + 4, arrowY + dir * 6);
+      ctx.stroke();
+    });
+
+    // Pass label at bottom
+    ctx.fillStyle = passCols[pi % passCols.length];
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('k=' + pass.k + ' j=' + pass.j, x, h - 4);
+  });
+})();
+
+// ─────────────────────────────────────────────
+// Section 5: Flow Diagram
+// ─────────────────────────────────────────────
+(function() {
+  const { ctx, w, h } = setupCanvas('flowCanvas', 640, 120);
+
+  const stages = [
+    { label: 'bitonicSort', sub: 'sort by depth', col: '#e8a838' },
+    { label: 'Blend forward', sub: 'back-to-front', col: '#5b9bd5' },
+    { label: 'Binary reduction', sub: 'sum gradients', col: '#5b9bd5' },
+    { label: 'CAS write', sub: 'atomic gradient', col: '#50dc96' },
+  ];
+
+  const boxW = 120, boxH = 50;
+  const totalW = stages.length * boxW + (stages.length - 1) * 24;
+  const startX = (w - totalW) / 2;
+  const midY = h / 2;
+
+  stages.forEach((s, i) => {
+    const x = startX + i * (boxW + 24);
+    const y = midY - boxH / 2;
+
+    ctx.fillStyle = '#111';
+    ctx.strokeStyle = s.col + '66';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, boxW, boxH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = s.col;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.label, x + boxW / 2, y + 19);
+
+    ctx.fillStyle = '#555';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(s.sub, x + boxW / 2, y + 35);
+
+    // Arrow
+    if (i < stages.length - 1) {
+      const ax = x + boxW + 2;
+      const ay = midY;
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax + 20, ay);
+      ctx.stroke();
+      // Arrowhead
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.moveTo(ax + 20, ay);
+      ctx.lineTo(ax + 14, ay - 4);
+      ctx.lineTo(ax + 14, ay + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+
+  // Labels above
+  ctx.fillStyle = '#555';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('← Forward pass →', startX + boxW * 0.5 + 12, midY - boxH / 2 - 8);
+  ctx.fillText('← Backward pass →', startX + boxW * 2.5 + 60, midY - boxH / 2 - 8);
+
+  // Divider between forward and backward
+  const divX = startX + boxW * 2 + 12;
+  ctx.strokeStyle = '#2a2a2a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(divX, 10);
+  ctx.lineTo(divX, h - 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+})();
+</script>
+</body>
+</html>
