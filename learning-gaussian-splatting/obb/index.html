@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oriented Bounding Boxes — Learning Gaussian Splatting</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+    .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
+    .back-link:hover { color: #888; }
+    .page { max-width: 720px; margin: 0 auto; padding: 60px 24px; }
+    h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+    .subtitle { color: #999; }
+    .section { margin-bottom: 64px; }
+    .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+    p { color: #999; line-height: 1.7; margin-bottom: 12px; }
+    pre { background: #0a0a0a; border: 1px solid #222; color: #a8e6cf; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; white-space: pre; }
+    code { background: #111; border: 1px solid #222; color: #a8e6cf; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    canvas { display: block; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; width: 100%; max-width: 640px; margin: 20px auto; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .demo-label { text-align: center; font-size: 13px; color: #555; margin-top: -12px; margin-bottom: 20px; }
+    .status { text-align: center; font-size: 14px; font-weight: 600; margin: 8px 0; }
+    .status.colliding { color: #dc5050; }
+    .status.separated { color: #50dc96; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 12px; color: #555; }
+    .control-group input[type=range] { width: 140px; accent-color: #5b9bd5; }
+    button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    button:hover { background: #222; border-color: #555; color: #fff; }
+    .highlight-blue { color: #5b9bd5; }
+    .highlight-amber { color: #e8a838; }
+    .highlight-green { color: #50dc96; }
+    .section-intro { margin-bottom: 20px; }
+    .axis-panel { background: #0a0a0a; border: 1px solid #222; border-radius: 8px; padding: 16px; margin-bottom: 20px; max-width: 640px; margin-left: auto; margin-right: auto; }
+    .axis-row { margin-bottom: 12px; }
+    .axis-row:last-child { margin-bottom: 0; }
+    .axis-row-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .axis-track { position: relative; height: 20px; background: #111; border-radius: 4px; overflow: hidden; border: 1px solid #1a1a1a; }
+    .axis-seg { position: absolute; top: 3px; height: 14px; border-radius: 2px; opacity: 0.85; }
+    .axis-gap-indicator { font-size: 11px; margin-top: 3px; font-weight: 600; }
+  </style>
+</head>
+<body>
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+  <div style="margin-bottom: 48px; padding-top: 20px;">
+    <h1>Oriented Bounding Boxes</h1>
+    <p class="subtitle">How OBBs represent anisotropic Gaussian blobs, and how the Separating Axis Theorem checks their intersection — walking through a real Slang shader implementation.</p>
+  </div>
+
+  <!-- SECTION 1: OBB Data Structure -->
+  <div class="section">
+    <div class="section-title">1. The OBB Data Structure</div>
+    <div class="section-intro">
+      <p>An Oriented Bounding Box is defined by three fields in the Slang shader struct:</p>
+      <ul style="color: #999; padding-left: 20px; margin-bottom: 12px; line-height: 1.9;">
+        <li><span class="highlight-blue">center</span> — world-space position of the box's midpoint.</li>
+        <li><span class="highlight-amber">rotation</span> — a 2×2 matrix whose <strong style="color:#ccc">rows</strong> are the local coordinate axes. Row 0 = local X axis (right), Row 1 = local Y axis (up). These are always unit-length and perpendicular.</li>
+        <li><span class="highlight-green">scale</span> — half-extents: the box extends ±scale.x along local X and ±scale.y along local Y.</li>
+      </ul>
+      <p>A canonical box with corners (±1, ±1) is transformed into world space by scaling, rotating, and translating.</p>
+    </div>
+
+<pre>struct OBB
+{
+    float2 center;
+    float2x2 rotation;  // rows are the local X and Y axes
+    float2 scale;       // half-extents along local X and Y
+
+    bool intersects(OBB other)
+    {
+        float2 canonicalPts[4] = float2[4](float2(-1,-1), float2(1,-1), float2(1,1), float2(-1,1));
+
+        float2x2 invRotation = inverse(rotation);
+        float2x2 otherInvRotation = inverse(other.rotation);
+        float2 pts[4];
+        for (int i = 0; i &lt; 4; i++)
+            pts[i] = center + float2(
+                dot(invRotation[0], canonicalPts[i] * scale),
+                dot(invRotation[1], canonicalPts[i] * scale));
+
+        float2 otherPts[4];
+        for (int i = 0; i &lt; 4; i++)
+            otherPts[i] = other.center + float2(
+                dot(otherInvRotation[0], canonicalPts[i] * other.scale),
+                dot(otherInvRotation[1], canonicalPts[i] * other.scale));
+
+        return !(arePtsSeparatedAlongAxes(pts, otherPts, rotation) ||
+                 arePtsSeparatedAlongAxes(pts, otherPts, other.rotation));
+    }
+
+    static bool arePtsSeparatedAlongAxes(float2[4] pts, float2[4] otherPts, float2x2 axes)
+    {
+        for (int i = 0; i &lt; 2; i++)
+        {
+            float2 axis = axes[i];
+            float2 proj      = float2(dot(pts[0], axis),      dot(pts[0], axis));
+            float2 otherProj = float2(dot(otherPts[0], axis), dot(otherPts[0], axis));
+            for (int j = 1; j &lt; 4; j++)
+            {
+                proj.x      = min(proj.x,      dot(pts[j],      axis));
+                proj.y      = max(proj.y,      dot(pts[j],      axis));
+                otherProj.x = min(otherProj.x, dot(otherPts[j], axis));
+                otherProj.y = max(otherProj.y, dot(otherPts[j], axis));
+            }
+            if (proj.y &lt; otherProj.x || otherProj.y &lt; proj.x)
+                return true;
+        }
+        return false;
+    }
+};</pre>
+
+    <p>Use the sliders below to explore how the three parameters shape the OBB. The dashed unit square in the center is the canonical box — notice how scale stretches it and rotation spins it.</p>
+
+    <canvas id="demo1" style="height: 320px;"></canvas>
+    <p class="demo-label">Demo 1 — OBB builder. Drag sliders to adjust shape.</p>
+
+    <div class="controls" id="demo1-controls">
+      <div class="control-group">
+        <label>Rotation θ: <span id="d1-angle-val">30°</span></label>
+        <input type="range" id="d1-angle" min="-180" max="180" value="30" step="1">
+      </div>
+      <div class="control-group">
+        <label>Half-width (scale.x): <span id="d1-sx-val">80</span></label>
+        <input type="range" id="d1-sx" min="20" max="200" value="80" step="1">
+      </div>
+      <div class="control-group">
+        <label>Half-height (scale.y): <span id="d1-sy-val">40</span></label>
+        <input type="range" id="d1-sy" min="20" max="200" value="40" step="1">
+      </div>
+    </div>
+    <p style="text-align:center; font-size:13px; color:#444;">Rows of the rotation matrix ARE the local axes</p>
+  </div>
+
+  <!-- SECTION 2: Rotation Matrix Convention -->
+  <div class="section">
+    <div class="section-title">2. The Rotation Matrix Convention</div>
+    <p>The Slang struct stores the rotation matrix with axes as <strong style="color:#ccc">rows</strong> — this is the key to understanding the vertex computation. Let's unpack why the code calls <code>inverse(rotation)</code>.</p>
+
+    <p>In the Slang struct, <code>rotation[i]</code> refers to the i-th <em>row</em>. For angle θ:</p>
+    <ul style="color:#999; padding-left:20px; margin-bottom:12px; line-height:1.9;">
+      <li><code>rotation[0] = (cosθ, sinθ)</code> — local X axis</li>
+      <li><code>rotation[1] = (−sinθ, cosθ)</code> — local Y axis</li>
+    </ul>
+
+    <p>This is the <strong style="color:#ccc">transpose</strong> of the standard rotation matrix (which stores axes as columns). Since it's orthonormal, <code>inverse(rotation) = transpose(rotation)</code>, which gives back the standard rotation matrix.</p>
+
+<pre>Standard rotation (axes as columns):    Slang rotation (axes as rows):
+[ cosθ  -sinθ ]                         [ cosθ   sinθ ]  ← rotation[0] = local X
+[ sinθ   cosθ ]                         [-sinθ   cosθ ]  ← rotation[1] = local Y
+
+inverse = itself transposed:            inverse(rotation) = standard rotation:
+[ cosθ   sinθ ]                         [ cosθ  -sinθ ]
+[-sinθ   cosθ ]                         [ sinθ   cosθ ]</pre>
+
+    <p>Applying <code>inverse(rotation)</code> to a scaled canonical point gives the correct world-space offset. Here's a concrete example for θ = 30°, scale = (80, 40), canonical corner (−1, −1):</p>
+
+<pre>invRot[0] = (cos30°, −sin30°) = (0.866, −0.5)
+invRot[1] = (sin30°,  cos30°) = (0.5,   0.866)
+
+pt.x = dot(invRot[0], (−1,−1) * (80,40)) = dot((0.866,−0.5), (−80,−40))
+     = 0.866 × (−80) + (−0.5) × (−40) = −69.3 + 20 = −49.3
+pt.y = dot(invRot[1], (−1,−1) * (80,40)) = dot((0.5,0.866), (−80,−40))
+     = 0.5 × (−80) + 0.866 × (−40) = −40 + (−34.6) = −74.6
+vertex = center + (−49.3, −74.6)</pre>
+
+    <p>The dot product formulation in Slang is equivalent to matrix-vector multiplication: <code>dot(invRot[0], scaledPt)</code> gives the x component, <code>dot(invRot[1], scaledPt)</code> gives the y component.</p>
+  </div>
+
+  <!-- SECTION 3: SAT -->
+  <div class="section">
+    <div class="section-title">3. SAT for OBBs: Only 4 Axes</div>
+    <p>The Separating Axis Theorem states: two convex shapes are <em>not</em> intersecting if and only if there exists an axis along which their projections don't overlap. For general polygons you need to test all edge normals — M+N axes for an M-gon and N-gon. But for two OBBs you only need <strong style="color:#ccc">4 axes total</strong>.</p>
+    <p><strong style="color:#ccc">Why only 4?</strong> Each OBB has just 2 pairs of parallel edges, so only 2 unique edge normals. Those normals are exactly the rows of its rotation matrix. Test both OBBs' axes:</p>
+    <ul style="color:#999; padding-left:20px; margin-bottom:12px; line-height:1.9;">
+      <li>OBB A contributes: <span class="highlight-blue">rotation_A[0]</span> and <span class="highlight-blue">rotation_A[1]</span></li>
+      <li>OBB B contributes: <span class="highlight-amber">rotation_B[0]</span> and <span class="highlight-amber">rotation_B[1]</span></li>
+    </ul>
+    <p>For each axis, project all 4 vertices of each OBB onto it and check for a gap. If <em>any</em> axis shows a gap, the boxes are separated. The Slang code:</p>
+
+<pre>static bool arePtsSeparatedAlongAxes(float2[4] pts, float2[4] otherPts, float2x2 axes)
+{
+    for (int i = 0; i &lt; 2; i++)
+    {
+        float2 axis = axes[i];
+        // proj.x = min projection of OBB A's vertices onto axis
+        // proj.y = max projection of OBB A's vertices onto axis
+        float2 proj      = float2(dot(pts[0], axis),      dot(pts[0], axis));
+        float2 otherProj = float2(dot(otherPts[0], axis), dot(otherPts[0], axis));
+        for (int j = 1; j &lt; 4; j++)
+        {
+            proj.x      = min(proj.x,      dot(pts[j],      axis));
+            proj.y      = max(proj.y,      dot(pts[j],      axis));
+            otherProj.x = min(otherProj.x, dot(otherPts[j], axis));
+            otherProj.y = max(otherProj.y, dot(otherPts[j], axis));
+        }
+        // Separated if A's max &lt; B's min, OR B's max &lt; A's min
+        if (proj.y &lt; otherProj.x || otherProj.y &lt; proj.x)
+            return true;
+    }
+    return false;
+}</pre>
+
+    <p>The demo below shows both OBBs and all four projection intervals. A red interval means that axis has no separating gap. A green gap means the boxes are separated along that axis (and therefore not intersecting at all).</p>
+
+    <div id="demo2-status" class="status separated">SEPARATED</div>
+    <canvas id="demo2" style="height: 320px;"></canvas>
+    <p class="demo-label">Demo 2 — 4-axis test panel. Drag either OBB to move it.</p>
+
+    <div class="axis-panel" id="demo2-axis-panel">
+      <div class="axis-row" id="ax-row-0">
+        <div class="axis-row-label">Axis A[0] (OBB A local X)</div>
+        <div class="axis-track"><div class="axis-seg" id="ax-a0-a" style="background:#5b9bd5;"></div><div class="axis-seg" id="ax-a0-b" style="background:#e8a838;"></div></div>
+        <div class="axis-gap-indicator" id="ax-a0-gap"></div>
+      </div>
+      <div class="axis-row" id="ax-row-1">
+        <div class="axis-row-label">Axis A[1] (OBB A local Y)</div>
+        <div class="axis-track"><div class="axis-seg" id="ax-a1-a" style="background:#5b9bd5;"></div><div class="axis-seg" id="ax-a1-b" style="background:#e8a838;"></div></div>
+        <div class="axis-gap-indicator" id="ax-a1-gap"></div>
+      </div>
+      <div class="axis-row" id="ax-row-2">
+        <div class="axis-row-label">Axis B[0] (OBB B local X)</div>
+        <div class="axis-track"><div class="axis-seg" id="ax-b0-a" style="background:#5b9bd5;"></div><div class="axis-seg" id="ax-b0-b" style="background:#e8a838;"></div></div>
+        <div class="axis-gap-indicator" id="ax-b0-gap"></div>
+      </div>
+      <div class="axis-row" id="ax-row-3">
+        <div class="axis-row-label">Axis B[1] (OBB B local Y)</div>
+        <div class="axis-track"><div class="axis-seg" id="ax-b1-a" style="background:#5b9bd5;"></div><div class="axis-seg" id="ax-b1-b" style="background:#e8a838;"></div></div>
+        <div class="axis-gap-indicator" id="ax-b1-gap"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>OBB A angle: <span id="d2-angle-a-val">25°</span></label>
+        <input type="range" id="d2-angle-a" min="-180" max="180" value="25" step="1">
+      </div>
+      <div class="control-group">
+        <label>OBB B angle: <span id="d2-angle-b-val">-40°</span></label>
+        <input type="range" id="d2-angle-b" min="-180" max="180" value="-40" step="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: Live OBB-OBB Intersection -->
+  <div class="section">
+    <div class="section-title">4. Live OBB-OBB Intersection</div>
+    <p>Drag either OBB to move it. Drag the <span class="highlight-blue">circle handle</span> on the right edge to rotate, and the <span class="highlight-green">square handle</span> on the top-right corner to scale. When the boxes collide the Minimum Translation Vector (MTV) shows the shortest push to separate them.</p>
+
+    <div id="demo3-status" class="status separated">SEPARATED</div>
+    <canvas id="demo3" style="height: 340px;"></canvas>
+    <p class="demo-label">Demo 3 — Full interactive OBB intersection. Circle handle = rotate, square handle = scale.</p>
+    <div style="text-align:center; margin-bottom:16px;">
+      <button id="demo3-reset">Reset</button>
+    </div>
+  </div>
+
+  <!-- SECTION 5: Gaussian Blobs -->
+  <div class="section">
+    <div class="section-title">5. OBBs and Gaussian Blobs</div>
+    <p>In 2D Gaussian Splatting, each splat is a 2D Gaussian distribution parameterised by a mean <strong style="color:#ccc">μ</strong> (center) and a 2×2 covariance matrix <strong style="color:#ccc">Σ</strong>. The covariance encodes both orientation and spread.</p>
+    <p>The <strong style="color:#ccc">eigendecomposition</strong> <code>Σ = V · diag(λ₁, λ₂) · Vᵀ</code> yields:</p>
+    <ul style="color:#999; padding-left:20px; margin-bottom:12px; line-height:1.9;">
+      <li><strong style="color:#ccc">V</strong> — a rotation matrix whose columns are the principal axes → the OBB's rotation</li>
+      <li><strong style="color:#ccc">√λ₁, √λ₂</strong> — standard deviations σ_x, σ_y → the OBB's scale (typically 3σ for a tight bound)</li>
+    </ul>
+    <p>This means any 2D Gaussian can be exactly represented as an OBB. The iso-contour at level k is an axis-aligned ellipse with semi-axes k·σ_x, k·σ_y in the local frame — which, when rotated by V, becomes the OBB boundary at that coverage level.</p>
+
+<pre>// Decompose covariance Σ = [[a,b],[b,c]] into OBB
+// Eigenvalues: λ = ((a+c) ± sqrt((a-c)² + 4b²)) / 2
+// Eigenvector for λ₁: normalize((b, λ₁ - a))  [or (1,0) if b≈0]
+// OBB.rotation[0] = eigenvector₁   (local X axis)
+// OBB.rotation[1] = eigenvector₂   (local Y axis, perp to [0])
+// OBB.scale = 3 * (sqrt(λ₁), sqrt(λ₂))</pre>
+
+    <p>Adjust the Gaussian parameters below. The dashed green box is the OBB at the chosen coverage level.</p>
+
+    <canvas id="demo4" style="height: 320px;"></canvas>
+    <p class="demo-label">Demo 4 — Gaussian → OBB. Each contour is a 1σ, 2σ, 3σ iso-ellipse.</p>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>σ_x (spread along local X): <span id="d4-sx-val">70</span></label>
+        <input type="range" id="d4-sx" min="20" max="120" value="70" step="1">
+      </div>
+      <div class="control-group">
+        <label>σ_y (spread along local Y): <span id="d4-sy-val">30</span></label>
+        <input type="range" id="d4-sy" min="10" max="80" value="30" step="1">
+      </div>
+      <div class="control-group">
+        <label>Orientation θ: <span id="d4-angle-val">20°</span></label>
+        <input type="range" id="d4-angle" min="-90" max="90" value="20" step="1">
+      </div>
+      <div class="control-group">
+        <label>OBB coverage (nσ): <span id="d4-cov-val">3.0</span></label>
+        <input type="range" id="d4-cov" min="1" max="4" value="3" step="0.5">
+      </div>
+    </div>
+    <p id="demo4-label" style="text-align:center; font-size:13px; color:#555;">OBB = 3σ bounding box | scale = (3·σ_x, 3·σ_y)</p>
+  </div>
+
+</div><!-- end .page -->
+
+<script>
+// ─────────────────────────────────────────────────────────
+// Shared utilities
+// ─────────────────────────────────────────────────────────
+
+function setupCanvas(canvas, cssHeight) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssHeight + 'px';
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = cssHeight * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { w: rect.width, h: cssHeight };
+  }
+  return resize;
+}
+
+function drawArrow(ctx, fx, fy, tx, ty, color, label) {
+  const dx = tx - fx, dy = ty - fy;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const ux = dx / len, uy = dy / len;
+  const headLen = 8, headAngle = Math.PI / 7;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(fx, fy);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - headLen * Math.cos(Math.atan2(dy, dx) - headAngle),
+             ty - headLen * Math.sin(Math.atan2(dy, dx) - headAngle));
+  ctx.lineTo(tx - headLen * Math.cos(Math.atan2(dy, dx) + headAngle),
+             ty - headLen * Math.sin(Math.atan2(dy, dx) + headAngle));
+  ctx.closePath();
+  ctx.fill();
+  if (label) {
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(label, tx + ux * 6 + 4, ty + uy * 6 + 4);
+  }
+  ctx.restore();
+}
+
+function obbVertices(cx, cy, angle, sx, sy) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const canonical = [[-1,-1],[1,-1],[1,1],[-1,1]];
+  return canonical.map(([px, py]) => [
+    cx + cos * px * sx - sin * py * sy,
+    cy + sin * px * sx + cos * py * sy
+  ]);
+}
+
+function drawOBB(ctx, cx, cy, angle, sx, sy, fillColor, strokeColor) {
+  const pts = obbVertices(cx, cy, angle, sx, sy);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+  if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = 1.5; ctx.stroke(); }
+  ctx.restore();
+}
+
+function pointInOBB(px, py, cx, cy, angle, sx, sy) {
+  const cos = Math.cos(-angle), sin = Math.sin(-angle);
+  const dx = px - cx, dy = py - cy;
+  const lx = cos * dx - sin * dy;
+  const ly = sin * dx + cos * dy;
+  return Math.abs(lx) <= sx && Math.abs(ly) <= sy;
+}
+
+function projectOBBOntoAxis(pts, ax, ay) {
+  let mn = Infinity, mx = -Infinity;
+  for (const [px, py] of pts) {
+    const d = px * ax + py * ay;
+    if (d < mn) mn = d;
+    if (d > mx) mx = d;
+  }
+  return [mn, mx];
+}
+
+function satTest(ptsA, ptsB, axes) {
+  // axes: array of [ax, ay]
+  // returns { separated: bool, minOverlap: number, minAxis: [ax,ay], intervals: [{a:[mn,mx], b:[mn,mx]}] }
+  let minOverlap = Infinity, minAxis = null;
+  const intervals = [];
+  for (const [ax, ay] of axes) {
+    const [amin, amax] = projectOBBOntoAxis(ptsA, ax, ay);
+    const [bmin, bmax] = projectOBBOntoAxis(ptsB, ax, ay);
+    intervals.push({ a: [amin, amax], b: [bmin, bmax] });
+    if (amax < bmin || bmax < amin) {
+      return { separated: true, minOverlap: 0, minAxis: null, intervals, separatingAxisIdx: intervals.length - 1 };
+    }
+    const overlap = Math.min(amax, bmax) - Math.max(amin, bmin);
+    if (overlap < minOverlap) { minOverlap = overlap; minAxis = [ax, ay]; }
+  }
+  return { separated: false, minOverlap, minAxis, intervals };
+}
+
+function getOBBAxes(angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return [[cos, sin], [-sin, cos]];
+}
+
+// ─────────────────────────────────────────────────────────
+// Demo 1 — OBB Builder
+// ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('demo1');
+  const resizeCanvas = setupCanvas(canvas, 320);
+  let dims = resizeCanvas();
+
+  const angleSlider = document.getElementById('d1-angle');
+  const sxSlider = document.getElementById('d1-sx');
+  const sySlider = document.getElementById('d1-sy');
+  const angleVal = document.getElementById('d1-angle-val');
+  const sxVal = document.getElementById('d1-sx-val');
+  const syVal = document.getElementById('d1-sy-val');
+
+  function draw() {
+    dims = resizeCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+
+    const angle = parseFloat(angleSlider.value) * Math.PI / 180;
+    const sx = parseFloat(sxSlider.value);
+    const sy = parseFloat(sySlider.value);
+    const cx = w / 2, cy = h / 2;
+
+    // Ghost canonical unit square (30px half-size)
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 30, cy - 30, 60, 60);
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // OBB fill + stroke
+    drawOBB(ctx, cx, cy, angle, sx, sy, 'rgba(91,155,213,0.12)', '#5b9bd5');
+
+    // Vertex dots and labels
+    const pts = obbVertices(cx, cy, angle, sx, sy);
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const canonical = [[-1,-1],[1,-1],[1,1],[-1,1]];
+    ctx.font = '10px monospace';
+    pts.forEach(([px, py], i) => {
+      // Actual world coords relative to center
+      const wx = (px - cx).toFixed(0);
+      const wy = (py - cy).toFixed(0);
+      ctx.save();
+      ctx.fillStyle = '#5b9bd5';
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#5b9bd5';
+      const offX = canonical[i][0] > 0 ? 6 : -6;
+      const offY = canonical[i][1] > 0 ? 14 : -6;
+      ctx.fillText('('+wx+','+wy+')', px + offX, py + offY);
+      ctx.restore();
+    });
+
+    // Local X axis arrow (row 0 of rotation = (cos, sin))
+    const axisLen = Math.min(sx, 80) + 30;
+    drawArrow(ctx, cx, cy, cx + cos * axisLen, cy + sin * axisLen, '#5b9bd5', 'rotation[0]');
+    // Local Y axis arrow (row 1 of rotation = (-sin, cos))
+    drawArrow(ctx, cx, cy, cx + (-sin) * axisLen, cy + cos * axisLen, '#e8a838', 'rotation[1]');
+
+    // Center dot
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  angleSlider.addEventListener('input', () => { angleVal.textContent = angleSlider.value + '°'; draw(); });
+  sxSlider.addEventListener('input', () => { sxVal.textContent = sxSlider.value; draw(); });
+  sySlider.addEventListener('input', () => { syVal.textContent = sySlider.value; draw(); });
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────
+// Demo 2 — 4-axis test panel
+// ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('demo2');
+  const resizeCanvas = setupCanvas(canvas, 320);
+  let dims = resizeCanvas();
+
+  const angleASlider = document.getElementById('d2-angle-a');
+  const angleBSlider = document.getElementById('d2-angle-b');
+  const angleAVal = document.getElementById('d2-angle-a-val');
+  const angleBVal = document.getElementById('d2-angle-b-val');
+  const statusEl = document.getElementById('demo2-status');
+
+  // OBB state
+  let obbA = { cx: 0, cy: 0, angle: 25 * Math.PI / 180, sx: 90, sy: 45 };
+  let obbB = { cx: 0, cy: 0, angle: -40 * Math.PI / 180, sx: 70, sy: 50 };
+
+  // Set initial positions once canvas is sized
+  function initPositions() {
+    const w = dims.w, h = dims.h;
+    obbA.cx = w * 0.38; obbA.cy = h / 2;
+    obbB.cx = w * 0.62; obbB.cy = h / 2;
+  }
+
+  // Dragging
+  let drag = null;
+
+  function getEventPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - rect.left, src.clientY - rect.top];
+  }
+
+  function onDown(e) {
+    const [mx, my] = getEventPos(e);
+    if (pointInOBB(mx, my, obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy)) {
+      drag = { which: 'b', ox: mx - obbB.cx, oy: my - obbB.cy };
+    } else if (pointInOBB(mx, my, obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy)) {
+      drag = { which: 'a', ox: mx - obbA.cx, oy: my - obbA.cy };
+    }
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!drag) return;
+    const [mx, my] = getEventPos(e);
+    if (drag.which === 'a') { obbA.cx = mx - drag.ox; obbA.cy = my - drag.oy; }
+    else { obbB.cx = mx - drag.ox; obbB.cy = my - drag.oy; }
+    draw();
+    e.preventDefault();
+  }
+
+  function onUp() { drag = null; }
+
+  canvas.addEventListener('mousedown', onDown);
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseup', onUp);
+  canvas.addEventListener('mouseleave', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  canvas.addEventListener('touchmove', onMove, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
+  function updateAxisPanel(result, axes) {
+    const ids = ['a0','a1','b0','b1'];
+    const trackWidth = document.querySelector('.axis-track').clientWidth || 200;
+
+    let allMin = Infinity, allMax = -Infinity;
+    for (const iv of result.intervals) {
+      if (iv.a[0] < allMin) allMin = iv.a[0];
+      if (iv.a[1] > allMax) allMax = iv.a[1];
+      if (iv.b[0] < allMin) allMin = iv.b[0];
+      if (iv.b[1] > allMax) allMax = iv.b[1];
+    }
+    const range = allMax - allMin || 1;
+
+    result.intervals.forEach((iv, i) => {
+      const id = ids[i];
+      const aSeg = document.getElementById('ax-' + id + '-a');
+      const bSeg = document.getElementById('ax-' + id + '-b');
+      const gapEl = document.getElementById('ax-' + id + '-gap');
+      const track = aSeg.parentElement;
+
+      const aL = (iv.a[0] - allMin) / range;
+      const aR = (iv.a[1] - allMin) / range;
+      const bL = (iv.b[0] - allMin) / range;
+      const bR = (iv.b[1] - allMin) / range;
+
+      aSeg.style.left = (aL * 100) + '%';
+      aSeg.style.width = Math.max(2, (aR - aL) * 100) + '%';
+      bSeg.style.left = (bL * 100) + '%';
+      bSeg.style.width = Math.max(2, (bR - bL) * 100) + '%';
+
+      const separated = iv.a[1] < iv.b[0] || iv.b[1] < iv.a[0];
+      const row = document.getElementById('ax-row-' + i);
+      if (separated) {
+        track.style.background = '#0d1f0d';
+        track.style.borderColor = '#1a3a1a';
+        gapEl.style.color = '#50dc96';
+        gapEl.textContent = 'GAP — boxes separated along this axis';
+      } else {
+        track.style.background = '#1f0d0d';
+        track.style.borderColor = '#3a1a1a';
+        gapEl.style.color = '#dc5050';
+        gapEl.textContent = 'Overlap: ' + Math.abs(Math.min(iv.a[1], iv.b[1]) - Math.max(iv.a[0], iv.b[0])).toFixed(1) + 'px';
+      }
+    });
+  }
+
+  function draw() {
+    dims = resizeCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+
+    obbA.angle = parseFloat(angleASlider.value) * Math.PI / 180;
+    obbB.angle = parseFloat(angleBSlider.value) * Math.PI / 180;
+
+    const ptsA = obbVertices(obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy);
+    const ptsB = obbVertices(obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy);
+
+    const axesA = getOBBAxes(obbA.angle);
+    const axesB = getOBBAxes(obbB.angle);
+    const allAxes = [...axesA, ...axesB];
+
+    const result = satTest(ptsA, ptsB, allAxes);
+
+    // Draw dashed axis lines for each of the 4 axes
+    const axisColors = ['#5b9bd5','#5b9bd5','#e8a838','#e8a838'];
+    allAxes.forEach(([ax, ay], i) => {
+      const perpX = -ay, perpY = ax;
+      const len = Math.max(w, h) * 1.5;
+      const src = i < 2 ? obbA : obbB;
+      const midX = src.cx, midY = src.cy;
+      ctx.save();
+      ctx.setLineDash([4, 6]);
+      ctx.strokeStyle = axisColors[i] + '44';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(midX - perpX * len, midY - perpY * len);
+      ctx.lineTo(midX + perpX * len, midY + perpY * len);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // Draw OBBs
+    drawOBB(ctx, obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy, 'rgba(91,155,213,0.12)', '#5b9bd5');
+    drawOBB(ctx, obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy, 'rgba(232,168,56,0.12)', '#e8a838');
+
+    // Axis arrows from each OBB's center
+    const cosA = Math.cos(obbA.angle), sinA = Math.sin(obbA.angle);
+    const cosB = Math.cos(obbB.angle), sinB = Math.sin(obbB.angle);
+    const al = 40;
+    drawArrow(ctx, obbA.cx, obbA.cy, obbA.cx + cosA * al, obbA.cy + sinA * al, '#5b9bd5', 'A[0]');
+    drawArrow(ctx, obbA.cx, obbA.cy, obbA.cx - sinA * al, obbA.cy + cosA * al, '#5b9bd5', 'A[1]');
+    drawArrow(ctx, obbB.cx, obbB.cy, obbB.cx + cosB * al, obbB.cy + sinB * al, '#e8a838', 'B[0]');
+    drawArrow(ctx, obbB.cx, obbB.cy, obbB.cx - sinB * al, obbB.cy + cosB * al, '#e8a838', 'B[1]');
+
+    // Labels
+    ctx.save();
+    ctx.font = 'bold 12px -apple-system, sans-serif';
+    ctx.fillStyle = '#5b9bd5';
+    ctx.fillText('A', obbA.cx - 4, obbA.cy + 5);
+    ctx.fillStyle = '#e8a838';
+    ctx.fillText('B', obbB.cx - 4, obbB.cy + 5);
+    ctx.restore();
+
+    // Status
+    if (result.separated) {
+      statusEl.className = 'status separated';
+      statusEl.textContent = 'SEPARATED — gap found on axis ' + (result.separatingAxisIdx < 2 ? 'A[' + result.separatingAxisIdx + ']' : 'B[' + (result.separatingAxisIdx - 2) + ']');
+    } else {
+      statusEl.className = 'status colliding';
+      statusEl.textContent = 'COLLIDING — all 4 axes overlap';
+    }
+
+    updateAxisPanel(result, allAxes);
+  }
+
+  angleASlider.addEventListener('input', () => { angleAVal.textContent = angleASlider.value + '°'; draw(); });
+  angleBSlider.addEventListener('input', () => { angleBVal.textContent = angleBSlider.value + '°'; draw(); });
+  window.addEventListener('resize', () => { initPositions(); draw(); });
+
+  // Init
+  dims = resizeCanvas();
+  initPositions();
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────
+// Demo 3 — Full draggable OBB intersection with MTV
+// ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('demo3');
+  const resizeCanvas = setupCanvas(canvas, 340);
+  let dims = resizeCanvas();
+  const statusEl = document.getElementById('demo3-status');
+
+  const DEFAULT_A = { cx: 0, cy: 0, angle: 20 * Math.PI / 180, sx: 90, sy: 45 };
+  const DEFAULT_B = { cx: 0, cy: 0, angle: -30 * Math.PI / 180, sx: 70, sy: 50 };
+
+  let obbA, obbB;
+
+  function initDefaults() {
+    const w = dims.w, h = dims.h;
+    obbA = { cx: w * 0.36, cy: h / 2, angle: DEFAULT_A.angle, sx: DEFAULT_A.sx, sy: DEFAULT_A.sy };
+    obbB = { cx: w * 0.64, cy: h / 2, angle: DEFAULT_B.angle, sx: DEFAULT_B.sx, sy: DEFAULT_B.sy };
+  }
+
+  // Handle identifiers
+  const DRAG_BODY_A = 'body_a', DRAG_BODY_B = 'body_b';
+  const DRAG_ROT_A = 'rot_a', DRAG_ROT_B = 'rot_b';
+  const DRAG_SCALE_A = 'scale_a', DRAG_SCALE_B = 'scale_b';
+
+  let drag = null;
+
+  function getRotHandle(obb) {
+    const cos = Math.cos(obb.angle), sin = Math.sin(obb.angle);
+    const dist = obb.sx * 1.3;
+    return [obb.cx + cos * dist, obb.cy + sin * dist];
+  }
+
+  function getScaleHandle(obb) {
+    const cos = Math.cos(obb.angle), sin = Math.sin(obb.angle);
+    const cx2 = obb.cx + cos * obb.sx - sin * obb.sy;
+    const cy2 = obb.cy + sin * obb.sx + cos * obb.sy;
+    return [cx2, cy2];
+  }
+
+  function hitHandle(mx, my, hx, hy, r) {
+    return Math.hypot(mx - hx, my - hy) <= r;
+  }
+
+  function getEventPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - rect.left, src.clientY - rect.top];
+  }
+
+  function onDown(e) {
+    const [mx, my] = getEventPos(e);
+
+    // Check handles first (priority over body)
+    const [rAx, rAy] = getRotHandle(obbA);
+    const [rBx, rBy] = getRotHandle(obbB);
+    const [sAx, sAy] = getScaleHandle(obbA);
+    const [sBx, sBy] = getScaleHandle(obbB);
+
+    if (hitHandle(mx, my, rBx, rBy, 10)) { drag = { type: DRAG_ROT_B }; }
+    else if (hitHandle(mx, my, sBx, sBy, 10)) { drag = { type: DRAG_SCALE_B, ox: mx, oy: my, sx0: obbB.sx, sy0: obbB.sy }; }
+    else if (hitHandle(mx, my, rAx, rAy, 10)) { drag = { type: DRAG_ROT_A }; }
+    else if (hitHandle(mx, my, sAx, sAy, 10)) { drag = { type: DRAG_SCALE_A, ox: mx, oy: my, sx0: obbA.sx, sy0: obbA.sy }; }
+    else if (pointInOBB(mx, my, obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy)) {
+      drag = { type: DRAG_BODY_B, ox: mx - obbB.cx, oy: my - obbB.cy };
+    } else if (pointInOBB(mx, my, obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy)) {
+      drag = { type: DRAG_BODY_A, ox: mx - obbA.cx, oy: my - obbA.cy };
+    }
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!drag) return;
+    const [mx, my] = getEventPos(e);
+    switch (drag.type) {
+      case DRAG_BODY_A: obbA.cx = mx - drag.ox; obbA.cy = my - drag.oy; break;
+      case DRAG_BODY_B: obbB.cx = mx - drag.ox; obbB.cy = my - drag.oy; break;
+      case DRAG_ROT_A: obbA.angle = Math.atan2(my - obbA.cy, mx - obbA.cx); break;
+      case DRAG_ROT_B: obbB.angle = Math.atan2(my - obbB.cy, mx - obbB.cx); break;
+      case DRAG_SCALE_A: {
+        const dx = mx - drag.ox, dy = my - drag.oy;
+        const dist = Math.hypot(dx, dy);
+        const sign = (Math.hypot(mx - obbA.cx, my - obbA.cy) > Math.hypot(drag.ox - obbA.cx, drag.oy - obbA.cy)) ? 1 : -1;
+        const delta = sign * dist;
+        obbA.sx = Math.max(15, drag.sx0 + delta * 0.7);
+        obbA.sy = Math.max(10, drag.sy0 + delta * 0.4);
+        drag.ox = mx; drag.oy = my; drag.sx0 = obbA.sx; drag.sy0 = obbA.sy;
+        break;
+      }
+      case DRAG_SCALE_B: {
+        const dx = mx - drag.ox, dy = my - drag.oy;
+        const dist = Math.hypot(dx, dy);
+        const sign = (Math.hypot(mx - obbB.cx, my - obbB.cy) > Math.hypot(drag.ox - obbB.cx, drag.oy - obbB.cy)) ? 1 : -1;
+        const delta = sign * dist;
+        obbB.sx = Math.max(15, drag.sx0 + delta * 0.7);
+        obbB.sy = Math.max(10, drag.sy0 + delta * 0.4);
+        drag.ox = mx; drag.oy = my; drag.sx0 = obbB.sx; drag.sy0 = obbB.sy;
+        break;
+      }
+    }
+    draw();
+    e.preventDefault();
+  }
+
+  function onUp() { drag = null; }
+
+  canvas.addEventListener('mousedown', onDown);
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseup', onUp);
+  canvas.addEventListener('mouseleave', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  canvas.addEventListener('touchmove', onMove, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
+  document.getElementById('demo3-reset').addEventListener('click', () => {
+    dims = resizeCanvas();
+    initDefaults();
+    draw();
+  });
+
+  function draw() {
+    dims = resizeCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+
+    const ptsA = obbVertices(obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy);
+    const ptsB = obbVertices(obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy);
+
+    const axesA = getOBBAxes(obbA.angle);
+    const axesB = getOBBAxes(obbB.angle);
+    const allAxes = [...axesA, ...axesB];
+
+    const result = satTest(ptsA, ptsB, allAxes);
+
+    // Draw full-canvas dashed axis lines
+    const axisColors = ['#5b9bd5','#5b9bd5','#e8a838','#e8a838'];
+    allAxes.forEach(([ax, ay], i) => {
+      const perpX = -ay, perpY = ax;
+      const len = Math.max(w, h) * 2;
+      const src = i < 2 ? obbA : obbB;
+      ctx.save();
+      ctx.setLineDash([3, 7]);
+      ctx.strokeStyle = axisColors[i] + '33';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(src.cx - perpX * len, src.cy - perpY * len);
+      ctx.lineTo(src.cx + perpX * len, src.cy + perpY * len);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // OBBs
+    const colA = result.separated ? 'rgba(91,155,213,0.15)' : 'rgba(220,80,80,0.12)';
+    const colB = result.separated ? 'rgba(232,168,56,0.15)' : 'rgba(220,80,80,0.12)';
+    const strA = result.separated ? '#5b9bd5' : '#dc5050';
+    const strB = result.separated ? '#e8a838' : '#dc5050';
+    drawOBB(ctx, obbA.cx, obbA.cy, obbA.angle, obbA.sx, obbA.sy, colA, strA);
+    drawOBB(ctx, obbB.cx, obbB.cy, obbB.angle, obbB.sx, obbB.sy, colB, strB);
+
+    // MTV arrow
+    if (!result.separated && result.minAxis) {
+      const [ax, ay] = result.minAxis;
+      // Ensure MTV pushes A away from B
+      const centerDx = obbA.cx - obbB.cx, centerDy = obbA.cy - obbB.cy;
+      const dot = centerDx * ax + centerDy * ay;
+      const sign = dot < 0 ? -1 : 1;
+      const mtvX = ax * sign * result.minOverlap;
+      const mtvY = ay * sign * result.minOverlap;
+      const midX = (obbA.cx + obbB.cx) / 2, midY = (obbA.cy + obbB.cy) / 2;
+      drawArrow(ctx, midX, midY, midX + mtvX, midY + mtvY, '#50dc96', 'MTV');
+    }
+
+    // Rotation handle (circle)
+    const [rAx, rAy] = getRotHandle(obbA);
+    const [rBx, rBy] = getRotHandle(obbB);
+    ctx.save();
+    ctx.fillStyle = '#5b9bd5';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(rAx, rAy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e8a838';
+    ctx.beginPath(); ctx.arc(rBx, rBy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Scale handle (square)
+    const [sAx, sAy] = getScaleHandle(obbA);
+    const [sBx, sBy] = getScaleHandle(obbB);
+    ctx.save();
+    ctx.fillStyle = '#5b9bd5';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(sAx - 5, sAy - 5, 10, 10);
+    ctx.strokeRect(sAx - 5, sAy - 5, 10, 10);
+    ctx.fillStyle = '#e8a838';
+    ctx.fillRect(sBx - 5, sBy - 5, 10, 10);
+    ctx.strokeRect(sBx - 5, sBy - 5, 10, 10);
+    ctx.restore();
+
+    // Labels
+    ctx.save();
+    ctx.font = 'bold 13px -apple-system, sans-serif';
+    ctx.fillStyle = '#5b9bd5'; ctx.fillText('A', obbA.cx - 4, obbA.cy + 5);
+    ctx.fillStyle = '#e8a838'; ctx.fillText('B', obbB.cx - 4, obbB.cy + 5);
+    ctx.restore();
+
+    // Status
+    if (result.separated) {
+      statusEl.className = 'status separated';
+      statusEl.textContent = 'SEPARATED';
+    } else {
+      statusEl.className = 'status colliding';
+      statusEl.textContent = 'COLLIDING — MTV = ' + result.minOverlap.toFixed(1) + 'px';
+    }
+  }
+
+  window.addEventListener('resize', () => { dims = resizeCanvas(); initDefaults(); draw(); });
+  dims = resizeCanvas();
+  initDefaults();
+  draw();
+})();
+
+// ─────────────────────────────────────────────────────────
+// Demo 4 — Gaussian → OBB
+// ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('demo4');
+  const resizeCanvas = setupCanvas(canvas, 320);
+  let dims = resizeCanvas();
+
+  const sxSlider = document.getElementById('d4-sx');
+  const sySlider = document.getElementById('d4-sy');
+  const angleSlider = document.getElementById('d4-angle');
+  const covSlider = document.getElementById('d4-cov');
+  const sxVal = document.getElementById('d4-sx-val');
+  const syVal = document.getElementById('d4-sy-val');
+  const angleVal = document.getElementById('d4-angle-val');
+  const covVal = document.getElementById('d4-cov-val');
+  const labelEl = document.getElementById('demo4-label');
+
+  function draw() {
+    dims = resizeCanvas();
+    const ctx = canvas.getContext('2d');
+    const w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+
+    const sigX = parseFloat(sxSlider.value);
+    const sigY = parseFloat(sySlider.value);
+    const angle = parseFloat(angleSlider.value) * Math.PI / 180;
+    const n = parseFloat(covSlider.value);
+    const cx = w / 2, cy = h / 2;
+
+    // Draw iso-ellipses at 1σ, 2σ, 3σ
+    const levels = [
+      { k: 1, alpha: 0.2, width: 1 },
+      { k: 2, alpha: 0.45, width: 1.2 },
+      { k: 3, alpha: 0.75, width: 1.5 },
+    ];
+
+    levels.forEach(({ k, alpha, width }) => {
+      if (k > n + 0.1) return; // only draw up to chosen coverage
+      ctx.save();
+      ctx.strokeStyle = `rgba(91,155,213,${alpha})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, k * sigX, k * sigY, angle, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Filled interior of 1σ ellipse (subtle)
+    ctx.save();
+    ctx.fillStyle = 'rgba(91,155,213,0.06)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, sigX, sigY, angle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // OBB bounding the chosen coverage level
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#50dc96';
+    ctx.lineWidth = 1.5;
+    // OBB scale = n * (sigX, sigY), rotation = angle
+    const obbSx = n * sigX, obbSy = n * sigY;
+    const pts = obbVertices(cx, cy, angle, obbSx, obbSy);
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Principal axis arrows
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const axLen = Math.min(sigX, 90) + 20;
+    drawArrow(ctx, cx, cy, cx + cos * axLen, cy + sin * axLen, '#5b9bd5', 'σ_x axis');
+    drawArrow(ctx, cx, cy, cx + (-sin) * Math.min(sigY, 60) + 5, cy + cos * Math.min(sigY, 60) + 5, '#e8a838', 'σ_y axis');
+
+    // Center dot
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Sigma labels on ellipses
+    const labelColor = 'rgba(91,155,213,0.6)';
+    ctx.save();
+    ctx.font = '11px monospace';
+    ctx.fillStyle = labelColor;
+    [1, 2, 3].forEach(k => {
+      if (k > n + 0.1) return;
+      const ex = cx + cos * k * sigX;
+      const ey = cy + sin * k * sigX;
+      ctx.fillText(k + 'σ', ex + 4, ey - 4);
+    });
+    ctx.restore();
+
+    labelEl.textContent = `OBB = ${n}σ bounding box | scale = (${(n * sigX).toFixed(0)}, ${(n * sigY).toFixed(0)}) px`;
+  }
+
+  sxSlider.addEventListener('input', () => { sxVal.textContent = sxSlider.value; draw(); });
+  sySlider.addEventListener('input', () => { syVal.textContent = sySlider.value; draw(); });
+  angleSlider.addEventListener('input', () => { angleVal.textContent = angleSlider.value + '°'; draw(); });
+  covSlider.addEventListener('input', () => { covVal.textContent = parseFloat(covSlider.value).toFixed(1); draw(); });
+  window.addEventListener('resize', draw);
+  draw();
+})();
+</script>
+</body>
+</html>
