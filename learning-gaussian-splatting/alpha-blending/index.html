@@ -1244,24 +1244,25 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
     updateStepStates();
   });
 
-  // ── Canvas drawing ───────────────────────────────────────────────
+  // ── Canvas drawing — 2-column vertical layout ────────────────────
   function drawBlendScene() {
     const { states } = blendLayers(layers);
     const N = layers.length;
 
-    // Layout constants
-    const boxW = 64, boxH = 40, arrowW = 40;
-    const ITEMS_PER_ROW = 5;
-    const numRows = Math.ceil((N + 1) / ITEMS_PER_ROW);
-    const rowSlotH = 130; // vertical space per row (box + chip above + label below)
-    const newCssH = numRows * rowSlotH + 20;
+    // Layout
+    const PAD = 16;
+    const SWATCH_W = 72;
+    const SWATCH_H = 36;
+    const STATE_ROW_H = 50;  // height of each state row
+    const CONN_H = 44;        // height of connector between states
+    const SLOT_H = STATE_ROW_H + CONN_H;
+    const totalCssH = PAD + STATE_ROW_H + N * SLOT_H + PAD;
 
-    // Resize canvas height when rows change
     const dpr = window.devicePixelRatio || 1;
-    if (canvas._cssH !== newCssH) {
-      canvas._cssH = newCssH;
-      canvas.height = Math.round(newCssH * dpr);
-      canvas.style.height = newCssH + 'px';
+    if (canvas._cssH !== totalCssH) {
+      canvas._cssH = totalCssH;
+      canvas.height = Math.round(totalCssH * dpr);
+      canvas.style.height = totalCssH + 'px';
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     }
@@ -1269,67 +1270,74 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
     const W = canvas._cssW;
     const H = canvas._cssH;
     ctx.clearRect(0, 0, W, H);
-
-    // Background
     drawCheckerboard(ctx, 0, 0, W, H, 18);
 
-    // Draw state boxes and arrows — wrapping into multiple rows
+    // Column positions
+    const LEFT_X = PAD;
+    const RIGHT_X = LEFT_X + SWATCH_W + 32;
+    const arrowCX = LEFT_X + SWATCH_W / 2;
+
     for (let i = 0; i <= N; i++) {
       const s = states[i];
-      const rowIdx = Math.floor(i / ITEMS_PER_ROW);
-      const colIdx = i % ITEMS_PER_ROW;
-      const itemsInRow = Math.min(ITEMS_PER_ROW, N + 1 - rowIdx * ITEMS_PER_ROW);
-      const rowW = itemsInRow * boxW + (itemsInRow - 1) * arrowW;
-      const startX = Math.max(8, (W - rowW) / 2);
-      const sx = startX + colIdx * (boxW + arrowW);
-      const sy = 30 + rowIdx * rowSlotH;
+      const rowTopY = PAD + i * SLOT_H;
+      const swatchY = rowTopY + (STATE_ROW_H - SWATCH_H) / 2;
 
-      // State box — composite over dark bg for display
-      const dispR = s.r + s.a * 0.04;
-      const dispG = s.g + s.a * 0.04;
-      const dispB = s.b + s.a * 0.04;
-
+      // Left: state swatch
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(sx, sy, boxW, boxH, 6);
+      ctx.roundRect(LEFT_X, swatchY, SWATCH_W, SWATCH_H, 6);
       ctx.clip();
-      drawCheckerboard(ctx, sx, sy, boxW, boxH, 6);
+      drawCheckerboard(ctx, LEFT_X, swatchY, SWATCH_W, SWATCH_H, 7);
       ctx.fillStyle = rgbCSS(s.r, s.g, s.b);
-      ctx.globalAlpha = 1 - s.a; // show accumulated colour with remaining transparency
-      ctx.fillRect(sx, sy, boxW, boxH);
+      ctx.globalAlpha = 1 - s.a;
+      ctx.fillRect(LEFT_X, swatchY, SWATCH_W, SWATCH_H);
       ctx.restore();
-
-      ctx.strokeStyle = i === 0 ? '#333' : '#445';
+      ctx.strokeStyle = '#333';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(sx, sy, boxW, boxH, 6);
+      ctx.roundRect(LEFT_X, swatchY, SWATCH_W, SWATCH_H, 6);
       ctx.stroke();
 
-      // Label
-      ctx.font = '10px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#555';
-      ctx.fillText(i === 0 ? 'initial' : `after G${i}`, sx + boxW / 2, sy + boxH + 14);
-
-      // Remaining alpha text
+      // Right: text details aligned with swatch
+      const midY = rowTopY + STATE_ROW_H / 2;
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px -apple-system, sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.fillText(i === 0 ? 'Initial' : `After G${i}`, RIGHT_X, midY - 10);
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#666';
+      ctx.fillText(`rgb  (${s.r.toFixed(2)}, ${s.g.toFixed(2)}, ${s.b.toFixed(2)})`, RIGHT_X, midY + 4);
       ctx.fillStyle = '#5b9bd5';
-      ctx.font = '10px monospace';
-      ctx.fillText(`\u03b1=${s.a.toFixed(2)}`, sx + boxW / 2, sy + boxH / 2 + 4);
+      ctx.fillText(`rem-\u03b1 = ${s.a.toFixed(3)}`, RIGHT_X, midY + 18);
 
-      // Arrow to next state (only within the same row)
-      const isLastInRow = (colIdx === ITEMS_PER_ROW - 1) || (i === N);
-      if (i < N && !isLastInRow) {
-        const ax = sx + boxW + 2;
-        const ay = sy + boxH / 2;
-        const aw = arrowW - 4;
+      // Connector to next state: vertical arrow + Gaussian chip
+      if (i < N) {
         const layer = layers[i];
+        const connTopY = rowTopY + STATE_ROW_H;
+        const arrowTopY = connTopY + 4;
+        const arrowBotY = connTopY + CONN_H - 4;
 
-        // Draw Gaussian chip above the arrow
-        const chipW = 28;
+        // Vertical arrow
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(arrowCX, arrowTopY);
+        ctx.lineTo(arrowCX, arrowBotY - 6);
+        ctx.stroke();
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(arrowCX, arrowBotY);
+        ctx.lineTo(arrowCX - 4, arrowBotY - 7);
+        ctx.lineTo(arrowCX + 4, arrowBotY - 7);
+        ctx.closePath();
+        ctx.fill();
+
+        // Gaussian chip beside the arrow
+        const chipX = arrowCX + 10;
+        const chipW = 36;
         const chipH = 20;
-        const chipX = ax + (aw - chipW) / 2;
-        const chipY = ay - chipH - 8;
-
+        const chipY = connTopY + (CONN_H - chipH) / 2;
         ctx.save();
         ctx.beginPath();
         ctx.roundRect(chipX, chipY, chipW, chipH, 3);
@@ -1345,71 +1353,16 @@ function drawColorSwatch(ctx, x, y, w, h, r, g, b, a, radius) {
         ctx.stroke();
 
         ctx.font = '9px monospace';
-        ctx.fillStyle = '#444';
-        ctx.textAlign = 'center';
-        ctx.fillText(`a=${layer.a.toFixed(2)}`, ax + aw / 2, chipY - 3);
-
-        // Arrow line
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(ax + aw, ay);
-        ctx.stroke();
-        // Arrowhead
-        ctx.fillStyle = '#333';
-        ctx.beginPath();
-        ctx.moveTo(ax + aw, ay);
-        ctx.lineTo(ax + aw - 7, ay - 4);
-        ctx.lineTo(ax + aw - 7, ay + 4);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillStyle = '#555';
+        ctx.textAlign = 'left';
+        ctx.fillText(`G${i + 1}  a=${layer.a.toFixed(2)}`, chipX + chipW + 6, chipY + chipH / 2 + 3);
       }
     }
-
-    // Final composite preview
-    // Final composite preview — small swatch in bottom-right corner
-    const lastState = states[N];
-    const previewW = 56, previewH = 36;
-    const previewX = W - previewW - 8;
-    const previewY = H - previewH - 16;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(previewX, previewY, previewW, previewH, 5);
-    ctx.clip();
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(previewX, previewY, previewW, previewH);
-    ctx.fillStyle = rgbCSS(lastState.r, lastState.g, lastState.b);
-    ctx.globalAlpha = 1 - lastState.a;
-    ctx.fillRect(previewX, previewY, previewW, previewH);
-    ctx.restore();
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(previewX, previewY, previewW, previewH, 5);
-    ctx.stroke();
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.fillStyle = '#555';
-    ctx.textAlign = 'center';
-    ctx.fillText('final', previewX + previewW / 2, previewY + previewH + 12);
   }
 
   function updateStepStates() {
-    const { states } = blendLayers(layers);
-    const container = document.getElementById('step-states-display');
-    container.innerHTML = '';
-    states.forEach((s, i) => {
-      const box = document.createElement('div');
-      box.className = 'step-state-box';
-      box.innerHTML = `
-        <div class="step-label">${i === 0 ? 'Initial' : `After G${i}`}</div>
-        <div class="step-rgb">rgb (${s.r.toFixed(2)}, ${s.g.toFixed(2)}, ${s.b.toFixed(2)})</div>
-        <div class="step-alpha">rem-\u03b1 = ${s.a.toFixed(3)}</div>
-      `;
-      container.appendChild(box);
-    });
+    // State details are now shown in the canvas
+    document.getElementById('step-states-display').innerHTML = '';
   }
 
   rebuildLayerUI();
