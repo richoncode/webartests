@@ -39,6 +39,8 @@
   ul { color: #999; line-height: 1.7; margin-bottom: 12px; padding-left: 20px; }
   ul li { margin-bottom: 4px; }
   .canvas-label { font-size: 12px; color: #555; text-align: center; margin-top: -12px; margin-bottom: 16px; }
+  .subsection { margin-top: 40px; padding-top: 32px; border-top: 1px solid #1e1e1e; }
+  .subsection-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; color: #ccc; }
 </style>
 </head>
 <body>
@@ -154,7 +156,7 @@ SortedShortList bitonicSort(PaddedShortList, uint localIdx)
     <div class="status-row">
       <div class="status-pill">Round: <span id="reductionRoundLabel">—</span></div>
       <div class="status-pill">Stride: <span id="reductionStrideLabel">—</span></div>
-      <div class="status-pill">Active threads: <span id="reductionActiveLabel">—</span></div>
+      <div class="status-pill">Threads adding: <span id="reductionActiveLabel">—</span></div>
       <div class="status-pill">Thread 0 value: <span id="reductionThread0Label">—</span></div>
     </div>
 
@@ -197,7 +199,18 @@ SortedShortList bitonicSort(PaddedShortList, uint localIdx)
   <!-- SECTION 4: BITONIC SORT -->
   <div class="section">
     <div class="section-title">4. Bitonic Sort</div>
-    <p>Gaussian splats must be composited <span class="highlight-amber">back-to-front</span> so that alpha blending produces correct results — a closer translucent splat must be drawn on top of a farther one, not under it. Before blending, the shader sorts each workgroup's short-list of Gaussians by depth using a bitonic sort.</p>
+    <p><strong style="color:#fff">Why sort at all?</strong> Each workgroup processes one tile of the output image. Before blending, it gathers every Gaussian whose projected ellipse overlaps that tile into a short-list in shared memory — typically 16–64 entries. Those Gaussians are translucent: they have an opacity α ∈ (0, 1). Alpha blending is <span class="highlight-amber">order-dependent</span>. The correct formula composites back-to-front:</p>
+    <pre style="margin-bottom: 16px;">C_out = α · C_gaussian + (1 − α) · C_in</pre>
+    <p>A closer splat must be blended <em>last</em>, on top of everything behind it. Blend them in the wrong order and the final pixel colour is wrong — nearer translucent objects appear to bleed through farther ones. So the short-list must be sorted by depth (far → near) before the blending loop runs.</p>
+
+    <p><strong style="color:#fff">Why bitonic sort specifically?</strong> Most sorting algorithms are poor fits for GPU execution:</p>
+    <ul>
+      <li><strong style="color:#ccc">Quicksort / introsort</strong> — recursive, irregular branching, pivot-dependent memory access patterns. Threads diverge constantly.</li>
+      <li><strong style="color:#ccc">Merge sort</strong> — requires a temporary buffer and inter-thread communication to merge sub-arrays. Hard to parallelise within one workgroup.</li>
+      <li><strong style="color:#ccc">Insertion sort</strong> — inherently serial; each step depends on the result of the previous one.</li>
+    </ul>
+    <p>Bitonic sort avoids all of these problems. In every pass, every thread does <em>exactly the same thing</em>: compare element <code style="color:#a8e6cf">i</code> with element <code style="color:#a8e6cf">i XOR j</code>, then conditionally swap. No thread needs to know what any other thread found. All N/2 pairs in a pass are disjoint, so all comparisons are independent — no data hazards, no mid-pass barriers. The swap direction is decided by a single bitmask test with no branching. The entire sort runs in shared memory, which is hundreds of times faster than global memory. This is exactly the kind of uniform, data-parallel, low-divergence work that GPU hardware is built for.</p>
+
     <p><strong style="color:#fff">What is a bitonic sequence?</strong> A sequence that first monotonically increases then monotonically decreases (or vice versa). Bitonic sort builds and merges such sequences until the whole array is sorted.</p>
     <p><strong style="color:#fff">The algorithm:</strong></p>
     <ul>
@@ -227,6 +240,57 @@ SortedShortList bitonicSort(PaddedShortList, uint localIdx)
 
     <canvas id="bitonicNetwork" height="200"></canvas>
     <p class="canvas-label">Bitonic sort comparison network for N=8. Connectors show which pairs are compared in each pass; direction (up/down arrow) shows the required sort order for that block.</p>
+
+    <!-- Sub-section 4a: XOR Pairing -->
+    <div class="subsection">
+      <div class="subsection-title">4a. XOR Pairing — the butterfly network</div>
+      <p>In every pass, each thread computes its partner as <code>l = i ^ j</code>. XOR flips exactly one bit, so every thread independently finds its unique partner — no coordination needed, and all N/2 pairs in a pass are disjoint.</p>
+      <div class="controls">
+        <button id="xorBtn1" class="active">j = 1 (bit 0)</button>
+        <button id="xorBtn2">j = 2 (bit 1)</button>
+        <button id="xorBtn4">j = 4 (bit 2)</button>
+      </div>
+      <canvas id="xorPairingCanvas" height="140"></canvas>
+      <div class="info-box">
+        <p>XOR with j flips exactly one bit → every thread gets a guaranteed unique partner, independently. All N/2 pairs are disjoint — no element appears twice — so all comparisons run simultaneously with no data hazards.</p>
+      </div>
+    </div>
+
+    <!-- Sub-section 4b: Swap Direction -->
+    <div class="subsection">
+      <div class="subsection-title">4b. Swap Direction — ascending vs. descending groups</div>
+      <p><code>(i &amp; k) == 0</code> assigns each thread to the ascending or descending half of its k-group. This builds interlocking bitonic sequences ready for the next merge stage.</p>
+      <div class="controls">
+        <button id="swapDirBtn2" class="active">k = 2</button>
+        <button id="swapDirBtn4">k = 4</button>
+        <button id="swapDirBtn8">k = 8</button>
+        <button id="swapDirBtn16">k = 16</button>
+      </div>
+      <canvas id="swapDirCanvas" height="220"></canvas>
+      <div class="info-box">
+        <p>(i &amp; k) == 0 means thread i has the k-bit clear → it is in the lower half of its k-group → sort ascending. Opposite for upper half. Each k-level doubles the group size, building bitonic sequences that are ready for the next merge stage.</p>
+      </div>
+    </div>
+
+    <!-- Sub-section 4c: Bitonic Merge Insight -->
+    <div class="subsection">
+      <div class="subsection-title">4c. Bitonic Merge Insight — why it converges</div>
+      <p>A bitonic sequence (rises then falls) is sorted by log₂(N) butterfly passes, each halving the disorder. Step through the three passes to see how <code>[2,4,6,8,7,5,3,1]</code> becomes fully sorted.</p>
+      <div class="status-row">
+        <div class="status-pill">Pass: <span id="mergePassLabel">0</span> / 3</div>
+        <div class="status-pill">j = <span id="mergeJLabel">—</span></div>
+        <div class="status-pill">Swaps this pass: <span id="mergeSwapsLabel">—</span></div>
+      </div>
+      <div class="controls">
+        <button id="mergeNext">Next Pass</button>
+        <button id="mergeReset">Reset</button>
+      </div>
+      <canvas id="bitonicMergeCanvas" height="280"></canvas>
+      <div class="info-box">
+        <p>Each butterfly pass over a bitonic sequence produces two smaller bitonic sequences. After log₂(N) passes, every element has been globally compared and the result is sorted. This recursive halving is why the algorithm is correct.</p>
+      </div>
+    </div>
+
   </div>
 
   <!-- SECTION 5: WHY TOGETHER -->
@@ -396,8 +460,7 @@ function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
     const done = stepIndex >= strides.length;
     document.getElementById('reductionRoundLabel').textContent = done ? 'Done' : (stepIndex + 1) + ' / ' + strides.length;
     document.getElementById('reductionStrideLabel').textContent = done ? '—' : strides[stepIndex] || '—';
-    const active = done ? 1 : (stepIndex === 0 ? N : N / Math.pow(2, stepIndex));
-    document.getElementById('reductionActiveLabel').textContent = done ? '1' : String(N / Math.pow(2, stepIndex));
+    document.getElementById('reductionActiveLabel').textContent = done ? '—' : String(strides[stepIndex]);
     document.getElementById('reductionThread0Label').textContent = fmt(currentValues[0]);
   }
 
@@ -508,19 +571,32 @@ function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
       ctx.fillText(i, x + barW / 2, barZone.y + barZone.h + 12);
     }
 
-    // Draw pair arcs for current step
+    // Draw pair arcs for current step — each pair gets its own colour
     if (highlightStride > 0) {
-      ctx.strokeStyle = '#50dc96';
+      const ARC_PALETTE = ['#50dc96','#5b9bd5','#e8a838','#dc5050','#c792ea','#22d3d3','#f0a050','#a3d977'];
       ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 2]);
       for (let i = 0; i < highlightStride; i++) {
         const x1 = barZone.x + 10 + i * barW + barW / 2;
         const x2 = barZone.x + 10 + (i + highlightStride) * barW + barW / 2;
+        const color = ARC_PALETTE[i % ARC_PALETTE.length];
+
+        // Arc
+        ctx.strokeStyle = color;
+        ctx.setLineDash([3, 2]);
         ctx.beginPath();
         ctx.arc((x1 + x2) / 2, midY + 6, (x2 - x1) / 2, Math.PI, 0);
         ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Endpoint dots — receiver (left) and source (right)
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x1, midY + 6, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x2, midY + 6, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.setLineDash([]);
     }
 
     // Labels
@@ -1114,6 +1190,377 @@ function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
     ctx.textAlign = 'center';
     ctx.fillText('k=' + pass.k + ' j=' + pass.j, x, h - 4);
   });
+})();
+
+// ─────────────────────────────────────────────
+// Section 4a: XOR Pairing
+// ─────────────────────────────────────────────
+(function() {
+  const N = 8;
+  let currentJ = 1;
+  const pairColors = ['#5b9bd5', '#e8a838', '#50dc96', '#c792ea'];
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('xorPairingCanvas', 640, 140);
+    const boxW = 56, boxH = 48;
+    const gap = (w - N * boxW) / (N + 1);
+    const boxY = 16;
+    const wireY = boxY + boxH + 20;
+
+    // Assign pair colors
+    const pairOf = new Array(N);
+    const pairIdx = new Array(N);
+    let pairCount = 0;
+    const seen = new Set();
+    for (let i = 0; i < N; i++) {
+      if (!seen.has(i)) {
+        const partner = i ^ currentJ;
+        seen.add(i);
+        seen.add(partner);
+        pairOf[i] = pairCount;
+        pairOf[partner] = pairCount;
+        pairIdx[i] = 0;
+        pairIdx[partner] = 1;
+        pairCount++;
+      }
+    }
+
+    const flippedBit = Math.log2(currentJ);
+
+    // Draw bracket connectors
+    for (let p = 0; p < N / 2; p++) {
+      const col = pairColors[p % pairColors.length];
+      // Find the two indices in this pair
+      const members = [];
+      for (let i = 0; i < N; i++) { if (pairOf[i] === p) members.push(i); }
+      const [a, b] = members;
+      const xA = gap + a * (boxW + gap) + boxW / 2;
+      const xB = gap + b * (boxW + gap) + boxW / 2;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      // Drop from box bottom to wire
+      ctx.beginPath();
+      ctx.moveTo(xA, boxY + boxH);
+      ctx.lineTo(xA, wireY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(xB, boxY + boxH);
+      ctx.lineTo(xB, wireY);
+      ctx.stroke();
+      // Horizontal bar
+      ctx.beginPath();
+      ctx.moveTo(xA, wireY);
+      ctx.lineTo(xB, wireY);
+      ctx.stroke();
+    }
+
+    // Draw boxes
+    for (let i = 0; i < N; i++) {
+      const x = gap + i * (boxW + gap);
+      const col = pairColors[pairOf[i] % pairColors.length];
+
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = col + '88';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, boxY, boxW, boxH, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Index label (top)
+      ctx.fillStyle = '#ccc';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(i), x + boxW / 2, boxY + 16);
+
+      // Binary label (bottom) — highlight the flipped bit in amber
+      const bits = i.toString(2).padStart(3, '0');
+      const bitX = x + boxW / 2 - 13;
+      ctx.font = '10px monospace';
+      for (let b = 0; b < 3; b++) {
+        const isFlipped = (2 - b) === flippedBit;
+        ctx.fillStyle = isFlipped ? '#e8a838' : '#5b9bd5';
+        ctx.fillText(bits[b], bitX + b * 10, boxY + boxH - 8);
+      }
+    }
+
+    // Bottom text
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    const bitNum = Math.log2(currentJ);
+    ctx.fillText('l = i XOR j  (flipping bit ' + bitNum + ')', w / 2, h - 4);
+  }
+
+  function setJ(j) {
+    currentJ = j;
+    document.getElementById('xorBtn1').classList.toggle('active', j === 1);
+    document.getElementById('xorBtn2').classList.toggle('active', j === 2);
+    document.getElementById('xorBtn4').classList.toggle('active', j === 4);
+    draw();
+  }
+
+  document.getElementById('xorBtn1').addEventListener('click', () => setJ(1));
+  document.getElementById('xorBtn2').addEventListener('click', () => setJ(2));
+  document.getElementById('xorBtn4').addEventListener('click', () => setJ(4));
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 4b: Swap Direction
+// ─────────────────────────────────────────────
+(function() {
+  const N = 16;
+  let currentK = 2;
+  const displayVals = [14, 8, 3, 11, 6, 13, 1, 9, 15, 4, 12, 2, 7, 10, 5, 16];
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('swapDirCanvas', 640, 220);
+    const marginLeft = 24, marginRight = 24;
+    const chartTop = 36, chartBottom = h - 60;
+    const chartH = chartBottom - chartTop;
+    const barW = (w - marginLeft - marginRight) / N;
+    const maxVal = Math.max(...displayVals);
+
+    // Draw bars
+    for (let i = 0; i < N; i++) {
+      const ascending = (i & currentK) === 0;
+      const col = ascending ? '#5b9bd5' : '#e8a838';
+      const barH = (displayVals[i] / maxVal) * chartH;
+      const x = marginLeft + i * barW;
+      const y = chartBottom - barH;
+
+      ctx.fillStyle = col + '55';
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.fillRect(x + 1, y, barW - 2, barH);
+      ctx.strokeRect(x + 1, y, barW - 2, barH);
+
+      // Arrow inside taller bars
+      if (barH > 28) {
+        const arrowX = x + barW / 2;
+        const dir = ascending ? -1 : 1;
+        const arrowMidY = y + barH / 2;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowMidY - dir * 6);
+        ctx.lineTo(arrowX, arrowMidY + dir * 6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(arrowX - 3, arrowMidY + dir * 2);
+        ctx.lineTo(arrowX, arrowMidY + dir * 6);
+        ctx.lineTo(arrowX + 3, arrowMidY + dir * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Dashed group dividers and bracket labels
+    const numGroups = N / currentK;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    for (let g = 0; g <= numGroups; g++) {
+      const x = marginLeft + g * currentK * barW;
+      ctx.beginPath();
+      ctx.moveTo(x, chartTop - 10);
+      ctx.lineTo(x, chartBottom + 4);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Group bracket labels above
+    for (let g = 0; g < numGroups; g++) {
+      const x1 = marginLeft + g * currentK * barW;
+      const x2 = marginLeft + (g + 1) * currentK * barW;
+      const midX = (x1 + x2) / 2;
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('group ' + g, midX, chartTop - 14);
+    }
+
+    // Worked example at bottom
+    const exI = 5;
+    const exAnd = exI & currentK;
+    const exDir = exAnd === 0 ? 'ascending ↑' : 'descending ↓';
+    const kBit = Math.log2(currentK);
+    ctx.fillStyle = '#666';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+
+    // Highlight k-bit in the binary representation
+    const iBin = exI.toString(2).padStart(5, '0');
+    const kBin = currentK.toString(2).padStart(5, '0');
+    const andBin = exAnd.toString(2).padStart(5, '0');
+
+    const baseText = 'e.g. i=' + exI + ' (' + iBin + ') & k=' + currentK + ' (' + kBin + ') = ' + exAnd + ' → ' + exDir;
+    ctx.fillStyle = '#555';
+    ctx.font = '11px monospace';
+    ctx.fillText(baseText, w / 2, h - 12);
+
+    // Legend
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#5b9bd5';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('■ ascending (i & k = 0)', marginLeft, chartBottom + 20);
+    ctx.fillStyle = '#e8a838';
+    ctx.fillText('■ descending (i & k ≠ 0)', marginLeft + 160, chartBottom + 20);
+  }
+
+  function setK(k) {
+    currentK = k;
+    document.getElementById('swapDirBtn2').classList.toggle('active', k === 2);
+    document.getElementById('swapDirBtn4').classList.toggle('active', k === 4);
+    document.getElementById('swapDirBtn8').classList.toggle('active', k === 8);
+    document.getElementById('swapDirBtn16').classList.toggle('active', k === 16);
+    draw();
+  }
+
+  document.getElementById('swapDirBtn2').addEventListener('click', () => setK(2));
+  document.getElementById('swapDirBtn4').addEventListener('click', () => setK(4));
+  document.getElementById('swapDirBtn8').addEventListener('click', () => setK(8));
+  document.getElementById('swapDirBtn16').addEventListener('click', () => setK(16));
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 4c: Bitonic Merge Insight
+// ─────────────────────────────────────────────
+(function() {
+  const INITIAL = [2, 4, 6, 8, 7, 5, 3, 1];
+  const N = 8;
+
+  function computePasses() {
+    const passes = [];
+    let arr = INITIAL.slice();
+    // Single merge stage: k=8, j goes 4→2→1
+    for (let j = N / 2; j >= 1; j >>= 1) {
+      const before = arr.slice();
+      const pairs = [];
+      let swapCount = 0;
+      for (let i = 0; i < N; i++) {
+        const partner = i ^ j;
+        if (partner > i) {
+          const willSwap = arr[i] > arr[partner];
+          pairs.push({ i, partner, willSwap });
+          if (willSwap) {
+            const tmp = arr[i]; arr[i] = arr[partner]; arr[partner] = tmp;
+            swapCount++;
+          }
+        }
+      }
+      passes.push({ before, after: arr.slice(), pairs, j, swapCount });
+    }
+    return passes;
+  }
+
+  const passes = computePasses();
+  let passIdx = 0;
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('bitonicMergeCanvas', 640, 280);
+    const barW = Math.floor((w - 80) / N);
+    const marginX = (w - N * barW) / 2;
+    const maxVal = 8;
+
+    const rowTopY = 20;
+    const rowH = 90;
+    const rowBotY = rowTopY + rowH + 60;
+    const midY = rowTopY + rowH + 30;
+
+    const done = passIdx >= passes.length;
+
+    const before = done ? passes[passes.length - 1].after : passes[passIdx].before;
+    const after = done ? passes[passes.length - 1].after : passes[passIdx].after;
+    const pairs = done ? [] : passes[passIdx].pairs;
+
+    // Draw bracket connectors between rows
+    pairs.forEach(({ i, partner, willSwap }) => {
+      const col = willSwap ? '#e8a838' : '#5b9bd5';
+      const xA = marginX + i * barW + barW / 2;
+      const xB = marginX + partner * barW + barW / 2;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      // Drop from top-row bar bottom to midY
+      ctx.beginPath();
+      ctx.moveTo(xA, rowTopY + rowH);
+      ctx.lineTo(xA, midY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(xB, rowTopY + rowH);
+      ctx.lineTo(xB, midY);
+      ctx.stroke();
+      // Horizontal bar
+      ctx.beginPath();
+      ctx.moveTo(xA, midY);
+      ctx.lineTo(xB, midY);
+      ctx.stroke();
+      // Continue drop from midY to bottom-row bar top
+      ctx.beginPath();
+      ctx.moveTo(xA, midY);
+      ctx.lineTo(xA, rowBotY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(xB, midY);
+      ctx.lineTo(xB, rowBotY);
+      ctx.stroke();
+    });
+
+    function drawRow(vals, baseY, label) {
+      ctx.fillStyle = '#444';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, marginX, baseY - 6);
+
+      for (let i = 0; i < N; i++) {
+        const barH = Math.round((vals[i] / maxVal) * (rowH - 10));
+        const x = marginX + i * barW;
+        const y = baseY + rowH - barH;
+
+        ctx.fillStyle = '#1a2a3a';
+        ctx.strokeStyle = '#5b9bd5';
+        ctx.lineWidth = 1;
+        ctx.fillRect(x + 1, y, barW - 2, barH);
+        ctx.strokeRect(x + 1, y, barW - 2, barH);
+
+        ctx.fillStyle = '#888';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(vals[i], x + barW / 2, baseY + rowH + 12);
+      }
+    }
+
+    if (done) {
+      // Show sorted result in green
+      drawRow(after, rowTopY, 'Sorted result:');
+      ctx.fillStyle = '#50dc96';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Merge complete  [1, 2, 3, 4, 5, 6, 7, 8]', w / 2, h - 16);
+    } else {
+      drawRow(before, rowTopY, 'Before pass ' + (passIdx + 1) + ':');
+      drawRow(after, rowBotY, 'After pass ' + (passIdx + 1) + ':');
+    }
+
+    // Update status pills
+    document.getElementById('mergePassLabel').textContent = passIdx;
+    document.getElementById('mergeJLabel').textContent = done ? '—' : passes[passIdx].j;
+    document.getElementById('mergeSwapsLabel').textContent = done ? '—' : passes[passIdx].swapCount;
+  }
+
+  document.getElementById('mergeNext').addEventListener('click', () => {
+    if (passIdx <= passes.length) { passIdx++; draw(); }
+  });
+  document.getElementById('mergeReset').addEventListener('click', () => {
+    passIdx = 0; draw();
+  });
+  window.addEventListener('resize', draw);
+  draw();
 })();
 
 // ─────────────────────────────────────────────
