@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Render Pipeline — splatBlobs</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
+  .back-link:hover { color: #888; }
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 24px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #999; font-size: 15px; line-height: 1.7; max-width: 600px; }
+  .section { margin-bottom: 64px; }
+  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  p { color: #999; line-height: 1.7; margin-bottom: 12px; }
+  pre { background: #0a0a0a; border: 1px solid #222; color: #a8e6cf; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; white-space: pre; }
+  canvas { display: block; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; width: 100%; max-width: 640px; margin: 20px auto; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  .highlight-blue { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .page-header { margin-bottom: 56px; }
+  .info-box { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  .info-box p { margin: 0; }
+  .status-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .status-pill { background: #111; border: 1px solid #222; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #666; }
+  .status-pill span { color: #ccc; }
+  .canvas-label { font-size: 12px; color: #555; text-align: center; margin-top: -12px; margin-bottom: 16px; }
+  ul { color: #999; line-height: 1.7; margin-bottom: 12px; padding-left: 20px; }
+  ul li { margin-bottom: 4px; }
+  a { color: #5b9bd5; }
+  a:hover { color: #7ab3e0; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>The Render Pipeline — <code style="font-size:26px">splatBlobs()</code></h1>
+    <p class="subtitle">splatBlobs() orchestrates four stages from raw scene data to a final pixel colour. Understanding how those stages chain together — and why only one of them is differentiable — is the key to understanding the whole system.</p>
+  </div>
+
+  <!-- SECTION 1: PIPELINE OVERVIEW -->
+  <div class="section">
+    <div class="section-title">1. Four Stages, One Pipeline</div>
+    <p><code style="color:#a8e6cf">splatBlobs()</code> is the main rendering function called once per pixel. It proceeds in four stages, each transforming a typed "list token" that enforces the correct calling order at compile time:</p>
+
+    <pre>[Differentiable]
+float4 splatBlobs(uint2 dispatchThreadID, int2 dispatchSize)
+{
+    // 1. Reset shared counters
+    InitializedShortList sList = initShortList(dispatchThreadID);
+
+    // 2. Gather Gaussians that overlap this tile
+    FilledShortList filledSList = coarseRasterize(sList, tileBounds, localIdx);
+
+    // 3. Pad to power-of-2 for bitonic sort
+    PaddedShortList paddedSList = padBuffer(filledSList, localIdx);
+
+    // 4. Sort by depth (bitonic sort)
+    SortedShortList sortedList = bitonicSort(paddedSList, localIdx);
+
+    // 5. Blend sorted Gaussians into final pixel colour
+    float4 color = fineRasterize(sortedList, localIdx, uv);
+
+    return float4(color.rgb * (1.0 - color.a) + color.a, 1.0);
+}</pre>
+
+    <canvas id="pipelineCanvas" height="180"></canvas>
+    <p class="canvas-label">The four pipeline stages with their phantom type tokens. Arrow colours show data flow; the amber boundary marks where differentiability begins.</p>
+
+    <p><strong style="color:#fff">Phantom types enforce stage order.</strong> <code style="color:#a8e6cf">InitializedShortList</code>, <code style="color:#a8e6cf">FilledShortList</code>, <code style="color:#a8e6cf">PaddedShortList</code>, and <code style="color:#a8e6cf">SortedShortList</code> are each empty structs (<code style="color:#a8e6cf">{ 0 }</code>). They carry no data — shared memory holds the actual short-list. Their only purpose is to make it a compile-time error to call <code style="color:#a8e6cf">bitonicSort</code> before <code style="color:#a8e6cf">padBuffer</code>, or <code style="color:#a8e6cf">fineRasterize</code> before sorting. The type checker becomes a pipeline sequencer.</p>
+  </div>
+
+  <!-- SECTION 2: WHAT IS DIFFERENTIABLE -->
+  <div class="section">
+    <div class="section-title">2. What Is Differentiable — and What Isn't</div>
+    <p><code style="color:#a8e6cf">splatBlobs()</code> is marked <code style="color:#a8e6cf">[Differentiable]</code>, but only the last stage — <code style="color:#a8e6cf">fineRasterize()</code> — actually participates in gradient computation. The first three stages are <strong style="color:#fff">pure optimisations</strong>: they select and reorder Gaussians but produce no output value that feeds back to the loss.</p>
+    <ul>
+      <li><strong style="color:#ccc">initShortList, coarseRasterize, padBuffer</strong> — operate on indices (integers). Integer selection is not differentiable by nature: you cannot meaningfully ask "how does the loss change if I include a slightly different Gaussian?" The bounding-box test is a hard binary decision.</li>
+      <li><strong style="color:#ccc">bitonicSort</strong> — reorders indices. Sorting is a permutation; the loss doesn't change if the indices are in a different order, only if the <em>values</em> at those indices change. The sort order is determined by depth values that are not themselves parameters being optimised here.</li>
+      <li><strong style="color:#ccc">fineRasterize</strong> — evaluates each Gaussian at the pixel UV, computing colour and alpha contributions. These calculations involve the actual Gaussian parameters (position, covariance, colour). This is where the gradient signal lives.</li>
+    </ul>
+    <p>The auto-diff engine in Slang is smart enough to not attempt differentiation through stages that have no path to the output — but the programmer declares the intent explicitly with <code style="color:#a8e6cf">no_diff</code> annotations on parameters that should not participate, and with the placement of <code style="color:#a8e6cf">[Differentiable]</code> on only the functions that matter.</p>
+
+    <canvas id="diffBoundaryCanvas" height="120"></canvas>
+    <p class="canvas-label">Differentiability boundary. Stages left of the amber line handle integer indices and are not differentiated. fineRasterize works with float Gaussian parameters and is where gradients flow.</p>
+  </div>
+
+  <!-- SECTION 3: FINE RASTERIZE FORWARD -->
+  <div class="section">
+    <div class="section-title">3. <code style="font-size:18px">fineRasterize()</code> — the Forward Blend</div>
+    <p>Once the short-list is sorted back-to-front, <code style="color:#a8e6cf">fineRasterize()</code> accumulates colour contributions from each Gaussian in order using multiplicative alpha blending. The <strong style="color:#fff">pixel state</strong> tracks accumulated colour and remaining transmittance T:</p>
+
+    <pre>[Differentiable]
+float4 fineRasterize(SortedShortList, uint localIdx, no_diff float2 uv)
+{
+    GroupMemoryBarrierWithGroupSync();
+
+    PixelState pixelState = PixelState(float4(0, 0, 0, 1), 0);
+    uint count = blobCount;
+
+    for (uint i = 0; i &lt; count; i++)
+        pixelState = transformPixelState(pixelState, eval(blobs[i], uv, localIdx));
+
+    maxCount[localIdx] = pixelState.finalCount;
+    finalVal[localIdx] = pixelState.value;
+    return pixelState.value;
+}</pre>
+
+    <p>The pixel state starts as <code style="color:#a8e6cf">(rgb=0, a=1)</code> — no accumulated colour, full transmittance. <code style="color:#a8e6cf">transformPixelState</code> applies each Gaussian's contribution: it adds <code style="color:#a8e6cf">α·T·colour</code> to the accumulated RGB and multiplies transmittance by <code style="color:#a8e6cf">(1−α)</code>. After all Gaussians, the state's <code style="color:#a8e6cf">.a</code> field is the final remaining transmittance.</p>
+    <p>After the loop, <code style="color:#a8e6cf">maxCount</code> and <code style="color:#a8e6cf">finalVal</code> are written to shared memory. The backward pass will need these to reconstruct the final state without storing every intermediate state. See the <a href="../differentiable-rendering/">Differentiable Rendering</a> page for why.</p>
+    <p>The <code style="color:#a8e6cf">uv</code> parameter is marked <code style="color:#a8e6cf">no_diff</code>: the pixel UV coordinate is a fixed input (it depends only on which pixel we're computing, not on any learnable parameter). Marking it <code style="color:#a8e6cf">no_diff</code> tells the auto-diff engine not to generate gradient paths through it, which reduces the complexity of the generated backward pass.</p>
+
+    <div class="status-row">
+      <div class="status-pill">Step: <span id="blendStep">0</span> / <span id="blendTotal">—</span></div>
+      <div class="status-pill">Transmittance T: <span id="blendTransmittance">1.000</span></div>
+      <div class="status-pill">Accumulated α: <span id="blendAlpha">0.000</span></div>
+    </div>
+    <canvas id="blendCanvas" height="240"></canvas>
+    <p class="canvas-label">Step through the fineRasterize loop. Each Gaussian contributes α·T·colour to the accumulation. The swatch shows the current blended pixel colour.</p>
+
+    <div class="controls">
+      <button id="blendNext">Next Gaussian</button>
+      <button id="blendReset">Reset</button>
+    </div>
+
+    <div class="info-box">
+      <p><strong style="color:#fff">Why store finalVal and maxCount?</strong> The backward pass needs to reverse the blending loop. Instead of storing the pixel state at every step (N copies in memory), it stores only the <em>final</em> state and reconstructs earlier states by <em>undoing</em> each step in reverse. This is the state-undo trick — see <a href="../differentiable-rendering/">Differentiable Rendering</a>.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 4: BACKGROUND BLEND -->
+  <div class="section">
+    <div class="section-title">4. Background Compositing</div>
+    <p>The last line of <code style="color:#a8e6cf">splatBlobs()</code> composites the accumulated colour against a white background:</p>
+    <pre>return float4(color.rgb * (1.0 - color.a) + color.a, 1.0);</pre>
+    <p>Here <code style="color:#a8e6cf">color.a</code> is the final remaining transmittance T — the fraction of light that passed through all Gaussians without being absorbed. The formula mixes the accumulated colour with white (<code style="color:#a8e6cf">float3(1,1,1)</code> = the <code style="color:#a8e6cf">color.a</code> term) weighted by transmittance.</p>
+    <p>If all Gaussians are fully opaque, T→0 and the result is entirely the accumulated colour. If all Gaussians are transparent, T→1 and the result is pure white. Partial transparency blends the two — a standard over-white compositing operation used so the learning signal doesn't have to account for an arbitrary background colour.</p>
+  </div>
+
+</div>
+
+<script>
+function setupCanvas(id, cssW, cssH) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssH + 'px';
+  const w = canvas.offsetWidth || 640;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h: cssH, dpr };
+}
+
+// ─────────────────────────────────────────────
+// Section 1: Pipeline Flow Diagram
+// ─────────────────────────────────────────────
+(function() {
+  const stages = [
+    { label: 'initShortList', type: 'InitializedShortList', col: '#5b9bd5' },
+    { label: 'coarseRasterize', type: 'FilledShortList', col: '#5b9bd5' },
+    { label: 'padBuffer', type: 'PaddedShortList', col: '#5b9bd5' },
+    { label: 'bitonicSort', type: 'SortedShortList', col: '#5b9bd5' },
+    { label: 'fineRasterize', type: 'float4', col: '#e8a838' },
+  ];
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('pipelineCanvas', 640, 180);
+    const boxW = 96, boxH = 44;
+    const arrowLen = (w - stages.length * boxW) / (stages.length - 1);
+    const midY = 70;
+
+    stages.forEach((s, i) => {
+      const x = i * (boxW + arrowLen);
+      const isLast = i === stages.length - 1;
+
+      // Box
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = s.col + (isLast ? 'ff' : '88');
+      ctx.lineWidth = isLast ? 2 : 1;
+      ctx.beginPath();
+      ctx.roundRect(x, midY - boxH / 2, boxW, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Function label
+      ctx.fillStyle = s.col;
+      ctx.font = isLast ? 'bold 10px monospace' : '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.label, x + boxW / 2, midY - 4);
+
+      // Output type label below box
+      ctx.fillStyle = '#444';
+      ctx.font = '9px monospace';
+      ctx.fillText('→ ' + s.type, x + boxW / 2, midY + boxH / 2 + 14);
+
+      // Arrow to next box
+      if (i < stages.length - 1) {
+        const ax = x + boxW + 2;
+        const ay = midY;
+        const arrowCol = i === stages.length - 2 ? '#e8a838' : '#333';
+        ctx.strokeStyle = arrowCol;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + arrowLen - 4, ay);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax + arrowLen - 4, ay - 4);
+        ctx.lineTo(ax + arrowLen, ay);
+        ctx.lineTo(ax + arrowLen - 4, ay + 4);
+        ctx.stroke();
+      }
+    });
+
+    // Differentiability marker
+    const boundaryX = 3 * (boxW + arrowLen) + boxW + arrowLen / 2;
+    ctx.strokeStyle = '#e8a83866';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(boundaryX, 20);
+    ctx.lineTo(boundaryX, midY + boxH / 2 + 30);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#e8a838aa';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('[Differentiable]', boundaryX + 40, 16);
+
+    // Labels at bottom
+    ctx.fillStyle = '#333';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('integer index operations — not differentiated', (3 * (boxW + arrowLen) + boxW * 1.5) / 2, h - 8);
+    ctx.fillStyle = '#e8a83866';
+    ctx.fillText('gradient flows here', boundaryX + 52, h - 8);
+  }
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 2: Differentiability Boundary
+// ─────────────────────────────────────────────
+(function() {
+  function draw() {
+    const { ctx, w, h } = setupCanvas('diffBoundaryCanvas', 640, 120);
+
+    const stages = [
+      { label: 'Coarse\nRasterize', sub: 'integer indices', diff: false },
+      { label: 'Pad\nBuffer', sub: 'integer indices', diff: false },
+      { label: 'Bitonic\nSort', sub: 'integer permutation', diff: false },
+      { label: 'Fine\nRasterize', sub: 'float eval', diff: true },
+    ];
+
+    const boxW = 110, boxH = 52;
+    const gapX = 24;
+    const totalW = stages.length * boxW + (stages.length - 1) * gapX;
+    const startX = (w - totalW) / 2;
+    const midY = h / 2 - 4;
+
+    stages.forEach((s, i) => {
+      const x = startX + i * (boxW + gapX);
+      const col = s.diff ? '#e8a838' : '#5b9bd555';
+      const textCol = s.diff ? '#e8a838' : '#333';
+
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = s.diff ? '#e8a838' : '#2a2a2a';
+      ctx.lineWidth = s.diff ? 2 : 1;
+      ctx.beginPath();
+      ctx.roundRect(x, midY - boxH / 2, boxW, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      const lines = s.label.split('\n');
+      ctx.fillStyle = textCol;
+      ctx.font = s.diff ? 'bold 11px monospace' : '11px monospace';
+      ctx.textAlign = 'center';
+      lines.forEach((line, li) => {
+        ctx.fillText(line, x + boxW / 2, midY - 8 + li * 14);
+      });
+
+      ctx.fillStyle = s.diff ? '#e8a83888' : '#333';
+      ctx.font = '9px sans-serif';
+      ctx.fillText(s.sub, x + boxW / 2, midY + boxH / 2 - 6);
+
+      // Connector arrow
+      if (i < stages.length - 1) {
+        const ax = x + boxW;
+        const nextDiff = stages[i + 1].diff;
+        ctx.strokeStyle = nextDiff ? '#e8a83888' : '#2a2a2a';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(nextDiff ? [] : [3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(ax + 2, midY);
+        ctx.lineTo(ax + gapX - 2, midY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
+
+    // Divider line
+    const divX = startX + 3 * (boxW + gapX) - gapX / 2;
+    ctx.strokeStyle = '#e8a83866';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(divX, 10);
+    ctx.lineTo(divX, h - 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 3: Fine Rasterize Step-Through
+// ─────────────────────────────────────────────
+(function() {
+  // Blobs: sorted back-to-front (index 0 = farthest)
+  const blobs = [
+    { col: [0.15, 0.35, 0.80], alpha: 0.30, label: 'blob 0 (far)' },
+    { col: [0.80, 0.20, 0.15], alpha: 0.40, label: 'blob 1' },
+    { col: [0.15, 0.70, 0.30], alpha: 0.35, label: 'blob 2' },
+    { col: [0.90, 0.75, 0.10], alpha: 0.45, label: 'blob 3' },
+    { col: [0.50, 0.15, 0.80], alpha: 0.38, label: 'blob 4 (near)' },
+  ];
+  const N = blobs.length;
+
+  // Pre-compute states: state[i] = state AFTER applying blobs[0..i-1]
+  // state: { r, g, b, T } where T = transmittance
+  function computeStates() {
+    const states = [{ r: 0, g: 0, b: 0, T: 1.0 }];
+    for (let i = 0; i < N; i++) {
+      const prev = states[i];
+      const b = blobs[i];
+      const contrib = b.alpha * prev.T;
+      states.push({
+        r: prev.r + b.col[0] * contrib,
+        g: prev.g + b.col[1] * contrib,
+        b: prev.b + b.col[2] * contrib,
+        T: prev.T * (1 - b.alpha),
+      });
+    }
+    return states;
+  }
+  const states = computeStates();
+
+  let step = 0; // 0 = initial, N = done
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('blendCanvas', 640, 240);
+
+    const barH = 28, barGap = 12;
+    const marginL = 120, marginR = 20;
+    const barW = w - marginL - marginR;
+    const startY = 24;
+
+    // Draw each blob bar
+    blobs.forEach((b, i) => {
+      const y = startY + i * (barH + barGap);
+      const isActive = i === step - 1;
+      const isPast = i < step;
+      const alpha = isPast ? 1.0 : (step === 0 ? 0.35 : 0.15);
+
+      ctx.globalAlpha = alpha;
+
+      // Blob colour swatch
+      const swatchW = 24;
+      ctx.fillStyle = `rgb(${Math.round(b.col[0]*255)},${Math.round(b.col[1]*255)},${Math.round(b.col[2]*255)})`;
+      ctx.beginPath();
+      ctx.roundRect(marginL - 32, y + 4, swatchW, barH - 8, 3);
+      ctx.fill();
+
+      // Blob label
+      ctx.fillStyle = isActive ? '#fff' : '#555';
+      ctx.font = isActive ? 'bold 11px sans-serif' : '11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(b.label, marginL - 38, y + barH / 2 + 4);
+
+      // Alpha bar
+      const bW = b.alpha * barW;
+      ctx.fillStyle = `rgba(${Math.round(b.col[0]*255)},${Math.round(b.col[1]*255)},${Math.round(b.col[2]*255)},0.2)`;
+      ctx.strokeStyle = isActive ? '#fff' : `rgba(${Math.round(b.col[0]*255)},${Math.round(b.col[1]*255)},${Math.round(b.col[2]*255)},0.6)`;
+      ctx.lineWidth = isActive ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.roundRect(marginL, y, bW, barH, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = isActive ? '#fff' : '#666';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('α=' + b.alpha.toFixed(2), marginL + bW + 6, y + barH / 2 + 4);
+
+      ctx.globalAlpha = 1;
+    });
+
+    // Accumulated colour swatch at bottom
+    const swatchY = startY + N * (barH + barGap) + 8;
+    const state = states[step];
+
+    // Composite over white for display
+    const dispR = state.r + state.T;
+    const dispG = state.g + state.T;
+    const dispB = state.b + state.T;
+
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.roundRect(marginL, swatchY, barW, 32, 4);
+    ctx.fill();
+
+    const swW = Math.min(barW, 180);
+    ctx.fillStyle = `rgb(${Math.round(Math.min(1,dispR)*255)},${Math.round(Math.min(1,dispG)*255)},${Math.round(Math.min(1,dispB)*255)})`;
+    ctx.beginPath();
+    ctx.roundRect(marginL, swatchY, swW, 32, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Pixel colour so far (over white)', marginL + swW + 12, swatchY + 20);
+
+    // Update status pills
+    document.getElementById('blendStep').textContent = step;
+    document.getElementById('blendTotal').textContent = N;
+    document.getElementById('blendTransmittance').textContent = state.T.toFixed(3);
+    document.getElementById('blendAlpha').textContent = (1 - state.T).toFixed(3);
+  }
+
+  document.getElementById('blendNext').addEventListener('click', () => {
+    if (step < N) { step++; draw(); }
+  });
+  document.getElementById('blendReset').addEventListener('click', () => {
+    step = 0; draw();
+  });
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+</script>
+</body>
+</html>

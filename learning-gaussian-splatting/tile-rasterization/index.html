@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tile-Based Coarse Rasterization</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
+  .back-link:hover { color: #888; }
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 24px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #999; font-size: 15px; line-height: 1.7; max-width: 600px; }
+  .section { margin-bottom: 64px; }
+  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  p { color: #999; line-height: 1.7; margin-bottom: 12px; }
+  pre { background: #0a0a0a; border: 1px solid #222; color: #a8e6cf; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; white-space: pre; }
+  canvas { display: block; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; width: 100%; max-width: 640px; margin: 20px auto; cursor: default; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  .highlight-blue { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .page-header { margin-bottom: 56px; }
+  .info-box { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  .info-box p { margin: 0; }
+  .status-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .status-pill { background: #111; border: 1px solid #222; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #666; }
+  .status-pill span { color: #ccc; }
+  .canvas-label { font-size: 12px; color: #555; text-align: center; margin-top: -12px; margin-bottom: 16px; }
+  ul { color: #999; line-height: 1.7; margin-bottom: 12px; padding-left: 20px; }
+  ul li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>Tile-Based Coarse Rasterization</h1>
+    <p class="subtitle">Before computing any pixel colour, the GPU must determine which Gaussians are even relevant to each pixel. This is done efficiently by dividing the image into tiles and having each workgroup build a short-list for its tile.</p>
+  </div>
+
+  <!-- SECTION 1: WHY TILES -->
+  <div class="section">
+    <div class="section-title">1. One Workgroup, One Tile</div>
+    <p>A GPU compute shader is dispatched over the full output image. Rather than have every thread independently search through all Gaussians, the image is divided into rectangular <span class="highlight-amber">tiles</span> — each the size of one workgroup (WG_X × WG_Y threads, typically 16×16 = 256 threads).</p>
+    <p>All threads in a workgroup share the same fast on-chip <strong style="color:#fff">shared memory</strong>. The tile-based approach exploits this: all 256 threads in a workgroup cooperate to build a short-list of Gaussians for <em>their</em> tile, store it in shared memory, then each thread independently reads from that list to compute its own pixel colour.</p>
+    <p><strong style="color:#fff">Two-phase design:</strong> building the short-list is a cooperative task (threads divide up the work), while evaluating the final pixel colour is embarrassingly parallel (each thread acts alone). The stages are explicitly separated in the code.</p>
+
+    <div class="status-row">
+      <div class="status-pill">Tile: <span id="tileLabel">hover a tile</span></div>
+      <div class="status-pill">Short-list size: <span id="tileBlobCount">—</span></div>
+    </div>
+    <canvas id="tileGridCanvas" height="280"></canvas>
+    <p class="canvas-label">Hover a tile to see which Gaussians' bounding boxes intersect it. Blue tile = selected workgroup; amber outline = Gaussians in the short-list.</p>
+
+    <div class="info-box">
+      <p>Shared memory is large enough for one tile's short-list, not the entire scene. Without tiling, every thread would need to iterate every Gaussian — O(N) work per thread. With tiling, the 256 threads share the O(N) scan and each thread only evaluates the Gaussians that actually touch its tile.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 2: STRIDED ITERATION -->
+  <div class="section">
+    <div class="section-title">2. Strided Iteration — <code style="font-size:16px">coarseRasterize()</code></div>
+    <p>There are typically far more Gaussians in the scene than there are threads in a workgroup. <code style="color:#a8e6cf">coarseRasterize()</code> distributes them using a <strong style="color:#fff">strided loop</strong>: thread i processes Gaussians i, i+WG_SIZE, i+2×WG_SIZE, …</p>
+    <pre>for (uint i = localIdx; i &lt; numGaussians; i += (WG_X * WG_Y))
+{
+    gaussian = Gaussian2D.load(i, localIdx);
+    OBB bounds = gaussian.bounds();
+    if (bounds.intersects(tileBounds))
+    {
+        blobs[blobCountAT++] = i;  // atomic increment
+    }
+}</pre>
+    <p>Each thread independently loads a Gaussian, computes its bounding box, and tests intersection with the tile's <code style="color:#a8e6cf">OBB tileBounds</code>. If it intersects, the thread atomically appends the Gaussian's index to shared <code style="color:#a8e6cf">blobs[]</code>. The atomic increment (<code style="color:#a8e6cf">blobCountAT++</code>) prevents two threads from writing to the same slot simultaneously.</p>
+
+    <div class="status-row">
+      <div class="status-pill">Batch: <span id="stridedBatchLabel">—</span></div>
+      <div class="status-pill">Gaussians assigned: <span id="stridedProcessed">0</span> / 20</div>
+    </div>
+    <canvas id="stridedCanvas" height="140"></canvas>
+    <p class="canvas-label">Strided work distribution across 8 threads for 20 Gaussians. Each colour is one thread. Step through batches to see how the workload is shared.</p>
+
+    <div class="controls">
+      <button id="stridedNext">Next Batch</button>
+      <button id="stridedReset">Reset</button>
+    </div>
+
+    <p><strong style="color:#fff">Two barriers frame the function:</strong></p>
+    <ul>
+      <li>One at the <em>start</em> — ensures any counter reset from <code style="color:#a8e6cf">initShortList()</code> has completed before threads begin writing.</li>
+      <li>One at the <em>end</em> — ensures all threads have finished appending before any thread reads the final <code style="color:#a8e6cf">blobCount</code>. Without this, a fast thread could read the count while slow threads are still adding Gaussians.</li>
+    </ul>
+    <pre>GroupMemoryBarrierWithGroupSync();  // start: wait for reset
+// ... strided loop ...
+GroupMemoryBarrierWithGroupSync();  // end: wait for all writes
+blobCount = blobCountAT.load();</pre>
+  </div>
+
+  <!-- SECTION 3: calcUV -->
+  <div class="section">
+    <div class="section-title">3. Stretch-Free UV Coordinates — <code style="font-size:16px">calcUV()</code></div>
+    <p>Gaussians are defined in normalised UV space [0,1]². The <code style="color:#a8e6cf">calcUV()</code> function converts a pixel's dispatch ID into UV without distorting the image. When the render target has a different aspect ratio than the texture, it <strong style="color:#fff">letterboxes or pillarboxes</strong> — scaling to match one axis and centering on the other.</p>
+    <pre>if (aspectRatioRT > aspectRatioTEX)
+{
+    // RT wider → match widths, letterbox vertically
+    float xCoord = dispatchID.x / renderSize.x;
+    float yCoord = (dispatchID.y * aspectRatioTEX) / renderSize.x;
+    float yCoordMax = aspectRatioTEX / aspectRatioRT;
+    yCoord += (1.0 - yCoordMax) / 2.0;  // re-centre
+}</pre>
+    <p>The same function also computes <code style="color:#a8e6cf">tileLow</code> and <code style="color:#a8e6cf">tileHigh</code> — the UV corners of the current workgroup's tile — which become the <code style="color:#a8e6cf">OBB tileBounds</code> passed to coarse rasterization.</p>
+
+    <div class="controls">
+      <button id="uvBtnSquare" class="active">Square (1:1)</button>
+      <button id="uvBtnWide">Wide (16:9)</button>
+      <button id="uvBtnTall">Tall (9:16)</button>
+    </div>
+    <canvas id="uvCanvas" height="200"></canvas>
+    <p class="canvas-label">Blue = Gaussian UV space [0,1]². Amber = the portion of UV space covered by the current render target. Toggle aspect ratios to see letterboxing and pillarboxing.</p>
+  </div>
+
+  <!-- SECTION 4: SHORT-LIST AND PADDING -->
+  <div class="section">
+    <div class="section-title">4. The Short-List Limit &amp; <code style="font-size:16px">padBuffer()</code></div>
+    <p>The <code style="color:#a8e6cf">blobs[]</code> array lives in shared memory with a fixed capacity: <code style="color:#a8e6cf">NUM_GAUSSIANS_PER_BLOCK</code>. If more Gaussians intersect a tile than this limit, the excess are skipped. This is a deliberate simplification — a production implementation would run multiple gather-sort-blend passes for overflow tiles.</p>
+    <p>After coarse rasterization, <code style="color:#a8e6cf">padBuffer()</code> fills the unused tail of the short-list with a sentinel value (MAX_UINT). This is required because <strong style="color:#fff">bitonic sort needs a power-of-2 element count</strong>. Sentinel values sort to the far end and are invisible to fine rasterization — their depth values are so large they contribute zero to blending.</p>
+
+    <div class="info-box">
+      <p><strong style="color:#fff">Why MAX_UINT as sentinel?</strong> The short-list stores Gaussian <em>indices</em>, and depth values are looked up during sorting. By using the maximum possible integer as a sentinel, those fake entries always sort to the back of the list — far from the camera — and the fine rasterizer's blending loop terminates before reaching them (or they contribute nothing once transmittance is exhausted).</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssH + 'px';
+  const w = canvas.offsetWidth || 640;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h: cssH, dpr };
+}
+
+// ─────────────────────────────────────────────
+// Section 1: Tile Grid — hover interaction
+// ─────────────────────────────────────────────
+(function() {
+  const COLS = 8, ROWS = 5;
+
+  // Gaussian positions and sizes in normalised [0,1] coordinates
+  const gaussians = [
+    { cx: 0.11, cy: 0.18, rx: 0.10, ry: 0.07, col: '#5b9bd5' },
+    { cx: 0.38, cy: 0.16, rx: 0.08, ry: 0.10, col: '#e8a838' },
+    { cx: 0.64, cy: 0.13, rx: 0.12, ry: 0.07, col: '#50dc96' },
+    { cx: 0.89, cy: 0.28, rx: 0.07, ry: 0.11, col: '#c792ea' },
+    { cx: 0.21, cy: 0.50, rx: 0.09, ry: 0.14, col: '#dc5050' },
+    { cx: 0.53, cy: 0.47, rx: 0.11, ry: 0.09, col: '#5b9bd5' },
+    { cx: 0.79, cy: 0.54, rx: 0.08, ry: 0.12, col: '#e8a838' },
+    { cx: 0.07, cy: 0.76, rx: 0.07, ry: 0.09, col: '#50dc96' },
+    { cx: 0.40, cy: 0.78, rx: 0.13, ry: 0.07, col: '#c792ea' },
+    { cx: 0.70, cy: 0.82, rx: 0.09, ry: 0.11, col: '#dc5050' },
+    { cx: 0.92, cy: 0.68, rx: 0.06, ry: 0.10, col: '#5b9bd5' },
+  ];
+
+  function intersects(g, col, row) {
+    const tx0 = col / COLS, tx1 = (col + 1) / COLS;
+    const ty0 = row / ROWS, ty1 = (row + 1) / ROWS;
+    return g.cx - g.rx < tx1 && g.cx + g.rx > tx0 &&
+           g.cy - g.ry < ty1 && g.cy + g.ry > ty0;
+  }
+
+  let hoverCol = -1, hoverRow = -1;
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('tileGridCanvas', 640, 280);
+    const tileW = w / COLS, tileH = h / ROWS;
+
+    // Draw tile grid
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const isHovered = c === hoverCol && r === hoverRow;
+        if (isHovered) {
+          ctx.fillStyle = '#1e2d4066';
+          ctx.fillRect(c * tileW, r * tileH, tileW, tileH);
+          ctx.strokeStyle = '#5b9bd5';
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = '#1e1e1e';
+          ctx.lineWidth = 1;
+        }
+        ctx.strokeRect(c * tileW + 0.5, r * tileH + 0.5, tileW - 1, tileH - 1);
+      }
+    }
+
+    // Draw Gaussians
+    gaussians.forEach((g) => {
+      const inTile = hoverCol >= 0 && intersects(g, hoverCol, hoverRow);
+      const anyHovered = hoverCol >= 0;
+
+      ctx.globalAlpha = anyHovered ? (inTile ? 1.0 : 0.12) : 0.55;
+
+      // Filled ellipse
+      ctx.beginPath();
+      ctx.ellipse(g.cx * w, g.cy * h, g.rx * w, g.ry * h, 0, 0, Math.PI * 2);
+      ctx.fillStyle = g.col + '28';
+      ctx.fill();
+
+      // Ellipse outline
+      ctx.strokeStyle = inTile ? '#e8a838' : g.col;
+      ctx.lineWidth = inTile ? 2 : 1;
+      ctx.stroke();
+
+      // Bounding box for in-tile Gaussians
+      if (inTile) {
+        ctx.strokeStyle = '#e8a83855';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(
+          (g.cx - g.rx) * w, (g.cy - g.ry) * h,
+          g.rx * 2 * w, g.ry * 2 * h
+        );
+        ctx.setLineDash([]);
+      }
+
+      ctx.globalAlpha = 1;
+    });
+
+    // Tile label
+    if (hoverCol >= 0) {
+      const lx = (hoverCol + 0.5) * tileW;
+      const ly = (hoverRow + 0.5) * tileH;
+      ctx.fillStyle = '#5b9bd5aa';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`(${hoverCol},${hoverRow})`, lx, ly + 4);
+    }
+  }
+
+  const canvas = document.getElementById('tileGridCanvas');
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const tileW = rect.width / COLS;
+    const tileH = rect.height / ROWS;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    hoverCol = Math.max(0, Math.min(COLS - 1, Math.floor(mx / tileW)));
+    hoverRow = Math.max(0, Math.min(ROWS - 1, Math.floor(my / tileH)));
+
+    const count = gaussians.filter(g => intersects(g, hoverCol, hoverRow)).length;
+    document.getElementById('tileLabel').textContent = `(${hoverCol}, ${hoverRow})`;
+    document.getElementById('tileBlobCount').textContent = count;
+    draw();
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    hoverCol = -1; hoverRow = -1;
+    document.getElementById('tileLabel').textContent = 'hover a tile';
+    document.getElementById('tileBlobCount').textContent = '—';
+    draw();
+  });
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 2: Strided Iteration
+// ─────────────────────────────────────────────
+(function() {
+  const N_GAUSSIANS = 20;
+  const N_THREADS = 8;
+  const threadCols = ['#5b9bd5', '#e8a838', '#50dc96', '#c792ea', '#dc5050', '#f0a050', '#80d0d0', '#d080d0'];
+
+  let batch = -1; // -1 = initial (no highlight)
+  const totalBatches = Math.ceil(N_GAUSSIANS / N_THREADS); // 3
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('stridedCanvas', 640, 140);
+
+    // Layout: 2 rows of 10 boxes
+    const boxW = 48, boxH = 30;
+    const gapX = 8, gapY = 20;
+    const rowCount = 2, perRow = 10;
+    const totalRowW = perRow * boxW + (perRow - 1) * gapX;
+    const startX = (w - totalRowW) / 2;
+    const row0Y = 20;
+    const row1Y = row0Y + boxH + gapY;
+
+    function boxPos(idx) {
+      const row = Math.floor(idx / perRow);
+      const col = idx % perRow;
+      const x = startX + col * (boxW + gapX);
+      const y = row === 0 ? row0Y : row1Y;
+      return { x, y };
+    }
+
+    for (let i = 0; i < N_GAUSSIANS; i++) {
+      const thread = i % N_THREADS;
+      const thisBatch = Math.floor(i / N_THREADS);
+      const isActive = batch === thisBatch;
+      const isPast = batch > thisBatch;
+      const { x, y } = boxPos(i);
+
+      const col = threadCols[thread];
+      ctx.globalAlpha = isActive ? 1.0 : (isPast ? 0.25 : (batch < 0 ? 0.3 : 0.08));
+      ctx.fillStyle = isActive ? col + '33' : '#111';
+      ctx.strokeStyle = isActive ? col : (isPast ? col + '44' : '#2a2a2a');
+      ctx.lineWidth = isActive ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = isActive ? col : '#444';
+      ctx.font = isActive ? 'bold 11px monospace' : '11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(i, x + boxW / 2, y + boxH / 2 + 4);
+
+      // Thread label for active boxes
+      if (isActive) {
+        ctx.font = '8px monospace';
+        ctx.fillStyle = col + 'aa';
+        ctx.fillText('T' + thread, x + boxW / 2, y + boxH - 3);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Thread legend
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    const legendY = h - 8;
+    const legendStartX = startX;
+    for (let t = 0; t < N_THREADS; t++) {
+      const lx = legendStartX + t * 74;
+      ctx.fillStyle = threadCols[t];
+      ctx.fillRect(lx, legendY - 8, 10, 8);
+      ctx.fillStyle = '#555';
+      ctx.fillText('T' + t, lx + 13, legendY);
+    }
+
+    // Update status
+    document.getElementById('stridedBatchLabel').textContent = batch < 0 ? '—' : (batch + 1) + ' / ' + totalBatches;
+    const processed = batch < 0 ? 0 : Math.min(N_GAUSSIANS, (batch + 1) * N_THREADS);
+    document.getElementById('stridedProcessed').textContent = processed;
+  }
+
+  document.getElementById('stridedNext').addEventListener('click', () => {
+    batch = Math.min(batch + 1, totalBatches - 1);
+    draw();
+  });
+  document.getElementById('stridedReset').addEventListener('click', () => {
+    batch = -1;
+    draw();
+  });
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 3: UV Mapping
+// ─────────────────────────────────────────────
+(function() {
+  let mode = 'square';
+  const texAspect = 1.0; // texture is square for a clean demo
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('uvCanvas', 640, 200);
+    const margin = 40;
+    const uvW = w - 2 * margin;
+    const uvH = h - 2 * margin;
+
+    // Determine RT aspect ratio
+    let rtAspect;
+    if (mode === 'square') rtAspect = 1.0;
+    else if (mode === 'wide') rtAspect = 16 / 9;
+    else rtAspect = 9 / 16;
+
+    // Compute render target's coverage in UV space using calcUV logic
+    let rx0, ry0, rx1, ry1;
+    if (rtAspect > texAspect) {
+      const yMax = texAspect / rtAspect;
+      rx0 = 0; rx1 = 1;
+      ry0 = (1 - yMax) / 2;
+      ry1 = (1 + yMax) / 2;
+    } else {
+      const xMax = rtAspect / texAspect;
+      ry0 = 0; ry1 = 1;
+      rx0 = (1 - xMax) / 2;
+      rx1 = (1 + xMax) / 2;
+    }
+
+    // Draw UV space background
+    ctx.fillStyle = '#111';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.fillRect(margin, margin, uvW, uvH);
+    ctx.strokeRect(margin, margin, uvW, uvH);
+
+    // Draw Gaussian UV space (the full [0,1] texture)
+    ctx.fillStyle = '#5b9bd522';
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.lineWidth = 2;
+    ctx.fillRect(margin, margin, uvW, uvH);
+    ctx.strokeRect(margin, margin, uvW, uvH);
+
+    ctx.fillStyle = '#5b9bd5';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Gaussian UV space [0,1]²', margin + uvW / 2, margin + uvH / 2 + 4);
+
+    // Draw render target UV coverage
+    const rtX = margin + rx0 * uvW;
+    const rtY = margin + ry0 * uvH;
+    const rtW2 = (rx1 - rx0) * uvW;
+    const rtH2 = (ry1 - ry0) * uvH;
+
+    ctx.fillStyle = '#e8a83833';
+    ctx.strokeStyle = '#e8a838';
+    ctx.lineWidth = 2;
+    ctx.fillRect(rtX, rtY, rtW2, rtH2);
+    ctx.strokeRect(rtX, rtY, rtW2, rtH2);
+
+    if (mode !== 'square') {
+      ctx.fillStyle = '#e8a838';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      const label = mode === 'wide' ? 'Letterbox (16:9 RT)' : 'Pillarbox (9:16 RT)';
+      ctx.fillText(label, rtX + rtW2 / 2, rtY + rtH2 / 2 + 4);
+    } else {
+      ctx.fillStyle = '#e8a838';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Square RT — full UV coverage', rtX + rtW2 / 2, rtY + rtH2 / 2 + 4);
+    }
+
+    // Corner labels
+    ctx.fillStyle = '#444';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('(0,0)', margin + 4, margin - 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('(1,1)', margin + uvW - 4, margin + uvH + 14);
+  }
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('uvBtnSquare').classList.toggle('active', m === 'square');
+    document.getElementById('uvBtnWide').classList.toggle('active', m === 'wide');
+    document.getElementById('uvBtnTall').classList.toggle('active', m === 'tall');
+    draw();
+  }
+
+  document.getElementById('uvBtnSquare').addEventListener('click', () => setMode('square'));
+  document.getElementById('uvBtnWide').addEventListener('click', () => setMode('wide'));
+  document.getElementById('uvBtnTall').addEventListener('click', () => setMode('tall'));
+  window.addEventListener('resize', draw);
+  draw();
+})();
+</script>
+</body>
+</html>

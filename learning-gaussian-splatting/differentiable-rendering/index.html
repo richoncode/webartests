@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Differentiable Rendering &amp; Training</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
+  .back-link:hover { color: #888; }
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 24px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #999; font-size: 15px; line-height: 1.7; max-width: 600px; }
+  .section { margin-bottom: 64px; }
+  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  p { color: #999; line-height: 1.7; margin-bottom: 12px; }
+  pre { background: #0a0a0a; border: 1px solid #222; color: #a8e6cf; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; white-space: pre; }
+  canvas { display: block; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; width: 100%; max-width: 640px; margin: 20px auto; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  .highlight-blue { color: #5b9bd5; }
+  .highlight-amber { color: #e8a838; }
+  .highlight-green { color: #50dc96; }
+  .page-header { margin-bottom: 56px; }
+  .info-box { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  .info-box p { margin: 0; }
+  .status-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .status-pill { background: #111; border: 1px solid #222; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #666; }
+  .status-pill span { color: #ccc; }
+  .canvas-label { font-size: 12px; color: #555; text-align: center; margin-top: -12px; margin-bottom: 16px; }
+  ul { color: #999; line-height: 1.7; margin-bottom: 12px; padding-left: 20px; }
+  ul li { margin-bottom: 4px; }
+  a { color: #5b9bd5; }
+  a:hover { color: #7ab3e0; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .two-col .col-label { font-size: 11px; color: #555; text-align: center; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="../">← Back</a>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>Differentiable Rendering &amp; Training</h1>
+    <p class="subtitle">Slang's auto-diff system can differentiate most functions automatically — but the blending loop in fineRasterize needs special treatment. Understanding why reveals something fundamental about how reverse-mode auto-diff works.</p>
+  </div>
+
+  <!-- SECTION 1: THE AUTO-DIFF PROBLEM -->
+  <div class="section">
+    <div class="section-title">1. The State-Caching Problem</div>
+    <p>Reverse-mode automatic differentiation (backpropagation) works by replaying a function's forward pass in reverse. To do this it needs the intermediate values that existed at each step — because the gradient of step i depends on the value of the <em>input</em> to step i, not just its output.</p>
+    <p>For a simple loop over N blobs, naive auto-diff would store the full pixel state after each blob: N copies of <code style="color:#a8e6cf">(r, g, b, T)</code>. For a short-list of 64 Gaussians across millions of pixels, that's an enormous amount of memory.</p>
+
+    <canvas id="cachingCanvas" height="180"></canvas>
+    <p class="canvas-label">Naive auto-diff through the blending loop: the forward pass stores N intermediate states for the backward pass to consume. Memory cost grows linearly with short-list size.</p>
+
+    <p>This is why <code style="color:#a8e6cf">fineRasterize</code> has a <code style="color:#a8e6cf">[BackwardDerivative(fineRasterize_bwd)]</code> attribute — it tells Slang's auto-diff engine to use a hand-written backward pass instead of generating one automatically.</p>
+    <pre>[BackwardDerivative(fineRasterize_bwd)]
+float4 fineRasterize(SortedShortList, uint localIdx, no_diff float2 uv)
+{ ... }</pre>
+  </div>
+
+  <!-- SECTION 2: STATE UNDO -->
+  <div class="section">
+    <div class="section-title">2. The State-Undo Trick — <code style="font-size:16px">undoPixelState()</code></div>
+    <p>Gaussian blending has a useful property: the operation is <strong style="color:#fff">invertible</strong>. Given the state <em>after</em> applying blob i and the blob's contribution, you can recover the state <em>before</em>. This is <code style="color:#a8e6cf">undoPixelState()</code>.</p>
+    <p>The undo is straightforward algebra. If the forward step is:</p>
+    <pre>T_new = T_old × (1 − α)
+C_new = C_old + α × T_old × colour</pre>
+    <p>Then the undo is:</p>
+    <pre>T_old = T_new / (1 − α)          // recover previous transmittance
+C_old = C_new − α × T_old × colour  // recover previous accumulated colour</pre>
+    <p><code style="color:#a8e6cf">fineRasterize_bwd</code> exploits this to run the backward loop in reverse without caching any forward states — it starts from the <em>final</em> state (stored in shared memory as <code style="color:#a8e6cf">finalVal</code>) and undoes one step at a time:</p>
+    <pre>void fineRasterize_bwd(SortedShortList, uint localIdx, float2 uv, float4 dOut)
+{
+    PixelState pixelState = { finalVal[localIdx], maxCount[localIdx] };
+
+    for (uint _i = count; _i > 0; _i--)
+    {
+        uint i = _i - 1;
+        var gval = eval(blobID, uv, localIdx);         // re-evaluate blob
+        var prevState = undoPixelState(pixelState, i+1, gval);  // undo step
+
+        // Auto-diff handles the gradient math within the loop body
+        bwd_diff(transformPixelState)(dpState, dpGVal, dColor);
+        bwd_diff(eval)(blobID, uv, localIdx, dpGVal.getDifferential());
+
+        pixelState = prevState;
+        dColor = dpState.getDifferential();
+    }
+}</pre>
+
+    <div class="status-row">
+      <div class="status-pill">Step: <span id="undoStep">—</span></div>
+    </div>
+    <canvas id="undoCanvas" height="220"></canvas>
+    <p class="canvas-label">Left: naive auto-diff stores all N states. Right: state-undo approach — only the final state is stored; each backward step re-evaluates the blob and undoes the forward transformation. Step through to compare.</p>
+
+    <div class="controls">
+      <button id="undoNext">Next Step</button>
+      <button id="undoReset">Reset</button>
+    </div>
+
+    <div class="info-box">
+      <p><strong style="color:#fff">Why re-evaluate blobs in the backward pass?</strong> Each <code style="color:#a8e6cf">bwd_diff(eval)</code> call re-runs the Gaussian evaluation (position, covariance, colour) to get the blob's contribution value. This recomputation trades compute for memory — a deliberate choice when memory is the bottleneck, which it typically is on GPU.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 3: SLANG AUTO-DIFF MACHINERY -->
+  <div class="section">
+    <div class="section-title">3. Slang's Auto-Diff Vocabulary</div>
+    <p>Several Slang-specific constructs appear in the backward pass. Understanding what they do clarifies how the manual and automatic parts interleave:</p>
+    <ul>
+      <li><code style="color:#a8e6cf">[Differentiable]</code> — marks a function as one whose derivative Slang can generate or use in a backward pass. Functions without this cannot participate in auto-diff.</li>
+      <li><code style="color:#a8e6cf">no_diff float2 uv</code> — marks a parameter as non-differentiable. The pixel UV is a fixed coordinate, not a learnable parameter, so no gradient path runs through it. This reduces generated code complexity.</li>
+      <li><code style="color:#a8e6cf">diffPair(x)</code> — creates a <em>(primal, differential)</em> pair from a value x. The primal is the forward-pass value; the differential slot receives the gradient during <code style="color:#a8e6cf">bwd_diff()</code>.</li>
+      <li><code style="color:#a8e6cf">bwd_diff(f)(args, d_out)</code> — calls the backward pass of f, propagating derivative d_out back through f's inputs. Writes gradient contributions into any <code style="color:#a8e6cf">diffPair</code> arguments.</li>
+      <li><code style="color:#a8e6cf">getDifferential()</code> — reads the gradient that was written into a <code style="color:#a8e6cf">diffPair</code> after a <code style="color:#a8e6cf">bwd_diff()</code> call.</li>
+      <li><code style="color:#a8e6cf">workgroupUniformLoad(blobCount)</code> — a WGSL intrinsic that asserts this load is uniform across the workgroup (every thread reads the same value). Required by uniformity analysis to prevent errors when using the result as a loop bound.</li>
+    </ul>
+
+    <p>The key design insight in <code style="color:#a8e6cf">fineRasterize_bwd</code>: the <em>outer loop structure</em> is written manually (to control state reconstruction), but the <em>inner loop body</em> — the Gaussian evaluation and blending math — is still differentiated by Slang via <code style="color:#a8e6cf">bwd_diff()</code>. You only hand-write the parts where auto-diff would be incorrect or inefficient, and let the engine handle the rest.</p>
+  </div>
+
+  <!-- SECTION 4: TRAINING LOOP -->
+  <div class="section">
+    <div class="section-title">4. The Training Loop — Three Kernels</div>
+    <p>Learning happens through three compute kernels dispatched in order each training iteration. Only the final kernel renders the image; the other two handle gradient computation and parameter updates.</p>
+
+    <canvas id="trainingCanvas" height="160"></canvas>
+    <p class="canvas-label">Three kernels per training step. clearDerivatives and computeDerivatives run before imageMain. Gradient data flows right (forward); parameter updates flow left (backward).</p>
+
+    <p><strong style="color:#fff">1. clearDerivativesMain</strong> — resets the derivative buffer to zero before each iteration. Gradient accumulation is additive (multiple pixels can contribute gradients to the same Gaussian), so the buffer must be zeroed between steps.</p>
+    <pre>[playground::CALL(BLOB_BUFFER_SIZE, 1, 1)]
+void clearDerivativesMain(uint2 dispatchThreadID)
+{
+    derivBuffer[dispatchThreadID.x].store(asuint(0.f));
+}</pre>
+
+    <p><strong style="color:#fff">2. computeDerivativesMain</strong> — runs one forward+backward pass per pixel by calling <code style="color:#a8e6cf">bwd_diff(loss)</code>. Slang generates the backward code for <code style="color:#a8e6cf">loss()</code>, which chains through <code style="color:#a8e6cf">splatBlobs()</code> → <code style="color:#a8e6cf">fineRasterize()</code> and ultimately calls <code style="color:#a8e6cf">fineRasterize_bwd</code>. Gradient contributions for each Gaussian parameter are accumulated into <code style="color:#a8e6cf">derivBuffer</code> using the CAS atomic pattern.</p>
+    <pre>void computeDerivativesMain(uint2 dispatchThreadID)
+{
+    float perPixelWeight = 1.f / (imageSize.x * imageSize.y);
+    bwd_diff(loss)(dispatchThreadID, targetImageSize, perPixelWeight);
+}</pre>
+
+    <p><strong style="color:#fff">3. updateBlobsMain</strong> — reads each parameter's gradient from <code style="color:#a8e6cf">derivBuffer</code>, applies the Adam optimiser update, and writes the new parameter value back to <code style="color:#a8e6cf">blobsBuffer</code>. Since all parameters are laid out sequentially in a single float buffer, one thread per buffer slot handles the update with no struct reinterpretation needed.</p>
+  </div>
+
+  <!-- SECTION 5: ADAM OPTIMIZER -->
+  <div class="section">
+    <div class="section-title">5. Adam Optimizer — Adaptive Learning Rates</div>
+    <p>Raw gradients are noisy — they vary significantly from iteration to iteration because each image pixel produces slightly different gradient estimates. Applying them directly (SGD) leads to unstable optimisation. Adam (<em>Adaptive Moment Estimation</em>) acts as a <strong style="color:#fff">temporal filter</strong> on gradients before applying updates:</p>
+    <pre>// First moment (exponential moving average of gradient)
+m_t = β₁ × m_prev + (1 − β₁) × g_t
+
+// Second moment (exponential moving average of gradient squared)
+v_t = β₂ × v_prev + (1 − β₂) × g_t²
+
+// Bias-corrected moments (compensate for zero-initialisation)
+m̂_t = m_t / (1 − β₁)
+v̂_t = v_t / (1 − β₂)
+
+// Parameter update
+update = (η / (√v̂_t + ε)) × m̂_t
+param  = param − update</pre>
+
+    <p><code style="color:#a8e6cf">m_t</code> is a momentum term — it smooths gradient direction by averaging over recent history (β₁≈0.9 gives a window of ~10 iterations). <code style="color:#a8e6cf">v_t</code> tracks gradient magnitude; dividing by √v̂_t gives each parameter an <strong style="color:#fff">adaptive step size</strong> — parameters with consistently large gradients get smaller steps (damping), parameters with small or erratic gradients get larger steps (exploration).</p>
+
+    <canvas id="adamCanvas" height="280"></canvas>
+    <p class="canvas-label">Adam optimizer state for a single parameter across iterations. The update magnitude is dampened by v̂_t, smoothed by m̂_t, producing stable convergence even with noisy gradients.</p>
+
+    <div class="controls">
+      <button id="adamRun" class="active">Run simulation</button>
+      <button id="adamReset">Reset</button>
+    </div>
+
+    <div class="info-box">
+      <p><strong style="color:#fff">Why not just store the gradient directly in a float buffer?</strong> Float atomic adds aren't natively supported on most GPUs. The derivative buffer stores raw <code style="color:#a8e6cf">uint</code> bits and uses the CAS loop (from the <a href="../gpu-parallel/">GPU Parallel Algorithms</a> page) to safely accumulate float gradients from multiple threads and workgroups. The Adam kernel then reads those accumulated gradients, applies bias-corrected moment updates, and writes the new parameter value.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function setupCanvas(id, cssW, cssH) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssH + 'px';
+  const w = canvas.offsetWidth || 640;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { canvas, ctx, w, h: cssH, dpr };
+}
+
+// ─────────────────────────────────────────────
+// Section 1: State Caching Diagram
+// ─────────────────────────────────────────────
+(function() {
+  function draw() {
+    const { ctx, w, h } = setupCanvas('cachingCanvas', 640, 180);
+    const N = 5;
+    const boxW = 64, boxH = 30;
+    const gapX = 16;
+    const totalW = N * boxW + (N - 1) * gapX;
+    const startX = (w - totalW) / 2;
+    const fwdY = 40;
+    const storeY = fwdY + boxH + 28;
+    const bwdY = storeY + boxH + 28;
+
+    // Title labels
+    ctx.fillStyle = '#444';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Forward →', 12, fwdY + 20);
+    ctx.fillText('Stored states', 12, storeY + 20);
+    ctx.fillText('← Backward', 12, bwdY + 20);
+
+    for (let i = 0; i < N; i++) {
+      const x = startX + i * (boxW + gapX);
+
+      // Forward state box
+      const progress = (i + 1) / N;
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = '#5b9bd5';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, fwdY, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#5b9bd5';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('state ' + i, x + boxW / 2, fwdY + boxH / 2 + 4);
+
+      // Drop line to stored state
+      ctx.strokeStyle = '#e8a83866';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x + boxW / 2, fwdY + boxH);
+      ctx.lineTo(x + boxW / 2, storeY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Stored state box (memory cost)
+      ctx.fillStyle = '#1a1a0a';
+      ctx.strokeStyle = '#e8a83888';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, storeY, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e8a838';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('mem ' + i, x + boxW / 2, storeY + boxH / 2 + 4);
+
+      // Backward consuming stored state
+      ctx.strokeStyle = '#dc505066';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x + boxW / 2, storeY + boxH);
+      ctx.lineTo(x + boxW / 2, bwdY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Backward step box
+      ctx.fillStyle = '#1a0a0a';
+      ctx.strokeStyle = '#dc505088';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, bwdY, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#dc5050';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('∂ step ' + i, x + boxW / 2, bwdY + boxH / 2 + 4);
+    }
+
+    // Memory cost label
+    ctx.fillStyle = '#e8a838';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('O(N) memory — grows with short-list size', w - 12, storeY + boxH + 10);
+  }
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 2: State Undo Comparison
+// ─────────────────────────────────────────────
+(function() {
+  const N = 5;
+  let stepIdx = 0; // 0=initial, 1..N = backward steps
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('undoCanvas', 640, 220);
+    const halfW = w / 2 - 8;
+    const boxW = 52, boxH = 26, gapX = 8;
+    const rowH = 38;
+
+    function drawPanel(offsetX, panelW, label, mode) {
+      // Panel label
+      ctx.fillStyle = '#555';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, offsetX + panelW / 2, 16);
+
+      // Divider
+      ctx.strokeStyle = '#1e1e1e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(offsetX, 24);
+      ctx.lineTo(offsetX + panelW, 24);
+      ctx.stroke();
+
+      // Blobs row (forward)
+      const blobsY = 36;
+      const totalBlobW = N * boxW + (N - 1) * gapX;
+      const blobsX = offsetX + (panelW - totalBlobW) / 2;
+
+      for (let i = 0; i < N; i++) {
+        const x = blobsX + i * (boxW + gapX);
+        ctx.fillStyle = '#111';
+        ctx.strokeStyle = '#5b9bd5';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, blobsY, boxW, boxH, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#5b9bd5';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('blob ' + i, x + boxW / 2, blobsY + boxH / 2 + 4);
+      }
+
+      // Stored / reconstructed states
+      const storeY = blobsY + boxH + 14;
+
+      if (mode === 'cache') {
+        // All states stored upfront
+        for (let i = 0; i < N; i++) {
+          const x = blobsX + i * (boxW + gapX);
+          const isConsumed = stepIdx > 0 && i >= N - stepIdx;
+          ctx.globalAlpha = isConsumed ? 0.25 : 1.0;
+          ctx.fillStyle = '#1a1a0a';
+          ctx.strokeStyle = '#e8a838';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(x, storeY, boxW, boxH, 3);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#e8a838';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('s_' + i, x + boxW / 2, storeY + boxH / 2 + 4);
+          ctx.globalAlpha = 1;
+        }
+
+        // Backward consuming states (right to left)
+        const bwdY = storeY + boxH + 14;
+        for (let i = N - 1; i >= 0; i--) {
+          const x = blobsX + i * (boxW + gapX);
+          const bwdIdx = N - 1 - i;
+          const isActive = bwdIdx === stepIdx - 1;
+          const isDone = bwdIdx < stepIdx - 1;
+          ctx.globalAlpha = isDone ? 0.3 : (isActive ? 1.0 : 0.12);
+          ctx.fillStyle = '#1a0a0a';
+          ctx.strokeStyle = '#dc5050';
+          ctx.lineWidth = isActive ? 2 : 1;
+          ctx.beginPath();
+          ctx.roundRect(x, bwdY, boxW, boxH, 3);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#dc5050';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('∂_' + i, x + boxW / 2, bwdY + boxH / 2 + 4);
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.fillStyle = '#e8a83866';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('N states in memory', offsetX + panelW / 2, storeY + boxH + 10);
+
+      } else {
+        // Undo approach: only final state, reconstruct
+        const finalX = blobsX + (N - 1) * (boxW + gapX);
+
+        // Final state stored (amber)
+        ctx.fillStyle = '#1a1a0a';
+        ctx.strokeStyle = '#50dc96';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(finalX, storeY, boxW, boxH, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#50dc96';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('s_final', finalX + boxW / 2, storeY + boxH / 2 + 4);
+
+        ctx.fillStyle = '#50dc9666';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('1 state only', offsetX + panelW / 2, storeY + boxH + 10);
+
+        // Reconstructed states during backward
+        const bwdY = storeY + boxH + 22;
+        if (stepIdx > 0) {
+          for (let s = 0; s < stepIdx; s++) {
+            const i = N - 1 - s;
+            const x = blobsX + i * (boxW + gapX);
+            const isActive = s === stepIdx - 1;
+            ctx.globalAlpha = isActive ? 1.0 : 0.2;
+            ctx.fillStyle = '#0a1a0a';
+            ctx.strokeStyle = isActive ? '#50dc96' : '#50dc9644';
+            ctx.lineWidth = isActive ? 2 : 1;
+            ctx.beginPath();
+            ctx.roundRect(x, bwdY, boxW, boxH, 3);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = isActive ? '#50dc96' : '#50dc9688';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('undo ' + i, x + boxW / 2, bwdY + boxH / 2 + 4);
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+    }
+
+    // Draw divider between panels
+    ctx.strokeStyle = '#1e1e1e';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w / 2, 0);
+    ctx.lineTo(w / 2, h);
+    ctx.stroke();
+
+    drawPanel(0, halfW, 'Naive auto-diff (cache)', 'cache');
+    drawPanel(w / 2 + 8, halfW, 'State-undo backward', 'undo');
+
+    // Update status
+    const labels = ['initial', 'step 1: undo blob 4', 'step 2: undo blob 3', 'step 3: undo blob 2', 'step 4: undo blob 1', 'step 5: undo blob 0'];
+    document.getElementById('undoStep').textContent = labels[Math.min(stepIdx, labels.length - 1)];
+  }
+
+  document.getElementById('undoNext').addEventListener('click', () => {
+    if (stepIdx < N) { stepIdx++; draw(); }
+  });
+  document.getElementById('undoReset').addEventListener('click', () => {
+    stepIdx = 0; draw();
+  });
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 4: Training Loop Diagram
+// ─────────────────────────────────────────────
+(function() {
+  function draw() {
+    const { ctx, w, h } = setupCanvas('trainingCanvas', 640, 160);
+
+    const kernels = [
+      { label: 'clearDerivatives', sub: 'zero derivBuffer', col: '#5b9bd5' },
+      { label: 'computeDerivatives', sub: 'bwd_diff(loss)', col: '#e8a838' },
+      { label: 'updateBlobs', sub: 'Adam step', col: '#50dc96' },
+      { label: 'imageMain', sub: 'render frame', col: '#5b9bd5' },
+    ];
+
+    const boxW = 120, boxH = 52;
+    const gapX = (w - kernels.length * boxW) / (kernels.length + 1);
+    const midY = 70;
+
+    kernels.forEach((k, i) => {
+      const x = gapX + i * (boxW + gapX);
+
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = k.col + '88';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, midY - boxH / 2, boxW, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = k.col;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(k.label, x + boxW / 2, midY - 6);
+
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(k.sub, x + boxW / 2, midY + 10);
+
+      // Iteration label
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.fillText('kernel ' + (i + 1), x + boxW / 2, midY + boxH / 2 + 12);
+
+      // Arrow to next
+      if (i < kernels.length - 1) {
+        const ax = x + boxW + 2;
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(ax, midY);
+        ctx.lineTo(ax + gapX - 4, midY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax + gapX - 4, midY - 4);
+        ctx.lineTo(ax + gapX, midY);
+        ctx.lineTo(ax + gapX - 4, midY + 4);
+        ctx.stroke();
+      }
+    });
+
+    // Loop-back arrow below
+    const loopY = midY + boxH / 2 + 28;
+    const leftX = gapX;
+    const rightX = gapX + (kernels.length - 1) * (boxW + gapX) + boxW;
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(rightX, loopY - 16);
+    ctx.lineTo(rightX, loopY);
+    ctx.lineTo(leftX, loopY);
+    ctx.lineTo(leftX, loopY - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#333';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('repeat each training iteration', (leftX + rightX) / 2, loopY + 10);
+  }
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+
+// ─────────────────────────────────────────────
+// Section 5: Adam Optimizer Simulation
+// ─────────────────────────────────────────────
+(function() {
+  // Simulate Adam for a single parameter over several iterations
+  // Use noisy gradient signal around a target update direction
+  const BETA1 = 0.9, BETA2 = 0.999, ETA = 0.01, EPS = 1e-8;
+  const N_ITER = 40;
+
+  let running = false;
+  let animFrame = null;
+  let iterIdx = 0;
+
+  // Generate noisy gradients
+  function seededNoise(seed) {
+    let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  function generateData() {
+    const gradients = [];
+    for (let i = 0; i < N_ITER; i++) {
+      const noise = (seededNoise(i * 3 + 1) - 0.5) * 0.08;
+      const signal = 0.05 * Math.exp(-i / 20); // decaying true gradient
+      gradients.push(signal + noise);
+    }
+    return gradients;
+  }
+
+  const gradients = generateData();
+
+  function computeTrace() {
+    const trace = [];
+    let m = 0, v = 0, param = 0.5;
+    for (let t = 1; t <= N_ITER; t++) {
+      const g = gradients[t - 1];
+      m = BETA1 * m + (1 - BETA1) * g;
+      v = BETA2 * v + (1 - BETA2) * g * g;
+      const mHat = m / (1 - Math.pow(BETA1, t));
+      const vHat = v / (1 - Math.pow(BETA2, t));
+      const update = (ETA / (Math.sqrt(vHat) + EPS)) * mHat;
+      param -= update;
+      trace.push({ g, m, v, mHat, vHat, update, param });
+    }
+    return trace;
+  }
+
+  const trace = computeTrace();
+  let displayStep = 0;
+
+  function draw() {
+    const { ctx, w, h } = setupCanvas('adamCanvas', 640, 280);
+    const marginL = 48, marginR = 20;
+    const chartW = w - marginL - marginR;
+    const chartH = 80;
+    const chartY1 = 30;  // gradient chart
+    const chartY2 = 140; // parameter chart
+
+    function drawSeries(data, yBase, col, label, minV, maxV) {
+      if (data.length === 0) return;
+      const xStep = chartW / N_ITER;
+
+      // Axes
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(marginL, yBase);
+      ctx.lineTo(marginL + chartW, yBase);
+      ctx.moveTo(marginL, yBase + chartH);
+      ctx.lineTo(marginL + chartW, yBase + chartH);
+      ctx.stroke();
+
+      // Zero line
+      const zeroFrac = (0 - minV) / (maxV - minV);
+      const zeroY = yBase + chartH - zeroFrac * chartH;
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(marginL, zeroY);
+      ctx.lineTo(marginL + chartW, zeroY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(label, marginL - 6, yBase + chartH / 2 + 4);
+
+      // Series line up to displayStep
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < displayStep && i < data.length; i++) {
+        const x = marginL + (i + 0.5) * xStep;
+        const frac = (data[i] - minV) / (maxV - minV);
+        const y = yBase + chartH - frac * chartH;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Current point dot
+      if (displayStep > 0 && displayStep <= data.length) {
+        const i = displayStep - 1;
+        const x = marginL + (i + 0.5) * xStep;
+        const frac = (data[i] - minV) / (maxV - minV);
+        const y = yBase + chartH - frac * chartH;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Value label
+        ctx.fillStyle = col;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(data[i].toFixed(4), x + 6, y);
+      }
+    }
+
+    const grads = trace.map(t => t.g);
+    const mHats = trace.map(t => t.mHat);
+    const params = trace.map(t => t.param);
+    const updates = trace.map(t => t.update);
+
+    const allG = [...grads, ...mHats];
+    const gMin = Math.min(-0.06, ...allG);
+    const gMax = Math.max(0.12, ...allG);
+
+    const pMin = Math.min(...params) - 0.02;
+    const pMax = Math.max(...params) + 0.02;
+
+    drawSeries(grads, chartY1, '#5b9bd5', 'g_t (gradient)', gMin, gMax);
+    drawSeries(mHats, chartY1, '#e8a838', 'm̂_t (smoothed)', gMin, gMax);
+    drawSeries(params, chartY2, '#50dc96', 'param value', pMin, pMax);
+    drawSeries(updates, chartY2, '#c792ea66', 'update', pMin, pMax);
+
+    // Legend
+    const legends = [
+      { col: '#5b9bd5', label: 'raw gradient g_t' },
+      { col: '#e8a838', label: 'smoothed m̂_t' },
+      { col: '#50dc96', label: 'param value' },
+      { col: '#c792ea', label: 'update step' },
+    ];
+    const legendY = h - 10;
+    const legendStep = chartW / legends.length;
+    legends.forEach((l, i) => {
+      const x = marginL + i * legendStep;
+      ctx.fillStyle = l.col;
+      ctx.fillRect(x, legendY - 8, 12, 8);
+      ctx.fillStyle = '#555';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(l.label, x + 16, legendY);
+    });
+
+    // Iteration counter
+    ctx.fillStyle = '#444';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('iter ' + displayStep + ' / ' + N_ITER, marginL + chartW, chartY1 - 6);
+  }
+
+  function tick() {
+    if (displayStep < N_ITER) {
+      displayStep++;
+      draw();
+      animFrame = setTimeout(tick, 60);
+    } else {
+      running = false;
+      document.getElementById('adamRun').classList.remove('active');
+    }
+  }
+
+  document.getElementById('adamRun').addEventListener('click', () => {
+    if (running) return;
+    if (displayStep >= N_ITER) return;
+    running = true;
+    document.getElementById('adamRun').classList.add('active');
+    tick();
+  });
+
+  document.getElementById('adamReset').addEventListener('click', () => {
+    running = false;
+    clearTimeout(animFrame);
+    displayStep = 0;
+    document.getElementById('adamRun').classList.remove('active');
+    draw();
+  });
+
+  window.addEventListener('resize', draw);
+  draw();
+})();
+</script>
+</body>
+</html>
