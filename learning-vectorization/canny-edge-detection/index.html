@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canny Edge Detection</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 200px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .step-controls { display: flex; align-items: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 13px; color: #555; font-variant-numeric: tabular-nums; }
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.7; min-height: 52px; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .pseudo { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.9; margin: 16px 0; white-space: pre; }
+  .pseudo .kw  { color: #c792ea; }
+  .pseudo .fn  { color: #82aaff; }
+  .pseudo .cm  { color: #444; font-style: italic; }
+  .pseudo .num { color: #f78c6c; }
+  .pseudo .hi  { color: #ffcb6b; }
+  .hint { font-size: 12px; color: #444; margin-top: 6px; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 4px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .pipeline { display: flex; align-items: center; gap: 0; margin: 20px 0; flex-wrap: wrap; }
+  .pipe-step { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #888; text-align: center; min-width: 120px; }
+  .pipe-step strong { display: block; color: #ccc; font-size: 14px; margin-bottom: 4px; }
+  .pipe-arrow { color: #333; font-size: 20px; padding: 0 8px; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Canny Edge Detection</h1>
+  <p class="subtitle">Multi-stage filter: Gaussian blur → gradient magnitude → non-maximum suppression → hysteresis thresholding. The standard preprocessing step before contour tracing.</p>
+
+  <!-- SECTION 1: HOW IT WORKS -->
+  <div class="section">
+    <h2>How it works</h2>
+    <p>Canny edge detection extracts sharp boundaries from a greyscale image in four stages. Each stage refines the result of the previous one, trading false positives against missed edges using two tunable thresholds.</p>
+
+    <div class="pipeline">
+      <div class="pipe-step"><strong>1. Blur</strong>Gaussian kernel removes noise</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><strong>2. Gradient</strong>Sobel magnitude &amp; angle</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><strong>3. NMS</strong>Thin to single-pixel ridges</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><strong>4. Hysteresis</strong>Strong edges pull in weak neighbours</div>
+    </div>
+
+    <div class="pseudo"><span class="kw">function</span> <span class="fn">canny</span>(image, σ, lowT, highT):
+  blurred  = <span class="fn">gaussianBlur</span>(image, σ)
+  [Gx, Gy] = <span class="fn">sobelGradient</span>(blurred)
+  mag      = <span class="fn">magnitude</span>(Gx, Gy)
+  angle    = <span class="fn">atan2</span>(Gy, Gx)
+
+  <span class="cm">// Non-maximum suppression: keep only local maxima along gradient</span>
+  thin = <span class="fn">suppress</span>(mag, angle)
+
+  <span class="cm">// Hysteresis: strong pixels (> highT) kept; weak (lowT–highT) kept</span>
+  <span class="cm">//             only if connected to a strong pixel</span>
+  <span class="kw">return</span> <span class="fn">hysteresis</span>(thin, lowT, highT)</div>
+
+    <div class="callout">
+      <strong>Non-maximum suppression.</strong> For each pixel, the gradient direction is quantised to one of four angles (0°, 45°, 90°, 135°). The pixel is kept only if its magnitude is greater than both of its neighbours in that direction — this thins wide gradient ridges to single-pixel-wide edges.
+    </div>
+  </div>
+
+  <!-- SECTION 2: GAUSSIAN BLUR -->
+  <div class="section">
+    <h2>Stage 1 — Gaussian blur</h2>
+    <p>A Gaussian kernel smooths the image before gradient computation, suppressing high-frequency noise that would otherwise produce spurious edges. Drag the <strong style="color:#5b9bd5">σ</strong> slider to see how blur radius trades noise suppression against edge sharpness.</p>
+    <canvas id="blurCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>σ (blur radius)</label>
+        <input type="range" id="sigmaSlider" min="0.5" max="4" value="1.4" step="0.1">
+      </div>
+      <span class="val-badge" id="sigmaDisplay">σ = 1.4</span>
+    </div>
+    <p class="hint">Left: noisy input. Right: after Gaussian blur.</p>
+  </div>
+
+  <!-- SECTION 3: GRADIENT -->
+  <div class="section">
+    <h2>Stage 2 — Gradient magnitude &amp; direction</h2>
+    <p>The Sobel operator convolves the blurred image with two 3×3 kernels — one for horizontal (Gx) and one for vertical (Gy) change. The magnitude shows edge strength; the angle shows the normal to each edge.</p>
+    <canvas id="gradCanvas"></canvas>
+    <p class="hint">Left: gradient magnitude. Right: gradient direction (hue = angle).</p>
+  </div>
+
+  <!-- SECTION 4: FULL PIPELINE -->
+  <div class="section">
+    <h2>Full pipeline</h2>
+    <p>Adjust all four parameters and see the final edge map update in real time. The two threshold values control the hysteresis step: pixels above <strong style="color:#4caf50">high</strong> are always edges; pixels between low and high are edges only when connected to a strong edge.</p>
+    <canvas id="fullCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>σ (blur)</label>
+        <input type="range" id="fullSigma" min="0.5" max="4" value="1.4" step="0.1">
+      </div>
+      <span class="val-badge" id="fullSigmaVal">1.4</span>
+    </div>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Low threshold</label>
+        <input type="range" id="lowSlider" min="1" max="100" value="20" step="1">
+      </div>
+      <span class="val-badge" id="lowVal">20</span>
+      <div class="ctrl-group">
+        <label>High threshold</label>
+        <input type="range" id="highSlider" min="1" max="255" value="60" step="1">
+      </div>
+      <span class="val-badge" id="highVal">60</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = Math.round(cssW * dpr);
+  el.height = Math.round(cssH * dpr);
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+// Generate a noisy greyscale test image (synthetic shapes)
+function makeTestImage(W, H) {
+  const data = new Float32Array(W * H);
+  const cx1 = W*0.3, cy1 = H*0.45, r1 = H*0.3;
+  const cx2 = W*0.72, cy2 = H*0.5, r2 = H*0.22;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let v = 0;
+      // Circle 1
+      const d1 = Math.hypot(x-cx1, y-cy1);
+      if (d1 < r1) v = Math.max(v, 180 * (1 - d1/r1));
+      // Rectangle 2
+      if (x > W*0.55 && x < W*0.9 && y > H*0.2 && y < H*0.8) v = Math.max(v, 140);
+      // Add noise
+      v += (Math.random() - 0.5) * 30;
+      data[y * W + x] = Math.max(0, Math.min(255, v));
+    }
+  }
+  return data;
+}
+
+// Gaussian kernel 1D
+function gaussKernel(sigma) {
+  const r = Math.ceil(sigma * 3);
+  const k = [];
+  let s = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-0.5*(i/sigma)**2); k.push(v); s += v; }
+  return k.map(v => v/s);
+}
+
+// Separable Gaussian blur
+function gaussianBlur(data, W, H, sigma) {
+  const k = gaussKernel(sigma);
+  const r = (k.length-1)/2;
+  const tmp = new Float32Array(W*H);
+  const out = new Float32Array(W*H);
+
+  // Horizontal pass
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0;
+      for (let i = 0; i < k.length; i++) {
+        const xx = Math.max(0, Math.min(W-1, x + i - r));
+        s += data[y*W + xx] * k[i];
+      }
+      tmp[y*W+x] = s;
+    }
+  // Vertical pass
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let s = 0;
+      for (let i = 0; i < k.length; i++) {
+        const yy = Math.max(0, Math.min(H-1, y + i - r));
+        s += tmp[yy*W+x] * k[i];
+      }
+      out[y*W+x] = s;
+    }
+  return out;
+}
+
+// Sobel gradient
+function sobelGradient(data, W, H) {
+  const mag = new Float32Array(W*H);
+  const ang = new Float32Array(W*H);
+  for (let y = 1; y < H-1; y++)
+    for (let x = 1; x < W-1; x++) {
+      const gx = -data[(y-1)*W+(x-1)] + data[(y-1)*W+(x+1)]
+                 -2*data[y*W+(x-1)]   + 2*data[y*W+(x+1)]
+                 -data[(y+1)*W+(x-1)] + data[(y+1)*W+(x+1)];
+      const gy = -data[(y-1)*W+(x-1)] - 2*data[(y-1)*W+x] - data[(y-1)*W+(x+1)]
+                 +data[(y+1)*W+(x-1)] + 2*data[(y+1)*W+x] + data[(y+1)*W+(x+1)];
+      mag[y*W+x] = Math.hypot(gx, gy);
+      ang[y*W+x] = Math.atan2(gy, gx);
+    }
+  return { mag, ang };
+}
+
+// Non-maximum suppression
+function nms(mag, ang, W, H) {
+  const out = new Float32Array(W*H);
+  for (let y = 1; y < H-1; y++)
+    for (let x = 1; x < W-1; x++) {
+      const a = ang[y*W+x];
+      const deg = ((a * 180 / Math.PI) % 180 + 180) % 180;
+      let n1, n2;
+      if (deg < 22.5 || deg >= 157.5)      { n1=mag[y*W+(x+1)];   n2=mag[y*W+(x-1)]; }
+      else if (deg < 67.5)  { n1=mag[(y-1)*W+(x+1)]; n2=mag[(y+1)*W+(x-1)]; }
+      else if (deg < 112.5) { n1=mag[(y-1)*W+x];     n2=mag[(y+1)*W+x]; }
+      else                  { n1=mag[(y-1)*W+(x-1)]; n2=mag[(y+1)*W+(x+1)]; }
+      const m = mag[y*W+x];
+      out[y*W+x] = (m >= n1 && m >= n2) ? m : 0;
+    }
+  return out;
+}
+
+// Hysteresis thresholding
+function hysteresis(thin, W, H, low, high) {
+  const STRONG = 255, WEAK = 128, NONE = 0;
+  const labels = new Uint8Array(W*H);
+  for (let i = 0; i < W*H; i++)
+    labels[i] = thin[i] >= high ? STRONG : thin[i] >= low ? WEAK : NONE;
+
+  // BFS from strong pixels
+  const queue = [];
+  for (let i = 0; i < W*H; i++) if (labels[i] === STRONG) queue.push(i);
+  let qi = 0;
+  while (qi < queue.length) {
+    const idx = queue[qi++];
+    const y = Math.floor(idx/W), x = idx % W;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dy && !dx) continue;
+        const ny = y+dy, nx2 = x+dx;
+        if (ny<0||ny>=H||nx2<0||nx2>=W) continue;
+        const ni = ny*W+nx2;
+        if (labels[ni] === WEAK) { labels[ni] = STRONG; queue.push(ni); }
+      }
+  }
+  const out = new Uint8Array(W*H);
+  for (let i = 0; i < W*H; i++) out[i] = labels[i] === STRONG ? 255 : 0;
+  return out;
+}
+
+function putGrey(ctx, data, W, H, offsetX, offsetY, scale) {
+  const id = ctx.createImageData(W, H);
+  for (let i = 0; i < W*H; i++) {
+    const v = Math.round(Math.max(0, Math.min(255, data[i])));
+    id.data[i*4]   = v;
+    id.data[i*4+1] = v;
+    id.data[i*4+2] = v;
+    id.data[i*4+3] = 255;
+  }
+  // Draw to offscreen canvas then scale
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  tmp.getContext('2d').putImageData(id, 0, 0);
+  ctx.drawImage(tmp, offsetX, offsetY, W*scale, H*scale);
+}
+
+const IW = 200, IH = 160;
+const rawImage = makeTestImage(IW, IH);
+
+// ─── SECTION 2: Blur demo ─────────────────────────────────────────────────────
+(function() {
+  const W = 760, H = 180;
+  const { ctx, w, h } = setupCanvas('blurCanvas', W, H);
+  const sigmaSlider = document.getElementById('sigmaSlider');
+  const sigmaDisplay = document.getElementById('sigmaDisplay');
+  const scale = h / IH;
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const sigma = parseFloat(sigmaSlider.value);
+    const blurred = gaussianBlur(rawImage, IW, IH, sigma);
+
+    // Left: original (scaled to half width)
+    const halfW = Math.floor(w / 2) - 4;
+    const s = halfW / IW;
+    putGrey(ctx, rawImage, IW, IH, 0, 0, s);
+    putGrey(ctx, blurred, IW, IH, halfW + 8, 0, s);
+
+    // Labels
+    ctx.fillStyle = '#444'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('original (noisy)', halfW/2, h - 6);
+    ctx.fillText('after blur (σ = ' + sigma.toFixed(1) + ')', halfW + 8 + halfW/2, h - 6);
+
+    // Divider
+    ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(halfW+4, 0); ctx.lineTo(halfW+4, h); ctx.stroke();
+
+    sigmaDisplay.textContent = 'σ = ' + sigma.toFixed(1);
+  }
+
+  sigmaSlider.addEventListener('input', draw);
+  draw();
+})();
+
+// ─── SECTION 3: Gradient demo ─────────────────────────────────────────────────
+(function() {
+  const W = 760, H = 180;
+  const { ctx, w, h } = setupCanvas('gradCanvas', W, H);
+  const blurred = gaussianBlur(rawImage, IW, IH, 1.4);
+  const { mag, ang } = sobelGradient(blurred, IW, IH);
+
+  // Normalize magnitude
+  let maxM = 0;
+  for (let i = 0; i < mag.length; i++) if (mag[i] > maxM) maxM = mag[i];
+  const magNorm = mag.map(v => v / maxM * 255);
+
+  // Angle image: hue = angle
+  const angImg = new Float32Array(IW * IH * 4);
+  for (let i = 0; i < IW*IH; i++) {
+    const a = ang[i];
+    const hue = ((a * 180 / Math.PI) % 360 + 360) % 360;
+    const brightness = magNorm[i] / 255;
+    // HSV to RGB (S=1, V=brightness)
+    const h2 = hue / 60, hi = Math.floor(h2) % 6;
+    const f = h2 - Math.floor(h2);
+    const p = 0, q = brightness*(1-f), t2 = brightness*f;
+    const rgb = [[brightness,t2,p],[q,brightness,p],[p,brightness,t2],[p,q,brightness],[t2,p,brightness],[brightness,p,q]][hi];
+    angImg[i*4]   = rgb[0]*255;
+    angImg[i*4+1] = rgb[1]*255;
+    angImg[i*4+2] = rgb[2]*255;
+    angImg[i*4+3] = 255;
+  }
+
+  ctx.clearRect(0, 0, w, h);
+  const halfW = Math.floor(w/2) - 4;
+  const s = halfW / IW;
+
+  putGrey(ctx, magNorm, IW, IH, 0, 0, s);
+
+  // Draw angle image
+  const id = ctx.createImageData(IW, IH);
+  for (let i = 0; i < IW*IH*4; i++) id.data[i] = angImg[i];
+  const tmp = document.createElement('canvas');
+  tmp.width = IW; tmp.height = IH;
+  tmp.getContext('2d').putImageData(id, 0, 0);
+  ctx.drawImage(tmp, halfW + 8, 0, halfW, h - 20);
+
+  ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(halfW+4, 0); ctx.lineTo(halfW+4, h); ctx.stroke();
+  ctx.fillStyle = '#444'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('gradient magnitude', halfW/2, h - 6);
+  ctx.fillText('gradient direction (hue = angle)', halfW + 8 + halfW/2, h - 6);
+})();
+
+// ─── SECTION 4: Full pipeline ─────────────────────────────────────────────────
+(function() {
+  const W = 760, H = 180;
+  const { ctx, w, h } = setupCanvas('fullCanvas', W, H);
+  const fullSigma = document.getElementById('fullSigma');
+  const fullSigmaVal = document.getElementById('fullSigmaVal');
+  const lowSlider = document.getElementById('lowSlider');
+  const lowVal = document.getElementById('lowVal');
+  const highSlider = document.getElementById('highSlider');
+  const highVal = document.getElementById('highVal');
+
+  function draw() {
+    const sigma = parseFloat(fullSigma.value);
+    const low = parseInt(lowSlider.value);
+    const high = parseInt(highSlider.value);
+    fullSigmaVal.textContent = sigma.toFixed(1);
+    lowVal.textContent = low;
+    highVal.textContent = high;
+
+    const blurred = gaussianBlur(rawImage, IW, IH, sigma);
+    const { mag, ang } = sobelGradient(blurred, IW, IH);
+    const thin = nms(mag, ang, IW, IH);
+    const edges = hysteresis(thin, IW, IH, low, high);
+
+    ctx.clearRect(0, 0, w, h);
+    const halfW = Math.floor(w/2) - 4;
+    putGrey(ctx, rawImage, IW, IH, 0, 0, halfW/IW);
+    putGrey(ctx, edges, IW, IH, halfW + 8, 0, halfW/IW);
+
+    ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(halfW+4, 0); ctx.lineTo(halfW+4, h); ctx.stroke();
+    ctx.fillStyle = '#444'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('input', halfW/2, h - 6);
+    ctx.fillText('Canny edges', halfW + 8 + halfW/2, h - 6);
+  }
+
+  [fullSigma, lowSlider, highSlider].forEach(el => el.addEventListener('input', draw));
+  draw();
+})();
+</script>
+</body>
+</html>

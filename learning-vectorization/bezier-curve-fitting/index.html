@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bézier Curve Fitting</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 220px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .step-controls { display: flex; align-items: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 13px; color: #555; font-variant-numeric: tabular-nums; }
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.7; min-height: 52px; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .pseudo { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.9; margin: 16px 0; white-space: pre; }
+  .pseudo .kw  { color: #c792ea; }
+  .pseudo .fn  { color: #82aaff; }
+  .pseudo .cm  { color: #444; font-style: italic; }
+  .pseudo .num { color: #f78c6c; }
+  .pseudo .hi  { color: #ffcb6b; }
+  .hint { font-size: 12px; color: #444; margin-top: 6px; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 4px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Bézier Curve Fitting</h1>
+  <p class="subtitle">Least-squares fitting of cubic Bézier segments to a point sequence. Used by Potrace and Inkscape to convert traced outlines into smooth curves.</p>
+
+  <!-- SECTION 1: HOW IT WORKS -->
+  <div class="section">
+    <h2>How it works</h2>
+    <p>After simplification leaves a sparse polyline, curve fitting replaces straight segments with <strong>cubic Bézier curves</strong> — each defined by four control points: two endpoints and two interior handles. The goal is to find handles that minimise the sum of squared distances between the curve and the original points.</p>
+    <p>The standard approach is the <strong>Schneider algorithm</strong> (as described in <em>Graphics Gems</em>): parameterise the input points along the chord, solve for the two handle positions via a 2×2 linear system, then check the maximum error. If error exceeds a threshold, split at the worst point and recurse.</p>
+
+    <div class="pseudo"><span class="kw">function</span> <span class="fn">fitCurve</span>(points, error):
+  <span class="cm">// Chord-length parameterise the input</span>
+  u = <span class="fn">chordLengthParam</span>(points)
+
+  <span class="cm">// Solve least-squares for the two handles</span>
+  [P1, P2] = <span class="fn">generateBezier</span>(points, u)
+
+  <span class="cm">// Find the point with maximum deviation</span>
+  [maxErr, splitIdx] = <span class="fn">maxError</span>(points, bezier(P0,P1,P2,P3), u)
+
+  <span class="kw">if</span> maxErr &lt; error:
+    <span class="kw">return</span> [bezier(P0, P1, P2, P3)]   <span class="cm">// good enough — one segment</span>
+  <span class="kw">else</span>:
+    <span class="cm">// split and fit two sub-segments recursively</span>
+    <span class="kw">return</span> <span class="fn">fitCurve</span>(points[<span class="num">0</span>…splitIdx], error)
+         + <span class="fn">fitCurve</span>(points[splitIdx…end], error)</div>
+
+    <div class="callout">
+      <strong>Tangent estimation.</strong> At each end of a segment the algorithm estimates a tangent direction from the first (or last) few points. This constrains the handle to lie along that tangent, ensuring <code>C¹</code> continuity at segment joins — the curve looks smooth where segments meet.
+    </div>
+  </div>
+
+  <!-- SECTION 2: CUBIC BÉZIER EXPLORER -->
+  <div class="section">
+    <h2>Cubic Bézier explorer</h2>
+    <p>A cubic Bézier is defined by four control points. Drag any point to see how the curve and its parameterisation change. The small tick marks show equal parameter steps — bunching means the curve slows down there.</p>
+    <canvas id="bezierCanvas" style="cursor:crosshair"></canvas>
+    <p class="hint">Drag any control point. Dashed lines connect endpoints to their handles.</p>
+  </div>
+
+  <!-- SECTION 3: FITTING DEMO -->
+  <div class="section">
+    <h2>Fitting to sampled points</h2>
+    <p>Draw a freehand path or use the generated one below. The fitter finds the minimum number of Bézier segments needed to stay within the error threshold.</p>
+    <canvas id="fitCanvas" style="cursor:crosshair"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Max error (px)</label>
+        <input type="range" id="errorSlider" min="1" max="40" value="8" step="1">
+      </div>
+      <span class="val-badge" id="errorDisplay">8 px</span>
+      <span class="val-badge" id="segCount"></span>
+    </div>
+    <p class="hint">Draw on the canvas, or press Reset to use the sample path.</p>
+    <div class="step-controls">
+      <button id="clearBtn">Reset</button>
+    </div>
+  </div>
+
+  <!-- SECTION 4: STEP-BY-STEP -->
+  <div class="section">
+    <h2>Step-by-step</h2>
+    <p>Watch the algorithm try a single segment, measure the error, then split and recurse. The <strong style="color:#f0a040">amber point</strong> is the current worst-error candidate for splitting.</p>
+    <canvas id="stepCanvas"></canvas>
+    <div class="step-controls">
+      <button id="prevBtn" disabled>← Prev</button>
+      <span class="step-counter" id="stepCounter">Step 0 / 0</span>
+      <button id="nextBtn">Next →</button>
+      <button id="resetStepBtn">Reset</button>
+    </div>
+    <div class="info-box" id="infoBox">Press Next to begin.</div>
+  </div>
+</div>
+
+<script>
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = Math.round(cssW * dpr);
+  el.height = Math.round(cssH * dpr);
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+function evtPos(el, e, w, h) {
+  const r = el.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return [(src.clientX - r.left) * (w / r.width), (src.clientY - r.top) * (h / r.height)];
+}
+
+// Cubic Bézier point at parameter t
+function bezierPt(P, t) {
+  const mt = 1 - t;
+  return [
+    mt*mt*mt*P[0][0] + 3*mt*mt*t*P[1][0] + 3*mt*t*t*P[2][0] + t*t*t*P[3][0],
+    mt*mt*mt*P[0][1] + 3*mt*mt*t*P[1][1] + 3*mt*t*t*P[2][1] + t*t*t*P[3][1]
+  ];
+}
+
+function drawBezierCurve(ctx, P, color, lineWidth) {
+  ctx.beginPath();
+  ctx.moveTo(P[0][0], P[0][1]);
+  for (let i = 1; i <= 80; i++) ctx.lineTo(...bezierPt(P, i / 80));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+// ─── Chord-length parameterisation ──────────────────────────────────────────
+function chordParam(pts) {
+  const u = [0];
+  for (let i = 1; i < pts.length; i++)
+    u.push(u[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  const L = u[u.length-1];
+  return L === 0 ? u.map(() => 0) : u.map(v => v / L);
+}
+
+// ─── Least-squares Bézier fitting (Schneider) ────────────────────────────────
+function generateBezier(pts, u, t1, t2) {
+  const n = pts.length;
+  const P0 = pts[0], P3 = pts[n-1];
+
+  // Basis functions
+  function B0(t) { const m=1-t; return m*m*m; }
+  function B1(t) { const m=1-t; return 3*m*m*t; }
+  function B2(t) { const m=1-t; return 3*m*t*t; }
+  function B3(t) { return t*t*t; }
+
+  // Build the 2×2 matrix and rhs
+  let C00=0, C01=0, C11=0, X0=0, X1=0, Y0=0, Y1=0;
+  for (let i = 0; i < n; i++) {
+    const t = u[i];
+    const A0x = t1[0] * B1(t), A0y = t1[1] * B1(t);
+    const A1x = t2[0] * B2(t), A1y = t2[1] * B2(t);
+    C00 += A0x*A0x + A0y*A0y;
+    C01 += A0x*A1x + A0y*A1y;
+    C11 += A1x*A1x + A1y*A1y;
+    const Bx = pts[i][0] - (B0(t)*P0[0] + B1(t)*P0[0] + B2(t)*P3[0] + B3(t)*P3[0]);
+    const By = pts[i][1] - (B0(t)*P0[1] + B1(t)*P0[1] + B2(t)*P3[1] + B3(t)*P3[1]);
+    // Corrected RHS: subtract the fixed endpoint contribution
+    const Rx = pts[i][0] - (B0(t)*P0[0] + B3(t)*P3[0]);
+    const Ry = pts[i][1] - (B0(t)*P0[1] + B3(t)*P3[1]);
+    X0 += A0x*Rx + A0y*Ry;
+    X1 += A1x*Rx + A1y*Ry;
+  }
+
+  const det = C00*C11 - C01*C01;
+  let alpha1 = det === 0 ? 0 : (X0*C11 - X1*C01) / det;
+  let alpha2 = det === 0 ? 0 : (C00*X1 - C01*X0) / det;
+
+  // Fallback: use chord length heuristic
+  const chord = Math.hypot(P3[0]-P0[0], P3[1]-P0[1]);
+  if (alpha1 < 1e-6 || alpha2 < 1e-6) { alpha1 = alpha2 = chord / 3; }
+
+  return [
+    [P0[0] + t1[0]*alpha1, P0[1] + t1[1]*alpha1],
+    [P3[0] + t2[0]*alpha2, P3[1] + t2[1]*alpha2]
+  ];
+}
+
+function maxError(pts, P) {
+  let maxD = 0, splitIdx = 1;
+  const n = pts.length;
+  for (let i = 1; i < n-1; i++) {
+    // Newton-refine parameter for closest point (simplified: sample 20 values)
+    let bestT = 0, bestD = Infinity;
+    for (let k = 0; k <= 20; k++) {
+      const t = k / 20;
+      const q = bezierPt(P, t);
+      const d = Math.hypot(q[0]-pts[i][0], q[1]-pts[i][1]);
+      if (d < bestD) { bestD = d; bestT = t; }
+    }
+    if (bestD > maxD) { maxD = bestD; splitIdx = i; }
+  }
+  return [maxD, splitIdx];
+}
+
+function tangentAt(pts, i, dir) {
+  // Estimate unit tangent at endpoint
+  const other = i === 0 ? 1 : pts.length - 2;
+  const dx = dir * (pts[other][0] - pts[i][0]);
+  const dy = dir * (pts[other][1] - pts[i][1]);
+  const len = Math.hypot(dx, dy) || 1;
+  return [dx/len, dy/len];
+}
+
+// Returns array of {P0,P1,P2,P3} objects
+function fitCurveSegments(pts, errorThreshold) {
+  if (pts.length < 2) return [];
+  const results = [];
+  function fit(sub) {
+    if (sub.length < 2) return;
+    if (sub.length === 2) {
+      // Straight line as degenerate Bézier
+      const P0 = sub[0], P3 = sub[1];
+      const dx = (P3[0]-P0[0])/3, dy = (P3[1]-P0[1])/3;
+      results.push([P0, [P0[0]+dx, P0[1]+dy], [P3[0]-dx, P3[1]-dy], P3]);
+      return;
+    }
+    const u = chordParam(sub);
+    const t1 = tangentAt(sub, 0, 1);
+    const t2 = tangentAt(sub, sub.length-1, -1);
+    const [P1, P2] = generateBezier(sub, u, t1, t2);
+    const P = [sub[0], P1, P2, sub[sub.length-1]];
+    const [err, splitIdx] = maxError(sub, P);
+    if (err <= errorThreshold) {
+      results.push(P);
+    } else {
+      fit(sub.slice(0, splitIdx + 1));
+      fit(sub.slice(splitIdx));
+    }
+  }
+  fit(pts);
+  return results;
+}
+
+// ─── Sample path ─────────────────────────────────────────────────────────────
+function makeSamplePath(w, h) {
+  const pts = [];
+  for (let i = 0; i <= 80; i++) {
+    const t = i / 80;
+    const x = 30 + t * (w - 60);
+    const y = h/2
+      + Math.sin(t * Math.PI * 4)       * 70
+      + Math.sin(t * Math.PI * 9 + 0.8) * 25
+      + Math.sin(t * Math.PI * 17 + 1.5) * 8;
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+// ─── SECTION 2: Cubic Bézier explorer ───────────────────────────────────────
+(function() {
+  const W = 760, H = 240;
+  const { el, ctx, w, h } = setupCanvas('bezierCanvas', W, H);
+
+  const cps = [
+    [80,  180],
+    [210, 40],
+    [550, 40],
+    [680, 180]
+  ];
+
+  let dragging = -1;
+  const LABELS = ['P₀', 'P₁', 'P₂', 'P₃'];
+  const COLORS  = ['#aaa', '#5b9bd5', '#5b9bd5', '#aaa'];
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    // Handle lines (dashed)
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cps[0][0], cps[0][1]);
+    ctx.lineTo(cps[1][0], cps[1][1]);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cps[3][0], cps[3][1]);
+    ctx.lineTo(cps[2][0], cps[2][1]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Tick marks at equal parameter steps
+    for (let k = 0; k <= 20; k++) {
+      const t = k / 20;
+      const [px, py] = bezierPt(cps, t);
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fill();
+    }
+
+    // Curve
+    drawBezierCurve(ctx, cps, '#5b9bd5', 2);
+
+    // Control points
+    cps.forEach(([x, y], i) => {
+      ctx.beginPath();
+      ctx.arc(x, y, i === 0 || i === 3 ? 6 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS[i];
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(LABELS[i], x, y - 14);
+    });
+  }
+
+  function hitTest(mx, my) {
+    for (let i = 0; i < cps.length; i++)
+      if (Math.hypot(mx - cps[i][0], my - cps[i][1]) < 18) return i;
+    return -1;
+  }
+
+  el.addEventListener('mousedown',  e => { const [mx,my] = evtPos(el,e,w,h); dragging = hitTest(mx,my); });
+  el.addEventListener('mousemove',  e => { if (dragging < 0) return; const [mx,my] = evtPos(el,e,w,h); cps[dragging] = [mx,my]; draw(); });
+  el.addEventListener('mouseup',    () => { dragging = -1; });
+  el.addEventListener('mouseleave', () => { dragging = -1; });
+  el.addEventListener('touchstart', e => { e.preventDefault(); const [mx,my]=evtPos(el,e,w,h); dragging=hitTest(mx,my); }, {passive:false});
+  el.addEventListener('touchmove',  e => { e.preventDefault(); if(dragging<0)return; const [mx,my]=evtPos(el,e,w,h); cps[dragging]=[mx,my]; draw(); }, {passive:false});
+  el.addEventListener('touchend',   () => { dragging = -1; });
+
+  draw();
+})();
+
+// ─── SECTION 3: Fitting demo ─────────────────────────────────────────────────
+(function() {
+  const W = 760, H = 240;
+  const { el, ctx, w, h } = setupCanvas('fitCanvas', W, H);
+  const slider  = document.getElementById('errorSlider');
+  const display = document.getElementById('errorDisplay');
+  const segEl   = document.getElementById('segCount');
+  const clearBtn = document.getElementById('clearBtn');
+
+  let pts = makeSamplePath(w, h);
+  let drawing = false;
+
+  function redraw() {
+    ctx.clearRect(0, 0, w, h);
+    if (pts.length < 2) return;
+
+    // Original points
+    ctx.beginPath();
+    pts.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    pts.forEach(([x,y]) => {
+      ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+      ctx.fillStyle = '#333'; ctx.fill();
+    });
+
+    const err = parseFloat(slider.value);
+    const segs = fitCurveSegments(pts, err);
+
+    // Draw fitted curves
+    segs.forEach(P => {
+      drawBezierCurve(ctx, P, '#5b9bd5', 2);
+      // Draw handles lightly
+      ctx.setLineDash([3,4]);
+      ctx.strokeStyle = '#2a3a4a';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(P[0][0],P[0][1]); ctx.lineTo(P[1][0],P[1][1]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(P[3][0],P[3][1]); ctx.lineTo(P[2][0],P[2][1]); ctx.stroke();
+      ctx.setLineDash([]);
+      // Handles
+      [[P[1],'#2a4a6a'],[P[2],'#2a4a6a']].forEach(([p,c]) => {
+        ctx.beginPath(); ctx.arc(p[0],p[1],3.5,0,Math.PI*2);
+        ctx.fillStyle=c; ctx.fill();
+      });
+      // Endpoints (segment joins)
+      [[P[0],'#aaa'],[P[3],'#aaa']].forEach(([p,c]) => {
+        ctx.beginPath(); ctx.arc(p[0],p[1],4,0,Math.PI*2);
+        ctx.fillStyle=c; ctx.fill();
+      });
+    });
+
+    segEl.textContent = segs.length + ' segment' + (segs.length !== 1 ? 's' : '');
+  }
+
+  slider.addEventListener('input', () => { display.textContent = slider.value + ' px'; redraw(); });
+
+  el.addEventListener('mousedown',  e => { const [x,y]=evtPos(el,e,w,h); pts=[[x,y]]; drawing=true; });
+  el.addEventListener('mousemove',  e => { if(!drawing)return; const [x,y]=evtPos(el,e,w,h); pts.push([x,y]); redraw(); });
+  el.addEventListener('mouseup',    () => { drawing=false; redraw(); });
+  el.addEventListener('mouseleave', () => { drawing=false; });
+  el.addEventListener('touchstart', e => { e.preventDefault(); const [x,y]=evtPos(el,e,w,h); pts=[[x,y]]; drawing=true; }, {passive:false});
+  el.addEventListener('touchmove',  e => { e.preventDefault(); if(!drawing)return; const [x,y]=evtPos(el,e,w,h); pts.push([x,y]); redraw(); }, {passive:false});
+  el.addEventListener('touchend',   () => { drawing=false; redraw(); });
+
+  clearBtn.addEventListener('click', () => { pts = makeSamplePath(w, h); redraw(); });
+
+  redraw();
+})();
+
+// ─── SECTION 4: Step-by-step ──────────────────────────────────────────────────
+(function() {
+  const W = 760, H = 240;
+  const { ctx, w, h } = setupCanvas('stepCanvas', W, H);
+  const prevBtn    = document.getElementById('prevBtn');
+  const nextBtn    = document.getElementById('nextBtn');
+  const resetStepBtn = document.getElementById('resetStepBtn');
+  const counter    = document.getElementById('stepCounter');
+  const infoBox    = document.getElementById('infoBox');
+
+  const pts = makeSamplePath(w, h);
+
+  // Pre-compute steps: each step is {type:'try'|'split'|'accept', range:[s,e], curve?:P, errPt?, err?}
+  const steps = [];
+  (function buildSteps(sub, depth) {
+    if (sub.length < 2) return;
+    const u = chordParam(sub);
+    const t1 = tangentAt(sub, 0, 1);
+    const t2 = tangentAt(sub, sub.length-1, -1);
+    const [P1, P2] = generateBezier(sub, u, t1, t2);
+    const P = [sub[0], P1, P2, sub[sub.length-1]];
+    const [err, splitIdx] = maxError(sub, P);
+    steps.push({ type: 'try', pts: sub, curve: P, err, splitIdx, depth });
+    if (err <= parseFloat(document.getElementById('errorSlider').value)) {
+      steps.push({ type: 'accept', pts: sub, curve: P, err, depth });
+    } else {
+      steps.push({ type: 'split', pts: sub, curve: P, err, splitIdx, depth });
+      buildSteps(sub.slice(0, splitIdx + 1), depth + 1);
+      buildSteps(sub.slice(splitIdx), depth + 1);
+    }
+  })(pts, 0);
+
+  let stepIdx = -1;
+  const accepted = [];
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    // Original points (dim)
+    ctx.beginPath();
+    pts.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1; ctx.stroke();
+
+    // Accepted curves so far
+    accepted.forEach(P => drawBezierCurve(ctx, P, '#4caf50', 1.5));
+
+    if (stepIdx < 0) return;
+
+    const s = steps[stepIdx];
+
+    // Highlight sub-range
+    ctx.beginPath();
+    s.pts.forEach(([x,y],i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1.5; ctx.stroke();
+    s.pts.forEach(([x,y]) => { ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fillStyle='#333'; ctx.fill(); });
+
+    // Candidate curve
+    drawBezierCurve(ctx, s.curve, s.type === 'accept' ? '#4caf50' : '#5b9bd5', 2);
+
+    // Worst error point
+    if (s.type !== 'accept' && s.splitIdx !== undefined) {
+      const ep = s.pts[s.splitIdx];
+      ctx.beginPath(); ctx.arc(ep[0],ep[1],6,0,Math.PI*2);
+      ctx.fillStyle = '#f0a040'; ctx.fill();
+      // Error line to curve (approximate)
+      const nearest = bezierPt(s.curve, s.splitIdx / (s.pts.length - 1));
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(ep[0],ep[1]); ctx.lineTo(nearest[0],nearest[1]);
+      ctx.strokeStyle = '#f0a04088'; ctx.lineWidth=1; ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function updateInfo() {
+    counter.textContent = `Step ${Math.max(0, stepIdx+1)} / ${steps.length}`;
+    prevBtn.disabled = stepIdx < 0;
+    nextBtn.disabled = stepIdx >= steps.length - 1;
+
+    if (stepIdx < 0) {
+      infoBox.innerHTML = `Press <strong>Next</strong> to begin. ${pts.length} sampled points.`;
+      return;
+    }
+    const s = steps[stepIdx];
+    if (s.type === 'try') {
+      infoBox.innerHTML = `Trying to fit <code>${s.pts.length}</code> points with one cubic segment — ` +
+        `max error = <strong style="color:#f0a040">${s.err.toFixed(1)} px</strong> ` +
+        `at point <code>${s.splitIdx}</code>.`;
+    } else if (s.type === 'accept') {
+      infoBox.innerHTML = `<strong style="color:#4caf50">Accepted.</strong> Error ${s.err.toFixed(1)} px is within threshold — segment added.`;
+    } else {
+      infoBox.innerHTML = `<strong style="color:#e07070">Split.</strong> Error ${s.err.toFixed(1)} px exceeds threshold. ` +
+        `Splitting at point <code>${s.splitIdx}</code> and recursing on each half.`;
+    }
+  }
+
+  function advance() {
+    stepIdx++;
+    const s = steps[stepIdx];
+    if (s.type === 'accept') accepted.push(s.curve);
+    draw(); updateInfo();
+  }
+
+  function retreat() {
+    const s = steps[stepIdx];
+    if (s.type === 'accept') accepted.pop();
+    stepIdx--;
+    draw(); updateInfo();
+  }
+
+  nextBtn.addEventListener('click',  () => { if (stepIdx < steps.length-1) advance(); });
+  prevBtn.addEventListener('click',  () => { if (stepIdx >= 0) retreat(); });
+  resetStepBtn.addEventListener('click', () => { stepIdx = -1; accepted.length = 0; draw(); updateInfo(); });
+
+  draw(); updateInfo();
+})();
+</script>
+</body>
+</html>

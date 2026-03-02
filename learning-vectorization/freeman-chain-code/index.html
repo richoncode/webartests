@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freeman Chain Code</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 200px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .step-controls { display: flex; align-items: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 13px; color: #555; font-variant-numeric: tabular-nums; }
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.7; min-height: 52px; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .pseudo { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.9; margin: 16px 0; white-space: pre; }
+  .pseudo .kw  { color: #c792ea; }
+  .pseudo .fn  { color: #82aaff; }
+  .pseudo .cm  { color: #444; font-style: italic; }
+  .pseudo .num { color: #f78c6c; }
+  .pseudo .hi  { color: #ffcb6b; }
+  .hint { font-size: 12px; color: #444; margin-top: 6px; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 4px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .dir-grid { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin: 20px 0; }
+  .dir-cell { background: #111; border: 1px solid #222; border-radius: 6px; text-align: center; padding: 8px 4px; font-family: 'SF Mono','Fira Code',monospace; font-size: 14px; }
+  .dir-cell .num { font-size: 20px; font-weight: 700; display: block; }
+  .dir-cell .arrow { font-size: 16px; display: block; color: #5b9bd5; }
+  .dir-cell.center { background: #1a1a1a; }
+  .code-out { font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #82aaff; background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; word-break: break-all; line-height: 1.9; min-height: 40px; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Freeman Chain Code</h1>
+  <p class="subtitle">Encodes a boundary as a sequence of 8-directional steps. A compact representation used as input to higher-level shape analysis and simplification.</p>
+
+  <!-- SECTION 1: HOW IT WORKS -->
+  <div class="section">
+    <h2>How it works</h2>
+    <p>A chain code traces a pixel boundary by recording the <strong>direction</strong> of each step rather than absolute coordinates. With an 8-connected neighbourhood, only 3 bits per step are needed — far more compact than storing (x, y) pairs.</p>
+    <p>Starting from a known pixel, follow the boundary clockwise. At each step record the direction to the next boundary pixel using the numbering below, then advance. The resulting sequence of digits <em>is</em> the chain code. The starting point and a single (x, y) anchor are sufficient to reconstruct the full outline.</p>
+
+    <div class="dir-grid">
+      <div class="dir-cell"><span class="num">3</span><span class="arrow">↖</span></div>
+      <div class="dir-cell"><span class="num">2</span><span class="arrow">↑</span></div>
+      <div class="dir-cell"><span class="num">1</span><span class="arrow">↗</span></div>
+      <div class="dir-cell"><span class="num">4</span><span class="arrow">←</span></div>
+      <div class="dir-cell center"><span class="num" style="color:#555">·</span><span class="arrow" style="color:#333">P</span></div>
+      <div class="dir-cell"><span class="num">0</span><span class="arrow">→</span></div>
+      <div class="dir-cell"><span class="num">5</span><span class="arrow">↙</span></div>
+      <div class="dir-cell"><span class="num">6</span><span class="arrow">↓</span></div>
+      <div class="dir-cell"><span class="num">7</span><span class="arrow">↘</span></div>
+    </div>
+
+    <div class="pseudo"><span class="kw">function</span> <span class="fn">chainCode</span>(boundary, start):
+  code = []
+  pos  = start
+  <span class="cm">// Direction vectors: 0=E, 1=NE, 2=N, 3=NW, 4=W, 5=SW, 6=S, 7=SE</span>
+  <span class="kw">repeat</span>:
+    <span class="kw">for</span> dir <span class="kw">in</span> [<span class="num">0</span>,<span class="num">1</span>,<span class="num">2</span>,<span class="num">3</span>,<span class="num">4</span>,<span class="num">5</span>,<span class="num">6</span>,<span class="num">7</span>]:
+      next = <span class="fn">step</span>(pos, dir)
+      <span class="kw">if</span> next <span class="kw">in</span> boundary:
+        code.<span class="fn">append</span>(dir)
+        pos = next
+        <span class="kw">break</span>
+  <span class="kw">until</span> pos == start
+  <span class="kw">return</span> code</div>
+
+    <div class="callout">
+      <strong>Difference chain code.</strong> Storing direction <em>differences</em> (mod 8) between consecutive steps makes the code rotationally invariant — the same shape rotated 90° produces the same difference code. This is useful for shape matching and recognition.
+    </div>
+  </div>
+
+  <!-- SECTION 2: INTERACTIVE TRACER -->
+  <div class="section">
+    <h2>Draw and trace</h2>
+    <p>Draw a filled shape on the pixel grid. The algorithm traces its boundary and generates the chain code below. Each coloured step in the code corresponds to a highlighted segment on the boundary.</p>
+    <canvas id="drawCanvas" style="cursor:crosshair; image-rendering:pixelated"></canvas>
+    <div class="step-controls">
+      <button id="clearDraw">Clear</button>
+      <button id="traceBtn">Trace boundary</button>
+    </div>
+    <div class="code-out" id="chainOut">— draw a shape then press Trace —</div>
+    <p class="hint">Click or drag to paint pixels. Press Trace to run the algorithm.</p>
+  </div>
+
+  <!-- SECTION 3: STEP-BY-STEP -->
+  <div class="section">
+    <h2>Step-by-step</h2>
+    <p>Watch the tracer advance one step at a time around the boundary. The <strong style="color:#f0a040">amber cell</strong> is the current position; the arrow shows the direction about to be appended to the code.</p>
+    <canvas id="stepCanvas"></canvas>
+    <div class="step-controls">
+      <button id="prevBtn" disabled>← Prev</button>
+      <span class="step-counter" id="stepCounter">Step 0 / 0</span>
+      <button id="nextBtn">Next →</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div class="info-box" id="infoBox">Press Next to begin.</div>
+    <div class="code-out" id="stepChainOut" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = Math.round(cssW * dpr);
+  el.height = Math.round(cssH * dpr);
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+function evtPos(el, e, w, h) {
+  const r = el.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return [(src.clientX - r.left) * (w / r.width), (src.clientY - r.top) * (h / r.height)];
+}
+
+// 8-connected direction vectors: 0=E, 1=NE, 2=N, 3=NW, 4=W, 5=SW, 6=S, 7=SE
+const DX = [1, 1, 0, -1, -1, -1,  0,  1];
+const DY = [0,-1,-1, -1,  0,  1,  1,  1];
+const DIR_ARROWS = ['→','↗','↑','↖','←','↙','↓','↘'];
+const DIR_COLORS = ['#e07070','#f0a040','#a0c060','#5b9bd5','#b07adf','#e06090','#60c0c0','#c0a050'];
+
+// Find leftmost-topmost boundary pixel (for a filled grid)
+function findStart(grid, GW, GH) {
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++)
+      if (grid[y * GW + x]) {
+        // Check it's on the boundary (has at least one empty 8-neighbour)
+        for (let d = 0; d < 8; d++) {
+          const nx = x + DX[d], ny = y + DY[d];
+          if (nx < 0 || nx >= GW || ny < 0 || ny >= GH || !grid[ny*GW+nx]) return [x, y];
+        }
+      }
+  return null;
+}
+
+function isBoundary(grid, GW, GH, x, y) {
+  if (!grid[y*GW+x]) return false;
+  for (let d = 0; d < 8; d++) {
+    const nx = x+DX[d], ny = y+DY[d];
+    if (nx<0||nx>=GW||ny<0||ny>=GH||!grid[ny*GW+nx]) return true;
+  }
+  return false;
+}
+
+function traceChain(grid, GW, GH) {
+  const start = findStart(grid, GW, GH);
+  if (!start) return [];
+  const steps = [];
+  let [cx, cy] = start;
+  let lastDir = 0;
+  const maxSteps = GW * GH * 4;
+  for (let s = 0; s < maxSteps; s++) {
+    // Search from (lastDir + 6) mod 8 to find next boundary pixel
+    let found = false;
+    for (let i = 0; i < 8; i++) {
+      const d = (lastDir + 6 + i) % 8;
+      const nx = cx + DX[d], ny = cy + DY[d];
+      if (nx >= 0 && nx < GW && ny >= 0 && ny < GH && grid[ny*GW+nx]) {
+        steps.push({ x: cx, y: cy, dir: d, nx, ny });
+        lastDir = d;
+        cx = nx; cy = ny;
+        found = true;
+        break;
+      }
+    }
+    if (!found) break;
+    if (s > 0 && cx === start[0] && cy === start[1]) break;
+  }
+  return steps;
+}
+
+// ─── SECTION 2: Draw and trace ────────────────────────────────────────────────
+(function() {
+  const GW = 38, GH = 28;
+  const CELL = 18;
+  const W = GW * CELL, H = GH * CELL;
+  const { el, ctx, w, h } = setupCanvas('drawCanvas', W, H);
+
+  const grid = new Uint8Array(GW * GH);
+
+  // Draw a default shape (circle-ish)
+  const cx = Math.floor(GW/2), cy = Math.floor(GH/2), r = 8;
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++)
+      if (Math.hypot(x-cx, y-cy) < r) grid[y*GW+x] = 1;
+
+  let painting = false;
+
+  function gridPt(mx, my) {
+    return [Math.floor(mx / CELL), Math.floor(my / CELL)];
+  }
+
+  function drawGrid(highlightSteps) {
+    ctx.clearRect(0, 0, w, h);
+
+    // Cells
+    for (let y = 0; y < GH; y++)
+      for (let x = 0; x < GW; x++) {
+        ctx.fillStyle = grid[y*GW+x] ? '#2a3040' : '#0d0d0d';
+        ctx.fillRect(x*CELL, y*CELL, CELL, CELL);
+      }
+
+    // Grid lines
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+    for (let x = 0; x <= GW; x++) {
+      ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, h); ctx.stroke();
+    }
+    for (let y = 0; y <= GH; y++) {
+      ctx.beginPath(); ctx.moveTo(0, y*CELL); ctx.lineTo(w, y*CELL); ctx.stroke();
+    }
+
+    // Boundary highlight
+    if (highlightSteps) {
+      highlightSteps.forEach(({ x, y, dir }, i) => {
+        const col = DIR_COLORS[dir];
+        ctx.fillStyle = col + '44';
+        ctx.fillRect(x*CELL+1, y*CELL+1, CELL-2, CELL-2);
+        // Arrow
+        ctx.fillStyle = col;
+        ctx.font = 'bold ' + Math.floor(CELL*0.6) + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(DIR_ARROWS[dir], x*CELL + CELL/2, y*CELL + CELL*0.72);
+      });
+    }
+  }
+
+  function paint(e) {
+    const [mx, my] = evtPos(el, e, w, h);
+    const [gx, gy] = gridPt(mx, my);
+    if (gx >= 0 && gx < GW && gy >= 0 && gy < GH) {
+      grid[gy*GW+gx] = 1;
+      drawGrid();
+    }
+  }
+
+  el.addEventListener('mousedown',  e => { painting=true; paint(e); });
+  el.addEventListener('mousemove',  e => { if(painting) paint(e); });
+  el.addEventListener('mouseup',    () => painting=false);
+  el.addEventListener('mouseleave', () => painting=false);
+  el.addEventListener('touchstart', e => { e.preventDefault(); painting=true; paint(e); }, {passive:false});
+  el.addEventListener('touchmove',  e => { e.preventDefault(); if(painting) paint(e); }, {passive:false});
+  el.addEventListener('touchend',   () => painting=false);
+
+  document.getElementById('clearDraw').addEventListener('click', () => {
+    grid.fill(0);
+    document.getElementById('chainOut').textContent = '— draw a shape then press Trace —';
+    drawGrid();
+  });
+
+  document.getElementById('traceBtn').addEventListener('click', () => {
+    const steps = traceChain(grid, GW, GH);
+    drawGrid(steps);
+    const code = steps.map(s => s.dir).join('');
+    const out = document.getElementById('chainOut');
+    if (!code) { out.textContent = '(no boundary found)'; return; }
+    out.innerHTML = steps.map(s =>
+      `<span style="color:${DIR_COLORS[s.dir]}">${s.dir}</span>`
+    ).join('');
+  });
+
+  drawGrid();
+})();
+
+// ─── SECTION 3: Step-by-step ──────────────────────────────────────────────────
+(function() {
+  const GW = 22, GH = 18;
+  const CELL = 24;
+  const W = GW * CELL, H = GH * CELL;
+  const { ctx, w, h } = setupCanvas('stepCanvas', W, H);
+
+  const prevBtn  = document.getElementById('prevBtn');
+  const nextBtn  = document.getElementById('nextBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const counter  = document.getElementById('stepCounter');
+  const infoBox  = document.getElementById('infoBox');
+  const codeOut  = document.getElementById('stepChainOut');
+
+  // Build a fixed sample grid (letter-L shape)
+  const grid = new Uint8Array(GW * GH);
+  const offX = 4, offY = 3;
+  // Vertical stroke
+  for (let y = 0; y < 10; y++)
+    for (let x = 0; x < 4; x++)
+      grid[(offY+y)*GW+(offX+x)] = 1;
+  // Horizontal stroke
+  for (let y = 0; y < 4; y++)
+    for (let x = 0; x < 9; x++)
+      grid[(offY+9+y)*GW+(offX+x)] = 1;
+
+  const steps = traceChain(grid, GW, GH);
+  let stepIdx = -1;
+
+  function drawState() {
+    ctx.clearRect(0, 0, w, h);
+
+    // Cells
+    for (let y = 0; y < GH; y++)
+      for (let x = 0; x < GW; x++) {
+        ctx.fillStyle = grid[y*GW+x] ? '#1e2840' : '#0d0d0d';
+        ctx.fillRect(x*CELL, y*CELL, CELL, CELL);
+      }
+
+    // Grid lines
+    ctx.strokeStyle = '#181818'; ctx.lineWidth = 0.5;
+    for (let x = 0; x <= GW; x++) {
+      ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, h); ctx.stroke();
+    }
+    for (let y = 0; y <= GH; y++) {
+      ctx.beginPath(); ctx.moveTo(0, y*CELL); ctx.lineTo(w, y*CELL); ctx.stroke();
+    }
+
+    // Past steps (coloured arrows)
+    for (let i = 0; i <= stepIdx; i++) {
+      const s = steps[i];
+      const col = DIR_COLORS[s.dir];
+      if (i < stepIdx) {
+        ctx.fillStyle = col + '30';
+        ctx.fillRect(s.x*CELL+1, s.y*CELL+1, CELL-2, CELL-2);
+      }
+      ctx.fillStyle = col;
+      ctx.font = 'bold ' + Math.floor(CELL*0.55) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(DIR_ARROWS[s.dir], s.x*CELL + CELL/2, s.y*CELL + CELL*0.7);
+    }
+
+    // Current position highlight
+    if (stepIdx >= 0) {
+      const s = steps[stepIdx];
+      ctx.strokeStyle = '#f0a040';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(s.x*CELL+1.5, s.y*CELL+1.5, CELL-3, CELL-3);
+    }
+
+    // Start marker
+    if (steps.length > 0) {
+      const s = steps[0];
+      ctx.fillStyle = '#4caf5088';
+      ctx.fillRect(s.x*CELL+1, s.y*CELL+1, CELL-2, CELL-2);
+    }
+  }
+
+  function updateInfo() {
+    const total = steps.length;
+    counter.textContent = `Step ${Math.max(0, stepIdx+1)} / ${total}`;
+    prevBtn.disabled = stepIdx < 0;
+    nextBtn.disabled = stepIdx >= total - 1;
+
+    if (stepIdx < 0) {
+      infoBox.innerHTML = `Press <strong>Next</strong> to begin tracing. ${grid.filter(Boolean).length} filled pixels.`;
+      codeOut.innerHTML = '';
+      return;
+    }
+    const s = steps[stepIdx];
+    infoBox.innerHTML =
+      `At pixel (<code>${s.x}</code>, <code>${s.y}</code>) — ` +
+      `step direction <span style="color:${DIR_COLORS[s.dir]};font-weight:600">${s.dir} ${DIR_ARROWS[s.dir]}</span> → ` +
+      `next pixel (<code>${s.nx}</code>, <code>${s.ny}</code>)`;
+
+    codeOut.innerHTML = steps.slice(0, stepIdx+1).map((st, i) =>
+      `<span style="color:${DIR_COLORS[st.dir]};${i===stepIdx?'text-decoration:underline':''}">${st.dir}</span>`
+    ).join('');
+  }
+
+  nextBtn.addEventListener('click', () => { if (stepIdx < steps.length-1) { stepIdx++; drawState(); updateInfo(); } });
+  prevBtn.addEventListener('click', () => { if (stepIdx >= 0) { stepIdx--; drawState(); updateInfo(); } });
+  resetBtn.addEventListener('click', () => { stepIdx=-1; drawState(); updateInfo(); });
+
+  drawState(); updateInfo();
+})();
+</script>
+</body>
+</html>
