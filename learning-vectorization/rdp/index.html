@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ramer–Douglas–Peucker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 600px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+
+  /* Controls */
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 16px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 200px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .stat-pill { display: inline-block; font-size: 12px; color: #888; background: #111; border: 1px solid #222; border-radius: 20px; padding: 3px 12px; }
+  .stat-pill span { color: #5b9bd5; font-weight: 600; }
+
+  /* Step controls */
+  .step-controls { display: flex; align-items: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 13px; color: #555; font-variant-numeric: tabular-nums; }
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.6; min-height: 52px; }
+  .info-box .keep { color: #4caf82; font-weight: 600; }
+  .info-box .discard { color: #e07070; font-weight: 600; }
+  .info-box .dim { color: #444; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+
+  /* Pseudocode */
+  .pseudo { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.9; margin: 16px 0; }
+  .pseudo .kw { color: #c792ea; }
+  .pseudo .fn { color: #82aaff; }
+  .pseudo .cm { color: #444; font-style: italic; }
+  .pseudo .num { color: #f78c6c; }
+  .pseudo .hi { color: #ffcb6b; }
+  .indent1 { padding-left: 24px; }
+  .indent2 { padding-left: 48px; }
+  .indent3 { padding-left: 72px; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Ramer–Douglas–Peucker</h1>
+  <p class="subtitle">A recursive algorithm that simplifies a polyline by removing points that lie within a tolerance distance of the line connecting their neighbours.</p>
+
+  <!-- SECTION 1: HOW IT WORKS -->
+  <div class="section">
+    <h2>How it works</h2>
+    <p>Given a polyline of N points and a tolerance <strong>ε (epsilon)</strong>, RDP finds the minimum subset of points that approximates the original path within ε pixels everywhere.</p>
+    <p>The algorithm is divide-and-conquer. Draw a straight line from the first point to the last. Find the point with the greatest perpendicular distance from that line. If it's less than ε, the whole interior can be discarded — the straight line is a good-enough approximation. If it exceeds ε, that point <em>must</em> be kept and the segment is split there, recursing on both halves.</p>
+
+    <div class="pseudo">
+      <div><span class="kw">function</span> <span class="fn">RDP</span>(points, ε):</div>
+      <div class="indent1"><span class="cm">// Base case — nothing to simplify</span></div>
+      <div class="indent1"><span class="kw">if</span> points.length &lt; <span class="num">3</span>: <span class="kw">return</span> points</div>
+      <div class="indent1">&nbsp;</div>
+      <div class="indent1"><span class="cm">// Find the point furthest from the start→end line</span></div>
+      <div class="indent1"><span class="hi">maxDist</span>, <span class="hi">maxIdx</span> = <span class="fn">farthestPoint</span>(points)</div>
+      <div class="indent1">&nbsp;</div>
+      <div class="indent1"><span class="kw">if</span> <span class="hi">maxDist</span> &lt; ε:</div>
+      <div class="indent2"><span class="cm">// All interior points are within tolerance — discard them</span></div>
+      <div class="indent2"><span class="kw">return</span> [points[<span class="num">0</span>], points[last]]</div>
+      <div class="indent1"><span class="kw">else</span>:</div>
+      <div class="indent2"><span class="cm">// Must keep the farthest point — split and recurse</span></div>
+      <div class="indent2">left  = <span class="fn">RDP</span>(points[<span class="num">0</span> … <span class="hi">maxIdx</span>], ε)</div>
+      <div class="indent2">right = <span class="fn">RDP</span>(points[<span class="hi">maxIdx</span> … last], ε)</div>
+      <div class="indent2"><span class="kw">return</span> left + right[<span class="num">1</span>:]  <span class="cm">// join, avoiding duplicate</span></div>
+    </div>
+
+    <p>Perpendicular distance from point P to the line through A and B is computed as the area of the triangle ABP divided by the base length |AB|.</p>
+  </div>
+
+  <!-- SECTION 2: LIVE DEMO -->
+  <div class="section">
+    <h2>Live demo</h2>
+    <p>Drag the epsilon slider to see simplification in real time. Gray dots are the original 60 sampled points; <strong style="color:#5b9bd5">blue dots</strong> are the kept points; the white line is the simplified path.</p>
+    <canvas id="liveCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Epsilon (ε)</label>
+        <input type="range" id="epsSlider" min="1" max="80" value="12" step="1">
+      </div>
+      <span class="val-badge">ε = <span id="epsVal">12</span> px</span>
+      <span class="stat-pill"><span id="origCount">60</span> pts → <span id="keptCount">—</span> pts</span>
+      <span class="stat-pill" id="reductionPill"></span>
+    </div>
+  </div>
+
+  <!-- SECTION 3: STEP THROUGH -->
+  <div class="section">
+    <h2>Step-by-step recursion</h2>
+    <p>Each step is one recursive call. The <strong style="color:#f0a040">amber segment</strong> is the current start→end line being tested. The thin perpendicular lines show the distance from each interior point to that line. The <strong style="color:#e07070">red point</strong> has the maximum distance — it determines whether this segment splits or collapses. Epsilon is fixed at <strong>ε = 12</strong>.</p>
+    <canvas id="stepCanvas"></canvas>
+    <div class="step-controls">
+      <button id="prevBtn" disabled>← Prev</button>
+      <span class="step-counter" id="stepCounter">Step 0 / 0</span>
+      <button id="nextBtn">Next →</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div class="info-box" id="infoBox">Press Next to begin.</div>
+  </div>
+
+</div>
+
+<script>
+// ─── Helpers ───────────────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = cssW * dpr;
+  el.height = cssH * dpr;
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+function ptLineDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return Math.hypot(px - ax, py - ay);
+  return Math.abs(dy * px - dx * py + bx * ay - by * ax) / len;
+}
+
+function perpFoot(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+  return [ax + t * dx, ay + t * dy];
+}
+
+// ─── Path generation ───────────────────────────────────────────────────────
+const CSS_W = 760, CSS_H = 220;
+
+function makePath(w, h) {
+  const pts = [], N = 59;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const x = 24 + t * (w - 48);
+    const y = h / 2
+      + Math.sin(t * Math.PI * 4)       * 72
+      + Math.sin(t * Math.PI * 9 + 1.2) * 26
+      + Math.sin(t * Math.PI * 18 + 2.6) * 9;
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+// ─── RDP simplification (returns kept indices) ─────────────────────────────
+function rdpIndices(pts, eps, start, end, kept) {
+  if (end - start < 2) return;
+  let maxD = 0, maxI = start + 1;
+  for (let i = start + 1; i < end; i++) {
+    const d = ptLineDist(pts[i][0], pts[i][1], pts[start][0], pts[start][1], pts[end][0], pts[end][1]);
+    if (d > maxD) { maxD = d; maxI = i; }
+  }
+  if (maxD > eps) {
+    kept.add(maxI);
+    rdpIndices(pts, eps, start, maxI, kept);
+    rdpIndices(pts, eps, maxI, end, kept);
+  }
+}
+
+function simplify(pts, eps) {
+  const kept = new Set([0, pts.length - 1]);
+  rdpIndices(pts, eps, 0, pts.length - 1, kept);
+  return [...kept].sort((a, b) => a - b);
+}
+
+// ─── Step recording ────────────────────────────────────────────────────────
+function computeSteps(pts, eps) {
+  const steps = [];
+  function recurse(start, end) {
+    if (end - start < 2) return;
+    let maxD = 0, maxI = start + 1;
+    for (let i = start + 1; i < end; i++) {
+      const d = ptLineDist(pts[i][0], pts[i][1], pts[start][0], pts[start][1], pts[end][0], pts[end][1]);
+      if (d > maxD) { maxD = d; maxI = i; }
+    }
+    if (maxD > eps) {
+      steps.push({ type: 'split',   start, end, maxI, maxD });
+      recurse(start, maxI);
+      recurse(maxI, end);
+    } else {
+      steps.push({ type: 'discard', start, end, maxI, maxD });
+    }
+  }
+  recurse(0, pts.length - 1);
+  return steps;
+}
+
+// ─── LIVE DEMO ─────────────────────────────────────────────────────────────
+const live = setupCanvas('liveCanvas', CSS_W, CSS_H);
+const livePts = makePath(CSS_W, CSS_H);
+const epsSlider = document.getElementById('epsSlider');
+const epsVal    = document.getElementById('epsVal');
+const keptCount = document.getElementById('keptCount');
+const reductionPill = document.getElementById('reductionPill');
+document.getElementById('origCount').textContent = livePts.length;
+
+function drawLive() {
+  const { ctx, w, h } = live;
+  const eps = parseFloat(epsSlider.value);
+  const keptIdx = simplify(livePts, eps);
+  const keptSet = new Set(keptIdx);
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Original polyline
+  ctx.beginPath();
+  livePts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Original points
+  livePts.forEach(([x, y]) => {
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+  });
+
+  // Simplified polyline
+  ctx.beginPath();
+  keptIdx.forEach((i, k) => k === 0 ? ctx.moveTo(livePts[i][0], livePts[i][1]) : ctx.lineTo(livePts[i][0], livePts[i][1]));
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Kept points
+  keptIdx.forEach(i => {
+    const [x, y] = livePts[i];
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#5b9bd5'; ctx.fill();
+  });
+
+  // Stats
+  const pct = Math.round((1 - keptIdx.length / livePts.length) * 100);
+  epsVal.textContent = eps;
+  keptCount.textContent = keptIdx.length;
+  reductionPill.innerHTML = `<span>${pct}%</span> reduction`;
+}
+
+epsSlider.addEventListener('input', drawLive);
+drawLive();
+
+// ─── STEP-THROUGH ──────────────────────────────────────────────────────────
+const step = setupCanvas('stepCanvas', CSS_W, CSS_H);
+const stepPts   = makePath(CSS_W, CSS_H);
+const STEP_EPS  = 12;
+const steps     = computeSteps(stepPts, STEP_EPS);
+let   stepIdx   = -1;
+
+const prevBtn      = document.getElementById('prevBtn');
+const nextBtn      = document.getElementById('nextBtn');
+const resetBtn     = document.getElementById('resetBtn');
+const stepCounter  = document.getElementById('stepCounter');
+const infoBox      = document.getElementById('infoBox');
+
+function drawStep() {
+  const { ctx, w, h } = step;
+  ctx.clearRect(0, 0, w, h);
+
+  // Determine which points are kept/discarded so far
+  const discarded = new Set();
+  for (let i = 0; i <= stepIdx; i++) {
+    const s = steps[i];
+    if (s.type === 'discard') {
+      for (let j = s.start + 1; j < s.end; j++) discarded.add(j);
+    }
+  }
+
+  // Full polyline dim
+  ctx.beginPath();
+  stepPts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  if (stepIdx < 0) {
+    // Draw all points neutral
+    stepPts.forEach(([x, y]) => {
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#333'; ctx.fill();
+    });
+    return;
+  }
+
+  const cur = steps[stepIdx];
+  const [ax, ay] = stepPts[cur.start];
+  const [bx, by] = stepPts[cur.end];
+
+  // Perpendicular drop lines for interior points
+  for (let i = cur.start + 1; i < cur.end; i++) {
+    const [px, py] = stepPts[i];
+    const [fx, fy] = perpFoot(px, py, ax, ay, bx, by);
+    ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(fx, fy);
+    ctx.strokeStyle = i === cur.maxI ? '#e0704088' : '#2a2a2a';
+    ctx.lineWidth = i === cur.maxI ? 1.5 : 1;
+    ctx.stroke();
+  }
+
+  // Current segment line (amber)
+  ctx.beginPath();
+  ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+  ctx.strokeStyle = '#f0a040';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Interior points
+  for (let i = cur.start + 1; i < cur.end; i++) {
+    const [x, y] = stepPts[i];
+    ctx.beginPath(); ctx.arc(x, y, i === cur.maxI ? 5 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = i === cur.maxI ? '#e07070' : '#2e2e2e';
+    ctx.fill();
+  }
+
+  // Discarded points so far (from previous steps)
+  discarded.forEach(i => {
+    if (i > cur.start && i < cur.end) return; // drawn above
+    const [x, y] = stepPts[i];
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#2a1a1a'; ctx.fill();
+  });
+
+  // Endpoints of current segment
+  [[ax, ay], [bx, by]].forEach(([x, y]) => {
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0a040'; ctx.fill();
+  });
+}
+
+function updateInfo() {
+  stepCounter.textContent = `Step ${Math.max(0, stepIdx + 1)} / ${steps.length}`;
+  prevBtn.disabled = stepIdx < 0;
+  nextBtn.disabled = stepIdx >= steps.length - 1;
+
+  if (stepIdx < 0) {
+    infoBox.innerHTML = `Press <strong>Next</strong> to begin stepping through the recursion. The path has <strong>${stepPts.length} points</strong>, ε = ${STEP_EPS} px.`;
+    return;
+  }
+
+  const s = steps[stepIdx];
+  const interior = s.end - s.start - 1;
+
+  if (s.type === 'split') {
+    infoBox.innerHTML =
+      `Segment <code>[${s.start} → ${s.end}]</code> — ${interior} interior point${interior !== 1 ? 's' : ''}. ` +
+      `Max distance = <strong style="color:#e07070">${s.maxD.toFixed(1)} px</strong> at point <code>${s.maxI}</code> ` +
+      `(ε = ${STEP_EPS} px) — exceeds tolerance. ` +
+      `<span class="keep">KEEP point ${s.maxI} — split into [${s.start}→${s.maxI}] and [${s.maxI}→${s.end}].</span>`;
+  } else {
+    infoBox.innerHTML =
+      `Segment <code>[${s.start} → ${s.end}]</code> — ${interior} interior point${interior !== 1 ? 's' : ''}. ` +
+      `Max distance = <strong style="color:#4caf82">${s.maxD.toFixed(1)} px</strong> at point <code>${s.maxI}</code> ` +
+      `(ε = ${STEP_EPS} px) — within tolerance. ` +
+      `<span class="discard">DISCARD all ${interior} interior point${interior !== 1 ? 's' : ''} — replace segment with a straight line.</span>`;
+  }
+}
+
+nextBtn.addEventListener('click', () => {
+  if (stepIdx < steps.length - 1) { stepIdx++; drawStep(); updateInfo(); }
+});
+prevBtn.addEventListener('click', () => {
+  if (stepIdx >= 0) { stepIdx--; drawStep(); updateInfo(); }
+});
+resetBtn.addEventListener('click', () => {
+  stepIdx = -1; drawStep(); updateInfo();
+});
+
+function resizeAll() {
+  const w = Math.min(CSS_W, document.querySelector('.page').clientWidth - 48);
+  // Live canvas
+  const lc = live;
+  const dpr = window.devicePixelRatio || 1;
+  live.el.width = w * dpr; live.el.height = CSS_H * dpr;
+  live.el.style.width = w + 'px'; live.el.style.height = CSS_H + 'px';
+  live.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  live.w = w;
+  // Step canvas
+  step.el.width = w * dpr; step.el.height = CSS_H * dpr;
+  step.el.style.width = w + 'px'; step.el.style.height = CSS_H + 'px';
+  step.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  step.w = w;
+  drawLive(); drawStep();
+}
+
+window.addEventListener('resize', resizeAll);
+
+drawStep();
+updateInfo();
+</script>
+</body>
+</html>
