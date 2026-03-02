@@ -37,6 +37,21 @@
   .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: #555; }
   .legend-item { display: flex; align-items: center; gap: 6px; }
   .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Code section */
+  .code-block { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; line-height: 2; overflow-x: auto; margin: 16px 0; }
+  .code-block .kw  { color: #c792ea; }
+  .code-block .fn  { color: #82aaff; }
+  .code-block .num { color: #f78c6c; }
+  .code-block .str { color: #c3e88d; }
+  .code-block .cm  { color: #444; font-style: italic; }
+  .code-block .hi  { color: #f0a040; }
+  .code-block .dim { color: #666; }
+  .callout { background: #111; border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 4px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code   { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .callout.red  { border-color: #e07070; }
+  .callout.blue { border-color: #5b9bd5; }
 </style>
 </head>
 <body>
@@ -85,6 +100,82 @@
       <div class="legend-item"><div class="legend-dot" style="background:#f0a040;border-radius:0;height:3px;width:16px"></div> Contour (interpolated)</div>
     </div>
     <p style="margin-top:14px">Each contour vertex is placed by <strong>linear interpolation</strong> along the edge — not simply at the midpoint. The crossing position is <code>t = (threshold − v₀) / (v₁ − v₀)</code>, producing smooth contours even on coarse grids.</p>
+  </div>
+
+  <!-- SECTION 4: THE CODE -->
+  <div class="section">
+    <h2>The code</h2>
+    <p>The complete algorithm in three pieces. The surprising thing is how little code it takes — the domain knowledge lives entirely in the lookup table.</p>
+
+    <div class="code-block"><span class="cm">// Bit encoding: TL=8  TR=4  BR=2  BL=1
+// Edge indices:  0=left  1=top  2=right  3=bottom</span>
+<span class="kw">const</span> <span class="hi">CELL_EDGES</span> = [
+  [],             <span class="cm">// 0  — all outside, no crossing</span>
+  [[<span class="num">0</span>,<span class="num">3</span>]],        <span class="cm">// 1  — BL:       left → bottom</span>
+  [[<span class="num">3</span>,<span class="num">2</span>]],        <span class="cm">// 2  — BR:       bottom → right</span>
+  [[<span class="num">0</span>,<span class="num">2</span>]],        <span class="cm">// 3  — BL+BR:   left → right</span>
+  [[<span class="num">1</span>,<span class="num">2</span>]],        <span class="cm">// 4  — TR:       top → right</span>
+  [[<span class="num">1</span>,<span class="num">2</span>],[<span class="num">0</span>,<span class="num">3</span>]], <span class="cm">// 5  — TR+BL:   top→right  +  left→bottom  ← saddle</span>
+  [[<span class="num">1</span>,<span class="num">3</span>]],        <span class="cm">// 6  — TR+BR:   top → bottom</span>
+  [[<span class="num">0</span>,<span class="num">1</span>]],        <span class="cm">// 7  — TR+BR+BL: left → top</span>
+  [[<span class="num">0</span>,<span class="num">1</span>]],        <span class="cm">// 8  — TL:       left → top</span>
+  [[<span class="num">1</span>,<span class="num">3</span>]],        <span class="cm">// 9  — TL+BL:   top → bottom</span>
+  [[<span class="num">0</span>,<span class="num">1</span>],[<span class="num">3</span>,<span class="num">2</span>]], <span class="cm">// 10 — TL+BR:   left→top  +  bottom→right  ← saddle</span>
+  [[<span class="num">1</span>,<span class="num">2</span>]],        <span class="cm">// 11 — TL+BR+BL: top → right</span>
+  [[<span class="num">0</span>,<span class="num">2</span>]],        <span class="cm">// 12 — TL+TR:   left → right</span>
+  [[<span class="num">3</span>,<span class="num">2</span>]],        <span class="cm">// 13 — TL+TR+BL: bottom → right</span>
+  [[<span class="num">0</span>,<span class="num">3</span>]],        <span class="cm">// 14 — TL+TR+BR: left → bottom</span>
+  [],             <span class="cm">// 15 — all inside, no crossing</span>
+];</div>
+
+    <div class="callout">
+      <strong>Cases 5 and 10 produce two segments each</strong> — the only two configurations where the contour is genuinely ambiguous. In case 5 (TR + BL active), two diagonally opposite corners are inside. The contour could either connect top→right and left→bottom (treating the blobs as separate) or top→left and bottom→right (treating them as merged). Both are valid. This implementation picks the first interpretation consistently.<br><br>
+      <strong>Cases 0 and 15</strong> (all outside / all inside) produce no segments. They are their own trivial complements.<br><br>
+      <strong>Complement symmetry:</strong> case N and case (15 − N) always produce the same set of segments — swapping inside and outside doesn't change where the boundary runs, only which side is which.
+    </div>
+
+    <div class="code-block"><span class="cm">// Classify each cell's four corners, then look up segments</span>
+<span class="kw">for</span> (<span class="kw">let</span> cy = <span class="num">0</span>; cy &lt; ROWS; cy++)
+  <span class="kw">for</span> (<span class="kw">let</span> cx = <span class="num">0</span>; cx &lt; COLS; cx++) {
+    <span class="kw">const</span> tl = <span class="fn">field</span>(cx,   cy  ) &gt; threshold ? <span class="hi">8</span> : <span class="num">0</span>;
+    <span class="kw">const</span> tr = <span class="fn">field</span>(cx+<span class="num">1</span>, cy  ) &gt; threshold ? <span class="hi">4</span> : <span class="num">0</span>;
+    <span class="kw">const</span> br = <span class="fn">field</span>(cx+<span class="num">1</span>, cy+<span class="num">1</span>) &gt; threshold ? <span class="hi">2</span> : <span class="num">0</span>;
+    <span class="kw">const</span> bl = <span class="fn">field</span>(cx,   cy+<span class="num">1</span>) &gt; threshold ? <span class="hi">1</span> : <span class="num">0</span>;
+
+    <span class="kw">const</span> caseIndex = <span class="hi">tl | tr | br | bl</span>;  <span class="cm">// bitwise OR builds the index</span>
+
+    CELL_EDGES[caseIndex].<span class="fn">forEach</span>(([a, b]) =&gt; <span class="fn">drawSegment</span>(a, b, cx, cy));
+  }</div>
+
+    <div class="callout">
+      <strong>Bitwise OR as table index.</strong> Assigning each corner a distinct power of 2 (8, 4, 2, 1) means the bitwise OR of the four classification results is exactly the case index — no branching, no conditionals. Four comparisons produce the table row directly. This is the key insight that keeps the inner loop tiny and branch-free.<br><br>
+      <strong>Each cell is fully independent</strong> of its neighbours. The algorithm visits every cell exactly once — O(rows × cols) — and each cell only reads four vertex values. This makes it trivially parallelisable; a GPU compute shader assigns one thread per cell and runs the entire grid in a single pass.
+    </div>
+
+    <div class="code-block"><span class="cm">// Find where the threshold crosses edge e of cell (cx, cy)
+// using linear interpolation between the two endpoint values</span>
+<span class="kw">function</span> <span class="fn">edgeCrossing</span>(e, cx, cy, threshold) {
+  <span class="cm">// Map edge index to the two grid vertices it connects</span>
+  <span class="kw">const</span> [gx0,gy0, gx1,gy1] = [
+    [cx,   cy,   cx,   cy+<span class="num">1</span>],  <span class="cm">// 0: left  — TL→BL</span>
+    [cx,   cy,   cx+<span class="num">1</span>, cy  ],  <span class="cm">// 1: top   — TL→TR</span>
+    [cx+<span class="num">1</span>, cy,   cx+<span class="num">1</span>, cy+<span class="num">1</span>],  <span class="cm">// 2: right — TR→BR</span>
+    [cx,   cy+<span class="num">1</span>, cx+<span class="num">1</span>, cy+<span class="num">1</span>],  <span class="cm">// 3: bottom — BL→BR</span>
+  ][e];
+
+  <span class="kw">const</span> v0 = <span class="fn">field</span>(gx0, gy0);
+  <span class="kw">const</span> v1 = <span class="fn">field</span>(gx1, gy1);
+  <span class="kw">const</span> <span class="hi">t</span>  = (threshold - v0) / (v1 - v0);  <span class="cm">// fraction along edge [0, 1]</span>
+
+  <span class="kw">return</span> [gx0 + <span class="hi">t</span> * (gx1 - gx0),
+          gy0 + <span class="hi">t</span> * (gy1 - gy0)];
+}</div>
+
+    <div class="callout blue">
+      <strong>Why interpolate?</strong> Using only the midpoint places every contour vertex at the exact centre of each edge, regardless of how close the field value is to the threshold. Linear interpolation — <code>t = (threshold − v₀) / (v₁ − v₀)</code> — positions the vertex precisely where the field crosses the threshold, assuming the field varies linearly between vertices. On a fine grid the difference is small; on a coarse grid (like the demo above) it prevents the contour from looking like a staircase of 45° segments.<br><br>
+      <strong>Edge case:</strong> if <code>v₀ === v₁</code> the denominator is zero (the edge runs exactly along the iso-surface). The result is clamped to <code>t = 0.5</code>.
+    </div>
+
   </div>
 </div>
 
