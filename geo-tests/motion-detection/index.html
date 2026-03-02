@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motion Detection Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 16px; }
+  .stat-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .state-pill { display: inline-block; padding: 6px 18px; border-radius: 20px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; transition: background 0.3s, color 0.3s; }
+  .state-still    { background: #1a1a1a; color: #333; border: 1px solid #222; }
+  .state-walking  { background: #1a3020; color: #4caf50; border: 1px solid #4caf5044; }
+  .state-vehicle  { background: #1a1a30; color: #5b9bd5; border: 1px solid #5b9bd544; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Motion Detection</h1>
+<p class="subtitle">DeviceMotion API — raw acceleration, magnitude envelope, step detection from vertical-axis peaks, and movement state classification.</p>
+
+<!-- SECTION 1: RAW ACCELERATION -->
+<div class="section">
+  <h2>Raw acceleration</h2>
+  <p>X, Y, Z axes and vector magnitude. Walk around to see the rhythmic oscillation of a stride. Sitting still should produce a near-flat line at ≈9.8 m/s² (gravity — if <em>including</em> gravity) or ≈0 (if gravity-subtracted).</p>
+  <div class="btn-row">
+    <button id="permBtn">Request permission (iOS)</button>
+    <span id="statusMsg" style="font-size:13px;color:#555">Not started</span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">X</div><div class="stat-value" id="valX" style="color:#e07070">0.00</div></div>
+    <div class="stat"><div class="stat-label">Y</div><div class="stat-value" id="valY" style="color:#a0c060">0.00</div></div>
+    <div class="stat"><div class="stat-label">Z</div><div class="stat-value" id="valZ" style="color:#5b9bd5">0.00</div></div>
+    <div class="stat"><div class="stat-label">Magnitude</div><div class="stat-value" id="valMag" style="color:#f0a040">0.00</div></div>
+    <div class="stat"><div class="stat-label">State</div>
+      <div style="margin-top:6px"><span class="state-pill state-still" id="stateLabel">Still</span></div>
+    </div>
+    <div class="stat"><div class="stat-label">Steps</div><div class="stat-value" id="valSteps" style="color:#b07adf">0</div></div>
+  </div>
+  <canvas id="accelCanvas"></canvas>
+</div>
+
+<!-- SECTION 2: STEP DETECTION -->
+<div class="section">
+  <h2>Step detection</h2>
+  <p>Steps are detected by finding peaks in the vertical-axis acceleration that exceed a threshold and are separated by at least 300 ms (minimum plausible stride interval). Each detected peak is marked with a tick.</p>
+  <canvas id="stepCanvas"></canvas>
+  <div class="callout">
+    <strong>Peak detection algorithm.</strong> Smooth the signal with a rolling average to remove high-frequency noise, then detect when the smoothed value rises above <code>mean + threshold</code> and subsequently falls back below it. A refractory period prevents double-counting the same step.
+  </div>
+</div>
+
+</div>
+<script>
+const MAX_SAMPLES = 200;
+const samples = { x: [], y: [], z: [], mag: [] };
+const stepMarks = []; // indices into samples.mag where steps were detected
+
+let stepCount = 0, lastStepTime = 0, stepPending = false, stepPeakVal = 0;
+
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width = Math.round(cssW*dpr); el.height = Math.round(cssH*dpr);
+  el.style.width = cssW+'px'; el.style.height = cssH+'px';
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+const accelC = setupCanvas('accelCanvas', 760, 160);
+const stepC  = setupCanvas('stepCanvas',  760, 160);
+
+function rolling(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const slice = arr.slice(Math.max(0, i - n + 1), i + 1);
+    out.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+  }
+  return out;
+}
+
+function mean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+
+function drawLine(ctx, w, h, data, color, minY, maxY) {
+  if (data.length < 2) return;
+  const range = maxY - minY || 1;
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = (i / (MAX_SAMPLES - 1)) * w;
+    const y = h - ((v - minY) / range) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawAccel() {
+  const { ctx, w, h } = accelC;
+  ctx.clearRect(0, 0, w, h);
+
+  const all = [...samples.x, ...samples.y, ...samples.z];
+  const minY = Math.min(...all, -2) - 0.5;
+  const maxY = Math.max(...all,  2) + 0.5;
+
+  // Zero line
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  const zy = h - ((0 - minY) / (maxY - minY)) * h;
+  ctx.beginPath(); ctx.moveTo(0, zy); ctx.lineTo(w, zy); ctx.stroke();
+
+  drawLine(ctx, w, h, samples.x, '#e07070', minY, maxY);
+  drawLine(ctx, w, h, samples.y, '#a0c060', minY, maxY);
+  drawLine(ctx, w, h, samples.z, '#5b9bd5', minY, maxY);
+
+  // Legend
+  [['X','#e07070',0],['Y','#a0c060',40],['Z','#5b9bd5',80]].forEach(([l,c,ox]) => {
+    ctx.strokeStyle=c; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(8+ox,10); ctx.lineTo(22+ox,10); ctx.stroke();
+    ctx.fillStyle=c; ctx.font='10px -apple-system,sans-serif'; ctx.textAlign='left'; ctx.fillText(l,25+ox,14);
+  });
+}
+
+function drawSteps() {
+  const { ctx, w, h } = stepC;
+  ctx.clearRect(0, 0, w, h);
+
+  const mag = samples.mag;
+  if (mag.length < 2) return;
+
+  const smooth = rolling(mag, 6);
+  const m = mean(smooth), range = Math.max(...smooth) - Math.min(...smooth, 0) || 1;
+  const minY = Math.max(0, m - range), maxY = m + range;
+
+  // Mean line
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  const my = h - ((m - minY) / (maxY - minY + 0.001)) * h;
+  ctx.beginPath(); ctx.moveTo(0, my); ctx.lineTo(w, my); ctx.stroke();
+
+  // Smoothed magnitude
+  drawLine(ctx, w, h, smooth, '#f0a04088', minY, maxY);
+  drawLine(ctx, w, h, mag, '#f0a040', minY, maxY);
+
+  // Step marks
+  stepMarks.forEach(idx => {
+    const x = (idx / (MAX_SAMPLES - 1)) * w;
+    ctx.strokeStyle = '#b07adf'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.fillStyle = '#b07adf'; ctx.font = 'bold 10px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('↑', x, 12);
+  });
+}
+
+function classifyState(mag) {
+  if (mag.length < 20) return 'still';
+  const recent = mag.slice(-20);
+  const variance = recent.reduce((s, v) => s + (v - mean(recent))**2, 0) / recent.length;
+  const m = mean(recent);
+  if (variance < 0.05) return 'still';
+  if (variance < 2 && m > 8) return 'walking';
+  return 'vehicle';
+}
+
+function updateStateUI(state) {
+  const el = document.getElementById('stateLabel');
+  el.className = 'state-pill';
+  if (state === 'still')   { el.classList.add('state-still');   el.textContent = 'Still'; }
+  if (state === 'walking') { el.classList.add('state-walking'); el.textContent = 'Walking'; }
+  if (state === 'vehicle') { el.classList.add('state-vehicle'); el.textContent = 'Moving'; }
+}
+
+function onMotion(e) {
+  const accel = e.accelerationIncludingGravity || e.acceleration;
+  if (!accel) return;
+  const x = accel.x ?? 0, y = accel.y ?? 0, z = accel.z ?? 0;
+  const mag = Math.sqrt(x*x + y*y + z*z);
+
+  samples.x.push(x); samples.y.push(y); samples.z.push(z); samples.mag.push(mag);
+  if (samples.x.length > MAX_SAMPLES) { samples.x.shift(); samples.y.shift(); samples.z.shift(); samples.mag.shift(); stepMarks.forEach((v,i) => { stepMarks[i]--; }); }
+
+  // Remove off-screen step marks
+  while (stepMarks.length && stepMarks[0] < 0) stepMarks.shift();
+
+  // Step detection
+  const m = mean(samples.mag), threshold = m + 1.5;
+  const now = Date.now();
+  if (!stepPending && mag > threshold && (now - lastStepTime) > 300) {
+    stepPending = true; stepPeakVal = mag;
+  }
+  if (stepPending && mag < m) {
+    stepPending = false; stepCount++;
+    lastStepTime = now;
+    stepMarks.push(samples.mag.length - 1);
+    document.getElementById('valSteps').textContent = stepCount;
+  }
+
+  document.getElementById('valX').textContent   = x.toFixed(2);
+  document.getElementById('valY').textContent   = y.toFixed(2);
+  document.getElementById('valZ').textContent   = z.toFixed(2);
+  document.getElementById('valMag').textContent = mag.toFixed(2);
+  document.getElementById('statusMsg').textContent = 'Live — ' + (e.interval ? e.interval.toFixed(0) + ' ms interval' : '');
+
+  updateStateUI(classifyState(samples.mag));
+  drawAccel();
+  drawSteps();
+}
+
+function startMotion() {
+  window.addEventListener('devicemotion', onMotion);
+  document.getElementById('statusMsg').textContent = 'Listening…';
+}
+
+document.getElementById('permBtn').addEventListener('click', () => {
+  if (typeof DeviceMotionEvent?.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(s => { if (s === 'granted') startMotion(); else document.getElementById('statusMsg').textContent = 'Permission denied'; });
+  } else { startMotion(); document.getElementById('statusMsg').textContent = 'No permission needed (non-iOS)'; }
+});
+
+if (typeof DeviceMotionEvent === 'undefined' || typeof DeviceMotionEvent.requestPermission !== 'function') {
+  startMotion();
+}
+</script>
+</body>
+</html>

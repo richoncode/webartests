@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Camera Overlay Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .viewer { position: relative; width: 100%; padding-top: 56.25%; border-radius: 10px; overflow: hidden; border: 1px solid #1e1e1e; background: #000; }
+  .viewer video, .viewer canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .viewer video { object-fit: cover; }
+  .viewer canvas { pointer-events: none; }
+  #overlay { z-index: 2; }
+  .hud { position: absolute; top: 12px; left: 12px; z-index: 3; font-size: 12px; color: #fff; background: rgba(0,0,0,0.55); border-radius: 6px; padding: 6px 12px; font-family: 'SF Mono','Fira Code',monospace; line-height: 1.8; pointer-events: none; }
+  .callout { background: #111; border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .target-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .target-item { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 12px; align-items: center; background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+  .target-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .target-bearing { color: #5b9bd5; font-variant-numeric: tabular-nums; }
+  .target-angle  { color: #555; font-size: 12px; }
+  #statusMsg { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>AR Camera Overlay</h1>
+<p class="subtitle">Live camera feed with canvas markers pinned to compass bearings. Tests the viability of placing world-anchored elements on a camera view using only the browser's orientation API.</p>
+
+<!-- SECTION 1: LIVE VIEWER -->
+<div class="section">
+  <h2>Live viewer</h2>
+  <p>Markers are placed at fixed angular offsets from north. Pan the device — they should remain locked to their bearing. Accuracy depends on compass quality and how the projection handles the camera's horizontal field of view.</p>
+  <div class="btn-row">
+    <button id="startCamera">Start camera</button>
+    <button id="permOrient">Allow orientation (iOS)</button>
+    <span id="statusMsg">Camera and orientation not started.</span>
+  </div>
+  <div class="viewer">
+    <video id="camVideo" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div class="hud" id="hud">heading: —°</div>
+  </div>
+
+  <div class="callout">
+    <strong>Projection model.</strong> This uses a simple cylindrical projection: the camera's horizontal FOV (assumed ~60°) maps linearly to screen width. A target at bearing B is positioned at <code>x = width/2 + (B − heading) / FOV × width</code>, wrapping at ±180°. A full spherical projection would handle looking up/down correctly but is overkill for a flat world view.
+  </div>
+</div>
+
+<!-- SECTION 2: TARGETS -->
+<div class="section">
+  <h2>Test targets</h2>
+  <p>Six test markers at fixed compass bearings (every 60°). The <strong style="color:#ccc">Screen angle</strong> column shows how far off-centre each marker currently is — 0° means dead ahead, ±30° is at the edge of the assumed FOV.</p>
+  <div class="target-list" id="targetList"></div>
+</div>
+
+</div>
+<script>
+const HFOV = 60; // assumed horizontal field of view in degrees
+const TARGETS = [
+  { name: 'North',     bearing: 0,   color: '#e07070' },
+  { name: 'NE (60°)',  bearing: 60,  color: '#f0a040' },
+  { name: 'SE (120°)', bearing: 120, color: '#a0c060' },
+  { name: 'South',     bearing: 180, color: '#5b9bd5' },
+  { name: 'SW (240°)', bearing: 240, color: '#b07adf' },
+  { name: 'NW (300°)', bearing: 300, color: '#60c0c0' },
+];
+
+let heading = 0;
+let overlayCtx = null, overlayW = 0, overlayH = 0;
+
+function angularDiff(a, b) {
+  let d = ((a - b) + 540) % 360 - 180;
+  return d;
+}
+
+function drawOverlay() {
+  if (!overlayCtx) return;
+  overlayCtx.clearRect(0, 0, overlayW, overlayH);
+
+  TARGETS.forEach(t => {
+    const diff = angularDiff(t.bearing, heading);
+    if (Math.abs(diff) > HFOV * 1.5) return; // off screen
+    const x = overlayW / 2 + (diff / HFOV) * overlayW;
+    const y = overlayH / 2;
+    const inView = Math.abs(diff) < HFOV / 2;
+
+    // Vertical line
+    overlayCtx.strokeStyle = t.color + (inView ? 'cc' : '44');
+    overlayCtx.lineWidth = 1;
+    overlayCtx.setLineDash([4, 4]);
+    overlayCtx.beginPath(); overlayCtx.moveTo(x, 0); overlayCtx.lineTo(x, overlayH);
+    overlayCtx.stroke();
+    overlayCtx.setLineDash([]);
+
+    // Marker
+    const r = inView ? 28 : 18;
+    overlayCtx.beginPath(); overlayCtx.arc(x, y, r, 0, Math.PI * 2);
+    overlayCtx.fillStyle = t.color + (inView ? '33' : '11'); overlayCtx.fill();
+    overlayCtx.strokeStyle = t.color + (inView ? 'ff' : '55');
+    overlayCtx.lineWidth = 2; overlayCtx.stroke();
+
+    // Label
+    overlayCtx.fillStyle = inView ? '#fff' : t.color + '88';
+    overlayCtx.font = `${inView ? 'bold ' : ''}${inView ? 13 : 11}px -apple-system,sans-serif`;
+    overlayCtx.textAlign = 'center'; overlayCtx.textBaseline = 'middle';
+    overlayCtx.fillText(t.name, x, y - 2);
+    overlayCtx.font = '10px -apple-system,sans-serif';
+    overlayCtx.fillStyle = inView ? '#aaa' : t.color + '66';
+    overlayCtx.fillText(t.bearing + '°', x, y + 14);
+  });
+
+  // Centre crosshair
+  overlayCtx.strokeStyle = '#ffffff33'; overlayCtx.lineWidth = 1;
+  overlayCtx.beginPath(); overlayCtx.moveTo(overlayW/2, overlayH/2 - 16); overlayCtx.lineTo(overlayW/2, overlayH/2 + 16); overlayCtx.stroke();
+  overlayCtx.beginPath(); overlayCtx.moveTo(overlayW/2 - 16, overlayH/2); overlayCtx.lineTo(overlayW/2 + 16, overlayH/2); overlayCtx.stroke();
+
+  updateTargetList();
+}
+
+function updateTargetList() {
+  document.getElementById('targetList').innerHTML = TARGETS.map(t => {
+    const diff = angularDiff(t.bearing, heading);
+    const inView = Math.abs(diff) < HFOV / 2;
+    return `<div class="target-item">
+      <div class="target-dot" style="background:${t.color}"></div>
+      <span style="color:#ccc">${t.name}</span>
+      <span class="target-bearing">${t.bearing}°</span>
+      <span class="target-angle" style="${inView?'color:#4caf50':''}">${diff > 0 ? '+' : ''}${diff.toFixed(1)}° ${inView ? '▶ in view' : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+function setupOverlay() {
+  const el = document.getElementById('overlay');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = el.parentElement.getBoundingClientRect();
+  overlayW = rect.width; overlayH = rect.height;
+  el.width  = Math.round(overlayW * dpr); el.height = Math.round(overlayH * dpr);
+  el.style.width = overlayW + 'px'; el.style.height = overlayH + 'px';
+  overlayCtx = el.getContext('2d'); overlayCtx.scale(dpr, dpr);
+}
+
+document.getElementById('startCamera').addEventListener('click', () => {
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    .then(stream => {
+      document.getElementById('camVideo').srcObject = stream;
+      document.getElementById('statusMsg').textContent = 'Camera running.';
+      setTimeout(setupOverlay, 300);
+    })
+    .catch(e => { document.getElementById('statusMsg').textContent = 'Camera error: ' + e.message; });
+});
+
+function onOrientation(e) {
+  let h = e.webkitCompassHeading ?? e.alpha ?? 0;
+  heading = h;
+  document.getElementById('hud').textContent = 'heading: ' + h.toFixed(1) + '°';
+  drawOverlay();
+}
+
+function startOrient() {
+  window.addEventListener('deviceorientation', onOrientation, true);
+}
+
+document.getElementById('permOrient').addEventListener('click', () => {
+  if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(s => { if (s === 'granted') startOrient(); });
+  } else { startOrient(); document.getElementById('statusMsg').textContent += ' Orientation active.'; }
+});
+
+if (typeof DeviceOrientationEvent === 'undefined' || typeof DeviceOrientationEvent.requestPermission !== 'function') {
+  startOrient();
+}
+
+updateTargetList();
+window.addEventListener('resize', setupOverlay);
+</script>
+</body>
+</html>

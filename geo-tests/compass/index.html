@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compass &amp; Orientation Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 20px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 16px; }
+  .stat-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; color: #5b9bd5; font-variant-numeric: tabular-nums; }
+  .stat-unit { font-size: 11px; color: #444; margin-left: 3px; }
+  .callout { background: #111; border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  #statusMsg { font-size: 13px; color: #555; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media(max-width:600px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Compass &amp; Orientation</h1>
+<p class="subtitle">DeviceOrientationEvent — compass heading, tilt, and rotation. iOS 13+ requires an explicit permission request; Android fires events automatically.</p>
+
+<!-- SECTION 1: COMPASS ROSE -->
+<div class="section">
+  <h2>Compass rose</h2>
+  <p>The rose rotates to show device heading (alpha). Point the top of the device toward north — the N should align with your actual north.</p>
+  <div class="btn-row">
+    <button id="permBtn">Request permission (iOS)</button>
+    <span id="statusMsg">Waiting for orientation events…</span>
+  </div>
+  <div class="two-col">
+    <div>
+      <canvas id="compassCanvas" style="width:100%;max-width:280px;height:auto"></canvas>
+    </div>
+    <div>
+      <div class="stat-grid" style="grid-template-columns:1fr 1fr">
+        <div class="stat"><div class="stat-label">Heading α</div><div class="stat-value" id="valAlpha">—</div><span class="stat-unit">°</span></div>
+        <div class="stat"><div class="stat-label">Cardinal</div><div class="stat-value" id="valCard" style="font-size:18px">—</div></div>
+        <div class="stat"><div class="stat-label">Pitch β</div><div class="stat-value" id="valBeta">—</div><span class="stat-unit">°</span></div>
+        <div class="stat"><div class="stat-label">Roll γ</div><div class="stat-value" id="valGamma">—</div><span class="stat-unit">°</span></div>
+      </div>
+      <div class="callout" style="margin-top:12px">
+        <strong>Alpha (α)</strong> is compass heading: 0° = north, 90° = east.<br>
+        <strong>Beta (β)</strong> is pitch: 0° = flat, ±90° = vertical.<br>
+        <strong>Gamma (γ)</strong> is roll: 0° = flat, ±90° = on its side.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 2: HEADING HISTORY -->
+<div class="section">
+  <h2>Heading stability</h2>
+  <p>Chart of the last 120 heading samples. A smooth line indicates a stable, usable compass. Noise and jumps indicate interference (metal, electronics) or rapid movement.</p>
+  <canvas id="histCanvas" style="width:100%;height:auto"></canvas>
+  <p style="font-size:12px;color:#333;margin-top:6px">Slow rotation to test gimbal lock near ±90° pitch (looking straight up/down causes α to become undefined).</p>
+</div>
+
+</div>
+<script>
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width = Math.round(cssW * dpr); el.height = Math.round(cssH * dpr);
+  el.style.width = cssW + 'px'; el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+const compass = setupCanvas('compassCanvas', 280, 280);
+const hist    = setupCanvas('histCanvas', 760, 160);
+const CX = compass.w / 2, CY = compass.h / 2, CR = compass.w / 2 - 12;
+
+const headings = [];
+let lastAlpha = null;
+
+function cardinal(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+function drawCompass(alpha) {
+  const { ctx, w, h } = compass;
+  ctx.clearRect(0, 0, w, h);
+
+  // Outer ring
+  ctx.beginPath(); ctx.arc(CX, CY, CR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Tick marks
+  for (let i = 0; i < 36; i++) {
+    const a = (i * 10 - alpha) * Math.PI / 180;
+    const big = i % 9 === 0;
+    const r1 = CR - (big ? 12 : 6), r2 = CR - 2;
+    ctx.beginPath();
+    ctx.moveTo(CX + Math.sin(a) * r1, CY - Math.cos(a) * r1);
+    ctx.lineTo(CX + Math.sin(a) * r2, CY - Math.cos(a) * r2);
+    ctx.strokeStyle = big ? '#555' : '#2a2a2a'; ctx.lineWidth = big ? 1.5 : 1; ctx.stroke();
+  }
+
+  // Cardinal labels (rotate with heading)
+  const cards = [['N','#e07070'], ['E','#888'], ['S','#888'], ['W','#888']];
+  cards.forEach(([lbl, col], i) => {
+    const a = (i * 90 - alpha) * Math.PI / 180;
+    const r = CR - 24;
+    ctx.fillStyle = col; ctx.font = 'bold 14px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(lbl, CX + Math.sin(a) * r, CY - Math.cos(a) * r);
+  });
+
+  // Needle (always points up — the dial rotates)
+  ctx.save(); ctx.translate(CX, CY);
+  ctx.beginPath(); ctx.moveTo(0, -(CR - 32)); ctx.lineTo(-8, 20); ctx.lineTo(8, 20); ctx.closePath();
+  ctx.fillStyle = '#5b9bd5'; ctx.fill();
+  ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a1a1a'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+
+  // Heading text
+  ctx.fillStyle = '#5b9bd5'; ctx.font = 'bold 16px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(alpha.toFixed(1) + '°', CX, CY + CR * 0.55);
+}
+
+function drawHistory() {
+  const { ctx, w, h } = hist;
+  ctx.clearRect(0, 0, w, h);
+  if (headings.length < 2) {
+    ctx.fillStyle = '#1e1e1e'; ctx.font = '13px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.fillText('No data yet', w/2, h/2);
+    return;
+  }
+  // Grid
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+  [0, 90, 180, 270, 360].forEach(deg => {
+    const y = h - (deg / 360) * (h - 20) - 10;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.fillStyle = '#2a2a2a'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(deg + '°', 4, y - 3);
+  });
+  // Line
+  ctx.beginPath();
+  headings.forEach((v, i) => {
+    const x = (i / (headings.length - 1)) * w;
+    const y = h - (v / 360) * (h - 20) - 10;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function onOrientation(e) {
+  let alpha = e.alpha ?? e.webkitCompassHeading;
+  if (alpha == null) { document.getElementById('statusMsg').textContent = 'alpha is null — compass unavailable'; return; }
+  // webkitCompassHeading is already true north on iOS; alpha on Android is magnetic, may need offset
+  if (e.webkitCompassHeading != null) alpha = e.webkitCompassHeading;
+
+  document.getElementById('statusMsg').textContent = 'Live';
+  document.getElementById('valAlpha').textContent  = alpha.toFixed(1);
+  document.getElementById('valCard').textContent   = cardinal(alpha);
+  document.getElementById('valBeta').textContent   = (e.beta  ?? 0).toFixed(1);
+  document.getElementById('valGamma').textContent  = (e.gamma ?? 0).toFixed(1);
+
+  drawCompass(alpha);
+  headings.push(alpha);
+  if (headings.length > 120) headings.shift();
+  drawHistory();
+}
+
+function startListening() {
+  window.addEventListener('deviceorientation', onOrientation, true);
+  document.getElementById('statusMsg').textContent = 'Listening for events…';
+}
+
+document.getElementById('permBtn').addEventListener('click', () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === 'granted') startListening();
+      else document.getElementById('statusMsg').textContent = 'Permission denied';
+    });
+  } else {
+    startListening();
+    document.getElementById('statusMsg').textContent = 'No permission prompt needed (non-iOS)';
+  }
+});
+
+// Auto-start on non-iOS
+if (typeof DeviceOrientationEvent === 'undefined' || typeof DeviceOrientationEvent.requestPermission !== 'function') {
+  startListening();
+}
+
+drawCompass(0);
+drawHistory();
+</script>
+</body>
+</html>

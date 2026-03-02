@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geolocation Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 20px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #4caf50; color: #4caf50; }
+  button.error  { border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; align-items: center; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 16px; }
+  .stat-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .stat-value { font-size: 20px; font-weight: 700; color: #5b9bd5; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+  .stat-value.dim { color: #333; }
+  .stat-unit { font-size: 11px; color: #444; margin-left: 3px; }
+  .log { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #555; line-height: 1.8; max-height: 200px; overflow-y: auto; }
+  .log .entry { border-bottom: 1px solid #111; padding-bottom: 4px; margin-bottom: 4px; }
+  .log .ts { color: #333; }
+  .log .coords { color: #5b9bd5; }
+  .log .acc { color: #4caf50; }
+  .callout { background: #111; border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .signal-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .bar-track { flex: 1; height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; background: #4caf50; transition: width 0.5s; }
+  .bar-label { font-size: 12px; color: #555; width: 80px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Geolocation</h1>
+<p class="subtitle">Live GPS position readout — accuracy, altitude, speed, heading, and update rate. Logs a position trail to reveal drift over time.</p>
+
+<!-- SECTION 1: LIVE POSITION -->
+<div class="section">
+  <h2>Live position</h2>
+  <p>Requests the highest-accuracy GPS fix available. On mobile this uses the hardware GPS chip; on desktop it falls back to Wi-Fi triangulation, which is far less accurate.</p>
+  <div class="btn-row">
+    <button id="startBtn">Start watching</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <span id="statusLabel" style="font-size:13px;color:#444">Idle</span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">Latitude</div><div class="stat-value dim" id="statLat">—</div></div>
+    <div class="stat"><div class="stat-label">Longitude</div><div class="stat-value dim" id="statLng">—</div></div>
+    <div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value dim" id="statAcc">—</div><span class="stat-unit">metres</span></div>
+    <div class="stat"><div class="stat-label">Altitude</div><div class="stat-value dim" id="statAlt">—</div><span class="stat-unit">m</span></div>
+    <div class="stat"><div class="stat-label">Speed</div><div class="stat-value dim" id="statSpd">—</div><span class="stat-unit">m/s</span></div>
+    <div class="stat"><div class="stat-label">Heading</div><div class="stat-value dim" id="statHdg">—</div><span class="stat-unit">°</span></div>
+    <div class="stat"><div class="stat-label">Updates</div><div class="stat-value dim" id="statCnt">0</div></div>
+    <div class="stat"><div class="stat-label">Interval</div><div class="stat-value dim" id="statInt">—</div><span class="stat-unit">ms</span></div>
+  </div>
+  <div class="signal-bar">
+    <span style="font-size:11px;color:#444;text-transform:uppercase;letter-spacing:0.5px;width:80px">Signal</span>
+    <div class="bar-track"><div class="bar-fill" id="accBar" style="width:0%"></div></div>
+    <span class="bar-label" id="accQuality">No fix</span>
+  </div>
+</div>
+
+<!-- SECTION 2: ACCURACY CIRCLE -->
+<div class="section">
+  <h2>Accuracy circle</h2>
+  <p>The dot is the reported position; the circle is the accuracy radius. A smaller circle means higher confidence. On hardware GPS outdoors this often reaches 3–5 m.</p>
+  <canvas id="accCanvas"></canvas>
+  <p style="font-size:12px;color:#333;margin-top:6px">Circle scales with reported accuracy — watch it shrink as the GPS warms up.</p>
+</div>
+
+<!-- SECTION 3: POSITION LOG -->
+<div class="section">
+  <h2>Position log &amp; drift</h2>
+  <p>Each GPS update is logged below. Standing still, positions should cluster within the accuracy radius. Large scatter while stationary indicates poor signal or multipath error.</p>
+  <div class="log" id="posLog"><span style="color:#2a2a2a">No positions yet — press Start watching.</span></div>
+  <div class="callout">
+    <strong>Drift vs multipath.</strong> GPS drift while stationary is normal — positions walk around within the accuracy circle. Large jumps (many × the accuracy radius) usually indicate multipath reflection from buildings, not genuine movement.
+  </div>
+</div>
+
+</div>
+<script>
+let watchId = null, count = 0, lastTime = null;
+const positions = [];
+
+const startBtn  = document.getElementById('startBtn');
+const stopBtn   = document.getElementById('stopBtn');
+const statusLbl = document.getElementById('statusLabel');
+
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width = Math.round(cssW * dpr); el.height = Math.round(cssH * dpr);
+  el.style.width = cssW + 'px'; el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+const { ctx, w, h } = setupCanvas('accCanvas', 760, 200);
+
+function drawAccCanvas(acc) {
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const maxR = Math.min(w, h) / 2 - 16;
+  // Scale: clamp to maxR for display. 5m=great, 500m=terrible
+  const normR = Math.min(acc, 500) / 500;
+  const r = 8 + normR * (maxR - 8);
+  // Accuracy circle
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#4caf5010'; ctx.fill();
+  ctx.strokeStyle = '#4caf5044'; ctx.lineWidth = 1.5; ctx.stroke();
+  // Labels
+  ctx.fillStyle = '#333'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('±' + acc.toFixed(0) + ' m', cx, cy + r + 14);
+  // Dot
+  ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#5b9bd5'; ctx.fill();
+  // Trail
+  if (positions.length > 1) {
+    const refLat = positions[0].lat, refLng = positions[0].lng;
+    const scale = (maxR - 8) / (Math.max(acc, 10) * 1.5) * 111320;
+    ctx.beginPath();
+    positions.forEach(({ lat, lng }, i) => {
+      const px = cx + (lng - refLng) * scale * Math.cos(refLat * Math.PI / 180);
+      const py = cy - (lat - refLat) * scale;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.strokeStyle = '#5b9bd540'; ctx.lineWidth = 1; ctx.stroke();
+    positions.forEach(({ lat, lng }) => {
+      const px = cx + (lng - refLng) * scale * Math.cos(refLat * Math.PI / 180);
+      const py = cy - (lat - refLat) * scale;
+      ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#5b9bd5aa'; ctx.fill();
+    });
+  }
+}
+
+function qualityLabel(acc) {
+  if (acc < 5)   return { label: 'Excellent (<5 m)', pct: 100, color: '#4caf50' };
+  if (acc < 15)  return { label: 'Good (<15 m)',     pct: 80,  color: '#8bc34a' };
+  if (acc < 50)  return { label: 'Fair (<50 m)',     pct: 55,  color: '#f0a040' };
+  if (acc < 200) return { label: 'Poor (<200 m)',    pct: 30,  color: '#e07070' };
+  return             { label: 'Very poor',           pct: 10,  color: '#e05050' };
+}
+
+function onPosition(pos) {
+  const { latitude: lat, longitude: lng, accuracy: acc,
+          altitude: alt, speed, heading, altitudeAccuracy } = pos.coords;
+  const now = pos.timestamp;
+
+  count++;
+  const interval = lastTime ? Math.round(now - lastTime) : null;
+  lastTime = now;
+  positions.push({ lat, lng, acc });
+  if (positions.length > 60) positions.shift();
+
+  function fmt(v, d = 6) { return v == null ? '—' : v.toFixed(d); }
+
+  document.getElementById('statLat').textContent  = fmt(lat);
+  document.getElementById('statLng').textContent  = fmt(lng);
+  document.getElementById('statAcc').textContent  = fmt(acc, 1);
+  document.getElementById('statAlt').textContent  = fmt(alt, 1);
+  document.getElementById('statSpd').textContent  = fmt(speed, 2);
+  document.getElementById('statHdg').textContent  = fmt(heading, 1);
+  document.getElementById('statCnt').textContent  = count;
+  document.getElementById('statInt').textContent  = interval ?? '—';
+  ['statLat','statLng','statAcc','statAlt','statSpd','statHdg','statCnt','statInt']
+    .forEach(id => document.getElementById(id).classList.remove('dim'));
+
+  const q = qualityLabel(acc);
+  document.getElementById('accBar').style.width      = q.pct + '%';
+  document.getElementById('accBar').style.background = q.color;
+  document.getElementById('accQuality').textContent  = q.label;
+
+  drawAccCanvas(acc);
+
+  const log = document.getElementById('posLog');
+  const ts = new Date(now).toLocaleTimeString();
+  log.innerHTML = `<div class="entry"><span class="ts">${ts}</span>  <span class="coords">${lat.toFixed(6)}, ${lng.toFixed(6)}</span>  <span class="acc">±${acc.toFixed(0)} m</span>${interval ? `  <span class="ts">${interval} ms</span>` : ''}</div>` + log.innerHTML;
+}
+
+function onError(err) {
+  statusLbl.textContent = 'Error: ' + err.message;
+  startBtn.classList.add('error');
+}
+
+startBtn.addEventListener('click', () => {
+  if (!navigator.geolocation) { statusLbl.textContent = 'Geolocation not supported'; return; }
+  watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+    enableHighAccuracy: true, maximumAge: 0, timeout: 15000
+  });
+  startBtn.disabled = true; stopBtn.disabled = false;
+  startBtn.classList.add('active');
+  statusLbl.textContent = 'Watching…';
+});
+
+stopBtn.addEventListener('click', () => {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null; startBtn.disabled = false; stopBtn.disabled = true;
+  startBtn.classList.remove('active');
+  statusLbl.textContent = 'Stopped';
+});
+
+// Initial canvas draw
+ctx.fillStyle = '#1a1a1a'; ctx.font = '13px -apple-system,sans-serif'; ctx.textAlign = 'center';
+ctx.fillText('Press Start watching to begin', w/2, h/2);
+</script>
+</body>
+</html>

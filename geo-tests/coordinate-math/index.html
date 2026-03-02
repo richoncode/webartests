@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coordinate Maths</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+  .field input { background: #111; border: 1px solid #2a2a2a; color: #ccc; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-variant-numeric: tabular-nums; width: 100%; font-family: 'SF Mono','Fira Code',monospace; }
+  .field input:focus { outline: none; border-color: #5b9bd5; }
+  .result-box { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 14px; color: #5b9bd5; line-height: 1.9; }
+  .result-box .label { color: #444; font-size: 12px; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .tile-calc { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+  @media(max-width:500px) { .input-grid, .tile-calc { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Coordinate Maths</h1>
+<p class="subtitle">Interactive calculators for the formulas underpinning location-aware applications — Haversine distance, bearing, destination point, tile addressing, and viewport projection.</p>
+
+<!-- SECTION 1: HAVERSINE -->
+<div class="section">
+  <h2>Haversine distance</h2>
+  <p>Great-circle distance between two lat/lng points on a sphere. Accurate to within 0.5 % globally (Earth is slightly oblate, but the spherical model is more than sufficient for game-scale distances).</p>
+  <div class="input-grid">
+    <div class="field"><label>Point A — Latitude</label><input type="number" id="hvLat1" value="51.5074" step="0.0001"></div>
+    <div class="field"><label>Point A — Longitude</label><input type="number" id="hvLng1" value="-0.1278" step="0.0001"></div>
+    <div class="field"><label>Point B — Latitude</label><input type="number" id="hvLat2" value="48.8566" step="0.0001"></div>
+    <div class="field"><label>Point B — Longitude</label><input type="number" id="hvLng2" value="2.3522" step="0.0001"></div>
+  </div>
+  <div class="result-box" id="hvResult"></div>
+  <div class="callout">
+    <strong>Formula.</strong> <code>a = sin²(Δlat/2) + cos(lat₁)·cos(lat₂)·sin²(Δlng/2)</code>
+    <br><code>d = 2R · atan2(√a, √(1−a))</code> where R = 6 371 000 m
+  </div>
+  <canvas id="hvCanvas"></canvas>
+</div>
+
+<!-- SECTION 2: BEARING & DESTINATION -->
+<div class="section">
+  <h2>Bearing &amp; destination point</h2>
+  <p>Forward azimuth (initial bearing) from A to B. Also computes the destination point reached by travelling a given distance and bearing from A — used for spawning world-space objects at known offsets from the player.</p>
+  <div class="input-grid">
+    <div class="field"><label>Origin Latitude</label><input type="number" id="brLat" value="51.5074" step="0.0001"></div>
+    <div class="field"><label>Origin Longitude</label><input type="number" id="brLng" value="-0.1278" step="0.0001"></div>
+    <div class="field"><label>Bearing (°)</label><input type="number" id="brBrg" value="45" step="1" min="0" max="360"></div>
+    <div class="field"><label>Distance (m)</label><input type="number" id="brDist" value="100" step="1" min="1"></div>
+  </div>
+  <div class="result-box" id="brResult"></div>
+</div>
+
+<!-- SECTION 3: TILE COORDINATES -->
+<div class="section">
+  <h2>Tile coordinate calculator</h2>
+  <p>Given a lat/lng and zoom level, compute the tile address, the pixel offset within that tile, and the number of tiles needed to cover a given radius — for pre-caching.</p>
+  <div class="tile-calc">
+    <div class="field"><label>Latitude</label><input type="number" id="tlLat" value="51.5074" step="0.0001"></div>
+    <div class="field"><label>Longitude</label><input type="number" id="tlLng" value="-0.1278" step="0.0001"></div>
+    <div class="field"><label>Zoom (0–19)</label><input type="number" id="tlZ" value="15" step="1" min="0" max="19"></div>
+  </div>
+  <div class="result-box" id="tlResult"></div>
+  <canvas id="tlCanvas"></canvas>
+</div>
+
+<!-- SECTION 4: VIEWPORT PROJECTION -->
+<div class="section">
+  <h2>Viewport projection</h2>
+  <p>Converting a world lat/lng to a canvas pixel, given a centre position, zoom level, and canvas size. This is the core transform needed to render any world object onto a flat 2D map.</p>
+  <div class="callout">
+    <strong>Web Mercator.</strong>
+    <code>px = (lng + 180) / 360 × tileSize × 2^Z</code><br>
+    <code>py = (1 − ln(tan(lat·π/180) + sec(lat·π/180)) / π) / 2 × tileSize × 2^Z</code><br>
+    To get screen coords: subtract the centre's world pixel and add half the canvas size.
+  </div>
+  <div class="input-grid">
+    <div class="field"><label>Centre Latitude</label><input type="number" id="vpCLat" value="51.5074" step="0.0001"></div>
+    <div class="field"><label>Centre Longitude</label><input type="number" id="vpCLng" value="-0.1278" step="0.0001"></div>
+    <div class="field"><label>Target Latitude</label><input type="number" id="vpTLat" value="51.510" step="0.0001"></div>
+    <div class="field"><label>Target Longitude</label><input type="number" id="vpTLng" value="-0.120" step="0.0001"></div>
+  </div>
+  <canvas id="vpCanvas"></canvas>
+  <div class="result-box" id="vpResult"></div>
+</div>
+
+</div>
+<script>
+const R = 6371000;
+const TILE = 256;
+
+function toRad(d) { return d * Math.PI / 180; }
+function toDeg(r) { return r * 180 / Math.PI; }
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function bearing(lat1, lng1, lat2, lng2) {
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1))*Math.sin(toRad(lat2)) - Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function destination(lat, lng, brg, dist) {
+  const ang = dist / R;
+  const b = toRad(brg);
+  const lat2 = Math.asin(Math.sin(toRad(lat))*Math.cos(ang) + Math.cos(toRad(lat))*Math.sin(ang)*Math.cos(b));
+  const lng2 = toRad(lng) + Math.atan2(Math.sin(b)*Math.sin(ang)*Math.cos(toRad(lat)), Math.cos(ang)-Math.sin(toRad(lat))*Math.sin(lat2));
+  return { lat: toDeg(lat2), lng: toDeg(lng2) };
+}
+
+function latLngToWorld(lat, lng, z) {
+  const scale = TILE * Math.pow(2, z);
+  const x = (lng + 180) / 360 * scale;
+  const latR = toRad(lat);
+  const y = (1 - Math.log(Math.tan(latR) + 1/Math.cos(latR)) / Math.PI) / 2 * scale;
+  return { x, y };
+}
+
+function latLngToTile(lat, lng, z) {
+  const w = latLngToWorld(lat, lng, z);
+  return { tx: Math.floor(w.x / TILE), ty: Math.floor(w.y / TILE), px: Math.floor(w.x % TILE), py: Math.floor(w.y % TILE) };
+}
+
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width = Math.round(cssW*dpr); el.height = Math.round(cssH*dpr);
+  el.style.width = cssW+'px'; el.style.height = cssH+'px';
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  return { ctx, w: cssW, h: cssH };
+}
+
+// ── Haversine ──────────────────────────────────────────────────────────────────
+const hvC = setupCanvas('hvCanvas', 760, 180);
+function calcHaversine() {
+  const lat1 = +document.getElementById('hvLat1').value;
+  const lng1 = +document.getElementById('hvLng1').value;
+  const lat2 = +document.getElementById('hvLat2').value;
+  const lng2 = +document.getElementById('hvLng2').value;
+  const d = haversine(lat1, lng1, lat2, lng2);
+  const brg = bearing(lat1, lng1, lat2, lng2);
+  const fmt = d < 1000 ? d.toFixed(1) + ' m' : (d/1000).toFixed(3) + ' km';
+  document.getElementById('hvResult').innerHTML =
+    `<span class="label">Distance </span>${fmt}\n<span class="label">Bearing A→B </span>${brg.toFixed(2)}°`;
+
+  const { ctx, w, h } = hvC;
+  ctx.clearRect(0, 0, w, h);
+  const margin = 30, cw = w - margin*2, ch = h - margin*2;
+  const cx1 = margin + cw*0.2, cx2 = margin + cw*0.8, cy1 = margin + ch*0.5, cy2 = cy1;
+  // Arc
+  ctx.beginPath(); ctx.moveTo(cx1, cy1);
+  const cpx = (cx1+cx2)/2, cpy = margin + 10;
+  ctx.quadraticCurveTo(cpx, cpy, cx2, cy2);
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 2; ctx.stroke();
+  // Points
+  [[cx1,cy1,'A','#e07070'],[cx2,cy2,'B','#4caf50']].forEach(([x,y,l,c]) => {
+    ctx.beginPath(); ctx.arc(x,y,7,0,Math.PI*2); ctx.fillStyle=c; ctx.fill();
+    ctx.fillStyle='#ccc'; ctx.font='bold 12px -apple-system,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(l,x,y);
+  });
+  // Distance label
+  ctx.fillStyle='#5b9bd5'; ctx.font='13px -apple-system,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(fmt, cpx, cpy + 8);
+  ctx.fillStyle='#444'; ctx.font='11px -apple-system,sans-serif';
+  ctx.fillText(lat1.toFixed(4)+', '+lng1.toFixed(4), cx1, cy1+14);
+  ctx.fillText(lat2.toFixed(4)+', '+lng2.toFixed(4), cx2, cy2+14);
+}
+['hvLat1','hvLng1','hvLat2','hvLng2'].forEach(id => document.getElementById(id).addEventListener('input', calcHaversine));
+
+// ── Bearing & Destination ──────────────────────────────────────────────────────
+function calcBearing() {
+  const lat = +document.getElementById('brLat').value;
+  const lng = +document.getElementById('brLng').value;
+  const brg = +document.getElementById('brBrg').value;
+  const dist = +document.getElementById('brDist').value;
+  const dest = destination(lat, lng, brg, dist);
+  document.getElementById('brResult').innerHTML =
+    `<span class="label">Bearing          </span>${brg.toFixed(1)}° (${['N','NE','E','SE','S','SW','W','NW'][Math.round(brg/45)%8]})\n` +
+    `<span class="label">Distance         </span>${dist < 1000 ? dist + ' m' : (dist/1000).toFixed(2)+' km'}\n` +
+    `<span class="label">Destination lat  </span>${dest.lat.toFixed(6)}\n` +
+    `<span class="label">Destination lng  </span>${dest.lng.toFixed(6)}`;
+}
+['brLat','brLng','brBrg','brDist'].forEach(id => document.getElementById(id).addEventListener('input', calcBearing));
+
+// ── Tile Coordinates ──────────────────────────────────────────────────────────
+const tlC = setupCanvas('tlCanvas', 760, 160);
+function calcTile() {
+  const lat = +document.getElementById('tlLat').value;
+  const lng = +document.getElementById('tlLng').value;
+  const z   = +document.getElementById('tlZ').value;
+  const t = latLngToTile(lat, lng, z);
+  const worldPx = Math.pow(2, z) * TILE;
+  const totalTiles = Math.pow(2, z);
+  document.getElementById('tlResult').innerHTML =
+    `<span class="label">Tile address   </span>${z}/${t.tx}/${t.ty}\n` +
+    `<span class="label">Pixel in tile  </span>x=${t.px}, y=${t.py}\n` +
+    `<span class="label">Total tiles    </span>${totalTiles} × ${totalTiles} = ${(totalTiles*totalTiles).toLocaleString()}\n` +
+    `<span class="label">World px size  </span>${worldPx.toLocaleString()} × ${worldPx.toLocaleString()} px`;
+
+  const { ctx, w, h } = tlC;
+  ctx.clearRect(0, 0, w, h);
+  const scale = Math.min((w-40) / TILE, (h-20) / TILE);
+  const ox = (w - TILE*scale) / 2, oy = (h - TILE*scale) / 2;
+  // Tile background
+  ctx.fillStyle = '#111'; ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+  ctx.fillRect(ox, oy, TILE*scale, TILE*scale);
+  ctx.strokeRect(ox, oy, TILE*scale, TILE*scale);
+  // Pixel grid (every 32px)
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+  for (let i=32; i<TILE; i+=32) {
+    ctx.beginPath(); ctx.moveTo(ox+i*scale,oy); ctx.lineTo(ox+i*scale,oy+TILE*scale); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox,oy+i*scale); ctx.lineTo(ox+TILE*scale,oy+i*scale); ctx.stroke();
+  }
+  // Point
+  const px = ox + t.px * scale, py = oy + t.py * scale;
+  ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2); ctx.fillStyle='#5b9bd5'; ctx.fill();
+  ctx.fillStyle='#5b9bd5'; ctx.font='11px -apple-system,sans-serif'; ctx.textAlign='center';
+  ctx.fillText(`(${t.px}, ${t.py})`, px, py-10);
+  // Labels
+  ctx.fillStyle='#333'; ctx.font='11px -apple-system,sans-serif'; ctx.textAlign='left';
+  ctx.fillText(`Tile ${t.tx}/${t.ty} at zoom ${z}`, ox+4, oy+12);
+}
+['tlLat','tlLng','tlZ'].forEach(id => document.getElementById(id).addEventListener('input', calcTile));
+
+// ── Viewport Projection ────────────────────────────────────────────────────────
+const vpC = setupCanvas('vpCanvas', 760, 200);
+function calcViewport() {
+  const cLat = +document.getElementById('vpCLat').value;
+  const cLng = +document.getElementById('vpCLng').value;
+  const tLat = +document.getElementById('vpTLat').value;
+  const tLng = +document.getElementById('vpTLng').value;
+  const Z = 16;
+
+  const cw = vpC.w, ch = vpC.h;
+  const centreWorld = latLngToWorld(cLat, cLng, Z);
+  const targetWorld = latLngToWorld(tLat, tLng, Z);
+
+  const sx = (targetWorld.x - centreWorld.x) + cw/2;
+  const sy = (targetWorld.y - centreWorld.y) + ch/2;
+
+  document.getElementById('vpResult').innerHTML =
+    `<span class="label">Zoom           </span>${Z}\n` +
+    `<span class="label">Centre world   </span>x=${centreWorld.x.toFixed(1)}, y=${centreWorld.y.toFixed(1)}\n` +
+    `<span class="label">Target world   </span>x=${targetWorld.x.toFixed(1)}, y=${targetWorld.y.toFixed(1)}\n` +
+    `<span class="label">Screen pixel   </span>x=${sx.toFixed(1)}, y=${sy.toFixed(1)} ${(sx<0||sx>cw||sy<0||sy>ch)?'(off screen)':'(in view)'}`;
+
+  const { ctx } = vpC;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(cw/2,0); ctx.lineTo(cw/2,ch); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,ch/2); ctx.lineTo(cw,ch/2); ctx.stroke();
+
+  // Centre
+  ctx.beginPath(); ctx.arc(cw/2,ch/2,7,0,Math.PI*2); ctx.fillStyle='#5b9bd5'; ctx.fill();
+  ctx.fillStyle='#5b9bd5'; ctx.font='bold 11px -apple-system,sans-serif'; ctx.textAlign='center'; ctx.fillText('Centre',cw/2,ch/2-12);
+
+  // Target (clamped to canvas for display)
+  const clampX = Math.max(12, Math.min(cw-12, sx));
+  const clampY = Math.max(12, Math.min(ch-12, sy));
+  const inView = sx>=0 && sx<=cw && sy>=0 && sy<=ch;
+  ctx.beginPath(); ctx.arc(clampX,clampY,7,0,Math.PI*2); ctx.fillStyle='#e07070'; ctx.fill();
+  if (!inView) {
+    ctx.strokeStyle='#e07070'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(cw/2,ch/2); ctx.lineTo(clampX,clampY); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.fillStyle='#e07070'; ctx.font='bold 11px -apple-system,sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Target',clampX, clampY-12);
+
+  if (inView) {
+    ctx.strokeStyle='#5b9bd544'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cw/2,ch/2); ctx.lineTo(sx,sy); ctx.stroke();
+  }
+}
+['vpCLat','vpCLng','vpTLat','vpTLng'].forEach(id => document.getElementById(id).addEventListener('input', calcViewport));
+
+// Init all
+calcHaversine(); calcBearing(); calcTile(); calcViewport();
+</script>
+</body>
+</html>

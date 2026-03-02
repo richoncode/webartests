@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proximity Zones Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #4caf50; color: #4caf50; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .poi-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .poi-item { display: grid; grid-template-columns: 16px 1fr auto auto auto; gap: 12px; align-items: center; background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+  .poi-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .poi-name { color: #ccc; font-weight: 500; }
+  .poi-dist { color: #5b9bd5; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+  .poi-state { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .poi-state.inside  { background: #1a3020; color: #4caf50; border: 1px solid #4caf5044; }
+  .poi-state.outside { background: #111; color: #333; border: 1px solid #1e1e1e; }
+  .event-log { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 16px; font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #555; line-height: 1.8; max-height: 180px; overflow-y: auto; }
+  .event-enter { color: #4caf50; }
+  .event-exit  { color: #e07070; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Proximity Zones</h1>
+<p class="subtitle">Place test points of interest, compute live Haversine distances, and trigger enter/exit events when the device crosses a radius boundary.</p>
+
+<!-- SECTION 1: ZONE VISUALISER -->
+<div class="section">
+  <h2>Zone visualiser</h2>
+  <p>Your position is the blue dot. Coloured rings are zone radii. <strong style="color:#ccc">Drop POI here</strong> places a test point at the current GPS position.</p>
+  <div class="btn-row">
+    <button id="startBtn">Start GPS</button>
+    <button id="dropBtn" disabled>Drop POI here</button>
+    <button id="clearBtn">Clear POIs</button>
+  </div>
+  <canvas id="zoneCanvas"></canvas>
+
+  <div class="poi-list" id="poiList"></div>
+
+  <div class="callout">
+    <strong>Haversine formula</strong> gives the great-circle distance between two lat/lng points on a sphere, accounting for Earth's curvature. For distances under 10 km the simpler equirectangular approximation is accurate to within 0.1 % and faster to compute: <code>d = R × √((Δlat)² + (cos(lat) × Δlng)²)</code>.
+  </div>
+</div>
+
+<!-- SECTION 2: ENTRY/EXIT LOG -->
+<div class="section">
+  <h2>Entry / exit log</h2>
+  <p>Zone transitions fire when the device crosses a POI's radius boundary. Hysteresis (a small dead-band) prevents rapid re-triggering at the boundary.</p>
+  <div class="event-log" id="eventLog"><span style="color:#2a2a2a">No events yet.</span></div>
+</div>
+
+</div>
+<script>
+const ZONE_RADIUS = 50; // metres — adjustable
+const HYSTERESIS  = 10; // metres dead-band
+const POI_COLORS  = ['#e07070','#f0a040','#a0c060','#5b9bd5','#b07adf','#60c0c0'];
+
+let playerLat = null, playerLng = null;
+let watchId = null;
+const pois = [];
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function bearing(lat1, lng1, lat2, lng2) {
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1*Math.PI/180)*Math.sin(lat2*Math.PI/180) - Math.sin(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width = Math.round(cssW * dpr); el.height = Math.round(cssH * dpr);
+  el.style.width = cssW + 'px'; el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+const cv = setupCanvas('zoneCanvas', 760, 300);
+
+function drawZones() {
+  const { ctx, w, h } = cv;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+
+  if (playerLat == null) {
+    ctx.fillStyle = '#1e1e1e'; ctx.font = '13px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Press Start GPS', cx, cy);
+    return;
+  }
+
+  // Scale: fit largest distance + some margin
+  let maxDist = 200;
+  pois.forEach(p => { maxDist = Math.max(maxDist, p.dist * 1.4); });
+  const scale = Math.min(cx, cy) * 0.85 / maxDist;
+
+  // Accuracy circle
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fillStyle='#5b9bd5'; ctx.fill();
+
+  pois.forEach((poi, i) => {
+    const col = POI_COLORS[i % POI_COLORS.length];
+    const brg = bearing(playerLat, playerLng, poi.lat, poi.lng) * Math.PI / 180;
+    const px = cx + Math.sin(brg) * poi.dist * scale;
+    const py = cy - Math.cos(brg) * poi.dist * scale;
+
+    // Zone circle on map
+    const r = ZONE_RADIUS * scale;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2);
+    ctx.fillStyle = col + (poi.inside ? '22' : '0a'); ctx.fill();
+    ctx.strokeStyle = col + (poi.inside ? 'cc' : '44'); ctx.lineWidth = 1.5; ctx.stroke();
+
+    // POI dot
+    ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+
+    // Label
+    ctx.fillStyle = col; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(poi.name, px, py - 12);
+  });
+
+  // Range rings
+  [50, 100, 200].forEach(m => {
+    const r = m * scale;
+    if (r < Math.min(cx, cy) * 0.95) {
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#2a2a2a'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(m + ' m', cx + r + 3, cy);
+    }
+  });
+
+  // Player
+  ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2);
+  ctx.fillStyle = '#5b9bd5'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+}
+
+function renderPoiList() {
+  const list = document.getElementById('poiList');
+  if (pois.length === 0) { list.innerHTML = ''; return; }
+  list.innerHTML = pois.map((poi, i) => {
+    const col = POI_COLORS[i % POI_COLORS.length];
+    const distStr = poi.dist < 1000 ? poi.dist.toFixed(0) + ' m' : (poi.dist/1000).toFixed(2) + ' km';
+    return `<div class="poi-item">
+      <div class="poi-dot" style="background:${col}"></div>
+      <span class="poi-name">${poi.name}</span>
+      <span class="poi-dist">${distStr}</span>
+      <span class="poi-state ${poi.inside ? 'inside' : 'outside'}">${poi.inside ? 'INSIDE' : 'outside'}</span>
+    </div>`;
+  }).join('');
+}
+
+function logEvent(msg, type) {
+  const log = document.getElementById('eventLog');
+  const ts = new Date().toLocaleTimeString();
+  const cls = type === 'enter' ? 'event-enter' : 'event-exit';
+  log.innerHTML = `<div class="${cls}">${ts}  ${msg}</div>` + log.innerHTML.replace('<span style="color:#2a2a2a">No events yet.</span>', '');
+}
+
+function updateDistances() {
+  if (playerLat == null) return;
+  pois.forEach(poi => {
+    const newDist = haversine(playerLat, playerLng, poi.lat, poi.lng);
+    poi.dist = newDist;
+    const threshold = poi.inside ? ZONE_RADIUS + HYSTERESIS : ZONE_RADIUS - HYSTERESIS;
+    const nowInside = newDist < threshold;
+    if (nowInside && !poi.inside) { poi.inside = true; logEvent(`Entered zone: ${poi.name} (${newDist.toFixed(0)} m)`, 'enter'); }
+    if (!nowInside && poi.inside)  { poi.inside = false; logEvent(`Exited zone: ${poi.name} (${newDist.toFixed(0)} m)`, 'exit'); }
+  });
+  drawZones();
+  renderPoiList();
+}
+
+document.getElementById('startBtn').addEventListener('click', function() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    playerLat = pos.coords.latitude;
+    playerLng = pos.coords.longitude;
+    document.getElementById('dropBtn').disabled = false;
+    this.classList.add('active'); this.textContent = 'GPS active';
+    watchId = navigator.geolocation.watchPosition(p => {
+      playerLat = p.coords.latitude; playerLng = p.coords.longitude;
+      updateDistances();
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 0 });
+    drawZones();
+  }, () => alert('Location unavailable'), { enableHighAccuracy: true });
+});
+
+document.getElementById('dropBtn').addEventListener('click', () => {
+  if (playerLat == null) return;
+  const idx = pois.length + 1;
+  pois.push({ name: 'POI ' + idx, lat: playerLat, lng: playerLng, dist: 0, inside: true });
+  updateDistances();
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => { pois.length = 0; drawZones(); renderPoiList(); });
+
+drawZones();
+</script>
+</body>
+</html>
