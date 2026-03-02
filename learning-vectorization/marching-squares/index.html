@@ -189,6 +189,7 @@
     <div class="callout blue">
       <strong>Why interpolate?</strong> Using only the midpoint places every contour vertex at the exact centre of each edge, regardless of how close the field value is to the threshold. Linear interpolation — <code>t = (threshold − v₀) / (v₁ − v₀)</code> — positions the vertex precisely where the field crosses the threshold, assuming the field varies linearly between vertices. On a fine grid the difference is small; on a coarse grid (like the demo above) it prevents the contour from looking like a staircase of 45° segments.<br><br>
       <strong>Edge case:</strong> if <code>v₀ === v₁</code> the denominator is zero (the edge runs exactly along the iso-surface). The result is clamped to <code>t = 0.5</code>.
+      <canvas id="interpExamplesCanvas" style="margin-top:18px;background:#0d0d0d;border-color:#252525"></canvas>
     </div>
 
   </div>
@@ -637,6 +638,103 @@ function edgeMid(e, ox, oy, s) {
     draw(parseInt(slider.value) / 100);
   });
   draw(parseInt(slider.value) / 100);
+})();
+
+// ─── INTERPOLATION EXAMPLES (inside blue callout) ──────────────────────────
+(function() {
+  const W = 680, H = 158;
+  const { ctx, w, h } = setupCanvas('interpExamplesCanvas', W, H);
+
+  // Three examples: same v0/v1, three different thresholds
+  const EXAMPLES = [
+    { v0: 0.1, v1: 0.9, thresh: 0.2, label: 'threshold near v₀' },
+    { v0: 0.1, v1: 0.9, thresh: 0.5, label: 'threshold at midpoint' },
+    { v0: 0.1, v1: 0.9, thresh: 0.8, label: 'threshold near v₁' },
+  ];
+
+  const EX_W  = Math.floor(w / EXAMPLES.length);
+  const PAD_X = 36;          // horizontal inset for the edge line
+  const EDGE_Y = h - 28;     // y of the edge line
+  const CHART_TOP = 22;      // y where v=1.0 maps to
+  const CHART_H   = EDGE_Y - CHART_TOP - 12;  // usable chart height
+
+  function valToY(v) { return CHART_TOP + (1 - v) * CHART_H; }
+  function tToX(t, ox) { return ox + PAD_X + t * (EX_W - 2 * PAD_X); }
+
+  function drawExample(ox, { v0, v1, thresh, label }) {
+    const t = (thresh - v0) / (v1 - v0);
+    const midX = tToX(0.5, ox);
+    const intX = tToX(t,   ox);
+    const thY  = valToY(thresh);
+    const lx   = ox + PAD_X,  rx = ox + EX_W - PAD_X;
+    const y0   = valToY(v0),   y1 = valToY(v1);
+
+    // Divider between examples (except before first)
+    if (ox > 0) {
+      ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ox, 12); ctx.lineTo(ox, h - 12); ctx.stroke();
+    }
+
+    // Slanted field-value line between v0 and v1
+    ctx.beginPath(); ctx.moveTo(lx, y0); ctx.lineTo(rx, y1);
+    ctx.strokeStyle = '#303030'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // v0 / v1 endpoint dots and labels
+    [[lx, y0, v0, -1], [rx, y1, v1, 1]].forEach(([x, y, val, side]) => {
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#444'; ctx.fill();
+      ctx.fillStyle = '#444'; ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = side < 0 ? 'right' : 'left';
+      ctx.fillText(val.toFixed(1), x + side * 7, y + 4);
+    });
+
+    // Threshold dashed line
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(lx - 6, thY); ctx.lineTo(rx + 6, thY);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.setLineDash([]);
+    // Threshold label
+    ctx.fillStyle = '#555'; ctx.textAlign = 'left'; ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText('t=' + thresh.toFixed(1), lx - 6, thY - 4);
+
+    // Edge line
+    ctx.beginPath(); ctx.moveTo(lx, EDGE_Y); ctx.lineTo(rx, EDGE_Y);
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Midpoint drop-line + dot (gray)
+    ctx.beginPath(); ctx.moveTo(midX, thY); ctx.lineTo(midX, EDGE_Y);
+    ctx.strokeStyle = '#404040'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(midX, EDGE_Y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#666'; ctx.fill();
+
+    // Interpolated drop-line + dot (amber)
+    ctx.beginPath(); ctx.moveTo(intX, thY); ctx.lineTo(intX, EDGE_Y);
+    ctx.strokeStyle = '#f0a04088'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(intX, EDGE_Y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0a040'; ctx.fill();
+
+    // Intersection dot on field line
+    ctx.beginPath(); ctx.arc(intX, thY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0a040'; ctx.fill();
+
+    // t value label (amber) below amber dot
+    ctx.fillStyle = '#f0a040'; ctx.textAlign = 'center';
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.fillText('t=' + t.toFixed(2), intX, EDGE_Y + 14);
+
+    // midpoint label (gray) below gray dot — only if far enough apart
+    if (Math.abs(intX - midX) > 14) {
+      ctx.fillStyle = '#555'; ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillText('0.50', midX, EDGE_Y + 14);
+    }
+
+    // Sub-label at top
+    ctx.fillStyle = '#3a3a3a'; ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, ox + EX_W / 2, 13);
+  }
+
+  EXAMPLES.forEach((ex, i) => drawExample(i * EX_W, ex));
 })();
 </script>
 </body>
