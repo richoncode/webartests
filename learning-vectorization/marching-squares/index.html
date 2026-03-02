@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marching Squares</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+
+  .two-col { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 620px) { .two-col { grid-template-columns: 1fr; } }
+
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.8; min-height: 80px; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .amber { color: #f0a040; font-weight: 600; }
+  .blue  { color: #5b9bd5; font-weight: 600; }
+  .red   { color: #e07070; font-weight: 600; }
+
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 220px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12px; color: #444; margin-top: 6px; }
+
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: #555; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Marching Squares</h1>
+  <p class="subtitle">A contour-tracing algorithm that extracts iso-lines from a 2D scalar field by classifying each grid cell into one of 16 cases and looking up the corresponding edge segments.</p>
+
+  <!-- SECTION 1: THE 16 CASES -->
+  <div class="section">
+    <h2>The 16 cases</h2>
+    <p>A scalar field assigns a numeric value to every grid vertex. Choose a threshold and each vertex is either <strong>inside</strong> (above threshold — bright) or <strong>outside</strong> (below — dark). A cell has four corners so there are 2⁴ = 16 possible configurations, indexed by a 4-bit number: <strong>TL = bit 3 (8)</strong>, <strong>TR = bit 2 (4)</strong>, <strong>BR = bit 1 (2)</strong>, <strong>BL = bit 0 (1)</strong>.</p>
+    <p>Each case maps to zero, one, or two line segments. Cases <span class="red">5</span> and <span class="red">10</span> are <em>saddle ambiguities</em> — the correct topology is genuinely ambiguous and either of the two valid interpretations can be chosen.</p>
+    <canvas id="casesCanvas"></canvas>
+  </div>
+
+  <!-- SECTION 2: INTERACTIVE SINGLE CELL -->
+  <div class="section">
+    <h2>Classify a cell</h2>
+    <p>Click any corner to toggle it inside or outside the threshold. The case index, bit pattern, and contour segments update instantly.</p>
+    <div class="two-col">
+      <div>
+        <canvas id="cellCanvas" style="cursor:pointer"></canvas>
+        <p class="hint">Click a corner to toggle it.</p>
+      </div>
+      <div class="info-box" id="cellInfo"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: FIELD DEMO -->
+  <div class="section">
+    <h2>Tracing a scalar field</h2>
+    <p>A 26 × 14 grid of values computed from a sum of Gaussian blobs. Each vertex is classified by the threshold and marching squares runs on every cell. Drag the threshold to watch the contour move through the field.</p>
+    <canvas id="fieldCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Threshold</label>
+        <input type="range" id="threshSlider" min="1" max="99" value="38" step="1">
+      </div>
+      <span class="val-badge" id="threshDisplay">38%</span>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#6a9ac0"></div> Inside vertex</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2e2e2e"></div> Outside vertex</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f0a040;border-radius:0;height:3px;width:16px"></div> Contour (interpolated)</div>
+    </div>
+    <p style="margin-top:14px">Each contour vertex is placed by <strong>linear interpolation</strong> along the edge — not simply at the midpoint. The crossing position is <code>t = (threshold − v₀) / (v₁ − v₀)</code>, producing smooth contours even on coarse grids.</p>
+  </div>
+</div>
+
+<script>
+// ─── Utility ───────────────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = Math.round(cssW * dpr);
+  el.height = Math.round(cssH * dpr);
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+// Bit encoding: TL=8 TR=4 BR=2 BL=1
+// Edge indices:  0=left  1=top  2=right  3=bottom
+const CELL_EDGES = [
+  [],            // 0
+  [[0,3]],       // 1:  BL
+  [[3,2]],       // 2:  BR
+  [[0,2]],       // 3:  BL+BR
+  [[1,2]],       // 4:  TR
+  [[1,2],[0,3]], // 5:  TR+BL  ← saddle
+  [[1,3]],       // 6:  TR+BR
+  [[0,1]],       // 7:  TR+BR+BL
+  [[0,1]],       // 8:  TL
+  [[1,3]],       // 9:  TL+BL
+  [[0,1],[3,2]], // 10: TL+BR  ← saddle
+  [[1,2]],       // 11: TL+BR+BL
+  [[0,2]],       // 12: TL+TR
+  [[3,2]],       // 13: TL+TR+BL
+  [[0,3]],       // 14: TL+TR+BR
+  [],            // 15
+];
+
+// Midpoint of edge e in a cell at (ox, oy) with side s
+function edgeMid(e, ox, oy, s) {
+  if (e === 0) return [ox,       oy + s/2];
+  if (e === 1) return [ox + s/2, oy      ];
+  if (e === 2) return [ox + s,   oy + s/2];
+               return [ox + s/2, oy + s  ];
+}
+
+// ─── SECTION 1: 16 CASES DIAGRAM ───────────────────────────────────────────
+(function() {
+  const W = 760, H = 390;
+  const { ctx, w, h } = setupCanvas('casesCanvas', W, H);
+
+  const INNER = 60, GAP = 16, COLS = 4, ROWS = 4;
+  const LABEL = 18; // space below each cell for case number
+  const CW = INNER + GAP, CH = INNER + LABEL + GAP;
+  const OX = Math.round((w - COLS * CW + GAP) / 2);
+  const OY = Math.round((h - ROWS * CH + GAP) / 2);
+
+  const BITS = [8, 4, 2, 1]; // TL TR BR BL
+  const CORNER_OFFSETS = [[0,0],[INNER,0],[INNER,INNER],[0,INNER]];
+
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+
+  for (let ci = 0; ci < 16; ci++) {
+    const col = ci % COLS, row = Math.floor(ci / COLS);
+    const cx = OX + col * CW;
+    const cy = OY + row * CH;
+    const isSaddle = ci === 5 || ci === 10;
+
+    // Cell background
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx - 5, cy - 5, INNER + 10, INNER + 10);
+
+    // Contour segments
+    CELL_EDGES[ci].forEach(([a, b]) => {
+      const [x1, y1] = edgeMid(a, cx, cy, INNER);
+      const [x2, y2] = edgeMid(b, cx, cy, INNER);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      ctx.strokeStyle = isSaddle ? '#e07070' : '#f0a040';
+      ctx.lineWidth = 2; ctx.stroke();
+      [[x1,y1],[x2,y2]].forEach(([x,y]) => {
+        ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = isSaddle ? '#e07070' : '#f0a040'; ctx.fill();
+      });
+    });
+
+    // Corner dots
+    CORNER_OFFSETS.forEach(([dx, dy], i) => {
+      const active = (ci & BITS[i]) !== 0;
+      ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 4.5, 0, Math.PI*2);
+      ctx.fillStyle = active ? '#ddd' : '#272727'; ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 4.5, 0, Math.PI*2);
+      ctx.strokeStyle = active ? '#888' : '#333'; ctx.lineWidth = 1; ctx.stroke();
+    });
+
+    // Case number
+    ctx.fillStyle = isSaddle ? '#e07070' : (ci === 0 || ci === 15) ? '#383838' : '#555';
+    ctx.fillText(ci, cx + INNER / 2, cy + INNER + LABEL - 2);
+  }
+})();
+
+// ─── SECTION 2: INTERACTIVE SINGLE CELL ────────────────────────────────────
+(function() {
+  const SZ = 260;
+  const { el, ctx, w, h } = setupCanvas('cellCanvas', SZ, SZ);
+  const PAD = 40, INNER = SZ - 2 * PAD;
+  let state = [0, 0, 0, 0]; // TL TR BR BL: 0=outside 1=inside
+
+  const CORNERS = [[PAD,PAD],[PAD+INNER,PAD],[PAD+INNER,PAD+INNER],[PAD,PAD+INNER]];
+  const LABELS  = ['TL','TR','BR','BL'];
+  const LABEL_OFF = [[-22,-22],[22,-22],[22,22],[-22,22]];
+  const BITS = [8,4,2,1];
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const ci = (state[0]*8)|(state[1]*4)|(state[2]*2)|state[3];
+    const segs = CELL_EDGES[ci];
+    const isSaddle = ci === 5 || ci === 10;
+
+    // Cell background + border
+    ctx.fillStyle = '#111';
+    ctx.fillRect(PAD - 8, PAD - 8, INNER + 16, INNER + 16);
+    ctx.strokeStyle = '#252525'; ctx.lineWidth = 1;
+    ctx.strokeRect(PAD, PAD, INNER, INNER);
+
+    // Edge midpoint ticks
+    for (let e = 0; e < 4; e++) {
+      const [mx, my] = edgeMid(e, PAD, PAD, INNER);
+      ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, Math.PI*2);
+      ctx.fillStyle = '#2a2a2a'; ctx.fill();
+    }
+
+    // Contour segments
+    segs.forEach(([a, b]) => {
+      const [x1,y1] = edgeMid(a, PAD, PAD, INNER);
+      const [x2,y2] = edgeMid(b, PAD, PAD, INNER);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle = isSaddle ? '#e07070' : '#f0a040';
+      ctx.lineWidth = 3; ctx.stroke();
+      [[x1,y1],[x2,y2]].forEach(([x,y]) => {
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2);
+        ctx.fillStyle = isSaddle ? '#e07070' : '#f0a040'; ctx.fill();
+      });
+    });
+
+    // Corner dots + labels
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    CORNERS.forEach(([px, py], i) => {
+      const active = state[i] === 1;
+      ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI*2);
+      ctx.fillStyle = active ? '#d0d0d0' : '#1a1a1a'; ctx.fill();
+      ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI*2);
+      ctx.strokeStyle = active ? '#777' : '#333'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#555';
+      ctx.fillText(LABELS[i], px + LABEL_OFF[i][0], py + LABEL_OFF[i][1]);
+    });
+    ctx.textBaseline = 'alphabetic';
+
+    updateInfo(ci, segs, isSaddle);
+  }
+
+  function updateInfo(ci, segs, isSaddle) {
+    const bits = ci.toString(2).padStart(4, '0');
+    const activeNames = BITS.map((b, i) => (ci & b) ? LABELS[i] : null).filter(Boolean);
+    const edgeNames = ['left','top','right','bottom'];
+    const segText = segs.length === 0
+      ? 'No contour segment.'
+      : segs.map(([a, b]) => `${edgeNames[a]} → ${edgeNames[b]}`).join('&nbsp;&nbsp;+&nbsp;&nbsp;');
+
+    document.getElementById('cellInfo').innerHTML =
+      `Case <code>${ci}</code> &nbsp; bits <code>${bits}</code><br><br>` +
+      `Inside corners: <span class="amber">${activeNames.length ? activeNames.join(', ') : 'none'}</span><br>` +
+      `Segments: <span class="${isSaddle ? 'red' : 'blue'}">${segText}</span>` +
+      (isSaddle ? '<br><br><span class="red">Saddle ambiguity — two regions touch at a corner.<br>Both contour interpretations are topologically valid.</span>' : '');
+  }
+
+  el.addEventListener('click', e => {
+    const rect = el.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (w / rect.width);
+    const my = (e.clientY - rect.top)  * (h / rect.height);
+    CORNERS.forEach(([px, py], i) => {
+      if (Math.hypot(mx - px, my - py) < 22) { state[i] ^= 1; draw(); }
+    });
+  });
+
+  draw();
+})();
+
+// ─── SECTION 3: SCALAR FIELD DEMO ──────────────────────────────────────────
+(function() {
+  const W = 760, H = 390;
+  const { ctx, w, h } = setupCanvas('fieldCanvas', W, H);
+
+  const COLS = 26, ROWS = 14;
+  const CELL  = Math.floor((w - 40) / COLS);
+  const OX    = Math.round((w - COLS * CELL) / 2);
+  const OY    = Math.round((h - ROWS * CELL) / 2);
+
+  // Scalar field: sum of Gaussians evaluated at grid vertices
+  const BLOBS = [
+    {x:0.20, y:0.32, r:0.18},
+    {x:0.60, y:0.52, r:0.23},
+    {x:0.48, y:0.15, r:0.15},
+    {x:0.18, y:0.74, r:0.13},
+    {x:0.80, y:0.25, r:0.17},
+    {x:0.72, y:0.78, r:0.16},
+    {x:0.38, y:0.62, r:0.14},
+  ];
+
+  function rawAt(nx, ny) {
+    return BLOBS.reduce((s, b) =>
+      s + Math.exp(-((nx - b.x)**2 + (ny - b.y)**2) / (2 * b.r * b.r)), 0);
+  }
+
+  // Pre-compute normalised vertex grid
+  const verts = new Float32Array((COLS+1) * (ROWS+1));
+  let vmin = Infinity, vmax = -Infinity;
+  for (let gy = 0; gy <= ROWS; gy++)
+    for (let gx = 0; gx <= COLS; gx++) {
+      const v = rawAt(gx / COLS, gy / ROWS);
+      verts[gy*(COLS+1)+gx] = v;
+      if (v < vmin) vmin = v;
+      if (v > vmax) vmax = v;
+    }
+
+  function normAt(gx, gy) {
+    return (verts[gy*(COLS+1)+gx] - vmin) / (vmax - vmin);
+  }
+
+  // Interpolated edge crossing point in canvas pixels
+  function edgePt(e, cx, cy, thresh) {
+    let gx0, gy0, gx1, gy1;
+    if      (e === 0) { gx0=cx;   gy0=cy;   gx1=cx;   gy1=cy+1; }
+    else if (e === 1) { gx0=cx;   gy0=cy;   gx1=cx+1; gy1=cy;   }
+    else if (e === 2) { gx0=cx+1; gy0=cy;   gx1=cx+1; gy1=cy+1; }
+    else              { gx0=cx;   gy0=cy+1; gx1=cx+1; gy1=cy+1; }
+    const v0 = normAt(gx0, gy0), v1 = normAt(gx1, gy1);
+    const t  = Math.max(0, Math.min(1, v0 === v1 ? 0.5 : (thresh - v0) / (v1 - v0)));
+    return [OX + (gx0 + t * (gx1 - gx0)) * CELL,
+            OY + (gy0 + t * (gy1 - gy0)) * CELL];
+  }
+
+  function draw(thresh) {
+    ctx.clearRect(0, 0, w, h);
+
+    // Heatmap cells
+    for (let cy = 0; cy < ROWS; cy++)
+      for (let cx = 0; cx < COLS; cx++) {
+        const avg = (normAt(cx,cy)+normAt(cx+1,cy)+normAt(cx+1,cy+1)+normAt(cx,cy+1)) / 4;
+        const t2 = avg * avg;
+        ctx.fillStyle = `rgb(${Math.round(t2*45)},${Math.round(t2*72)},${Math.round(t2*105)})`;
+        ctx.fillRect(OX + cx*CELL, OY + cy*CELL, CELL, CELL);
+      }
+
+    // Grid lines
+    ctx.strokeStyle = '#161616'; ctx.lineWidth = 0.5;
+    for (let gx = 0; gx <= COLS; gx++) {
+      ctx.beginPath();
+      ctx.moveTo(OX + gx*CELL, OY); ctx.lineTo(OX + gx*CELL, OY + ROWS*CELL); ctx.stroke();
+    }
+    for (let gy = 0; gy <= ROWS; gy++) {
+      ctx.beginPath();
+      ctx.moveTo(OX, OY + gy*CELL); ctx.lineTo(OX + COLS*CELL, OY + gy*CELL); ctx.stroke();
+    }
+
+    // Contour segments (interpolated)
+    ctx.strokeStyle = '#f0a040'; ctx.lineWidth = 2;
+    for (let cy = 0; cy < ROWS; cy++)
+      for (let cx = 0; cx < COLS; cx++) {
+        const tl = normAt(cx,   cy  ) > thresh ? 8 : 0;
+        const tr = normAt(cx+1, cy  ) > thresh ? 4 : 0;
+        const br = normAt(cx+1, cy+1) > thresh ? 2 : 0;
+        const bl = normAt(cx,   cy+1) > thresh ? 1 : 0;
+        CELL_EDGES[tl|tr|br|bl].forEach(([a, b]) => {
+          const [x1,y1] = edgePt(a, cx, cy, thresh);
+          const [x2,y2] = edgePt(b, cx, cy, thresh);
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        });
+      }
+
+    // Vertex classification dots
+    for (let gy = 0; gy <= ROWS; gy++)
+      for (let gx = 0; gx <= COLS; gx++) {
+        const inside = normAt(gx, gy) > thresh;
+        ctx.beginPath(); ctx.arc(OX + gx*CELL, OY + gy*CELL, 2, 0, Math.PI*2);
+        ctx.fillStyle = inside ? '#6a9ac0' : '#2e2e2e'; ctx.fill();
+      }
+  }
+
+  const slider  = document.getElementById('threshSlider');
+  const display = document.getElementById('threshDisplay');
+
+  slider.addEventListener('input', () => {
+    display.textContent = slider.value + '%';
+    draw(parseInt(slider.value) / 100);
+  });
+
+  draw(parseInt(slider.value) / 100);
+})();
+</script>
+</body>
+</html>
