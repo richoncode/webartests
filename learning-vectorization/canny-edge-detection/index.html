@@ -43,6 +43,9 @@
   .pipe-step { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #888; text-align: center; min-width: 120px; }
   .pipe-step strong { display: block; color: #ccc; font-size: 14px; margin-bottom: 4px; }
   .pipe-arrow { color: #333; font-size: 20px; padding: 0 8px; }
+  .pipe-grid { display: grid; grid-template-columns: 240px 1fr; gap: 12px 16px; align-items: center; }
+  .pipe-ctrl { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+  .pipe-stage-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
 </style>
 </head>
 <body>
@@ -111,26 +114,39 @@
   <!-- SECTION 4: FULL PIPELINE -->
   <div class="section">
     <h2>Full pipeline</h2>
-    <p>Adjust all four parameters and see the final edge map update in real time. The two threshold values control the hysteresis step: pixels above <strong style="color:#4caf50">high</strong> are always edges; pixels between low and high are edges only when connected to a strong edge.</p>
-    <canvas id="fullCanvas"></canvas>
-    <div class="ctrl-row">
-      <div class="ctrl-group">
-        <label>σ (blur)</label>
-        <input type="range" id="fullSigma" min="0.5" max="4" value="1.4" step="0.1">
+    <p>Each stage feeds into the next. Adjust σ to control blur strength before gradient computation; tune the two hysteresis thresholds to filter weak edges — pixels above <strong style="color:#4caf50">high</strong> are always kept; pixels between low and high are kept only when connected to a strong edge.</p>
+    <div class="pipe-grid">
+
+      <div class="pipe-ctrl">
+        <span class="pipe-stage-label">Input</span>
       </div>
-      <span class="val-badge" id="fullSigmaVal">1.4</span>
-    </div>
-    <div class="ctrl-row">
-      <div class="ctrl-group">
-        <label>Low threshold</label>
-        <input type="range" id="lowSlider" min="1" max="100" value="20" step="1">
+      <canvas id="pipeInput"></canvas>
+
+      <div class="pipe-ctrl">
+        <span class="pipe-stage-label">Gaussian blur</span>
+        <div class="ctrl-group">
+          <label>σ (blur)</label>
+          <input type="range" id="fullSigma" min="0.5" max="4" value="1.4" step="0.1">
+          <span class="val-badge" id="fullSigmaVal">σ = 1.4</span>
+        </div>
       </div>
-      <span class="val-badge" id="lowVal">20</span>
-      <div class="ctrl-group">
-        <label>High threshold</label>
-        <input type="range" id="highSlider" min="1" max="255" value="60" step="1">
+      <canvas id="pipeBlur"></canvas>
+
+      <div class="pipe-ctrl">
+        <span class="pipe-stage-label">Canny edges</span>
+        <div class="ctrl-group">
+          <label>Low threshold</label>
+          <input type="range" id="lowSlider" min="1" max="100" value="20" step="1">
+          <span class="val-badge" id="lowVal">20</span>
+        </div>
+        <div class="ctrl-group">
+          <label>High threshold</label>
+          <input type="range" id="highSlider" min="1" max="255" value="60" step="1">
+          <span class="val-badge" id="highVal">60</span>
+        </div>
       </div>
-      <span class="val-badge" id="highVal">60</span>
+      <canvas id="pipeCanny"></canvas>
+
     </div>
   </div>
 </div>
@@ -378,38 +394,41 @@ const rawImage = makeTestImage(IW, IH);
 
 // ─── SECTION 4: Full pipeline ─────────────────────────────────────────────────
 (function() {
-  const W = 760, H = 180;
-  const { ctx, w, h } = setupCanvas('fullCanvas', W, H);
-  const fullSigma = document.getElementById('fullSigma');
+  const PIW = 400, PIH = 120;
+  const pipeImg = makeTestImage(PIW, PIH);
+  const CW = 512, CH = Math.round(PIH / PIW * CW);
+  const inputC = setupCanvas('pipeInput', CW, CH);
+  const blurC  = setupCanvas('pipeBlur',  CW, CH);
+  const cannyC = setupCanvas('pipeCanny', CW, CH);
+
+  const fullSigma    = document.getElementById('fullSigma');
   const fullSigmaVal = document.getElementById('fullSigmaVal');
-  const lowSlider = document.getElementById('lowSlider');
-  const lowVal = document.getElementById('lowVal');
-  const highSlider = document.getElementById('highSlider');
-  const highVal = document.getElementById('highVal');
+  const lowSlider    = document.getElementById('lowSlider');
+  const lowVal       = document.getElementById('lowVal');
+  const highSlider   = document.getElementById('highSlider');
+  const highVal      = document.getElementById('highVal');
+
+  const sc = CW / PIW;
 
   function draw() {
     const sigma = parseFloat(fullSigma.value);
-    const low = parseInt(lowSlider.value);
-    const high = parseInt(highSlider.value);
-    fullSigmaVal.textContent = sigma.toFixed(1);
-    lowVal.textContent = low;
+    const low   = parseInt(lowSlider.value);
+    const high  = parseInt(highSlider.value);
+    fullSigmaVal.textContent = 'σ = ' + sigma.toFixed(1);
+    lowVal.textContent  = low;
     highVal.textContent = high;
 
-    const blurred = gaussianBlur(rawImage, IW, IH, sigma);
-    const { mag, ang } = sobelGradient(blurred, IW, IH);
-    const thin = nms(mag, ang, IW, IH);
-    const edges = hysteresis(thin, IW, IH, low, high);
+    const blurred = gaussianBlur(pipeImg, PIW, PIH, sigma);
+    const { mag, ang } = sobelGradient(blurred, PIW, PIH);
+    const thin  = nms(mag, ang, PIW, PIH);
+    const edges = hysteresis(thin, PIW, PIH, low, high);
 
-    ctx.clearRect(0, 0, w, h);
-    const halfW = Math.floor(w/2) - 4;
-    putGrey(ctx, rawImage, IW, IH, 0, 0, halfW/IW);
-    putGrey(ctx, edges, IW, IH, halfW + 8, 0, halfW/IW);
-
-    ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(halfW+4, 0); ctx.lineTo(halfW+4, h); ctx.stroke();
-    ctx.fillStyle = '#444'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('input', halfW/2, h - 6);
-    ctx.fillText('Canny edges', halfW + 8 + halfW/2, h - 6);
+    inputC.ctx.clearRect(0, 0, CW, CH);
+    blurC.ctx.clearRect(0, 0, CW, CH);
+    cannyC.ctx.clearRect(0, 0, CW, CH);
+    putGrey(inputC.ctx, pipeImg, PIW, PIH, 0, 0, sc);
+    putGrey(blurC.ctx,  blurred, PIW, PIH, 0, 0, sc);
+    putGrey(cannyC.ctx, edges,   PIW, PIH, 0, 0, sc);
   }
 
   [fullSigma, lowSlider, highSlider].forEach(el => el.addEventListener('input', draw));
