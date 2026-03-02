@@ -377,9 +377,17 @@ const pointCount   = document.getElementById('pointCount');
 const svgSize      = document.getElementById('svgSize');
 const fileInput    = document.getElementById('fileInput');
 
-threshSlider.addEventListener('input', () => { threshVal.textContent = threshSlider.value; });
-tolSlider.addEventListener('input', () => { tolVal.textContent = (tolSlider.value / 10).toFixed(1); });
-blurSlider.addEventListener('input', () => { blurVal.textContent = blurSlider.value; });
+let autoRunTimer = null;
+function scheduleVectorize() {
+  clearTimeout(autoRunTimer);
+  autoRunTimer = setTimeout(vectorize, 120);
+}
+
+threshSlider.addEventListener('input', () => { threshVal.textContent = threshSlider.value; scheduleVectorize(); });
+tolSlider.addEventListener('input', () => { tolVal.textContent = (tolSlider.value / 10).toFixed(1); scheduleVectorize(); });
+blurSlider.addEventListener('input', () => { blurVal.textContent = blurSlider.value; scheduleVectorize(); });
+document.getElementById('svgMode').addEventListener('change', scheduleVectorize);
+document.getElementById('invert').addEventListener('change', scheduleVectorize);
 
 // ─────────────────────────────────────────────
 // Load image from canvas imageData
@@ -443,6 +451,7 @@ function vectorize() {
   downloadBtn.disabled = true;
 
   setTimeout(() => {
+    const t0 = performance.now();
     try {
       const threshold = parseInt(threshSlider.value);
       const tolerance = parseInt(tolSlider.value) / 10;
@@ -458,6 +467,8 @@ function vectorize() {
       currentSVG = buildSVG(simplified, imgW, imgH, mode);
       svgView.innerHTML = currentSVG;
 
+      const ms = performance.now() - t0;
+      const elapsed = ms < 1000 ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(2) + ' s';
       const totalPts = simplified.reduce((s, c) => s + c.length, 0);
       const bytes = new Blob([currentSVG]).size;
       pathCount.textContent = simplified.length.toLocaleString();
@@ -466,8 +477,8 @@ function vectorize() {
       svgLabel.textContent = `SVG Output — ${simplified.length} paths`;
       statsRow.style.display = 'flex';
       statusMsg.textContent = simplified.length === 0
-        ? 'No paths found — try adjusting the threshold.'
-        : `Done. ${simplified.length} paths, ${totalPts} points.`;
+        ? `No paths found — try adjusting the threshold. (${elapsed})`
+        : `Done in ${elapsed} — ${simplified.length} paths, ${totalPts} points.`;
       downloadBtn.disabled = simplified.length === 0;
     } catch (e) {
       statusMsg.textContent = 'Error: ' + e.message;
@@ -485,6 +496,7 @@ document.getElementById('otsuBtn').addEventListener('click', () => {
   const t = otsuThreshold(grayData);
   threshSlider.value = t;
   threshVal.textContent = t;
+  vectorize();
 });
 document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
 document.getElementById('resetBtn').addEventListener('click', loadDuck);
