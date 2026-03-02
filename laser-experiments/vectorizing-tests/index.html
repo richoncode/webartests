@@ -6,7 +6,9 @@
 <title>Vectorizing Tests</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; transition: background 0.15s; }
+  body.drag-over { background: #0d1620; }
+  body.drag-over #originalCanvas { outline: 2px dashed #5b9bd5; outline-offset: 2px; }
   .back-link { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; }
   .back-link:hover { color: #888; }
   .page { max-width: 760px; margin: 0 auto; padding: 60px 24px 80px; }
@@ -14,26 +16,18 @@
   .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 600px; margin-bottom: 48px; }
   p { color: #999; line-height: 1.7; margin-bottom: 12px; }
 
-  /* Option badge + tool card */
   .tool-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 28px; margin-bottom: 32px; }
   .option-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #5b9bd5; background: #1e2d40; border: 1px solid #5b9bd544; padding: 3px 10px; border-radius: 20px; margin-bottom: 12px; }
   .tool-title { font-size: 19px; font-weight: 700; margin-bottom: 8px; color: #ddd; }
 
-  /* Drop zone */
-  .drop-zone { border: 2px dashed #2a2a2a; border-radius: 10px; padding: 40px 24px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; margin: 20px 0; }
-  .drop-zone:hover, .drop-zone.drag-over { border-color: #5b9bd5; background: #0d1a27; }
-  .drop-zone.has-image { border-style: solid; border-color: #2a2a2a; padding: 0; overflow: hidden; }
-  .drop-icon { font-size: 36px; margin-bottom: 10px; opacity: 0.4; }
-  .drop-text { color: #555; font-size: 14px; }
-  .drop-text label { color: #5b9bd5; cursor: pointer; }
-
-  /* Preview pair */
-  .preview-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+  /* Preview */
+  .preview-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 6px; }
   .preview-panel { min-width: 0; }
   .preview-label { font-size: 11px; color: #555; text-align: center; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
   .preview-panel canvas, .svg-view { width: 100%; height: auto; display: block; border: 1px solid #222; border-radius: 6px; background: #fff; }
   .svg-view { overflow: hidden; }
   .svg-view svg { display: block; width: 100%; height: auto; }
+  .drop-hint { font-size: 12px; color: #383838; text-align: center; margin: 4px 0 0; }
 
   /* Controls */
   .controls-panel { margin: 16px 0; }
@@ -46,7 +40,6 @@
   .ctrl-inline { display: flex; align-items: center; gap: 8px; }
   .ctrl-inline label { font-size: 13px; color: #888; cursor: pointer; }
 
-  /* Buttons */
   .btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
   button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
   button:hover { background: #222; border-color: #555; color: #fff; }
@@ -54,95 +47,82 @@
   button.primary:hover { background: #243550; }
   button:disabled { opacity: 0.3; cursor: default; }
 
-  /* Stats */
   .stats { font-size: 12px; color: #555; display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
   .stats span { color: #888; }
-
-  /* Spinner */
   .status-msg { font-size: 13px; color: #5b9bd5; margin: 8px 0; min-height: 20px; }
 </style>
 </head>
 <body>
 
 <a class="back-link" href="../">← Back</a>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
 
 <div class="page">
   <h1>Vectorizing Tests</h1>
   <p class="subtitle">Experiments converting bitmap images to SVG vector paths — useful for laser cutting, engraving, and general vectorization.</p>
 
-  <!-- OPTION 1 -->
   <div class="tool-card">
     <div class="option-badge">Option 1</div>
     <div class="tool-title">Contour Tracer — Marching Squares</div>
     <p>Converts a bitmap to closed SVG paths by running marching squares across the thresholded image, chaining the resulting line segments into contours, and simplifying with the Ramer–Douglas–Peucker algorithm. Best for clean linework, logos, and high-contrast images.</p>
     <p style="margin-top:8px"><strong style="color:#ccc">Ramer–Douglas–Peucker (RDP)</strong> is a path simplification algorithm. A raw contour from marching squares is a polyline with a point at every half-pixel — thousands of nearly-collinear points. RDP reduces this to the minimum set of points that still describes the same shape within a tolerance. It works recursively: draw a straight line from the first to the last point of the current segment; find the point furthest from that line; if it's within the tolerance, discard everything in between; if not, split there and recurse on both halves. The result is that long straight runs collapse to two points while tight curves keep their detail. The <em>Simplify</em> slider sets the tolerance in pixels — higher values produce smaller, smoother SVGs but lose fine detail.</p>
 
-    <!-- Drop zone -->
-    <div id="dropZone" class="drop-zone">
-      <div class="drop-icon">⬇</div>
-      <p class="drop-text">Drop an image here or <label for="fileInput">browse</label></p>
-      <p class="drop-text" style="margin-top:4px; font-size:12px">PNG, JPG, GIF, WebP — scaled to 1200px max for processing</p>
-      <input type="file" id="fileInput" accept="image/*" style="display:none">
+    <div class="preview-pair">
+      <div class="preview-panel">
+        <div class="preview-label">Original</div>
+        <canvas id="originalCanvas"></canvas>
+        <p class="drop-hint">Drop a file onto the duck to convert a different image</p>
+      </div>
+      <div class="preview-panel">
+        <div class="preview-label" id="svgLabel">SVG Output</div>
+        <div class="svg-view" id="svgView"></div>
+      </div>
     </div>
 
-    <!-- Preview (hidden until image loaded) -->
-    <div id="previewArea" style="display:none">
-      <div class="preview-pair">
-        <div class="preview-panel">
-          <div class="preview-label">Original</div>
-          <canvas id="originalCanvas"></canvas>
+    <div class="controls-panel">
+      <div class="ctrl-row">
+        <div class="ctrl-group">
+          <label>Threshold <button id="otsuBtn" style="padding:2px 8px;font-size:11px;margin-left:6px">Auto (Otsu)</button></label>
+          <input type="range" id="threshold" min="0" max="255" value="128">
+          <div class="val"><span id="thresholdVal">128</span> / 255</div>
         </div>
-        <div class="preview-panel">
-          <div class="preview-label" id="svgLabel">SVG Output</div>
-          <div class="svg-view" id="svgView"><canvas id="svgPlaceholder"></canvas></div>
+        <div class="ctrl-group">
+          <label>Simplify (RDP tolerance)</label>
+          <input type="range" id="tolerance" min="1" max="100" value="10">
+          <div class="val"><span id="toleranceVal">1.0</span> px</div>
+        </div>
+        <div class="ctrl-group">
+          <label>Pre-blur</label>
+          <input type="range" id="blur" min="0" max="5" value="0" step="1">
+          <div class="val"><span id="blurVal">0</span> px radius</div>
         </div>
       </div>
+      <div class="ctrl-row">
+        <div class="ctrl-group">
+          <label>SVG mode</label>
+          <select id="svgMode">
+            <option value="fill">Fill (solid shapes)</option>
+            <option value="stroke">Stroke (outlines only)</option>
+          </select>
+        </div>
+        <div class="ctrl-inline">
+          <input type="checkbox" id="invert">
+          <label for="invert">Invert (trace light on dark)</label>
+        </div>
+      </div>
+    </div>
 
-      <!-- Controls -->
-      <div class="controls-panel">
-        <div class="ctrl-row">
-          <div class="ctrl-group">
-            <label>Threshold <button id="otsuBtn" style="padding:2px 8px;font-size:11px;margin-left:6px">Auto (Otsu)</button></label>
-            <input type="range" id="threshold" min="0" max="255" value="128">
-            <div class="val"><span id="thresholdVal">128</span> / 255</div>
-          </div>
-          <div class="ctrl-group">
-            <label>Simplify (RDP tolerance)</label>
-            <input type="range" id="tolerance" min="1" max="100" value="10">
-            <div class="val"><span id="toleranceVal">1.0</span> px</div>
-          </div>
-          <div class="ctrl-group">
-            <label>Pre-blur</label>
-            <input type="range" id="blur" min="0" max="5" value="0" step="1">
-            <div class="val"><span id="blurVal">0</span> px radius</div>
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <div class="ctrl-group">
-            <label>SVG mode</label>
-            <select id="svgMode">
-              <option value="fill">Fill (solid shapes)</option>
-              <option value="stroke">Stroke (outlines only)</option>
-            </select>
-          </div>
-          <div class="ctrl-inline">
-            <input type="checkbox" id="invert">
-            <label for="invert">Invert (trace light on dark)</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="primary" id="vectorizeBtn">Vectorize</button>
-        <button id="downloadBtn" disabled>Download SVG</button>
-        <button id="changeImageBtn">Change image</button>
-      </div>
-      <div class="status-msg" id="statusMsg"></div>
-      <div class="stats" id="statsRow" style="display:none">
-        Paths: <span id="pathCount">—</span> &nbsp;
-        Points: <span id="pointCount">—</span> &nbsp;
-        SVG size: <span id="svgSize">—</span>
-      </div>
+    <div class="btn-row">
+      <button class="primary" id="vectorizeBtn">Vectorize</button>
+      <button id="downloadBtn" disabled>Download SVG</button>
+      <button id="browseBtn">Browse file…</button>
+      <button id="resetBtn">Reset to duck</button>
+    </div>
+    <div class="status-msg" id="statusMsg"></div>
+    <div class="stats" id="statsRow" style="display:none">
+      Paths: <span id="pathCount">—</span> &nbsp;
+      Points: <span id="pointCount">—</span> &nbsp;
+      SVG size: <span id="svgSize">—</span>
     </div>
   </div>
 
@@ -155,25 +135,24 @@
 // Edge indices: 0=left(x,y+0.5) 1=top(x+0.5,y) 2=right(x+1,y+0.5) 3=bottom(x+0.5,y+1)
 // ─────────────────────────────────────────────
 const CELL_EDGES = [
-  [],            // 0:  ----
-  [[0,3]],       // 1:  ---BL  left-bottom
-  [[3,2]],       // 2:  --BR-  bottom-right
-  [[0,2]],       // 3:  --BRL  left-right
-  [[1,2]],       // 4:  -TR--  top-right
-  [[1,2],[0,3]], // 5:  -TR-L  saddle TR+BL
-  [[1,3]],       // 6:  -TRBR  top-bottom
-  [[0,1]],       // 7:  -TRBL  left-top
-  [[0,1]],       // 8:  TL---  left-top
-  [[1,3]],       // 9:  TL--L  top-bottom
-  [[0,1],[3,2]], // 10: TL-BR  saddle TL+BR
-  [[1,2]],       // 11: TL-RL  top-right
-  [[0,2]],       // 12: TLTR-  left-right
-  [[3,2]],       // 13: TLTRL  bottom-right
-  [[0,3]],       // 14: TLTBR  left-bottom
-  [],            // 15: TLTRBRBL
+  [],            // 0
+  [[0,3]],       // 1:  BL
+  [[3,2]],       // 2:  BR
+  [[0,2]],       // 3:  BR+BL
+  [[1,2]],       // 4:  TR
+  [[1,2],[0,3]], // 5:  TR+BL saddle
+  [[1,3]],       // 6:  TR+BR
+  [[0,1]],       // 7:  TR+BR+BL
+  [[0,1]],       // 8:  TL
+  [[1,3]],       // 9:  TL+BL
+  [[0,1],[3,2]], // 10: TL+BR saddle
+  [[1,2]],       // 11: TL+BR+BL
+  [[0,2]],       // 12: TL+TR
+  [[3,2]],       // 13: TL+TR+BL
+  [[0,3]],       // 14: TL+TR+BR
+  [],            // 15
 ];
 
-// Edge midpoint positions for cell at (x, y)
 function edgePt(e, x, y) {
   if (e === 0) return [x,       y + 0.5];
   if (e === 1) return [x + 0.5, y      ];
@@ -200,7 +179,6 @@ function boxBlur(gray, width, height, r) {
   if (r === 0) return gray;
   const tmp = new Float32Array(gray.length);
   const out = new Float32Array(gray.length);
-  // Horizontal
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       let s = 0, c = 0;
@@ -211,7 +189,6 @@ function boxBlur(gray, width, height, r) {
       tmp[y*width+x] = s / c;
     }
   }
-  // Vertical
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       let s = 0, c = 0;
@@ -246,16 +223,74 @@ function otsuThreshold(gray) {
 }
 
 // ─────────────────────────────────────────────
+// Duck drawing
+// ─────────────────────────────────────────────
+function drawDuck(canvas) {
+  const W = 400, H = 280;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#111111';
+
+  // Body — tilted ellipse
+  ctx.save();
+  ctx.translate(205, 192);
+  ctx.rotate(-0.13);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 128, 68, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Head — circle overlapping upper-right of body, forming neck by overlap
+  ctx.beginPath();
+  ctx.arc(308, 118, 40, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail — raised bezier shape at upper-left of body
+  ctx.beginPath();
+  ctx.moveTo(84, 200);
+  ctx.bezierCurveTo(62, 180, 44, 150, 44, 120);
+  ctx.bezierCurveTo(44, 94, 54, 76, 70, 72);
+  ctx.bezierCurveTo(86, 68, 100, 84, 98, 114);
+  ctx.bezierCurveTo(96, 144, 90, 172, 86, 196);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bill — tapered rectangle extending right from head
+  ctx.beginPath();
+  ctx.moveTo(343, 106);
+  ctx.lineTo(390, 113);
+  ctx.lineTo(388, 126);
+  ctx.lineTo(341, 128);
+  ctx.closePath();
+  ctx.fill();
+
+  // Eye — white sclera
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(315, 108, 7.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pupil
+  ctx.fillStyle = '#111111';
+  ctx.beginPath();
+  ctx.arc(317, 108, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─────────────────────────────────────────────
 // Marching squares → segments
 // ─────────────────────────────────────────────
 function marchingSquares(gray, width, height, threshold, invert) {
   const segs = [];
   for (let y = 0; y < height - 1; y++) {
     for (let x = 0; x < width - 1; x++) {
-      const tl = gray[y*width+x];
-      const tr = gray[y*width+x+1];
-      const br = gray[(y+1)*width+x+1];
-      const bl = gray[(y+1)*width+x];
+      const tl = gray[y*width+x], tr = gray[y*width+x+1];
+      const br = gray[(y+1)*width+x+1], bl = gray[(y+1)*width+x];
       let ci;
       if (invert) {
         ci = ((tl>threshold)?8:0)|((tr>threshold)?4:0)|((br>threshold)?2:0)|((bl>threshold)?1:0);
@@ -271,11 +306,10 @@ function marchingSquares(gray, width, height, threshold, invert) {
 }
 
 // ─────────────────────────────────────────────
-// Connect segments into closed contours
+// Connect segments → closed contours
 // ─────────────────────────────────────────────
 function connectSegments(segs) {
   if (!segs.length) return [];
-  // Key: use half-pixel grid → multiply by 2 → integers
   const key = pt => ((pt[0]*2)|0) + '_' + ((pt[1]*2)|0);
 
   const adj = new Map();
@@ -293,14 +327,13 @@ function connectSegments(segs) {
   for (let si = 0; si < segs.length; si++) {
     if (used[si]) continue;
     used[si] = 1;
-
     const pts = [segs[si][0], segs[si][1]];
     const startKey = key(segs[si][0]);
     let cur = segs[si][1];
     let guard = segs.length + 2;
 
     while (guard-- > 0) {
-      if (key(cur) === startKey && pts.length > 2) break; // closed
+      if (key(cur) === startKey && pts.length > 2) break;
       const nb = adj.get(key(cur));
       if (!nb) break;
       let found = false;
@@ -315,7 +348,6 @@ function connectSegments(segs) {
       if (!found) break;
     }
 
-    // Remove duplicate closing point if present
     if (pts.length > 1 && key(pts[pts.length-1]) === key(pts[0])) pts.pop();
     if (pts.length >= 3) result.push(pts);
   }
@@ -323,7 +355,7 @@ function connectSegments(segs) {
 }
 
 // ─────────────────────────────────────────────
-// Ramer–Douglas–Peucker simplification
+// RDP simplification
 // ─────────────────────────────────────────────
 function ptLineDist(p, a, b) {
   const dx = b[0]-a[0], dy = b[1]-a[1];
@@ -355,17 +387,13 @@ function buildSVG(paths, w, h, mode) {
   const fill = mode === 'stroke' ? 'none' : 'black';
   const stroke = mode === 'stroke' ? 'black' : 'none';
   const sw = mode === 'stroke' ? ' stroke-width="1"' : '';
-
   const pathEls = paths.map(pts => {
     if (pts.length < 2) return '';
-    const d = 'M' + pts.map(p => p[0].toFixed(2)+','+p[1].toFixed(2)).join('L') + 'Z';
-    return `<path d="${d}"/>`;
+    return '<path d="M' + pts.map(p => p[0].toFixed(2)+','+p[1].toFixed(2)).join('L') + 'Z"/>';
   }).filter(Boolean).join('\n');
-
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">\n` +
     `<rect width="${w}" height="${h}" fill="white"/>\n` +
-    `<g fill="${fill}" stroke="${stroke}"${sw} fill-rule="evenodd">\n` +
-    pathEls + '\n</g>\n</svg>';
+    `<g fill="${fill}" stroke="${stroke}"${sw} fill-rule="evenodd">\n${pathEls}\n</g>\n</svg>`;
 }
 
 // ─────────────────────────────────────────────
@@ -374,12 +402,6 @@ function buildSVG(paths, w, h, mode) {
 let imgW = 0, imgH = 0, grayData = null, currentSVG = '';
 const MAX_DIM = 1200;
 
-// ─────────────────────────────────────────────
-// UI references
-// ─────────────────────────────────────────────
-const dropZone     = document.getElementById('dropZone');
-const fileInput    = document.getElementById('fileInput');
-const previewArea  = document.getElementById('previewArea');
 const origCanvas   = document.getElementById('originalCanvas');
 const svgView      = document.getElementById('svgView');
 const svgLabel     = document.getElementById('svgLabel');
@@ -398,17 +420,37 @@ const statsRow     = document.getElementById('statsRow');
 const pathCount    = document.getElementById('pathCount');
 const pointCount   = document.getElementById('pointCount');
 const svgSize      = document.getElementById('svgSize');
+const fileInput    = document.getElementById('fileInput');
 
-// ─────────────────────────────────────────────
-// Slider labels
-// ─────────────────────────────────────────────
 threshSlider.addEventListener('input', () => { threshVal.textContent = threshSlider.value; });
 tolSlider.addEventListener('input', () => { tolVal.textContent = (tolSlider.value / 10).toFixed(1); });
 blurSlider.addEventListener('input', () => { blurVal.textContent = blurSlider.value; });
 
 // ─────────────────────────────────────────────
-// Load image
+// Load image from canvas imageData
 // ─────────────────────────────────────────────
+function extractGray() {
+  const ctx = origCanvas.getContext('2d');
+  const raw = toGrayscale(ctx.getImageData(0, 0, imgW, imgH));
+  grayData = raw;
+  const t = otsuThreshold(raw);
+  threshSlider.value = t;
+  threshVal.textContent = t;
+}
+
+function loadDuck() {
+  drawDuck(origCanvas);
+  imgW = origCanvas.width;
+  imgH = origCanvas.height;
+  extractGray();
+  statsRow.style.display = 'none';
+  svgView.innerHTML = '';
+  svgLabel.textContent = 'SVG Output';
+  currentSVG = '';
+  downloadBtn.disabled = true;
+  vectorize();
+}
+
 function loadImageFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const url = URL.createObjectURL(file);
@@ -418,81 +460,32 @@ function loadImageFile(file) {
     const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
     imgW = Math.round(img.width * scale);
     imgH = Math.round(img.height * scale);
-
-    // Draw original to canvas
     origCanvas.width = imgW;
     origCanvas.height = imgH;
     const ctx = origCanvas.getContext('2d');
     ctx.drawImage(img, 0, 0, imgW, imgH);
-
-    // Extract grayscale (raw, unblurred — will blur per-vectorize)
-    const rawGray = toGrayscale(ctx.getImageData(0, 0, imgW, imgH));
-    grayData = rawGray;
-
-    // Auto-set Otsu threshold
-    const t = otsuThreshold(rawGray);
-    threshSlider.value = t;
-    threshVal.textContent = t;
-
-    // Show preview area, hide drop zone
-    dropZone.style.display = 'none';
-    previewArea.style.display = 'block';
+    extractGray();
+    statsRow.style.display = 'none';
+    svgView.innerHTML = '';
+    svgLabel.textContent = 'SVG Output';
     currentSVG = '';
     downloadBtn.disabled = true;
-    statsRow.style.display = 'none';
-    svgView.innerHTML = '<canvas id="svgPlaceholder" style="background:#f5f5f5;width:100%"></canvas>';
-    statusMsg.textContent = 'Image loaded — click Vectorize to convert.';
-
-    if (scale < 1) {
-      statusMsg.textContent += ` (scaled to ${imgW}×${imgH})`;
-    }
+    statusMsg.textContent = scale < 1 ? `Loaded at ${imgW}×${imgH} — click Vectorize.` : 'Image loaded — click Vectorize.';
+    vectorize();
   };
   img.onerror = () => { statusMsg.textContent = 'Could not load image.'; };
   img.src = url;
 }
-
-// File input
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadImageFile(fileInput.files[0]); });
-
-// Drop zone
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) loadImageFile(file);
-});
-
-// Change image button
-document.getElementById('changeImageBtn').addEventListener('click', () => {
-  dropZone.style.display = '';
-  previewArea.style.display = 'none';
-  fileInput.value = '';
-  grayData = null;
-  currentSVG = '';
-});
-
-// Otsu auto-threshold
-document.getElementById('otsuBtn').addEventListener('click', () => {
-  if (!grayData) return;
-  const t = otsuThreshold(grayData);
-  threshSlider.value = t;
-  threshVal.textContent = t;
-});
 
 // ─────────────────────────────────────────────
 // Vectorize
 // ─────────────────────────────────────────────
 function vectorize() {
   if (!grayData) return;
-
   statusMsg.textContent = 'Processing…';
   vectorizeBtn.disabled = true;
   downloadBtn.disabled = true;
 
-  // Defer to let the UI update
   setTimeout(() => {
     try {
       const threshold = parseInt(threshSlider.value);
@@ -501,53 +494,46 @@ function vectorize() {
       const invert = invertChk.checked;
       const mode = modeSelect.value;
 
-      // Optional blur
       const gray = blurR > 0 ? boxBlur(grayData, imgW, imgH, blurR) : grayData;
-
-      // Marching squares
       const segs = marchingSquares(gray, imgW, imgH, threshold, invert);
-
-      // Connect into contours
       const contours = connectSegments(segs);
+      const simplified = contours.map(c => rdp(c, tolerance)).filter(c => c.length >= 3);
 
-      // RDP simplification
-      const simplified = contours
-        .map(c => rdp(c, tolerance))
-        .filter(c => c.length >= 3);
-
-      // Build SVG
       currentSVG = buildSVG(simplified, imgW, imgH, mode);
-
-      // Display
       svgView.innerHTML = currentSVG;
 
-      // Stats
       const totalPts = simplified.reduce((s, c) => s + c.length, 0);
-      const svgBytes = new Blob([currentSVG]).size;
+      const bytes = new Blob([currentSVG]).size;
       pathCount.textContent = simplified.length.toLocaleString();
       pointCount.textContent = totalPts.toLocaleString();
-      svgSize.textContent = svgBytes < 1024
-        ? svgBytes + ' B'
-        : (svgBytes / 1024).toFixed(1) + ' KB';
+      svgSize.textContent = bytes < 1024 ? bytes + ' B' : (bytes/1024).toFixed(1) + ' KB';
       svgLabel.textContent = `SVG Output — ${simplified.length} paths`;
       statsRow.style.display = 'flex';
-
       statusMsg.textContent = simplified.length === 0
         ? 'No paths found — try adjusting the threshold.'
         : `Done. ${simplified.length} paths, ${totalPts} points.`;
-
       downloadBtn.disabled = simplified.length === 0;
     } catch (e) {
       statusMsg.textContent = 'Error: ' + e.message;
-      console.error(e);
     }
     vectorizeBtn.disabled = false;
   }, 20);
 }
 
+// ─────────────────────────────────────────────
+// Event handlers
+// ─────────────────────────────────────────────
 vectorizeBtn.addEventListener('click', vectorize);
+document.getElementById('otsuBtn').addEventListener('click', () => {
+  if (!grayData) return;
+  const t = otsuThreshold(grayData);
+  threshSlider.value = t;
+  threshVal.textContent = t;
+});
+document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
+document.getElementById('resetBtn').addEventListener('click', loadDuck);
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadImageFile(fileInput.files[0]); fileInput.value = ''; });
 
-// Download
 downloadBtn.addEventListener('click', () => {
   if (!currentSVG) return;
   const blob = new Blob([currentSVG], { type: 'image/svg+xml' });
@@ -558,17 +544,32 @@ downloadBtn.addEventListener('click', () => {
   URL.revokeObjectURL(a.href);
 });
 
-// Paste support (Ctrl+V)
+// Paste support
 document.addEventListener('paste', e => {
   const items = e.clipboardData?.items;
   if (!items) return;
   for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      loadImageFile(item.getAsFile());
-      break;
-    }
+    if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; }
   }
 });
+
+// Page-wide drag and drop (dragCount avoids spurious dragleave from child elements)
+let dragCount = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); dragCount++; document.body.classList.add('drag-over'); });
+document.addEventListener('dragleave', () => { dragCount--; if (dragCount <= 0) { dragCount = 0; document.body.classList.remove('drag-over'); } });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  dragCount = 0;
+  document.body.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadImageFile(file);
+});
+
+// ─────────────────────────────────────────────
+// Init — draw duck and auto-vectorize
+// ─────────────────────────────────────────────
+loadDuck();
 </script>
 </body>
 </html>
