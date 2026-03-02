@@ -102,7 +102,22 @@
     <p style="margin-top:14px">Each contour vertex is placed by <strong>linear interpolation</strong> along the edge — not simply at the midpoint. The crossing position is <code>t = (threshold − v₀) / (v₁ − v₀)</code>, producing smooth contours even on coarse grids.</p>
   </div>
 
-  <!-- SECTION 4: THE CODE -->
+  <!-- SECTION 4: INTERPOLATION DEMO -->
+  <div class="section">
+    <h2>Midpoint vs linear interpolation</h2>
+    <p>The simplest implementation places each contour vertex at the exact <strong>midpoint</strong> of the crossing edge, ignoring the actual field values. Linear interpolation uses <code>t = (threshold − v₀) / (v₁ − v₀)</code> to find exactly where the field crosses. On a fine grid the difference is small; on a coarse grid the midpoint contour looks like a staircase of 45° steps.</p>
+    <canvas id="interpCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Threshold</label>
+        <input type="range" id="interpSlider" min="5" max="95" value="38" step="1">
+      </div>
+      <span class="val-badge" id="interpDisplay">38%</span>
+    </div>
+    <div class="info-box" id="interpFormula"></div>
+  </div>
+
+  <!-- SECTION 5: THE CODE -->
   <div class="section">
     <h2>The code</h2>
     <p>The complete algorithm in three pieces. The surprising thing is how little code it takes — the domain knowledge lives entirely in the lookup table.</p>
@@ -475,6 +490,152 @@ function edgeMid(e, ox, oy, s) {
     draw(parseInt(slider.value) / 100);
   });
 
+  draw(parseInt(slider.value) / 100);
+})();
+
+// ─── SECTION 4: INTERPOLATION COMPARISON ───────────────────────────────────
+(function() {
+  const W = 760, H = 256;
+  const { ctx, w, h } = setupCanvas('interpCanvas', W, H);
+
+  const COLS = 10, ROWS = 6, CELL = 32;
+  const LX = 18, LY = 38;                       // left grid origin
+  const RX = w - LX - COLS * CELL, RY = 38;     // right grid origin (mirror)
+
+  const BLOBS = [
+    {x:0.20, y:0.32, r:0.18}, {x:0.60, y:0.52, r:0.23},
+    {x:0.48, y:0.15, r:0.15}, {x:0.18, y:0.74, r:0.13},
+    {x:0.80, y:0.25, r:0.17}, {x:0.72, y:0.78, r:0.16},
+    {x:0.38, y:0.62, r:0.14},
+  ];
+
+  function rawAt(nx, ny) {
+    return BLOBS.reduce((s, b) =>
+      s + Math.exp(-((nx - b.x)**2 + (ny - b.y)**2) / (2 * b.r * b.r)), 0);
+  }
+
+  const verts = new Float32Array((COLS+1) * (ROWS+1));
+  let vmin = Infinity, vmax = -Infinity;
+  for (let gy = 0; gy <= ROWS; gy++)
+    for (let gx = 0; gx <= COLS; gx++) {
+      const v = rawAt(gx / COLS, gy / ROWS);
+      verts[gy*(COLS+1)+gx] = v;
+      if (v < vmin) vmin = v;
+      if (v > vmax) vmax = v;
+    }
+
+  function normAt(gx, gy) { return (verts[gy*(COLS+1)+gx] - vmin) / (vmax - vmin); }
+
+  function midPt(e, cx, cy, ox, oy) {
+    if (e === 0) return [ox + cx*CELL,           oy + (cy+0.5)*CELL];
+    if (e === 1) return [ox + (cx+0.5)*CELL,     oy + cy*CELL      ];
+    if (e === 2) return [ox + (cx+1)*CELL,        oy + (cy+0.5)*CELL];
+                 return [ox + (cx+0.5)*CELL,     oy + (cy+1)*CELL  ];
+  }
+
+  function interpPt(e, cx, cy, ox, oy, thresh) {
+    let gx0, gy0, gx1, gy1;
+    if      (e===0){gx0=cx;   gy0=cy;   gx1=cx;   gy1=cy+1;}
+    else if (e===1){gx0=cx;   gy0=cy;   gx1=cx+1; gy1=cy;  }
+    else if (e===2){gx0=cx+1; gy0=cy;   gx1=cx+1; gy1=cy+1;}
+    else           {gx0=cx;   gy0=cy+1; gx1=cx+1; gy1=cy+1;}
+    const v0 = normAt(gx0, gy0), v1 = normAt(gx1, gy1);
+    const t  = Math.max(0, Math.min(1, v0 === v1 ? 0.5 : (thresh - v0) / (v1 - v0)));
+    return [ox + (gx0 + t*(gx1-gx0))*CELL, oy + (gy0 + t*(gy1-gy0))*CELL];
+  }
+
+  function drawHalf(ox, oy, thresh, interpolate) {
+    // Heatmap
+    for (let cy = 0; cy < ROWS; cy++)
+      for (let cx = 0; cx < COLS; cx++) {
+        const avg = (normAt(cx,cy)+normAt(cx+1,cy)+normAt(cx+1,cy+1)+normAt(cx,cy+1))/4;
+        const t2 = avg * avg;
+        ctx.fillStyle = `rgb(${Math.round(t2*40)},${Math.round(t2*65)},${Math.round(t2*95)})`;
+        ctx.fillRect(ox+cx*CELL, oy+cy*CELL, CELL, CELL);
+      }
+
+    // Grid lines
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+    for (let gx = 0; gx <= COLS; gx++) {
+      ctx.beginPath(); ctx.moveTo(ox+gx*CELL, oy); ctx.lineTo(ox+gx*CELL, oy+ROWS*CELL); ctx.stroke();
+    }
+    for (let gy = 0; gy <= ROWS; gy++) {
+      ctx.beginPath(); ctx.moveTo(ox, oy+gy*CELL); ctx.lineTo(ox+COLS*CELL, oy+gy*CELL); ctx.stroke();
+    }
+
+    // Contour segments
+    ctx.strokeStyle = '#f0a040'; ctx.lineWidth = 2;
+    for (let cy = 0; cy < ROWS; cy++)
+      for (let cx = 0; cx < COLS; cx++) {
+        const tl=normAt(cx,cy)>thresh?8:0, tr=normAt(cx+1,cy)>thresh?4:0;
+        const br=normAt(cx+1,cy+1)>thresh?2:0, bl=normAt(cx,cy+1)>thresh?1:0;
+        CELL_EDGES[tl|tr|br|bl].forEach(([a, b]) => {
+          const [x1,y1] = interpolate ? interpPt(a,cx,cy,ox,oy,thresh) : midPt(a,cx,cy,ox,oy);
+          const [x2,y2] = interpolate ? interpPt(b,cx,cy,ox,oy,thresh) : midPt(b,cx,cy,ox,oy);
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+          [[x1,y1],[x2,y2]].forEach(([x,y]) => {
+            ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2);
+            ctx.fillStyle = interpolate ? '#f0a040' : '#888'; ctx.fill();
+          });
+        });
+      }
+
+    // Vertex dots
+    for (let gy = 0; gy <= ROWS; gy++)
+      for (let gx = 0; gx <= COLS; gx++) {
+        ctx.beginPath(); ctx.arc(ox+gx*CELL, oy+gy*CELL, 1.5, 0, Math.PI*2);
+        ctx.fillStyle = normAt(gx,gy) > thresh ? '#6a9ac0' : '#2e2e2e'; ctx.fill();
+      }
+  }
+
+  function updateFormula(thresh) {
+    // Find first left-edge (e=0) crossing the threshold
+    for (let cy = 0; cy < ROWS; cy++)
+      for (let cx = 0; cx < COLS; cx++) {
+        const v0 = normAt(cx, cy), v1 = normAt(cx, cy+1);
+        if ((v0 > thresh) !== (v1 > thresh)) {
+          const t   = (thresh - v0) / (v1 - v0);
+          const off = Math.round(Math.abs(t - 0.5) * CELL);
+          document.getElementById('interpFormula').innerHTML =
+            `Example — left edge of cell (${cx},&thinsp;${cy}):&ensp;` +
+            `v₀ = <code>${v0.toFixed(3)}</code>&ensp;v₁ = <code>${v1.toFixed(3)}</code>&ensp;threshold = <code>${thresh.toFixed(3)}</code><br>` +
+            `t = (${thresh.toFixed(3)} − ${v0.toFixed(3)}) / (${v1.toFixed(3)} − ${v0.toFixed(3)}) = ` +
+            `<span class="amber">${t.toFixed(3)}</span>&ensp;` +
+            `→ crossing at <span class="amber">${Math.round(t*100)}%</span> along the edge` +
+            (off > 0 ? `, &ensp;midpoint would be <span style="color:#666">50%</span> — <span class="amber">${off}px</span> off on this ${CELL}px grid` : '');
+          return;
+        }
+      }
+    document.getElementById('interpFormula').textContent = 'No crossings at this threshold.';
+  }
+
+  function draw(thresh) {
+    ctx.clearRect(0, 0, w, h);
+
+    // Panel labels
+    ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillText('Midpoints', LX + (COLS*CELL)/2, 22);
+    ctx.fillText('Interpolated', RX + (COLS*CELL)/2, 22);
+
+    drawHalf(LX, LY, thresh, false);
+    drawHalf(RX, RY, thresh, true);
+
+    // Divider
+    ctx.strokeStyle = '#252525'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(w/2, 8); ctx.lineTo(w/2, h-8); ctx.stroke();
+    ctx.setLineDash([]);
+
+    updateFormula(thresh);
+  }
+
+  const slider  = document.getElementById('interpSlider');
+  const display = document.getElementById('interpDisplay');
+  slider.addEventListener('input', () => {
+    display.textContent = slider.value + '%';
+    draw(parseInt(slider.value) / 100);
+  });
   draw(parseInt(slider.value) / 100);
 })();
 </script>
