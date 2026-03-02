@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visvalingam–Whyatt</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { position: fixed; top: 20px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 10; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 64px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  .section p strong { color: #ccc; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+
+  .ctrl-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-group label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ctrl-group input[type=range] { width: 220px; accent-color: #5b9bd5; }
+  .val-badge { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; }
+  .stat-pill { display: inline-block; font-size: 12px; color: #888; background: #111; border: 1px solid #222; border-radius: 20px; padding: 3px 12px; }
+  .stat-pill span { color: #5b9bd5; font-weight: 600; }
+
+  .step-controls { display: flex; align-items: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .step-counter { font-size: 13px; color: #555; font-variant-numeric: tabular-nums; }
+  .info-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px 18px; margin-top: 12px; font-size: 13px; color: #888; line-height: 1.7; min-height: 52px; }
+  .info-box code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .amber { color: #f0a040; font-weight: 600; }
+  .red   { color: #e07070; font-weight: 600; }
+  .hint  { font-size: 12px; color: #444; margin-top: 6px; }
+
+  .pseudo { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.9; margin: 16px 0; white-space: pre; }
+  .pseudo .kw  { color: #c792ea; }
+  .pseudo .fn  { color: #82aaff; }
+  .pseudo .cm  { color: #444; font-style: italic; }
+  .pseudo .num { color: #f78c6c; }
+  .pseudo .hi  { color: #ffcb6b; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .col-label { font-size: 11px; color: #555; text-align: center; padding: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .callout { background: #111; border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 4px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono', 'Fira Code', monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Visvalingam–Whyatt</h1>
+  <p class="subtitle">A polyline simplification algorithm that removes the point forming the triangle of smallest area with its two neighbours — iterating until all remaining triangles exceed a threshold.</p>
+
+  <!-- SECTION 1: HOW IT WORKS -->
+  <div class="section">
+    <h2>How it works</h2>
+    <p>For every interior point, compute the area of the triangle it forms with its immediate neighbours. Repeatedly remove the point whose triangle has the smallest area, then recompute the areas of the two newly-adjacent points. Stop when the smallest area exceeds the threshold.</p>
+    <p>This differs from RDP in two key ways: it is <strong>iterative not recursive</strong>, and it uses <strong>triangle area</strong> rather than perpendicular distance from a chord. Area is sensitive to both distance and angle, so VW tends to produce more perceptually uniform simplifications — it better preserves corners and avoids the "sawtooth" artefacts that RDP can introduce near recursive split points.</p>
+
+    <div class="pseudo"><span class="kw">function</span> <span class="fn">VW</span>(points, threshold):
+  <span class="cm">// Compute triangle area for every interior point</span>
+  <span class="kw">for</span> i <span class="kw">in</span> <span class="num">1</span> … n<span class="num">-2</span>:
+    area[i] = <span class="fn">triangleArea</span>(points[i<span class="num">-1</span>], points[i], points[i<span class="num">+1</span>])
+
+  <span class="kw">while</span> <span class="fn">min</span>(area) &lt; threshold:
+    <span class="hi">i</span> = <span class="fn">argmin</span>(area)              <span class="cm">// find the least-significant point</span>
+    <span class="fn">remove</span> points[<span class="hi">i</span>]
+
+    <span class="cm">// update the two neighbours with the new triangle</span>
+    area[<span class="fn">prev</span>(<span class="hi">i</span>)] = <span class="fn">triangleArea</span>(<span class="fn">prev</span>(<span class="fn">prev</span>(<span class="hi">i</span>)), <span class="fn">prev</span>(<span class="hi">i</span>), <span class="fn">next</span>(<span class="hi">i</span>))
+    area[<span class="fn">next</span>(<span class="hi">i</span>)] = <span class="fn">triangleArea</span>(<span class="fn">prev</span>(<span class="hi">i</span>), <span class="fn">next</span>(<span class="hi">i</span>), <span class="fn">next</span>(<span class="fn">next</span>(<span class="hi">i</span>)))</div>
+
+    <div class="callout">
+      <strong>Effective area.</strong> After removing a point with area A, a neighbour's recomputed area might be smaller than A — which would violate the ordering. The fix: clamp each updated area to <code>max(computed, A)</code>. This guarantees that the sequence of removal areas is non-decreasing, so the algorithm doubles as an importance ranking: any N-point simplification is produced by keeping the N points with the largest effective area.
+    </div>
+  </div>
+
+  <!-- SECTION 2: TRIANGLE AREA -->
+  <div class="section">
+    <h2>Triangle area</h2>
+    <p>The area of the triangle formed by three consecutive points is the fundamental metric. Drag <strong style="color:#f0a040">P<sub>n</sub></strong> to see how position affects the area — and therefore the point's chance of being removed.</p>
+    <canvas id="triCanvas" style="cursor:crosshair"></canvas>
+    <p class="hint">Drag the amber point. Points close to the line between their neighbours have small area and are removed first.</p>
+  </div>
+
+  <!-- SECTION 3: LIVE DEMO -->
+  <div class="section">
+    <h2>Live demo</h2>
+    <p>Each point is coloured by its effective area rank — <span style="color:#e05050">red</span> = removed first (least significant), <span style="color:#5b9bd5">blue</span> = removed last (most significant). The white line shows the simplified path.</p>
+    <canvas id="liveCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Keep N points</label>
+        <input type="range" id="liveSlider" min="2" max="60" value="18" step="1">
+      </div>
+      <span class="stat-pill"><span id="liveStat">60</span> → <span id="liveKept">18</span> points</span>
+    </div>
+  </div>
+
+  <!-- SECTION 4: STEP-BY-STEP -->
+  <div class="section">
+    <h2>Step-by-step</h2>
+    <p>Each step removes the point with the current minimum triangle area. The <strong style="color:#f0a040">amber triangle</strong> is the one about to be eliminated. Removed points fade out.</p>
+    <canvas id="stepCanvas"></canvas>
+    <div class="step-controls">
+      <button id="prevBtn" disabled>← Prev</button>
+      <span class="step-counter" id="stepCounter">Step 0 / 0</span>
+      <button id="nextBtn">Next →</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div class="info-box" id="infoBox">Press Next to begin.</div>
+  </div>
+
+  <!-- SECTION 5: VW VS RDP -->
+  <div class="section">
+    <h2>VW vs RDP</h2>
+    <p>Both algorithms simplify the same path to the same number of points — but they make different choices about which ones to keep. VW preserves perceptually significant shape changes; RDP preserves points that deviate furthest from a local chord.</p>
+    <div class="two-col">
+      <div class="col-label">Visvalingam–Whyatt</div>
+      <div class="col-label">Ramer–Douglas–Peucker</div>
+    </div>
+    <canvas id="cmpCanvas"></canvas>
+    <div class="ctrl-row">
+      <div class="ctrl-group">
+        <label>Keep N points</label>
+        <input type="range" id="cmpSlider" min="2" max="60" value="14" step="1">
+      </div>
+      <span class="val-badge" id="cmpDisplay">14 points</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Shared utilities ───────────────────────────────────────────────────────
+function setupCanvas(id, cssW, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.width  = Math.round(cssW * dpr);
+  el.height = Math.round(cssH * dpr);
+  el.style.width  = cssW + 'px';
+  el.style.height = cssH + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { el, ctx, w: cssW, h: cssH };
+}
+
+function triArea(a, b, c) {
+  return 0.5 * Math.abs((b[0]-a[0])*(c[1]-a[1]) - (c[0]-a[0])*(b[1]-a[1]));
+}
+
+function ptLineDist(px, py, ax, ay, bx, by) {
+  const dx = bx-ax, dy = by-ay, len = Math.hypot(dx, dy);
+  if (len === 0) return Math.hypot(px-ax, py-ay);
+  return Math.abs(dy*px - dx*py + bx*ay - by*ax) / len;
+}
+
+function makePath(w, h) {
+  const pts = [];
+  for (let i = 0; i <= 59; i++) {
+    const t = i / 59;
+    const x = 24 + t * (w - 48);
+    const y = h/2
+      + Math.sin(t * Math.PI * 5)      * 62
+      + Math.sin(t * Math.PI * 11 + .5) * 22
+      + Math.sin(t * Math.PI * 19 + 2)  * 7;
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+// Compute all VW removal steps, returns [{removeIdx, effArea, prevIdx, nextIdx}]
+function computeVWSteps(pts) {
+  const n = pts.length;
+  const removed = new Set();
+  function prevA(i) { let j=i-1; while(j>0 && removed.has(j)) j--; return j; }
+  function nextA(i) { let j=i+1; while(j<n-1 && removed.has(j)) j++; return j; }
+
+  const areas = new Float64Array(n).fill(Infinity);
+  for (let i = 1; i < n-1; i++) areas[i] = triArea(pts[i-1], pts[i], pts[i+1]);
+
+  const steps = []; let lastEff = 0;
+  for (let s = 0; s < n-2; s++) {
+    let minA = Infinity, minI = -1;
+    for (let i = 1; i < n-1; i++)
+      if (!removed.has(i) && areas[i] < minA) { minA = areas[i]; minI = i; }
+    if (minI === -1) break;
+
+    const eff = Math.max(minA, lastEff); lastEff = eff;
+    const p = prevA(minI), nx = nextA(minI);
+    steps.push({ removeIdx: minI, effArea: eff, rawArea: minA, prevIdx: p, nextIdx: nx });
+    removed.add(minI);
+
+    if (p > 0)    areas[p]  = Math.max(triArea(pts[prevA(p)],  pts[p],  pts[nx]),  eff);
+    if (nx < n-1) areas[nx] = Math.max(triArea(pts[p], pts[nx], pts[nextA(nx)]), eff);
+  }
+  return steps;
+}
+
+function vwToN(steps, n, total) {
+  const removed = new Set();
+  for (let i = 0; i < total - n; i++) removed.add(steps[i].removeIdx);
+  return Array.from({length: total}, (_, i) => i).filter(i => !removed.has(i));
+}
+
+function rdpIndices(pts, eps) {
+  const kept = new Set([0, pts.length-1]);
+  function rec(s, e) {
+    if (e-s < 2) return;
+    let maxD=0, maxI=s+1;
+    for (let i=s+1; i<e; i++) {
+      const d = ptLineDist(pts[i][0],pts[i][1],pts[s][0],pts[s][1],pts[e][0],pts[e][1]);
+      if (d > maxD) { maxD=d; maxI=i; }
+    }
+    if (maxD > eps) { kept.add(maxI); rec(s,maxI); rec(maxI,e); }
+  }
+  rec(0, pts.length-1);
+  return [...kept].sort((a,b) => a-b);
+}
+
+function rdpToN(pts, targetN) {
+  if (targetN >= pts.length) return pts.map((_,i) => i);
+  if (targetN <= 2) return [0, pts.length-1];
+  let lo=0, hi=2000, best=null;
+  for (let iter=0; iter<60; iter++) {
+    const mid=(lo+hi)/2, kept=rdpIndices(pts,mid);
+    if (!best || Math.abs(kept.length-targetN) < Math.abs(best.length-targetN)) best=kept;
+    if (kept.length===targetN) return kept;
+    if (kept.length > targetN) lo=mid; else hi=mid;
+  }
+  return best;
+}
+
+// Point color by importance fraction [0=red, 1=blue]
+function areaColor(f, alpha=1) {
+  const r = f < .5 ? 200 : Math.round(200 - 160*(f-.5)*2);
+  const g = f < .5 ? Math.round(f*2*140) : Math.round(140 - 60*(f-.5)*2);
+  const b = f < .5 ? 0 : Math.round((f-.5)*2*210);
+  return alpha < 1 ? `rgba(${r},${g},${b},${alpha})` : `rgb(${r},${g},${b})`;
+}
+
+// ─── SECTION 2: TRIANGLE AREA DEMO ─────────────────────────────────────────
+(function() {
+  const W=760, H=200;
+  const { el, ctx, w, h } = setupCanvas('triCanvas', W, H);
+
+  const P0 = [140, 155], P2 = [620, 140];
+  let Pn = [w/2, 56]; let dragging = false;
+
+  function foot(px, py, ax, ay, bx, by) {
+    const dx=bx-ax, dy=by-ay, t=((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy);
+    return [ax+t*dx, ay+t*dy];
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const area = triArea(P0, Pn, P2);
+
+    // Triangle fill
+    ctx.beginPath(); ctx.moveTo(P0[0],P0[1]); ctx.lineTo(Pn[0],Pn[1]); ctx.lineTo(P2[0],P2[1]); ctx.closePath();
+    ctx.fillStyle = '#f0a02018'; ctx.fill();
+    ctx.strokeStyle = '#f0a04066'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Base line P0→P2
+    ctx.beginPath(); ctx.moveTo(P0[0],P0[1]); ctx.lineTo(P2[0],P2[1]);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Height (dashed)
+    const [fx, fy] = foot(Pn[0],Pn[1], P0[0],P0[1], P2[0],P2[1]);
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(Pn[0],Pn[1]); ctx.lineTo(fx,fy);
+    ctx.strokeStyle = '#f0a04088'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Right-angle marker
+    const bx=P2[0]-P0[0], by=P2[1]-P0[1], bl=Math.hypot(bx,by);
+    const ux=bx/bl, uy=by/bl, px2=Pn[0]-P0[0], py2=Pn[1]-P0[1];
+    const proj=(px2*ux+py2*uy), hx=-uy, hy=ux, hdist=10;
+    const cx=P0[0]+proj*ux, cy=P0[1]+proj*uy;
+    ctx.beginPath();
+    ctx.moveTo(cx+hx*hdist, cy+hy*hdist);
+    ctx.lineTo(cx+hx*hdist+ux*hdist, cy+hy*hdist+uy*hdist);
+    ctx.lineTo(cx+ux*hdist, cy+uy*hdist);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+
+    // Height label
+    const hLen = Math.hypot(Pn[0]-fx, Pn[1]-fy);
+    ctx.fillStyle = '#666'; ctx.font = '11px -apple-system, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('h = ' + hLen.toFixed(1) + ' px', (Pn[0]+fx)/2 + 14, (Pn[1]+fy)/2);
+
+    // Fixed points
+    [[P0,'#aaa','P\u2099\u208B\u2081'],[P2,'#aaa','P\u2099\u208A\u2081']].forEach(([p,c,lbl]) => {
+      ctx.beginPath(); ctx.arc(p[0],p[1],6,0,Math.PI*2);
+      ctx.fillStyle=c; ctx.fill();
+      ctx.fillStyle='#555'; ctx.font='11px -apple-system,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(lbl, p[0], p[1]+20);
+    });
+
+    // Draggable Pn
+    ctx.beginPath(); ctx.arc(Pn[0],Pn[1],8,0,Math.PI*2);
+    ctx.fillStyle='#f0a040'; ctx.fill();
+    ctx.fillStyle='#f0a040'; ctx.textAlign='center'; ctx.font='bold 11px -apple-system,sans-serif';
+    ctx.fillText('Pₙ', Pn[0], Pn[1]-14);
+
+    // Area label
+    ctx.fillStyle='#f0a040'; ctx.font='bold 14px -apple-system,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Area = ' + area.toFixed(1) + ' px²', w/2, h - 12);
+  }
+
+  function pos(e) {
+    const r = el.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [(src.clientX-r.left)*(w/r.width), (src.clientY-r.top)*(h/r.height)];
+  }
+  el.addEventListener('mousedown', e => { const [mx,my]=pos(e); if(Math.hypot(mx-Pn[0],my-Pn[1])<20){dragging=true;} });
+  el.addEventListener('mousemove', e => { if(dragging){ const [mx,my]=pos(e); Pn=[mx,my]; draw(); } });
+  el.addEventListener('mouseup', () => { dragging=false; });
+  el.addEventListener('mouseleave', () => { dragging=false; });
+  el.addEventListener('touchstart', e=>{e.preventDefault();const[mx,my]=pos(e);if(Math.hypot(mx-Pn[0],my-Pn[1])<30)dragging=true;},{passive:false});
+  el.addEventListener('touchmove', e=>{e.preventDefault();if(dragging){const[mx,my]=pos(e);Pn=[mx,my];draw();}},{passive:false});
+  el.addEventListener('touchend', ()=>{dragging=false;});
+
+  draw();
+})();
+
+// ─── SECTION 3: LIVE DEMO ───────────────────────────────────────────────────
+(function() {
+  const W=760, H=220;
+  const { ctx, w, h } = setupCanvas('liveCanvas', W, H);
+  const pts = makePath(w, h);
+  const steps = computeVWSteps(pts);
+
+  // Importance fraction for each point (first/last = 1, others by removal order)
+  const frac = new Float32Array(pts.length).fill(1);
+  steps.forEach((s, i) => { frac[s.removeIdx] = i / (steps.length - 1); });
+
+  const slider = document.getElementById('liveSlider');
+  const statEl = document.getElementById('liveStat');
+  const keptEl = document.getElementById('liveKept');
+  statEl.textContent = pts.length;
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const N = parseInt(slider.value);
+    const keptIdx = vwToN(steps, N, pts.length);
+    const keptSet = new Set(keptIdx);
+
+    // Original path
+    ctx.beginPath(); pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.strokeStyle='#1e1e1e'; ctx.lineWidth=1; ctx.stroke();
+
+    // All points colored by importance
+    pts.forEach(([x,y],i) => {
+      const kept = keptSet.has(i);
+      ctx.beginPath(); ctx.arc(x,y, kept?4.5:2.5, 0, Math.PI*2);
+      ctx.fillStyle = kept ? areaColor(frac[i]) : areaColor(frac[i], 0.25);
+      ctx.fill();
+    });
+
+    // Simplified path
+    ctx.beginPath(); keptIdx.forEach((i,k)=>k?ctx.lineTo(pts[i][0],pts[i][1]):ctx.moveTo(pts[i][0],pts[i][1]));
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+
+    keptEl.textContent = N;
+  }
+
+  slider.addEventListener('input', draw);
+  draw();
+})();
+
+// ─── SECTION 4: STEP-BY-STEP ────────────────────────────────────────────────
+(function() {
+  const W=760, H=220;
+  const { ctx, w, h } = setupCanvas('stepCanvas', W, H);
+  const pts = makePath(w, h);
+  const steps = computeVWSteps(pts);
+  let stepIdx = -1;
+
+  const prevBtn    = document.getElementById('prevBtn');
+  const nextBtn    = document.getElementById('nextBtn');
+  const resetBtn   = document.getElementById('resetBtn');
+  const counter    = document.getElementById('stepCounter');
+  const infoBox    = document.getElementById('infoBox');
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    // Build removed set up to stepIdx
+    const removed = new Set();
+    for (let i = 0; i <= stepIdx; i++) removed.add(steps[i].removeIdx);
+
+    // Full dim path
+    ctx.beginPath(); pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.strokeStyle='#1c1c1c'; ctx.lineWidth=1; ctx.stroke();
+
+    if (stepIdx < 0) {
+      pts.forEach(([x,y]) => { ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle='#444'; ctx.fill(); });
+      return;
+    }
+
+    const cur = steps[stepIdx];
+    const [ax,ay] = pts[cur.prevIdx];
+    const [bx,by] = pts[cur.removeIdx];
+    const [cx2,cy2] = pts[cur.nextIdx];
+
+    // Triangle fill
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.lineTo(cx2,cy2); ctx.closePath();
+    ctx.fillStyle='#f0a04020'; ctx.fill();
+    ctx.strokeStyle='#f0a04088'; ctx.lineWidth=1.5; ctx.stroke();
+
+    // Removed points (faded)
+    removed.forEach(i => {
+      if (i === cur.removeIdx) return;
+      const [x,y]=pts[i];
+      ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fillStyle='#1e1e1e'; ctx.fill();
+    });
+
+    // Active points
+    pts.forEach(([x,y],i) => {
+      if (removed.has(i) && i !== cur.removeIdx) return;
+      const isRemove=i===cur.removeIdx, isPrev=i===cur.prevIdx, isNext=i===cur.nextIdx;
+      const r = isRemove ? 7 : (isPrev||isNext) ? 5 : 3;
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle = isRemove ? '#e07070' : (isPrev||isNext) ? '#f0a040' : '#444';
+      ctx.fill();
+    });
+  }
+
+  function updateInfo() {
+    counter.textContent = `Step ${Math.max(0,stepIdx+1)} / ${steps.length}`;
+    prevBtn.disabled = stepIdx < 0;
+    nextBtn.disabled = stepIdx >= steps.length-1;
+
+    if (stepIdx < 0) {
+      infoBox.innerHTML = `Press <strong>Next</strong> to begin. ${pts.length} points, ε not yet applied.`;
+      return;
+    }
+    const s = steps[stepIdx];
+    const remaining = pts.length - stepIdx - 1;
+    infoBox.innerHTML =
+      `Removing point <code>${s.removeIdx}</code> — ` +
+      `triangle area = <span class="amber">${s.effArea.toFixed(1)} px²</span><br>` +
+      `Neighbours: <code>${s.prevIdx}</code> and <code>${s.nextIdx}</code> &nbsp;·&nbsp; ` +
+      `${remaining} points remaining after this step`;
+  }
+
+  nextBtn.addEventListener('click', () => { if(stepIdx<steps.length-1){stepIdx++;draw();updateInfo();} });
+  prevBtn.addEventListener('click', () => { if(stepIdx>=0){stepIdx--;draw();updateInfo();} });
+  resetBtn.addEventListener('click', () => { stepIdx=-1;draw();updateInfo(); });
+
+  draw(); updateInfo();
+})();
+
+// ─── SECTION 5: VW VS RDP ───────────────────────────────────────────────────
+(function() {
+  const W=760, H=200;
+  const { ctx, w, h } = setupCanvas('cmpCanvas', W, H);
+  const MID = w / 2;
+
+  // Two separate paths, side-by-side — same wave but different x offset
+  function makeHalfPath(ox, pw, h) {
+    const pts = [];
+    for (let i = 0; i <= 59; i++) {
+      const t = i / 59;
+      const x = ox + 16 + t * (pw - 32);
+      const y = h/2
+        + Math.sin(t * Math.PI * 5)      * 58
+        + Math.sin(t * Math.PI * 11 + .5) * 20
+        + Math.sin(t * Math.PI * 19 + 2)  * 6;
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+
+  const HW = MID - 4;
+  const lPts = makeHalfPath(0,   HW, h);
+  const rPts = makeHalfPath(MID+4, HW, h);
+  const lSteps = computeVWSteps(lPts);
+
+  // Importance fractions for left (VW) coloring
+  const lFrac = new Float32Array(lPts.length).fill(1);
+  lSteps.forEach((s,i) => { lFrac[s.removeIdx] = i/(lSteps.length-1); });
+
+  function drawHalf(pts, keptIdx, fracs, ox) {
+    const keptSet = new Set(keptIdx);
+    // Original
+    ctx.beginPath(); pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.strokeStyle='#1e1e1e'; ctx.lineWidth=1; ctx.stroke();
+    // Points
+    pts.forEach(([x,y],i) => {
+      const kept=keptSet.has(i);
+      ctx.beginPath(); ctx.arc(x,y,kept?4.5:2.5,0,Math.PI*2);
+      ctx.fillStyle = kept ? areaColor(fracs[i]) : areaColor(fracs[i],0.2);
+      ctx.fill();
+    });
+    // Kept path
+    ctx.beginPath(); keptIdx.forEach((i,k)=>k?ctx.lineTo(pts[i][0],pts[i][1]):ctx.moveTo(pts[i][0],pts[i][1]));
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+  }
+
+  const slider  = document.getElementById('cmpSlider');
+  const display = document.getElementById('cmpDisplay');
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const N = parseInt(slider.value);
+
+    // Divider
+    ctx.strokeStyle='#222'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(MID,8); ctx.lineTo(MID,h-8); ctx.stroke();
+
+    const vwKept  = vwToN(lSteps, N, lPts.length);
+
+    // RDP importance fracs: rank by perpendicular distance
+    const rFrac = new Float32Array(rPts.length).fill(1);
+    const rdpKept = rdpToN(rPts, N);
+    const rdpSet = new Set(rdpKept);
+    // Color removed rdp points uniformly dim; kept are blue
+    rPts.forEach((_,i) => { if(!rdpSet.has(i)) rFrac[i] = 0.1; });
+
+    drawHalf(lPts, vwKept, lFrac, 0);
+    drawHalf(rPts, rdpKept, rFrac, MID+4);
+
+    display.textContent = N + ' points';
+  }
+
+  slider.addEventListener('input', draw);
+  draw();
+})();
+</script>
+</body>
+</html>
