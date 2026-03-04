@@ -189,12 +189,19 @@ function getCtx() {
 }
 
 // Surface definitions
+// lp:       LP filter cutoff for the thud (Hz) — lower = deeper/denser surface
+// decay:    thud envelope decay constant; d in exp(-d/sr) per sample
+//           d≈130 → ~35 ms, d≈230 → ~20 ms, d≈460 → ~10 ms, d≈760 → ~6 ms
+// resFreq:  brief resonance frequency for hard surfaces (Hz)
+// resQ:     resonance mix level — 0 = no resonance (soft surfaces)
+// resDecay: resonance decay constant (d values; smaller = longer ring)
+// noise:    shoe-texture noise amount
 const SURFACES = {
-  wood:     { bodyFreq: 120, bodyDecay: 18, floorFreq: 280, floorDecay: 12, noiseAmt: 0.3, name: 'Wood floor' },
-  concrete: { bodyFreq: 80,  bodyDecay: 30, floorFreq: 180, floorDecay: 5,  noiseAmt: 0.5, name: 'Concrete' },
-  tile:     { bodyFreq: 200, bodyDecay: 8,  floorFreq: 800, floorDecay: 3,  noiseAmt: 0.6, name: 'Tile' },
-  gravel:   { bodyFreq: 60,  bodyDecay: 50, floorFreq: 300, floorDecay: 25, noiseAmt: 0.9, name: 'Gravel' },
-  metal:    { bodyFreq: 150, bodyDecay: 3,  floorFreq: 400, floorDecay: 1,  noiseAmt: 0.7, name: 'Metal grate' },
+  wood:     { lp: 150, decay: 230, resFreq: 280,  resQ: 0.00, resDecay: 90,  noise: 0.25 },
+  concrete: { lp: 90,  decay: 184, resFreq: 140,  resQ: 0.00, resDecay: 180, noise: 0.45 },
+  tile:     { lp: 260, decay: 576, resFreq: 1100, resQ: 0.18, resDecay: 77,  noise: 0.55 },
+  gravel:   { lp: 70,  decay: 132, resFreq: 180,  resQ: 0.00, resDecay: 999, noise: 0.85 },
+  metal:    { lp: 350, decay: 767, resFreq: 550,  resQ: 0.22, resDecay: 115, noise: 0.65 },
 };
 
 const SHOE_LABELS = ['Soft rubber','Leather soles','Hard leather','Metal heel'];
@@ -223,42 +230,49 @@ function normalise(arr, gain) {
 
 // ── Footstep synthesis ─────────────────────────────────────────────────────
 function synthesiseStep(surface, weight, shoe, sr) {
-  const dur = 0.3 + Math.random() * 0.05;
-  const N = Math.floor(sr * dur);
+  const N = Math.floor(sr * 0.15); // 150 ms max — footsteps are short
   const out = new Float32Array(N);
 
   const s = SURFACES[surface];
   const massScale = weight / 70;
-  const shoeHard = shoe / 4; // 0.25 to 1
+  const shoeHard = shoe / 4; // 0.25–1
 
-  // Component 1: body thud (low-freq impulse, weight-dependent)
-  const bodyOmega = 2 * Math.PI * s.bodyFreq * (1 + (Math.random() - 0.5) * 0.1) / sr;
-  const bodyDecay = Math.exp(-s.bodyDecay / sr);
-  let bodyAmp = massScale * 0.8 * (1 + (Math.random() - 0.5) * 0.15);
+  // Component 1: body thud — LP-filtered noise burst, NOT a sine oscillator.
+  // One-pole LP with cutoff s.lp Hz gives surface density character without pitch.
+  const lpK = Math.exp(-2 * Math.PI * s.lp / sr);
+  const tDecay = Math.exp(-s.decay / sr);
+  let prev1 = 0, amp1 = massScale * (0.9 + (Math.random() - 0.5) * 0.1);
   for (let i = 0; i < N; i++) {
-    out[i] += bodyAmp * Math.sin(bodyOmega * i);
-    bodyAmp *= bodyDecay;
+    const raw = Math.random() * 2 - 1;
+    prev1 = (1 - lpK) * raw + lpK * prev1; // LP filter
+    out[i] += prev1 * amp1;
+    amp1 *= tDecay;
   }
 
-  // Component 2: floor resonance (mid-freq ring)
-  const floorOmega = 2 * Math.PI * s.floorFreq * (1 + (Math.random() - 0.5) * 0.05) / sr;
-  const floorDecay = Math.exp(-s.floorDecay / sr);
-  let floorAmp = 0.5 * (1 + (Math.random() - 0.5) * 0.2);
-  for (let i = 0; i < N; i++) {
-    out[i] += floorAmp * Math.sin(floorOmega * i);
-    floorAmp *= floorDecay;
+  // Component 2: surface ring — only for hard surfaces (tile, metal) where resQ > 0.
+  // Use a decaying sine only when the surface actually rings.
+  if (s.resQ > 0.05) {
+    const ringFreq = s.resFreq * (1 + (Math.random() - 0.5) * 0.04);
+    const ringOmega = 2 * Math.PI * ringFreq / sr;
+    const ringDecay = Math.exp(-s.resDecay / sr);
+    let ringAmp = 0.35 * s.resQ;
+    for (let i = 0; i < N; i++) {
+      out[i] += ringAmp * Math.sin(ringOmega * i);
+      ringAmp *= ringDecay;
+    }
   }
 
-  // Component 3: surface texture (bandpass noise, shoe-dependent)
-  const textureDur = Math.floor(sr * (0.04 + shoeHard * 0.04));
-  const noiseAmt = s.noiseAmt * shoeHard * (0.8 + Math.random() * 0.4);
-  const bpDecay = Math.exp(-80 / sr);
-  let noiseEnv = noiseAmt * 0.4, noisePrev = 0;
-  for (let i = 0; i < Math.min(textureDur, N); i++) {
-    const n = (Math.random() * 2 - 1);
-    noisePrev = 0.4 * n + 0.6 * noisePrev;
-    out[i] += noisePrev * noiseEnv;
-    noiseEnv *= bpDecay;
+  // Component 3: shoe texture — high-LP noise, very short, shoe hardness scales amount.
+  const texLP = Math.exp(-2 * Math.PI * (800 + shoeHard * 1200) / sr);
+  const texDecay = Math.exp(-600 / sr); // ~7 ms
+  const texAmt = s.noise * shoeHard * (0.7 + Math.random() * 0.3);
+  let prev3 = 0, amp3 = texAmt * 0.5;
+  const texLen = Math.floor(sr * (0.008 + shoeHard * 0.012));
+  for (let i = 0; i < Math.min(texLen, N); i++) {
+    const raw = Math.random() * 2 - 1;
+    prev3 = (1 - texLP) * raw + texLP * prev3;
+    out[i] += prev3 * amp3;
+    amp3 *= texDecay;
   }
 
   return normalise(out, 0.8);
