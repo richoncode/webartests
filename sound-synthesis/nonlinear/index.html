@@ -134,44 +134,39 @@ function bowedString(sr, freq, bowSpeed, bowPressure, bowPos, duration) {
 
   // Bow parameters
   const vBow = bowSpeed / 10 * 0.2;       // bow velocity
-  const mu = bowPressure / 10;             // friction coefficient
-  const stickThresh = mu * 0.8;            // static friction limit
-  const slipMu = mu * 0.35;               // kinetic friction
+  const mu = bowPressure / 10;             // peak (static) friction coefficient
+  const slipMu = mu * 0.35;               // kinetic friction (lower than static)
 
   let ptr = 0, prevSample = 0;
-  let bowPhase = 0; // track bow friction for phase plot
 
   for (let i = 0; i < N; i++) {
     const strVel = ring[ptr] - prevSample; // approximate string velocity
-    const relVel = strVel - vBow;          // velocity relative to bow
+    const dv = strVel - vBow;              // relative velocity of string vs bow
 
-    // Stick-slip friction
-    let friction;
-    if (Math.abs(relVel) < 0.001) {
-      // Sticking: friction matches applied force
-      friction = mu * (vBow - strVel) * 0.5;
-      bowPhase = friction;
-    } else {
-      // Slipping: kinetic friction
-      friction = -slipMu * Math.sign(relVel);
-      bowPhase = friction;
-    }
+    // Smooth Stribeck friction curve — no hard switching, no clicks.
+    // staticBoost peaks at dv=0 (string and bow moving together) and
+    // falls off exponentially as the string slides away from the bow.
+    const staticBoost = Math.exp(-dv * dv * 300);
+    const frictionMag = slipMu + (mu - slipMu) * staticBoost;
+    // tanh replaces Math.sign — same saturation behaviour, fully smooth.
+    const friction = -frictionMag * Math.tanh(dv * 80) * 0.015;
 
     const curr = ring[ptr];
     out[i] = curr;
     vel[i] = strVel;
-    phase[i] = bowPhase;
+    phase[i] = friction * 20; // scale for phase plot visibility
 
-    // Update ring with friction injection at bow point and damping
     const damp = 0.9995;
-    ring[ptr] = (curr + prevSample) * 0.5 * damp + friction * 0.015;
+    ring[ptr] = (curr + prevSample) * 0.5 * damp + friction;
     prevSample = curr;
     ptr = (ptr + 1) % delayLen;
-
-    // Natural harmonics shaped by bow position
-    // Remove modes that have a node at the bow point
-    if (i % bowPoint === 0) ring[ptr] += 0; // node cancellation (simplified)
   }
+
+  // Fade in (50 ms) and fade out (120 ms) to eliminate buffer-edge clicks
+  const fadeIn  = Math.floor(sr * 0.05);
+  const fadeOut = Math.floor(sr * 0.12);
+  for (let i = 0; i < fadeIn;  i++) out[i] *= i / fadeIn;
+  for (let i = N - fadeOut; i < N; i++) out[i] *= (N - i) / fadeOut;
 
   return { out, vel, phase };
 }
