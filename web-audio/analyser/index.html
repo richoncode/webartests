@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyser &amp; Visualiser — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .controls { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+  .control-row { display: grid; grid-template-columns: 130px 1fr 70px; gap: 10px; align-items: center; }
+  .control-row label { font-size: 13px; color: #666; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .freq-axis { display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-top: 4px; }
+  .stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin: 10px 0; }
+  .stat-item { font-size: 13px; color: #555; }
+  .stat-item span { color: #888; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .source-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .src-btn { font-size: 12px; padding: 5px 12px; }
+  .src-btn.active { border-color: #5b9bd5; color: #5b9bd5; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Analyser &amp; Visualiser</h1>
+<p class="subtitle">AnalyserNode taps into the audio graph without modifying the signal. It exposes raw FFT frequency data and time-domain waveform data via typed arrays — the foundation for any audio visualiser.</p>
+
+<!-- SECTION 1: OSCILLOSCOPE -->
+<div class="section">
+  <h2>Oscilloscope (time domain)</h2>
+  <p>Time-domain data shows the raw waveform — the signal amplitude at each sample. <code>getByteTimeDomainData()</code> fills a Uint8Array where 128 = silence, 0 = −1, 255 = +1.</p>
+
+  <div class="btn-row">
+    <button class="play-btn" id="playBtn">▶ Play</button>
+    <div class="source-btns" id="srcBtns">
+      <button class="src-btn active" data-src="sine">Sine</button>
+      <button class="src-btn" data-src="square">Square</button>
+      <button class="src-btn" data-src="sawtooth">Sawtooth</button>
+      <button class="src-btn" data-src="noise">Noise</button>
+      <button class="src-btn" data-src="chord">Chord</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Frequency</label>
+      <input type="range" id="freqSlider" min="55" max="1320" value="220" step="1">
+      <span class="val" id="freqVal">220 Hz</span>
+    </div>
+    <div class="control-row">
+      <label>FFT size</label>
+      <input type="range" id="fftSizeSlider" min="0" max="5" value="3" step="1">
+      <span class="val" id="fftSizeVal">2048</span>
+    </div>
+  </div>
+
+  <canvas id="scopeCanvas" style="width:100%;height:130px"></canvas>
+
+  <div class="stat-row" style="margin-top:10px">
+    <div class="stat-item">Samples shown <span id="statSamples">—</span></div>
+    <div class="stat-item">Sample rate <span id="statSR">—</span></div>
+    <div class="stat-item">Window <span id="statWindow">—</span></div>
+    <div class="stat-item">Peak <span id="statPeak">—</span></div>
+  </div>
+</div>
+
+<!-- SECTION 2: SPECTRUM ANALYSER -->
+<div class="section">
+  <h2>Spectrum analyser (frequency domain)</h2>
+  <p>The FFT transforms the time-domain buffer into frequency bins. Each bin represents a narrow band of frequencies. <code>getByteFrequencyData()</code> returns values 0–255 mapped from <code>minDecibels</code> to <code>maxDecibels</code>.</p>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Smoothing</label>
+      <input type="range" id="smoothSlider" min="0" max="0.99" value="0.8" step="0.01">
+      <span class="val" id="smoothVal">0.80</span>
+    </div>
+    <div class="control-row">
+      <label>Min dB</label>
+      <input type="range" id="minDbSlider" min="-120" max="-30" value="-90" step="5">
+      <span class="val" id="minDbVal">−90 dB</span>
+    </div>
+  </div>
+
+  <canvas id="specCanvas" style="width:100%;height:160px"></canvas>
+  <div class="freq-axis"><span>20 Hz</span><span>100</span><span>500</span><span>1 kHz</span><span>5 kHz</span><span>20 kHz</span></div>
+
+  <div class="stat-row" style="margin-top:10px">
+    <div class="stat-item">Freq bins <span id="statBins">—</span></div>
+    <div class="stat-item">Bin width <span id="statBinW">—</span></div>
+    <div class="stat-item">Peak freq <span id="statPeakFreq">—</span></div>
+    <div class="stat-item">Peak level <span id="statPeakDb">—</span></div>
+  </div>
+</div>
+
+<!-- SECTION 3: HOW IT WORKS -->
+<div class="section">
+  <h2>How it works</h2>
+  <div class="callout">
+    <strong>AnalyserNode</strong> sits in the signal path (or is connected as a tap) and captures the audio in a circular buffer. It applies a <em>window function</em> (Blackman by default) to reduce spectral leakage before performing the FFT. The node does not modify the signal — it just observes.
+  </div>
+  <div class="callout">
+    <strong>FFT size</strong> is always a power of two (32–32768). A larger FFT gives better frequency resolution but poorer time resolution — you're averaging over a longer window. At 44100 Hz sample rate, an FFT of 2048 covers 2048/44100 ≈ 46 ms and produces 1024 frequency bins, each 44100/2048 ≈ 21.5 Hz wide.
+  </div>
+  <div class="callout">
+    <strong>Smoothing time constant</strong> blends successive FFT frames: <code>output = smoothing × previous + (1 − smoothing) × current</code>. At 0.8 the spectrum reacts slowly and looks smooth; at 0 every frame is independent — useful for measuring transient peaks. Typical values: 0.7–0.85 for music visualisers.
+  </div>
+  <div class="callout">
+    <strong>Logarithmic frequency axis.</strong> Displaying bins linearly would cram musical information into the left 10% of the display — a piano's entire 7 octaves span 27–4000 Hz while 20 kHz sits at the far right. Map bin index to x using <code>x = log(f/20) / log(1000) × W</code> to spread octaves evenly.
+  </div>
+</div>
+
+</div>
+<script>
+const FFT_SIZES = [256, 512, 1024, 2048, 4096, 8192];
+let audioCtx = null, analyser = null;
+let nodes = [], rafId = null;
+let playing = false, currentSrc = 'sine';
+
+function getCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZES[3];
+    analyser.smoothingTimeConstant = 0.8;
+    analyser.minDecibels = -90;
+    analyser.connect(audioCtx.destination);
+    updateStats();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function makeNoise(ctx) {
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; return src;
+}
+
+function startSource() {
+  const ctx = getCtx();
+  const gain = ctx.createGain(); gain.gain.value = 0.5;
+  gain.connect(analyser);
+
+  const freq = parseFloat(document.getElementById('freqSlider').value);
+
+  if (currentSrc === 'noise') {
+    const n = makeNoise(ctx); n.connect(gain); n.start(); nodes = [n, gain];
+  } else if (currentSrc === 'chord') {
+    const oscs = [];
+    [1, 1.25, 1.5].forEach(r => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.value = freq * r; o.connect(gain); o.start(); oscs.push(o);
+    });
+    nodes = [...oscs, gain];
+  } else {
+    const o = ctx.createOscillator(); o.type = currentSrc;
+    o.frequency.value = freq; o.connect(gain); o.start(); nodes = [o, gain];
+  }
+}
+
+function stopSource() {
+  nodes.forEach(n => { try { n.stop && n.stop(); n.disconnect(); } catch(e){} });
+  nodes = [];
+}
+
+document.getElementById('playBtn').addEventListener('click', function() {
+  if (playing) {
+    stopSource(); playing = false;
+    this.textContent = '▶ Play';
+    this.classList.remove('playing');
+    cancelAnimationFrame(rafId); rafId = null;
+  } else {
+    startSource(); playing = true;
+    this.textContent = '■ Stop';
+    this.classList.add('playing');
+    draw();
+  }
+});
+
+document.querySelectorAll('.src-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.src-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentSrc = this.dataset.src;
+    if (playing) { stopSource(); startSource(); }
+  });
+});
+
+document.getElementById('freqSlider').addEventListener('input', function() {
+  document.getElementById('freqVal').textContent = this.value + ' Hz';
+  if (playing && currentSrc !== 'noise') { stopSource(); startSource(); }
+});
+
+document.getElementById('fftSizeSlider').addEventListener('input', function() {
+  const sz = FFT_SIZES[parseInt(this.value)];
+  document.getElementById('fftSizeVal').textContent = sz;
+  if (analyser) { analyser.fftSize = sz; updateStats(); }
+});
+
+document.getElementById('smoothSlider').addEventListener('input', function() {
+  document.getElementById('smoothVal').textContent = parseFloat(this.value).toFixed(2);
+  if (analyser) analyser.smoothingTimeConstant = parseFloat(this.value);
+});
+
+document.getElementById('minDbSlider').addEventListener('input', function() {
+  document.getElementById('minDbVal').textContent = '−' + Math.abs(this.value) + ' dB';
+  if (analyser) analyser.minDecibels = parseFloat(this.value);
+});
+
+function updateStats() {
+  if (!analyser || !audioCtx) return;
+  const sr = audioCtx.sampleRate;
+  const N = analyser.fftSize;
+  document.getElementById('statSamples').textContent = N;
+  document.getElementById('statSR').textContent = (sr/1000).toFixed(1) + ' kHz';
+  document.getElementById('statWindow').textContent = (N / sr * 1000).toFixed(1) + ' ms';
+  document.getElementById('statBins').textContent = analyser.frequencyBinCount;
+  document.getElementById('statBinW').textContent = (sr / N).toFixed(1) + ' Hz';
+}
+
+// ── Oscilloscope ─────────────────────────────────────────────────────────
+function drawScope(el) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth, H = el.offsetHeight;
+  if (el.width !== W * dpr) { el.width = W * dpr; el.height = H * dpr; }
+  const ctx = el.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+
+  // Find zero crossing for stable display
+  let start = 0;
+  for (let i = 0; i < buf.length - 1; i++) {
+    if (buf[i] <= 128 && buf[i+1] > 128) { start = i; break; }
+  }
+  const display = Math.min(buf.length - start, W * 2);
+
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < display; i++) {
+    const x = i / display * W;
+    const y = (buf[start + i] / 128 - 1) * (H / 2 - 4) + H / 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Peak detection
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+  const peakDb = 20 * Math.log10(peak / 128 + 0.0001);
+  document.getElementById('statPeak').textContent = peakDb.toFixed(1) + ' dB';
+}
+
+// ── Spectrum ──────────────────────────────────────────────────────────────
+function drawSpec(el) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth, H = el.offsetHeight;
+  if (el.width !== W * dpr) { el.width = W * dpr; el.height = H * dpr; }
+  const ctx = el.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const fBuf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(fBuf);
+
+  const sr = audioCtx ? audioCtx.sampleRate : 44100;
+  function binToX(i) {
+    const f = i / fBuf.length * (sr / 2);
+    if (f < 20) return 0;
+    return Math.log(f / 20) / Math.log(1000) * W;
+  }
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [100, 500, 1000, 5000, 10000].forEach(f => {
+    const x = Math.log(f / 20) / Math.log(1000) * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  });
+
+  // Bars
+  let peakBin = 0, peakVal = 0;
+  for (let i = 1; i < fBuf.length; i++) {
+    const x1 = binToX(i - 1), x2 = binToX(i);
+    const h = fBuf[i] / 255 * H;
+    if (h < 1) continue;
+    const hue = 200 + (i / fBuf.length) * 80;
+    ctx.fillStyle = `hsla(${hue},65%,55%,0.85)`;
+    ctx.fillRect(x1, H - h, Math.max(x2 - x1, 1), h);
+    if (fBuf[i] > peakVal) { peakVal = fBuf[i]; peakBin = i; }
+  }
+
+  // Peak stats
+  if (peakVal > 10) {
+    const peakF = peakBin / fBuf.length * (sr / 2);
+    document.getElementById('statPeakFreq').textContent = peakF < 1000 ? peakF.toFixed(0) + ' Hz' : (peakF/1000).toFixed(2) + ' kHz';
+    const minDb = analyser.minDecibels, maxDb = analyser.maxDecibels;
+    const peakDb = minDb + (peakVal / 255) * (maxDb - minDb);
+    document.getElementById('statPeakDb').textContent = peakDb.toFixed(1) + ' dB';
+  }
+}
+
+function draw() {
+  if (!analyser) { rafId = null; return; }
+  drawScope(document.getElementById('scopeCanvas'));
+  drawSpec(document.getElementById('specCanvas'));
+  rafId = requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>

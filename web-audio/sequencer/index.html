@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sequencer — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .control-row { display: grid; grid-template-columns: 80px 1fr 60px; gap: 12px; align-items: center; margin: 8px 0; }
+  .control-row label { font-size: 13px; color: #666; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+
+  /* Sequencer grid */
+  .seq-grid { display: flex; flex-direction: column; gap: 8px; margin: 20px 0; }
+  .seq-row { display: flex; align-items: center; gap: 8px; }
+  .row-label { font-size: 12px; color: #555; width: 52px; text-align: right; flex-shrink: 0; }
+  .steps { display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px; flex: 1; }
+  .step { aspect-ratio: 1; border-radius: 5px; background: #111; border: 1px solid #222; cursor: pointer; transition: background 0.08s; min-width: 0; }
+  .step.on  { background: var(--col); border-color: var(--col); }
+  .step.active { outline: 2px solid #fff; outline-offset: 1px; }
+  .step:hover { border-color: #555; }
+
+  .bar-div { width: 1px; background: #2a2a2a; align-self: stretch; }
+
+  .preset-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .preset-btn { font-size: 12px; padding: 5px 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Sequencer</h1>
+<p class="subtitle">A 16-step drum sequencer built with lookahead scheduling — the technique used in every professional web audio app to achieve rock-solid timing.</p>
+
+<!-- SECTION 1: THE SEQUENCER -->
+<div class="section">
+  <h2>16-step sequencer</h2>
+  <p>Click steps to toggle them. The white outline shows the current playhead position. Each row is a separate drum track.</p>
+
+  <div class="btn-row">
+    <button class="play-btn" id="playBtn">▶ Play</button>
+    <button id="clearBtn">Clear all</button>
+    <div class="control-row" style="flex:1;margin:0">
+      <label>BPM</label>
+      <input type="range" id="bpmSlider" min="60" max="200" value="120" step="1">
+      <span class="val" id="bpmVal">120</span>
+    </div>
+  </div>
+
+  <div class="preset-row">
+    <button class="preset-btn" data-preset="basic">Basic rock</button>
+    <button class="preset-btn" data-preset="hiphop">Hip-hop</button>
+    <button class="preset-btn" data-preset="breakbeat">Breakbeat</button>
+    <button class="preset-btn" data-preset="latin">Latin</button>
+  </div>
+
+  <div class="seq-grid" id="seqGrid">
+    <!-- rows injected by JS -->
+  </div>
+</div>
+
+<!-- SECTION 2: HOW LOOKAHEAD WORKS -->
+<div class="section">
+  <h2>Lookahead scheduling</h2>
+  <p>The key insight: you can't rely on <code>setTimeout</code> or <code>requestAnimationFrame</code> for precise timing — they can drift by tens of milliseconds. Instead, schedule audio events slightly into the future using <code>AudioContext.currentTime</code>, which is sample-accurate.</p>
+
+  <div class="callout">
+    <strong>The scheduler loop</strong> runs every 25 ms via <code>setTimeout</code>. Each tick it looks 100 ms into the future and schedules any notes that fall within that window. Because the Web Audio engine processes in small chunks (typically 128 samples ≈ 3 ms), notes scheduled ahead of time fire with sub-millisecond accuracy.
+  </div>
+  <div class="callout">
+    <strong>Why not <code>requestAnimationFrame</code>?</strong> rAF fires at display rate (60 fps ≈ 16 ms) and can be throttled or skipped in background tabs. <code>setTimeout</code> with a short interval continues running even when the tab is hidden, and the lookahead window absorbs any timer jitter.
+  </div>
+  <div class="callout">
+    <strong>Visual playhead</strong> cannot use <code>AudioContext.currentTime</code> directly because rAF runs at a different rate. Instead, a separate <code>requestAnimationFrame</code> loop calculates which step is currently playing based on the same <code>currentTime</code> clock and updates the DOM.
+  </div>
+</div>
+
+</div>
+<script>
+const STEPS = 16;
+const ROWS = [
+  { name: 'Kick',   col: '#5b9bd5' },
+  { name: 'Snare',  col: '#f0a040' },
+  { name: 'Hi-hat', col: '#a0c060' },
+  { name: 'Open HH',col: '#b07adf' },
+];
+
+// Grid state: [row][step]
+const grid = ROWS.map(() => new Array(STEPS).fill(false));
+
+const PRESETS = {
+  basic:     [[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+              [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+              [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+              [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]],
+  hiphop:    [[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0],
+              [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+              [0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+              [0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0]],
+  breakbeat: [[1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0],
+              [0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0],
+              [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+              [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]],
+  latin:     [[1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],
+              [0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0],
+              [1,0,1,0,1,1,0,1,1,0,1,0,1,1,0,1],
+              [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+};
+
+// Build grid DOM
+const seqGrid = document.getElementById('seqGrid');
+ROWS.forEach((row, ri) => {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'seq-row';
+  rowEl.innerHTML = `<span class="row-label" style="color:${row.col}">${row.name}</span>`;
+  const stepsEl = document.createElement('div');
+  stepsEl.className = 'steps';
+  for (let s = 0; s < STEPS; s++) {
+    const step = document.createElement('div');
+    step.className = 'step';
+    step.style.setProperty('--col', row.col);
+    step.dataset.row = ri; step.dataset.step = s;
+    step.addEventListener('click', () => {
+      grid[ri][s] = !grid[ri][s];
+      step.classList.toggle('on', grid[ri][s]);
+    });
+    stepsEl.appendChild(step);
+    // Bar dividers after step 3, 7, 11
+    if (s === 3 || s === 7 || s === 11) stepsEl.appendChild(Object.assign(document.createElement('div'), {className:'bar-div'}));
+  }
+  rowEl.appendChild(stepsEl);
+  seqGrid.appendChild(rowEl);
+});
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  ROWS.forEach((_, ri) => {
+    for (let s = 0; s < STEPS; s++) {
+      grid[ri][s] = !!p[ri][s];
+    }
+  });
+  refreshGrid();
+}
+
+function refreshGrid() {
+  document.querySelectorAll('.step').forEach(el => {
+    const ri = parseInt(el.dataset.row), s = parseInt(el.dataset.step);
+    el.classList.toggle('on', grid[ri][s]);
+  });
+}
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+});
+document.getElementById('clearBtn').addEventListener('click', () => {
+  ROWS.forEach((_, ri) => grid[ri].fill(false));
+  refreshGrid();
+});
+
+// ── Audio engine ─────────────────────────────────────────────────────────
+let audioCtx = null;
+let playing = false;
+let currentStep = 0;
+let nextStepTime = 0;
+let schedulerId = null;
+let rafId = null;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function bpm() { return parseFloat(document.getElementById('bpmSlider').value); }
+function stepDuration() { return 60 / bpm() / 4; } // 16th notes
+
+function makeNoise(ctx) {
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; return src;
+}
+
+function playKick(ctx, t) {
+  const osc = ctx.createOscillator(), env = ctx.createGain();
+  osc.connect(env); env.connect(ctx.destination);
+  osc.frequency.setValueAtTime(80, t);
+  osc.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+  env.gain.setValueAtTime(1, t);
+  env.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  osc.start(t); osc.stop(t + 0.4);
+}
+
+function playSnare(ctx, t) {
+  const noise = makeNoise(ctx), hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 1800;
+  const env = ctx.createGain();
+  noise.connect(hp); hp.connect(env); env.connect(ctx.destination);
+  env.gain.setValueAtTime(0.6, t);
+  env.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  noise.start(t); noise.stop(t + 0.2);
+
+  const osc = ctx.createOscillator(), oscEnv = ctx.createGain();
+  osc.frequency.value = 200; osc.connect(oscEnv); oscEnv.connect(ctx.destination);
+  oscEnv.gain.setValueAtTime(0.4, t);
+  oscEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  osc.start(t); osc.stop(t + 0.15);
+}
+
+function playHihat(ctx, t, open) {
+  const decay = open ? 0.3 : 0.06;
+  const masterGain = ctx.createGain(), hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 5000;
+  masterGain.connect(hp); hp.connect(ctx.destination);
+  masterGain.gain.setValueAtTime(0.3, t);
+  masterGain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  [1.0, 1.483, 1.932, 2.546, 3.175, 4.023].forEach(r => {
+    const osc = ctx.createOscillator();
+    osc.type = 'square'; osc.frequency.value = 6000 * r;
+    osc.connect(masterGain); osc.start(t); osc.stop(t + decay + 0.01);
+  });
+}
+
+function scheduleNote(ctx, row, step, time) {
+  if (!grid[row][step]) return;
+  if (row === 0) playKick(ctx, time);
+  else if (row === 1) playSnare(ctx, time);
+  else if (row === 2) playHihat(ctx, time, false);
+  else if (row === 3) playHihat(ctx, time, true);
+}
+
+function scheduler() {
+  const ctx = getCtx();
+  const LOOKAHEAD = 0.1; // seconds
+  while (nextStepTime < ctx.currentTime + LOOKAHEAD) {
+    // Schedule all rows for this step
+    for (let r = 0; r < ROWS.length; r++) scheduleNote(ctx, r, currentStep, nextStepTime);
+    nextStepTime += stepDuration();
+    currentStep = (currentStep + 1) % STEPS;
+  }
+}
+
+// Visual playhead — separate from audio scheduler
+let visualStep = 0;
+let lastStepTime = 0;
+
+function updateVisual() {
+  if (!playing || !audioCtx) { rafId = null; return; }
+  const now = audioCtx.currentTime;
+  // Estimate visual step from how far we are past nextStepTime
+  const stepsSinceSchedule = Math.floor((now - (nextStepTime - stepDuration())) / stepDuration());
+  const vs = ((currentStep - 1 + STEPS) % STEPS);
+
+  document.querySelectorAll('.step').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.step) === vs);
+  });
+  rafId = requestAnimationFrame(updateVisual);
+}
+
+function startSequencer() {
+  const ctx = getCtx();
+  currentStep = 0;
+  nextStepTime = ctx.currentTime + 0.05;
+  schedulerId = setInterval(scheduler, 25);
+  playing = true;
+  document.getElementById('playBtn').textContent = '■ Stop';
+  document.getElementById('playBtn').classList.add('playing');
+  rafId = requestAnimationFrame(updateVisual);
+}
+
+function stopSequencer() {
+  clearInterval(schedulerId); schedulerId = null;
+  playing = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  document.getElementById('playBtn').classList.remove('playing');
+  document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+}
+
+document.getElementById('playBtn').addEventListener('click', () => {
+  playing ? stopSequencer() : startSequencer();
+});
+
+document.getElementById('bpmSlider').addEventListener('input', function() {
+  document.getElementById('bpmVal').textContent = this.value;
+});
+
+// Load basic preset by default
+applyPreset('basic');
+</script>
+</body>
+</html>

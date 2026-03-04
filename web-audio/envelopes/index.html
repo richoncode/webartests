@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Envelopes (ADSR) — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .trigger-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .trigger-btn:active { background: #2a3a2a; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+  .control-row { display: grid; grid-template-columns: 110px 1fr 70px; gap: 12px; align-items: center; }
+  .control-row label { font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .label-a { color: #5b9bd5; }
+  .label-d { color: #f0a040; }
+  .label-s { color: #a0c060; }
+  .label-r { color: #b07adf; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .preset-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .preset-btn { font-size: 12px; padding: 5px 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Envelopes (ADSR)</h1>
+<p class="subtitle">An envelope shapes a sound's volume over time. The four stages — Attack, Decay, Sustain, Release — turn a constant oscillator into something that feels played.</p>
+
+<!-- SECTION 1: ADSR PLAYGROUND -->
+<div class="section">
+  <h2>ADSR playground</h2>
+  <p>Adjust the sliders, then trigger a note. The envelope curve is drawn in real time. Try the presets to hear how radically the same oscillator changes character.</p>
+
+  <div class="controls">
+    <div class="control-row">
+      <label class="label-a">Attack</label>
+      <input type="range" id="atkSlider" min="1" max="2000" value="10" step="1">
+      <span class="val" id="atkVal">10 ms</span>
+    </div>
+    <div class="control-row">
+      <label class="label-d">Decay</label>
+      <input type="range" id="decSlider" min="1" max="2000" value="150" step="1">
+      <span class="val" id="decVal">150 ms</span>
+    </div>
+    <div class="control-row">
+      <label class="label-s">Sustain</label>
+      <input type="range" id="susSlider" min="0" max="100" value="60" step="1">
+      <span class="val" id="susVal">60 %</span>
+    </div>
+    <div class="control-row">
+      <label class="label-r">Release</label>
+      <input type="range" id="relSlider" min="1" max="4000" value="300" step="1">
+      <span class="val" id="relVal">300 ms</span>
+    </div>
+  </div>
+
+  <div class="preset-row">
+    <button class="preset-btn" data-preset="pluck">Pluck</button>
+    <button class="preset-btn" data-preset="pad">Pad</button>
+    <button class="preset-btn" data-preset="organ">Organ</button>
+    <button class="preset-btn" data-preset="click">Click</button>
+    <button class="preset-btn" data-preset="strings">Strings</button>
+  </div>
+
+  <canvas id="envCanvas" style="width:100%;height:150px"></canvas>
+
+  <div class="btn-row" style="margin-top:16px">
+    <button class="trigger-btn" id="trigBtn">▶ Trigger note</button>
+    <span style="font-size:13px;color:#555">Hold key or click — release to trigger the Release stage</span>
+  </div>
+</div>
+
+<!-- SECTION 2: LISTEN TO THE STAGES -->
+<div class="section">
+  <h2>Isolate each stage</h2>
+  <p>Trigger only the Attack+Decay, or a sustained note, or a long Release tail to hear each stage in isolation.</p>
+  <div class="btn-row">
+    <button id="btnAD">Attack + Decay only</button>
+    <button id="btnSustain">Sustain note (1 s)</button>
+    <button id="btnRelease">Long release tail</button>
+  </div>
+</div>
+
+<!-- SECTION 3: HOW IT WORKS -->
+<div class="section">
+  <h2>How it works</h2>
+  <div class="callout">
+    <strong>AudioParam scheduling.</strong> GainNode's <code>gain</code> is an AudioParam — it can be changed instantaneously or ramped smoothly. Key methods: <code>setValueAtTime(v, t)</code>, <code>linearRampToValueAtTime(v, t)</code>, <code>exponentialRampToValueAtTime(v, t)</code>, <code>setTargetAtTime(v, t, τ)</code>.
+  </div>
+  <div class="callout">
+    <strong>Exponential ramps</strong> are used for Attack and Decay because human hearing is logarithmic. A linear amplitude ramp sounds like it accelerates or decelerates. Exponential ramps sound smooth and natural. Note: <code>exponentialRampToValueAtTime</code> cannot ramp to exactly 0 — use a very small value like <code>0.0001</code> instead.
+  </div>
+  <div class="callout">
+    <strong>Cancel and hold.</strong> When you release a key before the attack completes, you need to cancel the scheduled ramps and start the release from the current value. Use <code>cancelAndHoldAtTime(t)</code> (or <code>cancelScheduledValues(t)</code> + <code>setValueAtTime(gain.value, t)</code>) to grab the current value, then ramp down from there.
+  </div>
+</div>
+
+</div>
+<script>
+const PRESETS = {
+  pluck:   { a: 5,    d: 200,  s: 0,   r: 100 },
+  pad:     { a: 800,  d: 400,  s: 70,  r: 1500 },
+  organ:   { a: 10,   d: 10,   s: 80,  r: 50  },
+  click:   { a: 1,    d: 30,   s: 0,   r: 20  },
+  strings: { a: 600,  d: 300,  s: 60,  r: 1200 },
+};
+
+let audioCtx = null;
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function getParams() {
+  return {
+    a: parseFloat(document.getElementById('atkSlider').value) / 1000,
+    d: parseFloat(document.getElementById('decSlider').value) / 1000,
+    s: parseFloat(document.getElementById('susSlider').value) / 100,
+    r: parseFloat(document.getElementById('relSlider').value) / 1000,
+  };
+}
+
+function playEnvelope(holdTime) {
+  const ctx = getCtx();
+  const p = getParams();
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+  osc.type = 'sawtooth'; osc.frequency.value = 220;
+  osc.connect(env); env.connect(ctx.destination);
+
+  const t = ctx.currentTime;
+  env.gain.setValueAtTime(0, t);
+  env.gain.exponentialRampToValueAtTime(0.8, t + p.a);
+  env.gain.exponentialRampToValueAtTime(Math.max(p.s * 0.8, 0.001), t + p.a + p.d);
+  env.gain.setValueAtTime(Math.max(p.s * 0.8, 0.001), t + p.a + p.d + holdTime);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + p.a + p.d + holdTime + p.r);
+
+  osc.start(t);
+  osc.stop(t + p.a + p.d + holdTime + p.r + 0.05);
+  animateEnvelope(t, p, holdTime);
+}
+
+document.getElementById('trigBtn').addEventListener('click', () => playEnvelope(0.5));
+document.getElementById('btnAD').addEventListener('click', () => playEnvelope(0));
+document.getElementById('btnSustain').addEventListener('click', () => playEnvelope(1));
+document.getElementById('btnRelease').addEventListener('click', () => {
+  const p = getParams();
+  p.r = 3;
+  document.getElementById('relSlider').value = 3000;
+  document.getElementById('relVal').textContent = '3000 ms';
+  playEnvelope(0.2);
+});
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const p = PRESETS[this.dataset.preset];
+    document.getElementById('atkSlider').value = p.a;
+    document.getElementById('decSlider').value = p.d;
+    document.getElementById('susSlider').value = p.s;
+    document.getElementById('relSlider').value = p.r;
+    updateLabels();
+    drawEnvelope();
+    playEnvelope(0.5);
+  });
+});
+
+function updateLabels() {
+  document.getElementById('atkVal').textContent = document.getElementById('atkSlider').value + ' ms';
+  document.getElementById('decVal').textContent = document.getElementById('decSlider').value + ' ms';
+  document.getElementById('susVal').textContent = document.getElementById('susSlider').value + ' %';
+  document.getElementById('relVal').textContent = document.getElementById('relSlider').value + ' ms';
+}
+
+['atkSlider','decSlider','susSlider','relSlider'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => { updateLabels(); drawEnvelope(); });
+});
+
+// ── Envelope canvas drawing ───────────────────────────────────────────────
+let animStart = null, animParams = null, animHold = 0;
+
+function getCanvas() {
+  const el = document.getElementById('envCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 150;
+  if (el.width !== W * dpr) { el.width = W * dpr; el.height = H * dpr; }
+  const c = el.getContext('2d'); c.scale(dpr, dpr);
+  return { c, W, H };
+}
+
+function drawEnvelope(playT, p, holdTime) {
+  const el = document.getElementById('envCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 150;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+
+  const params = p || getParams();
+  const hold = holdTime !== undefined ? holdTime : 0.5;
+  const totalT = params.a + params.d + hold + params.r;
+  const pad = 20;
+  const uw = W - pad * 2, uh = H - pad * 2;
+
+  function tx(t) { return pad + (t / totalT) * uw; }
+  function ty(v) { return pad + (1 - v) * uh; }
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75, 1].forEach(v => {
+    ctx.beginPath(); ctx.moveTo(pad, ty(v)); ctx.lineTo(W - pad, ty(v)); ctx.stroke();
+  });
+
+  // Stage boundaries
+  const tA = params.a, tD = tA + params.d, tS = tD + hold;
+  const stageColor = '#2a2a2a';
+  [tA, tD, tS].forEach(t => {
+    ctx.strokeStyle = stageColor; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(tx(t), pad); ctx.lineTo(tx(t), H - pad); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Labels
+  ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+  const labels = [
+    { t: tA/2,       v: 0.95, txt: 'A', col: '#5b9bd5' },
+    { t: tA + params.d/2,   v: 0.95, txt: 'D', col: '#f0a040' },
+    { t: tD + hold/2,       v: 0.95, txt: 'S', col: '#a0c060' },
+    { t: tS + params.r/2,   v: 0.95, txt: 'R', col: '#b07adf' },
+  ];
+  labels.forEach(l => { ctx.fillStyle = l.col; ctx.fillText(l.txt, tx(l.t), ty(l.v)); });
+
+  // Envelope path
+  const sustain = Math.max(params.s, 0.001);
+  ctx.beginPath();
+  ctx.moveTo(tx(0), ty(0));
+  ctx.lineTo(tx(tA), ty(1));
+  ctx.lineTo(tx(tD), ty(sustain));
+  ctx.lineTo(tx(tS), ty(sustain));
+  ctx.lineTo(tx(totalT), ty(0));
+
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Fill under
+  ctx.fillStyle = 'rgba(91,155,213,0.08)';
+  ctx.fill();
+
+  // Playhead
+  if (playT !== undefined) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(tx(playT), pad); ctx.lineTo(tx(playT), H - pad); ctx.stroke();
+  }
+}
+
+function animateEnvelope(startAudioTime, p, holdTime) {
+  animStart = startAudioTime;
+  animParams = p;
+  animHold = holdTime;
+  const totalT = p.a + p.d + holdTime + p.r;
+  const ctx = getCtx();
+
+  function frame() {
+    const elapsed = ctx.currentTime - animStart;
+    if (elapsed > totalT + 0.1) { drawEnvelope(undefined, p, holdTime); return; }
+    drawEnvelope(elapsed, p, holdTime);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+drawEnvelope();
+</script>
+</body>
+</html>

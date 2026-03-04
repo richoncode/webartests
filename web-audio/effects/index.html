@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Effects — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .effect-card { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+  .effect-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .effect-card > p { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 14px; }
+  .controls { display: flex; flex-direction: column; gap: 10px; }
+  .control-row { display: grid; grid-template-columns: 120px 1fr 70px; gap: 10px; align-items: center; }
+  .control-row label { font-size: 13px; color: #666; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .bypass-btn { font-size: 11px; padding: 3px 10px; float: right; }
+  .bypass-btn.active { border-color: #4caf50; color: #4caf50; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Effects</h1>
+<p class="subtitle">Delay, distortion, and reverb — the three fundamental effect categories. Each demonstrates a different signal routing pattern in the Web Audio node graph.</p>
+
+<!-- SOURCE -->
+<div class="section">
+  <h2>Test source</h2>
+  <p>Use a melodic arpeggio or a single plucked note to hear how each effect treats the signal. All three effects run in series in the chain below.</p>
+  <div class="btn-row">
+    <button class="play-btn" id="arpBtn">▶ Arpeggio</button>
+    <button id="noteBtn">Pluck note</button>
+  </div>
+  <canvas id="scopeCanvas" style="width:100%;height:80px"></canvas>
+</div>
+
+<!-- DELAY -->
+<div class="section">
+  <h2>Delay</h2>
+
+  <div class="effect-card">
+    <h3 style="color:#5b9bd5">DelayNode <button class="bypass-btn active" id="delayBypass">Bypass: OFF</button></h3>
+    <p>Stores audio in a circular buffer and replays it after a set time. Feeding the output back into the input creates repeating echoes.</p>
+    <div class="controls">
+      <div class="control-row">
+        <label>Delay time</label>
+        <input type="range" id="delayTime" min="50" max="1000" value="375" step="5">
+        <span class="val" id="delayTimeVal">375 ms</span>
+      </div>
+      <div class="control-row">
+        <label>Feedback</label>
+        <input type="range" id="delayFeedback" min="0" max="95" value="45" step="1">
+        <span class="val" id="delayFeedbackVal">45 %</span>
+      </div>
+      <div class="control-row">
+        <label>Wet mix</label>
+        <input type="range" id="delayWet" min="0" max="100" value="60" step="1">
+        <span class="val" id="delayWetVal">60 %</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>Dry/wet routing.</strong> The source connects to both a dry GainNode and the effect input. The effect output connects to a wet GainNode. Both gains feed the master output. Adjusting the two gain values blends between unprocessed (dry) and effected (wet) signals.
+  </div>
+</div>
+
+<!-- DISTORTION -->
+<div class="section">
+  <h2>Distortion</h2>
+
+  <div class="effect-card">
+    <h3 style="color:#f0a040">WaveShaperNode <button class="bypass-btn active" id="distBypass">Bypass: OFF</button></h3>
+    <p>Applies a non-linear transfer curve to the waveform — soft clipping adds harmonics (warmth), hard clipping adds more (fuzz/grunge). The curve canvas shows the waveshaper function.</p>
+    <div class="controls">
+      <div class="control-row">
+        <label>Drive</label>
+        <input type="range" id="distDrive" min="1" max="200" value="50" step="1">
+        <span class="val" id="distDriveVal">50</span>
+      </div>
+      <div class="control-row">
+        <label>Type</label>
+        <div style="display:flex;gap:6px">
+          <button class="bypass-btn active" id="distSoft" style="float:none">Soft clip</button>
+          <button class="bypass-btn" id="distHard" style="float:none">Hard clip</button>
+          <button class="bypass-btn" id="distFold" style="float:none">Fold</button>
+        </div>
+      </div>
+      <div class="control-row">
+        <label>Wet mix</label>
+        <input type="range" id="distWet" min="0" max="100" value="60" step="1">
+        <span class="val" id="distWetVal">60 %</span>
+      </div>
+    </div>
+    <canvas id="curveCanvas" style="width:100%;height:80px;margin-top:12px"></canvas>
+  </div>
+
+  <div class="callout">
+    <strong>Transfer curve.</strong> WaveShaperNode maps each input sample value through a curve array. A value of −1 maps to <code>curve[0]</code>, +1 maps to <code>curve[curve.length-1]</code>, and intermediate values are interpolated. A straight diagonal is unity gain; bending it introduces distortion.
+  </div>
+</div>
+
+<!-- REVERB -->
+<div class="section">
+  <h2>Reverb</h2>
+
+  <div class="effect-card">
+    <h3 style="color:#b07adf">ConvolverNode <button class="bypass-btn active" id="reverbBypass">Bypass: OFF</button></h3>
+    <p>True convolution reverb applies a recorded room impulse response (IR) to the signal. Here we synthesise the IR procedurally — decaying noise burst — which sounds like a small room or spring reverb.</p>
+    <div class="controls">
+      <div class="control-row">
+        <label>Room size</label>
+        <input type="range" id="reverbSize" min="0.1" max="5" value="1.5" step="0.1">
+        <span class="val" id="reverbSizeVal">1.5 s</span>
+      </div>
+      <div class="control-row">
+        <label>Diffusion</label>
+        <input type="range" id="reverbDiff" min="0.1" max="5" value="2" step="0.1">
+        <span class="val" id="reverbDiffVal">2.0</span>
+      </div>
+      <div class="control-row">
+        <label>Wet mix</label>
+        <input type="range" id="reverbWet" min="0" max="100" value="50" step="1">
+        <span class="val" id="reverbWetVal">50 %</span>
+      </div>
+    </div>
+    <button id="reverbRebuild" style="margin-top:10px;font-size:12px">Rebuild IR</button>
+  </div>
+
+  <div class="callout">
+    <strong>Impulse response synthesis.</strong> A real IR is a recording of a clap or starter pistol in a room. Synthesised IRs fill an AudioBuffer with white noise multiplied by an exponential decay envelope — <code>noise × e^(−t × decay)</code>. The <em>diffusion</em> parameter controls how quickly the early reflections spread into a dense tail.
+  </div>
+</div>
+
+</div>
+<script>
+let audioCtx = null, analyser = null, rafId = null;
+let delayNode, delayFbGain, delayDryGain, delayWetGain;
+let distNode, distDryGain, distWetGain;
+let reverbNode, reverbDryGain, reverbWetGain;
+let masterGain;
+let graphBuilt = false;
+
+let delayBypassed = false, distBypassed = false, reverbBypassed = false;
+let distType = 'soft';
+
+function getCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    buildGraph();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function makeIR(ctx, duration, diffusion) {
+  const len = Math.floor(ctx.sampleRate * duration);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, diffusion);
+    }
+  }
+  return buf;
+}
+
+function makeCurve(drive, type) {
+  const N = 256, curve = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (i * 2) / N - 1;
+    if (type === 'soft') {
+      curve[i] = (Math.PI + drive) * x / (Math.PI + drive * Math.abs(x));
+    } else if (type === 'hard') {
+      curve[i] = Math.max(-1, Math.min(1, x * (drive / 50)));
+    } else { // fold
+      const k = drive / 50;
+      const s = x * k;
+      curve[i] = Math.sin(s * Math.PI / 2);
+    }
+  }
+  return curve;
+}
+
+function buildGraph() {
+  const ctx = audioCtx;
+  masterGain = ctx.createGain(); masterGain.gain.value = 0.7;
+  masterGain.connect(analyser); analyser.connect(ctx.destination);
+
+  // Delay chain
+  delayDryGain = ctx.createGain(); delayDryGain.gain.value = 1;
+  delayWetGain = ctx.createGain(); delayWetGain.gain.value = 0.6;
+  delayNode = ctx.createDelay(2.0); delayNode.delayTime.value = 0.375;
+  delayFbGain = ctx.createGain(); delayFbGain.gain.value = 0.45;
+  delayNode.connect(delayFbGain); delayFbGain.connect(delayNode);
+  delayNode.connect(delayWetGain);
+
+  // Distortion chain
+  distDryGain = ctx.createGain(); distDryGain.gain.value = 1;
+  distWetGain = ctx.createGain(); distWetGain.gain.value = 0.6;
+  distNode = ctx.createWaveShaper();
+  distNode.curve = makeCurve(50, 'soft');
+  distNode.oversample = '4x';
+  distNode.connect(distWetGain);
+
+  // Reverb chain
+  reverbDryGain = ctx.createGain(); reverbDryGain.gain.value = 1;
+  reverbWetGain = ctx.createGain(); reverbWetGain.gain.value = 0.5;
+  reverbNode = ctx.createConvolver();
+  reverbNode.buffer = makeIR(ctx, 1.5, 2);
+  reverbNode.connect(reverbWetGain);
+
+  // Chain: input → delay → dist → reverb → master
+  // We re-route on each sound trigger; see routeSource()
+  [delayDryGain, delayWetGain, distDryGain, distWetGain, reverbDryGain, reverbWetGain].forEach(n => n.connect(masterGain));
+  graphBuilt = true;
+}
+
+function routeSource(src) {
+  if (!graphBuilt) return;
+  src.connect(delayNode);
+  src.connect(delayDryGain);
+  src.connect(distNode);
+  src.connect(distDryGain);
+  src.connect(reverbNode);
+  src.connect(reverbDryGain);
+  startScope();
+}
+
+function makeNoise(ctx) {
+  const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; return src;
+}
+
+function playNote(freq, dur) {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+  osc.type = 'sawtooth'; osc.frequency.value = freq;
+  osc.connect(env);
+  env.gain.setValueAtTime(0.5, t);
+  env.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  routeSource(env);
+  osc.start(t); osc.stop(t + dur + 0.1);
+}
+
+document.getElementById('arpBtn').addEventListener('click', function() {
+  const ctx = getCtx();
+  const freqs = [261.6, 329.6, 392, 523.3, 659.3, 523.3, 392, 329.6];
+  freqs.forEach((f, i) => setTimeout(() => playNote(f, 0.3), i * 200));
+});
+
+document.getElementById('noteBtn').addEventListener('click', () => playNote(220, 1.5));
+
+// ── Delay controls ─────────────────────────────────────────────────────────
+document.getElementById('delayTime').addEventListener('input', function() {
+  const v = parseFloat(this.value) / 1000;
+  document.getElementById('delayTimeVal').textContent = this.value + ' ms';
+  if (delayNode) delayNode.delayTime.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+});
+document.getElementById('delayFeedback').addEventListener('input', function() {
+  const v = parseFloat(this.value) / 100;
+  document.getElementById('delayFeedbackVal').textContent = this.value + ' %';
+  if (delayFbGain) delayFbGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+});
+document.getElementById('delayWet').addEventListener('input', function() {
+  const v = parseFloat(this.value) / 100;
+  document.getElementById('delayWetVal').textContent = this.value + ' %';
+  if (delayWetGain) delayWetGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+});
+document.getElementById('delayBypass').addEventListener('click', function() {
+  delayBypassed = !delayBypassed;
+  if (delayWetGain) delayWetGain.gain.value = delayBypassed ? 0 : parseFloat(document.getElementById('delayWet').value) / 100;
+  this.textContent = 'Bypass: ' + (delayBypassed ? 'ON' : 'OFF');
+  this.classList.toggle('active', !delayBypassed);
+});
+
+// ── Distortion controls ────────────────────────────────────────────────────
+function updateCurveCanvas() {
+  const el = document.getElementById('curveCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 400, H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const drive = parseFloat(document.getElementById('distDrive').value);
+  const N = 256, curve = makeCurve(drive, distType);
+
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+
+  ctx.strokeStyle = '#f0a040'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const x = i / N * W;
+    const y = (1 - (curve[i] + 1) / 2) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+['distSoft','distHard','distFold'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function() {
+    ['distSoft','distHard','distFold'].forEach(i => document.getElementById(i).classList.remove('active'));
+    this.classList.add('active');
+    distType = id === 'distSoft' ? 'soft' : id === 'distHard' ? 'hard' : 'fold';
+    const drive = parseFloat(document.getElementById('distDrive').value);
+    if (distNode) distNode.curve = makeCurve(drive, distType);
+    updateCurveCanvas();
+  });
+});
+document.getElementById('distDrive').addEventListener('input', function() {
+  document.getElementById('distDriveVal').textContent = this.value;
+  const drive = parseFloat(this.value);
+  if (distNode) distNode.curve = makeCurve(drive, distType);
+  updateCurveCanvas();
+});
+document.getElementById('distWet').addEventListener('input', function() {
+  const v = parseFloat(this.value) / 100;
+  document.getElementById('distWetVal').textContent = this.value + ' %';
+  if (distWetGain) distWetGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+});
+document.getElementById('distBypass').addEventListener('click', function() {
+  distBypassed = !distBypassed;
+  if (distWetGain) distWetGain.gain.value = distBypassed ? 0 : parseFloat(document.getElementById('distWet').value) / 100;
+  this.textContent = 'Bypass: ' + (distBypassed ? 'ON' : 'OFF');
+  this.classList.toggle('active', !distBypassed);
+});
+
+// ── Reverb controls ────────────────────────────────────────────────────────
+function rebuildReverb() {
+  if (!audioCtx) return;
+  const size = parseFloat(document.getElementById('reverbSize').value);
+  const diff = parseFloat(document.getElementById('reverbDiff').value);
+  reverbNode.buffer = makeIR(audioCtx, size, diff);
+}
+document.getElementById('reverbSize').addEventListener('input', function() {
+  document.getElementById('reverbSizeVal').textContent = parseFloat(this.value).toFixed(1) + ' s';
+});
+document.getElementById('reverbDiff').addEventListener('input', function() {
+  document.getElementById('reverbDiffVal').textContent = parseFloat(this.value).toFixed(1);
+});
+document.getElementById('reverbWet').addEventListener('input', function() {
+  const v = parseFloat(this.value) / 100;
+  document.getElementById('reverbWetVal').textContent = this.value + ' %';
+  if (reverbWetGain) reverbWetGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+});
+document.getElementById('reverbBypass').addEventListener('click', function() {
+  reverbBypassed = !reverbBypassed;
+  if (reverbWetGain) reverbWetGain.gain.value = reverbBypassed ? 0 : parseFloat(document.getElementById('reverbWet').value) / 100;
+  this.textContent = 'Bypass: ' + (reverbBypassed ? 'ON' : 'OFF');
+  this.classList.toggle('active', !reverbBypassed);
+});
+document.getElementById('reverbRebuild').addEventListener('click', rebuildReverb);
+
+// Scope
+function startScope() {
+  if (rafId) return;
+  function draw() {
+    if (!analyser) { rafId = null; return; }
+    const el = document.getElementById('scopeCanvas');
+    const dpr = window.devicePixelRatio || 1;
+    const W = el.offsetWidth, H = el.offsetHeight;
+    if (el.width !== W * dpr) { el.width = W * dpr; el.height = H * dpr; }
+    const ctx2 = el.getContext('2d'); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const buf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(buf);
+
+    ctx2.clearRect(0, 0, W, H);
+    ctx2.strokeStyle = '#5b9bd5'; ctx2.lineWidth = 1.5;
+    ctx2.beginPath();
+    for (let i = 0; i < buf.length; i++) {
+      const x = i / buf.length * W;
+      const y = (buf[i] / 128 - 1) * (H / 2 - 4) + H / 2;
+      i === 0 ? ctx2.moveTo(x, y) : ctx2.lineTo(x, y);
+    }
+    ctx2.stroke();
+    rafId = requestAnimationFrame(draw);
+  }
+  rafId = requestAnimationFrame(draw);
+}
+
+updateCurveCanvas();
+</script>
+</body>
+</html>

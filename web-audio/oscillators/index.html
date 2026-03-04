@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oscillators &amp; Waveforms — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #4caf50; color: #4caf50; }
+  button.play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  button.play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+  .control-row { display: grid; grid-template-columns: 130px 1fr 60px; gap: 12px; align-items: center; }
+  .control-row label { font-size: 13px; color: #666; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .wave-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .wave-btn { padding: 6px 14px; font-size: 12px; }
+  .wave-btn.active { border-color: #5b9bd5; color: #5b9bd5; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .waveform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .wf-card { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px; }
+  .wf-card h3 { font-size: 13px; font-weight: 600; color: #aaa; margin-bottom: 8px; }
+  .wf-card p { font-size: 12px; color: #555; line-height: 1.6; margin: 0; }
+  .spectrum-label { display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-top: 4px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Oscillators &amp; Waveforms</h1>
+<p class="subtitle">An OscillatorNode generates a periodic waveform at a given frequency. The waveform shape determines the harmonic content — and therefore the timbre you hear.</p>
+
+<!-- SECTION 1: LIVE OSCILLATOR -->
+<div class="section">
+  <h2>Live oscillator</h2>
+  <p>Select a waveform and adjust frequency and volume. The oscilloscope shows the actual audio buffer arriving from the Web Audio API in real time.</p>
+
+  <div class="btn-row">
+    <button class="play-btn" id="playBtn">▶ Play</button>
+    <div class="wave-btns" id="waveBtns">
+      <button class="wave-btn active" data-wave="sine">Sine</button>
+      <button class="wave-btn" data-wave="square">Square</button>
+      <button class="wave-btn" data-wave="sawtooth">Sawtooth</button>
+      <button class="wave-btn" data-wave="triangle">Triangle</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Frequency</label>
+      <input type="range" id="freqSlider" min="55" max="1760" value="220" step="1">
+      <span class="val" id="freqVal">220 Hz</span>
+    </div>
+    <div class="control-row">
+      <label>Volume</label>
+      <input type="range" id="volSlider" min="0" max="100" value="60" step="1">
+      <span class="val" id="volVal">60 %</span>
+    </div>
+    <div class="control-row">
+      <label>Detune</label>
+      <input type="range" id="detuneSlider" min="-100" max="100" value="0" step="1">
+      <span class="val" id="detuneVal">0 ¢</span>
+    </div>
+  </div>
+
+  <canvas id="scopeCanvas" style="width:100%;height:120px"></canvas>
+  <div class="spectrum-label"><span>0 Hz</span><span>2 kHz</span><span>4 kHz</span><span>6 kHz</span><span>8 kHz</span></div>
+  <canvas id="specCanvas" style="width:100%;height:80px;margin-top:4px"></canvas>
+</div>
+
+<!-- SECTION 2: WAVEFORM COMPARISON -->
+<div class="section">
+  <h2>Waveform shapes</h2>
+  <p>Each shape has a characteristic harmonic series. A <strong style="color:#ccc">sine</strong> is a single pure frequency. <strong style="color:#ccc">Square, sawtooth,</strong> and <strong style="color:#ccc">triangle</strong> are built from infinite sums of sine waves — their brightness comes from upper harmonics.</p>
+
+  <div class="waveform-grid">
+    <div class="wf-card">
+      <h3>Sine</h3>
+      <canvas id="wfSine" width="320" height="80" style="width:100%;height:80px"></canvas>
+      <p>Single harmonic (fundamental only). Pure, smooth tone. Used for sub-bass and mellow lead sounds.</p>
+    </div>
+    <div class="wf-card">
+      <h3>Square</h3>
+      <canvas id="wfSquare" width="320" height="80" style="width:100%;height:80px"></canvas>
+      <p>Odd harmonics only (1, 3, 5…). Hollow, nasal sound — similar to a clarinet's timbre.</p>
+    </div>
+    <div class="wf-card">
+      <h3>Sawtooth</h3>
+      <canvas id="wfSaw" width="320" height="80" style="width:100%;height:80px"></canvas>
+      <p>All harmonics (1, 2, 3…) at decreasing amplitude. Bright, buzzy — the classic synth lead.</p>
+    </div>
+    <div class="wf-card">
+      <h3>Triangle</h3>
+      <canvas id="wfTri" width="320" height="80" style="width:100%;height:80px"></canvas>
+      <p>Odd harmonics only, falling off faster than square. Softer than square, brighter than sine.</p>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 3: HOW IT WORKS -->
+<div class="section">
+  <h2>How it works</h2>
+  <div class="callout">
+    <strong>AudioContext</strong> is the root of the audio graph — all nodes are created from it and share its timeline. <code>ctx.currentTime</code> is a high-precision clock in seconds that never resets.
+  </div>
+  <div class="callout">
+    <strong>OscillatorNode</strong> generates a periodic waveform. Set <code>oscillator.type</code> to <code>'sine'</code>, <code>'square'</code>, <code>'sawtooth'</code>, or <code>'triangle'</code>. The <code>frequency</code> and <code>detune</code> properties are AudioParams — you can ramp them smoothly with <code>linearRampToValueAtTime()</code>.
+  </div>
+  <div class="callout">
+    <strong>Detune</strong> shifts pitch in cents (hundredths of a semitone). 100 cents = 1 semitone. Two oscillators slightly detuned against each other create the classic "supersaw" chorus effect — the beating between them produces movement.
+  </div>
+  <div class="callout">
+    <strong>GainNode</strong> controls amplitude. Volume in audio is logarithmic — halving the gain value does not halve the perceived loudness. For perceptually linear volume control, use <code>gain = (slider/100) ** 2</code> (square-law mapping).
+  </div>
+</div>
+
+</div>
+<script>
+// ── Waveform preview canvases ──────────────────────────────────────────────
+function drawPreview(canvasId, type, color) {
+  const el = document.getElementById(canvasId);
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 320, H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const cycles = 3, N = W * 2;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N * cycles;
+    let y;
+    const phase = (t % 1);
+    if (type === 'sine')     y = -Math.sin(t * Math.PI * 2);
+    else if (type === 'square')   y = phase < 0.5 ? -1 : 1;
+    else if (type === 'sawtooth') y = phase * 2 - 1;
+    else                          y = phase < 0.5 ? (phase * 4 - 1) : (3 - phase * 4);
+    const px = i / N * W, py = H / 2 + y * (H / 2 - 6);
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+}
+
+window.addEventListener('load', () => {
+  drawPreview('wfSine',   'sine',      '#5b9bd5');
+  drawPreview('wfSquare', 'square',    '#a0c060');
+  drawPreview('wfSaw',    'sawtooth',  '#f0a040');
+  drawPreview('wfTri',    'triangle',  '#b07adf');
+});
+
+// ── Live oscillator ────────────────────────────────────────────────────────
+let ctx = null, osc = null, gain = null, analyser = null, rafId = null;
+let playing = false;
+let currentWave = 'sine';
+
+function initAudio() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  gain = ctx.createGain();
+  gain.gain.value = 0.6;
+  analyser.connect(ctx.destination);
+  gain.connect(analyser);
+}
+
+function startOsc() {
+  initAudio();
+  if (ctx.state === 'suspended') ctx.resume();
+  osc = ctx.createOscillator();
+  osc.type = currentWave;
+  osc.frequency.value = parseFloat(document.getElementById('freqSlider').value);
+  osc.detune.value = parseFloat(document.getElementById('detuneSlider').value);
+  osc.connect(gain);
+  osc.start();
+  playing = true;
+  document.getElementById('playBtn').textContent = '■ Stop';
+  document.getElementById('playBtn').classList.add('playing');
+  drawLoop();
+}
+
+function stopOsc() {
+  if (osc) { osc.stop(); osc.disconnect(); osc = null; }
+  playing = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  document.getElementById('playBtn').classList.remove('playing');
+}
+
+document.getElementById('playBtn').addEventListener('click', () => {
+  playing ? stopOsc() : startOsc();
+});
+
+// Waveform buttons
+document.querySelectorAll('.wave-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.wave-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentWave = this.dataset.wave;
+    if (osc) osc.type = currentWave;
+  });
+});
+
+// Sliders
+document.getElementById('freqSlider').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  document.getElementById('freqVal').textContent = v + ' Hz';
+  if (osc) osc.frequency.setTargetAtTime(v, ctx.currentTime, 0.01);
+});
+
+document.getElementById('volSlider').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  document.getElementById('volVal').textContent = v + ' %';
+  if (gain) gain.gain.setTargetAtTime((v / 100) ** 2, ctx.currentTime, 0.01);
+});
+
+document.getElementById('detuneSlider').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  document.getElementById('detuneVal').textContent = v + ' ¢';
+  if (osc) osc.detune.setTargetAtTime(v, ctx.currentTime, 0.01);
+});
+
+// ── Oscilloscope + spectrum ────────────────────────────────────────────────
+function setupDisplayCanvas(el) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth, H = el.offsetHeight;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx2 = el.getContext('2d'); ctx2.scale(dpr, dpr);
+  return { ctx2, W, H };
+}
+
+function drawLoop() {
+  if (!analyser) return;
+  rafId = requestAnimationFrame(drawLoop);
+
+  const scopeEl = document.getElementById('scopeCanvas');
+  const specEl  = document.getElementById('specCanvas');
+  if (scopeEl.width === 0) {
+    setupDisplayCanvas(scopeEl);
+    setupDisplayCanvas(specEl);
+  }
+
+  const W = scopeEl.width / (window.devicePixelRatio || 1);
+  const H = scopeEl.height / (window.devicePixelRatio || 1);
+  const sW = specEl.width / (window.devicePixelRatio || 1);
+  const sH = specEl.height / (window.devicePixelRatio || 1);
+
+  const sc = scopeEl.getContext('2d');
+  const sp = specEl.getContext('2d');
+
+  // Time domain
+  const tBuf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(tBuf);
+  sc.clearRect(0, 0, W, H);
+  sc.strokeStyle = '#5b9bd5'; sc.lineWidth = 1.5;
+  sc.beginPath();
+  for (let i = 0; i < tBuf.length; i++) {
+    const x = i / tBuf.length * W;
+    const y = (tBuf[i] / 128 - 1) * (H / 2 - 4) + H / 2;
+    i === 0 ? sc.moveTo(x, y) : sc.lineTo(x, y);
+  }
+  sc.stroke();
+
+  // Spectrum
+  const fBuf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(fBuf);
+  sp.clearRect(0, 0, sW, sH);
+  const barW = sW / (fBuf.length / 4);
+  for (let i = 0; i < fBuf.length / 4; i++) {
+    const h = fBuf[i] / 255 * sH;
+    const hue = 200 + i / (fBuf.length / 4) * 60;
+    sp.fillStyle = `hsla(${hue},60%,55%,0.8)`;
+    sp.fillRect(i * barW, sH - h, barW - 1, h);
+  }
+}
+
+window.addEventListener('resize', () => {
+  ['scopeCanvas','specCanvas'].forEach(id => {
+    const el = document.getElementById(id);
+    el.width = 0; // force resize on next frame
+  });
+});
+</script>
+</body>
+</html>

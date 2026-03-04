@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filters — Web Audio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; }
+  button.play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  button.play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+  .control-row { display: grid; grid-template-columns: 130px 1fr 80px; gap: 12px; align-items: center; }
+  .control-row label { font-size: 13px; color: #666; }
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout code { font-family: 'SF Mono','Fira Code',monospace; color: #aaa; background: #1a1a1a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .type-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .type-btn { font-size: 12px; padding: 5px 12px; }
+  .freq-axis { display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-top: 4px; }
+  .sweep-btn { font-size: 12px; padding: 5px 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Filters</h1>
+<p class="subtitle">BiquadFilterNode shapes the frequency content of any audio signal. Change the type, cutoff frequency, and resonance to sculpt tone from a flat noise source.</p>
+
+<!-- SECTION 1: INTERACTIVE FILTER -->
+<div class="section">
+  <h2>Filter explorer</h2>
+  <p>The source is white noise — it contains all frequencies equally, so the filter response is exactly what you hear. The blue curve is the frequency response drawn using <code>getFrequencyResponse()</code>.</p>
+
+  <div class="type-btns" id="typeBtns">
+    <button class="type-btn active" data-type="lowpass">Lowpass</button>
+    <button class="type-btn" data-type="highpass">Highpass</button>
+    <button class="type-btn" data-type="bandpass">Bandpass</button>
+    <button class="type-btn" data-type="notch">Notch</button>
+    <button class="type-btn" data-type="peaking">Peaking</button>
+    <button class="type-btn" data-type="lowshelf">Low shelf</button>
+    <button class="type-btn" data-type="highshelf">High shelf</button>
+  </div>
+
+  <canvas id="responseCanvas" style="width:100%;height:180px"></canvas>
+  <div class="freq-axis"><span>20 Hz</span><span>100</span><span>500</span><span>1 k</span><span>5 k</span><span>20 kHz</span></div>
+
+  <div class="controls" style="margin-top:16px">
+    <div class="control-row">
+      <label>Frequency</label>
+      <input type="range" id="freqSlider" min="0" max="100" value="50" step="0.5">
+      <span class="val" id="freqVal">1000 Hz</span>
+    </div>
+    <div class="control-row">
+      <label>Resonance (Q)</label>
+      <input type="range" id="qSlider" min="0.1" max="30" value="1" step="0.05">
+      <span class="val" id="qVal">Q 1.0</span>
+    </div>
+    <div class="control-row" id="gainRow">
+      <label>Gain</label>
+      <input type="range" id="gainSlider" min="-24" max="24" value="6" step="0.5">
+      <span class="val" id="gainVal">+6 dB</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="play-btn" id="playBtn">▶ Play noise</button>
+    <button class="sweep-btn" id="sweepBtn">Auto-sweep</button>
+  </div>
+</div>
+
+<!-- SECTION 2: FILTER TYPES -->
+<div class="section">
+  <h2>Filter types</h2>
+  <p>Each type applies a different transfer function. Lowpass and highpass are the workhorses — bandpass isolates a frequency band (useful for formant synthesis), notch removes a narrow band (60 Hz hum), peaking and shelf filters are equaliser tools.</p>
+  <div class="callout">
+    <strong>Q factor (resonance)</strong> controls how sharply the filter acts around the cutoff. A high Q creates a resonant peak at the cutoff — the filter "rings". At extreme Q values a lowpass filter self-oscillates, producing a sine wave at the cutoff frequency with no input signal.
+  </div>
+  <div class="callout">
+    <strong>Frequency is logarithmic.</strong> The slider uses a log scale (<code>f = 20 × (20000/20)^(slider/100)</code>) because musical intervals are multiplicative. An octave is always a 2× frequency ratio — 100–200 Hz, 200–400 Hz, 1–2 kHz all span one octave.
+  </div>
+</div>
+
+</div>
+<script>
+let audioCtx = null, noiseNode = null, filterNode = null, gainNode = null;
+let playing = false;
+let currentType = 'lowpass';
+let sweepId = null, sweepDir = 1;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Log slider → Hz mapping
+function sliderToHz(v) {
+  return 20 * Math.pow(1000, v / 100);
+}
+
+function hzToSlider(hz) {
+  return Math.log(hz / 20) / Math.log(1000) * 100;
+}
+
+function currentHz() { return sliderToHz(parseFloat(document.getElementById('freqSlider').value)); }
+
+function startAudio() {
+  const ctx = getCtx();
+  // White noise buffer
+  const bufLen = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  noiseNode = ctx.createBufferSource();
+  noiseNode.buffer = buf;
+  noiseNode.loop = true;
+
+  filterNode = ctx.createBiquadFilter();
+  filterNode.type = currentType;
+  filterNode.frequency.value = currentHz();
+  filterNode.Q.value = parseFloat(document.getElementById('qSlider').value);
+  filterNode.gain.value = parseFloat(document.getElementById('gainSlider').value);
+
+  gainNode = ctx.createGain();
+  gainNode.gain.value = 0.4;
+
+  noiseNode.connect(filterNode);
+  filterNode.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  noiseNode.start();
+}
+
+function stopAudio() {
+  if (noiseNode) { noiseNode.stop(); noiseNode.disconnect(); noiseNode = null; }
+  if (filterNode) { filterNode.disconnect(); filterNode = null; }
+  if (gainNode) { gainNode.disconnect(); gainNode = null; }
+}
+
+document.getElementById('playBtn').addEventListener('click', function() {
+  if (playing) {
+    stopAudio(); playing = false;
+    this.textContent = '▶ Play noise';
+    this.classList.remove('playing');
+  } else {
+    startAudio(); playing = true;
+    this.textContent = '■ Stop';
+    this.classList.add('playing');
+  }
+});
+
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentType = this.dataset.type;
+    if (filterNode) filterNode.type = currentType;
+    // Show gain slider only for types that use it
+    const showGain = ['peaking','lowshelf','highshelf'].includes(currentType);
+    document.getElementById('gainRow').style.display = showGain ? 'grid' : 'none';
+    drawResponse();
+  });
+});
+
+document.getElementById('freqSlider').addEventListener('input', function() {
+  const hz = sliderToHz(parseFloat(this.value));
+  document.getElementById('freqVal').textContent = hz < 1000 ? hz.toFixed(0) + ' Hz' : (hz/1000).toFixed(2) + ' kHz';
+  if (filterNode) filterNode.frequency.setTargetAtTime(hz, getCtx().currentTime, 0.01);
+  drawResponse();
+});
+
+document.getElementById('qSlider').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  document.getElementById('qVal').textContent = 'Q ' + v.toFixed(1);
+  if (filterNode) filterNode.Q.setTargetAtTime(v, getCtx().currentTime, 0.01);
+  drawResponse();
+});
+
+document.getElementById('gainSlider').addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  document.getElementById('gainVal').textContent = (v >= 0 ? '+' : '') + v.toFixed(1) + ' dB';
+  if (filterNode) filterNode.gain.setTargetAtTime(v, getCtx().currentTime, 0.01);
+  drawResponse();
+});
+
+// ── Frequency response drawing ────────────────────────────────────────────
+function drawResponse() {
+  const el = document.getElementById('responseCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 180;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const N = 512;
+  const freqs = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    freqs[i] = 20 * Math.pow(1000, i / (N - 1));
+  }
+
+  // Create temporary filter for measurement
+  const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const tmpFilter = tmpCtx.createBiquadFilter();
+  tmpFilter.type = currentType;
+  tmpFilter.frequency.value = currentHz();
+  tmpFilter.Q.value = parseFloat(document.getElementById('qSlider').value);
+  tmpFilter.gain.value = parseFloat(document.getElementById('gainSlider').value);
+
+  const mag = new Float32Array(N);
+  const phase = new Float32Array(N);
+  tmpFilter.getFrequencyResponse(freqs, mag, phase);
+  tmpCtx.close();
+
+  function freqToX(f) { return Math.log(f / 20) / Math.log(1000) * W; }
+  function magToY(m) {
+    const db = 20 * Math.log10(Math.max(m, 0.0001));
+    return H / 2 - (db / 24) * (H / 2 - 10);
+  }
+
+  // Grid
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [0, -6, -12, -18, 6, 12, 18].forEach(db => {
+    const y = H / 2 - (db / 24) * (H / 2 - 10);
+    if (y < 0 || y > H) return;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = '#2a2a2a'; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+    ctx.fillText((db > 0 ? '+' : '') + db + ' dB', 4, y - 2);
+  });
+  [100, 500, 1000, 5000, 10000].forEach(f => {
+    const x = freqToX(f);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  });
+
+  // 0 dB line
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+
+  // Response curve
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const x = freqToX(freqs[i]);
+    const y = magToY(mag[i]);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Fill
+  ctx.lineTo(W, H/2); ctx.lineTo(0, H/2); ctx.closePath();
+  ctx.fillStyle = 'rgba(91,155,213,0.07)'; ctx.fill();
+
+  // Cutoff marker
+  const cx = freqToX(currentHz());
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Auto-sweep
+document.getElementById('sweepBtn').addEventListener('click', function() {
+  if (sweepId) {
+    clearInterval(sweepId); sweepId = null;
+    this.textContent = 'Auto-sweep'; this.classList.remove('active');
+  } else {
+    this.textContent = 'Stop sweep'; this.classList.add('active');
+    sweepId = setInterval(() => {
+      const sl = document.getElementById('freqSlider');
+      let v = parseFloat(sl.value) + sweepDir * 0.4;
+      if (v >= 100) { v = 100; sweepDir = -1; }
+      if (v <= 0)   { v = 0;   sweepDir =  1; }
+      sl.value = v;
+      sl.dispatchEvent(new Event('input'));
+    }, 16);
+  }
+});
+
+// Initial draw
+document.getElementById('gainRow').style.display = 'none';
+drawResponse();
+
+// Update initial freq label
+const initHz = currentHz();
+document.getElementById('freqVal').textContent = initHz < 1000 ? initHz.toFixed(0) + ' Hz' : (initHz/1000).toFixed(2) + ' kHz';
+</script>
+</body>
+</html>
