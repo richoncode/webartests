@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nonlinear: Stick-Slip — Sound Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .play-btn.playing { background: #2a1a1a; border-color: #e07070; color: #e07070; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+  .control-row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 8px; }
+  .control-row label { font-size: 13px; color: #666; }
+  .control-row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .phase-note { font-size: 12px; color: #333; text-align: center; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Nonlinear: Stick-Slip</h1>
+<p class="subtitle">Friction between a bow and string creates a self-sustaining oscillation — the string repeatedly sticks to the bow, builds tension, then slips. This nonlinear cycle produces a continuous tone from a constant bow motion.</p>
+
+<!-- SECTION 1: BOW THE STRING -->
+<div class="section">
+  <h2>Bow the string</h2>
+  <p>Adjust bow speed and bow pressure, then bow the string. Unlike a plucked string that decays, this system is self-sustaining — energy continuously feeds in through friction.</p>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Bow speed</label>
+      <span class="val" id="speedVal">Medium</span>
+      <input type="range" id="speedSlider" min="1" max="10" value="5" step="0.5">
+    </div>
+    <div class="control-row">
+      <label>Bow pressure</label>
+      <span class="val" id="pressVal">Medium</span>
+      <input type="range" id="pressSlider" min="1" max="10" value="5" step="0.5">
+    </div>
+    <div class="control-row">
+      <label>String pitch</label>
+      <span class="val" id="pitchVal">220 Hz (A3)</span>
+      <input type="range" id="pitchSlider" min="82" max="660" value="220" step="1">
+    </div>
+    <div class="control-row">
+      <label>Bow position (distance from bridge)</label>
+      <span class="val" id="posVal">Sul tasto (middle)</span>
+      <input type="range" id="posSlider" min="5" max="45" value="20" step="1">
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="vis-label">String velocity (stick-slip cycles)</div>
+      <canvas id="velCanvas" style="width:100%;height:110px"></canvas>
+    </div>
+    <div>
+      <div class="vis-label">Friction force vs string velocity (phase plot)</div>
+      <canvas id="phaseCanvas" style="width:100%;height:110px"></canvas>
+    </div>
+  </div>
+  <p class="phase-note">Phase plot: slope = sticking, vertical drop = slipping</p>
+
+  <div class="vis-label" style="margin-top:12px">Output waveform</div>
+  <canvas id="outCanvas" style="width:100%;height:80px"></canvas>
+
+  <div class="btn-row" style="margin-top:12px">
+    <button class="play-btn" id="playBtn">▶ Bow string</button>
+  </div>
+</div>
+
+<!-- SECTION 2: THE STICK-SLIP CYCLE -->
+<div class="section">
+  <h2>The stick-slip cycle</h2>
+  <p>Friction has two distinct regimes. Understanding when the string sticks vs slips is the entire physics of bowing.</p>
+
+  <div class="callout">
+    <strong>Sticking phase.</strong> The bow drags the string sideways. Static friction is high — the string moves with the bow as a unit. Elastic energy builds in the string like a spring being stretched. This continues until the restoring force of the string exceeds the static friction limit.
+  </div>
+  <div class="callout">
+    <strong>Slipping phase.</strong> The string snaps back past its resting position at high speed — faster than the bow. Kinetic friction (much lower than static) applies during this phase, barely slowing the string. The string overshoots, slows, reverses, and when its velocity matches the bow speed again — it sticks once more.
+  </div>
+  <div class="callout">
+    <strong>Bow speed controls pitch indirectly.</strong> Higher bow speed shifts the sticking/slipping balance point. Bow pressure controls whether the cycle is stable — too little pressure causes the string to slip without control (scratch); too much causes the string to never slip at all (choke). The sweet spot in between produces a clean sustained tone.
+  </div>
+  <div class="callout">
+    <strong>Bow position (bowing point).</strong> Playing near the bridge (sul ponticello) forces the string to work against high string tension at that point — producing a bright, nasal tone with many harmonics. Playing over the fingerboard (sul tasto) allows more string motion — producing a rounder, darker tone with fewer high harmonics.
+  </div>
+</div>
+
+</div>
+<script>
+let audioCtx = null;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Simplified stick-slip bowed string model
+// Based on the Friedlander-Keller analysis of bow-string interaction
+function bowedString(sr, freq, bowSpeed, bowPressure, bowPos, duration) {
+  const N = Math.floor(sr * duration);
+  const out = new Float32Array(N);
+  const vel = new Float32Array(N);    // string velocity
+  const phase = new Float32Array(N);  // bow friction force (for visualisation)
+
+  // Karplus-Strong with bow excitation
+  const delayLen = Math.max(2, Math.round(sr / freq));
+  const ring = new Float32Array(delayLen);
+
+  // Position of bow on string (0 = bridge, 0.5 = middle)
+  const bowFraction = bowPos / 100;
+  const bowPoint = Math.max(1, Math.round(delayLen * bowFraction));
+
+  // Bow parameters
+  const vBow = bowSpeed / 10 * 0.2;       // bow velocity
+  const mu = bowPressure / 10;             // friction coefficient
+  const stickThresh = mu * 0.8;            // static friction limit
+  const slipMu = mu * 0.35;               // kinetic friction
+
+  let ptr = 0, prevSample = 0;
+  let bowPhase = 0; // track bow friction for phase plot
+
+  for (let i = 0; i < N; i++) {
+    const strVel = ring[ptr] - prevSample; // approximate string velocity
+    const relVel = strVel - vBow;          // velocity relative to bow
+
+    // Stick-slip friction
+    let friction;
+    if (Math.abs(relVel) < 0.001) {
+      // Sticking: friction matches applied force
+      friction = mu * (vBow - strVel) * 0.5;
+      bowPhase = friction;
+    } else {
+      // Slipping: kinetic friction
+      friction = -slipMu * Math.sign(relVel);
+      bowPhase = friction;
+    }
+
+    const curr = ring[ptr];
+    out[i] = curr;
+    vel[i] = strVel;
+    phase[i] = bowPhase;
+
+    // Update ring with friction injection at bow point and damping
+    const damp = 0.9995;
+    ring[ptr] = (curr + prevSample) * 0.5 * damp + friction * 0.015;
+    prevSample = curr;
+    ptr = (ptr + 1) % delayLen;
+
+    // Natural harmonics shaped by bow position
+    // Remove modes that have a node at the bow point
+    if (i % bowPoint === 0) ring[ptr] += 0; // node cancellation (simplified)
+  }
+
+  return { out, vel, phase };
+}
+
+// Timbral shaping based on bow position (bridge=bright, middle=dark)
+function shapeByBowPos(samples, bowPos, sr) {
+  const pos = bowPos / 100; // 0 = bridge (bright), 0.5 = middle (dark)
+  // Apply a low-pass filter to approximate tasto vs ponticello
+  const cutoff = 4000 + (1 - pos * 2) * 8000; // bridge: 12kHz, middle: 4kHz
+  // Simple one-pole LP
+  const k = Math.exp(-2 * Math.PI * cutoff / sr);
+  let prev = 0;
+  for (let i = 0; i < samples.length; i++) {
+    prev = (1 - k) * samples[i] + k * prev;
+    samples[i] = prev;
+  }
+  return samples;
+}
+
+function normalise(arr, gain) {
+  let peak = 0;
+  for (let i = 0; i < arr.length; i++) peak = Math.max(peak, Math.abs(arr[i]));
+  if (peak > 0.001) for (let i = 0; i < arr.length; i++) arr[i] = arr[i] / peak * (gain || 0.8);
+  return arr;
+}
+
+function drawSignal(id, signal, color) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 380, H = el.offsetHeight || 110;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  const show = Math.min(signal.length, Math.floor(44100 * 0.03));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < show; i++) {
+    const x = i / show * W, y = H/2 - signal[i] * (H/2 - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawPhase(vel, frict) {
+  const el = document.getElementById('phaseCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 380, H = el.offsetHeight || 110;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+
+  const show = Math.min(vel.length, Math.floor(44100 * 0.02));
+  ctx.strokeStyle = '#b07adf'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < show; i++) {
+    const x = W/2 + vel[i] * (W/2 - 4) * 40;
+    const y = H/2 - frict[i] * (H/2 - 4) * 40;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+const SPEED_LABELS = ['Very slow','Slow','Slow-medium','Medium-slow','Medium','Medium-fast','Fast-medium','Fast','Very fast','Extreme'];
+const PRESS_LABELS = ['Barely touching','Light','Light-medium','Medium-light','Medium','Medium-firm','Firm','Heavy','Very heavy','Maximum'];
+const PITCH_NOTES = {82:'E2 (bass)',110:'A2',147:'D3',196:'G3',220:'A3',261:'C4 (middle)',294:'D4',330:'E4',392:'G4',440:'A4 (concert)',494:'B4',523:'C5',587:'D5',659:'E5'};
+
+function nearestNote(freq) {
+  const notes = Object.keys(PITCH_NOTES).map(Number);
+  const closest = notes.reduce((a, b) => Math.abs(b - freq) < Math.abs(a - freq) ? b : a);
+  return Math.abs(closest - freq) < 30 ? PITCH_NOTES[closest] : freq + ' Hz';
+}
+
+document.getElementById('speedSlider').addEventListener('input', function() {
+  document.getElementById('speedVal').textContent = SPEED_LABELS[Math.round(this.value) - 1];
+});
+document.getElementById('pressSlider').addEventListener('input', function() {
+  document.getElementById('pressVal').textContent = PRESS_LABELS[Math.round(this.value) - 1];
+});
+document.getElementById('pitchSlider').addEventListener('input', function() {
+  document.getElementById('pitchVal').textContent = nearestNote(parseInt(this.value));
+});
+document.getElementById('posSlider').addEventListener('input', function() {
+  const v = parseInt(this.value);
+  document.getElementById('posVal').textContent = v < 12 ? 'Sul ponticello (near bridge)' : v < 30 ? 'Normal bowing' : 'Sul tasto (over fingerboard)';
+});
+
+document.getElementById('playBtn').addEventListener('click', function() {
+  const ctx = getCtx();
+  const sr = ctx.sampleRate;
+  const freq = parseFloat(document.getElementById('pitchSlider').value);
+  const speed = parseFloat(document.getElementById('speedSlider').value);
+  const press = parseFloat(document.getElementById('pressSlider').value);
+  const pos = parseFloat(document.getElementById('posSlider').value);
+
+  const { out, vel, phase } = bowedString(sr, freq, speed, press, pos, 3);
+  normalise(out, 0.75);
+  shapeByBowPos(out, pos, sr);
+
+  const buf = ctx.createBuffer(1, out.length, sr);
+  buf.getChannelData(0).set(out);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start();
+
+  drawSignal('velCanvas', vel, '#a0c060');
+  drawPhase(vel, phase);
+  drawSignal('outCanvas', out, '#5b9bd5');
+});
+
+setTimeout(() => {
+  drawSignal('velCanvas', new Float32Array(100), '#a0c060');
+  drawSignal('outCanvas', new Float32Array(100), '#5b9bd5');
+  drawPhase(new Float32Array(100), new Float32Array(100));
+}, 50);
+</script>
+</body>
+</html>

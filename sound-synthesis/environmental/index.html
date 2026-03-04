@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Environmental Sounds — Sound Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button:active { transform: scale(0.96); }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .controls { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+  .control-row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 8px; }
+  .control-row label { font-size: 13px; color: #666; }
+  .control-row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .sound-card { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 20px 22px; margin-bottom: 16px; }
+  .sound-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .sound-card > p { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 14px; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .surface-btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .surf-btn { font-size: 12px; padding: 4px 12px; }
+  .surf-btn.active { border-color: #5b9bd5; color: #5b9bd5; }
+  .seq-note { font-size: 12px; color: #333; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Environmental Sounds</h1>
+<p class="subtitle">Everyday sounds — footsteps, scrapes, collisions — can be synthesised using the same Excitation × Vibration model. Physical parameters like surface material and contact force map directly to acoustic parameters.</p>
+
+<!-- SECTION 1: FOOTSTEP SYNTHESISER -->
+<div class="section">
+  <h2>Footstep synthesiser</h2>
+  <p>A footstep has three simultaneous components: a low-frequency body impact (weight hitting the floor), a mid-frequency floor resonance (the floor material ringing), and a high-frequency surface texture (shoe sole on surface). Together they define the material and mass of the walker.</p>
+
+  <div class="sound-card">
+    <h3 style="color:#5b9bd5">Footstep</h3>
+    <p>Impact physics: sole mass hitting floor material. Every step varies slightly — add randomness to hear natural variation.</p>
+
+    <div class="surface-btns" id="surfaces">
+      <button class="surf-btn active" data-surf="wood">Wood floor</button>
+      <button class="surf-btn" data-surf="concrete">Concrete</button>
+      <button class="surf-btn" data-surf="tile">Tile</button>
+      <button class="surf-btn" data-surf="gravel">Gravel</button>
+      <button class="surf-btn" data-surf="metal">Metal grate</button>
+    </div>
+
+    <div class="controls">
+      <div class="control-row">
+        <label>Walker weight (impact mass)</label>
+        <span class="val" id="weightVal">70 kg</span>
+        <input type="range" id="weightSlider" min="30" max="140" value="70" step="5">
+      </div>
+      <div class="control-row">
+        <label>Step speed</label>
+        <span class="val" id="stepSpeedVal">Walking</span>
+        <input type="range" id="stepSpeedSlider" min="1" max="5" value="2" step="1">
+      </div>
+      <div class="control-row">
+        <label>Footwear hardness</label>
+        <span class="val" id="shoeVal">Leather soles</span>
+        <input type="range" id="shoeSlider" min="1" max="4" value="2" step="1">
+      </div>
+    </div>
+
+    <div class="vis-label">Waveform</div>
+    <canvas id="stepCanvas" style="width:100%;height:80px"></canvas>
+
+    <div class="btn-row" style="margin-top:10px">
+      <button class="play-btn" id="stepBtn">▶ Single step</button>
+      <button id="walkBtn">▶ Walking sequence</button>
+    </div>
+    <p class="seq-note" id="seqNote"></p>
+  </div>
+</div>
+
+<!-- SECTION 2: SCRAPE SYNTHESISER -->
+<div class="section">
+  <h2>Scrape synthesiser</h2>
+  <p>Scraping is a series of micro-collisions — the surface roughness causes rapid repeated excitation of the object's modes. Slower speed means fewer impacts per second; pressing harder excites higher-amplitude modes.</p>
+
+  <div class="sound-card">
+    <h3 style="color:#f0a040">Surface scrape</h3>
+    <p>Stochastic impact train through material resonance. The roughness of the surface and the hardness of the scraper shape the texture.</p>
+
+    <div class="controls">
+      <div class="control-row">
+        <label>Scrape speed</label>
+        <span class="val" id="scrapeSpeedVal">Medium</span>
+        <input type="range" id="scrapeSpeedSlider" min="1" max="10" value="5" step="0.5">
+      </div>
+      <div class="control-row">
+        <label>Surface roughness</label>
+        <span class="val" id="roughVal">Medium</span>
+        <input type="range" id="roughSlider" min="1" max="10" value="5" step="0.5">
+      </div>
+      <div class="control-row">
+        <label>Object resonance pitch</label>
+        <span class="val" id="scrapePitchVal">400 Hz</span>
+        <input type="range" id="scrapePitchSlider" min="100" max="2000" value="400" step="10">
+      </div>
+    </div>
+
+    <div class="vis-label">Waveform</div>
+    <canvas id="scrapeCanvas" style="width:100%;height:80px"></canvas>
+
+    <div class="btn-row" style="margin-top:10px">
+      <button class="play-btn" id="scrapeBtn">▶ Scrape</button>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 3: IMPACT SYNTHESISER -->
+<div class="section">
+  <h2>Collision & impact</h2>
+  <p>A collision is the simplest case: two objects, each with their own modes, each excited by the impact. The relative hardness of the objects shapes the contact time and therefore which modes get excited.</p>
+
+  <div class="sound-card">
+    <h3 style="color:#a0c060">Object collision</h3>
+
+    <div class="controls">
+      <div class="control-row">
+        <label>Object 1 material</label>
+        <span class="val" id="obj1Val">Metal</span>
+        <input type="range" id="obj1Slider" min="1" max="4" value="3" step="1">
+      </div>
+      <div class="control-row">
+        <label>Object 2 material</label>
+        <span class="val" id="obj2Val">Wood</span>
+        <input type="range" id="obj2Slider" min="1" max="4" value="2" step="1">
+      </div>
+      <div class="control-row">
+        <label>Impact force</label>
+        <span class="val" id="forceVal">Medium</span>
+        <input type="range" id="forceSlider" min="1" max="10" value="5" step="1">
+      </div>
+    </div>
+
+    <div class="vis-label">Waveform</div>
+    <canvas id="impactCanvas" style="width:100%;height:80px"></canvas>
+
+    <div class="btn-row" style="margin-top:10px">
+      <button class="play-btn" id="impactBtn">▶ Collide</button>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 4: WHY THIS MATTERS -->
+<div class="section">
+  <h2>Why physical synthesis scales</h2>
+
+  <div class="callout">
+    <strong>Every step is unique.</strong> A recorded footstep sounds right once and repetitive the fifth time. A synthesised footstep varies naturally with each trigger — weight transfer, surface contact area, and shoe deformation all introduce randomness at the source, just like the real thing.
+  </div>
+  <div class="callout">
+    <strong>Parameters are physical.</strong> "Walker weight" directly scales the low-frequency impact component. "Surface hardness" changes the modal decay rate. These map to real quantities a game engine or physics simulation already tracks — the audio system can drive synthesis from physics state rather than from sound selection logic.
+  </div>
+  <div class="callout">
+    <strong>Scalability for interactive media.</strong> A game with 100 surface/object combinations would need 100 × N samples to cover all variations. Physical synthesis generates each combination at runtime from a small parameter set — one model, unlimited variation. This is the practical payoff of Cook's research for real-time interactive audio.
+  </div>
+</div>
+
+</div>
+<script>
+let audioCtx = null;
+let walkInterval = null;
+let currentSurface = 'wood';
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Surface definitions
+const SURFACES = {
+  wood:     { bodyFreq: 120, bodyDecay: 18, floorFreq: 280, floorDecay: 12, noiseAmt: 0.3, name: 'Wood floor' },
+  concrete: { bodyFreq: 80,  bodyDecay: 30, floorFreq: 180, floorDecay: 5,  noiseAmt: 0.5, name: 'Concrete' },
+  tile:     { bodyFreq: 200, bodyDecay: 8,  floorFreq: 800, floorDecay: 3,  noiseAmt: 0.6, name: 'Tile' },
+  gravel:   { bodyFreq: 60,  bodyDecay: 50, floorFreq: 300, floorDecay: 25, noiseAmt: 0.9, name: 'Gravel' },
+  metal:    { bodyFreq: 150, bodyDecay: 3,  floorFreq: 400, floorDecay: 1,  noiseAmt: 0.7, name: 'Metal grate' },
+};
+
+const SHOE_LABELS = ['Soft rubber','Leather soles','Hard leather','Metal heel'];
+const SPEED_LABELS = ['Slow walk','Walking','Brisk walk','Jogging','Running'];
+const OBJ_LABELS = ['Glass','Wood','Metal','Stone'];
+const OBJ_MODES = {
+  Glass:  [{r:1,a:1,d:0.8},{r:2.01,a:0.2,d:1.5}],
+  Wood:   [{r:1,a:1,d:12},{r:3.9,a:0.3,d:25}],
+  Metal:  [{r:1,a:1,d:1.2},{r:2.76,a:0.6,d:2},{r:5.4,a:0.3,d:4}],
+  Stone:  [{r:1,a:1,d:8},{r:2.1,a:0.4,d:15},{r:4.5,a:0.15,d:30}],
+};
+const OBJ_FREQ = { Glass:600, Wood:300, Metal:250, Stone:180 };
+
+function makeNoise(len) {
+  const a = new Float32Array(len);
+  for (let i = 0; i < len; i++) a[i] = Math.random() * 2 - 1;
+  return a;
+}
+
+function normalise(arr, gain) {
+  let peak = 0;
+  for (let i = 0; i < arr.length; i++) peak = Math.max(peak, Math.abs(arr[i]));
+  if (peak > 0.001) for (let i = 0; i < arr.length; i++) arr[i] = arr[i] / peak * (gain || 0.8);
+  return arr;
+}
+
+// ── Footstep synthesis ─────────────────────────────────────────────────────
+function synthesiseStep(surface, weight, shoe, sr) {
+  const dur = 0.3 + Math.random() * 0.05;
+  const N = Math.floor(sr * dur);
+  const out = new Float32Array(N);
+
+  const s = SURFACES[surface];
+  const massScale = weight / 70;
+  const shoeHard = shoe / 4; // 0.25 to 1
+
+  // Component 1: body thud (low-freq impulse, weight-dependent)
+  const bodyOmega = 2 * Math.PI * s.bodyFreq * (1 + (Math.random() - 0.5) * 0.1) / sr;
+  const bodyDecay = Math.exp(-s.bodyDecay / sr);
+  let bodyAmp = massScale * 0.8 * (1 + (Math.random() - 0.5) * 0.15);
+  for (let i = 0; i < N; i++) {
+    out[i] += bodyAmp * Math.sin(bodyOmega * i);
+    bodyAmp *= bodyDecay;
+  }
+
+  // Component 2: floor resonance (mid-freq ring)
+  const floorOmega = 2 * Math.PI * s.floorFreq * (1 + (Math.random() - 0.5) * 0.05) / sr;
+  const floorDecay = Math.exp(-s.floorDecay / sr);
+  let floorAmp = 0.5 * (1 + (Math.random() - 0.5) * 0.2);
+  for (let i = 0; i < N; i++) {
+    out[i] += floorAmp * Math.sin(floorOmega * i);
+    floorAmp *= floorDecay;
+  }
+
+  // Component 3: surface texture (bandpass noise, shoe-dependent)
+  const textureDur = Math.floor(sr * (0.04 + shoeHard * 0.04));
+  const noiseAmt = s.noiseAmt * shoeHard * (0.8 + Math.random() * 0.4);
+  const bpDecay = Math.exp(-80 / sr);
+  let noiseEnv = noiseAmt * 0.4, noisePrev = 0;
+  for (let i = 0; i < Math.min(textureDur, N); i++) {
+    const n = (Math.random() * 2 - 1);
+    noisePrev = 0.4 * n + 0.6 * noisePrev;
+    out[i] += noisePrev * noiseEnv;
+    noiseEnv *= bpDecay;
+  }
+
+  return normalise(out, 0.8);
+}
+
+// ── Scrape synthesis ────────────────────────────────────────────────────────
+function synthesiseScrape(speed, roughness, pitch, sr, duration) {
+  const N = Math.floor(sr * duration);
+  const out = new Float32Array(N);
+
+  // Stochastic impact rate based on speed and roughness
+  const avgGap = Math.max(2, Math.floor(sr * 0.001 / (speed / 10) / (roughness / 5)));
+  const ringFreq = pitch;
+  const omega = 2 * Math.PI * ringFreq / sr;
+  const decay = Math.exp(-(30 + roughness * 5) / sr);
+
+  let ring = 0;
+  for (let i = 0; i < N; i++) {
+    // Random impact at rate controlled by speed × roughness
+    if (Math.random() < 1 / avgGap) {
+      ring += (Math.random() * 0.5 + 0.5) * (roughness / 10) * 0.8;
+    }
+    out[i] = ring * Math.sin(omega * i);
+    ring *= decay;
+  }
+  return normalise(out, 0.75);
+}
+
+// ── Impact synthesis ────────────────────────────────────────────────────────
+function synthesiseImpact(obj1Name, obj2Name, force, sr) {
+  const N = Math.floor(sr * 1.5);
+  const out = new Float32Array(N);
+
+  // Contact time based on material hardness (harder = shorter contact = more HF)
+  const hardness = { Glass: 8, Metal: 9, Stone: 7, Wood: 4 };
+  const h1 = hardness[obj1Name], h2 = hardness[obj2Name];
+  const contactTime = Math.floor(sr * 0.002 / ((h1 + h2) / 14));
+  const forceScale = force / 10;
+
+  // Excitation: shaped impulse based on contact time
+  const exc = new Float32Array(N);
+  for (let i = 0; i < Math.min(contactTime, N); i++) {
+    exc[i] = Math.sin(Math.PI * i / contactTime) * forceScale;
+  }
+
+  // Apply both object resonators
+  [obj1Name, obj2Name].forEach(name => {
+    const modes = OBJ_MODES[name];
+    const base = OBJ_FREQ[name] * (0.9 + Math.random() * 0.2);
+    modes.forEach(mode => {
+      const freq = base * mode.r;
+      if (freq > sr / 2) return;
+      const omega = 2 * Math.PI * freq / sr;
+      const modDecay = Math.exp(-mode.d / sr);
+      let amp = 0;
+      for (let i = 0; i < N; i++) {
+        amp = amp * modDecay + exc[i] * mode.a * 0.5;
+        out[i] += amp * Math.sin(omega * i);
+      }
+    });
+  });
+
+  return normalise(out, 0.8);
+}
+
+// ── Canvas ──────────────────────────────────────────────────────────────────
+function drawSignal(id, signal, color) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  const show = Math.min(signal.length, Math.floor(44100 * 0.25));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < show; i++) {
+    const x = i / show * W, y = H/2 - signal[i] * (H/2 - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function playBuffer(samples) {
+  const ctx = getCtx();
+  const buf = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buf.getChannelData(0).set(samples);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start();
+  return src;
+}
+
+// ── Event listeners ─────────────────────────────────────────────────────────
+document.querySelectorAll('.surf-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.surf-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentSurface = this.dataset.surf;
+  });
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  const ctx = getCtx();
+  const weight = parseFloat(document.getElementById('weightSlider').value);
+  const shoe = parseFloat(document.getElementById('shoeSlider').value);
+  const samples = synthesiseStep(currentSurface, weight, shoe, ctx.sampleRate);
+  playBuffer(samples);
+  drawSignal('stepCanvas', samples, '#5b9bd5');
+});
+
+document.getElementById('walkBtn').addEventListener('click', function() {
+  if (walkInterval) { clearInterval(walkInterval); walkInterval = null; document.getElementById('seqNote').textContent = ''; return; }
+  const ctx = getCtx();
+  const stepSpeed = parseInt(document.getElementById('stepSpeedSlider').value);
+  const bpm = [60, 90, 110, 140, 170][stepSpeed - 1];
+  const interval = 60000 / bpm / 2; // two steps per beat
+
+  document.getElementById('seqNote').textContent = 'Walking at ' + bpm + ' steps/min — click again to stop';
+
+  function step() {
+    const weight = parseFloat(document.getElementById('weightSlider').value);
+    const shoe = parseFloat(document.getElementById('shoeSlider').value);
+    const samples = synthesiseStep(currentSurface, weight, shoe, ctx.sampleRate);
+    playBuffer(samples);
+    drawSignal('stepCanvas', samples, '#5b9bd5');
+  }
+  step();
+  walkInterval = setInterval(step, interval);
+});
+
+document.getElementById('scrapeBtn').addEventListener('click', () => {
+  const ctx = getCtx();
+  const speed = parseFloat(document.getElementById('scrapeSpeedSlider').value);
+  const rough = parseFloat(document.getElementById('roughSlider').value);
+  const pitch = parseFloat(document.getElementById('scrapePitchSlider').value);
+  const samples = synthesiseScrape(speed, rough, pitch, ctx.sampleRate, 1.5);
+  playBuffer(samples);
+  drawSignal('scrapeCanvas', samples, '#f0a040');
+});
+
+document.getElementById('impactBtn').addEventListener('click', () => {
+  const ctx = getCtx();
+  const obj1 = OBJ_LABELS[parseInt(document.getElementById('obj1Slider').value) - 1];
+  const obj2 = OBJ_LABELS[parseInt(document.getElementById('obj2Slider').value) - 1];
+  const force = parseFloat(document.getElementById('forceSlider').value);
+  const samples = synthesiseImpact(obj1, obj2, force, ctx.sampleRate);
+  playBuffer(samples);
+  drawSignal('impactCanvas', samples, '#a0c060');
+});
+
+// Slider labels
+document.getElementById('weightSlider').addEventListener('input', function() { document.getElementById('weightVal').textContent = this.value + ' kg'; });
+document.getElementById('stepSpeedSlider').addEventListener('input', function() { document.getElementById('stepSpeedVal').textContent = SPEED_LABELS[parseInt(this.value)-1]; });
+document.getElementById('shoeSlider').addEventListener('input', function() { document.getElementById('shoeVal').textContent = SHOE_LABELS[parseInt(this.value)-1]; });
+document.getElementById('scrapeSpeedSlider').addEventListener('input', function() {
+  const labels = ['Very slow','Slow','Slow-medium','Medium-slow','Medium','Medium-fast','Fast-medium','Fast','Very fast','Rapid'];
+  document.getElementById('scrapeSpeedVal').textContent = labels[Math.round(this.value)-1];
+});
+document.getElementById('roughSlider').addEventListener('input', function() {
+  const labels = ['Smooth','Very fine','Fine','Fine-medium','Medium','Medium-rough','Rough','Very rough','Coarse','Gravel'];
+  document.getElementById('roughVal').textContent = labels[Math.round(this.value)-1];
+});
+document.getElementById('scrapePitchSlider').addEventListener('input', function() { document.getElementById('scrapePitchVal').textContent = this.value + ' Hz'; });
+document.getElementById('obj1Slider').addEventListener('input', function() { document.getElementById('obj1Val').textContent = OBJ_LABELS[parseInt(this.value)-1]; });
+document.getElementById('obj2Slider').addEventListener('input', function() { document.getElementById('obj2Val').textContent = OBJ_LABELS[parseInt(this.value)-1]; });
+document.getElementById('forceSlider').addEventListener('input', function() {
+  const labels = ['Barely touching','Light','Light-medium','Medium-light','Medium','Medium-firm','Firm','Hard','Very hard','Maximum'];
+  document.getElementById('forceVal').textContent = labels[parseInt(this.value)-1];
+});
+
+setTimeout(() => {
+  ['stepCanvas','scrapeCanvas','impactCanvas'].forEach(id => drawSignal(id, new Float32Array(100), '#888'));
+}, 50);
+</script>
+</body>
+</html>

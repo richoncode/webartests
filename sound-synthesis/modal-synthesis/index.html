@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modal Synthesis — Sound Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .strike-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .strike-btn:active { transform: scale(0.96); }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 16px 0; }
+  .mat-btn { text-align: left; padding: 14px 16px; border-radius: 10px; cursor: pointer; }
+  .mat-btn h3 { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+  .mat-btn p { font-size: 11px; color: #555; line-height: 1.4; margin: 0; }
+  .mat-btn.active { border-color: #5b9bd5; background: #111; }
+  .mode-bars { display: flex; align-items: flex-end; gap: 3px; height: 80px; margin: 16px 0; padding: 4px; background: #0a0a0a; border-radius: 8px; border: 1px solid #1e1e1e; overflow: hidden; }
+  .mode-bar { flex: 1; border-radius: 3px 3px 0 0; transition: height 0.8s ease-out; min-width: 4px; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Modal Synthesis</h1>
+<p class="subtitle">A struck object vibrates at a set of characteristic frequencies — its modes. The same mathematical model produces wood, metal, glass, and ceramic sounds just by changing the mode frequencies and decay rates.</p>
+
+<!-- SECTION 1: STRIKE AN OBJECT -->
+<div class="section">
+  <h2>Strike the object</h2>
+  <p>Choose a material and strike it. Each bar below shows one vibrating mode — watch how quickly the higher modes fade compared to the fundamental.</p>
+
+  <div class="material-grid" id="materials">
+
+    <button class="mat-btn active" data-mat="bell">
+      <h3 style="color:#f0a040">Bell</h3>
+      <p>Inharmonic modes, very long decay. Metal produces partials that don't align with the harmonic series.</p>
+    </button>
+
+    <button class="mat-btn" data-mat="marimba">
+      <h3 style="color:#a0c060">Marimba</h3>
+      <p>Tuned wooden bar with 3 dominant modes. The 4th harmonic is tuned out by undercutting the bar.</p>
+    </button>
+
+    <button class="mat-btn" data-mat="glass">
+      <h3 style="color:#5b9bd5">Wine glass</h3>
+      <p>Nearly harmonic modes, extremely long decay. The friction resonance of running a wet finger around the rim.</p>
+    </button>
+
+    <button class="mat-btn" data-mat="wood">
+      <h3 style="color:#b07adf">Wood block</h3>
+      <p>Strongly damped, few modes. High-frequency modes die almost instantly, leaving only the dull thud.</p>
+    </button>
+
+    <button class="mat-btn" data-mat="ceramic">
+      <h3 style="color:#e07070">Ceramic bowl</h3>
+      <p>Dense inharmonic modes, medium decay. The complex mode structure gives pottery its distinctive ring.</p>
+    </button>
+
+    <button class="mat-btn" data-mat="metal">
+      <h3 style="color:#60c0c0">Metal plate</h3>
+      <p>Very dense mode structure. Used in plate reverb units — the plate acts as a natural reverb chamber.</p>
+    </button>
+
+  </div>
+
+  <div class="vis-label">Mode energy (each bar = one vibrating mode)</div>
+  <div class="mode-bars" id="modeBars"></div>
+
+  <div class="vis-label" style="margin-top:16px">Output waveform</div>
+  <canvas id="waveCanvas" style="width:100%;height:100px"></canvas>
+
+  <div class="btn-row" style="margin-top:16px">
+    <button class="strike-btn" id="strikeBtn">▶ Strike</button>
+  </div>
+</div>
+
+<!-- SECTION 2: WHAT MAKES A MATERIAL -->
+<div class="section">
+  <h2>What makes a material sound like itself</h2>
+  <p>Every object has a characteristic set of resonant frequencies determined by its shape, density, and elasticity. These are its <em>modes</em>. Striking the object excites all modes simultaneously, but they each decay at different rates.</p>
+
+  <div class="callout">
+    <strong>Mode frequency ratios</strong> determine whether the object sounds harmonic (musical) or inharmonic (percussive). A vibrating string produces modes at exact integer multiples of the fundamental (1×, 2×, 3×…). A metal bar produces modes at irrational ratios like 1, 2.76, 5.40, 8.93 — which is why a bell sounds complex and "metallic" rather than like a pure musical tone.
+  </div>
+  <div class="callout">
+    <strong>Decay rate</strong> is set by the material's internal damping — how much energy is converted to heat per cycle. Metal has very low damping (long ring), wood has high damping (short thud). Each mode can have a different decay rate — typically higher modes die faster, which is why the sound of a struck object becomes darker over time.
+  </div>
+  <div class="callout">
+    <strong>The model.</strong> Each mode is a damped sinusoid: amplitude × sin(2π × freq × t) × e^(−decay × t). Sum all the modes together and you hear the object. This is computationally simple but surprisingly realistic — the human ear is very sensitive to the mode frequency ratios and decay curves as cues for material identity.
+  </div>
+</div>
+
+</div>
+<script>
+// Material definitions: [{freq_ratio, amp, decay_per_sec}]
+// freq_ratio is relative to a base pitch of 300 Hz
+const MATERIALS = {
+  bell: {
+    color: '#f0a040', base: 300,
+    modes: [
+      {r:1.000, a:1.0,  d:1.5},
+      {r:2.756, a:0.7,  d:3.0},
+      {r:5.404, a:0.5,  d:5.0},
+      {r:8.933, a:0.3,  d:8.0},
+      {r:13.34, a:0.15, d:12.0},
+      {r:18.64, a:0.08, d:18.0},
+      {r:24.9,  a:0.04, d:25.0},
+      {r:31.8,  a:0.02, d:35.0},
+    ]
+  },
+  marimba: {
+    color: '#a0c060', base: 260,
+    modes: [
+      {r:1.000, a:1.0,  d:8.0},
+      {r:3.932, a:0.5,  d:15.0},
+      {r:9.538, a:0.2,  d:30.0},
+      {r:16.2,  a:0.05, d:60.0},
+    ]
+  },
+  glass: {
+    color: '#5b9bd5', base: 800,
+    modes: [
+      {r:1.000, a:1.0,  d:0.3},
+      {r:2.003, a:0.12, d:0.8},
+      {r:3.011, a:0.06, d:1.5},
+      {r:4.023, a:0.03, d:3.0},
+    ]
+  },
+  wood: {
+    color: '#b07adf', base: 400,
+    modes: [
+      {r:1.000, a:1.0,  d:25.0},
+      {r:2.32,  a:0.4,  d:60.0},
+      {r:5.1,   a:0.1,  d:120.0},
+      {r:9.8,   a:0.03, d:300.0},
+    ]
+  },
+  ceramic: {
+    color: '#e07070', base: 500,
+    modes: [
+      {r:1.000, a:1.0,  d:2.0},
+      {r:2.12,  a:0.6,  d:3.5},
+      {r:3.68,  a:0.35, d:6.0},
+      {r:5.89,  a:0.2,  d:10.0},
+      {r:8.74,  a:0.1,  d:16.0},
+      {r:12.5,  a:0.05, d:25.0},
+    ]
+  },
+  metal: {
+    color: '#60c0c0', base: 200,
+    modes: [
+      {r:1.000, a:1.0,  d:0.5},
+      {r:1.78,  a:0.8,  d:0.8},
+      {r:3.11,  a:0.6,  d:1.2},
+      {r:4.90,  a:0.4,  d:1.8},
+      {r:7.25,  a:0.25, d:2.8},
+      {r:10.2,  a:0.15, d:4.0},
+      {r:13.9,  a:0.08, d:6.0},
+      {r:18.3,  a:0.04, d:9.0},
+      {r:23.6,  a:0.02, d:14.0},
+    ]
+  }
+};
+
+let currentMat = 'bell';
+let audioCtx = null;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function synthesise(matKey, sampleRate, duration) {
+  const mat = MATERIALS[matKey];
+  const N = Math.floor(sampleRate * duration);
+  const out = new Float32Array(N);
+  mat.modes.forEach(mode => {
+    const freq = mat.base * mode.r;
+    const omega = 2 * Math.PI * freq / sampleRate;
+    const decayPerSample = Math.exp(-mode.d / sampleRate);
+    let amp = mode.a;
+    for (let i = 0; i < N; i++) {
+      out[i] += amp * Math.sin(omega * i);
+      amp *= decayPerSample;
+    }
+  });
+  // Normalize
+  let peak = 0;
+  for (let i = 0; i < N; i++) peak = Math.max(peak, Math.abs(out[i]));
+  if (peak > 0) for (let i = 0; i < N; i++) out[i] = out[i] / peak * 0.85;
+  return out;
+}
+
+function buildModeBars() {
+  const container = document.getElementById('modeBars');
+  container.innerHTML = '';
+  const mat = MATERIALS[currentMat];
+  mat.modes.forEach((mode, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'mode-bar';
+    bar.style.background = mat.color + '80';
+    bar.style.height = (mode.a * 100) + '%';
+    bar.dataset.idx = i;
+    container.appendChild(bar);
+  });
+}
+
+function animateBars(matKey, sampleRate) {
+  const mat = MATERIALS[matKey];
+  const container = document.getElementById('modeBars');
+  const bars = container.querySelectorAll('.mode-bar');
+  let t = 0;
+  const step = 0.05; // 50ms steps
+  const anim = setInterval(() => {
+    t += step;
+    mat.modes.forEach((mode, i) => {
+      if (bars[i]) {
+        const amp = mode.a * Math.exp(-mode.d * t);
+        bars[i].style.height = Math.max(2, amp * 100) + '%';
+        bars[i].style.background = mat.color + Math.round(Math.min(255, amp * 255)).toString(16).padStart(2,'0');
+      }
+    });
+    if (t > 6) clearInterval(anim);
+  }, 50);
+}
+
+function drawWave(samples) {
+  const el = document.getElementById('waveCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 100;
+  el.width = W * dpr; el.height = H * dpr;
+  const c = el.getContext('2d'); c.scale(dpr, dpr);
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = '#1a1a1a'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
+
+  const show = Math.min(samples.length, Math.floor(44100 * 0.08));
+  const mat = MATERIALS[currentMat];
+  c.strokeStyle = mat.color; c.lineWidth = 1.5;
+  c.beginPath();
+  for (let i = 0; i < show; i++) {
+    const x = i / show * W;
+    const y = H/2 - samples[i] * (H/2 - 4);
+    i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+  }
+  c.stroke();
+}
+
+function strike() {
+  const ctx = getCtx();
+  const sr = ctx.sampleRate;
+  const samples = synthesise(currentMat, sr, 6);
+  const buf = ctx.createBuffer(1, samples.length, sr);
+  buf.getChannelData(0).set(samples);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start();
+
+  buildModeBars();
+  animateBars(currentMat, sr);
+  drawWave(samples);
+}
+
+document.getElementById('strikeBtn').addEventListener('click', strike);
+
+document.querySelectorAll('.mat-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.mat-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentMat = this.dataset.mat;
+    buildModeBars();
+    strike();
+  });
+});
+
+buildModeBars();
+setTimeout(() => drawWave(new Float32Array(100)), 50);
+</script>
+</body>
+</html>

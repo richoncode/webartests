@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coupled Systems — Sound Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .play-btn { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  .play-btn:active { transform: scale(0.96); }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .controls { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+  .control-row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 8px; }
+  .control-row label { font-size: 13px; color: #666; }
+  .control-row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #5b9bd5; }
+  .val { font-size: 13px; color: #888; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Fira Code',monospace; }
+  .chain-diagram { display: flex; align-items: center; gap: 0; margin: 20px 0; overflow-x: auto; padding: 4px; }
+  .chain-box { flex-shrink: 0; background: #111; border: 1px solid #222; border-radius: 8px; padding: 10px 16px; text-align: center; }
+  .chain-box strong { display: block; font-size: 13px; color: #ccc; }
+  .chain-box span { font-size: 11px; color: #444; }
+  .chain-arrow { flex-shrink: 0; color: #333; font-size: 18px; padding: 0 10px; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 16px 0; }
+  .instrument-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .inst-btn { font-size: 12px; padding: 6px 14px; }
+  .inst-btn.active { border-color: #5b9bd5; color: #5b9bd5; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Coupled Systems</h1>
+<p class="subtitle">Real instruments are chains of coupled vibrating bodies. A plucked string transfers energy into a soundboard. A clarinet reed drives an air column. Each coupling changes the sound in ways neither component could produce alone.</p>
+
+<!-- SECTION 1: SIGNAL CHAIN -->
+<div class="section">
+  <h2>The coupling chain</h2>
+  <p>Energy flows through a series of coupled resonators. The output of each stage becomes the input to the next. The coupling strength controls how much energy transfers between stages.</p>
+
+  <div class="chain-diagram">
+    <div class="chain-box"><strong>Excitation</strong><span>pluck / bow</span></div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-box" id="box1"><strong>Resonator 1</strong><span id="box1sub">string</span></div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-box" id="box2"><strong>Resonator 2</strong><span id="box2sub">soundboard</span></div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-box"><strong>Output</strong><span>air radiation</span></div>
+  </div>
+
+  <div class="instrument-btns">
+    <button class="inst-btn active" data-inst="guitar">Guitar (string + body)</button>
+    <button class="inst-btn" data-inst="clarinet">Clarinet (reed + air column)</button>
+    <button class="inst-btn" data-inst="piano">Piano (string + soundboard)</button>
+  </div>
+
+  <div class="three-col">
+    <div>
+      <div class="vis-label">Resonator 1 alone</div>
+      <canvas id="res1Canvas" style="width:100%;height:80px"></canvas>
+    </div>
+    <div>
+      <div class="vis-label">Resonator 2 alone</div>
+      <canvas id="res2Canvas" style="width:100%;height:80px"></canvas>
+    </div>
+    <div>
+      <div class="vis-label">Combined output</div>
+      <canvas id="combinedCanvas" style="width:100%;height:80px"></canvas>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin-top:4px">
+    <button class="play-btn" id="playBoth">▶ Play coupled</button>
+    <button id="playAlone">Play Resonator 1 alone</button>
+  </div>
+</div>
+
+<!-- SECTION 2: COUPLING CONTROLS -->
+<div class="section">
+  <h2>Coupling strength</h2>
+  <p>The coupling strength sets how much of the first resonator's output drives the second. Weak coupling: the string dominates and the body barely contributes. Strong coupling: the body reshapes the character completely.</p>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Coupling strength</label>
+      <span class="val" id="couplingVal">40 %</span>
+      <input type="range" id="couplingSlider" min="0" max="100" value="40" step="1">
+    </div>
+    <div class="control-row">
+      <label>Resonator 1 pitch</label>
+      <span class="val" id="res1PitchVal">220 Hz</span>
+      <input type="range" id="res1PitchSlider" min="80" max="600" value="220" step="1">
+    </div>
+    <div class="control-row">
+      <label>Resonator 2 body resonance</label>
+      <span class="val" id="res2PitchVal">180 Hz</span>
+      <input type="range" id="res2PitchSlider" min="60" max="500" value="180" step="1">
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 3: HOW COUPLING WORKS -->
+<div class="section">
+  <h2>Why coupling matters</h2>
+
+  <div class="callout">
+    <strong>Energy transfer.</strong> When resonator 1 (string) vibrates, it pushes against resonator 2 (soundboard). The soundboard absorbs some of this energy and re-radiates it at its own resonant frequencies. This is why a guitar string sounds thin without the body — the body amplifies by absorbing string energy and radiating it more efficiently into the air.
+  </div>
+  <div class="callout">
+    <strong>Pitch pulling.</strong> When two coupled resonators have similar natural frequencies, they pull each other toward a common frequency. This is used deliberately in piano design — the soundboard's resonances are placed to reinforce certain notes. It's also responsible for wolf tones in cellos, where coupling becomes so strong that the string's pitch destabilises.
+  </div>
+  <div class="callout">
+    <strong>Feedback loops.</strong> In self-sustained instruments (clarinet, violin, flute), the resonator's output feeds back into the excitation. The reed or bow continues adding energy only when the feedback is in phase. This is what makes these instruments sustain indefinitely — they are active feedback systems, not just passive resonators.
+  </div>
+</div>
+
+</div>
+<script>
+let audioCtx = null;
+let currentInst = 'guitar';
+
+const INSTRUMENTS = {
+  guitar: {
+    box1: 'String', box1sub: 'plucked string', box2: 'Guitar body', box2sub: 'spruce top',
+    res1: { base: 220, modes: [{r:1,a:1,d:5},{r:2,a:0.5,d:8},{r:3,a:0.25,d:12},{r:4,a:0.1,d:18}] },
+    res2: { base: 180, modes: [{r:1,a:1,d:8},{r:1.38,a:0.7,d:12},{r:2.1,a:0.4,d:18},{r:3.2,a:0.2,d:30}] },
+  },
+  clarinet: {
+    box1: 'Reed', box1sub: 'single reed vibration', box2: 'Air column', box2sub: 'cylindrical bore',
+    res1: { base: 294, modes: [{r:1,a:1,d:20},{r:3,a:0.3,d:40},{r:5,a:0.1,d:80}] }, // odd harmonics only (reed)
+    res2: { base: 294, modes: [{r:1,a:1,d:15},{r:3,a:0.6,d:25},{r:5,a:0.3,d:45},{r:7,a:0.1,d:80}] },
+  },
+  piano: {
+    box1: 'String', box1sub: 'struck piano string', box2: 'Soundboard', box2sub: 'spruce + ribs',
+    res1: { base: 262, modes: [{r:1,a:1,d:2},{r:2,a:0.6,d:3},{r:3,a:0.35,d:5},{r:4,a:0.2,d:8},{r:5,a:0.1,d:12}] },
+    res2: { base: 210, modes: [{r:1,a:1,d:6},{r:1.6,a:0.5,d:10},{r:2.5,a:0.3,d:16},{r:4.1,a:0.15,d:25}] },
+  },
+};
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Generate impulse response of a modal resonator
+function synthesiseModes(modes, basePitch, sr, duration) {
+  const N = Math.floor(sr * duration);
+  const out = new Float32Array(N);
+  modes.forEach(mode => {
+    const freq = basePitch * mode.r;
+    if (freq > sr / 2) return;
+    const omega = 2 * Math.PI * freq / sr;
+    const decay = Math.exp(-mode.d / sr);
+    let amp = mode.a;
+    for (let i = 0; i < N; i++) { out[i] += amp * Math.sin(omega * i); amp *= decay; }
+  });
+  return out;
+}
+
+// Simple coupling: convolve res1 output with res2 impulse
+function couple(res1out, res2modes, res2base, coupling, sr, duration) {
+  const N = res1out.length;
+  const out = new Float32Array(N);
+  const res2 = new Float32Array(N);
+  // Build res2 impulse response
+  res2modes.forEach(mode => {
+    const freq = res2base * mode.r;
+    if (freq > sr / 2) return;
+    const omega = 2 * Math.PI * freq / sr;
+    const decay = Math.exp(-mode.d / sr);
+    let amp = mode.a;
+    for (let i = 0; i < N; i++) { res2[i] += amp * Math.sin(omega * i); amp *= decay; }
+  });
+
+  const c = coupling / 100;
+  for (let i = 0; i < N; i++) {
+    out[i] = res1out[i] * (1 - c * 0.5) + res2[i] * c * res1out[Math.max(0, i - 10)];
+  }
+  return out;
+}
+
+function normalise(arr) {
+  let peak = 0;
+  for (let i = 0; i < arr.length; i++) peak = Math.max(peak, Math.abs(arr[i]));
+  if (peak > 0.001) for (let i = 0; i < arr.length; i++) arr[i] = arr[i] / peak * 0.85;
+  return arr;
+}
+
+function drawSignal(id, signal, color) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 240, H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  const show = Math.min(signal.length, Math.floor(44100 * 0.07));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < show; i++) {
+    const x = i / show * W, y = H/2 - signal[i] * (H/2 - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function playBuffer(samples) {
+  const ctx = getCtx();
+  const buf = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buf.getChannelData(0).set(samples);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start();
+}
+
+function updateDiagram() {
+  const inst = INSTRUMENTS[currentInst];
+  document.getElementById('box1').querySelector('strong').textContent = inst.box1;
+  document.getElementById('box1sub').textContent = inst.box1sub;
+  document.getElementById('box2').querySelector('strong').textContent = inst.box2;
+  document.getElementById('box2sub').textContent = inst.box2sub;
+}
+
+function render(playAudio, soloRes1) {
+  const ctx = getCtx();
+  const sr = ctx.sampleRate;
+  const inst = INSTRUMENTS[currentInst];
+  const coupling = parseFloat(document.getElementById('couplingSlider').value);
+  const res1Base = parseFloat(document.getElementById('res1PitchSlider').value);
+  const res2Base = parseFloat(document.getElementById('res2PitchSlider').value);
+
+  const res1 = normalise(synthesiseModes(inst.res1.modes, res1Base, sr, 4));
+  const res2alone = normalise(synthesiseModes(inst.res2.modes, res2Base, sr, 4));
+  const combined = normalise(couple(res1, inst.res2.modes, res2Base, coupling, sr, 4));
+
+  drawSignal('res1Canvas', res1, '#5b9bd5');
+  drawSignal('res2Canvas', res2alone, '#f0a040');
+  drawSignal('combinedCanvas', combined, '#a0c060');
+
+  if (playAudio) playBuffer(soloRes1 ? res1 : combined);
+}
+
+document.getElementById('playBoth').addEventListener('click', () => render(true, false));
+document.getElementById('playAlone').addEventListener('click', () => render(true, true));
+
+document.querySelectorAll('.inst-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.inst-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentInst = this.dataset.inst;
+    updateDiagram();
+    render(false, false);
+  });
+});
+
+['couplingSlider','res1PitchSlider','res2PitchSlider'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById('couplingVal').textContent = document.getElementById('couplingSlider').value + ' %';
+    document.getElementById('res1PitchVal').textContent = document.getElementById('res1PitchSlider').value + ' Hz';
+    document.getElementById('res2PitchVal').textContent = document.getElementById('res2PitchSlider').value + ' Hz';
+    render(false, false);
+  });
+});
+
+updateDiagram();
+setTimeout(() => render(false, false), 50);
+</script>
+</body>
+</html>
