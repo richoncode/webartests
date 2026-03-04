@@ -80,16 +80,16 @@
 <!-- SECTION 2: HOW LOOKAHEAD WORKS -->
 <div class="section">
   <h2>Lookahead scheduling</h2>
-  <p>The key insight: you can't rely on <code>setTimeout</code> or <code>requestAnimationFrame</code> for precise timing — they can drift by tens of milliseconds. Instead, schedule audio events slightly into the future using <code>AudioContext.currentTime</code>, which is sample-accurate.</p>
+  <p>The key insight: JavaScript timers are not precise enough to fire notes at the exact right moment — they can drift by tens of milliseconds. Instead, notes are scheduled slightly ahead of time against the audio hardware clock, which is sample-accurate.</p>
 
   <div class="callout">
-    <strong>The scheduler loop</strong> runs every 25 ms via <code>setTimeout</code>. Each tick it looks 100 ms into the future and schedules any notes that fall within that window. Because the Web Audio engine processes in small chunks (typically 128 samples ≈ 3 ms), notes scheduled ahead of time fire with sub-millisecond accuracy.
+    <strong>The scheduler loop</strong> runs every 25 ms. Each tick it looks 100 ms ahead and schedules any notes that fall within that window. Because the audio engine processes in small chunks (typically 128 samples ≈ 3 ms), notes scheduled in advance fire with sub-millisecond accuracy — far tighter than any JavaScript timer.
   </div>
   <div class="callout">
-    <strong>Why not <code>requestAnimationFrame</code>?</strong> rAF fires at display rate (60 fps ≈ 16 ms) and can be throttled or skipped in background tabs. <code>setTimeout</code> with a short interval continues running even when the tab is hidden, and the lookahead window absorbs any timer jitter.
+    <strong>Why not tie scheduling to the screen refresh?</strong> Screen updates fire at display rate (60 fps ≈ 16 ms) and can be throttled or skipped when the tab is in the background. A faster, independent loop keeps running even when the tab isn't visible, and the lookahead window absorbs any jitter.
   </div>
   <div class="callout">
-    <strong>Visual playhead</strong> cannot use <code>AudioContext.currentTime</code> directly because rAF runs at a different rate. Instead, a separate <code>requestAnimationFrame</code> loop calculates which step is currently playing based on the same <code>currentTime</code> clock and updates the DOM.
+    <strong>Visual playhead</strong> runs on the screen refresh cycle, which is separate from the audio clock. Each frame it calculates which step is currently sounding by comparing elapsed time against the tempo, then highlights that column — a best estimate rather than a perfect sync.
   </div>
 </div>
 
