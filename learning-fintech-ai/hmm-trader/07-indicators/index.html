@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07: Indicators & Signal Logic — HMM Trader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .confirm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0; }
+  .confirm-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; }
+  .confirm-item .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .confirm-item h4 { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+  .confirm-item p { font-size: 11px; color: #555; line-height: 1.4; margin: 0; }
+  .confirm-item.pass { border-color: #4caf5033; background: #0a1a0a; }
+  .confirm-item.fail { border-color: #e0707033; background: #1a0a0a; }
+  .score-bar { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px; margin: 12px 0; }
+  .score-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+  .score-track { background: #0a0a0a; border-radius: 4px; height: 12px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .hysteresis-row { display: flex; gap: 10px; align-items: center; margin: 12px 0; font-size: 13px; }
+  .state-bubble { padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to HMM Trader</a>
+<p class="lesson-num">Lesson 07</p>
+<h1>Indicators &amp; Signal Logic</h1>
+<p class="subtitle">The HMM regime is a necessary but not sufficient condition for entry. Eight technical confirmations act as a second filter — requiring that the micro-structure also supports a long trade before committing capital.</p>
+
+<!-- SECTION 1: RSI + PRICE -->
+<div class="section">
+  <h2>Price chart with RSI</h2>
+  <p>RSI (Relative Strength Index) measures momentum over a 14-bar window. Values above 70 signal overbought conditions; below 30 signals oversold. Our rule is simply RSI &lt; 90 — we want momentum, just not dangerous extremes.</p>
+
+  <div class="btn-row">
+    <button id="btnRegen">↺ New price series</button>
+  </div>
+  <div class="vis-label">Synthetic BTC price (120 bars)</div>
+  <canvas id="priceCanvas" style="width:100%;height:160px"></canvas>
+  <div class="vis-label" style="margin-top:6px">RSI (14) — dashed lines at 70 and 30</div>
+  <canvas id="rsiCanvas" style="width:100%;height:80px"></canvas>
+</div>
+
+<!-- SECTION 2: ALL 8 CONFIRMATIONS -->
+<div class="section">
+  <h2>The 8 technical confirmations</h2>
+  <p>At the latest bar, evaluate all 8 conditions. Entry requires 7 or more to pass. Click "Evaluate latest bar" to check the current state of the synthetic series.</p>
+
+  <div class="btn-row">
+    <button id="btnEval">Evaluate latest bar</button>
+  </div>
+
+  <div class="confirm-grid" id="confirmGrid">
+    <div class="confirm-item" data-idx="0">
+      <div class="icon">⏳</div>
+      <div><h4>RSI &lt; 90</h4><p>Not dangerously overbought. Allows strong uptrends while catching tops.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="1">
+      <div class="icon">⏳</div>
+      <div><h4>Positive Momentum</h4><p>Close[t] > Close[t−10]. Price is higher than 10 bars ago.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="2">
+      <div class="icon">⏳</div>
+      <div><h4>Volatility OK</h4><p>ATR > 0.5% of price. Sufficient movement to make a leveraged trade worthwhile.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="3">
+      <div class="icon">⏳</div>
+      <div><h4>Volume Surge</h4><p>Volume > 110% of 20-bar average. Conviction behind the move.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="4">
+      <div class="icon">⏳</div>
+      <div><h4>ADX &gt; 25</h4><p>Average Directional Index confirms a strong trend (not just noise).</p></div>
+    </div>
+    <div class="confirm-item" data-idx="5">
+      <div class="icon">⏳</div>
+      <div><h4>Above EMA(50)</h4><p>Price is above the 50-bar exponential moving average — bullish structural bias.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="6">
+      <div class="icon">⏳</div>
+      <div><h4>MACD Bullish</h4><p>MACD line > signal line. Short-term momentum exceeds long-term trend.</p></div>
+    </div>
+    <div class="confirm-item" data-idx="7">
+      <div class="icon">⏳</div>
+      <div><h4>OBV Rising</h4><p>On-Balance Volume slope positive over 5 bars — money flowing into the asset.</p></div>
+    </div>
+  </div>
+
+  <div class="score-bar">
+    <div class="score-label">Confirmations: <span id="scoreText">— / 8</span> &nbsp;|&nbsp; Threshold: 7 / 8 &nbsp;|&nbsp; Signal: <span id="signalText" style="color:#888">Awaiting evaluation</span></div>
+    <div class="score-track"><div class="score-fill" id="scoreFill" style="width:0%;background:#333"></div></div>
+  </div>
+</div>
+
+<!-- SECTION 3: HYSTERESIS -->
+<div class="section">
+  <h2>Hysteresis: avoiding whipsaw</h2>
+  <p>Raw HMM regime assignments can flicker between states on noisy boundary bars. Hysteresis requires the same regime to appear for 3 consecutive bars before we accept it as confirmed.</p>
+
+  <div class="btn-row">
+    <button id="btnHystStep">Simulate next bar</button>
+    <button id="btnHystReset">Reset</button>
+  </div>
+
+  <div style="margin:12px 0">
+    <div class="vis-label" style="margin-bottom:8px">Regime hysteresis state machine (3-bar lag)</div>
+    <div id="hystDisplay" style="font-size:13px;color:#666;line-height:2.2;min-height:80px"></div>
+  </div>
+
+  <div class="callout orange">
+    <strong>Signal hysteresis in the code.</strong> We track a pending_regime and a counter. Each bar where the raw HMM output matches the pending regime increments the counter. Only when counter ≥ 3 do we update confirmed_regime. The 48-hour cooldown after any exit is a separate, harder constraint — once triggered, no entry is possible regardless of signals.
+  </div>
+</div>
+
+<!-- SECTION 4: LEVERAGE & RISK -->
+<div class="section">
+  <h2>Leverage and the 48-hour cooldown</h2>
+
+  <div class="callout green">
+    <strong>2.5× leverage.</strong> Applied to strategy returns: if the underlying asset gains 1%, the strategy gains 2.5%. Leverage amplifies both wins and losses. Combined with the regime filter (only entering Bull Run) and 7/8 confirmation gate, the goal is high-quality entry timing to justify the amplified risk.
+  </div>
+  <div class="callout red">
+    <strong>48-hour cooldown.</strong> After any exit (whether from regime flip or stop-loss), the strategy enters a hard lock. No trades are permitted for 48 bars (hours). This prevents immediately re-entering after a whipsaw, and ensures the model re-evaluates the environment before committing capital again.
+  </div>
+  <div class="callout">
+    <strong>Exit rule.</strong> Position is closed immediately when confirmed_regime transitions to 'Bear/Crash'. No price-based stop-loss is used — the regime itself is the exit signal. This keeps the strategy in harmony with the model's view of the market.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../06-features/">← Lesson 06: Feature Engineering</a>
+  <a href="../08-full-system/">Next: The Full System →</a>
+</div>
+</div>
+
+<script>
+let prices = [], volumes = [], rsi = [], ema50 = [], macd = [], macdSig = [], obv = [], atr = [];
+
+function randn() {
+  const u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function generateData(n = 120) {
+  prices = [45000]; volumes = [2e9];
+  // Bull trend for last ~40 bars to give clean confirmation scenario
+  for (let i = 1; i < n; i++) {
+    const regime = i < 40 ? 0 : i < 80 ? 1 : 2; // chop, chop, bull
+    const drift = regime === 2 ? 0.0008 : regime === 0 ? -0.0004 : 0;
+    const vol = regime === 2 ? 0.008 : 0.014;
+    const r = drift + vol * randn();
+    prices.push(prices[i-1] * (1 + r));
+    volumes.push(Math.max(5e8, volumes[i-1] * (1 + (Math.random()-0.5)*0.4 + (regime===2?0.05:0))));
+  }
+
+  // RSI (14)
+  rsi = new Array(n).fill(null);
+  for (let i = 15; i < n; i++) {
+    let g = 0, l = 0;
+    for (let j = i-14; j < i; j++) {
+      const d = prices[j+1] - prices[j];
+      if (d > 0) g += d; else l -= d;
+    }
+    const rs = l < 1e-9 ? 100 : g / l;
+    rsi[i] = 100 - 100 / (1 + rs);
+  }
+
+  // EMA 50
+  ema50 = new Array(n).fill(null);
+  const k = 2 / 51;
+  ema50[0] = prices[0];
+  for (let i = 1; i < n; i++) ema50[i] = prices[i] * k + ema50[i-1] * (1 - k);
+
+  // MACD (12, 26, 9)
+  const ema12 = new Array(n).fill(prices[0]);
+  const ema26 = new Array(n).fill(prices[0]);
+  const k12 = 2/13, k26 = 2/27;
+  for (let i = 1; i < n; i++) { ema12[i] = prices[i]*k12 + ema12[i-1]*(1-k12); ema26[i] = prices[i]*k26 + ema26[i-1]*(1-k26); }
+  macd = ema12.map((v, i) => v - ema26[i]);
+  macdSig = new Array(n).fill(0);
+  const ks = 2/10;
+  macdSig[0] = macd[0];
+  for (let i = 1; i < n; i++) macdSig[i] = macd[i]*ks + macdSig[i-1]*(1-ks);
+
+  // OBV
+  obv = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    if (prices[i] > prices[i-1]) obv[i] = obv[i-1] + volumes[i];
+    else if (prices[i] < prices[i-1]) obv[i] = obv[i-1] - volumes[i];
+    else obv[i] = obv[i-1];
+  }
+
+  // ATR (14)
+  atr = new Array(n).fill(null);
+  for (let i = 14; i < n; i++) {
+    let sumTR = 0;
+    for (let j = i-13; j <= i; j++) {
+      const high = prices[j] * 1.005, low = prices[j] * 0.995;
+      sumTR += high - low;
+    }
+    atr[i] = sumTR / 14;
+  }
+}
+
+function drawPrice() {
+  const el = document.getElementById('priceCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 160;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const mn = Math.min(...prices), mx = Math.max(...prices), range = mx - mn;
+  const px = i => i / (prices.length - 1) * W;
+  const py = p => H - 4 - ((p - mn) / range) * (H - 8);
+  ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); prices.forEach((p, i) => i === 0 ? ctx.moveTo(px(i), py(p)) : ctx.lineTo(px(i), py(p))); ctx.stroke();
+  // EMA50
+  ctx.strokeStyle = '#f0a04088'; ctx.lineWidth = 1; ctx.setLineDash([3,2]);
+  ctx.beginPath();
+  ema50.forEach((e, i) => { if (e === null) return; i < 2 || ema50[i-1] === null ? ctx.moveTo(px(i), py(e)) : ctx.lineTo(px(i), py(e)); });
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#444'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('EMA50', W - 4, py(ema50[ema50.length-1]) - 4);
+}
+
+function drawRSI() {
+  const el = document.getElementById('rsiCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const px = i => i / (rsi.length - 1) * W;
+  const py = v => H - 4 - (v / 100) * (H - 8);
+  [70, 30].forEach(v => {
+    ctx.strokeStyle = v === 70 ? '#e0707033' : '#4caf5033'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(0, py(v)); ctx.lineTo(W, py(v)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = v === 70 ? '#e07070' : '#4caf50'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v, W - 2, py(v) - 2);
+  });
+  ctx.strokeStyle = '#b07adf'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  rsi.forEach((v, i) => { if (v === null) return; v === rsi.find(x=>x!==null) ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)); });
+  ctx.stroke();
+}
+
+function evaluateBar() {
+  const n = prices.length - 1;
+  const rsiV = rsi[n] || 55;
+  const momV = n >= 10 ? prices[n] - prices[n - 10] : 0;
+  const atrV = atr[n] || 0;
+  const volAvg = volumes.slice(Math.max(0, n-20), n).reduce((a,b)=>a+b,0)/20;
+  const adxV = Math.abs(momV / prices[n]) * 100 * 8; // proxy
+  const emaV = ema50[n] || prices[n];
+  const macdV = macd[n] || 0, macdSV = macdSig[n] || 0;
+  const obvSlope = obv[n] - (obv[n-5]||obv[0]);
+
+  const results = [
+    rsiV < 90,
+    momV > 0,
+    atrV > prices[n] * 0.005,
+    volumes[n] > volAvg * 1.1,
+    adxV > 25,
+    prices[n] > emaV,
+    macdV > macdSV,
+    obvSlope > 0,
+  ];
+
+  const items = document.querySelectorAll('.confirm-item');
+  items.forEach((item, i) => {
+    item.classList.remove('pass', 'fail');
+    item.classList.add(results[i] ? 'pass' : 'fail');
+    item.querySelector('.icon').textContent = results[i] ? '✅' : '❌';
+  });
+
+  const count = results.filter(Boolean).length;
+  const pct = (count / 8) * 100;
+  document.getElementById('scoreText').textContent = count + ' / 8';
+  document.getElementById('scoreFill').style.width = pct + '%';
+  document.getElementById('scoreFill').style.background = count >= 7 ? '#4caf50' : count >= 5 ? '#f0a040' : '#e07070';
+  const sig = count >= 7 ? '🟢 ENTER LONG' : '⚪ Stay flat';
+  const sigEl = document.getElementById('signalText');
+  sigEl.textContent = sig;
+  sigEl.style.color = count >= 7 ? '#4caf50' : '#888';
+}
+
+// Hysteresis demo
+let hystState = { pending: 'Chop', confirmed: 'Chop', count: 0, log: [] };
+const REGIMES_SEQ = ['Bull Run','Bull Run','Chop','Bull Run','Bull Run','Bull Run','Bear/Crash','Bull Run'];
+let hystIdx = 0;
+
+function hystStep() {
+  const raw = REGIMES_SEQ[hystIdx % REGIMES_SEQ.length];
+  hystIdx++;
+  if (raw === hystState.pending) {
+    hystState.count++;
+  } else {
+    hystState.pending = raw;
+    hystState.count = 1;
+  }
+  const confirmed_before = hystState.confirmed;
+  if (hystState.count >= 3) hystState.confirmed = hystState.pending;
+  const changed = hystState.confirmed !== confirmed_before;
+
+  hystState.log.push({ raw, pending: hystState.pending, count: hystState.count, confirmed: hystState.confirmed, changed });
+  if (hystState.log.length > 8) hystState.log.shift();
+  renderHyst();
+}
+
+function renderHyst() {
+  const el = document.getElementById('hystDisplay');
+  const colors = { 'Bull Run': '#4caf50', 'Bear/Crash': '#e07070', 'Chop': '#888' };
+  el.innerHTML = hystState.log.map(row => {
+    const c = colors[row.raw] || '#888';
+    const cc = colors[row.confirmed] || '#888';
+    return `<div>Raw: <span style="color:${c}">${row.raw}</span> &nbsp;→&nbsp; pending count: <b>${row.count}</b>/3 &nbsp;→&nbsp; confirmed: <span style="color:${cc};font-weight:700">${row.confirmed}</span>${row.changed ? ' <span style="color:#f0a040">← changed</span>':''}</div>`;
+  }).join('');
+}
+
+document.getElementById('btnRegen').addEventListener('click', () => { generateData(); drawPrice(); drawRSI(); document.querySelectorAll('.confirm-item').forEach(i=>{ i.classList.remove('pass','fail'); i.querySelector('.icon').textContent='⏳'; }); document.getElementById('scoreText').textContent='— / 8'; document.getElementById('scoreFill').style.width='0%'; document.getElementById('signalText').textContent='Awaiting evaluation'; document.getElementById('signalText').style.color='#888'; });
+document.getElementById('btnEval').addEventListener('click', evaluateBar);
+document.getElementById('btnHystStep').addEventListener('click', hystStep);
+document.getElementById('btnHystReset').addEventListener('click', () => { hystState = { pending:'Chop', confirmed:'Chop', count:0, log:[] }; hystIdx=0; document.getElementById('hystDisplay').innerHTML=''; });
+window.addEventListener('resize', () => { drawPrice(); drawRSI(); });
+setTimeout(() => { generateData(); drawPrice(); drawRSI(); }, 50);
+</script>
+</body>
+</html>

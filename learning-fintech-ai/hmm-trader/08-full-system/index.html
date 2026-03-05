@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08: The Full System — HMM Trader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 860px; margin: 0 auto; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 700px; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .tab-row { display: flex; gap: 0; margin-bottom: -1px; }
+  .tab-btn { background: #111; border: 1px solid #1e1e1e; border-bottom: none; color: #555; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  .tab-btn:first-child { border-radius: 6px 0 0 0; }
+  .tab-btn:last-child  { border-radius: 0 6px 0 0; }
+  .tab-btn.active { background: #0a0a0a; color: #ccc; border-color: #2a2a2a; }
+  .code-pane { display: none; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 0 6px 6px 6px; padding: 20px; overflow-x: auto; }
+  .code-pane.active { display: block; }
+  pre { font-family: 'SF Mono','Fira Code','Fira Mono',monospace; font-size: 12px; line-height: 1.7; white-space: pre; color: #ccc; }
+  .kw { color: #c792ea; }
+  .fn { color: #82aaff; }
+  .st { color: #c3e88d; }
+  .cm { color: #546e7a; font-style: italic; }
+  .nu { color: #f78c6c; }
+  .de { color: #ffcb6b; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .install-block { background: #0a150a; border: 1px solid #1a3a1a; border-radius: 8px; padding: 16px 20px; font-family: monospace; font-size: 13px; color: #4caf50; margin: 12px 0; }
+  .install-block .prompt { color: #333; user-select: none; }
+  .arch-box { display: flex; flex-wrap: wrap; gap: 0; margin: 24px 0; }
+  .arch-step { background: #111; border: 1px solid #1e1e1e; padding: 14px 18px; flex: 1; min-width: 120px; position: relative; }
+  .arch-step:not(:last-child)::after { content: '→'; position: absolute; right: -12px; top: 50%; transform: translateY(-50%); color: #333; font-size: 16px; z-index: 1; }
+  .arch-step h4 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .arch-step p { font-size: 11px; color: #444; line-height: 1.4; margin: 0; }
+  .file-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; background: #1a1a1a; border: 1px solid #2a2a2a; color: #555; margin-top: 6px; font-family: monospace; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to HMM Trader</a>
+<p class="lesson-num">Lesson 08</p>
+<h1>The Full System</h1>
+<p class="subtitle">Everything from the previous seven lessons assembled into a running Python application. Three modular files: a data loader, a backtesting engine, and a Streamlit dashboard.</p>
+
+<!-- SECTION 1: ARCHITECTURE -->
+<div class="section">
+  <h2>System architecture</h2>
+  <div class="arch-box">
+    <div class="arch-step">
+      <h4 style="color:#5b9bd5">yfinance</h4>
+      <p>Download 730d hourly OHLCV data for BTC-USD</p>
+      <span class="file-tag">data_loader.py</span>
+    </div>
+    <div class="arch-step">
+      <h4 style="color:#f0a040">Feature Engineering</h4>
+      <p>returns, range, volume_change — clipped, no scale</p>
+      <span class="file-tag">data_loader.py</span>
+    </div>
+    <div class="arch-step">
+      <h4 style="color:#b07adf">Gaussian HMM</h4>
+      <p>7 states, full covariance, Baum-Welch training</p>
+      <span class="file-tag">backtester.py</span>
+    </div>
+    <div class="arch-step">
+      <h4 style="color:#4caf50">Auto-Label</h4>
+      <p>Rank by mean return → Bull / Bear / Chop</p>
+      <span class="file-tag">backtester.py</span>
+    </div>
+    <div class="arch-step">
+      <h4 style="color:#e07070">Indicators</h4>
+      <p>8 technical columns via ta library</p>
+      <span class="file-tag">backtester.py</span>
+    </div>
+    <div class="arch-step">
+      <h4 style="color:#4caf50">Signal + Backtest</h4>
+      <p>2-factor entry, exit on Bear, cooldown, 2.5×</p>
+      <span class="file-tag">backtester.py</span>
+    </div>
+    <div class="arch-step" style="border-radius:0 8px 8px 0">
+      <h4 style="color:#5b9bd5">Dashboard</h4>
+      <p>Streamlit: regime, confirmations, charts, trade log</p>
+      <span class="file-tag">dashboard.py</span>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 2: SETUP -->
+<div class="section">
+  <h2>Setup and running</h2>
+
+  <p>Install dependencies:</p>
+  <div class="install-block"><span class="prompt">$ </span>pip install -r requirements.txt</div>
+
+  <p>Run the dashboard:</p>
+  <div class="install-block"><span class="prompt">$ </span>streamlit run dashboard.py</div>
+
+  <p>Or run the backtester directly (no UI):</p>
+  <div class="install-block"><span class="prompt">$ </span>python backtester.py</div>
+
+  <div class="callout green">
+    <strong>First run note.</strong> On first launch, the app downloads ~17,000 hourly bars (~20 MB) and trains the HMM (20–60 seconds depending on hardware). Results are cached for 1 hour. Subsequent loads are instant from the Streamlit cache.
+  </div>
+  <div class="callout">
+    <strong>requirements.txt</strong> — hmmlearn>=0.3.0, yfinance>=0.2.40, ta>=0.10.2, streamlit>=1.30.0, plotly>=5.18.0, pandas>=2.0.0, numpy>=1.24.0, scikit-learn>=1.3.0
+  </div>
+</div>
+
+<!-- SECTION 3: CODE VIEWER -->
+<div class="section">
+  <h2>Source code</h2>
+  <p>Three files, fully commented. Expand each to read the implementation.</p>
+
+  <div class="tab-row">
+    <button class="tab-btn active" onclick="showTab('loader')">data_loader.py</button>
+    <button class="tab-btn" onclick="showTab('backtest')">backtester.py</button>
+    <button class="tab-btn" onclick="showTab('dash')">dashboard.py</button>
+  </div>
+
+  <div class="code-pane active" id="pane-loader">
+<pre><span class="cm">"""
+data_loader.py — Market data download and feature engineering.
+"""</span>
+
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+<span class="kw">import</span> pandas <span class="kw">as</span> pd
+<span class="kw">import</span> yfinance <span class="kw">as</span> yf
+
+<span class="kw">def</span> <span class="fn">load_data</span>(ticker=<span class="st">"BTC-USD"</span>, period=<span class="st">"730d"</span>, interval=<span class="st">"1h"</span>):
+    raw = yf.<span class="fn">download</span>(ticker, period=period, interval=interval, progress=<span class="kw">False</span>)
+
+    <span class="cm"># Flatten MultiIndex columns (yfinance quirk)</span>
+    <span class="kw">if</span> <span class="fn">isinstance</span>(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.<span class="fn">droplevel</span>(<span class="nu">1</span>)
+
+    df = raw[[<span class="st">"Open"</span>, <span class="st">"High"</span>, <span class="st">"Low"</span>, <span class="st">"Close"</span>, <span class="st">"Volume"</span>]].<span class="fn">copy</span>()
+
+    <span class="cm"># Feature engineering — three axes for the HMM</span>
+    df[<span class="st">"returns"</span>]       = df[<span class="st">"Close"</span>].<span class="fn">pct_change</span>()
+    df[<span class="st">"range"</span>]         = (df[<span class="st">"High"</span>] - df[<span class="st">"Low"</span>]) / df[<span class="st">"Close"</span>]
+    df[<span class="st">"volume_change"</span>] = df[<span class="st">"Volume"</span>].<span class="fn">pct_change</span>()
+
+    <span class="kw">return</span> df.<span class="fn">replace</span>([np.inf, -np.inf], np.nan).<span class="fn">dropna</span>()
+
+<span class="kw">def</span> <span class="fn">get_features</span>(df, clip_pct=<span class="nu">0.01</span>):
+    <span class="cm"># Clip top/bottom 1% to remove flash-crash outliers</span>
+    features = df[[<span class="st">"returns"</span>, <span class="st">"range"</span>, <span class="st">"volume_change"</span>]].<span class="fn">copy</span>()
+    <span class="kw">for</span> col <span class="kw">in</span> features.columns:
+        lo = features[col].<span class="fn">quantile</span>(clip_pct)
+        hi = features[col].<span class="fn">quantile</span>(<span class="nu">1</span> - clip_pct)
+        features[col] = features[col].<span class="fn">clip</span>(lo, hi)
+    <span class="kw">return</span> features.values</pre>
+  </div>
+
+  <div class="code-pane" id="pane-backtest">
+<pre><span class="cm">"""
+backtester.py — HMM training, indicators, trade loop.
+
+The Gaussian HMM:
+  P(x_t | S_t=k) = N(x_t; μ_k, Σ_k)      ← emission
+  P(S_t | S_{t-1}) = A[S_{t-1}, S_t]       ← transition
+  Training: Baum-Welch EM (200 iterations)
+  Decoding: Viterbi → state sequence
+"""</span>
+
+<span class="kw">from</span> hmmlearn.hmm <span class="kw">import</span> GaussianHMM
+<span class="kw">from</span> ta.momentum <span class="kw">import</span> RSIIndicator
+<span class="kw">from</span> ta.trend <span class="kw">import</span> MACD, ADXIndicator, EMAIndicator
+<span class="kw">from</span> ta.volatility <span class="kw">import</span> AverageTrueRange
+<span class="kw">from</span> ta.volume <span class="kw">import</span> OnBalanceVolumeIndicator
+
+N_STATES       = <span class="nu">7</span>
+LEVERAGE       = <span class="nu">2.5</span>
+COOLDOWN_HOURS = <span class="nu">48</span>
+CONFIRM_THRESH = <span class="nu">7</span>
+HYSTERESIS_LAG = <span class="nu">3</span>
+
+<span class="kw">def</span> <span class="fn">train_hmm</span>(features, n_states=N_STATES):
+    model = <span class="fn">GaussianHMM</span>(
+        n_components=n_states,
+        covariance_type=<span class="st">"full"</span>,  <span class="cm"># full 3×3 covariance per state</span>
+        n_iter=<span class="nu">200</span>, random_state=<span class="nu">42</span>
+    )
+    model.<span class="fn">fit</span>(features)
+    <span class="kw">return</span> model
+
+<span class="kw">def</span> <span class="fn">label_states</span>(model, df, features):
+    <span class="cm"># Viterbi decode → rank states by mean return</span>
+    df[<span class="st">"state"</span>]  = model.<span class="fn">predict</span>(features)
+    returns_by_state = df.<span class="fn">groupby</span>(<span class="st">"state"</span>)[<span class="st">"returns"</span>].<span class="fn">mean</span>()
+    bull = returns_by_state.<span class="fn">idxmax</span>()
+    bear = returns_by_state.<span class="fn">idxmin</span>()
+    labels = {s: (<span class="st">"Bull Run"</span> <span class="kw">if</span> s==bull <span class="kw">else</span> <span class="st">"Bear/Crash"</span> <span class="kw">if</span> s==bear <span class="kw">else</span> <span class="st">"Chop/Noise"</span>)
+              <span class="kw">for</span> s <span class="kw">in</span> <span class="fn">range</span>(model.n_components)}
+    df[<span class="st">"regime"</span>] = df[<span class="st">"state"</span>].<span class="fn">map</span>(labels)
+    <span class="kw">return</span> labels, df
+
+<span class="kw">def</span> <span class="fn">check_confirmations</span>(row):
+    <span class="kw">return</span> {
+        <span class="st">"RSI &lt; 90"</span>:          row[<span class="st">"rsi"</span>]        &lt; <span class="nu">90</span>,
+        <span class="st">"Positive Momentum"</span>: row[<span class="st">"momentum"</span>]   &gt; <span class="nu">0</span>,
+        <span class="st">"Volatility OK"</span>:     row[<span class="st">"atr_pct"</span>]    &gt; <span class="nu">0.005</span>,
+        <span class="st">"Volume Surge"</span>:      row[<span class="st">"vol_ratio"</span>]  &gt; <span class="nu">1.10</span>,
+        <span class="st">"ADX Trending"</span>:      row[<span class="st">"adx"</span>]        &gt; <span class="nu">25</span>,
+        <span class="st">"Above EMA50"</span>:       row[<span class="st">"Close"</span>]      &gt; row[<span class="st">"ema50"</span>],
+        <span class="st">"MACD Bullish"</span>:      row[<span class="st">"macd"</span>]       &gt; row[<span class="st">"macd_signal"</span>],
+        <span class="st">"OBV Rising"</span>:        row[<span class="st">"obv_slope"</span>]  &gt; <span class="nu">0</span>,
+    }
+
+<span class="kw">def</span> <span class="fn">run_backtest</span>(df, leverage=LEVERAGE, confirm_thresh=CONFIRM_THRESH):
+    <span class="cm"># Hysteresis + cooldown + 2.5× leverage trade loop</span>
+    equity, bh_equity, positions = [<span class="nu">1.0</span>], [<span class="nu">1.0</span>], []
+    in_trade = <span class="kw">False</span>; cooldown_until = <span class="kw">None</span>
+    pending = confirmed = df[<span class="st">"regime"</span>].iloc[<span class="nu">0</span>]; count = <span class="nu">0</span>
+
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="nu">1</span>, <span class="fn">len</span>(df)):
+        row = df.iloc[i]; r = row[<span class="st">"returns"</span>]
+        bh_equity.<span class="fn">append</span>(bh_equity[-<span class="nu">1</span>] * (<span class="nu">1</span> + r))
+
+        <span class="cm"># Hysteresis</span>
+        <span class="kw">if</span> row[<span class="st">"regime"</span>] == pending: count += <span class="nu">1</span>
+        <span class="kw">else</span>: pending = row[<span class="st">"regime"</span>]; count = <span class="nu">1</span>
+        <span class="kw">if</span> count &gt;= HYSTERESIS_LAG: confirmed = pending
+
+        <span class="kw">if</span> in_trade:
+            equity.<span class="fn">append</span>(equity[-<span class="nu">1</span>] * (<span class="nu">1</span> + r * leverage))
+            <span class="kw">if</span> confirmed == <span class="st">"Bear/Crash"</span>:
+                in_trade = <span class="kw">False</span>
+                cooldown_until = row.name + pd.<span class="fn">Timedelta</span>(hours=COOLDOWN_HOURS)
+            positions.<span class="fn">append</span>(<span class="kw">int</span>(in_trade)); <span class="kw">continue</span>
+
+        <span class="kw">if</span> cooldown_until <span class="kw">and</span> row.name &lt; cooldown_until:
+            equity.<span class="fn">append</span>(equity[-<span class="nu">1</span>]); positions.<span class="fn">append</span>(<span class="nu">0</span>); <span class="kw">continue</span>
+
+        <span class="kw">if</span> confirmed == <span class="st">"Bull Run"</span> <span class="kw">and</span> <span class="fn">sum</span>(<span class="fn">check_confirmations</span>(row).<span class="fn">values</span>()) &gt;= confirm_thresh:
+            in_trade = <span class="kw">True</span>
+            equity.<span class="fn">append</span>(equity[-<span class="nu">1</span>] * (<span class="nu">1</span> + r * leverage))
+        <span class="kw">else</span>:
+            equity.<span class="fn">append</span>(equity[-<span class="nu">1</span>])
+        positions.<span class="fn">append</span>(<span class="kw">int</span>(in_trade))
+
+    df = df.iloc[<span class="nu">1</span>:].<span class="fn">copy</span>()
+    df[<span class="st">"equity"</span>] = equity[<span class="nu">1</span>:]; df[<span class="st">"bh_equity"</span>] = bh_equity[<span class="nu">1</span>:]; df[<span class="st">"position"</span>] = positions
+    <span class="kw">return</span> df</pre>
+  </div>
+
+  <div class="code-pane" id="pane-dash">
+<pre><span class="cm">"""
+dashboard.py — Streamlit web dashboard.
+Run: streamlit run dashboard.py
+"""</span>
+
+<span class="kw">import</span> streamlit <span class="kw">as</span> st
+<span class="kw">import</span> plotly.graph_objects <span class="kw">as</span> go
+<span class="kw">from</span> plotly.subplots <span class="kw">import</span> make_subplots
+<span class="kw">from</span> backtester <span class="kw">import</span> *
+<span class="kw">from</span> data_loader <span class="kw">import</span> *
+
+st.<span class="fn">set_page_config</span>(page_title=<span class="st">"Regime Terminal"</span>, layout=<span class="st">"wide"</span>)
+
+<span class="cm"># Sidebar</span>
+<span class="kw">with</span> st.sidebar:
+    ticker = st.<span class="fn">text_input</span>(<span class="st">"Ticker"</span>, <span class="st">"BTC-USD"</span>)
+    leverage = st.<span class="fn">slider</span>(<span class="st">"Leverage"</span>, <span class="nu">1.0</span>, <span class="nu">5.0</span>, <span class="nu">2.5</span>)
+    refresh  = st.<span class="fn">button</span>(<span class="st">"🔄 Refresh"</span>)
+
+<span class="de">@st.cache_data</span>(ttl=<span class="nu">3600</span>)
+<span class="kw">def</span> <span class="fn">run_pipeline</span>(ticker, leverage):
+    df    = <span class="fn">load_data</span>(ticker)
+    feats = <span class="fn">get_features</span>(df)
+    model = <span class="fn">train_hmm</span>(feats)
+    _, df = <span class="fn">label_states</span>(model, df, feats)
+    df    = <span class="fn">compute_indicators</span>(df)
+    df, trades = <span class="fn">run_backtest</span>(df, leverage=leverage)
+    <span class="kw">return</span> df, trades, <span class="fn">compute_metrics</span>(df, trades)
+
+<span class="kw">if</span> refresh: st.cache_data.<span class="fn">clear</span>()
+df, trades, metrics = <span class="fn">run_pipeline</span>(ticker, leverage)
+
+<span class="cm"># Header metrics</span>
+st.<span class="fn">title</span>(<span class="st">"📊 Regime Terminal"</span>)
+c1, c2, c3, c4 = st.<span class="fn">columns</span>(<span class="nu">4</span>)
+c1.<span class="fn">metric</span>(<span class="st">"Regime"</span>,      df.iloc[-<span class="nu">1</span>][<span class="st">"regime"</span>])
+c2.<span class="fn">metric</span>(<span class="st">"Return"</span>,      <span class="fn">str</span>(metrics[<span class="st">"total_return"</span>]) + <span class="st">"%"</span>)
+c3.<span class="fn">metric</span>(<span class="st">"Alpha"</span>,       <span class="fn">str</span>(metrics[<span class="st">"alpha"</span>]) + <span class="st">"%"</span>)
+c4.<span class="fn">metric</span>(<span class="st">"Max Drawdown"</span>, <span class="fn">str</span>(metrics[<span class="st">"max_drawdown"</span>]) + <span class="st">"%"</span>)
+
+<span class="cm"># Confirmations breakdown</span>
+st.<span class="fn">subheader</span>(<span class="st">"Confirmations (latest bar)"</span>)
+confirms = <span class="fn">check_confirmations</span>(df.iloc[-<span class="nu">1</span>])
+cols = st.<span class="fn">columns</span>(<span class="nu">8</span>)
+<span class="kw">for</span> i, (name, passed) <span class="kw">in</span> <span class="fn">enumerate</span>(confirms.<span class="fn">items</span>()):
+    cols[i].<span class="fn">markdown</span>(<span class="st">f"{'✅' if passed else '❌'} {name}"</span>)
+
+<span class="cm"># Charts</span>
+tab1, tab2, tab3 = st.<span class="fn">tabs</span>([<span class="st">"Price"</span>, <span class="st">"Equity"</span>, <span class="st">"Trades"</span>])
+<span class="kw">with</span> tab1:
+    fig = <span class="fn">make_subplots</span>(rows=<span class="nu">2</span>, shared_xaxes=<span class="kw">True</span>)
+    fig.<span class="fn">add_trace</span>(go.<span class="fn">Candlestick</span>(x=df.index,
+        open=df[<span class="st">"Open"</span>], high=df[<span class="st">"High"</span>],
+        low=df[<span class="st">"Low"</span>],  close=df[<span class="st">"Close"</span>]))
+    fig.<span class="fn">add_trace</span>(go.<span class="fn">Scatter</span>(x=df.index, y=df[<span class="st">"rsi"</span>]), row=<span class="nu">2</span>, col=<span class="nu">1</span>)
+    fig.<span class="fn">update_layout</span>(template=<span class="st">"plotly_dark"</span>, height=<span class="nu">600</span>)
+    st.<span class="fn">plotly_chart</span>(fig, use_container_width=<span class="kw">True</span>)
+<span class="kw">with</span> tab2:
+    fig2 = go.<span class="fn">Figure</span>()
+    fig2.<span class="fn">add_trace</span>(go.<span class="fn">Scatter</span>(x=df.index, y=(df[<span class="st">"equity"</span>]-<span class="nu">1</span>)*<span class="nu">100</span>,   name=<span class="st">"Strategy"</span>))
+    fig2.<span class="fn">add_trace</span>(go.<span class="fn">Scatter</span>(x=df.index, y=(df[<span class="st">"bh_equity"</span>]-<span class="nu">1</span>)*<span class="nu">100</span>, name=<span class="st">"B&amp;H"</span>))
+    fig2.<span class="fn">update_layout</span>(template=<span class="st">"plotly_dark"</span>)
+    st.<span class="fn">plotly_chart</span>(fig2, use_container_width=<span class="kw">True</span>)
+<span class="kw">with</span> tab3:
+    st.<span class="fn">dataframe</span>(trades, use_container_width=<span class="kw">True</span>)</pre>
+  </div>
+</div>
+
+<!-- SECTION 4: EXTENDING -->
+<div class="section">
+  <h2>Extending the system</h2>
+  <div class="callout green">
+    <strong>Aggressive mode.</strong> In the dashboard sidebar, tick "Aggressive mode" to switch to 4× leverage and 5/8 confirmations. This increases trade frequency and amplifies returns — at the cost of higher drawdown risk.
+  </div>
+  <div class="callout orange">
+    <strong>Other assets.</strong> Change the ticker to "ETH-USD", "SPY", "GLD", or any Yahoo Finance symbol. The HMM will find regimes specific to that asset's volatility and return distribution. Lower-volatility assets (SPY) will show tighter emission Gaussians and more time in "Chop/Noise" regimes.
+  </div>
+  <div class="callout">
+    <strong>More states.</strong> Increase N_STATES from 7 to 9 or 10 for finer regime granularity (e.g., "Strong Bull" vs "Weak Bull"). Diminishing returns kick in — more states require more data to estimate reliably and can overfit to noise.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../07-indicators/">← Lesson 07: Indicators & Signal Logic</a>
+  <a href="../">↑ Back to HMM Trader hub</a>
+</div>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.code-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('pane-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

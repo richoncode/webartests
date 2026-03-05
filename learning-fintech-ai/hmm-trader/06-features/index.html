@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>06: Feature Engineering — HMM Trader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.orange { border-color: #f0a040; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .feature-row { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 16px 0; }
+  .feature-block { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 10px 14px; }
+  .feature-block h4 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 12px 16px; margin: 10px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #b07adf; line-height: 2; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .ohlcv-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
+  .ohlcv-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #444; padding: 6px 10px; text-align: right; border-bottom: 1px solid #1e1e1e; }
+  .ohlcv-table th:first-child { text-align: left; }
+  .ohlcv-table td { padding: 6px 10px; text-align: right; border-bottom: 1px solid #111; color: #666; font-family: monospace; font-size: 11px; }
+  .ohlcv-table td:first-child { text-align: left; color: #444; }
+  .ohlcv-table td.pos { color: #4caf50; }
+  .ohlcv-table td.neg { color: #e07070; }
+  .ohlcv-table td.feat { color: #5b9bd5; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to HMM Trader</a>
+<p class="lesson-num">Lesson 06</p>
+<h1>Feature Engineering</h1>
+<p class="subtitle">Raw OHLCV data cannot be fed directly to an HMM. We compute three features that capture the distinct statistical signature of each market regime: direction, volatility, and participation.</p>
+
+<!-- SECTION 1: THE THREE FEATURES -->
+<div class="section">
+  <h2>Why these three features?</h2>
+  <p>Each feature captures a different dimension of market behaviour. Together, they give the multivariate Gaussian emission enough axes to distinguish Bull Run from Bear/Crash from Chop.</p>
+
+  <div class="formula">
+    Feature 1: returns        = (Close[t] − Close[t-1]) / Close[t-1]<br>
+    Feature 2: range          = (High[t] − Low[t]) / Close[t]   &nbsp;&nbsp; (normalised)<br>
+    Feature 3: volume_change  = (Volume[t] − Volume[t-1]) / Volume[t-1]
+  </div>
+
+  <div class="callout green">
+    <strong>Returns</strong> capture direction and magnitude. Bull runs have consistent positive returns. Bear regimes have negative, often large returns. Choppy markets have returns near zero but variable sign.
+  </div>
+  <div class="callout purple">
+    <strong>Normalised range (High−Low)/Close</strong> captures intrabar volatility without price-level dependence. High range = uncertainty, wide bid-ask, potential regime transition. Bear/Crash periods have characteristically high range.
+  </div>
+  <div class="callout orange">
+    <strong>Volume change</strong> captures market participation. Bull runs typically show rising or elevated volume confirming the move. Chop shows declining volume as conviction fades. Volume spikes in bear regimes often signal capitulation.
+  </div>
+</div>
+
+<!-- SECTION 2: OHLCV → FEATURES -->
+<div class="section">
+  <h2>From OHLCV to feature matrix</h2>
+  <p>Below is a synthetic sample. Click "Regenerate" to see different market conditions. The computed features feed directly into the HMM training matrix — one row per bar.</p>
+
+  <div class="btn-row">
+    <button id="btnRegen">↺ Regenerate sample</button>
+  </div>
+
+  <table class="ohlcv-table" id="dataTable">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th>
+        <th style="color:#5b9bd5">returns</th>
+        <th style="color:#5b9bd5">range</th>
+        <th style="color:#5b9bd5">vol_chg</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<!-- SECTION 3: FEATURE TIME SERIES -->
+<div class="section">
+  <h2>Feature time series</h2>
+  <p>Visualised over 150 bars (three synthetic regimes). Notice how each feature cluster differs between Bull, Chop, and Bear periods.</p>
+
+  <div class="btn-row">
+    <button id="btnGenLong">Generate 150 bars</button>
+  </div>
+
+  <div class="feature-row">
+    <div class="feature-block">
+      <h4 style="color:#4caf50">Feature 1 — Returns</h4>
+      <canvas id="retCanvas" style="width:100%;height:70px"></canvas>
+    </div>
+    <div class="feature-block">
+      <h4 style="color:#b07adf">Feature 2 — Normalised Range</h4>
+      <canvas id="rangeCanvas" style="width:100%;height:70px"></canvas>
+    </div>
+    <div class="feature-block">
+      <h4 style="color:#f0a040">Feature 3 — Volume Change</h4>
+      <canvas id="volCanvas" style="width:100%;height:70px"></canvas>
+    </div>
+  </div>
+
+  <div class="vis-label" style="margin-top:4px">Regime coloring (from lesson 02)</div>
+  <canvas id="regimeBar" style="width:100%;height:20px;border-radius:4px"></canvas>
+</div>
+
+<!-- SECTION 4: PREPROCESSING -->
+<div class="section">
+  <h2>Preprocessing: clipping outliers</h2>
+  <p>Before training, we clip each feature to its 1st–99th percentile. Without this, a single flash crash can produce an extreme return that dominates the Gaussian fit and corrupts the entire model.</p>
+
+  <div class="formula">
+    features[col] = clip(features[col], quantile(1%), quantile(99%))
+  </div>
+
+  <div class="callout">
+    <strong>Why not standardise?</strong> Standardising (z-score) removes the scale information the HMM uses to distinguish regimes. A Bear/Crash bar has genuinely larger magnitude than a Chop bar — standardising would erase that signal. Clipping outliers is sufficient to keep the EM algorithm stable without losing the regime-distinguishing scale.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../05-viterbi/">← Lesson 05: Viterbi & Training</a>
+  <a href="../07-indicators/">Next: Indicators & Signal Logic →</a>
+</div>
+</div>
+
+<script>
+const REGIME_PARAMS = [
+  { label:'Bull',  mu:0.0007,  sigma:0.009,  rangeMu:0.012, rangeSig:0.004, volMu:0.05,  volSig:0.3, color:'#4caf50', len:50 },
+  { label:'Chop',  mu:0.00005, sigma:0.014,  rangeMu:0.018, rangeSig:0.006, volMu:-0.03, volSig:0.4, color:'#666',    len:40 },
+  { label:'Bear',  mu:-0.0015, sigma:0.022,  rangeMu:0.030, rangeSig:0.010, volMu:0.08,  volSig:0.5, color:'#e07070', len:60 },
+];
+
+let longData = { rets: [], ranges: [], vols: [], regimes: [] };
+
+function randn() {
+  const u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function generateSample(n = 8) {
+  const rows = [];
+  let close = 45000, vol = 2e9;
+  for (let i = 0; i < n; i++) {
+    const r = 0.0004 + 0.012 * randn();
+    const newClose = close * (1 + r);
+    const range = Math.abs(r) * (1.5 + Math.random());
+    const high = close * (1 + Math.max(r, 0) + range * 0.5);
+    const low = close * (1 + Math.min(r, 0) - range * 0.5);
+    const newVol = Math.max(1e8, vol * (1 + (Math.random() - 0.5) * 0.4));
+    rows.push({
+      t: 'T' + String(i).padStart(2, '0'),
+      open: close, high, low, close: newClose, vol: newVol,
+      prevClose: close, prevVol: vol,
+    });
+    close = newClose; vol = newVol;
+  }
+  return rows;
+}
+
+function renderTable() {
+  const rows = generateSample(8);
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  rows.forEach((r, i) => {
+    if (i === 0) return; // skip first row (no prev)
+    const ret = (r.close - r.prevClose) / r.prevClose;
+    const range = (r.high - r.low) / r.close;
+    const volChg = (r.vol - r.prevVol) / r.prevVol;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.t}</td>
+      <td>${r.open.toFixed(0)}</td>
+      <td>${r.high.toFixed(0)}</td>
+      <td>${r.low.toFixed(0)}</td>
+      <td>${r.close.toFixed(0)}</td>
+      <td>${(r.vol / 1e6).toFixed(0)}M</td>
+      <td class="feat ${ret >= 0 ? 'pos' : 'neg'}">${(ret * 100).toFixed(3)}%</td>
+      <td class="feat">${(range * 100).toFixed(3)}%</td>
+      <td class="feat ${volChg >= 0 ? 'pos' : 'neg'}">${(volChg * 100).toFixed(1)}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function generateLong() {
+  longData = { rets: [], ranges: [], vols: [], regimes: [] };
+  REGIME_PARAMS.forEach(rp => {
+    for (let i = 0; i < rp.len; i++) {
+      longData.rets.push(rp.mu + rp.sigma * randn());
+      longData.ranges.push(Math.max(0, rp.rangeMu + rp.rangeSig * randn()));
+      longData.vols.push(rp.volMu + rp.volSig * randn());
+      longData.regimes.push(rp);
+    }
+  });
+  renderFeatureCharts();
+}
+
+function drawFeature(canvasId, data, color, zeroCentre = true) {
+  const el = document.getElementById(canvasId);
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 70;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn || 1;
+  const bw = W / data.length;
+
+  // Regime background
+  longData.regimes.forEach((r, i) => {
+    ctx.fillStyle = r.color + '0d';
+    ctx.fillRect(i * bw, 0, bw, H);
+  });
+
+  if (zeroCentre) {
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+    const absMx = Math.max(Math.abs(mn), Math.abs(mx));
+    data.forEach((v, i) => {
+      const x = i * bw;
+      const h = (Math.abs(v) / absMx) * (H / 2 - 2);
+      ctx.fillStyle = v >= 0 ? color + 'aa' : '#e07070aa';
+      if (v >= 0) ctx.fillRect(x, H / 2 - h, bw - 0.5, h);
+      else ctx.fillRect(x, H / 2, bw - 0.5, h);
+    });
+  } else {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = i / (data.length - 1) * W;
+      const y = H - 2 - ((v - mn) / range) * (H - 4);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+}
+
+function drawRegimeBar() {
+  const el = document.getElementById('regimeBar');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 20;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const bw = W / longData.regimes.length;
+  longData.regimes.forEach((r, i) => {
+    ctx.fillStyle = r.color;
+    ctx.fillRect(i * bw, 0, bw, H);
+  });
+}
+
+function renderFeatureCharts() {
+  drawFeature('retCanvas', longData.rets, '#4caf50', true);
+  drawFeature('rangeCanvas', longData.ranges, '#b07adf', false);
+  drawFeature('volCanvas', longData.vols, '#f0a040', true);
+  drawRegimeBar();
+}
+
+document.getElementById('btnRegen').addEventListener('click', renderTable);
+document.getElementById('btnGenLong').addEventListener('click', generateLong);
+window.addEventListener('resize', () => { if (longData.rets.length) renderFeatureCharts(); });
+setTimeout(() => { renderTable(); generateLong(); }, 50);
+</script>
+</body>
+</html>

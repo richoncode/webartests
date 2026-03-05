@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04: HMM Foundations — HMM Trader</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.orange { border-color: #f0a040; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 14px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .matrix-grid { display: grid; gap: 2px; margin: 16px 0; width: fit-content; }
+  .matrix-cell { width: 52px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-family: monospace; border-radius: 4px; }
+  .matrix-header { font-size: 10px; color: #444; text-align: center; font-weight: 700; }
+  .component-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .component-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px; }
+  .component-box h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .component-box p { font-size: 12px; color: #555; line-height: 1.5; margin: 0; }
+  .component-box .sym { font-size: 28px; font-family: monospace; font-weight: 700; color: #5b9bd5; margin-bottom: 8px; display: block; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to HMM Trader</a>
+<p class="lesson-num">Lesson 04</p>
+<h1>HMM Foundations</h1>
+<p class="subtitle">A Hidden Markov Model has three components: initial probabilities, a transition matrix, and emission distributions. Together they define a complete probability model of how hidden market regimes generate observable returns.</p>
+
+<!-- SECTION 1: THE HIDDEN/OBSERVABLE SPLIT -->
+<div class="section">
+  <h2>Hidden vs observable</h2>
+  <p>The key insight of the HMM: the market's true state (Bull Run, Bear, Chop) is <em>hidden</em>. We never observe it directly. What we do observe is the return at each time step — the HMM must infer the hidden state from the observable data.</p>
+
+  <div class="vis-label">State machine — 3-state HMM (simplified view)</div>
+  <canvas id="stateCanvas" style="width:100%;height:280px"></canvas>
+
+  <div class="callout">
+    <strong>The Markov property.</strong> Each state depends only on the previous state, not the full history. This is what makes the model tractable: P(S<sub>t</sub> | S<sub>t-1</sub>, S<sub>t-2</sub>, ...) = P(S<sub>t</sub> | S<sub>t-1</sub>). Markets have memory, but the Markov assumption is a useful simplification.
+  </div>
+</div>
+
+<!-- SECTION 2: THREE COMPONENTS -->
+<div class="section">
+  <h2>The three components: λ = (π, A, B)</h2>
+  <p>An HMM is fully defined by three sets of parameters, collectively written as λ (lambda).</p>
+
+  <div class="component-row">
+    <div class="component-box">
+      <span class="sym">π</span>
+      <h3>Initial probabilities</h3>
+      <p>Probability of starting in each state. A vector of length K (7 for our model). Sums to 1.</p>
+    </div>
+    <div class="component-box">
+      <span class="sym">A</span>
+      <h3>Transition matrix</h3>
+      <p>K×K matrix. A[i][j] = P(state j at t+1 | state i at t). Each row sums to 1.</p>
+    </div>
+    <div class="component-box">
+      <span class="sym">B</span>
+      <h3>Emission distributions</h3>
+      <p>One multivariate Gaussian per state. B(x|k) = N(x; μ_k, Σ_k). Probability of observing features x while in state k.</p>
+    </div>
+  </div>
+
+  <div class="formula">
+    λ = (π, A, B)<br>
+    π<sub>k</sub> = P(S<sub>1</sub> = k)         &nbsp;&nbsp;&nbsp; initial state probability<br>
+    A<sub>ij</sub> = P(S<sub>t+1</sub>=j | S<sub>t</sub>=i)  &nbsp; transition probability<br>
+    B<sub>k</sub>(x) = N(x; μ<sub>k</sub>, Σ<sub>k</sub>)   &nbsp;&nbsp;&nbsp; emission probability
+  </div>
+</div>
+
+<!-- SECTION 3: TRANSITION MATRIX -->
+<div class="section">
+  <h2>The transition matrix</h2>
+  <p>Each cell A[i][j] is the probability of moving from regime i to regime j on the next bar. High values on the diagonal mean regimes are sticky — once you're in a Bull Run, you tend to stay there.</p>
+
+  <div class="btn-row">
+    <button id="btnSticky">Sticky regimes</button>
+    <button id="btnFlippy">Volatile / flippy</button>
+    <button id="btnRandom">Random</button>
+  </div>
+
+  <div style="overflow-x:auto">
+    <div class="vis-label" style="margin-bottom:8px">Transition matrix A — hover a cell to see its probability</div>
+    <canvas id="matrixCanvas" style="width:420px;height:420px;max-width:100%"></canvas>
+  </div>
+  <p id="matrixHover" style="font-size:12px;color:#444;margin-top:6px;min-height:18px"></p>
+
+  <div class="callout orange">
+    <strong>Regime persistence is critical for trading.</strong> A sticky transition matrix (high diagonal values) means regimes last for hours or days. This gives the trading system time to act. A flippy matrix would cause constant whipsawing between entry and exit signals — exactly what our hysteresis rule guards against.
+  </div>
+</div>
+
+<!-- SECTION 4: ALL TOGETHER -->
+<div class="section">
+  <h2>Putting it together: generating a sequence</h2>
+  <p>Click "Simulate" to watch the HMM generate a sequence: it samples from π to choose a starting state, then emits an observation from that state's Gaussian, then transitions to a new state using the transition matrix, and repeats.</p>
+
+  <div class="btn-row">
+    <button id="btnSimulate">▶ Simulate 40 steps</button>
+    <button id="btnStep">Step one bar</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div class="vis-label">Simulated regime sequence and observations</div>
+  <canvas id="simCanvas" style="width:100%;height:120px"></canvas>
+  <div class="vis-label" style="margin-top:12px">Observations (returns)</div>
+  <canvas id="obsCanvas" style="width:100%;height:80px"></canvas>
+</div>
+
+<div class="nav-row">
+  <a href="../03-gaussian/">← Lesson 03: Gaussian Distributions</a>
+  <a href="../05-viterbi/">Next: Viterbi & Training →</a>
+</div>
+</div>
+
+<script>
+const STATE_COLORS = ['#4caf50', '#888', '#e07070'];
+const STATE_NAMES = ['Bull Run', 'Chop', 'Bear/Crash'];
+const STATE_PARAMS = [
+  { mu: 0.0005,  sigma: 0.010 },
+  { mu: 0.00005, sigma: 0.015 },
+  { mu: -0.0012, sigma: 0.022 },
+];
+
+const TRANSITIONS = {
+  sticky:  [[0.90, 0.08, 0.02], [0.05, 0.85, 0.10], [0.03, 0.12, 0.85]],
+  flippy:  [[0.50, 0.30, 0.20], [0.25, 0.45, 0.30], [0.20, 0.35, 0.45]],
+  random:  [[0.40, 0.35, 0.25], [0.30, 0.38, 0.32], [0.28, 0.33, 0.39]],
+};
+
+let currentA = TRANSITIONS.sticky;
+let simStates = [], simObs = [];
+let simState = 0;
+
+function randn() {
+  const u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function drawStateDiagram() {
+  const el = document.getElementById('stateCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 280;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.35;
+  const nodeR = 42;
+  const angles = [-Math.PI / 2, Math.PI / 2 - Math.PI * 2 / 3, Math.PI / 2 + Math.PI * 2 / 3 - Math.PI * 2];
+  const nodes = STATE_NAMES.map((n, i) => {
+    const a = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), name: n, color: STATE_COLORS[i] };
+  });
+
+  // Arrows between states
+  nodes.forEach((from, i) => {
+    nodes.forEach((to, j) => {
+      if (i === j) return;
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ux = dx / dist, uy = dy / dist;
+      const sx = from.x + ux * nodeR, sy = from.y + uy * nodeR;
+      const ex = to.x - ux * nodeR, ey = to.y - uy * nodeR;
+      const mx = (sx + ex) / 2 - uy * 20, my = (sy + ey) / 2 + ux * 20;
+
+      ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+
+      // Arrowhead
+      const angle = Math.atan2(ey - my, ex - mx);
+      ctx.fillStyle = '#1e1e1e';
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - 8 * Math.cos(angle - 0.4), ey - 8 * Math.sin(angle - 0.4));
+      ctx.lineTo(ex - 8 * Math.cos(angle + 0.4), ey - 8 * Math.sin(angle + 0.4));
+      ctx.closePath(); ctx.fill();
+    });
+  });
+
+  // Self-loops
+  nodes.forEach((n, i) => {
+    const a = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+    const lx = n.x + Math.cos(a) * (nodeR + 12);
+    const ly = n.y + Math.sin(a) * (nodeR + 12);
+    ctx.strokeStyle = n.color + '55'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(lx, ly, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = n.color + '55';
+    ctx.beginPath();
+    ctx.arc(n.x + Math.cos(a) * nodeR, n.y + Math.sin(a) * nodeR, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Nodes
+  nodes.forEach((n, i) => {
+    ctx.beginPath(); ctx.arc(n.x, n.y, nodeR, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a0a0a'; ctx.fill();
+    ctx.strokeStyle = n.color; ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.fillStyle = n.color; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(n.name, n.x, n.y - 6);
+
+    // Emission info
+    const p = STATE_PARAMS[i];
+    ctx.fillStyle = '#444'; ctx.font = '10px monospace';
+    ctx.fillText('μ=' + (p.mu * 100).toFixed(3) + '%', n.x, n.y + 7);
+    ctx.fillText('σ=' + (p.sigma * 100).toFixed(2) + '%', n.x, n.y + 18);
+  });
+
+  // Labels
+  ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Hidden states (regimes)', cx, 18);
+
+  // Observable row
+  const obsY = H - 30;
+  ctx.strokeStyle = '#222'; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(20, obsY - 30); ctx.lineTo(W - 20, obsY - 30); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#333'; ctx.textAlign = 'left';
+  ctx.fillText('Observable returns:  x₁  x₂  x₃  ...  xₙ', 24, obsY - 14);
+  ctx.fillText('← drawn from emission B_k(x) of the current hidden state k', 24, obsY + 4);
+}
+
+function drawMatrix(A) {
+  const el = document.getElementById('matrixCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 420, H = el.offsetHeight || 420;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = 60, cellW = (W - pad) / 3, cellH = (H - pad) / 3;
+  const labels = ['Bull', 'Chop', 'Bear'];
+
+  // Headers
+  ctx.fillStyle = '#444'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  labels.forEach((l, j) => ctx.fillText('→ ' + l, pad + j * cellW + cellW / 2, 28));
+  labels.forEach((l, i) => {
+    ctx.save(); ctx.translate(22, pad + i * cellH + cellH / 2);
+    ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
+    ctx.fillText(l + ' →', 0, 0); ctx.restore();
+  });
+
+  A.forEach((row, i) => {
+    row.forEach((val, j) => {
+      const x = pad + j * cellW, y = pad + i * cellH;
+      const alpha = 0.1 + val * 0.7;
+      const isMax = val === Math.max(...row);
+      ctx.fillStyle = i === j
+        ? `rgba(91,155,213,${alpha})`
+        : `rgba(255,255,255,${alpha * 0.3})`;
+      ctx.fillRect(x + 2, y + 2, cellW - 4, cellH - 4);
+      ctx.strokeStyle = isMax ? STATE_COLORS[i] + '88' : '#1e1e1e'; ctx.lineWidth = isMax ? 2 : 1;
+      ctx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+      ctx.fillStyle = '#ccc'; ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(val.toFixed(2), x + cellW / 2, y + cellH / 2 + 6);
+    });
+  });
+
+  // Diagonal label
+  ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('diagonal = staying in same regime', W - 8, H - 8);
+}
+
+function sampleState(A, state) {
+  const row = A[state];
+  let cumul = 0, r = Math.random();
+  for (let j = 0; j < row.length; j++) {
+    cumul += row[j];
+    if (r <= cumul) return j;
+  }
+  return row.length - 1;
+}
+
+function drawSim() {
+  if (simStates.length === 0) return;
+  const el = document.getElementById('simCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760, H = el.offsetHeight || 120;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const bw = W / simStates.length;
+  simStates.forEach((s, i) => {
+    ctx.fillStyle = STATE_COLORS[s] + '33';
+    ctx.fillRect(i * bw, 0, bw, H);
+    ctx.fillStyle = STATE_COLORS[s];
+    ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    if (bw > 20) ctx.fillText(STATE_NAMES[s].split(' ')[0], i * bw + bw / 2, H / 2 + 4);
+  });
+
+  const el2 = document.getElementById('obsCanvas');
+  el2.width = el2.offsetWidth * dpr; el2.height = el2.offsetHeight * dpr;
+  const ctx2 = el2.getContext('2d'); ctx2.scale(dpr, dpr);
+  const W2 = el2.offsetWidth, H2 = el2.offsetHeight;
+  ctx2.clearRect(0, 0, W2, H2);
+  ctx2.strokeStyle = '#1a1a1a'; ctx2.lineWidth = 1;
+  ctx2.beginPath(); ctx2.moveTo(0, H2 / 2); ctx2.lineTo(W2, H2 / 2); ctx2.stroke();
+  const maxObs = Math.max(...simObs.map(Math.abs)) || 0.05;
+  const bw2 = W2 / simObs.length;
+  simObs.forEach((v, i) => {
+    const h = (Math.abs(v) / maxObs) * (H2 / 2 - 4);
+    const x = i * bw2;
+    ctx2.fillStyle = v >= 0 ? '#4caf5077' : '#e0707077';
+    if (v >= 0) ctx2.fillRect(x, H2 / 2 - h, bw2 - 1, h);
+    else ctx2.fillRect(x, H2 / 2, bw2 - 1, h);
+  });
+}
+
+function stepSim() {
+  if (simStates.length === 0) simState = 0;
+  else simState = sampleState(currentA, simState);
+  const p = STATE_PARAMS[simState];
+  const obs = p.mu + p.sigma * randn();
+  simStates.push(simState); simObs.push(obs);
+  drawSim();
+}
+
+function resetSim() { simStates = []; simObs = []; simState = 0; drawSim(); }
+
+document.getElementById('btnSimulate').addEventListener('click', () => {
+  resetSim();
+  for (let i = 0; i < 40; i++) stepSim();
+});
+document.getElementById('btnStep').addEventListener('click', () => { if (simStates.length < 80) stepSim(); });
+document.getElementById('btnReset').addEventListener('click', resetSim);
+
+['sticky', 'flippy', 'random'].forEach(k => {
+  document.getElementById('btn' + k.charAt(0).toUpperCase() + k.slice(1)).addEventListener('click', () => {
+    currentA = TRANSITIONS[k];
+    drawMatrix(currentA);
+    resetSim();
+  });
+});
+
+document.getElementById('matrixCanvas').addEventListener('mousemove', function(e) {
+  const rect = this.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const pad = 60, cellW = (rect.width - pad) / 3, cellH = (rect.height - pad) / 3;
+  const i = Math.floor((my - pad) / cellH), j = Math.floor((mx - pad) / cellW);
+  if (i >= 0 && i < 3 && j >= 0 && j < 3) {
+    const from = STATE_NAMES[i], to = STATE_NAMES[j];
+    document.getElementById('matrixHover').textContent = `P(${to} | was ${from}) = ${currentA[i][j].toFixed(2)} — ${(currentA[i][j]*100).toFixed(0)}% chance`;
+  } else {
+    document.getElementById('matrixHover').textContent = '';
+  }
+});
+
+window.addEventListener('resize', () => { drawStateDiagram(); drawMatrix(currentA); drawSim(); });
+setTimeout(() => { drawStateDiagram(); drawMatrix(currentA); }, 50);
+</script>
+</body>
+</html>
