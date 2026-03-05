@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01: Markov Decision Processes — RL Markets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .comp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .comp-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px; }
+  .comp-symbol { font-size: 26px; font-weight: 800; font-family: 'SF Mono','Fira Code',monospace; margin-bottom: 6px; }
+  .comp-title { font-size: 13px; font-weight: 700; color: #ccc; margin-bottom: 6px; }
+  .comp-body { font-size: 12px; color: #666; line-height: 1.6; }
+  .toy-info { font-size: 13px; color: #666; margin-top: 10px; line-height: 1.7; font-family: 'SF Mono','Fira Code',monospace; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to RL Markets</a>
+<p class="lesson-num">Lesson 01</p>
+<h1>Markov Decision Processes</h1>
+<p class="subtitle">Reinforcement learning frames every decision problem as an agent interacting with an environment. The Markov Decision Process is the mathematical foundation — states, actions, transitions, and rewards.</p>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>The RL feedback loop</h2>
+  <p>The agent observes the current state, chooses an action, the environment transitions to a new state, and the agent receives a reward. This cycle repeats until the episode ends. The agent's goal is to maximise the total discounted reward &Sigma; &gamma;<sup>t</sup>&middot;r<sub>t</sub>.</p>
+
+  <div class="btn-row">
+    <button id="btnAnimate">&#9654; Animate</button>
+    <button id="btnPause">&#9646;&#9646; Pause</button>
+  </div>
+  <div class="vis-label">RL feedback cycle — each arrow lights up in sequence</div>
+  <canvas id="cycleCanvas" style="width:100%;height:260px"></canvas>
+
+  <div class="callout">
+    <strong>The Markov property.</strong> The transition to the next state depends only on the current state and action — not on any history before it. P(s<sub>t+1</sub> | s<sub>t</sub>, a<sub>t</sub>, s<sub>t-1</sub>, ...) = P(s<sub>t+1</sub> | s<sub>t</sub>, a<sub>t</sub>). This simplification makes the problem tractable.
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>The five MDP components</h2>
+  <p>A Markov Decision Process is defined by five components. Together they fully specify any sequential decision problem.</p>
+
+  <div class="formula">
+MDP = (S, A, T, R, &gamma;)<br>
+S &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: state space &nbsp;&nbsp;&nbsp;&nbsp; &mdash; what the agent can observe<br>
+A &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: action space &nbsp;&nbsp;&nbsp; &mdash; the choices available each step<br>
+T(s'|s,a): transition &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &mdash; probability of landing in s' from (s,a)<br>
+R(s,a,s'): reward function &mdash; immediate signal after each transition<br>
+&gamma; &isin; [0,1): discount factor &mdash; how much future rewards are worth today
+  </div>
+
+  <div class="comp-grid">
+    <div class="comp-box">
+      <div class="comp-symbol" style="color:#5b9bd5">S</div>
+      <div class="comp-title">State Space</div>
+      <div class="comp-body">In trading: [price returns, position, unrealised P&amp;L, volatility, step count]. Anything the agent needs to make decisions.</div>
+    </div>
+    <div class="comp-box">
+      <div class="comp-symbol" style="color:#f0a040">A</div>
+      <div class="comp-title">Action Space</div>
+      <div class="comp-body">Three discrete choices: 0 = Hold, 1 = Buy (go long), 2 = Sell/Close. Simple but sufficient for long-only trading.</div>
+    </div>
+    <div class="comp-box">
+      <div class="comp-symbol" style="color:#4caf50">R</div>
+      <div class="comp-title">Reward</div>
+      <div class="comp-body">Change in portfolio value minus transaction costs. Positive when the position made money, negative when it lost.</div>
+    </div>
+  </div>
+
+  <div class="callout orange">
+    <strong>Discount factor &gamma;.</strong> A reward one step in the future is worth &gamma; times a reward now. &gamma; = 0.99 means the agent cares about rewards 100 steps ahead. &gamma; = 0 is a myopic agent. For trading, &gamma; = 0.99 works well — trades play out over many bars.
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <h2>A toy trading MDP</h2>
+  <p>Consider a simplified 1D market with 5 discrete price levels. The agent holds one of three positions: Flat, Long, or Short. At each step it takes one of three actions. Watch how different actions lead to different state transitions and rewards.</p>
+
+  <div class="vis-label">Toy market — 5 price levels, 3 positions, 3 actions</div>
+  <canvas id="toyCanvas" style="width:100%;height:220px"></canvas>
+
+  <div class="btn-row">
+    <button id="btnBuy" style="border-color:#4caf50;color:#4caf50">Buy</button>
+    <button id="btnHold">Hold</button>
+    <button id="btnSell" style="border-color:#e07070;color:#e07070">Sell</button>
+    <button id="btnReset" style="margin-left:auto">Reset</button>
+  </div>
+  <div class="toy-info" id="toyInfo">Action: — &nbsp;|&nbsp; Reward: — &nbsp;|&nbsp; Cumulative: 0.00</div>
+
+  <div class="callout green">
+    <strong>In real trading</strong> the state space is enormous — price history windows, multiple technical indicators, current position size, portfolio value, time of day. The MDP framework handles all of these uniformly.
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <h2>Value functions</h2>
+  <p>Rather than asking 'what's the best action right now?', RL asks 'what's the best policy — a mapping from every state to the best action?' Value functions answer this.</p>
+
+  <div class="formula">
+V*(s) &nbsp;&nbsp; = max<sub>a</sub> Q*(s,a) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; state value: best possible expected return<br>
+Q*(s,a) = R(s,a) + &gamma; &middot; &Sigma;<sub>s'</sub> T(s'|s,a) &middot; V*(s') &nbsp;&nbsp; &larr; Bellman optimality<br>
+&pi;*(s) &nbsp;&nbsp; = argmax<sub>a</sub> Q*(s,a) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; optimal policy
+  </div>
+
+  <div class="callout purple">
+    <strong>Q(s,a) is the key quantity.</strong> It answers: 'If I'm in state s and take action a, what total discounted reward can I expect?' The DQN is a neural network that approximates Q*(s,a) directly from raw observations.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../">← Back to RL Markets</a>
+  <a href="../02-rewards/">Next: Reward Design →</a>
+</div>
+</div>
+
+<script>
+// ─── Cycle diagram ───────────────────────────────────────────────────────────
+const cycleEl = document.getElementById('cycleCanvas');
+let cycleStep = 0;
+let cycleTimer = null;
+let cycleRunning = false;
+
+const nodes = [
+  { id: 'agent',  label: 'Agent',         x: 0.25, y: 0.22 },
+  { id: 'action', label: 'Action',        x: 0.75, y: 0.22 },
+  { id: 'env',    label: 'Environment',   x: 0.75, y: 0.78 },
+  { id: 'state',  label: 'State / Reward',x: 0.25, y: 0.78 },
+];
+
+// arrows: from node index → to node index, label, color
+const arrows = [
+  { from: 0, to: 1, label: 'choose action',   color: '#5b9bd5' },
+  { from: 1, to: 2, label: 'act on env',      color: '#f0a040' },
+  { from: 2, to: 3, label: 'new state + r',   color: '#4caf50' },
+  { from: 3, to: 0, label: 'observe state',   color: '#b07adf' },
+];
+
+function drawCycle(activeStep) {
+  const el = cycleEl;
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 260;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const NW = 130, NH = 44, R = 10;
+
+  // Draw arrows
+  arrows.forEach((arr, i) => {
+    const fn = nodes[arr.from];
+    const tn = nodes[arr.to];
+    const fx = fn.x * W, fy = fn.y * H;
+    const tx = tn.x * W, ty = tn.y * H;
+    const active = i === activeStep;
+
+    // Compute arrow start/end on box edges
+    const dx = tx - fx, dy = ty - fy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / dist, uy = dy / dist;
+
+    // Offset from center by half box dimension
+    const sx = fx + ux * (NW / 2 + 2);
+    const sy = fy + uy * (NH / 2 + 2);
+    const ex = tx - ux * (NW / 2 + 2);
+    const ey = ty - uy * (NH / 2 + 2);
+
+    ctx.strokeStyle = active ? arr.color : '#222';
+    ctx.lineWidth = active ? 2.5 : 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+
+    // Arrowhead
+    const headLen = 10;
+    const angle = Math.atan2(ey - sy, ex - sx);
+    ctx.fillStyle = active ? arr.color : '#222';
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - headLen * Math.cos(angle - 0.4), ey - headLen * Math.sin(angle - 0.4));
+    ctx.lineTo(ex - headLen * Math.cos(angle + 0.4), ey - headLen * Math.sin(angle + 0.4));
+    ctx.closePath(); ctx.fill();
+
+    // Arrow label
+    const mx = (sx + ex) / 2, my = (sy + ey) / 2;
+    ctx.fillStyle = active ? arr.color : '#333';
+    ctx.font = `${active ? 600 : 400} 11px -apple-system, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Offset label perpendicular to line
+    const px = -uy * 14, py = ux * 14;
+    ctx.fillText(arr.label, mx + px, my + py);
+  });
+
+  // Draw nodes
+  nodes.forEach((n, i) => {
+    const cx = n.x * W, cy = n.y * H;
+    const isActive = arrows[activeStep] && (arrows[activeStep].from === i || arrows[activeStep].to === i);
+    const col = isActive ? arrows[activeStep].color : '#222';
+
+    ctx.strokeStyle = col;
+    ctx.lineWidth = isActive ? 2 : 1;
+    ctx.fillStyle = isActive ? col + '22' : '#111';
+    // Rounded rect
+    const x = cx - NW / 2, y = cy - NH / 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, NW, NH, R);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = isActive ? '#fff' : '#555';
+    ctx.font = `${isActive ? 700 : 400} 13px -apple-system, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(n.label, cx, cy);
+  });
+}
+
+function startCycle() {
+  if (cycleTimer) clearInterval(cycleTimer);
+  cycleRunning = true;
+  cycleTimer = setInterval(() => {
+    cycleStep = (cycleStep + 1) % 4;
+    drawCycle(cycleStep);
+  }, 1200);
+  drawCycle(cycleStep);
+}
+
+document.getElementById('btnAnimate').addEventListener('click', startCycle);
+document.getElementById('btnPause').addEventListener('click', () => {
+  if (cycleTimer) clearInterval(cycleTimer);
+  cycleRunning = false;
+});
+
+window.addEventListener('resize', () => drawCycle(cycleStep));
+
+// ─── Toy MDP ──────────────────────────────────────────────────────────────────
+const toyEl = document.getElementById('toyCanvas');
+const toyInfo = document.getElementById('toyInfo');
+
+let toyState = { priceLevel: 2, position: 0 }; // position: -1=short, 0=flat, 1=long
+let cumReward = 0;
+let lastAction = null;
+let lastReward = null;
+let lastPriceLevel = 2;
+let toyHistory = [];
+
+const priceLevelNames = ['Very Low', 'Low', 'Mid', 'High', 'Very High'];
+const priceLevelColors = ['#e07070', '#c08080', '#888', '#80b080', '#4caf50'];
+
+function toyTransition(action) {
+  // action: 0=hold, 1=buy, 2=sell
+  const old = { ...toyState };
+  let tc = 0;
+
+  if (action === 1) { // Buy
+    if (toyState.position === 0) { toyState.position = 1; tc = 0.01; }
+    else if (toyState.position === -1) { toyState.position = 0; tc = 0.01; }
+    // if already long, stay
+  } else if (action === 2) { // Sell
+    if (toyState.position === 1) { toyState.position = 0; tc = 0.01; }
+    else if (toyState.position === 0) { toyState.position = -1; tc = 0.01; }
+    // if already short, stay
+  }
+  // hold: position unchanged
+
+  // Price transition
+  const r = Math.random();
+  let delta = 0;
+  if (action === 1) { // buy nudges up
+    delta = r < 0.50 ? 1 : r < 0.80 ? 0 : -1;
+  } else if (action === 2) { // sell nudges down
+    delta = r < 0.50 ? -1 : r < 0.80 ? 0 : 1;
+  } else { // hold: random walk
+    delta = r < 0.40 ? 0 : r < 0.70 ? 1 : -1;
+  }
+
+  const newLevel = Math.max(0, Math.min(4, toyState.priceLevel + delta));
+  const priceChange = newLevel - toyState.priceLevel;
+  toyState.priceLevel = newLevel;
+
+  // Reward
+  let reward = 0;
+  if (toyState.position === 1) reward = priceChange * 0.5;
+  else if (toyState.position === -1) reward = -priceChange * 0.5;
+  reward -= tc;
+
+  return { reward, oldLevel: old.priceLevel, newLevel, oldPos: old.position };
+}
+
+function drawToy() {
+  const el = toyEl;
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 220;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const rowH = (H - 20) / 5;
+  const labelW = 90;
+  const barX = labelW + 20;
+  const barW = W - barX - 20;
+
+  // Draw price level rows
+  for (let i = 4; i >= 0; i--) {
+    const row = 4 - i;
+    const y = 10 + row * rowH;
+    const isCurrent = toyState.priceLevel === i;
+
+    ctx.fillStyle = isCurrent ? priceLevelColors[i] + '22' : '#0d0d0d';
+    ctx.strokeStyle = isCurrent ? priceLevelColors[i] : '#1e1e1e';
+    ctx.lineWidth = isCurrent ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.roundRect(barX, y + 2, barW, rowH - 4, 4);
+    ctx.fill(); ctx.stroke();
+
+    // Level label
+    ctx.fillStyle = priceLevelColors[i];
+    ctx.font = `${isCurrent ? 700 : 400} 12px -apple-system, sans-serif`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(priceLevelNames[i], labelW, y + rowH / 2);
+
+    if (isCurrent) {
+      // Current position indicator
+      const posLabel = toyState.position === 1 ? 'LONG' : toyState.position === -1 ? 'SHORT' : 'FLAT';
+      const posColor = toyState.position === 1 ? '#4caf50' : toyState.position === -1 ? '#e07070' : '#888';
+      ctx.fillStyle = posColor;
+      ctx.font = '700 11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(posLabel, barX + 12, y + rowH / 2);
+
+      // Dot marker
+      ctx.fillStyle = priceLevelColors[i];
+      ctx.beginPath();
+      ctx.arc(W - 30, y + rowH / 2, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Draw arrow from old to new if we have history
+  if (toyHistory.length > 0) {
+    const last = toyHistory[toyHistory.length - 1];
+    if (last.oldLevel !== last.newLevel) {
+      const oldRow = 4 - last.oldLevel;
+      const newRow = 4 - last.newLevel;
+      const oy = 10 + oldRow * rowH + rowH / 2;
+      const ny = 10 + newRow * rowH + rowH / 2;
+      const ax = W - 14;
+
+      const arrowColor = last.newLevel > last.oldLevel ? '#4caf50' : '#e07070';
+      ctx.strokeStyle = arrowColor;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(ax, oy);
+      ctx.lineTo(ax, ny);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const headDir = last.newLevel > last.oldLevel ? -1 : 1;
+      ctx.fillStyle = arrowColor;
+      ctx.beginPath();
+      ctx.moveTo(ax, ny);
+      ctx.lineTo(ax - 5, ny + headDir * 8);
+      ctx.lineTo(ax + 5, ny + headDir * 8);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function doAction(action) {
+  lastPriceLevel = toyState.priceLevel;
+  const result = toyTransition(action);
+  lastReward = result.reward;
+  cumReward += result.reward;
+  lastAction = ['Hold', 'Buy', 'Sell'][action];
+  toyHistory.push({ oldLevel: result.oldLevel, newLevel: result.newLevel });
+  if (toyHistory.length > 1) toyHistory.shift();
+
+  const posStr = toyState.position === 1 ? 'Long' : toyState.position === -1 ? 'Short' : 'Flat';
+  const rewardStr = result.reward >= 0 ? '+' + result.reward.toFixed(2) : result.reward.toFixed(2);
+  toyInfo.innerHTML = `Action: <span style="color:#ccc">${lastAction}</span> &nbsp;|&nbsp; Position: <span style="color:#ccc">${posStr}</span> &nbsp;|&nbsp; Reward: <span style="color:${result.reward >= 0 ? '#4caf50' : '#e07070'}">${rewardStr}</span> &nbsp;|&nbsp; Cumulative: <span style="color:#5b9bd5">${cumReward.toFixed(2)}</span>`;
+  drawToy();
+}
+
+document.getElementById('btnBuy').addEventListener('click', () => doAction(1));
+document.getElementById('btnHold').addEventListener('click', () => doAction(0));
+document.getElementById('btnSell').addEventListener('click', () => doAction(2));
+document.getElementById('btnReset').addEventListener('click', () => {
+  toyState = { priceLevel: 2, position: 0 };
+  cumReward = 0; lastAction = null; lastReward = null;
+  toyHistory = [];
+  toyInfo.innerHTML = 'Action: — &nbsp;|&nbsp; Reward: — &nbsp;|&nbsp; Cumulative: 0.00';
+  drawToy();
+});
+
+window.addEventListener('resize', drawToy);
+
+// Init
+setTimeout(() => {
+  drawCycle(0);
+  startCycle();
+  drawToy();
+}, 50);
+</script>
+</div>
+</body>
+</html>

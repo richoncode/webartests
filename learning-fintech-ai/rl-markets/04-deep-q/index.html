@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04: Deep Q-Networks — RL Markets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .formula .cm { color: #555; font-style: italic; }
+  .formula .kw { color: #5b9bd5; }
+  .formula .gr { color: #4caf50; }
+  .formula .or { color: #f0a040; }
+  .qval-row { font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #666; margin-top: 10px; padding: 10px 14px; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; }
+  .qval-row span.hold { color: #f0a040; }
+  .qval-row span.buy { color: #4caf50; }
+  .qval-row span.sell { color: #e07070; }
+  .qval-row span.best { color: #fff; font-weight: 700; }
+  .dqn-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .dqn-table th { text-align: left; color: #555; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #1e1e1e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .dqn-table td { padding: 9px 12px; border-bottom: 1px solid #111; color: #888; vertical-align: top; }
+  .dqn-table td:first-child { color: #ccc; font-weight: 600; }
+  .dqn-table tr:last-child td { border-bottom: none; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to RL Markets</a>
+<p class="lesson-num">Lesson 04</p>
+<h1>Deep Q-Networks</h1>
+<p class="subtitle">Replace the Q-table with a neural network. DQN extends Q-learning to continuous, high-dimensional state spaces using function approximation, experience replay, and a target network.</p>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>Function approximation</h2>
+  <p>Instead of a lookup table, use a neural network Q(s,a;&theta;) parameterised by weights &theta;. The network takes a state vector as input and outputs Q-values for all actions simultaneously.</p>
+
+  <div class="vis-label">Neural network architecture — input state to Q-values for all actions</div>
+  <canvas id="netCanvas" style="width:100%;height:280px"></canvas>
+  <div class="btn-row">
+    <button id="btnForward">&#9654; Forward pass</button>
+  </div>
+  <div id="qvalDisplay" class="qval-row">
+    <span class="best">Best action: —</span> &nbsp;|&nbsp; <span class="hold">Q(Hold)=—</span> &nbsp;|&nbsp; <span class="buy">Q(Buy)=—</span> &nbsp;|&nbsp; <span class="sell">Q(Sell)=—</span>
+  </div>
+
+  <div class="callout purple">
+    <strong>Weight sharing.</strong> The same neural network processes all states. This allows the agent to generalise — states that look similar produce similar Q-values, even if they've never been seen before. This is the key advantage over Q-tables.
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>Two stability tricks</h2>
+
+  <h3>Experience Replay</h3>
+  <p>Naive Q-learning updates from consecutive (s,a,r,s') transitions. Consecutive transitions are highly correlated — the network overfits to recent experience and 'forgets' the past. Experience replay solves this.</p>
+
+  <div class="vis-label">Circular replay buffer — yellow entries are the current mini-batch sample</div>
+  <canvas id="replayCanvas" style="width:100%;height:160px"></canvas>
+  <div class="btn-row">
+    <button id="btnAddTransition">Add transition</button>
+  </div>
+  <div id="replayLabel" class="vis-label" style="margin-top:8px; color:#555">Buffer: 20 / 1000 &nbsp;|&nbsp; Batch size: 4</div>
+
+  <div class="formula">r(t) stored as (s<sub style="font-size:10px">t</sub>, a<sub style="font-size:10px">t</sub>, r<sub style="font-size:10px">t</sub>, s<sub style="font-size:10px">t+1</sub>, done<sub style="font-size:10px">t</sub>) &larr; transition tuple</div>
+
+  <h3>Target Network</h3>
+  <p>Standard DQN uses two networks: online Q(s,a;&theta;) and target Q(s,a;&theta;<sup>&#8315;</sup>). The target network is a delayed copy updated every C steps. This prevents the target from shifting every step &mdash; stabilising training.</p>
+
+  <div class="formula">Loss = E[(r + &gamma; &middot; max<sub>a'</sub> Q(s',a'; &theta;<sup>&#8315;</sup>) &minus; Q(s,a; &theta;))<sup>2</sup>]<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr; target network (frozen) &nbsp;&nbsp;&uarr; online network (trained)<br>
+&theta;<sup>&#8315;</sup> &larr; &tau;&middot;&theta; + (1&minus;&tau;)&middot;&theta;<sup>&#8315;</sup> &nbsp;&nbsp;&nbsp;&larr; soft update every step (&tau;=0.005)<br>
+or hard copy every C=1000 steps</div>
+
+  <div class="callout orange">
+    <strong>Without a target network,</strong> the Bellman target changes every gradient step — like trying to hit a moving target. Freezing &theta;<sup>&#8315;</sup> for C steps makes the target stationary long enough for the online network to converge toward it.
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <h2>The DQN training loop</h2>
+  <p>All pieces together in one loop.</p>
+
+  <div class="formula"><span class="cm"># Initialise networks and buffer</span><br>
+Initialise Q(s,a;&theta;) and Q&#770;(s,a;&theta;<sup>&#8315;</sup>=&theta;), replay buffer B<br>
+<span class="kw">For</span> each episode:<br>
+&nbsp;&nbsp;s &larr; env.reset()<br>
+&nbsp;&nbsp;<span class="kw">For</span> each step t:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;a &larr; &epsilon;-greedy(Q(s;&theta;)) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># select action</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;s', r, done &larr; env.step(a) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># execute action</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;B.push(s, a, r, s', done) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># store transition</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> |B| &ge; batch_size:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sample mini-batch from B<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;y = r + &gamma; &middot; max Q&#770;(s';&theta;<sup>&#8315;</sup>) &nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># compute target</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;L = MSE(Q(s,a;&theta;), y) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># compute loss</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&theta; &larr; &theta; &minus; &alpha;&middot;&nabla;L &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># gradient step</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> t mod C == 0: &theta;<sup>&#8315;</sup> &larr; &theta; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm"># update target</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;s &larr; s'</div>
+
+  <div class="callout">
+    <strong>Batch size matters.</strong> Using 32&ndash;128 transitions per gradient step balances stability and speed. Too small: noisy gradients. Too large: stale experience. 64 is a common default.
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <h2>DQN vs plain Q-learning</h2>
+  <p>The two approaches differ most in how they scale. Q-learning with a table is exact and provably convergent on small problems; DQN trades those guarantees for the ability to handle real-world state spaces.</p>
+
+  <table class="dqn-table">
+    <thead>
+      <tr>
+        <th>Aspect</th>
+        <th>Q-learning</th>
+        <th>DQN</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>State space</td>
+        <td>Discrete, small</td>
+        <td>Continuous, large</td>
+      </tr>
+      <tr>
+        <td>Storage</td>
+        <td>Q-table (grows with states)</td>
+        <td>Fixed neural network</td>
+      </tr>
+      <tr>
+        <td>Generalisation</td>
+        <td>None (each state independent)</td>
+        <td>Yes (similar states &rarr; similar Q)</td>
+      </tr>
+      <tr>
+        <td>Stability tricks</td>
+        <td>Not needed</td>
+        <td>Replay + target network required</td>
+      </tr>
+      <tr>
+        <td>Convergence</td>
+        <td>Guaranteed (finite MDP)</td>
+        <td>Empirical (no guarantee)</td>
+      </tr>
+      <tr>
+        <td>Typical use</td>
+        <td>Toy problems</td>
+        <td>Real trading environments</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="nav-row">
+  <a href="../03-q-learning/">&larr; Q-Learning</a>
+  <a href="../05-exploration/">Next: Exploration Strategies &rarr;</a>
+</div>
+</div>
+
+<script>
+// ─── Neural Network Canvas ───────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('netCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth || 760;
+  const H = 280;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const layers = [
+    { nodes: 5, labels: ['ret(t)', 'ret(t-1)', 'vol', 'pos', 'pnl'], color: '#5b9bd5' },
+    { nodes: 6, labels: null, color: '#b07adf' },
+    { nodes: 4, labels: null, color: '#b07adf' },
+    { nodes: 3, labels: ['Q(Hold)', 'Q(Buy)', 'Q(Sell)'], color: ['#f0a040', '#4caf50', '#e07070'] }
+  ];
+
+  const pad = 80;
+  const xStep = (W - pad * 2) / (layers.length - 1);
+  const layerPositions = layers.map((l, i) => ({
+    x: pad + i * xStep,
+    ys: Array.from({ length: l.nodes }, (_, j) => {
+      const spread = Math.min((l.nodes - 1) * 36, H - 60);
+      const top = (H - spread) / 2;
+      return top + j * (spread / Math.max(l.nodes - 1, 1));
+    })
+  }));
+
+  // Glow state: array of [0..1] per layer, animated during forward pass
+  let glowState = layers.map(() => 0);
+  let animating = false;
+
+  function drawNet(glow) {
+    ctx.clearRect(0, 0, W, H);
+
+    // Draw connections
+    for (let li = 0; li < layers.length - 1; li++) {
+      const from = layerPositions[li];
+      const to = layerPositions[li + 1];
+      const pulseAlpha = Math.min(glow[li], 1) * 0.5 + 0.05;
+      for (let fi = 0; fi < from.ys.length; fi++) {
+        for (let ti = 0; ti < to.ys.length; ti++) {
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.ys[fi]);
+          ctx.lineTo(to.x, to.ys[ti]);
+          ctx.strokeStyle = `rgba(255,255,255,${glow[li] > 0 ? pulseAlpha : 0.05})`;
+          ctx.lineWidth = glow[li] > 0 ? 0.8 : 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw nodes
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
+      const pos = layerPositions[li];
+      const g = Math.min(glow[li], 1);
+
+      for (let ni = 0; ni < pos.ys.length; ni++) {
+        const x = pos.x;
+        const y = pos.ys[ni];
+        const nodeColor = Array.isArray(layer.color) ? layer.color[ni] : layer.color;
+
+        // Glow halo
+        if (g > 0) {
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, 22 + g * 10);
+          const rgb = hexToRgb(nodeColor);
+          grad.addColorStop(0, `rgba(${rgb},${g * 0.6})`);
+          grad.addColorStop(1, `rgba(${rgb},0)`);
+          ctx.beginPath();
+          ctx.arc(x, y, 22 + g * 10, 0, Math.PI * 2);
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+
+        // Node circle
+        ctx.beginPath();
+        ctx.arc(x, y, 9, 0, Math.PI * 2);
+        const rgb = hexToRgb(nodeColor);
+        ctx.fillStyle = g > 0
+          ? `rgba(${rgb},${0.3 + g * 0.7})`
+          : `rgba(${rgb},0.25)`;
+        ctx.strokeStyle = nodeColor;
+        ctx.lineWidth = g > 0 ? 2 : 1;
+        ctx.fill();
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = g > 0 ? nodeColor : '#444';
+        ctx.font = '11px -apple-system, sans-serif';
+        if (layer.labels && layer.labels[ni]) {
+          if (li === 0) {
+            ctx.textAlign = 'right';
+            ctx.fillText(layer.labels[ni], x - 14, y + 4);
+          } else if (li === layers.length - 1) {
+            ctx.textAlign = 'left';
+            ctx.fillText(layer.labels[ni], x + 14, y + 4);
+          }
+        }
+      }
+    }
+  }
+
+  function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `${r},${g},${b}`;
+  }
+
+  drawNet(glowState);
+
+  // Resize
+  window.addEventListener('resize', () => {
+    const newW = canvas.clientWidth;
+    canvas.width = newW * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    // Recompute positions
+    const xS = (newW - pad * 2) / (layers.length - 1);
+    layerPositions.forEach((lp, i) => { lp.x = pad + i * xS; });
+    drawNet(glowState);
+  });
+
+  document.getElementById('btnForward').addEventListener('click', () => {
+    if (animating) return;
+    animating = true;
+    glowState = layers.map(() => 0);
+    let li = 0;
+    const step = () => {
+      if (li >= layers.length) {
+        // Show Q values
+        const qHold = (Math.random() * 2 - 1).toFixed(2);
+        const qBuy  = (Math.random() * 2 - 1).toFixed(2);
+        const qSell = (Math.random() * 2 - 1).toFixed(2);
+        const vals = [parseFloat(qHold), parseFloat(qBuy), parseFloat(qSell)];
+        const maxIdx = vals.indexOf(Math.max(...vals));
+        const bestName = ['Hold', 'Buy', 'Sell'][maxIdx];
+        const sign = v => (v >= 0 ? '+' : '') + v;
+        document.getElementById('qvalDisplay').innerHTML =
+          `<span class="best">Best action: ${bestName}</span> &nbsp;|&nbsp; ` +
+          `<span class="hold">Q(Hold)=${sign(qHold)}</span> &nbsp;|&nbsp; ` +
+          `<span class="buy">Q(Buy)=${sign(qBuy)}</span> &nbsp;|&nbsp; ` +
+          `<span class="sell">Q(Sell)=${sign(qSell)}</span>`;
+        animating = false;
+        return;
+      }
+      // Animate this layer lighting up
+      let t = 0;
+      const fadeDuration = 200;
+      const fadeIn = () => {
+        t += 16;
+        glowState[li] = Math.min(t / fadeDuration, 1);
+        drawNet(glowState);
+        if (t < fadeDuration) requestAnimationFrame(fadeIn);
+        else {
+          li++;
+          setTimeout(step, 80);
+        }
+      };
+      requestAnimationFrame(fadeIn);
+    };
+    step();
+  });
+})();
+
+// ─── Replay Buffer Canvas ───────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('replayCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth || 760;
+  const H = 160;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const CAPACITY = 1000;
+  const VISIBLE = 20;
+  let bufferCount = 20;
+  let writeHead = 20 % CAPACITY;
+
+  // Internal buffer storing age and reward sign for each slot
+  // age: 0 = newest, higher = older
+  // We track VISIBLE slots with their data
+  let slots = [];
+  function initSlots() {
+    slots = [];
+    for (let i = 0; i < VISIBLE; i++) {
+      slots.push({
+        age: VISIBLE - 1 - i,  // slot 0 is oldest, slot VISIBLE-1 is newest
+        reward: Math.random() > 0.5 ? 1 : -1
+      });
+    }
+  }
+  initSlots();
+
+  let batchIndices = [];
+  function resampleBatch() {
+    const available = Math.min(bufferCount, VISIBLE);
+    const set = new Set();
+    while (set.size < Math.min(4, available)) {
+      set.add(Math.floor(Math.random() * available));
+    }
+    batchIndices = Array.from(set);
+  }
+  resampleBatch();
+
+  function drawReplay() {
+    ctx.clearRect(0, 0, W, H);
+    const cx = W / 2;
+    const cy = H / 2 + 5;
+    const radius = Math.min(W / 2 - 50, 55);
+    const slotSize = 13;
+    const n = VISIBLE;
+
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      const slot = slots[i];
+      const ageFrac = slot.age / (VISIBLE - 1); // 0=newest, 1=oldest
+
+      let fillColor;
+      if (batchIndices.includes(i)) {
+        fillColor = '#f0d040';
+      } else {
+        // Fade from bright (newest) to grey (oldest)
+        const brightness = 1 - ageFrac * 0.85;
+        if (slot.reward > 0) {
+          fillColor = `rgba(76,175,80,${brightness})`;
+        } else {
+          fillColor = `rgba(224,112,112,${brightness})`;
+        }
+      }
+
+      ctx.beginPath();
+      ctx.rect(x - slotSize / 2, y - slotSize / 2, slotSize, slotSize);
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+      if (batchIndices.includes(i)) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // Center label
+    ctx.fillStyle = '#333';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('replay', cx, cy - 3);
+    ctx.fillText('buffer', cx, cy + 10);
+
+    // Legend
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f0d040';
+    ctx.fillRect(10, H - 26, 10, 10);
+    ctx.fillStyle = '#555';
+    ctx.fillText('batch sample', 24, H - 18);
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(110, H - 26, 10, 10);
+    ctx.fillStyle = '#555';
+    ctx.fillText('+reward', 124, H - 18);
+    ctx.fillStyle = '#e07070';
+    ctx.fillRect(180, H - 26, 10, 10);
+    ctx.fillStyle = '#555';
+    ctx.fillText('−reward', 194, H - 18);
+  }
+
+  drawReplay();
+
+  document.getElementById('btnAddTransition').addEventListener('click', () => {
+    // Rotate: push newest, age all others
+    slots.forEach(s => s.age++);
+    // Replace the oldest slot with a new entry
+    let oldestIdx = 0;
+    let maxAge = -1;
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i].age > maxAge) { maxAge = slots[i].age; oldestIdx = i; }
+    }
+    slots[oldestIdx] = { age: 0, reward: Math.random() > 0.5 ? 1 : -1 };
+    bufferCount = Math.min(bufferCount + 1, CAPACITY);
+    resampleBatch();
+    drawReplay();
+    document.getElementById('replayLabel').textContent =
+      `Buffer: ${Math.min(bufferCount, VISIBLE)} / 1000 \u00a0|\u00a0 Batch size: 4`;
+  });
+
+  window.addEventListener('resize', () => {
+    const newW = canvas.clientWidth;
+    canvas.width = newW * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    drawReplay();
+  });
+})();
+</script>
+</body>
+</html>

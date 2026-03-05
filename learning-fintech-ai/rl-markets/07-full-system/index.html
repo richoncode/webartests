@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07: The Full System — RL Markets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  /* Code tab system */
+  .tab-row { display: flex; gap: 0; margin-bottom: -1px; flex-wrap: wrap; }
+  .tab-btn { background: #111; border: 1px solid #1e1e1e; border-bottom: none; color: #555; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: 'SF Mono','Fira Code',monospace; }
+  .tab-btn:first-child { border-radius: 6px 0 0 0; }
+  .tab-btn.active { background: #050505; color: #ccc; border-color: #2a2a2a; }
+  .tab-btn:hover:not(.active) { color: #888; background: #141414; }
+  .code-pane { display: none; background: #050505; border: 1px solid #1e1e1e; border-radius: 0 6px 6px 6px; padding: 20px; overflow-x: auto; overflow-y: auto; max-height: 400px; }
+  .code-pane.active { display: block; }
+  pre { font-family: 'SF Mono','Fira Code','Fira Mono',monospace; font-size: 12px; line-height: 1.7; white-space: pre; color: #ccc; }
+  .kw  { color: #5b9bd5; }
+  .st  { color: #4caf50; }
+  .cm  { color: #555; font-style: italic; }
+  .nu  { color: #f0a040; }
+  .fn  { color: #b07adf; }
+  /* Install block */
+  .install-block { background: #0a150a; border: 1px solid #1a3a1a; border-radius: 8px; padding: 16px 20px; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #4caf50; margin: 12px 0; line-height: 2.0; overflow-x: auto; }
+  .install-block .cm { color: #2a4a2a; font-style: italic; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to RL Markets</a>
+<p class="lesson-num">Lesson 07</p>
+<h1>The Full System</h1>
+<p class="subtitle">All pieces assembled. A complete DQN trading agent — environment, network, replay buffer, training loop — with Python code ready to run.</p>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>Architecture overview</h2>
+  <div class="vis-label">End-to-end data flow through the DQN trading system</div>
+  <canvas id="archCanvas" style="width:100%;height:200px"></canvas>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>Simulated training progress</h2>
+  <p>Typical DQN training on 2 years of hourly BTC data (&asymp;17,500 bars, 175 episodes of 100 bars). The reward improves as the agent discovers that momentum + trend-following beats random action.</p>
+
+  <div class="vis-label">Training curves — episode reward (green) and &epsilon; decay (purple dashed)</div>
+  <canvas id="trainingCanvas" style="width:100%;height:220px"></canvas>
+  <div class="vis-label" style="margin-top:12px">Final performance metrics</div>
+  <canvas id="metricsCanvas" style="width:100%;height:100px"></canvas>
+
+  <div class="callout green">
+    <strong>Training time.</strong> On a laptop CPU, 200 episodes &times; 100 steps &times; one DQN forward/backward pass takes about 5&ndash;15 minutes. With GPU acceleration and 252-step episodes it trains in 1&ndash;3 minutes. The bottleneck is usually data loading, not network computation.
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <h2>Code</h2>
+
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="env">environment.py</button>
+    <button class="tab-btn" data-tab="agent">agent.py</button>
+    <button class="tab-btn" data-tab="train">train.py</button>
+    <button class="tab-btn" data-tab="reqs">requirements.txt</button>
+  </div>
+
+  <div class="code-pane active" id="tab-env">
+    <pre id="code-env"></pre>
+  </div>
+  <div class="code-pane" id="tab-agent">
+    <pre id="code-agent"></pre>
+  </div>
+  <div class="code-pane" id="tab-train">
+    <pre id="code-train"></pre>
+  </div>
+  <div class="code-pane" id="tab-reqs">
+    <pre id="code-reqs"></pre>
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <h2>Getting started</h2>
+
+  <div class="install-block" id="installBlock"></div>
+
+  <div class="callout">
+    <strong>Expected results.</strong> A well-trained DQN on BTC data typically achieves positive reward in 60&ndash;70% of evaluation episodes after 300&ndash;500 training episodes. Performance varies significantly with market conditions &mdash; always backtest on held-out data.
+  </div>
+
+  <div class="callout orange">
+    <strong>Hyperparameter sensitivity.</strong> DQN is notoriously sensitive to hyperparameters. Start with the defaults in train.py. If training diverges (reward collapses), try: lower lr (1e-4), larger replay buffer (100k), or stronger gradient clipping.
+  </div>
+
+  <div class="callout purple">
+    <strong>Next steps.</strong> Try Double DQN (already implemented), Dueling DQN (separate advantage + value heads), Prioritised Experience Replay (sample important transitions more), or PPO (a policy gradient method that often outperforms DQN on continuous action spaces).
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../06-environment/">&larr; Trading Environment</a>
+  <a href="../">&larr; Back to RL Markets hub</a>
+</div>
+</div>
+
+<script>
+// ─── Architecture Canvas ─────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('archCanvas');
+  const dpr = window.devicePixelRatio || 1;
+
+  function draw() {
+    const W = canvas.clientWidth || 760;
+    const H = 200;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    // Top row boxes
+    const topBoxes = [
+      { label: 'Market\nData',      color: '#5b9bd5' },
+      { label: 'TradingEnv',        color: '#5b9bd5' },
+      { label: 'Observation\n(10d)', color: '#b07adf' },
+      { label: 'DQN\n(256→128→3)', color: '#b07adf' },
+      { label: 'Action\n(0/1/2)',   color: '#f0a040' },
+      { label: 'Reward',            color: '#4caf50' }
+    ];
+
+    const boxH = 44;
+    const boxY = 30;
+    const padLR = 18;
+    const totalBoxW = W - padLR * 2;
+    const boxW = Math.min(Math.floor(totalBoxW / topBoxes.length) - 8, 108);
+    const gap = (totalBoxW - boxW * topBoxes.length) / (topBoxes.length - 1);
+
+    function boxX(i) { return padLR + i * (boxW + gap); }
+    function boxCX(i) { return boxX(i) + boxW / 2; }
+
+    // Draw arrows between top boxes
+    for (let i = 0; i < topBoxes.length - 1; i++) {
+      const x1 = boxX(i) + boxW;
+      const x2 = boxX(i + 1);
+      const y = boxY + boxH / 2;
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x1 + 2, y);
+      ctx.lineTo(x2 - 6, y);
+      ctx.stroke();
+      // Arrowhead
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.moveTo(x2 - 2, y);
+      ctx.lineTo(x2 - 8, y - 4);
+      ctx.lineTo(x2 - 8, y + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Draw top boxes
+    topBoxes.forEach((box, i) => {
+      const x = boxX(i);
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = box.color + '66';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(x, boxY, boxW, boxH, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = box.color;
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const lines = box.label.split('\n');
+      const lineH = 14;
+      const startY = boxY + boxH / 2 - (lines.length - 1) * lineH / 2;
+      lines.forEach((line, li) => {
+        ctx.fillText(line, x + boxW / 2, startY + li * lineH + 4);
+      });
+    });
+
+    // DQN box index = 3
+    const dqnIdx = 3;
+    const dqnCX = boxCX(dqnIdx);
+    const dqnBY = boxY + boxH; // bottom of DQN box
+
+    // Sub boxes below DQN
+    const subBoxes = [
+      { label: 'Replay Buffer\n(50k transitions)', color: '#f0a040' },
+      { label: 'Target Net\n(sync every 1k)', color: '#e07070' }
+    ];
+    const subBoxW = Math.min(140, boxW * 1.2);
+    const subBoxH = 40;
+    const subY = boxY + boxH + 38;
+    const subSpacing = subBoxW + 18;
+    const subStartX = dqnCX - subSpacing / 2 - subBoxW / 2;
+
+    subBoxes.forEach((sb, i) => {
+      const sx = subStartX + i * subSpacing;
+      const scx = sx + subBoxW / 2;
+
+      // Dotted connector to DQN
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(scx, subY);
+      ctx.lineTo(dqnCX + (i === 0 ? -10 : 10), dqnBY + 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Box
+      ctx.fillStyle = '#0d0d0d';
+      ctx.strokeStyle = sb.color + '55';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(sx, subY, subBoxW, subBoxH, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = sb.color;
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const lines = sb.label.split('\n');
+      const lineH = 14;
+      const startY2 = subY + subBoxH / 2 - (lines.length - 1) * lineH / 2;
+      lines.forEach((line, li) => {
+        ctx.fillText(line, scx, startY2 + li * lineH + 4);
+      });
+    });
+  }
+
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ─── Training Canvas ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('trainingCanvas');
+  const dpr = window.devicePixelRatio || 1;
+
+  // Generate 200 synthetic episodes
+  const N = 200;
+  const rewards = [];
+  const epsilons = [];
+  for (let ep = 0; ep < N; ep++) {
+    const target = -5 + 20 * (1 - Math.exp(-ep / 60)) +
+                   3 * Math.sin(ep / 15);
+    const noise = (Math.random() - 0.5) * 12;
+    rewards.push(target + noise);
+    epsilons.push(0.05 + 0.95 * Math.exp(-ep / 60));
+  }
+
+  // 7-episode moving average
+  const smoothed = rewards.map((_, i) => {
+    const win = rewards.slice(Math.max(0, i - 3), i + 4);
+    return win.reduce((a, b) => a + b, 0) / win.length;
+  });
+
+  function draw() {
+    const W = canvas.clientWidth || 760;
+    const H = 220;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    const padL = 50, padR = 46, padT = 20, padB = 36;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    const minR = -10, maxR = 20;
+    function toX(ep) { return padL + (ep / (N - 1)) * plotW; }
+    function toYR(r) { return padT + (1 - (r - minR) / (maxR - minR)) * plotH; }
+    function toYE(e) { return padT + (1 - e) * plotH; }
+
+    // Gridlines
+    [-10, -5, 0, 5, 10, 15, 20].forEach(v => {
+      const y = toYR(v);
+      ctx.strokeStyle = '#161616';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+    });
+
+    // Axes
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + plotH);
+    ctx.lineTo(padL + plotW, padT + plotH);
+    ctx.stroke();
+    // Right axis
+    ctx.beginPath();
+    ctx.moveTo(padL + plotW, padT);
+    ctx.lineTo(padL + plotW, padT + plotH);
+    ctx.stroke();
+
+    // Left Y labels (reward)
+    [-10, 0, 10, 20].forEach(v => {
+      const y = toYR(v);
+      ctx.fillStyle = '#444';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(v, padL - 6, y + 4);
+    });
+
+    // Right Y labels (epsilon)
+    [0, 0.5, 1.0].forEach(v => {
+      const y = toYE(v);
+      ctx.fillStyle = '#664466';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(v.toFixed(1), padL + plotW + 6, y + 4);
+    });
+
+    // X labels
+    [0, 50, 100, 150, 200].forEach(ep => {
+      const x = toX(Math.min(ep, N - 1));
+      ctx.fillStyle = '#444';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ep, x, padT + plotH + 18);
+    });
+
+    // Axis labels
+    ctx.fillStyle = '#555';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Training episode', padL + plotW / 2, H - 2);
+
+    ctx.save();
+    ctx.translate(12, padT + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#4caf5088';
+    ctx.fillText('Episode reward', 0, 0);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(W - 10, padT + plotH / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillStyle = '#b07adf88';
+    ctx.fillText('ε', 0, 0);
+    ctx.restore();
+
+    // Raw reward (faint green)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(76,175,80,0.2)';
+    ctx.lineWidth = 1;
+    rewards.forEach((r, i) => {
+      const x = toX(i), y = toYR(r);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Epsilon (purple dashed)
+    ctx.beginPath();
+    ctx.strokeStyle = '#b07adf88';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    epsilons.forEach((e, i) => {
+      const x = toX(i), y = toYE(e);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Smoothed reward (bright green)
+    ctx.beginPath();
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 2;
+    smoothed.forEach((r, i) => {
+      const x = toX(i), y = toYR(r);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Legend
+    const legX = padL + 12;
+    const legY = padT + 8;
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(legX, legY); ctx.lineTo(legX + 22, legY); ctx.stroke();
+    ctx.fillStyle = '#4caf50';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('reward (smoothed)', legX + 26, legY + 4);
+
+    ctx.strokeStyle = 'rgba(76,175,80,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(legX, legY + 16); ctx.lineTo(legX + 22, legY + 16); ctx.stroke();
+    ctx.fillStyle = '#555';
+    ctx.fillText('reward (raw)', legX + 26, legY + 20);
+
+    ctx.strokeStyle = '#b07adf88';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(legX, legY + 32); ctx.lineTo(legX + 22, legY + 32); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#b07adf';
+    ctx.fillText('ε (right axis)', legX + 26, legY + 36);
+  }
+
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ─── Metrics Canvas ──────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('metricsCanvas');
+  const dpr = window.devicePixelRatio || 1;
+
+  const metrics = [
+    { label: 'Final Reward', value: '+18.3', color: '#4caf50' },
+    { label: 'Win Rate',     value: '58%',   color: '#5b9bd5' },
+    { label: 'Sharpe',       value: '1.42',  color: '#b07adf' },
+    { label: 'Max DD',       value: '−12%',  color: '#e07070' }
+  ];
+
+  function draw() {
+    const W = canvas.clientWidth || 760;
+    const H = 100;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    const boxW = (W - 24) / 4;
+    metrics.forEach((m, i) => {
+      const x = 6 + i * (boxW + 4);
+      const y = 8;
+      const bH = H - 16;
+
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = m.color + '44';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, boxW - 4, bH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#444';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(m.label, x + (boxW - 4) / 2, y + 22);
+
+      ctx.fillStyle = m.color;
+      ctx.font = '700 22px -apple-system, sans-serif';
+      ctx.fillText(m.value, x + (boxW - 4) / 2, y + 56);
+    });
+  }
+
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ─── Code Tab System ─────────────────────────────────────────────────────────
+(function() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.code-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+})();
+
+// ─── Python Syntax Highlighter ───────────────────────────────────────────────
+function highlight(code) {
+  const keywords = ['def','class','import','from','return','if','elif','else','for',
+                    'while','in','not','and','or','True','False','None','self',
+                    'with','as','pass','lambda','yield','raise','try','except',
+                    'finally','del','global','nonlocal','assert','break','continue'];
+  // Escape HTML first
+  let h = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Comments
+  h = h.replace(/(#[^\n]*)/g, '<span class="cm">$1</span>');
+  // Strings (avoid re-processing things inside cm spans)
+  h = h.replace(/('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g, (m) => {
+    // Only highlight if not inside a comment span (simple heuristic: check context)
+    return `<span class="st">${m}</span>`;
+  });
+  // Numbers
+  h = h.replace(/\b(\d+\.?\d*(?:[eE][+-]?\d+)?|0x[0-9a-fA-F]+)\b/g, '<span class="nu">$1</span>');
+  // Function names after def
+  h = h.replace(/\b(def)\s+(\w+)/g, '<span class="kw">def</span> <span class="fn">$2</span>');
+  // Keywords (avoid re-matching def)
+  const kwRe = new RegExp('\\b(' + keywords.filter(k => k !== 'def').join('|') + ')\\b', 'g');
+  h = h.replace(kwRe, '<span class="kw">$1</span>');
+
+  return h;
+}
+
+// ─── Code Content ────────────────────────────────────────────────────────────
+const ENV_CODE = `# environment.py — Gym-compatible trading environment
+import numpy as np
+import gymnasium as gym
+from gymnasium import spaces
+
+class TradingEnv(gym.Env):
+    """Single-asset long/short trading environment."""
+
+    def __init__(self, prices, window=20, ep_len=252,
+                 tc=0.001, dd_lambda=0.5):
+        super().__init__()
+        self.prices    = np.array(prices, dtype=np.float32)
+        self.window    = window
+        self.ep_len    = ep_len
+        self.tc        = tc          # transaction cost
+        self.dd_lambda = dd_lambda   # drawdown penalty weight
+
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32
+        )
+        self.action_space = spaces.Discrete(3)  # 0=Hold, 1=Buy, 2=Sell
+        self.reset()
+
+    def reset(self, seed=None):
+        # Random starting point (leave room for window + episode)
+        max_start = len(self.prices) - self.ep_len - self.window
+        self.idx   = self.window + np.random.randint(0, max(1, max_start))
+        self.end   = self.idx + self.ep_len
+        self.pos   = 0       # -1 short, 0 flat, 1 long
+        self.entry = self.prices[self.idx]
+        self.portfolio = 1.0
+        self.peak  = 1.0
+        self.step_count = 0
+        self.since_trade = 0
+        return self._obs(), {}
+
+    def step(self, action):
+        # --- execute action ---
+        old_pos  = self.pos
+        if action == 1:    self.pos =  1   # Buy / go long
+        elif action == 2:  self.pos = -1   # Sell / go short
+        # action == 0: hold current position
+        tc_cost  = abs(self.pos - old_pos) * self.tc / 2
+
+        # --- price step ---
+        p0 = self.prices[self.idx]
+        self.idx += 1
+        p1 = self.prices[self.idx]
+        pret = (p1 - p0) / p0
+
+        # --- portfolio update ---
+        pos_ret = self.pos * pret - tc_cost
+        self.portfolio *= (1 + pos_ret)
+        self.peak = max(self.peak, self.portfolio)
+        drawdown  = (self.peak - self.portfolio) / self.peak
+
+        # --- reward ---
+        reward = pos_ret - self.dd_lambda * drawdown
+
+        # --- tracking ---
+        self.step_count += 1
+        self.since_trade = 0 if self.pos != old_pos else self.since_trade + 1
+        done = (self.idx >= self.end) or (self.portfolio < 0.5)
+        return self._obs(), float(reward), done, False, {}
+
+    def _obs(self):
+        rets = np.diff(self.prices[self.idx-self.window:self.idx+1]) / \\
+               self.prices[self.idx-self.window:self.idx]
+        vol10 = rets[-10:].std() if len(rets) >= 10 else 0.01
+        rsi   = self._rsi(rets)
+        upnl  = (self.prices[self.idx] - self.entry) / self.entry * self.pos
+        dd    = (self.peak - self.portfolio) / self.peak
+        return np.array([
+            rets[-1],                              # 1-bar return
+            rets[-5:].mean() if len(rets)>=5 else 0,  # 5-bar mean
+            rets.mean(),                           # 20-bar mean
+            vol10,                                 # 10-bar vol
+            rsi,                                   # RSI [-1,1]
+            float(self.pos),                       # position
+            upnl,                                  # unrealised P&L
+            1 - self.step_count / self.ep_len,     # time remaining
+            -dd,                                   # drawdown (negative)
+            min(self.since_trade / 50, 1.0),       # bars since trade
+        ], dtype=np.float32)
+
+    def _rsi(self, rets, period=14):
+        if len(rets) < period: return 0.0
+        r = rets[-period:]
+        gains  = r[r > 0].mean() if (r > 0).any() else 1e-9
+        losses = -r[r < 0].mean() if (r < 0).any() else 1e-9
+        rs = gains / losses
+        return (rs / (1 + rs)) * 2 - 1  # normalise to [-1, 1]`;
+
+const AGENT_CODE = `# agent.py — DQN agent with experience replay and target network
+import torch
+import torch.nn as nn
+import numpy as np
+from collections import deque
+import random
+
+class QNetwork(nn.Module):
+    """Deep Q-network: state -> Q-values for each action."""
+    def __init__(self, obs_dim=10, n_actions=3, hidden=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden // 2), nn.ReLU(),
+            nn.Linear(hidden // 2, n_actions),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+class ReplayBuffer:
+    def __init__(self, capacity=50_000):
+        self.buf = deque(maxlen=capacity)
+
+    def push(self, s, a, r, s2, done):
+        self.buf.append((s, a, r, s2, done))
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buf, batch_size)
+        s, a, r, s2, d = zip(*batch)
+        return (torch.FloatTensor(np.array(s)),
+                torch.LongTensor(a),
+                torch.FloatTensor(r),
+                torch.FloatTensor(np.array(s2)),
+                torch.FloatTensor(d))
+
+    def __len__(self): return len(self.buf)
+
+class DQNAgent:
+    def __init__(self, obs_dim=10, n_actions=3, lr=3e-4, gamma=0.99,
+                 eps_start=1.0, eps_end=0.05, eps_decay=2000,
+                 batch_size=64, target_update=500, tau=0.005):
+        self.n_actions   = n_actions
+        self.gamma       = gamma
+        self.batch_size  = batch_size
+        self.tau         = tau
+        self.steps_done  = 0
+        self.eps_start   = eps_start
+        self.eps_end     = eps_end
+        self.eps_decay   = eps_decay
+
+        self.q_net  = QNetwork(obs_dim, n_actions)
+        self.q_tgt  = QNetwork(obs_dim, n_actions)
+        self.q_tgt.load_state_dict(self.q_net.state_dict())
+        self.q_tgt.eval()
+
+        self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=lr)
+        self.buffer    = ReplayBuffer()
+
+    @property
+    def epsilon(self):
+        return self.eps_end + (self.eps_start - self.eps_end) * \\
+               np.exp(-self.steps_done / self.eps_decay)
+
+    def act(self, obs, greedy=False):
+        eps = 0.0 if greedy else self.epsilon
+        if random.random() < eps:
+            return random.randrange(self.n_actions)
+        with torch.no_grad():
+            q = self.q_net(torch.FloatTensor(obs).unsqueeze(0))
+            return q.argmax().item()
+
+    def push(self, s, a, r, s2, done):
+        self.buffer.push(s, a, r, s2, done)
+
+    def learn(self):
+        if len(self.buffer) < self.batch_size:
+            return None
+        s, a, r, s2, d = self.buffer.sample(self.batch_size)
+
+        with torch.no_grad():
+            # Double DQN: online selects action, target evaluates it
+            next_actions = self.q_net(s2).argmax(1)
+            q_next = self.q_tgt(s2).gather(1, next_actions.unsqueeze(1)).squeeze()
+            q_target = r + self.gamma * q_next * (1 - d)
+
+        q_pred = self.q_net(s).gather(1, a.unsqueeze(1)).squeeze()
+        loss = nn.MSELoss()(q_pred, q_target)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 1.0)
+        self.optimizer.step()
+
+        # Soft target update
+        for p, pt in zip(self.q_net.parameters(), self.q_tgt.parameters()):
+            pt.data.copy_(self.tau * p.data + (1 - self.tau) * pt.data)
+
+        self.steps_done += 1
+        return loss.item()
+
+    def save(self, path):
+        torch.save({'q_net': self.q_net.state_dict(),
+                    'steps': self.steps_done}, path)
+
+    def load(self, path):
+        ckpt = torch.load(path)
+        self.q_net.load_state_dict(ckpt['q_net'])
+        self.q_tgt.load_state_dict(ckpt['q_net'])
+        self.steps_done = ckpt['steps']`;
+
+const TRAIN_CODE = `# train.py — training loop for the DQN trading agent
+import argparse, warnings
+import numpy as np
+import yfinance as yf
+from tqdm import tqdm
+from environment import TradingEnv
+from agent import DQNAgent
+
+warnings.filterwarnings('ignore')
+
+def load_prices(ticker='BTC-USD', period='730d', interval='1d'):
+    raw = yf.download(ticker, period=period, interval=interval, progress=False)
+    if hasattr(raw.columns, 'levels'):
+        raw.columns = raw.columns.droplevel(1)
+    prices = raw['Close'].dropna().values
+    print(f'Loaded {len(prices)} bars for {ticker}')
+    return prices
+
+def evaluate(env, agent, n_episodes=10):
+    total_rewards = []
+    for _ in range(n_episodes):
+        obs, _ = env.reset()
+        done, ep_r = False, 0.0
+        while not done:
+            a = agent.act(obs, greedy=True)
+            obs, r, done, _, _ = env.step(a)
+            ep_r += r
+        total_rewards.append(ep_r)
+    return np.mean(total_rewards)
+
+def train(ticker='BTC-USD', n_episodes=500, eval_every=50):
+    prices = load_prices(ticker)
+    env    = TradingEnv(prices, ep_len=100, tc=0.001, dd_lambda=0.5)
+    agent  = DQNAgent(obs_dim=10, n_actions=3, lr=3e-4, gamma=0.99,
+                      eps_start=1.0, eps_end=0.05, eps_decay=3000,
+                      batch_size=64)
+
+    best_eval = -np.inf
+    ep_rewards, ep_losses = [], []
+
+    for ep in tqdm(range(1, n_episodes + 1), desc='Training'):
+        obs, _ = env.reset()
+        done, ep_r, ep_l = False, 0.0, []
+
+        while not done:
+            a  = agent.act(obs)
+            o2, r, done, _, _ = env.step(a)
+            agent.push(obs, a, r, o2, float(done))
+            loss = agent.learn()
+            if loss is not None: ep_l.append(loss)
+            obs  = o2
+            ep_r += r
+
+        ep_rewards.append(ep_r)
+        ep_losses.append(np.mean(ep_l) if ep_l else 0.0)
+
+        if ep % eval_every == 0:
+            eval_r = evaluate(env, agent)
+            print(f'Episode {ep:4d} | train_r={ep_r:+.2f} '
+                  f'| eval_r={eval_r:+.2f} | epsilon={agent.epsilon:.3f}')
+            if eval_r > best_eval:
+                best_eval = eval_r
+                agent.save('best_dqn.pt')
+                print(f'  -> New best saved ({eval_r:+.2f})')
+
+    return ep_rewards, ep_losses
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ticker',     default='BTC-USD')
+    parser.add_argument('--episodes',   type=int, default=500)
+    parser.add_argument('--eval-every', type=int, default=50)
+    args = parser.parse_args()
+    train(args.ticker, args.episodes, args.eval_every)`;
+
+const REQS_CODE = `torch>=2.0.0
+gymnasium>=0.29.0
+yfinance>=0.2.40
+numpy>=1.24.0
+pandas>=2.0.0
+tqdm>=4.66.0
+matplotlib>=3.7.0`;
+
+document.getElementById('code-env').innerHTML   = highlight(ENV_CODE);
+document.getElementById('code-agent').innerHTML = highlight(AGENT_CODE);
+document.getElementById('code-train').innerHTML = highlight(TRAIN_CODE);
+document.getElementById('code-reqs').innerHTML  = highlight(REQS_CODE);
+
+// ─── Install Block ───────────────────────────────────────────────────────────
+(function() {
+  const lines = [
+    { text: '# Clone and navigate',                           type: 'cm' },
+    { text: 'cd learning-fintech-ai/rl-markets/code',         type: 'cmd' },
+    { text: '',                                                type: 'blank' },
+    { text: '# Install dependencies (Python 3.10+)',          type: 'cm' },
+    { text: 'pip install -r requirements.txt',                type: 'cmd' },
+    { text: '',                                                type: 'blank' },
+    { text: '# Train on BTC daily data',                      type: 'cm' },
+    { text: 'python train.py --ticker BTC-USD --episodes 500',type: 'cmd' },
+    { text: '',                                                type: 'blank' },
+    { text: '# Load and evaluate a saved agent',              type: 'cm' },
+    { text: 'python -c "',                                     type: 'cmd' },
+    { text: 'from environment import TradingEnv',             type: 'code' },
+    { text: 'from agent import DQNAgent',                     type: 'code' },
+    { text: 'import yfinance as yf',                          type: 'code' },
+    { text: "prices = yf.download('BTC-USD', period='60d', interval='1d')['Close'].values", type: 'code' },
+    { text: 'env = TradingEnv(prices, ep_len=50)',            type: 'code' },
+    { text: 'agent = DQNAgent()',                             type: 'code' },
+    { text: "agent.load('best_dqn.pt')",                      type: 'code' },
+    { text: 'obs, _ = env.reset()',                           type: 'code' },
+    { text: 'done, total = False, 0',                         type: 'code' },
+    { text: 'while not done:',                                type: 'code' },
+    { text: '    a = agent.act(obs, greedy=True)',            type: 'code' },
+    { text: '    obs, r, done, _, _ = env.step(a)',           type: 'code' },
+    { text: '    total += r',                                 type: 'code' },
+    { text: "print(f'Evaluation episode reward: {total:+.2f}')", type: 'code' },
+    { text: '"',                                               type: 'cmd' },
+  ];
+
+  const el = document.getElementById('installBlock');
+  let html = '';
+  lines.forEach(l => {
+    if (l.type === 'blank') { html += '<br>'; return; }
+    if (l.type === 'cm') {
+      html += `<span class="cm">${l.text}</span><br>`;
+    } else {
+      html += `${l.text}<br>`;
+    }
+  });
+  el.innerHTML = html;
+})();
+</script>
+</body>
+</html>

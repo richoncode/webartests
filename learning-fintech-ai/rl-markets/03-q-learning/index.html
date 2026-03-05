@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03: Q-Learning — RL Markets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .status-bar { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #666; background: #111; border: 1px solid #1e1e1e; border-radius: 6px; padding: 8px 12px; margin: 8px 0; line-height: 1.9; }
+  .status-bar span { color: #ccc; }
+  .status-bar .pos { color: #4caf50; }
+  .status-bar .neg { color: #e07070; }
+  .status-bar .hi { color: #5b9bd5; }
+  .status-bar .pur { color: #b07adf; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to RL Markets</a>
+<p class="lesson-num">Lesson 03</p>
+<h1>Q-Learning</h1>
+<p class="subtitle">Turn the Bellman equation into an algorithm. Q-learning iteratively improves Q-value estimates using experience — no model of the environment required.</p>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>Model-free learning</h2>
+  <p>We don't know T(s'|s,a) — the transition probabilities. But we can sample (s, a, r, s') tuples and use them to update Q estimates. This is model-free RL: learn directly from experience, without ever building a model of how the environment works.</p>
+
+  <div class="formula">
+Q(s,a) &larr; Q(s,a) + &alpha; &middot; &delta;<br>
+&delta; = R + &gamma; &middot; max<sub>a'</sub> Q(s',a') &minus; Q(s,a) &nbsp;&nbsp;&nbsp; &larr; TD error<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TD target&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;current estimate<br>
+&alpha; = learning rate (how much to shift Q toward the target)<br>
+&gamma; = discount (how much to value future rewards)
+  </div>
+
+  <div class="callout">
+    <strong>The TD error &delta; is the surprise</strong> — how much better or worse the outcome was than expected. Positive &delta; means 'this was better than I thought, do it more'. Negative &delta; means 'this was worse than expected, do it less'. The agent learns by repeatedly correcting its own predictions.
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>Interactive Q-table</h2>
+  <p>A simplified market with 5 price states and 3 actions. Each cell in the Q-table shows the estimated value of taking that action in that state. Watch the values update as the agent learns. Green cells mean 'good to do here', red cells mean 'avoid'.</p>
+
+  <div class="vis-label">Q-table: rows = price states, columns = actions (Buy / Hold / Sell)</div>
+  <canvas id="qtableCanvas" style="width:100%;height:240px"></canvas>
+
+  <div class="vis-label" style="margin-top:10px">Cumulative reward</div>
+  <canvas id="rewardCurve" style="width:100%;height:80px"></canvas>
+
+  <div class="status-bar" id="statusBar">
+    Step <span id="sStep">0</span> &nbsp;|&nbsp;
+    State: <span id="sState" class="hi">—</span> &nbsp;|&nbsp;
+    Action: <span id="sAction" class="hi">—</span> &nbsp;|&nbsp;
+    Reward: <span id="sReward">—</span> &nbsp;|&nbsp;
+    &delta; (TD): <span id="sTD">—</span> &nbsp;|&nbsp;
+    &epsilon;: <span id="sEps">—</span>
+  </div>
+
+  <div class="btn-row">
+    <button id="btnRun">&#9654; Run 100 steps</button>
+    <button id="btnStep">Step</button>
+    <button id="btnReset">Reset</button>
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <h2>&epsilon; decay and learning progress</h2>
+  <p>Early training is mostly exploration (high &epsilon;). As &epsilon; decays, the agent exploits its learned Q values more. The reward curve should trend upward as Q values improve — the agent moves from random actions toward informed decisions.</p>
+
+  <div class="vis-label">Exploration rate (&epsilon;, purple) and cumulative reward per episode (green) — after running steps</div>
+  <canvas id="epsCanvas" style="width:100%;height:180px"></canvas>
+
+  <div class="callout green">
+    <strong>Convergence guarantee.</strong> For finite MDPs with sufficient exploration and a decaying learning rate, Q-learning converges to Q* — the optimal Q-function. In practice, convergence is slow and we use neural networks to generalise.
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <h2>Why Q-tables break</h2>
+  <p>Our toy market has 5 &times; 3 = 15 Q-values. A real trading state might include: 20-bar return history, 5 indicators, current position, time in trade = 20 + 5 + 1 + 1 = 27 continuous dimensions. Even discretised to 10 bins each, that's 10<sup>27</sup> states — more than atoms in the universe.</p>
+
+  <div class="callout orange">
+    <strong>This is the curse of dimensionality.</strong> The Q-table is only practical for tiny toy problems. For real trading with continuous state spaces we need a function approximator — a neural network — that can generalise across unseen states. That is the DQN, coming next.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../02-rewards/">← Reward Design</a>
+  <a href="../04-dqn/">Next: Deep Q-Networks →</a>
+</div>
+</div>
+
+<script>
+// ─── Q-Learning environment ───────────────────────────────────────────────────
+const N_STATES = 5;
+const N_ACTIONS = 3; // 0=Buy, 1=Hold, 2=Sell
+const STATE_NAMES = ['V.Low', 'Low', 'Mid', 'High', 'V.High'];
+const STATE_COLORS = ['#e07070', '#c08888', '#888', '#88b088', '#4caf50'];
+const ACTION_NAMES = ['Buy', 'Hold', 'Sell'];
+const ACTION_COLORS = ['#4caf50', '#5b9bd5', '#e07070'];
+
+let Q = Array.from({ length: N_STATES }, () => new Array(N_ACTIONS).fill(0));
+let envState = { priceState: 2, position: 0 }; // position: 0=flat, 1=long, -1=short
+let alpha = 0.1, gamma = 0.95;
+let epsilon = 0.9;
+let stepCount = 0;
+let cumReward = 0;
+let rewardHistory = [];
+let episodeHistory = []; // { step, cumR, eps }
+let activeCell = null; // { s, a }
+let flashCell = null;
+let running = false;
+let runTimer = null;
+
+function envStep(action) {
+  const s = envState.priceState;
+  const prevPos = envState.position;
+  let tc = 0;
+
+  // Update position
+  if (action === 0) { // Buy
+    if (envState.position === 0) { envState.position = 1; tc = 0.01; }
+    else if (envState.position === -1) { envState.position = 0; tc = 0.01; }
+  } else if (action === 2) { // Sell
+    if (envState.position === 1) { envState.position = 0; tc = 0.01; }
+    else if (envState.position === 0) { envState.position = -1; tc = 0.01; }
+  }
+  // Hold: no change
+
+  // Price transition
+  let delta = 0;
+  const r = Math.random();
+  if (action === 0) { // Buy nudges up
+    delta = r < 0.60 ? 1 : r < 0.80 ? 0 : -1;
+  } else if (action === 2) { // Sell nudges down
+    delta = r < 0.60 ? -1 : r < 0.80 ? 0 : 1;
+  } else { // Hold: neutral
+    delta = r < 0.40 ? 0 : r < 0.70 ? 1 : -1;
+  }
+
+  const sNext = Math.max(0, Math.min(N_STATES - 1, s + delta));
+  const priceChange = sNext - s;
+  envState.priceState = sNext;
+
+  // Reward
+  let reward = 0;
+  if (envState.position === 1) reward = priceChange * 0.5;
+  else if (envState.position === -1) reward = -priceChange * 0.5;
+  reward -= tc;
+
+  return { s, a: action, r: reward, sNext };
+}
+
+function chooseAction(state) {
+  if (Math.random() < epsilon) {
+    return Math.floor(Math.random() * N_ACTIONS);
+  }
+  return Q[state].indexOf(Math.max(...Q[state]));
+}
+
+function doStep() {
+  const action = chooseAction(envState.priceState);
+  const { s, a, r, sNext } = envStep(action);
+
+  // Bellman update
+  const tdTarget = r + gamma * Math.max(...Q[sNext]);
+  const tdError = tdTarget - Q[s][a];
+  Q[s][a] += alpha * tdError;
+
+  epsilon = Math.max(0.05, epsilon - 0.001);
+  stepCount++;
+  cumReward += r;
+  rewardHistory.push(cumReward);
+
+  // Episode boundary every 50 steps
+  if (stepCount % 50 === 0) {
+    episodeHistory.push({ step: stepCount, cumR: cumReward, eps: epsilon });
+    cumReward = 0;
+    envState = { priceState: 2, position: 0 };
+  }
+
+  // Update status
+  activeCell = { s, a };
+  flashCell = { s, a, tdError };
+
+  const rewardStr = r >= 0 ? '+' + r.toFixed(2) : r.toFixed(2);
+  const tdStr = tdError >= 0 ? '+' + tdError.toFixed(3) : tdError.toFixed(3);
+  document.getElementById('sStep').textContent = stepCount;
+  document.getElementById('sState').textContent = STATE_NAMES[s];
+  document.getElementById('sAction').textContent = ACTION_NAMES[a];
+  const rEl = document.getElementById('sReward');
+  rEl.textContent = rewardStr;
+  rEl.className = r >= 0 ? 'pos' : 'neg';
+  const tdEl = document.getElementById('sTD');
+  tdEl.textContent = tdStr;
+  tdEl.className = tdError >= 0 ? 'pos' : 'neg';
+  document.getElementById('sEps').textContent = epsilon.toFixed(3);
+
+  drawQTable();
+  drawRewardCurve();
+  drawEpsCanvas();
+}
+
+// ─── Q-table drawing ──────────────────────────────────────────────────────────
+function drawQTable() {
+  const el = document.getElementById('qtableCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 240;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const labelW = 60;
+  const headerH = 28;
+  const cellW = (W - labelW) / N_ACTIONS;
+  const cellH = (H - headerH) / N_STATES;
+
+  // Find max abs Q for normalisation
+  let maxAbsQ = 0.01;
+  for (let s = 0; s < N_STATES; s++)
+    for (let a = 0; a < N_ACTIONS; a++)
+      maxAbsQ = Math.max(maxAbsQ, Math.abs(Q[s][a]));
+
+  // Column headers
+  for (let a = 0; a < N_ACTIONS; a++) {
+    const cx = labelW + a * cellW + cellW / 2;
+    ctx.fillStyle = ACTION_COLORS[a];
+    ctx.font = '700 12px -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ACTION_NAMES[a], cx, headerH / 2);
+  }
+
+  // Cells (states from top=4 to bottom=0)
+  for (let si = 0; si < N_STATES; si++) {
+    const s = N_STATES - 1 - si; // display top=high, bottom=low
+    const y = headerH + si * cellH;
+
+    // Row label
+    ctx.fillStyle = STATE_COLORS[s];
+    ctx.font = '700 11px -apple-system, sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(STATE_NAMES[s], labelW - 8, y + cellH / 2);
+
+    for (let a = 0; a < N_ACTIONS; a++) {
+      const x = labelW + a * cellW;
+      const q = Q[s][a];
+      const intensity = Math.min(1, Math.abs(q) / maxAbsQ);
+
+      // Background colour
+      let bgColor;
+      if (q > 0) {
+        const g = Math.round(80 * intensity);
+        bgColor = `rgb(${10}, ${g + 20}, ${10})`;
+      } else if (q < 0) {
+        const r = Math.round(80 * intensity);
+        bgColor = `rgb(${r + 20}, ${10}, ${10})`;
+      } else {
+        bgColor = '#111';
+      }
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+
+      // Active cell highlight
+      const isActive = activeCell && activeCell.s === s && activeCell.a === a;
+      if (isActive) {
+        ctx.strokeStyle = ACTION_COLORS[a];
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+      } else {
+        ctx.strokeStyle = '#1e1e1e';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH - 2);
+      }
+
+      // Q value text
+      ctx.fillStyle = isActive ? '#fff' : '#ccc';
+      ctx.font = `${isActive ? 700 : 400} 12px SF Mono, Fira Code, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(q.toFixed(2), x + cellW / 2, y + cellH / 2);
+
+      // Flash indicator on updated cell
+      if (flashCell && flashCell.s === s && flashCell.a === a) {
+        const fc = flashCell.tdError >= 0 ? '#4caf50' : '#e07070';
+        ctx.fillStyle = fc + '33';
+        ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+        ctx.fillStyle = fc;
+        ctx.font = '10px SF Mono, Fira Code, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        const sign = flashCell.tdError >= 0 ? '+' : '';
+        ctx.fillText(sign + flashCell.tdError.toFixed(2), x + cellW / 2, y + 3);
+        flashCell = null;
+      }
+    }
+  }
+}
+
+function drawRewardCurve() {
+  const el = document.getElementById('rewardCurve');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 80;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  if (rewardHistory.length < 2) return;
+  const data = rewardHistory;
+  const N = data.length;
+  const mn = Math.min(0, Math.min(...data));
+  const mx = Math.max(0, Math.max(...data));
+  const range = mx - mn || 1;
+  const pad = 6;
+
+  const xOf = (i) => (i / (N - 1)) * (W - pad * 2) + pad;
+  const yOf = (v) => H - pad - (v - mn) / range * (H - pad * 2);
+
+  // Zero line
+  ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(W, yOf(0)); ctx.stroke();
+
+  // Line
+  ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    i === 0 ? ctx.moveTo(xOf(i), yOf(data[i])) : ctx.lineTo(xOf(i), yOf(data[i]));
+  }
+  ctx.stroke();
+}
+
+function drawEpsCanvas() {
+  const el = document.getElementById('epsCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 180;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  if (rewardHistory.length < 2) {
+    ctx.fillStyle = '#333';
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Run steps to see learning progress', W / 2, H / 2);
+    return;
+  }
+
+  const N = rewardHistory.length;
+  const pad = 28;
+
+  // ε curve (purple) — left axis 0 to 1
+  const epsData = [];
+  const startEps = Math.min(0.9, 0.9 - 0.001 * 0); // always start at ~0.9
+  for (let i = 0; i < N; i++) {
+    epsData.push(Math.max(0.05, 0.9 - 0.001 * i));
+  }
+
+  const xOf = (i) => pad + (i / (N - 1)) * (W - pad * 2);
+  const yEps = (v) => pad + (1 - v) * (H - pad * 2);
+
+  // ε line
+  ctx.strokeStyle = '#b07adf'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    i === 0 ? ctx.moveTo(xOf(i), yEps(epsData[i])) : ctx.lineTo(xOf(i), yEps(epsData[i]));
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Reward curve (green) — right axis normalised
+  const data = rewardHistory;
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn || 1;
+  const yRew = (v) => pad + (1 - (v - mn) / range) * (H - pad * 2);
+
+  ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    i === 0 ? ctx.moveTo(xOf(i), yRew(data[i])) : ctx.lineTo(xOf(i), yRew(data[i]));
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#b07adf'; ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('ε (exploration rate)', pad + 4, pad + 4);
+
+  ctx.fillStyle = '#4caf50';
+  ctx.textAlign = 'right';
+  ctx.fillText('cumulative reward', W - pad - 4, pad + 4);
+
+  // Axis labels
+  ctx.fillStyle = '#333'; ctx.font = '10px SF Mono, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('1.0', 2, pad);
+  ctx.fillText('0', 2, H - pad);
+  ctx.fillText(N + ' steps', W / 2, H - 6);
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+document.getElementById('btnStep').addEventListener('click', () => {
+  if (running) return;
+  doStep();
+});
+
+document.getElementById('btnRun').addEventListener('click', () => {
+  if (running) return;
+  running = true;
+  let stepsLeft = 100;
+  runTimer = setInterval(() => {
+    doStep();
+    stepsLeft--;
+    if (stepsLeft <= 0) {
+      clearInterval(runTimer);
+      running = false;
+    }
+  }, 80);
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  if (runTimer) clearInterval(runTimer);
+  running = false;
+  Q = Array.from({ length: N_STATES }, () => new Array(N_ACTIONS).fill(0));
+  envState = { priceState: 2, position: 0 };
+  epsilon = 0.9;
+  stepCount = 0;
+  cumReward = 0;
+  rewardHistory = [];
+  episodeHistory = [];
+  activeCell = null;
+  flashCell = null;
+  document.getElementById('sStep').textContent = '0';
+  document.getElementById('sState').textContent = '—';
+  document.getElementById('sAction').textContent = '—';
+  document.getElementById('sReward').textContent = '—';
+  document.getElementById('sTD').textContent = '—';
+  document.getElementById('sEps').textContent = '—';
+  drawQTable();
+  drawRewardCurve();
+  drawEpsCanvas();
+});
+
+window.addEventListener('resize', () => {
+  drawQTable();
+  drawRewardCurve();
+  drawEpsCanvas();
+});
+
+// Init
+setTimeout(() => {
+  drawQTable();
+  drawRewardCurve();
+  drawEpsCanvas();
+}, 50);
+</script>
+</div>
+</body>
+</html>

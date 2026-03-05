@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02: Reward Design — RL Markets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .slider-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; font-size: 13px; color: #888; }
+  .slider-row label { width: 200px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #5b9bd5; }
+  .slider-row .val { width: 52px; text-align: right; font-family: 'SF Mono','Fira Code',monospace; color: #ccc; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back to RL Markets</a>
+<p class="lesson-num">Lesson 02</p>
+<h1>Reward Design</h1>
+<p class="subtitle">The reward function defines what the agent optimises. A poorly designed reward leads to unexpected — and often catastrophic — trading behaviour.</p>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>Why reward design is the hardest part</h2>
+  <p>Goodhart's Law applied to RL: when a measure becomes a target, it ceases to be a good measure. The agent will find any loophole in your reward function with surgical precision. It has no common sense — only the reward signal.</p>
+
+  <div class="callout red">
+    <strong>Reward hacking examples.</strong> Reward = total trades executed &rarr; agent churns the portfolio thousands of times per episode. Reward = avoid losses &rarr; agent never opens a position (0% return guaranteed). Reward = raw P&amp;L &rarr; agent takes on extreme leverage until a single crash wipes the account.
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>Three reward designs</h2>
+  <p>The choice of reward function is one of the most consequential design decisions in RL trading. Here are three common approaches, each with different trade-offs between simplicity, stability, and risk management.</p>
+
+  <div class="callout">
+    <strong>Raw P&amp;L.</strong> r(t) = (V(t) &minus; V(t&minus;1)) / V(t&minus;1). Simple and direct but rewards risk-taking: a 10&times; leveraged win is 10&times; as good as a prudent win, even if the risk of ruin is enormous.
+  </div>
+
+  <div class="callout green">
+    <strong>Sharpe-adjusted.</strong> Reward the agent proportionally to its risk-adjusted return. At each episode end, compute r_sharpe = mean(returns) / std(returns) &times; &radic;252. Encourages consistent profits over volatile windfalls.
+  </div>
+
+  <div class="callout orange">
+    <strong>Combined.</strong> r(t) = r_pnl(t) &minus; &lambda;<sub>dd</sub> &middot; dd(t) &minus; &lambda;<sub>tc</sub> &middot; |&Delta;pos(t)|. Combines per-step P&amp;L with a drawdown penalty and transaction cost penalty. &lambda; values are hyperparameters you tune.
+  </div>
+
+  <div class="formula">
+r_raw(t) &nbsp;&nbsp;&nbsp; = &Delta;V(t) / V(t-1) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; per-step return<br>
+r_sharpe &nbsp;&nbsp;&nbsp; = &mu;<sub>ret</sub> / &sigma;<sub>ret</sub> &times; &radic;N &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; episode Sharpe (annualised)<br>
+r_combined  = r_raw(t)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&minus; &lambda;<sub>dd</sub> &times; max_drawdown(t) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; penalise drawdown<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&minus; &lambda;<sub>tc</sub> &times; |position(t) &minus; position(t-1)| &nbsp;&nbsp;&nbsp; &larr; penalise churning
+  </div>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <h2>Interactive reward builder</h2>
+  <p>A random agent takes random Buy/Hold/Sell actions. Adjust the reward components to see how the cumulative reward signal changes. The agent learns from whatever signal you provide — make it count.</p>
+
+  <div class="vis-label">Price chart with agent actions (&#9650; buy, &#9660; sell, &bull; hold)</div>
+  <canvas id="priceCanvas" style="width:100%;height:160px"></canvas>
+
+  <div class="vis-label" style="margin-top:10px">Cumulative reward curve</div>
+  <canvas id="rewardCanvas" style="width:100%;height:100px"></canvas>
+
+  <div style="margin:16px 0">
+    <div class="slider-row">
+      <label>Transaction cost &lambda;<sub>tc</sub></label>
+      <input type="range" id="tcSlider" min="0" max="0.02" step="0.001" value="0.005">
+      <span class="val" id="tcVal">0.005</span>
+    </div>
+    <div class="slider-row">
+      <label>Drawdown penalty &lambda;<sub>dd</sub></label>
+      <input type="range" id="ddSlider" min="0" max="2" step="0.1" value="0.5">
+      <span class="val" id="ddVal">0.50</span>
+    </div>
+    <div class="slider-row">
+      <label>Sharpe bonus weight</label>
+      <input type="range" id="sharpeSlider" min="0" max="1" step="0.05" value="0">
+      <span class="val" id="sharpeVal">0.00</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button id="btnRegen">&#8634; New random agent</button>
+  </div>
+
+  <div class="callout">
+    <strong>The reward landscape shapes learning.</strong> With high transaction cost penalty, the agent learns to hold positions longer. With high drawdown penalty, it learns to exit quickly when losing. Tune these before training.
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <h2>Sparse vs dense rewards</h2>
+  <p>A sparse reward gives feedback only at the end of an episode (e.g., final P&amp;L). A dense reward gives a signal every step. Dense rewards are much easier to learn from but risk encoding your biases into every step.</p>
+
+  <div class="callout">
+    <strong>Our DQN uses dense rewards</strong> — a combined per-step signal. This is critical because a trading episode can be 252 bars (one trading year). Without per-step feedback, the agent cannot attribute a good or bad outcome to the individual decisions that caused it.
+  </div>
+</div>
+
+<div class="nav-row">
+  <a href="../01-mdp/">← MDP Foundations</a>
+  <a href="../03-q-learning/">Next: Q-Learning →</a>
+</div>
+</div>
+
+<script>
+// ─── Data generation ─────────────────────────────────────────────────────────
+function randn() {
+  const u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+let prices = [];
+let actions = []; // 0=hold, 1=buy, 2=sell
+let position = 0;
+
+function generateSeries() {
+  const N = 100;
+  prices = [100];
+  for (let i = 1; i < N; i++) {
+    const r = 0.0003 + 0.012 * randn();
+    prices.push(prices[i - 1] * (1 + r));
+  }
+
+  // Random agent: toggle position, 40% hold, 30% buy, 30% sell
+  // Avoid double-buy or double-sell
+  actions = [];
+  position = 0;
+  for (let i = 0; i < N; i++) {
+    const r = Math.random();
+    if (r < 0.40) {
+      actions.push(0); // hold
+    } else if (r < 0.70) {
+      // try buy
+      if (position < 1) { actions.push(1); position = 1; }
+      else { actions.push(0); }
+    } else {
+      // try sell/close
+      if (position > 0) { actions.push(2); position = 0; }
+      else { actions.push(0); }
+    }
+  }
+}
+
+function computeRewards() {
+  const tc = parseFloat(document.getElementById('tcSlider').value);
+  const dd = parseFloat(document.getElementById('ddSlider').value);
+  const sharpeW = parseFloat(document.getElementById('sharpeSlider').value);
+  const N = prices.length;
+  const rets = [];
+  let pos = 0;
+  let peak = prices[0];
+  const cumRewards = [];
+  let cumR = 0;
+  const stepReturns = [];
+
+  for (let i = 1; i < N; i++) {
+    const ret = (prices[i] - prices[i - 1]) / prices[i - 1];
+    const act = actions[i];
+    let cost = 0;
+
+    // Position update
+    const prevPos = pos;
+    if (act === 1 && pos < 1) { pos = 1; cost = tc; }
+    else if (act === 2 && pos > 0) { pos = 0; cost = tc; }
+
+    // Raw P&L reward
+    const rPnl = pos * ret;
+
+    // Track step returns for Sharpe
+    stepReturns.push(rPnl);
+
+    // Drawdown penalty
+    if (prices[i] > peak) peak = prices[i];
+    const drawdown = (peak - prices[i]) / peak;
+    const rDd = dd * drawdown;
+
+    // Combined reward
+    let r = rPnl - cost - rDd;
+    cumR += r;
+    cumRewards.push(cumR);
+    rets.push(ret);
+  }
+
+  // Sharpe bonus — apply as a scaled adjustment to cumulative
+  let sharpeFinal = 0;
+  if (stepReturns.length > 1) {
+    const mean = stepReturns.reduce((a, b) => a + b, 0) / stepReturns.length;
+    const std = Math.sqrt(stepReturns.reduce((a, b) => a + (b - mean) ** 2, 0) / stepReturns.length);
+    if (std > 0) sharpeFinal = (mean / std) * Math.sqrt(252) * sharpeW;
+  }
+
+  // Add Sharpe bonus uniformly spread across episodes
+  const sharpePerStep = sharpeFinal / cumRewards.length;
+  return cumRewards.map((v, i) => v + sharpePerStep * (i + 1));
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+function drawPrice() {
+  const el = document.getElementById('priceCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 160;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const N = prices.length;
+  const mn = Math.min(...prices), mx = Math.max(...prices);
+  const range = mx - mn || 1;
+  const pad = 16;
+
+  const xOf = (i) => (i / (N - 1)) * (W - pad * 2) + pad;
+  const yOf = (v) => H - pad - (v - mn) / range * (H - pad * 2);
+
+  // Price line
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    i === 0 ? ctx.moveTo(xOf(i), yOf(prices[i])) : ctx.lineTo(xOf(i), yOf(prices[i]));
+  }
+  ctx.stroke();
+
+  // Action markers
+  let pos = 0;
+  for (let i = 1; i < N; i++) {
+    const act = actions[i];
+    const x = xOf(i);
+    const y = yOf(prices[i]);
+
+    if (act === 0) {
+      // Hold: grey dot
+      ctx.fillStyle = '#444';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (act === 1) {
+      // Buy: green triangle up
+      ctx.fillStyle = '#4caf50';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 7);
+      ctx.lineTo(x - 5, y + 1);
+      ctx.lineTo(x + 5, y + 1);
+      ctx.closePath(); ctx.fill();
+      pos = 1;
+    } else if (act === 2) {
+      // Sell: red triangle down
+      ctx.fillStyle = '#e07070';
+      ctx.beginPath();
+      ctx.moveTo(x, y + 7);
+      ctx.lineTo(x - 5, y - 1);
+      ctx.lineTo(x + 5, y - 1);
+      ctx.closePath(); ctx.fill();
+      pos = 0;
+    }
+  }
+}
+
+function drawReward() {
+  const el = document.getElementById('rewardCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 760;
+  const H = el.offsetHeight || 100;
+  el.width = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const cumR = computeRewards();
+  if (cumR.length === 0) return;
+
+  const N = cumR.length;
+  const mn = Math.min(0, Math.min(...cumR));
+  const mx = Math.max(0, Math.max(...cumR));
+  const range = mx - mn || 1;
+  const pad = 8;
+
+  const xOf = (i) => (i / (N - 1)) * (W - pad * 2) + pad;
+  const yOf = (v) => H - pad - (v - mn) / range * (H - pad * 2);
+  const zeroY = yOf(0);
+
+  // Zero line
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY);
+  ctx.stroke();
+
+  // Fill above zero (green)
+  ctx.fillStyle = '#4caf5022';
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), zeroY);
+  for (let i = 0; i < N; i++) {
+    ctx.lineTo(xOf(i), Math.min(yOf(cumR[i]), zeroY));
+  }
+  ctx.lineTo(xOf(N - 1), zeroY);
+  ctx.closePath(); ctx.fill();
+
+  // Fill below zero (red)
+  ctx.fillStyle = '#e0707022';
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), zeroY);
+  for (let i = 0; i < N; i++) {
+    ctx.lineTo(xOf(i), Math.max(yOf(cumR[i]), zeroY));
+  }
+  ctx.lineTo(xOf(N - 1), zeroY);
+  ctx.closePath(); ctx.fill();
+
+  // Reward line
+  ctx.strokeStyle = cumR[N - 1] >= 0 ? '#4caf50' : '#e07070';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    i === 0 ? ctx.moveTo(xOf(i), yOf(cumR[i])) : ctx.lineTo(xOf(i), yOf(cumR[i]));
+  }
+  ctx.stroke();
+
+  // Final value label
+  const finalVal = cumR[N - 1];
+  ctx.fillStyle = finalVal >= 0 ? '#4caf50' : '#e07070';
+  ctx.font = '11px SF Mono, Fira Code, monospace';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  ctx.fillText((finalVal >= 0 ? '+' : '') + finalVal.toFixed(3), W - 4, yOf(finalVal));
+}
+
+function redraw() {
+  drawPrice();
+  drawReward();
+}
+
+// ─── Slider updates ───────────────────────────────────────────────────────────
+document.getElementById('tcSlider').addEventListener('input', function() {
+  document.getElementById('tcVal').textContent = parseFloat(this.value).toFixed(3);
+  drawReward();
+});
+document.getElementById('ddSlider').addEventListener('input', function() {
+  document.getElementById('ddVal').textContent = parseFloat(this.value).toFixed(2);
+  drawReward();
+});
+document.getElementById('sharpeSlider').addEventListener('input', function() {
+  document.getElementById('sharpeVal').textContent = parseFloat(this.value).toFixed(2);
+  drawReward();
+});
+
+document.getElementById('btnRegen').addEventListener('click', () => {
+  generateSeries();
+  redraw();
+});
+
+window.addEventListener('resize', redraw);
+
+// Init
+generateSeries();
+setTimeout(redraw, 50);
+</script>
+</div>
+</body>
+</html>
