@@ -152,6 +152,50 @@
   <h2>The return distribution</h2>
   <p>Plot a histogram of returns and you see something that looks almost like a bell curve — but not quite. Financial returns have "fat tails": extreme moves happen more often than a pure Gaussian predicts. This is why the HMM uses 7 states rather than 1 — different states capture different parts of this complex distribution.</p>
 
+  <!-- INSET: why 7 states -->
+  <div class="inset-box" style="margin-bottom:20px">
+    <div class="inset-title">Why 7 states — and not 1, or 12?</div>
+
+    <div class="inset-rule">
+      <div class="inset-rule-label">Why not 1 state?</div>
+      <div class="inset-rule-body" style="font-family:inherit;color:#8ab0cc">
+        A single Gaussian fits one μ and one σ to everything. It cannot distinguish a quiet accumulation day from a panic crash — both get averaged together. The model becomes blind to regime.
+        <br><span class="inset-aside">One state = "the market is always the same kind of thing." Clearly wrong.</span>
+      </div>
+    </div>
+
+    <div class="inset-rule">
+      <div class="inset-rule-label">What the 7 states actually represent</div>
+      <div class="inset-rule-body" style="font-family:inherit;color:#8ab0cc">
+        The HMM doesn't receive state labels — it discovers clusters in the data. After training, we inspect the mean return of each state and name them. A typical 7-state fit on BTC finds roughly:
+        <div style="margin:10px 0 4px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px;font-family:'SF Mono','Fira Code',monospace">
+          <span style="color:#4caf50">State A</span><span style="color:#556655">strong bull — high positive μ, moderate σ</span>
+          <span style="color:#7ab870">State B</span><span style="color:#556655">weak bull — small positive μ, low σ</span>
+          <span style="color:#888">State C</span><span style="color:#555">ranging / accumulation — μ ≈ 0, low σ</span>
+          <span style="color:#888">State D</span><span style="color:#555">choppy / high noise — μ ≈ 0, high σ</span>
+          <span style="color:#b87070">State E</span><span style="color:#665555">weak bear — small negative μ</span>
+          <span style="color:#e07070">State F</span><span style="color:#665555">strong bear — large negative μ, high σ</span>
+          <span style="color:#e04040">State G</span><span style="color:#665555">crash / capitulation — extreme negative μ, very high σ</span>
+        </div>
+        <span class="inset-aside">The exact split varies with each training run and dataset. Auto-labelling ranks by mean return and calls the top state "Bull Run", the bottom "Bear/Crash", and the rest "Chop/Noise".</span>
+      </div>
+    </div>
+
+    <div class="inset-rule">
+      <div class="inset-rule-label">Why not 12 states?</div>
+      <div class="inset-rule-body" style="font-family:inherit;color:#8ab0cc">
+        More states = more parameters to estimate. Each state needs its own 3-element mean vector and 3×3 covariance matrix — <strong style="color:#ccc">12 parameters per state</strong>. At 12 states that's 144 parameters from ~17,000 bars. The model starts fitting noise rather than genuine regime structure, a problem called <em style="color:#b07adf">overfitting</em>.
+        <br><br>
+        The practical test: adding states beyond 7–8 produces states that are rarely visited (&lt; 1% of bars) and whose Gaussians overlap heavily with neighbours. They add complexity without adding predictive signal.
+        <span class="inset-aside" style="display:block;margin-top:6px">Rule of thumb: n_states × 12 parameters ≪ n_samples. At 17,000 bars, 7 states (84 params) is well-supported; 20+ states would not be.</span>
+      </div>
+    </div>
+
+    <div class="inset-payoff">
+      <strong>7 is a balance, not a magic number.</strong> It gives enough granularity to separate strong trends from weak trends from noise from crashes, without demanding more data than hourly BTC history can reliably provide. The dashboard lets you change it — try 5 for simpler regimes, 9 for finer detail.
+    </div>
+  </div>
+
   <div class="two-col">
     <div>
       <div class="vis-label">Histogram of returns</div>
