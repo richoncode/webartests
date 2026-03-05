@@ -305,21 +305,31 @@ function drawSim() {
   ctx.clearRect(0, 0, W, H);
 
   const bw = W / simStates.length;
+
+  // Pass 1: coloured backgrounds
   simStates.forEach((s, i) => {
     ctx.fillStyle = STATE_COLORS[s] + '33';
     ctx.fillRect(i * bw, 0, bw, H);
-    if (bw > 20) {
-      // "Bull Run" → ["Bull","Run"]  "Bear/Crash" → ["Bear","Crash"]  "Chop" → ["Chop"]
-      const lines = STATE_NAMES[s].replace('/', ' ').split(' ');
-      const lineH = 11;
-      const startY = H / 2 - ((lines.length - 1) * lineH) / 2;
-      ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillStyle = '#bbb';
-      lines.forEach((line, li) => {
-        ctx.fillText(line, i * bw + bw / 2, startY + li * lineH);
-      });
-    }
   });
+
+  // Pass 2: one label per contiguous zone, centred, only if the zone is wide enough
+  let zoneStart = 0;
+  for (let i = 1; i <= simStates.length; i++) {
+    const same = i < simStates.length && simStates[i] === simStates[zoneStart];
+    if (!same) {
+      const zoneW = (i - zoneStart) * bw;
+      if (zoneW > 28) {
+        const midX = (zoneStart + (i - zoneStart) / 2) * bw;
+        const lines = STATE_NAMES[simStates[zoneStart]].replace('/', ' ').split(' ');
+        const lineH = 12;
+        const startY = H / 2 - ((lines.length - 1) * lineH) / 2;
+        ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#bbb';
+        lines.forEach((line, li) => ctx.fillText(line, midX, startY + li * lineH));
+      }
+      zoneStart = i;
+    }
+  }
 
   const el2 = document.getElementById('obsCanvas');
   el2.width = el2.offsetWidth * dpr; el2.height = el2.offsetHeight * dpr;
