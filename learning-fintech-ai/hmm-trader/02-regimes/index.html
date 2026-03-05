@@ -20,13 +20,14 @@
   button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
   button:hover { background: #222; border-color: #555; color: #fff; }
   button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
-  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
   .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
   .callout strong { color: #ccc; }
   .callout.bull { border-color: #4caf50; }
   .callout.bear { border-color: #e07070; }
   .callout.chop { border-color: #888; }
   .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .model-status { font-size: 12px; color: #444; margin-top: 8px; min-height: 18px; }
   .regime-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
   .regime-table th { text-align: left; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #444; border-bottom: 1px solid #1e1e1e; }
   .regime-table td { padding: 10px 12px; border-bottom: 1px solid #111; color: #888; }
@@ -37,6 +38,8 @@
   .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
   .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
   .nav-row a:hover { color: #aaa; }
+  .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #333; border-top-color: #5b9bd5; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -49,20 +52,21 @@
 <!-- SECTION 1: WHAT ARE REGIMES -->
 <div class="section">
   <h2>Three canonical states</h2>
-  <p>While real markets are continuous and nuanced, most of the time price behaviour falls into one of three broad types. Toggle the overlay to reveal which regime each period belongs to.</p>
+  <p>Each time you generate a new series, a random price path is created with hidden regime transitions. A model then analyses the series — clustering bars by their rolling return and volatility — and assigns each bar to one of three states. Toggle the overlay to see what it found.</p>
 
   <div class="btn-row">
     <button id="btnReveal" class="active">Show regimes</button>
     <button id="btnHide">Hide regimes</button>
     <button id="btnRegen" style="margin-left:auto">↺ New series</button>
   </div>
-  <div class="vis-label">Synthetic price — three-regime market</div>
+  <div class="vis-label">Synthetic price — regimes detected by model</div>
   <canvas id="priceChart" style="width:100%;height:220px"></canvas>
   <div style="display:flex;gap:20px;margin-top:10px;font-size:12px">
     <span style="color:#4caf50">■ Bull Run</span>
     <span style="color:#e07070">■ Bear / Crash</span>
     <span style="color:#888">■ Sideways / Chop</span>
   </div>
+  <div class="model-status" id="modelStatus"></div>
 </div>
 
 <!-- SECTION 2: PROPERTIES -->
@@ -80,7 +84,7 @@
         <th>Autocorrelation</th>
       </tr>
     </thead>
-    <tbody id="regimeTable">
+    <tbody>
       <tr><td class="bull">Bull Run</td><td>+0.04% to +0.12%</td><td>Low–Medium</td><td>Rising</td><td>Positive (momentum)</td></tr>
       <tr><td class="bear">Bear / Crash</td><td>−0.08% to −0.20%</td><td>High</td><td>Spike then declining</td><td>Negative (reversals)</td></tr>
       <tr><td class="chop">Sideways / Chop</td><td>≈ 0</td><td>Medium</td><td>Low</td><td>Near zero</td></tr>
@@ -101,13 +105,13 @@
 <!-- SECTION 3: RETURNS BY REGIME -->
 <div class="section">
   <h2>Returns distribution by regime</h2>
-  <p>Each regime's return distribution has a different mean and standard deviation — the two parameters of its Gaussian model. In the next lesson we'll formalise this with probability density functions.</p>
+  <p>Each regime's return distribution has a different mean and standard deviation. The curves below are fitted to the bars the model assigned to each regime — in the next lesson we formalise this with probability density functions.</p>
 
-  <div class="vis-label">Return distributions — each regime separately</div>
+  <div class="vis-label">Return distributions — model-detected regimes</div>
   <canvas id="distChart" style="width:100%;height:180px"></canvas>
 
   <div class="callout" style="margin-top:16px">
-    <strong>Separability is the key.</strong> If Bull Run and Bear/Crash returns overlapped completely, no model could tell them apart. The fact that they have different means (positive vs negative drift) gives the HMM a statistical signal to separate them — even when regimes are hidden and transitions are gradual.
+    <strong>Separability is the key.</strong> If Bull Run and Bear/Crash returns overlapped completely, no model could tell them apart. The fact that they have different means (positive vs negative drift) gives the model a statistical signal to separate them — even when regime boundaries are gradual and uncertain.
   </div>
 </div>
 
@@ -118,15 +122,14 @@
 </div>
 
 <script>
-const REGIMES = [
-  { label: 'Bull Run',   mu: 0.0006,  sigma: 0.010, len: 90,  color: '#4caf50' },
-  { label: 'Chop',       mu: 0.00005, sigma: 0.015, len: 60,  color: '#666' },
-  { label: 'Bear/Crash', mu: -0.0012, sigma: 0.022, len: 70,  color: '#e07070' },
-  { label: 'Bull Run',   mu: 0.0007,  sigma: 0.009, len: 80,  color: '#4caf50' },
-  { label: 'Chop',       mu: -0.0001, sigma: 0.013, len: 50,  color: '#666' },
+// ── Regime templates for generation ──────────────────────────────────────────
+const TEMPLATES = [
+  { label: 'Bull Run',   baseMu:  0.00065, baseSigma: 0.010, color: '#4caf50' },
+  { label: 'Bear/Crash', baseMu: -0.00120, baseSigma: 0.022, color: '#e07070' },
+  { label: 'Chop',       baseMu:  0.00000, baseSigma: 0.013, color: '#666'    },
 ];
 
-let prices = [], regimeLabels = [];
+let prices = [], detectedRegimes = [];
 let showRegimes = true;
 
 function randn() {
@@ -134,116 +137,280 @@ function randn() {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
+// ── 1. Generate a random price series ────────────────────────────────────────
+// Builds 4–6 segments in a random order, varying regime parameters slightly
+// each time so every series looks genuinely different.
 function generate() {
+  const nSeg = 4 + Math.floor(Math.random() * 3);
+  const sequence = [];
+  let lastType = -1;
+  for (let i = 0; i < nSeg; i++) {
+    let t;
+    // Avoid two identical consecutive regimes
+    do { t = Math.floor(Math.random() * 3); } while (t === lastType && Math.random() < 0.8);
+    lastType = t;
+    const tmpl = TEMPLATES[t];
+    sequence.push({
+      label:  tmpl.label,
+      color:  tmpl.color,
+      mu:     tmpl.baseMu    * (0.7 + Math.random() * 0.6),
+      sigma:  tmpl.baseSigma * (0.8 + Math.random() * 0.4),
+      len:    50 + Math.floor(Math.random() * 90),
+    });
+  }
+
   prices = [40000];
-  regimeLabels = [];
-  REGIMES.forEach(r => {
-    for (let i = 0; i < r.len; i++) {
-      const ret = r.mu + r.sigma * randn();
-      prices.push(prices[prices.length - 1] * (1 + ret));
-      regimeLabels.push(r);
+  for (const seg of sequence) {
+    for (let i = 0; i < seg.len; i++) {
+      prices.push(prices[prices.length - 1] * (1 + seg.mu + seg.sigma * randn()));
     }
-  });
+  }
 }
 
+// ── 2. K-means regime detection ───────────────────────────────────────────────
+// Clusters each bar's rolling (mean_return, volatility) into 3 groups,
+// then labels groups by their mean return: highest = Bull, lowest = Bear.
+// This is the same conceptual step as the full Gaussian HMM in lesson 04 —
+// just without the temporal transition constraints.
+
+function dist2(a, b) { return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2; }
+
+function kmeans(pts, k, maxIter = 100) {
+  // k-means++ initialisation: spread starting centroids proportionally to distance
+  const centroids = [pts[Math.floor(Math.random() * pts.length)].slice()];
+  while (centroids.length < k) {
+    const dists = pts.map(p => Math.min(...centroids.map(c => dist2(p, c))));
+    const total = dists.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    let chosen = pts.length - 1;
+    for (let i = 0; i < pts.length; i++) {
+      r -= dists[i];
+      if (r <= 0) { chosen = i; break; }
+    }
+    centroids.push(pts[chosen].slice());
+  }
+
+  let labels = new Array(pts.length).fill(0);
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Assign each point to nearest centroid
+    const newLabels = pts.map(p => {
+      let best = 0, bestD = Infinity;
+      centroids.forEach((c, ki) => { const d = dist2(p, c); if (d < bestD) { bestD = d; best = ki; } });
+      return best;
+    });
+    const converged = newLabels.every((l, i) => l === labels[i]);
+    labels = newLabels;
+    if (converged) break;
+    // Update centroids to cluster means
+    centroids.forEach((c, ki) => {
+      const members = pts.filter((_, i) => labels[i] === ki);
+      if (members.length === 0) return;
+      c[0] = members.reduce((a, p) => a + p[0], 0) / members.length;
+      c[1] = members.reduce((a, p) => a + p[1], 0) / members.length;
+    });
+  }
+  return { labels, centroids };
+}
+
+function detectRegimes() {
+  const W = 20;   // rolling window (bars)
+  const rets = prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
+
+  // Rolling mean return + rolling volatility for each bar
+  const rawFeatures = rets.map((_, i) => {
+    const win = rets.slice(Math.max(0, i - W + 1), i + 1);
+    const mu  = win.reduce((a, b) => a + b, 0) / win.length;
+    const std = Math.sqrt(win.reduce((a, b) => a + (b - mu) ** 2, 0) / win.length) || 1e-8;
+    return [mu, std];
+  });
+
+  // Normalise so neither feature dominates distance
+  const rmsOf = arr => Math.sqrt(arr.reduce((a, b) => a + b * b, 0) / arr.length) || 1;
+  const muNorm  = rmsOf(rawFeatures.map(f => f[0]));
+  const stdNorm = rmsOf(rawFeatures.map(f => f[1]));
+  const normed  = rawFeatures.map(f => [f[0] / muNorm, f[1] / stdNorm]);
+
+  const { labels, centroids } = kmeans(normed, 3);
+
+  // Map cluster indices to regime names by un-normalised centroid mean return
+  const sorted = centroids
+    .map((c, ki) => ({ ki, meanRet: c[0] * muNorm }))
+    .sort((a, b) => b.meanRet - a.meanRet);
+
+  const regimeMap = {
+    [sorted[0].ki]: { label: 'Bull Run',   color: '#4caf50' },
+    [sorted[1].ki]: { label: 'Chop',       color: '#666'    },
+    [sorted[2].ki]: { label: 'Bear/Crash', color: '#e07070' },
+  };
+
+  detectedRegimes = labels.map(l => regimeMap[l]);
+
+  // Update status line
+  const counts = { 'Bull Run': 0, 'Bear/Crash': 0, 'Chop': 0 };
+  detectedRegimes.forEach(r => counts[r.label]++);
+  document.getElementById('modelStatus').innerHTML =
+    `Model detected — ` +
+    `<span style="color:#4caf50">${counts['Bull Run']} bull</span>, ` +
+    `<span style="color:#e07070">${counts['Bear/Crash']} bear</span>, ` +
+    `<span style="color:#666">${counts['Chop']} chop</span> bars`;
+}
+
+// ── 3. Draw price chart ───────────────────────────────────────────────────────
 function drawPrice() {
-  const el = document.getElementById('priceChart');
+  const el  = document.getElementById('priceChart');
   const dpr = window.devicePixelRatio || 1;
-  const W = el.offsetWidth || 760, H = el.offsetHeight || 220;
-  el.width = W * dpr; el.height = H * dpr;
-  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  const W   = el.offsetWidth  || 760;
+  const H   = el.offsetHeight || 220;
+  el.width  = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  const mn = Math.min(...prices), mx = Math.max(...prices);
-  const range = mx - mn || 1;
-  const px = i => (i / (prices.length - 1)) * W;
-  const py = p => H - 8 - ((p - mn) / range) * (H - 16);
+  const mn  = Math.min(...prices), mx = Math.max(...prices);
+  const rng = mx - mn || 1;
+  const px  = i => (i / (prices.length - 1)) * W;
+  const py  = p => H - 8 - ((p - mn) / rng) * (H - 16);
 
-  if (showRegimes) {
-    let prevR = regimeLabels[0], startX = 0;
-    for (let i = 1; i <= regimeLabels.length; i++) {
-      const curr = i < regimeLabels.length ? regimeLabels[i] : null;
+  // Regime background shading
+  if (showRegimes && detectedRegimes.length) {
+    let prevR = detectedRegimes[0], startX = 0;
+    for (let i = 1; i <= detectedRegimes.length; i++) {
+      const curr = i < detectedRegimes.length ? detectedRegimes[i] : null;
       if (!curr || curr !== prevR) {
-        ctx.fillStyle = prevR.color + '1a';
+        ctx.fillStyle = prevR.color + '1e';
         ctx.fillRect(startX, 0, px(i) - startX, H);
         startX = px(i);
-        prevR = curr;
+        prevR  = curr;
       }
     }
   }
 
+  // Price line
   ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1.5;
   ctx.beginPath();
   prices.forEach((p, i) => i === 0 ? ctx.moveTo(px(i), py(p)) : ctx.lineTo(px(i), py(p)));
   ctx.stroke();
 
-  if (showRegimes) {
-    // Label each zone
-    let labeledRegimes = new Set();
+  // Regime labels at top of each zone
+  if (showRegimes && detectedRegimes.length) {
+    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
     let startI = 0;
-    for (let i = 1; i <= regimeLabels.length; i++) {
-      const curr = i < regimeLabels.length ? regimeLabels[i] : null;
-      if (!curr || curr !== regimeLabels[startI]) {
+    for (let i = 1; i <= detectedRegimes.length; i++) {
+      const curr = i < detectedRegimes.length ? detectedRegimes[i] : null;
+      if (!curr || curr.label !== detectedRegimes[startI].label || i === detectedRegimes.length) {
         const midX = (px(startI) + px(i)) / 2;
-        const key = regimeLabels[startI].label + startI;
-        ctx.fillStyle = regimeLabels[startI].color + 'cc';
-        ctx.font = `bold 11px -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(regimeLabels[startI].label, midX, 16);
+        ctx.fillStyle = detectedRegimes[startI].color + 'cc';
+        ctx.fillText(detectedRegimes[startI].label, midX, 16);
         startI = i;
       }
     }
   }
 }
 
+// ── 4. Draw return distribution chart ────────────────────────────────────────
+// Fits a Gaussian to each detected regime's returns, then draws the PDF.
 function drawDist() {
-  const el = document.getElementById('distChart');
+  const el  = document.getElementById('distChart');
   const dpr = window.devicePixelRatio || 1;
-  const W = el.offsetWidth || 760, H = el.offsetHeight || 180;
-  el.width = W * dpr; el.height = H * dpr;
-  const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+  const W   = el.offsetWidth  || 760;
+  const H   = el.offsetHeight || 180;
+  el.width  = W * dpr; el.height = H * dpr;
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
+
+  if (!detectedRegimes.length) return;
 
   const rets = prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
 
-  const drawn = new Set();
-  REGIMES.forEach((r, ri) => {
-    const key = r.label;
-    if (drawn.has(key)) return;
-    drawn.add(key);
+  // Group returns by detected regime label
+  const groups = {};
+  detectedRegimes.forEach((r, i) => {
+    if (!groups[r.label]) groups[r.label] = { color: r.color, rets: [] };
+    groups[r.label].rets.push(rets[i]);
+  });
 
-    const xMin = -0.06, xMax = 0.06;
-    ctx.strokeStyle = r.color; ctx.lineWidth = 2;
+  const xMin = -0.07, xMax = 0.07;
+
+  // Find peak PDF for scaling
+  let peakPdf = 0;
+  Object.values(groups).forEach(g => {
+    const mu  = g.rets.reduce((a, b) => a + b, 0) / g.rets.length;
+    const std = Math.sqrt(g.rets.reduce((a, b) => a + (b - mu) ** 2, 0) / g.rets.length) || 0.001;
+    const peak = 1 / (std * Math.sqrt(2 * Math.PI));
+    if (peak > peakPdf) peakPdf = peak;
+  });
+
+  // Draw PDF for each group
+  Object.values(groups).forEach(g => {
+    const mu  = g.rets.reduce((a, b) => a + b, 0) / g.rets.length;
+    const std = Math.sqrt(g.rets.reduce((a, b) => a + (b - mu) ** 2, 0) / g.rets.length) || 0.001;
+
+    ctx.strokeStyle = g.color; ctx.lineWidth = 2;
     ctx.beginPath();
-    for (let px = 0; px < W; px++) {
-      const x = xMin + (px / W) * (xMax - xMin);
-      const pdf = Math.exp(-0.5 * ((x - r.mu) / r.sigma) ** 2) / (r.sigma * Math.sqrt(2 * Math.PI));
-      const y = H - 8 - (pdf / 60) * (H - 16);
-      px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+    for (let i = 0; i <= W; i++) {
+      const x   = xMin + (i / W) * (xMax - xMin);
+      const pdf = Math.exp(-0.5 * ((x - mu) / std) ** 2) / (std * Math.sqrt(2 * Math.PI));
+      const y   = H - 8 - (pdf / peakPdf) * (H - 16);
+      i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
     }
     ctx.stroke();
 
     // Vertical mean line
-    const meanX = ((r.mu - xMin) / (xMax - xMin)) * W;
-    ctx.strokeStyle = r.color + '55'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    const meanX = ((mu - xMin) / (xMax - xMin)) * W;
+    ctx.strokeStyle = g.color + '44'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(meanX, H - 8); ctx.lineTo(meanX, 8); ctx.stroke();
     ctx.setLineDash([]);
+
+    // Label at peak
+    const peakY = H - 8 - (H - 16);
+    const labelX = Math.max(30, Math.min(W - 30, ((mu - xMin) / (xMax - xMin)) * W));
+    ctx.fillStyle = g.color + 'cc';
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(g.label, labelX, 24);
   });
 
   // Zero line
-  const zeroX = (0 - (-0.06)) / 0.12 * W;
+  const zeroX = (0 - xMin) / (xMax - xMin) * W;
   ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(zeroX, 0); ctx.lineTo(zeroX, H); ctx.stroke();
   ctx.fillStyle = '#333'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
   ctx.fillText('0%', zeroX, H - 1);
 }
 
-document.getElementById('btnReveal').addEventListener('click', () => { showRegimes = true; document.getElementById('btnReveal').classList.add('active'); document.getElementById('btnHide').classList.remove('active'); drawPrice(); });
-document.getElementById('btnHide').addEventListener('click', () => { showRegimes = false; document.getElementById('btnHide').classList.add('active'); document.getElementById('btnReveal').classList.remove('active'); drawPrice(); });
-document.getElementById('btnRegen').addEventListener('click', () => { generate(); drawPrice(); drawDist(); });
+// ── 5. Full pipeline ──────────────────────────────────────────────────────────
+function runPipeline() {
+  document.getElementById('modelStatus').innerHTML =
+    '<span class="spinner"></span> Running model…';
+  // Yield to browser so spinner renders before the sync computation
+  setTimeout(() => {
+    generate();
+    detectRegimes();
+    drawPrice();
+    drawDist();
+  }, 20);
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+document.getElementById('btnReveal').addEventListener('click', () => {
+  showRegimes = true;
+  document.getElementById('btnReveal').classList.add('active');
+  document.getElementById('btnHide').classList.remove('active');
+  drawPrice();
+});
+document.getElementById('btnHide').addEventListener('click', () => {
+  showRegimes = false;
+  document.getElementById('btnHide').classList.add('active');
+  document.getElementById('btnReveal').classList.remove('active');
+  drawPrice();
+});
+document.getElementById('btnRegen').addEventListener('click', runPipeline);
 window.addEventListener('resize', () => { drawPrice(); drawDist(); });
 
-setTimeout(() => { generate(); drawPrice(); drawDist(); }, 50);
+// Initial run
+setTimeout(runPipeline, 50);
 </script>
 </body>
 </html>
