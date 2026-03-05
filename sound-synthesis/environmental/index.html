@@ -144,17 +144,23 @@
   <div class="sound-card">
     <h3 style="color:#a0c060">Object collision</h3>
 
-    <div class="controls">
-      <div class="control-row">
-        <label>Object 1 material</label>
-        <span class="val" id="obj1Val">Metal</span>
-        <input type="range" id="obj1Slider" min="1" max="4" value="3" step="1">
-      </div>
-      <div class="control-row">
-        <label>Object 2 material</label>
-        <span class="val" id="obj2Val">Wood</span>
-        <input type="range" id="obj2Slider" min="1" max="4" value="2" step="1">
-      </div>
+    <p class="opt-label">Object 1</p>
+    <div class="opt-row" id="obj1Btns">
+      <button class="opt-btn" data-obj="Glass">Glass</button>
+      <button class="opt-btn" data-obj="Wood">Wood</button>
+      <button class="opt-btn active" data-obj="Metal">Metal</button>
+      <button class="opt-btn" data-obj="Stone">Stone</button>
+    </div>
+
+    <p class="opt-label">Object 2</p>
+    <div class="opt-row" id="obj2Btns">
+      <button class="opt-btn" data-obj="Glass">Glass</button>
+      <button class="opt-btn active" data-obj="Wood">Wood</button>
+      <button class="opt-btn" data-obj="Metal">Metal</button>
+      <button class="opt-btn" data-obj="Stone">Stone</button>
+    </div>
+
+    <div class="controls" style="margin-top:10px">
       <div class="control-row">
         <label>Impact force</label>
         <span class="val" id="forceVal">Medium</span>
@@ -193,6 +199,8 @@ let walkInterval = null;
 let currentSurface = 'wood';
 let currentSpeed = 2;
 let currentShoe = 2;
+let currentObj1 = 'Metal';
+let currentObj2 = 'Wood';
 
 function getCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -295,21 +303,40 @@ function synthesiseScrape(speed, roughness, pitch, sr, duration) {
   const N = Math.floor(sr * duration);
   const out = new Float32Array(N);
 
-  // Stochastic impact rate based on speed and roughness
-  const avgGap = Math.max(2, Math.floor(sr * 0.001 / (speed / 10) / (roughness / 5)));
-  const ringFreq = pitch;
-  const omega = 2 * Math.PI * ringFreq / sr;
-  const decay = Math.exp(-(30 + roughness * 5) / sr);
+  // Micro-impact probability per sample from speed × roughness
+  const impactsPerSec = 60 + (speed / 10) * (roughness / 10) * 3000;
+  const pImpact = Math.min(0.4, impactsPerSec / sr);
 
-  let ring = 0;
+  // Layer 1: LP-filtered noise bursts — main friction texture, no sine carrier.
+  // Rougher surfaces have higher LP cutoff (more HF energy in the scratch).
+  const lpCutoff = 400 + roughness * 280; // 680–3200 Hz
+  const lpK = Math.exp(-2 * Math.PI * lpCutoff / sr);
+  // Shorter per-impact envelope for rougher surfaces (impacts blur into texture faster)
+  const envDecay = Math.exp(-(18 + (10 - roughness) * 2) / sr);
+  let env = 0, lp = 0;
   for (let i = 0; i < N; i++) {
-    // Random impact at rate controlled by speed × roughness
-    if (Math.random() < 1 / avgGap) {
-      ring += (Math.random() * 0.5 + 0.5) * (roughness / 10) * 0.8;
-    }
-    out[i] = ring * Math.sin(omega * i);
-    ring *= decay;
+    if (Math.random() < pImpact) env += Math.random() * 0.5 + 0.5;
+    const raw = Math.random() * 2 - 1;
+    lp = (1 - lpK) * raw + lpK * lp;
+    out[i] = lp * env;
+    env *= envDecay;
   }
+
+  // Layer 2: 2nd-order IIR resonator at pitch freq.
+  // Each impact kicks the resonator which rings and decays independently —
+  // no shared phase reference, so it colours the texture rather than droning.
+  const omega = 2 * Math.PI * pitch / sr;
+  const r = Math.max(0.7, 0.96 - roughness * 0.025); // rougher = shorter ring
+  const a1 = 2 * r * Math.cos(omega);
+  const a2 = -(r * r);
+  let ry1 = 0, ry2 = 0;
+  for (let i = 0; i < N; i++) {
+    const kick = (Math.random() < pImpact) ? (Math.random() * 0.3 + 0.1) : 0;
+    const ry = a1 * ry1 + a2 * ry2 + kick;
+    ry2 = ry1; ry1 = ry;
+    out[i] += ry * 0.25;
+  }
+
   return normalise(out, 0.75);
 }
 
@@ -456,12 +483,26 @@ document.getElementById('scrapeBtn').addEventListener('click', () => {
   drawSignal('scrapeCanvas', samples, '#f0a040');
 });
 
+document.querySelectorAll('#obj1Btns .opt-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#obj1Btns .opt-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentObj1 = this.dataset.obj;
+  });
+});
+
+document.querySelectorAll('#obj2Btns .opt-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#obj2Btns .opt-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentObj2 = this.dataset.obj;
+  });
+});
+
 document.getElementById('impactBtn').addEventListener('click', () => {
   const ctx = getCtx();
-  const obj1 = OBJ_LABELS[parseInt(document.getElementById('obj1Slider').value) - 1];
-  const obj2 = OBJ_LABELS[parseInt(document.getElementById('obj2Slider').value) - 1];
   const force = parseFloat(document.getElementById('forceSlider').value);
-  const samples = synthesiseImpact(obj1, obj2, force, ctx.sampleRate);
+  const samples = synthesiseImpact(currentObj1, currentObj2, force, ctx.sampleRate);
   playBuffer(samples);
   drawSignal('impactCanvas', samples, '#a0c060');
 });
@@ -476,8 +517,6 @@ document.getElementById('roughSlider').addEventListener('input', function() {
   document.getElementById('roughVal').textContent = labels[Math.round(this.value)-1];
 });
 document.getElementById('scrapePitchSlider').addEventListener('input', function() { document.getElementById('scrapePitchVal').textContent = this.value + ' Hz'; });
-document.getElementById('obj1Slider').addEventListener('input', function() { document.getElementById('obj1Val').textContent = OBJ_LABELS[parseInt(this.value)-1]; });
-document.getElementById('obj2Slider').addEventListener('input', function() { document.getElementById('obj2Val').textContent = OBJ_LABELS[parseInt(this.value)-1]; });
 document.getElementById('forceSlider').addEventListener('input', function() {
   const labels = ['Barely touching','Light','Light-medium','Medium-light','Medium','Medium-firm','Firm','Hard','Very hard','Maximum'];
   document.getElementById('forceVal').textContent = labels[parseInt(this.value)-1];
