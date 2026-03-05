@@ -34,8 +34,12 @@
   .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
   .surface-btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
   .surf-btn { font-size: 12px; padding: 4px 12px; }
-  .surf-btn.active { border-color: #5b9bd5; color: #5b9bd5; }
-  .seq-note { font-size: 12px; color: #333; margin-top: 8px; }
+  .surf-btn.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+  .opt-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .opt-btn { font-size: 12px; padding: 4px 12px; }
+  .opt-btn.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+  .opt-label { font-size: 13px; color: #666; margin-top: 10px; margin-bottom: 2px; }
+  .walk-btn-stop { background: #2a1010; border-color: #e07070; color: #e07070; }
 </style>
 </head>
 <body>
@@ -67,16 +71,23 @@
         <span class="val" id="weightVal">70 kg</span>
         <input type="range" id="weightSlider" min="30" max="140" value="70" step="5">
       </div>
-      <div class="control-row">
-        <label>Step speed</label>
-        <span class="val" id="stepSpeedVal">Walking</span>
-        <input type="range" id="stepSpeedSlider" min="1" max="5" value="2" step="1">
-      </div>
-      <div class="control-row">
-        <label>Footwear hardness</label>
-        <span class="val" id="shoeVal">Leather soles</span>
-        <input type="range" id="shoeSlider" min="1" max="4" value="2" step="1">
-      </div>
+    </div>
+
+    <p class="opt-label">Step speed</p>
+    <div class="opt-row" id="speedBtns">
+      <button class="opt-btn" data-speed="1">Slow walk</button>
+      <button class="opt-btn active" data-speed="2">Walking</button>
+      <button class="opt-btn" data-speed="3">Brisk walk</button>
+      <button class="opt-btn" data-speed="4">Jogging</button>
+      <button class="opt-btn" data-speed="5">Running</button>
+    </div>
+
+    <p class="opt-label">Footwear</p>
+    <div class="opt-row" id="shoeBtns">
+      <button class="opt-btn" data-shoe="1">Soft rubber</button>
+      <button class="opt-btn active" data-shoe="2">Leather soles</button>
+      <button class="opt-btn" data-shoe="3">Hard leather</button>
+      <button class="opt-btn" data-shoe="4">Metal heel</button>
     </div>
 
     <div class="vis-label">Waveform</div>
@@ -86,7 +97,6 @@
       <button class="play-btn" id="stepBtn">▶ Single step</button>
       <button id="walkBtn">▶ Walking sequence</button>
     </div>
-    <p class="seq-note" id="seqNote"></p>
   </div>
 </div>
 
@@ -181,6 +191,8 @@
 let audioCtx = null;
 let walkInterval = null;
 let currentSurface = 'wood';
+let currentSpeed = 2;
+let currentShoe = 2;
 
 function getCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -367,42 +379,71 @@ function playBuffer(samples) {
   return src;
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function playStep() {
+  const ctx = getCtx();
+  const weight = parseFloat(document.getElementById('weightSlider').value);
+  const samples = synthesiseStep(currentSurface, weight, currentShoe, ctx.sampleRate);
+  playBuffer(samples);
+  drawSignal('stepCanvas', samples, '#5b9bd5');
+}
+
+function stopWalk() {
+  if (walkInterval) { clearInterval(walkInterval); walkInterval = null; }
+  const wb = document.getElementById('walkBtn');
+  wb.textContent = '▶ Walking sequence';
+  wb.classList.remove('walk-btn-stop');
+}
+
 // ── Event listeners ─────────────────────────────────────────────────────────
 document.querySelectorAll('.surf-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('.surf-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
     currentSurface = this.dataset.surf;
+    playStep();
   });
 });
 
-document.getElementById('stepBtn').addEventListener('click', () => {
-  const ctx = getCtx();
-  const weight = parseFloat(document.getElementById('weightSlider').value);
-  const shoe = parseFloat(document.getElementById('shoeSlider').value);
-  const samples = synthesiseStep(currentSurface, weight, shoe, ctx.sampleRate);
-  playBuffer(samples);
-  drawSignal('stepCanvas', samples, '#5b9bd5');
+document.querySelectorAll('#speedBtns .opt-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#speedBtns .opt-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentSpeed = parseInt(this.dataset.speed);
+    // Restart walk sequence with new interval if running
+    if (walkInterval) { stopWalk(); startWalk(); }
+  });
 });
 
-document.getElementById('walkBtn').addEventListener('click', function() {
-  if (walkInterval) { clearInterval(walkInterval); walkInterval = null; document.getElementById('seqNote').textContent = ''; return; }
+document.querySelectorAll('#shoeBtns .opt-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#shoeBtns .opt-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentShoe = parseInt(this.dataset.shoe);
+    playStep();
+  });
+});
+
+document.getElementById('weightSlider').addEventListener('input', function() {
+  document.getElementById('weightVal').textContent = this.value + ' kg';
+  playStep();
+});
+
+document.getElementById('stepBtn').addEventListener('click', playStep);
+
+function startWalk() {
   const ctx = getCtx();
-  const stepSpeed = parseInt(document.getElementById('stepSpeedSlider').value);
-  const bpm = [60, 90, 110, 140, 170][stepSpeed - 1];
-  const interval = 60000 / bpm / 2; // two steps per beat
+  const bpm = [60, 90, 110, 140, 170][currentSpeed - 1];
+  const interval = 60000 / bpm / 2;
+  const wb = document.getElementById('walkBtn');
+  wb.textContent = '■ Stop walking';
+  wb.classList.add('walk-btn-stop');
+  playStep();
+  walkInterval = setInterval(playStep, interval);
+}
 
-  document.getElementById('seqNote').textContent = 'Walking at ' + bpm + ' steps/min — click again to stop';
-
-  function step() {
-    const weight = parseFloat(document.getElementById('weightSlider').value);
-    const shoe = parseFloat(document.getElementById('shoeSlider').value);
-    const samples = synthesiseStep(currentSurface, weight, shoe, ctx.sampleRate);
-    playBuffer(samples);
-    drawSignal('stepCanvas', samples, '#5b9bd5');
-  }
-  step();
-  walkInterval = setInterval(step, interval);
+document.getElementById('walkBtn').addEventListener('click', function() {
+  if (walkInterval) { stopWalk(); } else { startWalk(); }
 });
 
 document.getElementById('scrapeBtn').addEventListener('click', () => {
@@ -426,9 +467,6 @@ document.getElementById('impactBtn').addEventListener('click', () => {
 });
 
 // Slider labels
-document.getElementById('weightSlider').addEventListener('input', function() { document.getElementById('weightVal').textContent = this.value + ' kg'; });
-document.getElementById('stepSpeedSlider').addEventListener('input', function() { document.getElementById('stepSpeedVal').textContent = SPEED_LABELS[parseInt(this.value)-1]; });
-document.getElementById('shoeSlider').addEventListener('input', function() { document.getElementById('shoeVal').textContent = SHOE_LABELS[parseInt(this.value)-1]; });
 document.getElementById('scrapeSpeedSlider').addEventListener('input', function() {
   const labels = ['Very slow','Slow','Slow-medium','Medium-slow','Medium','Medium-fast','Fast-medium','Fast','Very fast','Rapid'];
   document.getElementById('scrapeSpeedVal').textContent = labels[Math.round(this.value)-1];
