@@ -28,10 +28,16 @@
   .drop-hint { font-size: 12px; color: #383838; text-align: center; margin: 4px 0 0; }
 
   /* Palette strip */
-  .palette-strip { display: flex; gap: 6px; margin: 14px 0 4px; flex-wrap: wrap; align-items: center; }
-  .swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #333; flex-shrink: 0; }
-  .swatch.black-swatch { background: #000 !important; }
-  .palette-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+  .palette-strip { display: flex; gap: 6px; margin: 8px 0 4px; flex-wrap: wrap; align-items: center; }
+  .swatch {
+    width: 32px; height: 32px; border-radius: 5px; border: 1px solid #333;
+    flex-shrink: 0; cursor: pointer; position: relative;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .swatch:hover { transform: scale(1.15); box-shadow: 0 0 0 2px #fff4; }
+  .swatch:active { transform: scale(1.05); }
+  .palette-label { font-size: 11px; color: #444; margin-bottom: 2px; }
+  .palette-hint { font-size: 10px; color: #333; margin-bottom: 6px; }
 
   /* Controls */
   .controls-panel { margin: 16px 0; }
@@ -40,7 +46,6 @@
   .ctrl-group label { font-size: 11px; color: #555; }
   .ctrl-group input[type=range] { width: 130px; accent-color: #5b9bd5; }
   .ctrl-group .val { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
-  .ctrl-group select { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
   .ctrl-inline { display: flex; align-items: center; gap: 8px; }
   .ctrl-inline label { font-size: 13px; color: #888; cursor: pointer; }
 
@@ -49,7 +54,10 @@
   button:hover { background: #222; border-color: #555; color: #fff; }
   button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
   button.primary:hover { background: #243550; }
+  button.active-method { background: #1a2a1a; border-color: #4caf50; color: #4caf50; }
   button:disabled { opacity: 0.3; cursor: default; }
+
+  .detect-label { font-size: 11px; color: #444; align-self: flex-end; padding-bottom: 10px; }
 
   .status-msg { font-size: 13px; color: #5b9bd5; margin: 8px 0; min-height: 20px; }
   .stats { font-size: 12px; color: #555; display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
@@ -59,13 +67,13 @@
   .layer-table { margin-top: 16px; border: 1px solid #1e1e1e; border-radius: 8px; overflow: hidden; }
   .layer-row { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 12px; align-items: center; padding: 8px 14px; font-size: 12px; border-bottom: 1px solid #141414; }
   .layer-row:last-child { border-bottom: none; }
-  .layer-row .swatch { width: 20px; height: 20px; border-radius: 3px; }
+  .layer-row .swatch-sm { width: 20px; height: 20px; border-radius: 3px; border: 1px solid #2a2a2a; flex-shrink: 0; }
   .layer-row .hex { color: #666; font-family: 'SF Mono','Fira Code',monospace; }
   .layer-row .paths { color: #888; text-align: right; }
   .layer-row .pts { color: #555; text-align: right; }
   .layer-header { background: #0d0d0d; color: #444; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-  /* How it works callout */
+  /* Callouts */
   .callout { background: #0d1620; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 20px 0; font-size: 13px; color: #888; line-height: 1.7; }
   .callout strong { color: #ccc; }
   .callout.green { border-color: #4caf50; background: #0a1a0a; }
@@ -76,18 +84,19 @@
 
 <a class="back-link" href="../">← Back to Vectorizing Tests</a>
 <input type="file" id="fileInput" accept="image/*" style="display:none">
+<input type="color" id="colorPicker" style="display:none;position:absolute;width:0;height:0;opacity:0">
 
 <div class="page">
   <h1>Palette Vectorizer</h1>
   <p class="subtitle">Palettize first, then vectorize each color as a separate SVG layer — clean flat fills that xTool Studio can select for laser layer separation.</p>
 
   <div class="callout">
-    <strong>Why palettize before vectorizing?</strong> Standard vectorizers trace edges in a single greyscale pass — colors blend into each other and you get one messy combined path. This tool runs <strong>k-means color quantization</strong> first, snapping every pixel to its nearest palette color. Then it traces each palette color independently, producing clean non-overlapping regions. The SVG output uses separate <code style="color:#5b9bd5">&lt;g fill="#rrggbb"&gt;</code> groups — one per color — which xTool Studio reads as distinct layers you can assign to separate engraving passes with different power and speed.
+    <strong>Why palettize before vectorizing?</strong> Standard vectorizers trace edges in a single greyscale pass — colors blend into each other and you get one messy combined path. This tool runs color quantization first, snapping every pixel to its nearest palette color. Then it traces each palette color independently, producing clean non-overlapping regions. The SVG output uses separate <code style="color:#5b9bd5">&lt;g fill="#rrggbb"&gt;</code> groups — one per color — which xTool Studio reads as distinct layers.
   </div>
 
   <div class="tool-card">
     <div class="tool-title">Palettize → Per-Color Vectorize → Multi-Layer SVG</div>
-    <p>Drop an image or use the duck. Adjust colors and simplification. The palettized preview shows exactly what will be vectorized — what you see is what you get.</p>
+    <p>Drop an image or use the duck. Detect a palette, click any swatch to edit it, then vectorize.</p>
 
     <div class="preview-pair">
       <div class="preview-panel">
@@ -102,12 +111,13 @@
     </div>
 
     <div class="palette-label">Detected palette</div>
+    <div class="palette-hint">Click any swatch to change its color — preview updates automatically</div>
     <div class="palette-strip" id="paletteStrip"></div>
 
     <div class="controls-panel">
       <div class="ctrl-row">
         <div class="ctrl-group">
-          <label>Colors (k-means clusters)</label>
+          <label>Colors</label>
           <input type="range" id="nColors" min="2" max="9" value="8">
           <div class="val"><span id="nColorsVal">8</span> colors</div>
         </div>
@@ -134,9 +144,15 @@
       </div>
     </div>
 
+    <!-- Detect palette buttons -->
+    <div style="margin-bottom:4px;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Detect palette</div>
+    <div class="btn-row" style="margin-top:6px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #1a1a1a">
+      <button id="kMeansBtn">K-Means — most common colors</button>
+      <button id="hueSpreadBtn">Hue Spread — widest color range</button>
+    </div>
+
     <div class="btn-row">
       <button class="primary" id="vectorizeBtn">Vectorize</button>
-      <button id="rePalBtn">Re-palettize</button>
       <button id="downloadBtn" disabled>Download SVG</button>
       <button id="browseBtn">Browse file…</button>
       <button id="resetBtn">Reset to duck</button>
@@ -170,470 +186,426 @@
   </div>
 
   <div class="callout green">
-    <strong>Using in xTool Studio.</strong> Import the downloaded SVG. Each fill color appears as a separate layer in the Layers panel. Select a layer → assign laser parameters (power, speed, passes). Use darker colors for deeper engrave passes, lighter for surface marking. Black is typically the deepest engraving layer.
+    <strong>Using in xTool Studio.</strong> Import the downloaded SVG. Each fill color appears as a separate layer in the Layers panel. Select a layer → assign laser parameters (power, speed, passes). Use darker colors for deeper engrave passes, lighter for surface marking.
   </div>
   <div class="callout orange">
-    <strong>Tips for best results.</strong> More colors = more layers but smaller per-layer regions. For logos and illustrations, 4–6 colors usually gives the clearest separation. Increase the Simplify slider for cleaner paths with fewer points (better for cutting); decrease it to preserve fine detail (better for engraving). Pre-blur 1–2 smooths noisy JPEG artifacts before palettizing.
+    <strong>K-Means vs Hue Spread.</strong> K-Means finds the most populous colors — great for photorealistic images where a few dominant colors matter most. Hue Spread maximizes angular distance around the color wheel — better for illustrations or logos where you want representation across all hues, even if some are rare. Edit individual swatches after detection to fine-tune.
   </div>
 
 </div>
 
 <script>
-// ─── Shared marching squares ────────────────────────────────────────────────
+// ─── Marching squares ────────────────────────────────────────────────────────
 const CELL_EDGES = [
-  [],            // 0
-  [[0,3]],       // 1
-  [[3,2]],       // 2
-  [[0,2]],       // 3
-  [[1,2]],       // 4
-  [[1,2],[0,3]], // 5 saddle
-  [[1,3]],       // 6
-  [[0,1]],       // 7
-  [[0,1]],       // 8
-  [[1,3]],       // 9
-  [[0,1],[3,2]], // 10 saddle
-  [[1,2]],       // 11
-  [[0,2]],       // 12
-  [[3,2]],       // 13
-  [[0,3]],       // 14
-  [],            // 15
+  [],[[0,3]],[[3,2]],[[0,2]],[[1,2]],[[1,2],[0,3]],[[1,3]],[[0,1]],
+  [[0,1]],[[1,3]],[[0,1],[3,2]],[[1,2]],[[0,2]],[[3,2]],[[0,3]],[],
 ];
-function edgePt(e, x, y) {
-  if (e === 0) return [x,       y + 0.5];
-  if (e === 1) return [x + 0.5, y      ];
-  if (e === 2) return [x + 1,   y + 0.5];
-               return [x + 0.5, y + 1  ];
-}
-function marchingSquares(mask, W, H) {
-  const segs = [];
-  for (let y = 0; y < H - 1; y++) {
-    for (let x = 0; x < W - 1; x++) {
-      const tl = mask[y*W+x], tr = mask[y*W+x+1];
-      const br = mask[(y+1)*W+x+1], bl = mask[(y+1)*W+x];
-      const ci = (tl?8:0)|(tr?4:0)|(br?2:0)|(bl?1:0);
-      for (const [e1, e2] of CELL_EDGES[ci]) {
-        segs.push([edgePt(e1,x,y), edgePt(e2,x,y)]);
-      }
-    }
+function edgePt(e,x,y){if(e===0)return[x,y+.5];if(e===1)return[x+.5,y];if(e===2)return[x+1,y+.5];return[x+.5,y+1];}
+function marchingSquares(mask,W,H){
+  const segs=[];
+  for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){
+    const ci=(mask[y*W+x]?8:0)|(mask[y*W+x+1]?4:0)|(mask[(y+1)*W+x+1]?2:0)|(mask[(y+1)*W+x]?1:0);
+    for(const[e1,e2]of CELL_EDGES[ci])segs.push([edgePt(e1,x,y),edgePt(e2,x,y)]);
   }
   return segs;
 }
-function connectSegments(segs) {
-  if (!segs.length) return [];
-  const key = pt => ((pt[0]*2)|0) + '_' + ((pt[1]*2)|0);
-  const adj = new Map();
-  segs.forEach(([a, b], i) => {
-    const ka = key(a), kb = key(b);
-    if (!adj.has(ka)) adj.set(ka, []);
-    if (!adj.has(kb)) adj.set(kb, []);
-    adj.get(ka).push({i, e:0});
-    adj.get(kb).push({i, e:1});
+function connectSegments(segs){
+  if(!segs.length)return[];
+  const key=pt=>((pt[0]*2)|0)+'_'+((pt[1]*2)|0);
+  const adj=new Map();
+  segs.forEach(([a,b],i)=>{
+    const ka=key(a),kb=key(b);
+    if(!adj.has(ka))adj.set(ka,[]);if(!adj.has(kb))adj.set(kb,[]);
+    adj.get(ka).push({i,e:0});adj.get(kb).push({i,e:1});
   });
-  const used = new Uint8Array(segs.length);
-  const result = [];
-  for (let si = 0; si < segs.length; si++) {
-    if (used[si]) continue;
-    used[si] = 1;
-    const pts = [segs[si][0], segs[si][1]];
-    const startKey = key(segs[si][0]);
-    let cur = segs[si][1];
-    let guard = segs.length + 2;
-    while (guard-- > 0) {
-      if (key(cur) === startKey && pts.length > 2) break;
-      const nb = adj.get(key(cur));
-      if (!nb) break;
-      let found = false;
-      for (const {i, e} of nb) {
-        if (used[i]) continue;
-        used[i] = 1;
-        cur = e === 0 ? segs[i][1] : segs[i][0];
-        pts.push(cur);
-        found = true;
-        break;
-      }
-      if (!found) break;
+  const used=new Uint8Array(segs.length),result=[];
+  for(let si=0;si<segs.length;si++){
+    if(used[si])continue;
+    used[si]=1;
+    const pts=[segs[si][0],segs[si][1]];
+    const startKey=key(segs[si][0]);
+    let cur=segs[si][1],guard=segs.length+2;
+    while(guard-->0){
+      if(key(cur)===startKey&&pts.length>2)break;
+      const nb=adj.get(key(cur));if(!nb)break;
+      let found=false;
+      for(const{i,e}of nb){if(used[i])continue;used[i]=1;cur=e===0?segs[i][1]:segs[i][0];pts.push(cur);found=true;break;}
+      if(!found)break;
     }
-    if (pts.length > 1 && key(pts[pts.length-1]) === key(pts[0])) pts.pop();
-    if (pts.length >= 3) result.push(pts);
+    if(pts.length>1&&key(pts[pts.length-1])===key(pts[0]))pts.pop();
+    if(pts.length>=3)result.push(pts);
   }
   return result;
 }
-function ptLineDist(p, a, b) {
-  const dx = b[0]-a[0], dy = b[1]-a[1];
-  if (dx===0 && dy===0) return Math.hypot(p[0]-a[0], p[1]-a[1]);
-  const t = ((p[0]-a[0])*dx + (p[1]-a[1])*dy) / (dx*dx+dy*dy);
-  return Math.hypot(p[0]-(a[0]+t*dx), p[1]-(a[1]+t*dy));
-}
-function rdp(pts, eps) {
-  if (pts.length <= 2) return pts;
-  let maxD = 0, maxI = 0;
-  const a = pts[0], b = pts[pts.length-1];
-  for (let i = 1; i < pts.length-1; i++) {
-    const d = ptLineDist(pts[i], a, b);
-    if (d > maxD) { maxD = d; maxI = i; }
-  }
-  if (maxD > eps) {
-    const l = rdp(pts.slice(0, maxI+1), eps);
-    const r = rdp(pts.slice(maxI), eps);
-    return [...l.slice(0,-1), ...r];
-  }
-  return [a, b];
+function ptLineDist(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1];if(dx===0&&dy===0)return Math.hypot(p[0]-a[0],p[1]-a[1]);const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy);return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));}
+function rdp(pts,eps){
+  if(pts.length<=2)return pts;
+  let maxD=0,maxI=0;const a=pts[0],b=pts[pts.length-1];
+  for(let i=1;i<pts.length-1;i++){const d=ptLineDist(pts[i],a,b);if(d>maxD){maxD=d;maxI=i;}}
+  if(maxD>eps){const l=rdp(pts.slice(0,maxI+1),eps),r=rdp(pts.slice(maxI),eps);return[...l.slice(0,-1),...r];}
+  return[a,b];
 }
 
 // ─── Box blur ────────────────────────────────────────────────────────────────
-function boxBlurRGBA(data, W, H, r) {
-  if (r <= 0) return data;
-  const out = new Uint8ClampedArray(data.length);
-  const tmp = new Uint8ClampedArray(data.length);
-  for (let ch = 0; ch < 4; ch++) {
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        let s = 0, c = 0;
-        for (let dx = -r; dx <= r; dx++) {
-          const nx = x + dx;
-          if (nx >= 0 && nx < W) { s += data[(y*W+nx)*4+ch]; c++; }
-        }
-        tmp[(y*W+x)*4+ch] = s / c;
-      }
-    }
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        let s = 0, c = 0;
-        for (let dy = -r; dy <= r; dy++) {
-          const ny = y + dy;
-          if (ny >= 0 && ny < H) { s += tmp[(ny*W+x)*4+ch]; c++; }
-        }
-        out[(y*W+x)*4+ch] = s / c;
-      }
-    }
+function boxBlurRGBA(data,W,H,r){
+  if(r<=0)return data;
+  const out=new Uint8ClampedArray(data.length),tmp=new Uint8ClampedArray(data.length);
+  for(let ch=0;ch<4;ch++){
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0,c=0;for(let dx=-r;dx<=r;dx++){const nx=x+dx;if(nx>=0&&nx<W){s+=data[(y*W+nx)*4+ch];c++;}}tmp[(y*W+x)*4+ch]=s/c;}
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0,c=0;for(let dy=-r;dy<=r;dy++){const ny=y+dy;if(ny>=0&&ny<H){s+=tmp[(ny*W+x)*4+ch];c++;}}out[(y*W+x)*4+ch]=s/c;}
   }
   return out;
 }
 
-// ─── K-means color quantization ──────────────────────────────────────────────
-function colorDist2(a, b) {
-  return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2;
+// ─── Color utils ─────────────────────────────────────────────────────────────
+function colorDist2(a,b){return(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;}
+
+function toHex(rgb){return'#'+rgb.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');}
+
+function hexToRgb(hex){return[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];}
+
+function rgbToHsl(r,g,b){
+  r/=255;g/=255;b/=255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+  let h=0,s=0;const l=(mx+mn)/2;
+  if(mx!==mn){
+    const d=mx-mn;s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+    switch(mx){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;case b:h=((r-g)/d+4)/6;break;}
+  }
+  return[h,s,l];
 }
 
-function kMeansColors(data, W, H, k, maxIter) {
-  // Collect non-transparent pixels; subsample for speed
-  const step = Math.max(1, Math.floor(W * H / 8000));
-  const pixels = [];
-  for (let i = 0; i < W * H; i += step) {
-    if (data[i*4+3] > 128) pixels.push([data[i*4], data[i*4+1], data[i*4+2]]);
-  }
-  if (!pixels.length) return [[0,0,0]];
+function hueDist(h1,h2){const d=Math.abs(h1-h2)%360;return d>180?360-d:d;}
+
+// ─── K-Means palette ─────────────────────────────────────────────────────────
+function kMeansColors(data,W,H,k,maxIter){
+  const step=Math.max(1,Math.floor(W*H/8000));
+  const pixels=[];
+  for(let i=0;i<W*H;i+=step)if(data[i*4+3]>128)pixels.push([data[i*4],data[i*4+1],data[i*4+2]]);
+  if(!pixels.length)return[[0,0,0]];
 
   // k-means++ init
-  const centroids = [];
-  centroids.push(pixels[Math.floor(Math.random() * pixels.length)].slice());
-  while (centroids.length < k) {
-    const dists = pixels.map(p => Math.min(...centroids.map(c => colorDist2(p, c))));
-    const total = dists.reduce((a, b) => a + b, 0);
-    let r = Math.random() * total;
-    for (let i = 0; i < pixels.length; i++) {
-      r -= dists[i];
-      if (r <= 0) { centroids.push(pixels[i].slice()); break; }
-    }
-    if (centroids.length < k + 1 - (k - centroids.length)) {
-      // fallback if we didn't add one (total=0 edge case)
-      centroids.push(pixels[Math.floor(Math.random() * pixels.length)].slice());
-    }
+  const centroids=[pixels[Math.floor(Math.random()*pixels.length)].slice()];
+  while(centroids.length<k){
+    const dists=pixels.map(p=>Math.min(...centroids.map(c=>colorDist2(p,c))));
+    const total=dists.reduce((a,b)=>a+b,0);
+    let r=Math.random()*total;
+    for(let i=0;i<pixels.length;i++){r-=dists[i];if(r<=0){centroids.push(pixels[i].slice());break;}}
+    if(centroids.length<k)centroids.push(pixels[Math.floor(Math.random()*pixels.length)].slice());
   }
 
-  // Iterate
-  for (let iter = 0; iter < maxIter; iter++) {
-    const sums = centroids.map(() => [0, 0, 0, 0]); // r,g,b,count
-    for (const p of pixels) {
-      let minD = Infinity, ci = 0;
-      for (let i = 0; i < k; i++) {
-        const d = colorDist2(p, centroids[i]);
-        if (d < minD) { minD = d; ci = i; }
-      }
-      sums[ci][0] += p[0]; sums[ci][1] += p[1]; sums[ci][2] += p[2]; sums[ci][3]++;
-    }
-    let changed = false;
-    for (let i = 0; i < k; i++) {
-      if (!sums[i][3]) continue;
-      const nr = sums[i][0]/sums[i][3], ng = sums[i][1]/sums[i][3], nb = sums[i][2]/sums[i][3];
-      if (colorDist2([nr,ng,nb], centroids[i]) > 1) changed = true;
-      centroids[i] = [nr, ng, nb];
-    }
-    if (!changed) break;
+  for(let iter=0;iter<maxIter;iter++){
+    const sums=centroids.map(()=>[0,0,0,0]);
+    for(const p of pixels){let minD=Infinity,ci=0;for(let i=0;i<k;i++){const d=colorDist2(p,centroids[i]);if(d<minD){minD=d;ci=i;}}sums[ci][0]+=p[0];sums[ci][1]+=p[1];sums[ci][2]+=p[2];sums[ci][3]++;}
+    let changed=false;
+    for(let i=0;i<k;i++){if(!sums[i][3])continue;const nr=sums[i][0]/sums[i][3],ng=sums[i][1]/sums[i][3],nb=sums[i][2]/sums[i][3];if(colorDist2([nr,ng,nb],centroids[i])>1)changed=true;centroids[i]=[nr,ng,nb];}
+    if(!changed)break;
   }
-
-  return centroids.map(c => [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])]);
+  return centroids.map(c=>[Math.round(c[0]),Math.round(c[1]),Math.round(c[2])]);
 }
 
-function assignPixels(data, W, H, palette) {
-  // Returns Uint8Array of palette indices, one per pixel
-  const indices = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) {
-    const a = data[i*4+3];
-    if (a < 128) { indices[i] = 255; continue; } // transparent → mark as no-color
-    const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
-    let minD = Infinity, ci = 0;
-    for (let j = 0; j < palette.length; j++) {
-      const d = colorDist2([r,g,b], palette[j]);
-      if (d < minD) { minD = d; ci = j; }
+// ─── Hue-Spread palette ──────────────────────────────────────────────────────
+// Greedy: each new color maximizes sqrt(pixel_weight) * min_angular_distance_to_chosen.
+// This balances "is this color actually in the image?" vs "does it add hue diversity?"
+function hueSpreadPalette(data,W,H,k){
+  const HUE_BINS=180; // 2-degree buckets
+  const binR=new Float32Array(HUE_BINS),binG=new Float32Array(HUE_BINS),binB=new Float32Array(HUE_BINS);
+  const binW=new Float32Array(HUE_BINS);
+
+  const step=Math.max(1,Math.floor(W*H/8000));
+  for(let i=0;i<W*H;i+=step){
+    if(data[i*4+3]<128)continue;
+    const r=data[i*4],g=data[i*4+1],b=data[i*4+2];
+    const[h,s,l]=rgbToHsl(r,g,b);
+    if(s<0.08)continue; // skip near-greys
+    const bin=Math.min(HUE_BINS-1,Math.floor(h*HUE_BINS));
+    // Chroma weight: prefer vivid, mid-lightness colors
+    const w=s*(1-Math.abs(2*l-1));
+    binR[bin]+=r*w;binG[bin]+=g*w;binB[bin]+=b*w;binW[bin]+=w;
+  }
+
+  // Build candidate list (non-empty bins)
+  const bins=[];
+  for(let b=0;b<HUE_BINS;b++){
+    if(binW[b]>0)bins.push({
+      hue:(b/HUE_BINS)*360,
+      weight:binW[b],
+      rgb:[Math.round(binR[b]/binW[b]),Math.round(binG[b]/binW[b]),Math.round(binB[b]/binW[b])],
+    });
+  }
+
+  if(!bins.length)return kMeansColors(data,W,H,k,20);
+
+  // Start with most popular hue
+  const chosen=[bins.reduce((best,b)=>b.weight>best.weight?b:best,bins[0])];
+
+  while(chosen.length<Math.min(k,bins.length)){
+    let bestScore=-1,bestBin=null;
+    for(const bin of bins){
+      if(chosen.some(c=>hueDist(c.hue,bin.hue)<1.5))continue;
+      const minDist=Math.min(...chosen.map(c=>hueDist(c.hue,bin.hue)));
+      const score=Math.sqrt(bin.weight)*minDist;
+      if(score>bestScore){bestScore=score;bestBin=bin;}
     }
-    indices[i] = ci;
+    if(!bestBin)break;
+    chosen.push(bestBin);
+  }
+
+  // If image doesn't have enough distinct hues, pad with k-means
+  if(chosen.length<k){
+    const extra=kMeansColors(data,W,H,k-chosen.length,15);
+    extra.forEach(rgb=>chosen.push({rgb,hue:-1,weight:0}));
+  }
+
+  return chosen.map(b=>b.rgb);
+}
+
+// ─── Pixel assignment ────────────────────────────────────────────────────────
+function assignPixels(data,W,H,pal){
+  const indices=new Uint8Array(W*H);
+  for(let i=0;i<W*H;i++){
+    if(data[i*4+3]<128){indices[i]=255;continue;}
+    const r=data[i*4],g=data[i*4+1],b=data[i*4+2];
+    let minD=Infinity,ci=0;
+    for(let j=0;j<pal.length;j++){const d=colorDist2([r,g,b],pal[j]);if(d<minD){minD=d;ci=j;}}
+    indices[i]=ci;
   }
   return indices;
 }
 
-function toHex(rgb) {
-  return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+// ─── Apply force-black + sort ────────────────────────────────────────────────
+function postProcessPalette(pal){
+  if(document.getElementById('forceBlack').checked){
+    const hasBlack=pal.some(c=>colorDist2(c,[0,0,0])<40*40);
+    if(!hasBlack){
+      let lightestIdx=0,maxLum=-1;
+      pal.forEach((c,i)=>{const lum=0.299*c[0]+0.587*c[1]+0.114*c[2];if(lum>maxLum){maxLum=lum;lightestIdx=i;}});
+      pal[lightestIdx]=[0,0,0];
+    }
+  }
+  // Sort dark → light
+  pal.sort((a,b)=>(0.299*a[0]+0.587*a[1]+0.114*a[2])-(0.299*b[0]+0.587*b[1]+0.114*b[2]));
+  return pal;
 }
 
 // ─── App state ────────────────────────────────────────────────────────────────
-const MAX_DIM = 1000;
-let imgW = 0, imgH = 0, rawData = null; // raw RGBA from original
-let palette = [], indices = null; // current palettization
-let currentSVG = '';
+const MAX_DIM=1000;
+let imgW=0,imgH=0,rawData=null,blurredData=null;
+let palette=[],indices=null,currentSVG='';
+let editingSwatchIdx=-1;
+let lastMethod='kmeans';
 
-const origCanvas = document.getElementById('originalCanvas');
-const palCanvas  = document.getElementById('palCanvas');
-const svgView    = document.getElementById('svgView');
-const statusMsg  = document.getElementById('statusMsg');
-const nColorsSlider = document.getElementById('nColors');
-const tolSlider  = document.getElementById('tolerance');
-const blurSlider = document.getElementById('blur');
-const fileInput  = document.getElementById('fileInput');
+const origCanvas=document.getElementById('originalCanvas');
+const palCanvas=document.getElementById('palCanvas');
+const svgView=document.getElementById('svgView');
+const statusMsg=document.getElementById('statusMsg');
+const nColorsSlider=document.getElementById('nColors');
+const tolSlider=document.getElementById('tolerance');
+const blurSlider=document.getElementById('blur');
+const fileInput=document.getElementById('fileInput');
+const colorPicker=document.getElementById('colorPicker');
 
-// ─── Draw palettized preview ─────────────────────────────────────────────────
-function drawPalettized() {
-  if (!indices || !palette.length) return;
-  palCanvas.width = imgW; palCanvas.height = imgH;
-  const ctx = palCanvas.getContext('2d');
-  const id = ctx.createImageData(imgW, imgH);
-  for (let i = 0; i < imgW * imgH; i++) {
-    const ci = indices[i];
-    if (ci === 255) { id.data[i*4+3] = 0; continue; }
-    const c = palette[ci];
-    id.data[i*4]   = c[0];
-    id.data[i*4+1] = c[1];
-    id.data[i*4+2] = c[2];
-    id.data[i*4+3] = 255;
+// ─── Draw palettized preview + swatch strip ──────────────────────────────────
+function drawPalettized(){
+  if(!indices||!palette.length)return;
+
+  // Canvas preview
+  palCanvas.width=imgW;palCanvas.height=imgH;
+  const ctx=palCanvas.getContext('2d');
+  const id=ctx.createImageData(imgW,imgH);
+  for(let i=0;i<imgW*imgH;i++){
+    const ci=indices[i];
+    if(ci===255){id.data[i*4+3]=0;continue;}
+    const c=palette[ci];
+    id.data[i*4]=c[0];id.data[i*4+1]=c[1];id.data[i*4+2]=c[2];id.data[i*4+3]=255;
   }
-  ctx.putImageData(id, 0, 0);
+  ctx.putImageData(id,0,0);
 
-  // Update palette strip
-  const strip = document.getElementById('paletteStrip');
-  strip.innerHTML = '';
-  palette.forEach(c => {
-    const sw = document.createElement('div');
-    sw.className = 'swatch';
-    sw.style.background = toHex(c);
-    sw.title = toHex(c);
+  // Palette strip — each swatch is clickable
+  const strip=document.getElementById('paletteStrip');
+  strip.innerHTML='';
+  palette.forEach((c,i)=>{
+    const sw=document.createElement('div');
+    sw.className='swatch';
+    sw.style.background=toHex(c);
+    sw.title=`${toHex(c)} — click to edit`;
+    sw.dataset.idx=i;
+    sw.addEventListener('click',()=>{
+      editingSwatchIdx=i;
+      colorPicker.value=toHex(c);
+      colorPicker.click();
+    });
     strip.appendChild(sw);
   });
 }
 
+// ─── Color picker handler ────────────────────────────────────────────────────
+colorPicker.addEventListener('input',e=>{
+  if(editingSwatchIdx<0||!blurredData)return;
+  palette[editingSwatchIdx]=hexToRgb(e.target.value);
+  indices=assignPixels(blurredData,imgW,imgH,palette);
+  drawPalettized();
+  statusMsg.textContent=`Color ${editingSwatchIdx+1} updated — click Vectorize to re-run.`;
+});
+
 // ─── Palettize ───────────────────────────────────────────────────────────────
-function palettize() {
-  if (!rawData) return;
-  statusMsg.textContent = 'Running k-means…';
-  const nColors = parseInt(nColorsSlider.value);
-  const blurR = parseInt(blurSlider.value);
-  const forceBlack = document.getElementById('forceBlack').checked;
+function palettize(method){
+  if(!rawData)return;
+  lastMethod=method;
+  const nColors=parseInt(nColorsSlider.value);
+  const blurR=parseInt(blurSlider.value);
 
-  setTimeout(() => {
-    const blurred = blurR > 0 ? boxBlurRGBA(rawData, imgW, imgH, blurR) : rawData;
+  // Highlight active method button
+  document.getElementById('kMeansBtn').classList.toggle('active-method',method==='kmeans');
+  document.getElementById('hueSpreadBtn').classList.toggle('active-method',method==='hue');
 
-    let k = nColors;
-    palette = kMeansColors(blurred, imgW, imgH, k, 20);
+  statusMsg.textContent=method==='hue'?'Building hue spread palette…':'Running k-means…';
+  document.getElementById('nColorsVal').textContent=nColors;
 
-    // Force black into palette if checked
-    if (forceBlack) {
-      // Check if black is already close to any centroid
-      const hasBlack = palette.some(c => colorDist2(c, [0,0,0]) < 30*30);
-      if (!hasBlack) {
-        // Replace the lightest centroid with black
-        let lightestIdx = 0, maxLum = -1;
-        palette.forEach((c, i) => {
-          const lum = 0.299*c[0] + 0.587*c[1] + 0.114*c[2];
-          if (lum > maxLum) { maxLum = lum; lightestIdx = i; }
-        });
-        palette[lightestIdx] = [0, 0, 0];
-      }
+  setTimeout(()=>{
+    blurredData=blurR>0?boxBlurRGBA(rawData,imgW,imgH,blurR):rawData;
+
+    let pal;
+    if(method==='hue'){
+      pal=hueSpreadPalette(blurredData,imgW,imgH,nColors);
+    } else {
+      pal=kMeansColors(blurredData,imgW,imgH,nColors,20);
     }
 
-    // Sort palette dark → light for sensible xTool layer ordering
-    palette.sort((a, b) => {
-      const la = 0.299*a[0]+0.587*a[1]+0.114*a[2];
-      const lb = 0.299*b[0]+0.587*b[1]+0.114*b[2];
-      return la - lb;
-    });
-
-    indices = assignPixels(blurred, imgW, imgH, palette);
+    palette=postProcessPalette(pal);
+    indices=assignPixels(blurredData,imgW,imgH,palette);
     drawPalettized();
-    document.getElementById('nColorsVal').textContent = nColors;
-    statusMsg.textContent = `Palette found: ${palette.length} colors — click Vectorize.`;
-  }, 20);
+    statusMsg.textContent=`${method==='hue'?'Hue-spread':'K-means'} palette: ${palette.length} colors — click Vectorize, or click a swatch to edit.`;
+  },20);
 }
 
 // ─── Vectorize ────────────────────────────────────────────────────────────────
-function vectorize() {
-  if (!indices || !palette.length) return;
-  statusMsg.textContent = 'Vectorizing layers…';
-  document.getElementById('vectorizeBtn').disabled = true;
-  document.getElementById('downloadBtn').disabled = true;
+function vectorize(){
+  if(!indices||!palette.length)return;
+  statusMsg.textContent='Vectorizing layers…';
+  document.getElementById('vectorizeBtn').disabled=true;
+  document.getElementById('downloadBtn').disabled=true;
 
-  setTimeout(() => {
-    const t0 = performance.now();
-    const tolerance = parseInt(tolSlider.value) / 10;
-    const whiteBg = document.getElementById('whiteBackground').checked;
+  setTimeout(()=>{
+    const t0=performance.now();
+    const tolerance=parseInt(tolSlider.value)/10;
+    const whiteBg=document.getElementById('whiteBackground').checked;
 
-    const layers = [];
-    let totalPaths = 0, totalPts = 0;
-
-    for (let ci = 0; ci < palette.length; ci++) {
-      // Build binary mask: 1 where pixel = this color
-      const mask = new Uint8Array(imgW * imgH);
-      for (let i = 0; i < imgW * imgH; i++) {
-        mask[i] = (indices[i] === ci) ? 1 : 0;
-      }
-
-      const segs = marchingSquares(mask, imgW, imgH);
-      const contours = connectSegments(segs);
-      const simplified = contours.map(c => rdp(c, tolerance)).filter(c => c.length >= 3);
-
-      if (simplified.length > 0) {
-        totalPaths += simplified.length;
-        totalPts += simplified.reduce((s, c) => s + c.length, 0);
-        layers.push({ color: palette[ci], hex: toHex(palette[ci]), paths: simplified });
+    const layers=[];
+    let totalPaths=0,totalPts=0;
+    for(let ci=0;ci<palette.length;ci++){
+      const mask=new Uint8Array(imgW*imgH);
+      for(let i=0;i<imgW*imgH;i++)mask[i]=(indices[i]===ci)?1:0;
+      const segs=marchingSquares(mask,imgW,imgH);
+      const contours=connectSegments(segs);
+      const simplified=contours.map(c=>rdp(c,tolerance)).filter(c=>c.length>=3);
+      if(simplified.length>0){
+        totalPaths+=simplified.length;
+        totalPts+=simplified.reduce((s,c)=>s+c.length,0);
+        layers.push({color:palette[ci],hex:toHex(palette[ci]),paths:simplified});
       }
     }
 
-    // Build multi-layer SVG
-    let svgParts = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${imgW} ${imgH}" width="${imgW}" height="${imgH}">`];
-    svgParts.push(`  <!-- Generated by Palette Vectorizer — ${layers.length} color layers for xTool Studio -->`);
-    if (whiteBg) svgParts.push(`  <rect width="${imgW}" height="${imgH}" fill="white"/>`);
-
-    layers.forEach((layer, i) => {
-      const pathEls = layer.paths.map(pts =>
-        '    <path d="M' + pts.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join('L') + 'Z"/>'
-      ).join('\n');
+    let svgParts=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${imgW} ${imgH}" width="${imgW}" height="${imgH}">`];
+    svgParts.push(`  <!-- Palette Vectorizer — ${layers.length} color layers for xTool Studio -->`);
+    if(whiteBg)svgParts.push(`  <rect width="${imgW}" height="${imgH}" fill="white"/>`);
+    layers.forEach((layer,i)=>{
+      const pathEls=layer.paths.map(pts=>'    <path d="M'+pts.map(p=>p[0].toFixed(2)+','+p[1].toFixed(2)).join('L')+'Z"/>').join('\n');
       svgParts.push(`  <g id="layer-${i+1}" fill="${layer.hex}" fill-rule="evenodd" stroke="none">`);
       svgParts.push(pathEls);
       svgParts.push(`  </g>`);
     });
     svgParts.push('</svg>');
-    currentSVG = svgParts.join('\n');
+    currentSVG=svgParts.join('\n');
 
-    svgView.innerHTML = currentSVG;
-    document.getElementById('svgLabel').textContent = `SVG Output — ${layers.length} color layers`;
+    svgView.innerHTML=currentSVG;
+    document.getElementById('svgLabel').textContent=`SVG Output — ${layers.length} color layers`;
 
-    const ms = performance.now() - t0;
-    const elapsed = ms < 1000 ? ms.toFixed(0) + ' ms' : (ms/1000).toFixed(2) + ' s';
-    const bytes = new Blob([currentSVG]).size;
-    document.getElementById('layerCount').textContent = layers.length;
-    document.getElementById('pathCount').textContent = totalPaths.toLocaleString();
-    document.getElementById('svgSize').textContent = bytes < 1024 ? bytes + ' B' : (bytes/1024).toFixed(1) + ' KB';
-    document.getElementById('statsRow').style.display = 'flex';
-    statusMsg.textContent = `Done in ${elapsed} — ${layers.length} layers, ${totalPaths} paths.`;
+    const ms=performance.now()-t0;
+    const elapsed=ms<1000?ms.toFixed(0)+' ms':(ms/1000).toFixed(2)+' s';
+    const bytes=new Blob([currentSVG]).size;
+    document.getElementById('layerCount').textContent=layers.length;
+    document.getElementById('pathCount').textContent=totalPaths.toLocaleString();
+    document.getElementById('svgSize').textContent=bytes<1024?bytes+' B':(bytes/1024).toFixed(1)+' KB';
+    document.getElementById('statsRow').style.display='flex';
+    statusMsg.textContent=`Done in ${elapsed} — ${layers.length} layers, ${totalPaths} paths.`;
 
-    // Layer breakdown table
-    const layerRows = document.getElementById('layerRows');
-    layerRows.innerHTML = '';
-    layers.forEach((layer, i) => {
-      const pts = layer.paths.reduce((s, c) => s + c.length, 0);
-      const lum = 0.299*layer.color[0]+0.587*layer.color[1]+0.114*layer.color[2];
-      const textColor = lum > 160 ? '#000' : '#fff';
-      layerRows.innerHTML += `
-        <div class="layer-row">
-          <div class="swatch" style="background:${layer.hex}"></div>
-          <div class="hex">${layer.hex} — layer-${i+1}</div>
-          <div class="paths">${layer.paths.length} paths</div>
-          <div class="pts">${pts.toLocaleString()} pts</div>
-        </div>`;
+    const layerRows=document.getElementById('layerRows');
+    layerRows.innerHTML='';
+    layers.forEach((layer,i)=>{
+      const pts=layer.paths.reduce((s,c)=>s+c.length,0);
+      layerRows.innerHTML+=`<div class="layer-row">
+        <div class="swatch-sm" style="background:${layer.hex}"></div>
+        <div class="hex">${layer.hex} — layer-${i+1}</div>
+        <div class="paths">${layer.paths.length} paths</div>
+        <div class="pts">${pts.toLocaleString()} pts</div>
+      </div>`;
     });
-    document.getElementById('layerBreakdown').style.display = 'block';
-
-    document.getElementById('downloadBtn').disabled = false;
-    document.getElementById('vectorizeBtn').disabled = false;
-  }, 20);
+    document.getElementById('layerBreakdown').style.display='block';
+    document.getElementById('downloadBtn').disabled=false;
+    document.getElementById('vectorizeBtn').disabled=false;
+  },20);
 }
 
 // ─── Load image ───────────────────────────────────────────────────────────────
-function loadFromImage(img) {
-  const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
-  imgW = Math.round(img.width * scale);
-  imgH = Math.round(img.height * scale);
-  origCanvas.width = imgW; origCanvas.height = imgH;
-  const ctx = origCanvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, imgW, imgH);
-  rawData = ctx.getImageData(0, 0, imgW, imgH).data;
-  document.getElementById('origLabel').textContent = `Original — ${imgW}×${imgH}`;
-  svgView.innerHTML = '';
-  document.getElementById('layerBreakdown').style.display = 'none';
-  document.getElementById('statsRow').style.display = 'none';
-  currentSVG = '';
-  document.getElementById('downloadBtn').disabled = true;
-  palettize();
+function loadFromImage(img){
+  const scale=Math.min(1,MAX_DIM/Math.max(img.width,img.height));
+  imgW=Math.round(img.width*scale);imgH=Math.round(img.height*scale);
+  origCanvas.width=imgW;origCanvas.height=imgH;
+  const ctx=origCanvas.getContext('2d');
+  ctx.drawImage(img,0,0,imgW,imgH);
+  rawData=ctx.getImageData(0,0,imgW,imgH).data;
+  document.getElementById('origLabel').textContent=`Original — ${imgW}×${imgH}`;
+  svgView.innerHTML='';
+  document.getElementById('layerBreakdown').style.display='none';
+  document.getElementById('statsRow').style.display='none';
+  currentSVG='';
+  document.getElementById('downloadBtn').disabled=true;
+  palettize('kmeans');
 }
 
-function loadDuck() {
-  const img = new Image();
-  img.onload = () => loadFromImage(img);
-  img.src = '../duck.png';
-}
+function loadDuck(){const img=new Image();img.onload=()=>loadFromImage(img);img.src='../duck.png';}
 
-function loadImageFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => { URL.revokeObjectURL(url); loadFromImage(img); };
-  img.onerror = () => { statusMsg.textContent = 'Could not load image.'; };
-  img.src = url;
+function loadImageFile(file){
+  if(!file||!file.type.startsWith('image/'))return;
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(url);loadFromImage(img);};
+  img.onerror=()=>{statusMsg.textContent='Could not load image.';};
+  img.src=url;
 }
 
 // ─── Event wiring ─────────────────────────────────────────────────────────────
-nColorsSlider.addEventListener('input', () => {
-  document.getElementById('nColorsVal').textContent = nColorsSlider.value;
-});
-tolSlider.addEventListener('input', () => {
-  document.getElementById('toleranceVal').textContent = (tolSlider.value/10).toFixed(1);
-});
-blurSlider.addEventListener('input', () => {
-  document.getElementById('blurVal').textContent = blurSlider.value;
+nColorsSlider.addEventListener('input',()=>{document.getElementById('nColorsVal').textContent=nColorsSlider.value;});
+tolSlider.addEventListener('input',()=>{document.getElementById('toleranceVal').textContent=(tolSlider.value/10).toFixed(1);});
+blurSlider.addEventListener('input',()=>{document.getElementById('blurVal').textContent=blurSlider.value;});
+
+document.getElementById('kMeansBtn').addEventListener('click',()=>palettize('kmeans'));
+document.getElementById('hueSpreadBtn').addEventListener('click',()=>palettize('hue'));
+document.getElementById('vectorizeBtn').addEventListener('click',vectorize);
+document.getElementById('browseBtn').addEventListener('click',()=>fileInput.click());
+document.getElementById('resetBtn').addEventListener('click',loadDuck);
+fileInput.addEventListener('change',()=>{if(fileInput.files[0])loadImageFile(fileInput.files[0]);fileInput.value='';});
+
+document.getElementById('downloadBtn').addEventListener('click',()=>{
+  if(!currentSVG)return;
+  const blob=new Blob([currentSVG],{type:'image/svg+xml'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='palette-vectorized.svg';a.click();URL.revokeObjectURL(a.href);
 });
 
-document.getElementById('vectorizeBtn').addEventListener('click', vectorize);
-document.getElementById('rePalBtn').addEventListener('click', palettize);
-document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
-document.getElementById('resetBtn').addEventListener('click', loadDuck);
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadImageFile(fileInput.files[0]); fileInput.value = ''; });
-
-document.getElementById('downloadBtn').addEventListener('click', () => {
-  if (!currentSVG) return;
-  const blob = new Blob([currentSVG], { type: 'image/svg+xml' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'palette-vectorized.svg';
-  a.click();
-  URL.revokeObjectURL(a.href);
+document.addEventListener('paste',e=>{
+  const items=e.clipboardData?.items;if(!items)return;
+  for(const item of items)if(item.type.startsWith('image/')){loadImageFile(item.getAsFile());break;}
 });
 
-// Paste
-document.addEventListener('paste', e => {
-  const items = e.clipboardData?.items;
-  if (!items) return;
-  for (const item of items) {
-    if (item.type.startsWith('image/')) { loadImageFile(item.getAsFile()); break; }
-  }
-});
-
-// Drag and drop
-let dragCount = 0;
-document.addEventListener('dragenter', e => { e.preventDefault(); dragCount++; document.body.classList.add('drag-over'); });
-document.addEventListener('dragleave', () => { dragCount--; if (dragCount <= 0) { dragCount = 0; document.body.classList.remove('drag-over'); } });
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => {
-  e.preventDefault(); dragCount = 0; document.body.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) loadImageFile(file);
+let dragCount=0;
+document.addEventListener('dragenter',e=>{e.preventDefault();dragCount++;document.body.classList.add('drag-over');});
+document.addEventListener('dragleave',()=>{dragCount--;if(dragCount<=0){dragCount=0;document.body.classList.remove('drag-over');}});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{
+  e.preventDefault();dragCount=0;document.body.classList.remove('drag-over');
+  const file=e.dataTransfer.files[0];if(file)loadImageFile(file);
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
