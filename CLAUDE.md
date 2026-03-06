@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Style Guide
+
+**Always check `style-guide/index.html` before building any new page.** All pages must follow the design tokens and component patterns defined there.
+
+Key rules at a glance:
+- Background `#0d0d0d`, text `#fff`, never light backgrounds
+- Font: `-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`; mono: `'SF Mono', 'Fira Code', monospace`
+- Page padding: `60px 24px 80px`; max-width `900px` (grids) or `800–880px` (content)
+- Cards: `#1a1a1a` bg, `1px solid #2a2a2a` border, `16px` radius, `28px` padding
+- Accent blue `#5b9bd5` (primary), green `#4caf50`, orange `#f0a040`, red `#e74c3c`
+- Back link: color `#555`, hover `#aaa`, 14px, no underline
+- Buttons: default `#1a1a1a/#333/#ccc`; primary `#1e2d40/#5b9bd5`; disabled opacity 0.3
+
 ## Overview
 
 A static multi-demo site with no build system, package manager, or test framework. All demos are self-contained single-file HTML pages with inline CSS and JavaScript. Serve locally to develop.
