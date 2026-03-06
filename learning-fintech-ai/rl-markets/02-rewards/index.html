@@ -227,11 +227,16 @@ function computeRewards() {
 }
 
 // ─── Drawing ──────────────────────────────────────────────────────────────────
+function canvasSize(el) {
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width) || el.offsetWidth || 760, h: Math.round(r.height) || el.offsetHeight || 160 };
+}
+
 function drawPrice() {
   const el = document.getElementById('priceCanvas');
   const dpr = window.devicePixelRatio || 1;
-  const W = el.offsetWidth || 760;
-  const H = el.offsetHeight || 160;
+  const { w: W, h: H } = canvasSize(el);
+  if (!W || !H) return;
   el.width = W * dpr; el.height = H * dpr;
   const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
@@ -291,8 +296,8 @@ function drawPrice() {
 function drawReward() {
   const el = document.getElementById('rewardCanvas');
   const dpr = window.devicePixelRatio || 1;
-  const W = el.offsetWidth || 760;
-  const H = el.offsetHeight || 100;
+  const { w: W, h: H } = canvasSize(el);
+  if (!W || !H) return;
   el.width = W * dpr; el.height = H * dpr;
   const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
@@ -360,17 +365,15 @@ function redraw() {
 }
 
 // ─── Slider updates ───────────────────────────────────────────────────────────
-document.getElementById('tcSlider').addEventListener('input', function() {
-  document.getElementById('tcVal').textContent = parseFloat(this.value).toFixed(3);
-  drawReward();
-});
-document.getElementById('ddSlider').addEventListener('input', function() {
-  document.getElementById('ddVal').textContent = parseFloat(this.value).toFixed(2);
-  drawReward();
-});
-document.getElementById('sharpeSlider').addEventListener('input', function() {
-  document.getElementById('sharpeVal').textContent = parseFloat(this.value).toFixed(2);
-  drawReward();
+[
+  { id: 'tcSlider',     display: 'tcVal',     dec: 3 },
+  { id: 'ddSlider',     display: 'ddVal',     dec: 2 },
+  { id: 'sharpeSlider', display: 'sharpeVal', dec: 2 },
+].forEach(({ id, display, dec }) => {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById(display).textContent = parseFloat(this.value).toFixed(dec);
+    drawReward();
+  });
 });
 
 document.getElementById('btnRegen').addEventListener('click', () => {
@@ -380,9 +383,9 @@ document.getElementById('btnRegen').addEventListener('click', () => {
 
 window.addEventListener('resize', redraw);
 
-// Init
+// Init — wait for layout before first draw
 generateSeries();
-setTimeout(redraw, 50);
+requestAnimationFrame(redraw);
 </script>
 </div>
 </body>
