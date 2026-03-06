@@ -38,6 +38,9 @@
   .swatch:active { transform: scale(1.05); }
   .palette-label { font-size: 11px; color: #444; margin-bottom: 2px; }
   .palette-hint { font-size: 10px; color: #333; margin-bottom: 6px; }
+  .count-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .count-btn { padding: 4px 0; width: 28px; font-size: 12px; text-align: center; border-radius: 4px; }
+  .count-btn.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
 
   /* Controls */
   .controls-panel { margin: 16px 0; }
@@ -110,6 +113,12 @@
       </div>
     </div>
 
+    <div style="margin-bottom:6px;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Detect palette</div>
+    <div class="btn-row" style="margin-top:0;margin-bottom:14px">
+      <button id="kMeansBtn">K-Means — most common colors</button>
+      <button id="hueSpreadBtn">Hue Spread — widest color range</button>
+    </div>
+
     <div class="palette-label">Detected palette</div>
     <div class="palette-hint">Click any swatch to change its color — preview updates automatically</div>
     <div class="palette-strip" id="paletteStrip"></div>
@@ -118,8 +127,7 @@
       <div class="ctrl-row">
         <div class="ctrl-group">
           <label>Colors</label>
-          <input type="range" id="nColors" min="2" max="9" value="8">
-          <div class="val"><span id="nColorsVal">8</span> colors</div>
+          <div class="count-btns" id="nColorsBtns"></div>
         </div>
         <div class="ctrl-group">
           <label>Simplify (RDP tolerance)</label>
@@ -142,13 +150,6 @@
           <label for="whiteBackground">White background in SVG</label>
         </div>
       </div>
-    </div>
-
-    <!-- Detect palette buttons -->
-    <div style="margin-bottom:4px;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Detect palette</div>
-    <div class="btn-row" style="margin-top:6px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #1a1a1a">
-      <button id="kMeansBtn">K-Means — most common colors</button>
-      <button id="hueSpreadBtn">Hue Spread — widest color range</button>
     </div>
 
     <div class="btn-row">
@@ -399,7 +400,6 @@ const origCanvas=document.getElementById('originalCanvas');
 const palCanvas=document.getElementById('palCanvas');
 const svgView=document.getElementById('svgView');
 const statusMsg=document.getElementById('statusMsg');
-const nColorsSlider=document.getElementById('nColors');
 const tolSlider=document.getElementById('tolerance');
 const blurSlider=document.getElementById('blur');
 const fileInput=document.getElementById('fileInput');
@@ -452,7 +452,8 @@ colorPicker.addEventListener('input',e=>{
 function palettize(method){
   if(!rawData)return;
   lastMethod=method;
-  const nColors=parseInt(nColorsSlider.value);
+  const activeBtn=document.querySelector('.count-btn.active');
+  const nColors=activeBtn?parseInt(activeBtn.dataset.n):8;
   const blurR=parseInt(blurSlider.value);
 
   // Highlight active method button
@@ -460,7 +461,6 @@ function palettize(method){
   document.getElementById('hueSpreadBtn').classList.toggle('active-method',method==='hue');
 
   statusMsg.textContent=method==='hue'?'Building hue spread palette…':'Running k-means…';
-  document.getElementById('nColorsVal').textContent=nColors;
 
   setTimeout(()=>{
     blurredData=blurR>0?boxBlurRGBA(rawData,imgW,imgH,blurR):rawData;
@@ -575,8 +575,21 @@ function loadImageFile(file){
   img.src=url;
 }
 
+// ─── Count buttons ────────────────────────────────────────────────────────────
+const nColorsBtns=document.getElementById('nColorsBtns');
+for(let n=2;n<=9;n++){
+  const btn=document.createElement('button');
+  btn.className='count-btn'+(n===8?' active':'');
+  btn.dataset.n=n;btn.textContent=n;
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.count-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    if(rawData)palettize(lastMethod);
+  });
+  nColorsBtns.appendChild(btn);
+}
+
 // ─── Event wiring ─────────────────────────────────────────────────────────────
-nColorsSlider.addEventListener('input',()=>{document.getElementById('nColorsVal').textContent=nColorsSlider.value;});
 tolSlider.addEventListener('input',()=>{document.getElementById('toleranceVal').textContent=(tolSlider.value/10).toFixed(1);});
 blurSlider.addEventListener('input',()=>{document.getElementById('blurVal').textContent=blurSlider.value;});
 
