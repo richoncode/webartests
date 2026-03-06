@@ -28,10 +28,12 @@
   .copy-btn:hover { color: #ccc; border-color: #555; }
   .copy-btn.copied { color: #4caf82; border-color: #4caf8244; }
   .prompt-text { font-size: 13px; color: #bbb; line-height: 1.75; white-space: pre-wrap; font-family: 'SF Mono', 'Fira Code', monospace; position: relative; }
-  .prompt-text.collapsed { flex: 1; min-height: 0; overflow: hidden; }
+  .prompt-text.collapsed { max-height: 340px; overflow: hidden; }
   .prompt-text.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 52px; background: linear-gradient(transparent, #0f0f0f); pointer-events: none; }
   .expand-btn { display: block; width: 100%; margin-top: 10px; padding: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #666; background: transparent; border: none; border-top: 1px solid #222; cursor: pointer; text-align: center; transition: color 0.1s; }
   .expand-btn:hover { color: #bbb; }
+  .show-all-btn { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #666; background: #111; border: 1px solid #222; padding: 5px 14px; border-radius: 6px; cursor: pointer; transition: color 0.1s, border-color 0.1s; font-family: inherit; margin-bottom: 40px; display: inline-block; }
+  .show-all-btn:hover { color: #bbb; border-color: #444; }
 
   .results-panel { padding: 24px; background: #0d0d0d; display: flex; flex-direction: column; gap: 16px; }
   .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -49,6 +51,7 @@
 <div class="page">
   <h1>LLM Prompt Tests</h1>
   <p class="subtitle">Image generation prompts tested for laser-cutting suitability — clean outlines, flat fills, high contrast, minimal gradients.</p>
+  <button class="show-all-btn" id="showAllBtn">Show all prompts ↓</button>
 
   <div class="entry">
     <div class="entry-header">
@@ -387,22 +390,41 @@ document.querySelectorAll('.copy-btn').forEach(btn => {
   });
 });
 
+const COLLAPSE_H = 340;
+
 document.querySelectorAll('.prompt-text').forEach(el => {
+  if (el.scrollHeight <= COLLAPSE_H + 10) return;
   el.classList.add('collapsed');
-  requestAnimationFrame(() => {
-    if (el.scrollHeight <= el.clientHeight + 10) {
-      el.classList.remove('collapsed');
-      return;
-    }
-    const btn = document.createElement('button');
-    btn.className = 'expand-btn';
-    btn.textContent = 'More ↓';
-    el.insertAdjacentElement('afterend', btn);
-    btn.addEventListener('click', () => {
-      const nowCollapsed = el.classList.toggle('collapsed');
-      btn.textContent = nowCollapsed ? 'More ↓' : 'Less ↑';
-    });
+  const btn = document.createElement('button');
+  btn.className = 'expand-btn';
+  btn.textContent = 'More ↓';
+  el.insertAdjacentElement('afterend', btn);
+  btn.addEventListener('click', () => {
+    const nowCollapsed = el.classList.toggle('collapsed');
+    btn.textContent = nowCollapsed ? 'More ↓' : 'Less ↑';
+    updateShowAllBtn();
   });
+});
+
+function updateShowAllBtn() {
+  const anyCollapsed = document.querySelector('.prompt-text.collapsed');
+  document.getElementById('showAllBtn').textContent = anyCollapsed ? 'Show all prompts ↓' : 'Collapse all ↑';
+}
+
+document.getElementById('showAllBtn').addEventListener('click', () => {
+  const anyCollapsed = document.querySelector('.prompt-text.collapsed');
+  document.querySelectorAll('.prompt-text').forEach(el => {
+    const expandBtn = el.nextElementSibling;
+    if (!expandBtn || !expandBtn.classList.contains('expand-btn')) return;
+    if (anyCollapsed) {
+      el.classList.remove('collapsed');
+      expandBtn.textContent = 'Less ↑';
+    } else {
+      el.classList.add('collapsed');
+      expandBtn.textContent = 'More ↓';
+    }
+  });
+  updateShowAllBtn();
 });
 </script>
 </body>
