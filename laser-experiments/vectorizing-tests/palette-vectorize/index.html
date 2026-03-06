@@ -117,6 +117,7 @@
     <div class="btn-row" style="margin-top:0;margin-bottom:14px">
       <button id="kMeansBtn">K-Means — most common colors</button>
       <button id="hueSpreadBtn">Hue Spread — widest color range</button>
+      <button id="hueKMeansBtn">Hue K-Means — hue clusters</button>
     </div>
 
     <div class="palette-label">Detected palette</div>
@@ -361,6 +362,66 @@ function hueSpreadPalette(data,W,H,k){
   return chosen.map(b=>b.rgb);
 }
 
+// ─── Hue K-Means palette ─────────────────────────────────────────────────────
+// K-means in 1D circular hue space. Skips near-greys. Returns mean RGB per cluster.
+function hueKMeansColors(data,W,H,k,maxIter){
+  const step=Math.max(1,Math.floor(W*H/8000));
+  const pixels=[];
+  for(let i=0;i<W*H;i+=step){
+    if(data[i*4+3]<128)continue;
+    const r=data[i*4],g=data[i*4+1],b=data[i*4+2];
+    const[h,s,l]=rgbToHsl(r,g,b);
+    if(s<0.1)continue; // skip near-greys
+    pixels.push([r,g,b,h*360]); // h in degrees
+  }
+  if(pixels.length<k)return kMeansColors(data,W,H,k,20);
+
+  // k-means++ init using angular hue distance
+  const cents=[pixels[Math.floor(Math.random()*pixels.length)][3]];
+  while(cents.length<k){
+    const dists=pixels.map(p=>Math.min(...cents.map(c=>hueDist(p[3],c))));
+    const total=dists.reduce((a,b)=>a+b,0);
+    let rv=Math.random()*total;
+    for(let i=0;i<pixels.length;i++){rv-=dists[i];if(rv<=0){cents.push(pixels[i][3]);break;}}
+    if(cents.length<k)cents.push(pixels[Math.floor(Math.random()*pixels.length)][3]);
+  }
+
+  // Iterate
+  const asgn=new Int32Array(pixels.length);
+  for(let iter=0;iter<maxIter;iter++){
+    let changed=false;
+    for(let i=0;i<pixels.length;i++){
+      let minD=Infinity,best=0;
+      for(let c=0;c<k;c++){const d=hueDist(pixels[i][3],cents[c]);if(d<minD){minD=d;best=c;}}
+      if(asgn[i]!==best){asgn[i]=best;changed=true;}
+    }
+    if(!changed)break;
+    // Circular mean update
+    for(let c=0;c<k;c++){
+      let sx=0,sy=0,n=0;
+      for(let i=0;i<pixels.length;i++){
+        if(asgn[i]!==c)continue;
+        const rad=pixels[i][3]*Math.PI/180;
+        sx+=Math.cos(rad);sy+=Math.sin(rad);n++;
+      }
+      if(n){let h=Math.atan2(sy,sx)*180/Math.PI;if(h<0)h+=360;cents[c]=h;}
+    }
+  }
+
+  // Mean RGB per hue cluster
+  const result=[];
+  for(let c=0;c<k;c++){
+    let sr=0,sg=0,sb=0,n=0;
+    for(let i=0;i<pixels.length;i++){
+      if(asgn[i]!==c)continue;
+      sr+=pixels[i][0];sg+=pixels[i][1];sb+=pixels[i][2];n++;
+    }
+    if(n)result.push([Math.round(sr/n),Math.round(sg/n),Math.round(sb/n)]);
+  }
+  while(result.length<k){const extra=kMeansColors(data,W,H,1,10);result.push(extra[0]);}
+  return result;
+}
+
 // ─── Pixel assignment ────────────────────────────────────────────────────────
 function assignPixels(data,W,H,pal){
   const indices=new Uint8Array(W*H);
@@ -459,23 +520,24 @@ function palettize(method){
   // Highlight active method button
   document.getElementById('kMeansBtn').classList.toggle('active-method',method==='kmeans');
   document.getElementById('hueSpreadBtn').classList.toggle('active-method',method==='hue');
+  document.getElementById('hueKMeansBtn').classList.toggle('active-method',method==='huek');
 
-  statusMsg.textContent=method==='hue'?'Building hue spread palette…':'Running k-means…';
+  const labels={kmeans:'Running k-means…',hue:'Building hue spread palette…',huek:'Running hue k-means…'};
+  const doneLabels={kmeans:'K-means',hue:'Hue-spread',huek:'Hue k-means'};
+  statusMsg.textContent=labels[method]||labels.kmeans;
 
   setTimeout(()=>{
     blurredData=blurR>0?boxBlurRGBA(rawData,imgW,imgH,blurR):rawData;
 
     let pal;
-    if(method==='hue'){
-      pal=hueSpreadPalette(blurredData,imgW,imgH,nColors);
-    } else {
-      pal=kMeansColors(blurredData,imgW,imgH,nColors,20);
-    }
+    if(method==='hue') pal=hueSpreadPalette(blurredData,imgW,imgH,nColors);
+    else if(method==='huek') pal=hueKMeansColors(blurredData,imgW,imgH,nColors,20);
+    else pal=kMeansColors(blurredData,imgW,imgH,nColors,20);
 
     palette=postProcessPalette(pal);
     indices=assignPixels(blurredData,imgW,imgH,palette);
     drawPalettized();
-    statusMsg.textContent=`${method==='hue'?'Hue-spread':'K-means'} palette: ${palette.length} colors — click Vectorize, or click a swatch to edit.`;
+    statusMsg.textContent=`${doneLabels[method]} palette: ${palette.length} colors — click Vectorize, or click a swatch to edit.`;
   },20);
 }
 
@@ -595,6 +657,7 @@ blurSlider.addEventListener('input',()=>{document.getElementById('blurVal').text
 
 document.getElementById('kMeansBtn').addEventListener('click',()=>palettize('kmeans'));
 document.getElementById('hueSpreadBtn').addEventListener('click',()=>palettize('hue'));
+document.getElementById('hueKMeansBtn').addEventListener('click',()=>palettize('huek'));
 document.getElementById('vectorizeBtn').addEventListener('click',vectorize);
 document.getElementById('browseBtn').addEventListener('click',()=>fileInput.click());
 document.getElementById('resetBtn').addEventListener('click',loadDuck);
