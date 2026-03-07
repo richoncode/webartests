@@ -182,10 +182,12 @@ function drawParallelStatic(trainAlpha, inferProgress) {
   ctx.fillStyle = `rgba(76, 175, 80, ${tAlpha})`;
   ctx.font = '700 12px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('All N tokens · 1 forward pass', trainX + trainW / 2, blockY + blockH / 2 - 6);
+  ctx.fillText('All N tokens · 1 forward pass', trainX + trainW / 2, blockY + blockH / 2 + 4);
+
+  // GPU util below the block — same position as inference label
   ctx.font = '11px -apple-system, sans-serif';
   ctx.fillStyle = `rgba(76, 175, 80, ${tAlpha * 0.7})`;
-  ctx.fillText('GPU utilisation: ~85%', trainX + trainW / 2, blockY + blockH / 2 + 12);
+  ctx.fillText('GPU utilisation: ~85%', trainX + trainW / 2, blockY + blockH + 20);
 
   // Inference: 8 sequential blocks
   const N = 8;
@@ -272,25 +274,16 @@ document.getElementById('parallel-animate-btn').addEventListener('click', functi
       } else {
         parallelAnimating = false;
         document.getElementById('parallel-animate-btn').disabled = false;
-        // Fade out
-        setTimeout(() => {
-          let fadeStart = performance.now();
-          function fade(now2) {
-            const fp = Math.min(1, (now2 - fadeStart) / 400);
-            drawParallelStatic(1 - fp * 0.3, 1 - fp * 0.3);
-            if (fp < 1) requestAnimationFrame(fade);
-            else drawParallelStatic(0, 0);
-          }
-          requestAnimationFrame(fade);
-        }, 600);
+        drawParallelStatic(1, 1);
+        document.getElementById('parallel-stat').textContent = '';
       }
     }
   }
   parallelAnimId = requestAnimationFrame(animStep);
 });
 
-drawParallelStatic(0, 0);
-window.addEventListener('resize', () => drawParallelStatic(0, 0));
+drawParallelStatic(1, 1);
+window.addEventListener('resize', () => { if (!parallelAnimating) drawParallelStatic(1, 1); });
 
 // ─── Section 2: Roofline ──────────────────────────────────────────────────
 
@@ -836,7 +829,7 @@ window.addEventListener('resize', () => drawSpecCanvas(specDraftStep, specState,
 
 // Final resize handler
 window.addEventListener('load', function() {
-  drawParallelStatic(0, 0);
+  drawParallelStatic(1, 1);
   drawRoofline();
   drawGantt();
   drawSpecCanvas(0, 'idle', []);
