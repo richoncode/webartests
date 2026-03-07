@@ -118,7 +118,8 @@ button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
     <canvas id="temp-canvas" height="200" style="width:100%;"></canvas>
 
     <div class="btn-row">
-      <button id="sample-btn">Sample token</button>
+      <button id="sample-btn">Sample once</button>
+      <button id="auto-sample-btn">Auto-sample ▶</button>
       <button id="greedy-btn">Greedy (T→0)</button>
       <button id="high-entropy-btn">High entropy (T=2)</button>
     </div>
@@ -219,6 +220,11 @@ const CANDIDATES = ["jumps", "leaps", "runs", "flies", "walks", "rests"];
 const BASE_LOGITS = [4.2, 3.1, 2.3, 1.8, 1.1, 0.4];
 
 let temperature = 1.0;
+let autoSampleRunning = false;
+let autoSampleInterval = null;
+let sampleCounts = new Array(CANDIDATES.length).fill(0);
+let totalSamples = 0;
+let lastHighlight = -1;
 
 function softmax(logits, T) {
   const scaled = logits.map(l => l / T);
@@ -229,6 +235,7 @@ function softmax(logits, T) {
 }
 
 function drawTempChart(probs, highlight) {
+  lastHighlight = highlight;
   const canvas = document.getElementById('temp-canvas');
   const W = canvas.clientWidth;
   const H = canvas.height;
@@ -239,7 +246,6 @@ function drawTempChart(probs, highlight) {
   const padL = 80, padR = 70, padT = 16, padB = 16;
   const chartW = W - padL - padR;
   const rowH = (H - padT - padB) / CANDIDATES.length;
-
   const maxProb = Math.max(...probs);
 
   CANDIDATES.forEach((token, i) => {
@@ -248,25 +254,63 @@ function drawTempChart(probs, highlight) {
     const barW = probs[i] * chartW;
     const barY = y + (rowH - barH) / 2;
 
+    const isSampled = highlight === i;
     const isMax = probs[i] === maxProb;
-    ctx.fillStyle = isMax ? '#5b9bd5' : (highlight === i ? '#4caf50' : '#2a3a4a');
+
+    // Priority: sampled (green) > highest-prob (blue) > default (dim)
+    let fillColor;
+    if (isSampled)    fillColor = '#4caf50';
+    else if (isMax)   fillColor = '#5b9bd5';
+    else              fillColor = '#2a3a4a';
+
+    ctx.fillStyle = fillColor;
     ctx.beginPath();
-    ctx.roundRect(padL, barY, barW, barH, 3);
+    ctx.roundRect(padL, barY, Math.max(4, barW), barH, 3);
     ctx.fill();
 
-    ctx.fillStyle = '#555';
+    // Empirical frequency tick (white line) when auto-sampling has data
+    if (totalSamples > 0) {
+      const empW = (sampleCounts[i] / totalSamples) * chartW;
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padL + empW, barY + 1);
+      ctx.lineTo(padL + empW, barY + barH - 1);
+      ctx.stroke();
+    }
+
+    // Token label
+    ctx.fillStyle = isSampled ? '#4caf50' : '#555';
     ctx.font = '12px -apple-system, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText(token, padL - 8, y + rowH / 2);
 
-    ctx.fillStyle = isMax ? '#5b9bd5' : '#444';
+    // Probability + count label
+    const countStr = totalSamples > 0 ? ` (${sampleCounts[i]}×)` : '';
+    ctx.fillStyle = isSampled ? '#4caf50' : (isMax ? '#5b9bd5' : '#444');
     ctx.textAlign = 'left';
-    ctx.fillText((probs[i] * 100).toFixed(1) + '%', padL + barW + 6, y + rowH / 2);
+    ctx.fillText((probs[i] * 100).toFixed(1) + '%' + countStr, padL + barW + 8, y + rowH / 2);
   });
+
+  // Sample count legend
+  if (totalSamples > 0) {
+    ctx.fillStyle = '#2a2a2a';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('│ = empirical frequency', padL, H - 2);
+    ctx.textAlign = 'right';
+    ctx.fillText(`n = ${totalSamples}`, W - padR + 62, H - 2);
+  }
 }
 
 function updateTempChart() {
+  // Reset counts when temperature changes during auto-sample — distribution has shifted
+  if (autoSampleRunning) {
+    sampleCounts.fill(0);
+    totalSamples = 0;
+  }
   const probs = softmax(BASE_LOGITS, temperature);
   drawTempChart(probs, -1);
 
@@ -290,18 +334,39 @@ function sampleFromDist(probs) {
   return probs.length - 1;
 }
 
+function doOneSample() {
+  const probs = softmax(BASE_LOGITS, temperature);
+  const idx = sampleFromDist(probs);
+  sampleCounts[idx]++;
+  totalSamples++;
+  document.getElementById('sample-result').textContent =
+    `Sampled: "${CANDIDATES[idx]}"  (p = ${(probs[idx] * 100).toFixed(1)}%)`;
+  drawTempChart(probs, idx);
+}
+
 document.getElementById('temp-slider').addEventListener('input', function() {
   temperature = parseFloat(this.value);
   document.getElementById('temp-val').textContent = temperature.toFixed(2);
   updateTempChart();
 });
 
-document.getElementById('sample-btn').addEventListener('click', function() {
-  const probs = softmax(BASE_LOGITS, temperature);
-  const idx = sampleFromDist(probs);
-  const result = document.getElementById('sample-result');
-  result.textContent = `Sampled: "${CANDIDATES[idx]}" (p = ${(probs[idx] * 100).toFixed(1)}%)`;
-  drawTempChart(probs, idx);
+document.getElementById('sample-btn').addEventListener('click', doOneSample);
+
+document.getElementById('auto-sample-btn').addEventListener('click', function() {
+  if (autoSampleRunning) {
+    clearInterval(autoSampleInterval);
+    autoSampleRunning = false;
+    this.textContent = 'Auto-sample ▶';
+    this.classList.remove('active');
+  } else {
+    sampleCounts.fill(0);
+    totalSamples = 0;
+    autoSampleRunning = true;
+    this.textContent = 'Stop ■';
+    this.classList.add('active');
+    doOneSample();
+    autoSampleInterval = setInterval(doOneSample, 600);
+  }
 });
 
 document.getElementById('greedy-btn').addEventListener('click', function() {
@@ -319,7 +384,10 @@ document.getElementById('high-entropy-btn').addEventListener('click', function()
 });
 
 updateTempChart();
-window.addEventListener('resize', updateTempChart);
+window.addEventListener('resize', () => {
+  const probs = softmax(BASE_LOGITS, temperature);
+  drawTempChart(probs, lastHighlight);
+});
 
 // ─── Section 4: KV Cache ──────────────────────────────────────────────────
 
