@@ -78,11 +78,11 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
     <p>The diffusion model learns the reverse: given a (partially) masked sequence, predict all masked tokens simultaneously. At inference time, we start from fully masked and iteratively denoise, updating ALL token positions in parallel at each step.</p>
 
     <div class="callout orange" style="margin-bottom:16px">
-      <strong>Notice the synonyms.</strong> The reverse process doesn't recover the <em>exact</em> original — it generates a plausible completion. "neural" may become "language", "train" → "learn", "datasets" → "data". Diffusion generates, not copies.
+      <strong>Notice the synonyms.</strong> The reverse process doesn't recover the <em>exact</em> original — it samples a plausible completion. Each token position had candidates: "language" → <strong>text</strong>, "models" → <strong>networks</strong>, "learn" → <strong>train</strong>, "vast" → <strong>huge</strong>, "training" → <strong>web</strong>, "data" → <strong>datasets</strong>. Diffusion generates, not copies.
     </div>
 
     <div class="vis-label" style="color:#5b9bd5; font-weight:700; font-size:12px;">Key insight: all token positions updated in parallel at every step</div>
-    <canvas id="denoise-canvas" height="220" style="width:100%;"></canvas>
+    <canvas id="denoise-canvas" height="240" style="width:100%;"></canvas>
     <div class="btn-row">
       <button id="denoise-step-btn">Denoise step</button>
       <button id="denoise-reset-btn">Reset</button>
@@ -313,20 +313,27 @@ window.addEventListener('resize', () => drawForwardProcess(forwardStep));
 
 // ─── Section 2: Reverse denoising ─────────────────────────────────────────
 
-const DENOISE_WORDS = ['Large', 'language', 'models', 'learn', 'from', 'vast', 'training', 'data'];
-const N_DENOISE = 8;
+// Each token has 3 candidates; DENOISE_SELECTED picks which one is "generated"
+const DENOISE_CANDIDATES = [
+  ['Large',    'Big',       'Huge'],      // → Large    (same as "original")
+  ['language', 'text',      'neural'],   // → text
+  ['models',   'networks',  'agents'],   // → networks
+  ['learn',    'train',     'adapt'],    // → train
+  ['from',     'on',        'using'],    // → from     (same as "original")
+  ['vast',     'huge',      'large'],    // → huge
+  ['training', 'web',       'raw'],      // → web
+  ['data',     'datasets',  'tokens'],   // → datasets
+];
+const DENOISE_SELECTED = [0, 1, 1, 1, 0, 1, 1, 1];
+const N_DENOISE = DENOISE_CANDIDATES.length;
 
-// Track which tokens are revealed
 let denoiseStep = 0;
 let denoiseRevealed = new Array(N_DENOISE).fill(false);
 let denoiseFlashing = false;
-
-// Reveal probabilities per step: step 1 ~25%, step 2 ~50% of remaining, etc.
-const REVEAL_PROBS = [0, 0.25, 0.50, 0.70, 0.85, 0.95, 1.0];
+let flashFrame = 0;
+let flashRafId = null;
 
 function getRevealedCount(step) {
-  // Deterministic reveal schedule
-  const order = [0, 4, 7, 2, 5, 1, 6, 3]; // fixed reveal order
   const cumProbs = [0, 0.25, 0.5, 0.70, 0.85, 0.95, 1.0];
   const fraction = cumProbs[Math.min(step, cumProbs.length - 1)];
   return Math.round(fraction * N_DENOISE);
@@ -341,8 +348,8 @@ function drawDenoiseCanvas(revealed, flashing) {
   ctx.clearRect(0, 0, W, H);
 
   const N = N_DENOISE;
-  const padX = 24, padT = 44, padB = 32;
-  const chipH = 44;
+  const padX = 24, padT = 44;
+  const chipH = 54;
   const gap = 6;
   const chipW = Math.min(90, (W - padX * 2 - (N - 1) * gap) / N);
   const totalW = N * chipW + (N - 1) * gap;
@@ -350,57 +357,66 @@ function drawDenoiseCanvas(revealed, flashing) {
   const chipY = padT;
 
   // Step label
-  ctx.fillStyle = '#333';
   ctx.font = '700 12px -apple-system, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillStyle = '#555';
   ctx.fillText(`Denoising step: ${denoiseStep} / 6`, 16, 22);
 
   const nRevealed = revealed.filter(Boolean).length;
-  ctx.fillStyle = '#333';
   ctx.textAlign = 'right';
+  ctx.fillStyle = '#333';
   ctx.fillText(`${nRevealed} / ${N} revealed`, W - 16, 22);
 
-  DENOISE_WORDS.forEach((word, i) => {
+  for (let i = 0; i < N; i++) {
     const cx = startX + i * (chipW + gap);
+    const cands = DENOISE_CANDIDATES[i];
+    const selIdx = DENOISE_SELECTED[i];
 
-    let bg, border, textColor, label;
+    let bg, border, textColor, mainLabel, altLabel = null;
 
     if (flashing) {
-      // All flashing blue — being processed
+      // Cycle through candidates while model "considers"
       bg = '#0a1520';
       border = '#5b9bd5';
-      textColor = '#5b9bd5';
-      label = '...';
+      textColor = '#7db4e0';
+      mainLabel = cands[flashFrame % 3];
     } else if (revealed[i]) {
-      // Revealed
       bg = '#0a1f0a';
       border = '#4caf50';
       textColor = '#4caf50';
-      label = word;
+      mainLabel = cands[selIdx];
+      // Show the two non-selected candidates as alternatives
+      const alts = cands.filter((_, k) => k !== selIdx);
+      altLabel = alts.join(' · ');
     } else {
-      // Still masked
       bg = '#1f0a0a';
-      border = '#e07070';
-      textColor = '#e07070';
-      label = '[M]';
+      border = '#7a3030';
+      textColor = '#cc5555';
+      mainLabel = '[M]';
     }
 
     ctx.fillStyle = bg;
     ctx.strokeStyle = border;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(cx, chipY, chipW, chipH, 5);
     ctx.fill();
     ctx.stroke();
 
+    // Main word — vertically centred, or shifted up when altLabel is present
+    const mainY = altLabel ? chipY + 20 : chipY + chipH / 2 + 5;
     ctx.fillStyle = textColor;
-    ctx.font = revealed[i] && !flashing ? '12px -apple-system, sans-serif' : '700 11px -apple-system, sans-serif';
+    ctx.font = flashing ? '600 12px -apple-system, sans-serif' : '700 12px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx + chipW / 2, chipY + chipH / 2);
-    ctx.textBaseline = 'alphabetic';
-  });
+    ctx.fillText(mainLabel, cx + chipW / 2, mainY);
+
+    // Alt candidates below (revealed state only)
+    if (altLabel) {
+      ctx.fillStyle = '#3a4a3a';
+      ctx.font = '9px -apple-system, sans-serif';
+      ctx.fillText(altLabel, cx + chipW / 2, chipY + chipH - 8);
+    }
+  }
 
   // "All parallel" annotation
   if (!flashing && denoiseStep > 0) {
@@ -412,7 +428,6 @@ function drawDenoiseCanvas(revealed, flashing) {
     ctx.lineTo(startX + totalW, arrowY);
     ctx.stroke();
 
-    // Arrow heads
     [startX, startX + totalW].forEach((ax, side) => {
       ctx.beginPath();
       ctx.moveTo(ax, arrowY);
@@ -429,24 +444,24 @@ function drawDenoiseCanvas(revealed, flashing) {
   }
 
   // Step progress bar
-  const progressBarW = totalW;
   const barY = H - 16;
   ctx.fillStyle = '#111';
   ctx.beginPath();
-  ctx.roundRect(startX, barY, progressBarW, 5, 2);
+  ctx.roundRect(startX, barY, totalW, 5, 2);
   ctx.fill();
   ctx.fillStyle = '#5b9bd5';
   ctx.beginPath();
-  ctx.roundRect(startX, barY, progressBarW * (denoiseStep / 6), 5, 2);
+  ctx.roundRect(startX, barY, totalW * (denoiseStep / 6), 5, 2);
   ctx.fill();
 
   const stat = document.getElementById('denoise-stat');
   if (denoiseStep === 0) {
     stat.textContent = 'Starting from fully masked sequence. Press "Denoise step" to begin.';
   } else if (denoiseStep >= 6) {
-    stat.textContent = `Complete: all ${N} tokens revealed after 6 denoising steps.`;
+    const finalWords = DENOISE_CANDIDATES.map((c, i) => c[DENOISE_SELECTED[i]]).join(' ');
+    stat.textContent = `Complete: generated "${finalWords}" — a plausible completion, not a copy of the input.`;
   } else {
-    stat.textContent = `Step ${denoiseStep}: ${nRevealed}/${N} tokens revealed so far.`;
+    stat.textContent = `Step ${denoiseStep}: ${nRevealed}/${N} tokens committed. Small text shows rejected candidates.`;
   }
 }
 
@@ -456,32 +471,39 @@ document.getElementById('denoise-step-btn').addEventListener('click', function()
   denoiseFlashing = true;
   this.disabled = true;
 
-  // Flash all tokens blue for 300ms
-  drawDenoiseCanvas(denoiseRevealed, true);
+  const flashStart = performance.now();
 
-  setTimeout(() => {
-    denoiseFlashing = false;
-    denoiseStep++;
+  function flashTick() {
+    const elapsed = performance.now() - flashStart;
+    flashFrame = Math.floor(elapsed / 110) % 3;
+    drawDenoiseCanvas(denoiseRevealed, true);
 
-    // Reveal tokens based on step
-    const targetRevealed = getRevealedCount(denoiseStep);
-    // Fixed reveal order: reveal in this deterministic sequence
-    const order = [0, 4, 7, 2, 5, 1, 6, 3];
-    for (let j = 0; j < targetRevealed; j++) {
-      denoiseRevealed[order[j]] = true;
+    if (elapsed < 440) {
+      flashRafId = requestAnimationFrame(flashTick);
+    } else {
+      denoiseFlashing = false;
+      denoiseStep++;
+
+      const targetRevealed = getRevealedCount(denoiseStep);
+      const order = [0, 4, 7, 2, 5, 1, 6, 3];
+      for (let j = 0; j < targetRevealed; j++) {
+        denoiseRevealed[order[j]] = true;
+      }
+
+      drawDenoiseCanvas(denoiseRevealed, false);
+      document.getElementById('denoise-step-btn').disabled = denoiseStep >= 6;
+      document.getElementById('denoise-reset-btn').disabled = false;
     }
-
-    drawDenoiseCanvas(denoiseRevealed, false);
-
-    document.getElementById('denoise-step-btn').disabled = denoiseStep >= 6;
-    document.getElementById('denoise-reset-btn').disabled = false;
-  }, 300);
+  }
+  flashRafId = requestAnimationFrame(flashTick);
 });
 
 document.getElementById('denoise-reset-btn').addEventListener('click', function() {
+  if (flashRafId) cancelAnimationFrame(flashRafId);
   denoiseStep = 0;
   denoiseRevealed = new Array(N_DENOISE).fill(false);
   denoiseFlashing = false;
+  flashFrame = 0;
   document.getElementById('denoise-step-btn').disabled = false;
   drawDenoiseCanvas(denoiseRevealed, false);
 });
