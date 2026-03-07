@@ -81,12 +81,14 @@
   <h3>Experience Replay</h3>
   <p>Naive Q-learning updates from consecutive (s,a,r,s') transitions. Consecutive transitions are highly correlated — the network overfits to recent experience and 'forgets' the past. Experience replay solves this.</p>
 
-  <div class="vis-label">Circular replay buffer — yellow entries are the current mini-batch sample</div>
-  <canvas id="replayCanvas" style="width:100%;height:160px"></canvas>
+  <div class="vis-label">Circular replay buffer — <span style="color:#5b9bd5">blue</span> = just written &nbsp;·&nbsp; <span style="color:#f0d040">yellow</span> = current batch &nbsp;·&nbsp; green/red = reward sign &nbsp;·&nbsp; fading = older</div>
+  <canvas id="replayCanvas" style="width:100%;height:180px"></canvas>
   <div class="btn-row">
-    <button id="btnAddTransition">Add transition</button>
+    <button id="btnAddTransition">Write transition (s, a, r, s′)</button>
+    <button id="btnAutoFill">▶ Auto-fill</button>
   </div>
-  <div id="replayLabel" class="vis-label" style="margin-top:8px; color:#555">Buffer: 20 / 1000 &nbsp;|&nbsp; Batch size: 4</div>
+  <p style="font-size:12px;color:#444;margin:4px 0 8px;max-width:100%">Each click writes one experience tuple to the buffer, ages all existing entries, then draws a fresh random mini-batch for training.</p>
+  <div id="replayLabel" class="vis-label" style="margin-top:0; color:#555">Buffer: 20 / 1000 &nbsp;·&nbsp; Batch size: 4 &nbsp;·&nbsp; Batch: —</div>
 
   <div class="formula">r(t) stored as (s<sub style="font-size:10px">t</sub>, a<sub style="font-size:10px">t</sub>, r<sub style="font-size:10px">t</sub>, s<sub style="font-size:10px">t+1</sub>, done<sub style="font-size:10px">t</sub>) &larr; transition tuple</div>
 
@@ -355,9 +357,9 @@ Initialise Q(s,a;&theta;) and Q&#770;(s,a;&theta;<sup>&#8315;</sup>=&theta;), re
 (function() {
   const canvas = document.getElementById('replayCanvas');
   const dpr = window.devicePixelRatio || 1;
-  const W = canvas.clientWidth || 760;
-  const H = 160;
-  canvas.width = W * dpr;
+  const H = 180;
+  let CW = canvas.clientWidth || 760;
+  canvas.width = CW * dpr;
   canvas.height = H * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
@@ -365,19 +367,13 @@ Initialise Q(s,a;&theta;) and Q&#770;(s,a;&theta;<sup>&#8315;</sup>=&theta;), re
   const CAPACITY = 1000;
   const VISIBLE = 20;
   let bufferCount = 20;
-  let writeHead = 20 % CAPACITY;
+  let writeHead = 0; // next slot to write into (mod VISIBLE)
 
-  // Internal buffer storing age and reward sign for each slot
-  // age: 0 = newest, higher = older
-  // We track VISIBLE slots with their data
   let slots = [];
   function initSlots() {
     slots = [];
     for (let i = 0; i < VISIBLE; i++) {
-      slots.push({
-        age: VISIBLE - 1 - i,  // slot 0 is oldest, slot VISIBLE-1 is newest
-        reward: Math.random() > 0.5 ? 1 : -1
-      });
+      slots.push({ age: VISIBLE - 1 - i, reward: Math.random() > 0.5 ? 1 : -1 });
     }
   }
   initSlots();
@@ -386,100 +382,138 @@ Initialise Q(s,a;&theta;) and Q&#770;(s,a;&theta;<sup>&#8315;</sup>=&theta;), re
   function resampleBatch() {
     const available = Math.min(bufferCount, VISIBLE);
     const set = new Set();
-    while (set.size < Math.min(4, available)) {
-      set.add(Math.floor(Math.random() * available));
-    }
+    while (set.size < Math.min(4, available)) set.add(Math.floor(Math.random() * available));
     batchIndices = Array.from(set);
   }
   resampleBatch();
 
-  function drawReplay() {
-    ctx.clearRect(0, 0, W, H);
-    const cx = W / 2;
-    const cy = H / 2 + 5;
-    const radius = Math.min(W / 2 - 50, 55);
+  // Flash state: which slot just got written, and when
+  let flashIdx = -1;
+  let flashStart = 0;
+  const FLASH_MS = 700;
+  let rafId = null;
+
+  function lerpColor(r1,g1,b1, r2,g2,b2, t) {
+    return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
+  }
+
+  function drawReplay(ts) {
+    rafId = null;
+    CW = canvas.clientWidth || CW;
+    ctx.clearRect(0, 0, CW, H);
+    const cx = CW / 2;
+    const cy = H / 2 + 2;
+    const radius = Math.min(CW / 2 - 52, 60);
     const slotSize = 13;
     const n = VISIBLE;
+
+    // Compute flash progress (0=just written/blue, 1=fully faded to reward color)
+    let flashProg = 1;
+    if (flashIdx >= 0 && ts !== undefined) {
+      flashProg = Math.min((ts - flashStart) / FLASH_MS, 1);
+      if (flashProg < 1) rafId = requestAnimationFrame(t => drawReplay(t));
+      else flashIdx = -1;
+    }
 
     for (let i = 0; i < n; i++) {
       const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
       const x = cx + Math.cos(angle) * radius;
       const y = cy + Math.sin(angle) * radius;
       const slot = slots[i];
-      const ageFrac = slot.age / (VISIBLE - 1); // 0=newest, 1=oldest
+      const ageFrac = slot.age / (VISIBLE - 1);
+      const bright = 1 - ageFrac * 0.85;
 
       let fillColor;
-      if (batchIndices.includes(i)) {
+      if (i === flashIdx) {
+        // Fade from blue → reward color
+        const [r2,g2,b2] = slot.reward > 0 ? [76,175,80] : [224,112,112];
+        fillColor = lerpColor(91,155,213, r2,g2,b2, flashProg);
+      } else if (batchIndices.includes(i)) {
         fillColor = '#f0d040';
       } else {
-        // Fade from bright (newest) to grey (oldest)
-        const brightness = 1 - ageFrac * 0.85;
-        if (slot.reward > 0) {
-          fillColor = `rgba(76,175,80,${brightness})`;
-        } else {
-          fillColor = `rgba(224,112,112,${brightness})`;
-        }
+        fillColor = slot.reward > 0
+          ? `rgba(76,175,80,${bright})`
+          : `rgba(224,112,112,${bright})`;
       }
 
       ctx.beginPath();
-      ctx.rect(x - slotSize / 2, y - slotSize / 2, slotSize, slotSize);
+      ctx.rect(x - slotSize/2, y - slotSize/2, slotSize, slotSize);
       ctx.fillStyle = fillColor;
       ctx.fill();
-      if (batchIndices.includes(i)) {
-        ctx.strokeStyle = '#fff';
+      if (batchIndices.includes(i) && i !== flashIdx) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
     }
 
-    // Center label
-    ctx.fillStyle = '#333';
+    // Write-head arrow — points to next write slot from outside the ring
+    const headAnglePolar = (writeHead / n) * Math.PI * 2 - Math.PI / 2;
+    const arrowR = radius + 22;
+    const ax = cx + Math.cos(headAnglePolar) * arrowR;
+    const ay = cy + Math.sin(headAnglePolar) * arrowR;
+    const inwardAngle = Math.atan2(cy - ay, cx - ax);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(inwardAngle + Math.PI);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-7, -4);
+    ctx.lineTo(-7, 4);
+    ctx.closePath();
+    ctx.fillStyle = '#5b9bd5';
+    ctx.fill();
+    ctx.restore();
+
+    // Center text
+    ctx.fillStyle = '#2a2a2a';
     ctx.font = '11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('replay', cx, cy - 3);
     ctx.fillText('buffer', cx, cy + 10);
-
-    // Legend
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#f0d040';
-    ctx.fillRect(10, H - 26, 10, 10);
-    ctx.fillStyle = '#555';
-    ctx.fillText('batch sample', 24, H - 18);
-    ctx.fillStyle = '#4caf50';
-    ctx.fillRect(110, H - 26, 10, 10);
-    ctx.fillStyle = '#555';
-    ctx.fillText('+reward', 124, H - 18);
-    ctx.fillStyle = '#e07070';
-    ctx.fillRect(180, H - 26, 10, 10);
-    ctx.fillStyle = '#555';
-    ctx.fillText('−reward', 194, H - 18);
   }
 
-  drawReplay();
+  requestAnimationFrame(t => drawReplay(t));
 
-  document.getElementById('btnAddTransition').addEventListener('click', () => {
-    // Rotate: push newest, age all others
+  function addTransition() {
     slots.forEach(s => s.age++);
-    // Replace the oldest slot with a new entry
-    let oldestIdx = 0;
-    let maxAge = -1;
-    for (let i = 0; i < slots.length; i++) {
-      if (slots[i].age > maxAge) { maxAge = slots[i].age; oldestIdx = i; }
-    }
-    slots[oldestIdx] = { age: 0, reward: Math.random() > 0.5 ? 1 : -1 };
+    const reward = Math.random() > 0.45 ? 1 : -1;
+    slots[writeHead] = { age: 0, reward };
+    flashIdx = writeHead;
+    flashStart = performance.now();
+    writeHead = (writeHead + 1) % VISIBLE;
     bufferCount = Math.min(bufferCount + 1, CAPACITY);
     resampleBatch();
-    drawReplay();
+
+    const batchStr = [...batchIndices].sort((a,b) => a-b).join(', ');
     document.getElementById('replayLabel').textContent =
-      `Buffer: ${Math.min(bufferCount, VISIBLE)} / 1000 \u00a0|\u00a0 Batch size: 4`;
+      `Buffer: ${bufferCount} / ${CAPACITY} \u00a0·\u00a0 Wrote slot ${flashIdx} \u00a0·\u00a0 Batch: [${batchStr}]`;
+
+    if (!rafId) rafId = requestAnimationFrame(t => drawReplay(t));
+  }
+
+  document.getElementById('btnAddTransition').addEventListener('click', addTransition);
+
+  // Auto-fill: ~3 transitions per second
+  let autoTimer = null;
+  const autoBtn = document.getElementById('btnAutoFill');
+  autoBtn.addEventListener('click', () => {
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+      autoBtn.textContent = '▶ Auto-fill';
+    } else {
+      autoTimer = setInterval(addTransition, 333);
+      autoBtn.textContent = '⏹ Stop';
+    }
   });
 
   window.addEventListener('resize', () => {
-    const newW = canvas.clientWidth;
-    canvas.width = newW * dpr;
+    CW = canvas.clientWidth;
+    canvas.width = CW * dpr;
     canvas.height = H * dpr;
     ctx.scale(dpr, dpr);
-    drawReplay();
+    if (!rafId) rafId = requestAnimationFrame(t => drawReplay(t));
   });
 })();
 </script>
