@@ -97,15 +97,25 @@
   <!-- Section 4 -->
   <div class="section">
     <h2>Multi-Head Attention</h2>
-    <p>Instead of one attention function, transformers run H attention heads in parallel, each with different learned Q/K/V projections. Each head can specialise — one might track syntactic relationships, another coreference, another positional proximity.</p>
+    <p>Instead of one attention function, transformers run H heads in parallel — each with its own learned Q/K/V projection matrices. Training pushes each head toward a different specialisation. The three patterns below represent real types of attention that emerge in trained models.</p>
     <div class="formula">
       MultiHead(<span class="kw">Q</span>,<span class="gr">K</span>,<span class="or">V</span>) = Concat(head<sub>1</sub>,...,head<sub>h</sub>)W<sup>O</sup><br>
       <span class="cm">&nbsp;&nbsp;where</span> head<sub>i</sub> = Attention(<span class="kw">Q</span>W<sub>i</sub><sup>Q</sup>, <span class="gr">K</span>W<sub>i</sub><sup>K</sup>, <span class="or">V</span>W<sub>i</sub><sup>V</sup>)
     </div>
-    <div class="btn-row">
-      <button id="resampleBtn">Resample heads</button>
+    <p>Each matrix is an attention map for <em>"The cat sat on the mat"</em>. Rows = from (query token), columns = to (key token). Brighter cell = higher attention weight.</p>
+    <div class="callout">
+      <strong style="color:#5b9bd5">Head 1 — Syntactic:</strong> tracks grammatical dependencies. "The" → "cat" (determiner→noun), "cat" → "sat" (subject→verb), "on" → "mat" (preposition→object). Pattern is sparse and asymmetric — it follows the parse tree.
     </div>
-    <canvas id="multiheadCanvas" width="680" height="200" style="width:100%;max-width:680px;"></canvas>
+    <div class="callout green">
+      <strong style="color:#4caf50">Head 2 — Coreference:</strong> links identical or semantically paired words. "The" (pos 0) and "the" (pos 4) attend to each other; so do "cat" and "mat". The pattern is symmetric — bright cells mirror across the diagonal.
+    </div>
+    <div class="callout purple">
+      <strong style="color:#b07adf">Head 3 — Positional:</strong> attends to nearby tokens regardless of content. Attention weight falls off smoothly with distance. The pattern is a bright diagonal band — a local context window.
+    </div>
+    <div class="btn-row">
+      <button id="resampleBtn">Shuffle variation</button>
+    </div>
+    <canvas id="multiheadCanvas" width="680" height="260" style="width:100%;max-width:680px;"></canvas>
   </div>
 
   <!-- Section 5 -->
@@ -344,34 +354,53 @@ document.getElementById('tempSlider').addEventListener('input', function() {
 // ─── Section 4: Multi-Head Attention ─────────────────────────────────────────
 
 const HEAD_COLORS = ['#5b9bd5', '#4caf50', '#b07adf'];
-const HEAD_NAMES  = ['Head 1 — syntactic', 'Head 2 — semantic', 'Head 3 — positional'];
-let headWeights = [];
+const HEAD_NAMES  = ['Syntactic', 'Coreference', 'Positional'];
+const HEAD_DESC   = ['grammatical roles', 'same / related words', 'nearby positions'];
 
-function randomWeights(seed) {
-  // Simple seeded pseudo-random
-  let s = seed;
-  function rand() {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    return (s >>> 0) / 0xffffffff;
-  }
-  const n = 6;
-  const weights = [];
-  for (let h = 0; h < 3; h++) {
-    const row = [];
-    for (let i = 0; i < n; i++) {
-      const r = [];
-      for (let j = 0; j < n; j++) {
-        r.push(rand() * 4);
-      }
-      row.push(softmax(r));
-    }
-    weights.push(row);
-  }
-  return weights;
-}
+// Fixed base attention patterns for "The cat sat on the mat" (indices 0–5)
+// Each row sums to 1.0. Row i = token i is attending; col j = attending to token j.
+const HEAD_BASE = [
+  // Head 1 — Syntactic: sparse, follows parse-tree edges
+  // The→cat, cat↔sat, sat↔on, on→mat, the→mat
+  [
+    [0.05, 0.78, 0.06, 0.04, 0.04, 0.03],  // The  → cat
+    [0.42, 0.05, 0.38, 0.06, 0.05, 0.04],  // cat  → The, sat
+    [0.05, 0.46, 0.08, 0.30, 0.06, 0.05],  // sat  → cat, on
+    [0.04, 0.07, 0.50, 0.07, 0.05, 0.27],  // on   → sat, mat
+    [0.04, 0.04, 0.05, 0.04, 0.05, 0.78],  // the  → mat
+    [0.04, 0.08, 0.18, 0.32, 0.30, 0.08],  // mat  → on, the
+  ],
+  // Head 2 — Coreference: symmetric long-range pairs
+  // The↔the (pos 0↔4), cat↔mat (pos 1↔5), sat↔on (pos 2↔3)
+  [
+    [0.06, 0.04, 0.04, 0.04, 0.76, 0.06],  // The  → the
+    [0.04, 0.06, 0.05, 0.04, 0.06, 0.75],  // cat  → mat
+    [0.05, 0.06, 0.08, 0.66, 0.08, 0.07],  // sat  → on
+    [0.05, 0.06, 0.68, 0.06, 0.07, 0.08],  // on   → sat
+    [0.76, 0.04, 0.04, 0.04, 0.06, 0.06],  // the  → The
+    [0.05, 0.74, 0.06, 0.05, 0.05, 0.05],  // mat  → cat
+  ],
+  // Head 3 — Positional: diagonal band, falls off with distance
+  [
+    [0.56, 0.32, 0.07, 0.02, 0.02, 0.01],
+    [0.27, 0.38, 0.26, 0.05, 0.02, 0.02],
+    [0.04, 0.26, 0.38, 0.26, 0.04, 0.02],
+    [0.02, 0.05, 0.26, 0.38, 0.24, 0.05],
+    [0.01, 0.02, 0.05, 0.26, 0.38, 0.28],
+    [0.01, 0.02, 0.03, 0.06, 0.33, 0.55],
+  ],
+];
+
+let headWeights = HEAD_BASE.map(m => m.map(row => [...row]));
 
 function resampleHeads() {
-  headWeights = randomWeights(Math.floor(Math.random() * 99999));
+  headWeights = HEAD_BASE.map(matrix =>
+    matrix.map(row => {
+      const noisy = row.map(v => Math.max(0.01, v + (Math.random() - 0.5) * 0.18));
+      const sum = noisy.reduce((a, b) => a + b, 0);
+      return noisy.map(v => v / sum);
+    })
+  );
   drawMultihead();
 }
 
@@ -385,69 +414,71 @@ function drawMultihead() {
   ctx.scale(devicePixelRatio, devicePixelRatio);
   ctx.clearRect(0, 0, W, H);
 
-  const n = 6;
-  const labelW = 120;
-  const usableW = W - labelW - 16;
-  const rowH = H / 3;
-  const boxW = 38;
-  const boxH = 20;
-  const slotW = usableW / n;
+  const n = TOKENS.length;
+  const nH = 3;
+  const gutter = 10;
+  const titleH = 32;
+  const colLabelH = 20;
+  const rowLabelW = 30;
+  const headW = (W - gutter * (nH - 1)) / nH;
+  const heatW = headW - rowLabelW;
+  const heatH = H - titleH - colLabelH;
+  const cellW = heatW / n;
+  const cellH = heatH / n;
 
-  for (let h = 0; h < 3; h++) {
-    const baseY = h * rowH;
-    const midY = baseY + rowH / 2;
+  for (let h = 0; h < nH; h++) {
+    const ox = h * (headW + gutter);
     const color = HEAD_COLORS[h];
     const [cr, cg, cb] = hexToRgb(color);
 
-    // Head label
+    // Title + description
     ctx.fillStyle = color;
     ctx.font = '600 11px -apple-system, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(HEAD_NAMES[h], labelW - 8, midY);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Head ' + (h + 1) + ' — ' + HEAD_NAMES[h], ox, 2);
+    ctx.fillStyle = '#555';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText(HEAD_DESC[h], ox, 17);
 
-    // Draw connection lines between tokens for this head
-    // Show average attention from each token to each other token
+    const mapX = ox + rowLabelW;
+    const mapY = titleH;
+
+    // Heatmap cells
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
-        if (i === j) continue;
-        const w = headWeights[h][i][j];
-        if (w < 0.12) continue;
-        const x1 = labelW + slotW * i + slotW / 2;
-        const x2 = labelW + slotW * j + slotW / 2;
-        const alpha = w * 0.9;
-        ctx.beginPath();
-        ctx.moveTo(x1, midY);
-        const cy = midY + (j > i ? -1 : 1) * (rowH * 0.18);
-        ctx.quadraticCurveTo((x1 + x2) / 2, cy, x2, midY);
-        ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-        ctx.lineWidth = 0.5 + w * 2;
-        ctx.stroke();
+        const val = headWeights[h][i][j];
+        const r = Math.min(255, Math.round(10 + cr * val * 1.1));
+        const g = Math.min(255, Math.round(10 + cg * val * 1.1));
+        const b = Math.min(255, Math.round(10 + cb * val * 1.1));
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(mapX + j * cellW + 0.5, mapY + i * cellH + 0.5, cellW - 1, cellH - 1);
       }
     }
 
-    // Token boxes
+    // Row labels (from / query token)
+    ctx.fillStyle = '#555';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
     for (let i = 0; i < n; i++) {
-      const cx = labelW + slotW * i + slotW / 2;
-      const x = cx - boxW / 2;
-      const y = midY - boxH / 2;
+      ctx.fillText(TOKENS[i], mapX - 3, mapY + i * cellH + cellH / 2);
+    }
 
-      ctx.fillStyle = '#111';
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.8;
-      roundRect(ctx, x, y, boxW, boxH, 4);
-      ctx.fill();
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      ctx.fillStyle = '#999';
-      ctx.font = '10px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(TOKENS[i], cx, midY);
+    // Column labels (to / key token)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let j = 0; j < n; j++) {
+      ctx.fillText(TOKENS[j], mapX + j * cellW + cellW / 2, mapY + heatH + 3);
     }
   }
+
+  // Axis legend
+  ctx.fillStyle = '#2a2a2a';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('← from (row) / to (col) →', 2, H - 1);
 }
 
 document.getElementById('resampleBtn').addEventListener('click', resampleHeads);
@@ -543,8 +574,6 @@ function drawPE() {
 }
 
 // ─── Initialise all canvases ──────────────────────────────────────────────────
-
-headWeights = randomWeights(42);
 
 function initAll() {
   drawAttention();
