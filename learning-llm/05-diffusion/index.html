@@ -63,8 +63,8 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
     <h2>From image to text diffusion</h2>
     <p>Image diffusion models corrupt an image with Gaussian noise, then learn to reverse the process. For discrete tokens, Gaussian noise doesn't apply — instead we use masking: the forward process randomly replaces tokens with a [MASK] token.</p>
 
-    <div class="vis-label">Token masking as noise increases — each step randomly masks more tokens</div>
-    <canvas id="forward-canvas" height="160" style="width:100%;"></canvas>
+    <div class="vis-label">Forward process — each word above, synonym the model may regenerate below</div>
+    <canvas id="forward-canvas" height="190" style="width:100%;"></canvas>
     <div class="btn-row">
       <button id="forward-step-btn">Add noise →</button>
       <button id="forward-reset-btn">Reset</button>
@@ -76,6 +76,10 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
   <div class="section">
     <h2>The reverse process — parallel denoising</h2>
     <p>The diffusion model learns the reverse: given a (partially) masked sequence, predict all masked tokens simultaneously. At inference time, we start from fully masked and iteratively denoise, updating ALL token positions in parallel at each step.</p>
+
+    <div class="callout orange" style="margin-bottom:16px">
+      <strong>Notice the synonyms.</strong> The reverse process doesn't recover the <em>exact</em> original — it generates a plausible completion. "neural" may become "language", "train" → "learn", "datasets" → "data". Diffusion generates, not copies.
+    </div>
 
     <div class="vis-label" style="color:#5b9bd5; font-weight:700; font-size:12px;">Key insight: all token positions updated in parallel at every step</div>
     <canvas id="denoise-canvas" height="220" style="width:100%;"></canvas>
@@ -184,14 +188,27 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
 
 // ─── Section 1: Forward process (masking) ─────────────────────────────────
 
-const FWD_SENTENCE = ['Language', 'models', 'are', 'trained', 'on', 'text'];
+// Forward sentence and its synonyms (what the reverse may regenerate)
+const FWD_SENTENCE = ['Large', 'neural', 'models', 'train', 'on', 'vast', 'text', 'datasets'];
+const REV_SYNONYMS = ['Large', 'language', 'models', 'learn', 'from', 'vast', 'training', 'data'];
+const IS_SYN = [false, true, false, true, true, false, true, true]; // positions that differ
+
 const FWD_STATES = [
-  ['Language', 'models', 'are', 'trained', 'on', 'text'],
-  ['Language', '[MASK]', 'are', 'trained', 'on', 'text'],
-  ['Language', '[MASK]', 'are', '[MASK]', 'on', 'text'],
-  ['[MASK]', '[MASK]', 'are', '[MASK]', 'on', '[MASK]'],
-  ['[MASK]', '[MASK]', '[MASK]', '[MASK]', 'on', '[MASK]'],
-  ['[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]'],
+  ['Large', 'neural', 'models', 'train', 'on',      'vast', 'text',     'datasets'], // t=0
+  ['Large', 'neural', 'models', 'train', 'on',      'vast', '[MASK]',   '[MASK]'],   // t=1
+  ['Large', '[MASK]', 'models', '[MASK]', 'on',     'vast', '[MASK]',   '[MASK]'],   // t=2
+  ['[MASK]','[MASK]', 'models', '[MASK]', '[MASK]', 'vast', '[MASK]',   '[MASK]'],   // t=3
+  ['[MASK]','[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]','[MASK]',  '[MASK]'],   // t=4
+  ['[MASK]','[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]','[MASK]',  '[MASK]'],   // t=5
+];
+
+const FWD_STEP_NOTES = [
+  'Original sequence — all 8 tokens visible.',
+  'Masking 2 tokens: "text" and "datasets" corrupted. Sentence still readable.',
+  'Masking 4 tokens: "neural" and "train" hidden too. Meaning becomes ambiguous.',
+  'Masking 6 tokens: only "models" and "vast" survive. Almost no information left.',
+  'Fully masked — all 8 positions are [MASK]. Information completely destroyed.',
+  'Fully masked — ready for the reverse process to regenerate from scratch.',
 ];
 
 let forwardStep = 0;
@@ -206,61 +223,73 @@ function drawForwardProcess(step) {
 
   const tokens = FWD_STATES[step];
   const N = tokens.length;
-  const padX = 24, padT = 20, padB = 20;
-  const chipH = 40;
-  const chipW = Math.min(100, (W - padX * 2 - (N - 1) * 8) / N);
-  const totalW = N * chipW + (N - 1) * 8;
+  const gap = 6;
+  const chipH = 38;
+  const chipW = Math.min(88, (W - 48 - (N - 1) * gap) / N);
+  const totalW = N * chipW + (N - 1) * gap;
   const startX = (W - totalW) / 2;
-  const chipY = padT + (H - padT - padB - chipH) / 2;
+  const chipY = 28;
+  const synY = chipY + chipH + 10; // synonym row
 
-  // Step label
-  ctx.fillStyle = '#333';
+  // Step label + noise bar
+  ctx.fillStyle = '#555';
   ctx.font = '11px -apple-system, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`t = ${step}`, 16, 16);
+  ctx.fillText(`t = ${step} / 5`, 16, 18);
 
-  // Noise level bar
-  const barW = W - 80;
   const noiseLevel = step / 5;
+  const barW = W - 80;
   ctx.fillStyle = '#111';
-  ctx.beginPath();
-  ctx.roundRect(40, H - 18, barW, 6, 3);
-  ctx.fill();
-  ctx.fillStyle = `rgba(224, 112, 112, ${0.3 + noiseLevel * 0.7})`;
-  ctx.beginPath();
-  ctx.roundRect(40, H - 18, barW * noiseLevel, 6, 3);
-  ctx.fill();
-  ctx.fillStyle = '#333';
-  ctx.font = '10px -apple-system, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('noise →', 16, H - 12);
+  ctx.beginPath(); ctx.roundRect(40, H - 14, barW, 5, 2); ctx.fill();
+  ctx.fillStyle = `rgba(224,112,112,${0.3 + noiseLevel * 0.7})`;
+  ctx.beginPath(); ctx.roundRect(40, H - 14, barW * noiseLevel, 5, 2); ctx.fill();
+  ctx.fillStyle = '#333'; ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText('noise →', 16, H - 9);
 
   tokens.forEach((tok, i) => {
     const isMask = tok === '[MASK]';
-    const cx = startX + i * (chipW + 8);
+    const cx = startX + i * (chipW + gap);
 
+    // Main token chip
     ctx.fillStyle = isMask ? '#1f0a0a' : '#1a1a1a';
-    ctx.strokeStyle = isMask ? '#e07070' : '#444';
+    ctx.strokeStyle = isMask ? '#e07070' : '#383838';
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(cx, chipY, chipW, chipH, 5);
-    ctx.fill();
-    ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(cx, chipY, chipW, chipH, 4); ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = isMask ? '#e07070' : '#aaa';
-    ctx.font = isMask ? '700 11px -apple-system, sans-serif' : '13px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isMask ? '#e07070' : '#ccc';
+    ctx.font = isMask ? '700 10px -apple-system,sans-serif' : '12px -apple-system,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(isMask ? '[M]' : tok, cx + chipW / 2, chipY + chipH / 2);
     ctx.textBaseline = 'alphabetic';
+
+    // Synonym label row — dim, shows what reverse may generate
+    const synWord = REV_SYNONYMS[i];
+    const isSame = !IS_SYN[i];
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isMask
+      ? (IS_SYN[i] ? '#3a6a8a' : '#2a4a2a')  // hint color when masked
+      : (isSame ? '#252525' : '#1e3a4a');       // same=barely visible, synonym=dim blue
+    ctx.fillText(synWord, cx + chipW / 2, synY + 11);
+
+    // Small ≈ marker for synonym positions
+    if (IS_SYN[i] && isMask) {
+      ctx.fillStyle = '#2a5570';
+      ctx.font = '9px -apple-system, sans-serif';
+      ctx.fillText('≈', cx + chipW / 2, synY - 1);
+    }
   });
+
+  // Synonym row label
+  ctx.fillStyle = '#222';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('may generate →', 16, synY + 11);
 }
 
 function updateForwardStat() {
   const el = document.getElementById('forward-stat');
-  if (forwardStep === 0) el.textContent = 'Step 0 / 5 — sequence intact. Press "Add noise →" to mask tokens.';
-  else if (forwardStep >= 5) el.textContent = 'Step 5 / 5 — fully masked. The model sees only [MASK] tokens.';
-  else el.textContent = `Step ${forwardStep} / 5 — ${FWD_STATES[forwardStep].filter(t => t === '[MASK]').length} of ${FWD_SENTENCE.length} tokens masked.`;
+  el.textContent = `Step ${forwardStep} / 5 — ${FWD_STEP_NOTES[Math.min(forwardStep, FWD_STEP_NOTES.length - 1)]}`;
 }
 
 document.getElementById('forward-step-btn').addEventListener('click', function() {
