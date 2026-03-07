@@ -36,11 +36,6 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
 .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
 .nav-row a:hover { color: #aaa; }
 
-.slider-row { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
-.slider-row label { font-size: 13px; color: #666; white-space: nowrap; }
-.slider-row input[type=range] { -webkit-appearance: none; appearance: none; width: 220px; height: 4px; border-radius: 2px; background: #333; outline: none; cursor: pointer; }
-.slider-row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #5b9bd5; cursor: pointer; }
-.slider-val { font-size: 13px; color: #5b9bd5; font-family: 'SF Mono','Fira Code',monospace; min-width: 30px; }
 
 .stat-line { font-size: 12px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; min-height: 20px; }
 .caption-note { font-size: 12px; color: #444; font-style: italic; margin-top: 8px; }
@@ -68,13 +63,13 @@ button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
     <h2>From image to text diffusion</h2>
     <p>Image diffusion models corrupt an image with Gaussian noise, then learn to reverse the process. For discrete tokens, Gaussian noise doesn't apply — instead we use masking: the forward process randomly replaces tokens with a [MASK] token.</p>
 
-    <div class="slider-row">
-      <label>Forward process step t:</label>
-      <input type="range" id="forward-slider" min="0" max="5" step="1" value="0">
-      <span class="slider-val" id="forward-val">0</span>
-    </div>
-    <div class="vis-label">Token masking at each noise level</div>
+    <div class="vis-label">Token masking as noise increases — each step randomly masks more tokens</div>
     <canvas id="forward-canvas" height="160" style="width:100%;"></canvas>
+    <div class="btn-row">
+      <button id="forward-step-btn">Add noise →</button>
+      <button id="forward-reset-btn">Reset</button>
+    </div>
+    <div id="forward-stat" class="stat-line"></div>
   </div>
 
   <!-- Section 2: Reverse process — parallel denoising -->
@@ -261,13 +256,30 @@ function drawForwardProcess(step) {
   });
 }
 
-document.getElementById('forward-slider').addEventListener('input', function() {
-  forwardStep = parseInt(this.value);
-  document.getElementById('forward-val').textContent = forwardStep;
+function updateForwardStat() {
+  const el = document.getElementById('forward-stat');
+  if (forwardStep === 0) el.textContent = 'Step 0 / 5 — sequence intact. Press "Add noise →" to mask tokens.';
+  else if (forwardStep >= 5) el.textContent = 'Step 5 / 5 — fully masked. The model sees only [MASK] tokens.';
+  else el.textContent = `Step ${forwardStep} / 5 — ${FWD_STATES[forwardStep].filter(t => t === '[MASK]').length} of ${FWD_SENTENCE.length} tokens masked.`;
+}
+
+document.getElementById('forward-step-btn').addEventListener('click', function() {
+  if (forwardStep >= 5) return;
+  forwardStep++;
   drawForwardProcess(forwardStep);
+  updateForwardStat();
+  this.disabled = forwardStep >= 5;
+});
+
+document.getElementById('forward-reset-btn').addEventListener('click', function() {
+  forwardStep = 0;
+  drawForwardProcess(0);
+  updateForwardStat();
+  document.getElementById('forward-step-btn').disabled = false;
 });
 
 drawForwardProcess(0);
+updateForwardStat();
 window.addEventListener('resize', () => drawForwardProcess(forwardStep));
 
 // ─── Section 2: Reverse denoising ─────────────────────────────────────────
