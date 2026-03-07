@@ -30,6 +30,8 @@
   .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
   .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
   .status-line { font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #555; margin-top: 10px; padding: 8px 12px; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; }
+  .bandit-split { display: flex; gap: 12px; }
+  .bandit-col { flex: 1; min-width: 0; }
   .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
   .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
   .nav-row a:hover { color: #aaa; }
@@ -68,20 +70,41 @@
 <!-- SECTION 3 -->
 <div class="section">
   <h2>Multi-armed bandit demo</h2>
-  <p>The multi-armed bandit problem is pure exploration-exploitation. Four 'arms' have hidden reward distributions. Interact with both &epsilon;-greedy and UCB strategies to see how they explore.</p>
+  <p>Four arms have hidden reward distributions. The agent can only learn by pulling — each pull returns a noisy sample. Run both strategies and compare how they explore before revealing the truth.</p>
 
-  <div class="vis-label">Arm estimates with 95% confidence intervals — yellow highlight = selected arm</div>
-  <canvas id="banditCanvas" style="width:100%;height:240px"></canvas>
-  <div class="btn-row">
-    <button id="btnEpsGreedy" class="active">&#949;-greedy pull</button>
-    <button id="btnUCB">UCB pull</button>
-    <button id="btnReveal">Reveal truth</button>
+  <div class="callout" style="margin-bottom:16px">
+    <strong>How to use:</strong> Click <em>Run 10&times;</em> on each strategy a few times, then hit <em>Reveal true means</em> to see how close each came. The solid line is the current estimate; the shaded band is the 95% confidence interval. Narrower band = more pulls = more certain.
+  </div>
+
+  <div class="bandit-split">
+    <div class="bandit-col">
+      <div class="vis-label">&epsilon;-greedy &mdash; 30% random pulls, 70% exploit best known</div>
+      <canvas id="banditEps" style="width:100%;height:220px"></canvas>
+      <div class="btn-row">
+        <button id="btnEpsPull">Pull 1</button>
+        <button id="btnEpsRun">Run 10&times;</button>
+      </div>
+      <div id="statusEps" class="status-line">Pulls: 0 &nbsp;&middot;&nbsp; Best estimate: &mdash;</div>
+    </div>
+    <div class="bandit-col">
+      <div class="vis-label">UCB &mdash; always pulls the arm with highest potential upside</div>
+      <canvas id="banditUCB" style="width:100%;height:220px"></canvas>
+      <div class="btn-row">
+        <button id="btnUCBPull">Pull 1</button>
+        <button id="btnUCBRun">Run 10&times;</button>
+      </div>
+      <div id="statusUCB" class="status-line">Pulls: 0 &nbsp;&middot;&nbsp; Best estimate: &mdash;</div>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin-top:12px">
+    <button id="btnReveal">Reveal true means</button>
     <button id="btnReset">Reset</button>
   </div>
-  <div id="banditStatus" class="status-line">Strategy: &epsilon;-greedy (&epsilon;=0.3) &nbsp;|&nbsp; Total pulls: 0 &nbsp;|&nbsp; Best estimate: —</div>
+  <div id="banditCompare" class="status-line" style="display:none;margin-top:8px;color:#888"></div>
 
-  <div class="callout green">
-    <strong>UCB (Upper Confidence Bound)</strong> takes a principled approach: it picks the arm whose reward <em>could</em> be the highest, accounting for uncertainty. Arms with fewer pulls have wider confidence intervals, so UCB naturally tries them. This is 'optimism in the face of uncertainty.'
+  <div class="callout green" style="margin-top:16px">
+    <strong>UCB (Upper Confidence Bound)</strong> picks the arm whose reward <em>could</em> be the highest, accounting for uncertainty. Arms with fewer pulls have wider confidence intervals, so UCB naturally tries them first. This is 'optimism in the face of uncertainty' — and it wastes fewer pulls than random exploration.
   </div>
 </div>
 
@@ -230,31 +253,19 @@
 
 // ─── Bandit Canvas ───────────────────────────────────────────────────────────
 (function() {
-  const canvas = document.getElementById('banditCanvas');
-  const dpr = window.devicePixelRatio || 1;
-  const H = 240;
-
   const TRUE_MEANS = [0.3, 0.6, 0.2, 0.45];
   const SIGMA = 0.3;
   const ARM_COLORS = ['#5b9bd5', '#4caf50', '#f0a040', '#e07070'];
   const ARM_LABELS = ['A', 'B', 'C', 'D'];
   const EPS = 0.3;
+  const H = 220;
+  const dpr = window.devicePixelRatio || 1;
 
-  let counts, sums, selectedArm, totalPulls, revealed, strategy;
-
-  function reset() {
-    counts = [0, 0, 0, 0];
-    sums = [0, 0, 0, 0];
-    selectedArm = -1;
-    totalPulls = 0;
-    revealed = false;
-    strategy = 'eps';
-    document.getElementById('btnReveal').textContent = 'Reveal truth';
-    document.getElementById('btnEpsGreedy').classList.add('active');
-    document.getElementById('btnUCB').classList.remove('active');
-    updateStatus();
-    draw();
-  }
+  let revealed = false;
+  const state = {
+    eps: { counts: [0,0,0,0], sums: [0,0,0,0], totalPulls: 0, selectedArm: -1 },
+    ucb: { counts: [0,0,0,0], sums: [0,0,0,0], totalPulls: 0, selectedArm: -1 }
+  };
 
   function randn() {
     let u = 0, v = 0;
@@ -263,202 +274,165 @@
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
 
-  function means() { return counts.map((c, i) => c > 0 ? sums[i] / c : null); }
+  function means(s) { return s.counts.map((c, i) => c > 0 ? s.sums[i] / c : null); }
 
-  function pullEpsGreedy() {
-    const m = means();
-    let arm;
-    if (Math.random() < EPS) {
-      arm = Math.floor(Math.random() * 4);
-    } else {
-      // Pick arm with highest known mean; unpulled arms get priority (treated as 0)
-      const vals = m.map((v, i) => v !== null ? v : 0);
-      arm = vals.indexOf(Math.max(...vals));
-    }
-    return arm;
+  function bestArm(s) {
+    const m = means(s);
+    return m.map((v, i) => ({ v: v !== null ? v : -Infinity, i }))
+            .reduce((a, b) => a.v > b.v ? a : b);
   }
 
-  function pullUCB() {
-    // If any arm unpulled, pull it first
-    for (let i = 0; i < 4; i++) {
-      if (counts[i] === 0) return i;
-    }
-    const m = means();
-    const ucbVals = m.map((mu, i) =>
-      mu + Math.sqrt(2 * Math.log(Math.max(totalPulls, 1)) / counts[i])
-    );
-    return ucbVals.indexOf(Math.max(...ucbVals));
+  function pickEps(s) {
+    const m = means(s);
+    if (Math.random() < EPS) return Math.floor(Math.random() * 4);
+    return m.map(v => v !== null ? v : 0).reduce((bi, v, i, a) => v > a[bi] ? i : bi, 0);
   }
 
-  function doPull(arm) {
-    const reward = TRUE_MEANS[arm] + randn() * SIGMA;
-    sums[arm] += reward;
-    counts[arm]++;
-    totalPulls++;
-    selectedArm = arm;
+  function pickUCB(s) {
+    for (let i = 0; i < 4; i++) if (s.counts[i] === 0) return i;
+    const m = means(s);
+    const ucb = m.map((mu, i) => mu + Math.sqrt(2 * Math.log(Math.max(s.totalPulls, 1)) / s.counts[i]));
+    return ucb.indexOf(Math.max(...ucb));
   }
 
-  function updateStatus() {
-    const m = means();
-    const validMeans = m.map((v, i) => ({ v: v !== null ? v : -Infinity, i }));
-    const best = validMeans.reduce((a, b) => a.v > b.v ? a : b);
-    const bestStr = best.v === -Infinity ? '—' : `Arm ${ARM_LABELS[best.i]} (${best.v >= 0 ? '+' : ''}${best.v.toFixed(2)})`;
-    const stratStr = strategy === 'eps'
-      ? `ε-greedy (ε=${EPS})`
-      : 'UCB';
-    document.getElementById('banditStatus').innerHTML =
-      `Strategy: ${stratStr} &nbsp;|&nbsp; Total pulls: ${totalPulls} &nbsp;|&nbsp; Best estimate: ${bestStr}`;
+  function doPull(s, arm) {
+    s.sums[arm] += TRUE_MEANS[arm] + randn() * SIGMA;
+    s.counts[arm]++;
+    s.totalPulls++;
+    s.selectedArm = arm;
   }
 
-  function draw() {
-    const W = canvas.clientWidth || 760;
+  function updateStatus(which) {
+    const s = state[which];
+    const b = bestArm(s);
+    const bestStr = b.v === -Infinity ? '\u2014' : `Arm ${ARM_LABELS[b.i]} (${b.v >= 0 ? '+' : ''}${b.v.toFixed(2)})`;
+    document.getElementById(which === 'eps' ? 'statusEps' : 'statusUCB').textContent =
+      `Pulls: ${s.totalPulls} \u00b7 Best estimate: ${bestStr}`;
+  }
+
+  function draw(which) {
+    const canvas = document.getElementById(which === 'eps' ? 'banditEps' : 'banditUCB');
+    const s = state[which];
+    const W = canvas.clientWidth || 380;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
-
     ctx.clearRect(0, 0, W, H);
-    const padL = 50, padR = 20, padT = 20, padB = 40;
-    const barW = (W - padL - padR) / 4 - 12;
-    const plotH = H - padT - padB;
-    const mid = H / 2;
 
-    // Y axis range
+    const padL = 40, padR = 10, padT = 16, padB = 38;
+    const slotW = (W - padL - padR) / 4;
+    const barW = slotW - 10;
+    const plotH = H - padT - padB;
     const minY = -0.8, maxY = 1.2;
     function toY(v) { return padT + (1 - (v - minY) / (maxY - minY)) * plotH; }
 
-    // Gridlines
+    // Gridlines + y labels
     [-0.5, 0, 0.5, 1.0].forEach(v => {
       const y = toY(v);
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(W - padR, y);
-      ctx.stroke();
-      ctx.fillStyle = '#333';
-      ctx.font = '10px -apple-system, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(v.toFixed(1), padL - 5, y + 3);
+      ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+      ctx.fillStyle = '#333'; ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right'; ctx.fillText(v.toFixed(1), padL - 4, y + 3);
     });
 
-    const m = means();
+    const m = means(s);
     for (let i = 0; i < 4; i++) {
-      const armX = padL + i * ((W - padL - padR) / 4) + (W - padL - padR) / 8 - barW / 2;
+      const armX = padL + i * slotW + slotW / 2 - barW / 2;
       const color = ARM_COLORS[i];
-      const isSelected = i === selectedArm;
+      const isSel = i === s.selectedArm;
 
-      // True mean (revealed or hidden)
       if (revealed) {
-        const ty = toY(TRUE_MEANS[i]);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 3]);
-        ctx.beginPath();
-        ctx.moveTo(armX, ty);
-        ctx.lineTo(armX + barW, ty);
-        ctx.stroke();
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(armX, toY(TRUE_MEANS[i])); ctx.lineTo(armX + barW, toY(TRUE_MEANS[i])); ctx.stroke();
         ctx.setLineDash([]);
       }
 
-      if (counts[i] > 0) {
-        const mu = m[i];
-        const se = SIGMA / Math.sqrt(counts[i]);
-        const ci = 2 * se;
+      if (s.counts[i] > 0) {
+        const mu = m[i], se = SIGMA / Math.sqrt(s.counts[i]), ci = 2 * se;
         const muY = toY(mu);
-        const hiY = toY(Math.min(mu + ci, maxY));
-        const loY = toY(Math.max(mu - ci, minY));
-
-        // CI band
-        ctx.fillStyle = `${color}22`;
-        ctx.fillRect(armX, hiY, barW, loY - hiY);
-
-        // Mean line
-        ctx.strokeStyle = isSelected ? color : `${color}88`;
-        ctx.lineWidth = isSelected ? 2.5 : 1.5;
-        ctx.beginPath();
-        ctx.moveTo(armX, muY);
-        ctx.lineTo(armX + barW, muY);
-        ctx.stroke();
-
-        // CI whiskers
-        ctx.strokeStyle = `${color}66`;
-        ctx.lineWidth = 1;
-        [hiY, loY].forEach(y => {
-          ctx.beginPath();
-          ctx.moveTo(armX + barW * 0.25, y);
-          ctx.lineTo(armX + barW * 0.75, y);
-          ctx.stroke();
-        });
+        const hiY = toY(Math.min(mu + ci, maxY)), loY = toY(Math.max(mu - ci, minY));
+        ctx.fillStyle = `${color}22`; ctx.fillRect(armX, hiY, barW, loY - hiY);
+        ctx.strokeStyle = isSel ? color : `${color}88`; ctx.lineWidth = isSel ? 2.5 : 1.5;
+        ctx.beginPath(); ctx.moveTo(armX, muY); ctx.lineTo(armX + barW, muY); ctx.stroke();
+        ctx.strokeStyle = `${color}55`; ctx.lineWidth = 1;
+        [hiY, loY].forEach(y => { ctx.beginPath(); ctx.moveTo(armX + barW*0.2, y); ctx.lineTo(armX + barW*0.8, y); ctx.stroke(); });
       }
 
-      // Selected highlight
-      if (isSelected) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
+      if (isSel) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
         ctx.strokeRect(armX - 2, padT - 2, barW + 4, plotH + 4);
       }
 
-      // Pull count below
-      ctx.fillStyle = '#444';
-      ctx.font = '11px -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`n=${counts[i]}`, armX + barW / 2, H - padB + 14);
-
-      // Arm label
-      ctx.fillStyle = isSelected ? color : '#555';
-      ctx.font = `${isSelected ? '700' : '400'} 13px -apple-system, sans-serif`;
-      ctx.fillText(`Arm ${ARM_LABELS[i]}`, armX + barW / 2, H - padB + 28);
+      ctx.fillStyle = '#444'; ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillText(`n=${s.counts[i]}`, armX + barW/2, H - padB + 13);
+      ctx.fillStyle = isSel ? color : '#555'; ctx.font = `${isSel ? '700' : '400'} 12px -apple-system, sans-serif`;
+      ctx.fillText(`Arm ${ARM_LABELS[i]}`, armX + barW/2, H - padB + 26);
     }
 
     if (revealed) {
-      ctx.fillStyle = '#444';
-      ctx.font = '11px -apple-system, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padL, padT - 6);
-      ctx.lineTo(padL + 28, padT - 6);
-      ctx.stroke();
+      ctx.fillStyle = '#444'; ctx.font = '10px -apple-system, sans-serif'; ctx.textAlign = 'left';
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, padT - 6); ctx.lineTo(padL + 22, padT - 6); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillText('true mean', padL + 32, padT - 2);
+      ctx.fillText('true mean', padL + 26, padT - 2);
     }
   }
 
-  reset();
+  function drawBoth() { draw('eps'); draw('ucb'); }
 
-  document.getElementById('btnEpsGreedy').addEventListener('click', () => {
-    strategy = 'eps';
-    document.getElementById('btnEpsGreedy').classList.add('active');
-    document.getElementById('btnUCB').classList.remove('active');
-    const arm = pullEpsGreedy();
-    doPull(arm);
-    draw();
-    updateStatus();
+  function reset() {
+    revealed = false;
+    state.eps = { counts: [0,0,0,0], sums: [0,0,0,0], totalPulls: 0, selectedArm: -1 };
+    state.ucb = { counts: [0,0,0,0], sums: [0,0,0,0], totalPulls: 0, selectedArm: -1 };
+    document.getElementById('btnReveal').textContent = 'Reveal true means';
+    document.getElementById('btnReveal').disabled = false;
+    document.getElementById('statusEps').textContent = 'Pulls: 0 \u00b7 Best estimate: \u2014';
+    document.getElementById('statusUCB').textContent = 'Pulls: 0 \u00b7 Best estimate: \u2014';
+    document.getElementById('banditCompare').style.display = 'none';
+    drawBoth();
+  }
+
+  // Buttons
+  document.getElementById('btnEpsPull').addEventListener('click', () => {
+    doPull(state.eps, pickEps(state.eps)); draw('eps'); updateStatus('eps');
   });
-
-  document.getElementById('btnUCB').addEventListener('click', () => {
-    strategy = 'ucb';
-    document.getElementById('btnEpsGreedy').classList.remove('active');
-    document.getElementById('btnUCB').classList.add('active');
-    const arm = pullUCB();
-    doPull(arm);
-    draw();
-    updateStatus();
+  document.getElementById('btnEpsRun').addEventListener('click', () => {
+    for (let i = 0; i < 10; i++) doPull(state.eps, pickEps(state.eps));
+    draw('eps'); updateStatus('eps');
+  });
+  document.getElementById('btnUCBPull').addEventListener('click', () => {
+    doPull(state.ucb, pickUCB(state.ucb)); draw('ucb'); updateStatus('ucb');
+  });
+  document.getElementById('btnUCBRun').addEventListener('click', () => {
+    for (let i = 0; i < 10; i++) doPull(state.ucb, pickUCB(state.ucb));
+    draw('ucb'); updateStatus('ucb');
   });
 
   document.getElementById('btnReveal').addEventListener('click', () => {
     revealed = true;
-    document.getElementById('btnReveal').textContent = 'Truth shown';
+    document.getElementById('btnReveal').textContent = 'Truth revealed';
     document.getElementById('btnReveal').disabled = true;
-    draw();
+    drawBoth();
+
+    // Comparison summary
+    const trueBest = TRUE_MEANS.indexOf(Math.max(...TRUE_MEANS));
+    const eb = bestArm(state.eps), ub = bestArm(state.ucb);
+    const sign = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+    const epsPulls = state.eps.totalPulls, ucbPulls = state.ucb.totalPulls;
+    const epsOk = eb.i === trueBest, ucbOk = ub.i === trueBest;
+    const cmp = document.getElementById('banditCompare');
+    cmp.innerHTML =
+      `True best: Arm ${ARM_LABELS[trueBest]} (${sign(TRUE_MEANS[trueBest])})` +
+      `&nbsp;&nbsp;&middot;&nbsp;&nbsp;\u03b5-greedy (${epsPulls} pulls): Arm ${ARM_LABELS[eb.i]} <span style="color:${epsOk?'#4caf50':'#e07070'}">${epsOk?'correct':'wrong'}</span>` +
+      `&nbsp;&nbsp;&middot;&nbsp;&nbsp;UCB (${ucbPulls} pulls): Arm ${ARM_LABELS[ub.i]} <span style="color:${ucbOk?'#4caf50':'#e07070'}">${ucbOk?'correct':'wrong'}</span>`;
+    cmp.style.display = 'block';
   });
 
   document.getElementById('btnReset').addEventListener('click', reset);
-
-  window.addEventListener('resize', () => { draw(); });
+  window.addEventListener('resize', drawBoth);
+  reset();
 })();
 </script>
 </body>
