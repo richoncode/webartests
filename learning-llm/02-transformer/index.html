@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Transformer — Learning LLMs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .formula .cm { color: #555; font-style: italic; }
+  .formula .kw { color: #5b9bd5; }
+  .formula .gr { color: #4caf50; }
+  .formula .or { color: #f0a040; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .param-note { font-size: 13px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin: 8px 0 0; }
+
+  /* Comparison table */
+  .cmp-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .cmp-table th { color: #555; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; text-align: left; padding: 8px 12px; border-bottom: 1px solid #1e1e1e; background: #0a0a0a; }
+  .cmp-table td { color: #888; padding: 10px 12px; border-bottom: 1px solid #141414; background: #0a0a0a; vertical-align: top; line-height: 1.5; }
+  .cmp-table td:first-child { color: #ccc; font-weight: 700; }
+  .cmp-table tr:hover td { background: #111; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <p class="lesson-num">Lesson 02</p>
+  <h1>The Transformer</h1>
+  <p class="subtitle">Stack attention and feed-forward layers with residual connections and layer normalisation. The transformer block is the building block of every modern language model.</p>
+
+  <!-- Section 1: The transformer block -->
+  <div class="section">
+    <h2>The Transformer Block</h2>
+    <p>A single transformer block takes a sequence of token embeddings and outputs a transformed sequence of the same shape. It has two sub-layers — multi-head attention and a feed-forward network — each wrapped with a residual connection and layer normalisation.</p>
+    <p>The residual connections (also called skip connections) allow gradients to flow directly through the network during training, making it possible to stack many layers without vanishing gradients. Layer norm stabilises the activations after each sub-layer.</p>
+    <div class="btn-row">
+      <button id="animateBlockBtn">Animate forward pass</button>
+    </div>
+    <canvas id="blockCanvas" width="680" height="300" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <!-- Section 2: Causal mask -->
+  <div class="section">
+    <h2>The Causal Mask</h2>
+    <p>GPT-style decoder transformers use causal masking: each token can only attend to itself and earlier tokens. This enables left-to-right generation — the model never "peeks" at future tokens during training, which would make the task trivially easy and useless for generation.</p>
+    <p>During training, the entire sequence is processed in parallel (unlike RNNs), but the mask ensures causality. During inference, tokens are generated one at a time, each conditioned on all previous outputs.</p>
+    <p class="vis-label">Click a row to inspect that query position's attention pattern</p>
+    <canvas id="maskCanvas" width="680" height="220" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <!-- Section 3: Depth -->
+  <div class="section">
+    <h2>Depth — Stacking Blocks</h2>
+    <p>A full transformer model is N of these blocks stacked sequentially. GPT-2 small uses 12 blocks; GPT-3 uses 96. Each block refines the representations produced by the one below — early layers often capture syntax and local structure, while later layers encode more abstract semantic content.</p>
+    <div class="btn-row">
+      <button id="runFwdBtn">Run forward pass</button>
+    </div>
+    <canvas id="stackCanvas" width="680" height="260" style="width:100%;max-width:680px;"></canvas>
+    <p class="param-note">Embedding: ~39M &nbsp;·&nbsp; Per block: ~7M × 12 = ~85M &nbsp;·&nbsp; Total: ~124M (GPT-2 small)</p>
+  </div>
+
+  <!-- Section 4: Encoder vs Decoder -->
+  <div class="section">
+    <h2>Encoder vs Decoder vs Encoder-Decoder</h2>
+    <p>Transformers come in three flavours, each suited to different tasks. The attention masking strategy is the key difference.</p>
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th>Flavour</th>
+          <th>Mask</th>
+          <th>Example</th>
+          <th>Used for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Encoder</td>
+          <td>Bidirectional (full attention)</td>
+          <td>BERT, RoBERTa</td>
+          <td>Classification, embeddings, understanding</td>
+        </tr>
+        <tr>
+          <td>Decoder</td>
+          <td>Causal (left-to-right only)</td>
+          <td>GPT-4, Llama, Claude</td>
+          <td>Text generation, chat, completion</td>
+        </tr>
+        <tr>
+          <td>Encoder-Decoder</td>
+          <td>Encoder: full, Decoder: causal</td>
+          <td>T5, BART</td>
+          <td>Translation, summarisation, seq2seq</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout green">
+      <strong>Modern frontier models</strong> (GPT-4, Claude, Gemini, Llama) are all decoder-only transformers. The simplicity of the decoder architecture scales better with compute — no need to balance a separate encoder and decoder, and the causal objective naturally supports open-ended generation.
+    </div>
+  </div>
+
+  <div class="nav-row">
+    <a href="../01-attention/">← Attention Mechanism</a>
+    <a href="../03-autoregressive/">Autoregressive Generation →</a>
+  </div>
+</div>
+
+<script>
+// ─── Utility ─────────────────────────────────────────────────────────────────
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Section 1: Block Diagram ─────────────────────────────────────────────────
+
+// Define block components (bottom to top order)
+const BLOCK_COMPONENTS = [
+  { id: 'input',  label: 'Token embeddings',        kind: 'label' },
+  { id: 'ln1',    label: 'Layer Norm',               kind: 'norm',  color: '#333',   border: '#555'   },
+  { id: 'mha',    label: 'Multi-Head Attention',     kind: 'box',   color: '#0a1520', border: '#5b9bd5' },
+  { id: 'add1',   label: 'Add & Norm',               kind: 'small', color: '#111',   border: '#444'   },
+  { id: 'ln2',    label: 'Layer Norm',               kind: 'norm',  color: '#333',   border: '#555'   },
+  { id: 'ffn',    label: 'Feed-Forward  (Linear → ReLU → Linear)', kind: 'box', color: '#150a20', border: '#b07adf' },
+  { id: 'add2',   label: 'Add & Norm',               kind: 'small', color: '#111',   border: '#444'   },
+  { id: 'output', label: 'Output embeddings',        kind: 'label' },
+];
+
+let blockAnimFrame = null;
+let blockHighlight = -1; // index into BLOCK_COMPONENTS being highlighted
+
+function getBlockLayout(W, H) {
+  const cx = W / 2;
+  const comps = BLOCK_COMPONENTS;
+  const n = comps.length;
+  // distribute vertically
+  const marginY = 14;
+  const usableH = H - marginY * 2;
+  const slotH = usableH / n;
+  const layout = [];
+  for (let i = 0; i < n; i++) {
+    // i=0 is bottom (input), i=n-1 is top (output)
+    const flip = n - 1 - i;
+    const cy = marginY + flip * slotH + slotH / 2;
+    layout.push({ cx, cy, comp: comps[i] });
+  }
+  return layout;
+}
+
+function drawBlock(highlightIdx) {
+  const canvas = document.getElementById('blockCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const layout = getBlockLayout(W, H);
+  const boxW = 280;
+  const boxH_big   = 34;
+  const boxH_small = 22;
+  const boxH_norm  = 22;
+
+  // Draw residual arcs (skip connections) on the right
+  // Skip 1: from below ln1 (after input) up to add1
+  // Skip 2: from below ln2 (after add1) up to add2
+  const ln1Idx = 1; // ln1 in layout array (index 1, cy from bottom=6 → flip=6)
+  const add1Idx = 3;
+  const ln2Idx = 4;
+  const add2Idx = 6;
+
+  function layoutY(i) {
+    return layout[i].cy;
+  }
+
+  // Residual arc 1
+  {
+    const x = W / 2 + boxW / 2 + 12;
+    const y1 = layoutY(0) + 10; // just below input label
+    const y2 = layoutY(add1Idx);
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + boxW / 2, y1);
+    ctx.lineTo(x + 14, y1);
+    ctx.lineTo(x + 14, y2);
+    ctx.lineTo(W / 2 + boxW / 2, y2);
+    ctx.strokeStyle = highlightIdx >= 1 && highlightIdx <= add1Idx ? '#5b9bd5' : '#2a2a2a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // arrowhead
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + boxW / 2, y2);
+    ctx.lineTo(W / 2 + boxW / 2 + 6, y2 - 5);
+    ctx.lineTo(W / 2 + boxW / 2 + 6, y2 + 5);
+    ctx.closePath();
+    ctx.fillStyle = highlightIdx >= 1 && highlightIdx <= add1Idx ? '#5b9bd5' : '#2a2a2a';
+    ctx.fill();
+  }
+
+  // Residual arc 2
+  {
+    const x = W / 2 + boxW / 2 + 32;
+    const y1 = layoutY(add1Idx) + 11;
+    const y2 = layoutY(add2Idx);
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + boxW / 2, y1);
+    ctx.lineTo(x + 14, y1);
+    ctx.lineTo(x + 14, y2);
+    ctx.lineTo(W / 2 + boxW / 2, y2);
+    ctx.strokeStyle = highlightIdx >= ln2Idx && highlightIdx <= add2Idx ? '#b07adf' : '#2a2a2a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + boxW / 2, y2);
+    ctx.lineTo(W / 2 + boxW / 2 + 6, y2 - 5);
+    ctx.lineTo(W / 2 + boxW / 2 + 6, y2 + 5);
+    ctx.closePath();
+    ctx.fillStyle = highlightIdx >= ln2Idx && highlightIdx <= add2Idx ? '#b07adf' : '#2a2a2a';
+    ctx.fill();
+  }
+
+  // Draw vertical connector lines between boxes
+  for (let i = 0; i < layout.length - 1; i++) {
+    const { cy: cy1, comp: c1 } = layout[i];
+    const { cy: cy2, comp: c2 } = layout[i + 1];
+    const kind1 = c1.kind;
+    const h1 = kind1 === 'box' ? boxH_big : (kind1 === 'small' || kind1 === 'norm') ? boxH_small : 16;
+    const y1 = cy1 - h1 / 2;
+    const y2 = cy2 + (c2.kind === 'box' ? boxH_big : (c2.kind === 'small' || c2.kind === 'norm') ? boxH_small : 16) / 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2, y2);
+    ctx.lineTo(W / 2, y1);
+    const lit = i <= highlightIdx;
+    ctx.strokeStyle = lit ? '#444' : '#1e1e1e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Draw boxes
+  for (let i = 0; i < layout.length; i++) {
+    const { cx, cy, comp } = layout[i];
+    const isHighlit = i === highlightIdx;
+    const isLit = i <= highlightIdx;
+
+    if (comp.kind === 'label') {
+      ctx.fillStyle = isLit ? '#777' : '#2a2a2a';
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(comp.label, cx, cy);
+      continue;
+    }
+
+    const bh = comp.kind === 'box' ? boxH_big : boxH_small;
+    const bw = comp.kind === 'box' ? boxW : (comp.kind === 'norm' ? 120 : 100);
+    const x = cx - bw / 2;
+    const y = cy - bh / 2;
+
+    ctx.fillStyle = isHighlit
+      ? (comp.color === '#0a1520' ? '#0f2030' : comp.color === '#150a20' ? '#200a30' : '#1a1a1a')
+      : (isLit ? comp.color : '#0d0d0d');
+    ctx.strokeStyle = isHighlit ? (comp.border || '#555') : (isLit ? comp.border || '#333' : '#1a1a1a');
+    ctx.lineWidth = isHighlit ? 2 : 1;
+    if (isHighlit) ctx.shadowColor = comp.border || '#555';
+    if (isHighlit) ctx.shadowBlur = 10;
+    roundRect(ctx, x, y, bw, bh, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = isHighlit ? '#fff' : (isLit ? '#aaa' : '#333');
+    ctx.font = comp.kind === 'box' ? '12px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(comp.label, cx, cy);
+  }
+}
+
+let blockAnimRunning = false;
+document.getElementById('animateBlockBtn').addEventListener('click', function() {
+  if (blockAnimRunning) return;
+  blockAnimRunning = true;
+  blockHighlight = -1;
+  drawBlock(blockHighlight);
+
+  const n = BLOCK_COMPONENTS.length;
+  let step = 0;
+  function tick() {
+    step++;
+    blockHighlight = step - 1;
+    drawBlock(blockHighlight);
+    if (step < n) {
+      setTimeout(tick, 400);
+    } else {
+      blockAnimRunning = false;
+    }
+  }
+  setTimeout(tick, 200);
+});
+
+// ─── Section 2: Causal Mask ───────────────────────────────────────────────────
+
+let maskHighlightRow = -1;
+
+// Pre-generate random attention weights for the lower triangle
+const MASK_WEIGHTS = [];
+{
+  let s = 12345;
+  function r() {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  }
+  for (let i = 0; i < 8; i++) {
+    const row = [];
+    for (let j = 0; j < 8; j++) {
+      row.push(r());
+    }
+    // Softmax over allowed positions (j <= i)
+    MASK_WEIGHTS.push(row);
+  }
+}
+
+function softmaxMask(row, maxJ) {
+  const vals = row.slice(0, maxJ + 1);
+  const max = Math.max(...vals);
+  const exps = vals.map(x => Math.exp((x - max) * 4));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(x => x / sum);
+}
+
+function drawMask() {
+  const canvas = document.getElementById('maskCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const n = 8;
+  const marginL = 80;
+  const marginT = 28;
+  const marginB = 28;
+  const gridW = Math.min(W - marginL - 8, (H - marginT - marginB) * (W / H));
+  const cellSize = Math.min((W - marginL - 8) / n, (H - marginT - marginB) / n);
+  const gridActualW = cellSize * n;
+  const gridActualH = cellSize * n;
+
+  // Draw axis labels
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('key position →', marginL + gridActualW / 2, marginT - 6);
+
+  ctx.save();
+  ctx.translate(14, marginT + gridActualH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText('query position ↓', 0, 0);
+  ctx.restore();
+
+  for (let row = 0; row < n; row++) {
+    // Get softmax weights for this row
+    const probs = softmaxMask(MASK_WEIGHTS[row], row);
+    const isHighlit = row === maskHighlightRow;
+
+    for (let col = 0; col < n; col++) {
+      const x = marginL + col * cellSize;
+      const y = marginT + row * cellSize;
+      const allowed = col <= row;
+
+      if (allowed) {
+        const w = probs[col] || 0;
+        const alpha = 0.15 + w * 0.85;
+        const isHRow = isHighlit;
+        ctx.fillStyle = isHRow
+          ? `rgba(91,155,213,${0.25 + w * 0.75})`
+          : `rgba(91,155,213,${alpha * 0.6})`;
+        ctx.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+
+        if (isHighlit) {
+          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.font = '9px -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText((w * 100).toFixed(0), x + cellSize / 2, y + cellSize / 2);
+        }
+      } else {
+        ctx.fillStyle = '#0e0e0e';
+        ctx.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+        ctx.fillStyle = '#1e1e1e';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✕', x + cellSize / 2, y + cellSize / 2);
+      }
+
+      // Cell border
+      ctx.strokeStyle = isHighlit && col <= row ? '#5b9bd5' : '#1a1a1a';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x + 0.5, y + 0.5, cellSize - 1, cellSize - 1);
+    }
+
+    // Row position label
+    ctx.fillStyle = isHighlit ? '#5b9bd5' : '#333';
+    ctx.font = isHighlit ? '600 11px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(row, marginL - 6, marginT + row * cellSize + cellSize / 2);
+  }
+
+  // Column labels
+  ctx.fillStyle = '#333';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let col = 0; col < n; col++) {
+    ctx.fillText(col, marginL + col * cellSize + cellSize / 2, marginT + gridActualH + 4);
+  }
+}
+
+document.getElementById('maskCanvas').addEventListener('click', function(e) {
+  const rect = this.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const n = 8;
+  const marginT = 28;
+  const H = this.clientHeight;
+  const cellSize = (H - marginT - 28) / n;
+  const row = Math.floor((y - marginT) / cellSize);
+  if (row >= 0 && row < n) {
+    maskHighlightRow = (maskHighlightRow === row) ? -1 : row;
+    drawMask();
+  }
+});
+
+// ─── Section 3: Stacked Blocks ────────────────────────────────────────────────
+
+let stackAnimRunning = false;
+
+function drawStack(litUpTo, dotFrac) {
+  const canvas = document.getElementById('stackCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const nBlocks = 12;
+  const layers = ['Embedding', ...Array.from({length: nBlocks}, (_, i) => `Block ${nBlocks - i}`), 'LM Head'];
+  const totalLayers = layers.length; // 14
+
+  const marginL = 64;
+  const marginT = 8;
+  const marginB = 8;
+  const barW = Math.min(300, W - marginL - 80);
+  const barH = (H - marginT - marginB) / totalLayers - 2;
+  const gap = 2;
+
+  for (let i = 0; i < totalLayers; i++) {
+    // i=0 = LM Head (top), i=totalLayers-1 = Embedding (bottom)
+    const y = marginT + i * (barH + gap);
+    const x = marginL;
+    const label = layers[i];
+    const layerFromBottom = totalLayers - 1 - i; // 0=LMHead,1=Block12,...,13=Embed
+
+    const isEmbedding = layerFromBottom === 0;
+    const isLMHead = layerFromBottom === totalLayers - 1;
+    const blockIdx = isEmbedding || isLMHead ? -1 : layerFromBottom; // 1-12
+
+    const isLit = layerFromBottom <= (litUpTo + 1);
+    const isActive = Math.floor(litUpTo) === layerFromBottom - 1;
+
+    let fillColor, borderColor;
+    if (isEmbedding) {
+      fillColor = isLit ? '#0a1a0a' : '#0a0a0a';
+      borderColor = isLit ? '#4caf50' : '#1a1a1a';
+    } else if (isLMHead) {
+      fillColor = isLit ? '#1a0a0a' : '#0a0a0a';
+      borderColor = isLit ? '#e07070' : '#1a1a1a';
+    } else {
+      fillColor = isLit ? '#0d1520' : '#0a0a0a';
+      borderColor = isLit ? '#5b9bd5' : '#1a1a1a';
+    }
+    if (isActive) {
+      fillColor = isEmbedding ? '#102210' : isLMHead ? '#221010' : '#0d1e32';
+      borderColor = isEmbedding ? '#4caf50' : isLMHead ? '#e07070' : '#5b9bd5';
+      ctx.shadowColor = borderColor;
+      ctx.shadowBlur = 8;
+    }
+
+    roundRect(ctx, x, y, barW, barH, 3);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Label
+    ctx.fillStyle = isLit ? '#888' : '#2a2a2a';
+    ctx.font = barH > 14 ? '11px -apple-system, sans-serif' : '9px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x - 6, y + barH / 2);
+  }
+
+  // Draw dot
+  if (dotFrac >= 0) {
+    const dotLayer = dotFrac * (totalLayers - 1);
+    const dotI = totalLayers - 1 - dotLayer; // convert to canvas y-order
+    const dotY = marginT + dotI * (barH + gap) + barH / 2;
+    const dotX = marginL + barW / 2;
+
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#5b9bd5';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+document.getElementById('runFwdBtn').addEventListener('click', function() {
+  if (stackAnimRunning) return;
+  stackAnimRunning = true;
+  const totalLayers = 14;
+  const duration = 1500;
+  const start = performance.now();
+
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const litUpTo = t * (totalLayers - 1);
+    drawStack(litUpTo, t);
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      drawStack(totalLayers, -1);
+      stackAnimRunning = false;
+    }
+  }
+  requestAnimationFrame(tick);
+});
+
+// ─── Initialise ───────────────────────────────────────────────────────────────
+
+function initAll() {
+  drawBlock(-1);
+  drawMask();
+  drawStack(-1, -1);
+}
+
+window.addEventListener('resize', initAll);
+initAll();
+</script>
+</body>
+</html>

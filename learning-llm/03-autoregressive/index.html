@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autoregressive Generation — Learning LLMs</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+a.back:hover { color: #aaa; }
+.page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+.lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+.subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+.section { margin-bottom: 56px; }
+.section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+.section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+.section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+button:hover { background: #222; border-color: #555; color: #fff; }
+button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+.btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+.callout strong { color: #ccc; }
+.callout.green { border-color: #4caf50; }
+.callout.orange { border-color: #f0a040; }
+.callout.purple { border-color: #b07adf; }
+.callout.red { border-color: #e07070; }
+.vis-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+.formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+.formula .cm { color: #555; font-style: italic; }
+.formula .kw { color: #5b9bd5; }
+.formula .gr { color: #4caf50; }
+.formula .or { color: #f0a040; }
+.nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+.nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+.nav-row a:hover { color: #aaa; }
+
+/* Tokenisation */
+#token-input { width: 100%; background: #111; border: 1px solid #2a2a2a; color: #ccc; padding: 10px 14px; border-radius: 6px; font-size: 14px; font-family: 'SF Mono','Fira Code',monospace; resize: vertical; min-height: 60px; margin-bottom: 8px; }
+#token-input:focus { outline: none; border-color: #444; }
+#token-display { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; min-height: 32px; }
+.token-chip { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.token-chip .chip-text { padding: 3px 10px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono','Fira Code',monospace; }
+.token-chip .chip-idx { font-size: 10px; color: #444; font-family: 'SF Mono','Fira Code',monospace; }
+#token-stat { font-size: 12px; color: #444; font-family: 'SF Mono','Fira Code',monospace; margin-top: 6px; }
+
+/* Temperature */
+#temp-control { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+#temp-control label { font-size: 13px; color: #666; white-space: nowrap; }
+#temp-slider { -webkit-appearance: none; appearance: none; width: 200px; height: 4px; border-radius: 2px; background: #333; outline: none; cursor: pointer; }
+#temp-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #5b9bd5; cursor: pointer; }
+#temp-val { font-size: 13px; color: #5b9bd5; font-family: 'SF Mono','Fira Code',monospace; min-width: 36px; }
+#sample-result { font-size: 14px; color: #4caf50; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; min-height: 22px; }
+#temp-desc { font-size: 12px; color: #555; margin-top: 8px; font-style: italic; }
+
+/* KV cache */
+#kv-status { font-size: 12px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; }
+
+/* Context chart */
+#ctx-canvas { width: 100%; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <div class="lesson-num">Lesson 03</div>
+  <h1>Autoregressive Generation</h1>
+  <p class="subtitle">A language model factors the probability of a sequence into a chain of next-token predictions. At inference time this becomes a loop: predict, sample, append, repeat.</p>
+
+  <!-- Section 1: Language modeling -->
+  <div class="section">
+    <h2>Language modeling</h2>
+    <p>A language model defines a probability distribution over sequences of tokens. Training objective: minimise cross-entropy between the model's predicted distribution and the actual next token in the training data.</p>
+    <div class="formula">
+      <span class="cm">// Joint probability as product of conditionals</span><br>
+      P(x₁, x₂, ..., xₙ) = <span class="kw">∏</span> P(xₜ | x₁, ..., x<span class="kw">_{t-1}</span>)<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">t=1→n</span><br>
+      <br>
+      <span class="cm">// Training loss (cross-entropy)</span><br>
+      Training loss: <span class="or">L</span> = -<span class="kw">1/N</span> · <span class="kw">Σ</span> <span class="gr">log P</span>(xₜ | x₁..x<span class="kw">_{t-1}</span>)
+    </div>
+    <div class="callout">
+      <strong>Teacher forcing:</strong> during training, the model sees ground-truth previous tokens, not its own predictions. At inference it must use its own outputs — a gap called <strong>exposure bias</strong>.
+    </div>
+  </div>
+
+  <!-- Section 2: Tokenisation -->
+  <div class="section">
+    <h2>Tokenisation</h2>
+    <p>Text must be converted to integer token IDs before the model can process it. Modern LLMs use Byte-Pair Encoding (BPE) or SentencePiece — subword tokenisers that balance vocabulary size against token count.</p>
+    <textarea id="token-input">The transformer architecture changed AI forever.</textarea>
+    <div class="btn-row">
+      <button id="tokenise-btn">Tokenise</button>
+    </div>
+    <div id="token-display"></div>
+    <div id="token-stat"></div>
+  </div>
+
+  <!-- Section 3: Temperature and sampling -->
+  <div class="section">
+    <h2>Temperature and sampling</h2>
+    <p>At each step the model outputs a logit vector over the entire vocabulary. Sampling strategy controls how we pick the next token from this distribution.</p>
+    <p>Context: <strong style="color:#ccc; font-family:'SF Mono','Fira Code',monospace;">"The quick brown fox"</strong></p>
+
+    <div id="temp-control">
+      <label>Temperature:</label>
+      <input type="range" id="temp-slider" min="0.1" max="3.0" step="0.05" value="1.0">
+      <span id="temp-val">1.00</span>
+    </div>
+
+    <div class="vis-label">Next-token probability distribution</div>
+    <canvas id="temp-canvas" height="200" style="width:100%;"></canvas>
+
+    <div class="btn-row">
+      <button id="sample-btn">Sample token</button>
+      <button id="greedy-btn">Greedy (T→0)</button>
+      <button id="high-entropy-btn">High entropy (T=2)</button>
+    </div>
+    <div id="sample-result"></div>
+    <div id="temp-desc"></div>
+  </div>
+
+  <!-- Section 4: KV Cache -->
+  <div class="section">
+    <h2>KV Cache</h2>
+    <p>Every forward pass computes Keys and Values for each token in the context. Without caching, generating token N requires re-computing K,V for all N−1 previous tokens. The KV cache stores these computed values and reuses them.</p>
+
+    <div class="vis-label">Attention operations per step</div>
+    <canvas id="kv-canvas" height="200" style="width:100%;"></canvas>
+    <div class="btn-row">
+      <button id="kv-step-btn">Step</button>
+      <button id="kv-reset-btn">Reset</button>
+    </div>
+    <div id="kv-status"></div>
+  </div>
+
+  <!-- Section 5: Context length and cost -->
+  <div class="section">
+    <h2>Context length and cost</h2>
+    <p>Self-attention computes pairwise interactions between all tokens. For a sequence of length n, this requires O(n²) operations and O(n²) memory. This is why context windows have historically been limited, and why extending them is expensive.</p>
+
+    <div class="vis-label">Compute cost vs context length</div>
+    <canvas id="ctx-canvas" height="200" style="width:100%;"></canvas>
+
+    <div class="callout orange">
+      <strong>Flash Attention</strong> rewrites the attention algorithm to never materialise the full n×n attention matrix, reducing memory from O(n²) to O(n) at the cost of recomputation. This is what makes 1M-token contexts feasible.
+    </div>
+  </div>
+
+  <div class="nav-row">
+    <a href="../02-transformer/">← The Transformer</a>
+    <a href="../04-serial-limits/">Limits of Serial Decoding →</a>
+  </div>
+</div>
+
+<script>
+// ─── Section 2: Tokenisation ──────────────────────────────────────────────
+
+const TOKEN_COLORS = [
+  { bg: '#1a1a2e', border: '#4a4a8a', text: '#9090d0' },
+  { bg: '#1a2e1a', border: '#4a8a4a', text: '#90d090' },
+  { bg: '#2e1a1a', border: '#8a4a4a', text: '#d09090' },
+  { bg: '#2e2a1a', border: '#8a7a4a', text: '#d0c090' },
+  { bg: '#1a2a2e', border: '#4a7a8a', text: '#90c0d0' },
+  { bg: '#2a1a2e', border: '#7a4a8a', text: '#c090d0' },
+];
+
+function hashStr(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) ^ s.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h;
+}
+
+function tokenId(word) {
+  return hashStr(word.toLowerCase()) % 50257;
+}
+
+function tokenise() {
+  const text = document.getElementById('token-input').value;
+  const tokens = text.match(/\w+|[^\w\s]/g) || [];
+  const display = document.getElementById('token-display');
+  const stat = document.getElementById('token-stat');
+
+  display.innerHTML = '';
+  tokens.forEach((tok, i) => {
+    const col = TOKEN_COLORS[i % TOKEN_COLORS.length];
+    const chip = document.createElement('div');
+    chip.className = 'token-chip';
+    chip.innerHTML = `
+      <span class="chip-text" style="background:${col.bg};border:1px solid ${col.border};color:${col.text}">${tok}</span>
+      <span class="chip-idx">${tokenId(tok)}</span>
+    `;
+    display.appendChild(chip);
+  });
+
+  if (tokens.length > 0) {
+    const first = tokens[0];
+    stat.textContent = `${tokens.length} tokens · Vocabulary lookup: "${first}" → ${tokenId(first)}`;
+  } else {
+    stat.textContent = '0 tokens';
+  }
+}
+
+document.getElementById('tokenise-btn').addEventListener('click', tokenise);
+tokenise();
+
+// ─── Section 3: Temperature ───────────────────────────────────────────────
+
+const CANDIDATES = ["jumps", "leaps", "runs", "flies", "walks", "rests"];
+const BASE_LOGITS = [4.2, 3.1, 2.3, 1.8, 1.1, 0.4];
+
+let temperature = 1.0;
+
+function softmax(logits, T) {
+  const scaled = logits.map(l => l / T);
+  const maxVal = Math.max(...scaled);
+  const exps = scaled.map(l => Math.exp(l - maxVal));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(e => e / sum);
+}
+
+function drawTempChart(probs, highlight) {
+  const canvas = document.getElementById('temp-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 80, padR = 70, padT = 16, padB = 16;
+  const chartW = W - padL - padR;
+  const rowH = (H - padT - padB) / CANDIDATES.length;
+
+  const maxProb = Math.max(...probs);
+
+  CANDIDATES.forEach((token, i) => {
+    const y = padT + i * rowH;
+    const barH = Math.max(2, rowH - 8);
+    const barW = probs[i] * chartW;
+    const barY = y + (rowH - barH) / 2;
+
+    const isMax = probs[i] === maxProb;
+    ctx.fillStyle = isMax ? '#5b9bd5' : (highlight === i ? '#4caf50' : '#2a3a4a');
+    ctx.beginPath();
+    ctx.roundRect(padL, barY, barW, barH, 3);
+    ctx.fill();
+
+    ctx.fillStyle = '#555';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(token, padL - 8, y + rowH / 2);
+
+    ctx.fillStyle = isMax ? '#5b9bd5' : '#444';
+    ctx.textAlign = 'left';
+    ctx.fillText((probs[i] * 100).toFixed(1) + '%', padL + barW + 6, y + rowH / 2);
+  });
+}
+
+function updateTempChart() {
+  const probs = softmax(BASE_LOGITS, temperature);
+  drawTempChart(probs, -1);
+
+  const desc = document.getElementById('temp-desc');
+  if (temperature < 0.5) {
+    desc.textContent = 'Low temperature: distribution sharpens — model more confident and repetitive.';
+  } else if (temperature > 1.5) {
+    desc.textContent = 'High temperature: distribution flattens — more creative and random outputs.';
+  } else {
+    desc.textContent = 'Temperature ≈ 1: raw model output, balanced confidence.';
+  }
+}
+
+function sampleFromDist(probs) {
+  const r = Math.random();
+  let cum = 0;
+  for (let i = 0; i < probs.length; i++) {
+    cum += probs[i];
+    if (r <= cum) return i;
+  }
+  return probs.length - 1;
+}
+
+document.getElementById('temp-slider').addEventListener('input', function() {
+  temperature = parseFloat(this.value);
+  document.getElementById('temp-val').textContent = temperature.toFixed(2);
+  updateTempChart();
+});
+
+document.getElementById('sample-btn').addEventListener('click', function() {
+  const probs = softmax(BASE_LOGITS, temperature);
+  const idx = sampleFromDist(probs);
+  const result = document.getElementById('sample-result');
+  result.textContent = `Sampled: "${CANDIDATES[idx]}" (p = ${(probs[idx] * 100).toFixed(1)}%)`;
+  drawTempChart(probs, idx);
+});
+
+document.getElementById('greedy-btn').addEventListener('click', function() {
+  temperature = 0.01;
+  document.getElementById('temp-slider').value = temperature;
+  document.getElementById('temp-val').textContent = temperature.toFixed(2);
+  updateTempChart();
+});
+
+document.getElementById('high-entropy-btn').addEventListener('click', function() {
+  temperature = 2.0;
+  document.getElementById('temp-slider').value = temperature;
+  document.getElementById('temp-val').textContent = temperature.toFixed(2);
+  updateTempChart();
+});
+
+updateTempChart();
+window.addEventListener('resize', updateTempChart);
+
+// ─── Section 4: KV Cache ──────────────────────────────────────────────────
+
+let kvStep = 0;
+const KV_MAX = 5;
+
+function drawKVCache() {
+  const canvas = document.getElementById('kv-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const midX = W / 2;
+  const padT = 36, padB = 40;
+
+  // Divider
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(midX, 0);
+  ctx.lineTo(midX, H);
+  ctx.stroke();
+
+  // Headers
+  ctx.font = '13px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#555';
+  ctx.fillText('Without cache', midX / 2, 22);
+  ctx.fillText('With cache', midX + midX / 2, 22);
+
+  const squareSize = 14;
+  const gap = 4;
+
+  // Without cache: step*(step+1)/2 ops total (triangular number up to step)
+  // Each step i (1-indexed) contributes i ops
+  let leftOps = 0;
+  for (let s = 1; s <= kvStep; s++) leftOps += s;
+
+  // With cache: kvStep ops total
+  let rightOps = kvStep;
+
+  const maxOps = (KV_MAX * (KV_MAX + 1)) / 2;
+  const colsLeft = Math.floor((midX - 40) / (squareSize + gap));
+
+  function drawOpsGrid(startX, totalOps, color, areaW) {
+    const cols = Math.max(1, Math.floor((areaW - 16) / (squareSize + gap)));
+    let drawn = 0;
+    let row = 0;
+    while (drawn < totalOps) {
+      const rowCount = Math.min(cols, totalOps - drawn);
+      for (let c = 0; c < rowCount; c++) {
+        const ox = startX + 8 + c * (squareSize + gap);
+        const oy = padT + row * (squareSize + gap);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(ox, oy, squareSize, squareSize, 2);
+        ctx.fill();
+      }
+      drawn += rowCount;
+      row++;
+    }
+  }
+
+  const halfW = midX - 8;
+  drawOpsGrid(0, leftOps, '#2a5a2a', halfW);
+  drawOpsGrid(midX + 4, rightOps, '#1a3a5a', halfW);
+
+  // Cache box (right side)
+  if (kvStep > 0) {
+    const cacheX = midX + 8;
+    const cacheY = H - 56;
+    const cacheW = halfW - 20;
+    ctx.fillStyle = '#0d1a26';
+    ctx.strokeStyle = '#2a4a6a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(cacheX, cacheY, cacheW, 22, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#3a6a8a';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`KV cache: ${kvStep} token${kvStep !== 1 ? 's' : ''} stored`, cacheX + cacheW / 2, cacheY + 14);
+  }
+
+  // Stats
+  const saved = leftOps > 0 ? Math.round((1 - rightOps / leftOps) * 100) : 0;
+  const stat = document.getElementById('kv-status');
+  stat.textContent = `Without cache: ${leftOps} ops total · With cache: ${rightOps} ops total${leftOps > 0 ? ' · Saved: ' + saved + '%' : ''}`;
+
+  // Step button state
+  document.getElementById('kv-step-btn').disabled = kvStep >= KV_MAX;
+}
+
+document.getElementById('kv-step-btn').addEventListener('click', function() {
+  if (kvStep < KV_MAX) {
+    kvStep++;
+    drawKVCache();
+  }
+});
+
+document.getElementById('kv-reset-btn').addEventListener('click', function() {
+  kvStep = 0;
+  drawKVCache();
+});
+
+drawKVCache();
+window.addEventListener('resize', drawKVCache);
+
+// ─── Section 5: Context length chart ──────────────────────────────────────
+
+function drawContextChart() {
+  const canvas = document.getElementById('ctx-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 52, padR = 140, padT = 24, padB = 44;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const xTicks = [0, 4000, 8000, 16000, 32000, 64000, 128000];
+  const xLabels = ['0', '4k', '8k', '16k', '32k', '64k', '128k'];
+  const maxX = 128000;
+
+  function xToCanvas(x) {
+    return padL + (x / maxX) * chartW;
+  }
+  function yToCanvas(y) {
+    return padT + chartH - (y / 100) * chartH;
+  }
+
+  // Gridlines
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= 100; y += 25) {
+    ctx.beginPath();
+    ctx.moveTo(padL, yToCanvas(y));
+    ctx.lineTo(padL + chartW, yToCanvas(y));
+    ctx.stroke();
+  }
+  xTicks.forEach(x => {
+    ctx.beginPath();
+    ctx.moveTo(xToCanvas(x), padT);
+    ctx.lineTo(xToCanvas(x), padT + chartH);
+    ctx.stroke();
+  });
+
+  // Axes
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + chartH);
+  ctx.lineTo(padL + chartW, padT + chartH);
+  ctx.stroke();
+
+  // X axis labels
+  ctx.fillStyle = '#444';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  xTicks.forEach((x, i) => {
+    ctx.fillText(xLabels[i], xToCanvas(x), padT + chartH + 16);
+  });
+  ctx.fillText('Context length (tokens)', padL + chartW / 2, padT + chartH + 34);
+
+  // Y axis labels
+  ctx.textAlign = 'right';
+  for (let y = 0; y <= 100; y += 25) {
+    ctx.fillText(y + '%', padL - 6, yToCanvas(y) + 4);
+  }
+  ctx.save();
+  ctx.translate(14, padT + chartH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Relative cost', 0, 0);
+  ctx.restore();
+
+  const N = 200;
+
+  // O(n) linear — green
+  ctx.strokeStyle = '#4caf50';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const x = (i / N) * maxX;
+    const y = Math.min(100, (x / maxX) * 20); // linear, scaled to 20% at max
+    const cx = xToCanvas(x);
+    const cy = yToCanvas(y);
+    if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+
+  // Label O(n)
+  ctx.fillStyle = '#4caf50';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('O(n) — FFN, embeddings', padL + chartW + 6, yToCanvas(20) + 4);
+
+  // O(n²) quadratic — orange
+  ctx.strokeStyle = '#f0a040';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const x = (i / N) * maxX;
+    const y = Math.min(100, Math.pow(x / maxX, 2) * 100);
+    const cx = xToCanvas(x);
+    const cy = yToCanvas(y);
+    if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+
+  // Label O(n²)
+  ctx.fillStyle = '#f0a040';
+  ctx.fillText('O(n²) — Self-attention', padL + chartW + 6, yToCanvas(100) + 4);
+
+  // Dashed vertical line at 32k
+  const x32k = xToCanvas(32000);
+  ctx.strokeStyle = '#3a3a3a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x32k, padT);
+  ctx.lineTo(x32k, padT + chartH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label for 32k line
+  ctx.fillStyle = '#444';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('typical context 2024', x32k, padT + 13);
+
+  // Legend top-right of chart
+  const legendX = padL + chartW - 10;
+  const legendY = padT + 8;
+  ctx.fillStyle = '#4caf50';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('— O(n) linear', legendX, legendY);
+  ctx.fillStyle = '#f0a040';
+  ctx.fillText('— O(n²) quadratic', legendX, legendY + 16);
+}
+
+drawContextChart();
+window.addEventListener('resize', drawContextChart);
+
+// Ensure canvas sizing on load
+window.addEventListener('load', function() {
+  updateTempChart();
+  drawKVCache();
+  drawContextChart();
+});
+</script>
+</body>
+</html>

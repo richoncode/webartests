@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion Language Models — Learning LLMs</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+a.back:hover { color: #aaa; }
+.page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+.lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+.subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+.section { margin-bottom: 56px; }
+.section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+.section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+.section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+button:hover { background: #222; border-color: #555; color: #fff; }
+button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+button:disabled { opacity: 0.4; cursor: default; }
+button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
+.btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+.callout strong { color: #ccc; }
+.callout.green { border-color: #4caf50; }
+.callout.orange { border-color: #f0a040; }
+.callout.purple { border-color: #b07adf; }
+.callout.red { border-color: #e07070; }
+.vis-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+.formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+.nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+.nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+.nav-row a:hover { color: #aaa; }
+
+.slider-row { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.slider-row label { font-size: 13px; color: #666; white-space: nowrap; }
+.slider-row input[type=range] { -webkit-appearance: none; appearance: none; width: 220px; height: 4px; border-radius: 2px; background: #333; outline: none; cursor: pointer; }
+.slider-row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #5b9bd5; cursor: pointer; }
+.slider-val { font-size: 13px; color: #5b9bd5; font-family: 'SF Mono','Fira Code',monospace; min-width: 30px; }
+
+.stat-line { font-size: 12px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; min-height: 20px; }
+.caption-note { font-size: 12px; color: #444; font-style: italic; margin-top: 8px; }
+
+/* Comparison table */
+.cmp-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+.cmp-table th { text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #444; border-bottom: 1px solid #1e1e1e; }
+.cmp-table th:nth-child(2) { color: #f0a040; }
+.cmp-table th:nth-child(3) { color: #5b9bd5; }
+.cmp-table td { padding: 9px 14px; border-bottom: 1px solid #141414; color: #777; vertical-align: top; line-height: 1.5; }
+.cmp-table td:first-child { color: #555; font-weight: 600; white-space: nowrap; }
+.cmp-table tr:last-child td { border-bottom: none; }
+.cmp-table tr:hover td { background: #111; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <div class="lesson-num">Lesson 05</div>
+  <h1>Diffusion Language Models</h1>
+  <p class="subtitle">Generate all tokens in parallel by learning to denoise masked sequences. Diffusion LLMs trade autoregressive guarantees for throughput — a natural fit for GPU hardware.</p>
+
+  <!-- Section 1: From image to text diffusion -->
+  <div class="section">
+    <h2>From image to text diffusion</h2>
+    <p>Image diffusion models corrupt an image with Gaussian noise, then learn to reverse the process. For discrete tokens, Gaussian noise doesn't apply — instead we use masking: the forward process randomly replaces tokens with a [MASK] token.</p>
+
+    <div class="slider-row">
+      <label>Forward process step t:</label>
+      <input type="range" id="forward-slider" min="0" max="5" step="1" value="0">
+      <span class="slider-val" id="forward-val">0</span>
+    </div>
+    <div class="vis-label">Token masking at each noise level</div>
+    <canvas id="forward-canvas" height="160" style="width:100%;"></canvas>
+  </div>
+
+  <!-- Section 2: Reverse process — parallel denoising -->
+  <div class="section">
+    <h2>The reverse process — parallel denoising</h2>
+    <p>The diffusion model learns the reverse: given a (partially) masked sequence, predict all masked tokens simultaneously. At inference time, we start from fully masked and iteratively denoise, updating ALL token positions in parallel at each step.</p>
+
+    <div class="vis-label" style="color:#5b9bd5; font-weight:700; font-size:12px;">Key insight: all token positions updated in parallel at every step</div>
+    <canvas id="denoise-canvas" height="220" style="width:100%;"></canvas>
+    <div class="btn-row">
+      <button id="denoise-step-btn">Denoise step</button>
+      <button id="denoise-reset-btn">Reset</button>
+    </div>
+    <div id="denoise-stat" class="stat-line"></div>
+    <p class="caption-note">(All tokens processed in parallel each step — contrast with autoregressive which generates one token per step)</p>
+  </div>
+
+  <!-- Section 3: Parallel generation timeline -->
+  <div class="section">
+    <h2>Parallel generation timeline</h2>
+    <p>Autoregressive: generate L tokens = L sequential steps. Each step = one full model forward pass on growing context. Diffusion: generate L tokens in T denoising steps (T &lt;&lt; L). Each step = one full model forward pass on all L tokens in parallel.</p>
+
+    <div class="vis-label">Wall-clock time comparison (L = 16 tokens)</div>
+    <canvas id="timeline-canvas" height="200" style="width:100%;"></canvas>
+    <div class="btn-row">
+      <button id="timeline-animate-btn">Animate</button>
+    </div>
+    <div id="timeline-stat" class="stat-line"></div>
+  </div>
+
+  <!-- Section 4: GPU utilisation -->
+  <div class="section">
+    <h2>GPU utilisation</h2>
+    <p>Autoregressive generation at batch=1 is heavily memory-bandwidth bound. Each token generation requires loading all model weights but performs very few multiply-accumulate operations on them. Diffusion forward passes process all L tokens simultaneously — high compute utilisation.</p>
+
+    <div class="vis-label">Hardware utilisation — AR generation vs diffusion step</div>
+    <canvas id="gpu-canvas" height="200" style="width:100%;"></canvas>
+
+    <div class="callout green">
+      <strong>Each diffusion denoising step</strong> is arithmetically similar to a training forward pass — full model, full sequence, all tokens. This maps directly to what GPUs are designed for: dense matrix multiplications on large batches.
+    </div>
+  </div>
+
+  <!-- Section 5: Tradeoffs and current models -->
+  <div class="section">
+    <h2>Tradeoffs and current models</h2>
+    <p>Diffusion LLMs are not strictly better than autoregressive — they trade different things.</p>
+
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th>Aspect</th>
+          <th>Autoregressive</th>
+          <th>Diffusion LLM</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Generation direction</td>
+          <td>Left-to-right, one token</td>
+          <td>All positions, parallel</td>
+        </tr>
+        <tr>
+          <td>Steps for L tokens</td>
+          <td>L forward passes</td>
+          <td>T &lt;&lt; L forward passes (typ. 10–50)</td>
+        </tr>
+        <tr>
+          <td>GPU compute utilisation</td>
+          <td>Low (~15% at batch=1)</td>
+          <td>High (~70–80%)</td>
+        </tr>
+        <tr>
+          <td>Output quality</td>
+          <td>State of the art</td>
+          <td>Competitive, some coherence gaps</td>
+        </tr>
+        <tr>
+          <td>Streaming output</td>
+          <td>Natural (token-by-token)</td>
+          <td>Requires all steps first</td>
+        </tr>
+        <tr>
+          <td>Controllability</td>
+          <td>High (logprobs exact)</td>
+          <td>More complex</td>
+        </tr>
+        <tr>
+          <td>Long sequence throughput</td>
+          <td>Slow (O(L) serial steps)</td>
+          <td>Fast (O(T) parallel steps)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Key models:</strong> MDLM (Masked Diffusion Language Model, 2024), SEDD (Score Entropy Discrete Diffusion, 2023), and Mercury (Inception Labs, 2025 — first commercial diffusion LLM) are showing that the approach is viable at scale.
+    </div>
+
+    <div class="callout purple">
+      <strong>The future</strong> likely combines both: diffusion for high-throughput bulk generation, autoregressive for streaming and precise control. The hardware trend — GPUs optimised for dense parallel compute — strongly favours diffusion's workload profile.
+    </div>
+  </div>
+
+  <div class="nav-row">
+    <a href="../04-serial-limits/">← Limits of Serial Decoding</a>
+    <span></span>
+  </div>
+</div>
+
+<script>
+
+// ─── Section 1: Forward process (masking) ─────────────────────────────────
+
+const FWD_SENTENCE = ['Language', 'models', 'are', 'trained', 'on', 'text'];
+const FWD_STATES = [
+  ['Language', 'models', 'are', 'trained', 'on', 'text'],
+  ['Language', '[MASK]', 'are', 'trained', 'on', 'text'],
+  ['Language', '[MASK]', 'are', '[MASK]', 'on', 'text'],
+  ['[MASK]', '[MASK]', 'are', '[MASK]', 'on', '[MASK]'],
+  ['[MASK]', '[MASK]', '[MASK]', '[MASK]', 'on', '[MASK]'],
+  ['[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]', '[MASK]'],
+];
+
+let forwardStep = 0;
+
+function drawForwardProcess(step) {
+  const canvas = document.getElementById('forward-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const tokens = FWD_STATES[step];
+  const N = tokens.length;
+  const padX = 24, padT = 20, padB = 20;
+  const chipH = 40;
+  const chipW = Math.min(100, (W - padX * 2 - (N - 1) * 8) / N);
+  const totalW = N * chipW + (N - 1) * 8;
+  const startX = (W - totalW) / 2;
+  const chipY = padT + (H - padT - padB - chipH) / 2;
+
+  // Step label
+  ctx.fillStyle = '#333';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`t = ${step}`, 16, 16);
+
+  // Noise level bar
+  const barW = W - 80;
+  const noiseLevel = step / 5;
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.roundRect(40, H - 18, barW, 6, 3);
+  ctx.fill();
+  ctx.fillStyle = `rgba(224, 112, 112, ${0.3 + noiseLevel * 0.7})`;
+  ctx.beginPath();
+  ctx.roundRect(40, H - 18, barW * noiseLevel, 6, 3);
+  ctx.fill();
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('noise →', 16, H - 12);
+
+  tokens.forEach((tok, i) => {
+    const isMask = tok === '[MASK]';
+    const cx = startX + i * (chipW + 8);
+
+    ctx.fillStyle = isMask ? '#1f0a0a' : '#1a1a1a';
+    ctx.strokeStyle = isMask ? '#e07070' : '#444';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(cx, chipY, chipW, chipH, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = isMask ? '#e07070' : '#aaa';
+    ctx.font = isMask ? '700 11px -apple-system, sans-serif' : '13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isMask ? '[M]' : tok, cx + chipW / 2, chipY + chipH / 2);
+    ctx.textBaseline = 'alphabetic';
+  });
+}
+
+document.getElementById('forward-slider').addEventListener('input', function() {
+  forwardStep = parseInt(this.value);
+  document.getElementById('forward-val').textContent = forwardStep;
+  drawForwardProcess(forwardStep);
+});
+
+drawForwardProcess(0);
+window.addEventListener('resize', () => drawForwardProcess(forwardStep));
+
+// ─── Section 2: Reverse denoising ─────────────────────────────────────────
+
+const DENOISE_WORDS = ['Large', 'language', 'models', 'learn', 'from', 'vast', 'training', 'data'];
+const N_DENOISE = 8;
+
+// Track which tokens are revealed
+let denoiseStep = 0;
+let denoiseRevealed = new Array(N_DENOISE).fill(false);
+let denoiseFlashing = false;
+
+// Reveal probabilities per step: step 1 ~25%, step 2 ~50% of remaining, etc.
+const REVEAL_PROBS = [0, 0.25, 0.50, 0.70, 0.85, 0.95, 1.0];
+
+function getRevealedCount(step) {
+  // Deterministic reveal schedule
+  const order = [0, 4, 7, 2, 5, 1, 6, 3]; // fixed reveal order
+  const cumProbs = [0, 0.25, 0.5, 0.70, 0.85, 0.95, 1.0];
+  const fraction = cumProbs[Math.min(step, cumProbs.length - 1)];
+  return Math.round(fraction * N_DENOISE);
+}
+
+function drawDenoiseCanvas(revealed, flashing) {
+  const canvas = document.getElementById('denoise-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const N = N_DENOISE;
+  const padX = 24, padT = 44, padB = 32;
+  const chipH = 44;
+  const gap = 6;
+  const chipW = Math.min(90, (W - padX * 2 - (N - 1) * gap) / N);
+  const totalW = N * chipW + (N - 1) * gap;
+  const startX = (W - totalW) / 2;
+  const chipY = padT;
+
+  // Step label
+  ctx.fillStyle = '#333';
+  ctx.font = '700 12px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#555';
+  ctx.fillText(`Denoising step: ${denoiseStep} / 6`, 16, 22);
+
+  const nRevealed = revealed.filter(Boolean).length;
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${nRevealed} / ${N} revealed`, W - 16, 22);
+
+  DENOISE_WORDS.forEach((word, i) => {
+    const cx = startX + i * (chipW + gap);
+
+    let bg, border, textColor, label;
+
+    if (flashing) {
+      // All flashing blue — being processed
+      bg = '#0a1520';
+      border = '#5b9bd5';
+      textColor = '#5b9bd5';
+      label = '...';
+    } else if (revealed[i]) {
+      // Revealed
+      bg = '#0a1f0a';
+      border = '#4caf50';
+      textColor = '#4caf50';
+      label = word;
+    } else {
+      // Still masked
+      bg = '#1f0a0a';
+      border = '#e07070';
+      textColor = '#e07070';
+      label = '[M]';
+    }
+
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(cx, chipY, chipW, chipH, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
+    ctx.font = revealed[i] && !flashing ? '12px -apple-system, sans-serif' : '700 11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx + chipW / 2, chipY + chipH / 2);
+    ctx.textBaseline = 'alphabetic';
+  });
+
+  // "All parallel" annotation
+  if (!flashing && denoiseStep > 0) {
+    const arrowY = chipY + chipH + 16;
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(startX, arrowY);
+    ctx.lineTo(startX + totalW, arrowY);
+    ctx.stroke();
+
+    // Arrow heads
+    [startX, startX + totalW].forEach((ax, side) => {
+      ctx.beginPath();
+      ctx.moveTo(ax, arrowY);
+      ctx.lineTo(ax + (side === 0 ? 6 : -6), arrowY - 4);
+      ctx.moveTo(ax, arrowY);
+      ctx.lineTo(ax + (side === 0 ? 6 : -6), arrowY + 4);
+      ctx.stroke();
+    });
+
+    ctx.fillStyle = '#2a2a2a';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('All tokens processed in parallel', startX + totalW / 2, arrowY + 14);
+  }
+
+  // Step progress bar
+  const progressBarW = totalW;
+  const barY = H - 16;
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.roundRect(startX, barY, progressBarW, 5, 2);
+  ctx.fill();
+  ctx.fillStyle = '#5b9bd5';
+  ctx.beginPath();
+  ctx.roundRect(startX, barY, progressBarW * (denoiseStep / 6), 5, 2);
+  ctx.fill();
+
+  const stat = document.getElementById('denoise-stat');
+  if (denoiseStep === 0) {
+    stat.textContent = 'Starting from fully masked sequence. Press "Denoise step" to begin.';
+  } else if (denoiseStep >= 6) {
+    stat.textContent = `Complete: all ${N} tokens revealed after 6 denoising steps.`;
+  } else {
+    stat.textContent = `Step ${denoiseStep}: ${nRevealed}/${N} tokens revealed so far.`;
+  }
+}
+
+document.getElementById('denoise-step-btn').addEventListener('click', function() {
+  if (denoiseStep >= 6 || denoiseFlashing) return;
+
+  denoiseFlashing = true;
+  this.disabled = true;
+
+  // Flash all tokens blue for 300ms
+  drawDenoiseCanvas(denoiseRevealed, true);
+
+  setTimeout(() => {
+    denoiseFlashing = false;
+    denoiseStep++;
+
+    // Reveal tokens based on step
+    const targetRevealed = getRevealedCount(denoiseStep);
+    // Fixed reveal order: reveal in this deterministic sequence
+    const order = [0, 4, 7, 2, 5, 1, 6, 3];
+    for (let j = 0; j < targetRevealed; j++) {
+      denoiseRevealed[order[j]] = true;
+    }
+
+    drawDenoiseCanvas(denoiseRevealed, false);
+
+    document.getElementById('denoise-step-btn').disabled = denoiseStep >= 6;
+    document.getElementById('denoise-reset-btn').disabled = false;
+  }, 300);
+});
+
+document.getElementById('denoise-reset-btn').addEventListener('click', function() {
+  denoiseStep = 0;
+  denoiseRevealed = new Array(N_DENOISE).fill(false);
+  denoiseFlashing = false;
+  document.getElementById('denoise-step-btn').disabled = false;
+  drawDenoiseCanvas(denoiseRevealed, false);
+});
+
+drawDenoiseCanvas(denoiseRevealed, false);
+window.addEventListener('resize', () => drawDenoiseCanvas(denoiseRevealed, denoiseFlashing));
+
+// ─── Section 3: Timeline comparison ───────────────────────────────────────
+
+let timelineAnimating = false;
+let timelineAnimId = null;
+let timelineARProgress = 0; // 0-16 (16 AR steps)
+let timelineDiffProgress = 0; // 0-4 (4 diffusion steps)
+
+const TL_AR_STEPS = 16;
+const TL_DIFF_STEPS = 4;
+const TL_TOTAL_TIME = TL_AR_STEPS; // reference units
+
+function drawTimeline(arProgress, diffProgress) {
+  const canvas = document.getElementById('timeline-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 130, padR = 60, padT = 20, padB = 44;
+  const chartW = W - padL - padR;
+  const rowH = 50;
+  const rowGap = 24;
+
+  const arY = padT + 20;
+  const diffY = arY + rowH + rowGap;
+
+  // Row labels
+  ctx.font = '700 12px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#f0a040';
+  ctx.fillText('Autoregressive', padL - 10, arY + rowH / 2 + 4);
+  ctx.fillStyle = '#5b9bd5';
+  ctx.fillText('Diffusion', padL - 10, diffY + rowH / 2 + 4);
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillStyle = '#555';
+  ctx.fillText('(L=16 tokens)', padL - 10, arY + rowH / 2 + 16);
+  ctx.fillText('(L=16, T=4)', padL - 10, diffY + rowH / 2 + 16);
+
+  // AR row: 16 small sequential blocks
+  const arBlockW = (chartW - (TL_AR_STEPS - 1) * 2) / TL_AR_STEPS;
+  for (let i = 0; i < TL_AR_STEPS; i++) {
+    const bx = padL + i * (arBlockW + 2);
+    const isActive = i < arProgress;
+    const isAnimating = Math.floor(arProgress) === i && arProgress < TL_AR_STEPS;
+
+    ctx.fillStyle = isAnimating ? 'rgba(255, 200, 60, 0.2)' : (isActive ? '#1f1a00' : '#111');
+    ctx.strokeStyle = isAnimating ? 'rgba(255, 200, 60, 0.7)' : (isActive ? '#f0a040' : '#1e1e1e');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, arY, arBlockW, rowH, 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // "1 token per step" annotation
+  if (arProgress > 0) {
+    const firstBX = padL;
+    ctx.fillStyle = '#555';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('1 token/step', padL + arBlockW / 2, arY - 6);
+    // Small arrow down
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL + arBlockW / 2, arY - 4);
+    ctx.lineTo(padL + arBlockW / 2, arY + 3);
+    ctx.stroke();
+  }
+
+  // Diffusion row: 4 large blocks, each same total width
+  const diffBlockW = (chartW - (TL_DIFF_STEPS - 1) * 4) / TL_DIFF_STEPS;
+  for (let i = 0; i < TL_DIFF_STEPS; i++) {
+    const bx = padL + i * (diffBlockW + 4);
+    const isActive = i < diffProgress;
+    const isAnimating = Math.floor(diffProgress) === i && diffProgress < TL_DIFF_STEPS;
+
+    ctx.fillStyle = isAnimating ? 'rgba(60, 140, 220, 0.2)' : (isActive ? '#0a1520' : '#0d0d0d');
+    ctx.strokeStyle = isAnimating ? 'rgba(60, 140, 220, 0.7)' : (isActive ? '#5b9bd5' : '#1e1e1e');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, diffY, diffBlockW, rowH, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    if (isActive || isAnimating) {
+      ctx.fillStyle = isAnimating ? 'rgba(91, 155, 213, 0.4)' : '#5b9bd5';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`step ${i + 1}`, bx + diffBlockW / 2, diffY + rowH / 2 - 6);
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillStyle = isAnimating ? 'rgba(91, 155, 213, 0.3)' : 'rgba(91, 155, 213, 0.6)';
+      ctx.fillText('16 tokens', bx + diffBlockW / 2, diffY + rowH / 2 + 8);
+    }
+  }
+
+  // "16 tokens per step" annotation
+  if (diffProgress > 0) {
+    ctx.fillStyle = '#3a6a8a';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('16 tokens/step', padL + diffBlockW / 2, diffY - 6);
+    ctx.strokeStyle = '#2a4a6a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL + diffBlockW / 2, diffY - 4);
+    ctx.lineTo(padL + diffBlockW / 2, diffY + 3);
+    ctx.stroke();
+  }
+
+  // Completion markers
+  if (arProgress >= TL_AR_STEPS) {
+    const arEndX = padL + chartW;
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(arEndX, arY - 4);
+    ctx.lineTo(arEndX, arY + rowH + 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4caf50';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Done (t=16)', arEndX + 4, arY + rowH / 2 + 4);
+  }
+
+  if (diffProgress >= TL_DIFF_STEPS) {
+    const diffEndFrac = TL_DIFF_STEPS * (diffBlockW + 4) / chartW;
+    const diffEndX = padL + TL_DIFF_STEPS * (diffBlockW + 4) - 4;
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(diffEndX, diffY - 4);
+    ctx.lineTo(diffEndX, diffY + rowH + 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4caf50';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Done (t=4)', diffEndX + 4, diffY + rowH / 2 + 4);
+  }
+
+  // Time axis
+  ctx.strokeStyle = '#1e1e1e';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, diffY + rowH + 14);
+  ctx.lineTo(padL + chartW, diffY + rowH + 14);
+  ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  const timeTicks = [0, 4, 8, 12, 16];
+  timeTicks.forEach(t => {
+    const tx = padL + (t / TL_AR_STEPS) * chartW;
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tx, diffY + rowH + 12);
+    ctx.lineTo(tx, diffY + rowH + 18);
+    ctx.stroke();
+    ctx.fillStyle = '#333';
+    ctx.fillText(t, tx, diffY + rowH + 28);
+  });
+  ctx.fillStyle = '#333';
+  ctx.fillText('Wall-clock steps', padL + chartW / 2, diffY + rowH + 40);
+
+  // Stat
+  const stat = document.getElementById('timeline-stat');
+  if (!timelineAnimating && arProgress === 0 && diffProgress === 0) {
+    stat.textContent = 'Click Animate to compare AR sequential vs diffusion parallel generation.';
+  } else if (arProgress >= TL_AR_STEPS && diffProgress >= TL_DIFF_STEPS) {
+    stat.textContent = 'AR: 16 steps · Diffusion: 4 steps · Diffusion finishes 4× sooner';
+  } else {
+    const arPct = Math.round((arProgress / TL_AR_STEPS) * 100);
+    const diffPct = Math.round((diffProgress / TL_DIFF_STEPS) * 100);
+    stat.textContent = `AR: ${Math.floor(arProgress)}/${TL_AR_STEPS} tokens · Diffusion: ${Math.floor(diffProgress)}/${TL_DIFF_STEPS} steps`;
+  }
+}
+
+document.getElementById('timeline-animate-btn').addEventListener('click', function() {
+  if (timelineAnimating) return;
+  timelineAnimating = true;
+  this.disabled = true;
+  timelineARProgress = 0;
+  timelineDiffProgress = 0;
+
+  const start = performance.now();
+  const arStepDuration = 80; // ms per AR token
+  const diffStepDuration = 320; // ms per diffusion step
+  const totalDuration = Math.max(TL_AR_STEPS * arStepDuration, TL_DIFF_STEPS * diffStepDuration);
+
+  function animStep(now) {
+    const elapsed = now - start;
+    const newAR = Math.min(TL_AR_STEPS, elapsed / arStepDuration);
+    const newDiff = Math.min(TL_DIFF_STEPS, elapsed / diffStepDuration);
+    timelineARProgress = newAR;
+    timelineDiffProgress = newDiff;
+    drawTimeline(timelineARProgress, timelineDiffProgress);
+
+    if (elapsed < totalDuration) {
+      timelineAnimId = requestAnimationFrame(animStep);
+    } else {
+      timelineARProgress = TL_AR_STEPS;
+      timelineDiffProgress = TL_DIFF_STEPS;
+      drawTimeline(timelineARProgress, timelineDiffProgress);
+      timelineAnimating = false;
+      document.getElementById('timeline-animate-btn').disabled = false;
+    }
+  }
+  timelineAnimId = requestAnimationFrame(animStep);
+});
+
+drawTimeline(0, 0);
+window.addEventListener('resize', () => drawTimeline(timelineARProgress, timelineDiffProgress));
+
+// ─── Section 4: GPU utilisation bar chart ─────────────────────────────────
+
+function drawGPUChart() {
+  const canvas = document.getElementById('gpu-canvas');
+  const W = canvas.clientWidth;
+  const H = canvas.height;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 52, padR = 24, padT = 24, padB = 60;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  // Two groups, two bars each
+  const groups = [
+    {
+      label: 'AR Generation',
+      bars: [
+        { label: 'Memory BW', value: 85, color: '#e07070', bg: '#2a0a0a' },
+        { label: 'Compute', value: 15, color: '#e07070', bg: '#1a0505', dim: true },
+      ]
+    },
+    {
+      label: 'Diffusion Step',
+      bars: [
+        { label: 'Memory BW', value: 40, color: '#4caf50', bg: '#0a2a0a' },
+        { label: 'Compute', value: 75, color: '#4caf50', bg: '#0a1f0a' },
+      ]
+    }
+  ];
+
+  const groupW = chartW / 2;
+  const barPad = 16;
+  const barGap = 8;
+  const barW = (groupW - barPad * 2 - barGap) / 2;
+
+  // Gridlines
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  [25, 50, 75, 100].forEach(y => {
+    const cy = padT + chartH - (y / 100) * chartH;
+    ctx.beginPath();
+    ctx.moveTo(padL, cy);
+    ctx.lineTo(padL + chartW, cy);
+    ctx.stroke();
+    ctx.fillStyle = '#333';
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(y + '%', padL - 6, cy + 4);
+  });
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('0%', padL - 6, padT + chartH + 4);
+
+  // Y axis label
+  ctx.save();
+  ctx.translate(14, padT + chartH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#333';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillText('Utilisation %', 0, 0);
+  ctx.restore();
+
+  // Axes
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + chartH);
+  ctx.lineTo(padL + chartW, padT + chartH);
+  ctx.stroke();
+
+  groups.forEach((group, gi) => {
+    const groupX = padL + gi * groupW;
+
+    // Group label
+    ctx.fillStyle = gi === 0 ? '#e07070' : '#4caf50';
+    ctx.font = '700 12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(group.label, groupX + groupW / 2, padT + chartH + 18);
+
+    group.bars.forEach((bar, bi) => {
+      const bx = groupX + barPad + bi * (barW + barGap);
+      const barH = (bar.value / 100) * chartH;
+      const by = padT + chartH - barH;
+
+      // Bar
+      ctx.fillStyle = bar.bg;
+      ctx.strokeStyle = bar.dim ? bar.color + '55' : bar.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW, barH, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      // Value label above bar
+      ctx.fillStyle = bar.dim ? bar.color + '88' : bar.color;
+      ctx.font = '700 12px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(bar.value + '%', bx + barW / 2, by - 6);
+
+      // Bar label below
+      ctx.fillStyle = '#444';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillText(bar.label, bx + barW / 2, padT + chartH + 34);
+    });
+  });
+
+  // Legend
+  const legendX = padL + chartW - 160;
+  const legendY = padT + 10;
+  [
+    { color: '#e07070', label: 'AR Generation' },
+    { color: '#4caf50', label: 'Diffusion Step' },
+  ].forEach((item, i) => {
+    ctx.fillStyle = item.color;
+    ctx.fillRect(legendX, legendY + i * 18, 12, 10);
+    ctx.fillStyle = '#555';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(item.label, legendX + 16, legendY + i * 18 + 9);
+  });
+}
+
+drawGPUChart();
+window.addEventListener('resize', drawGPUChart);
+
+// On load
+window.addEventListener('load', function() {
+  drawForwardProcess(forwardStep);
+  drawDenoiseCanvas(denoiseRevealed, false);
+  drawTimeline(0, 0);
+  drawGPUChart();
+});
+</script>
+</body>
+</html>

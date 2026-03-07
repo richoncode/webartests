@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attention Mechanism — Learning LLMs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  .section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+  .section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
+  .btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.green { border-color: #4caf50; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.purple { border-color: #b07adf; }
+  .callout.red { border-color: #e07070; }
+  .vis-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+  .formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+  .formula .cm { color: #555; font-style: italic; }
+  .formula .kw { color: #5b9bd5; }
+  .formula .gr { color: #4caf50; }
+  .formula .or { color: #f0a040; }
+  .nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav-row a:hover { color: #aaa; }
+  .slider-row { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+  .slider-row label { font-size: 13px; color: #666; min-width: 140px; }
+  .slider-row input[type=range] { flex: 1; max-width: 260px; accent-color: #5b9bd5; }
+  .slider-val { font-size: 13px; color: #5b9bd5; font-family: 'SF Mono','Fira Code',monospace; min-width: 36px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <p class="lesson-num">Lesson 01</p>
+  <h1>Attention Mechanism</h1>
+  <p class="subtitle">The key innovation of the transformer. Instead of compressing a sequence into a fixed vector, attention lets every token directly query every other — weighted by relevance.</p>
+
+  <!-- Section 1 -->
+  <div class="section">
+    <h2>The Sequence Problem</h2>
+    <p>Before attention, sequence models (RNNs, LSTMs) compressed the entire past into a fixed-size hidden state — a bottleneck for long sequences. Attention removes this bottleneck: every token can attend directly to any other token, regardless of distance.</p>
+    <div class="callout">
+      <strong>Coreference example:</strong> A sentence like "The animal didn't cross the street because it was too tired" — resolving what "it" refers to requires connecting tokens that may be far apart. Attention handles this naturally by computing pairwise relevance scores between all token positions simultaneously.
+    </div>
+  </div>
+
+  <!-- Section 2 -->
+  <div class="section">
+    <h2>Queries, Keys, and Values</h2>
+    <div class="formula">
+      Attention(<span class="kw">Q</span>, <span class="gr">K</span>, <span class="or">V</span>) = softmax( <span class="kw">Q</span><span class="gr">K</span><sup>T</sup> / &radic;<span style="text-decoration:overline">d<sub>k</sub></span> ) &middot; <span class="or">V</span><br>
+      <span class="cm">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr; query &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr; key &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&uarr; value</span>
+    </div>
+    <p>Each token projects itself into three vectors: a <strong style="color:#5b9bd5">Query</strong> (what am I looking for?), a <strong style="color:#4caf50">Key</strong> (what do I contain?), and a <strong style="color:#f0a040">Value</strong> (what do I contribute?). The dot product Q&middot;K<sup>T</sup> measures how well each query matches each key. After scaling and softmax, these weights blend the values.</p>
+
+    <p class="vis-label">Click a token to see its attention distribution</p>
+    <canvas id="attnCanvas" width="680" height="220" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <!-- Section 3 -->
+  <div class="section">
+    <h2>Scaled Dot-Product — Softmax Temperature</h2>
+    <p>Why divide by &radic;d<sub>k</sub>? With large embedding dimensions, dot products can grow large, pushing softmax into regions with near-zero gradients. Dividing by &radic;d<sub>k</sub> keeps the scale stable and gradients healthy during training.</p>
+    <div class="slider-row">
+      <label>Temperature: <span class="slider-val" id="tempVal">1.00</span></label>
+      <input type="range" id="tempSlider" min="0.1" max="3.0" step="0.05" value="1.0">
+    </div>
+    <canvas id="tempCanvas" width="680" height="180" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <!-- Section 4 -->
+  <div class="section">
+    <h2>Multi-Head Attention</h2>
+    <p>Instead of one attention function, transformers run H attention heads in parallel, each with different learned Q/K/V projections. Each head can specialise — one might track syntactic relationships, another coreference, another positional proximity.</p>
+    <div class="formula">
+      MultiHead(<span class="kw">Q</span>,<span class="gr">K</span>,<span class="or">V</span>) = Concat(head<sub>1</sub>,...,head<sub>h</sub>)W<sup>O</sup><br>
+      <span class="cm">&nbsp;&nbsp;where</span> head<sub>i</sub> = Attention(<span class="kw">Q</span>W<sub>i</sub><sup>Q</sup>, <span class="gr">K</span>W<sub>i</sub><sup>K</sup>, <span class="or">V</span>W<sub>i</sub><sup>V</sup>)
+    </div>
+    <div class="btn-row">
+      <button id="resampleBtn">Resample heads</button>
+    </div>
+    <canvas id="multiheadCanvas" width="680" height="200" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <!-- Section 5 -->
+  <div class="section">
+    <h2>Positional Encoding</h2>
+    <p>Self-attention is permutation-invariant — it has no inherent sense of token order. Positional encodings inject position information by adding a fixed vector to each token embedding before the first attention layer. The sinusoidal encoding uses different frequencies for different dimensions, creating a unique fingerprint for each position.</p>
+    <div class="formula">
+      PE(pos, 2i)   = sin(pos / 10000<sup>2i/d<sub>model</sub></sup>)<br>
+      PE(pos, 2i+1) = cos(pos / 10000<sup>2i/d<sub>model</sub></sup>)
+    </div>
+    <p class="vis-label">Positional encoding heatmap — 24 positions × 16 dimensions</p>
+    <canvas id="peCanvas" width="680" height="180" style="width:100%;max-width:680px;"></canvas>
+  </div>
+
+  <div class="nav-row">
+    <span style="color:#333; font-size:14px;">← (start)</span>
+    <a href="../02-transformer/">The Transformer →</a>
+  </div>
+</div>
+
+<script>
+// ─── Utility ─────────────────────────────────────────────────────────────────
+
+function softmax(arr) {
+  const max = Math.max(...arr);
+  const exps = arr.map(x => Math.exp(x - max));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(x => x / sum);
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+
+// ─── Section 2: Attention Visualisation ──────────────────────────────────────
+
+const TOKENS = ['The', 'cat', 'sat', 'on', 'the', 'mat'];
+const SCORES = [
+  [2, 0.5, 0.3, 0.1, 0.4, 0.2],
+  [0.4, 2, 1.8, 0.2, 0.3, 0.3],
+  [0.3, 1.5, 2, 0.3, 0.2, 1.6],
+  [0.2, 0.3, 0.4, 2, 0.8, 0.5],
+  [0.4, 0.3, 0.2, 0.6, 2, 0.8],
+  [0.2, 0.3, 1.4, 0.4, 0.6, 2]
+];
+
+let selectedToken = 2; // "sat" by default
+
+function drawAttention() {
+  const canvas = document.getElementById('attnCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  ctx.clearRect(0, 0, W, H);
+
+  const n = TOKENS.length;
+  const boxW = 60;
+  const boxH = 28;
+  const slotW = W / n;
+  const topY = 22;
+  const barBaseY = 155;
+  const maxBarH = 50;
+
+  const weights = softmax(SCORES[selectedToken]);
+
+  // Draw connection lines from selected token to all tokens
+  const selCX = slotW * selectedToken + slotW / 2;
+  const selBY = topY + boxH;
+
+  for (let i = 0; i < n; i++) {
+    const cx = slotW * i + slotW / 2;
+    const alpha = 0.08 + weights[i] * 0.85;
+    ctx.beginPath();
+    ctx.moveTo(selCX, selBY + 4);
+    // Bezier curve down to bar
+    const cp1x = selCX;
+    const cp1y = topY + boxH + 40;
+    const cp2x = cx;
+    const cp2y = barBaseY - 30;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, cx, barBaseY);
+    ctx.strokeStyle = `rgba(91, 155, 213, ${alpha})`;
+    ctx.lineWidth = 1 + weights[i] * 3;
+    ctx.stroke();
+  }
+
+  // Draw token boxes (top row)
+  for (let i = 0; i < n; i++) {
+    const cx = slotW * i + slotW / 2;
+    const x = cx - boxW / 2;
+    const y = topY;
+    const isSel = i === selectedToken;
+
+    ctx.fillStyle = isSel ? '#0d1a26' : '#141414';
+    ctx.strokeStyle = isSel ? '#5b9bd5' : '#2a2a2a';
+    ctx.lineWidth = isSel ? 1.5 : 1;
+    roundRect(ctx, x, y, boxW, boxH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = isSel ? '#5b9bd5' : '#666';
+    ctx.font = `${isSel ? '600' : '400'} 12px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(TOKENS[i], cx, y + boxH / 2);
+  }
+
+  // Draw bars (bottom section)
+  for (let i = 0; i < n; i++) {
+    const cx = slotW * i + slotW / 2;
+    const bw = 44;
+    const bh = Math.max(2, weights[i] * maxBarH);
+    const x = cx - bw / 2;
+    const y = barBaseY - bh;
+
+    ctx.fillStyle = `rgba(240, 208, 64, ${0.3 + weights[i] * 0.7})`;
+    roundRect(ctx, x, y, bw, bh, 3);
+    ctx.fill();
+
+    // Percentage label
+    ctx.fillStyle = '#999';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText((weights[i] * 100).toFixed(0) + '%', cx, barBaseY + 5);
+
+    // Token label below bar
+    ctx.fillStyle = '#444';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillText(TOKENS[i], cx, barBaseY + 20);
+  }
+
+  // "Query" label
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('query token', 4, 4);
+
+  ctx.textAlign = 'left';
+  ctx.fillText('attention weights', 4, barBaseY - maxBarH - 14);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+document.getElementById('attnCanvas').addEventListener('click', function(e) {
+  const rect = this.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const slotW = this.clientWidth / TOKENS.length;
+  const idx = Math.floor(x / slotW);
+  if (idx >= 0 && idx < TOKENS.length) {
+    selectedToken = idx;
+    drawAttention();
+  }
+});
+
+// ─── Section 3: Temperature Softmax ──────────────────────────────────────────
+
+const TEMP_TOKENS = ['jumps', 'runs', 'walks', 'flies', 'sleeps'];
+const TEMP_LOGITS = [3.8, 2.4, 1.9, 1.2, 0.6];
+
+function drawTemp() {
+  const canvas = document.getElementById('tempCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  ctx.clearRect(0, 0, W, H);
+
+  const T = parseFloat(document.getElementById('tempSlider').value);
+  const scaled = TEMP_LOGITS.map(l => l / T);
+  const probs = softmax(scaled);
+
+  const n = TEMP_TOKENS.length;
+  const rowH = (H - 20) / n;
+  const labelW = 58;
+  const probW = 42;
+  const barAreaW = W - labelW - probW - 16;
+  const maxP = Math.max(...probs);
+
+  for (let i = 0; i < n; i++) {
+    const y = 10 + i * rowH;
+    const barH = Math.max(4, rowH - 8);
+    const bw = Math.round(probs[i] / maxP * barAreaW);
+
+    // Interpolate color: low = #333333, high = #5b9bd5
+    const t = probs[i] / maxP;
+    const r = Math.round(0x33 + (0x5b - 0x33) * t);
+    const g = Math.round(0x33 + (0x9b - 0x33) * t);
+    const b = Math.round(0x33 + (0xd5 - 0x33) * t);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    roundRect(ctx, labelW, y + (rowH - barH) / 2, Math.max(4, bw), barH, 3);
+    ctx.fill();
+
+    // Token label
+    ctx.fillStyle = '#666';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(TEMP_TOKENS[i], labelW - 8, y + rowH / 2);
+
+    // Probability label
+    ctx.fillStyle = '#888';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText((probs[i] * 100).toFixed(1) + '%', labelW + Math.max(8, bw) + 6, y + rowH / 2);
+  }
+}
+
+document.getElementById('tempSlider').addEventListener('input', function() {
+  document.getElementById('tempVal').textContent = parseFloat(this.value).toFixed(2);
+  drawTemp();
+});
+
+// ─── Section 4: Multi-Head Attention ─────────────────────────────────────────
+
+const HEAD_COLORS = ['#5b9bd5', '#4caf50', '#b07adf'];
+const HEAD_NAMES  = ['Head 1 — syntactic', 'Head 2 — semantic', 'Head 3 — positional'];
+let headWeights = [];
+
+function randomWeights(seed) {
+  // Simple seeded pseudo-random
+  let s = seed;
+  function rand() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  }
+  const n = 6;
+  const weights = [];
+  for (let h = 0; h < 3; h++) {
+    const row = [];
+    for (let i = 0; i < n; i++) {
+      const r = [];
+      for (let j = 0; j < n; j++) {
+        r.push(rand() * 4);
+      }
+      row.push(softmax(r));
+    }
+    weights.push(row);
+  }
+  return weights;
+}
+
+function resampleHeads() {
+  headWeights = randomWeights(Math.floor(Math.random() * 99999));
+  drawMultihead();
+}
+
+function drawMultihead() {
+  const canvas = document.getElementById('multiheadCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const n = 6;
+  const labelW = 120;
+  const usableW = W - labelW - 16;
+  const rowH = H / 3;
+  const boxW = 38;
+  const boxH = 20;
+  const slotW = usableW / n;
+
+  for (let h = 0; h < 3; h++) {
+    const baseY = h * rowH;
+    const midY = baseY + rowH / 2;
+    const color = HEAD_COLORS[h];
+    const [cr, cg, cb] = hexToRgb(color);
+
+    // Head label
+    ctx.fillStyle = color;
+    ctx.font = '600 11px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(HEAD_NAMES[h], labelW - 8, midY);
+
+    // Draw connection lines between tokens for this head
+    // Show average attention from each token to each other token
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const w = headWeights[h][i][j];
+        if (w < 0.12) continue;
+        const x1 = labelW + slotW * i + slotW / 2;
+        const x2 = labelW + slotW * j + slotW / 2;
+        const alpha = w * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(x1, midY);
+        const cy = midY + (j > i ? -1 : 1) * (rowH * 0.18);
+        ctx.quadraticCurveTo((x1 + x2) / 2, cy, x2, midY);
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+        ctx.lineWidth = 0.5 + w * 2;
+        ctx.stroke();
+      }
+    }
+
+    // Token boxes
+    for (let i = 0; i < n; i++) {
+      const cx = labelW + slotW * i + slotW / 2;
+      const x = cx - boxW / 2;
+      const y = midY - boxH / 2;
+
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.8;
+      roundRect(ctx, x, y, boxW, boxH, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = '#999';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(TOKENS[i], cx, midY);
+    }
+  }
+}
+
+document.getElementById('resampleBtn').addEventListener('click', resampleHeads);
+
+// ─── Section 5: Positional Encoding Heatmap ───────────────────────────────────
+
+function drawPE() {
+  const canvas = document.getElementById('peCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const nPos = 24;
+  const nDim = 16;
+  const dModel = 128;
+
+  const marginL = 40;
+  const marginB = 28;
+  const marginT = 8;
+  const plotW = W - marginL - 8;
+  const plotH = H - marginB - marginT;
+
+  const cellW = plotW / nPos;
+  const cellH = plotH / nDim;
+
+  for (let pos = 0; pos < nPos; pos++) {
+    for (let dim = 0; dim < nDim; dim++) {
+      const i = Math.floor(dim / 2);
+      let val;
+      if (dim % 2 === 0) {
+        val = Math.sin(pos / Math.pow(10000, 2 * i / dModel));
+      } else {
+        val = Math.cos(pos / Math.pow(10000, 2 * i / dModel));
+      }
+
+      // Colormap: -1 = #1a4a7a, 0 = #0a0a0a, +1 = #f0a040
+      let r, g, b;
+      if (val < 0) {
+        const t = -val; // 0 to 1
+        r = Math.round(0x0a + (0x1a - 0x0a) * t);
+        g = Math.round(0x0a + (0x4a - 0x0a) * t);
+        b = Math.round(0x0a + (0x7a - 0x0a) * t);
+      } else {
+        const t = val; // 0 to 1
+        r = Math.round(0x0a + (0xf0 - 0x0a) * t);
+        g = Math.round(0x0a + (0xa0 - 0x0a) * t);
+        b = Math.round(0x0a + (0x40 - 0x0a) * t);
+      }
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(
+        marginL + pos * cellW + 0.5,
+        marginT + dim * cellH + 0.5,
+        cellW - 1,
+        cellH - 1
+      );
+    }
+  }
+
+  // X-axis labels (positions)
+  ctx.fillStyle = '#444';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let pos = 0; pos < nPos; pos += 4) {
+    ctx.fillText(pos, marginL + pos * cellW + cellW / 2, marginT + plotH + 4);
+  }
+
+  // Y-axis labels (dimensions)
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let dim = 0; dim < nDim; dim += 2) {
+    ctx.fillText(dim, marginL - 4, marginT + dim * cellH + cellH / 2);
+  }
+
+  // Axis titles
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('position', marginL + plotW / 2, marginT + plotH + 16);
+
+  ctx.save();
+  ctx.translate(10, marginT + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('dim', 0, 0);
+  ctx.restore();
+}
+
+// ─── Initialise all canvases ──────────────────────────────────────────────────
+
+headWeights = randomWeights(42);
+
+function initAll() {
+  drawAttention();
+  drawTemp();
+  drawMultihead();
+  drawPE();
+}
+
+window.addEventListener('resize', initAll);
+initAll();
+</script>
+</body>
+</html>
