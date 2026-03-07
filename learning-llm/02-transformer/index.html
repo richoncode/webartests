@@ -77,11 +77,15 @@
   <!-- Section 3: Depth -->
   <div class="section">
     <h2>Depth — Stacking Blocks</h2>
-    <p>A full transformer model is N of these blocks stacked sequentially. GPT-2 small uses 12 blocks; GPT-3 uses 96. Each block refines the representations produced by the one below — early layers often capture syntax and local structure, while later layers encode more abstract semantic content.</p>
+    <p>A full transformer stacks N blocks sequentially. The output of block N becomes the input of block N+1 — the same sequence of vectors passes through every layer from Embedding up to the LM Head. Each block can only <em>add</em> to the representation (via its residual connection); it never starts from scratch.</p>
+    <p>The depth creates a hierarchy of abstraction. Early blocks capture low-level patterns (word shapes, part-of-speech), middle blocks encode phrases and named entities, and late blocks encode higher-order semantics and world knowledge.</p>
+    <div class="callout">
+      <strong>Reading the diagram:</strong> data flows bottom → top. Arrows show the output of each block feeding into the next. The three colour zones show rough depth specialisations observed in trained models.
+    </div>
     <div class="btn-row">
       <button id="runFwdBtn">Run forward pass</button>
     </div>
-    <canvas id="stackCanvas" width="680" height="260" style="width:100%;max-width:680px;"></canvas>
+    <canvas id="stackCanvas" width="680" height="360" style="width:100%;max-width:680px;"></canvas>
     <p class="param-note">Embedding: ~39M &nbsp;·&nbsp; Per block: ~7M × 12 = ~85M &nbsp;·&nbsp; Total: ~124M (GPT-2 small)</p>
   </div>
 
@@ -489,76 +493,133 @@ function drawStack(litUpTo, dotFrac) {
   ctx.clearRect(0, 0, W, H);
 
   const nBlocks = 12;
-  const layers = ['Embedding', ...Array.from({length: nBlocks}, (_, i) => `Block ${nBlocks - i}`), 'LM Head'];
+  // Index 0 = Embedding (bottom/input), 13 = LM Head (top/output)
+  const layers = ['Embedding', ...Array.from({length: nBlocks}, (_, i) => `Block ${i + 1}`), 'LM Head'];
   const totalLayers = layers.length; // 14
 
-  const marginL = 64;
-  const marginT = 8;
-  const marginB = 8;
-  const barW = Math.min(300, W - marginL - 80);
-  const barH = (H - marginT - marginB) / totalLayers - 2;
-  const gap = 2;
+  const marginL = 72;
+  const marginT = 10;
+  const marginR = 110;
+  const gap = 8; // visible gap between bars — used for connector arrows
+  const barW = Math.min(260, W - marginL - marginR);
+  const barH = Math.floor((H - marginT * 2 - gap * (totalLayers - 1)) / totalLayers);
 
-  for (let i = 0; i < totalLayers; i++) {
-    // i=0 = LM Head (top), i=totalLayers-1 = Embedding (bottom)
-    const y = marginT + i * (barH + gap);
-    const x = marginL;
-    const label = layers[i];
-    const layerFromBottom = totalLayers - 1 - i; // 0=LMHead,1=Block12,...,13=Embed
+  // Y of the top edge of a layer. idx=0 → bottom of canvas, idx=13 → top of canvas.
+  function layerY(idx) {
+    const flipped = totalLayers - 1 - idx;
+    return marginT + flipped * (barH + gap);
+  }
 
-    const isEmbedding = layerFromBottom === 0;
-    const isLMHead = layerFromBottom === totalLayers - 1;
-    const blockIdx = isEmbedding || isLMHead ? -1 : layerFromBottom; // 1-12
+  // Depth zone brackets on the right
+  const zones = [
+    { from: 1, to: 4,  label: 'syntax, local',    color: '#5b9bd5' },
+    { from: 5, to: 8,  label: 'phrases, entities', color: '#f0a040' },
+    { from: 9, to: 12, label: 'semantics',         color: '#b07adf' },
+  ];
+  const bracketX = marginL + barW + 8;
+  for (const zone of zones) {
+    const zTop = layerY(zone.to);
+    const zBot = layerY(zone.from) + barH;
+    const midY = (zTop + zBot) / 2;
+    ctx.strokeStyle = zone.color + '66';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bracketX + 5, zTop + 3);
+    ctx.lineTo(bracketX, zTop + 3);
+    ctx.lineTo(bracketX, zBot - 3);
+    ctx.lineTo(bracketX + 5, zBot - 3);
+    ctx.stroke();
+    ctx.fillStyle = zone.color + 'bb';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(zone.label, bracketX + 9, midY);
+  }
 
-    const isLit = layerFromBottom <= (litUpTo + 1);
-    const isActive = Math.floor(litUpTo) === layerFromBottom - 1;
+  // Draw layers bottom → top
+  for (let idx = 0; idx < totalLayers; idx++) {
+    const y = layerY(idx);
+    const label = layers[idx];
+    const isEmbed  = idx === 0;
+    const isLMHead = idx === totalLayers - 1;
+    const blockNum = (!isEmbed && !isLMHead) ? idx : -1;
 
-    let fillColor, borderColor;
-    if (isEmbedding) {
-      fillColor = isLit ? '#0a1a0a' : '#0a0a0a';
-      borderColor = isLit ? '#4caf50' : '#1a1a1a';
-    } else if (isLMHead) {
-      fillColor = isLit ? '#1a0a0a' : '#0a0a0a';
-      borderColor = isLit ? '#e07070' : '#1a1a1a';
-    } else {
-      fillColor = isLit ? '#0d1520' : '#0a0a0a';
-      borderColor = isLit ? '#5b9bd5' : '#1a1a1a';
+    const isLit    = idx <= litUpTo;
+    const isActive = isLit && Math.round(litUpTo) === idx && litUpTo < totalLayers - 0.4;
+
+    let fillColor = '#0a0a0a', borderColor = '#1a1a1a';
+    if (isLit) {
+      if      (isEmbed)       { fillColor = '#0a1a0a'; borderColor = '#4caf50'; }
+      else if (isLMHead)      { fillColor = '#1a0a0a'; borderColor = '#e07070'; }
+      else if (blockNum <= 4) { fillColor = '#0a1520'; borderColor = '#5b9bd5'; }
+      else if (blockNum <= 8) { fillColor = '#1a100a'; borderColor = '#f0a040'; }
+      else                    { fillColor = '#100a1a'; borderColor = '#b07adf'; }
     }
-    if (isActive) {
-      fillColor = isEmbedding ? '#102210' : isLMHead ? '#221010' : '#0d1e32';
-      borderColor = isEmbedding ? '#4caf50' : isLMHead ? '#e07070' : '#5b9bd5';
-      ctx.shadowColor = borderColor;
-      ctx.shadowBlur = 8;
-    }
 
-    roundRect(ctx, x, y, barW, barH, 3);
+    if (isActive) { ctx.shadowColor = borderColor; ctx.shadowBlur = 8; }
+    roundRect(ctx, marginL, y, barW, barH, 3);
     ctx.fillStyle = fillColor;
     ctx.fill();
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = isActive ? 1.5 : 1;
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Label
+    // Bar label
     ctx.fillStyle = isLit ? '#888' : '#2a2a2a';
-    ctx.font = barH > 14 ? '11px -apple-system, sans-serif' : '9px -apple-system, sans-serif';
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, x - 6, y + barH / 2);
+    ctx.fillText(label, marginL - 6, y + barH / 2);
+
+    // Upward connector arrow in the gap above this bar
+    if (idx < totalLayers - 1) {
+      const arrowX  = marginL + 18;
+      const gapBot  = y;                       // top edge of current bar
+      const gapTop  = layerY(idx + 1) + barH;  // bottom edge of next bar
+      const connLit = idx < litUpTo;
+      const lineCol = connLit ? '#3a3a3a' : '#1e1e1e';
+
+      ctx.strokeStyle = lineCol;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(arrowX, gapBot);
+      ctx.lineTo(arrowX, gapTop);
+      ctx.stroke();
+
+      // Arrowhead pointing up toward higher layer
+      ctx.fillStyle = lineCol;
+      ctx.beginPath();
+      ctx.moveTo(arrowX,     gapTop + 1);
+      ctx.lineTo(arrowX - 3, gapTop + 5);
+      ctx.lineTo(arrowX + 3, gapTop + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
-  // Draw dot
-  if (dotFrac >= 0) {
-    const dotLayer = dotFrac * (totalLayers - 1);
-    const dotI = totalLayers - 1 - dotLayer; // convert to canvas y-order
-    const dotY = marginT + dotI * (barH + gap) + barH / 2;
-    const dotX = marginL + barW / 2;
+  // "input" / "output" hints
+  ctx.fillStyle = '#2a2a2a';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('input', marginL - 6, layerY(0) + barH + gap / 2 + 4);
+  ctx.fillText('output', marginL - 6, layerY(totalLayers - 1) - gap / 2 - 4);
 
+  // Traveling dot
+  if (dotFrac >= 0 && dotFrac < 1) {
+    const fIdx  = dotFrac * (totalLayers - 1);
+    const iBot  = Math.floor(fIdx);
+    const frac  = fIdx - iBot;
+    const y1    = layerY(iBot) + barH / 2;
+    const y2    = iBot < totalLayers - 1 ? layerY(iBot + 1) + barH / 2 : y1;
+    const dotY  = y1 + (y2 - y1) * frac;
+    const dotX  = marginL + barW / 2;
     ctx.beginPath();
-    ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+    ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
     ctx.fillStyle = '#fff';
-    ctx.shadowColor = '#5b9bd5';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 10;
     ctx.fill();
     ctx.shadowBlur = 0;
   }
@@ -568,13 +629,12 @@ document.getElementById('runFwdBtn').addEventListener('click', function() {
   if (stackAnimRunning) return;
   stackAnimRunning = true;
   const totalLayers = 14;
-  const duration = 1500;
+  const duration = 2000;
   const start = performance.now();
 
   function tick(now) {
     const t = Math.min(1, (now - start) / duration);
-    const litUpTo = t * (totalLayers - 1);
-    drawStack(litUpTo, t);
+    drawStack(t * (totalLayers - 1), t);
     if (t < 1) {
       requestAnimationFrame(tick);
     } else {
