@@ -104,7 +104,7 @@ button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
     <p>Speculative decoding uses a small fast 'draft' model to generate N tokens cheaply, then the large target model verifies all N in a single parallel forward pass. If the large model agrees, you get N tokens for the price of ~1 large-model step.</p>
 
     <div class="vis-label">Speculative decoding timeline</div>
-    <canvas id="spec-canvas" height="200" style="width:100%;"></canvas>
+    <canvas id="spec-canvas" height="260" style="width:100%;"></canvas>
     <div class="btn-row">
       <button id="spec-run-btn">Run speculative step</button>
       <button id="spec-reset-btn">Reset</button>
@@ -707,20 +707,20 @@ const SPEC_ACCEPT = [true, true, false, true, true];
 function drawSpecCanvas(draftStep, phase, accepted) {
   const canvas = document.getElementById('spec-canvas');
   const W = canvas.clientWidth;
-  const H = canvas.height;
   canvas.width = W;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, 260);
 
   const N = 5;
-  const padL = 110, padR = 24, padT = 20, padB = 20;
+  const padL = 110, padR = 24, padT = 18;
   const chartW = W - padL - padR;
 
   const tokenW = (chartW - (N - 1) * 6) / N;
-  const tokenH = 36;
-  const draftY = padT + 20;
-  const targetY = padT + 90;
-  const arrowY = draftY + tokenH + 10;
+  const tokenH = 40;
+  const draftY = padT + 14;          // draft top: 32
+  const labelGap = 24;               // space below draft for accept/reject labels
+  const arrowMidY = draftY + tokenH + labelGap + 20; // vertical midpoint of arrow zone
+  const targetY = draftY + tokenH + labelGap + 52;   // target top: ~148
 
   // Row labels
   ctx.font = '700 12px -apple-system, sans-serif';
@@ -741,34 +741,34 @@ function drawSpecCanvas(draftStep, phase, accepted) {
       // If verifying/done, colour by acceptance
       if (phase === 'verifying' || phase === 'done') {
         const acc = accepted[i];
-        if (acc === true) { bg = '#0a1f0a'; border = '#4caf50'; textColor = '#4caf50'; }
-        else if (acc === false) { bg = '#1f0a0a'; border = '#e07070'; textColor = '#e07070'; }
-        else { bg = '#0a1520'; border = '#5b9bd5'; textColor = '#5b9bd5'; }
+        if (acc === true)  { bg = '#0a1f0a'; border = '#4caf50'; textColor = '#4caf50'; }
+        else if (acc === false) { bg = '#200a0a'; border = '#e05555'; textColor = '#e05555'; }
+        else               { bg = '#0a1520'; border = '#5b9bd5'; textColor = '#5b9bd5'; }
       }
 
       ctx.fillStyle = bg;
       ctx.strokeStyle = border;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.roundRect(tx, draftY, tokenW, tokenH, 4);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = textColor;
-      ctx.font = '12px -apple-system, sans-serif';
+      ctx.font = '600 13px -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(SPEC_TOKENS[i], tx + tokenW / 2, draftY + tokenH / 2 + 4);
+      ctx.fillText(SPEC_TOKENS[i], tx + tokenW / 2, draftY + tokenH / 2 + 5);
 
-      // Accept/reject label
+      // Accept/reject label — in the gap below draft row
       if (phase === 'done' && accepted[i] !== undefined) {
-        ctx.font = '9px -apple-system, sans-serif';
-        ctx.fillStyle = accepted[i] ? '#4caf50' : '#e07070';
-        ctx.fillText(accepted[i] ? '✓ accept' : '✗ reject', tx + tokenW / 2, draftY + tokenH + 12);
+        ctx.font = '600 11px -apple-system, sans-serif';
+        ctx.fillStyle = accepted[i] ? '#4caf50' : '#e05555';
+        ctx.fillText(accepted[i] ? '✓ accept' : '✗ reject', tx + tokenW / 2, draftY + tokenH + 17);
       }
     } else {
       // Empty placeholder
-      ctx.fillStyle = '#0d0d0d';
-      ctx.strokeStyle = '#1e1e1e';
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = '#222';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(tx, draftY, tokenW, tokenH, 4);
@@ -777,36 +777,51 @@ function drawSpecCanvas(draftStep, phase, accepted) {
     }
   }
 
-  // Draw arrow from draft tokens to target
+  // Draw arrow zone from draft row to target row
   if (draftStep === N && (phase === 'verifying' || phase === 'done')) {
-    ctx.strokeStyle = '#3a3a3a';
+    const arrowTop = draftY + tokenH + labelGap + 4;
+    const arrowBot = targetY - 6;
+    const midX = padL + chartW / 2;
+
+    // Dashed side guides
+    ctx.strokeStyle = '#444';
     ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
+    ctx.setLineDash([3, 4]);
     ctx.beginPath();
-    ctx.moveTo(padL, draftY + tokenH + 2);
-    ctx.lineTo(padL, targetY - 4);
-    ctx.moveTo(padL + chartW, draftY + tokenH + 2);
-    ctx.lineTo(padL + chartW, targetY - 4);
+    ctx.moveTo(padL, arrowTop);
+    ctx.lineTo(padL, arrowBot);
+    ctx.moveTo(padL + chartW, arrowTop);
+    ctx.lineTo(padL + chartW, arrowBot);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Wide arrow body
-    ctx.strokeStyle = '#2a2a4a';
-    ctx.lineWidth = 1;
+    // Horizontal arrow line
+    const lineY = arrowTop + (arrowBot - arrowTop) / 2;
+    ctx.strokeStyle = '#5b6a8a';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(padL + chartW / 2 - 60, draftY + tokenH + 8);
-    ctx.lineTo(padL + chartW / 2 + 60, draftY + tokenH + 8);
+    ctx.moveTo(midX - 80, lineY);
+    ctx.lineTo(midX + 70, lineY);
     ctx.stroke();
+    // Arrow head
+    ctx.fillStyle = '#5b6a8a';
+    ctx.beginPath();
+    ctx.moveTo(midX + 70, lineY);
+    ctx.lineTo(midX + 62, lineY - 5);
+    ctx.lineTo(midX + 62, lineY + 5);
+    ctx.closePath();
+    ctx.fill();
 
-    ctx.fillStyle = '#3a3a6a';
-    ctx.font = '10px -apple-system, sans-serif';
+    // Label
+    ctx.fillStyle = '#9ab0cc';
+    ctx.font = '600 11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('5 draft tokens → single parallel verification', padL + chartW / 2, draftY + tokenH + 22);
+    ctx.fillText('5 draft tokens → single parallel verification pass', midX, lineY - 9);
   }
 
   // Target model: ONE wide block when verifying
   if (phase === 'verifying' || phase === 'done') {
-    const targetAlpha = phase === 'done' ? 1.0 : 0.7;
+    const targetAlpha = phase === 'done' ? 1.0 : 0.75;
     ctx.fillStyle = `rgba(13, 21, 32, ${targetAlpha})`;
     ctx.strokeStyle = `rgba(91, 155, 213, ${targetAlpha})`;
     ctx.lineWidth = 1.5;
@@ -815,16 +830,16 @@ function drawSpecCanvas(draftStep, phase, accepted) {
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = `rgba(91, 155, 213, ${targetAlpha})`;
-    ctx.font = '700 12px -apple-system, sans-serif';
+    ctx.fillStyle = `rgba(140, 190, 235, ${targetAlpha})`;
+    ctx.font = '700 13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Parallel verification — all 5 tokens at once', padL + chartW / 2, targetY + tokenH / 2 + 4);
+    ctx.fillText('Parallel verification — all 5 tokens at once', padL + chartW / 2, targetY + tokenH / 2 + 5);
   } else {
     // Empty target row
     for (let i = 0; i < N; i++) {
       const tx = padL + i * (tokenW + 6);
-      ctx.fillStyle = '#0d0d0d';
-      ctx.strokeStyle = '#1a1a1a';
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = '#222';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(tx, targetY, tokenW, tokenH, 4);
