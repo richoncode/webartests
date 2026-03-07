@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Before Attention — Learning LLMs</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+a.back:hover { color: #aaa; }
+.page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+.lesson-num { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 6px; }
+.subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+.section { margin-bottom: 56px; }
+.section h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+.section h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; margin-top: 20px; color: #ccc; }
+.section p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+button:hover { background: #222; border-color: #555; color: #fff; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:disabled:hover { background: #1a1a1a; border-color: #333; color: #ccc; }
+.btn-row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+.callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+.callout strong { color: #ccc; }
+.callout.green { border-color: #4caf50; }
+.callout.orange { border-color: #f0a040; }
+.callout.purple { border-color: #b07adf; }
+.callout.red { border-color: #e07070; }
+.vis-label { font-size: 11px; color: #444; margin-bottom: 4px; }
+.formula { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 6px; padding: 14px 18px; margin: 12px 0; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: #b07adf; line-height: 2.2; }
+.formula .cm { color: #555; font-style: italic; }
+.formula .kw { color: #5b9bd5; }
+.formula .gr { color: #4caf50; }
+.formula .or { color: #f0a040; }
+.stat-line { font-size: 12px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; min-height: 18px; }
+.nav-row { display: flex; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+.nav-row a { color: #555; text-decoration: none; font-size: 14px; }
+.nav-row a:hover { color: #aaa; }
+.timeline-row { display: flex; gap: 0; margin: 20px 0; overflow-x: auto; }
+.timeline-era { flex: 1; min-width: 140px; border-right: 1px solid #1e1e1e; padding: 14px 16px; }
+.timeline-era:last-child { border-right: none; }
+.timeline-era .year { font-size: 11px; color: #333; font-family: 'SF Mono','Fira Code',monospace; margin-bottom: 4px; }
+.timeline-era .era-name { font-size: 13px; font-weight: 700; color: #888; margin-bottom: 6px; }
+.timeline-era .era-desc { font-size: 12px; color: #444; line-height: 1.5; }
+.timeline-era.highlight .era-name { color: #5b9bd5; }
+.timeline-era.highlight { background: #0a0f18; border-radius: 6px; }
+/* N-gram table */
+.ngram-word { display: inline-block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 3px 10px; font-size: 13px; color: #ccc; cursor: pointer; margin: 3px; transition: border-color 0.1s; }
+.ngram-word:hover, .ngram-word.active { border-color: #5b9bd5; color: #5b9bd5; background: #0a1520; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <div class="lesson-num">Lesson 00 — Precursors</div>
+  <h1>Before Attention</h1>
+  <p class="subtitle">Every architecture choice in the transformer was a response to a concrete failure mode in what came before. Understanding the bottlenecks of RNNs and LSTMs makes the design of attention feel inevitable.</p>
+
+  <!-- Timeline -->
+  <div class="section">
+    <h2>A brief history of sequence modelling</h2>
+    <p>Language modelling predates neural networks. Each era solved the previous era's failure mode — and introduced a new one.</p>
+
+    <div class="timeline-row">
+      <div class="timeline-era">
+        <div class="year">1948 – 1990s</div>
+        <div class="era-name">N-gram models</div>
+        <div class="era-desc">Count co-occurrences. Predict next word from the last N−1 words. No parameters — pure statistics.</div>
+      </div>
+      <div class="timeline-era">
+        <div class="year">2001 – 2013</div>
+        <div class="era-name">Feed-forward LMs</div>
+        <div class="era-desc">Bengio et al. — embed words, concatenate a fixed window, predict with a neural net. Fixed context window.</div>
+      </div>
+      <div class="timeline-era">
+        <div class="year">2013 – 2016</div>
+        <div class="era-name">RNN / LSTM</div>
+        <div class="era-desc">Recurrent hidden state lets the model process unbounded sequences. But the state is a fixed-size bottleneck.</div>
+      </div>
+      <div class="timeline-era">
+        <div class="year">2014 – 2017</div>
+        <div class="era-name">Seq2Seq</div>
+        <div class="era-desc">Encoder compresses a full sentence to one vector; decoder generates from it. Bottleneck is painfully visible on long inputs.</div>
+      </div>
+      <div class="timeline-era highlight">
+        <div class="year">2017 →</div>
+        <div class="era-name">Attention / Transformer</div>
+        <div class="era-desc">Every output token directly attends to every input token. The bottleneck is gone.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 1: N-grams -->
+  <div class="section">
+    <h2>N-gram language models</h2>
+    <p>The simplest language model: count how often each word follows a given context in a training corpus. Given the last N−1 words, the next word is predicted by looking up the most common continuation.</p>
+
+    <div class="formula">
+      P(w<sub>t</sub> | w<sub>1</sub>…w<sub>t-1</sub>) ≈ P(w<sub>t</sub> | w<sub>t-N+1</sub>…w<sub>t-1</sub>)
+      &nbsp;&nbsp;<span class="cm">← Markov assumption: only last N−1 words matter</span>
+    </div>
+
+    <p>Click a word below to see its bigram continuation probabilities from the training corpus <em>"the cat sat on the mat the cat lay on the rug a cat sat on a mat"</em>.</p>
+
+    <div id="ngramWords" style="margin:12px 0"></div>
+    <div class="vis-label" style="margin-top:12px">Bigram probabilities — P(next word | selected word)</div>
+    <canvas id="ngramCanvas" style="width:100%;height:160px"></canvas>
+    <div class="stat-line" id="ngramStat"></div>
+
+    <div class="callout red">
+      <strong>Failure mode: no long-range memory.</strong> N-gram models are blind to anything outside their window. "The trophy didn't fit in the suitcase because <strong>it</strong> was too big" — resolving "it" requires connecting tokens that are 7 positions apart. A trigram model simply cannot do this.
+    </div>
+
+    <div class="callout orange">
+      <strong>Data sparsity.</strong> A trigram model on a 50,000-word vocabulary needs 50,000³ = 125 billion possible entries. Most are never observed. N-grams require enormous smoothing tricks just to assign non-zero probability to unseen combinations.
+    </div>
+  </div>
+
+  <!-- Section 2: RNNs -->
+  <div class="section">
+    <h2>Recurrent neural networks</h2>
+    <p>An RNN processes a sequence one token at a time. At each step it combines the new input with the previous hidden state to produce a new hidden state. The hidden state acts as a running "memory" of everything seen so far.</p>
+
+    <div class="formula">
+      h<sub>t</sub> = tanh( W<sub>h</sub>·h<sub>t-1</sub> + W<sub>x</sub>·x<sub>t</sub> + b )
+      &nbsp;&nbsp;<span class="cm">← new hidden state from old state + current input</span><br>
+      y<sub>t</sub> = softmax( W<sub>y</sub>·h<sub>t</sub> )
+      &nbsp;&nbsp;<span class="cm">← prediction from hidden state</span>
+    </div>
+
+    <p>Step through the sentence below. Watch the hidden state (coloured bar) — each segment represents how much of the state is devoted to each token. Earlier tokens fade as new ones arrive.</p>
+
+    <div class="vis-label">RNN processing — coloured bar shows each token's share of the hidden state</div>
+    <canvas id="rnnCanvas" style="width:100%;height:220px"></canvas>
+    <div class="btn-row">
+      <button id="rnnStepBtn">Process next token →</button>
+      <button id="rnnResetBtn">Reset</button>
+    </div>
+    <div class="stat-line" id="rnnStat">Press "Process next token" to start.</div>
+
+    <div class="callout red">
+      <strong>The vanishing gradient problem.</strong> Training an RNN requires backpropagating error through every time step. Gradients are multiplied by W<sub>h</sub> at each step — if ‖W<sub>h</sub>‖ &lt; 1 they shrink to zero; if ‖W<sub>h</sub>‖ &gt; 1 they explode. In practice, gradients vanish after ~10–20 steps. The network cannot learn long-range dependencies.
+    </div>
+  </div>
+
+  <!-- Section 3: LSTMs -->
+  <div class="section">
+    <h2>Long Short-Term Memory (LSTM)</h2>
+    <p>Hochreiter &amp; Schmidhuber (1997) solved the vanishing gradient problem with gating. An LSTM maintains two states: a hidden state h<sub>t</sub> (short-term) and a cell state C<sub>t</sub> (long-term). Three learned gates control what to forget, what to write, and what to read.</p>
+
+    <div class="formula">
+      f<sub>t</sub> = σ(W<sub>f</sub>·[h<sub>t-1</sub>, x<sub>t</sub>] + b<sub>f</sub>)&nbsp;&nbsp;<span class="cm">← forget gate: what to erase from cell state</span><br>
+      i<sub>t</sub> = σ(W<sub>i</sub>·[h<sub>t-1</sub>, x<sub>t</sub>] + b<sub>i</sub>)&nbsp;&nbsp;<span class="cm">← input gate: what new info to write</span><br>
+      C<sub>t</sub> = f<sub>t</sub> ⊙ C<sub>t-1</sub> + i<sub>t</sub> ⊙ tanh(W<sub>c</sub>·[h<sub>t-1</sub>, x<sub>t</sub>])&nbsp;&nbsp;<span class="cm">← update cell state</span><br>
+      o<sub>t</sub> = σ(W<sub>o</sub>·[h<sub>t-1</sub>, x<sub>t</sub>] + b<sub>o</sub>)&nbsp;&nbsp;<span class="cm">← output gate: what to expose as h<sub>t</sub></span>
+    </div>
+
+    <p>The cell state C<sub>t</sub> flows through the network with only multiplicative interactions — the "constant error carousel" that allows gradients to flow without vanishing. Click each gate to see what it does.</p>
+
+    <div class="vis-label">LSTM cell — click a gate to highlight its role</div>
+    <canvas id="lstmCanvas" style="width:100%;height:260px"></canvas>
+    <div class="btn-row">
+      <button id="lstmForget" class="active">Forget gate</button>
+      <button id="lstmInput">Input gate</button>
+      <button id="lstmOutput">Output gate</button>
+    </div>
+    <div class="stat-line" id="lstmStat">Forget gate — decides what fraction of the old cell state to keep. Near 0 = erase, near 1 = preserve.</div>
+
+    <div class="callout green">
+      <strong>LSTMs work well</strong> and were state of the art for translation, speech, and language modelling from ~2014–2017. They can carry information hundreds of steps. But the fundamental architecture still compresses the past into a fixed-size vector — just more carefully.
+    </div>
+
+    <div class="callout red">
+      <strong>Still a bottleneck.</strong> No matter how carefully the gates learn to preserve information, the hidden state has a fixed dimensionality (typically 256–2048). A sentence of 100 tokens must be compressed into that fixed vector. For translation, the decoder must reconstruct the full meaning from this single compressed representation.
+    </div>
+  </div>
+
+  <!-- Section 4: Seq2Seq bottleneck -->
+  <div class="section">
+    <h2>Seq2Seq and the fixed-vector bottleneck</h2>
+    <p>Sutskever et al. (2014) introduced Sequence-to-Sequence: an LSTM encoder reads the input sentence and produces a fixed-size context vector; an LSTM decoder generates the output from that vector alone. For short sentences it works well. For long sentences the bottleneck breaks it.</p>
+
+    <div class="vis-label">Encoder compresses the full input to one vector — decoder reads only that</div>
+    <canvas id="seq2seqCanvas" style="width:100%;height:200px"></canvas>
+    <div class="btn-row">
+      <button id="seq2seqShort">Short sentence (5 tokens)</button>
+      <button id="seq2seqLong">Long sentence (14 tokens)</button>
+    </div>
+    <div class="stat-line" id="seq2seqStat"></div>
+
+    <div class="callout orange">
+      <strong>Bahdanau et al. (2015)</strong> — "Neural Machine Translation by Jointly Learning to Align and Translate" — solved this by letting the decoder attend to all encoder hidden states, not just the last one. This paper introduced attention. The transformer (Vaswani et al. 2017) then removed the RNN entirely, using only attention.
+    </div>
+  </div>
+
+  <!-- Section 5: The bottleneck clearly -->
+  <div class="section">
+    <h2>The bottleneck visualised</h2>
+    <p>Here is the core problem in one picture. An RNN must compress an arbitrarily long input into a fixed-size vector before any output can be generated. Information from early tokens is progressively overwritten.</p>
+
+    <div class="vis-label">Information capacity — drag the slider to see how signal from the first token decays</div>
+    <canvas id="bottleneckCanvas" style="width:100%;height:180px"></canvas>
+    <div class="btn-row" style="align-items:center;gap:16px">
+      <label style="font-size:13px;color:#666">Sequence length:</label>
+      <input type="range" id="seqLenSlider" min="1" max="20" value="5"
+        style="-webkit-appearance:none;appearance:none;width:200px;height:4px;border-radius:2px;background:#333;outline:none;cursor:pointer">
+      <span id="seqLenVal" style="font-size:13px;color:#5b9bd5;font-family:'SF Mono',monospace;min-width:24px">5</span>
+    </div>
+    <div class="stat-line" id="bottleneckStat"></div>
+
+    <p>Attention removes this problem entirely: the output at every position can directly read from every input position. There is no compression step. The "context vector" becomes a full matrix of all hidden states.</p>
+
+    <div class="callout" style="margin-top:20px">
+      <strong>Summary of failure modes:</strong><br>
+      N-grams: no memory beyond N words &nbsp;·&nbsp;
+      Feed-forward LMs: fixed context window &nbsp;·&nbsp;
+      RNNs: vanishing gradients, fixed-size bottleneck &nbsp;·&nbsp;
+      LSTMs: same bottleneck, slower training &nbsp;·&nbsp;
+      Seq2Seq: bottleneck exposed at sentence boundary<br><br>
+      <strong>Attention's answer:</strong> don't compress — let every position talk to every other position directly.
+    </div>
+  </div>
+
+  <div class="nav-row">
+    <span></span>
+    <a href="../tokenization/">Tokenization →</a>
+  </div>
+</div>
+
+<script>
+
+// ─── N-gram interactive ───────────────────────────────────────────────────────
+(function() {
+  const corpus = 'the cat sat on the mat the cat lay on the rug a cat sat on a mat';
+  const words = corpus.split(' ');
+
+  // Build bigrams
+  const bigrams = {};
+  for (let i = 0; i < words.length - 1; i++) {
+    const w = words[i], n = words[i + 1];
+    if (!bigrams[w]) bigrams[w] = {};
+    bigrams[w][n] = (bigrams[w][n] || 0) + 1;
+  }
+
+  // Normalize to probabilities
+  const bigramProbs = {};
+  for (const w in bigrams) {
+    const total = Object.values(bigrams[w]).reduce((a, b) => a + b, 0);
+    bigramProbs[w] = {};
+    for (const n in bigrams[w]) bigramProbs[w][n] = bigrams[w][n] / total;
+  }
+
+  const vocab = [...new Set(words)].sort();
+  const container = document.getElementById('ngramWords');
+  let activeWord = null;
+
+  vocab.forEach(w => {
+    const span = document.createElement('span');
+    span.className = 'ngram-word';
+    span.textContent = w;
+    span.addEventListener('click', () => {
+      container.querySelectorAll('.ngram-word').forEach(s => s.classList.remove('active'));
+      span.classList.add('active');
+      activeWord = w;
+      drawNgram(w);
+    });
+    container.appendChild(span);
+  });
+
+  function drawNgram(word) {
+    const canvas = document.getElementById('ngramCanvas');
+    const W = canvas.clientWidth || 760;
+    const H = 160;
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const probs = bigramProbs[word];
+    if (!probs) {
+      ctx.fillStyle = '#444'; ctx.font = '13px -apple-system,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`"${word}" never appears before another word in this corpus.`, W / 2, H / 2);
+      document.getElementById('ngramStat').textContent = '';
+      return;
+    }
+
+    const entries = Object.entries(probs).sort((a, b) => b[1] - a[1]);
+    const padL = 90, padR = 20, padT = 14, padB = 20;
+    const barH = Math.min(22, (H - padT - padB) / entries.length - 4);
+    const maxBarW = W - padL - padR;
+
+    entries.forEach(([next, prob], i) => {
+      const y = padT + i * (barH + 6);
+      const bw = prob * maxBarW;
+
+      ctx.fillStyle = '#0a1520'; ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(padL, y, bw, barH, 2); ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = '#5b9bd5'; ctx.font = '12px -apple-system,sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(next, padL - 8, y + barH / 2 + 4);
+
+      ctx.fillStyle = '#888'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`${(prob * 100).toFixed(0)}%`, padL + bw + 6, y + barH / 2 + 4);
+    });
+
+    document.getElementById('ngramStat').textContent =
+      `P( · | "${word}") — ${entries.length} distinct continuations observed in corpus`;
+  }
+
+  // Default selection
+  container.querySelector('.ngram-word').click();
+})();
+
+// ─── RNN hidden state ─────────────────────────────────────────────────────────
+(function() {
+  const TOKENS = ['The', 'trophy', "didn't", 'fit', 'because', 'it', 'was', 'large'];
+  const COLORS = ['#5b9bd5','#4caf50','#f0a040','#b07adf','#e07070','#4cc9c9','#d4b840','#a0c060'];
+  let step = 0;
+
+  function memWeights(s) {
+    // Each token's share of hidden state: exponential decay, normalized
+    const raw = [];
+    for (let i = 0; i <= s; i++) raw.push(Math.exp(-(s - i) * 0.55));
+    const sum = raw.reduce((a, b) => a + b, 0);
+    return raw.map(w => w / sum);
+  }
+
+  function draw() {
+    const canvas = document.getElementById('rnnCanvas');
+    const W = canvas.clientWidth || 760;
+    const H = 220;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const N = TOKENS.length;
+    const tokW = Math.min(70, (W - 40) / N - 8);
+    const totalTokW = N * (tokW + 8) - 8;
+    const startX = (W - totalTokW) / 2;
+    const tokY = 18;
+    const tokH = 32;
+    const arrowY = tokY + tokH + 12;
+    const barY = arrowY + 20;
+    const barH = 44;
+    const barTotalW = W - 60;
+    const barX = 30;
+
+    // Token chips
+    TOKENS.forEach((tok, i) => {
+      const cx = startX + i * (tokW + 8);
+      const isProcessed = i < step;
+      const isCurrent = i === step - 1;
+
+      ctx.fillStyle = isProcessed ? (isCurrent ? '#0a1f0a' : '#111') : '#0d0d0d';
+      ctx.strokeStyle = isProcessed ? (isCurrent ? '#4caf50' : COLORS[i] + '44') : '#1e1e1e';
+      ctx.lineWidth = isCurrent ? 1.5 : 1;
+      ctx.beginPath(); ctx.roundRect(cx, tokY, tokW, tokH, 4); ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = isProcessed ? (isCurrent ? '#4caf50' : COLORS[i] + '88') : '#2a2a2a';
+      ctx.font = `${isCurrent ? '700 ' : ''}11px -apple-system,sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(tok, cx + tokW / 2, tokY + tokH / 2);
+      ctx.textBaseline = 'alphabetic';
+    });
+
+    // Arrow down to bar
+    if (step > 0) {
+      const currentTokCX = startX + (step - 1) * (tokW + 8) + tokW / 2;
+      ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(currentTokCX, tokY + tokH); ctx.lineTo(currentTokCX, arrowY + 6); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Hidden state bar
+    ctx.fillStyle = '#111'; ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(barX, barY, barTotalW, barH, 4); ctx.fill(); ctx.stroke();
+
+    if (step > 0) {
+      const weights = memWeights(step - 1);
+      let x = barX;
+      for (let i = 0; i < weights.length; i++) {
+        const segW = weights[i] * barTotalW;
+        const isNewest = i === weights.length - 1;
+        ctx.fillStyle = COLORS[i] + (isNewest ? 'ff' : Math.round(200 * weights[i] + 30).toString(16).padStart(2, '0'));
+        ctx.beginPath(); ctx.roundRect(x, barY, segW, barH, i === 0 ? [4, 0, 0, 4] : (i === weights.length - 1 ? [0, 4, 4, 0] : 0)); ctx.fill();
+        if (segW > 20) {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(TOKENS[i], x + segW / 2, barY + barH / 2);
+          ctx.textBaseline = 'alphabetic';
+        }
+        x += segW;
+      }
+    }
+
+    // Labels
+    ctx.fillStyle = '#444'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('hidden state h' + (step > 0 ? subscript(step - 1) : 'ₜ'), barX, barY - 5);
+    ctx.fillStyle = '#2a2a2a'; ctx.textAlign = 'right';
+    ctx.fillText(`d = 256 dimensions`, barX + barTotalW, barY - 5);
+
+    // Memory % of first token
+    if (step > 1) {
+      const w = memWeights(step - 1);
+      const pct = (w[0] * 100).toFixed(1);
+      ctx.fillStyle = '#444'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`"The" (first token): ${pct}% of hidden state`, barX, barY + barH + 14);
+    }
+
+    const btn = document.getElementById('rnnStepBtn');
+    btn.disabled = step >= TOKENS.length;
+    const stat = document.getElementById('rnnStat');
+    if (step === 0) {
+      stat.textContent = 'Press "Process next token" to start.';
+    } else if (step === TOKENS.length) {
+      const w = memWeights(step - 1);
+      stat.textContent = `Complete — "The" (token 1) now holds only ${(w[0] * 100).toFixed(1)}% of the hidden state. Resolving "it" requires knowing "trophy" from step 2.`;
+    } else {
+      const w = memWeights(step - 1);
+      stat.textContent = `Processed ${step}/${TOKENS.length} tokens — newest token has ${(w[w.length-1]*100).toFixed(0)}% share, "The" has ${(w[0]*100).toFixed(1)}%`;
+    }
+  }
+
+  function subscript(n) {
+    return String(n).split('').map(c => '₀₁₂₃₄₅₆₇₈₉'[+c]).join('');
+  }
+
+  document.getElementById('rnnStepBtn').addEventListener('click', () => { if (step < TOKENS.length) { step++; draw(); } });
+  document.getElementById('rnnResetBtn').addEventListener('click', () => { step = 0; draw(); });
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ─── LSTM cell diagram ────────────────────────────────────────────────────────
+(function() {
+  let activeGate = 'forget';
+
+  const GATE_INFO = {
+    forget: {
+      label: 'Forget gate',
+      stat: 'Forget gate — decides what fraction of the old cell state to keep. Near 0 = erase everything, near 1 = preserve everything. E.g. when a new subject appears, the forget gate resets the cell state.',
+      highlight: ['forget'],
+    },
+    input: {
+      label: 'Input gate',
+      stat: 'Input gate — decides which parts of the new candidate values to write into the cell state. Works together with a tanh layer that creates new candidate values.',
+      highlight: ['input', 'candidate'],
+    },
+    output: {
+      label: 'Output gate',
+      stat: 'Output gate — decides which parts of the cell state to expose as the hidden state h_t. The cell state can carry information that is not visible in the output.',
+      highlight: ['output'],
+    },
+  };
+
+  function draw() {
+    const canvas = document.getElementById('lstmCanvas');
+    const W = canvas.clientWidth || 760;
+    const H = 260;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const info = GATE_INFO[activeGate];
+    const cx = W / 2;
+    const cy = H / 2 - 10;
+
+    // Cell state line (horizontal conveyor) ─────────────────────────────────
+    const csY = cy - 50;
+    const csX1 = 40, csX2 = W - 40;
+    ctx.strokeStyle = '#2a4a6a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(csX1, csY); ctx.lineTo(csX2, csY); ctx.stroke();
+    // Arrow
+    ctx.fillStyle = '#2a4a6a';
+    ctx.beginPath(); ctx.moveTo(csX2, csY); ctx.lineTo(csX2 - 8, csY - 5); ctx.lineTo(csX2 - 8, csY + 5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#3a6a8a'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Cell state  C', csX1, csY - 7);
+    ctx.font = '9px -apple-system,sans-serif'; ctx.fillText('t', csX1 + 68, csY - 3);
+
+    // Forget gate ×  ─────────────────────────────────────────────────────────
+    const fgX = csX1 + (csX2 - csX1) * 0.2;
+    const gR = 18;
+    const isForgetActive = activeGate === 'forget';
+    ctx.beginPath(); ctx.arc(fgX, csY, gR, 0, Math.PI * 2);
+    ctx.fillStyle = isForgetActive ? '#1f0a0a' : '#111';
+    ctx.fill();
+    ctx.strokeStyle = isForgetActive ? '#e07070' : '#333'; ctx.lineWidth = isForgetActive ? 2 : 1;
+    ctx.stroke();
+    ctx.fillStyle = isForgetActive ? '#e07070' : '#444'; ctx.font = '700 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('×', fgX, csY);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = isForgetActive ? '#e07070' : '#333'; ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText('forget', fgX, csY + gR + 14);
+
+    // Input gate +  ──────────────────────────────────────────────────────────
+    const igX = csX1 + (csX2 - csX1) * 0.5;
+    const isInputActive = activeGate === 'input';
+    ctx.beginPath(); ctx.arc(igX, csY, gR, 0, Math.PI * 2);
+    ctx.fillStyle = isInputActive ? '#0a1f0a' : '#111';
+    ctx.fill();
+    ctx.strokeStyle = isInputActive ? '#4caf50' : '#333'; ctx.lineWidth = isInputActive ? 2 : 1;
+    ctx.stroke();
+    ctx.fillStyle = isInputActive ? '#4caf50' : '#444'; ctx.font = '700 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('+', igX, csY + 1);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = isInputActive ? '#4caf50' : '#333'; ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText('input', igX, csY + gR + 14);
+
+    // Output gate ─────────────────────────────────────────────────────────────
+    const ogX = csX1 + (csX2 - csX1) * 0.8;
+    const isOutputActive = activeGate === 'output';
+    ctx.beginPath(); ctx.arc(ogX, csY, gR, 0, Math.PI * 2);
+    ctx.fillStyle = isOutputActive ? '#0a1520' : '#111';
+    ctx.fill();
+    ctx.strokeStyle = isOutputActive ? '#5b9bd5' : '#333'; ctx.lineWidth = isOutputActive ? 2 : 1;
+    ctx.stroke();
+    ctx.fillStyle = isOutputActive ? '#5b9bd5' : '#444'; ctx.font = '700 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('h', ogX, csY + 1);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = isOutputActive ? '#5b9bd5' : '#333'; ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText('output', ogX, csY + gR + 14);
+
+    // Input line (bottom) ────────────────────────────────────────────────────
+    const inputY = cy + 50;
+    [fgX, igX, ogX].forEach((gx, gi) => {
+      const colors = ['#e07070', '#4caf50', '#5b9bd5'];
+      const active = [isForgetActive, isInputActive, isOutputActive];
+      ctx.strokeStyle = active[gi] ? colors[gi] : '#1e1e1e'; ctx.lineWidth = 1.5;
+      ctx.setLineDash(active[gi] ? [] : [3, 3]);
+      ctx.beginPath(); ctx.moveTo(gx, inputY); ctx.lineTo(gx, csY + gR); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // Input/output labels
+    ctx.fillStyle = '#333'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('[h_{t-1}, x_t]  →  σ', cx, inputY + 16);
+
+    // h_t output (right side)
+    ctx.strokeStyle = activeGate === 'output' ? '#5b9bd5' : '#1e1e1e'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(ogX, csY + gR); ctx.lineTo(ogX, inputY); ctx.stroke();
+    ctx.fillStyle = '#2a2a2a'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('h_t', ogX + 6, inputY + 14);
+
+    // Legend
+    ctx.fillStyle = '#222'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Blue line = cell state (long-term memory)', 40, H - 8);
+  }
+
+  document.getElementById('lstmForget').addEventListener('click', function() {
+    activeGate = 'forget';
+    this.classList.add('active');
+    document.getElementById('lstmInput').classList.remove('active');
+    document.getElementById('lstmOutput').classList.remove('active');
+    document.getElementById('lstmStat').textContent = GATE_INFO.forget.stat;
+    draw();
+  });
+  document.getElementById('lstmInput').addEventListener('click', function() {
+    activeGate = 'input';
+    this.classList.add('active');
+    document.getElementById('lstmForget').classList.remove('active');
+    document.getElementById('lstmOutput').classList.remove('active');
+    document.getElementById('lstmStat').textContent = GATE_INFO.input.stat;
+    draw();
+  });
+  document.getElementById('lstmOutput').addEventListener('click', function() {
+    activeGate = 'output';
+    this.classList.add('active');
+    document.getElementById('lstmForget').classList.remove('active');
+    document.getElementById('lstmInput').classList.remove('active');
+    document.getElementById('lstmStat').textContent = GATE_INFO.output.stat;
+    draw();
+  });
+  document.getElementById('lstmStat').textContent = GATE_INFO.forget.stat;
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ─── Seq2Seq bottleneck ───────────────────────────────────────────────────────
+(function() {
+  const SHORT = ['The', 'cat', 'sat', 'down', '.'];
+  const LONG  = ['The', 'large', 'gray', 'cat', 'that', 'had', 'been', 'outside', 'all', 'morning', 'finally', 'sat', 'down', '.'];
+  let mode = 'short';
+  let animStep = 0;
+  let animId = null;
+
+  function getTokens() { return mode === 'short' ? SHORT : LONG; }
+
+  function draw(step) {
+    const canvas = document.getElementById('seq2seqCanvas');
+    const W = canvas.clientWidth || 760;
+    const H = 200;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const tokens = getTokens();
+    const N = tokens.length;
+    const encW = W * 0.52 - 10;
+    const gap = 16;
+    const decW = W - encW - gap - 20;
+
+    // Encoder section
+    const tokW = Math.min(52, (encW - 20) / N - 4);
+    const totalTW = N * (tokW + 4) - 4;
+    let tx = 10 + (encW - 20 - totalTW) / 2;
+    const tokY = 24, tokH = 28;
+
+    ctx.fillStyle = '#111'; ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(10, 10, encW - 10, H - 20, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#333'; ctx.font = '700 10px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('ENCODER', 10 + (encW - 10) / 2, tokY - 6);
+
+    tokens.forEach((tok, i) => {
+      const processed = i < step;
+      ctx.fillStyle = processed ? '#0a1520' : '#111';
+      ctx.strokeStyle = processed ? '#5b9bd5' : '#1e1e1e';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(tx, tokY, tokW, tokH, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = processed ? '#5b9bd5' : '#2a2a2a';
+      ctx.font = '9px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(tok, tx + tokW / 2, tokY + tokH / 2);
+      ctx.textBaseline = 'alphabetic';
+      tx += tokW + 4;
+    });
+
+    // Hidden state bar inside encoder
+    const hsY = tokY + tokH + 10;
+    const hsW = encW - 30;
+    const hsH = 20;
+    ctx.fillStyle = '#0a0a0a'; ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(20, hsY, hsW, hsH, 3); ctx.fill(); ctx.stroke();
+    if (step > 0) {
+      const fillFrac = Math.min(step / N, 1);
+      const saturation = mode === 'long' && step >= N ? 0.4 : 1.0;
+      ctx.fillStyle = `rgba(91,155,213,${saturation})`;
+      ctx.beginPath(); ctx.roundRect(20, hsY, hsW * fillFrac, hsH, fillFrac >= 1 ? 3 : [3,0,0,3]); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '9px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(step >= N ? 'context vector (fixed size)' : `processing ${step}/${N}…`, 20 + hsW / 2, hsY + hsH / 2);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // Bottleneck arrow
+    const arrX = encW + 2;
+    const arrY = H / 2;
+    ctx.strokeStyle = step >= N ? '#e07070' : '#222'; ctx.lineWidth = step >= N ? 2 : 1;
+    ctx.beginPath(); ctx.moveTo(arrX, arrY); ctx.lineTo(arrX + gap - 4, arrY); ctx.stroke();
+    if (step >= N) {
+      ctx.fillStyle = '#e07070';
+      ctx.beginPath(); ctx.moveTo(arrX + gap - 4, arrY); ctx.lineTo(arrX + gap - 10, arrY - 4); ctx.lineTo(arrX + gap - 10, arrY + 4); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e07070'; ctx.font = '8px -apple-system,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('bottleneck', arrX + gap / 2, arrY - 6);
+    }
+
+    // Decoder
+    const decX = encW + gap + 10;
+    ctx.fillStyle = '#111'; ctx.strokeStyle = step >= N ? '#2a1010' : '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(decX, 10, decW - 10, H - 20, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#333'; ctx.font = '700 10px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('DECODER', decX + (decW - 10) / 2, tokY - 6);
+
+    if (step >= N) {
+      const decInfo = mode === 'long'
+        ? ['Reads from', 'ONE vector', 'for 14 tokens', '→ lossy']
+        : ['Reads from', 'ONE vector', 'for 5 tokens', '→ ok'];
+      const decColor = mode === 'long' ? '#e07070' : '#4caf50';
+      ctx.fillStyle = decColor;
+      ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+      decInfo.forEach((line, i) => {
+        ctx.fillText(line, decX + (decW - 10) / 2, H / 2 - 20 + i * 18);
+      });
+    } else {
+      ctx.fillStyle = '#1e1e1e'; ctx.font = '11px -apple-system,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('waiting…', decX + (decW - 10) / 2, H / 2 + 4);
+    }
+
+    // Stat
+    const stat = document.getElementById('seq2seqStat');
+    if (step === 0) stat.textContent = `${N}-token ${mode} sentence — click Animate or wait.`;
+    else if (step < N) stat.textContent = `Encoding token ${step}/${N}…`;
+    else stat.textContent = mode === 'long'
+      ? `${N} tokens compressed to one fixed vector — decoder must reconstruct all meaning from this single point.`
+      : `${N} tokens compressed to one fixed vector — short sentence fits reasonably well.`;
+  }
+
+  function animate(tokens) {
+    if (animId) cancelAnimationFrame(animId);
+    animStep = 0;
+    draw(0);
+    const interval = setInterval(() => {
+      animStep++;
+      draw(animStep);
+      if (animStep >= tokens.length + 1) clearInterval(interval);
+    }, 200);
+  }
+
+  document.getElementById('seq2seqShort').addEventListener('click', () => { mode = 'short'; animate(SHORT); });
+  document.getElementById('seq2seqLong').addEventListener('click', () => { mode = 'long'; animate(LONG); });
+
+  draw(0);
+  window.addEventListener('resize', () => draw(animStep));
+})();
+
+// ─── Bottleneck slider ────────────────────────────────────────────────────────
+(function() {
+  function draw(seqLen) {
+    const canvas = document.getElementById('bottleneckCanvas');
+    const W = canvas.clientWidth || 760;
+    const H = 180;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const padL = 40, padR = 40, padT = 20, padB = 40;
+    const barTotalW = W - padL - padR;
+    const barH = 50;
+    const barY = padT + 20;
+
+    // Draw full hidden state capacity bar
+    ctx.fillStyle = '#0a0a0a'; ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(padL, barY, barTotalW, barH, 4); ctx.fill(); ctx.stroke();
+
+    // Fill with memory segments, exponential decay
+    const raw = [];
+    for (let i = 0; i < seqLen; i++) raw.push(Math.exp(-(seqLen - 1 - i) * 0.5));
+    const sum = raw.reduce((a, b) => a + b, 0);
+    const weights = raw.map(w => w / sum);
+
+    const COLORS = ['#5b9bd5','#4caf50','#f0a040','#b07adf','#e07070','#4cc9c9','#d4b840','#a0c060','#70b0ff','#ff9060','#c0e060','#e070c0','#60d0d0','#c0a060','#8090ff','#f0c040','#80d080','#e08080','#a0d0c0','#d0a080'];
+    let x = padL;
+    weights.forEach((w, i) => {
+      const segW = w * barTotalW;
+      ctx.fillStyle = COLORS[i % COLORS.length];
+      ctx.beginPath();
+      const r = i === 0 ? [4,0,0,4] : (i === weights.length-1 ? [0,4,4,0] : 0);
+      ctx.roundRect(x, barY, segW, barH, r);
+      ctx.fill();
+      if (segW > 18) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.font = '9px -apple-system,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(i + 1, x + segW / 2, barY + barH / 2);
+        ctx.textBaseline = 'alphabetic';
+      }
+      x += segW;
+    });
+
+    // Labels
+    ctx.fillStyle = '#555'; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('token 1 (oldest)', padL, barY - 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(`token ${seqLen} (newest)`, padL + barTotalW, barY - 6);
+
+    // Signal of token 1
+    const pct = (weights[0] * 100).toFixed(1);
+    const pctNum = parseFloat(pct);
+    ctx.fillStyle = pctNum < 5 ? '#e07070' : pctNum < 15 ? '#f0a040' : '#4caf50';
+    ctx.font = '700 13px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`Token 1 signal: ${pct}% of hidden state`, W / 2, barY + barH + 22);
+
+    ctx.fillStyle = '#333'; ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText(`Sequence length: ${seqLen}`, W / 2, barY + barH + 36);
+
+    document.getElementById('bottleneckStat').textContent =
+      pctNum < 2 ? `Token 1 effectively forgotten — only ${pct}% remains. The model cannot use this information for output.`
+      : pctNum < 10 ? `Token 1 is severely compressed at ${pct}%. Long-range dependencies will fail.`
+      : `Token 1 retains ${pct}% — short sequences are manageable.`;
+  }
+
+  const slider = document.getElementById('seqLenSlider');
+  const valLabel = document.getElementById('seqLenVal');
+  slider.addEventListener('input', function() {
+    valLabel.textContent = this.value;
+    draw(parseInt(this.value));
+  });
+  draw(5);
+  window.addEventListener('resize', () => draw(parseInt(slider.value)));
+})();
+
+</script>
+</body>
+</html>
