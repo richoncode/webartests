@@ -56,9 +56,6 @@ button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
 #sample-result { font-size: 14px; color: #4caf50; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; min-height: 22px; }
 #temp-desc { font-size: 12px; color: #555; margin-top: 8px; font-style: italic; }
 
-/* KV cache */
-#kv-status { font-size: 12px; color: #555; font-family: 'SF Mono','Fira Code',monospace; margin-top: 8px; }
-
 /* Context chart */
 #ctx-canvas { width: 100%; }
 </style>
@@ -138,7 +135,6 @@ button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
       <button id="kv-step-btn">Step</button>
       <button id="kv-reset-btn">Reset</button>
     </div>
-    <div id="kv-status"></div>
   </div>
 
   <!-- Section 5: Context length and cost -->
@@ -403,7 +399,13 @@ function drawKVCache() {
   ctx.clearRect(0, 0, W, H);
 
   const midX = W / 2;
-  const padT = 36, padB = 40;
+  const padT = 52, padB = 40;
+
+  // Compute totals up front so we can show them in the header
+  let leftOps = 0;
+  for (let s = 1; s <= kvStep; s++) leftOps += s;
+  const rightOps = kvStep;
+  const saved = leftOps > 0 ? Math.round((1 - rightOps / leftOps) * 100) : 0;
 
   // Divider
   ctx.strokeStyle = '#1e1e1e';
@@ -413,26 +415,34 @@ function drawKVCache() {
   ctx.lineTo(midX, H);
   ctx.stroke();
 
-  // Headers
-  ctx.font = '13px -apple-system, sans-serif';
+  // ── Left header ──────────────────────────────────────────────────
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#555';
-  ctx.fillText('Without cache', midX / 2, 22);
-  ctx.fillText('With cache', midX + midX / 2, 22);
+  ctx.fillStyle = '#444';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillText('Without cache', midX / 2, 13);
+
+  ctx.fillStyle = kvStep > 0 ? '#e07070' : '#333';
+  ctx.font = 'bold 15px -apple-system, sans-serif';
+  ctx.fillText(leftOps + ' ops', midX / 2, 34);
+
+  // ── Right header ─────────────────────────────────────────────────
+  ctx.fillStyle = '#444';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillText('With cache', midX + midX / 2, 13);
+
+  ctx.fillStyle = kvStep > 0 ? '#4caf50' : '#333';
+  ctx.font = 'bold 15px -apple-system, sans-serif';
+  ctx.fillText(rightOps + ' ops', midX + midX / 2 - (kvStep > 0 ? 22 : 0), 34);
+
+  // "saved X%" badge next to the with-cache count
+  if (kvStep > 0) {
+    ctx.fillStyle = '#f0a040';
+    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.fillText('−' + saved + '%', midX + midX / 2 + 30, 34);
+  }
 
   const squareSize = 14;
   const gap = 4;
-
-  // Without cache: step*(step+1)/2 ops total (triangular number up to step)
-  // Each step i (1-indexed) contributes i ops
-  let leftOps = 0;
-  for (let s = 1; s <= kvStep; s++) leftOps += s;
-
-  // With cache: kvStep ops total
-  let rightOps = kvStep;
-
-  const maxOps = (KV_MAX * (KV_MAX + 1)) / 2;
-  const colsLeft = Math.floor((midX - 40) / (squareSize + gap));
 
   function drawOpsGrid(startX, totalOps, color, areaW) {
     const cols = Math.max(1, Math.floor((areaW - 16) / (squareSize + gap)));
@@ -474,11 +484,6 @@ function drawKVCache() {
     ctx.textAlign = 'center';
     ctx.fillText(`KV cache: ${kvStep} token${kvStep !== 1 ? 's' : ''} stored`, cacheX + cacheW / 2, cacheY + 14);
   }
-
-  // Stats
-  const saved = leftOps > 0 ? Math.round((1 - rightOps / leftOps) * 100) : 0;
-  const stat = document.getElementById('kv-status');
-  stat.textContent = `Without cache: ${leftOps} ops total · With cache: ${rightOps} ops total${leftOps > 0 ? ' · Saved: ' + saved + '%' : ''}`;
 
   // Step button state
   document.getElementById('kv-step-btn').disabled = kvStep >= KV_MAX;
