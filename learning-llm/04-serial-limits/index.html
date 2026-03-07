@@ -87,9 +87,10 @@ button.active { border-color: #5b9bd5; color: #5b9bd5; background: #0d1a26; }
   <div class="section">
     <h2>Latency vs throughput</h2>
     <p>Latency is how long a single user waits for their response. Throughput is how many tokens per second the server produces across all users. These are in direct tension: small batches give low latency, large batches give high throughput.</p>
+    <p>The <strong style="color:#ccc">batch size</strong> controls how many users are processed in a single GPU forward pass. Batch=1 means only one user's token is generated per step — all other users queue. Batch=4 means all four users receive their next token in the same step, at no extra latency cost.</p>
 
     <div class="vis-label">Request scheduling — Gantt timeline</div>
-    <canvas id="gantt-canvas" height="220" style="width:100%;"></canvas>
+    <canvas id="gantt-canvas" height="240" style="width:100%;"></canvas>
     <div class="btn-row">
       <button id="batch1-btn" class="active">Batch = 1</button>
       <button id="batch4-btn">Batch = 4</button>
@@ -457,7 +458,7 @@ function drawGantt() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
 
-  const padL = 90, padR = 24, padT = 32, padB = 44;
+  const padL = 90, padR = 24, padT = 46, padB = 44;
   const chartW = W - padL - padR;
   const chartH = H - padT - padB;
 
@@ -465,15 +466,17 @@ function drawGantt() {
   const N_TOK = 8;
   const rowH = chartH / N_REQ;
 
-  ctx.font = '11px -apple-system, sans-serif';
-  ctx.textAlign = 'right';
-
   if (ganttMode === 1) {
-    // Serial: req 2 waits for req 1, etc.
-    // Total time = N_REQ * N_TOK steps
     const totalSteps = N_REQ * N_TOK;
     const stepW = chartW / totalSteps;
 
+    // ── Mechanism label ─────────────────────────────────────────────
+    ctx.fillStyle = '#e07070';
+    ctx.font = '600 11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('1 user per GPU step — others queue', padL, 13);
+
+    // ── Rows ─────────────────────────────────────────────────────────
     for (let r = 0; r < N_REQ; r++) {
       const startStep = r * N_TOK;
       const ry = padT + r * rowH + 4;
@@ -481,31 +484,50 @@ function drawGantt() {
 
       // Row label
       ctx.fillStyle = '#555';
+      ctx.font = '11px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
       ctx.fillText(`User ${r + 1}`, padL - 6, ry + bh / 2 + 4);
 
+      // Waiting block (before this user's active period)
+      if (startStep > 0) {
+        const waitW = startStep * stepW - 2;
+        ctx.fillStyle = '#0d0d0d';
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.roundRect(padL, ry, waitW, bh, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#2e2e2e';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('waiting', padL + waitW / 2, ry + bh / 2 + 4);
+      }
+
+      // Active token blocks
       for (let t = 0; t < N_TOK; t++) {
         const bx = padL + (startStep + t) * stepW;
         const bw = stepW - 1;
         ctx.fillStyle = GANTT_COLORS_DARK[r];
         ctx.strokeStyle = GANTT_COLORS[r];
         ctx.lineWidth = 1;
+        ctx.setLineDash([]);
         ctx.beginPath();
         ctx.roundRect(bx, ry, bw, bh, 2);
         ctx.fill();
         ctx.stroke();
       }
-
-      // Idle region (after this user, before next starts)
-      // Actually in batch=1 serial: no idle between requests in this model
     }
 
     // Time axis
-    ctx.fillStyle = '#333';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i <= 4; i++) {
       const tx = padL + i * (N_TOK * stepW);
-      ctx.fillStyle = '#333';
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(tx, padT + chartH);
       ctx.lineTo(tx, padT + chartH + 4);
@@ -514,7 +536,7 @@ function drawGantt() {
       ctx.fillText(i * N_TOK, tx, padT + chartH + 16);
     }
 
-    // Latency bracket for user 1
+    // Latency bracket (user 1)
     const l1End = padL + N_TOK * stepW;
     ctx.strokeStyle = '#5b9bd5';
     ctx.lineWidth = 1;
@@ -527,26 +549,66 @@ function drawGantt() {
     ctx.fillStyle = '#5b9bd5';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Latency (user 1): 8 steps', padL + N_TOK * stepW / 2, padT - 12);
+    ctx.fillText('Latency (user 1): 8 steps', padL + N_TOK * stepW / 2, padT - 11);
 
     ctx.fillStyle = '#444';
     ctx.textAlign = 'left';
-    ctx.font = '10px -apple-system, sans-serif';
     ctx.fillText('Time (steps)', padL + chartW - 60, padT + chartH + 34);
 
     document.getElementById('gantt-stat').textContent =
-      `Batch=1 serial: Latency = ${N_TOK} steps · Throughput = 1 token/step · Users wait in queue`;
+      'Batch=1: Latency = 8 steps · Throughput = 1 token/step · Users 2–4 wait in queue';
 
   } else {
-    // Batch=4: all 4 start at t=0, run in parallel
-    const totalSteps = N_TOK;
-    const stepW = chartW / totalSteps;
+    const stepW = chartW / N_TOK;
 
+    // ── Mechanism label ─────────────────────────────────────────────
+    ctx.fillStyle = '#4caf50';
+    ctx.font = '600 11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('All 4 users computed in the same GPU step — no waiting', padL, 13);
+
+    // ── "1 GPU step" column bracket over first column ─────────────
+    const colBracketX = padL;
+    const colBracketW = stepW - 2;
+    ctx.fillStyle = 'rgba(91,155,213,0.06)';
+    ctx.beginPath();
+    ctx.roundRect(colBracketX, padT, colBracketW, chartH, 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2a3a5a';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(colBracketX, padT - 6);
+    ctx.lineTo(colBracketX + colBracketW, padT - 6);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#3a4a6a';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('1 step', colBracketX + colBracketW / 2, padT - 9);
+
+    // Right bracket showing all 4 users fit in that 1 step
+    const bracketX = padL + colBracketW + 6;
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(bracketX, padT + 6);
+    ctx.lineTo(bracketX + 5, padT + 6);
+    ctx.lineTo(bracketX + 5, padT + chartH - 6);
+    ctx.lineTo(bracketX, padT + chartH - 6);
+    ctx.stroke();
+    ctx.fillStyle = '#4caf50';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('4 tokens', bracketX + 8, padT + chartH / 2);
+    ctx.textBaseline = 'alphabetic';
+
+    // ── Rows ─────────────────────────────────────────────────────────
     for (let r = 0; r < N_REQ; r++) {
       const ry = padT + r * rowH + 4;
       const bh = rowH - 8;
 
-      // Row label
       ctx.fillStyle = '#555';
       ctx.font = '11px -apple-system, sans-serif';
       ctx.textAlign = 'right';
@@ -558,6 +620,7 @@ function drawGantt() {
         ctx.fillStyle = GANTT_COLORS_DARK[r];
         ctx.strokeStyle = GANTT_COLORS[r];
         ctx.lineWidth = 1;
+        ctx.setLineDash([]);
         ctx.beginPath();
         ctx.roundRect(bx, ry, bw, bh, 2);
         ctx.fill();
@@ -566,7 +629,6 @@ function drawGantt() {
     }
 
     // Time axis
-    ctx.fillStyle = '#333';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i <= N_TOK; i++) {
@@ -581,7 +643,7 @@ function drawGantt() {
       ctx.fillText(i, tx, padT + chartH + 16);
     }
 
-    // Latency bracket: all users finish at step 8
+    // Latency bracket
     ctx.strokeStyle = '#f0a040';
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
@@ -593,20 +655,20 @@ function drawGantt() {
     ctx.fillStyle = '#f0a040';
     ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('All users finish together: 8 steps', padL + N_TOK * stepW / 2, padT - 12);
+    ctx.fillText('All users finish together: 8 steps', padL + N_TOK * stepW / 2, padT - 11);
 
     ctx.fillStyle = '#444';
     ctx.textAlign = 'left';
-    ctx.font = '10px -apple-system, sans-serif';
     ctx.fillText('Time (steps)', padL + chartW - 60, padT + chartH + 34);
 
     document.getElementById('gantt-stat').textContent =
-      `Batch=4 parallel: Latency = ${N_TOK} steps (same) · Throughput = 4 tokens/step · All users served together`;
+      'Batch=4: Latency = 8 steps (same) · Throughput = 4 tokens/step · 4× more efficient';
   }
 
   // Axes
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 1;
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(padL, padT);
   ctx.lineTo(padL, padT + chartH);
