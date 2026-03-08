@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulating the String — Sound Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 820px; margin: 0 auto; padding: 60px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #666; font-size: 15px; line-height: 1.6; max-width: 620px; margin-bottom: 48px; }
+  .section { margin-bottom: 56px; }
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #ddd; }
+  p { color: #888; line-height: 1.75; margin-bottom: 12px; max-width: 680px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid #1e1e1e; background: #0a0a0a; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  button:hover:not(:disabled) { background: #222; border-color: #555; color: #fff; }
+  button.primary { background: #1a2a1a; border-color: #4caf50; color: #4caf50; padding: 10px 28px; font-size: 14px; font-weight: 600; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  .btn-row { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+  .callout { background: #111; border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 12px 0 20px; font-size: 13px; color: #888; line-height: 1.7; }
+  .callout strong { color: #ccc; }
+  .callout.orange { border-color: #f0a040; }
+  .callout.green  { border-color: #4caf50; }
+  .code-block { font-family: 'SF Mono', 'Fira Code', monospace; background: #0d1520; border: 1px solid #1a2a3a; border-radius: 8px; padding: 16px 20px; margin: 16px 0; font-size: 12.5px; line-height: 2.2; overflow-x: auto; white-space: pre; }
+  .cm { color: #2a4a2a; }
+  .kw { color: #c586c0; }
+  .va { color: #9cdcfe; }
+  .nu { color: #b5cea8; }
+  .hl-past    { color: #aa88ff; }
+  .hl-present { color: #5b9bd5; }
+  .hl-future  { color: #4caf50; }
+  .hl-r       { color: #f0a040; }
+  .vis-label { font-size: 11px; color: #333; margin-bottom: 4px; }
+  .stat-line { font-size: 12px; color: #444; margin-top: 8px; min-height: 18px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .legend { display: flex; gap: 18px; margin: 8px 0 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  select { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 12px; border-radius: 6px; font-size: 13px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+<a class="back" href="../">← Back</a>
+<h1>Simulating the String</h1>
+<p class="subtitle">The wave equation tells you exactly how a plucked string moves. Turning that equation into code takes one key step: replace infinitely small differences with finite-sized ones. Everything else follows automatically.</p>
+
+<!-- ═══ SECTION 1: WAVE EQUATION ════════════════════════════════════════ -->
+<div class="section">
+  <h2>The wave equation</h2>
+  <p>A string under tension obeys Newton's second law at every point along it. The result is the 1D wave equation:</p>
+
+  <div class="code-block"><span class="cm">// ∂²u/∂t²  =  c²  ·  ∂²u/∂x²</span>
+<span class="cm">//  acceleration    =  c²  ×  curvature</span></div>
+
+  <p>Here <em>u(x, t)</em> is the displacement of the string at position x and time t, and <em>c</em> is the wave speed — set by the string's tension and density. The equation says: wherever the string curves upward, it accelerates upward; wherever it curves downward, it accelerates down. That restoring force is what makes waves travel.</p>
+
+  <div class="callout">
+    <strong>Exact solution:</strong> any initial shape splits into two mirror copies that travel left and right at speed c, bounce off the fixed endpoints, and pass through each other forever. The simulation does the same thing, one tiny step at a time.
+  </div>
+</div>
+
+<!-- ═══ SECTION 2: DISCRETISING ════════════════════════════════════════ -->
+<div class="section">
+  <h2>Discretising: from equation to code</h2>
+  <p>Replace the continuous string with N equally spaced nodes. Replace each derivative with the ratio of a small difference to a small step size. The second time-derivative becomes:</p>
+
+  <div class="code-block"><span class="cm">// ∂²u/∂t²  ≈  ( u[t+1][i]  −  2·u[t][i]  +  u[t−1][i] )  /  dt²</span></div>
+
+  <p>The second space-derivative (curvature) becomes:</p>
+
+  <div class="code-block"><span class="cm">// ∂²u/∂x²  ≈  ( u[t][i+1]  −  2·u[t][i]  +  u[t][i−1] )  /  dx²</span></div>
+
+  <p>Substitute both into c²·∂²x = ∂²t, then rearrange to isolate the only unknown — the future position u[t+1][i]:</p>
+
+  <div class="code-block"><span class="hl-future">u[t+1][i]</span>  =  2·<span class="hl-present">u[t][i]</span>  −  <span class="hl-past">u[t−1][i]</span>
+            +  <span class="hl-r">r²</span>·( <span class="hl-present">u[t][i−1]</span>  −  2·<span class="hl-present">u[t][i]</span>  +  <span class="hl-present">u[t][i+1]</span> )
+
+<span class="cm">// r = c·dt/dx   (Courant number — must stay ≤ 1 for stability)</span>
+<span class="cm">// The future depends on: 1 past node + 3 present neighbours</span></div>
+
+  <div class="callout orange">
+    <strong>The Courant number r</strong> is the simulation's stability dial. If r&nbsp;&gt;&nbsp;1, tiny errors amplify each step and the simulation explodes. At r&nbsp;=&nbsp;1, information travels exactly one grid cell per time step — the ideal case matching the exact wave equation solution.
+  </div>
+</div>
+
+<!-- ═══ SECTION 3: STENCIL ══════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Step through the stencil</h2>
+  <p>The four-point pattern — 1 node from the past row, 3 from the present — is called the <em>stencil</em>. Each future node needs exactly these four neighbours. Step through the computation one node at a time and watch the stencil advance across the grid.</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#9977ee"></div>t−1 past row</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5b9bd5"></div>t present row</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f0a040"></div>active stencil</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4caf50"></div>t+1 computed</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#222"></div>t+1 pending</div>
+  </div>
+
+  <canvas id="stencil-canvas" height="300" style="width:100%;"></canvas>
+  <div class="btn-row">
+    <button id="s-step-btn" class="primary">Step →</button>
+    <button id="s-auto-btn">Auto ▶</button>
+    <button id="s-reset-btn">Reset</button>
+    <span id="s-stat" class="stat-line" style="margin:0 0 0 6px"></span>
+  </div>
+</div>
+
+<!-- ═══ SECTION 4: RUNNING SIMULATION ══════════════════════════════════ -->
+<div class="section">
+  <h2>Running at audio rate</h2>
+  <p>Run the same update loop 44 100 times per second. Read one node as the audio output. The inner loop — sweeping the stencil across all N nodes — produces one audio sample per iteration.</p>
+
+  <div class="code-block"><span class="kw">for</span> (<span class="va">t</span> = <span class="nu">0</span>; <span class="va">t</span> &lt; totalSamples; <span class="va">t</span>++) {
+  <span class="kw">for</span> (<span class="va">i</span> = <span class="nu">1</span>; <span class="va">i</span> &lt; N−<span class="nu">1</span>; <span class="va">i</span>++) {
+    <span class="hl-future">future[i]</span> = <span class="nu">2</span>·<span class="hl-present">present[i]</span> − <span class="hl-past">past[i]</span>
+               + <span class="hl-r">r²</span>·(<span class="hl-present">present[i−1]</span> − <span class="nu">2</span>·<span class="hl-present">present[i]</span> + <span class="hl-present">present[i+1]</span>);
+  }
+  output[t] = present[outputNode];  <span class="cm">// tap one node as audio</span>
+  [past, present, future] = [present, future, past];  <span class="cm">// rotate buffers</span>
+}</div>
+
+  <div class="vis-label">String shape — all N nodes, updated each frame</div>
+  <canvas id="run-canvas" height="140" style="width:100%;"></canvas>
+  <div class="btn-row">
+    <button id="run-pluck-btn" class="primary">Pluck</button>
+    <select id="run-freq-sel">
+      <option value="196">Guitar G2 — 196 Hz</option>
+      <option value="294">Guitar D3 — 294 Hz</option>
+      <option value="440" selected>A4 — 440 Hz</option>
+      <option value="659">E5 — 659 Hz</option>
+    </select>
+    <span id="run-info" class="stat-line" style="margin:0"></span>
+  </div>
+  <div id="run-stat" class="stat-line"></div>
+
+  <div class="callout" style="margin-top:20px">
+    <strong>Output node position matters.</strong> Tapping the string near an endpoint (bridge position) produces a bright, trebly sound with strong high harmonics. Tapping near the centre damps the odd harmonics, giving a rounder, flute-like tone — exactly how guitarists change timbre by picking position.
+  </div>
+</div>
+
+<!-- ═══ SECTION 5: KARPLUS-STRONG ══════════════════════════════════════ -->
+<div class="section">
+  <h2>Karplus–Strong: the same thing, faster</h2>
+  <p>The FD simulation keeps three arrays of N values — past, present, future. But look at the update: to compute future[i] you only need past[i] and three present neighbours. If you sweep left to right and write the result back into the same array as you go, the "past" values for the nodes you've already passed become the "future" values for the ones ahead. One circular buffer is enough.</p>
+  <p>That single ring of N samples — with a read head that laps around once per fundamental period — is the <strong>Karplus-Strong delay line</strong>. The averaging filter (½·(current + next)) approximates the FD curvature term: a gentle low-pass that removes energy faster from high frequencies, just like a real string's stiffness damping.</p>
+
+  <div class="callout green">
+    <strong>Memory:</strong> FD needs 3&thinsp;×&thinsp;N floats; Karplus-Strong needs 1&thinsp;×&thinsp;N. The time dimension is folded into the circular buffer. The output is perceptually identical — and it runs fast enough for real-time synthesis at any sample rate.
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="vis-label">Ring buffer — each dot = one delay-line sample</div>
+      <canvas id="ks-canvas" height="300" style="width:100%;"></canvas>
+    </div>
+    <div>
+      <div class="vis-label">Output waveform (last 2048 samples)</div>
+      <canvas id="ks-wave-canvas" height="300" style="width:100%;"></canvas>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button id="ks-pluck-btn" class="primary">Pluck (KS)</button>
+    <button id="ks-pause-btn" disabled>Pause</button>
+    <select id="ks-freq-sel">
+      <option value="220">A3 — 220 Hz</option>
+      <option value="330">E4 — 330 Hz</option>
+      <option value="440" selected>A4 — 440 Hz</option>
+    </select>
+  </div>
+  <div id="ks-stat" class="stat-line"></div>
+</div>
+
+</div><!-- .page -->
+
+<script>
+'use strict';
+
+// ─── Audio context ─────────────────────────────────────────────────────────
+let audioCtx = null;
+function getACtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playPCM(samples, sr = 44100) {
+  const ctx = getACtx();
+  const buf = ctx.createBuffer(1, samples.length, sr);
+  buf.copyToChannel(samples, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+  return src;
+}
+
+// ─── SECTION 3: Stencil ───────────────────────────────────────────────────
+const SN = 22;          // total nodes (includes fixed endpoints at 0 and SN-1)
+const SR_VAL = 0.95;    // Courant number
+let sPast    = new Float32Array(SN);
+let sPresent = new Float32Array(SN);
+let sFuture  = new Float32Array(SN);
+let sCol = 1;           // next column to compute (1 … SN-2)
+let sTimeStep = 0;
+let sShifting = false;
+let sAutoId = null;
+
+function initStencil() {
+  sPast.fill(0); sPresent.fill(0); sFuture.fill(0);
+  const peak = Math.floor(SN / 3);
+  for (let i = 1; i < SN - 1; i++) {
+    sPresent[i] = (i < peak
+      ? i / peak
+      : (SN - 1 - i) / (SN - 1 - peak)) * 0.72;
+  }
+  sPast.set(sPresent);  // zero initial velocity
+  sCol = 1;
+  sTimeStep = 0;
+  sShifting = false;
+  drawStencil();
+  setStat('s-stat', `t = ${sTimeStep}  |  computing node i = ${sCol}`);
+}
+
+function stencilAdvance() {
+  if (sShifting || sCol > SN - 2) return;
+  const r2 = SR_VAL * SR_VAL;
+  sFuture[sCol] = 2 * sPresent[sCol] - sPast[sCol]
+    + r2 * (sPresent[sCol - 1] - 2 * sPresent[sCol] + sPresent[sCol + 1]);
+  sCol++;
+
+  if (sCol > SN - 2) {
+    // Row complete — pause briefly then shift
+    sShifting = true;
+    drawStencil();
+    setStat('s-stat', `t = ${sTimeStep}  |  row complete — shifting…`);
+    setTimeout(() => {
+      const tmp = sPast;
+      sPast = sPresent;
+      sPresent = sFuture;
+      sFuture = tmp;
+      sFuture.fill(0);
+      sFuture[0] = 0; sFuture[SN - 1] = 0;
+      sCol = 1;
+      sTimeStep++;
+      sShifting = false;
+      drawStencil();
+      setStat('s-stat', `t = ${sTimeStep}  |  computing node i = ${sCol}`);
+    }, 380);
+    return;
+  }
+
+  drawStencil();
+  setStat('s-stat', `t = ${sTimeStep}  |  computing node i = ${sCol}`);
+}
+
+function drawStencil() {
+  const canvas = document.getElementById('stencil-canvas');
+  const W = canvas.clientWidth;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 300);
+
+  const padL = 60, padR = 20;
+  const usableW = W - padL - padR;
+  const dx = usableW / (SN - 1);
+  const scaleY = 42;
+  const R = Math.max(5, Math.min(8, dx / 2.2));
+
+  // Row layout: y baseline for each time row
+  const rows = [
+    { label: 't−1', y: 80,  data: sPast,    col: '#9977ee' },
+    { label: 't',   y: 160, data: sPresent, col: '#5b9bd5' },
+    { label: 't+1', y: 240, data: sFuture,  col: '#4caf50' },
+  ];
+
+  const c = sCol <= SN - 2 ? sCol : -1;  // current stencil column (-1 = no stencil)
+
+  // Draw stencil connection lines first (behind nodes)
+  if (c > 0 && c < SN - 1) {
+    const sources = [
+      { ri: 0, ci: c },       // past[c]
+      { ri: 1, ci: c - 1 },   // present[c-1]
+      { ri: 1, ci: c },       // present[c]
+      { ri: 1, ci: c + 1 },   // present[c+1]
+    ];
+    const fx = padL + c * dx;
+    const fy = rows[2].y - sFuture[c] * scaleY;
+
+    sources.forEach(({ ri, ci }) => {
+      const sx = padL + ci * dx;
+      const sy = rows[ri].y - rows[ri].data[ci] * scaleY;
+      ctx.strokeStyle = 'rgba(240,160,64,0.28)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(fx, fy + R);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+  }
+
+  // Draw vertical guide for active column
+  if (c > 0 && c < SN - 1) {
+    const gx = padL + c * dx;
+    ctx.strokeStyle = 'rgba(240,160,64,0.10)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(gx, 20);
+    ctx.lineTo(gx, 280);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw rows
+  rows.forEach((row, ri) => {
+    // Baseline
+    ctx.strokeStyle = '#161616';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 5]);
+    ctx.beginPath();
+    ctx.moveTo(padL, row.y);
+    ctx.lineTo(padL + usableW, row.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Row label
+    ctx.font = '600 11px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = row.col;
+    ctx.fillText(row.label, padL - 10, row.y + 4);
+
+    // Wave line
+    ctx.strokeStyle = row.col + '30';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < SN; i++) {
+      const x = padL + i * dx;
+      const y = row.y - row.data[i] * scaleY;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Nodes
+    for (let i = 0; i < SN; i++) {
+      const x = padL + i * dx;
+      const y = row.y - row.data[i] * scaleY;
+
+      const isEndpoint = (i === 0 || i === SN - 1);
+      const isStencil = c > 0 && c < SN - 1 && (
+        (ri === 0 && i === c) ||
+        (ri === 1 && (i === c - 1 || i === c || i === c + 1))
+      );
+      const isTarget = ri === 2 && i === c && c > 0;
+      const isComputed = ri === 2 && i > 0 && i < SN - 1 && i < sCol;
+
+      let fill, stroke, lw = 1.5;
+      if (isEndpoint) {
+        fill = '#111'; stroke = '#2a2a2a'; lw = 1;
+      } else if (isStencil) {
+        fill = '#2a1a00'; stroke = '#f0a040'; lw = 2;
+      } else if (isTarget) {
+        fill = '#0a2a10'; stroke = '#88ffaa'; lw = 2;
+      } else if (isComputed) {
+        fill = '#0a2010'; stroke = '#4caf50'; lw = 1.5;
+      } else if (ri === 2) {
+        fill = '#0d0d0d'; stroke = '#222'; lw = 1;
+      } else {
+        fill = row.col + '18'; stroke = row.col + '88'; lw = 1.5;
+      }
+
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(x, y, isEndpoint ? R * 0.7 : R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  });
+
+  // Node index ticks at bottom (every 4)
+  ctx.fillStyle = '#1e1e1e';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  for (let i = 0; i < SN; i += 4) {
+    ctx.fillText(i, padL + i * dx, 292);
+  }
+}
+
+document.getElementById('s-step-btn').addEventListener('click', () => {
+  stopAuto();
+  stencilAdvance();
+});
+
+document.getElementById('s-auto-btn').addEventListener('click', function () {
+  if (sAutoId) { stopAuto(); return; }
+  this.textContent = 'Stop ■';
+  let last = 0;
+  const SPEED = 90; // ms per step
+  function tick(t) {
+    if (t - last >= SPEED) { stencilAdvance(); last = t; }
+    sAutoId = requestAnimationFrame(tick);
+  }
+  sAutoId = requestAnimationFrame(tick);
+});
+
+document.getElementById('s-reset-btn').addEventListener('click', () => {
+  stopAuto();
+  initStencil();
+});
+
+function stopAuto() {
+  if (sAutoId) { cancelAnimationFrame(sAutoId); sAutoId = null; }
+  const btn = document.getElementById('s-auto-btn');
+  if (btn) btn.textContent = 'Auto ▶';
+}
+
+// ─── SECTION 4: Running simulation ───────────────────────────────────────
+const RUN_SR  = 44100;
+const RUN_DUR = 2.0;
+const SNAP_IV = 256;
+const DAMP    = 0.9985;
+
+function synthesizeFD(freq) {
+  const N = Math.round(RUN_SR * 0.96 / (2 * freq));
+  const r = (RUN_SR * 0.96) / (2 * freq * N);
+  const r2 = r * r;
+  let past    = new Float32Array(N);
+  let present = new Float32Array(N);
+  let future  = new Float32Array(N);
+
+  // Triangular pluck at 1/4 position
+  const peak = Math.floor(N / 4);
+  for (let i = 1; i < N - 1; i++) {
+    present[i] = (i < peak ? i / peak : (N - 1 - i) / (N - 1 - peak)) * 0.75;
+  }
+  past.set(present);
+
+  const total  = Math.round(RUN_DUR * RUN_SR);
+  const output = new Float32Array(total);
+  const outNode = Math.floor(N * 0.68);
+  const snaps  = [];
+
+  for (let t = 0; t < total; t++) {
+    for (let i = 1; i < N - 1; i++) {
+      future[i] = (2 * present[i] - past[i]
+        + r2 * (present[i - 1] - 2 * present[i] + present[i + 1])) * DAMP;
+    }
+    output[t] = present[outNode];
+    const tmp = past; past = present; present = future; future = tmp;
+    if (t % SNAP_IV === 0) snaps.push(Float32Array.from(present));
+  }
+  return { output, snaps, N, outNode, r };
+}
+
+let runSnaps = [], runN = 0, runOutNode = 0;
+let runAnimId = null, runSrc = null, runStart = 0;
+
+function drawRunCanvas(state) {
+  const canvas = document.getElementById('run-canvas');
+  const W = canvas.clientWidth;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 140);
+  if (!state) {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#333';
+    ctx.fillText('Press Pluck to run the simulation', W / 2, 74);
+    return;
+  }
+  const N = state.length;
+  const padX = 20, midY = 70, scaleY = 52;
+
+  // String line with glow
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 2;
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = '#5b9bd5';
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const x = padX + (i / (N - 1)) * (W - padX * 2);
+    const y = midY - state[i] * scaleY;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Fixed endpoints
+  ctx.fillStyle = '#555';
+  [padX, W - padX].forEach(x => {
+    ctx.beginPath();
+    ctx.arc(x, midY, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Output node marker
+  const ox = padX + (runOutNode / (N - 1)) * (W - padX * 2);
+  ctx.strokeStyle = '#f0a04066';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(ox, 10);
+  ctx.lineTo(ox, 130);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f0a040';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('out', ox, 9);
+}
+
+document.getElementById('run-pluck-btn').addEventListener('click', () => {
+  if (runAnimId) cancelAnimationFrame(runAnimId);
+  if (runSrc) { try { runSrc.stop(); } catch (e) {} }
+  const freq = parseInt(document.getElementById('run-freq-sel').value);
+  setStat('run-stat', 'Generating…');
+  document.getElementById('run-info').textContent = '';
+  setTimeout(() => {
+    const { output, snaps, N, outNode, r } = synthesizeFD(freq);
+    runSnaps = snaps; runN = N; runOutNode = outNode;
+    document.getElementById('run-info').textContent =
+      `N = ${N} nodes  ·  r = ${r.toFixed(3)}  ·  out @ node ${outNode}`;
+    setStat('run-stat', '');
+    runSrc = playPCM(output);
+    runStart = performance.now();
+    function animRun() {
+      const elapsed = (performance.now() - runStart) / 1000;
+      if (elapsed > RUN_DUR + 0.1) { drawRunCanvas(runSnaps[runSnaps.length - 1]); return; }
+      const idx = Math.min(Math.floor(elapsed * RUN_SR / SNAP_IV), runSnaps.length - 1);
+      drawRunCanvas(runSnaps[idx]);
+      runAnimId = requestAnimationFrame(animRun);
+    }
+    runAnimId = requestAnimationFrame(animRun);
+  }, 10);
+});
+
+// ─── SECTION 5: Karplus-Strong ────────────────────────────────────────────
+const KS_VISUAL_N = 52;  // dots shown on ring (for display only)
+let ksBuf  = new Float32Array(KS_VISUAL_N);
+let ksHead = 0;
+let ksAnimId = null, ksSrc = null;
+let ksRunning = false;
+let ksWaveHist = new Float32Array(2048);
+
+function synthesizeKS(N, durSec, damp = 0.996, sr = 44100) {
+  const buf = new Float32Array(N);
+  for (let i = 0; i < N; i++) buf[i] = (Math.random() * 2 - 1) * 0.8;
+  const total = Math.round(durSec * sr);
+  const out = new Float32Array(total);
+  let head = 0;
+  for (let t = 0; t < total; t++) {
+    const next = (head + 1) % N;
+    buf[head] = 0.5 * (buf[head] + buf[next]) * damp;
+    out[t] = buf[head];
+    head = (head + 1) % N;
+  }
+  return out;
+}
+
+function drawKS() {
+  const canvas = document.getElementById('ks-canvas');
+  const W = canvas.clientWidth;
+  const H = 300;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2 - 8;
+  const Rring = Math.min(W * 0.38, 110);
+  const rdot  = Math.max(4, Math.min(6, (2 * Math.PI * Rring / KS_VISUAL_N) * 0.42));
+
+  // Ring guide
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, Rring, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Dots
+  for (let i = 0; i < KS_VISUAL_N; i++) {
+    const angle = (i / KS_VISUAL_N) * Math.PI * 2 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * Rring;
+    const y = cy + Math.sin(angle) * Rring;
+    const val = ksBuf[i];
+    const bright = Math.min(1, Math.abs(val) * 1.4);
+    const isHead = i === ksHead;
+    const isNext = i === (ksHead + 1) % KS_VISUAL_N;
+
+    let fill, stroke, lw = 1.5;
+    if (isHead) {
+      fill = '#1a2e1a'; stroke = '#4caf50'; lw = 2;
+    } else if (isNext) {
+      fill = '#0a1828'; stroke = '#5b9bd5'; lw = 2;
+    } else {
+      const r = val > 0 ? Math.floor(16 + bright * 20) : Math.floor(16 + bright * 40);
+      const g = val > 0 ? Math.floor(32 + bright * 60) : 18;
+      const b = val > 0 ? Math.floor(48 + bright * 70) : Math.floor(32 + bright * 55);
+      fill = `rgb(${r},${g},${b})`;
+      stroke = val > 0
+        ? `rgba(91,155,213,${0.15 + bright * 0.6})`
+        : `rgba(200,80,80,${0.15 + bright * 0.6})`;
+    }
+
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.arc(x, y, rdot, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Spoke: center → read head
+  const ha = (ksHead / KS_VISUAL_N) * Math.PI * 2 - Math.PI / 2;
+  const hx = cx + Math.cos(ha) * Rring;
+  const hy = cy + Math.sin(ha) * Rring;
+  ctx.strokeStyle = '#4caf5066';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(hx, hy);
+  ctx.stroke();
+
+  // Averaging arc: head → head+1
+  const na = ((ksHead + 1) % KS_VISUAL_N / KS_VISUAL_N) * Math.PI * 2 - Math.PI / 2;
+  const nx = cx + Math.cos(na) * Rring;
+  const ny = cy + Math.sin(na) * Rring;
+  ctx.strokeStyle = 'rgba(91,155,213,0.5)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(nx, ny);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ½ label on the arc
+  const mx = (hx + nx) / 2 + Math.cos(ha + 0.15) * 14;
+  const my = (hy + ny) / 2 + Math.sin(ha + 0.15) * 14;
+  ctx.fillStyle = '#5b9bd5';
+  ctx.font = '600 10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('½', mx, my + 3);
+
+  // Output arrow label near head
+  const lx = cx + Math.cos(ha) * (Rring + 18);
+  const ly = cy + Math.sin(ha) * (Rring + 18);
+  ctx.fillStyle = '#f0a040';
+  ctx.font = '600 10px -apple-system, sans-serif';
+  ctx.textAlign = Math.cos(ha) > 0 ? 'left' : 'right';
+  ctx.fillText('▶ out', lx, ly + 3);
+
+  // Centre labels
+  ctx.fillStyle = '#4caf50';
+  ctx.font = '600 11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('read /write', cx, cy - 5);
+  ctx.fillStyle = '#444';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText(`head = ${ksHead}`, cx, cy + 12);
+
+  // Legend at bottom
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`N = ${KS_VISUAL_N} (display)`, cx, H - 6);
+}
+
+function drawKSWave() {
+  const canvas = document.getElementById('ks-wave-canvas');
+  const W = canvas.clientWidth;
+  const H = 300;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const N = ksWaveHist.length;
+  const midY = H / 2;
+  const scaleY = (H / 2 - 20) * 0.85;
+  const padX = 12;
+
+  // Zero line
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padX, midY);
+  ctx.lineTo(W - padX, midY);
+  ctx.stroke();
+
+  // Waveform
+  ctx.strokeStyle = '#4caf50';
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = 6;
+  ctx.shadowColor = '#4caf50';
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const x = padX + (i / (N - 1)) * (W - padX * 2);
+    const y = midY - ksWaveHist[i] * scaleY;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Labels
+  ctx.fillStyle = '#333';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('2048 samples', W - padX, H - 6);
+}
+
+let ksWavePos = 0;
+
+document.getElementById('ks-pluck-btn').addEventListener('click', () => {
+  if (ksAnimId) cancelAnimationFrame(ksAnimId);
+  if (ksSrc) { try { ksSrc.stop(); } catch (e) {} }
+
+  const freq = parseInt(document.getElementById('ks-freq-sel').value);
+  const N_audio = Math.round(44100 / freq);
+
+  // Visual ring buffer — noise burst
+  for (let i = 0; i < KS_VISUAL_N; i++) ksBuf[i] = (Math.random() * 2 - 1) * 0.8;
+  ksHead = 0;
+  ksWaveHist.fill(0);
+  ksWavePos = 0;
+
+  // Audio synthesis
+  const audioOut = synthesizeKS(N_audio, 2.5, 0.996);
+  ksSrc = playPCM(audioOut);
+
+  document.getElementById('ks-pause-btn').disabled = false;
+  document.getElementById('ks-pause-btn').textContent = 'Pause';
+  setStat('ks-stat', `N = ${N_audio}  ·  f₀ = 44100 / ${N_audio} ≈ ${Math.round(44100 / N_audio)} Hz`);
+
+  const STEPS_PER_FRAME = 10;
+  function ksFrame() {
+    for (let s = 0; s < STEPS_PER_FRAME; s++) {
+      const next = (ksHead + 1) % KS_VISUAL_N;
+      const out = ksBuf[ksHead];
+      ksBuf[ksHead] = 0.5 * (ksBuf[ksHead] + ksBuf[next]) * 0.996;
+      ksHead = (ksHead + 1) % KS_VISUAL_N;
+      // accumulate into wave history
+      ksWaveHist[ksWavePos % ksWaveHist.length] = out;
+      ksWavePos++;
+    }
+    drawKS();
+    drawKSWave();
+    ksAnimId = requestAnimationFrame(ksFrame);
+  }
+  ksAnimId = requestAnimationFrame(ksFrame);
+});
+
+document.getElementById('ks-pause-btn').addEventListener('click', function () {
+  if (ksAnimId) {
+    cancelAnimationFrame(ksAnimId);
+    ksAnimId = null;
+    this.textContent = 'Resume ▶';
+  } else {
+    this.textContent = 'Pause';
+    function ksFrame() {
+      const next = (ksHead + 1) % KS_VISUAL_N;
+      const out = ksBuf[ksHead];
+      ksBuf[ksHead] = 0.5 * (ksBuf[ksHead] + ksBuf[next]) * 0.996;
+      ksHead = (ksHead + 1) % KS_VISUAL_N;
+      ksWaveHist[ksWavePos % ksWaveHist.length] = out;
+      ksWavePos++;
+      drawKS();
+      drawKSWave();
+      ksAnimId = requestAnimationFrame(ksFrame);
+    }
+    ksAnimId = requestAnimationFrame(ksFrame);
+  }
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function setStat(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function redrawAll() {
+  drawStencil();
+  drawRunCanvas(runSnaps.length ? runSnaps[runSnaps.length - 1] : null);
+  drawKS();
+  drawKSWave();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+initStencil();
+drawRunCanvas(null);
+drawKS();
+drawKSWave();
+window.addEventListener('resize', redrawAll);
+</script>
+</body>
+</html>
