@@ -153,7 +153,37 @@
           </div>
         );
 
-        const POWER_TUNING_MULTIPLIER = 1.5;
+        // --- Physics constants ---
+        const POWER_TUNING_MULTIPLIER  = 1.5;
+        const BASE_EEI_MULTIPLIER      = 12.5;
+        const WIDTH_MULTIPLIERS        = { 1: 1.4,  3: 1.0,  6: 0.7  };
+        const CROSSHATCH_MULTIPLIERS   = { 1: 2.1,  3: 1.75, 6: 1.35 };
+
+        // --- Pure physics functions ---
+
+        // Energy density (J/mm²)
+        const calcRawDensity = (powerW, speedMmS, lpc) =>
+          powerW / (Math.max(speedMmS, 1) * (10 / lpc));
+
+        // Base EEI after material adjustments, before focus penalty
+        const calcMaterialEei = (density, thickness, surface) => {
+          let eei = density * BASE_EEI_MULTIPLIER;
+          if (thickness === 'thin')   eei *= 1.15;
+          if (thickness === 'thick')  eei *= 0.85;
+          if (surface === 'brushed')  eei *= 1.05;
+          if (surface === 'polished') eei *= 0.95;
+          return eei;
+        };
+
+        // Focus attenuation: exp(-0.04 × |focusMm|)
+        const calcFocusPenalty = (focusMm) => Math.exp(-0.04 * Math.abs(focusMm));
+
+        // Apply vector-width and crosshatch multipliers to a base EEI
+        const applyWidthFactors = (baseEei, widthMm, useCrosshatch) => {
+          let eei = baseEei * WIDTH_MULTIPLIERS[widthMm];
+          if (useCrosshatch) eei *= CROSSHATCH_MULTIPLIERS[widthMm];
+          return eei;
+        };
 
         function App() {
           const [thickness, setThickness] = useState('medium');
@@ -183,89 +213,45 @@
           });
 
           useEffect(() => {
-            const currentPowerW = (maxPower * POWER_TUNING_MULTIPLIER) * (powerPercent / 100);
-            const spacingMm = 10 / lpc;
-            const speedSafeguard = speed > 0 ? speed : 1;
-            let rawDensity = currentPowerW / (speedSafeguard * spacingMm);
+            const powerW  = maxPower * POWER_TUNING_MULTIPLIER * (powerPercent / 100);
+            const density = calcRawDensity(powerW, speed, lpc);
+            const matEei  = calcMaterialEei(density, thickness, surface);
+            const baseEei = matEei * calcFocusPenalty(focus);
 
-            const BASE_EEI_MULTIPLIER = 12.5;
-            let baseEei = rawDensity * BASE_EEI_MULTIPLIER;
-
-            if (thickness === 'thin') baseEei *= 1.15;
-            if (thickness === 'thick') baseEei *= 0.85;
-            if (surface === 'brushed') baseEei *= 1.05;
-            if (surface === 'polished') baseEei *= 0.95;
-
-            const focusPenalty = Math.exp(-0.04 * Math.abs(focus));
-            baseEei *= focusPenalty;
-
-            const widthMultipliers = { 1: 1.4, 3: 1.0, 6: 0.7 };
-            const crossHatchMultipliers = { 1: 2.1, 3: 1.75, 6: 1.35 };
-
-            let unfocusedBaseEei = rawDensity * 12.5;
-            if (thickness === 'thin') unfocusedBaseEei *= 1.15;
-            if (thickness === 'thick') unfocusedBaseEei *= 0.85;
-            if (surface === 'brushed') unfocusedBaseEei *= 1.05;
-            if (surface === 'polished') unfocusedBaseEei *= 0.95;
-
-            let mxTilt = direction === 'bidirectional' ? 1.45 : 0.92;
-            let myTilt = crosshatch ? (direction === 'bidirectional' ? mxTilt : 0.92) : 0.88;
-
+            // Tilt gradient — 21 stops, each with its own local focus position
+            const mxTilt = direction === 'bidirectional' ? 1.45 : 0.92;
+            const myTilt = crosshatch ? (direction === 'bidirectional' ? mxTilt : 0.92) : 0.88;
             const stops = [];
             for (let i = 0; i <= 20; i++) {
-              const p = i / 20;
+              const p          = i / 20;
               const localFocus = focus + tiltLeft + p * (tiltRight - tiltLeft);
-              const localFocusPenalty = Math.exp(-0.04 * Math.abs(localFocus));
-
-              let centerEei = unfocusedBaseEei * localFocusPenalty * widthMultipliers[6];
-              if (crosshatch) centerEei *= crossHatchMultipliers[6];
-
-              let edgeXEei = centerEei * mxTilt;
-              let edgeYEei = centerEei * myTilt;
-              let cornerEei = centerEei * mxTilt * myTilt;
-
-              let blendedEei = (centerEei * 0.5) + (edgeXEei * 0.2) + (edgeYEei * 0.2) + (cornerEei * 0.1);
-
-              const color = interpolateColor(blendedEei).hex;
-              stops.push(`${color} ${p * 100}%`);
+              const cEei       = applyWidthFactors(matEei * calcFocusPenalty(localFocus), 6, crosshatch);
+              const blended    = cEei * 0.5 + cEei * mxTilt * 0.2 + cEei * myTilt * 0.2 + cEei * mxTilt * myTilt * 0.1;
+              stops.push(`${interpolateColor(blended).hex} ${p * 100}%`);
             }
             setTiltGradientCSS(`linear-gradient(to right, ${stops.join(', ')})`);
 
+            // Vector swatches — 1mm / 3mm / 6mm
             const newResults = {};
             [1, 3, 6].forEach(w => {
-              let centerEei = baseEei * widthMultipliers[w];
-              if (crosshatch) centerEei *= crossHatchMultipliers[w];
-
-              let mx = 1.0;
-              if (direction === 'bidirectional') {
-                mx = w === 1 ? 1.15 : w === 3 ? 1.3 : 1.45;
-              } else {
-                mx = 0.92;
-              }
-
-              let my = 1.0;
-              if (crosshatch) {
-                my = direction === 'bidirectional' ? mx : 0.92;
-              } else {
-                my = 0.88;
-              }
-
-              let edgeXEei = centerEei * mx;
-              let edgeYEei = centerEei * my;
-              let cornerEei = centerEei * mx * my;
-
+              const cEei = applyWidthFactors(baseEei, w, crosshatch);
+              const mx   = direction === 'bidirectional' ? (w === 1 ? 1.15 : w === 3 ? 1.3 : 1.45) : 0.92;
+              const my   = crosshatch ? (direction === 'bidirectional' ? mx : 0.92) : 0.88;
+              const eXEei = cEei * mx;
+              const eYEei = cEei * my;
+              const coEei = cEei * mx * my;
               newResults[w] = {
-                center: interpolateColor(centerEei),
-                edgeX: interpolateColor(edgeXEei),
-                edgeY: interpolateColor(edgeYEei),
-                corner: interpolateColor(cornerEei),
-                minEei: Math.min(centerEei, edgeXEei, edgeYEei, cornerEei).toFixed(1),
-                maxEei: Math.max(centerEei, edgeXEei, edgeYEei, cornerEei).toFixed(1),
-                centerEei: centerEei.toFixed(1)
+                center:    interpolateColor(cEei),
+                edgeX:     interpolateColor(eXEei),
+                edgeY:     interpolateColor(eYEei),
+                corner:    interpolateColor(coEei),
+                minEei:    Math.min(cEei, eXEei, eYEei, coEei).toFixed(1),
+                maxEei:    Math.max(cEei, eXEei, eYEei, coEei).toFixed(1),
+                centerEei: cEei.toFixed(1)
               };
             });
 
-            setEnergyDensity(rawDensity.toFixed(3));
+            setEnergyDensity(density.toFixed(3));
             setResults(newResults);
 
           }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight]);
@@ -369,21 +355,14 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
             setTimeout(() => setToastMsg(''), 3000);
           };
 
-          // Computes the physics-predicted oxide colour for a given power % and speed.
-          // Uses current app state for lpc, thickness, surface, focus, maxPower.
+          // Physics-predicted oxide colour for a given power % and speed.
+          // Uses current app state for maxPower, lpc, thickness, surface, focus.
           const computePaletteColor = (powerPct, speedMmS) => {
-            const powerW = maxPower * POWER_TUNING_MULTIPLIER * (powerPct / 100);
-            const spacingMm = 10 / lpc;
-            const rawDensity = powerW / (Math.max(speedMmS, 1) * spacingMm);
-            let baseEei = rawDensity * 12.5;
-            if (thickness === 'thin') baseEei *= 1.15;
-            if (thickness === 'thick') baseEei *= 0.85;
-            if (surface === 'brushed') baseEei *= 1.05;
-            if (surface === 'polished') baseEei *= 0.95;
-            const focusPenalty = Math.exp(-0.04 * Math.abs(focus));
-            baseEei *= focusPenalty;
-            let centerEei = baseEei * 0.7 * 1.35;
-            return interpolateColor(centerEei);
+            const powerW  = maxPower * POWER_TUNING_MULTIPLIER * (powerPct / 100);
+            const density = calcRawDensity(powerW, speedMmS, lpc);
+            const matEei  = calcMaterialEei(density, thickness, surface);
+            const baseEei = matEei * calcFocusPenalty(focus);
+            return interpolateColor(applyWidthFactors(baseEei, 6, true));
           };
 
           return (
