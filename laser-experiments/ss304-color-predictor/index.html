@@ -167,8 +167,8 @@
           powerW / (Math.max(speedMmS, 1) * (10 / lpc));
 
         // Base EEI after material adjustments, before focus penalty
-        const calcMaterialEei = (density, thickness, surface) => {
-          let eei = density * BASE_EEI_MULTIPLIER;
+        const calcMaterialEei = (density, thickness, surface, eeiMultiplier = BASE_EEI_MULTIPLIER) => {
+          let eei = density * eeiMultiplier;
           if (thickness === 'thin')   eei *= 1.15;
           if (thickness === 'thick')  eei *= 0.85;
           if (surface === 'brushed')  eei *= 1.05;
@@ -203,6 +203,8 @@
           const [activeSwatchInfo, setActiveSwatchInfo] = useState(null);
           const [isMagnified, setIsMagnified] = useState(false);
           const [powerTuningMultiplier, setPowerTuningMultiplier] = useState(DEFAULT_POWER_TUNING_MULTIPLIER);
+          const [baseEeiMultiplier, setBaseEeiMultiplier] = useState(BASE_EEI_MULTIPLIER);
+          const [showTuning, setShowTuning] = useState(false);
           const [showPalette, setShowPalette] = useState(false);
           const [showPhysicsInfo, setShowPhysicsInfo] = useState(false);
           const [toastMsg, setToastMsg] = useState('');
@@ -218,7 +220,7 @@
           useEffect(() => {
             const powerW  = maxPower * powerTuningMultiplier * (powerPercent / 100);
             const density = calcRawDensity(powerW, speed, lpc);
-            const matEei  = calcMaterialEei(density, thickness, surface);
+            const matEei  = calcMaterialEei(density, thickness, surface, baseEeiMultiplier);
             const baseEei = matEei * calcFocusPenalty(focus);
 
             // Tilt gradient — 21 stops, each with its own local focus position
@@ -257,7 +259,7 @@
             setEnergyDensity(density.toFixed(3));
             setResults(newResults);
 
-          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight, powerTuningMultiplier]);
+          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight, powerTuningMultiplier, baseEeiMultiplier]);
 
           const handleShare = async () => {
             setToastMsg('Generating image...');
@@ -363,7 +365,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
           const computePaletteColor = (powerPct, speedMmS) => {
             const powerW  = maxPower * powerTuningMultiplier * (powerPct / 100);
             const density = calcRawDensity(powerW, speedMmS, lpc);
-            const matEei  = calcMaterialEei(density, thickness, surface);
+            const matEei  = calcMaterialEei(density, thickness, surface, baseEeiMultiplier);
             const baseEei = matEei * calcFocusPenalty(focus);
             return interpolateColor(applyWidthFactors(baseEei, 6, true));
           };
@@ -680,29 +682,6 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                         </div>
                       </div>
 
-                      <div className="pt-1 border-t border-slate-800/60">
-                        <InfoLabel label="Power Tuning Multiplier" id="powerTuning" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                          <div className="flex items-center gap-2">
-                            <span className={`font-mono text-xs ${powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER ? 'text-orange-400' : 'text-slate-400'}`}>
-                              ×{powerTuningMultiplier.toFixed(2)}
-                            </span>
-                            {powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER && (
-                              <button
-                                onClick={() => setPowerTuningMultiplier(DEFAULT_POWER_TUNING_MULTIPLIER)}
-                                className="text-[10px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 py-0.5 transition-colors"
-                              >reset</button>
-                            )}
-                          </div>
-                        </InfoLabel>
-                        <input type="range" min="0.3" max="3.0" step="0.05" value={powerTuningMultiplier}
-                          onChange={e => setPowerTuningMultiplier(Number(e.target.value))}
-                          className="touch-slider py-1" style={{ '--slider-color': powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER ? '#f97316' : '#f59e0b' }} />
-                        <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                          <span>0.3 (cooler)</span>
-                          <span className="text-slate-700">1.5 default</span>
-                          <span>3.0 (hotter)</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -993,6 +972,52 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                   </div>
 
                   <div className="flex-1 flex flex-col justify-end gap-0 pb-1 mt-2 md:mt-0">
+
+                    {/* Tuning expander */}
+                    <div className="px-1 mb-1.5">
+                      <button
+                        onClick={() => setShowTuning(!showTuning)}
+                        className={`flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider transition-colors px-1.5 py-0.5 rounded border ${showTuning ? 'text-orange-400 border-orange-500/30 bg-orange-500/10' : 'text-slate-500 border-slate-700 bg-slate-800 hover:text-slate-300'}`}
+                      >
+                        <Settings className="w-2.5 h-2.5" />
+                        Tuning
+                        <ChevronRight className={`w-2.5 h-2.5 transition-transform ${showTuning ? '-rotate-90' : 'rotate-90'}`} />
+                      </button>
+                    </div>
+
+                    {showTuning && (() => {
+                      const ptmChanged = powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER;
+                      const eeiChanged = baseEeiMultiplier !== BASE_EEI_MULTIPLIER;
+                      return (
+                        <div className="px-1 mb-2 space-y-2 border border-orange-500/20 bg-orange-500/5 rounded-lg p-2">
+                          <div>
+                            <div className="flex justify-between items-center mb-0.5">
+                              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Power Tuning</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-mono ${ptmChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{powerTuningMultiplier.toFixed(2)}</span>
+                                {ptmChanged && <button onClick={() => setPowerTuningMultiplier(DEFAULT_POWER_TUNING_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
+                              </div>
+                            </div>
+                            <input type="range" min="0.3" max="3.0" step="0.05" value={powerTuningMultiplier}
+                              onChange={e => setPowerTuningMultiplier(Number(e.target.value))}
+                              className="touch-slider" style={{ '--slider-color': ptmChanged ? '#f97316' : '#64748b' }} />
+                          </div>
+                          <div>
+                            <div className="flex justify-between items-center mb-0.5">
+                              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">EEI Multiplier</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-mono ${eeiChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{baseEeiMultiplier.toFixed(1)}</span>
+                                {eeiChanged && <button onClick={() => setBaseEeiMultiplier(BASE_EEI_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
+                              </div>
+                            </div>
+                            <input type="range" min="5" max="30" step="0.5" value={baseEeiMultiplier}
+                              onChange={e => setBaseEeiMultiplier(Number(e.target.value))}
+                              className="touch-slider" style={{ '--slider-color': eeiChanged ? '#f97316' : '#64748b' }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="flex justify-between items-end px-1">
                       <div className="flex flex-col">
                         <span className="text-[9px] text-slate-400 uppercase">Raw Density</span>
