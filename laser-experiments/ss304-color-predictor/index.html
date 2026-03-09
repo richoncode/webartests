@@ -80,6 +80,22 @@
           tiltRight: "Focus offset at the right edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece."
         };
 
+        // Calibration reference table — brushed <1mm SS304, powers in % of laser max
+        const CALIBRATION_DATA = [
+          { color: 'Dark Blue',       hex: '#1a3a8a', powers: { 25: 8.5,  50: 10,   100: 13, 200: 19, 300: 24 } },
+          { color: 'Blue Medium',     hex: '#2855b8', powers: { 25: 9,    50: 11,   100: 14, 200: 20, 300: 25 } },
+          { color: 'Pale Blue',       hex: '#5590d8', powers: { 25: 9.5,  50: 12,   100: 15, 200: 21, 300: 26 } },
+          { color: 'Pale Blue-Green', hex: '#50aaa8', powers: { 25: 10,   50: 13,   100: 17, 200: 24, 300: 32 } },
+          { color: 'Yellow',          hex: '#d4c840', powers: { 25: 10.5, 50: 14,   100: 19, 200: 27, 300: 37 } },
+          { color: 'Pale Orange',     hex: '#d89048', powers: { 25: 11,   50: 15,   100: 21, 200: 32, 300: 42 } },
+          { color: 'Dark Orange',     hex: '#c85020', powers: { 25: 11.5, 50: 16,   100: 23, 200: 34, 300: 47 } },
+          { color: 'Red',             hex: '#a82020', powers: { 25: 12,   50: 16.5, 100: 24, 200: 36, 300: 50 } },
+          { color: 'Pale Purple',     hex: '#8050a0', powers: { 25: 12.5, 50: 17.5, 100: 25, 200: 39, 300: 53 } },
+          { color: 'Dark Purple',     hex: '#502880', powers: { 25: 13,   50: 18.5, 100: 26, 200: 44, 300: 60 } },
+          { color: 'Dark Turquoise',  hex: '#207878', powers: { 25: 14,   50: 20.5, 100: 29, 200: 46, 300: 65 } },
+          { color: 'Dark Green',      hex: '#205840', powers: { 25: 15,   50: 21.5, 100: 32, 200: 49, 300: 70 } },
+        ];
+
         const hexToRgb = (hex) => {
           const r = parseInt(hex.slice(1, 3), 16);
           const g = parseInt(hex.slice(3, 5), 16);
@@ -381,43 +397,41 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                   <div className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl">
                     <div className="flex items-start justify-between p-4 border-b border-slate-800">
                       <div>
-                        <h2 className="text-base font-bold text-white">Color Palette — 6mm Vector</h2>
-                        <p className="text-xs text-slate-400 mt-0.5">{lpc} LPC · {thickness} · {surface} · Bidirectional crosshatch · 8.5–15W rows</p>
+                        <h2 className="text-base font-bold text-white">Colour Reference — Brushed &lt;1mm SS304</h2>
+                        <p className="text-xs text-slate-400 mt-0.5">Min power % per speed · bidirectional crosshatch · 1000 LPC</p>
                       </div>
                       <button onClick={() => setShowPalette(false)} className="text-slate-400 hover:text-white transition-colors p-1 ml-4 flex-shrink-0">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
                     <div className="p-4 overflow-x-auto">
-                      <table className="border-collapse w-full">
+                      <table className="border-collapse">
                         <thead>
                           <tr>
-                            <th className="text-right pr-3 pb-2 text-xs text-slate-500 font-medium w-10">W \ speed</th>
+                            <th className="pr-3 pb-2 text-left text-xs text-slate-500 font-medium whitespace-nowrap">Colour</th>
                             {[25, 50, 100, 200, 300].map(s => (
-                              <th key={s} className="pb-2 px-1 text-center text-xs text-slate-400 font-medium">{s} mm/s</th>
+                              <th key={s} className="pb-2 px-1 text-center text-xs text-slate-400 font-medium whitespace-nowrap">{s}<br/>mm/s</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {[8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 14, 15].map(pw => (
-                            <tr key={pw}>
-                              <td className="pr-3 text-right text-xs text-slate-300 font-semibold py-1">{pw}W</td>
-                              {[25, 50, 100, 200, 300].map(spd => {
-                                const col = computePaletteColor(pw, spd);
-                                return (
-                                  <td key={spd} className="px-0.5 py-0.5">
-                                    <div
-                                      className="rounded-md border border-white/10 flex flex-col justify-end overflow-hidden"
-                                      style={{ backgroundColor: col.hex, width: 72, height: 56 }}
-                                      title={`${pw}W @ ${spd}mm/s → ${col.name}`}
-                                    >
-                                      <div className="px-1 pb-1" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.65))' }}>
-                                        <span className="text-[8px] font-semibold text-white/90 leading-tight block truncate">{col.name}</span>
-                                      </div>
-                                    </div>
-                                  </td>
-                                );
-                              })}
+                          {CALIBRATION_DATA.map(row => (
+                            <tr key={row.color}>
+                              <td className="pr-3 py-0.5 text-xs text-slate-300 font-medium whitespace-nowrap flex items-center gap-1.5">
+                                <div className="w-3 h-3 rounded-sm flex-shrink-0 border border-white/20" style={{ backgroundColor: row.hex }} />
+                                {row.color}
+                              </td>
+                              {[25, 50, 100, 200, 300].map(s => (
+                                <td key={s} className="px-0.5 py-0.5 text-center">
+                                  <div
+                                    className="rounded text-[11px] font-bold py-1 px-2 whitespace-nowrap"
+                                    style={{ backgroundColor: row.hex, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.8)', minWidth: 44 }}
+                                    title={`${row.color} @ ${s}mm/s → ${row.powers[s]}%`}
+                                  >
+                                    {row.powers[s]}%
+                                  </div>
+                                </td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>
@@ -707,24 +721,25 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                           <span>{angleDeg.toFixed(1)}°</span>
                           <span>R</span>
                         </div>
-                        <div className="overflow-hidden rounded-lg mb-4" style={{ height: 36 }}>
+                        <div className="overflow-hidden rounded-lg mb-4 relative border border-white/10" style={{ height: 36 }}>
+                          {/* Gradient bar — scaled tall so rotation never shows gaps */}
                           <div
-                            className="w-full h-full border border-white/10 relative"
+                            className="absolute inset-0"
                             style={{
                               background: tiltGradientCSS,
-                              transform: `rotate(${angleDeg.toFixed(2)}deg)`,
+                              transform: `rotate(${angleDeg.toFixed(2)}deg) scaleY(50)`,
                               transformOrigin: 'center center'
                             }}
-                          >
-                            {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
-                              <div
-                                className="absolute top-0 bottom-0 w-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
-                                style={{ left: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
-                              >
-                                <span className="absolute top-1/2 -translate-y-1/2 left-1 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
-                              </div>
-                            )}
-                          </div>
+                          />
+                          {/* Zero-focus crossing line — unrotated overlay */}
+                          {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
+                            <div
+                              className="absolute top-0 bottom-0 w-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
+                              style={{ left: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
+                            >
+                              <span className="absolute top-1/2 -translate-y-1/2 left-1 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Sliders side by side */}
