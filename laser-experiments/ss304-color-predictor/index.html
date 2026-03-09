@@ -77,7 +77,8 @@
           direction: "Hatch direction determines how the laser fills a shape. Unidirectional allows cooling during the 'flyback' return. Bidirectional fires continuously back-and-forth, causing severe heat spikes at the edges due to zero turnaround cooling.",
           crosshatch: "Running a 90° secondary pass immediately after the first. It doubles total energy and multiplies heat retention, as the second pass hits already-hot steel. Highly intense on small vectors.",
           tiltLeft: "Focus offset at the left edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece.",
-          tiltRight: "Focus offset at the right edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece."
+          tiltRight: "Focus offset at the right edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece.",
+          powerTuning: "Scales all wattage values uniformly. Use this to align the model with your actual laser results. If colours appear at lower power than predicted, decrease this value. If colours appear at higher power than predicted, increase it. Default 1.5 was calibrated against a reference laser at 100mm/s on brushed <1mm SS304."
         };
 
         // Calibration reference table — brushed <1mm SS304, powers in % of laser max
@@ -154,7 +155,7 @@
         );
 
         // --- Physics constants ---
-        const POWER_TUNING_MULTIPLIER  = 1.5;
+        const DEFAULT_POWER_TUNING_MULTIPLIER = 1.5;
         const BASE_EEI_MULTIPLIER      = 12.5;
         const WIDTH_MULTIPLIERS        = { 1: 1.4,  3: 1.0,  6: 0.7  };
         const CROSSHATCH_MULTIPLIERS   = { 1: 2.1,  3: 1.75, 6: 1.35 };
@@ -201,6 +202,7 @@
           const [activeInfo, setActiveInfo] = useState(null);
           const [activeSwatchInfo, setActiveSwatchInfo] = useState(null);
           const [isMagnified, setIsMagnified] = useState(false);
+          const [powerTuningMultiplier, setPowerTuningMultiplier] = useState(DEFAULT_POWER_TUNING_MULTIPLIER);
           const [showPalette, setShowPalette] = useState(false);
           const [showPhysicsInfo, setShowPhysicsInfo] = useState(false);
           const [toastMsg, setToastMsg] = useState('');
@@ -214,7 +216,7 @@
           });
 
           useEffect(() => {
-            const powerW  = maxPower * POWER_TUNING_MULTIPLIER * (powerPercent / 100);
+            const powerW  = maxPower * powerTuningMultiplier * (powerPercent / 100);
             const density = calcRawDensity(powerW, speed, lpc);
             const matEei  = calcMaterialEei(density, thickness, surface);
             const baseEei = matEei * calcFocusPenalty(focus);
@@ -255,7 +257,7 @@
             setEnergyDensity(density.toFixed(3));
             setResults(newResults);
 
-          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight]);
+          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight, powerTuningMultiplier]);
 
           const handleShare = async () => {
             setToastMsg('Generating image...');
@@ -359,7 +361,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
           // Physics-predicted oxide colour for a given power % and speed.
           // Uses current app state for maxPower, lpc, thickness, surface, focus.
           const computePaletteColor = (powerPct, speedMmS) => {
-            const powerW  = maxPower * POWER_TUNING_MULTIPLIER * (powerPct / 100);
+            const powerW  = maxPower * powerTuningMultiplier * (powerPct / 100);
             const density = calcRawDensity(powerW, speedMmS, lpc);
             const matEei  = calcMaterialEei(density, thickness, surface);
             const baseEei = matEei * calcFocusPenalty(focus);
@@ -675,6 +677,30 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                           <span>-5 (Below)</span>
                           <span>0 (Surface)</span>
                           <span>+5 (Above)</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 border-t border-slate-800/60">
+                        <InfoLabel label="Power Tuning Multiplier" id="powerTuning" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono text-xs ${powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER ? 'text-orange-400' : 'text-slate-400'}`}>
+                              ×{powerTuningMultiplier.toFixed(2)}
+                            </span>
+                            {powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER && (
+                              <button
+                                onClick={() => setPowerTuningMultiplier(DEFAULT_POWER_TUNING_MULTIPLIER)}
+                                className="text-[10px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 py-0.5 transition-colors"
+                              >reset</button>
+                            )}
+                          </div>
+                        </InfoLabel>
+                        <input type="range" min="0.3" max="3.0" step="0.05" value={powerTuningMultiplier}
+                          onChange={e => setPowerTuningMultiplier(Number(e.target.value))}
+                          className="touch-slider py-1" style={{ '--slider-color': powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER ? '#f97316' : '#f59e0b' }} />
+                        <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
+                          <span>0.3 (cooler)</span>
+                          <span className="text-slate-700">1.5 default</span>
+                          <span>3.0 (hotter)</span>
                         </div>
                       </div>
                     </div>
