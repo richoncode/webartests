@@ -202,6 +202,7 @@
           const [activeSwatchInfo, setActiveSwatchInfo] = useState(null);
           const [isMagnified, setIsMagnified] = useState(false);
           const [showPalette, setShowPalette] = useState(false);
+          const [showPhysicsInfo, setShowPhysicsInfo] = useState(false);
           const [toastMsg, setToastMsg] = useState('');
           const [tiltGradientCSS, setTiltGradientCSS] = useState('');
 
@@ -429,6 +430,82 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                 </div>
               )}
 
+              {showPhysicsInfo && (
+                <div className="fixed inset-0 z-50 bg-black/80 flex items-start justify-center overflow-y-auto py-8 px-4" onClick={e => e.target === e.currentTarget && setShowPhysicsInfo(false)}>
+                  <div className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl">
+                    <div className="flex items-start justify-between p-5 border-b border-slate-800">
+                      <div>
+                        <h2 className="text-base font-bold text-white">Physics of SS304 Laser Oxidation</h2>
+                        <p className="text-xs text-slate-400 mt-0.5">How laser parameters drive oxide colour</p>
+                      </div>
+                      <button onClick={() => setShowPhysicsInfo(false)} className="text-slate-400 hover:text-white transition-colors p-1 ml-4 flex-shrink-0">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="p-5 space-y-5 text-sm text-slate-300 leading-relaxed">
+
+                      <section>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">Thin-Film Interference</h3>
+                        <p>SS304 contains ~18% chromium. When the surface is heated without melting, chromium preferentially oxidises to form a transparent Cr₂O₃ layer. Light reflecting off the top and bottom surfaces of this layer interferes constructively or destructively at different wavelengths — the same mechanism as a soap bubble or oil film. Oxide thickness determines the colour:</p>
+                        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-400 font-mono">
+                          <span>~20–35 nm → straw / gold</span>
+                          <span>~35–50 nm → bronze / brown</span>
+                          <span>~50–65 nm → purple</span>
+                          <span>~65–80 nm → blue (peak)</span>
+                          <span>~80–100 nm → pale blue</span>
+                          <span>~100–130 nm → turquoise / green</span>
+                          <span className="col-span-2">beyond → second-order yellows, then grey ablation</span>
+                        </div>
+                      </section>
+
+                      <section>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">Energy Density Model</h3>
+                        <p>The simulation approximates thermal energy deposited per unit area using three laser parameters:</p>
+                        <div className="mt-2 bg-slate-800/60 rounded-lg p-3 font-mono text-xs space-y-1">
+                          <div><span className="text-amber-400">rawDensity</span> = <span className="text-green-400">powerW</span> / (<span className="text-purple-400">speed</span> × <span className="text-cyan-400">lineSpacing</span>) <span className="text-slate-500">  [J/mm²]</span></div>
+                          <div><span className="text-amber-400">EEI</span> = rawDensity × 12.5 × materialFactors × focusPenalty</div>
+                          <div className="text-slate-500 pt-1">lineSpacing = 10 / LPC  [mm]</div>
+                        </div>
+                        <p className="mt-2 text-slate-400 text-xs">EEI (Effective Energy Index) is an empirical scalar mapped against the measured calibration table to predict colour. It is not a physical unit — it exists to make the model tunable.</p>
+                      </section>
+
+                      <section>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">Parameter Effects</h3>
+                        <div className="space-y-2 text-xs">
+                          {[
+                            ['Power %',       'Scales raw watts linearly. Doubling power doubles EEI at the same speed and density.'],
+                            ['Speed',         'Denominator of energy density — halving speed doubles dwell time and doubles EEI. Effect is stronger at low speeds where heat accumulates.'],
+                            ['LPC',           'Lines per centimetre sets hatch spacing. Denser lines overlap more beam paths, trapping heat. EEI scales inversely with spacing.'],
+                            ['Thickness',     'Thin stock (<1mm) has little thermal mass; heat builds quickly (×1.15 EEI). Thick stock (>3mm) sinks heat away (×0.85).'],
+                            ['Surface',       'Brushed surfaces have micro-grooves that trap more energy (×1.05). Polished surfaces reflect more of the initial beam (×0.95).'],
+                            ['Focus offset',  'Defocusing spreads the beam over a larger spot, reducing peak intensity. Penalty = exp(−0.04 × |offset mm|). At ±5mm the EEI drops to ~82% of focused.'],
+                            ['Direction',     'Bidirectional hatch fires continuously back-and-forth; edge pixels see the beam return immediately, spiking heat (edge mx up to ×1.45). Unidirectional allows a flyback pause (×0.92).'],
+                            ['Crosshatch',    'A 90° second pass hits already-heated steel, multiplying EEI by 1.35–2.1 depending on vector width. Narrow vectors accumulate the most heat.'],
+                            ['Tilt',          'Simulates a tilted workpiece where each edge is at a different focus offset. Each gradient stop uses its local focus position to compute EEI independently.'],
+                          ].map(([param, desc]) => (
+                            <div key={param} className="flex gap-2">
+                              <span className="text-slate-200 font-semibold w-28 flex-shrink-0">{param}</span>
+                              <span className="text-slate-400">{desc}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">Vector Width Effects</h3>
+                        <p className="text-xs text-slate-400">Narrower vectors concentrate heat because the laser must turn around more frequently relative to the fill area. Width multipliers scale the center EEI:</p>
+                        <div className="mt-2 flex gap-6 text-xs font-mono">
+                          <span>1mm → ×1.4</span><span>3mm → ×1.0</span><span>6mm → ×0.7</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">Crosshatch multipliers amplify this further: 1mm ×2.1, 3mm ×1.75, 6mm ×1.35.</p>
+                      </section>
+
+                      <p className="text-[11px] text-slate-500 border-t border-slate-800 pt-4">This is a heuristic model calibrated against measured results for brushed &lt;1mm SS304 at 1000 LPC. Actual results vary with laser type, focal length, assist gas, ambient temperature, and surface preparation.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <style>{`
                 .touch-slider { -webkit-appearance: none; width: 100%; background: transparent; }
                 .touch-slider:focus { outline: none; }
@@ -447,7 +524,16 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                       <Settings className="w-5 h-5 text-blue-400" />
                     </div>
                     <div>
-                      <h1 className="text-xl font-bold text-white leading-tight">SS304 Laser Color Predictor</h1>
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-xl font-bold text-white leading-tight">SS304 Laser Color Predictor</h1>
+                        <button
+                          onClick={() => setShowPhysicsInfo(true)}
+                          className="text-slate-500 hover:text-blue-400 transition-colors flex-shrink-0"
+                          title="Physics explanation"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                      </div>
                       <p className="text-slate-400 text-xs hidden sm:block">Heuristic thermal oxidation simulation for IR Lasers</p>
                     </div>
                   </div>
