@@ -212,7 +212,7 @@
               const color = interpolateColor(blendedEei).hex;
               stops.push(`${color} ${p * 100}%`);
             }
-            setTiltGradientCSS(`linear-gradient(to bottom, ${stops.join(', ')})`);
+            setTiltGradientCSS(`linear-gradient(to right, ${stops.join(', ')})`);
 
             const newResults = {};
             [1, 3, 6].forEach(w => {
@@ -362,8 +362,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
             if (surface === 'polished') baseEei *= 0.95;
             const focusPenalty = Math.exp(-0.04 * Math.abs(focus));
             baseEei *= focusPenalty;
-            let centerEei = baseEei * 0.7;
-            if (crosshatch) centerEei *= 1.35;
+            let centerEei = baseEei * 0.7 * 1.35;
             return interpolateColor(centerEei);
           };
 
@@ -383,7 +382,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                     <div className="flex items-start justify-between p-4 border-b border-slate-800">
                       <div>
                         <h2 className="text-base font-bold text-white">Color Palette — 6mm Vector</h2>
-                        <p className="text-xs text-slate-400 mt-0.5">{lpc} LPC · {thickness} · {surface}{crosshatch ? ' · crosshatch' : ''} · 8.5–15W rows</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{lpc} LPC · {thickness} · {surface} · Bidirectional crosshatch · 8.5–15W rows</p>
                       </div>
                       <button onClick={() => setShowPalette(false)} className="text-slate-400 hover:text-white transition-colors p-1 ml-4 flex-shrink-0">
                         <X className="w-5 h-5" />
@@ -626,12 +625,12 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                         </div>
                         <div className="flex-1">
                           <button onClick={() => setCrosshatch(!crosshatch)}
-                            className={`w-full py-2.5 rounded-lg border text-xs font-medium transition-colors flex justify-center items-center gap-1.5
+                            className={`w-full py-1.5 rounded-lg border text-xs font-medium transition-colors flex justify-center items-center gap-1 whitespace-nowrap overflow-hidden
                               ${crosshatch ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
                             {crosshatch ? (
-                              <><Hash className="w-3.5 h-3.5"/> 90° Crosshatch</>
+                              <><Hash className="w-3 h-3"/> Crosshatch</>
                             ) : (
-                              <><Layers className="w-3.5 h-3.5"/> Single Hatch</>
+                              <><Layers className="w-3 h-3"/> Single</>
                             )}
                           </button>
                         </div>
@@ -679,44 +678,56 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                     <h2 className="text-sm font-semibold">Tilt Gradient Simulation</h2>
                   </div>
 
-                  <div className="flex gap-4 items-start">
-
-                    {/* Vertical swatch — top = Left side, bottom = Right side */}
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                      <span className="text-[9px] text-slate-500 uppercase font-semibold tracking-wider">L</span>
-                      <div className="w-10 h-28 rounded-lg border border-white/10 overflow-hidden relative">
-                        <div className="absolute inset-0" style={{ background: tiltGradientCSS }}></div>
-                        {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
+                  {(() => {
+                    const angleDeg = Math.atan2(tiltRight - tiltLeft, 85.6) * (180 / Math.PI);
+                    return (
+                      <div>
+                        {/* Full-width swatch rotated to mimic business card tilt */}
+                        <div className="flex justify-between text-[9px] text-slate-500 uppercase font-semibold tracking-wider mb-1 px-0.5">
+                          <span>L</span>
+                          <span>{angleDeg.toFixed(1)}°</span>
+                          <span>R</span>
+                        </div>
+                        <div className="overflow-hidden rounded-lg mb-4" style={{ height: 36 }}>
                           <div
-                            className="absolute left-0 right-0 h-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
-                            style={{ top: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
+                            className="w-full h-full border border-white/10 relative"
+                            style={{
+                              background: tiltGradientCSS,
+                              transform: `rotate(${angleDeg.toFixed(2)}deg)`,
+                              transformOrigin: 'center center'
+                            }}
                           >
-                            <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
+                            {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
+                              <div
+                                className="absolute top-0 bottom-0 w-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
+                                style={{ left: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
+                              >
+                                <span className="absolute top-1/2 -translate-y-1/2 left-1 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <span className="text-[9px] text-slate-500 uppercase font-semibold tracking-wider">R</span>
-                    </div>
+                        </div>
 
-                    {/* Sliders side by side */}
-                    <div className="flex-1 grid grid-cols-2 gap-3">
-                      <div>
-                        <InfoLabel label="Left Offset (mm)" id="tiltLeft" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                          <span className="text-purple-400 font-mono">{tiltLeft}mm</span>
-                        </InfoLabel>
-                        <input type="range" min="0" max="10" step="0.5" value={tiltLeft} onChange={e => setTiltLeft(Number(e.target.value))}
-                          className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                        {/* Sliders side by side */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <InfoLabel label="Left Offset (mm)" id="tiltLeft" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                              <span className="text-purple-400 font-mono">{tiltLeft}mm</span>
+                            </InfoLabel>
+                            <input type="range" min="0" max="10" step="0.5" value={tiltLeft} onChange={e => setTiltLeft(Number(e.target.value))}
+                              className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                          </div>
+                          <div>
+                            <InfoLabel label="Right Offset (mm)" id="tiltRight" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                              <span className="text-purple-400 font-mono">{tiltRight}mm</span>
+                            </InfoLabel>
+                            <input type="range" min="0" max="10" step="0.5" value={tiltRight} onChange={e => setTiltRight(Number(e.target.value))}
+                              className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <InfoLabel label="Right Offset (mm)" id="tiltRight" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                          <span className="text-purple-400 font-mono">{tiltRight}mm</span>
-                        </InfoLabel>
-                        <input type="range" min="0" max="10" step="0.5" value={tiltRight} onChange={e => setTiltRight(Number(e.target.value))}
-                          className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
-                      </div>
-                    </div>
-
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="h-52 md:h-48 w-full pointer-events-none"></div>
@@ -731,14 +742,16 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
 
                     <div className="flex justify-between items-center mb-1.5 px-1 md:px-2">
                       <span className="text-[9px] text-slate-500 uppercase font-semibold">Vector Simulation</span>
-                      <button
-                        onClick={() => setIsMagnified(!isMagnified)}
-                        className={`flex items-center gap-1 text-[9px] transition-colors px-1.5 py-0.5 rounded border cursor-pointer pointer-events-auto ${isMagnified ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'}`}
-                        title="Toggle proportional vs magnified widths"
-                      >
-                        <Search className="w-3 h-3" />
-                        {isMagnified ? 'Magnified' : 'Proportional'}
-                      </button>
+                      <div className="flex rounded border border-slate-700 overflow-hidden text-[9px] cursor-pointer pointer-events-auto">
+                        <button
+                          onClick={() => setIsMagnified(false)}
+                          className={`px-1.5 py-0.5 transition-colors ${!isMagnified ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}
+                        >Proportional</button>
+                        <button
+                          onClick={() => setIsMagnified(true)}
+                          className={`flex items-center gap-1 px-1.5 py-0.5 transition-colors border-l border-slate-700 ${isMagnified ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}
+                        ><Search className="w-2.5 h-2.5" />Magnified</button>
+                      </div>
                     </div>
 
                     <div className="flex items-start justify-center gap-1.5 md:gap-3 px-1">
@@ -821,7 +834,13 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                               </div>
                             </div>
 
-                            <div className="flex flex-col items-center h-4 mt-1.5 w-full px-1">
+                            {/* Width dimension bracket */}
+                            <div className="flex items-center mt-1 w-full px-1" style={{ height: 10 }}>
+                              <div style={{ flex: 1, height: 1, background: '#475569' }} />
+                              <span style={{ fontSize: 7, color: '#64748b', fontWeight: 600, padding: '0 2px', whiteSpace: 'nowrap' }}>{w}mm</span>
+                              <div style={{ flex: 1, height: 1, background: '#475569' }} />
+                            </div>
+                            <div className="flex flex-col items-center h-4 mt-0.5 w-full px-1">
                               <span
                                 className="text-[8px] md:text-[9px] font-bold text-white text-center leading-tight truncate w-full"
                                 title={res.center.name}
