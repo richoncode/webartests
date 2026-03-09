@@ -42,19 +42,28 @@
         const Grid3 = (p) => <Icon {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></Icon>;
 
         // --- Color Physics & Heuristics ---
+        // Calibrated to: 1000 LPC, bidirectional, single hatch, 100 mm/s reference.
+        // EEI thresholds derived from table power values × 2.926 (PTM=0.35 scaling factor).
         const COLOR_STOPS = [
-          { eei: 0, hex: '#b0b5b9', name: 'Raw Steel' },
-          { eei: 8, hex: '#a9afb3', name: 'Slightly Warmed' },
-          { eei: 15, hex: '#e8ce7d', name: 'Pale Yellow' },
-          { eei: 24, hex: '#c59b30', name: 'Straw Gold' },
-          { eei: 32, hex: '#8b5a2b', name: 'Bronze / Brown' },
-          { eei: 42, hex: '#6a326a', name: 'Purple' },
-          { eei: 52, hex: '#1e3f8a', name: 'Dark Blue' },
-          { eei: 64, hex: '#6495ed', name: 'Light Blue' },
-          { eei: 75, hex: '#7cb342', name: 'Greenish' },
-          { eei: 86, hex: '#d87093', name: 'Pale Pink / Magenta' },
-          { eei: 100, hex: '#808080', name: 'Grey (Ablation start)' },
-          { eei: 150, hex: '#454545', name: 'Dark Grey (Burned)' },
+          { eei: 0,   hex: '#b0b5b9', name: 'Raw Steel' },
+          { eei: 8,   hex: '#d4c060', name: 'Pale Yellow' },
+          { eei: 15,  hex: '#c89030', name: 'Straw Gold' },
+          { eei: 24,  hex: '#8b5a2b', name: 'Bronze / Brown' },
+          { eei: 33,  hex: '#6a326a', name: 'Purple' },
+          { eei: 38,  hex: '#1a3a8a', name: 'Dark Blue' },       // 13W @ 100mm/s
+          { eei: 41,  hex: '#2855b8', name: 'Blue Medium' },      // 14W
+          { eei: 44,  hex: '#5590d8', name: 'Pale Blue' },        // 15W
+          { eei: 50,  hex: '#50aaa8', name: 'Pale Blue-Green' },  // 17W
+          { eei: 56,  hex: '#d4c840', name: 'Yellow' },           // 19W
+          { eei: 62,  hex: '#d89048', name: 'Pale Orange' },      // 21W
+          { eei: 68,  hex: '#c85020', name: 'Dark Orange' },      // 23W
+          { eei: 71,  hex: '#a82020', name: 'Red' },              // 24W
+          { eei: 74,  hex: '#8050a0', name: 'Pale Purple' },      // 25W
+          { eei: 77,  hex: '#502880', name: 'Dark Purple' },      // 26W
+          { eei: 86,  hex: '#207878', name: 'Dark Turquoise' },   // 29W
+          { eei: 94,  hex: '#205840', name: 'Dark Green' },       // 32W
+          { eei: 120, hex: '#888888', name: 'Grey (Ablation)' },
+          { eei: 160, hex: '#454545', name: 'Dark Grey (Burned)' },
         ];
 
         const INFO_TEXTS = {
@@ -156,7 +165,7 @@
           });
 
           useEffect(() => {
-            const POWER_TUNING_MULTIPLIER = 1.0;
+            const POWER_TUNING_MULTIPLIER = 1.5;
             const currentPowerW = (maxPower * POWER_TUNING_MULTIPLIER) * (powerPercent / 100);
             const spacingMm = 10 / lpc;
             const speedSafeguard = speed > 0 ? speed : 1;
@@ -203,7 +212,7 @@
               const color = interpolateColor(blendedEei).hex;
               stops.push(`${color} ${p * 100}%`);
             }
-            setTiltGradientCSS(`linear-gradient(to right, ${stops.join(', ')})`);
+            setTiltGradientCSS(`linear-gradient(to bottom, ${stops.join(', ')})`);
 
             const newResults = {};
             [1, 3, 6].forEach(w => {
@@ -251,7 +260,7 @@
 🔥 SS304 Laser Color Prediction
 ==============================
 Material: ${thickness === 'thin' ? '< 1mm' : thickness === 'medium' ? '1-3mm' : '> 3mm'} (${surface})
-Laser: ${maxPower}W Max @ ${powerPercent}% Power
+Laser: ${maxPower}W Max @ ${powerPercent.toFixed(1)}% Power
 Speed: ${speed} mm/s
 Density: ${lpc} LPC
 Focus: ${focus > 0 ? '+' : ''}${focus}mm
@@ -328,7 +337,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
           };
 
           const handleCopy = async () => {
-            const textSummary = `🔥 SS304 Laser Color Prediction\n==============================\nMaterial: ${thickness === 'thin' ? '< 1mm' : thickness === 'medium' ? '1-3mm' : '> 3mm'} (${surface})\nLaser: ${maxPower}W Max @ ${powerPercent}% Power\nSpeed: ${speed} mm/s\nDensity: ${lpc} LPC\nFocus: ${focus > 0 ? '+' : ''}${focus}mm\nHatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${crosshatch ? '(Crosshatch)' : '(Single)'}\n==============================\n1mm Vector: ${results[1].center.name}\n3mm Vector: ${results[3].center.name}\n6mm Vector: ${results[6].center.name}`;
+            const textSummary = `🔥 SS304 Laser Color Prediction\n==============================\nMaterial: ${thickness === 'thin' ? '< 1mm' : thickness === 'medium' ? '1-3mm' : '> 3mm'} (${surface})\nLaser: ${maxPower}W Max @ ${powerPercent.toFixed(1)}% Power\nSpeed: ${speed} mm/s\nDensity: ${lpc} LPC\nFocus: ${focus > 0 ? '+' : ''}${focus}mm\nHatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${crosshatch ? '(Crosshatch)' : '(Single)'}\n==============================\n1mm Vector: ${results[1].center.name}\n3mm Vector: ${results[3].center.name}\n6mm Vector: ${results[6].center.name}`;
             try {
               await navigator.clipboard.writeText(textSummary);
             } catch {
@@ -385,7 +394,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                         <thead>
                           <tr>
                             <th className="text-right pr-3 pb-2 text-xs text-slate-500 font-medium w-10">W \ mm/s</th>
-                            {[50, 100, 200, 400, 800, 1600].map(s => (
+                            {[25, 50, 100, 200, 300].map(s => (
                               <th key={s} className="pb-2 px-1 text-center text-xs text-slate-400 font-medium">{s}</th>
                             ))}
                           </tr>
@@ -394,7 +403,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                           {[5, 10, 15, 20].map(pw => (
                             <tr key={pw}>
                               <td className="pr-3 text-right text-xs text-slate-300 font-semibold py-1">{pw}W</td>
-                              {[50, 100, 200, 400, 800, 1600].map(spd => {
+                              {[25, 50, 100, 200, 300].map(spd => {
                                 const col = computePaletteColor(pw, spd);
                                 return (
                                   <td key={spd} className="px-0.5 py-0.5">
@@ -607,13 +616,13 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                     <div>
                       <div className="flex items-center gap-3">
                         <div
-                          className="flex-shrink-0 flex items-start gap-1 cursor-pointer hover:text-slate-300 transition-colors w-20"
+                          className="flex-shrink-0 flex flex-col gap-1 cursor-pointer hover:text-slate-300 transition-colors w-20"
                           onClick={() => setActiveInfo(activeInfo === 'crosshatch' ? null : 'crosshatch')}
                         >
                           <span className="text-[10px] uppercase tracking-wider text-slate-500 leading-tight font-semibold">
                             Crosshatch<br/>(90°)
                           </span>
-                          <Info className={`w-3.5 h-3.5 mt-[1px] transition-colors ${activeInfo === 'crosshatch' ? 'text-blue-400' : 'text-slate-500'}`} />
+                          <Info className={`w-3.5 h-3.5 transition-colors ${activeInfo === 'crosshatch' ? 'text-blue-400' : 'text-slate-500'}`} />
                         </div>
                         <div className="flex-1">
                           <button onClick={() => setCrosshatch(!crosshatch)}
@@ -639,9 +648,9 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                   <div className="space-y-2 md:space-y-3">
                     <div>
                       <InfoLabel label="Power Percentage" id="powerPercent" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                        <span className="text-emerald-400 font-mono">{powerPercent}%</span>
+                        <span className="text-emerald-400 font-mono">{powerPercent.toFixed(1)}%</span>
                       </InfoLabel>
-                      <input type="range" min="1" max="100" value={powerPercent} onChange={e => setPowerPercent(Number(e.target.value))}
+                      <input type="range" min="0.1" max="100" step="0.1" value={powerPercent} onChange={e => setPowerPercent(Number(e.target.value))}
                         className="touch-slider" style={{ '--slider-color': '#10b981' }} />
                     </div>
 
@@ -649,7 +658,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                       <InfoLabel label="Speed" id="speed" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
                         <span className="text-emerald-400 font-mono">{speed} mm/s</span>
                       </InfoLabel>
-                      <input type="range" min="10" max="2000" step="10" value={speed} onChange={e => setSpeed(Number(e.target.value))}
+                      <input type="range" min="5" max="2000" step="5" value={speed} onChange={e => setSpeed(Number(e.target.value))}
                         className="touch-slider" style={{ '--slider-color': '#10b981' }} />
                     </div>
 
@@ -670,35 +679,43 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                     <h2 className="text-sm font-semibold">Tilt Gradient Simulation</h2>
                   </div>
 
-                  <div className="w-full h-16 rounded-lg border border-white/10 overflow-hidden relative mb-5">
-                    <div className="absolute inset-0 opacity-100" style={{ background: tiltGradientCSS }}></div>
+                  <div className="flex gap-4 items-start">
 
-                    {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
-                       <div
-                         className="absolute top-0 bottom-0 w-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
-                         style={{ left: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
-                       >
-                         <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
-                       </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <InfoLabel label="Left Offset (mm)" id="tiltLeft" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                        <span className="text-purple-400 font-mono">{tiltLeft > 0 ? `+${tiltLeft}` : tiltLeft}</span>
-                      </InfoLabel>
-                      <input type="range" min="-10" max="10" step="0.5" value={tiltLeft} onChange={e => setTiltLeft(Number(e.target.value))}
-                        className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                    {/* Vertical swatch — top = Left side, bottom = Right side */}
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                      <span className="text-[9px] text-slate-500 uppercase font-semibold tracking-wider">L</span>
+                      <div className="w-10 h-28 rounded-lg border border-white/10 overflow-hidden relative">
+                        <div className="absolute inset-0" style={{ background: tiltGradientCSS }}></div>
+                        {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
+                          <div
+                            className="absolute left-0 right-0 h-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
+                            style={{ top: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
+                          >
+                            <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[9px] text-slate-500 uppercase font-semibold tracking-wider">R</span>
                     </div>
 
-                    <div>
-                      <InfoLabel label="Right Offset (mm)" id="tiltRight" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
-                        <span className="text-purple-400 font-mono">{tiltRight > 0 ? `+${tiltRight}` : tiltRight}</span>
-                      </InfoLabel>
-                      <input type="range" min="-10" max="10" step="0.5" value={tiltRight} onChange={e => setTiltRight(Number(e.target.value))}
-                        className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                    {/* Sliders side by side */}
+                    <div className="flex-1 grid grid-cols-2 gap-3">
+                      <div>
+                        <InfoLabel label="Left Offset (mm)" id="tiltLeft" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                          <span className="text-purple-400 font-mono">{tiltLeft}mm</span>
+                        </InfoLabel>
+                        <input type="range" min="0" max="10" step="0.5" value={tiltLeft} onChange={e => setTiltLeft(Number(e.target.value))}
+                          className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                      </div>
+                      <div>
+                        <InfoLabel label="Right Offset (mm)" id="tiltRight" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                          <span className="text-purple-400 font-mono">{tiltRight}mm</span>
+                        </InfoLabel>
+                        <input type="range" min="0" max="10" step="0.5" value={tiltRight} onChange={e => setTiltRight(Number(e.target.value))}
+                          className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                      </div>
                     </div>
+
                   </div>
                 </div>
 
