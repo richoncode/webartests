@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SS304 Laser Color Predictor</title>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- DOM to Image for Share Feature -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- Inline SVG Icons (Replaces lucide-react for standalone usage) ---
+        const Icon = ({ children, className, ...props }) => (
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            {children}
+          </svg>
+        );
+        const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+        const Zap = (p) => <Icon {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></Icon>;
+        const Layers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></Icon>;
+        const Target = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></Icon>;
+        const Hash = (p) => <Icon {...p}><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></Icon>;
+        const Info = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></Icon>;
+        const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+        const Search = (p) => <Icon {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>;
+        const Share2 = (p) => <Icon {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></Icon>;
+        const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></Icon>;
+        const Activity = (p) => <Icon {...p}><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></Icon>;
+
+        // --- Color Physics & Heuristics ---
+        const COLOR_STOPS = [
+          { eei: 0, hex: '#b0b5b9', name: 'Raw Steel' },
+          { eei: 8, hex: '#a9afb3', name: 'Slightly Warmed' },
+          { eei: 15, hex: '#e8ce7d', name: 'Pale Yellow' },
+          { eei: 24, hex: '#c59b30', name: 'Straw Gold' },
+          { eei: 32, hex: '#8b5a2b', name: 'Bronze / Brown' },
+          { eei: 42, hex: '#6a326a', name: 'Purple' },
+          { eei: 52, hex: '#1e3f8a', name: 'Dark Blue' },
+          { eei: 64, hex: '#6495ed', name: 'Light Blue' },
+          { eei: 75, hex: '#7cb342', name: 'Greenish' },
+          { eei: 86, hex: '#d87093', name: 'Pale Pink / Magenta' },
+          { eei: 100, hex: '#808080', name: 'Grey (Ablation start)' },
+          { eei: 150, hex: '#454545', name: 'Dark Grey (Burned)' },
+        ];
+
+        const INFO_TEXTS = {
+          thickness: "Thinner plates (< 1mm) heat up rapidly with less mass to absorb energy. Thicker plates act as heat sinks, drawing heat away and requiring more energy to oxidize.",
+          surface: "Brushed surfaces have micro-abrasions that increase initial heat absorption. Polished surfaces reflect more initial laser energy, taking slightly more power to heat up.",
+          maxPower: "The absolute maximum wattage of your laser source. A higher max power delivers proportionally more raw energy at the exact same percentage setting.",
+          focus: "Defocusing (+/- mm) spreads the beam over a larger area. This drops peak energy density, producing a gentler, wider heating effect ideal for color annealing without surface ablation.",
+          powerPercent: "Directly controls the raw energy output. Higher power increases the energy density hitting the steel, pushing colors through the spectrum faster.",
+          speed: "Slower speeds mean the laser dwells longer on each spot, drastically increasing heat buildup. Faster speeds stretch the energy out, applying less heat per millimeter.",
+          lpc: "Lines Per Centimeter. Higher density puts hatch lines closer together. This dramatically increases localized heat retention because the beam paths overlap more frequently.",
+          direction: "Hatch direction determines how the laser fills a shape. Unidirectional allows cooling during the 'flyback' return. Bidirectional fires continuously back-and-forth, causing severe heat spikes at the edges due to zero turnaround cooling.",
+          crosshatch: "Running a 90° secondary pass immediately after the first. It doubles total energy and multiplies heat retention, as the second pass hits already-hot steel. Highly intense on small vectors.",
+          tiltLeft: "Focus offset at the left edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece.",
+          tiltRight: "Focus offset at the right edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece."
+        };
+
+        const hexToRgb = (hex) => {
+          const r = parseInt(hex.slice(1, 3), 16);
+          const g = parseInt(hex.slice(3, 5), 16);
+          const b = parseInt(hex.slice(5, 7), 16);
+          return { r, g, b };
+        };
+
+        const rgbToHex = (r, g, b) => {
+          return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
+        };
+
+        const interpolateColor = (eei) => {
+          if (eei <= COLOR_STOPS[0].eei) return { hex: COLOR_STOPS[0].hex, name: COLOR_STOPS[0].name };
+          if (eei >= COLOR_STOPS[COLOR_STOPS.length - 1].eei) return { hex: COLOR_STOPS[COLOR_STOPS.length - 1].hex, name: COLOR_STOPS[COLOR_STOPS.length - 1].name };
+
+          for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
+            const s1 = COLOR_STOPS[i];
+            const s2 = COLOR_STOPS[i + 1];
+
+            if (eei >= s1.eei && eei <= s2.eei) {
+              const range = s2.eei - s1.eei;
+              const factor = (eei - s1.eei) / range;
+
+              const rgb1 = hexToRgb(s1.hex);
+              const rgb2 = hexToRgb(s2.hex);
+
+              const r = Math.round(rgb1.r + factor * (rgb2.r - rgb1.r));
+              const g = Math.round(rgb1.g + factor * (rgb2.g - rgb1.g));
+              const b = Math.round(rgb1.b + factor * (rgb2.b - rgb1.b));
+
+              const name = factor < 0.5 ? s1.name : s2.name;
+              return { hex: rgbToHex(r, g, b), name };
+            }
+          }
+          return { hex: '#000000', name: 'Unknown' };
+        };
+
+        const InfoLabel = ({ label, id, activeInfo, setActiveInfo, children }) => (
+          <div className="mb-1.5">
+            <div className="flex justify-between items-center text-xs uppercase tracking-wider text-slate-500">
+               <div
+                 className="flex items-center gap-1.5 cursor-pointer hover:text-slate-300 transition-colors py-0.5"
+                 onClick={() => setActiveInfo(activeInfo === id ? null : id)}
+               >
+                 <span>{label}</span>
+                 <Info className={`w-3.5 h-3.5 transition-colors ${activeInfo === id ? 'text-blue-400' : 'text-slate-500'}`} />
+               </div>
+               {children && <div>{children}</div>}
+            </div>
+            {activeInfo === id && (
+              <div className="mt-1 mb-2 text-[11px] leading-relaxed text-blue-200/90 bg-blue-900/30 p-2.5 rounded-md border border-blue-500/30 shadow-inner">
+                {INFO_TEXTS[id]}
+              </div>
+            )}
+          </div>
+        );
+
+        function App() {
+          const [thickness, setThickness] = useState('medium');
+          const [surface, setSurface] = useState('polished');
+          const [maxPower, setMaxPower] = useState(15);
+          const [isPowerMenuOpen, setIsPowerMenuOpen] = useState(false);
+          const [powerPercent, setPowerPercent] = useState(20);
+          const [speed, setSpeed] = useState(200);
+          const [lpc, setLpc] = useState(1000);
+          const [focus, setFocus] = useState(0);
+          const [direction, setDirection] = useState('unidirectional');
+          const [crosshatch, setCrosshatch] = useState(false);
+          const [tiltLeft, setTiltLeft] = useState(0);
+          const [tiltRight, setTiltRight] = useState(4);
+          const [activeInfo, setActiveInfo] = useState(null);
+          const [activeSwatchInfo, setActiveSwatchInfo] = useState(null);
+          const [isMagnified, setIsMagnified] = useState(false);
+          const [toastMsg, setToastMsg] = useState('');
+          const [tiltGradientCSS, setTiltGradientCSS] = useState('');
+
+          const [energyDensity, setEnergyDensity] = useState(0);
+          const [results, setResults] = useState({
+            1: { center: {}, edgeX: {}, edgeY: {}, corner: {}, minEei: 0, maxEei: 0, centerEei: 0 },
+            3: { center: {}, edgeX: {}, edgeY: {}, corner: {}, minEei: 0, maxEei: 0, centerEei: 0 },
+            6: { center: {}, edgeX: {}, edgeY: {}, corner: {}, minEei: 0, maxEei: 0, centerEei: 0 }
+          });
+
+          useEffect(() => {
+            const POWER_TUNING_MULTIPLIER = 5.0;
+            const currentPowerW = (maxPower * POWER_TUNING_MULTIPLIER) * (powerPercent / 100);
+            const spacingMm = 10 / lpc;
+            const speedSafeguard = speed > 0 ? speed : 1;
+            let rawDensity = currentPowerW / (speedSafeguard * spacingMm);
+
+            const BASE_EEI_MULTIPLIER = 12.5;
+            let baseEei = rawDensity * BASE_EEI_MULTIPLIER;
+
+            if (thickness === 'thin') baseEei *= 1.15;
+            if (thickness === 'thick') baseEei *= 0.85;
+            if (surface === 'brushed') baseEei *= 1.05;
+            if (surface === 'polished') baseEei *= 0.95;
+
+            const focusPenalty = Math.exp(-0.04 * Math.abs(focus));
+            baseEei *= focusPenalty;
+
+            const widthMultipliers = { 1: 1.4, 3: 1.0, 6: 0.7 };
+            const crossHatchMultipliers = { 1: 2.1, 3: 1.75, 6: 1.35 };
+
+            let unfocusedBaseEei = rawDensity * 12.5;
+            if (thickness === 'thin') unfocusedBaseEei *= 1.15;
+            if (thickness === 'thick') unfocusedBaseEei *= 0.85;
+            if (surface === 'brushed') unfocusedBaseEei *= 1.05;
+            if (surface === 'polished') unfocusedBaseEei *= 0.95;
+
+            let mxTilt = direction === 'bidirectional' ? 1.45 : 0.92;
+            let myTilt = crosshatch ? (direction === 'bidirectional' ? mxTilt : 0.92) : 0.88;
+
+            const stops = [];
+            for (let i = 0; i <= 20; i++) {
+              const p = i / 20;
+              const localFocus = focus + tiltLeft + p * (tiltRight - tiltLeft);
+              const localFocusPenalty = Math.exp(-0.04 * Math.abs(localFocus));
+
+              let centerEei = unfocusedBaseEei * localFocusPenalty * widthMultipliers[6];
+              if (crosshatch) centerEei *= crossHatchMultipliers[6];
+
+              let edgeXEei = centerEei * mxTilt;
+              let edgeYEei = centerEei * myTilt;
+              let cornerEei = centerEei * mxTilt * myTilt;
+
+              let blendedEei = (centerEei * 0.5) + (edgeXEei * 0.2) + (edgeYEei * 0.2) + (cornerEei * 0.1);
+
+              const color = interpolateColor(blendedEei).hex;
+              stops.push(`${color} ${p * 100}%`);
+            }
+            setTiltGradientCSS(`linear-gradient(to right, ${stops.join(', ')})`);
+
+            const newResults = {};
+            [1, 3, 6].forEach(w => {
+              let centerEei = baseEei * widthMultipliers[w];
+              if (crosshatch) centerEei *= crossHatchMultipliers[w];
+
+              let mx = 1.0;
+              if (direction === 'bidirectional') {
+                mx = w === 1 ? 1.15 : w === 3 ? 1.3 : 1.45;
+              } else {
+                mx = 0.92;
+              }
+
+              let my = 1.0;
+              if (crosshatch) {
+                my = direction === 'bidirectional' ? mx : 0.92;
+              } else {
+                my = 0.88;
+              }
+
+              let edgeXEei = centerEei * mx;
+              let edgeYEei = centerEei * my;
+              let cornerEei = centerEei * mx * my;
+
+              newResults[w] = {
+                center: interpolateColor(centerEei),
+                edgeX: interpolateColor(edgeXEei),
+                edgeY: interpolateColor(edgeYEei),
+                corner: interpolateColor(cornerEei),
+                minEei: Math.min(centerEei, edgeXEei, edgeYEei, cornerEei).toFixed(1),
+                maxEei: Math.max(centerEei, edgeXEei, edgeYEei, cornerEei).toFixed(1),
+                centerEei: centerEei.toFixed(1)
+              };
+            });
+
+            setEnergyDensity(rawDensity.toFixed(3));
+            setResults(newResults);
+
+          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight]);
+
+          const handleShare = async () => {
+            setToastMsg('Generating image...');
+
+            const textSummary = `
+🔥 SS304 Laser Color Prediction
+==============================
+Material: ${thickness === 'thin' ? '< 1mm' : thickness === 'medium' ? '1-3mm' : '> 3mm'} (${surface})
+Laser: ${maxPower}W Max @ ${powerPercent}% Power
+Speed: ${speed} mm/s
+Density: ${lpc} LPC
+Focus: ${focus > 0 ? '+' : ''}${focus}mm
+Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${crosshatch ? '(Crosshatch)' : '(Single)'}
+==============================
+1mm Vector: ${results[1].center.name}
+3mm Vector: ${results[3].center.name}
+6mm Vector: ${results[6].center.name}
+            `.trim();
+
+            try {
+              if (!window.domtoimage) {
+                await new Promise((resolve, reject) => {
+                  const script = document.createElement('script');
+                  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js';
+                  script.onload = resolve;
+                  script.onerror = reject;
+                  document.head.appendChild(script);
+                });
+              }
+
+              const element = document.getElementById('app-root');
+              const hudPanel = document.getElementById('hud-panel');
+
+              if (hudPanel) hudPanel.style.position = 'absolute';
+
+              const dataUrl = await window.domtoimage.toPng(element, {
+                bgcolor: '#020617',
+                style: { transform: 'scale(1)', margin: '0' }
+              });
+
+              if (hudPanel) hudPanel.style.position = '';
+
+              const blob = await (await fetch(dataUrl)).blob();
+              const file = new File([blob], 'laser-prediction.png', { type: 'image/png' });
+
+              if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: 'Laser Color Prediction',
+                  text: textSummary,
+                  files: [file]
+                });
+                setToastMsg('Shared successfully!');
+              } else {
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = textSummary;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempTextArea);
+
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = 'laser-prediction.png';
+                a.click();
+
+                setToastMsg('Copied text & downloaded image!');
+              }
+            } catch (err) {
+              console.error('Share failed:', err);
+              const tempTextArea = document.createElement('textarea');
+              tempTextArea.value = textSummary;
+              document.body.appendChild(tempTextArea);
+              tempTextArea.select();
+              document.execCommand('copy');
+              document.body.removeChild(tempTextArea);
+              setToastMsg('Copied text (Image failed)');
+
+              const hudPanel = document.getElementById('hud-panel');
+              if (hudPanel) hudPanel.style.position = '';
+            }
+
+            setTimeout(() => setToastMsg(''), 4000);
+          };
+
+          return (
+            <div id="app-root" className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30 relative pb-4 md:pb-8">
+
+              {toastMsg && toastMsg !== 'Generating image...' && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-top-4">
+                  {toastMsg.includes('Failed') ? <Info className="w-4 h-4 text-red-400" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {toastMsg}
+                </div>
+              )}
+
+              <style>{`
+                .touch-slider { -webkit-appearance: none; width: 100%; background: transparent; }
+                .touch-slider:focus { outline: none; }
+                .touch-slider::-webkit-slider-thumb { -webkit-appearance: none; height: 28px; width: 28px; border-radius: 50%; background: var(--slider-color, #10b981); cursor: pointer; margin-top: -10px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); border: 3px solid #0f172a; }
+                .touch-slider::-webkit-slider-runnable-track { width: 100%; height: 8px; cursor: pointer; background: #1e293b; border-radius: 4px; }
+                .touch-slider::-moz-range-thumb { height: 28px; width: 28px; border-radius: 50%; background: var(--slider-color, #10b981); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.5); border: 3px solid #0f172a; }
+                .touch-slider::-moz-range-track { width: 100%; height: 8px; cursor: pointer; background: #1e293b; border-radius: 4px; }
+              `}</style>
+
+              <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4 md:space-y-5">
+
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-blue-500/10 rounded-lg">
+                      <Settings className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <h1 className="text-xl font-bold text-white leading-tight">SS304 Laser Color Predictor</h1>
+                      <p className="text-slate-400 text-xs hidden sm:block">Heuristic thermal oxidation simulation for IR Fiber Lasers</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a href="../" className="text-slate-500 hover:text-slate-300 text-xs transition-colors hidden sm:block">← Laser Experiments</a>
+                    <button
+                      onClick={handleShare}
+                      disabled={toastMsg === 'Generating image...'}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {toastMsg === 'Generating image...' ? <Activity className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                      <span className="hidden sm:inline">Share</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 1: Material & Laser Specs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+
+                  {/* Material Properties */}
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-2 mb-3 text-slate-300">
+                      <Layers className="w-4 h-4 text-indigo-400"/>
+                      <h2 className="text-sm font-semibold">Material Properties</h2>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <InfoLabel label="Thickness" id="thickness" activeInfo={activeInfo} setActiveInfo={setActiveInfo} />
+                        <div className="grid grid-cols-3 gap-2">
+                          {['thin', 'medium', 'thick'].map(t => (
+                            <button key={t} onClick={() => setThickness(t)}
+                              className={`py-1.5 px-2 rounded-md text-xs border transition-colors
+                                ${thickness === t ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
+                              {t === 'thin' ? '< 1mm' : t === 'medium' ? '1-3mm' : '> 3mm'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <InfoLabel label="Surface Finish" id="surface" activeInfo={activeInfo} setActiveInfo={setActiveInfo} />
+                        <div className="grid grid-cols-2 gap-2">
+                          {['polished', 'brushed'].map(s => (
+                            <button key={s} onClick={() => setSurface(s)}
+                              className={`py-1.5 px-2 rounded-md text-xs border capitalize transition-colors
+                                ${surface === s ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Laser Hardware */}
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Zap className="w-4 h-4 text-amber-400"/>
+                        <h2 className="text-sm font-semibold">Laser Hardware (IR)</h2>
+                        <Info
+                          className={`w-3.5 h-3.5 cursor-pointer transition-colors ${activeInfo === 'maxPower' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                          onClick={() => setActiveInfo(activeInfo === 'maxPower' ? null : 'maxPower')}
+                        />
+                      </div>
+
+                      <div className="relative">
+                        <button
+                          onClick={() => setIsPowerMenuOpen(!isPowerMenuOpen)}
+                          className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full text-xs font-mono hover:bg-amber-500/20 transition-colors"
+                        >
+                          {maxPower}W
+                          <ChevronRight className={`w-3 h-3 transition-transform ${isPowerMenuOpen ? 'rotate-90' : ''}`} />
+                        </button>
+
+                        {isPowerMenuOpen && (
+                          <div className="absolute right-0 top-full mt-1 w-28 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden z-20">
+                            {[15, 20, 30, 50, 60, 100].map(w => (
+                              <button
+                                key={w}
+                                onClick={() => { setMaxPower(w); setIsPowerMenuOpen(false); }}
+                                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 transition-colors ${maxPower === w ? 'text-amber-400 bg-slate-700/50' : 'text-slate-300'}`}
+                              >
+                                {w} Watts
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeInfo === 'maxPower' && (
+                      <div className="mb-3 text-[11px] leading-relaxed text-blue-200/90 bg-blue-900/30 p-2.5 rounded-md border border-blue-500/30 shadow-inner">
+                        {INFO_TEXTS.maxPower}
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div>
+                        <InfoLabel label="Focus Offset (mm)" id="focus" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                          <span className="text-slate-400">{focus > 0 ? `+${focus}` : focus} mm</span>
+                        </InfoLabel>
+                        <input type="range" min="-5" max="5" step="0.5" value={focus} onChange={e => setFocus(Number(e.target.value))}
+                          className="touch-slider py-1" style={{ '--slider-color': '#f59e0b' }} />
+                        <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
+                          <span>-5 (Below)</span>
+                          <span>0 (Surface)</span>
+                          <span>+5 (Above)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Laser Parameters */}
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2 mb-4 text-slate-300">
+                    <Target className="w-4 h-4 text-emerald-400"/>
+                    <h2 className="text-sm font-semibold">Laser Params</h2>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pb-3 border-b border-slate-800/50">
+
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="flex-shrink-0 flex items-start gap-1 cursor-pointer hover:text-slate-300 transition-colors w-20"
+                          onClick={() => setActiveInfo(activeInfo === 'direction' ? null : 'direction')}
+                        >
+                          <span className="text-[10px] uppercase tracking-wider text-slate-500 leading-tight font-semibold">
+                            Hatch<br/>Direction
+                          </span>
+                          <Info className={`w-3.5 h-3.5 mt-[1px] transition-colors ${activeInfo === 'direction' ? 'text-blue-400' : 'text-slate-500'}`} />
+                        </div>
+                        <div className="flex-1 flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                          <button onClick={() => setDirection('unidirectional')}
+                            className={`flex-1 py-1.5 text-xs rounded-md transition-all ${direction === 'unidirectional' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                            <span className="hidden sm:inline">Unidirectional</span><span className="sm:hidden">Uni</span>
+                          </button>
+                          <button onClick={() => setDirection('bidirectional')}
+                            className={`flex-1 py-1.5 text-xs rounded-md transition-all ${direction === 'bidirectional' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                            <span className="hidden sm:inline">Bidirectional</span><span className="sm:hidden">Bi</span>
+                          </button>
+                        </div>
+                      </div>
+                      {activeInfo === 'direction' && (
+                        <div className="mt-2 text-[11px] leading-relaxed text-blue-200/90 bg-blue-900/30 p-2.5 rounded-md border border-blue-500/30 shadow-inner">
+                          {INFO_TEXTS['direction']}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="flex-shrink-0 flex items-start gap-1 cursor-pointer hover:text-slate-300 transition-colors w-20"
+                          onClick={() => setActiveInfo(activeInfo === 'crosshatch' ? null : 'crosshatch')}
+                        >
+                          <span className="text-[10px] uppercase tracking-wider text-slate-500 leading-tight font-semibold">
+                            Crosshatch<br/>(90°)
+                          </span>
+                          <Info className={`w-3.5 h-3.5 mt-[1px] transition-colors ${activeInfo === 'crosshatch' ? 'text-blue-400' : 'text-slate-500'}`} />
+                        </div>
+                        <div className="flex-1">
+                          <button onClick={() => setCrosshatch(!crosshatch)}
+                            className={`w-full py-2.5 rounded-lg border text-xs font-medium transition-colors flex justify-center items-center gap-1.5
+                              ${crosshatch ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
+                            {crosshatch ? (
+                              <><Hash className="w-3.5 h-3.5"/> 90° Crosshatch</>
+                            ) : (
+                              <><Layers className="w-3.5 h-3.5"/> Single Hatch</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      {activeInfo === 'crosshatch' && (
+                        <div className="mt-2 text-[11px] leading-relaxed text-blue-200/90 bg-blue-900/30 p-2.5 rounded-md border border-blue-500/30 shadow-inner">
+                          {INFO_TEXTS['crosshatch']}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                  <div className="space-y-2 md:space-y-3">
+                    <div>
+                      <InfoLabel label="Power Percentage" id="powerPercent" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                        <span className="text-emerald-400 font-mono">{powerPercent}%</span>
+                      </InfoLabel>
+                      <input type="range" min="1" max="100" value={powerPercent} onChange={e => setPowerPercent(Number(e.target.value))}
+                        className="touch-slider" style={{ '--slider-color': '#10b981' }} />
+                    </div>
+
+                    <div>
+                      <InfoLabel label="Speed" id="speed" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                        <span className="text-emerald-400 font-mono">{speed} mm/s</span>
+                      </InfoLabel>
+                      <input type="range" min="10" max="2000" step="10" value={speed} onChange={e => setSpeed(Number(e.target.value))}
+                        className="touch-slider" style={{ '--slider-color': '#10b981' }} />
+                    </div>
+
+                    <div>
+                      <InfoLabel label="Lines Per CM (Density)" id="lpc" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                        <span className="text-emerald-400 font-mono">{lpc} LPC</span>
+                      </InfoLabel>
+                      <input type="range" min="100" max="1000" step="50" value={lpc} onChange={e => setLpc(Number(e.target.value))}
+                        className="touch-slider" style={{ '--slider-color': '#10b981' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 3: Tilt Gradient */}
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2 mb-4 text-slate-300">
+                    <Layers className="w-4 h-4 text-purple-400"/>
+                    <h2 className="text-sm font-semibold">Tilt Gradient Simulation</h2>
+                  </div>
+
+                  <div className="w-full h-16 rounded-lg border border-white/10 overflow-hidden relative mb-5">
+                    <div className="absolute inset-0 opacity-100" style={{ background: tiltGradientCSS }}></div>
+
+                    {((focus + tiltLeft <= 0 && focus + tiltRight >= 0) || (focus + tiltLeft >= 0 && focus + tiltRight <= 0)) && Math.abs(tiltRight - tiltLeft) > 0 && (
+                       <div
+                         className="absolute top-0 bottom-0 w-[2px] bg-white/70 shadow-[0_0_4px_black] z-10 pointer-events-none"
+                         style={{ left: `${(Math.abs(focus + tiltLeft) / Math.abs(tiltRight - tiltLeft)) * 100}%` }}
+                       >
+                         <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">0</span>
+                       </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <InfoLabel label="Left Offset (mm)" id="tiltLeft" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                        <span className="text-purple-400 font-mono">{tiltLeft > 0 ? `+${tiltLeft}` : tiltLeft}</span>
+                      </InfoLabel>
+                      <input type="range" min="-10" max="10" step="0.5" value={tiltLeft} onChange={e => setTiltLeft(Number(e.target.value))}
+                        className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                    </div>
+
+                    <div>
+                      <InfoLabel label="Right Offset (mm)" id="tiltRight" activeInfo={activeInfo} setActiveInfo={setActiveInfo}>
+                        <span className="text-purple-400 font-mono">{tiltRight > 0 ? `+${tiltRight}` : tiltRight}</span>
+                      </InfoLabel>
+                      <input type="range" min="-10" max="10" step="0.5" value={tiltRight} onChange={e => setTiltRight(Number(e.target.value))}
+                        className="touch-slider py-1" style={{ '--slider-color': '#a855f7' }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-52 md:h-48 w-full pointer-events-none"></div>
+
+              </div>
+
+              {/* FIXED BOTTOM OUTPUT */}
+              <div id="hud-panel" className="fixed bottom-0 left-0 right-0 z-50 p-1 md:p-2 pointer-events-none flex justify-center">
+                <div className="w-full max-w-4xl bg-slate-900/95 backdrop-blur-xl border border-slate-700 p-2 md:px-3 md:pb-3 rounded-2xl shadow-[0_-10px_30px_-10px_rgba(0,0,0,0.5)] pointer-events-auto flex flex-col md:flex-row gap-2 md:gap-4 md:items-end">
+
+                  <div className="flex flex-col md:w-[65%] shrink-0">
+
+                    <div className="flex justify-between items-center mb-1.5 px-1 md:px-2">
+                      <span className="text-[9px] text-slate-500 uppercase font-semibold">Vector Simulation</span>
+                      <button
+                        onClick={() => setIsMagnified(!isMagnified)}
+                        className={`flex items-center gap-1 text-[9px] transition-colors px-1.5 py-0.5 rounded border cursor-pointer pointer-events-auto ${isMagnified ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'}`}
+                        title="Toggle proportional vs magnified widths"
+                      >
+                        <Search className="w-3 h-3" />
+                        {isMagnified ? 'Magnified' : 'Proportional'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-start justify-center gap-1.5 md:gap-3 px-1">
+                      {[1, 3, 6].map(w => {
+                        const res = results[w];
+                        const baseEdgePx = isMagnified ? Math.max(4, Math.round(24 / w)) : 4;
+                        const blurOffset = 12;
+                        const gridEdgePx = baseEdgePx + blurOffset;
+
+                        return (
+                          <div
+                            key={w}
+                            className="flex flex-col items-center justify-start transition-all duration-500 ease-in-out"
+                            style={{ flex: isMagnified ? 1 : w, minWidth: isMagnified ? '40px' : '16px' }}
+                          >
+                            <div className="flex items-center justify-center gap-1 mb-1 relative w-full">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold leading-tight">
+                                {w}mm
+                              </span>
+                              <button
+                                onClick={() => setActiveSwatchInfo(activeSwatchInfo === w ? null : w)}
+                                className="text-slate-500 hover:text-slate-300 transition-colors z-20 cursor-pointer"
+                              >
+                                <Info className="w-[10px] h-[10px]" />
+                              </button>
+
+                              {activeSwatchInfo === w && (
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 p-2 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl z-50 text-[10px] font-mono whitespace-nowrap flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded shadow-sm border border-white/20" style={{backgroundColor: res.edgeX.hex}}></div>
+                                    <span className="text-slate-200">X-Edge: {res.edgeX.hex}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded shadow-sm border border-white/20" style={{backgroundColor: res.edgeY.hex}}></div>
+                                    <span className="text-slate-200">Y-Edge: {res.edgeY.hex}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded shadow-sm border border-white/20" style={{backgroundColor: res.center.hex}}></div>
+                                    <span className="text-slate-200">Center: {res.center.hex}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="w-full h-16 md:h-20 flex items-start justify-center mt-0.5">
+                              <div
+                                className="relative w-full flex-shrink-0 transition-all duration-500 ease-in-out"
+                                style={{ height: isMagnified ? '100%' : `${(w / 6) * 100}%` }}
+                              >
+                                <div className="absolute inset-0 rounded-[4px] md:rounded-lg overflow-hidden border border-white/10 bg-black">
+                                  <div
+                                    className="absolute inset-[-12px] grid blur-[10px] opacity-100 z-0"
+                                    style={{
+                                      gridTemplateColumns: `${gridEdgePx}px 1fr ${gridEdgePx}px`,
+                                      gridTemplateRows: `${gridEdgePx}px 1fr ${gridEdgePx}px`
+                                    }}
+                                  >
+                                    <div style={{backgroundColor: res.corner.hex}}></div>
+                                    <div style={{backgroundColor: res.edgeY.hex}}></div>
+                                    <div style={{backgroundColor: res.corner.hex}}></div>
+                                    <div style={{backgroundColor: res.edgeX.hex}}></div>
+                                    <div style={{backgroundColor: res.center.hex}}></div>
+                                    <div style={{backgroundColor: res.edgeX.hex}}></div>
+                                    <div style={{backgroundColor: res.corner.hex}}></div>
+                                    <div style={{backgroundColor: res.edgeY.hex}}></div>
+                                    <div style={{backgroundColor: res.corner.hex}}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-center h-4 mt-1.5 w-full px-1">
+                              <span
+                                className="text-[8px] md:text-[9px] font-bold text-white text-center leading-tight truncate w-full"
+                                title={res.center.name}
+                              >
+                                {res.center.name}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-end gap-0 pb-1 mt-2 md:mt-0">
+                    <div className="flex justify-between items-end px-1">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-400 uppercase">Raw Density</span>
+                        <div className="text-xs font-mono text-amber-400">
+                          {energyDensity} <span className="text-[9px] text-amber-500/70">J/mm²</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-[9px] text-slate-400 uppercase">Heat Variance</span>
+                        <div className="text-xs font-mono text-slate-300">
+                          {results[6].minEei} - {results[1].maxEei} <span className="text-[9px] text-slate-500">EEI</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="px-1 mt-0">
+                      <div className="relative h-6 w-full bg-slate-800 rounded-full overflow-hidden">
+                         <div
+                           className="absolute inset-0 opacity-80"
+                           style={{
+                             background: 'linear-gradient(to right, #b0b5b9 0%, #e8ce7d 15%, #c59b30 24%, #8b5a2b 32%, #6a326a 42%, #1e3f8a 52%, #6495ed 64%, #7cb342 75%, #d87093 86%, #808080 100%)'
+                           }}
+                         ></div>
+
+                         {[1, 3, 6].map(w => {
+                           const cPos = Math.min(100, (results[w].centerEei / 100) * 100);
+                           const minPos = Math.min(100, (results[w].minEei / 100) * 100);
+                           const maxPos = Math.min(100, (results[w].maxEei / 100) * 100);
+                           const left = minPos;
+                           const width = maxPos - minPos;
+
+                           return (
+                             <div key={`marker-${w}`}>
+                               {width > 0.5 && (
+                                 <div
+                                   className="absolute top-[1px] bottom-[1px] border border-white/50 rounded-sm z-0 shadow-inner bg-white/5"
+                                   style={{ left: `${left}%`, width: `${width}%` }}
+                                 />
+                               )}
+                               <div
+                                 className="absolute top-0 bottom-0 w-[2px] transition-all duration-300 ease-out z-10"
+                                 style={{ left: `${cPos}%` }}
+                               >
+                                 <div className="absolute inset-0 bg-white shadow-[0_0_4px_black]"></div>
+                                 <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-l-transparent border-r-transparent border-t-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"></div>
+                                 <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-b-[4px] border-l-transparent border-r-transparent border-b-white drop-shadow-[0_-1px_1px_rgba(0,0,0,0.8)]"></div>
+                                 <div className="absolute top-[1px] left-[4px] text-[10px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] leading-none">
+                                   {w}
+                                 </div>
+                               </div>
+                             </div>
+                           );
+                         })}
+                      </div>
+                      <div className="relative h-3 mt-1 text-[8px] text-slate-400 uppercase font-semibold">
+                        <span className="absolute left-0">Steel</span>
+                        <span className="absolute" style={{ left: '24%', transform: 'translateX(-50%)' }}>Gold</span>
+                        <span className="absolute" style={{ left: '52%', transform: 'translateX(-50%)' }}>Blue</span>
+                        <span className="absolute right-0">Ablated</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
