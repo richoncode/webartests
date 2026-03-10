@@ -78,7 +78,8 @@
           crosshatch: "Running a 90° secondary pass immediately after the first. It doubles total energy and multiplies heat retention, as the second pass hits already-hot steel. Highly intense on small vectors.",
           tiltLeft: "Focus offset at the left edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece.",
           tiltRight: "Focus offset at the right edge of the material. Allows you to simulate how colors shift across a ramped or tilted workpiece.",
-          powerTuning: "Scales all wattage values uniformly. Use this to align the model with your actual laser results. If colours appear at lower power than predicted, decrease this value. If colours appear at higher power than predicted, increase it. Default 1.5 was calibrated against a reference laser at 100mm/s on brushed <1mm SS304."
+          powerTuning: "Scales all wattage values uniformly. Use this to align the model with your actual laser results. If colours appear at lower power than predicted, decrease this value. If colours appear at higher power than predicted, increase it. Default 1.5 was calibrated against a reference laser at 100mm/s on brushed <1mm SS304.",
+          powerCurve: "Shapes the power → colour response curve. γ < 1 (e.g. 0.7) makes each additional % of power produce a smaller colour shift — use this if real colours change more slowly than the simulation shows. γ = 1.0 is linear (default). γ > 1 compresses colour shifts towards higher powers."
         };
 
         // Calibration reference table — brushed <1mm SS304, powers in % of laser max
@@ -157,6 +158,7 @@
         // --- Physics constants ---
         const DEFAULT_POWER_TUNING_MULTIPLIER = 1.5;
         const BASE_EEI_MULTIPLIER      = 12.5;
+        const DEFAULT_POWER_CURVE      = 1.0;
         const WIDTH_MULTIPLIERS        = { 1: 1.4,  3: 1.0,  6: 0.7  };
         const CROSSHATCH_MULTIPLIERS   = { 1: 2.1,  3: 1.75, 6: 1.35 };
 
@@ -186,6 +188,54 @@
           return eei;
         };
 
+        // --- Shared tuning panel (used in HUD expander and palette modal) ---
+        const TuningPanel = ({ powerTuningMultiplier, setPowerTuningMultiplier, baseEeiMultiplier, setBaseEeiMultiplier, powerCurve, setPowerCurve }) => {
+          const ptmChanged   = powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER;
+          const eeiChanged   = baseEeiMultiplier !== BASE_EEI_MULTIPLIER;
+          const curveChanged = powerCurve !== DEFAULT_POWER_CURVE;
+          return (
+            <div className="space-y-2">
+              <div>
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Power Tuning</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-mono ${ptmChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{powerTuningMultiplier.toFixed(2)}</span>
+                    {ptmChanged && <button onClick={() => setPowerTuningMultiplier(DEFAULT_POWER_TUNING_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
+                  </div>
+                </div>
+                <input type="range" min="0.3" max="3.0" step="0.05" value={powerTuningMultiplier}
+                  onChange={e => setPowerTuningMultiplier(Number(e.target.value))}
+                  className="touch-slider" style={{ '--slider-color': ptmChanged ? '#f97316' : '#64748b' }} />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">EEI Multiplier</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-mono ${eeiChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{baseEeiMultiplier.toFixed(1)}</span>
+                    {eeiChanged && <button onClick={() => setBaseEeiMultiplier(BASE_EEI_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
+                  </div>
+                </div>
+                <input type="range" min="5" max="30" step="0.5" value={baseEeiMultiplier}
+                  onChange={e => setBaseEeiMultiplier(Number(e.target.value))}
+                  className="touch-slider" style={{ '--slider-color': eeiChanged ? '#f97316' : '#64748b' }} />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Power Curve (γ)</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-mono ${curveChanged ? 'text-orange-400' : 'text-slate-500'}`}>γ={powerCurve.toFixed(2)}</span>
+                    {curveChanged && <button onClick={() => setPowerCurve(DEFAULT_POWER_CURVE)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
+                  </div>
+                </div>
+                <input type="range" min="0.3" max="2.0" step="0.05" value={powerCurve}
+                  onChange={e => setPowerCurve(Number(e.target.value))}
+                  className="touch-slider" style={{ '--slider-color': curveChanged ? '#f97316' : '#64748b' }} />
+                <div className="text-[9px] text-slate-600 mt-0.5">γ &lt; 1 → slower colour shift per % power</div>
+              </div>
+            </div>
+          );
+        };
+
         function App() {
           const [thickness, setThickness] = useState('medium');
           const [surface, setSurface] = useState('polished');
@@ -204,8 +254,10 @@
           const [isMagnified, setIsMagnified] = useState(false);
           const [powerTuningMultiplier, setPowerTuningMultiplier] = useState(DEFAULT_POWER_TUNING_MULTIPLIER);
           const [baseEeiMultiplier, setBaseEeiMultiplier] = useState(BASE_EEI_MULTIPLIER);
+          const [powerCurve, setPowerCurve] = useState(DEFAULT_POWER_CURVE);
           const [showTuning, setShowTuning] = useState(false);
           const [showPalette, setShowPalette] = useState(false);
+          const [showPaletteTuning, setShowPaletteTuning] = useState(false);
           const [showPhysicsInfo, setShowPhysicsInfo] = useState(false);
           const [toastMsg, setToastMsg] = useState('');
           const [tiltGradientCSS, setTiltGradientCSS] = useState('');
@@ -218,7 +270,7 @@
           });
 
           useEffect(() => {
-            const powerW  = maxPower * powerTuningMultiplier * (powerPercent / 100);
+            const powerW  = maxPower * powerTuningMultiplier * Math.pow(powerPercent / 100, powerCurve);
             const density = calcRawDensity(powerW, speed, lpc);
             const matEei  = calcMaterialEei(density, thickness, surface, baseEeiMultiplier);
             const baseEei = matEei * calcFocusPenalty(focus);
@@ -259,7 +311,7 @@
             setEnergyDensity(density.toFixed(3));
             setResults(newResults);
 
-          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight, powerTuningMultiplier, baseEeiMultiplier]);
+          }, [thickness, surface, maxPower, powerPercent, speed, lpc, focus, direction, crosshatch, tiltLeft, tiltRight, powerTuningMultiplier, baseEeiMultiplier, powerCurve]);
 
           const handleShare = async () => {
             setToastMsg('Generating image...');
@@ -363,7 +415,7 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
           // Physics-predicted oxide colour for a given power % and speed.
           // Uses current app state for maxPower, lpc, thickness, surface, focus.
           const computePaletteColor = (powerPct, speedMmS) => {
-            const powerW  = maxPower * powerTuningMultiplier * (powerPct / 100);
+            const powerW  = maxPower * powerTuningMultiplier * Math.pow(powerPct / 100, powerCurve);
             const density = calcRawDensity(powerW, speedMmS, lpc);
             const matEei  = calcMaterialEei(density, thickness, surface, baseEeiMultiplier);
             const baseEei = matEei * calcFocusPenalty(focus);
@@ -388,10 +440,28 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                         <h2 className="text-base font-bold text-white">Colour Reference — Brushed &lt;1mm SS304</h2>
                         <p className="text-xs text-slate-400 mt-0.5">Min power % per speed · bidirectional crosshatch · 1000 LPC</p>
                       </div>
-                      <button onClick={() => setShowPalette(false)} className="text-slate-400 hover:text-white transition-colors p-1 ml-4 flex-shrink-0">
-                        <X className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                        <button
+                          onClick={() => setShowPaletteTuning(!showPaletteTuning)}
+                          className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border transition-colors ${showPaletteTuning ? 'text-orange-400 border-orange-500/30 bg-orange-500/10' : 'text-slate-500 border-slate-700 bg-slate-800 hover:text-slate-300'}`}
+                        >
+                          <Settings className="w-3 h-3" />
+                          Tuning
+                        </button>
+                        <button onClick={() => setShowPalette(false)} className="text-slate-400 hover:text-white transition-colors p-1">
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
+                    {showPaletteTuning && (
+                      <div className="px-4 pt-3 pb-1 border-b border-slate-800 bg-orange-500/5">
+                        <TuningPanel
+                          powerTuningMultiplier={powerTuningMultiplier} setPowerTuningMultiplier={setPowerTuningMultiplier}
+                          baseEeiMultiplier={baseEeiMultiplier} setBaseEeiMultiplier={setBaseEeiMultiplier}
+                          powerCurve={powerCurve} setPowerCurve={setPowerCurve}
+                        />
+                      </div>
+                    )}
                     <div className="p-4 overflow-x-auto">
                       <table className="border-collapse">
                         <thead>
@@ -988,38 +1058,15 @@ Hatch: ${direction === 'unidirectional' ? 'Unidirectional' : 'Bidirectional'} ${
                       </button>
                     </div>
 
-                    {showTuning && (() => {
-                      const ptmChanged = powerTuningMultiplier !== DEFAULT_POWER_TUNING_MULTIPLIER;
-                      const eeiChanged = baseEeiMultiplier !== BASE_EEI_MULTIPLIER;
-                      return (
-                        <div className="px-1 mb-2 space-y-2 border border-orange-500/20 bg-orange-500/5 rounded-lg p-2">
-                          <div>
-                            <div className="flex justify-between items-center mb-0.5">
-                              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Power Tuning</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-[10px] font-mono ${ptmChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{powerTuningMultiplier.toFixed(2)}</span>
-                                {ptmChanged && <button onClick={() => setPowerTuningMultiplier(DEFAULT_POWER_TUNING_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
-                              </div>
-                            </div>
-                            <input type="range" min="0.3" max="3.0" step="0.05" value={powerTuningMultiplier}
-                              onChange={e => setPowerTuningMultiplier(Number(e.target.value))}
-                              className="touch-slider" style={{ '--slider-color': ptmChanged ? '#f97316' : '#64748b' }} />
-                          </div>
-                          <div>
-                            <div className="flex justify-between items-center mb-0.5">
-                              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">EEI Multiplier</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-[10px] font-mono ${eeiChanged ? 'text-orange-400' : 'text-slate-500'}`}>×{baseEeiMultiplier.toFixed(1)}</span>
-                                {eeiChanged && <button onClick={() => setBaseEeiMultiplier(BASE_EEI_MULTIPLIER)} className="text-[9px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded px-1 transition-colors">reset</button>}
-                              </div>
-                            </div>
-                            <input type="range" min="5" max="30" step="0.5" value={baseEeiMultiplier}
-                              onChange={e => setBaseEeiMultiplier(Number(e.target.value))}
-                              className="touch-slider" style={{ '--slider-color': eeiChanged ? '#f97316' : '#64748b' }} />
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    {showTuning && (
+                      <div className="px-1 mb-2 border border-orange-500/20 bg-orange-500/5 rounded-lg p-2">
+                        <TuningPanel
+                          powerTuningMultiplier={powerTuningMultiplier} setPowerTuningMultiplier={setPowerTuningMultiplier}
+                          baseEeiMultiplier={baseEeiMultiplier} setBaseEeiMultiplier={setBaseEeiMultiplier}
+                          powerCurve={powerCurve} setPowerCurve={setPowerCurve}
+                        />
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-end px-1">
                       <div className="flex flex-col">
