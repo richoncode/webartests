@@ -83,6 +83,7 @@
   <nav class="nav-chips">
     <a class="nav-chip" href="#interference">Thin-Film Interference</a>
     <a class="nav-chip" href="#oxide">Oxide Growth</a>
+    <a class="nav-chip" href="#film-viz">Interference in Action</a>
     <a class="nav-chip" href="#temperature">Temperature → Colour</a>
     <a class="nav-chip" href="#parameters">Laser Parameters</a>
     <a class="nav-chip" href="#summary">Summary</a>
@@ -147,6 +148,31 @@
         <div class="mini-title">The 250°C threshold</div>
         <p>Below ≈250°C the Arrhenius exponential makes k_p negligibly small — growth stops. The majority of the oxide forms in the first fractions of a second when the surface is above ≈600°C. Cooling rate matters: a slower cool gives more time in the high-k_p window.</p>
       </div>
+    </div>
+  </section>
+
+  <!-- ── SECTION 2.5: FILM INTERFERENCE VIZ ── -->
+  <section id="film-viz">
+    <h2>Interference in Action</h2>
+    <p class="section-sub">Drag the slider to grow the oxide layer and watch two reflected rays fall in and out of phase — directly producing the colour shift.</p>
+
+    <div class="viz">
+      <div class="viz-label">Cross-section · reflected spectrum · drag to grow oxide</div>
+      <canvas id="film-canvas"></canvas>
+      <div class="controls">
+        <div class="ctrl">
+          <div class="ctrl-label">Oxide thickness <span class="ctrl-value" id="film-d-val">50 nm</span></div>
+          <input type="range" id="film-d-slider" min="0" max="170" step="1" value="50">
+        </div>
+      </div>
+      <div class="readout" id="film-readout"></div>
+    </div>
+
+    <p>White light is split at the air–oxide surface: <strong>Ray 1</strong> reflects immediately off the top; <strong>Ray 2</strong> travels through the film, bounces off the steel, and exits. Because both rays originate from the same incident beam they are coherent — they interfere. The extra optical path Ray 2 travels is <strong>2 × n × d</strong> (the film traversed twice, at refractive index n = 2.3). When this path difference equals exactly half a wavelength of some colour, that colour is cancelled from the reflection.</p>
+    <p>Both reflections undergo a half-wavelength phase flip (going from a less-dense to more-dense medium at each interface). The two flips cancel each other, so <em>only the optical path difference 2nd determines the phase</em> — no baseline offset to account for.</p>
+
+    <div class="callout">
+      <strong>Reading the spectrum strip:</strong> The top strip shows which wavelengths survive in the reflected light at the current oxide thickness — bright means reflected, dark means cancelled. Compare it to the reference strip below. The colour swatch is computed directly from this spectrum using the CIE 1931 standard observer, the same colour science used in display calibration.
     </div>
   </section>
 
@@ -632,6 +658,276 @@ function setupCanvas(canvas, drawFn) {
     const dpr = window.devicePixelRatio || 1;
     draw(canvas.getContext('2d'), canvas.width/dpr, canvas.height/dpr, false);
   }));
+})();
+
+// ── Thin-film interference physics ───────────────────────────
+
+// CIE 1931 2° standard observer, 10 nm steps, 380–730 nm (36 values)
+const CMF_X = [0.0014,0.0042,0.0143,0.0435,0.1344,0.2839,0.3483,0.3362,0.2908,0.1954,0.0956,0.0320,0.0049,0.0093,0.0633,0.1655,0.2904,0.4334,0.5945,0.7621,0.9163,1.0263,1.0622,1.0026,0.8544,0.6424,0.4479,0.2835,0.1649,0.0874,0.0468,0.0227,0.0114,0.0058,0.0029,0.0014];
+const CMF_Y = [0.0000,0.0001,0.0004,0.0012,0.0040,0.0116,0.0230,0.0380,0.0600,0.0910,0.1390,0.2080,0.3230,0.5030,0.7100,0.8620,0.9540,0.9950,0.9950,0.9520,0.8700,0.7570,0.6310,0.5030,0.3810,0.2650,0.1750,0.1070,0.0610,0.0320,0.0170,0.0082,0.0041,0.0021,0.0010,0.0005];
+const CMF_Z = [0.0065,0.0201,0.0679,0.2074,0.6456,1.3856,1.7471,1.7721,1.6692,1.2876,0.8130,0.4652,0.2720,0.1582,0.0782,0.0422,0.0203,0.0087,0.0037,0.0021,0.0017,0.0011,0.0008,0.0003,0.0002,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000];
+
+// Two-beam thin-film reflectance: Cr₂O₃ (n=2.3) on steel
+// r1 = Fresnel amplitude air→film ≈ 0.40
+// r2 = Fresnel amplitude film→steel ≈ 0.62 (accounts for complex metal refractive index)
+// Both boundaries are low→high n, both have phase flip → flips cancel → only OPD matters
+function filmR(lam, d) {
+  if (d <= 0) return 0.28;
+  const delta = 4 * Math.PI * 2.3 * d / lam;  // optical phase difference
+  const r1 = 0.40, r2 = 0.62, r12 = r1 * r2;
+  // Airy two-beam formula
+  return (r1*r1 + r2*r2 + 2*r12*Math.cos(delta)) / (1 + r1*r1*r2*r2 + 2*r12*Math.cos(delta));
+}
+
+// Convert reflected spectrum → display sRGB via CIE XYZ
+function specToRGB(specFn) {
+  let X=0,Y=0,Z=0, Xn=0,Yn=0,Zn=0;
+  for (let i = 0; i < 36; i++) {
+    const lam = 380 + i * 10;
+    const I = specFn(lam);
+    X += I*CMF_X[i]; Y += I*CMF_Y[i]; Z += I*CMF_Z[i];
+    Xn += CMF_X[i];  Yn += CMF_Y[i];  Zn += CMF_Z[i];
+  }
+  X /= Xn; Y /= Yn; Z /= Zn;
+  const rl =  3.2406*X - 1.5372*Y - 0.4986*Z;
+  const gl = -0.9689*X + 1.8758*Y + 0.0415*Z;
+  const bl =  0.0557*X - 0.2040*Y + 1.0570*Z;
+  const gc = v => v <= 0.0031308 ? 12.92*v : 1.055*Math.pow(v, 1/2.4) - 0.055;
+  return [
+    Math.round(255 * Math.max(0, Math.min(1, gc(rl)))),
+    Math.round(255 * Math.max(0, Math.min(1, gc(gl)))),
+    Math.round(255 * Math.max(0, Math.min(1, gc(bl)))),
+  ];
+}
+
+// Wavelength (nm) → approximate visible-spectrum display RGB [0–1]
+function specColor(nm) {
+  let r=0,g=0,b=0;
+  if      (nm < 380) { r=0; g=0; b=0; }
+  else if (nm < 440) { r=(440-nm)/60; b=1; }
+  else if (nm < 490) { g=(nm-440)/50; b=1; }
+  else if (nm < 510) { g=1; b=(510-nm)/20; }
+  else if (nm < 580) { r=(nm-510)/70; g=1; }
+  else if (nm < 645) { r=1; g=(645-nm)/65; }
+  else               { r=1; }
+  return [r, g, b];
+}
+
+// ── Film interference canvas ──────────────────────────────────
+(function() {
+  const canvas  = document.getElementById('film-canvas');
+  const dSlider = document.getElementById('film-d-slider');
+  const dLbl    = document.getElementById('film-d-val');
+  const readout = document.getElementById('film-readout');
+  canvas.setAttribute('data-h', '240');
+
+  function arrowLine(ctx, x1, y1, x2, y2, color, dashed) {
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    if (dashed) ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.setLineDash([]);
+    const ang = Math.atan2(y2-y1, x2-x1);
+    ctx.fillStyle = color;
+    ctx.translate(x2, y2); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-8,-3); ctx.lineTo(-8,3); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function draw(ctx, W, H) {
+    const d = parseFloat(dSlider.value);
+    dLbl.textContent = d + ' nm';
+    ctx.clearRect(0, 0, W, H);
+
+    // ── Layout ──────────────────────────────────────────────
+    const dW = Math.round(W * 0.50);   // diagram panel width
+    const sX = dW + 14;                // spectrum panel x
+    const sW = W - sX - 6;            // spectrum panel width
+    const pad = 8;
+
+    // Layer heights: oxide scales 6–56 px over 0–170 nm range
+    const steelH = Math.round((H - pad*2) * 0.38);
+    const oxH    = Math.max(6, Math.round(d / 170 * 58) + 6);
+    const airH   = H - pad*2 - steelH - oxH;
+
+    const yAirTop = pad;
+    const yOx     = yAirTop + airH;      // air–oxide interface
+    const ySt     = yOx + oxH;           // oxide–steel interface
+    const yBot    = ySt + steelH;
+
+    // ── Cross-section regions ────────────────────────────────
+    ctx.fillStyle = '#040408';   // air
+    ctx.fillRect(pad, yAirTop, dW - pad*2, airH);
+
+    ctx.fillStyle = 'rgba(16,72,44,0.60)';  // oxide
+    ctx.fillRect(pad, yOx, dW - pad*2, oxH);
+
+    ctx.fillStyle = '#111116';   // steel
+    ctx.fillRect(pad, ySt, dW - pad*2, steelH);
+
+    // Interface lines
+    ctx.strokeStyle = '#1a4828'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(pad, yOx); ctx.lineTo(dW - pad, yOx); ctx.stroke();
+    ctx.strokeStyle = '#26262c'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, ySt); ctx.lineTo(dW - pad, ySt); ctx.stroke();
+
+    // Layer labels (right side)
+    const lx = dW - pad - 2;
+    ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+    ctx.fillStyle = '#1c1c28';
+    ctx.fillText('air  (n = 1.0)', lx, yAirTop + airH/2 + 3);
+    if (oxH >= 14) {
+      ctx.fillStyle = '#1c4428';
+      ctx.fillText('Cr₂O₃  n = 2.3', lx, yOx + oxH/2 + 3);
+    }
+    ctx.fillStyle = '#222228';
+    ctx.fillText('steel', lx, ySt + steelH/2 + 3);
+
+    // ── Ray geometry ────────────────────────────────────────
+    // Near-normal incidence; rays separated slightly for clarity
+    const incX  = Math.round(dW * 0.34);   // incident ray x
+    const r2dX  = 7;                        // Ray 2 offset rightward
+    const incTop = yAirTop + 3;
+
+    // Incident ray (white, coming down)
+    arrowLine(ctx, incX, incTop, incX, yOx, 'rgba(255,255,255,0.40)', false);
+    ctx.fillStyle = '#2a2a30'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('white', incX, incTop + airH * 0.18 - 4);
+    ctx.fillText('light', incX, incTop + airH * 0.18 + 5);
+
+    // Ray 1: reflects at air–oxide surface (gold, goes up-left)
+    const r1ExitX = incX - 16;
+    arrowLine(ctx, incX, yOx, r1ExitX, incTop + 6, '#c08830', false);
+    ctx.fillStyle = '#50380e'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('R₁', r1ExitX - 3, incTop + 5);
+
+    // Phase flip label at air–oxide interface
+    ctx.fillStyle = '#1e3a20'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('½λ phase flip', incX + 2, yOx - 3);
+
+    // Ray 2: inside oxide (blue), down to steel then up
+    const r2inX   = incX + 4;
+    const r2stX   = incX + r2dX;
+    const r2outX  = incX + r2dX * 2;
+    arrowLine(ctx, r2inX, yOx, r2stX, ySt, '#3a80c8', false);   // down
+    arrowLine(ctx, r2stX, ySt, r2outX, yOx, '#3a80c8', false);  // up
+
+    // Phase flip label at oxide–steel interface
+    ctx.fillStyle = '#1a2c3a'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('½λ phase flip', r2stX + 3, ySt - 3);
+
+    // Ray 2 exits oxide upward
+    const r2TopX = r2outX + 10;
+    arrowLine(ctx, r2outX, yOx, r2TopX, incTop + 6, '#3a80c8', false);
+    ctx.fillStyle = '#143050'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('R₂', r2TopX + 3, incTop + 5);
+
+    // OPD annotation: dashed bracket on the oxide thickness
+    if (oxH >= 16) {
+      const bx = Math.round(dW * 0.68);
+      ctx.strokeStyle = '#1a4828'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(bx, yOx); ctx.lineTo(bx, ySt); ctx.stroke();
+      ctx.setLineDash([]);
+      [[yOx],[ySt]].forEach(([y]) => {
+        ctx.beginPath(); ctx.moveTo(bx-3, y); ctx.lineTo(bx+3, y); ctx.stroke();
+      });
+      const opd = (2 * 2.3 * d).toFixed(0);
+      ctx.fillStyle = '#1a4828'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+      if (oxH >= 28) {
+        ctx.fillText('OPD = 2nd', bx + 4, yOx + oxH/2 - 4);
+        ctx.fillText('= ' + opd + ' nm', bx + 4, yOx + oxH/2 + 6);
+      } else {
+        ctx.fillText(opd + ' nm', bx + 4, yOx + oxH/2 + 3);
+      }
+    }
+
+    // ── Spectrum panel ──────────────────────────────────────
+    const s1Top  = 14;  const s1H = 28;    // reflected spectrum strip
+    const s2Top  = s1Top + s1H + 16;       // reference strip
+    const s2H    = 12;
+    const nmLblY = s2Top + s2H + 11;
+    const swTop  = nmLblY + 10;
+    const swH    = Math.max(8, H - swTop - pad);
+
+    // Reflected spectrum strip
+    ctx.fillStyle = '#222'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('reflected', sX + sW/2, s1Top - 2);
+    for (let px = 0; px < sW; px++) {
+      const lam = 380 + (px / sW) * 320;
+      const I = filmR(lam, d);
+      const [r,g,b] = specColor(lam);
+      ctx.fillStyle = `rgb(${Math.round(r*I*255)},${Math.round(g*I*255)},${Math.round(b*I*255)})`;
+      ctx.fillRect(sX + px, s1Top, 2, s1H);
+    }
+    ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.strokeRect(sX, s1Top, sW, s1H);
+
+    // Reference spectrum strip (full white light)
+    ctx.fillStyle = '#222'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('reference (white light)', sX + sW/2, s2Top - 2);
+    for (let px = 0; px < sW; px++) {
+      const lam = 380 + (px / sW) * 320;
+      const [r,g,b] = specColor(lam);
+      ctx.fillStyle = `rgb(${Math.round(r*180)},${Math.round(g*180)},${Math.round(b*180)})`;
+      ctx.fillRect(sX + px, s2Top, 2, s2H);
+    }
+    ctx.strokeRect(sX, s2Top, sW, s2H);
+
+    // nm axis labels
+    ctx.fillStyle = '#2a2a2a'; ctx.font = '8px system-ui';
+    [[380,'left'],[540,'center'],[700,'right']].forEach(([n,align]) => {
+      ctx.textAlign = align;
+      ctx.fillText(n + ' nm', sX + (n-380)/320*sW, nmLblY);
+    });
+
+    // Result colour swatch (computed from physics, not lookup)
+    const [sr,sg,sb] = specToRGB(lam => filmR(lam, d));
+    const swCss = `rgb(${sr},${sg},${sb})`;
+    ctx.fillStyle = swCss;
+    ctx.beginPath();
+    ctx.moveTo(sX+6,swTop); ctx.arcTo(sX+sW,swTop,sX+sW,swTop+swH,6);
+    ctx.arcTo(sX+sW,swTop+swH,sX,swTop+swH,6); ctx.arcTo(sX,swTop+swH,sX,swTop,6);
+    ctx.arcTo(sX,swTop,sX+sW,swTop,6); ctx.closePath(); ctx.fill();
+
+    const bright = (sr*0.299 + sg*0.587 + sb*0.114) / 255;
+    ctx.fillStyle = bright > 0.42 ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(nmToName(d), sX + sW/2, swTop + swH/2 - 6);
+    ctx.font = '10px SF Mono, monospace';
+    ctx.fillText(d + ' nm', sX + sW/2, swTop + swH/2 + 9);
+
+    // ── Readout ──────────────────────────────────────────────
+    const opd = (2 * 2.3 * d).toFixed(0);
+    // First destructive wavelength in visible range: 2nd = (m+0.5)λ → λ = 2nd/(m+0.5)
+    let cancelLam = null;
+    for (let m = 0; m <= 4; m++) {
+      const lam = 2 * 2.3 * d / (m + 0.5);
+      if (lam >= 390 && lam <= 700) { cancelLam = lam; break; }
+    }
+    // First constructive wavelength in visible range: 2nd = mλ → λ = 2nd/m
+    let boostLam = null;
+    for (let m = 1; m <= 4; m++) {
+      const lam = 2 * 2.3 * d / m;
+      if (lam >= 390 && lam <= 700) { boostLam = lam; break; }
+    }
+    const cancelStr = cancelLam
+      ? `<span class="r-red">↓ ${cancelLam.toFixed(0)} nm cancelled</span>`
+      : `<span style="color:#333">no cancellation in visible range</span>`;
+    const boostStr = boostLam
+      ? `<span class="r-green">↑ ${boostLam.toFixed(0)} nm reinforced</span>`
+      : `<span style="color:#333">no reinforcement in visible range</span>`;
+
+    readout.innerHTML =
+      `Oxide:   <span class="r-hi">${d} nm</span>  ·  OPD = 2 × 2.3 × ${d} = <span class="r-hi">${opd} nm</span>\n` +
+      `Effect:  ${cancelStr}  ·  ${boostStr}\n` +
+      `Colour:  <span style="color:${swCss}">■</span>  ${nmToName(d)}  <span style="color:#2a2a2a">(computed from CIE 1931 observer)</span>`;
+  }
+
+  setupCanvas(canvas, draw);
+  dSlider.addEventListener('input', () => {
+    const dpr = window.devicePixelRatio || 1;
+    draw(canvas.getContext('2d'), canvas.width/dpr, canvas.height/dpr);
+  });
 })();
 </script>
 </body>
