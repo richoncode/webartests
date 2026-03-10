@@ -142,7 +142,7 @@
       <div class="readout" id="div-readout"></div>
     </div>
 
-    <p>The F2 specifies beam divergence at <strong>&lt;1.5 mrad</strong>. This describes how rapidly the collimated beam expands between the galvo mirrors and the focusing lens. Lower divergence means the lens receives a tighter, more parallel beam — which translates directly into a smaller, sharper focal spot.</p>
+    <p>The F2 specifies beam divergence at <strong>&lt;1.5 mrad</strong>. This describes how rapidly the collimated beam expands between the galvo mirrors and the focusing lens. Lower divergence means the lens receives a tighter, more parallel beam — which translates directly into a smaller, sharper focal spot. The IR module achieves a <strong>0.03 mm × 0.03 mm</strong> in-focus spot; the 15W diode produces a larger elliptical <strong>0.08 mm × 0.06 mm</strong> spot.</p>
     <p>Divergence also determines <strong>spot consistency across the working field.</strong> On a galvo system, beams aimed at the corners travel a slightly longer path than beams aimed straight down. A low-divergence beam expands so little over that extra distance that the spot quality stays effectively constant across the whole marking area.</p>
   </section>
 
@@ -219,11 +219,11 @@
     <table>
       <thead><tr><th>Parameter</th><th>What it means</th><th>F2 typical value</th></tr></thead>
       <tbody>
-        <tr><td>w₀ (waist radius)</td><td>Minimum spot radius at focus</td><td>0.05–0.25 mm</td></tr>
-        <tr><td>Spot diameter</td><td>2 × w₀ — what the spec sheet quotes</td><td>0.1–0.5 mm</td></tr>
-        <tr><td>z<sub>R</sub> (Rayleigh range)</td><td>Distance at which radius = √2 × w₀</td><td>~5–15 mm</td></tr>
-        <tr><td>Depth of field</td><td>2 × z<sub>R</sub> — usable focusing zone</td><td>~10–30 mm</td></tr>
-        <tr><td>λ (wavelength)</td><td>IR fibre laser wavelength</td><td>1064 nm</td></tr>
+        <tr><td>w₀ (waist radius)</td><td>Minimum spot radius at focus</td><td>0.015 mm (15 µm)</td></tr>
+        <tr><td>Spot diameter</td><td>2 × w₀ — what the spec sheet quotes</td><td>0.03 mm × 0.03 mm (30 µm)</td></tr>
+        <tr><td>z<sub>R</sub> (Rayleigh range)</td><td>Distance at which radius = √2 × w₀</td><td>~0.66 mm</td></tr>
+        <tr><td>Depth of field</td><td>2 × z<sub>R</sub> — usable focusing zone</td><td>~1.33 mm</td></tr>
+        <tr><td>λ (wavelength)</td><td>IR laser wavelength</td><td>1064 nm</td></tr>
       </tbody>
     </table>
   </section>
@@ -236,9 +236,8 @@
       <tbody>
         <tr><td>Galvo mirrors</td><td>Fill large areas extremely fast; enables consistent precision that a moving carriage cannot match at high speed</td></tr>
         <tr><td>Low divergence &lt;1.5 mrad</td><td>Consistent spot quality edge-to-edge across the working field; no "fuzzy corners"</td></tr>
-        <tr><td>0.1 mm min spot</td><td>Fine text, hairline engraving, and jewelry-scale detail are achievable</td></tr>
-        <tr><td>0.5 mm max spot</td><td>Thicker materials or heavy ablation passes; kerf is wider at surface and base than at the focal plane</td></tr>
-        <tr><td>Rayleigh range ~10 mm</td><td>Materials up to ~10 mm thick marked in a single pass without severe spot degradation</td></tr>
+        <tr><td>0.03 mm spot (IR 5W)</td><td>Extremely fine detail — 30 µm × 30 µm — finer than a human hair; jewellery and PCB-scale text are achievable</td></tr>
+        <tr><td>Rayleigh range ~0.66 mm</td><td>Depth of field ≈ 1.3 mm — any material thicker than this will have a noticeably wider spot at entry and exit surfaces</td></tr>
       </tbody>
     </table>
   </section>
@@ -523,10 +522,11 @@ function setupCanvas(canvas, drawFn) {
   const readout  = document.getElementById('hg-readout');
   canvas.setAttribute('data-h', '280');
 
-  // Gaussian beam physics (IR fibre, 1064 nm)
+  // Gaussian beam physics — xTool F2 IR (1064 nm, 5W)
+  // Spec: 0.03 mm × 0.03 mm in-focus spot → w₀ = 0.015 mm radius
   const lambda = 0.001064; // mm
-  const w0     = 0.05;     // mm beam waist radius → 0.10 mm spot
-  const zR     = Math.PI * w0 * w0 / lambda; // ≈ 7.4 mm Rayleigh range
+  const w0     = 0.015;    // mm beam waist radius → 0.030 mm spot diameter
+  const zR     = Math.PI * w0 * w0 / lambda; // ≈ 0.664 mm Rayleigh range
   const beamR  = z => w0 * Math.sqrt(1 + (z / zR) ** 2);
 
   function draw(ctx, W, H) {
@@ -544,12 +544,12 @@ function setupCanvas(canvas, drawFn) {
     const dW = W - mL - mR, dH = H - mT - mB;
     const cY = mT + dH / 2;
 
-    // z axis: show ±22 mm from material centre
-    const zRange = 22;
+    // z axis: show ±12 mm from material centre (zR ≈ 0.66 mm so ±12 is already ~18× zR)
+    const zRange = 12;
     const pxPerMm = dW / (2 * zRange); // horizontal: px per mm
 
-    // y scale: 500 px/mm of beam radius (exaggerated so hourglass is visible)
-    const ys = 520;
+    // y scale: at zRange=12, beam radius ≈ 0.27 mm — set ys so that fills ~75% of half-height
+    const ys = 260;
 
     // Focus z position relative to material centre
     // fpos=0: focus at material centre; fpos=-1: focus at top; fpos=+1: focus at bottom
