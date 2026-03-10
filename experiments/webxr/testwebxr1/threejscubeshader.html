@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three.js Shader Gradient</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <script>
+    // Set up the scene, camera, and renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Position the camera
+    camera.position.z = 5;
+
+    // Define geometry and custom shader material
+    const geometry = new THREE.BoxGeometry();
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(0, 1, 0) } // Base color set to green
+      },
+      vertexShader: `
+        varying vec2 vUV;
+        void main() {
+          vUV = uv; // Pass UV coordinates to fragment shader
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        varying vec2 vUV; // Receive UV coordinates
+        void main() {
+          // Create a gradient by blending based on vUV.y (vertical axis)
+          vec3 gradientColor = uColor * vUV.y; // Scale color by vUV.y to create gradient
+          gl_FragColor = vec4(gradientColor, 1.0); // Set color with gradient
+        }
+      `
+    });
+
+    // Create the box mesh
+    const cube = new THREE.Mesh(geometry, material);
+    scene.add(cube);
+
+    // Add ambient and directional lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(1, 1, -1).normalize();
+    scene.add(directionalLight);
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
