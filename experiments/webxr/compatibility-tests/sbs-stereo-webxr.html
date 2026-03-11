@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SBS Stereo Image — WebXR</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="webxr/VRButton.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    #status {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.55); color: #888;
+      font: 13px/1 -apple-system, sans-serif;
+      padding: 6px 16px; border-radius: 20px;
+      border: 1px solid #1a1a1a; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Desktop preview — left-eye half only · Enter VR for full stereo</div>
+  <script>
+
+    // ── Scene ─────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x060608);
+
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+    camera.position.set(0, 1.6, 0); // standing eye height
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    document.body.appendChild(VRButton.createButton(renderer));
+
+    // ── SBS stereo texture ────────────────────────────────────────
+    // Source is a side-by-side image: left half = left eye, right half = right eye.
+    // The shader remaps UV.x per eye — the image itself is never modified.
+    //
+    // If this URL is CORS-blocked by the server, copy the image locally and
+    // update the path below to a relative URL.
+
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+
+    const sbsTex = loader.load(
+      'https://theclassicphotomag.com/wp-content/uploads/Illustration16-Rau-Reflected-Beauty-In-her-Boudoir-1.jpg',
+      tex => {
+        tex.minFilter = THREE.LinearFilter;
+        document.getElementById('status').textContent =
+          'Texture loaded · Desktop: left eye preview · Enter VR for stereo';
+      },
+      undefined,
+      () => {
+        document.getElementById('status').textContent =
+          '⚠ Texture blocked by CORS — copy image locally and update the path';
+      }
+    );
+
+    // ── Stereo shader ─────────────────────────────────────────────
+    // uEye uniform: 0.0 = left eye, 1.0 = right eye
+    // Fragment shader maps vUv.x → left half (0–0.5) or right half (0.5–1.0)
+    // using a single multiply + add — no GLSL branching needed.
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTex: { value: sbsTex },
+        uEye: { value: 0.0 }      // updated per-eye via onBeforeRender
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uTex;
+        uniform float uEye;   // 0.0 = left, 1.0 = right
+        varying vec2 vUv;
+        void main() {
+          // Remap vUv.x into the correct half of the SBS source:
+          //   left eye:  x = vUv.x * 0.5          (0.0 → 0.5)
+          //   right eye: x = vUv.x * 0.5 + 0.5    (0.5 → 1.0)
+          float x = vUv.x * 0.5 + uEye * 0.5;
+          gl_FragColor = texture2D(uTex, vec2(x, vUv.y));
+        }
+      `
+    });
+
+    // ── Stereo plane ──────────────────────────────────────────────
+    // Placed at -3.5 m (world Z) at eye height in front of the user.
+    // The headset's IPD creates natural parallax — the image appears to
+    // float in space at that depth ("spatially stacked", not screen-locked).
+    //
+    // Plane dimensions assume a 1:1 per-eye aspect ratio (SBS source is 2:1 total).
+    // Adjust PLANE_W / PLANE_H to match your source image's per-eye aspect.
+
+    const PLANE_W = 2.8;   // metres — set to per-eye aspect × PLANE_H
+    const PLANE_H = 2.8;   // metres
+    const PLANE_Z = -3.5;  // metres in front of user
+
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(PLANE_W, PLANE_H),
+      mat
+    );
+    plane.position.set(0, 1.6, PLANE_Z);
+    scene.add(plane);
+
+    // ── Per-eye uniform update ────────────────────────────────────
+    // onBeforeRender is called by Three.js once per eye during XR rendering.
+    // The `cam` argument is the individual eye camera for that pass.
+    // Comparing it against xrCamera.cameras[0] identifies left vs right.
+    //
+    // Key: do NOT call renderer.render() manually per eye in the loop.
+    // One renderer.render(scene, camera) call is enough — Three.js handles
+    // the two-pass stereo split internally and fires onBeforeRender for each.
+
+    plane.onBeforeRender = function(renderer, scene, cam) {
+      if (renderer.xr.isPresenting) {
+        const xrCam = renderer.xr.getCamera(camera);
+        if (xrCam.cameras && xrCam.cameras.length >= 2) {
+          mat.uniforms.uEye.value = (cam === xrCam.cameras[0]) ? 0.0 : 1.0;
+        }
+      } else {
+        mat.uniforms.uEye.value = 0.0; // desktop: left eye half as preview
+      }
+    };
+
+    // ── Depth anchor ──────────────────────────────────────────────
+    // A small sphere at the same world depth as the image gives the user
+    // a spatial reference point — confirms stereo parallax is working.
+    const anchor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0x5b9bd5 })
+    );
+    anchor.position.set(
+      -PLANE_W / 2 + 0.07,   // top-left corner of the image plane
+       1.6 + PLANE_H / 2 - 0.07,
+       PLANE_Z
+    );
+    scene.add(anchor);
+
+    // ── Resize ───────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ── Render loop ───────────────────────────────────────────────
+    // Single render call per frame. Three.js calls onBeforeRender for each
+    // eye sub-pass automatically when xr.enabled = true.
+    renderer.setAnimationLoop(() => {
+      renderer.render(scene, camera);
+    });
+
+  </script>
+</body>
+</html>
