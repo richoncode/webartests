@@ -207,8 +207,8 @@
           <input type="range" id="thick-slider" min="0.2" max="15" step="0.1" value="5.0">
         </div>
         <div class="ctrl">
-          <div class="ctrl-label">Focus position <span class="ctrl-value" id="fpos-val">mid-material</span></div>
-          <input type="range" id="fpos-slider" min="-1" max="1" step="0.05" value="0">
+          <div class="ctrl-label">Focus offset <span class="ctrl-value" id="fpos-val">on surface</span></div>
+          <input type="range" id="fpos-slider" min="-8" max="8" step="0.5" value="0">
         </div>
       </div>
       <div class="readout" id="hg-readout"></div>
@@ -560,12 +560,12 @@ function setupCanvas(canvas, drawFn) {
 
   function draw(ctx, W, H) {
     const thickMm = parseFloat(thickSl.value);
-    const fpos    = parseFloat(fposSl.value); // −1=top of material, 0=centre, +1=bottom
+    const focusShiftMm = parseFloat(fposSl.value); // 0=on surface, +ve=above, −ve=inside
 
     thickLbl.textContent = thickMm.toFixed(1) + ' mm';
-    if      (fpos < -0.12) fposLbl.textContent = 'above centre';
-    else if (fpos >  0.12) fposLbl.textContent = 'below centre';
-    else                   fposLbl.textContent  = 'mid-material';
+    if      (focusShiftMm > 0.1)  fposLbl.textContent = '+' + focusShiftMm.toFixed(1) + ' mm above surface';
+    else if (focusShiftMm < -0.1) fposLbl.textContent = focusShiftMm.toFixed(1) + ' mm below surface';
+    else                          fposLbl.textContent  = 'on surface';
 
     ctx.clearRect(0, 0, W, H);
 
@@ -573,16 +573,15 @@ function setupCanvas(canvas, drawFn) {
     const dW = W - mL - mR, dH = H - mT - mB;
     const cY = mT + dH / 2;
 
-    // z axis: show ±12 mm from material centre (zR ≈ 0.66 mm so ±12 is already ~18× zR)
-    const zRange = 12;
+    // z axis: show ±18 mm (accommodates ±8 mm focus offset beyond material)
+    const zRange = 18;
     const pxPerMm = dW / (2 * zRange); // horizontal: px per mm
 
-    // y scale: at zRange=12, beam radius ≈ 0.27 mm — set ys so that fills ~75% of half-height
-    const ys = 260;
+    // y scale: at zRange=18, beam radius ≈ 0.40 mm — set ys so that fills ~75% of half-height
+    const ys = 180;
 
-    // Focus z position relative to material centre
-    // fpos=0: focus at material centre; fpos=-1: focus at top; fpos=+1: focus at bottom
-    const focusZ = fpos * thickMm / 2;
+    // Focus z position: 0=at entry surface; shift>0=waist above surface; shift<0=waist inside
+    const focusZ = -thickMm / 2 - focusShiftMm;
 
     // Coordinate helpers
     const zToX = z => mL + dW / 2 + z * pxPerMm;
@@ -654,7 +653,7 @@ function setupCanvas(canvas, drawFn) {
     ctx.fillStyle = '#5b9bd5'; ctx.font = '9px SF Mono, monospace'; ctx.textAlign = 'center';
     ctx.fillText('Ø ' + dTop + ' μm', matX1, H - mB + 14);
     ctx.fillStyle = '#3a5a70'; ctx.font = '8px system-ui';
-    ctx.fillText('top', matX1, H - mB + 24);
+    ctx.fillText('entry', matX1, H - mB + 24);
 
     // Bottom surface
     ctx.strokeStyle = '#5b9bd5'; ctx.lineWidth = 2;
@@ -662,7 +661,7 @@ function setupCanvas(canvas, drawFn) {
     ctx.fillStyle = '#5b9bd5'; ctx.font = '9px SF Mono, monospace'; ctx.textAlign = 'center';
     ctx.fillText('Ø ' + dBot + ' μm', matX2, H - mB + 14);
     ctx.fillStyle = '#3a5a70'; ctx.font = '8px system-ui';
-    ctx.fillText('bottom', matX2, H - mB + 24);
+    ctx.fillText('exit', matX2, H - mB + 24);
 
     // ── Laser source label (left edge) ──
     ctx.save();
@@ -698,11 +697,18 @@ function setupCanvas(canvas, drawFn) {
       ? `\n<span class="r-red">⚠ Material (${thickMm.toFixed(1)} mm) exceeds depth of field (2×z_R = ${depth} mm) — spot widens significantly at surfaces</span>`
       : `\n<span class="r-green">✓ Material within depth of field (2×z_R = ${depth} mm) — consistent marking top to bottom</span>`;
 
+    const focusDesc = focusShiftMm > 0.1
+      ? `+${focusShiftMm.toFixed(1)} mm above surface`
+      : focusShiftMm < -0.1
+        ? `${focusShiftMm.toFixed(1)} mm inside material`
+        : 'on surface';
+
     readout.innerHTML =
       `Beam waist w₀:  <span class="r-hi">Ø ${wDiam} μm</span>  ·  Rayleigh range z_R: <span class="r-hi">${zRr} mm</span>  ·  Depth of field: <span class="r-hi">${depth} mm</span>\n` +
-      `Top surface:    Ø <span class="r-blue">${dTop} μm</span>  (beam enters here)\n` +
+      `Focus offset:   <span class="r-hi">${focusDesc}</span>\n` +
+      `Entry surface:  Ø <span class="r-blue">${dTop} μm</span>\n` +
       `Focal point:    Ø <span class="r-hi">${wDiam} μm</span>  ← minimum spot\n` +
-      `Bottom surface: Ø <span class="r-blue">${dBot} μm</span>  (beam exits here)` +
+      `Exit surface:   Ø <span class="r-blue">${dBot} μm</span>` +
       warn;
   }
 

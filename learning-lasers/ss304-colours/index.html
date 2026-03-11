@@ -719,7 +719,7 @@ function specColor(nm) {
   const dSlider = document.getElementById('film-d-slider');
   const dLbl    = document.getElementById('film-d-val');
   const readout = document.getElementById('film-readout');
-  canvas.setAttribute('data-h', '240');
+  canvas.setAttribute('data-h', '260');
 
   function arrowLine(ctx, x1, y1, x2, y2, color, dashed) {
     ctx.save();
@@ -740,118 +740,132 @@ function specColor(nm) {
     ctx.clearRect(0, 0, W, H);
 
     // ── Layout ──────────────────────────────────────────────
-    const dW = Math.round(W * 0.50);   // diagram panel width
-    const sX = dW + 14;                // spectrum panel x
-    const sW = W - sX - 6;            // spectrum panel width
+    const dW = Math.round(W * 0.50);
+    const sX = dW + 14;
+    const sW = W - sX - 6;
     const pad = 8;
 
-    // Layer heights: oxide scales 6–56 px over 0–170 nm range
-    const steelH = Math.round((H - pad*2) * 0.38);
-    const oxH    = Math.max(6, Math.round(d / 170 * 58) + 6);
+    const steelH = Math.round((H - pad*2) * 0.35);
+    const oxH    = Math.max(6, Math.round(d / 170 * 56) + 6);
     const airH   = H - pad*2 - steelH - oxH;
 
     const yAirTop = pad;
-    const yOx     = yAirTop + airH;      // air–oxide interface
-    const ySt     = yOx + oxH;           // oxide–steel interface
-    const yBot    = ySt + steelH;
+    const yOx     = yAirTop + airH;
+    const ySt     = yOx + oxH;
 
     // ── Cross-section regions ────────────────────────────────
-    ctx.fillStyle = '#040408';   // air
+    ctx.fillStyle = '#06060d';
     ctx.fillRect(pad, yAirTop, dW - pad*2, airH);
-
-    ctx.fillStyle = 'rgba(16,72,44,0.60)';  // oxide
+    ctx.fillStyle = 'rgba(18,80,48,0.75)';
     ctx.fillRect(pad, yOx, dW - pad*2, oxH);
-
-    ctx.fillStyle = '#111116';   // steel
+    ctx.fillStyle = '#141418';
     ctx.fillRect(pad, ySt, dW - pad*2, steelH);
 
-    // Interface lines
-    ctx.strokeStyle = '#1a4828'; ctx.lineWidth = 1.2;
+    // Interface lines — bright enough to see
+    ctx.strokeStyle = '#2a7840'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(pad, yOx); ctx.lineTo(dW - pad, yOx); ctx.stroke();
-    ctx.strokeStyle = '#26262c'; ctx.lineWidth = 1;
+    ctx.strokeStyle = '#3a3a42'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad, ySt); ctx.lineTo(dW - pad, ySt); ctx.stroke();
 
     // Layer labels (right side)
-    const lx = dW - pad - 2;
+    const lx = dW - pad - 4;
     ctx.font = '8px system-ui'; ctx.textAlign = 'right';
-    ctx.fillStyle = '#1c1c28';
-    ctx.fillText('air  (n = 1.0)', lx, yAirTop + airH/2 + 3);
+    ctx.fillStyle = '#404055';
+    ctx.fillText('air  (n = 1.0)', lx, yAirTop + Math.min(airH / 2, 80) + 3);
     if (oxH >= 14) {
-      ctx.fillStyle = '#1c4428';
-      ctx.fillText('Cr₂O₃  n = 2.3', lx, yOx + oxH/2 + 3);
+      ctx.fillStyle = '#2a7850';
+      ctx.fillText('Cr₂O₃  n = 2.3', lx, yOx + oxH / 2 + 3);
     }
-    ctx.fillStyle = '#222228';
-    ctx.fillText('steel', lx, ySt + steelH/2 + 3);
+    ctx.fillStyle = '#404045';
+    ctx.fillText('steel', lx, ySt + steelH / 2 + 3);
+
+    // Oxide thickness left label
+    if (oxH >= 18) {
+      ctx.fillStyle = '#286840'; ctx.textAlign = 'left';
+      ctx.fillText(d + ' nm', pad + 4, yOx + oxH / 2 + 3);
+    }
 
     // ── Ray geometry ────────────────────────────────────────
-    // Near-normal incidence; rays separated slightly for clarity
-    const incX  = Math.round(dW * 0.34);   // incident ray x
-    const r2dX  = 7;                        // Ray 2 offset rightward
-    const incTop = yAirTop + 3;
+    const incX   = Math.round(dW * 0.34);
+    const r2dX   = 9;
+    const incTop = yAirTop + 4;
 
-    // Incident ray (white, coming down)
-    arrowLine(ctx, incX, incTop, incX, yOx, 'rgba(255,255,255,0.40)', false);
-    ctx.fillStyle = '#2a2a30'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('white', incX, incTop + airH * 0.18 - 4);
-    ctx.fillText('light', incX, incTop + airH * 0.18 + 5);
+    // Incident ray (white, down to surface)
+    arrowLine(ctx, incX, incTop, incX, yOx - 1, 'rgba(255,255,255,0.70)', false);
+    ctx.fillStyle = '#505068'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('white', incX, incTop + Math.min(airH * 0.28, 60) - 5);
+    ctx.fillText('light', incX, incTop + Math.min(airH * 0.28, 60) + 5);
 
-    // Ray 1: reflects at air–oxide surface (gold, goes up-left)
-    const r1ExitX = incX - 16;
-    arrowLine(ctx, incX, yOx, r1ExitX, incTop + 6, '#c08830', false);
-    ctx.fillStyle = '#50380e'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('R₁', r1ExitX - 3, incTop + 5);
+    // R1: reflects at air–oxide surface (gold/orange, up-left)
+    const r1ExitX = incX - 22;
+    arrowLine(ctx, incX, yOx, r1ExitX, incTop + 10, '#e8a030', false);
+    ctx.fillStyle = '#c08828'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('R₁', r1ExitX - 2, incTop + 9);
 
-    // Phase flip label at air–oxide interface
-    ctx.fillStyle = '#1e3a20'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('½λ phase flip', incX + 2, yOx - 3);
+    // Phase flip at air–oxide interface
+    ctx.fillStyle = '#3a8050'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('½λ phase flip', incX + 3, yOx - 4);
 
-    // Ray 2: inside oxide (blue), down to steel then up
-    const r2inX   = incX + 4;
-    const r2stX   = incX + r2dX;
-    const r2outX  = incX + r2dX * 2;
-    arrowLine(ctx, r2inX, yOx, r2stX, ySt, '#3a80c8', false);   // down
-    arrowLine(ctx, r2stX, ySt, r2outX, yOx, '#3a80c8', false);  // up
+    // R2: originates from same hit point as incident ray (incX, yOx)
+    const r2stX  = incX + r2dX;
+    const r2outX = incX + r2dX * 2;
+    arrowLine(ctx, incX, yOx, r2stX, ySt, '#5598e8', false);
+    arrowLine(ctx, r2stX, ySt, r2outX, yOx, '#5598e8', false);
 
-    // Phase flip label at oxide–steel interface
-    ctx.fillStyle = '#1a2c3a'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('½λ phase flip', r2stX + 3, ySt - 3);
+    // Phase flip at oxide–steel interface
+    ctx.fillStyle = '#3060a8'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('½λ phase flip', r2stX + 3, ySt - 4);
 
-    // Ray 2 exits oxide upward
-    const r2TopX = r2outX + 10;
-    arrowLine(ctx, r2outX, yOx, r2TopX, incTop + 6, '#3a80c8', false);
-    ctx.fillStyle = '#143050'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('R₂', r2TopX + 3, incTop + 5);
+    // R2 exits oxide upward
+    const r2TopX = r2outX + 12;
+    arrowLine(ctx, r2outX, yOx, r2TopX, incTop + 10, '#5598e8', false);
+    ctx.fillStyle = '#3878c8'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('R₂', r2TopX + 2, incTop + 9);
 
-    // OPD annotation: dashed bracket on the oxide thickness
+    // OPD bracket on oxide
     if (oxH >= 16) {
-      const bx = Math.round(dW * 0.68);
-      ctx.strokeStyle = '#1a4828'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+      const bx = Math.round(dW * 0.65);
+      ctx.strokeStyle = '#286840'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(bx, yOx); ctx.lineTo(bx, ySt); ctx.stroke();
       ctx.setLineDash([]);
       [[yOx],[ySt]].forEach(([y]) => {
-        ctx.beginPath(); ctx.moveTo(bx-3, y); ctx.lineTo(bx+3, y); ctx.stroke();
+        ctx.strokeStyle = '#286840'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx - 3, y); ctx.lineTo(bx + 3, y); ctx.stroke();
       });
       const opd = (2 * 2.3 * d).toFixed(0);
-      ctx.fillStyle = '#1a4828'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#2a8040'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
       if (oxH >= 28) {
-        ctx.fillText('OPD = 2nd', bx + 4, yOx + oxH/2 - 4);
-        ctx.fillText('= ' + opd + ' nm', bx + 4, yOx + oxH/2 + 6);
+        ctx.fillText('OPD = 2nd', bx + 5, yOx + oxH / 2 - 4);
+        ctx.fillText('= ' + opd + ' nm', bx + 5, yOx + oxH / 2 + 6);
       } else {
-        ctx.fillText(opd + ' nm', bx + 4, yOx + oxH/2 + 3);
+        ctx.fillText(opd + ' nm', bx + 5, yOx + oxH / 2 + 3);
       }
     }
 
     // ── Spectrum panel ──────────────────────────────────────
-    const s1Top  = 14;  const s1H = 28;    // reflected spectrum strip
-    const s2Top  = s1Top + s1H + 16;       // reference strip
-    const s2H    = 12;
-    const nmLblY = s2Top + s2H + 11;
-    const swTop  = nmLblY + 10;
+    const s1Top = 16, s1H = 28;
+    const s2Top = s1Top + s1H + 22, s2H = 14;
+    const nmLblY = s2Top + s2H + 12;
+    const wvLblY = nmLblY + 10;
+    const swTop  = wvLblY + 14;
     const swH    = Math.max(8, H - swTop - pad);
 
+    // Cancelled / reinforced wavelengths
+    const cancelLams = [], boostLams = [];
+    for (let m = 0; m <= 5; m++) {
+      const lam = 2 * 2.3 * d / (m + 0.5);
+      if (lam >= 380 && lam <= 700) cancelLams.push(lam);
+    }
+    for (let m = 1; m <= 5; m++) {
+      const lam = 2 * 2.3 * d / m;
+      if (lam >= 380 && lam <= 700) boostLams.push(lam);
+    }
+
+    // REFLECTED label
+    ctx.fillStyle = '#666'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('REFLECTED', sX, s1Top - 3);
+
     // Reflected spectrum strip
-    ctx.fillStyle = '#222'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('reflected', sX + sW/2, s1Top - 2);
     for (let px = 0; px < sW; px++) {
       const lam = 380 + (px / sW) * 320;
       const I = filmR(lam, d);
@@ -859,30 +873,54 @@ function specColor(nm) {
       ctx.fillStyle = `rgb(${Math.round(r*I*255)},${Math.round(g*I*255)},${Math.round(b*I*255)})`;
       ctx.fillRect(sX + px, s1Top, 2, s1H);
     }
-    ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+    ctx.strokeStyle = '#252525'; ctx.lineWidth = 1;
     ctx.strokeRect(sX, s1Top, sW, s1H);
 
-    // Reference spectrum strip (full white light)
-    ctx.fillStyle = '#222'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('reference (white light)', sX + sW/2, s2Top - 2);
+    // Markers: cancelled (red) and reinforced (green) wavelengths
+    cancelLams.forEach(lam => {
+      const px = (lam - 380) / 320 * sW;
+      ctx.strokeStyle = 'rgba(240,60,60,0.80)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sX + px, s1Top - 2); ctx.lineTo(sX + px, s1Top + s1H + 2); ctx.stroke();
+    });
+    boostLams.forEach(lam => {
+      const px = (lam - 380) / 320 * sW;
+      ctx.strokeStyle = 'rgba(80,200,80,0.60)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sX + px, s1Top - 1); ctx.lineTo(sX + px, s1Top + s1H + 1); ctx.stroke();
+    });
+
+    // REFERENCE label
+    ctx.fillStyle = '#555'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('REFERENCE  (white light)', sX, s2Top - 3);
+
+    // Reference spectrum strip
     for (let px = 0; px < sW; px++) {
       const lam = 380 + (px / sW) * 320;
       const [r,g,b] = specColor(lam);
       ctx.fillStyle = `rgb(${Math.round(r*180)},${Math.round(g*180)},${Math.round(b*180)})`;
       ctx.fillRect(sX + px, s2Top, 2, s2H);
     }
+    ctx.strokeStyle = '#252525'; ctx.lineWidth = 1;
     ctx.strokeRect(sX, s2Top, sW, s2H);
 
-    // nm axis labels
-    ctx.fillStyle = '#2a2a2a'; ctx.font = '8px system-ui';
-    [[380,'left'],[540,'center'],[700,'right']].forEach(([n,align]) => {
+    // nm axis
+    ctx.fillStyle = '#555'; ctx.font = '8px system-ui';
+    [[380,'left'],[450,'center'],[550,'center'],[650,'center'],[700,'right']].forEach(([n,align]) => {
       ctx.textAlign = align;
-      ctx.fillText(n + ' nm', sX + (n-380)/320*sW, nmLblY);
+      ctx.fillText(n + ' nm', sX + (n - 380) / 320 * sW, nmLblY);
     });
 
-    // Result colour swatch (computed from physics, not lookup)
+    // Wavelength colour names
+    ctx.font = '7px system-ui';
+    [{lam:415,name:'violet'},{lam:462,name:'blue'},{lam:532,name:'green'},{lam:590,name:'yellow'},{lam:650,name:'red'}].forEach(({lam,name}) => {
+      ctx.textAlign = 'center'; ctx.fillStyle = '#3a3a3a';
+      ctx.fillText(name, sX + (lam - 380) / 320 * sW, wvLblY);
+    });
+
+    // COLOUR swatch
     const [sr,sg,sb] = specToRGB(lam => filmR(lam, d));
     const swCss = `rgb(${sr},${sg},${sb})`;
+    ctx.fillStyle = '#444'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('COLOUR', sX, swTop - 3);
     ctx.fillStyle = swCss;
     ctx.beginPath();
     ctx.moveTo(sX+6,swTop); ctx.arcTo(sX+sW,swTop,sX+sW,swTop+swH,6);
@@ -898,18 +936,8 @@ function specColor(nm) {
 
     // ── Readout ──────────────────────────────────────────────
     const opd = (2 * 2.3 * d).toFixed(0);
-    // First destructive wavelength in visible range: 2nd = (m+0.5)λ → λ = 2nd/(m+0.5)
-    let cancelLam = null;
-    for (let m = 0; m <= 4; m++) {
-      const lam = 2 * 2.3 * d / (m + 0.5);
-      if (lam >= 390 && lam <= 700) { cancelLam = lam; break; }
-    }
-    // First constructive wavelength in visible range: 2nd = mλ → λ = 2nd/m
-    let boostLam = null;
-    for (let m = 1; m <= 4; m++) {
-      const lam = 2 * 2.3 * d / m;
-      if (lam >= 390 && lam <= 700) { boostLam = lam; break; }
-    }
+    const cancelLam = cancelLams.length ? cancelLams[0] : null;
+    const boostLam  = boostLams.length  ? boostLams[0]  : null;
     const cancelStr = cancelLam
       ? `<span class="r-red">↓ ${cancelLam.toFixed(0)} nm cancelled</span>`
       : `<span style="color:#333">no cancellation in visible range</span>`;
