@@ -19,8 +19,9 @@
   </style>
 </head>
 <body>
-  <div id="status">Desktop preview — left-eye half only · Enter VR for full stereo</div>
+  <div id="status">Loading…</div>
   <script>
+    const status = document.getElementById('status');
 
     // ── Scene ─────────────────────────────────────────────────────
     const scene = new THREE.Scene();
@@ -33,42 +34,44 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
+    // Explicit reference space — Quest 3 needs this declared before session start
+    renderer.xr.setReferenceSpaceType('local-floor');
     document.body.appendChild(renderer.domElement);
     document.body.appendChild(VRButton.createButton(renderer));
 
+    // ── Fallback test-pattern texture ─────────────────────────────
+    // A canvas-generated SBS gradient: left half blue, right half red.
+    // This guarantees the plane is visible and stereo is verifiable even
+    // when the remote image is CORS-blocked on Quest's browser.
+    function makeTestPattern() {
+      const c = document.createElement('canvas');
+      c.width = 1024; c.height = 512;
+      const cx = c.getContext('2d');
+      // Left half — blue gradient
+      const gl = cx.createLinearGradient(0, 0, 512, 512);
+      gl.addColorStop(0, '#1a3a6a'); gl.addColorStop(1, '#5b9bd5');
+      cx.fillStyle = gl; cx.fillRect(0, 0, 512, 512);
+      cx.fillStyle = '#fff'; cx.font = 'bold 48px sans-serif'; cx.textAlign = 'center';
+      cx.fillText('LEFT EYE', 256, 256);
+      // Right half — red gradient
+      const gr = cx.createLinearGradient(512, 0, 1024, 512);
+      gr.addColorStop(0, '#6a1a1a'); gr.addColorStop(1, '#d55b5b');
+      cx.fillStyle = gr; cx.fillRect(512, 0, 512, 512);
+      cx.fillStyle = '#fff';
+      cx.fillText('RIGHT EYE', 768, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.minFilter = THREE.LinearFilter;
+      return tex;
+    }
+
     // ── SBS stereo texture ────────────────────────────────────────
-    // Source is a side-by-side image: left half = left eye, right half = right eye.
-    // The shader remaps UV.x per eye — the image itself is never modified.
-    //
-    // If this URL is CORS-blocked by the server, copy the image locally and
-    // update the path below to a relative URL.
-
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-
-    const sbsTex = loader.load(
-      'https://theclassicphotomag.com/wp-content/uploads/Illustration16-Rau-Reflected-Beauty-In-her-Boudoir-1.jpg',
-      tex => {
-        tex.minFilter = THREE.LinearFilter;
-        document.getElementById('status').textContent =
-          'Texture loaded · Desktop: left eye preview · Enter VR for stereo';
-      },
-      undefined,
-      () => {
-        document.getElementById('status').textContent =
-          '⚠ Texture blocked by CORS — copy image locally and update the path';
-      }
-    );
-
-    // ── Stereo shader ─────────────────────────────────────────────
-    // uEye uniform: 0.0 = left eye, 1.0 = right eye
-    // Fragment shader maps vUv.x → left half (0–0.5) or right half (0.5–1.0)
-    // using a single multiply + add — no GLSL branching needed.
-
+    // Source: side-by-side image, left half = left eye, right half = right eye.
+    // Starts with the test pattern so Quest always gets a valid first frame;
+    // swaps to the real image once it loads with CORS.
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uTex: { value: sbsTex },
-        uEye: { value: 0.0 }      // updated per-eye via onBeforeRender
+        uTex: { value: makeTestPattern() },
+        uEye: { value: 0.0 }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -79,72 +82,71 @@
       `,
       fragmentShader: `
         uniform sampler2D uTex;
-        uniform float uEye;   // 0.0 = left, 1.0 = right
+        uniform float uEye;   // 0.0 = left eye, 1.0 = right eye
         varying vec2 vUv;
         void main() {
-          // Remap vUv.x into the correct half of the SBS source:
-          //   left eye:  x = vUv.x * 0.5          (0.0 → 0.5)
-          //   right eye: x = vUv.x * 0.5 + 0.5    (0.5 → 1.0)
+          // Map vUv.x into the correct SBS half:
+          //   left:  0.0–0.5   right: 0.5–1.0
           float x = vUv.x * 0.5 + uEye * 0.5;
           gl_FragColor = texture2D(uTex, vec2(x, vUv.y));
         }
       `
     });
 
-    // ── Stereo plane ──────────────────────────────────────────────
-    // Placed at -3.5 m (world Z) at eye height in front of the user.
-    // The headset's IPD creates natural parallax — the image appears to
-    // float in space at that depth ("spatially stacked", not screen-locked).
-    //
-    // Plane dimensions assume a 1:1 per-eye aspect ratio (SBS source is 2:1 total).
-    // Adjust PLANE_W / PLANE_H to match your source image's per-eye aspect.
+    // Load real image — swap texture only on success
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      'https://theclassicphotomag.com/wp-content/uploads/Illustration16-Rau-Reflected-Beauty-In-her-Boudoir-1.jpg',
+      tex => {
+        tex.minFilter = THREE.LinearFilter;
+        mat.uniforms.uTex.value = tex;
+        status.textContent = 'Image loaded · Desktop: left eye preview · Enter VR for stereo';
+      },
+      undefined,
+      () => {
+        status.textContent = '⚠ CORS blocked — test pattern active · Enter VR to verify stereo';
+      }
+    );
 
-    const PLANE_W = 2.8;   // metres — set to per-eye aspect × PLANE_H
-    const PLANE_H = 2.8;   // metres
+    status.textContent = 'Ready · Enter VR for stereo';
+
+    // ── Stereo plane ──────────────────────────────────────────────
+    const PLANE_W = 2.8;   // metres (per-eye aspect ≈ 1:1 for typical SBS source)
+    const PLANE_H = 2.8;
     const PLANE_Z = -3.5;  // metres in front of user
 
-    const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(PLANE_W, PLANE_H),
-      mat
-    );
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_W, PLANE_H), mat);
     plane.position.set(0, 1.6, PLANE_Z);
     scene.add(plane);
 
-    // ── Per-eye uniform update ────────────────────────────────────
-    // onBeforeRender is called by Three.js once per eye during XR rendering.
-    // The `cam` argument is the individual eye camera for that pass.
-    // Comparing it against xrCamera.cameras[0] identifies left vs right.
+    // ── Per-eye uniform via cam.viewport ─────────────────────────
+    // BUG FIX: do NOT call renderer.xr.getCamera() inside onBeforeRender.
+    // That function updates ArrayCamera projection matrices mid-render,
+    // corrupting the XR frame submission → Quest compositor spins forever.
     //
-    // Key: do NOT call renderer.render() manually per eye in the loop.
-    // One renderer.render(scene, camera) call is enough — Three.js handles
-    // the two-pass stereo split internally and fires onBeforeRender for each.
-
+    // Instead: Three.js sets cam.viewport.x = 0 for the left eye pass
+    // and cam.viewport.x > 0 for the right eye pass. Read-only, no side effects.
     plane.onBeforeRender = function(renderer, scene, cam) {
       if (renderer.xr.isPresenting) {
-        const xrCam = renderer.xr.getCamera(camera);
-        if (xrCam.cameras && xrCam.cameras.length >= 2) {
-          mat.uniforms.uEye.value = (cam === xrCam.cameras[0]) ? 0.0 : 1.0;
-        }
+        // cam.viewport is only defined on individual XR eye cameras
+        const isLeft = !cam.viewport || cam.viewport.x === 0;
+        mat.uniforms.uEye.value = isLeft ? 0.0 : 1.0;
       } else {
-        mat.uniforms.uEye.value = 0.0; // desktop: left eye half as preview
+        mat.uniforms.uEye.value = 0.0; // desktop: show left half as preview
       }
     };
 
     // ── Depth anchor ──────────────────────────────────────────────
-    // A small sphere at the same world depth as the image gives the user
-    // a spatial reference point — confirms stereo parallax is working.
+    // Small sphere at the same depth as the plane — confirms stereo parallax.
     const anchor = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 12, 8),
+      new THREE.SphereGeometry(0.04, 12, 8),
       new THREE.MeshBasicMaterial({ color: 0x5b9bd5 })
     );
-    anchor.position.set(
-      -PLANE_W / 2 + 0.07,   // top-left corner of the image plane
-       1.6 + PLANE_H / 2 - 0.07,
-       PLANE_Z
-    );
+    anchor.position.set(-PLANE_W / 2 + 0.08, 1.6 + PLANE_H / 2 - 0.08, PLANE_Z);
     scene.add(anchor);
 
-    // ── Resize ───────────────────────────────────────────────────
+    // ── Resize ────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
@@ -152,8 +154,8 @@
     });
 
     // ── Render loop ───────────────────────────────────────────────
-    // Single render call per frame. Three.js calls onBeforeRender for each
-    // eye sub-pass automatically when xr.enabled = true.
+    // Single renderer.render() per frame — Three.js handles both XR eye
+    // passes internally and fires onBeforeRender for each.
     renderer.setAnimationLoop(() => {
       renderer.render(scene, camera);
     });
