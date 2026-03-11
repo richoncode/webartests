@@ -785,46 +785,84 @@ function specColor(nm) {
       ctx.fillText(d + ' nm', pad + 4, yOx + oxH / 2 + 3);
     }
 
-    // ── Ray geometry ────────────────────────────────────────
-    const incX   = Math.round(dW * 0.34);
-    const r2dX   = 9;
-    const incTop = yAirTop + 4;
+    // ── Ray geometry (30° angled incidence) ─────────────────────────
+    // Snell's law: sin(30°)/1.0 = sin(θt)/2.3  →  θt ≈ 12.6°
+    const ANG_I = 30 * Math.PI / 180;
+    const ANG_T = Math.asin(Math.sin(ANG_I) / 2.3);
+    const TAN_I = Math.tan(ANG_I);   // ≈ 0.577
+    const TAN_T = Math.tan(ANG_T);   // ≈ 0.223
 
-    // Incident ray (white, down to surface)
-    arrowLine(ctx, incX, incTop, incX, yOx - 1, 'rgba(255,255,255,0.70)', false);
+    const incHitX   = Math.round(dW * 0.34);
+    // Cap ray length so incident start stays within left margin
+    const rayAirLen = Math.min(airH - 14, 88, Math.floor((incHitX - pad - 4) / TAN_I));
+
+    // Dashed surface normal at hit point
+    ctx.strokeStyle = '#28283a'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(incHitX, yOx - Math.min(rayAirLen, 54));
+    ctx.lineTo(incHitX, yOx + Math.min(oxH, 16));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Incident ray: white light arrives from upper-left at 30°
+    const incStartX = incHitX - Math.round(TAN_I * rayAirLen);
+    const incStartY = yOx - rayAirLen;
+    arrowLine(ctx, incStartX, incStartY, incHitX, yOx - 1, 'rgba(255,255,255,0.70)', false);
+    const lblMx = Math.round(incStartX + (incHitX - incStartX) * 0.38);
+    const lblMy = Math.round(incStartY + rayAirLen * 0.38);
     ctx.fillStyle = '#505068'; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('white', incX, incTop + Math.min(airH * 0.28, 60) - 5);
-    ctx.fillText('light', incX, incTop + Math.min(airH * 0.28, 60) + 5);
+    ctx.fillText('white', lblMx, lblMy);
+    ctx.fillText('light', lblMx, lblMy + 10);
 
-    // R1: reflects at air–oxide surface (gold/orange, up-left)
-    const r1ExitX = incX - 22;
-    arrowLine(ctx, incX, yOx, r1ExitX, incTop + 10, '#e8a030', false);
-    ctx.fillStyle = '#c08828'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right';
-    ctx.fillText('R₁', r1ExitX - 2, incTop + 9);
+    // R1: reflects at air–oxide surface, exits upper-right at 30°
+    const r1EndX = incHitX + Math.round(TAN_I * rayAirLen);
+    const r1EndY = incStartY;
+    arrowLine(ctx, incHitX, yOx, r1EndX, r1EndY, '#e8a030', false);
+    ctx.fillStyle = '#c08828'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('R₁', r1EndX + 2, r1EndY + 8);
 
-    // Phase flip at air–oxide interface
+    // ½λ phase flip label at air–oxide
     ctx.fillStyle = '#3a8050'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('½λ phase flip', incX + 3, yOx - 4);
+    ctx.fillText('½λ phase flip', incHitX + 3, yOx - 5);
 
-    // R2: originates from same hit point as incident ray (incX, yOx)
-    const r2stX  = incX + r2dX;
-    const r2outX = incX + r2dX * 2;
-    arrowLine(ctx, incX, yOx, r2stX, ySt, '#5598e8', false);
-    arrowLine(ctx, r2stX, ySt, r2outX, yOx, '#5598e8', false);
+    // R2: refracts into oxide at θt ≈ 12.6° (steeper toward vertical due to n=2.3)
+    const r2MidX  = incHitX + Math.round(TAN_T * oxH);
+    const r2ExitX = incHitX + Math.round(TAN_T * oxH * 2);
+    arrowLine(ctx, incHitX, yOx, r2MidX, ySt, '#5598e8', false);
 
-    // No phase flip at oxide–metal interface (complex metal n)
-    ctx.fillStyle = '#555560'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('no phase flip', r2stX + 3, ySt - 4);
-
-    // R2 exits oxide upward
-    const r2TopX = r2outX + 12;
-    arrowLine(ctx, r2outX, yOx, r2TopX, incTop + 10, '#5598e8', false);
-    ctx.fillStyle = '#3878c8'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('R₂', r2TopX + 2, incTop + 9);
-
-    // OPD bracket on oxide
+    // No phase flip at oxide–steel
     if (oxH >= 16) {
-      const bx = Math.round(dW * 0.65);
+      ctx.fillStyle = '#555560'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText('no phase flip', r2MidX + 3, ySt - 4);
+    }
+
+    // R2 bounces off steel, travels back through oxide
+    arrowLine(ctx, r2MidX, ySt, r2ExitX, yOx, '#5598e8', false);
+
+    // R2 exits into air — parallel to R1 but shifted right (delayed by OPD)
+    const r2EndX = r2ExitX + Math.round(TAN_I * rayAirLen);
+    const r2EndY = incStartY;
+    arrowLine(ctx, r2ExitX, yOx, r2EndX, r2EndY, '#5598e8', false);
+    ctx.fillStyle = '#3878c8'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('R₂', r2EndX + 2, r2EndY + 8);
+
+    // Wavefront line: R1 and R2 are parallel — dashed crossbar shows they interfere
+    const wfSep = r2EndX - r1EndX;
+    if (wfSep >= 5) {
+      const wfY = Math.round(r1EndY + rayAirLen * 0.40);
+      const wf1X = r1EndX - Math.round(TAN_I * (r1EndY + rayAirLen - wfY));
+      const wf2X = r2EndX - Math.round(TAN_I * (r2EndY + rayAirLen - wfY));
+      ctx.strokeStyle = 'rgba(150,130,200,0.40)'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(wf1X, wfY); ctx.lineTo(wf2X, wfY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#6a6080'; ctx.font = '7px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('interfere ↑', Math.round((wf1X + wf2X) / 2), wfY - 3);
+    }
+
+    // OPD bracket in oxide showing the extra path taken by R2
+    if (oxH >= 16) {
+      const bx = Math.min(r2ExitX + 10, dW - pad - 22);
+      const opd = (2 * 2.3 * d).toFixed(0);
       ctx.strokeStyle = '#286840'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(bx, yOx); ctx.lineTo(bx, ySt); ctx.stroke();
       ctx.setLineDash([]);
@@ -832,7 +870,6 @@ function specColor(nm) {
         ctx.strokeStyle = '#286840'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(bx - 3, y); ctx.lineTo(bx + 3, y); ctx.stroke();
       });
-      const opd = (2 * 2.3 * d).toFixed(0);
       ctx.fillStyle = '#2a8040'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
       if (oxH >= 28) {
         ctx.fillText('OPD = 2nd', bx + 5, yOx + oxH / 2 - 4);
