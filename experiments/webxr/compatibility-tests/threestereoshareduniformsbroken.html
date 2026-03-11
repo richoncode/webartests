@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stereo Image on Three.js Plane</title>
+  <!-- Three.js and VRButton scripts with matching version r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="webxr/VRButton.js"></script>
+</head>
+<body>
+  <script>
+    // Set up the scene, camera, and renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Position the camera for stereoscopic view
+    camera.position.z = 5;
+
+    // Load the stereo image texture
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('https://theclassicphotomag.com/wp-content/uploads/Illustration16-Rau-Reflected-Beauty-In-her-Boudoir-1.jpg');
+
+    // Define a custom shader material for the stereo effect
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        src: { value: texture },
+        isLeftEye: { value: true } // Will be toggled for each eye
+      },
+      vertexShader: `
+        varying vec2 vUV;
+        void main() {
+          vUV = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D src;
+        uniform bool isLeftEye;
+        varying vec2 vUV;
+
+        void main() {
+          vec2 uv = vUV;
+
+          // Adjust UV based on which eye is rendering
+          if (isLeftEye) {
+            uv.x = uv.x * 0.5; // Left half of the image
+          } else {
+            uv.x = 0.5 + uv.x * 0.5; // Right half of the image
+          }
+
+          gl_FragColor = texture2D(src, uv);
+        }
+      `
+    });
+
+    // Create a plane geometry and apply the custom shader material
+    const geometry = new THREE.PlaneGeometry(4, 2);
+    const plane = new THREE.Mesh(geometry, material);
+    plane.position.set(0, 1, -3); // Position slightly forward for visibility
+    scene.add(plane);
+
+    // Create a simple cube
+    const geometryCube = new THREE.BoxGeometry(1, 1, 1);
+    const materialCube = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const cube = new THREE.Mesh(geometryCube, materialCube);
+    cube.position.set(-2, 1, -5); // Position the cube to the left
+    scene.add(cube);
+
+    // Enable WebXR for stereoscopic rendering
+    renderer.xr.enabled = true;
+    const sessionOptions = {
+      optionalFeatures: ['local-floor'] // Only use supported features
+    };
+    document.body.appendChild(VRButton.createButton(renderer, sessionOptions));
+
+    // Render loop
+    function animate() {
+    renderer.setAnimationLoop(() => {
+        // Rotate the cube for visibility
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+
+        // Check if an XR session is active
+        if (renderer.xr.isPresenting) {
+            const xrCamera = renderer.xr.getCamera(camera);
+            
+            // Ensure the `cameras` array is populated for stereo rendering
+            if (xrCamera.cameras.length > 1) {
+                console.log("Stereo rendering: separate left and right eye views.");
+
+                // Left eye (first camera in the array)
+                material.uniforms.isLeftEye.value = true //xrCamera.cameras[0].isLeftEye;
+                
+                // Render for each eye explicitly
+                renderer.render(scene, xrCamera.cameras[0]); // Left eye render
+
+                material.uniforms.isLeftEye.value = false //xrCamera.cameras[0].isLeftEye;
+                renderer.render(scene, xrCamera.cameras[1]); // Right eye render
+            
+            } else {
+                console.log("Mono rendering: single view for both eyes.");
+
+                material.uniforms.isLeftEye.value = true //xrCamera.cameras[0].isLeftEye;
+
+                // Regular render if no XR session
+                renderer.render(scene, camera);
+            }
+        } else {
+            console.log("Not in XR session: rendering in standard mode.");
+
+            material.uniforms.isLeftEye.value = true //xrCamera.cameras[0].isLeftEye;
+
+            // Regular render if no XR session
+            renderer.render(scene, camera);
+        }
+
+
+        // // Check if an XR session is active
+        // if (renderer.xr.isPresenting) {
+        //     // Get the XR camera only if there's an active session
+        //     const xrCamera = renderer.xr.getCamera(camera);
+
+        //     // Update the material uniform based on the current eye
+        //     material.uniforms.isLeftEye.value = xrCamera.cameras[0].isLeftEye;
+        // }
+
+
+
+        // renderer.render(scene, camera);
+    });
+    }
+
+    animate();
+  </script>
+</body>
+</html>
