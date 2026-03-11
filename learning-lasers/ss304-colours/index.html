@@ -168,8 +168,8 @@
       <div class="readout" id="film-readout"></div>
     </div>
 
-    <p>White light is split at the air–oxide surface: <strong>Ray 1</strong> reflects immediately off the top; <strong>Ray 2</strong> travels through the film, bounces off the steel, and exits. Because both rays originate from the same incident beam they are coherent — they interfere. The extra optical path Ray 2 travels is <strong>2 × n × d</strong> (the film traversed twice, at refractive index n = 2.3). When this path difference equals exactly half a wavelength of some colour, that colour is cancelled from the reflection.</p>
-    <p>Both reflections undergo a half-wavelength phase flip (going from a less-dense to more-dense medium at each interface). The two flips cancel each other, so <em>only the optical path difference 2nd determines the phase</em> — no baseline offset to account for.</p>
+    <p>White light is split at the air–oxide surface: <strong>Ray 1</strong> reflects immediately off the top; <strong>Ray 2</strong> travels through the film, bounces off the steel, and exits. Because both rays originate from the same incident beam they are coherent — they interfere. The extra optical path Ray 2 travels is <strong>2 × n × d</strong> (the film traversed twice, at refractive index n = 2.3). When this path length equals (m + ½) wavelengths of some colour, that colour is <strong>reinforced</strong> in the reflection — and that is the colour you see.</p>
+    <p><strong>Ray 1</strong> undergoes a ½λ phase flip at the air–oxide surface — all reflections from a less-dense into a more-dense medium invert the wave. <strong>Ray 2</strong> does <em>not</em> flip at the oxide–metal surface — the complex optical properties of steel mean there is no equivalent inversion there. This one uncancelled flip shifts the interference condition: a wavelength is <strong>reinforced</strong> when 2nd = (m + ½)λ, and <strong>cancelled</strong> when 2nd = mλ (m ≥ 1).</p>
 
     <div class="callout">
       <strong>Reading the spectrum strip:</strong> The top strip shows which wavelengths survive in the reflected light at the current oxide thickness — bright means reflected, dark means cancelled. Compare it to the reference strip below. The colour swatch is computed directly from this spectrum using the CIE 1931 standard observer, the same colour science used in display calibration.
@@ -668,15 +668,15 @@ const CMF_Y = [0.0000,0.0001,0.0004,0.0012,0.0040,0.0116,0.0230,0.0380,0.0600,0.
 const CMF_Z = [0.0065,0.0201,0.0679,0.2074,0.6456,1.3856,1.7471,1.7721,1.6692,1.2876,0.8130,0.4652,0.2720,0.1582,0.0782,0.0422,0.0203,0.0087,0.0037,0.0021,0.0017,0.0011,0.0008,0.0003,0.0002,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000];
 
 // Two-beam thin-film reflectance: Cr₂O₃ (n=2.3) on steel
-// r1 = Fresnel amplitude air→film ≈ 0.40
-// r2 = Fresnel amplitude film→steel ≈ 0.62 (accounts for complex metal refractive index)
-// Both boundaries are low→high n, both have phase flip → flips cancel → only OPD matters
+// r1 = Fresnel amplitude air→oxide ≈ 0.40  (phase flip: low→high n)
+// r2 = Fresnel amplitude oxide→metal ≈ 0.62 (NO phase flip: complex metal n)
+// One net phase flip → constructive when 2nd = (m+½)λ → use −cos in cross-term
 function filmR(lam, d) {
   if (d <= 0) return 0.28;
-  const delta = 4 * Math.PI * 2.3 * d / lam;  // optical phase difference
+  const delta = 4 * Math.PI * 2.3 * d / lam;  // round-trip optical phase (no flip offset)
   const r1 = 0.40, r2 = 0.62, r12 = r1 * r2;
-  // Airy two-beam formula
-  return (r1*r1 + r2*r2 + 2*r12*Math.cos(delta)) / (1 + r1*r1*r2*r2 + 2*r12*Math.cos(delta));
+  // Airy two-beam: with one phase inversion, cross-term becomes −cos
+  return (r1*r1 + r2*r2 - 2*r12*Math.cos(delta)) / (1 + r1*r1*r2*r2 - 2*r12*Math.cos(delta));
 }
 
 // Convert reflected spectrum → display sRGB via CIE XYZ
@@ -812,9 +812,9 @@ function specColor(nm) {
     arrowLine(ctx, incX, yOx, r2stX, ySt, '#5598e8', false);
     arrowLine(ctx, r2stX, ySt, r2outX, yOx, '#5598e8', false);
 
-    // Phase flip at oxide–steel interface
-    ctx.fillStyle = '#3060a8'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('½λ phase flip', r2stX + 3, ySt - 4);
+    // No phase flip at oxide–metal interface (complex metal n)
+    ctx.fillStyle = '#555560'; ctx.font = '7px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('no phase flip', r2stX + 3, ySt - 4);
 
     // R2 exits oxide upward
     const r2TopX = r2outX + 12;
@@ -850,15 +850,17 @@ function specColor(nm) {
     const swTop  = wvLblY + 14;
     const swH    = Math.max(8, H - swTop - pad);
 
-    // Cancelled / reinforced wavelengths
-    const cancelLams = [], boostLams = [];
+    // One phase flip at air→oxide:
+    // Constructive (reinforced): 2nd = (m+½)λ  →  λ = 2nd/(m+½)
+    // Destructive  (cancelled):  2nd = mλ       →  λ = 2nd/m  (m≥1)
+    const boostLams = [], cancelLams = [];
     for (let m = 0; m <= 5; m++) {
       const lam = 2 * 2.3 * d / (m + 0.5);
-      if (lam >= 380 && lam <= 700) cancelLams.push(lam);
+      if (lam >= 380 && lam <= 700) boostLams.push(lam);
     }
     for (let m = 1; m <= 5; m++) {
       const lam = 2 * 2.3 * d / m;
-      if (lam >= 380 && lam <= 700) boostLams.push(lam);
+      if (lam >= 380 && lam <= 700) cancelLams.push(lam);
     }
 
     // REFLECTED label
