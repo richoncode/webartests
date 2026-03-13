@@ -4,8 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SBS Stereo Image — WebXR</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="webxr/VRButton.js"></script>
+
+  <!-- r128 had unfixed WebXR Layers bugs exposed by Quest browser updates.
+       Upgrade to r167 via importmap — no build system needed. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+      }
+    }
+  </script>
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
@@ -23,9 +33,13 @@
   </style>
 </head>
 <body>
-  <div id="rev">r4</div>
+  <div id="rev">r5</div>
   <div id="status">Loading…</div>
-  <script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
+
     const status = document.getElementById('status');
 
     // ── Scene ─────────────────────────────────────────────────────
@@ -33,32 +47,28 @@
     scene.background = new THREE.Color(0x060608);
 
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
-    camera.position.set(0, 1.6, 0); // standing eye height
+    camera.position.set(0, 1.6, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
-    // Explicit reference space — Quest 3 needs this declared before session start
     renderer.xr.setReferenceSpaceType('local-floor');
     document.body.appendChild(renderer.domElement);
     document.body.appendChild(VRButton.createButton(renderer));
 
-    // ── Fallback test-pattern texture ─────────────────────────────
-    // A canvas-generated SBS gradient: left half blue, right half red.
-    // This guarantees the plane is visible and stereo is verifiable even
-    // when the remote image is CORS-blocked on Quest's browser.
+    // ── Fallback test-pattern texture ────────────────────────────
+    // Canvas SBS pattern: left = blue "LEFT EYE", right = red "RIGHT EYE".
+    // Confirms stereo is working even if the remote image is CORS-blocked.
     function makeTestPattern() {
       const c = document.createElement('canvas');
       c.width = 1024; c.height = 512;
       const cx = c.getContext('2d');
-      // Left half — blue gradient
       const gl = cx.createLinearGradient(0, 0, 512, 512);
       gl.addColorStop(0, '#1a3a6a'); gl.addColorStop(1, '#5b9bd5');
       cx.fillStyle = gl; cx.fillRect(0, 0, 512, 512);
-      cx.fillStyle = '#fff'; cx.font = 'bold 48px sans-serif'; cx.textAlign = 'center';
+      cx.fillStyle = '#fff'; cx.font = 'bold 52px sans-serif'; cx.textAlign = 'center';
       cx.fillText('LEFT EYE', 256, 256);
-      // Right half — red gradient
       const gr = cx.createLinearGradient(512, 0, 1024, 512);
       gr.addColorStop(0, '#6a1a1a'); gr.addColorStop(1, '#d55b5b');
       cx.fillStyle = gr; cx.fillRect(512, 0, 512, 512);
@@ -69,10 +79,7 @@
       return tex;
     }
 
-    // ── SBS stereo texture ────────────────────────────────────────
-    // Source: side-by-side image, left half = left eye, right half = right eye.
-    // Starts with the test pattern so Quest always gets a valid first frame;
-    // swaps to the real image once it loads with CORS.
+    // ── Stereo shader ─────────────────────────────────────────────
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTex: { value: makeTestPattern() },
@@ -87,63 +94,48 @@
       `,
       fragmentShader: `
         uniform sampler2D uTex;
-        uniform float uEye;   // 0.0 = left eye, 1.0 = right eye
+        uniform float uEye;
         varying vec2 vUv;
         void main() {
-          // Map vUv.x into the correct SBS half:
-          //   left:  0.0–0.5   right: 0.5–1.0
           float x = vUv.x * 0.5 + uEye * 0.5;
           gl_FragColor = texture2D(uTex, vec2(x, vUv.y));
         }
       `
     });
 
-    // Load real image — swap texture only on success
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    loader.load(
+    // Try to load the real SBS image over CORS
+    new THREE.TextureLoader().setCrossOrigin('anonymous').load(
       'https://theclassicphotomag.com/wp-content/uploads/Illustration16-Rau-Reflected-Beauty-In-her-Boudoir-1.jpg',
       tex => {
         tex.minFilter = THREE.LinearFilter;
         mat.uniforms.uTex.value = tex;
-        status.textContent = 'Image loaded · Desktop: left eye preview · Enter VR for stereo';
+        status.textContent = 'Image loaded · Enter VR for stereo';
       },
       undefined,
-      () => {
-        status.textContent = '⚠ CORS blocked — test pattern active · Enter VR to verify stereo';
-      }
+      () => { status.textContent = '⚠ CORS blocked — test pattern active · Enter VR to verify stereo'; }
     );
 
     status.textContent = 'Ready · Enter VR for stereo';
 
     // ── Stereo plane ──────────────────────────────────────────────
-    const PLANE_W = 2.8;   // metres (per-eye aspect ≈ 1:1 for typical SBS source)
-    const PLANE_H = 2.8;
-    const PLANE_Z = -3.5;  // metres in front of user
-
+    const PLANE_W = 2.8, PLANE_H = 2.8, PLANE_Z = -3.5;
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_W, PLANE_H), mat);
     plane.position.set(0, 1.6, PLANE_Z);
     scene.add(plane);
 
-    // ── Per-eye uniform via cam.viewport ─────────────────────────
-    // BUG FIX: do NOT call renderer.xr.getCamera() inside onBeforeRender.
-    // That function updates ArrayCamera projection matrices mid-render,
-    // corrupting the XR frame submission → Quest compositor spins forever.
-    //
-    // Instead: Three.js sets cam.viewport.x = 0 for the left eye pass
-    // and cam.viewport.x > 0 for the right eye pass. Read-only, no side effects.
+    // ── Per-eye uniform ───────────────────────────────────────────
+    // Three.js sets cam.viewport.x = 0 for left eye, > 0 for right eye.
+    // Read-only — avoids calling getCamera() mid-render which corrupts XR frames.
     plane.onBeforeRender = function(renderer, scene, cam) {
       if (renderer.xr.isPresenting) {
-        // cam.viewport is only defined on individual XR eye cameras
         const isLeft = !cam.viewport || cam.viewport.x === 0;
         mat.uniforms.uEye.value = isLeft ? 0.0 : 1.0;
       } else {
-        mat.uniforms.uEye.value = 0.0; // desktop: show left half as preview
+        mat.uniforms.uEye.value = 0.0;
       }
     };
 
-    // ── Depth anchor ──────────────────────────────────────────────
-    // Small sphere at the same depth as the plane — confirms stereo parallax.
+    // ── Depth anchor ─────────────────────────────────────────────
     const anchor = new THREE.Mesh(
       new THREE.SphereGeometry(0.04, 12, 8),
       new THREE.MeshBasicMaterial({ color: 0x5b9bd5 })
@@ -151,19 +143,15 @@
     anchor.position.set(-PLANE_W / 2 + 0.08, 1.6 + PLANE_H / 2 - 0.08, PLANE_Z);
     scene.add(anchor);
 
-    // ── Resize ────────────────────────────────────────────────────
+    // ── Resize ───────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // ── Render loop ───────────────────────────────────────────────
-    // Single renderer.render() per frame — Three.js handles both XR eye
-    // passes internally and fires onBeforeRender for each.
-    renderer.setAnimationLoop(() => {
-      renderer.render(scene, camera);
-    });
+    // ── Render loop ──────────────────────────────────────────────
+    renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
   </script>
 </body>
