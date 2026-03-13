@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pattern Tool — XCS Viewer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d0d; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 12px 20px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      border-bottom: 1px solid #1e1e1e; flex-shrink: 0;
+    }
+    a.back { color: #777; text-decoration: none; font-size: 14px; flex-shrink: 0; }
+    a.back:hover { color: #bbb; }
+    .header-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #ddd; }
+    .file-name {
+      font-size: 12px; color: #666; font-family: 'SF Mono', 'Fira Code', monospace;
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .btn-group { display: flex; gap: 6px; flex-shrink: 0; }
+    .hbtn {
+      background: #1a1a1a; border: 1px solid #333; color: #bbb;
+      padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s; font-family: inherit; white-space: nowrap;
+    }
+    .hbtn:hover { background: #252525; border-color: #555; color: #fff; }
+    .hbtn:disabled { opacity: 0.28; cursor: default; }
+    .hbtn.primary { background: #1a2a3a; border-color: #5b9bd5; color: #7ab3e0; }
+    .hbtn.primary:hover:not(:disabled) { background: #1e3248; color: #9ecaee; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px; margin: 20px;
+      border: 2px dashed #252525; border-radius: 14px; padding: 60px 40px;
+      transition: border-color 0.15s, background 0.15s; cursor: pointer;
+    }
+    .drop-zone.over { border-color: #5b9bd5; background: #0a1520; }
+    .drop-icon { font-size: 36px; }
+    .drop-title { font-size: 17px; font-weight: 600; color: #999; }
+    .drop-sub { font-size: 13px; color: #555; }
+
+    /* ── Main layout ── */
+    .main { flex: 1; display: none; min-height: 0; }
+    .main.visible { display: flex; }
+
+    /* SVG canvas */
+    .canvas-panel {
+      flex: 1; background: #0f0f0f; position: relative; min-width: 0;
+      border-right: 1px solid #1e1e1e;
+    }
+    .canvas-panel svg { width: 100%; height: 100%; display: block; }
+    .canvas-label {
+      position: absolute; bottom: 9px; left: 12px;
+      font-size: 11px; color: #444; font-family: 'SF Mono', 'Fira Code', monospace;
+      pointer-events: none;
+    }
+
+    /* ── Right panel ── */
+    .right-panel {
+      width: 290px; flex-shrink: 0; display: flex; flex-direction: column;
+      background: #0d0d0d;
+    }
+    .right-tabs {
+      display: flex; gap: 0; padding: 8px 10px 0;
+      border-bottom: 1px solid #1e1e1e; flex-shrink: 0;
+    }
+    .rtab {
+      padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+      border-radius: 6px 6px 0 0; color: #666; background: none; border: none;
+      font-family: inherit; transition: color 0.1s;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .rtab:hover { color: #aaa; }
+    .rtab.active { color: #7ab3e0; border-bottom-color: #5b9bd5; }
+
+    /* Shared panel body */
+    .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Shape list */
+    .list-header {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.2px; color: #555; padding: 9px 12px 5px;
+    }
+    .shape-list { flex: 1; overflow-y: auto; padding: 2px 8px 8px; }
+    .shape-list::-webkit-scrollbar { width: 4px; }
+    .shape-list::-webkit-scrollbar-track { background: transparent; }
+    .shape-list::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+    .shape-row {
+      padding: 6px 8px; border-radius: 6px; cursor: pointer;
+      border: 1px solid transparent; transition: background 0.1s, border-color 0.1s;
+      display: flex; align-items: center; gap: 7px; margin-bottom: 2px;
+    }
+    .shape-row:hover, .shape-row.hovered { background: #191919; border-color: #2a2a2a; }
+    .shape-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .shape-row-info { flex: 1; min-width: 0; }
+    .shape-row-title { font-size: 12px; font-weight: 600; color: #ccc; }
+    .shape-row.hovered .shape-row-title { color: #fff; }
+    .shape-row-sub {
+      font-size: 11px; color: #777; font-family: 'SF Mono', 'Fira Code', monospace; margin-top: 1px;
+    }
+
+    /* JSON panel */
+    .json-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+    .json-body::-webkit-scrollbar { width: 4px; }
+    .json-body::-webkit-scrollbar-track { background: transparent; }
+    .json-body::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+    pre.json-code {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10.5px;
+      line-height: 1.55; white-space: pre; color: #777; margin: 0;
+    }
+    .j-key  { color: #7ab3e0; }
+    .j-str  { color: #88c87a; }
+    .j-num  { color: #f0a040; }
+    .j-bool { color: #e07070; }
+    .j-null { color: #777; }
+
+    /* JSON display-block hover targets */
+    .json-display-block {
+      display: block;
+      border-left: 2px solid transparent;
+      padding-left: 4px; margin-left: -6px;
+      border-radius: 0 4px 4px 0;
+      transition: border-color 0.12s, background 0.12s;
+      cursor: pointer;
+    }
+    .json-display-block:hover,
+    .json-display-block.json-hl {
+      background: rgba(91, 155, 213, 0.08);
+      border-left-color: rgba(91, 155, 213, 0.5);
+    }
+
+    /* ── Popup ── */
+    .popup {
+      position: fixed; z-index: 100; pointer-events: none;
+      background: #1c1c1c; border: 1px solid #2e2e2e; border-radius: 10px;
+      padding: 10px 14px; min-width: 160px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+      opacity: 0; transition: opacity 0.1s;
+    }
+    .popup.visible { opacity: 1; }
+    .popup-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; color: #7ab3e0; margin-bottom: 7px;
+    }
+    .popup-row { display: flex; justify-content: space-between; gap: 14px; font-size: 12px; margin-bottom: 3px; }
+    .popup-row:last-child { margin-bottom: 0; }
+    .popup-key { color: #777; }
+    .popup-val { color: #ddd; font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 600; }
+    .popup-val.hi { color: #f0a040; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      padding: 6px 20px; border-top: 1px solid #181818; flex-shrink: 0;
+      display: none; gap: 20px; flex-wrap: wrap;
+    }
+    .stats-bar.visible { display: flex; }
+    .stat { font-size: 11px; color: #666; }
+    .stat strong { color: #aaa; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <a class="back" href="../">← Back</a>
+  <div class="header-title">XCS Viewer</div>
+  <span class="file-name" id="fileName"></span>
+  <div class="btn-group">
+    <button class="hbtn" id="openBtn">Open .xcs</button>
+    <button class="hbtn" id="exportXcsBtn" disabled>Export XCS</button>
+    <button class="hbtn primary" id="exportPaletteBtn" disabled>Export Palette</button>
+  </div>
+  <input type="file" id="fileInput" accept=".xcs,.json" style="display:none">
+</div>
+
+<!-- Drop zone -->
+<div class="drop-zone" id="dropZone">
+  <div class="drop-icon">📂</div>
+  <div class="drop-title">Drop an .xcs file here</div>
+  <div class="drop-sub">or click <strong>Open .xcs</strong> above</div>
+</div>
+
+<!-- Main viewer -->
+<div class="main" id="mainView">
+
+  <!-- SVG canvas (always visible) -->
+  <div class="canvas-panel" id="canvasPanel">
+    <svg id="svgCanvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="canvas-label" id="canvasLabel"></div>
+  </div>
+
+  <!-- Right panel: Shapes | JSON tabs -->
+  <div class="right-panel">
+    <div class="right-tabs">
+      <button class="rtab active" data-tab="shapes">Shapes</button>
+      <button class="rtab" data-tab="json">JSON</button>
+    </div>
+
+    <!-- Shapes tab -->
+    <div class="panel-body" id="shapesTabBody">
+      <div class="list-header" id="listHeader">Shapes</div>
+      <div class="shape-list" id="shapeList"></div>
+    </div>
+
+    <!-- JSON tab -->
+    <div class="panel-body" id="jsonTabBody" style="display:none">
+      <div class="json-body" id="jsonBody">
+        <pre class="json-code" id="jsonCode"></pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Stats bar -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat" id="statShapes"></div>
+  <div class="stat" id="statType"></div>
+  <div class="stat" id="statPower"></div>
+  <div class="stat" id="statSpeed"></div>
+  <div class="stat" id="statDensity"></div>
+</div>
+
+<!-- Popup -->
+<div class="popup" id="popup">
+  <div class="popup-title" id="popupTitle"></div>
+  <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi" id="popPower"></span></div>
+  <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val" id="popSpeed"></span></div>
+  <div class="popup-row"><span class="popup-key">Density (LPCM)</span><span class="popup-val" id="popDensity"></span></div>
+  <div class="popup-row" id="popRepeatRow"><span class="popup-key">Repeat</span><span class="popup-val" id="popRepeat"></span></div>
+  <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val" id="popSize"></span></div>
+  <div class="popup-row"><span class="popup-key">Position</span><span class="popup-val" id="popPos"></span></div>
+</div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  let shapes = [];
+  let rawData = null;
+  let activeRightTab = 'shapes';
+  const PAD = 20;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const fileInput        = document.getElementById('fileInput');
+  const openBtn          = document.getElementById('openBtn');
+  const exportXcsBtn     = document.getElementById('exportXcsBtn');
+  const exportPaletteBtn = document.getElementById('exportPaletteBtn');
+  const dropZone         = document.getElementById('dropZone');
+  const mainView         = document.getElementById('mainView');
+  const svgCanvas        = document.getElementById('svgCanvas');
+  const shapeList        = document.getElementById('shapeList');
+  const statsBar         = document.getElementById('statsBar');
+  const popup            = document.getElementById('popup');
+  const jsonBody         = document.getElementById('jsonBody');
+  const jsonCode         = document.getElementById('jsonCode');
+  const shapesTabBody    = document.getElementById('shapesTabBody');
+  const jsonTabBody      = document.getElementById('jsonTabBody');
+
+  // ── File open ─────────────────────────────────────────────────────────────
+  openBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+  // ── Drag and drop ─────────────────────────────────────────────────────────
+  document.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) dropZone.classList.remove('over'); });
+  document.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0]; if (f) loadFile(f);
+  });
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  // ── Right panel tabs ──────────────────────────────────────────────────────
+  document.querySelectorAll('.rtab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.rtab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeRightTab = tab.dataset.tab;
+      shapesTabBody.style.display = activeRightTab === 'shapes' ? 'flex' : 'none';
+      jsonTabBody.style.display   = activeRightTab === 'json'   ? 'flex' : 'none';
+    });
+  });
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  exportXcsBtn.addEventListener('click', () => {
+    const name = document.getElementById('fileName').textContent || 'export.xcs';
+    dl(name, JSON.stringify(rawData, null, 2), 'application/json');
+  });
+
+  exportPaletteBtn.addEventListener('click', () => {
+    // Group into unique param combos
+    const combos = new Map();
+    for (const s of shapes) {
+      const key = `${s.power}|${s.speed}|${s.density}|${s.repeat}`;
+      if (!combos.has(key)) combos.set(key, { power: s.power, speed: s.speed, density: s.density, repeat: s.repeat, count: 0, types: new Set() });
+      const c = combos.get(key); c.count++; c.types.add(s.type);
+    }
+    // Find the most-varying param to sort by
+    const params = ['power', 'speed', 'density'];
+    const uniqueN = p => new Set(shapes.map(s => s[p]).filter(v => v != null)).size;
+    const sortParam = params.reduce((best, p) => uniqueN(p) > uniqueN(best) ? p : best, params[0]);
+
+    const sorted = [...combos.values()].sort((a, b) => (a[sortParam] ?? -Infinity) - (b[sortParam] ?? -Infinity));
+    const fname = document.getElementById('fileName').textContent || 'export.xcs';
+    const lines = [
+      `# Unique Settings — ${fname}`,
+      `# ${shapes.length} shape(s), ${combos.size} unique combination(s) | sorted by ${sortParam}`,
+      '',
+      ` #  | Power  | Speed    | Density   | Repeat | Count | Type`,
+      `----+--------+----------+-----------+--------+-------+------`,
+    ];
+    sorted.forEach((c, i) => {
+      const pw = c.power   != null ? `${c.power} %`    : '—';
+      const sp = c.speed   != null ? `${c.speed} mm/s` : '—';
+      const de = c.density != null ? `${c.density} LPCM` : '—';
+      lines.push(` ${String(i+1).padStart(2)} | ${pw.padEnd(6)} | ${sp.padEnd(8)} | ${de.padEnd(9)} | ${String(c.repeat).padEnd(6)} | ${String(c.count).padEnd(5)} | ${[...c.types].join(', ')}`);
+    });
+    dl(fname.replace(/\.xcs$/i, '') + '-palette.txt', lines.join('\n'), 'text/plain');
+  });
+
+  function dl(filename, content, mime) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+    a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ── Parse XCS ─────────────────────────────────────────────────────────────
+  function parseXCS(data) {
+    const canvas = data.canvas[0];
+    const cid = canvas.id;
+    const dvEntry = Object.fromEntries(data.device.data.value)[cid];
+    const dispMap = Object.fromEntries(dvEntry.displays.value);
+    return canvas.displays.map((disp, i) => {
+      const cfg = dispMap[disp.id] || {};
+      const pt = cfg.processingType || '';
+      const params = (pt && cfg.data?.[pt]) ? (cfg.data[pt].parameter?.customize || {}) : {};
+      return {
+        idx: i, id: disp.id, name: disp.name || `Shape ${i + 1}`,
+        type: disp.type, x: disp.x, y: disp.y, w: disp.width, h: disp.height,
+        angle: disp.angle || 0, layerColor: disp.layerColor || '#5b9bd5',
+        zOrder: disp.zOrder || 0, processingType: pt,
+        power:   params.power   ?? null,
+        speed:   params.speed   ?? null,
+        density: params.density ?? null,
+        repeat:  params.repeat  ?? 1,
+      };
+    });
+  }
+
+  // ── Load file ─────────────────────────────────────────────────────────────
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        rawData = JSON.parse(e.target.result);
+        shapes  = parseXCS(rawData);
+        document.getElementById('fileName').textContent = file.name;
+        exportXcsBtn.disabled = false;
+        exportPaletteBtn.disabled = false;
+        renderAll();
+      } catch(err) { alert('Failed to parse XCS file:\n' + err.message); }
+    };
+    reader.readAsText(file);
+  }
+
+  // ── Render everything ─────────────────────────────────────────────────────
+  function renderAll() {
+    dropZone.style.display = 'none';
+    mainView.classList.add('visible');
+    statsBar.classList.add('visible');
+    renderSVG();
+    renderList();
+    renderJSON();
+    renderStats();
+  }
+
+  // ── SVG canvas ────────────────────────────────────────────────────────────
+  function renderSVG() {
+    const panel = document.getElementById('canvasPanel');
+    const W = panel.clientWidth || 500, H = panel.clientHeight || 500;
+
+    const minX = Math.min(...shapes.map(s => s.x - s.w / 2));
+    const maxX = Math.max(...shapes.map(s => s.x + s.w / 2));
+    const minY = Math.min(...shapes.map(s => s.y - s.h / 2));
+    const maxY = Math.max(...shapes.map(s => s.y + s.h / 2));
+    const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+    const scale = Math.min((W - PAD*2) / rangeX, (H - PAD*2) / rangeY);
+    const offX  = PAD + ((W - PAD*2) - rangeX * scale) / 2;
+    const offY  = PAD + ((H - PAD*2) - rangeY * scale) / 2;
+    const mm2svg = (x, y) => [(x - minX) * scale + offX, (y - minY) * scale + offY];
+
+    svgCanvas.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svgCanvas.innerHTML = '';
+
+    // Grid
+    const gridG = svgEl('g', { opacity: '0.07' });
+    const gs = 5;
+    for (let gx = Math.floor(minX/gs)*gs; gx <= maxX; gx += gs) {
+      const [sx] = mm2svg(gx, 0);
+      gridG.appendChild(svgEl('line', { x1: sx, y1: PAD, x2: sx, y2: H-PAD, stroke: '#5b9bd5', 'stroke-width': '0.5' }));
+    }
+    for (let gy = Math.floor(minY/gs)*gs; gy <= maxY; gy += gs) {
+      const [, sy] = mm2svg(0, gy);
+      gridG.appendChild(svgEl('line', { x1: PAD, y1: sy, x2: W-PAD, y2: sy, stroke: '#5b9bd5', 'stroke-width': '0.5' }));
+    }
+    svgCanvas.appendChild(gridG);
+
+    // Shapes
+    const labels = [];
+    for (const s of [...shapes].sort((a, b) => a.zOrder - b.zOrder)) {
+      const [cx, cy] = mm2svg(s.x, s.y);
+      const rx = s.w / 2 * scale, ry = s.h / 2 * scale;
+      let el;
+      if (s.type === 'CIRCLE') {
+        el = svgEl('ellipse', { cx, cy, rx, ry, fill: s.layerColor, 'fill-opacity': '0.22', stroke: s.layerColor, 'stroke-width': '1.5' });
+      } else if (s.type === 'RECT') {
+        el = svgEl('rect', { x: cx-rx, y: cy-ry, width: rx*2, height: ry*2, fill: s.layerColor, 'fill-opacity': '0.22', stroke: s.layerColor, 'stroke-width': '1.5' });
+      } else {
+        el = svgEl('rect', { x: cx-rx, y: cy-ry, width: rx*2, height: ry*2, fill: 'none', stroke: '#555', 'stroke-width': '1', 'stroke-dasharray': '3 3' });
+      }
+      el.setAttribute('data-svg-idx', s.idx);
+      el.style.cursor = 'pointer';
+      el.addEventListener('mouseenter', ev => onHover(s.idx, ev));
+      el.addEventListener('mousemove',  ev => movePopup(ev));
+      el.addEventListener('mouseleave', onLeave);
+      svgCanvas.appendChild(el);
+
+      if (s.power != null && rx > 9) {
+        const t = svgEl('text', {
+          x: cx, y: cy + 4, 'text-anchor': 'middle',
+          'font-size': Math.min(rx * 0.55, 12),
+          'font-family': 'SF Mono, Fira Code, monospace',
+          fill: '#fff', 'fill-opacity': '0.7', 'pointer-events': 'none',
+        });
+        t.textContent = s.power + '%';
+        labels.push(t);
+      }
+    }
+    labels.forEach(t => svgCanvas.appendChild(t));
+    document.getElementById('canvasLabel').textContent = `${rangeX.toFixed(1)} × ${rangeY.toFixed(1)} mm`;
+  }
+
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+
+  // ── Shape list ────────────────────────────────────────────────────────────
+  function renderList() {
+    document.getElementById('listHeader').textContent = `Shapes (${shapes.length})`;
+    shapeList.innerHTML = '';
+    for (const s of shapes) {
+      const row = document.createElement('div');
+      row.className = 'shape-row'; row.dataset.idx = s.idx;
+      row.innerHTML = `
+        <div class="shape-dot" style="background:${s.layerColor}"></div>
+        <div class="shape-row-info">
+          <div class="shape-row-title">${s.type} #${s.idx + 1}</div>
+          <div class="shape-row-sub">${s.power != null ? s.power + '%' : '—'} · ${s.speed != null ? s.speed + 'mm/s' : '—'}</div>
+        </div>`;
+      row.addEventListener('mouseenter', ev => onHover(s.idx, ev));
+      row.addEventListener('mousemove',  ev => movePopup(ev));
+      row.addEventListener('mouseleave', onLeave);
+      shapeList.appendChild(row);
+    }
+  }
+
+  // ── JSON rendering ────────────────────────────────────────────────────────
+  function renderJSON() {
+    const raw = JSON.stringify(rawData, null, 2);
+
+    // Find each display object's extent in the raw string by locating "id": "UUID"
+    const positions = [];
+    for (const s of shapes) {
+      const needle = `"id": "${s.id}"`;
+      const pos = raw.indexOf(needle);
+      if (pos === -1) continue;
+      let start = raw.lastIndexOf('{', pos);
+      let depth = 1, i = start + 1;
+      while (i < raw.length && depth > 0) {
+        if (raw[i] === '{') depth++;
+        else if (raw[i] === '}') depth--;
+        i++;
+      }
+      positions.push({ idx: s.idx, start, end: i });
+    }
+    positions.sort((a, b) => a.start - b.start);
+
+    // Build HTML: interleave plain segments and wrapped display blocks
+    let html = '', cursor = 0;
+    for (const { idx, start, end } of positions) {
+      html += syntaxHL(raw.slice(cursor, start));
+      html += `<span class="json-display-block" data-idx="${idx}">`;
+      html += syntaxHL(raw.slice(start, end));
+      html += `</span>`;
+      cursor = end;
+    }
+    html += syntaxHL(raw.slice(cursor));
+    jsonCode.innerHTML = html;
+  }
+
+  function syntaxHL(str) {
+    return str
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/("(\\u[\dA-Fa-f]{4}|\\[^u]|[^\\"])*")\s*:/g, '<span class="j-key">$1</span>:')
+      .replace(/("(\\u[\dA-Fa-f]{4}|\\[^u]|[^\\"])*")/g, '<span class="j-str">$1</span>')
+      .replace(/\b(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="j-num">$1</span>')
+      .replace(/\b(true|false)\b/g, '<span class="j-bool">$1</span>')
+      .replace(/\bnull\b/g, '<span class="j-null">null</span>');
+  }
+
+  // JSON hover via delegation (set up once)
+  jsonCode.addEventListener('mouseover', e => {
+    const block = e.target.closest('.json-display-block');
+    if (block) onHover(+block.dataset.idx, e);
+    else onLeave();
+  });
+  jsonCode.addEventListener('mousemove', e => {
+    if (e.target.closest('.json-display-block')) movePopup(e);
+  });
+  jsonCode.addEventListener('mouseleave', onLeave);
+
+  // ── Hover ─────────────────────────────────────────────────────────────────
+  function onHover(idx, ev) {
+    const s = shapes[idx];
+
+    // Highlight shape list row
+    document.querySelectorAll('.shape-row').forEach(r =>
+      r.classList.toggle('hovered', +r.dataset.idx === idx));
+
+    // Highlight SVG shape
+    document.querySelectorAll('[data-svg-idx]').forEach(el => {
+      const hit = +el.getAttribute('data-svg-idx') === idx;
+      el.setAttribute('fill-opacity', hit ? '0.55' : '0.22');
+      el.setAttribute('stroke-width', hit ? '2.5'  : '1.5');
+    });
+
+    // Highlight JSON block
+    document.querySelectorAll('.json-display-block').forEach(b =>
+      b.classList.toggle('json-hl', +b.dataset.idx === idx));
+
+    // Scroll into view depending on active tab
+    if (activeRightTab === 'json') {
+      const block = jsonCode.querySelector(`.json-display-block[data-idx="${idx}"]`);
+      if (block) block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      const row = shapeList.querySelector(`.shape-row[data-idx="${idx}"]`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Popup
+    document.getElementById('popupTitle').textContent  = `${s.type} #${s.idx + 1}`;
+    document.getElementById('popPower').textContent    = s.power   != null ? s.power   + ' %'    : '—';
+    document.getElementById('popSpeed').textContent    = s.speed   != null ? s.speed   + ' mm/s' : '—';
+    document.getElementById('popDensity').textContent  = s.density != null ? s.density + ' LPCM' : '—';
+    document.getElementById('popRepeat').textContent   = s.repeat;
+    document.getElementById('popRepeatRow').style.display = s.repeat > 1 ? 'flex' : 'none';
+    document.getElementById('popSize').textContent     = `${s.w.toFixed(1)} × ${s.h.toFixed(1)} mm`;
+    document.getElementById('popPos').textContent      = `${s.x.toFixed(1)}, ${s.y.toFixed(1)} mm`;
+    movePopup(ev);
+    popup.classList.add('visible');
+  }
+
+  function movePopup(ev) {
+    const pw = popup.offsetWidth || 180, ph = popup.offsetHeight || 130;
+    let left = ev.clientX + 14, top = ev.clientY + 14;
+    if (left + pw > window.innerWidth  - 8) left = ev.clientX - pw - 10;
+    if (top  + ph > window.innerHeight - 8) top  = ev.clientY - ph - 10;
+    popup.style.left = left + 'px'; popup.style.top = top + 'px';
+  }
+
+  function onLeave() {
+    popup.classList.remove('visible');
+    document.querySelectorAll('.shape-row').forEach(r => r.classList.remove('hovered'));
+    document.querySelectorAll('[data-svg-idx]').forEach(el => {
+      el.setAttribute('fill-opacity', '0.22');
+      el.setAttribute('stroke-width', '1.5');
+    });
+    document.querySelectorAll('.json-display-block').forEach(b => b.classList.remove('json-hl'));
+  }
+
+  // ── Stats bar ─────────────────────────────────────────────────────────────
+  function renderStats() {
+    const types  = [...new Set(shapes.map(s => s.type))].join(', ');
+    const pts    = [...new Set(shapes.map(s => s.processingType).filter(Boolean))].join(', ');
+    const powers = [...new Set(shapes.map(s => s.power).filter(v => v != null))].sort((a,b)=>a-b);
+    const speeds = [...new Set(shapes.map(s => s.speed).filter(v => v != null))];
+    const dens   = [...new Set(shapes.map(s => s.density).filter(v => v != null))];
+
+    document.getElementById('statShapes').innerHTML = `<strong>${shapes.length}</strong> shapes`;
+    document.getElementById('statType').innerHTML   = `Type: <strong>${pts || types}</strong>`;
+    document.getElementById('statPower').innerHTML  = powers.length > 1
+      ? `Power: <strong>${powers[0]}–${powers[powers.length-1]} %</strong>`
+      : powers.length === 1 ? `Power: <strong>${powers[0]} %</strong>` : '';
+    document.getElementById('statSpeed').innerHTML   = speeds.length ? `Speed: <strong>${speeds.join(', ')} mm/s</strong>` : '';
+    document.getElementById('statDensity').innerHTML = dens.length   ? `Density: <strong>${dens.join(', ')} LPCM</strong>` : '';
+  }
+
+  // ── Resize ────────────────────────────────────────────────────────────────
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (shapes.length) renderSVG(); }, 150);
+  });
+</script>
+</body>
+</html>
