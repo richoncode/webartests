@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power, Beam Shape & Heat Transfer — Learning Lasers</title>
+  <style>
+    /* Foundations from Style Guide */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      background: #0d0d0d; 
+      color: #fff; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+      font-size: 15px; 
+      line-height: 1.7; 
+      min-height: 100vh; 
+    }
+    
+    /* Floating Header & Controls */
+    .sticky-header {
+      position: sticky;
+      top: 0;
+      background: rgba(13, 13, 13, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #1e1e1e;
+      padding: 40px 24px 24px;
+      z-index: 100;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .page { max-width: 860px; margin: 0 auto; padding: 0 24px 80px; }
+    
+    a.back { display: inline-block; margin-bottom: 24px; color: #555; text-decoration: none; font-size: 14px; transition: color 0.1s; }
+    a.back:hover { color: #aaa; }
+
+    .chapter-label { 
+      font-size: 11px; 
+      font-weight: 700; 
+      text-transform: uppercase; 
+      letter-spacing: 1px; 
+      color: #5b9bd5; 
+      margin-bottom: 4px; 
+    }
+    h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; }
+
+    .laser-toggles-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .laser-toggle {
+      flex: 1;
+      padding: 10px;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #666;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1.4;
+      text-align: left;
+    }
+
+    .laser-toggle.active {
+      background: #1e2d40;
+      border-color: #5b9bd5;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(91, 155, 213, 0.2);
+    }
+
+    .laser-toggle span { display: block; font-weight: 400; color: #888; text-transform: none; margin-top: 2px; }
+    .laser-toggle.active span { color: #5b9bd5; }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: 100px 70px 1fr;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .control-group:last-child { margin-bottom: 0; }
+
+    .control-label { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+    .control-value { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #5b9bd5; text-align: right; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #2a2a2a;
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #5b9bd5;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    /* Content Area */
+    .content-area { margin-top: 40px; }
+
+    .subtitle { color: #888; font-size: 14px; line-height: 1.6; max-width: 640px; margin-bottom: 40px; }
+
+    /* Step Pipeline */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      position: relative;
+    }
+
+    .pipeline::before {
+      content: '';
+      position: absolute;
+      left: 24px;
+      top: 24px;
+      bottom: 24px;
+      width: 2px;
+      background: #1e1e1e;
+      z-index: 0;
+    }
+
+    .step-card {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 12px;
+      padding: 24px;
+      padding-left: 64px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-number-circle {
+      position: absolute;
+      left: 12px;
+      top: 24px;
+      width: 26px;
+      height: 26px;
+      background: #111;
+      border: 2px solid #5b9bd5;
+      color: #5b9bd5;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    .step-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .step-desc {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .formula-box {
+      background: #111;
+      border: 1px dashed #333;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+    }
+
+    .formula-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .formula-text {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .math-box {
+      background: #1a1a1a;
+      border-left: 3px solid #5b9bd5;
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+    }
+
+    .math-text {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 14px;
+      color: #fff;
+    }
+
+    /* Inline Toggles for Steps */
+    .mini-toggles {
+      display: flex;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 6px;
+      padding: 2px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+    .mini-toggle {
+      padding: 0 12px;
+      font-size: 11px;
+      font-weight: 800;
+      border: none;
+      background: transparent;
+      color: #555;
+      border-radius: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.1s;
+    }
+    .mini-toggle.active {
+      background: #5b9bd5;
+      color: #fff;
+    }
+
+    /* Tooltips */
+    .unit {
+      color: #94a3b8;
+      font-size: 0.9em;
+      margin-left: 2px;
+      cursor: help;
+      border-bottom: 1px dotted #64748b;
+      position: relative;
+    }
+
+    .unit:hover {
+      color: #5b9bd5;
+    }
+
+    .key-term {
+      color: #a855f7;
+      font-weight: 600;
+      cursor: help;
+      border-bottom: 1px dashed #a855f7;
+      position: relative;
+    }
+
+    [data-tooltip], [data-tooltip-bottom] { position: relative; }
+
+    [data-tooltip]::after, [data-tooltip-bottom]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e2d40;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 100;
+      border: 1px solid #5b9bd5;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      pointer-events: none;
+      width: 240px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    [data-tooltip-bottom]::after {
+      content: attr(data-tooltip-bottom);
+      top: 140%;
+    }
+
+    [data-tooltip]::after {
+      bottom: 140%;
+    }
+
+    [data-tooltip]:hover::after, [data-tooltip-bottom]:hover::after {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    /* Direction Toggles */
+    .direction-toggles {
+      display: flex;
+      gap: 4px;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 2px;
+      margin-top: 8px;
+    }
+    .dir-toggle {
+      flex: 1;
+      padding: 4px;
+      font-size: 9px;
+      font-weight: 800;
+      background: transparent;
+      color: #555;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .dir-toggle.active { background: #5b9bd5; color: #fff; }
+
+    /* Chapter Nav */
+    .chapter-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 80px;
+      padding-top: 40px;
+      border-top: 1px solid #1e1e1e;
+    }
+    .chapter-nav a {
+      text-decoration: none;
+      color: #555;
+      font-size: 14px;
+      transition: color 0.1s;
+    }
+    .chapter-nav a:hover { color: #aaa; }
+    .chapter-nav .next { text-align: right; }
+    .chapter-nav .label { 
+      display: block; 
+      font-size: 11px; 
+      text-transform: uppercase; 
+      letter-spacing: 1px; 
+      color: #333; 
+      margin-bottom: 4px; 
+    }
+
+    @media (max-width: 600px) {
+      .control-group { grid-template-columns: 1fr 70px; }
+      .control-group input { grid-column: span 2; }
+      .step-card { padding: 20px; padding-top: 48px; }
+      .step-number-circle { top: 12px; left: 20px; }
+      .pipeline::before { display: none; }
+      .step-header { flex-direction: row; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="sticky-header">
+  <div style="max-width: 860px; margin: 0 auto;">
+    <a class="back" href="../">← Learning Lasers</a>
+    <div class="chapter-label">Chapter 8</div>
+    <h1>Power, Beam Shape, & Heat Transfer</h1>
+    
+    <div class="laser-toggles-header">
+      <button class="laser-toggle btn-ir active" onclick="setLaser('IR')">
+        5W Infrared (1064nm)
+        <span>0.03 x 0.03 mm · Circular</span>
+      </button>
+      <button class="laser-toggle btn-blue" onclick="setLaser('BLUE')">
+        15W Blue Diode (455nm)
+        <span>0.08 x 0.06 mm · Rectangular</span>
+      </button>
+    </div>
+
+    <div class="control-group">
+      <label class="control-label">Power</label>
+      <div class="control-value" id="val-power">100%</div>
+      <input type="range" id="slide-power" min="1" max="100" value="100" oninput="updateMath()">
+    </div>
+
+    <div class="control-group">
+      <label class="control-label">Speed</label>
+      <div class="control-value" id="val-speed">500 mm/s</div>
+      <input type="range" id="slide-speed" min="10" max="2000" step="10" value="500" oninput="updateMath()">
+    </div>
+
+    <div class="control-group" id="global-dir-container" style="display: none;">
+      <label class="control-label">Scan Axis</label>
+      <div class="direction-toggles" style="grid-column: span 2;">
+        <button class="dir-toggle btn-x active" onclick="setAxis('X')">X-Axis (Left-Right)</button>
+        <button class="dir-toggle btn-y" onclick="setAxis('Y')">Y-Axis (Up-Down)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page content-area">
+  <p class="subtitle">A step-by-step physics breakdown exploring how wavelength and beam geometry fundamentally change the energy delivered to <span class="key-term" data-tooltip="Grade 304 Stainless Steel\nThe industry standard '18/8' stainless, containing 18% chromium and 8% nickel.">SS304</span>.</p>
+
+  <div class="pipeline">
+
+    <!-- Step 1 -->
+    <div class="step-card">
+      <div class="step-number-circle">1</div>
+      <div class="step-header">
+        <div class="step-title">Raw Optical Power</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        The laser module generates raw energy based on its maximum wattage. The 15W Blue module generates 3x the raw power of the 5W IR module at the same software setting.
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">General Formula</div>
+        <div class="formula-text">P_raw = Max_Power × %</div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step1"></div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-card">
+      <div class="step-number-circle">2</div>
+      <div class="step-header">
+        <div class="step-title">Surface Absorption (<span class="key-term" data-tooltip="Grade 304 Stainless Steel\nThe industry standard '18/8' stainless, containing 18% chromium and 8% nickel.">SS304</span>)</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        Wavelength matters. Polished <strong><span class="key-term" data-tooltip="Grade 304 Stainless Steel\nThe industry standard '18/8' stainless, containing 18% chromium and 8% nickel.">SS304</span></strong> is highly reflective to <span class="key-term" data-tooltip="Infrared (1064nm)\nInvisible light used in fiber lasers. Metals like copper/silver reflect it heavily, but IR is only absorbed ~38% by steel.">Infrared</span>, but much more absorbent to <span class="key-term" data-tooltip="Blue Diode (455nm)\nVisible blue light. It penetrates many surfaces more easily, with Blue absorbed ~62% by steel.">Blue light</span>.
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">General Formula</div>
+        <div class="formula-text">P_absorbed = P_raw × α</div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step2"></div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-card">
+      <div class="step-number-circle">3</div>
+      <div class="step-header">
+        <div class="step-title">Beam Shape & Spot Area</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        <span id="desc-characteristic">This is a symmetric, <span class="key-term" data-tooltip="Gaussian Beam (Approximation)&#10;In this model, we treat the beam as a 'Top Hat' (uniform intensity) across its 0.03mm diameter for simplicity, though real lasers follow a bell-curve distribution.">Gaussian beam</span>. Because dimensions are identical, it creates a perfect circle, allowing extreme precision without directional distortion.</span>
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">Area Formula (<span id="formula-shape">Circle</span>)</div>
+        <div class="formula-text" id="area-formula">π × (w / 2)²</div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step3"></div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-card">
+      <div class="step-number-circle">4</div>
+      <div class="step-header">
+        <div class="step-title">Irradiance (Intensity)</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        Irradiance is Power per unit Area. Since <strong>1 J/s = 1 Watt</strong>, we convert our rate of energy delivery into Intensity (W/mm²). Because the IR spot is <strong>6.8x smaller</strong> than the Blue spot, its "heat pressure" is much higher.
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">General Formula</div>
+        <div class="formula-text">I = P_absorbed <span class="unit" data-tooltip="Watts\n(Equivalent to J/s)">W</span> / Area <span class="unit" data-tooltip="Square millimeters\nArea of the focused spot.">mm²</span></div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step4"></div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-card">
+      <div class="step-number-circle">5</div>
+      <div class="step-header">
+        <div class="step-title">Dwell Time</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        The duration in seconds that the beam spends crossing its own diameter over a fixed point. <span id="desc-dwell-logic">A 0.03mm beam crosses 2.7x faster than a 0.08mm beam at the same speed.</span>
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">General Formula</div>
+        <div class="formula-text">t_dwell = Effective_Width / Speed</div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step5"></div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step-card">
+      <div class="step-number-circle">6</div>
+      <div class="step-header">
+        <div class="step-title">Total Heat Transferred (Fluence)</div>
+        <div class="mini-toggles">
+          <button class="mini-toggle btn-ir active" onclick="setLaser('IR')">IR</button>
+          <button class="mini-toggle btn-blue" onclick="setLaser('BLUE')">Blue</button>
+        </div>
+      </div>
+      <div class="step-desc">
+        The ultimate metric for material transformation. High intensity + short duration (IR) results in precise annealing; moderate intensity + long duration (Blue) is better for bulk heating/cutting.
+      </div>
+      <div class="formula-box">
+        <div class="formula-label">General Formula</div>
+        <div class="formula-text">E = I × t_dwell</div>
+      </div>
+      <div class="math-box">
+        <div class="formula-label">Live Calculation</div>
+        <div class="math-text" id="math-step6"></div>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step-card">
+      <div class="step-number-circle">7</div>
+      <div class="step-header">
+        <div class="step-title">Strategic Comparison</div>
+      </div>
+      <div class="step-desc">
+        How do we match the heat transfer of different modes? This table compares the current settings against the equivalent power needed for other modes to match the same <strong>Target Fluence</strong> ($J/mm^2$).
+      </div>
+      
+      <div class="formula-box" style="background: #0a0a0a; border-style: solid;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
+          <thead>
+            <tr style="color: #555; text-transform: uppercase;">
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Mode&#10;Laser module and beam orientation.">Mode</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Input Power&#10;Software wattage (Max Watts × %).">Power</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Absorbed Power&#10;Actual power converted to heat after reflection.">Absorbed</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Irradiance&#10;Intensity: Absorbed Power / Spot Area.&#10;Rounded for display, calculated at full precision.">Irradiance</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Dwell Time&#10;Duration: Time spent on a single point.">Dwell</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Fluence&#10;Total Heat: Intensity × Duration.">Fluence</span></th>
+              <th style="padding-bottom: 8px;"><span class="unit" data-tooltip="Fluence Equivalent Power&#10;Software % required to match the total heat (Fluence) of the active mode.">P% for Equiv Fluence</span></th>
+            </tr>
+          </thead>
+          <tbody style="font-family: monospace; color: #ccc;">
+            <tr style="border-top: 1px solid #222;" id="row-comp-ir">
+              <td style="padding: 10px 0; color: #5b9bd5;">IR (Circular)</td>
+              <td style="padding: 10px 0;"><span id="comp-ir-p"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-ir-abs"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-ir-irr"></span> <span class="unit">W/mm²</span></td>
+              <td style="padding: 10px 0;"><span id="comp-ir-dw"></span> <span class="unit">s</span></td>
+              <td style="padding: 10px 0;"><span id="comp-ir-fl"></span> <span class="unit">J/mm²</span></td>
+              <td style="padding: 10px 0; color: #f0a040;"><span id="comp-ir-eq"></span><span class="unit">%</span></td>
+            </tr>
+            <tr style="border-top: 1px solid #222;" id="row-comp-blue-x">
+              <td style="padding: 10px 0; color: #5b9bd5;">Blue (Horiz.)</td>
+              <td style="padding: 10px 0;"><span id="comp-bx-p"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-bx-abs"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-bx-irr"></span> <span class="unit">W/mm²</span></td>
+              <td style="padding: 10px 0;"><span id="comp-bx-dw"></span> <span class="unit">s</span></td>
+              <td style="padding: 10px 0;"><span id="comp-bx-fl"></span> <span class="unit">J/mm²</span></td>
+              <td style="padding: 10px 0; color: #f0a040;"><span id="comp-bx-eq"></span><span class="unit">%</span></td>
+            </tr>
+            <tr style="border-top: 1px solid #222;" id="row-comp-blue-y">
+              <td style="padding: 10px 0; color: #5b9bd5;">Blue (Vert.)</td>
+              <td style="padding: 10px 0;"><span id="comp-by-p"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-by-abs"></span> <span class="unit">W</span></td>
+              <td style="padding: 10px 0;"><span id="comp-by-irr"></span> <span class="unit">W/mm²</span></td>
+              <td style="padding: 10px 0;"><span id="comp-by-dw"></span> <span class="unit">s</span></td>
+              <td style="padding: 10px 0;"><span id="comp-by-fl"></span> <span class="unit">J/mm²</span></td>
+              <td style="padding: 10px 0; color: #f0a040;"><span id="comp-by-eq"></span><span class="unit">%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="step-desc" style="margin-top: 16px;">
+        This comparison assumes all modes travel at the same speed. Notice the impact of orientation: Switching from Horizontal to Vertical scanning <strong>drops the Fluence by 25%</strong> (or conversely, switching to Horizontal <strong>increases it by 33%</strong>), simply by changing which "edge" of the rectangle hits the material first.
+      </p>
+    </div>
+
+  </div>
+
+  <section id="orientation-summary" style="margin-top: 64px;">
+    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 16px; color: #fff;">Summary: Beam Orientation & Scan Strategy</h2>
+    <div class="callout blue" style="background: #0d1620; border-left: 3px solid #5b9bd5; border-radius: 0 8px 8px 0; padding: 20px; color: #888;">
+      <p style="margin-bottom: 16px;">The 15W Blue module uses a rectangular beam (0.08 x 0.06 mm) specifically oriented for efficiency on galvo systems:</p>
+      <ul style="list-style: none; padding: 0;">
+        <li style="margin-bottom: 12px; display: flex; gap: 12px;">
+          <span style="color: #5b9bd5; font-weight: 800;">X-Axis (Wider):</span>
+          <span><strong>0.08 mm</strong>. This is the default scanning axis. The wider edge allows the laser to cover more area per pass, maximizing engraving speed.</span>
+        </li>
+        <li style="margin-bottom: 12px; display: flex; gap: 12px;">
+          <span style="color: #5b9bd5; font-weight: 800;">Y-Axis (Sharper):</span>
+          <span><strong>0.06 mm</strong>. By keeping the shorter edge on the Y-axis, the F2 maintains higher vertical resolution for text and fine details as it "steps" through a design.</span>
+        </li>
+        <li style="display: flex; gap: 12px;">
+          <span style="color: #f0a040; font-weight: 800;">Result:</span>
+          <span>Rotating the scan axis changes the <strong>Fluence by ~25–33%</strong>, as the beam effectively becomes "thinner" or "wider" relative to its motion.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="chapter-nav">
+    <a href="../power-speed/" class="prev">
+      <span class="label">Previous Chapter</span>
+      ← Power & Speed
+    </a>
+    <a href="../focus-dof/" class="next">
+      <span class="label">Next Chapter</span>
+      Focus & Depth of Field →
+    </a>
+  </div>
+</div>
+
+<script>
+  const tt = {
+    W: "Watts\nJoules per second.",
+    PCT: "Percentage\nFraction of maximum output.",
+    JS: "Joules per second\nEnergy flow (Power).",
+    ALPHA: "Absorption (α)\nSS304: IR=0.38, Blue=0.62",
+    MM: "Millimeters\nLength.",
+    MM2: "Square millimeters\nArea.",
+    WMM2: "Watts per mm²\nIntensity (Irradiance).",
+    MMS: "Millimeters per second\nBeam travel speed.",
+    S: "Seconds\nDuration.",
+    JMM2: "Joules per mm²\nTotal Energy (Fluence)."
+  };
+
+  const u = (unit, key) => `<span class="unit" data-tooltip="${tt[key]}">${unit}</span>`;
+
+  const lasers = {
+    IR: { 
+      maxW: 5, w: 0.03, h: 0.03, isRect: false, alpha: 0.38,
+      char: "This is a symmetric, Gaussian beam. Because the horizontal and vertical dimensions are identical, it creates a perfect circle on the material. This allows for extreme precision and \"HD\" photo-quality results on metals and plastics without any directional distortion."
+    },
+    BLUE: { 
+      maxW: 15, w: 0.08, h: 0.06, isRect: true, alpha: 0.62,
+      char: "The beam is slightly elongated and rectangular. It is designed for raw power, making it the primary choice for cutting materials like wood and acrylic or performing large-scale engravings."
+    }
+  };
+
+  let activeLaser = 'IR';
+  let activeAxis = 'X';
+
+  function setLaser(type) {
+    activeLaser = type;
+    document.querySelectorAll('.btn-ir').forEach(b => b.classList.toggle('active', type === 'IR'));
+    document.querySelectorAll('.btn-blue').forEach(b => b.classList.toggle('active', type === 'BLUE'));
+    document.getElementById('global-dir-container').style.display = (type === 'BLUE') ? 'grid' : 'none';
+    updateMath();
+  }
+
+  function setAxis(axis) {
+    activeAxis = axis;
+    document.querySelectorAll('.btn-x').forEach(b => b.classList.toggle('active', axis === 'X'));
+    document.querySelectorAll('.btn-y').forEach(b => b.classList.toggle('active', axis === 'Y'));
+    updateMath();
+  }
+
+  function updateMath() {
+    const p_pct = parseFloat(document.getElementById('slide-power').value);
+    const speed = parseFloat(document.getElementById('slide-speed').value);
+    const laser = lasers[activeLaser];
+
+    document.getElementById('val-power').textContent = p_pct + '%';
+    document.getElementById('val-speed').textContent = speed + ' mm/s';
+
+    // Update characteristic description
+    document.getElementById('desc-characteristic').textContent = laser.char;
+
+    // Step 1: Raw Power
+    const p_raw = laser.maxW * (p_pct / 100);
+    document.getElementById('math-step1').innerHTML = 
+      `${laser.maxW}${u('W','W')} × ${p_pct}${u('%','PCT')} = ${p_raw.toFixed(2)}${u('J/s','JS')}`;
+
+    // Step 2: Absorption
+    const p_abs = p_raw * laser.alpha;
+    document.getElementById('math-step2').innerHTML = 
+      `${p_raw.toFixed(2)}${u('J/s','JS')} × ${laser.alpha}${u('α','ALPHA')} = ${p_abs.toFixed(3)}${u('J/s','JS')}`;
+
+    // Step 3: Area
+    let area;
+    if (laser.isRect) {
+      area = laser.w * laser.h;
+      document.getElementById('formula-shape').textContent = "Rectangle";
+      document.getElementById('area-formula').textContent = "Width × Height";
+      document.getElementById('math-step3').innerHTML = 
+        `${laser.w}${u('mm','MM')} × ${laser.h}${u('mm','MM')} = ${area.toFixed(6)}${u('mm²','MM2')}`;
+    } else {
+      const radius = laser.w / 2;
+      area = Math.PI * (radius * radius);
+      document.getElementById('formula-shape').textContent = "Circle";
+      document.getElementById('area-formula').textContent = "π × (w / 2)²";
+      document.getElementById('math-step3').innerHTML = 
+        `π × (${radius}${u('mm','MM')})² = ${area.toFixed(6)}${u('mm²','MM2')}`;
+    }
+
+    // Step 4: Irradiance
+    const irradiance = p_abs / area;
+    const dispIrr = Math.round(irradiance);
+    document.getElementById('math-step4').innerHTML = 
+      `${p_abs.toFixed(3)} <span class="unit" data-tooltip="${tt.JS}">J/s</span> (or ${p_abs.toFixed(3)}${u('W','W')}) / ${area.toFixed(6)}${u('mm²','MM2')} = ${dispIrr.toLocaleString()}${u('W/mm²','WMM2')}`;
+
+    // Step 5: Dwell Time
+    const effectiveWidth = (laser.isRect && activeAxis === 'Y') ? laser.h : laser.w;
+    const t_dwell = effectiveWidth / speed;
+    
+    if (laser.isRect) {
+      document.getElementById('desc-dwell-logic').innerHTML = 
+        `Scanning on the <strong>${activeAxis}-Axis</strong> uses the <strong>${effectiveWidth}mm</strong> dimension. ` +
+        (activeAxis === 'X' ? "This wider edge is the standard choice for speed." : "This sharper edge maximizes resolution.");
+    } else {
+      document.getElementById('desc-dwell-logic').textContent = 
+        `A 0.03mm circular beam has the same dwell time regardless of scan direction.`;
+    }
+
+    document.getElementById('math-step5').innerHTML = 
+      `${effectiveWidth}${u('mm','MM')} / ${speed}${u('mm/s','MMS')} = ${t_dwell.toFixed(6)}${u('s','S')}`;
+
+    // Step 6: Fluence (Rigorous math, display formatted)
+    const fluenceValue = irradiance * t_dwell; 
+    document.getElementById('math-step6').innerHTML = 
+      `${dispIrr.toLocaleString()}${u('W/mm²','WMM2')} × ${t_dwell.toFixed(6)}${u('s','S')} = ${fluenceValue.toFixed(3)}${u('J/mm²','JMM2')}`;
+
+    // Step 7: Strategic Comparison Table
+    const targetFluence = fluenceValue; 
+    const currentRawP = p_raw; 
+    
+    // IR Mode calculation
+    const irArea = Math.PI * (lasers.IR.w/2 * lasers.IR.w/2);
+    const irAbs = currentRawP * lasers.IR.alpha;
+    const irIrr = irAbs / irArea;
+    const irDw = lasers.IR.w / speed;
+    const irFl = irIrr * irDw;
+    const irReqRawP = (targetFluence * irArea * speed) / (lasers.IR.alpha * lasers.IR.w);
+    const irEqPct = (irReqRawP / lasers.IR.maxW) * 100;
+
+    document.getElementById('comp-ir-p').textContent = currentRawP.toFixed(2);
+    document.getElementById('comp-ir-abs').textContent = irAbs.toFixed(2);
+    document.getElementById('comp-ir-irr').textContent = Math.round(irIrr).toLocaleString();
+    document.getElementById('comp-ir-dw').textContent = irDw.toFixed(6);
+    document.getElementById('comp-ir-fl').textContent = irFl.toFixed(3);
+    document.getElementById('comp-ir-eq').textContent = irEqPct.toFixed(1);
+
+    // Blue Diode Shared logic
+    const blueArea = lasers.BLUE.w * lasers.BLUE.h;
+    const blueAbs = currentRawP * lasers.BLUE.alpha;
+    const blueIrr = blueAbs / blueArea;
+    
+    // Blue Horizontal
+    const bxDw = lasers.BLUE.w / speed;
+    const bxFl = blueIrr * bxDw;
+    const bxReqRawP = (targetFluence * blueArea * speed) / (lasers.BLUE.alpha * lasers.BLUE.w);
+    const bxEqPct = (bxReqRawP / lasers.BLUE.maxW) * 100;
+
+    document.getElementById('comp-bx-p').textContent = currentRawP.toFixed(2);
+    document.getElementById('comp-bx-abs').textContent = blueAbs.toFixed(2);
+    document.getElementById('comp-bx-irr').textContent = Math.round(blueIrr).toLocaleString();
+    document.getElementById('comp-bx-dw').textContent = bxDw.toFixed(6);
+    document.getElementById('comp-bx-fl').textContent = bxFl.toFixed(3);
+    document.getElementById('comp-bx-eq').textContent = bxEqPct.toFixed(1);
+
+    // Blue Vertical
+    const byDw = lasers.BLUE.h / speed;
+    const byFl = blueIrr * byDw;
+    const byReqRawP = (targetFluence * blueArea * speed) / (lasers.BLUE.alpha * lasers.BLUE.h);
+    const byEqPct = (byReqRawP / lasers.BLUE.maxW) * 100;
+
+    document.getElementById('comp-by-p').textContent = currentRawP.toFixed(2);
+    document.getElementById('comp-by-abs').textContent = blueAbs.toFixed(2);
+    document.getElementById('comp-by-irr').textContent = Math.round(blueIrr).toLocaleString();
+    document.getElementById('comp-by-dw').textContent = byDw.toFixed(6);
+    document.getElementById('comp-by-fl').textContent = byFl.toFixed(3);
+    document.getElementById('comp-by-eq').textContent = byEqPct.toFixed(1);
+
+    // Highlight active row
+    const activeRowId = activeLaser === 'IR' ? 'row-comp-ir' : (activeAxis === 'X' ? 'row-comp-blue-x' : 'row-comp-blue-y');
+    ['row-comp-ir', 'row-comp-blue-x', 'row-comp-blue-y'].forEach(id => {
+      document.getElementById(id).style.background = (id === activeRowId) ? '#1e2d40' : 'transparent';
+    });
+  }
+
+  updateMath();
+</script>
+</body>
+</html>
