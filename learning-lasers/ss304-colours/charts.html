@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SS304 Colour Charts — Learning Lasers</title>
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    canvas { border-radius: 4px; cursor: crosshair; image-rendering: pixelated; }
+    .custom-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #1e293b; border-radius: 2px; outline: none; }
+    .custom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #5b9bd5; cursor: pointer; border: 2px solid #0d0d0d; box-shadow: 0 0 10px rgba(91, 155, 213, 0.3); }
+    
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    .toast { animation: fadeOut 2s forwards; animation-delay: 1s; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+// ── Colour Model ─────────────────────────────────────────────
+const STOPS = [
+  { nm:   0, r: 180, g: 185, b: 190, name: 'Silver'     },
+  { nm:  18, r: 200, g: 176, b:  96, name: 'Straw'      },
+  { nm:  36, r: 208, g: 144, b:  32, name: 'Gold'       },
+  { nm:  48, r: 200, g:  64, b:  32, name: 'Red'        },
+  { nm:  62, r: 144, g:  40, b:  24, name: 'Copper'     },
+  { nm:  72, r: 128, g:  48, b:  96, name: 'Purple'     },
+  { nm:  85, r:  80, g:  40, b: 128, name: 'Violet'     },
+  { nm:  95, r:  21, g:  53, b: 176, name: 'Deep Blue'  },
+  { nm: 112, r:  16, g:  96, b: 192, name: 'Blue'       },
+  { nm: 128, r:  16, g: 144, b: 176, name: 'Blue-Cyan'  },
+  { nm: 142, r:  18, g: 168, b: 152, name: 'Cyan'       },
+  { nm: 155, r:  74, g: 104, b:  96, name: 'Grey-Green' },
+  { nm: 170, r:  58, g:  58, b:  58, name: 'Burnt Grey' },
+];
+
+function nmToRGB(nm) {
+  if (nm <= STOPS[0].nm) return [STOPS[0].r, STOPS[0].g, STOPS[0].b];
+  for (let i = 0; i < STOPS.length - 1; i++) {
+    if (nm <= STOPS[i+1].nm) {
+      const t = (nm - STOPS[i].nm) / (STOPS[i+1].nm - STOPS[i].nm);
+      return [
+        Math.round(STOPS[i].r + t * (STOPS[i+1].r - STOPS[i].r)),
+        Math.round(STOPS[i].g + t * (STOPS[i+1].g - STOPS[i].g)),
+        Math.round(STOPS[i].b + t * (STOPS[i+1].b - STOPS[i].b)),
+      ];
+    }
+  }
+  const s = STOPS[STOPS.length-1];
+  return [s.r, s.g, s.b];
+}
+
+const nmToCSS = (nm) => {
+  const [r, g, b] = nmToRGB(nm);
+  return `rgb(${r},${g},${b})`;
+};
+
+function nmToName(nm) {
+  for (let i = STOPS.length - 1; i >= 0; i--)
+    if (nm >= STOPS[i].nm) return STOPS[i].name;
+  return 'Silver';
+}
+
+// ── Physics Model ────────────────────────────────────────────
+const A_KP = 3.9e9;
+const EAR  = 12400;
+const TAU  = 4.0;
+const kp = T_K => T_K > 523 ? A_KP * Math.exp(-EAR / T_K) : 0;
+
+function simulateOxide(Tpeak_C, dt = 0.05) {
+  const Tamb = 293.15, Tpeak_K = Tpeak_C + 273.15;
+  const dT = Tpeak_K - Tamb;
+  if (dT <= 0) return 0;
+  let x2 = 0;
+  for (let t = 0; t < 10; t += dt) {
+    const T = Tamb + dT * Math.exp(-t / TAU);
+    if (T < 523) break;
+    x2 += kp(T) * dt;
+  }
+  return Math.sqrt(Math.max(0, x2));
+}
+
+// ── App Component ────────────────────────────────────────────
+const App = () => {
+  const [laserType, setLaserType] = useState('IR'); 
+  const [activeTab, setActiveTab] = useState('sxd'); 
+  const [toast, setToast] = useState('');
+  
+  // Parameters
+  const [power, setPower] = useState(100);      
+  const [speed, setSpeed] = useState(200);     
+  const [lpc, setLpc] = useState(1000);        
+  
+  const canvasRef = useRef(null);
+  const isDragging = useRef(false);
+  const GRID_SIZE = 80; 
+
+  const laserSpecs = {
+    IR:   { maxW: 5,  alpha: 0.38, label: '5W IR (1064nm)' },
+    Blue: { maxW: 15, alpha: 0.62, label: '15W Blue (455nm)' }
+  };
+
+  const axisConfig = useMemo(() => ({
+    sxd: { xMin: '50 mm/s', xMax: '2000 mm/s', yMin: '100 LPC', yMax: '1000 LPC', xTitle: 'Speed (X)', yTitle: 'Density (Y)' },
+    pxs: { xMin: '1% Power', xMax: '100% Power', yMin: '50 mm/s', yMax: '2000 mm/s', xTitle: 'Power (X)', yTitle: 'Speed (Y)' },
+    pxd: { xMin: '1% Power', xMax: '100% Power', yMin: '100 LPC', yMax: '1000 LPC', xTitle: 'Power (X)', yTitle: 'Density (Y)' },
+  }), []);
+
+  const computeT = (pPct, sMmS, lpcVal) => {
+    const spec = laserSpecs[laserType];
+    const powerW = spec.maxW * pPct / 100;
+    const eta = 0.65, m = 3.2e-7, cp = 500;
+    const t_exp = (lpcVal/10) / Math.max(sMmS, 1);
+    const Q = powerW * spec.alpha * t_exp;
+    return 20 + (Q * eta) / (m * cp);
+  };
+
+  const drawChart = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const W = canvas.width;
+    const H = canvas.height;
+    const cellW = W / GRID_SIZE;
+    const cellH = H / GRID_SIZE;
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    for (let iy = 0; iy < GRID_SIZE; iy++) {
+      for (let ix = 0; ix < GRID_SIZE; ix++) {
+        let p_val, s_val, l_val;
+        const x_t = ix / (GRID_SIZE - 1);
+        const y_t = 1 - (iy / (GRID_SIZE - 1));
+
+        if (activeTab === 'pxs') {
+          p_val = 1 + x_t * 99;
+          s_val = 50 + y_t * 1950;
+          l_val = lpc;
+        } else if (activeTab === 'pxd') {
+          p_val = 1 + x_t * 99;
+          s_val = speed;
+          l_val = 100 + y_t * 900;
+        } else {
+          s_val = 50 + x_t * 1950;
+          p_val = power;
+          l_val = 100 + y_t * 900;
+        }
+
+        const T = computeT(p_val, s_val, l_val);
+        const nm = simulateOxide(T);
+        const [r, g, b] = nmToRGB(nm);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(ix * cellW, iy * cellH, cellW + 0.5, cellH + 0.5);
+      }
+    }
+
+    // Crosshair
+    let cx, cy;
+    if (activeTab === 'pxs') {
+      cx = ((power - 1) / 99) * W;
+      cy = (1 - (speed - 50) / 1950) * H;
+    } else if (activeTab === 'pxd') {
+      cx = ((power - 1) / 99) * W;
+      cy = (1 - (lpc - 100) / 900) * H;
+    } else {
+      cx = ((speed - 50) / 1950) * W;
+      cy = (1 - (lpc - 100) / 900) * H;
+    }
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(cx+1, 0); ctx.lineTo(cx+1, H);
+    ctx.moveTo(0, cy+1); ctx.lineTo(W, cy+1);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'white';
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+    ctx.moveTo(0, cy); ctx.lineTo(W, cy);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  useEffect(() => {
+    drawChart();
+  }, [laserType, activeTab, power, speed, lpc]);
+
+  const handleInteraction = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const y = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+
+    if (activeTab === 'pxs') {
+      setPower(Math.round(1 + x * 99));
+      setSpeed(Math.round(50 + y * 1950));
+    } else if (activeTab === 'pxd') {
+      setPower(Math.round(1 + x * 99));
+      setLpc(Math.round(100 + y * 900));
+    } else {
+      setSpeed(Math.round(50 + x * 1950));
+      setLpc(Math.round(100 + y * 900));
+    }
+  };
+
+  const onMouseDown = (e) => { isDragging.current = true; handleInteraction(e); };
+  const onMouseMove = (e) => { if (isDragging.current) handleInteraction(e); };
+  const onMouseUp = () => { isDragging.current = false; };
+
+  const copyToClipboard = () => {
+    const colorName = nmToName(currentNm);
+    const text = `Laser Settings (${laserSpecs[laserType].label})\n` +
+                 `-----------------------------------\n` +
+                 `Power: ${power}%\n` +
+                 `Speed: ${speed} mm/s\n` +
+                 `Density: ${lpc} LPC\n` +
+                 `-----------------------------------\n` +
+                 `Result: ${colorName} (${currentNm.toFixed(1)}nm oxide, ΔT=${(currentT-20).toFixed(0)}°C)`;
+    
+    navigator.clipboard.writeText(text).then(() => {
+      setToast('Settings copied!');
+      setTimeout(() => setToast(''), 3000);
+    });
+  };
+
+  const currentT = computeT(power, speed, lpc);
+  const currentNm = simulateOxide(currentT);
+  const labels = axisConfig[activeTab];
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 md:p-10" onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+      {toast && (
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-2 rounded-full shadow-2xl z-[100] toast font-bold">
+          {toast}
+        </div>
+      )}
+
+      <header className="mb-8">
+        <div className="flex items-center justify-between">
+          <a href="index.html" className="text-slate-400 hover:text-white text-sm no-underline transition-colors flex items-center gap-1 font-bold">
+            ← Physics Model
+          </a>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-800">
+            Target: Polished SS304
+          </span>
+        </div>
+        <h1 className="text-3xl font-extrabold mt-4 text-white tracking-tight">SS304 Colour Map Charts</h1>
+        <p className="text-slate-400 mt-2 max-w-2xl leading-relaxed font-medium">
+          Structural interference colour reference charts. Drag the crosshair to explore combinations based on thermal integration over a 40µm skin depth.
+        </p>
+      </header>
+
+      <div className="flex gap-2 mb-8 bg-slate-900/80 p-1 rounded-xl w-fit border border-slate-800 backdrop-blur-sm shadow-xl">
+        {Object.keys(laserSpecs).map(type => (
+          <button
+            key={type}
+            onClick={() => setLaserType(type)}
+            className={`px-5 py-2.5 rounded-lg text-sm font-black transition-all ${laserType === type ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            {laserSpecs[type].label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex border-b border-slate-800 mb-6 gap-8">
+        {[
+          { id: 'sxd', label: 'Speed × Density' },
+          { id: 'pxs', label: 'Power × Speed' },
+          { id: 'pxd', label: 'Power × Density' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`pb-3 text-sm font-black tracking-tight transition-colors relative ${activeTab === tab.id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            {tab.label}
+            {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400 shadow-[0_0_10px_rgba(91,155,213,0.5)]"></div>}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl mb-6 shadow-2xl">
+        {activeTab === 'pxs' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+              <span>Lines Per CM (Density)</span>
+              <span className="text-blue-400 font-mono text-sm">{lpc} LPC</span>
+            </div>
+            <input type="range" min="100" max="1000" step="10" value={lpc} onChange={e => setLpc(parseInt(e.target.value))} className="custom-slider" />
+          </div>
+        )}
+        {activeTab === 'pxd' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+              <span>Fixed Travel Speed</span>
+              <span className="text-blue-400 font-mono text-sm">{speed} mm/s</span>
+            </div>
+            <input type="range" min="50" max="2000" step="10" value={speed} onChange={e => setSpeed(parseInt(e.target.value))} className="custom-slider" />
+          </div>
+        )}
+        {activeTab === 'sxd' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+              <span>Fixed Laser Power</span>
+              <span className="text-blue-400 font-mono text-sm">{power}%</span>
+            </div>
+            <input type="range" min="1" max="100" step="1" value={power} onChange={e => setPower(parseInt(e.target.value))} className="custom-slider" />
+          </div>
+        )}
+      </div>
+
+      <div className="relative bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-2xl">
+        {/* X Axis Labels */}
+        <div className="flex justify-between text-[11px] font-black text-slate-200 mb-3 uppercase tracking-[0.2em] px-14">
+          <span>{labels.xMin}</span>
+          <span className="text-slate-600">{labels.xTitle}</span>
+          <span>{labels.xMax}</span>
+        </div>
+        
+        <div className="flex items-stretch h-[480px]">
+          {/* Y Axis Labels */}
+          <div className="flex flex-col justify-between text-[11px] font-black text-slate-200 mr-4 uppercase tracking-[0.2em] py-2" style={{writingMode: 'vertical-lr', transform: 'rotate(180deg)'}}>
+            <span>{labels.yMax}</span>
+            <span className="text-slate-600 self-center">{labels.yTitle}</span>
+            <span>{labels.yMin}</span>
+          </div>
+
+          <div className="flex-1 relative group overflow-hidden rounded-lg border border-white/10 bg-black">
+            <canvas
+              ref={canvasRef}
+              width={1200}
+              height={800}
+              className="w-full h-full"
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onTouchStart={handleInteraction}
+              onTouchMove={handleInteraction}
+            ></canvas>
+          </div>
+        </div>
+        
+        <div className="mt-6 flex flex-col md:flex-row items-center md:items-end justify-between border-t border-slate-800 pt-6 gap-6">
+          <div className="flex flex-col gap-3 w-full md:w-auto">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Configuration</span>
+            <div className="flex gap-6 text-sm font-mono bg-black/40 p-3 rounded-xl border border-white/5 shadow-inner">
+              <div className="flex flex-col"><span className="text-[9px] text-slate-600 uppercase font-black">Power</span><span className="text-blue-400">{power}%</span></div>
+              <div className="flex flex-col"><span className="text-[9px] text-slate-600 uppercase font-black">Speed</span><span className="text-blue-400">{speed} <span className="text-[10px]">mm/s</span></span></div>
+              <div className="flex flex-col"><span className="text-[9px] text-slate-600 uppercase font-black">Density</span><span className="text-blue-400">{lpc} <span className="text-[10px]">LPC</span></span></div>
+            </div>
+            <button 
+              onClick={copyToClipboard}
+              className="mt-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 px-4 rounded-lg text-xs font-bold transition-all border border-slate-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+              Copy Settings
+            </button>
+          </div>
+
+          <div className="flex items-center gap-8 bg-black/20 p-4 rounded-2xl border border-white/5">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Thermal Metric</span>
+              <span className="text-2xl font-black text-white leading-none">
+                {(currentT - 20).toFixed(0)}<span className="text-xs text-blue-500 ml-1">ΔT°C</span>
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono mt-2 bg-slate-800 px-2 py-0.5 rounded">{currentNm.toFixed(1)}nm Layer</span>
+            </div>
+            <div className="text-right">
+               <span className="text-[10px] text-slate-500 uppercase font-black block mb-2 tracking-widest">Predicted</span>
+               <div className="flex flex-col items-center gap-2">
+                 <div 
+                  className="w-16 h-16 rounded-2xl border-2 border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                  style={{ backgroundColor: nmToCSS(currentNm) }}
+                ></div>
+                <span className="text-[10px] font-black text-white uppercase tracking-tighter">{nmToName(currentNm)}</span>
+               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer className="mt-12 pt-8 border-t border-slate-800 text-slate-500 text-[11px] leading-relaxed max-w-2xl">
+        <p className="mb-2 uppercase font-black tracking-widest text-slate-600">Model Specifications</p>
+        <p>Uses Arrhenius oxide growth integration (A=3.9e9, Ea/R=12,400K). Temperature is calculated assuming a 40µm focal skin depth on polished SS304. Structural colours are derived from thin-film interference physics (n=2.3) on a steel substrate. Drag the chart to rapidly iterate between settings.</p>
+      </footer>
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
