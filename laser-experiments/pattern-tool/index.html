@@ -149,6 +149,7 @@ input[type=range]{flex:1;accent-color:#5b9bd5;height:4px}
   <div class="header-btns">
     <button class="hbtn" id="openXcsBtn">Open XCS</button>
     <button class="hbtn primary" id="newMandalaBtn">+ Mandala</button>
+    <button class="hbtn primary" id="newGradientBtn">+ Gradient</button>
   </div>
   <div class="tab-bar" id="tabBar"></div>
 </div>
@@ -160,6 +161,7 @@ input[type=range]{flex:1;accent-color:#5b9bd5;height:4px}
     <div class="welcome-btns">
       <button class="hbtn" onclick="document.getElementById('openXcsBtn').click()">Open XCS file</button>
       <button class="hbtn primary" onclick="TabMgr.newMandala()">New Mandala</button>
+      <button class="hbtn primary" onclick="TabMgr.newGradient()">New Gradient</button>
     </div>
   </div>
 </div>
@@ -365,7 +367,7 @@ const XCSViewer = {
     return viewer;
   },
 
-  update(pane, state) {
+  update(pane, state, lazy = false) {
     const v = pane.querySelector('.xcs-viewer');
     const q = s => v.querySelector(s);
     
@@ -378,11 +380,24 @@ const XCSViewer = {
     q('.export-pal-btn').disabled = false;
 
     this.renderSVG(v, state);
-    this.renderList(v, state);
-    this.renderPaletteList(v, state);
-    this.renderProcessTree(v, state);
-    this.renderJSON(v, state);
     this.renderStats(v, state);
+
+    if (lazy) {
+      if (this._lazyTimer) clearTimeout(this._lazyTimer);
+      this._lazyTimer = setTimeout(() => {
+        this.renderList(v, state);
+        this.renderPaletteList(v, state);
+        this.renderProcessTree(v, state);
+        this.renderJSON(v, state);
+        this._lazyTimer = null;
+      }, 250);
+    } else {
+      if (this._lazyTimer) { clearTimeout(this._lazyTimer); this._lazyTimer = null; }
+      this.renderList(v, state);
+      this.renderPaletteList(v, state);
+      this.renderProcessTree(v, state);
+      this.renderJSON(v, state);
+    }
   },
 
   renderSVG(v, state) {
@@ -439,7 +454,7 @@ const XCSViewer = {
       el.addEventListener('mouseleave', () => this.onLeave(v));
       svg.appendChild(el);
       
-      if (s.power != null && rx > 9) {
+      if (s.power != null && rx > 9 && !s.hideLabels) {
         const t = svgEl('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':Math.min(rx*.55,12),'font-family':'SF Mono,Fira Code,monospace',fill:isFill?'#000':'#fff','fill-opacity':isFill?'0.8':'0.7','font-weight':isFill?'800':'400','pointer-events':'none'});
         t.textContent = s.power+'%'; labels.push(t);
       }
@@ -457,12 +472,12 @@ const XCSViewer = {
       row.className = 'shape-row'; row.dataset.idx = s.idx;
       const typeLabel = s.processingType ? s.processingType.toUpperCase() : '—';
       const laserLabel = s.laser ? `<span style="color:#5b9bd5;font-weight:800;margin-left:4px">${s.laser.toUpperCase()}</span>` : '';
-      const deLabel = s.density != null ? `${s.density}L` : '—';
+      const deLabel = s.density != null ? `${s.density} lpcm` : '—';
       row.innerHTML = `
         <div class="shape-dot" style="background:${s.layerColor}"></div>
         <div style="flex:1">
           <div class="shape-row-title">${s.type} #${s.idx+1} ${laserLabel} <span style="color:#444;font-size:9px;margin-left:4px">${typeLabel}</span></div>
-          <div class="shape-row-sub">${s.power!=null?s.power+'%':'—'} · ${s.speed!=null?s.speed+'mm/s':'—'} · ${deLabel}</div>
+          <div class="shape-row-sub">${s.power!=null?s.power+' pwr%':'—'} · ${s.speed!=null?s.speed+' mm/s':'—'} · ${deLabel}</div>
           <div style="font-size:8px;color:#444;font-family:monospace;margin-top:2px">ID: ${s.id}</div>
         </div>`;
       row.addEventListener('mouseenter', ev => this.onHover(v, state, s.idx, ev));
@@ -479,9 +494,9 @@ const XCSViewer = {
     combos.forEach((c, i) => {
       const row = document.createElement('div');
       row.className = 'pal-row';
-      const pw = c.power != null ? `${c.power}<span class="pal-u">%</span>` : '—';
-      const sp = c.speed != null ? `${c.speed}<span class="pal-u">mm/s</span>` : '—';
-      const de = c.density != null ? `${c.density}<span class="pal-u">LPCM</span>` : '—';
+      const pw = c.power != null ? `${c.power}<span class="pal-u"> pwr%</span>` : '—';
+      const sp = c.speed != null ? `${c.speed}<span class="pal-u"> mm/s</span>` : '—';
+      const de = c.density != null ? `${c.density}<span class="pal-u"> lpcm</span>` : '—';
       const laserLabel = c.laser ? `<span style="color:#5b9bd5;font-weight:800;font-size:9px;margin-left:4px">${c.laser.toUpperCase()}</span>` : '';
       row.innerHTML = `
         <div class="pal-row-top">
@@ -558,15 +573,23 @@ const XCSViewer = {
 
   renderStats(v, state) {
     const { shapes } = state;
-    const powers = [...new Set(shapes.map(s=>s.power).filter(v=>v!=null))].sort((a,b)=>a-b);
+    const formatRange = (label, vals, unit) => {
+      if (!vals.length) return '';
+      if (vals.length === 1) return `${label}: <strong>${vals[0]} ${unit}</strong>`;
+      const sorted = [...vals].sort((a,b) => a-b);
+      const start = sorted[0], end = sorted[sorted.length-1];
+      const step = sorted.length > 1 ? (sorted[1] - sorted[0]) : 0;
+      return `${label}: <strong>${start}–${end} ${unit}</strong> (step: ${step})`;
+    };
+    
+    const powers = [...new Set(shapes.map(s=>s.power).filter(v=>v!=null))];
     const speeds = [...new Set(shapes.map(s=>s.speed).filter(v=>v!=null))];
     const dens   = [...new Set(shapes.map(s=>s.density).filter(v=>v!=null))];
-    const pts    = [...new Set(shapes.map(s=>s.processingType).filter(Boolean))].join(', ');
+    
     v.querySelector('.s-shapes').innerHTML  = `<strong>${shapes.length}</strong> shapes`;
-    v.querySelector('.s-type').innerHTML    = `Type: <strong>${pts}</strong>`;
-    v.querySelector('.s-power').innerHTML   = powers.length > 1 ? `Power: <strong>${powers[0]}–${powers[powers.length-1]} %</strong>` : powers.length===1 ? `Power: <strong>${powers[0]} %</strong>` : '';
-    v.querySelector('.s-speed').innerHTML   = speeds.length ? `Speed: <strong>${speeds.join(', ')} mm/s</strong>` : '';
-    v.querySelector('.s-density').innerHTML = dens.length   ? `Density: <strong>${dens.join(', ')} LPCM</strong>` : '';
+    v.querySelector('.s-power').innerHTML   = formatRange('Power', powers, 'pwr%');
+    v.querySelector('.s-speed').innerHTML   = formatRange('Speed', speeds, 'mm/s');
+    v.querySelector('.s-density').innerHTML = formatRange('Density', dens, 'lpcm');
   },
 
   renderProcessTree(v, state) {
@@ -683,6 +706,15 @@ const TabMgr = {
     const n = App.tabs.filter(t => t.type === 'mandala').length + 1;
     App.tabs.push({ id, type:'mandala', label:`Mandala ${n}` });
     const pane = MandalaTab.create(id);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+  },
+
+  newGradient() {
+    const id = this.newId();
+    const n = App.tabs.filter(t => t.type === 'gradient').length + 1;
+    App.tabs.push({ id, type:'gradient', label:`Gradient ${n}` });
+    const pane = GradientTab.create(id);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
   },
@@ -842,7 +874,7 @@ const XcsTab = {
                angle:d.angle||0, layerColor:d.layerColor||'#5b9bd5', zOrder:d.zOrder||0,
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
                density:pm.density??null, repeat:pm.repeat??1,
-               laser: pm.processingLightSource || null };
+               laser: pm.processingLightSource || null, hideLabels: !!d.hideLabels };
     });
   }
 };
@@ -885,11 +917,11 @@ const MandalaTab = {
     return pane;
   },
 
-  refresh(tabId) {
+  refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
     inst.state.rawData = this.generateXCS(inst.cfg);
     inst.state.shapes = XcsTab.parseXCS(inst.state.rawData);
-    XCSViewer.update(inst.pane, inst.state);
+    XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
   generateXCS(cfg) {
@@ -1038,7 +1070,7 @@ const MandalaTab = {
     const scroll = pane.querySelector('.tool-scroll');
     scroll.innerHTML = '';
 
-    const update = () => this.refresh(tabId);
+    const update = (lazy = false) => this.refresh(tabId, lazy);
 
     const set = (path, val) => {
       const parts = path.split('.');
@@ -1048,8 +1080,10 @@ const MandalaTab = {
       if (path === 'ringCount') {
         while (cfg.rings.length < cfg.ringCount) cfg.rings.push(defaultRing(cfg.rings.length));
         this.renderControls(tabId);
+        update(false);
+      } else {
+        update(true);
       }
-      update();
     };
 
     // ── Global section ──
@@ -1072,28 +1106,50 @@ const MandalaTab = {
     for (let i = 0; i < cfg.ringCount; i++) {
       const ring = cfg.rings[i];
       const sec = this.makeSection(`Ring ${i+1}`, [
-        this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, ring.paletteEntryIndex, (v) => { ring.paletteEntryIndex = +v; update(); })),
-        this.makeRow('Dot size', this.makeRange(0.3, 8, 0.1, ring.dotDiameter, v => { ring.dotDiameter = +v; update(); }, 'mm')),
-        this.makeRow('Shape', this.makeSelect(['circle','ring','diamond','cross','petal'], ring.shape, v => { ring.shape = v; update(); })),
-        this.makeCountRow(ring, (mode, val) => { ring.countMode = mode; if (mode==='auto') ring.countMultiplier=val; else ring.countManual=val; update(); }, cfg.symmetry),
-        this.makeRow('Rotation', this.makeRange(0, 360, 1, ring.rotationOffset, v => { ring.rotationOffset = +v; update(); }, '°')),
+        this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, ring.paletteEntryIndex, (v) => { ring.paletteEntryIndex = +v; update(true); })),
+        this.makeRow('Dot size', this.makeRange(0.3, 8, 0.1, ring.dotDiameter, v => { ring.dotDiameter = +v; update(true); }, 'mm')),
+        this.makeRow('Shape', this.makeSelect(['circle','ring','diamond','cross','petal'], ring.shape, v => { ring.shape = v; update(true); })),
+        this.makeCountRow(ring, (mode, val) => { ring.countMode = mode; if (mode==='auto') ring.countMultiplier=val; else ring.countManual=val; update(true); }, cfg.symmetry),
+        this.makeRow('Rotation', this.makeRange(0, 360, 1, ring.rotationOffset, v => { ring.rotationOffset = +v; update(true); }, '°')),
       ], true);
       scroll.appendChild(sec);
     }
   },
 
-  makeSection(title, children, collapsed) {
+  makeSection(title, children, collapsed, headerControl) {
     const sec = document.createElement('div');
     sec.className = 'ctrl-section';
     const hdr = document.createElement('div');
     hdr.className = 'ctrl-section-title';
-    hdr.innerHTML = `${esc(title)} <span style="color:#333;font-size:9px">${collapsed?'▸':'▾'}</span>`;
+    hdr.style.display = 'flex';
+    hdr.style.alignItems = 'center';
+    
+    const label = document.createElement('span');
+    label.textContent = title;
+    hdr.appendChild(label);
+
+    if (headerControl) {
+      headerControl.style.marginLeft = 'auto';
+      headerControl.style.marginRight = '8px';
+      headerControl.addEventListener('click', e => e.stopPropagation());
+      hdr.appendChild(headerControl);
+    } else {
+      const spacer = document.createElement('div');
+      spacer.style.flex = '1';
+      hdr.appendChild(spacer);
+    }
+
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'color:#333;font-size:9px';
+    arrow.textContent = collapsed ? '▸' : '▾';
+    hdr.appendChild(arrow);
+
     const body = document.createElement('div');
     body.className = 'ctrl-section-body' + (collapsed ? ' collapsed' : '');
     hdr.addEventListener('click', () => {
       const isOpen = !body.classList.contains('collapsed');
       body.classList.toggle('collapsed', isOpen);
-      hdr.querySelector('span').textContent = isOpen ? '▸' : '▾';
+      arrow.textContent = isOpen ? '▸' : '▾';
     });
     children.forEach(c => { if (c) body.appendChild(c); });
     sec.appendChild(hdr);
@@ -1133,6 +1189,23 @@ const MandalaTab = {
     });
     sel.addEventListener('change', () => onChange(sel.value));
     return sel;
+  },
+
+  makeToggles(options, current, onChange, labels = {}) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.gap = '4px';
+    options.forEach(o => {
+      const btn = document.createElement('button');
+      btn.className = 'hbtn sm' + (String(o) === String(current) ? ' primary' : '');
+      btn.textContent = labels[o] || o;
+      btn.addEventListener('click', () => {
+        if (String(o) === String(current)) return;
+        onChange(o);
+      });
+      wrap.appendChild(btn);
+    });
+    return wrap;
   },
 
   makePaletteSelect(cfg, onChange) {
@@ -1188,7 +1261,7 @@ const MandalaTab = {
       cfg.centerDot = cb.checked;
       sizeRow.style.display = cfg.centerDot ? 'flex' : 'none';
       colorRow.style.display = cfg.centerDot ? 'flex' : 'none';
-      this.refresh(tabId);
+      this.refresh(tabId, true);
     });
     lbl.appendChild(cb); lbl.appendChild(document.createTextNode(' Center dot'));
     const lsp = document.createElement('span');
@@ -1196,18 +1269,18 @@ const MandalaTab = {
     toggleRow.appendChild(lsp); toggleRow.appendChild(lbl);
     frag.appendChild(toggleRow);
 
-    const sizeRow = this.makeRow('Size', this.makeRange(0.5, 10, 0.1, cfg.centerDotDiameter, v => { cfg.centerDotDiameter = +v; this.refresh(tabId); }, 'mm'));
+    const sizeRow = this.makeRow('Size', this.makeRange(0.5, 10, 0.1, cfg.centerDotDiameter, v => { cfg.centerDotDiameter = +v; this.refresh(tabId, true); }, 'mm'));
     sizeRow.style.display = cfg.centerDot ? 'flex' : 'none';
     frag.appendChild(sizeRow);
 
-    const colorRow = this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, cfg.centerDotEntry, v => { cfg.centerDotEntry = +v; this.refresh(tabId); }));
+    const colorRow = this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, cfg.centerDotEntry, v => { cfg.centerDotEntry = +v; this.refresh(tabId, true); }));
     colorRow.style.display = cfg.centerDot ? 'flex' : 'none';
     frag.appendChild(colorRow);
 
     return frag;
   },
 
-  makeStepCounter(current, min, max, onChange) {
+  makeStepCounter(current, min, max, onChange, step = 1) {
     const wrap = document.createElement('div');
     wrap.className = 'ring-counter';
     const minus = document.createElement('button');
@@ -1216,8 +1289,8 @@ const MandalaTab = {
     val.className = 'ring-counter-val'; val.textContent = current;
     const plus = document.createElement('button');
     plus.className = 'hbtn sm'; plus.textContent = '+';
-    minus.addEventListener('click', () => { if (current > min) { current--; val.textContent = current; onChange(current); } });
-    plus.addEventListener('click',  () => { if (current < max) { current++; val.textContent = current; onChange(current); } });
+    minus.addEventListener('click', () => { if (current > min) { current -= step; if (current < min) current = min; val.textContent = current; onChange(current); } });
+    plus.addEventListener('click',  () => { if (current < max) { current += step; if (current > max) current = max; val.textContent = current; onChange(current); } });
     wrap.appendChild(minus); wrap.appendChild(val); wrap.appendChild(plus);
     return wrap;
   },
@@ -1273,6 +1346,182 @@ const MandalaTab = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// GRADIENT TAB
+// ═══════════════════════════════════════════════════════════════════
+const GradientTab = {
+  create(tabId) {
+    const pane = document.createElement('div');
+    pane.className = 'tab-pane';
+    pane.dataset.paneId = tabId;
+    pane.innerHTML = `
+      <div class="left-tool-panel">
+        <div class="tool-header"><span class="tool-title">Gradient Test</span></div>
+        <div class="tool-scroll"></div>
+      </div>`;
+
+    const viewer = XCSViewer.create(tabId);
+    viewer.querySelector('.viewer-fname').textContent = 'Gradient Test Grid';
+    pane.appendChild(viewer);
+
+    const cfg = {
+      laserType: 'ir',
+      xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
+      roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
+      xMin: 10, xMax: 100,
+      yMin: 10, yMax: 200,
+      resolution: 20,
+      overlap: 0,
+      fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000,
+      totalSize: 20
+    };
+    const state = { rawData:null, shapes:[] };
+    App.instances[tabId] = { type:'gradient', pane, cfg, state };
+
+    this.renderControls(tabId);
+    this.refresh(tabId);
+    return pane;
+  },
+
+  refresh(tabId, lazy = false) {
+    const inst = App.instances[tabId];
+    inst.state.rawData = this.generateXCS(inst.cfg);
+    inst.state.shapes = XcsTab.parseXCS(inst.state.rawData);
+    XCSViewer.update(inst.pane, inst.state, lazy);
+  },
+
+  generateXCS(cfg) {
+    const canvasId = uuid();
+    const displays = [];
+    const displayValues = [];
+    const CX = 50, CY = 50;
+    const { resolution, totalSize, laserType, xAxis, yAxis, overlap } = cfg;
+    
+    const tileSize = totalSize / resolution;
+    const startX = CX - totalSize/2;
+    const startY = CY - totalSize/2;
+
+    for (let iy = 0; iy < resolution; iy++) {
+      for (let ix = 0; ix < resolution; ix++) {
+        const id = uuid();
+        const x = startX + ix * tileSize + tileSize/2;
+        const y = startY + iy * tileSize + tileSize/2;
+        
+        const getVal = (axis) => {
+          let minVal, maxVal, stepIdx;
+          if (axis === cfg.xAxis) { minVal = cfg.xMin; maxVal = cfg.xMax; stepIdx = ix; }
+          else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; stepIdx = iy; }
+          else { return axis === 'power' ? cfg.fixedPower : axis === 'speed' ? cfg.fixedSpeed : cfg.fixedLpcm; }
+          
+          if (resolution === 1) return minVal;
+          return minVal + (maxVal - minVal) * stepIdx / (resolution - 1);
+        };
+
+        const p = getVal('power');
+        const s = getVal('speed');
+        const d = getVal('lpcm');
+
+        displays.push({ 
+          id, name: null, type: 'RECT', x, y, width: tileSize + overlap, height: tileSize + overlap, angle: 0,
+          scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+          offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
+          zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "#5b9bd5",
+          layerColor: "#5b9bd5", visible: true, originColor: "#000000",
+          enableTransform: true, visibleState: true, lockState: false,
+          resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
+          fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
+          stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+          isFill: true, lineColor: 0, fillColor: "#5b9bd5", hideLabels: true, power: null
+        });
+
+        const pm = { 
+          power: Math.round(p), speed: Math.round(s), density: Math.round(d), repeat: 1,
+          processingLightSource: laserType, bitmapScanMode: "zMode", needGapNumDensity: true,
+          dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0
+        };
+        
+        const nodes = {
+          VECTOR_CUTTING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserType } } },
+          VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserType } } },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
+          INTAGLIO: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserType } } }
+        };
+
+        displayValues.push([id, { isFill: true, type: 'RECT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
+      }
+    }
+
+    return {
+      canvasId: canvasId,
+      canvas: [{ id: canvasId, title: "{panel}1", layerData: {"#5b9bd5": {name:"Grid", order:1, visible:true}}, groupData: {}, displays }],
+      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: laserType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: false, pathPlanning: "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
+      extId: "GS006", extName: "F2", version: "1.5.8", minRequiredVersion: "2.6.0", created: Date.now(), modify: Date.now(), projectTraceID: uuid()
+    };
+  },
+
+  renderControls(tabId) {
+    const { pane, cfg } = App.instances[tabId];
+    const scroll = pane.querySelector('.tool-scroll');
+    scroll.innerHTML = '';
+    const update = (lazy = false) => this.refresh(tabId, lazy);
+    const set = (path, val) => { cfg[path] = val; update(true); };
+
+    const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
+    const axisOpts = ['power', 'speed', 'lpcm'];
+
+    const swapAxes = (targetRole, newValue) => {
+      let currentRoleOfValue = null;
+      if (cfg.xAxis === newValue) currentRoleOfValue = 'xAxis';
+      else if (cfg.yAxis === newValue) currentRoleOfValue = 'yAxis';
+      else if (cfg.fixedAxis === newValue) currentRoleOfValue = 'fixedAxis';
+      
+      if (!currentRoleOfValue || currentRoleOfValue === targetRole) return;
+
+      const oldValueOfTargetRole = cfg[targetRole];
+      cfg[targetRole] = newValue;
+      cfg[currentRoleOfValue] = oldValueOfTargetRole;
+      
+      cfg.roleHistory = cfg.roleHistory.filter(r => r !== targetRole);
+      cfg.roleHistory.push(targetRole);
+      
+      this.renderControls(tabId);
+      update();
+    };
+
+    scroll.appendChild(MandalaTab.makeSection('Global', [
+      MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
+      MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
+      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
+      MandalaTab.makeRow('Overlap', MandalaTab.makeRange(0, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm'))
+    ]));
+
+    const getRanges = (axis) => {
+      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: 'pwr%' };
+      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: 'mm/s' };
+      return { min: 10, max: 1000, step: 50, unit: 'lpcm' };
+    };
+
+    const xr = getRanges(cfg.xAxis);
+    scroll.appendChild(MandalaTab.makeSection('X Axis:', [
+      MandalaTab.makeRow(`Min (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMin, v => set('xMin', +v), xr.unit)),
+      MandalaTab.makeRow(`Max (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMax, v => set('xMax', +v), xr.unit))
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels)));
+
+    const yr = getRanges(cfg.yAxis);
+    scroll.appendChild(MandalaTab.makeSection('Y Axis:', [
+      MandalaTab.makeRow(`Min (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMin, v => set('yMin', +v), yr.unit)),
+      MandalaTab.makeRow(`Max (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMax, v => set('yMax', +v), yr.unit))
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels)));
+
+    const fr = getRanges(cfg.fixedAxis);
+    const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
+    scroll.appendChild(MandalaTab.makeSection('Fixed:', [
+      MandalaTab.makeRow(`Value (${fr.unit})`, MandalaTab.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════════════
 function uuid() {
@@ -1310,9 +1559,9 @@ const Popup = {
   show(s, ev) {
     const p = document.getElementById('globalPopup');
     document.getElementById('gpTitle').textContent   = `${s.type} #${s.idx+1}`;
-    document.getElementById('gpPower').textContent   = s.power   != null ? s.power   + ' %'    : '—';
-    document.getElementById('gpSpeed').textContent   = s.speed   != null ? s.speed   + ' mm/s' : '—';
-    document.getElementById('gpDensity').textContent = s.density != null ? s.density + ' LPCM' : '—';
+    document.getElementById('gpPower').textContent   = s.power   != null ? s.power   + ' pwr%'   : '—';
+    document.getElementById('gpSpeed').textContent   = s.speed   != null ? s.speed   + ' mm/s'   : '—';
+    document.getElementById('gpDensity').textContent = s.density != null ? s.density + ' lpcm'   : '—';
     document.getElementById('gpRepeat').textContent  = s.repeat;
     document.getElementById('gpRepeatRow').style.display = s.repeat > 1 ? 'flex' : 'none';
     document.getElementById('gpSize').textContent    = `${s.w.toFixed(1)} × ${s.h.toFixed(1)} mm`;
@@ -1335,6 +1584,7 @@ const Popup = {
 // ═══════════════════════════════════════════════════════════════════
 document.getElementById('openXcsBtn').addEventListener('click', () => TabMgr.openXcs());
 document.getElementById('newMandalaBtn').addEventListener('click', () => TabMgr.newMandala());
+document.getElementById('newGradientBtn').addEventListener('click', () => TabMgr.newGradient());
 
 window.addEventListener('resize', () => {
   if (!App.activeTabId) return;
