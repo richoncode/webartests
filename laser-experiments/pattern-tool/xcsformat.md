@@ -1,208 +1,86 @@
-# XCS File Format
+# Confirmation of XCS File Format (xTool F2) - Confirmed Requirements
 
-XCS is the native project format for **xTool Creative Space** (XCS) software. Files use a `.xcs` extension and contain JSON.
-
----
-
-## Top-Level Structure
-
-```json
-{
-  "canvasId": "<uuid>",          // ID of the active canvas
-  "canvas": [ ... ],             // Array of canvas objects (usually one)
-  "device": { ... },             // Machine + processing config
-  "version": "2.x.x",
-  "created": 1234567890000,      // Unix timestamp (ms)
-  "modify":  1234567890000,
-  "ua": "...",                   // User-agent string of XCS app
-  "meta": { "title": "..." },
-  "cover": "<base64 PNG>",       // Thumbnail
-  "extId": "...",
-  "extName": "...",
-  "projectTraceID": "<uuid>",
-  "minRequiredVersion": "...",
-  "appMinRequiredVersion": "...",
-  "webMinRequiredVersion": "..."
-}
-```
+This document defines the strictly required structure for `.xcs` files to ensure full compatibility with xTool Creative Space and the F2 system.
 
 ---
 
-## Canvas Object (`canvas[n]`)
+## 1. Top-Level Node Hierarchy
 
-```json
-{
-  "id": "<uuid>",
-  "title": "Panel 1",
-  "layerData": { ... },      // Layer visibility / colour config
-  "groupData": { ... },      // Group info
-  "displays": [ ... ],       // Array of shape display objects
-  "extendInfo": { ... }      // Extended metadata (often sparse)
-}
-```
-
----
-
-## Display Object (`canvas[n].displays[i]`)
-
-Each element on the canvas is a "display". Coordinates are in **millimetres**; `x` and `y` are the **centre** of the shape.
-
-```json
-{
-  "id": "<uuid>",             // Primary key (used to join processing config)
-  "sourceId": "<uuid>",       // Source asset ID
-  "name": "...",
-  "type": "CIRCLE",           // Shape type (see Types below)
-  "x": 60.27,                 // Centre X (mm from canvas origin)
-  "y": 82.57,                 // Centre Y (mm from canvas origin)
-  "width": 4.5,               // Bounding-box width (mm)
-  "height": 4.5,              // Bounding-box height (mm)
-  "angle": 0,                 // Rotation (degrees)
-  "scale": { "x": 1, "y": 1 },
-  "skew": { "x": 0, "y": 0 },
-  "pivot": { "x": 0.5, "y": 0.5 },
-  "zOrder": 0,
-  "layerColor": "#00befe",    // Layer colour (hex)
-  "fillColor": "#000000",
-  "lineColor": "#000000",
-  "isFill": true,
-  "fill": { ... },            // Fill style descriptor
-  "stroke": { ... },          // Stroke style descriptor
-  "visible": true,
-  "lockState": 0,
-  "visibleState": 0,
-  "enableTransform": true,
-  "lockRatio": true,
-  "isClosePath": true,
-  "groupTag": "",
-  "layerTag": ""
-}
-```
-
-### Shape Types
-
-| `type`    | Description          |
-|-----------|----------------------|
-| `CIRCLE`  | Ellipse / circle     |
-| `RECT`    | Rectangle            |
-| `TEXT`    | Text object          |
-| `PATH`    | Arbitrary SVG path   |
-| `IMAGE`   | Raster image         |
-| `GROUP`   | Group container      |
+1.  **Project Root**: Contains metadata and links trees via `canvasId`.
+    *   **CRITICAL Root Fields**:
+        *   `extId`: `"GS006"` (Mandatory for F2 recognition).
+        *   `extName`: `"F2"` (Mandatory for F2 recognition).
+        *   `version`: `"1.5.8"` (Matches current stable).
+        *   `minRequiredVersion`: `"2.6.0"`.
+2.  **Canvas Tree (`canvas[]`)**:
+    *   `layerData`: A manifest registering every unique layer color.
+    *   `displays[]`: Visual shape definitions.
+3.  **Device Tree (`device`)**:
+    *   `id`: `"GS006"` (F2 Identifier).
+    *   `power`: `[5, 15]` (Laser wattages).
+    *   `data`: The **Processing Tree** (Map keyed by `canvasId`).
+        *   `displays`: The **Parameter Tree** (Map keyed by **Shape ID**).
 
 ---
 
-## Processing Config (`device.data`)
+## 2. Shape-to-Parameter Mapping Logic
 
-Processing parameters (power, speed, density) are stored separately from the display geometry, in `device.data`.
+XCS links geometry to settings using a strict **Three-Point Sync**:
+1.  **Point A**: `project.canvasId`
+2.  **Point B**: `canvas[0].id`
+3.  **Point C**: `device.data.value[0][0]` (The Map key)
 
-`device.data.value` is a **serialised Map** — it serialises as an array of `[key, value]` pairs:
-
-```json
-{
-  "dataType": "Map",
-  "value": [
-    [ "<canvasId>", { ... } ]
-  ]
-}
-```
-
-The value for each canvas ID:
-
-```json
-{
-  "mode": "...",
-  "data": { ... },
-  "displays": {
-    "dataType": "Map",
-    "value": [
-      [ "<display.id>", { ... } ]
-    ]
-  }
-}
-```
-
-Note: the key joining processing config to a display is **`display.id`** (not `display.sourceId`).
+Individual shapes are linked via:
+1.  **Point D**: `canvas[0].displays[i].id`
+2.  **Point E**: `device.data.value[0][1].displays.value[j][0]` (The Map key)
 
 ---
 
-## Per-Display Processing Config
+## 3. Mandatory Processing Node Structure (Per Shape)
 
-```json
-{
-  "isFill": true,
-  "type": "CIRCLE",
-  "processingType": "COLOR_FILL_ENGRAVE",   // Active processing mode
-  "processIgnore": false,
-  "isWhiteModel": false,
-  "data": {
-    "COLOR_FILL_ENGRAVE": {
-      "parameter": {
-        "customize": {
-          "power": 40,          // % of laser max power
-          "speed": 200,         // mm/s
-          "density": 1000,      // lines per cm (LPCM)
-          "repeat": 1,          // pass count
-          "dotDuration": 100,
-          "dpi": 500,
-          "processingLightSource": "red",
-          "bitmapEngraveMode": "normal",
-          "bitmapScanMode": "zMode",
-          "scanAngle": 0,
-          "angleType": 2,
-          "crossAngle": true,
-          "notResize": true
-        }
-      }
-    }
-  }
-}
-```
+**CRITICAL:** For the F2 UI to show sliders, every shape configuration in the `device` tree MUST include all four operation nodes, regardless of which one is active.
 
-### Common Processing Types
+### The Operation Keys:
+*   `COLOR_FILL_ENGRAVE`: CONFIRMED primary type for **FILL**. Uses **1:1 LPCM mapping** (1000 in JSON = 1000 LPCM in UI).
+*   `FILL_VECTOR_ENGRAVING`: Alternative fill type. Note: Some versions may scale density by 10x in this mode.
+*   `VECTOR_ENGRAVING`: Used for **SCORE** (Outlines).
+*   `VECTOR_CUTTING`: Used for **CUT**.
+*   `INTAGLIO`: Used for 3D/relief.
 
-| `processingType`       | Description                         |
-|------------------------|-------------------------------------|
-| `COLOR_FILL_ENGRAVE`   | Fill engraving with colour mapping  |
-| `ENGRAVE`              | Standard raster engraving           |
-| `CUT`                  | Vector cutting                      |
-| `SCORE`                | Vector scoring / marking            |
-| `BITMAP_ENGRAVE`       | Bitmap/photo engraving              |
+### Internal Parameter Mapping:
+Inside each operation node (e.g., `FILL_VECTOR_ENGRAVING`), the path to settings is:
+`data` → `[OP_NAME]` → `parameter` → `customize` → `[power|speed|density|repeat]`
 
 ---
 
-## Joining Shapes to Processing Config
+## 4. Confirmed Properties & Values
 
-```javascript
-// device.data.value is [[canvasId, entry], ...]
-const dvMap = Object.fromEntries(data.device.data.value);
-const entry = dvMap[canvas.id];
-
-// entry.displays.value is [[displayId, cfg], ...]
-const dispMap = Object.fromEntries(entry.displays.value);
-
-// For each display:
-const cfg = dispMap[display.id];
-const pt = cfg.processingType;
-const params = cfg.data[pt].parameter.customize;
-// → params.power, params.speed, params.density, params.repeat
-```
+| Property | Value | Notes |
+| :--- | :--- | :--- |
+| `processingLightSource` | `"blue"` | CONFIRMED for F2 Blue Laser. |
+| `processingType` | `"FILL_VECTOR_ENGRAVING"` | CONFIRMED canonical name for Fill. |
+| `pivot` | `{"x": 0, "y": 0}` | CONFIRMED for primitives. |
+| `alignment` | `0.5` | CONFIRMED requirement for stroke logic. |
+| `isFill` | `true` | Required for visual rendering in XCS. |
+| `fill.visible` | `false` | Counter-intuitive: MUST be false for simple fills. |
+| `stroke.visible` | `true` | Required even for fills. |
 
 ---
 
-## Coordinate System
+## 5. Mandatory Integrity Checks (Validation)
 
-- Origin: top-left of the material/canvas area
-- Units: millimetres
-- `x`, `y` = **centre** of the shape's bounding box
-- `width`, `height` = bounding-box dimensions
-- For a CIRCLE: rendered as an ellipse with `rx = width/2`, `ry = height/2`
-- `angle` = clockwise rotation in degrees around the shape's pivot
+Every exported file must pass these two structural tests:
+
+1.  **Canvas-to-Device Join**: The GUID in the root `canvasId` field MUST exist as a key in the `device.data.value` Map, and MUST match the `id` field of the corresponding object in the `canvas[]` array.
+2.  **Shape-to-Parameter Join**: For every shape in `canvas[n].displays[]`, its `id` (GUID) MUST exist as a key within the `device.data.value[n][1].displays.value` Map.
 
 ---
 
-## Notes
+## 6. Exporter Implementation Rules
 
-- The `extendInfo.displayProcessConfigMap` field exists but is typically empty; the authoritative processing config is in `device.data.value`.
-- Multiple canvases can exist in one file; each has its own processing config entry keyed by canvas ID.
-- `device.power` is the machine's max power wattage; `parameter.customize.power` is a percentage of that max.
+1.  **IDs**: Generate standard 36-character UUIDs.
+2.  **Layers**: Every unique `layerColor` used in `displays` MUST have a matching entry in `canvas.layerData`.
+3.  **Maps**: Every Map-like structure MUST be wrapped in `{"dataType": "Map", "value": [...]}`.
+4.  **Boilerplate**: Include all four operation nodes (`VECTOR_CUTTING`, `VECTOR_ENGRAVING`, `FILL_VECTOR_ENGRAVING`, `INTAGLIO`) in the shape's processing config.
+5.  **Alignment**: Coordinates are mm from top-left (0,0). Mandala center is (50, 50) for 100x100 area.
+6.  **Root Metadata**: Include `extId: "GS006"` and `extName: "F2"` at the root level.
