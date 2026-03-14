@@ -57,8 +57,9 @@ Inside each operation node (e.g., `FILL_VECTOR_ENGRAVING`), the path to settings
 
 | Property | Value | Notes |
 | :--- | :--- | :--- |
-| `processingLightSource` | `"blue"` | CONFIRMED for F2 Blue Laser. |
-| `processingType` | `"FILL_VECTOR_ENGRAVING"` | CONFIRMED canonical name for Fill. |
+| `processingLightSource` | `"blue"` | F2 Diode (Blue) Laser. |
+| `processingLightSource` | `"red"` | F2 IR (1064nm) Laser. |
+| `processingType` | `"COLOR_FILL_ENGRAVE"` | Canonical name for Fill (1:1 LPCM). |
 | `pivot` | `{"x": 0, "y": 0}` | CONFIRMED for primitives. |
 | `alignment` | `0.5` | CONFIRMED requirement for stroke logic. |
 | `isFill` | `true` | Required for visual rendering in XCS. |

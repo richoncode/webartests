@@ -67,6 +67,7 @@ a.back:hover{color:#bbb}
 .rtab{padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;color:#555;background:none;border:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .1s}
 .rtab:hover{color:#aaa}
 .rtab.active{color:#7ab3e0;border-bottom-color:#5b9bd5}
+.mobile-close{display:none}
 
 .panel-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .list-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#555;padding:8px 12px 4px}
@@ -140,6 +141,26 @@ input[type=range]{flex:1;accent-color:#5b9bd5;height:4px}
 .entry-picker{display:flex;align-items:center;gap:5px;flex:1}
 .entry-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
 .entry-select{flex:1;background:#161616;border:1px solid #2a2a2a;color:#ccc;padding:3px 7px;border-radius:5px;font-size:12px;font-family:inherit;cursor:pointer}
+
+@media (max-width: 800px) {
+  .tab-pane { flex-direction: column; overflow-y: auto; height: 100%; position: relative; }
+  .left-tool-panel { width: 100%; border-right: none; border-bottom: 1px solid #1a1a1a; order: 2; flex-shrink: 0; height: auto; }
+  .xcs-viewer { width: 100%; order: 1; position: sticky; top: 0; z-index: 100; height: auto; min-height: 380px; flex: none; background: #000; border-bottom: 1px solid #222; }
+  .viewer-main { flex-direction: column; }
+  .canvas-panel { border-right: none; height: 300px; flex: none; }
+  .right-info-panel { 
+    position: fixed; inset: 0; z-index: 200; width: 100%; height: 100%; 
+    display: none; background: #0d0d0d;
+  }
+  .info-open .right-info-panel { display: flex; }
+  .info-toggle-btn { display: block!important; }
+  .mobile-close { display: block; }
+  .info-open .viewer-fname { visibility: hidden; }
+}
+
+@media (min-width: 801px) {
+  .info-toggle-btn { display: none!important; }
+}
 </style>
 </head>
 <body>
@@ -150,6 +171,10 @@ input[type=range]{flex:1;accent-color:#5b9bd5;height:4px}
     <button class="hbtn" id="openXcsBtn">Open XCS</button>
     <button class="hbtn primary" id="newMandalaBtn">+ Mandala</button>
     <button class="hbtn primary" id="newGradientBtn">+ Gradient</button>
+    <button class="hbtn" onclick="Persistence.saveRNR()">Save RNR</button>
+    <button class="hbtn" onclick="document.getElementById('rnrInput').click()">Load RNR</button>
+    <button class="hbtn" onclick="Persistence.clearAll()" style="color:#e07070">Clear All</button>
+    <input type="file" id="rnrInput" accept=".rnr" style="display:none" onchange="Persistence.loadRNR(this.files[0])">
   </div>
   <div class="tab-bar" id="tabBar"></div>
 </div>
@@ -227,6 +252,89 @@ const App = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// PERSISTENCE
+// ═══════════════════════════════════════════════════════════════════
+const Persistence = {
+  KEY: 'pattern_tool_state',
+  _loading: false,
+  save() {
+    if (this._loading) return;
+    const state = {
+      tabs: App.tabs.map(t => ({ id: t.id, type: t.type, label: t.label })),
+      activeTabId: App.activeTabId,
+      cfgs: {}
+    };
+    App.tabs.forEach(t => {
+      if (App.instances[t.id]) state.cfgs[t.id] = App.instances[t.id].cfg;
+    });
+    localStorage.setItem(this.KEY, JSON.stringify(state));
+  },
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (!raw) return false;
+      const state = JSON.parse(raw);
+      if (!state.tabs || !state.tabs.length) return false;
+      
+      this._loading = true;
+      document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+      App.tabs = [];
+      App.instances = {};
+
+      let lastCreatedId = null;
+      state.tabs.forEach(t => {
+        const cfg = state.cfgs[t.id];
+        let newId = null;
+        if (t.type === 'mandala') newId = TabMgr.newMandala(cfg, t.label);
+        else if (t.type === 'gradient') newId = TabMgr.newGradient(cfg, t.label);
+        
+        if (t.id === state.activeTabId) lastCreatedId = newId;
+      });
+      
+      this._loading = false;
+      if (lastCreatedId) TabMgr.activate(lastCreatedId);
+      else if (App.tabs.length) TabMgr.activate(App.tabs[App.tabs.length-1].id);
+      
+      return true;
+    } catch(e) { 
+      this._loading = false;
+      console.error('Load failed', e); 
+      return false; 
+    }
+  },
+  clearAll() {
+    if (confirm('Clear all work and reset the tool?')) {
+      localStorage.removeItem(this.KEY);
+      location.reload();
+    }
+  },
+  saveRNR() {
+    const inst = App.instances[App.activeTabId];
+    if (!inst || (inst.type !== 'mandala' && inst.type !== 'gradient')) {
+      alert('Please select a Mandala or Gradient tab to save.');
+      return;
+    }
+    const data = { type: inst.type, cfg: inst.cfg, version: '1.0' };
+    const name = prompt('Save settings as:', (inst.type==='mandala'?'mandala':'gradient') + '.rnr');
+    if (!name) return;
+    const filename = name.endsWith('.rnr') ? name : name + '.rnr';
+    dl(filename, JSON.stringify(data, null, 2), 'application/json');
+  },
+  loadRNR(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.type === 'mandala') TabMgr.newMandala(data.cfg);
+        else if (data.type === 'gradient') TabMgr.newGradient(data.cfg);
+        else alert('Invalid RNR file.');
+      } catch(err) { alert('Load failed: ' + err.message); }
+    };
+    reader.readAsText(file);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // XCS VIEWER COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 const XCSViewer = {
@@ -237,6 +345,7 @@ const XCSViewer = {
       <div class="viewer-top">
         <span class="viewer-fname"></span>
         <div class="btn-group">
+          <button class="hbtn info-toggle-btn">Info</button>
           <button class="hbtn export-xcs-btn" disabled>Export XCS</button>
           <button class="hbtn primary export-pal-btn" disabled>Export Palette</button>
         </div>
@@ -252,6 +361,7 @@ const XCSViewer = {
             <button class="rtab" data-tab="palette">Palette</button>
             <button class="rtab" data-tab="process">Process</button>
             <button class="rtab" data-tab="json">JSON</button>
+            <button class="rtab mobile-close" style="margin-left:auto;color:#e07070">✕ Close</button>
           </div>
           <div class="panel-body shapes-body">
             <div class="list-header shapes-hdr">Shapes</div>
@@ -277,11 +387,20 @@ const XCSViewer = {
 
     const q = s => viewer.querySelector(s);
     
+    // Info panel toggle
+    q('.info-toggle-btn').addEventListener('click', () => {
+      viewer.classList.toggle('info-open');
+    });
+
     // Sub-tabs logic
     q('.right-tabs').addEventListener('click', e => {
       const tab = e.target.closest('.rtab');
       if (!tab) return;
-      viewer.querySelectorAll('.rtab').forEach(t => t.classList.remove('active'));
+      if (tab.classList.contains('mobile-close')) {
+        viewer.classList.remove('info-open');
+        return;
+      }
+      viewer.querySelectorAll('.rtab:not(.mobile-close)').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       const target = tab.dataset.tab;
       q('.shapes-body').style.display  = target === 'shapes'  ? 'flex' : 'none';
@@ -699,24 +818,29 @@ const TabMgr = {
     const pane = XcsTab.create(id);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
+    Persistence.save();
   },
 
-  newMandala() {
+  newMandala(initialCfg, label) {
     const id = this.newId();
-    const n = App.tabs.filter(t => t.type === 'mandala').length + 1;
-    App.tabs.push({ id, type:'mandala', label:`Mandala ${n}` });
-    const pane = MandalaTab.create(id);
+    const finalLabel = label || getTimestampedName('Mandala');
+    App.tabs.push({ id, type:'mandala', label: finalLabel });
+    const pane = MandalaTab.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
+    Persistence.save();
+    return id;
   },
 
-  newGradient() {
+  newGradient(initialCfg, label) {
     const id = this.newId();
-    const n = App.tabs.filter(t => t.type === 'gradient').length + 1;
-    App.tabs.push({ id, type:'gradient', label:`Gradient ${n}` });
-    const pane = GradientTab.create(id);
+    const finalLabel = label || getTimestampedName('Gradient');
+    App.tabs.push({ id, type:'gradient', label: finalLabel });
+    const pane = GradientTab.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
+    Persistence.save();
+    return id;
   },
 
   close(id) {
@@ -732,6 +856,7 @@ const TabMgr = {
     } else {
       this.renderTabBar();
     }
+    Persistence.save();
   },
 
   activate(id) {
@@ -745,11 +870,21 @@ const TabMgr = {
       document.getElementById('welcomeScreen').style.display = 'flex';
     }
     this.renderTabBar();
+    Persistence.save();
   },
 
   setLabel(id, label) {
     const tab = App.tabs.find(t => t.id === id);
-    if (tab) { tab.label = label; this.renderTabBar(); }
+    if (tab) {
+      tab.label = label;
+      const pane = document.querySelector(`.tab-pane[data-pane-id="${id}"]`);
+      if (pane) {
+        const fname = pane.querySelector('.viewer-fname');
+        if (fname) fname.textContent = label;
+      }
+      this.renderTabBar();
+      Persistence.save();
+    }
   },
 
   renderTabBar() {
@@ -759,7 +894,12 @@ const TabMgr = {
       const el = document.createElement('div');
       el.className = 'tab' + (t.id === App.activeTabId ? ' active' : '');
       el.innerHTML = `<span class="tab-icon">${t.type === 'xcs' ? '📄' : '✦'}</span><span class="tab-label">${esc(t.label)}</span><span class="tab-close" title="Close">×</span>`;
-      el.querySelector('.tab-label').addEventListener('click', () => this.activate(t.id));
+      const labelEl = el.querySelector('.tab-label');
+      labelEl.addEventListener('click', () => this.activate(t.id));
+      labelEl.addEventListener('dblclick', () => {
+        const newName = prompt('Rename tab:', t.label);
+        if (newName) this.setLabel(t.id, newName);
+      });
       el.querySelector('.tab-icon').addEventListener('click', () => this.activate(t.id));
       el.querySelector('.tab-close').addEventListener('click', e => { e.stopPropagation(); this.close(t.id); });
       bar.appendChild(el);
@@ -870,11 +1010,13 @@ const XcsTab = {
       const cfg = dispMap[d.id] || {};
       const pt = cfg.processingType || '';
       const pm = (pt && cfg.data?.[pt]) ? (cfg.data[pt].parameter?.customize || {}) : {};
+      const src = pm.processingLightSource || null;
+      const laser = (src === 'red' || src === 'ir') ? 'ir' : src;
       return { idx:i, id:d.id, type:d.type, x:d.x, y:d.y, w:d.width, h:d.height,
                angle:d.angle||0, layerColor:d.layerColor||'#5b9bd5', zOrder:d.zOrder||0,
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
                density:pm.density??null, repeat:pm.repeat??1,
-               laser: pm.processingLightSource || null, hideLabels: !!d.hideLabels };
+               laser: laser, hideLabels: !!d.hideLabels };
     });
   }
 };
@@ -894,7 +1036,7 @@ function defaultConfig() {
 }
 
 const MandalaTab = {
-  create(tabId) {
+  create(tabId, initialCfg) {
     const pane = document.createElement('div');
     pane.className = 'tab-pane';
     pane.dataset.paneId = tabId;
@@ -905,10 +1047,11 @@ const MandalaTab = {
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
-    viewer.querySelector('.viewer-fname').textContent = 'Mandala Design';
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Mandala Design';
+    viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
-    const cfg = defaultConfig();
+    const cfg = initialCfg || defaultConfig();
     const state = { rawData:null, shapes:[] };
     App.instances[tabId] = { type:'mandala', pane, cfg, state };
 
@@ -934,7 +1077,8 @@ const MandalaTab = {
 
     // Detect laser type from palette
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
-    const laserType = isIR ? 'ir' : 'blue';
+    const laserSource = isIR ? 'red' : 'blue';
+    const planType = isIR ? 'ir' : 'blue';
 
     const addShape = (lx, ly, r, type, color, entry) => {
       const id = uuid();
@@ -956,23 +1100,23 @@ const MandalaTab = {
           paintType: "color", visible: true, color: 0, alpha: 1, width: 1,
           cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 
         },
-        isFill: true, lineColor: 0, fillColor: color
+        isFill: true, lineColor: 0, fillColor: color, hideLabels: true, power: null
       });
       
       const pt = "COLOR_FILL_ENGRAVE";
       const pm = entry ? { 
         power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserType, bitmapScanMode: "zMode", needGapNumDensity: true,
+        processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
         dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0
-      } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserType };
+      } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
       
       // Mandatory nodes for F2 sliders to appear
       const nodes = {
-        VECTOR_CUTTING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserType } } },
-        VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserType } } },
-        FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
-        COLOR_FILL_ENGRAVE: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
-        INTAGLIO: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserType } } }
+        VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserSource } } },
+        VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource } } },
+        FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserSource } } }
       };
 
       displayValues.push([id, { 
@@ -1025,7 +1169,7 @@ const MandalaTab = {
             mode: "LASER_PLANE",
             data: {
               LASER_PLANE: {
-                material: 0, lightSourceMode: laserType, thickness: null,
+                material: 0, lightSourceMode: planType, thickness: null,
                 perimeter: null, diameter: null, isProcessByLayer: false,
                 pathPlanning: "auto", fillPlanning: "separate", dreedyTsp: false,
                 avoidSmokeModal: false, scanDirection: "topToBottom",
@@ -1075,7 +1219,10 @@ const MandalaTab = {
     const set = (path, val) => {
       const parts = path.split('.');
       let obj = cfg;
-      for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!obj[parts[i]]) obj[parts[i]] = {};
+        obj = obj[parts[i]];
+      }
       obj[parts[parts.length-1]] = val;
       if (path === 'ringCount') {
         while (cfg.rings.length < cfg.ringCount) cfg.rings.push(defaultRing(cfg.rings.length));
@@ -1084,19 +1231,20 @@ const MandalaTab = {
       } else {
         update(true);
       }
+      Persistence.save();
     };
 
     // ── Global section ──
     const globalSec = this.makeSection('Global', [
-      this.makeRow('Palette', this.makePaletteSelect(cfg, (v) => { cfg.paletteId = v; this.renderControls(tabId); update(); })),
-      this.makeToggleRow('Spiral Palette', cfg.spiralPalette, v => { cfg.spiralPalette = v; update(); }),
+      this.makeRow('Palette', this.makePaletteSelect(cfg, (v) => { set('paletteId', v); this.renderControls(tabId); })),
+      this.makeToggleRow('Spiral Palette', cfg.spiralPalette, v => set('spiralPalette', v)),
       this.makeRow('Size (Ø)', this.makeRange(10, 300, 1, cfg.totalDiameter, v => set('totalDiameter', +v), 'mm')),
+      this.makeRow('Inner radius', this.makeRange(0, 40, 0.5, cfg.innerMargin, v => set('innerMargin', +v), 'mm')),
       this.makeRow('Ring Scale', this.makeRange(-0.5, 0.5, 0.05, cfg.dotScaling, v => set('dotScaling', +v), '×')),
       this.makeRow('Ring Spiral', this.makeRange(-45, 45, 1, cfg.ringSpiral, v => set('ringSpiral', +v), '°')),
       this.makeRow('Symmetry', this.makeStepCounter(cfg.symmetry, 2, 48, v => set('symmetry', +v))),
-      this.makeRow('Rings', this.makeStepCounter(cfg.ringCount, 1, 12, (v) => { cfg.ringCount = v; while(cfg.rings.length<v) cfg.rings.push(defaultRing(cfg.rings.length)); this.renderControls(tabId); update(); })),
-      this.makeRow('Inner margin', this.makeRange(0, 40, 0.5, cfg.innerMargin, v => set('innerMargin', +v), 'mm')),
-      this.makeRow('Spacing', this.makeSelect(['equal','golden','fibonacci'], cfg.spacingMode, v => set('spacingMode', v))),
+      this.makeRow('Rings', this.makeStepCounter(cfg.ringCount, 1, 12, (v) => set('ringCount', v))),
+      this.makeRow('Spacing', this.makeToggles(['equal','golden','fibonacci'], cfg.spacingMode, v => set('spacingMode', v), {equal:'Equal', golden:'Golden', fibonacci:'Fibonacci'})),
       this.makeToggleRow('Alt rotate', cfg.alternateRotation, v => set('alternateRotation', v)),
       this.makeCenterDotSection(cfg, tabId),
     ]);
@@ -1105,12 +1253,19 @@ const MandalaTab = {
     // ── Per-ring sections ──
     for (let i = 0; i < cfg.ringCount; i++) {
       const ring = cfg.rings[i];
+      const p = `rings.${i}.`;
       const sec = this.makeSection(`Ring ${i+1}`, [
-        this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, ring.paletteEntryIndex, (v) => { ring.paletteEntryIndex = +v; update(true); })),
-        this.makeRow('Dot size', this.makeRange(0.3, 8, 0.1, ring.dotDiameter, v => { ring.dotDiameter = +v; update(true); }, 'mm')),
-        this.makeRow('Shape', this.makeSelect(['circle','ring','diamond','cross','petal'], ring.shape, v => { ring.shape = v; update(true); })),
-        this.makeCountRow(ring, (mode, val) => { ring.countMode = mode; if (mode==='auto') ring.countMultiplier=val; else ring.countManual=val; update(true); }, cfg.symmetry),
-        this.makeRow('Rotation', this.makeRange(0, 360, 1, ring.rotationOffset, v => { ring.rotationOffset = +v; update(true); }, '°')),
+        this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, ring.paletteEntryIndex, (v) => set(p + 'paletteEntryIndex', +v))),
+        this.makeRow('Dot size', this.makeRange(0.3, 8, 0.1, ring.dotDiameter, v => set(p + 'dotDiameter', +v), 'mm')),
+        this.makeRow('Shape', this.makeToggles(['circle','ring','diamond','cross','petal'], ring.shape, v => set(p + 'shape', v), {circle:'Circle', ring:'Ring', diamond:'Diamond', cross:'Cross', petal:'Petal'})),
+        this.makeCountRow(ring, (mode, val) => {
+          ring.countMode = mode;
+          if (mode==='auto') ring.countMultiplier = val;
+          else ring.countManual = val;
+          update(true);
+          Persistence.save();
+        }, cfg.symmetry),
+        this.makeRow('Rotation', this.makeRange(0, 360, 1, ring.rotationOffset, v => set(p + 'rotationOffset', +v), '°')),
       ], true);
       scroll.appendChild(sec);
     }
@@ -1262,6 +1417,7 @@ const MandalaTab = {
       sizeRow.style.display = cfg.centerDot ? 'flex' : 'none';
       colorRow.style.display = cfg.centerDot ? 'flex' : 'none';
       this.refresh(tabId, true);
+      Persistence.save();
     });
     lbl.appendChild(cb); lbl.appendChild(document.createTextNode(' Center dot'));
     const lsp = document.createElement('span');
@@ -1269,11 +1425,11 @@ const MandalaTab = {
     toggleRow.appendChild(lsp); toggleRow.appendChild(lbl);
     frag.appendChild(toggleRow);
 
-    const sizeRow = this.makeRow('Size', this.makeRange(0.5, 10, 0.1, cfg.centerDotDiameter, v => { cfg.centerDotDiameter = +v; this.refresh(tabId, true); }, 'mm'));
+    const sizeRow = this.makeRow('Size', this.makeRange(0.5, 10, 0.1, cfg.centerDotDiameter, v => { cfg.centerDotDiameter = +v; this.refresh(tabId, true); Persistence.save(); }, 'mm'));
     sizeRow.style.display = cfg.centerDot ? 'flex' : 'none';
     frag.appendChild(sizeRow);
 
-    const colorRow = this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, cfg.centerDotEntry, v => { cfg.centerDotEntry = +v; this.refresh(tabId, true); }));
+    const colorRow = this.makeRow('Color', this.makeEntryPicker(cfg.paletteId, cfg.centerDotEntry, v => { cfg.centerDotEntry = +v; this.refresh(tabId, true); Persistence.save(); }));
     colorRow.style.display = cfg.centerDot ? 'flex' : 'none';
     frag.appendChild(colorRow);
 
@@ -1349,7 +1505,7 @@ const MandalaTab = {
 // GRADIENT TAB
 // ═══════════════════════════════════════════════════════════════════
 const GradientTab = {
-  create(tabId) {
+  create(tabId, initialCfg) {
     const pane = document.createElement('div');
     pane.className = 'tab-pane';
     pane.dataset.paneId = tabId;
@@ -1360,10 +1516,11 @@ const GradientTab = {
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
-    viewer.querySelector('.viewer-fname').textContent = 'Gradient Test Grid';
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Gradient Test Grid';
+    viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
-    const cfg = {
+    const cfg = initialCfg || {
       laserType: 'ir',
       xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
       roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
@@ -1420,6 +1577,9 @@ const GradientTab = {
         const s = getVal('speed');
         const d = getVal('lpcm');
 
+        const laserSource = laserType === 'ir' ? 'red' : 'blue';
+        const planType = laserType === 'ir' ? 'ir' : 'blue';
+
         displays.push({ 
           id, name: null, type: 'RECT', x, y, width: tileSize + overlap, height: tileSize + overlap, angle: 0,
           scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
@@ -1435,16 +1595,16 @@ const GradientTab = {
 
         const pm = { 
           power: Math.round(p), speed: Math.round(s), density: Math.round(d), repeat: 1,
-          processingLightSource: laserType, bitmapScanMode: "zMode", needGapNumDensity: true,
+          processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
           dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0
         };
         
         const nodes = {
-          VECTOR_CUTTING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserType } } },
-          VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserType } } },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: laserType, parameter: { customize: pm } },
-          INTAGLIO: { materialType: "customize", planType: laserType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserType } } }
+          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserSource } } },
+          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource } } },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserSource } } }
         };
 
         displayValues.push([id, { isFill: true, type: 'RECT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
@@ -1454,7 +1614,7 @@ const GradientTab = {
     return {
       canvasId: canvasId,
       canvas: [{ id: canvasId, title: "{panel}1", layerData: {"#5b9bd5": {name:"Grid", order:1, visible:true}}, groupData: {}, displays }],
-      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: laserType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: false, pathPlanning: "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
+      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: planType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: false, pathPlanning: "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
       extId: "GS006", extName: "F2", version: "1.5.8", minRequiredVersion: "2.6.0", created: Date.now(), modify: Date.now(), projectTraceID: uuid()
     };
   },
@@ -1464,7 +1624,7 @@ const GradientTab = {
     const scroll = pane.querySelector('.tool-scroll');
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
-    const set = (path, val) => { cfg[path] = val; update(true); };
+    const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
 
     const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
     const axisOpts = ['power', 'speed', 'lpcm'];
@@ -1486,6 +1646,7 @@ const GradientTab = {
       
       this.renderControls(tabId);
       update();
+      Persistence.save();
     };
 
     scroll.appendChild(MandalaTab.makeSection('Global', [
@@ -1551,6 +1712,15 @@ function dl(filename, content, mime) {
   a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+function getTimestampedName(prefix) {
+  const now = new Date();
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const month = months[now.getMonth()];
+  const day = now.getDate();
+  const hour = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  return `${prefix}${month}${day}-${hour}${min}`;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // POPUP HELPER
@@ -1590,11 +1760,14 @@ window.addEventListener('resize', () => {
   if (!App.activeTabId) return;
   const inst = App.instances[App.activeTabId];
   if (inst) XCSViewer.update(inst.pane, inst.state);
+  Persistence.save();
 });
 
 async function init() {
   await PalMgr.load();
-  TabMgr.newMandala();
+  if (!Persistence.load()) {
+    TabMgr.newMandala();
+  }
 }
 init();
 </script>
