@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laser Etching Thermal Strategy</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #3b82f6;
+            --danger: #f87171; 
+            --warning: #fbbf24; 
+            --success: #10b981;
+            --tooltip-bg: #020617;
+            --btn-base: #334155;
+            --deterministic-color: #94a3b8;
+            --stochastic-color: #a78bfa;
+            --test-all-color: #0ea5e9;
+        }
+
+        body { 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+            margin: 0; 
+            min-height: 100vh;
+        }
+
+        .controls-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 850px;
+        }
+
+        .controls { 
+            background: var(--card); 
+            padding: 16px 20px; 
+            border-radius: 12px; 
+            display: flex; 
+            flex-wrap: wrap;
+            gap: 20px; 
+            align-items: center; 
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            position: relative;
+        }
+
+        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: stretch; }
+
+        .strategy-btn-wrapper {
+            position: relative;
+            display: flex;
+        }
+
+        .strategy-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 100px;
+            height: 62px; 
+            padding: 6px 10px;
+            line-height: 1.2;
+            border: 2px solid transparent; 
+            box-sizing: border-box;
+        }
+
+        .btn-label { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+        .btn-score { 
+            font-size: 0.7rem; 
+            font-family: 'JetBrains Mono', monospace; 
+            color: #94a3b8; 
+            margin-top: 2px;
+            opacity: 0.9;
+        }
+
+        .btn-score.high-stress {
+            color: var(--danger);
+            font-weight: bold;
+        }
+
+        .type-tag {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+        .tag-det { background: #334155; color: var(--deterministic-color); border: 1px solid #475569; }
+        .tag-stoch { background: #4c1d95; color: #ddd6fe; border: 1px solid #6d28d9; }
+
+        .tooltip {
+            visibility: hidden;
+            width: 260px;
+            max-width: 85vw;
+            background-color: var(--tooltip-bg);
+            color: #cbd5e1;
+            text-align: left;
+            border-radius: 8px;
+            padding: 12px;
+            position: absolute;
+            z-index: 50;
+            top: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            border: 1px solid var(--accent);
+            font-size: 0.8rem;
+            line-height: 1.4;
+            pointer-events: none;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        .tooltip b { color: var(--text); }
+        .tooltip p { margin: 8px 0; }
+
+        .tooltip::after {
+            content: "";
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent transparent var(--accent) transparent;
+        }
+
+        .strategy-btn-wrapper:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        @media (max-width: 600px) {
+            .btn-group .strategy-btn-wrapper:first-child .tooltip { left: 0; transform: translateX(0); }
+            .btn-group .strategy-btn-wrapper:first-child .tooltip::after { left: 20px; }
+            .btn-group .strategy-btn-wrapper:last-child .tooltip { left: auto; right: 0; transform: translateX(0); }
+            .btn-group .strategy-btn-wrapper:last-child .tooltip::after { left: auto; right: 20px; }
+        }
+
+        canvas { 
+            background: #000; 
+            border: 4px solid #334155; 
+            border-radius: 8px;
+            image-rendering: pixelated;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .stats-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .stat-card {
+            flex: 1;
+            background: #000;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            text-align: center;
+        }
+
+        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
+        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--success); }
+        .stat-value.hot { color: #fca5a5; }
+
+        button { 
+            background: var(--btn-base); 
+            color: white; 
+            border: 2px solid transparent; 
+            padding: 8px 14px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            transition: all 0.2s; 
+            box-sizing: border-box;
+        }
+
+        button:hover { background: #475569; }
+        
+        button.active { 
+            border-color: var(--accent); 
+            box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.1), 0 0 15px rgba(59, 130, 246, 0.4);
+            background: #3d4a5d; 
+        }
+
+        button.reset { background: #451a1a; height: 62px; font-weight: 600; border: none; }
+        button.reset:hover { background: #7f1d1d; }
+        
+        button.test-all { background: #075985; height: 62px; font-weight: 600; border: none; }
+        button.test-all:hover { background: #0369a1; }
+        button.test-all.busy { opacity: 0.5; pointer-events: none; }
+
+        button.recycle, button.copy { 
+            background: #1e293b; 
+            height: 62px; 
+            font-size: 20px; 
+            padding: 0 15px;
+            border: 1px solid #334155;
+            display: none; 
+            align-items: center;
+            justify-content: center;
+        }
+        button.recycle:hover, button.copy:hover { background: #334155; }
+        button.recycle.busy, button.copy.busy { opacity: 0.5; pointer-events: none; }
+
+        .legend { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 8px; 
+            margin-top: 20px; 
+            font-size: 11px; 
+            max-width: 400px; 
+            justify-content: flex-start; 
+        }
+
+        .legend-item { 
+            display: flex; 
+            align-items: center; 
+            gap: 6px; 
+            background: var(--card); 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            border: 1px solid #334155; 
+        }
+
+        .color-box { width: 12px; height: 12px; border-radius: 2px; }
+
+        .info-text {
+            max-width: 400px;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-top: 20px;
+            line-height: 1.5;
+            text-align: left;
+        }
+
+        .ctrl-section { display: flex; flex-direction: column; gap: 4px; }
+        .ctrl-label { font-size: 10px; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .grid-popup {
+            position: fixed;
+            background: rgba(2, 6, 23, 0.95);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #cbd5e1;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            min-width: 120px;
+        }
+        .grid-popup .popup-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+        .grid-popup .popup-key { color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 10px; }
+        .grid-popup .popup-val { font-family: 'JetBrains Mono', monospace; color: var(--text); }
+
+        .main-content {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 850px;
+            margin-top: 20px;
+        }
+
+        .example-result {
+            flex: 0 0 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--card);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+        .example-result.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .example-result img {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #000;
+        }
+        .example-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 10px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+        .example-disclaimer {
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 6px;
+            text-align: center;
+            font-style: italic;
+            line-height: 1.3;
+        }
+
+        .simulation-view {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            flex: 0 0 400px;
+        }
+
+        @media (max-width: 1000px) {
+            .main-content { flex-direction: column; align-items: center; }
+            .example-result { flex: none; width: 100%; max-width: 400px; margin-top: 40px; }
+            .simulation-view { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls-wrapper">
+        <div class="controls">
+            <div class="ctrl-section">
+                <span class="ctrl-label">Scan Strategy</span>
+                <div class="btn-group">
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnHilbert" class="strategy-btn" onclick="setMode('hilbert')">
+                            <span class="btn-label">Hilbert ➔</span>
+                            <span class="btn-score" id="score-hilbert">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-det">Deterministic</span>
+                            <b>Hilbert Curve</b>
+                            <p>A space-filling curve that visits every point in a continuous "wiggle".</p>
+                            <i>Superior locality preservation. Avoids long linear fronts and preserves structural integrity.</i>
+                        </div>
+                    </div>
+
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnTriPhase" class="strategy-btn active" onclick="setMode('triphase')">
+                            <span class="btn-label">Tri-Phase ➔</span>
+                            <span class="btn-score" id="score-triphase">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-det">Deterministic</span>
+                            <b>Tri-Phase Sweep</b>
+                            <p>Processes main diagonal, then LL sweep, then UR corner inward.</p>
+                            <i>Rationale: Hardware default (e.g. xTool). Path is mathematically fixed and repeatable.</i>
+                        </div>
+                    </div>
+
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnDiagonal" class="strategy-btn" onclick="setMode('diagonal')">
+                            <span class="btn-label">Diagonal ➔</span>
+                            <span class="btn-score" id="score-diagonal">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-det">Deterministic</span>
+                            <b>Diagonal Wave</b>
+                            <p>Baseline wave approach. Creates a moving thermal front.</p>
+                            <i>Calculated based on coordinate distance. Fixed result.</i>
+                        </div>
+                    </div>
+
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnQuadrant" class="strategy-btn" onclick="setMode('quadrant')">
+                            <span class="btn-label">Quadrant 🎲</span>
+                            <span class="btn-score" id="score-quadrant">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-stoch">Stochastic</span>
+                            <b>Quadrant Leapfrog</b>
+                            <p>Jumps between zones with randomized cell fills.</p>
+                            <i>Reduces repeatable warping by shuffling processing order within quadrants.</i>
+                        </div>
+                    </div>
+
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnHorizontal" class="strategy-btn" onclick="setMode('horizontal')">
+                            <span class="btn-label">Horizontal ➔</span>
+                            <span class="btn-score" id="score-horizontal">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-det">Deterministic</span>
+                            <b>Horizontal Raster</b>
+                            <p>Baseline linear pathing. High thermal overlap.</p>
+                            <i>Pathing is strictly sequential and fixed.</i>
+                        </div>
+                    </div>
+
+                    <div class="strategy-btn-wrapper">
+                        <button id="btnDispersive" class="strategy-btn" onclick="setMode('dispersive')">
+                            <span class="btn-label">Dispersive 🎲</span>
+                            <span class="btn-score" id="score-dispersive">---</span>
+                        </button>
+                        <div class="tooltip">
+                            <span class="type-tag tag-stoch">Stochastic</span>
+                            <b>Dispersive (Bit-Reverse)</b>
+                            <p>Uses Bayer scattering to jump between non-adjacent cells.</p>
+                            <i>The macro-strategy is fixed, but micro-pathing contains shuffling to avoid resonance.</i>
+                        </div>
+                    </div>
+                    
+                    <button id="btnPause" class="reset" onclick="togglePause()" style="margin-left: 8px; background: #334155; min-width: 50px; font-size: 24px; padding: 0; display: none;">⏸</button>
+                    <button id="btnTestAll" class="test-all" onclick="testAll()" style="margin-left: 8px;">Test All</button>
+                    <button id="btnRecycleAll" class="recycle" onclick="recycleAll()" title="Clear and re-run all tests" style="margin-left: 8px;">♻️</button>
+                    <button id="btnCopy" class="copy" onclick="copyResults()" title="Copy results to clipboard" style="margin-left: 8px;">📋</button>
+                    <button id="btnRecycle" class="recycle" onclick="restart()" title="Re-run selected strategy" style="margin-left: 8px;">🔄</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="ctrl-section">
+                <span class="ctrl-label">Power Application (Intensity)</span>
+                <div class="btn-group">
+                    <div class="strategy-btn-wrapper">
+                        <button id="pwrGradient" class="active" onclick="setPower('gradient')">Color Grid</button>
+                        <div class="tooltip">
+                            <b>Color Grid</b>
+                            Applies a spatial power gradient from Top-Right (1x) to Bottom-Left (100x).
+                        </div>
+                    </div>
+                    <div class="strategy-btn-wrapper">
+                        <button id="pwrUniform" onclick="setPower('uniform')">Uniform</button>
+                        <div class="tooltip">
+                            <b>Uniform Power</b>
+                            Applies consistent 1x laser intensity across the entire build plate.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ctrl-section" style="margin-left: auto;">
+                <span class="ctrl-label">Display Overlay</span>
+                <div class="btn-group">
+                    <button id="btnViewHeat" class="active" onclick="setViewMode('heat')">Peak Heat</button>
+                    <button id="btnViewBuckets" onclick="setViewMode('buckets')">Bucket Order</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="simulation-view">
+            <canvas id="gridCanvas" width="400" height="400"></canvas>
+            
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-label">Progress</div>
+                    <div id="progress" class="stat-value">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Peak Stress</div>
+                    <div id="peakHeat" class="stat-value">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Temp</div>
+                    <div id="avgHeat" class="stat-value">0.00</div>
+                </div>
+            </div>
+            
+            <div id="legendContainer">
+                <div class="legend" id="bucketLegend"></div>
+            </div>
+
+            <div class="info-text" id="strategyInfo">
+                Select a strategy and power profile. Hover over scan modes for path details.
+            </div>
+        </div>
+
+        <div class="example-result" id="exampleResult">
+            <img src="triphase-example.jpg" alt="Tri-Phase Example Result">
+            <div class="example-label">Actual Laser Result: Tri-Phase + Color Grid</div>
+            <div class="example-disclaimer">Note: Thermal simulation is conceptual; exact gradients and slopes will not match.</div>
+        </div>
+    </div>
+
+    <div id="gridPopup" class="grid-popup">
+        <div class="popup-row"><span class="popup-key">Peak</span><span class="popup-val" id="gp-peak"></span></div>
+        <div class="popup-row"><span class="popup-key">Heat</span><span class="popup-val" id="gp-heat"></span></div>
+        <div class="popup-row" id="gp-bucket-row"><span class="popup-key">Sector</span><span class="popup-val" id="gp-bucket"></span></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 40; 
+        const SIM_MARGIN = 15; // Material buffer beyond the visible grid
+        const SIM_SIZE = GRID_SIZE + SIM_MARGIN * 2;
+        const CELL_PIXELS = canvas.width / GRID_SIZE;
+        const NUM_BUCKETS = 8;
+        
+        const M8 = [
+            [ 0, 32,  8, 40,  2, 34, 10, 42],
+            [48, 16, 56, 24, 50, 18, 58, 26],
+            [12, 44,  4, 36, 14, 46,  6, 38],
+            [60, 28, 52, 20, 62, 30, 54, 22],
+            [ 3, 35, 11, 43,  1, 33,  9, 41],
+            [51, 19, 59, 27, 49, 17, 57, 25],
+            [15, 47,  7, 39, 13, 45,  5, 37],
+            [63, 31, 55, 23, 61, 29, 53, 21]
+        ];
+
+        const bucketColors = [
+            '#ef4444', '#f97316', '#eab308', '#22c55e', 
+            '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
+        ];
+
+        let mode = 'triphase'; 
+        let powerPattern = 'gradient'; 
+        let currentBucketIdx = 0;
+        let cellsToEtch = [];
+        let etchedState = new Uint8Array(GRID_SIZE * GRID_SIZE); 
+        let heatMap = new Float32Array(SIM_SIZE * SIM_SIZE);
+        let peakHeatMap = new Float32Array(SIM_SIZE * SIM_SIZE);
+        let nextHeatMap = new Float32Array(SIM_SIZE * SIM_SIZE); // For diffusion pass
+        let maxStressDetected = 0;
+        let isComplete = false;
+        let isTestingAll = false;
+        let isPaused = false;
+        let viewBuckets = false;
+        let viewHeat = true;
+        let hoveredIdx = -1;
+        let simulationCache = {}; // Stores {etchedState, heatMap, peakHeatMap, maxStressDetected}
+        
+        const bitReverseSequence = [0, 4, 2, 6, 1, 5, 3, 7];
+        const standardSequence = [0, 1, 2, 3, 4, 5, 6, 7];
+        const quadrantSequence = [0, 3, 1, 2, 4, 7, 5, 6];
+
+        const getSimIdx = (x, y) => (y + SIM_MARGIN) * SIM_SIZE + (x + SIM_MARGIN);
+
+        function getHilbert(i, n) {
+            let pts = [{x:0, y:0}, {x:0, y:1}, {x:1, y:1}, {x:1, y:0}];
+            let index = i & 3;
+            let v = pts[index];
+            for (let j = 1; j < n; j++) {
+                i = i >>> 2;
+                index = i & 3;
+                let len = Math.pow(2, j);
+                if (index === 0) {
+                    let temp = v.x;
+                    v.x = v.y;
+                    v.y = temp;
+                } else if (index === 1) {
+                    v.y += len;
+                } else if (index === 2) {
+                    v.x += len;
+                    v.y += len;
+                } else if (index === 3) {
+                    let temp = len - 1 - v.x;
+                    v.x = len - 1 - v.y;
+                    v.y = temp;
+                    v.x += len;
+                }
+            }
+            return v;
+        }
+
+        function getBucket(x, y) {
+            if (mode === 'quadrant') {
+                const half = GRID_SIZE / 2;
+                let q = (x < half && y < half) ? 0 : 
+                        (x >= half && y >= half) ? 3 : 
+                        (x >= half && y < half) ? 1 : 2;
+                const sub = (x + y) % 2; 
+                return q + (sub * 4); 
+            }
+            return Math.floor(M8[y % 8][x % 8] / 8);
+        }
+
+        function updateExampleImage() {
+            const el = document.getElementById('exampleResult');
+            const shouldShow = (mode === 'triphase' && powerPattern === 'gradient');
+            el.classList.toggle('show', shouldShow);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('btnPause');
+            btn.innerText = isPaused ? '▶' : '⏸';
+            btn.style.background = isPaused ? 'var(--success)' : '#334155';
+        }
+
+        function getCacheKey() {
+            return `${mode}-${powerPattern}`;
+        }
+
+        function tryRestore() {
+            const key = getCacheKey();
+            const cached = simulationCache[key];
+            if (cached) {
+                etchedState.set(cached.etchedState);
+                heatMap.set(cached.heatMap);
+                peakHeatMap.set(cached.peakHeatMap);
+                maxStressDetected = cached.maxStressDetected;
+                isComplete = true;
+                cellsToEtch = []; 
+                if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
+                
+                updateScoreLabels();
+                return true;
+            }
+            return false;
+        }
+
+        function updateScoreLabels() {
+            const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
+            const stressLimit = powerPattern === 'gradient' ? 90.0 : 45.0; 
+            let allCached = true;
+            
+            modes.forEach(m => {
+                const key = `${m}-${powerPattern}`;
+                const cached = simulationCache[key];
+                const scoreEl = document.getElementById(`score-${m}`);
+                if (scoreEl) {
+                    if (cached) {
+                        const val = cached.maxStressDetected;
+                        scoreEl.innerText = `${val.toFixed(2)} Peak`;
+                        scoreEl.classList.toggle('high-stress', val > stressLimit);
+                        scoreEl.style.opacity = "1";
+                        scoreEl.style.color = val > stressLimit ? 'var(--danger)' : 'var(--success)';
+                    } else {
+                        scoreEl.innerText = "---";
+                        scoreEl.style.opacity = "0.5";
+                        scoreEl.style.color = "#94a3b8";
+                        scoreEl.classList.remove('high-stress');
+                        allCached = false;
+                    }
+                }
+            });
+
+            const showBatchTools = (allCached && !isTestingAll);
+            document.getElementById('btnRecycleAll').style.display = showBatchTools ? 'flex' : 'none';
+            document.getElementById('btnCopy').style.display = showBatchTools ? 'flex' : 'none';
+            
+            updatePauseVisibility();
+        }
+
+        function updatePauseVisibility() {
+            const btnPause = document.getElementById('btnPause');
+            if (btnPause) {
+                btnPause.style.display = (!isComplete && !isTestingAll) ? 'block' : 'none';
+            }
+        }
+
+        function setPower(newPwr) {
+            powerPattern = newPwr;
+            document.getElementById('pwrUniform').classList.toggle('active', powerPattern === 'uniform');
+            document.getElementById('pwrGradient').classList.toggle('active', powerPattern === 'gradient');
+            updateExampleImage();
+            updateScoreLabels();
+            if (!tryRestore()) restart();
+        }
+
+        function setViewMode(vmode) {
+            if (vmode === 'buckets') {
+                viewBuckets = true;
+                viewHeat = false;
+            } else {
+                viewBuckets = false;
+                viewHeat = true;
+            }
+            document.getElementById('btnViewBuckets').classList.toggle('active', viewBuckets);
+            document.getElementById('btnViewHeat').classList.toggle('active', viewHeat);
+            
+            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase' && mode !== 'hilbert');
+            document.getElementById('legendContainer').style.display = (isControlled && viewBuckets) ? 'block' : 'none';
+        }
+
+        function setMode(newMode) {
+            mode = newMode;
+            const idMap = {
+                'triphase': 'btnTriPhase',
+                'horizontal': 'btnHorizontal',
+                'diagonal': 'btnDiagonal',
+                'dispersive': 'btnDispersive',
+                'hilbert': 'btnHilbert',
+                'quadrant': 'btnQuadrant'
+            };
+
+            Object.keys(idMap).forEach(m => {
+                const btn = document.getElementById(idMap[m]);
+                if (btn) btn.classList.toggle('active', mode === m);
+            });
+            
+            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase' && mode !== 'hilbert');
+            document.getElementById('legendContainer').style.display = (isControlled && viewBuckets) ? 'block' : 'none';
+            
+            const info = document.getElementById('strategyInfo');
+            const descriptions = {
+                'horizontal': 'Simulating <b>Horizontal Raster</b> baseline.',
+                'diagonal': 'Simulating <b>Diagonal Wave</b> baseline.',
+                'triphase': 'Simulating <b>Tri-Phase</b>. Hardware default (e.g. xTool).',
+                'quadrant': 'Simulating <b>Quadrant Leapfrog</b> stochastic dispersion.',
+                'dispersive': 'Simulating <b>Dispersive</b> advanced stochastic dispersion (Bit-Reverse).',
+                'hilbert': 'Simulating <b>Hilbert Curve</b>. Optimal space-filling locality.'
+            };
+            info.innerHTML = descriptions[mode];
+            updateExampleImage();
+            updateScoreLabels();
+            if (!tryRestore()) restart();
+        }
+
+        function restart() {
+            isPaused = false;
+            const btn = document.getElementById('btnPause');
+            btn.innerText = '⏸';
+            btn.style.background = '#334155';
+            document.getElementById('btnRecycle').style.display = 'none';
+
+            currentBucketIdx = 0;
+            etchedState.fill(0);
+            heatMap.fill(0);
+            peakHeatMap.fill(0);
+            nextHeatMap.fill(0);
+            maxStressDetected = 0;
+            isComplete = false;
+            loadNextBucket();
+        }
+
+        function loadNextBucket() {
+            cellsToEtch = [];
+            
+            if (mode === 'horizontal') {
+                for (let y = GRID_SIZE - 1; y >= 0; y--) {
+                    for (let x = GRID_SIZE - 1; x >= 0; x--) cellsToEtch.push({x, y});
+                }
+            } else if (mode === 'diagonal') {
+                let temp = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) temp.push({x, y, dist: x + y});
+                }
+                temp.sort((a, b) => b.dist - a.dist);
+                cellsToEtch = temp;
+            } else if (mode === 'triphase') {
+                let allCells = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        let d = x - y;
+                        let phase = (d === 0) ? 0 : (d < 0) ? 1 : 2;
+                        allCells.push({x, y, d, phase});
+                    }
+                }
+                allCells.sort((a, b) => {
+                    if (a.phase !== b.phase) return b.phase - a.phase;
+                    if (a.phase === 1) {
+                        if (a.d !== b.d) return a.d - b.d;
+                    } else if (a.phase === 2) {
+                        if (a.d !== b.d) return a.d - b.d;
+                    }
+                    return b.x - a.x;
+                });
+                cellsToEtch = allCells;
+            } else if (mode === 'hilbert') {
+                let path = [];
+                const order = 6; // 2^6 = 64
+                const total = Math.pow(2, order) * Math.pow(2, order);
+                for (let i = 0; i < total; i++) {
+                    let p = getHilbert(i, order);
+                    if (p.x < GRID_SIZE && p.y < GRID_SIZE) {
+                        path.push(p);
+                    }
+                }
+                cellsToEtch = path.reverse(); 
+            } else {
+                let seq = (mode === 'quadrant') ? quadrantSequence : (mode === 'dispersive') ? bitReverseSequence : standardSequence;
+                if (currentBucketIdx >= seq.length) return;
+                const targetBucket = seq[currentBucketIdx];
+                let bucketCells = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        if (getBucket(x, y) === targetBucket) bucketCells.push({x, y});
+                    }
+                }
+                bucketCells.sort(() => Math.random() - 0.5);
+                cellsToEtch = bucketCells;
+            }
+        }
+
+        function copyResults() {
+            const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
+            const names = {
+                'hilbert': 'Hilbert',
+                'triphase': 'Tri-Phase',
+                'diagonal': 'Diagonal',
+                'quadrant': 'Quadrant',
+                'horizontal': 'Horizontal',
+                'dispersive': 'Dispersive'
+            };
+            
+            let results = modes.map(m => {
+                const key = `${m}-${powerPattern}`;
+                const cached = simulationCache[key];
+                return {
+                    id: m,
+                    name: names[m],
+                    peak: cached ? cached.maxStressDetected : -1
+                };
+            });
+
+            // Sort by peak descending
+            results.sort((a, b) => b.peak - a.peak);
+            
+            let table = `Scan Strategy Results (${powerPattern === 'gradient' ? 'Color Grid' : 'Uniform'})\n`;
+            table += `------------------------------------------\n`;
+            
+            results.forEach(r => {
+                const score = r.peak >= 0 ? `${r.peak.toFixed(2)} Peak` : '---';
+                table += `${r.name.padEnd(12)} : ${score}\n`;
+            });
+            
+            navigator.clipboard.writeText(table).then(() => {
+                const btn = document.getElementById('btnCopy');
+                const oldText = btn.innerText;
+                btn.innerText = '✅';
+                setTimeout(() => btn.innerText = oldText, 2000);
+            });
+        }
+
+        async function recycleAll() {
+            if (isTestingAll) return;
+            const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
+            modes.forEach(m => {
+                delete simulationCache[`${m}-${powerPattern}`];
+            });
+            updateScoreLabels();
+            await testAll();
+        }
+
+        async function testAll() {
+            if (isTestingAll) return;
+            isTestingAll = true;
+            document.getElementById('btnTestAll').classList.add('busy');
+            document.getElementById('btnTestAll').innerText = "Testing...";
+            document.getElementById('btnRecycle').style.display = 'none';
+            document.getElementById('btnRecycleAll').style.display = 'none';
+            document.getElementById('btnCopy').style.display = 'none';
+
+            const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
+            for (const m of modes) {
+                const cacheKey = `${m}-${powerPattern}`;
+                const alreadyCached = !!simulationCache[cacheKey];
+                
+                setMode(m);
+                
+                if (!alreadyCached) {
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (isComplete) resolve();
+                            else requestAnimationFrame(check);
+                        };
+                        check();
+                    });
+                    await new Promise(r => setTimeout(r, 800)); // Inter-test pause
+                }
+            }
+
+            isTestingAll = false;
+            document.getElementById('btnTestAll').classList.remove('busy');
+            document.getElementById('btnTestAll').innerText = "Test All";
+            updateScoreLabels();
+        }
+
+        function animate() {
+            if (isPaused) {
+                updatePauseVisibility();
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            // 1. Diffusion & Decay (Heat moves into the "material" buffer)
+            const k = 0.1; // Increased diffusion for realistic conduction (was 0.005)
+            const decay = 0.992; // Slightly slower decay to allow accumulation
+            
+            for (let y = 1; y < SIM_SIZE - 1; y++) {
+                for (let x = 1; x < SIM_SIZE - 1; x++) {
+                    const i = y * SIM_SIZE + x;
+                    const neighborSum = heatMap[i-1] + heatMap[i+1] + 
+                                      heatMap[i-SIM_SIZE] + heatMap[i+SIM_SIZE];
+                    nextHeatMap[i] = (heatMap[i] + k * (neighborSum - 4 * heatMap[i])) * decay;
+                }
+            }
+            heatMap.set(nextHeatMap);
+
+            let totalHeat = 0;
+            let currentFrameMax = 0;
+            
+            // Stats & Peak Tracking (only for visible grid)
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const si = getSimIdx(x, y);
+                    const h = heatMap[si];
+                    if (h > currentFrameMax) currentFrameMax = h;
+                    totalHeat += h;
+                    if (h > peakHeatMap[si]) peakHeatMap[si] = h;
+                }
+            }
+
+            if (currentFrameMax > maxStressDetected) maxStressDetected = currentFrameMax;
+
+            // 2. Etching
+            const isDispersed = mode === 'quadrant' || mode === 'dispersive';
+            const batchSize = isDispersed ? 2 : 1; 
+
+            for(let i = 0; i < batchSize; i++) {
+                if (cellsToEtch.length > 0) {
+                    const cell = cellsToEtch.pop();
+                    const si = getSimIdx(cell.x, cell.y);
+                    etchedState[cell.y * GRID_SIZE + cell.x] = 1;
+                    
+                    let powerFactor = 1.0;
+                    if (powerPattern === 'gradient') {
+                        const distFromTR = (cell.y + (GRID_SIZE - 1 - cell.x)) / (2 * (GRID_SIZE - 1));
+                        powerFactor = 1.0 + 3.0 * distFromTR; 
+                    }
+
+                    const heatDelta = 12.0 * powerFactor; // Increased baseline
+                    
+                    // Thermal Splash (Simulating spot size and immediate projection)
+                    heatMap[si] += heatDelta;
+                    const splash = heatDelta * 0.25;
+                    heatMap[si-1] += splash;
+                    heatMap[si+1] += splash;
+                    heatMap[si-SIM_SIZE] += splash;
+                    heatMap[si+SIM_SIZE] += splash;
+                    const diagSplash = heatDelta * 0.1;
+                    heatMap[si-SIM_SIZE-1] += diagSplash;
+                    heatMap[si-SIM_SIZE+1] += diagSplash;
+                    heatMap[si+SIM_SIZE-1] += diagSplash;
+                    heatMap[si+SIM_SIZE+1] += diagSplash;
+
+                } else if (isDispersed && currentBucketIdx < NUM_BUCKETS - 1) {
+                    currentBucketIdx++;
+                    loadNextBucket();
+                    break; 
+                }
+            }
+
+            // 3. Rendering
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Thresholds calibrated for cumulative splash peaks
+            const heatThreshold = powerPattern === 'gradient' ? 120.0 : 60.0; 
+
+            const getHeatColor = (val) => {
+                const n = Math.min(1, val / heatThreshold);
+                let r, g, b;
+                if (n < 0.2) {
+                    r = 80 + n * 5 * 175; g = 0; b = 0;
+                } else if (n < 0.4) {
+                    r = 255; g = (n-0.2) * 5 * 165; b = 0;
+                } else if (n < 0.7) {
+                    r = 255; g = 165 + (n-0.4) * (1/0.3) * 90; b = 0;
+                } else {
+                    r = 255; g = 255; b = (n-0.7) * (1/0.3) * 255;
+                }
+                return `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${Math.min(1, n * 2)})`;
+            };
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    const idx = y * GRID_SIZE + x;
+                    const si = getSimIdx(x, y);
+                    const h = heatMap[si];
+                    const peak = peakHeatMap[si];
+                    
+                    if (viewBuckets && etchedState[idx] === 1) {
+                        ctx.fillStyle = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase') ? '#334155' : bucketColors[getBucket(x, y)] + '33';
+                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
+                    }
+                    
+                    if (viewHeat && peak > 0.01) {
+                        ctx.fillStyle = getHeatColor(peak);
+                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
+                    }
+
+                    if (!viewBuckets && h > 0.01) {
+                        const activeIntensity = Math.min(1, h / 15.0);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${activeIntensity})`;
+                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
+                    }
+                }
+            }
+
+            const etchedCount = etchedState.reduce((a, b) => a + b, 0);
+            const totalCells = GRID_SIZE * GRID_SIZE;
+            const progressPct = (etchedCount / totalCells * 100);
+            document.getElementById('progress').innerText = `${progressPct.toFixed(0)}%`;
+            document.getElementById('peakHeat').innerText = maxStressDetected.toFixed(2);
+            document.getElementById('avgHeat').innerText = (totalHeat / (GRID_SIZE * GRID_SIZE)).toFixed(3);
+            
+            const stressLimit = powerPattern === 'gradient' ? 90.0 : 45.0; 
+            document.getElementById('peakHeat').className = maxStressDetected > stressLimit ? 'stat-value hot' : 'stat-value';
+
+            if (!isComplete && etchedCount === (GRID_SIZE * GRID_SIZE)) {
+                isComplete = true;
+                if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
+                
+                // Save to cache
+                simulationCache[getCacheKey()] = {
+                    etchedState: new Uint8Array(etchedState),
+                    heatMap: new Float32Array(heatMap),
+                    peakHeatMap: new Float32Array(peakHeatMap),
+                    maxStressDetected: maxStressDetected
+                };
+
+                updateScoreLabels();
+            }
+
+            updatePauseVisibility();
+            updatePopup();
+            requestAnimationFrame(animate);
+        }
+
+        const legend = document.getElementById('bucketLegend');
+        bucketColors.forEach((color, i) => {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.innerHTML = `<div class="color-box" style="background:${color}"></div> Sector ${i}`;
+            legend.appendChild(item);
+        });
+
+        function updatePopup() {
+            if (hoveredIdx === -1) return;
+            const gx = hoveredIdx % GRID_SIZE;
+            const gy = Math.floor(hoveredIdx / GRID_SIZE);
+            const si = getSimIdx(gx, gy);
+            
+            const heat = heatMap[si];
+            const peak = peakHeatMap[si];
+            const bucket = getBucket(gx, gy);
+
+            document.getElementById('gp-heat').textContent = heat.toFixed(2);
+            document.getElementById('gp-peak').textContent = peak.toFixed(2);
+            document.getElementById('gp-bucket').textContent = bucket;
+            
+            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase');
+            document.getElementById('gp-bucket-row').style.display = isControlled ? 'flex' : 'none';
+        }
+
+        const gridPopup = document.getElementById('gridPopup');
+        canvas.addEventListener('mousemove', (ev) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top;
+            const gx = Math.floor(x / (rect.width / GRID_SIZE));
+            const gy = Math.floor(y / (rect.height / GRID_SIZE));
+
+            if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
+                hoveredIdx = gy * GRID_SIZE + gx;
+                updatePopup();
+
+                gridPopup.style.display = 'block';
+                let left = ev.clientX + 15;
+                let top = ev.clientY + 15;
+                if (left + 150 > window.innerWidth) left = ev.clientX - 160;
+                gridPopup.style.left = left + 'px';
+                gridPopup.style.top = top + 'px';
+            } else {
+                hoveredIdx = -1;
+                gridPopup.style.display = 'none';
+            }
+        });
+        canvas.addEventListener('mouseleave', () => {
+            hoveredIdx = -1;
+            gridPopup.style.display = 'none';
+        });
+
+        testAll(); 
+        updateExampleImage();
+        animate();
+    </script>
+</body>
+</html>

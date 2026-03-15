@@ -197,6 +197,9 @@ input[type=range]{flex:1;accent-color:#5b9bd5;height:4px}
   <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val" id="gpSpeed"></span></div>
   <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val" id="gpDensity"></span></div>
   <div class="popup-row" id="gpRepeatRow"><span class="popup-key">Repeat</span><span class="popup-val" id="gpRepeat"></span></div>
+  <div class="popup-row" id="gpTextRow"><span class="popup-key">Text</span><span class="popup-val hi" id="gpText"></span></div>
+  <div class="popup-row" id="gpFontRow"><span class="popup-key">Font</span><span class="popup-val" id="gpFont"></span></div>
+  <div class="popup-row" id="gpStyleRow"><span class="popup-key">Style</span><span class="popup-val" id="gpStyle"></span></div>
   <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val" id="gpSize"></span></div>
   <div class="popup-row"><span class="popup-key">Position</span><span class="popup-val" id="gpPos"></span></div>
 </div>
@@ -314,8 +317,10 @@ const Persistence = {
       alert('Please select a Mandala or Gradient tab to save.');
       return;
     }
+    const tab = App.tabs.find(t => t.id === App.activeTabId);
+    const defaultName = (tab ? tab.label : (inst.type==='mandala'?'mandala':'gradient')) + '.rnr';
     const data = { type: inst.type, cfg: inst.cfg, version: '1.0' };
-    const name = prompt('Save settings as:', (inst.type==='mandala'?'mandala':'gradient') + '.rnr');
+    const name = prompt('Save settings as:', defaultName);
     if (!name) return;
     const filename = name.endsWith('.rnr') ? name : name + '.rnr';
     dl(filename, JSON.stringify(data, null, 2), 'application/json');
@@ -325,8 +330,9 @@ const Persistence = {
     reader.onload = e => {
       try {
         const data = JSON.parse(e.target.result);
-        if (data.type === 'mandala') TabMgr.newMandala(data.cfg);
-        else if (data.type === 'gradient') TabMgr.newGradient(data.cfg);
+        const label = file.name.replace(/\.rnr$/i, '');
+        if (data.type === 'mandala') TabMgr.newMandala(data.cfg, label);
+        else if (data.type === 'gradient') TabMgr.newGradient(data.cfg, label);
         else alert('Invalid RNR file.');
       } catch(err) { alert('Load failed: ' + err.message); }
     };
@@ -563,18 +569,31 @@ const XCSViewer = {
 
       if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
       else if (s.type==='RECT') el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+      else if (s.type==='TEXT') {
+        const fs = (s.style?.fontSize||12) * sc / 10;
+        el = svgEl('text', {
+          x: cx, y: cy, fill: s.layerColor, 'font-size': fs,
+          'text-anchor': s.style?.align === 'left' ? 'start' : (s.style?.align === 'right' ? 'end' : 'middle'),
+          'dominant-baseline': 'middle',
+          transform: `rotate(${s.angle||0}, ${cx}, ${cy})`,
+          'font-family': 'SF Mono, Fira Code, monospace', 'font-weight': '600',
+          'fill-opacity': '0.8'
+        });
+        el.textContent = s.text || '';
+      }
       else el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:'none',stroke:'#555','stroke-width':'1','stroke-dasharray':'3 3'});
       
       el.setAttribute('data-svg-idx', s.idx);
-      el.setAttribute('data-is-fill', isFill ? 'true' : 'false');
+      el.setAttribute('data-is-fill', (isFill || s.type === 'TEXT') ? 'true' : 'false');
       el.style.cursor = 'pointer';
       el.addEventListener('mouseenter', ev => this.onHover(v, state, s.idx, ev));
       el.addEventListener('mousemove',  ev => Popup.move(ev));
       el.addEventListener('mouseleave', () => this.onLeave(v));
       svg.appendChild(el);
       
-      if (s.power != null && rx > 9 && !s.hideLabels) {
-        const t = svgEl('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':Math.min(rx*.55,12),'font-family':'SF Mono,Fira Code,monospace',fill:isFill?'#000':'#fff','fill-opacity':isFill?'0.8':'0.7','font-weight':isFill?'800':'400','pointer-events':'none'});
+      // Only show auto-power labels for larger shapes if NOT explicitly hidden
+      if (s.power != null && rx > 12 && !s.hideLabels && s.type !== 'TEXT') {
+        const t = svgEl('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':Math.min(rx*.55,12),'font-family':'SF Mono,Fira Code,monospace',fill:isFill?'#000':'#fff','fill-opacity':isFill?'0.8':'0.7','font-weight':'800','pointer-events':'none'});
         t.textContent = s.power+'%'; labels.push(t);
       }
     }
@@ -748,7 +767,13 @@ const XCSViewer = {
     v.querySelectorAll('[data-svg-idx]').forEach(el => {
       const hit = +el.getAttribute('data-svg-idx')===idx;
       const isFill = el.getAttribute('data-is-fill') === 'true';
-      if (isFill) {
+      const isText = el.tagName === 'text';
+      
+      if (isText) {
+        el.setAttribute('stroke', hit ? '#fff' : 'none');
+        el.setAttribute('stroke-width', hit ? '0.5' : '0');
+        el.setAttribute('fill-opacity', hit ? '1.0' : '0.8');
+      } else if (isFill) {
         el.setAttribute('fill-opacity', hit ? '1.0' : '0.6');
         el.setAttribute('stroke', hit ? '#fff' : 'none');
         el.setAttribute('stroke-width', hit ? '2' : '0');
@@ -767,9 +792,15 @@ const XCSViewer = {
   onLeave(v) {
     Popup.hide();
     v.querySelectorAll('.shape-row').forEach(r => r.classList.remove('hl'));
-    v.querySelectorAll('[data-svg-idx]').forEach(el => { 
+    v.querySelectorAll('[data-svg-idx]').forEach(el => {
       const isFill = el.getAttribute('data-is-fill') === 'true';
-      if (isFill) {
+      const isText = el.tagName === 'text';
+
+      if (isText) {
+        el.setAttribute('stroke', 'none');
+        el.setAttribute('stroke-width', '0');
+        el.setAttribute('fill-opacity', '0.8');
+      } else if (isFill) {
         el.setAttribute('fill-opacity', '0.6');
         el.setAttribute('stroke', 'none');
         el.setAttribute('stroke-width', '0');
@@ -777,8 +808,7 @@ const XCSViewer = {
         el.setAttribute('fill-opacity', '0.22');
         el.setAttribute('stroke-width', '1.5');
       }
-    });
-    v.querySelectorAll('.json-display-block').forEach(b => b.classList.remove('json-hl'));
+    });    v.querySelectorAll('.json-display-block').forEach(b => b.classList.remove('json-hl'));
   },
 
   exportPalette(q, state) {
@@ -935,7 +965,9 @@ const PalMgr = {
     if (!p) { sel.innerHTML = '<option value="0">— no palette —</option>'; return; }
     p.entries.forEach((e, i) => {
       const opt = document.createElement('option');
-      opt.value = i; opt.textContent = `${e.label} (${e.power}%)`;
+      opt.value = i; 
+      opt.textContent = `■ ${e.label} (${e.power}%)`;
+      opt.style.color = e.rgb;
       if (i === currentIdx) opt.selected = true;
       sel.appendChild(opt);
     });
@@ -1016,7 +1048,8 @@ const XcsTab = {
                angle:d.angle||0, layerColor:d.layerColor||'#5b9bd5', zOrder:d.zOrder||0,
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
                density:pm.density??null, repeat:pm.repeat??1,
-               laser: laser, hideLabels: !!d.hideLabels };
+               laser: laser, hideLabels: !!d.hideLabels,
+               text: d.text || null, style: d.style || null };
     });
   }
 };
@@ -1364,11 +1397,26 @@ const MandalaTab = {
   },
 
   makePaletteSelect(cfg, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'entry-picker';
+    const swatch = document.createElement('div');
+    swatch.className = 'entry-swatch';
+    
+    const updateSwatch = (id) => {
+      const p = PalMgr.get(id);
+      swatch.style.background = (p && p.entries.length) ? p.entries[0].rgb : '#333';
+    };
+    updateSwatch(cfg.paletteId);
+
     const sel = document.createElement('select');
-    sel.className = 'ctrl-select';
+    sel.className = 'entry-select';
     PalMgr.fillPaletteSelect(sel, cfg.paletteId);
-    sel.addEventListener('change', () => onChange(sel.value));
-    return sel;
+    sel.addEventListener('change', () => {
+      updateSwatch(sel.value);
+      onChange(sel.value);
+    });
+    wrap.appendChild(swatch); wrap.appendChild(sel);
+    return wrap;
   },
 
   makeEntryPicker(paletteId, currentIdx, onChange) {
@@ -1528,6 +1576,7 @@ const GradientTab = {
       yMin: 10, yMax: 200,
       resolution: 20,
       overlap: 0,
+      showLabels: true,
       fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000,
       totalSize: 20
     };
@@ -1553,15 +1602,46 @@ const GradientTab = {
     const CX = 50, CY = 50;
     const { resolution, totalSize, laserType, xAxis, yAxis, overlap } = cfg;
     
-    const tileSize = totalSize / resolution;
-    const startX = CX - totalSize/2;
-    const startY = CY - totalSize/2;
+    const cellSize = totalSize / resolution;
+    const gap = overlap < 0 ? Math.abs(overlap) : 0;
+    const pitch = cellSize + gap;
+    const effectiveTotal = pitch * resolution;
+    
+    const startX = CX - effectiveTotal/2;
+    const startY = CY - effectiveTotal/2;
+
+    const laserSource = laserType === 'ir' ? 'red' : 'blue';
+    const planType = laserType === 'ir' ? 'ir' : 'blue';
+
+    const addText = (text, tx, ty, angle, size) => {
+      const id = uuid();
+      displays.push({ 
+        id, name: null, type: 'TEXT', x: tx, y: ty, angle, 
+        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
+        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "#5b9bd5",
+        layerColor: "#5b9bd5", visible: true, originColor: "#000000",
+        enableTransform: true, visibleState: true, lockState: false,
+        resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
+        fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
+        stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+        width: text.length * size * 0.5, height: size, isFill: true, lineColor: 0, fillColor: "#5b9bd5",
+        text, resolution: 1,
+        style: { fontSize: 16, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "center" }
+      });
+      displayValues.push([id, { 
+        isFill: true, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
+        data: {
+          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource } } }
+        }
+      }]);
+    };
 
     for (let iy = 0; iy < resolution; iy++) {
       for (let ix = 0; ix < resolution; ix++) {
         const id = uuid();
-        const x = startX + ix * tileSize + tileSize/2;
-        const y = startY + iy * tileSize + tileSize/2;
+        const x = startX + ix * pitch + pitch/2;
+        const y = startY + iy * pitch + pitch/2;
         
         const getVal = (axis) => {
           let minVal, maxVal, stepIdx;
@@ -1577,11 +1657,9 @@ const GradientTab = {
         const s = getVal('speed');
         const d = getVal('lpcm');
 
-        const laserSource = laserType === 'ir' ? 'red' : 'blue';
-        const planType = laserType === 'ir' ? 'ir' : 'blue';
-
+        const actualOverlap = overlap > 0 ? overlap : 0;
         displays.push({ 
-          id, name: null, type: 'RECT', x, y, width: tileSize + overlap, height: tileSize + overlap, angle: 0,
+          id, name: null, type: 'RECT', x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap, angle: 0,
           scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
           offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
           zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "#5b9bd5",
@@ -1609,6 +1687,19 @@ const GradientTab = {
 
         displayValues.push([id, { isFill: true, type: 'RECT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
       }
+    }
+
+    if (cfg.showLabels) {
+      const xr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.xAxis];
+      const yr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.yAxis];
+      
+      const xLabel = `${cfg.xMin} ── ${xr.u} ── ${cfg.xMax}`;
+      const yLabel = `${cfg.yMin} ── ${yr.u} ── ${cfg.yMax}`;
+      
+      // Bottom axis (X)
+      addText(xLabel, CX, CY + effectiveTotal/2 + 2.5, 0, 1.2);
+      // Left axis (Y) - Rotated -90
+      addText(yLabel, CX - effectiveTotal/2 - 2.5, CY, -90, 1.2);
     }
 
     return {
@@ -1653,7 +1744,8 @@ const GradientTab = {
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
       MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
       MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      MandalaTab.makeRow('Overlap', MandalaTab.makeRange(0, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm'))
+      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
+      MandalaTab.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
     ]));
 
     const getRanges = (axis) => {
@@ -1734,6 +1826,19 @@ const Popup = {
     document.getElementById('gpDensity').textContent = s.density != null ? s.density + ' lpcm'   : '—';
     document.getElementById('gpRepeat').textContent  = s.repeat;
     document.getElementById('gpRepeatRow').style.display = s.repeat > 1 ? 'flex' : 'none';
+    
+    // Text properties
+    const isText = s.type === 'TEXT';
+    document.getElementById('gpTextRow').style.display = isText ? 'flex' : 'none';
+    document.getElementById('gpFontRow').style.display = isText ? 'flex' : 'none';
+    document.getElementById('gpStyleRow').style.display = isText ? 'flex' : 'none';
+    
+    if (isText) {
+      document.getElementById('gpText').textContent = s.text || '—';
+      document.getElementById('gpFont').textContent = s.style?.fontFamily || 'Lato';
+      document.getElementById('gpStyle').textContent = `${s.style?.fontSize || 12}pt ${s.style?.fontSubfamily || 'Regular'}`;
+    }
+
     document.getElementById('gpSize').textContent    = `${s.w.toFixed(1)} × ${s.h.toFixed(1)} mm`;
     document.getElementById('gpPos').textContent     = `${s.x.toFixed(1)}, ${s.y.toFixed(1)} mm`;
     this.move(ev); p.classList.add('show');

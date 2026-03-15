@@ -53,7 +53,25 @@ Inside each operation node (e.g., `FILL_VECTOR_ENGRAVING`), the path to settings
 
 ---
 
-## 4. Confirmed Properties & Values
+## 4. Text Object Structure
+
+TEXT objects in XCS are complex as they often include baked glyph paths for offline processing.
+
+### Root TEXT Fields:
+*   `type`: `"TEXT"`
+*   `text`: The actual string content.
+*   `width`/`height`: Dimensions in mm.
+*   `style`: Object containing formatting:
+    *   `fontSize`: Size in points/units.
+    *   `fontFamily`: e.g., `"Lato"`.
+    *   `fontSubfamily`: e.g., `"Bold"`.
+    *   `fontSource`: `"build-in"` or `"system"`.
+    *   `align`: `"center"`, `"left"`, or `"right"`.
+*   `fontData`: (Often required for F2) Contains `fontInfo` and `glyphData` (Map of char to SVG-like path data).
+
+---
+
+## 5. Confirmed Properties & Values
 
 | Property | Value | Notes |
 | :--- | :--- | :--- |
