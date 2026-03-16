@@ -77,21 +77,9 @@ export const GradientTab = {
       // Approximate width logic (Lato Bold is ~0.5 width-to-height ratio)
       const textWidth = text.length * baseHeight * 0.5;
 
-      // Positioning: XCS anchors at the baseline.
-      // For 72pt text, the center is approx 7.3mm above the baseline.
-      // Visual centering requires shifting the anchor by (size * (7.3/19.85))
-      const centerOffset = size * 0.368;
-
       let adjustedX = tx;
       let adjustedY = ty;
       
-      const baselineShift = size * 0.35; // Standard for Lato Bold
-      if (angle === 0) {
-        adjustedY = ty + baselineShift;
-      } else if (angle === -90) {
-        adjustedX = tx - baselineShift;
-      }
-
       displays.push({ 
         id, name: null, type: 'TEXT', x: adjustedX, y: adjustedY, angle, 
         scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
@@ -173,11 +161,14 @@ export const GradientTab = {
       const xLabel = `${cfg.xMin} - ${xr.u} - ${cfg.xMax}`;
       const yLabel = `${cfg.yMin} - ${yr.u} - ${cfg.yMax}`;
       
-      // Bottom axis (X)
-      // Gap: effectiveTotal/2 + 3mm from center
-      addText(xLabel, CX, CY + (effectiveTotal/2) + 4.5, 0, 2.4);
-      // Left axis (Y) - Rotated -90
-      addText(yLabel, CX - (effectiveTotal/2) - 4.5, CY, -90, 2.4);
+      const gridL = CX - (effectiveTotal/2);
+      const gridB = CY + (effectiveTotal/2);
+      const labelSize = 2.4;
+
+      // Bottom axis (X): Start at grid left (gridL), and move 1.2mm + labelSize below bottom
+      addText(xLabel, gridL, gridB + labelSize + 1.2, 0, labelSize);
+      // Left axis (Y): Start at grid bottom (gridB), and move 1.2mm + labelSize left of edge
+      addText(yLabel, gridL - labelSize - 1.2, gridB, -90, labelSize);
     }
 
     return {
