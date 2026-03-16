@@ -157,11 +157,16 @@ export const GradientTab = {
     if (cfg.showLabels) {
       const xr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.xAxis];
       const yr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.yAxis];
+      const fr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.fixedAxis];
       
       const xLabel = `${cfg.xMin} - ${xr.u} - ${cfg.xMax}`;
       const yLabel = `${cfg.yMin} - ${yr.u} - ${cfg.yMax}`;
       
+      const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
+      const fLabel = `${cfg[fixedKey]} ${fr.u}`;
+      
       const gridL = CX - (effectiveTotal/2);
+      const gridT = CY - (effectiveTotal/2);
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
 
@@ -169,6 +174,10 @@ export const GradientTab = {
       addText(xLabel, gridL, gridB + labelSize + 1.2, 0, labelSize);
       // Left axis (Y): Start at grid bottom (gridB), and move 1.2mm + labelSize left of edge
       addText(yLabel, gridL - labelSize - 1.2, gridB, -90, labelSize);
+      // Top axis (Fixed): Center on the grid (CX) by manually offsetting the x coordinate.
+      // Lato Bold is approx 0.5 width-to-height ratio. 
+      const fLabelWidth = fLabel.length * labelSize * 0.5;
+      addText(fLabel, CX - (fLabelWidth / 2), gridT - 1.2, 0, labelSize);
     }
 
     return {
