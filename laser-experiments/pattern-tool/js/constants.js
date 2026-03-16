@@ -1,3 +1,5 @@
+export const VERSION = '1.0.6';
+
 export const PALETTE_FILES = ['laFont-1000lpcm'];
 
 export const FALLBACK_PALETTES = {

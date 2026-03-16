@@ -85,10 +85,11 @@ export const GradientTab = {
       let adjustedX = tx;
       let adjustedY = ty;
       
+      const baselineShift = size * 0.35; // Standard for Lato Bold
       if (angle === 0) {
-        adjustedY = ty + centerOffset;
+        adjustedY = ty + baselineShift;
       } else if (angle === -90) {
-        adjustedX = tx - centerOffset;
+        adjustedX = tx - baselineShift;
       }
 
       displays.push({ 
@@ -173,9 +174,10 @@ export const GradientTab = {
       const yLabel = `${cfg.yMin} - ${yr.u} - ${cfg.yMax}`;
       
       // Bottom axis (X)
-      addText(xLabel, CX, CY + effectiveTotal/2 + 3.5, 0, 2.4);
+      // Gap: effectiveTotal/2 + 3mm from center
+      addText(xLabel, CX, CY + (effectiveTotal/2) + 4.5, 0, 2.4);
       // Left axis (Y) - Rotated -90
-      addText(yLabel, CX - effectiveTotal/2 - 3.5, CY, -90, 2.4);
+      addText(yLabel, CX - (effectiveTotal/2) - 4.5, CY, -90, 2.4);
     }
 
     return {

@@ -3,6 +3,7 @@ import { Persistence } from './persistence.js';
 import { PalMgr } from './palettes.js';
 import { TabMgr } from './tabs.js';
 import { XCSViewer, Popup } from './viewer.js';
+import { VERSION } from './constants.js';
 
 // Attach to window for global access
 window.App = App;
@@ -39,6 +40,9 @@ function setupEventListeners() {
   listen('welcomeOpenXcsBtn', () => TabMgr.openXcs());
   listen('welcomeNewMandalaBtn', () => TabMgr.newMandala());
   listen('welcomeNewGradientBtn', () => TabMgr.newGradient());
+
+  const vEl = document.getElementById('appVersion');
+  if (vEl) vEl.textContent = `v${VERSION}`;
 
   window.addEventListener('resize', () => {
     if (!App.activeTabId) return;

@@ -266,13 +266,14 @@ export const XCSViewer = {
       if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
       else if (s.type==='RECT') el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
       else if (s.type==='TEXT') {
-        const fs = (s.style?.fontSize||12) * sc / 10;
+        const fs = s.h * sc;
+        // XCS uses the baseline anchor for its x and y. 
+        // We render as 'start' to match the observation that x is the left edge.
         el = svgEl('text', {
           x: cx, y: cy, fill: s.layerColor, 'font-size': fs,
-          'text-anchor': s.style?.align === 'left' ? 'start' : (s.style?.align === 'right' ? 'end' : 'middle'),
-          'dominant-baseline': 'middle',
+          'text-anchor': 'start',
           transform: `rotate(${s.angle||0}, ${cx}, ${cy})`,
-          'font-family': 'SF Mono, Fira Code, monospace', 'font-weight': '600',
+          'font-family': 'Lato, system-ui, -apple-system, sans-serif', 'font-weight': '700',
           'fill-opacity': '0.8'
         });
         el.textContent = s.text || '';
