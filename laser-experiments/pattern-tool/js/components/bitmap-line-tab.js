@@ -180,20 +180,15 @@ export const BitmapLineTab = {
     };
 
     const makeDpiControl = (line, p, key, r) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'ctrl-val-wrap';
-      wrap.style.position = 'relative';
-      
       const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(line, p, key, false));
-      rangeCtrl.style.flex = '1';
-      wrap.appendChild(rangeCtrl);
+      rangeCtrl.style.position = 'relative';
       
       const fullBtn = document.createElement('button');
       fullBtn.className = 'dpi-full-popout';
       fullBtn.textContent = 'FULL';
       fullBtn.onclick = (e) => { e.stopPropagation(); set(p + key, getMaxDpi(cfg.laserType)); };
-      wrap.appendChild(fullBtn);
-      return wrap;
+      rangeCtrl.appendChild(fullBtn);
+      return rangeCtrl;
     };
 
     const getRanges = (axis) => {
