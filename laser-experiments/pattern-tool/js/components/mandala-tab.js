@@ -317,8 +317,6 @@ export const MandalaTab = {
     inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = val;
     const disp = document.createElement('span');
     disp.className = 'range-val'; disp.textContent = val + unit;
-    disp.style.cursor = 'pointer';
-    disp.title = 'Click to edit manually';
 
     const enterEdit = () => {
       const edit = document.createElement('input');
@@ -354,7 +352,10 @@ export const MandalaTab = {
       });
     };
 
-    disp.addEventListener('click', enterEdit);
+    disp.addEventListener('click', (e) => {
+      e.stopPropagation();
+      enterEdit();
+    });
 
     inp.addEventListener('input', () => { 
       val = inp.value;
