@@ -278,8 +278,38 @@ export const XCSViewer = {
 
       if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
       else if (s.type==='RECT' || s.type==='IMAGE') {
-        el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
-        if (s.type === 'IMAGE') {
+        let fill = renderColor;
+        
+        // Custom rendering for BitmapLine grayscale gradients
+        if (s.isGrayscaleGradient) {
+          const gradId = `grad-${s.id}`;
+          let defs = svg.querySelector('defs');
+          if (!defs) {
+            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            svg.prepend(defs);
+          }
+          
+          if (!defs.querySelector(`#${gradId}`)) {
+            const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            grad.setAttribute('id', gradId);
+            grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '0%');
+            grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '0%');
+            
+            const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+            stop1.setAttribute('offset', '0%'); stop1.setAttribute('stop-color', '#fff');
+            
+            const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+            stop2.setAttribute('offset', '100%'); stop2.setAttribute('stop-color', '#000');
+            
+            grad.appendChild(stop1);
+            grad.appendChild(stop2);
+            defs.appendChild(grad);
+          }
+          fill = `url(#${gradId})`;
+        }
+
+        el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:fill,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+        if (s.type === 'IMAGE' && !s.isGrayscaleGradient) {
           // Add a "bitmap" texture or indicator
           el.setAttribute('stroke-dasharray', '2 1');
         }
