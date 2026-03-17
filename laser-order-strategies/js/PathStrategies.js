@@ -114,6 +114,8 @@ const PathStrategies = {
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) temp.push({x, y, dist: x + y});
             }
+            // Sort by distance (x+y). Smallest dist (0,0) is Top-Left.
+            // Pop from end, so largest dist must be first in array.
             temp.sort((a, b) => b.dist - a.dist);
             path = temp;
         } else if (mode === 'triphase') {
@@ -125,14 +127,10 @@ const PathStrategies = {
                     allCells.push({x, y, d, phase});
                 }
             }
+            // Sort by phase, then by y to ensure top-to-bottom within phases
             allCells.sort((a, b) => {
                 if (a.phase !== b.phase) return b.phase - a.phase;
-                if (a.phase === 1) {
-                    if (a.d !== b.d) return a.d - b.d;
-                } else if (a.phase === 2) {
-                    if (a.d !== b.d) return a.d - b.d;
-                }
-                return b.x - a.x;
+                return b.y - a.y; // Pushing larger Y first so pop() gives smaller Y (top) first
             });
             path = allCells;
         } else if (mode === 'hilbert') {
