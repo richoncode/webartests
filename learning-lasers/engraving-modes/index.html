@@ -55,6 +55,59 @@
         .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; }
         .stat-value.hot { color: var(--danger); font-weight: bold; }
 
+        /* Tooltip Styles */
+        .tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        .tooltip {
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 220px;
+            background: #111;
+            border: 1px solid #333;
+            color: #ccc;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none;
+            text-transform: none;
+            font-weight: 400;
+        }
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #333;
+        }
+        .tooltip-trigger:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+            bottom: 140%;
+        }
+
+        .editable-val { cursor: pointer; border-bottom: 1px dashed var(--accent); }
+        .editable-val:hover { color: #fff; }
+        #inputLPCDirect {
+            background: #222;
+            border: 1px solid var(--accent);
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            width: 50px;
+            padding: 2px 4px;
+            border-radius: 4px;
+            outline: none;
+        }
+
         .callout { border-left: 3px solid var(--accent); background: #0d2016; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #889; margin: 32px 0; }
         .callout strong { color: #fff; }
 
@@ -78,21 +131,27 @@
             <div class="tutorial-container">
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
                     <div class="control-group">
-                        <span class="label-text" style="margin-bottom: 8px; display: block;">Travel Direction</span>
+                        <span class="label-text tooltip-trigger" style="margin-bottom: 8px; display: inline-block;">Travel Direction
+                            <div class="tooltip"><strong>Bi-directional</strong> doubles heat stress at edges because the laser returns to the boundary immediately. <strong>Uni-directional</strong> allows more cooling time between lines.</div>
+                        </span>
                         <div class="mode-toggle" style="margin-bottom: 0;">
                             <button id="btnUni" class="mode-btn active" onclick="setDirection('uni')">Uni</button>
                             <button id="btnBi" class="mode-btn" onclick="setDirection('bi')">Bi</button>
                         </div>
                     </div>
                     <div class="control-group">
-                        <span class="label-text" style="margin-bottom: 8px; display: block;">Fill Pattern</span>
+                        <span class="label-text tooltip-trigger" style="margin-bottom: 8px; display: inline-block;">Fill Pattern
+                            <div class="tooltip"><strong>Crosshatch</strong> performs two passes at 90° as one job. This "traps" heat in the material, preventing dissipation between vertical and horizontal passes.</div>
+                        </span>
                         <div class="mode-toggle" style="margin-bottom: 0;">
                             <button id="btnSingle" class="mode-btn active" onclick="setPattern('single')">Single</button>
                             <button id="btnCross" class="mode-btn" onclick="setPattern('cross')">Cross</button>
                         </div>
                     </div>
                     <div class="control-group">
-                        <span class="label-text" style="margin-bottom: 8px; display: block;">Design Size</span>
+                        <span class="label-text tooltip-trigger" style="margin-bottom: 8px; display: inline-block;">Design Size
+                            <div class="tooltip">Smaller shapes (1-4mm) reach critical temperatures 10x faster. The "Thermal Return" time is so short that heat compounds before it can dissipate.</div>
+                        </span>
                         <div class="mode-toggle" style="margin-bottom: 0; display: flex; gap: 4px; flex-wrap: wrap;">
                             <button id="sz1" class="mode-btn size-btn" onclick="setSize(1)">1mm</button>
                             <button id="sz2" class="mode-btn size-btn" onclick="setSize(2)">2mm</button>
@@ -105,7 +164,9 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 16px; margin-bottom: 24px;">
                     <div class="control-group">
-                        <span class="label-text" style="margin-bottom: 8px; display: block;">Number of Passes</span>
+                        <span class="label-text tooltip-trigger" style="margin-bottom: 8px; display: inline-block;">Number of Passes
+                            <div class="tooltip">Multiple passes on small shapes can cause runaway heat build-up. Each subsequent pass adds energy to a material that is already near peak heat.</div>
+                        </span>
                         <div class="mode-toggle" style="margin-bottom: 0;">
                             <button id="p1" class="mode-btn pass-btn active" onclick="setPasses(1)">1</button>
                             <button id="p2" class="mode-btn pass-btn" onclick="setPasses(2)">2</button>
@@ -117,8 +178,10 @@
                     </div>
                     <div class="control-group">
                         <div class="label-row" style="margin-top: 24px;">
-                            <span class="label-text">Density (LPC)</span>
-                            <span id="valLPC" class="label-val">200</span>
+                            <span class="label-text tooltip-trigger">Density (LPC)
+                                <div class="tooltip">Higher LPC means more overlapping scan lines. At 1000 LPC, you are hitting the same spot 3 times per pass (0.01mm spacing vs 0.03mm spot).</div>
+                            </span>
+                            <span id="valLPC" class="label-val editable-val" onclick="enableLPCEdit()">200</span>
                         </div>
                         <input type="range" id="inputLPC" min="50" max="1000" value="200" step="50">
                     </div>
@@ -140,31 +203,45 @@
                     </div>
                     <div class="stats-panel">
                         <div class="stat-row">
-                            <span class="stat-label">IR Laser Size</span>
+                            <span class="stat-label tooltip-trigger">IR Laser Size
+                                <div class="tooltip">The xTool F2 IR module has a focused spot size of <strong>0.03mm</strong>. This is the physical "brush stroke" width.</div>
+                            </span>
                             <span class="stat-value">0.030</span> mm
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Line Spacing</span>
+                            <span class="stat-label tooltip-trigger">Line Spacing
+                                <div class="tooltip">Distance between scan lines. <strong>Spacing &lt; 0.03mm</strong> results in overlapping passes (Overdraw).</div>
+                            </span>
                             <span id="statSpacing" class="stat-value">0.050</span> mm
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label" id="overlapLabel">Scan Gap</span>
+                            <span class="stat-label tooltip-trigger" id="overlapLabel">Scan Gap
+                                <div class="tooltip">Shows how much lines overlap (Overdraw) or how much raw material is left between lines (Gap).</div>
+                            </span>
                             <span id="statOverlapVal" class="stat-value">40</span>%
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Est. Job Time</span>
+                            <span class="stat-label tooltip-trigger">Est. Job Time
+                                <div class="tooltip">Physically calculated duration based on 500mm/s scan speed and travel distance.</div>
+                            </span>
                             <span id="statTime" class="stat-value">0.00</span> s
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Total Passes</span>
+                            <span class="stat-label tooltip-trigger">Total Passes
+                                <div class="tooltip">Cumulative count of laser traversals (Pattern Passes × Repeat Passes).</div>
+                            </span>
                             <span id="statPasses" class="stat-value">1</span>
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Thermal Return</span>
+                            <span class="stat-label tooltip-trigger">Thermal Return
+                                <div class="tooltip">Time taken for the beam to return to the same X-vicinity. <strong>Under 50ms</strong> is high stress.</div>
+                            </span>
                             <span id="statReturn" class="stat-value">0.00</span> ms
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Heat Compounding</span>
+                            <span class="stat-label tooltip-trigger">Heat Compounding
+                                <div class="tooltip">Predictive warning based on return speed, size, and density. <strong>Extreme</strong> implies potential burning.</div>
+                            </span>
                             <span id="statCompounding" class="stat-value" style="color: #4ade80;">Normal</span>
                         </div>
                         
@@ -344,6 +421,36 @@
             updateUI();
             resetSim();
         };
+
+        function enableLPCEdit() {
+            const currentVal = valLPC.textContent;
+            valLPC.onclick = null; // Disable further clicks during edit
+            valLPC.innerHTML = `<input type="number" id="inputLPCDirect" value="${currentVal}" min="1" max="2000">`;
+            const input = document.getElementById('inputLPCDirect');
+            input.focus();
+            input.select();
+
+            const saveEdit = () => {
+                let newVal = parseInt(input.value);
+                if (isNaN(newVal) || newVal < 1) newVal = 1;
+                if (newVal > 2000) newVal = 2000;
+                
+                valLPC.innerHTML = newVal;
+                inputLPC.value = newVal;
+                valLPC.onclick = enableLPCEdit;
+                updateUI();
+                resetSim();
+            };
+
+            input.onblur = saveEdit;
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') saveEdit();
+                if (e.key === 'Escape') {
+                    valLPC.innerHTML = currentVal;
+                    valLPC.onclick = enableLPCEdit;
+                }
+            };
+        }
 
         function resetSim() {
             isComplete = false;
