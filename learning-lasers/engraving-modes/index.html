@@ -103,12 +103,16 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 16px; margin-bottom: 24px;">
                     <div class="control-group">
-                        <span class="label-text" style="margin-bottom: 8px; display: block;">Render Mode</span>
+                        <span class="label-text" style="margin-bottom: 8px; display: block;">Number of Passes</span>
                         <div class="mode-toggle" style="margin-bottom: 0;">
-                            <button id="btnAnim" class="mode-btn active" onclick="setRenderMode('animated')">Animated</button>
-                            <button id="btnInstant" class="mode-btn" onclick="setRenderMode('instant')">Instant</button>
+                            <button id="p1" class="mode-btn pass-btn active" onclick="setPasses(1)">1</button>
+                            <button id="p2" class="mode-btn pass-btn" onclick="setPasses(2)">2</button>
+                            <button id="p3" class="mode-btn pass-btn" onclick="setPasses(3)">3</button>
+                            <button id="p4" class="mode-btn pass-btn" onclick="setPasses(4)">4</button>
+                            <button id="p5" class="mode-btn pass-btn" onclick="setPasses(5)">5</button>
+                            <button id="p6" class="mode-btn pass-btn" onclick="setPasses(6)">6</button>
                         </div>
                     </div>
                     <div class="control-group">
@@ -117,6 +121,16 @@
                             <span id="valLPC" class="label-val">200</span>
                         </div>
                         <input type="range" id="inputLPC" min="50" max="1000" value="200" step="50">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                    <div class="control-group">
+                        <span class="label-text" style="margin-bottom: 8px; display: block;">Render Mode</span>
+                        <div class="mode-toggle" style="margin-bottom: 0;">
+                            <button id="btnAnim" class="mode-btn active" onclick="setRenderMode('animated')">Animated</button>
+                            <button id="btnInstant" class="mode-btn" onclick="setRenderMode('instant')">Instant</button>
+                        </div>
                     </div>
                 </div>
 
@@ -222,6 +236,7 @@
         let fillPat = 'single';
         let renderMode = 'animated';
         let designSize = 4; // mm
+        let numPasses = 1;
         let cellsToEtch = [];
         let isComplete = false;
         let peakHeatScore = 0;
@@ -244,6 +259,15 @@
             resetSim();
         }
 
+        function setPasses(p) {
+            numPasses = p;
+            document.querySelectorAll('.pass-btn').forEach(b => {
+                b.classList.toggle('active', b.id === 'p' + p);
+            });
+            updateUI();
+            resetSim();
+        }
+
         function setSize(s) {
             designSize = s;
             document.querySelectorAll('.size-btn').forEach(b => {
@@ -261,7 +285,9 @@
         }
 
         function updateUI() {
-            if (statPasses) statPasses.textContent = fillPat === 'single' ? "1" : "2";
+            const actualTotalPasses = numPasses * (fillPat === 'cross' ? 2 : 1);
+            if (statPasses) statPasses.textContent = actualTotalPasses;
+            
             const speed_actual = 500; 
             const return_ms = (scanDir === 'uni' ? (designSize * 2) : designSize) / speed_actual * 1000;
             if (statReturn) statReturn.textContent = return_ms.toFixed(2);
@@ -290,12 +316,13 @@
             const size_factor = 8 / designSize; 
             const pattern_factor = fillPat === 'cross' ? 1.4 : 1.0;
             const direction_factor = scanDir === 'bi' ? 1.3 : 1.0;
+            const pass_factor = 1.0 + (numPasses - 1) * 0.2;
             
             // Estimated time calculation using simulator module
-            const estTime = HeatSimulator.estimateJobTime(lpc, designSize, scanDir, fillPat, 500);
+            const estTime = HeatSimulator.estimateJobTime(lpc, designSize, scanDir, fillPat, numPasses, 500);
             if (statTime) statTime.textContent = estTime.toFixed(2);
 
-            peakHeatScore = Math.min(100, (density_factor * size_factor * pattern_factor * direction_factor) * 15);
+            peakHeatScore = Math.min(100, (density_factor * size_factor * pattern_factor * direction_factor * pass_factor) * 15);
             if (heatBar) heatBar.style.width = peakHeatScore + "%";
 
             if (statCompounding) {
@@ -340,7 +367,22 @@
                 ? (scanDir === 'uni' ? 'crosshatch-uni' : 'crosshatch-bi')
                 : (scanDir === 'uni' ? 'raster-uni' : 'raster-bi');
             
-            cellsToEtch = PathStrategies.generatePath(stratMode, GRID_SIZE);
+            const singlePassPath = PathStrategies.generatePath(stratMode, GRID_SIZE);
+            cellsToEtch = [];
+            
+            // Repeat path for multiple passes
+            for (let p = 0; p < numPasses; p++) {
+                // We must clone because generatePath returns a shared structure sometimes, 
+                // but usually it's just a fresh array. Still, we need N copies to pop().
+                cellsToEtch = cellsToEtch.concat([...singlePassPath].reverse());
+            }
+            // Reverse once at the end because generatePath returns start-to-finish order, 
+            // and we pop() from the end. But wait, if we reverse N times, it's confusing.
+            // Let's just use the start-to-finish order and reverse it once.
+            cellsToEtch = [];
+            for (let p = 0; p < numPasses; p++) {
+                cellsToEtch = cellsToEtch.concat([...singlePassPath].reverse());
+            }
         }
 
         function computeInstant() {

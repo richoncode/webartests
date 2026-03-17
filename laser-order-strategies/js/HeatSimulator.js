@@ -34,19 +34,20 @@ class HeatSimulator {
      * @param {number} size - Design size in mm
      * @param {string} scanDir - 'uni' or 'bi'
      * @param {string} fillPat - 'single' or 'cross'
+     * @param {number} passes - Number of repetitions
      * @param {number} speed - Scan speed in mm/s (default 500)
      */
-    static estimateJobTime(lpc, size, scanDir, fillPat, speed = 500) {
+    static estimateJobTime(lpc, size, scanDir, fillPat, passes = 1, speed = 500) {
         const numLines = (lpc / 10) * size;
         const lineDistance = size;
         const returnDistance = (scanDir === 'uni') ? size : 0;
-        const totalPasses = (fillPat === 'cross') ? 2 : 1;
+        const passMultiplier = (fillPat === 'cross') ? 2 : 1;
         
         // Time = (Etching Distance + Travel Distance) / Speed
         const timePerLine = (lineDistance + returnDistance) / speed;
         const timePerPass = numLines * timePerLine;
         
-        return timePerPass * totalPasses;
+        return timePerPass * passMultiplier * passes;
     }
 
     reset() {
