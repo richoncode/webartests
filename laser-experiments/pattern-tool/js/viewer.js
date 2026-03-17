@@ -261,16 +261,19 @@ export const XCSViewer = {
       const isFill = s.processingType === 'fill' || s.processingType === 'COLOR_FILL_ENGRAVE' || s.processingType === 'FILL_VECTOR_ENGRAVING';
       const fillOp = isFill ? '0.6' : '0.22';
       const strW = isFill ? '0' : '1.5';
-      const strC = isFill ? 'none' : s.layerColor;
+      
+      // Map black to white for visibility in the viewer
+      const renderColor = s.layerColor === '#000000' ? '#ffffff' : s.layerColor;
+      const strC = isFill ? 'none' : renderColor;
 
-      if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
-      else if (s.type==='RECT') el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:s.layerColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+      if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+      else if (s.type==='RECT') el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
       else if (s.type==='TEXT') {
         const fs = s.h * sc;
         // XCS uses the baseline anchor for its x and y. 
         // We render as 'start' to match the observation that x is the left edge.
         el = svgEl('text', {
-          x: cx, y: cy, fill: s.layerColor, 'font-size': fs,
+          x: cx, y: cy, fill: renderColor, 'font-size': fs,
           'text-anchor': 'start',
           transform: `rotate(${s.angle||0}, ${cx}, ${cy})`,
           'font-family': 'Lato, system-ui, -apple-system, sans-serif', 'font-weight': '700',
@@ -308,8 +311,9 @@ export const XCSViewer = {
       const typeLabel = s.processingType ? s.processingType.toUpperCase() : '—';
       const laserLabel = s.laser ? `<span style="color:#5b9bd5;font-weight:800;margin-left:4px">${s.laser.toUpperCase()}</span>` : '';
       const deLabel = s.density != null ? `${s.density} lpcm` : '—';
+      const dotColor = s.layerColor === '#000000' ? '#ffffff' : s.layerColor;
       row.innerHTML = `
-        <div class="shape-dot" style="background:${s.layerColor}"></div>
+        <div class="shape-dot" style="background:${dotColor}"></div>
         <div style="flex:1">
           <div class="shape-row-title">${s.type} #${s.idx+1} ${laserLabel} <span style="color:#444;font-size:9px;margin-left:4px">${typeLabel}</span></div>
           <div class="shape-row-sub">${s.power!=null?s.power+' pwr%':'—'} · ${s.speed!=null?s.speed+' mm/s':'—'} · ${deLabel}</div>

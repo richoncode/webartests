@@ -5,6 +5,22 @@ import { uuid } from '../utils.js';
 import { XcsTab } from './xcs-tab.js';
 import { MandalaTab } from './mandala-tab.js';
 
+const M8 = [
+  [ 0, 32,  8, 40,  2, 34, 10, 42],
+  [48, 16, 56, 24, 50, 18, 58, 26],
+  [12, 44,  4, 36, 14, 46,  6, 38],
+  [60, 28, 52, 20, 62, 30, 54, 22],
+  [ 3, 35, 11, 43,  1, 33,  9, 41],
+  [51, 19, 59, 27, 49, 17, 57, 25],
+  [15, 47,  7, 39, 13, 45,  5, 37],
+  [63, 31, 55, 23, 61, 29, 53, 21]
+];
+const BIT_REVERSE_SEQ = [0, 4, 2, 6, 1, 5, 3, 7];
+const BUCKET_COLORS = [
+  '#ef4444', '#06b6d4', '#eab308', '#8b5cf6', 
+  '#f97316', '#3b82f6', '#22c55e', '#000000'
+];
+
 export const GradientTab = {
   create(tabId, initialCfg) {
     const pane = document.createElement('div');
@@ -23,6 +39,7 @@ export const GradientTab = {
 
     const defaults = {
       laserType: 'ir',
+      disperseHeat: false,
       xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
       roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
       xMin: 10, xMax: 100,
@@ -67,6 +84,8 @@ export const GradientTab = {
     const laserSource = laserType === 'ir' ? 'red' : 'blue';
     const planType = laserType === 'ir' ? 'ir' : 'blue';
 
+    const labelColor = cfg.disperseHeat ? "#000000" : "#5b9bd5";
+
     const addText = (text, tx, ty, angle, size) => {
       const id = uuid();
       // Visual height of Lato Bold at 72pt is ~19.85mm
@@ -84,13 +103,13 @@ export const GradientTab = {
         id, name: null, type: 'TEXT', x: adjustedX, y: adjustedY, angle, 
         scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: adjustedX, offsetY: adjustedY, lockRatio: true, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "#5b9bd5",
-        layerColor: "#5b9bd5", visible: true, originColor: "#000000",
+        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: labelColor,
+        layerColor: labelColor, visible: true, originColor: "#000000",
         enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: textWidth * scale, height: size, isFill: true, lineColor: 0, fillColor: "#5b9bd5",
+        width: textWidth * scale, height: size, isFill: true, lineColor: 0, fillColor: labelColor,
         text, resolution: 1,
         style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "center" }
       });
@@ -111,7 +130,7 @@ export const GradientTab = {
         const getVal = (axis) => {
           let minVal, maxVal, stepIdx;
           if (axis === cfg.xAxis) { minVal = cfg.xMin; maxVal = cfg.xMax; stepIdx = ix; }
-          else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; stepIdx = iy; }
+          else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; stepIdx = (resolution - 1) - iy; }
           else { return axis === 'power' ? cfg.fixedPower : axis === 'speed' ? cfg.fixedSpeed : cfg.fixedLpcm; }
           
           if (resolution === 1) return minVal;
@@ -122,18 +141,21 @@ export const GradientTab = {
         const s = getVal('speed');
         const d = getVal('lpcm');
 
+        const bucket = Math.floor(M8[iy % 8][ix % 8] / 8);
+        const color = cfg.disperseHeat ? BUCKET_COLORS[bucket] : "#5b9bd5";
+
         const actualOverlap = overlap > 0 ? overlap : 0;
         displays.push({ 
           id, name: null, type: 'RECT', x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap, angle: 0,
           scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
           offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
-          zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "#5b9bd5",
-          layerColor: "#5b9bd5", visible: true, originColor: "#000000",
+          zOrder: displays.length, sourceId: id, groupTag: "", layerTag: color,
+          layerColor: color, visible: true, originColor: "#000000",
           enableTransform: true, visibleState: true, lockState: false,
           resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
           fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
           stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-          isFill: true, lineColor: 0, fillColor: "#5b9bd5", hideLabels: true, power: null
+          isFill: true, lineColor: 0, fillColor: color, hideLabels: true, power: null
         });
 
         const pm = { 
@@ -170,20 +192,34 @@ export const GradientTab = {
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
 
-      // Bottom axis (X): Start at grid left (gridL), and move 1.2mm + labelSize below bottom
-      addText(xLabel, gridL, gridB + labelSize + 1.2, 0, labelSize);
+      // Bottom axis (X): Start at grid left (gridL), and move up 2mm (subtract from Y)
+      addText(xLabel, gridL, gridB + labelSize - 0.8, 0, labelSize);
       // Left axis (Y): Start at grid bottom (gridB), and move 1.2mm + labelSize left of edge
       addText(yLabel, gridL - labelSize - 1.2, gridB, -90, labelSize);
-      // Top axis (Fixed): Center on the grid (CX) by manually offsetting the x coordinate.
+      // Top axis (Fixed): Center on the grid (CX) by manually offsetting the x coordinate. Move up 2mm.
       // Lato Bold is approx 0.5 width-to-height ratio. 
       const fLabelWidth = fLabel.length * labelSize * 0.5;
-      addText(fLabel, CX - (fLabelWidth / 2), gridT - 1.2, 0, labelSize);
+      addText(fLabel, CX - (fLabelWidth / 2), gridT - 3.2, 0, labelSize);
+    }
+
+    const layerData = {};
+    if (cfg.disperseHeat) {
+      BIT_REVERSE_SEQ.forEach((bucketIdx, i) => {
+        const color = BUCKET_COLORS[bucketIdx];
+        layerData[color] = {
+          name: bucketIdx === 7 ? "Sector 7 + Labels" : `Sector ${bucketIdx}`,
+          order: 8 - i, // 8 down to 1
+          visible: true
+        };
+      });
+    } else {
+      layerData["#5b9bd5"] = { name: "Grid", order: 1, visible: true };
     }
 
     return {
       canvasId: canvasId,
-      canvas: [{ id: canvasId, title: "{panel}1", layerData: {"#5b9bd5": {name:"Grid", order:1, visible:true}}, groupData: {}, displays }],
-      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: planType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: false, pathPlanning: "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
+      canvas: [{ id: canvasId, title: "{panel}1", layerData, groupData: {}, displays }],
+      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: planType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: cfg.disperseHeat, pathPlanning: cfg.disperseHeat ? "custom" : "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
       extId: "GS006", extName: "F2", version: "1.5.8", minRequiredVersion: "2.6.0", created: Date.now(), modify: Date.now(), projectTraceID: uuid()
     };
   },
@@ -220,6 +256,7 @@ export const GradientTab = {
 
     scroll.appendChild(MandalaTab.makeSection('Global', [
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
+      MandalaTab.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
       MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
       MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
       MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
