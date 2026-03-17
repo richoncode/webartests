@@ -68,37 +68,47 @@ const PathStrategies = {
         let path = [];
         
         if (mode === 'horizontal' || mode === 'raster-uni') {
+            // Scan Top to Bottom (y=0 to gridSize-1)
+            // Scan each line Left to Right (x=0 to gridSize-1)
+            // Pushing in reverse order so pop() gives the correct start
             for (let y = gridSize - 1; y >= 0; y--) {
                 for (let x = gridSize - 1; x >= 0; x--) path.push({x, y});
             }
         } else if (mode === 'raster-bi') {
+            // Scan Top to Bottom
             for (let y = gridSize - 1; y >= 0; y--) {
-                const isReverse = (y % 2 === 0); // Alternate direction per line
-                if (isReverse) {
-                    for (let x = 0; x < gridSize; x++) path.push({x, y});
-                } else {
+                const isEvenLine = (y % 2 === 0);
+                if (isEvenLine) {
+                    // Line 0, 2, 4...: Scan Left to Right (push 39...0)
                     for (let x = gridSize - 1; x >= 0; x--) path.push({x, y});
+                } else {
+                    // Line 1, 3, 5...: Scan Right to Left (push 0...39)
+                    for (let x = 0; x < gridSize; x++) path.push({x, y});
                 }
             }
         } else if (mode === 'crosshatch-uni' || mode === 'crosshatch-bi') {
-            // PASS 1: Horizontal (Scan Y, move X)
+            // Horizontal Pass (Rows)
             const subMode = mode === 'crosshatch-uni' ? 'raster-uni' : 'raster-bi';
             const pass1 = this.generatePath(subMode, gridSize);
             
-            // PASS 2: Vertical (Scan X, move Y)
+            // Vertical Pass (Columns) - Left to Right progression
             const pass2 = [];
-            for (let x = 0; x < gridSize; x++) {
-                // Determine if this vertical column should be scanned top-down or bottom-up
-                const isReverse = (mode === 'crosshatch-bi' && x % 2 !== 0);
-                if (isReverse) {
-                    for (let y = gridSize - 1; y >= 0; y--) pass2.push({x, y});
-                } else {
+            // We want x=0 column first, then x=1...
+            // So we push x=39 column first, then x=38...
+            for (let x = gridSize - 1; x >= 0; x--) {
+                const isEvenCol = (x % 2 === 0);
+                if (mode === 'crosshatch-bi' && !isEvenCol) {
+                    // Bi-directional Vertical: Odd columns Bottom to Top (push 0...39)
                     for (let y = 0; y < gridSize; y++) pass2.push({x, y});
+                } else {
+                    // Even columns (and all Uni columns): Top to Bottom (push 39...0)
+                    for (let y = gridSize - 1; y >= 0; y--) pass2.push({x, y});
                 }
             }
-            // Concatenate: Horizontal then Vertical.
-            // We reverse pass2 because the animator pops from the end of the array.
-            path = pass1.concat(pass2.reverse()); 
+            
+            // Per user request: Horizontal Pass FIRST.
+            // Since we pop() from the end, pass1 (Horizontal) must be at the END.
+            path = pass2.concat(pass1); 
         } else if (mode === 'diagonal') {
             let temp = [];
             for (let y = 0; y < gridSize; y++) {
