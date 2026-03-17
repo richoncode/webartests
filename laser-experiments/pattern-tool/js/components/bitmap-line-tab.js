@@ -189,6 +189,25 @@ export const BitmapLineTab = {
       })()
     ]));
 
+    const getMaxDpi = (type) => type === 'ir' ? 846 : 422;
+
+    const makeDpiControl = (key, r, isRange) => {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
+      
+      const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(key, false));
+      rangeCtrl.style.flex = '1';
+      wrap.appendChild(rangeCtrl);
+      
+      const fullBtn = document.createElement('button');
+      fullBtn.className = 'hbtn sm primary';
+      fullBtn.textContent = 'FULL';
+      fullBtn.style.padding = '0 6px';
+      fullBtn.onclick = () => set(p + key, getMaxDpi(cfg.laserType));
+      wrap.appendChild(fullBtn);
+      return wrap;
+    };
+
     // Lines
     cfg.lines.forEach((line, i) => {
       const p = `lines.${i}.`;
@@ -229,15 +248,16 @@ export const BitmapLineTab = {
 
       const children = [
         MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(axisOpts, line.rangeAxis, v => { set(p + 'rangeAxis', v); this.renderControls(tabId); }, axisLabels, axisTitles)),
-        MandalaTab.makeRow(`Min (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit('min', isRangeDur))),
-        MandalaTab.makeRow(`Max (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit('max', isRangeDur)))
+        MandalaTab.makeRow(`Min (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl('min', r, true) : MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit('min', isRangeDur))),
+        MandalaTab.makeRow(`Max (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl('max', r, true) : MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit('max', isRangeDur)))
       ];
 
       fixedAxes.forEach(fa => {
         const fr = getRanges(fa);
         const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedDpi';
         const isDur = fa === 'speed';
-        children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(key, isDur))));
+        const ctrl = fa === 'dpi' ? makeDpiControl(key, fr, false) : MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(key, isDur));
+        children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, ctrl));
       });
 
       const delBtn = document.createElement('button');
