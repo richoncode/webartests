@@ -63,7 +63,7 @@ export const XcsTab = {
       return { idx:i, id:d.id, type:d.type, x:d.x, y:d.y, w:d.width, h:d.height,
                angle:d.angle||0, layerColor:d.layerColor||'#5b9bd5', zOrder:d.zOrder||0,
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
-               density:pm.density??null, repeat:pm.repeat??1,
+               density:pm.density ?? pm.dpi ?? null, repeat:pm.repeat??1,
                laser: laser, hideLabels: !!d.hideLabels,
                ix: d.ix??null, iy: d.iy??null,
                text: d.text || null, style: d.style || null };

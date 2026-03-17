@@ -8,8 +8,10 @@ export const Popup = {
     const displayType = s.type === 'IMAGE' ? 'BITMAP' : s.type;
     document.getElementById('gpTitle').textContent   = `${displayType} #${s.idx+1}`;
     document.getElementById('gpPower').textContent   = s.power   != null ? s.power   + ' pwr%'   : '—';
-    document.getElementById('gpSpeed').textContent   = s.speed   != null ? s.speed   + ' mm/s'   : '—';
-    document.getElementById('gpDensity').textContent = s.density != null ? s.density + ' lpcm'   : '—';
+    const speedUnit = (s.type === 'IMAGE' || s.isGrayscaleGradient) ? ' ms' : ' mm/s';
+    document.getElementById('gpSpeed').textContent   = s.speed   != null ? s.speed   + speedUnit   : '—';
+    const densityUnit = (s.type === 'IMAGE' || s.isGrayscaleGradient) ? ' DPI' : ' lpcm';
+    document.getElementById('gpDensity').textContent = s.density != null ? s.density + densityUnit : '—';
     document.getElementById('gpRepeat').textContent  = s.repeat;
     document.getElementById('gpRepeatRow').style.display = s.repeat > 1 ? 'flex' : 'none';
     
@@ -309,18 +311,23 @@ export const XCSViewer = {
         }
 
         el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:fill,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
-        if (s.type === 'IMAGE' && !s.isGrayscaleGradient) {
+        
+        if (s.isGrayscaleGradient) {
+          // Add a white border for contrast in the viewer
+          el.setAttribute('stroke', '#ffffff');
+          el.setAttribute('stroke-width', '0.5');
+          el.setAttribute('stroke-opacity', '0.8');
+        } else if (s.type === 'IMAGE' && !s.isGrayscaleGradient) {
           // Add a "bitmap" texture or indicator
           el.setAttribute('stroke-dasharray', '2 1');
         }
       }
       else if (s.type==='TEXT') {
         const fs = s.h * sc;
-        // XCS uses the baseline anchor for its x and y. 
-        // We render as 'start' to match the observation that x is the left edge.
+        const anchor = s.style?.align === 'center' ? 'middle' : (s.style?.align === 'right' ? 'end' : 'start');
         el = svgEl('text', {
           x: cx, y: cy, fill: renderColor, 'font-size': fs,
-          'text-anchor': 'start',
+          'text-anchor': anchor,
           transform: `rotate(${s.angle||0}, ${cx}, ${cy})`,
           'font-family': 'Lato, system-ui, -apple-system, sans-serif', 'font-weight': '700',
           'fill-opacity': '0.8'
@@ -359,11 +366,12 @@ export const XCSViewer = {
       const laserLabel = s.laser ? `<span style="color:#5b9bd5;font-weight:800;margin-left:4px">${s.laser.toUpperCase()}</span>` : '';
       const deLabel = s.density != null ? `${s.density} lpcm` : '—';
       const dotColor = s.layerColor === '#000000' ? '#ffffff' : s.layerColor;
+      const speedUnit = (s.type === 'IMAGE' || s.isGrayscaleGradient) ? 'ms' : 'mm/s';
       row.innerHTML = `
         <div class="shape-dot" style="background:${dotColor}"></div>
         <div style="flex:1">
           <div class="shape-row-title">${displayType} #${s.idx+1} ${laserLabel} <span style="color:#444;font-size:9px;margin-left:4px">${typeLabel}</span></div>
-          <div class="shape-row-sub">${s.power!=null?s.power+' pwr%':'—'} · ${s.speed!=null?s.speed+' mm/s':'—'} · ${deLabel}</div>
+          <div class="shape-row-sub">${s.power!=null?s.power+' pwr%':'—'} · ${s.speed!=null?s.speed+' '+speedUnit:'—'} · ${deLabel}</div>
           <div style="font-size:8px;color:#444;font-family:monospace;margin-top:2px">ID: ${s.id}</div>
         </div>`;
       row.addEventListener('mouseenter', ev => this.onHover(v, state, s.idx, ev));
@@ -474,8 +482,11 @@ export const XCSViewer = {
     
     v.querySelector('.s-shapes').innerHTML  = `<strong>${shapes.length}</strong> shapes`;
     v.querySelector('.s-power').innerHTML   = formatRange('Power', powers, 'pwr%');
-    v.querySelector('.s-speed').innerHTML   = formatRange('Speed', speeds, 'mm/s');
-    v.querySelector('.s-density').innerHTML = formatRange('Density', dens, 'lpcm');
+    const isBitmap = shapes.some(s => s.type === 'IMAGE' || s.isGrayscaleGradient);
+    const speedUnit = isBitmap ? 'ms' : 'mm/s';
+    v.querySelector('.s-speed').innerHTML   = formatRange('Speed', speeds, speedUnit);
+    const densityUnit = isBitmap ? 'DPI' : 'lpcm';
+    v.querySelector('.s-density').innerHTML = formatRange('Density', dens, densityUnit);
   },
 
   renderProcessTree(v, state) {

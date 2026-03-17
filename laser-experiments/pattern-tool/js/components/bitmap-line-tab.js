@@ -25,7 +25,7 @@ export const BitmapLineTab = {
       laserType: 'ir',
       totalWidth: 80,
       lines: [
-        { id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000 }
+        { id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 0.1, fixedDpi: 300 }
       ]
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
@@ -58,9 +58,12 @@ export const BitmapLineTab = {
 
     const addText = (text, tx, ty, size, color, layerTag) => {
       const id = uuid();
+      // Visual height of Lato Bold at 72pt is ~19.85mm
       const baseHeight = 19.85;
       const scale = size / baseHeight;
       const fontSize = 72;
+      
+      // Approximate width logic (Lato Bold is ~0.5 width-to-height ratio)
       const textWidth = text.length * baseHeight * 0.5;
 
       displays.push({
@@ -75,7 +78,7 @@ export const BitmapLineTab = {
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
         width: textWidth * scale, height: size, isFill: true, lineColor: 0, fillColor: color,
         text, resolution: 1,
-        style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "left" }
+        style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "right" }
       });
       displayValues.push([id, {
         isFill: true, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
@@ -89,39 +92,50 @@ export const BitmapLineTab = {
 
     lines.forEach((line, i) => {
       const y = startY + i * 7; // 3mm line + 4mm gap
-      const x = CX - totalWidth / 2;
+      const gridX = CX - totalWidth / 2;
+      const labelSize = 2.4;
 
       // Labels
-      const axes = ['lpcm', 'power', 'speed'];
+      const axisAbbrevs = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
+      const axes = ['dpi', 'power', 'speed'];
       const fixedAxes = axes.filter(a => a !== line.rangeAxis);
-      const getVal = (a) => a === 'power' ? line.fixedPower : a === 'speed' ? line.fixedSpeed : line.fixedLpcm;
-      const getUnit = (a) => ({ power: '%', speed: 'mm/s', lpcm: 'L' }[a]);
+      const getVal = (a) => a === 'power' ? line.fixedPower : a === 'speed' ? line.fixedSpeed : line.fixedDpi;
+      const getUnit = (a) => ({ power: '%', speed: 'ms', dpi: 'DPI' }[a]);
       
-      const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${line.rangeAxis.toUpperCase()}`;
-      addText(labelText, x - 2, y + 1.5, 2.4, labelColor, "Labels");
+      const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${axisAbbrevs[line.rangeAxis]}`;
+      
+      // XCS uses the baseline anchor for its x and y.
+      // To center text at targetY, set y = targetY + height/2
+      const textX = gridX - 4;
+      const textY = (y + 1.5) + (labelSize / 2);
+      addText(labelText, textX, textY, labelSize, labelColor, "Labels");
 
-      // Grayscale Line (Placeholder as RECT for now, type IMAGE for logic)
+      // Grayscale Line
       const id = uuid();
+      const currentDpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
+      const widthPixels = Math.round(totalWidth * currentDpi / 25.4);
+
       displays.push({
-        id, name: null, type: 'IMAGE', x: x + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3, angle: 0,
+        id, name: null, type: 'IMAGE', x: gridX + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3, angle: 0,
         scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: x + totalWidth / 2, offsetY: y + 1.5, lockRatio: false, isClosePath: true,
+        offsetX: gridX + totalWidth / 2, offsetY: y + 1.5, lockRatio: false, isClosePath: true,
         zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "Lines",
         layerColor: lineColor, visible: true, originColor: "#000000",
         enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-        stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 0.2, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+        stroke: { paintType: "color", visible: false, color: 0, alpha: 1, width: 0, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
         isFill: true, lineColor: 0, fillColor: lineColor,
         // Custom metadata for viewer rendering
         isGrayscaleGradient: true,
-        minVal: line.min, maxVal: line.max, rangeAxis: line.rangeAxis
+        minVal: line.min, maxVal: line.max, rangeAxis: line.rangeAxis,
+        widthPixels, heightPixels: 1 // Uniform on Y
       });
 
       const pm = {
         power: line.rangeAxis === 'power' ? 100 : line.fixedPower,
         speed: line.rangeAxis === 'speed' ? 100 : line.fixedSpeed,
-        density: line.rangeAxis === 'lpcm' ? 1000 : line.fixedLpcm,
+        dpi: line.rangeAxis === 'dpi' ? 300 : line.fixedDpi,
         repeat: 1, processingLightSource: laserSource, bitmapScanMode: "zMode"
       };
 
@@ -168,7 +182,7 @@ export const BitmapLineTab = {
         btn.className = 'hbtn primary'; btn.style.width = '100%'; btn.style.marginTop = '8px';
         btn.textContent = '+ Add Line';
         btn.onclick = () => {
-          cfg.lines.push({ id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000 });
+          cfg.lines.push({ id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 0.1, fixedDpi: 300 });
           this.renderControls(tabId); update();
         };
         return btn;
@@ -178,13 +192,13 @@ export const BitmapLineTab = {
     // Lines
     cfg.lines.forEach((line, i) => {
       const p = `lines.${i}.`;
-      const axisLabels = { power: 'PWR', speed: 'SPD', lpcm: 'LPC' };
-      const axisOpts = ['power', 'speed', 'lpcm'];
+      const axisLabels = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
+      const axisOpts = ['power', 'speed', 'dpi'];
 
       const getRanges = (axis) => {
         if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
-        if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: 'mm/s' };
-        return { min: 10, max: 1000, step: 50, unit: 'L' };
+        if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: 'ms' };
+        return { min: 10, max: 1000, step: 10, unit: 'DPI' };
       };
 
       const r = getRanges(line.rangeAxis);
@@ -198,7 +212,7 @@ export const BitmapLineTab = {
 
       fixedAxes.forEach(fa => {
         const fr = getRanges(fa);
-        const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
+        const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedDpi';
         children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit)));
       });
 
