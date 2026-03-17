@@ -49,10 +49,10 @@
         canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
         
         .stats-panel { background: #080808; border: 1px solid #222; border-radius: 8px; padding: 20px; }
-        .stat-row { margin-bottom: 16px; border-bottom: 1px solid #111; padding-bottom: 12px; }
+        .stat-row { margin-bottom: 8px; border-bottom: 1px solid #111; padding-bottom: 6px; }
         .stat-row:last-child { border: none; margin: 0; padding: 0; }
-        .stat-label { font-size: 10px; text-transform: uppercase; color: #555; margin-bottom: 4px; display: block; }
-        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #fff; }
+        .stat-label { font-size: 10px; text-transform: uppercase; color: #555; margin-bottom: 2px; display: block; }
+        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; }
         .stat-value.hot { color: var(--danger); font-weight: bold; }
 
         .callout { border-left: 3px solid var(--accent); background: #0d2016; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #889; margin: 32px 0; }
@@ -126,8 +126,16 @@
                     </div>
                     <div class="stats-panel">
                         <div class="stat-row">
+                            <span class="stat-label">IR Laser Size</span>
+                            <span class="stat-value">0.030</span> mm
+                        </div>
+                        <div class="stat-row">
                             <span class="stat-label">Line Spacing</span>
                             <span id="statSpacing" class="stat-value">0.050</span> mm
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label" id="overlapLabel">Scan Gap</span>
+                            <span id="statOverlapVal" class="stat-value">40</span>%
                         </div>
                         <div class="stat-row">
                             <span class="stat-label">Est. Job Time</span>
@@ -143,7 +151,7 @@
                         </div>
                         <div class="stat-row">
                             <span class="stat-label">Heat Compounding</span>
-                            <span id="statOverlap" class="stat-value" style="color: #4ade80;">Normal</span>
+                            <span id="statCompounding" class="stat-value" style="color: #4ade80;">Normal</span>
                         </div>
                         
                         <div class="stat-row" style="border: none; margin-top: 8px;">
@@ -162,10 +170,6 @@
                 </div>
             </div>
         </div>
-
-    <script src="../../laser-order-strategies/js/HeatSimulator.js"></script>
-    <script src="../../laser-order-strategies/js/PathStrategies.js"></script>
-    <script src="../../laser-order-strategies/js/HeatRenderer.js"></script>
 
         <div class="section">
             <p class="section-title">F2 Features</p>
@@ -205,7 +209,9 @@
         const inputLPC = document.getElementById('inputLPC');
         const valLPC = document.getElementById('valLPC');
         const statSpacing = document.getElementById('statSpacing');
-        const statOverlap = document.getElementById('statOverlap');
+        const overlapLabel = document.getElementById('overlapLabel');
+        const statOverlapVal = document.getElementById('statOverlapVal');
+        const statCompounding = document.getElementById('statCompounding');
         const statTime = document.getElementById('statTime');
         const statReturn = document.getElementById('statReturn');
         const statPasses = document.getElementById('statPasses');
@@ -218,6 +224,8 @@
         let designSize = 4; // mm
         let cellsToEtch = [];
         let isComplete = false;
+        let peakHeatScore = 0;
+        let intensityMultiplier = 1.0; 
         let elapsedFrames = 0;
 
         function setDirection(d) {
@@ -259,24 +267,47 @@
             if (statReturn) statReturn.textContent = return_ms.toFixed(2);
 
             const lpc = parseInt(inputLPC.value);
+            const spacing = 10 / lpc; // mm
+            if (statSpacing) statSpacing.textContent = spacing.toFixed(3);
+
+            // IR Spot Size is 0.03mm
+            const spotSize = 0.03;
+            if (spacing < spotSize) {
+                // Overlap
+                const overlap = (1 - (spacing / spotSize)) * 100;
+                if (overlapLabel) overlapLabel.textContent = "Overdraw";
+                if (statOverlapVal) statOverlapVal.textContent = overlap.toFixed(0);
+                intensityMultiplier = spotSize / spacing; 
+            } else {
+                // Gap
+                const gap = ((spacing / spotSize) - 1) * 100;
+                if (overlapLabel) overlapLabel.textContent = "Scan Gap";
+                if (statOverlapVal) statOverlapVal.textContent = gap.toFixed(0);
+                intensityMultiplier = spotSize / spacing; 
+            }
+
             const density_factor = lpc / 200; 
             const size_factor = 8 / designSize; 
             const pattern_factor = fillPat === 'cross' ? 1.4 : 1.0;
             const direction_factor = scanDir === 'bi' ? 1.3 : 1.0;
             
+            // Estimated time calculation using simulator module
+            const estTime = HeatSimulator.estimateJobTime(lpc, designSize, scanDir, fillPat, 500);
+            if (statTime) statTime.textContent = estTime.toFixed(2);
+
             peakHeatScore = Math.min(100, (density_factor * size_factor * pattern_factor * direction_factor) * 15);
             if (heatBar) heatBar.style.width = peakHeatScore + "%";
 
-            if (statOverlap) {
+            if (statCompounding) {
                 if (peakHeatScore > 80) {
-                    statOverlap.textContent = "Extreme";
-                    statOverlap.style.color = "#f87171";
+                    statCompounding.textContent = "Extreme";
+                    statCompounding.style.color = "#f87171";
                 } else if (peakHeatScore > 50) {
-                    statOverlap.textContent = "High";
-                    statOverlap.style.color = "#fbbf24";
+                    statCompounding.textContent = "High";
+                    statCompounding.style.color = "#fbbf24";
                 } else {
-                    statOverlap.textContent = "Normal";
-                    statOverlap.style.color = "#4ade80";
+                    statCompounding.textContent = "Normal";
+                    statCompounding.style.color = "#4ade80";
                 }
             }
         }
@@ -313,7 +344,8 @@
         }
 
         function computeInstant() {
-            sim.processInstant(cellsToEtch, 12.0);
+            const intensity = 12.0 * intensityMultiplier;
+            sim.processInstant(cellsToEtch, intensity);
             isComplete = true;
             renderer.renderFinal(sim, { heatThreshold: 90.0 });
         }
@@ -324,14 +356,11 @@
                 return;
             }
 
-            const lpc = parseInt(inputLPC.value);
-            statSpacing.textContent = (10 / lpc).toFixed(3);
-
-            // Scale subSteps by size so smaller designs scan faster visually
             const subSteps = Math.ceil(16 / designSize); 
+            const intensity = 12.0 * intensityMultiplier;
             
             for(let s=0; s<subSteps; s++) {
-                const cell = sim.processStep(cellsToEtch, 12.0);
+                const cell = sim.processStep(cellsToEtch, intensity);
                 if (!cell && cellsToEtch.length === 0) {
                     isComplete = true;
                 } else if (cell) {
@@ -339,15 +368,11 @@
                 }
             }
 
-            // Always render so heat dissipates even when isComplete is true
             renderer.render(sim, { viewHeat: true, heatThreshold: 90.0 });
             
             if (!isComplete && cellsToEtch.length > 0) {
                 const activeCell = cellsToEtch[cellsToEtch.length - 1];
                 renderer.renderBloom(activeCell.x, activeCell.y, 1.0);
-                
-                const timeScale = 0.005 * designSize; 
-                statTime.textContent = (elapsedFrames * timeScale).toFixed(2);
             }
 
             requestAnimationFrame(draw);
@@ -355,14 +380,6 @@
 
         updateUI();
         resetSim();
-        draw();
-    </script>
-
-        updateUI();
-        draw();
-    </script>
-
-        updateUI();
         draw();
     </script>
 </body>

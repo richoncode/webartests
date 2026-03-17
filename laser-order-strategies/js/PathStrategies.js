@@ -81,13 +81,14 @@ const PathStrategies = {
                 }
             }
         } else if (mode === 'crosshatch-uni' || mode === 'crosshatch-bi') {
-            // First pass (Horizontal)
+            // PASS 1: Horizontal (Scan Y, move X)
             const subMode = mode === 'crosshatch-uni' ? 'raster-uni' : 'raster-bi';
             const pass1 = this.generatePath(subMode, gridSize);
             
-            // Second pass (Vertical)
+            // PASS 2: Vertical (Scan X, move Y)
             const pass2 = [];
             for (let x = 0; x < gridSize; x++) {
+                // Determine if this vertical column should be scanned top-down or bottom-up
                 const isReverse = (mode === 'crosshatch-bi' && x % 2 !== 0);
                 if (isReverse) {
                     for (let y = gridSize - 1; y >= 0; y--) pass2.push({x, y});
@@ -95,8 +96,9 @@ const PathStrategies = {
                     for (let y = 0; y < gridSize; y++) pass2.push({x, y});
                 }
             }
-            // In crosshatch, we return the passes concatenated or as a single flow
-            path = pass1.concat(pass2.reverse()); // Reverse pass2 because we pop() from the end in the animator
+            // Concatenate: Horizontal then Vertical.
+            // We reverse pass2 because the animator pops from the end of the array.
+            path = pass1.concat(pass2.reverse()); 
         } else if (mode === 'diagonal') {
             let temp = [];
             for (let y = 0; y < gridSize; y++) {

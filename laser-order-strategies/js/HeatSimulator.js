@@ -28,6 +28,27 @@ class HeatSimulator {
         this.reset();
     }
 
+    /**
+     * Estimates the physical job time in seconds.
+     * @param {number} lpc - Lines per cm
+     * @param {number} size - Design size in mm
+     * @param {string} scanDir - 'uni' or 'bi'
+     * @param {string} fillPat - 'single' or 'cross'
+     * @param {number} speed - Scan speed in mm/s (default 500)
+     */
+    static estimateJobTime(lpc, size, scanDir, fillPat, speed = 500) {
+        const numLines = (lpc / 10) * size;
+        const lineDistance = size;
+        const returnDistance = (scanDir === 'uni') ? size : 0;
+        const totalPasses = (fillPat === 'cross') ? 2 : 1;
+        
+        // Time = (Etching Distance + Travel Distance) / Speed
+        const timePerLine = (lineDistance + returnDistance) / speed;
+        const timePerPass = numLines * timePerLine;
+        
+        return timePerPass * totalPasses;
+    }
+
     reset() {
         const totalSize = this.simSize * this.simSize;
         this.heatMap = new Float32Array(totalSize);
