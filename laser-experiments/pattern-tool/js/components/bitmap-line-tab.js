@@ -183,10 +183,16 @@ export const BitmapLineTab = {
       const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(line, p, key, false));
       rangeCtrl.style.position = 'relative';
       
+      const fullVal = getMaxDpi(cfg.laserType);
       const fullBtn = document.createElement('button');
       fullBtn.className = 'dpi-full-popout';
-      fullBtn.textContent = 'FULL';
-      fullBtn.onclick = (e) => { e.stopPropagation(); set(p + key, getMaxDpi(cfg.laserType)); };
+      fullBtn.textContent = `Full (${fullVal} DPI)`;
+      fullBtn.title = 'Best resolution based on laser spot size';
+      fullBtn.onclick = (e) => { 
+        e.stopPropagation(); 
+        set(p + key, fullVal);
+        this.renderControls(tabId); // Re-render to update sliders/labels
+      };
       rangeCtrl.appendChild(fullBtn);
       return rangeCtrl;
     };
