@@ -43,6 +43,26 @@ When modifying or creating laser educational content, respect these physical con
 - **Thermal Maps:** Use additive blending (`globalCompositeOperation = 'lighter'` or `'screen'`) to show heat accumulation.
 - **Color Mapping:** Map thermal intensity to the **Green → Amber → Red** palette to match the "Peak Heat Stress" UI gauge.
 
+## Reusable Modules
+The project includes a modular thermal simulation engine for laser material processing experiments. These modules are located in `laser-order-strategies/js/`.
+
+### 1. `HeatSimulator.js`
+A physics-based thermal engine that handles heat accumulation and conduction.
+- **Configurable Physics:** `diffusionRate` (k), `decayRate`, `splashFactor`.
+- **State Tracking:** Per-pixel current heat and peak heat; etched state tracking.
+- **Methods:** `addHeat(x, y, intensity)`, `step()`, `reset()`, `getStats()`.
+
+### 2. `PathStrategies.js`
+A collection of scan path generation algorithms.
+- **Deterministic Paths:** `horizontal`, `diagonal`, `triphase`, `hilbert`.
+- **Stochastic Paths:** `quadrant`, `dispersive` (Bit-Reverse).
+- **Usage:** `PathStrategies.generatePath(mode, gridSize, bucketIdx)`.
+
+### 3. `HeatRenderer.js`
+A dedicated renderer for thermal simulation data.
+- **Modes:** Supports visual overlays for active heat, persistent peak heat, and path sectors (buckets).
+- **Customizable:** Adaptable color palettes and thresholds.
+
 ## Development Workflow
 - **Local Server:** Serve via `python3 -m http.server 8080` or `npx serve .`.
 - **AR Testing:** Requires HTTPS (use `npx localtunnel` or `Cloudflare Tunnel`) for camera access on real devices.
