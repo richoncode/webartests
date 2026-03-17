@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LPCM & DPI: The Density Factor — Learning Lasers</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #bbb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 860px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: #aaa; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; color: #fff; }
+        .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 56px; }
+        
+        .section { margin-bottom: 64px; }
+        .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #8b5cf6; margin-bottom: 4px; }
+        .section-name { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #fff; }
+        p { margin-bottom: 20px; }
+
+        .tutorial-container { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 32px; margin-bottom: 32px; }
+        
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #000; border: 1px solid #2a2a2a; border-radius: 8px; position: relative; overflow: hidden; aspect-ratio: 1; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #888; }
+        .label-val { font-family: 'SF Mono', monospace; font-size: 13px; color: #8b5cf6; }
+        
+        input[type=range] { width: 100%; height: 6px; background: #222; border-radius: 3px; appearance: none; outline: none; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: #8b5cf6; border-radius: 50%; cursor: pointer; border: 3px solid #111; }
+
+        /* Converter Styles */
+        .converter-card { background: #080808; border: 1px solid #222; border-radius: 12px; padding: 24px; margin-top: 32px; }
+        .converter-grid { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 16px; align-items: center; }
+        .conv-input-group { display: flex; flex-direction: column; gap: 8px; }
+        .conv-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #444; letter-spacing: 1px; }
+        .conv-input { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 16px; width: 100%; text-align: center; outline: none; transition: border-color 0.2s; }
+        .conv-input:focus { border-color: #8b5cf6; }
+        .conv-arrow { text-align: center; color: #333; font-size: 20px; }
+
+        .callout { border-left: 3px solid #8b5cf6; background: #13101a; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #889; margin: 32px 0; }
+        .callout strong { color: #fff; }
+
+        .metric-card { background: #0d0d0d; border: 1px solid #1a1a1a; padding: 16px; border-radius: 8px; margin-top: 16px; }
+        .metric-label { font-size: 10px; text-transform: uppercase; color: #555; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: 'SF Mono', monospace; font-size: 14px; color: #fff; }
+
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-left: 8px; }
+        .badge-low { background: #064e3b; color: #34d399; }
+        .badge-high { background: #450a0a; color: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <a class="back" href="../">← Back to Learning Lasers</a>
+        <h1>LPCM & DPI: The Density Factor</h1>
+        <p class="subtitle">Density determines how many times the laser hits the same physical area. It is a linear "additive" variable: double the density, and you double the energy dose.</p>
+
+        <div class="section">
+            <p class="section-title">Visual Overlap</p>
+            <h2 class="section-name">The Scan Gap vs. Spot Size</h2>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 24px;">
+                <button id="btnIR" class="active" style="flex: 1; padding: 12px; background: #1e1b2e; border: 1px solid #8b5cf6; color: #8b5cf6; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase;" onclick="setLaser('ir')">5W Infrared (0.03mm)</button>
+                <button id="btnBlue" style="flex: 1; padding: 12px; background: #111; border: 1px solid #333; color: #666; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase;" onclick="setLaser('blue')">15W Blue Diode (0.06mm)</button>
+            </div>
+
+            <p>On the xTool F2, your IR spot size is <strong>0.03mm</strong>, but the Blue Diode is a <strong>0.08 x 0.06mm</strong> rectangle. The "height" of the beam determines how many lines you need to cover the surface.</p>
+            
+            <div class="tutorial-container">
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="overlapCanvas" width="400" height="400"></canvas>
+                    </div>
+
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Lines per cm (LPCM)</span>
+                                <span id="valLPCM" class="label-val">200</span>
+                            </div>
+                            <input type="range" id="inputLPCM" min="50" max="1000" value="200" step="10">
+                        </div>
+
+                        <div class="metric-card">
+                            <span class="metric-label">Scan Gap (Line Spacing)</span>
+                            <div class="metric-value"><span id="statGap">0.0500</span> mm</div>
+                        </div>
+
+                        <div class="metric-card">
+                            <span class="metric-label">Thermal Overlap</span>
+                            <div class="metric-value"><span id="statOverlap">0%</span> <span id="overlapBadge" class="badge">None</span></div>
+                        </div>
+
+                        <div class="metric-card">
+                            <span class="metric-label">Total Energy Multiplier</span>
+                            <div class="metric-value" style="color: #8b5cf6;">x<span id="statMultiplier">1.0</span></div>
+                        </div>
+
+                        <p style="font-size: 11px; color: #444; margin-top: 16px; line-height: 1.4;">
+                            <span id="activeLaserDesc">* IR Spot Size: 0.03mm (30 microns)</span><br>
+                            <span id="perfectFillDesc">* Theoretical "Perfect" Fill: 333 LPCM</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="section-title">Toolbox</p>
+            <h2 class="section-name">Density Converter</h2>
+            <p>Different software uses different units. LightBurn typically defaults to <strong>DPI</strong> (Dots Per Inch) or <strong>Interval</strong> (mm), while XCS defaults to <strong>LPCM</strong> (Lines Per Centimeter).</p>
+            
+            <div class="converter-card">
+                <div class="converter-grid">
+                    <div class="conv-input-group">
+                        <label class="conv-label">LPCM (Lines/cm)</label>
+                        <input type="number" id="convLPCM" class="conv-input" value="333">
+                    </div>
+                    <div class="conv-arrow">⇌</div>
+                    <div class="conv-input-group">
+                        <label class="conv-label">DPI (Dots/Inch)</label>
+                        <input type="number" id="convDPI" class="conv-input" value="846">
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: center; font-size: 12px; color: #555;">
+                    <span id="convInterval">Interval: 0.0300 mm</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="section-title">The Energy Connection</p>
+            <h2 class="section-name">Why Density feels "Linear"</h2>
+            <p>Unlike Speed, which is an exponential $1/x$ curve, Density is <strong>Additive</strong>. If you change from 200 LPCM to 400 LPCM, you are delivering exactly 100% more energy to the material surface.</p>
+            
+            <div class="callout">
+                <strong>The "HD" Trap:</strong> Setting your F2 to 1000 LPCM doesn't make the image 3x sharper than 333 LPCM—it just makes it 3x hotter. Because the spot size is 0.03mm, any gap smaller than that simply blurs the lines together into a single "plowed" field of heat.
+            </div>
+        </div>
+
+        <div class="chapter-nav" style="display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1a1a1a;">
+            <a href="../speed-curve/" style="text-decoration: none; color: #555; font-size: 14px;">
+                <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px;">Previous Chapter</span>
+                ← The Speed Curve
+            </a>
+            <a href="../power-beam-heat/" style="text-decoration: none; color: #555; font-size: 14px; text-align: right;">
+                <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px;">Next Chapter</span>
+                Power, Beam Shape & Heat Transfer →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const inputLPCM = document.getElementById('inputLPCM');
+        const valLPCM = document.getElementById('valLPCM');
+        const statGap = document.getElementById('statGap');
+        const statOverlap = document.getElementById('statOverlap');
+        const statMultiplier = document.getElementById('statMultiplier');
+        const overlapBadge = document.getElementById('overlapBadge');
+        const canvas = document.getElementById('overlapCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const convLPCM = document.getElementById('convLPCM');
+        const convDPI = document.getElementById('convDPI');
+        const convInterval = document.getElementById('convInterval');
+
+        let activeLaser = 'ir';
+        const spotConfigs = {
+            ir: { size: 0.03, color: '#8b5cf6', desc: '* IR Spot Size: 0.03mm (30 microns)', fill: 333 },
+            blue: { size: 0.06, color: '#3b82f6', desc: '* Blue Spot Size: 0.08 x 0.06mm (Height affects gap)', fill: 166 }
+        };
+
+        function setLaser(type) {
+            activeLaser = type;
+            document.getElementById('btnIR').style.background = type === 'ir' ? '#1e1b2e' : '#111';
+            document.getElementById('btnIR').style.color = type === 'ir' ? '#8b5cf6' : '#666';
+            document.getElementById('btnIR').style.borderColor = type === 'ir' ? '#8b5cf6' : '#333';
+            
+            document.getElementById('btnBlue').style.background = type === 'blue' ? '#1e2d40' : '#111';
+            document.getElementById('btnBlue').style.color = type === 'blue' ? '#3b82f6' : '#666';
+            document.getElementById('btnBlue').style.borderColor = type === 'blue' ? '#3b82f6' : '#333';
+
+            document.getElementById('activeLaserDesc').textContent = spotConfigs[type].desc;
+            document.getElementById('perfectFillDesc').textContent = `* Theoretical "Perfect" Fill: ${spotConfigs[type].fill} LPCM`;
+            
+            updateViz();
+        }
+
+        function updateViz() {
+            const lpcm = parseInt(inputLPCM.value);
+            const cfg = spotConfigs[activeLaser];
+            valLPCM.textContent = lpcm;
+            
+            const gap = 10 / lpcm; // mm
+            statGap.textContent = gap.toFixed(4);
+
+            const multiplier = lpcm / 100;
+            statMultiplier.textContent = multiplier.toFixed(2);
+
+            // Overlap logic: If gap < spot_size, we have overlap
+            let overlapPct = 0;
+            if (gap < cfg.size) {
+                overlapPct = ((cfg.size - gap) / cfg.size) * 100;
+                overlapBadge.textContent = lpcm > (cfg.fill * 2) ? "Extreme" : "Overlapping";
+                overlapBadge.className = "badge " + (lpcm > (cfg.fill * 2) ? "badge-high" : "badge-low");
+            } else {
+                overlapBadge.textContent = "None";
+                overlapBadge.className = "badge";
+            }
+            statOverlap.textContent = Math.round(overlapPct) + "%";
+
+            // Draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const scale = 5000; 
+            const pixelSpot = cfg.size * scale;
+            const pixelGap = gap * scale;
+
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = cfg.color;
+            
+            for(let y=0; y<canvas.height + pixelSpot; y += pixelGap) {
+                ctx.beginPath();
+                ctx.rect(0, y, canvas.width, pixelSpot);
+                ctx.fill();
+            }
+        }
+
+        function convertLPCM(val) {
+            const dpi = Math.round(val * 2.54);
+            const interval = 10 / val;
+            convDPI.value = dpi;
+            convInterval.textContent = `Interval: ${interval.toFixed(4)} mm`;
+        }
+
+        function convertDPI(val) {
+            const lpcm = Math.round(val / 2.54);
+            const interval = 25.4 / val;
+            convLPCM.value = lpcm;
+            convInterval.textContent = `Interval: ${interval.toFixed(4)} mm`;
+        }
+
+        inputLPCM.addEventListener('input', updateViz);
+        convLPCM.addEventListener('input', (e) => convertLPCM(e.target.value));
+        convDPI.addEventListener('input', (e) => convertDPI(e.target.value));
+
+        updateViz();
+        convertLPCM(333);
+    </script>
+</body>
+</html>

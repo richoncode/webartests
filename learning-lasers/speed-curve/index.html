@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Speed Curve — Learning Lasers</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #bbb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 860px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: #aaa; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; color: #fff; }
+        .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 56px; }
+        
+        .section { margin-bottom: 64px; }
+        .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #f59e0b; margin-bottom: 4px; }
+        .section-name { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #fff; }
+        p { margin-bottom: 20px; }
+
+        .tutorial-container { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 32px; margin-bottom: 32px; }
+        
+        .viz-layout { display: grid; grid-template-columns: 1fr 300px; gap: 40px; }
+        .graph-container { background: #080808; border: 1px solid #222; border-radius: 8px; height: 350px; position: relative; padding: 40px; display: flex; align-items: flex-end; }
+        .axis { position: absolute; background: #333; }
+        .axis-y { left: 40px; top: 40px; bottom: 40px; width: 1px; }
+        .axis-x { left: 40px; right: 40px; bottom: 40px; height: 1px; }
+        .graph-label { position: absolute; font-size: 10px; color: #555; text-transform: uppercase; font-weight: 700; }
+        
+        .curve-svg { position: absolute; top: 40px; left: 40px; width: calc(100% - 80px); height: calc(100% - 80px); overflow: visible; }
+        .curve-path { fill: none; stroke-width: 2; transition: d 0.3s; }
+        .indicator { width: 10px; height: 10px; border-radius: 50%; position: absolute; transform: translate(-50%, 50%); z-index: 10; border: 2px solid #fff; }
+
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #888; }
+        .label-val { font-family: 'SF Mono', monospace; font-size: 13px; color: #f59e0b; }
+        
+        input[type=range] { width: 100%; height: 6px; background: #222; border-radius: 3px; appearance: none; outline: none; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: #f59e0b; border-radius: 50%; cursor: pointer; border: 3px solid #111; }
+
+        .analogy-box { background: #1a150d; border-left: 3px solid #f59e0b; padding: 24px; border-radius: 0 12px 12px 0; display: flex; gap: 24px; align-items: center; margin: 40px 0; }
+        .analogy-icon { font-size: 40px; }
+        .analogy-text h3 { color: #f59e0b; font-size: 16px; margin-bottom: 4px; }
+        .analogy-text p { font-size: 14px; color: #a89; margin: 0; line-height: 1.5; }
+
+        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 40px 0; }
+        .comp-card { background: #111; border: 1px solid #222; padding: 24px; border-radius: 12px; }
+        .comp-title { font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .comp-math { font-family: 'SF Mono', monospace; font-size: 18px; color: #fff; margin-bottom: 8px; display: block; }
+        .comp-desc { font-size: 13px; color: #666; line-height: 1.5; }
+
+        .thermal-limit { background: #1a0d0d; border: 1px solid #311; border-radius: 12px; padding: 24px; margin-top: 40px; }
+        .limit-title { color: #f87171; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <a class="back" href="../">← Back to Learning Lasers</a>
+        <h1>The Speed Curve</h1>
+        <p class="subtitle">Power and Density are linear fine-tuning knobs. Speed is a non-linear "turbo" knob. Understanding the $1/x$ relationship is the key to mastering high-order colors.</p>
+
+        <div class="section">
+            <p class="section-title">Linear vs. Exponential</p>
+            <h2 class="section-name">The $1/x$ Energy Spike</h2>
+            <p>Power and LPC are additive—double the power, and you double the energy. But <strong>Speed</strong> sits in the denominator of the energy equation. As speed decreases, energy density doesn't just grow; it spikes.</p>
+            
+            <div class="tutorial-container">
+                <div class="viz-layout">
+                    <div class="graph-container">
+                        <div class="axis axis-y"></div>
+                        <div class="axis axis-x"></div>
+                        <div class="graph-label" style="left: 0; top: 50%; transform: rotate(-90deg) translateX(-50%);">Energy Density</div>
+                        <div class="graph-label" style="bottom: 10px; left: 50%; transform: translateX(-50%);" id="xAxisLabel">Speed (mm/s)</div>
+                        
+                        <svg class="curve-svg">
+                            <path id="curvePath" class="curve-path" d=""></path>
+                        </svg>
+                        <div id="indicator" class="indicator"></div>
+                    </div>
+
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Switch Variable</span>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="btnSpeed" class="active" style="flex:1; padding: 8px; background: #222; border: 1px solid #f59e0b; color: #f59e0b; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase;" onclick="setGraph('speed')">Speed</button>
+                                <button id="btnPower" style="flex:1; padding: 8px; background: #111; border: 1px solid #333; color: #666; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase;" onclick="setGraph('power')">Power</button>
+                            </div>
+                        </div>
+
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text" id="sliderLabel">Speed (mm/s)</span>
+                                <span id="valSlider" class="label-val">500</span>
+                            </div>
+                            <input type="range" id="inputVal" min="50" max="1500" value="500">
+                        </div>
+
+                        <div style="background: #080808; padding: 16px; border-radius: 8px; border: 1px solid #222;">
+                            <div class="label-text" style="margin-bottom: 8px;">Energy Result</div>
+                            <div style="font-family: 'SF Mono', monospace; font-size: 24px; color: #fff;" id="energyResult">333 <span style="font-size: 12px; color: #444;">mJ/mm²</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="analogy-box">
+            <div class="analogy-icon">🕯️</div>
+            <div class="analogy-text">
+                <h3>The Candle Analogy</h3>
+                <p>Think of passing your hand through a candle flame. Doubling the flame size (Power) is hot, but walking through the flame (Low Speed) is catastrophic. Speed changes the <strong>duration</strong> of the reaction.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <p class="section-title">Why the Math Differs</p>
+            <div class="comparison-grid">
+                <div class="comp-card">
+                    <div class="comp-title" style="color: #60a5fa;">Power & LPCM</div>
+                    <span class="comp-math">Linear (Additive)</span>
+                    <p class="comp-desc">Doubling power delivers exactly twice as many photons. It's like adding a second coat of paint—predictable and straight.</p>
+                </div>
+                <div class="comp-card">
+                    <div class="comp-title" style="color: #f59e0b;">Speed ($mm/s$)</div>
+                    <span class="comp-math">Non-Linear ($1/x$)</span>
+                    <p class="comp-desc">Because speed is in the denominator, a tiny change at low speeds (150 to 120) is far more aggressive than the same change at high speeds.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="thermal-limit">
+            <div class="limit-title">The Thermal Diffusion Limit</div>
+            <p style="font-size: 14px; color: #a89; margin: 0; line-height: 1.6;">Metal acts like a heat sink. At high speeds, the laser moves faster than the heat can travel, keeping energy "trapped" at the surface for thin, vibrant colors. At low speeds, the bulk material gets hot and stops acting as a sink—surface temperature doesn't just rise; it <strong>compounds</strong>.</p>
+        </div>
+    </div>
+
+    <script>
+        const input = document.getElementById('inputVal');
+        const valSlider = document.getElementById('valSlider');
+        const sliderLabel = document.getElementById('sliderLabel');
+        const energyResult = document.getElementById('energyResult');
+        const xAxisLabel = document.getElementById('xAxisLabel');
+        const curvePath = document.getElementById('curvePath');
+        const indicator = document.getElementById('indicator');
+        const btnSpeed = document.getElementById('btnSpeed');
+        const btnPower = document.getElementById('btnPower');
+
+        let graphMode = 'speed';
+        const W = 500; // SVG Width (concept)
+        const H = 350; // SVG Height (concept)
+
+        function setGraph(mode) {
+            graphMode = mode;
+            btnSpeed.style.borderColor = mode === 'speed' ? '#f59e0b' : '#333';
+            btnSpeed.style.color = mode === 'speed' ? '#f59e0b' : '#666';
+            btnPower.style.borderColor = mode === 'power' ? '#f59e0b' : '#333';
+            btnPower.style.color = mode === 'power' ? '#f59e0b' : '#666';
+            
+            if (mode === 'speed') {
+                input.min = 50; input.max = 1500; input.value = 500;
+                sliderLabel.textContent = "Speed (mm/s)";
+                xAxisLabel.textContent = "Speed (mm/s)";
+            } else {
+                input.min = 1; input.max = 100; input.value = 50;
+                sliderLabel.textContent = "Power (%)";
+                xAxisLabel.textContent = "Power (%)";
+            }
+            update();
+        }
+
+        function update() {
+            const val = parseFloat(input.value);
+            valSlider.textContent = val + (graphMode === 'speed' ? ' mm/s' : '%');
+            
+            let energy;
+            if (graphMode === 'speed') {
+                // E = (2.5 / (speed * 0.03)) * 1000
+                energy = (2.5 / (val * 0.03)) * 1000;
+            } else {
+                // E = ((val/100)*5 / (500 * 0.03)) * 1000
+                energy = ((val/100)*5 / (500 * 0.03)) * 1000;
+            }
+            energyResult.innerHTML = Math.round(energy) + ' <span style="font-size: 12px; color: #444;">mJ/mm²</span>';
+
+            // Draw Curve
+            let d = "";
+            const points = 50;
+            const svgW = curvePath.ownerSVGElement.clientWidth;
+            const svgH = curvePath.ownerSVGElement.clientHeight;
+
+            for(let i=0; i<=points; i++) {
+                const xPct = i / points;
+                const xVal = graphMode === 'speed' ? 50 + xPct * 1450 : 1 + xPct * 99;
+                let yVal;
+                if (graphMode === 'speed') {
+                    yVal = (2.5 / (xVal * 0.03)) * 1000;
+                } else {
+                    yVal = ((xVal/100)*5 / (500 * 0.03)) * 1000;
+                }
+
+                // Map to SVG coords (inverted Y, max energy 1500 for scale)
+                const px = xPct * svgW;
+                const py = svgH - (yVal / 1500) * svgH;
+                d += (i === 0 ? "M" : "L") + px + " " + py;
+
+                // Move indicator
+                if (Math.abs(xVal - val) < (graphMode === 'speed' ? 30 : 2)) {
+                    indicator.style.left = (40 + px) + "px";
+                    indicator.style.top = (40 + py) + "px";
+                }
+            }
+            curvePath.setAttribute('d', d);
+            curvePath.setAttribute('stroke', graphMode === 'speed' ? '#f59e0b' : '#60a5fa');
+        }
+
+        input.addEventListener('input', update);
+        window.addEventListener('resize', update);
+        setGraph('speed');
+    </script>
+</body>
+</html>
