@@ -33,6 +33,38 @@ class HeatRenderer {
     }
 
     /**
+     * Renders a glowing laser spot at specific coordinates.
+     */
+    renderBloom(x, y, intensity = 1.0) {
+        const { ctx, cellPixels } = this;
+        const px = x * cellPixels + cellPixels / 2;
+        const py = y * cellPixels + cellPixels / 2;
+        
+        ctx.save();
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, cellPixels * 2);
+        grad.addColorStop(0, `rgba(255, 255, 255, ${0.8 * intensity})`);
+        grad.addColorStop(0.2, `rgba(255, 200, 0, ${0.4 * intensity})`);
+        grad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, cellPixels * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    /**
+     * Standardized renderer for a finished job.
+     */
+    renderFinal(sim, options = {}) {
+        const finalOptions = Object.assign({}, options, {
+            viewHeat: true,
+            viewBuckets: false
+        });
+        this.render(sim, finalOptions);
+    }
+
+    /**
      * Renders the current state of a HeatSimulator.
      * @param {HeatSimulator} sim 
      * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold }

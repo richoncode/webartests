@@ -817,33 +817,29 @@
                 return;
             }
 
-            // 1. Physics step
-            sim.step();
-
-            // 2. Etching
+            // 1. Physics & Etching logic via processStep
             const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
             const batchSize = !isSequential ? 2 : 1; 
 
             for(let i = 0; i < batchSize; i++) {
-                if (cellsToEtch.length > 0) {
-                    const cell = cellsToEtch.pop();
-                    
-                    let powerFactor = 1.0;
-                    if (powerPattern === 'gradient') {
-                        const distFromTR = (cell.y + (GRID_SIZE - 1 - cell.x)) / (2 * (GRID_SIZE - 1));
-                        powerFactor = 1.0 + 3.0 * distFromTR; 
-                    }
+                let intensity = 12.0;
+                // Pre-calculate intensity if needed for the next cell
+                if (cellsToEtch.length > 0 && powerPattern === 'gradient') {
+                    const nextCell = cellsToEtch[cellsToEtch.length - 1];
+                    const distFromTR = (nextCell.y + (GRID_SIZE - 1 - nextCell.x)) / (2 * (GRID_SIZE - 1));
+                    intensity = 12.0 * (1.0 + 3.0 * distFromTR);
+                }
 
-                    sim.addHeat(cell.x, cell.y, 12.0 * powerFactor);
-
-                } else if (!isSequential && currentBucketIdx < NUM_BUCKETS - 1) {
+                const cell = sim.processStep(cellsToEtch, intensity);
+                
+                if (!cell && cellsToEtch.length === 0 && !isSequential && currentBucketIdx < NUM_BUCKETS - 1) {
                     currentBucketIdx++;
                     loadNextPath();
                     break; 
                 }
             }
 
-            // 3. Rendering
+            // 2. Rendering
             const heatThreshold = powerPattern === 'gradient' ? 120.0 : 60.0; 
             renderer.render(sim, {
                 viewBuckets,
@@ -852,7 +848,7 @@
                 heatThreshold
             });
 
-            // 4. Update Stats
+            // 3. Update Stats
             const stats = sim.getStats();
             document.getElementById('progress').innerText = `${stats.progress.toFixed(0)}%`;
             document.getElementById('peakHeat').innerText = stats.peakStress.toFixed(2);
@@ -861,8 +857,8 @@
             const stressLimit = powerPattern === 'gradient' ? 90.0 : 45.0; 
             document.getElementById('peakHeat').className = stats.peakStress > stressLimit ? 'stat-value hot' : 'stat-value';
 
-            if (!stats.isComplete && stats.progress === 100) {
-                // Done!
+            if (stats.progress === 100 && !simulationCache[getCacheKey()]) {
+                // Save to cache once path is fully processed
                 if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
                 
                 simulationCache[getCacheKey()] = {

@@ -67,10 +67,36 @@ const PathStrategies = {
     generatePath(mode, gridSize, bucketIdx = 0) {
         let path = [];
         
-        if (mode === 'horizontal') {
+        if (mode === 'horizontal' || mode === 'raster-uni') {
             for (let y = gridSize - 1; y >= 0; y--) {
                 for (let x = gridSize - 1; x >= 0; x--) path.push({x, y});
             }
+        } else if (mode === 'raster-bi') {
+            for (let y = gridSize - 1; y >= 0; y--) {
+                const isReverse = (y % 2 === 0); // Alternate direction per line
+                if (isReverse) {
+                    for (let x = 0; x < gridSize; x++) path.push({x, y});
+                } else {
+                    for (let x = gridSize - 1; x >= 0; x--) path.push({x, y});
+                }
+            }
+        } else if (mode === 'crosshatch-uni' || mode === 'crosshatch-bi') {
+            // First pass (Horizontal)
+            const subMode = mode === 'crosshatch-uni' ? 'raster-uni' : 'raster-bi';
+            const pass1 = this.generatePath(subMode, gridSize);
+            
+            // Second pass (Vertical)
+            const pass2 = [];
+            for (let x = 0; x < gridSize; x++) {
+                const isReverse = (mode === 'crosshatch-bi' && x % 2 !== 0);
+                if (isReverse) {
+                    for (let y = gridSize - 1; y >= 0; y--) pass2.push({x, y});
+                } else {
+                    for (let y = 0; y < gridSize; y++) pass2.push({x, y});
+                }
+            }
+            // In crosshatch, we return the passes concatenated or as a single flow
+            path = pass1.concat(pass2.reverse()); // Reverse pass2 because we pop() from the end in the animator
         } else if (mode === 'diagonal') {
             let temp = [];
             for (let y = 0; y < gridSize; y++) {
