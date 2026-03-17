@@ -5,7 +5,8 @@ import { svgEl, syntaxHL, dl } from './utils.js';
 export const Popup = {
   show(s, ev) {
     const p = document.getElementById('globalPopup');
-    document.getElementById('gpTitle').textContent   = `${s.type} #${s.idx+1}`;
+    const displayType = s.type === 'IMAGE' ? 'BITMAP' : s.type;
+    document.getElementById('gpTitle').textContent   = `${displayType} #${s.idx+1}`;
     document.getElementById('gpPower').textContent   = s.power   != null ? s.power   + ' pwr%'   : '—';
     document.getElementById('gpSpeed').textContent   = s.speed   != null ? s.speed   + ' mm/s'   : '—';
     document.getElementById('gpDensity').textContent = s.density != null ? s.density + ' lpcm'   : '—';
@@ -276,7 +277,13 @@ export const XCSViewer = {
       const strC = isFill ? 'none' : renderColor;
 
       if (s.type==='CIRCLE') el = svgEl('ellipse',{cx,cy,rx,ry,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
-      else if (s.type==='RECT') el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+      else if (s.type==='RECT' || s.type==='IMAGE') {
+        el = svgEl('rect',{x:cx-rx,y:cy-ry,width:rx*2,height:ry*2,fill:renderColor,'fill-opacity':fillOp,stroke:strC,'stroke-width':strW});
+        if (s.type === 'IMAGE') {
+          // Add a "bitmap" texture or indicator
+          el.setAttribute('stroke-dasharray', '2 1');
+        }
+      }
       else if (s.type==='TEXT') {
         const fs = s.h * sc;
         // XCS uses the baseline anchor for its x and y. 
@@ -318,13 +325,14 @@ export const XCSViewer = {
       const row = document.createElement('div');
       row.className = 'shape-row'; row.dataset.idx = s.idx;
       const typeLabel = s.processingType ? s.processingType.toUpperCase() : '—';
+      const displayType = s.type === 'IMAGE' ? 'BITMAP' : s.type;
       const laserLabel = s.laser ? `<span style="color:#5b9bd5;font-weight:800;margin-left:4px">${s.laser.toUpperCase()}</span>` : '';
       const deLabel = s.density != null ? `${s.density} lpcm` : '—';
       const dotColor = s.layerColor === '#000000' ? '#ffffff' : s.layerColor;
       row.innerHTML = `
         <div class="shape-dot" style="background:${dotColor}"></div>
         <div style="flex:1">
-          <div class="shape-row-title">${s.type} #${s.idx+1} ${laserLabel} <span style="color:#444;font-size:9px;margin-left:4px">${typeLabel}</span></div>
+          <div class="shape-row-title">${displayType} #${s.idx+1} ${laserLabel} <span style="color:#444;font-size:9px;margin-left:4px">${typeLabel}</span></div>
           <div class="shape-row-sub">${s.power!=null?s.power+' pwr%':'—'} · ${s.speed!=null?s.speed+' mm/s':'—'} · ${deLabel}</div>
           <div style="font-size:8px;color:#444;font-family:monospace;margin-top:2px">ID: ${s.id}</div>
         </div>`;

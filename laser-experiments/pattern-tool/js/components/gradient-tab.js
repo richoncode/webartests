@@ -39,6 +39,7 @@ export const GradientTab = {
 
     const defaults = {
       laserType: 'ir',
+      renderMode: 'vector',
       disperseHeat: false,
       xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
       roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
@@ -309,8 +310,9 @@ export const GradientTab = {
         const color = cfg.disperseHeat ? BUCKET_COLORS[bucket] : "#5b9bd5";
 
         const actualOverlap = overlap > 0 ? overlap : 0;
+        const type = cfg.renderMode === 'bitmap' ? 'IMAGE' : 'RECT';
         displays.push({ 
-          id, name: null, type: 'RECT', x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap, angle: 0,
+          id, name: null, type, x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap, angle: 0,
           scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
           offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
           zOrder: displays.length, sourceId: id, groupTag: "", layerTag: color,
@@ -421,6 +423,7 @@ export const GradientTab = {
 
     scroll.appendChild(MandalaTab.makeSection('Global', [
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
+      MandalaTab.makeRow('Mode', MandalaTab.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
       MandalaTab.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
       MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
       MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
