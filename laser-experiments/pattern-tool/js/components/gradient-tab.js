@@ -51,12 +51,175 @@ export const GradientTab = {
       totalSize: 20
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    const state = { rawData:null, shapes:[] };
+    const state = { rawData:null, shapes:[], selection: null };
     App.instances[tabId] = { type:'gradient', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
+    this.setupSelection(tabId);
     return pane;
+  },
+
+  setupSelection(tabId) {
+    const inst = App.instances[tabId];
+    if (!inst || !inst.pane) return;
+    const svg = inst.pane.querySelector('.svg-canvas');
+    if (!svg) return;
+    let isDragging = false;
+
+    const getCell = (e) => {
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const x = svgP.x;
+      const y = svgP.y;
+      
+      const vb = svg.viewBox.baseVal;
+      const W = vb.width||500, H = vb.height||500;
+      const AREA = 100;
+      const PAD = 20;
+      const sc = Math.min((W-PAD*2)/AREA, (H-PAD*2)/AREA);
+      const ox = PAD + ((W-PAD*2) - AREA*sc)/2;
+      const oy = PAD + ((H-PAD*2) - AREA*sc)/2;
+
+      const mmX = (x - ox) / sc;
+      const mmY = (y - oy) / sc;
+
+      const { resolution, totalSize, overlap } = inst.cfg;
+      const cellSize = totalSize / resolution;
+      const gap = overlap < 0 ? Math.abs(overlap) : 0;
+      const pitch = cellSize + gap;
+      const effectiveTotal = pitch * resolution;
+      
+      const CX = 50, CY = 50;
+      const startX = CX - effectiveTotal/2;
+      const startY = CY - effectiveTotal/2;
+
+      const ix = Math.floor((mmX - startX) / pitch);
+      const iy = Math.floor((mmY - startY) / pitch);
+
+      if (ix >= 0 && ix < resolution && iy >= 0 && iy < resolution) {
+        return { ix, iy };
+      }
+      return null;
+    };
+
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+      const cell = getCell(e);
+      if (cell) {
+        inst.state.selection.ix2 = cell.ix;
+        inst.state.selection.iy2 = cell.iy;
+        this.updateSelectionOverlay(tabId);
+      }
+    };
+
+    const onMouseUp = () => {
+      if (isDragging) {
+        isDragging = false;
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        this.renderControls(tabId);
+      }
+    };
+
+    svg.addEventListener('mousedown', (e) => {
+      const cell = getCell(e);
+      if (cell) {
+        isDragging = true;
+        inst.state.selection = { ix1: cell.ix, iy1: cell.iy, ix2: cell.ix, iy2: cell.iy };
+        this.updateSelectionOverlay(tabId);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      } else {
+        inst.state.selection = null;
+        this.updateSelectionOverlay(tabId);
+        this.renderControls(tabId);
+      }
+    });
+  },
+
+  updateSelectionOverlay(tabId) {
+    const inst = App.instances[tabId];
+    if (!inst || !inst.pane) return;
+    const svg = inst.pane.querySelector('.svg-canvas');
+    if (!svg) return;
+    let overlay = svg.querySelector('.selection-overlay');
+    let label = svg.querySelector('.selection-label');
+    
+    if (!inst.state.selection) {
+      if (overlay) overlay.remove();
+      if (label) label.remove();
+      return;
+    }
+
+    if (!overlay) {
+      overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      overlay.setAttribute('class', 'selection-overlay');
+      overlay.setAttribute('fill', 'rgba(91, 155, 213, 0.25)');
+      overlay.setAttribute('stroke', '#5b9bd5');
+      overlay.setAttribute('stroke-width', '1.5');
+      overlay.setAttribute('pointer-events', 'none');
+      svg.appendChild(overlay);
+    } else {
+      svg.appendChild(overlay);
+    }
+
+    if (!label) {
+      label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('class', 'selection-label');
+      label.setAttribute('fill', '#fff');
+      label.setAttribute('font-size', '12');
+      label.setAttribute('font-weight', 'bold');
+      label.setAttribute('pointer-events', 'none');
+      label.setAttribute('text-anchor', 'middle');
+      label.style.textShadow = '0 0 3px #000';
+      svg.appendChild(label);
+    } else {
+      svg.appendChild(label);
+    }
+
+    const { ix1, iy1, ix2, iy2 } = inst.state.selection;
+    const mix = Math.min(ix1, ix2);
+    const max = Math.max(ix1, ix2);
+    const miy = Math.min(iy1, iy2);
+    const may = Math.max(iy1, iy2);
+
+    const selW = max - mix + 1;
+    const selH = may - miy + 1;
+
+    const vb = svg.viewBox.baseVal;
+    const W = vb.width||500, H = vb.height||500;
+    const AREA = 100;
+    const PAD = 20;
+    const sc = Math.min((W-PAD*2)/AREA, (H-PAD*2)/AREA);
+    const ox = PAD + ((W-PAD*2) - AREA*sc)/2;
+    const oy = PAD + ((H-PAD*2) - AREA*sc)/2;
+
+    const { resolution, totalSize, overlap } = inst.cfg;
+    const cellSize = totalSize / resolution;
+    const gap = overlap < 0 ? Math.abs(overlap) : 0;
+    const pitch = cellSize + gap;
+    const effectiveTotal = pitch * resolution;
+    
+    const CX = 50, CY = 50;
+    const startX = CX - effectiveTotal/2;
+    const startY = CY - effectiveTotal/2;
+
+    const rx = startX + mix * pitch;
+    const ry = startY + miy * pitch;
+    const rw = (max - mix + 1) * pitch - gap;
+    const rh = (may - miy + 1) * pitch - gap;
+
+    overlay.setAttribute('x', rx * sc + ox);
+    overlay.setAttribute('y', ry * sc + oy);
+    overlay.setAttribute('width', rw * sc);
+    overlay.setAttribute('height', rh * sc);
+
+    label.textContent = `${selW} × ${selH}`;
+    label.setAttribute('x', (rx + rw/2) * sc + ox);
+    label.setAttribute('y', (ry + rh/2) * sc + oy + 4);
   },
 
   refresh(tabId, lazy = false) {
@@ -64,6 +227,7 @@ export const GradientTab = {
     inst.state.rawData = this.generateXCS(inst.cfg);
     inst.state.shapes = XcsTab.parseXCS(inst.state.rawData);
     XCSViewer.update(inst.pane, inst.state, lazy);
+    this.updateSelectionOverlay(tabId);
   },
 
   generateXCS(cfg) {
@@ -155,7 +319,8 @@ export const GradientTab = {
           resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
           fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
           stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-          isFill: true, lineColor: 0, fillColor: color, hideLabels: true, power: null
+          isFill: true, lineColor: 0, fillColor: color, hideLabels: true, power: null,
+          ix, iy
         });
 
         const pm = { 
@@ -286,5 +451,62 @@ export const GradientTab = {
     scroll.appendChild(MandalaTab.makeSection('Fixed:', [
       MandalaTab.makeRow(`Value (${fr.unit})`, MandalaTab.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
     ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
+
+    // ── Selection Zoom ──
+    if (App.instances[tabId].state.selection) {
+      const { ix1, iy1, ix2, iy2 } = App.instances[tabId].state.selection;
+      const mix = Math.min(ix1, ix2), max = Math.max(ix1, ix2);
+      const miy = Math.min(iy1, iy2), may = Math.max(iy1, iy2);
+      
+      const getValForIdx = (axis, idx) => {
+        let minVal, maxVal;
+        if (axis === cfg.xAxis) { minVal = cfg.xMin; maxVal = cfg.xMax; }
+        else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; }
+        else return null;
+        if (cfg.resolution === 1) return minVal;
+        return minVal + (maxVal - minVal) * idx / (cfg.resolution - 1);
+      };
+
+      const xMinZoom = getValForIdx(cfg.xAxis, mix);
+      const xMaxZoom = getValForIdx(cfg.xAxis, max);
+      
+      // Recall stepIdx = (resolution - 1) - iy
+      const yMinZoom = getValForIdx(cfg.yAxis, (cfg.resolution - 1) - may);
+      const yMaxZoom = getValForIdx(cfg.yAxis, (cfg.resolution - 1) - miy);
+
+      const selW = max - mix + 1;
+      const selH = may - miy + 1;
+
+      const zoomBtn = document.createElement('button');
+      zoomBtn.className = 'hbtn primary';
+      zoomBtn.style.width = '100%';
+      zoomBtn.style.marginTop = '8px';
+      zoomBtn.textContent = 'Gradient Zoom';
+      zoomBtn.onclick = () => {
+        const newCfg = { ...cfg, xMin: Math.round(xMinZoom), xMax: Math.round(xMaxZoom), yMin: Math.round(yMinZoom), yMax: Math.round(yMaxZoom) };
+        
+        const getLabelPart = (axisName) => {
+          const abbrev = { lpcm: 'LPC', power: 'PWR', speed: 'SPD' }[axisName];
+          if (cfg.xAxis === axisName) return `${abbrev}${Math.round(xMinZoom)}-${Math.round(xMaxZoom)}`;
+          if (cfg.yAxis === axisName) return `${abbrev}${Math.round(yMinZoom)}-${Math.round(yMaxZoom)}`;
+          const fixedVal = axisName === 'lpcm' ? cfg.fixedLpcm : axisName === 'power' ? cfg.fixedPower : cfg.fixedSpeed;
+          return `${abbrev}${Math.round(fixedVal)}`;
+        };
+
+        const newLabel = `Grad${getLabelPart('lpcm')}${getLabelPart('power')}${getLabelPart('speed')}`;
+        const newId = TabMgr.newGradient(newCfg, newLabel);
+        TabMgr.activate(newId);
+      };
+
+      const xr = getRanges(cfg.xAxis);
+      const yr = getRanges(cfg.yAxis);
+
+      scroll.appendChild(MandalaTab.makeSection('Selection Zoom', [
+        MandalaTab.makeRow(`Size`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${selW} × ${selH} cells</span>`)),
+        MandalaTab.makeRow(`X Range`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${Math.round(xMinZoom)}–${Math.round(xMaxZoom)} ${xr.unit} (Cells ${mix}–${max})</span>`)),
+        MandalaTab.makeRow(`Y Range`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${Math.round(yMinZoom)}–${Math.round(yMaxZoom)} ${yr.unit} (Cells ${(cfg.resolution - 1) - may}–${(cfg.resolution - 1) - miy})</span>`)),
+        zoomBtn
+      ]));
+    }
   }
 };

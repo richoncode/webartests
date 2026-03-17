@@ -26,6 +26,15 @@ export const Popup = {
 
     document.getElementById('gpSize').textContent    = `${s.w.toFixed(1)} × ${s.h.toFixed(1)} mm`;
     document.getElementById('gpPos').textContent     = `${s.x.toFixed(1)}, ${s.y.toFixed(1)} mm`;
+
+    const cellRow = document.getElementById('gpCellRow');
+    if (s.ix != null && s.iy != null) {
+      document.getElementById('gpCell').textContent = `[${s.ix}, ${s.iy}]`;
+      cellRow.style.display = 'flex';
+    } else {
+      cellRow.style.display = 'none';
+    }
+
     this.move(ev); p.classList.add('show');
   },
   move(ev) {

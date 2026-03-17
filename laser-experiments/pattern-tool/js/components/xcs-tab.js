@@ -65,6 +65,7 @@ export const XcsTab = {
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
                density:pm.density??null, repeat:pm.repeat??1,
                laser: laser, hideLabels: !!d.hideLabels,
+               ix: d.ix??null, iy: d.iy??null,
                text: d.text || null, style: d.style || null };
     });
   }
