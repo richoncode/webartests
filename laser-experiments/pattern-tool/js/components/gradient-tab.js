@@ -398,7 +398,8 @@ export const GradientTab = {
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
 
-    const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
+    const axisLabels = { power: 'PWR', speed: 'SPD', lpcm: 'LPC' };
+    const axisTitles = { power: 'Power', speed: 'Speed', lpcm: 'Lines Per CM' };
     const axisOpts = ['power', 'speed', 'lpcm'];
 
     const swapAxes = (targetRole, newValue) => {
@@ -426,34 +427,34 @@ export const GradientTab = {
       MandalaTab.makeRow('Mode', MandalaTab.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
       MandalaTab.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
       MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
-      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
+      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), ' mm')),
+      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), ' mm')),
       MandalaTab.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
     ]));
 
     const getRanges = (axis) => {
-      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: 'pwr%' };
-      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: 'mm/s' };
-      return { min: 10, max: 1000, step: 50, unit: 'lpcm' };
+      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
+      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: ' mm/s' };
+      return { min: 10, max: 1000, step: 50, unit: ' lpcm' };
     };
 
     const xr = getRanges(cfg.xAxis);
     scroll.appendChild(MandalaTab.makeSection('X Axis:', [
       MandalaTab.makeRow(`Min (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMin, v => set('xMin', +v), xr.unit)),
       MandalaTab.makeRow(`Max (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMax, v => set('xMax', +v), xr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels, axisTitles)));
 
     const yr = getRanges(cfg.yAxis);
     scroll.appendChild(MandalaTab.makeSection('Y Axis:', [
       MandalaTab.makeRow(`Min (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMin, v => set('yMin', +v), yr.unit)),
       MandalaTab.makeRow(`Max (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMax, v => set('yMax', +v), yr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels, axisTitles)));
 
     const fr = getRanges(cfg.fixedAxis);
     const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
     scroll.appendChild(MandalaTab.makeSection('Fixed:', [
       MandalaTab.makeRow(`Value (${fr.unit})`, MandalaTab.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels, axisTitles)));
 
     // ── Selection Zoom ──
     if (App.instances[tabId].state.selection) {

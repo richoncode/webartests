@@ -310,14 +310,57 @@ export const MandalaTab = {
     return row;
   },
 
-  makeRange(min, max, step, val, onChange, unit='') {
+  makeRange(min, max, step, val, onChange, unit='', onManualEdit=null) {
     const wrap = document.createElement('div');
     wrap.className = 'ctrl-val-wrap';
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = val;
     const disp = document.createElement('span');
     disp.className = 'range-val'; disp.textContent = val + unit;
-    inp.addEventListener('input', () => { disp.textContent = inp.value + unit; onChange(inp.value); });
+    disp.style.cursor = 'pointer';
+    disp.title = 'Click to edit manually';
+
+    const enterEdit = () => {
+      const edit = document.createElement('input');
+      edit.type = 'text'; 
+      edit.style.width = '60px'; edit.style.background = '#000'; edit.style.color = '#fff';
+      edit.style.border = '1px solid #5b9bd5'; edit.style.borderRadius = '4px';
+      edit.style.padding = '0 4px'; edit.style.fontSize = '11px'; edit.style.fontFamily = 'monospace';
+      edit.value = val + unit;
+      
+      wrap.replaceChild(edit, disp);
+      edit.focus(); edit.select();
+      
+      let done = false;
+      const finish = (save) => {
+        if (done) return; done = true;
+        if (wrap.contains(edit)) {
+          wrap.replaceChild(disp, edit);
+          if (save) {
+            if (onManualEdit) {
+              onManualEdit(edit.value);
+            } else {
+              const parsed = parseFloat(edit.value.replace(/[^\d.]/g, ''));
+              if (!isNaN(parsed)) onChange(parsed);
+            }
+          }
+        }
+      };
+
+      edit.addEventListener('blur', () => finish(true));
+      edit.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') finish(true);
+        if (e.key === 'Escape') finish(false);
+      });
+    };
+
+    disp.addEventListener('click', enterEdit);
+
+    inp.addEventListener('input', () => { 
+      val = inp.value;
+      disp.textContent = val + unit; 
+      onChange(val); 
+    });
     wrap.appendChild(inp); wrap.appendChild(disp);
     return wrap;
   },
@@ -335,7 +378,7 @@ export const MandalaTab = {
     return sel;
   },
 
-  makeToggles(options, current, onChange, labels = {}) {
+  makeToggles(options, current, onChange, labels = {}, titles = {}) {
     const wrap = document.createElement('div');
     wrap.style.display = 'flex';
     wrap.style.gap = '4px';
@@ -343,6 +386,7 @@ export const MandalaTab = {
       const btn = document.createElement('button');
       btn.className = 'hbtn sm' + (String(o) === String(current) ? ' primary' : '');
       btn.textContent = labels[o] || o;
+      if (titles[o]) btn.title = titles[o];
       btn.addEventListener('click', () => {
         if (String(o) === String(current)) return;
         onChange(o);

@@ -23,7 +23,7 @@ export const BitmapLineTab = {
 
     const defaults = {
       laserType: 'ir',
-      totalWidth: 80,
+      totalWidth: 30,
       lines: [
         { id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 0.1, fixedDpi: 300 }
       ]
@@ -100,7 +100,7 @@ export const BitmapLineTab = {
       const axes = ['dpi', 'power', 'speed'];
       const fixedAxes = axes.filter(a => a !== line.rangeAxis);
       const getVal = (a) => a === 'power' ? line.fixedPower : a === 'speed' ? line.fixedSpeed : line.fixedDpi;
-      const getUnit = (a) => ({ power: '%', speed: 'ms', dpi: 'DPI' }[a]);
+      const getUnit = (a) => ({ power: '%', speed: ' ms', dpi: ' DPI' }[a]);
       
       const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${axisAbbrevs[line.rangeAxis]}`;
       
@@ -193,27 +193,51 @@ export const BitmapLineTab = {
     cfg.lines.forEach((line, i) => {
       const p = `lines.${i}.`;
       const axisLabels = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
+      const axisTitles = { power: 'Power', speed: 'Dot Duration', dpi: 'Dots Per Inch' };
       const axisOpts = ['power', 'speed', 'dpi'];
 
       const getRanges = (axis) => {
         if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
-        if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: 'ms' };
-        return { min: 10, max: 1000, step: 10, unit: 'DPI' };
+        if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: ' ms' };
+        return { min: 10, max: 1000, step: 10, unit: ' DPI' };
+      };
+
+      const handleManualEdit = (key, isDur) => (valStr) => {
+        if (!isDur) {
+          const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
+          if (!isNaN(parsed)) set(p + key, parsed);
+          return;
+        }
+        
+        const dpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
+        const speedMatch = valStr.match(/^([\d.]+)\s*(mms|mm\/s)$/i);
+        if (speedMatch) {
+          const v = parseFloat(speedMatch[1]);
+          if (v > 0) {
+            const t = 25400 / (dpi * v);
+            set(p + key, Math.round(t * 100) / 100);
+          }
+        } else {
+          const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
+          if (!isNaN(parsed)) set(p + key, parsed);
+        }
       };
 
       const r = getRanges(line.rangeAxis);
+      const isRangeDur = line.rangeAxis === 'speed';
       const fixedAxes = axisOpts.filter(a => a !== line.rangeAxis);
 
       const children = [
-        MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(axisOpts, line.rangeAxis, v => { set(p + 'rangeAxis', v); this.renderControls(tabId); }, axisLabels)),
-        MandalaTab.makeRow(`Min (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit)),
-        MandalaTab.makeRow(`Max (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit))
+        MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(axisOpts, line.rangeAxis, v => { set(p + 'rangeAxis', v); this.renderControls(tabId); }, axisLabels, axisTitles)),
+        MandalaTab.makeRow(`Min (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit('min', isRangeDur))),
+        MandalaTab.makeRow(`Max (${r.unit})`, MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit('max', isRangeDur)))
       ];
 
       fixedAxes.forEach(fa => {
         const fr = getRanges(fa);
         const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedDpi';
-        children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit)));
+        const isDur = fa === 'speed';
+        children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(key, isDur))));
       });
 
       const delBtn = document.createElement('button');
