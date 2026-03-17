@@ -58,12 +58,9 @@ export const BitmapLineTab = {
 
     const addText = (text, tx, ty, size, color, layerTag) => {
       const id = uuid();
-      // Visual height of Lato Bold at 72pt is ~19.85mm
       const baseHeight = 19.85;
       const scale = size / baseHeight;
       const fontSize = 72;
-      
-      // Approximate width logic (Lato Bold is ~0.5 width-to-height ratio)
       const textWidth = text.length * baseHeight * 0.5;
 
       displays.push({
@@ -91,30 +88,22 @@ export const BitmapLineTab = {
     const startY = CY - ((lines.length * 7) - 4) / 2;
 
     lines.forEach((line, i) => {
-      const y = startY + i * 7; // 3mm line + 4mm gap
+      const y = startY + i * 7;
       const gridX = CX - totalWidth / 2;
       const labelSize = 2.4;
-
-      // Labels
       const axisAbbrevs = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
       const axes = ['dpi', 'power', 'speed'];
       const fixedAxes = axes.filter(a => a !== line.rangeAxis);
       const getVal = (a) => a === 'power' ? line.fixedPower : a === 'speed' ? line.fixedSpeed : line.fixedDpi;
       const getUnit = (a) => ({ power: '%', speed: ' ms', dpi: ' DPI' }[a]);
-      
       const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${axisAbbrevs[line.rangeAxis]}`;
-      
-      // XCS uses the baseline anchor for its x and y.
-      // To center text at targetY, set y = targetY + height/2
       const textX = gridX - 4;
       const textY = (y + 1.5) + (labelSize / 2);
       addText(labelText, textX, textY, labelSize, labelColor, "Labels");
 
-      // Grayscale Line
       const id = uuid();
       const currentDpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
       const widthPixels = Math.round(totalWidth * currentDpi / 25.4);
-
       displays.push({
         id, name: null, type: 'IMAGE', x: gridX + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3, angle: 0,
         scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
@@ -126,10 +115,9 @@ export const BitmapLineTab = {
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: false, color: 0, alpha: 1, width: 0, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
         isFill: true, lineColor: 0, fillColor: lineColor,
-        // Custom metadata for viewer rendering
         isGrayscaleGradient: true,
         minVal: line.min, maxVal: line.max, rangeAxis: line.rangeAxis,
-        widthPixels, heightPixels: 1 // Uniform on Y
+        widthPixels, heightPixels: 1
       });
 
       const pm = {
@@ -147,11 +135,7 @@ export const BitmapLineTab = {
       }]);
     });
 
-    const layerData = {
-      "Labels": { name: "Labels", order: 2, visible: true },
-      "Lines": { name: "Lines", order: 1, visible: true }
-    };
-
+    const layerData = { "Labels": { name: "Labels", order: 2, visible: true }, "Lines": { name: "Lines", order: 1, visible: true } };
     return {
       canvasId: canvasId,
       canvas: [{ id: canvasId, title: "{panel}1", layerData, groupData: {}, displays }],
@@ -173,10 +157,52 @@ export const BitmapLineTab = {
       update(true); Persistence.save();
     };
 
-    // Global
+    const getMaxDpi = (type) => type === 'ir' ? 846 : 422;
+
+    const handleManualEdit = (line, p, key, isDur) => (valStr) => {
+      if (!isDur) {
+        const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
+        if (!isNaN(parsed)) set(p + key, parsed);
+        return;
+      }
+      const dpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
+      const speedMatch = valStr.match(/^([\d.]+)\s*(mms|mm\/s)$/i);
+      if (speedMatch) {
+        const v = parseFloat(speedMatch[1]);
+        if (v > 0) {
+          const t = 25400 / (dpi * v);
+          set(p + key, Math.round(t * 100) / 100);
+        }
+      } else {
+        const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
+        if (!isNaN(parsed)) set(p + key, parsed);
+      }
+    };
+
+    const makeDpiControl = (line, p, key, r) => {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
+      const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(line, p, key, false));
+      rangeCtrl.style.flex = '1';
+      wrap.appendChild(rangeCtrl);
+      const fullBtn = document.createElement('button');
+      fullBtn.className = 'hbtn sm primary';
+      fullBtn.textContent = 'FULL';
+      fullBtn.style.padding = '0 6px';
+      fullBtn.onclick = () => set(p + key, getMaxDpi(cfg.laserType));
+      wrap.appendChild(fullBtn);
+      return wrap;
+    };
+
+    const getRanges = (axis) => {
+      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
+      if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: ' ms' };
+      return { min: 10, max: 1000, step: 10, unit: ' DPI' };
+    };
+
     scroll.appendChild(MandalaTab.makeSection('Global', [
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), { ir: 'IR', blue: 'BLUE' })),
-      MandalaTab.makeRow('Width', MandalaTab.makeRange(10, 100, 1, cfg.totalWidth, v => set('totalWidth', +v), 'mm')),
+      MandalaTab.makeRow('Width', MandalaTab.makeRange(10, 100, 1, cfg.totalWidth, v => set('totalWidth', +v), ' mm')),
       (() => {
         const btn = document.createElement('button');
         btn.className = 'hbtn primary'; btn.style.width = '100%'; btn.style.marginTop = '8px';
@@ -189,86 +215,33 @@ export const BitmapLineTab = {
       })()
     ]));
 
-    const getMaxDpi = (type) => type === 'ir' ? 846 : 422;
-
-    const makeDpiControl = (key, r, isRange) => {
-      const wrap = document.createElement('div');
-      wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
-      
-      const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(key, false));
-      rangeCtrl.style.flex = '1';
-      wrap.appendChild(rangeCtrl);
-      
-      const fullBtn = document.createElement('button');
-      fullBtn.className = 'hbtn sm primary';
-      fullBtn.textContent = 'FULL';
-      fullBtn.style.padding = '0 6px';
-      fullBtn.onclick = () => set(p + key, getMaxDpi(cfg.laserType));
-      wrap.appendChild(fullBtn);
-      return wrap;
-    };
-
-    // Lines
     cfg.lines.forEach((line, i) => {
       const p = `lines.${i}.`;
       const axisLabels = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
       const axisTitles = { power: 'Power', speed: 'Dot Duration', dpi: 'Dots Per Inch' };
       const axisOpts = ['power', 'speed', 'dpi'];
-
-      const getRanges = (axis) => {
-        if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
-        if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: ' ms' };
-        return { min: 10, max: 1000, step: 10, unit: ' DPI' };
-      };
-
-      const handleManualEdit = (key, isDur) => (valStr) => {
-        if (!isDur) {
-          const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
-          if (!isNaN(parsed)) set(p + key, parsed);
-          return;
-        }
-        
-        const dpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
-        const speedMatch = valStr.match(/^([\d.]+)\s*(mms|mm\/s)$/i);
-        if (speedMatch) {
-          const v = parseFloat(speedMatch[1]);
-          if (v > 0) {
-            const t = 25400 / (dpi * v);
-            set(p + key, Math.round(t * 100) / 100);
-          }
-        } else {
-          const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
-          if (!isNaN(parsed)) set(p + key, parsed);
-        }
-      };
-
       const r = getRanges(line.rangeAxis);
       const isRangeDur = line.rangeAxis === 'speed';
       const fixedAxes = axisOpts.filter(a => a !== line.rangeAxis);
 
       const children = [
         MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(axisOpts, line.rangeAxis, v => { set(p + 'rangeAxis', v); this.renderControls(tabId); }, axisLabels, axisTitles)),
-        MandalaTab.makeRow(`Min (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl('min', r, true) : MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit('min', isRangeDur))),
-        MandalaTab.makeRow(`Max (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl('max', r, true) : MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit('max', isRangeDur)))
+        MandalaTab.makeRow(`Min (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl(line, p, 'min', r) : MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit(line, p, 'min', isRangeDur))),
+        MandalaTab.makeRow(`Max (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl(line, p, 'max', r) : MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit(line, p, 'max', isRangeDur)))
       ];
 
       fixedAxes.forEach(fa => {
         const fr = getRanges(fa);
         const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedDpi';
         const isDur = fa === 'speed';
-        const ctrl = fa === 'dpi' ? makeDpiControl(key, fr, false) : MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(key, isDur));
+        const ctrl = fa === 'dpi' ? makeDpiControl(line, p, key, fr) : MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(line, p, key, isDur));
         children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, ctrl));
       });
 
       const delBtn = document.createElement('button');
       delBtn.className = 'hbtn sm'; delBtn.style.color = '#e07070'; delBtn.style.marginLeft = 'auto';
       delBtn.textContent = 'Remove';
-      delBtn.onclick = (e) => {
-        e.stopPropagation();
-        cfg.lines.splice(i, 1);
-        this.renderControls(tabId); update();
-      };
-
+      delBtn.onclick = (e) => { e.stopPropagation(); cfg.lines.splice(i, 1); this.renderControls(tabId); update(); };
       scroll.appendChild(MandalaTab.makeSection(`Line ${i + 1}`, children, false, delBtn));
     });
   }
