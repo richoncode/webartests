@@ -321,25 +321,34 @@ export const MandalaTab = {
     const enterEdit = () => {
       const edit = document.createElement('input');
       edit.type = 'text'; 
-      edit.style.width = '60px'; edit.style.background = '#000'; edit.style.color = '#fff';
+      edit.style.width = (disp.offsetWidth + 10) + 'px'; 
+      edit.style.background = '#000'; edit.style.color = '#fff';
       edit.style.border = '1px solid #5b9bd5'; edit.style.borderRadius = '4px';
       edit.style.padding = '0 4px'; edit.style.fontSize = '11px'; edit.style.fontFamily = 'monospace';
+      edit.style.textAlign = 'right';
       edit.value = val + unit;
       
-      wrap.replaceChild(edit, disp);
+      const oldDispDisplay = disp.style.display;
+      disp.style.display = 'none';
+      wrap.appendChild(edit);
       edit.focus(); edit.select();
       
       let done = false;
       const finish = (save) => {
         if (done) return; done = true;
         if (wrap.contains(edit)) {
-          wrap.replaceChild(disp, edit);
+          wrap.removeChild(edit);
+          disp.style.display = oldDispDisplay;
           if (save) {
             if (onManualEdit) {
               onManualEdit(edit.value);
             } else {
               const parsed = parseFloat(edit.value.replace(/[^\d.]/g, ''));
-              if (!isNaN(parsed)) onChange(parsed);
+              if (!isNaN(parsed)) {
+                val = parsed;
+                disp.textContent = val + unit;
+                onChange(parsed);
+              }
             }
           }
         }
@@ -352,8 +361,8 @@ export const MandalaTab = {
       });
     };
 
-    disp.addEventListener('click', (e) => {
-      e.stopPropagation();
+    disp.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
       enterEdit();
     });
 
