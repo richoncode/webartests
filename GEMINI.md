@@ -32,7 +32,7 @@ When modifying or creating laser educational content, respect these physical con
 
 ### 2. Physics & Metrics
 - **Energy Density ($J/mm^2$):** The fundamental control variable. Calculated from Power, Speed, and Density.
-- **Speed Curve:** $1/x$ non-linear relationship. Dropping speed exponentially increases energy dose.
+- **Speed Curve:** 1/x reciprocal (inverse) relationship. Dropping speed linearly increases energy dose.
 - **Thermal Return Time:** The ms elapsed before the laser returns to the same line. Small designs (<2mm) have return times <10ms, causing extreme heat compounding.
 - **Surface Morphology:**
   - **Rich:** Specular colors from smooth thin-film oxidation.
