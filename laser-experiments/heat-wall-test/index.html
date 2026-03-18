@@ -553,93 +553,28 @@
         <div class="popup-row" id="gp-bucket-row"><span class="popup-key">Sector</span><span class="popup-val" id="gp-bucket"></span></div>
     </div>
 
+    <script src="js/HeatSimulator.js"></script>
+    <script src="js/PathStrategies.js"></script>
+    <script src="js/HeatRenderer.js"></script>
     <script>
         const canvas = document.getElementById('gridCanvas');
-        const ctx = canvas.getContext('2d');
         const GRID_SIZE = 40; 
-        const SIM_MARGIN = 15; // Material buffer beyond the visible grid
-        const SIM_SIZE = GRID_SIZE + SIM_MARGIN * 2;
-        const CELL_PIXELS = canvas.width / GRID_SIZE;
         const NUM_BUCKETS = 8;
         
-        const M8 = [
-            [ 0, 32,  8, 40,  2, 34, 10, 42],
-            [48, 16, 56, 24, 50, 18, 58, 26],
-            [12, 44,  4, 36, 14, 46,  6, 38],
-            [60, 28, 52, 20, 62, 30, 54, 22],
-            [ 3, 35, 11, 43,  1, 33,  9, 41],
-            [51, 19, 59, 27, 49, 17, 57, 25],
-            [15, 47,  7, 39, 13, 45,  5, 37],
-            [63, 31, 55, 23, 61, 29, 53, 21]
-        ];
-
-        const bucketColors = [
-            '#ef4444', '#f97316', '#eab308', '#22c55e', 
-            '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
-        ];
+        const sim = new HeatSimulator({ gridSize: GRID_SIZE });
+        const renderer = new HeatRenderer(canvas, { gridSize: GRID_SIZE });
 
         let mode = 'triphase'; 
         let powerPattern = 'gradient'; 
         let currentBucketIdx = 0;
         let cellsToEtch = [];
-        let etchedState = new Uint8Array(GRID_SIZE * GRID_SIZE); 
-        let heatMap = new Float32Array(SIM_SIZE * SIM_SIZE);
-        let peakHeatMap = new Float32Array(SIM_SIZE * SIM_SIZE);
-        let nextHeatMap = new Float32Array(SIM_SIZE * SIM_SIZE); // For diffusion pass
-        let maxStressDetected = 0;
-        let isComplete = false;
         let isTestingAll = false;
         let isPaused = false;
         let viewBuckets = false;
         let viewHeat = true;
         let hoveredIdx = -1;
-        let simulationCache = {}; // Stores {etchedState, heatMap, peakHeatMap, maxStressDetected}
+        let simulationCache = {}; // Stores {etchedState, heatMap, peakHeatMap, maxStress}
         
-        const bitReverseSequence = [0, 4, 2, 6, 1, 5, 3, 7];
-        const standardSequence = [0, 1, 2, 3, 4, 5, 6, 7];
-        const quadrantSequence = [0, 3, 1, 2, 4, 7, 5, 6];
-
-        const getSimIdx = (x, y) => (y + SIM_MARGIN) * SIM_SIZE + (x + SIM_MARGIN);
-
-        function getHilbert(i, n) {
-            let pts = [{x:0, y:0}, {x:0, y:1}, {x:1, y:1}, {x:1, y:0}];
-            let index = i & 3;
-            let v = pts[index];
-            for (let j = 1; j < n; j++) {
-                i = i >>> 2;
-                index = i & 3;
-                let len = Math.pow(2, j);
-                if (index === 0) {
-                    let temp = v.x;
-                    v.x = v.y;
-                    v.y = temp;
-                } else if (index === 1) {
-                    v.y += len;
-                } else if (index === 2) {
-                    v.x += len;
-                    v.y += len;
-                } else if (index === 3) {
-                    let temp = len - 1 - v.x;
-                    v.x = len - 1 - v.y;
-                    v.y = temp;
-                    v.x += len;
-                }
-            }
-            return v;
-        }
-
-        function getBucket(x, y) {
-            if (mode === 'quadrant') {
-                const half = GRID_SIZE / 2;
-                let q = (x < half && y < half) ? 0 : 
-                        (x >= half && y >= half) ? 3 : 
-                        (x >= half && y < half) ? 1 : 2;
-                const sub = (x + y) % 2; 
-                return q + (sub * 4); 
-            }
-            return Math.floor(M8[y % 8][x % 8] / 8);
-        }
-
         function updateExampleImage() {
             const el = document.getElementById('exampleResult');
             const shouldShow = (mode === 'triphase' && powerPattern === 'gradient');
@@ -661,11 +596,12 @@
             const key = getCacheKey();
             const cached = simulationCache[key];
             if (cached) {
-                etchedState.set(cached.etchedState);
-                heatMap.set(cached.heatMap);
-                peakHeatMap.set(cached.peakHeatMap);
-                maxStressDetected = cached.maxStressDetected;
-                isComplete = true;
+                sim.etchedState.set(cached.etchedState);
+                sim.heatMap.set(cached.heatMap);
+                sim.peakHeatMap.set(cached.peakHeatMap);
+                sim.maxStress = cached.maxStress;
+                sim.etchedCount = GRID_SIZE * GRID_SIZE;
+                
                 cellsToEtch = []; 
                 if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
                 
@@ -686,7 +622,7 @@
                 const scoreEl = document.getElementById(`score-${m}`);
                 if (scoreEl) {
                     if (cached) {
-                        const val = cached.maxStressDetected;
+                        const val = cached.maxStress;
                         scoreEl.innerText = `${val.toFixed(2)} Peak`;
                         scoreEl.classList.toggle('high-stress', val > stressLimit);
                         scoreEl.style.opacity = "1";
@@ -710,8 +646,9 @@
 
         function updatePauseVisibility() {
             const btnPause = document.getElementById('btnPause');
+            const stats = sim.getStats();
             if (btnPause) {
-                btnPause.style.display = (!isComplete && !isTestingAll) ? 'block' : 'none';
+                btnPause.style.display = (!stats.isComplete && !isTestingAll) ? 'block' : 'none';
             }
         }
 
@@ -735,8 +672,8 @@
             document.getElementById('btnViewBuckets').classList.toggle('active', viewBuckets);
             document.getElementById('btnViewHeat').classList.toggle('active', viewHeat);
             
-            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase' && mode !== 'hilbert');
-            document.getElementById('legendContainer').style.display = (isControlled && viewBuckets) ? 'block' : 'none';
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
         }
 
         function setMode(newMode) {
@@ -755,8 +692,8 @@
                 if (btn) btn.classList.toggle('active', mode === m);
             });
             
-            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase' && mode !== 'hilbert');
-            document.getElementById('legendContainer').style.display = (isControlled && viewBuckets) ? 'block' : 'none';
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
             
             const info = document.getElementById('strategyInfo');
             const descriptions = {
@@ -781,72 +718,12 @@
             document.getElementById('btnRecycle').style.display = 'none';
 
             currentBucketIdx = 0;
-            etchedState.fill(0);
-            heatMap.fill(0);
-            peakHeatMap.fill(0);
-            nextHeatMap.fill(0);
-            maxStressDetected = 0;
-            isComplete = false;
-            loadNextBucket();
+            sim.reset();
+            loadNextPath();
         }
 
-        function loadNextBucket() {
-            cellsToEtch = [];
-            
-            if (mode === 'horizontal') {
-                for (let y = GRID_SIZE - 1; y >= 0; y--) {
-                    for (let x = GRID_SIZE - 1; x >= 0; x--) cellsToEtch.push({x, y});
-                }
-            } else if (mode === 'diagonal') {
-                let temp = [];
-                for (let y = 0; y < GRID_SIZE; y++) {
-                    for (let x = 0; x < GRID_SIZE; x++) temp.push({x, y, dist: x + y});
-                }
-                temp.sort((a, b) => b.dist - a.dist);
-                cellsToEtch = temp;
-            } else if (mode === 'triphase') {
-                let allCells = [];
-                for (let y = 0; y < GRID_SIZE; y++) {
-                    for (let x = 0; x < GRID_SIZE; x++) {
-                        let d = x - y;
-                        let phase = (d === 0) ? 0 : (d < 0) ? 1 : 2;
-                        allCells.push({x, y, d, phase});
-                    }
-                }
-                allCells.sort((a, b) => {
-                    if (a.phase !== b.phase) return b.phase - a.phase;
-                    if (a.phase === 1) {
-                        if (a.d !== b.d) return a.d - b.d;
-                    } else if (a.phase === 2) {
-                        if (a.d !== b.d) return a.d - b.d;
-                    }
-                    return b.x - a.x;
-                });
-                cellsToEtch = allCells;
-            } else if (mode === 'hilbert') {
-                let path = [];
-                const order = 6; // 2^6 = 64
-                const total = Math.pow(2, order) * Math.pow(2, order);
-                for (let i = 0; i < total; i++) {
-                    let p = getHilbert(i, order);
-                    if (p.x < GRID_SIZE && p.y < GRID_SIZE) {
-                        path.push(p);
-                    }
-                }
-                cellsToEtch = path.reverse(); 
-            } else {
-                let seq = (mode === 'quadrant') ? quadrantSequence : (mode === 'dispersive') ? bitReverseSequence : standardSequence;
-                if (currentBucketIdx >= seq.length) return;
-                const targetBucket = seq[currentBucketIdx];
-                let bucketCells = [];
-                for (let y = 0; y < GRID_SIZE; y++) {
-                    for (let x = 0; x < GRID_SIZE; x++) {
-                        if (getBucket(x, y) === targetBucket) bucketCells.push({x, y});
-                    }
-                }
-                bucketCells.sort(() => Math.random() - 0.5);
-                cellsToEtch = bucketCells;
-            }
+        function loadNextPath() {
+            cellsToEtch = PathStrategies.generatePath(mode, GRID_SIZE, currentBucketIdx);
         }
 
         function copyResults() {
@@ -866,11 +743,10 @@
                 return {
                     id: m,
                     name: names[m],
-                    peak: cached ? cached.maxStressDetected : -1
+                    peak: cached ? cached.maxStress : -1
                 };
             });
 
-            // Sort by peak descending
             results.sort((a, b) => b.peak - a.peak);
             
             let table = `Scan Strategy Results (${powerPattern === 'gradient' ? 'Color Grid' : 'Uniform'})\n`;
@@ -918,12 +794,13 @@
                 if (!alreadyCached) {
                     await new Promise(resolve => {
                         const check = () => {
-                            if (isComplete) resolve();
+                            const stats = sim.getStats();
+                            if (stats.isComplete) resolve();
                             else requestAnimationFrame(check);
                         };
                         check();
                     });
-                    await new Promise(r => setTimeout(r, 800)); // Inter-test pause
+                    await new Promise(r => setTimeout(r, 800)); 
                 }
             }
 
@@ -940,141 +817,55 @@
                 return;
             }
 
-            // 1. Diffusion & Decay (Heat moves into the "material" buffer)
-            const k = 0.1; // Increased diffusion for realistic conduction (was 0.005)
-            const decay = 0.992; // Slightly slower decay to allow accumulation
-            
-            for (let y = 1; y < SIM_SIZE - 1; y++) {
-                for (let x = 1; x < SIM_SIZE - 1; x++) {
-                    const i = y * SIM_SIZE + x;
-                    const neighborSum = heatMap[i-1] + heatMap[i+1] + 
-                                      heatMap[i-SIM_SIZE] + heatMap[i+SIM_SIZE];
-                    nextHeatMap[i] = (heatMap[i] + k * (neighborSum - 4 * heatMap[i])) * decay;
-                }
-            }
-            heatMap.set(nextHeatMap);
-
-            let totalHeat = 0;
-            let currentFrameMax = 0;
-            
-            // Stats & Peak Tracking (only for visible grid)
-            for (let y = 0; y < GRID_SIZE; y++) {
-                for (let x = 0; x < GRID_SIZE; x++) {
-                    const si = getSimIdx(x, y);
-                    const h = heatMap[si];
-                    if (h > currentFrameMax) currentFrameMax = h;
-                    totalHeat += h;
-                    if (h > peakHeatMap[si]) peakHeatMap[si] = h;
-                }
-            }
-
-            if (currentFrameMax > maxStressDetected) maxStressDetected = currentFrameMax;
-
-            // 2. Etching
-            const isDispersed = mode === 'quadrant' || mode === 'dispersive';
-            const batchSize = isDispersed ? 2 : 1; 
+            // 1. Physics & Etching logic via processStep
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            const batchSize = !isSequential ? 2 : 1; 
 
             for(let i = 0; i < batchSize; i++) {
-                if (cellsToEtch.length > 0) {
-                    const cell = cellsToEtch.pop();
-                    const si = getSimIdx(cell.x, cell.y);
-                    etchedState[cell.y * GRID_SIZE + cell.x] = 1;
-                    
-                    let powerFactor = 1.0;
-                    if (powerPattern === 'gradient') {
-                        const distFromTR = (cell.y + (GRID_SIZE - 1 - cell.x)) / (2 * (GRID_SIZE - 1));
-                        powerFactor = 1.0 + 3.0 * distFromTR; 
-                    }
+                let intensity = 12.0;
+                // Pre-calculate intensity if needed for the next cell
+                if (cellsToEtch.length > 0 && powerPattern === 'gradient') {
+                    const nextCell = cellsToEtch[cellsToEtch.length - 1];
+                    const distFromTR = (nextCell.y + (GRID_SIZE - 1 - nextCell.x)) / (2 * (GRID_SIZE - 1));
+                    intensity = 12.0 * (1.0 + 3.0 * distFromTR);
+                }
 
-                    const heatDelta = 12.0 * powerFactor; // Increased baseline
-                    
-                    // Thermal Splash (Simulating spot size and immediate projection)
-                    heatMap[si] += heatDelta;
-                    const splash = heatDelta * 0.25;
-                    heatMap[si-1] += splash;
-                    heatMap[si+1] += splash;
-                    heatMap[si-SIM_SIZE] += splash;
-                    heatMap[si+SIM_SIZE] += splash;
-                    const diagSplash = heatDelta * 0.1;
-                    heatMap[si-SIM_SIZE-1] += diagSplash;
-                    heatMap[si-SIM_SIZE+1] += diagSplash;
-                    heatMap[si+SIM_SIZE-1] += diagSplash;
-                    heatMap[si+SIM_SIZE+1] += diagSplash;
-
-                } else if (isDispersed && currentBucketIdx < NUM_BUCKETS - 1) {
+                const cell = sim.processStep(cellsToEtch, intensity);
+                
+                if (!cell && cellsToEtch.length === 0 && !isSequential && currentBucketIdx < NUM_BUCKETS - 1) {
                     currentBucketIdx++;
-                    loadNextBucket();
+                    loadNextPath();
                     break; 
                 }
             }
 
-            // 3. Rendering
-            ctx.fillStyle = '#0a0a0a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Thresholds calibrated for cumulative splash peaks
+            // 2. Rendering
             const heatThreshold = powerPattern === 'gradient' ? 120.0 : 60.0; 
+            renderer.render(sim, {
+                viewBuckets,
+                viewHeat,
+                mode,
+                heatThreshold
+            });
 
-            const getHeatColor = (val) => {
-                const n = Math.min(1, val / heatThreshold);
-                let r, g, b;
-                if (n < 0.2) {
-                    r = 80 + n * 5 * 175; g = 0; b = 0;
-                } else if (n < 0.4) {
-                    r = 255; g = (n-0.2) * 5 * 165; b = 0;
-                } else if (n < 0.7) {
-                    r = 255; g = 165 + (n-0.4) * (1/0.3) * 90; b = 0;
-                } else {
-                    r = 255; g = 255; b = (n-0.7) * (1/0.3) * 255;
-                }
-                return `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${Math.min(1, n * 2)})`;
-            };
-
-            for (let y = 0; y < GRID_SIZE; y++) {
-                for (let x = 0; x < GRID_SIZE; x++) {
-                    const idx = y * GRID_SIZE + x;
-                    const si = getSimIdx(x, y);
-                    const h = heatMap[si];
-                    const peak = peakHeatMap[si];
-                    
-                    if (viewBuckets && etchedState[idx] === 1) {
-                        ctx.fillStyle = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase') ? '#334155' : bucketColors[getBucket(x, y)] + '33';
-                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
-                    }
-                    
-                    if (viewHeat && peak > 0.01) {
-                        ctx.fillStyle = getHeatColor(peak);
-                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
-                    }
-
-                    if (!viewBuckets && h > 0.01) {
-                        const activeIntensity = Math.min(1, h / 15.0);
-                        ctx.fillStyle = `rgba(255, 255, 255, ${activeIntensity})`;
-                        ctx.fillRect(x * CELL_PIXELS, y * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS);
-                    }
-                }
-            }
-
-            const etchedCount = etchedState.reduce((a, b) => a + b, 0);
-            const totalCells = GRID_SIZE * GRID_SIZE;
-            const progressPct = (etchedCount / totalCells * 100);
-            document.getElementById('progress').innerText = `${progressPct.toFixed(0)}%`;
-            document.getElementById('peakHeat').innerText = maxStressDetected.toFixed(2);
-            document.getElementById('avgHeat').innerText = (totalHeat / (GRID_SIZE * GRID_SIZE)).toFixed(3);
+            // 3. Update Stats
+            const stats = sim.getStats();
+            document.getElementById('progress').innerText = `${stats.progress.toFixed(0)}%`;
+            document.getElementById('peakHeat').innerText = stats.peakStress.toFixed(2);
+            document.getElementById('avgHeat').innerText = stats.avgHeat.toFixed(3);
             
             const stressLimit = powerPattern === 'gradient' ? 90.0 : 45.0; 
-            document.getElementById('peakHeat').className = maxStressDetected > stressLimit ? 'stat-value hot' : 'stat-value';
+            document.getElementById('peakHeat').className = stats.peakStress > stressLimit ? 'stat-value hot' : 'stat-value';
 
-            if (!isComplete && etchedCount === (GRID_SIZE * GRID_SIZE)) {
-                isComplete = true;
+            if (stats.progress === 100 && !simulationCache[getCacheKey()]) {
+                // Save to cache once path is fully processed
                 if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
                 
-                // Save to cache
                 simulationCache[getCacheKey()] = {
-                    etchedState: new Uint8Array(etchedState),
-                    heatMap: new Float32Array(heatMap),
-                    peakHeatMap: new Float32Array(peakHeatMap),
-                    maxStressDetected: maxStressDetected
+                    etchedState: new Uint8Array(sim.etchedState),
+                    heatMap: new Float32Array(sim.heatMap),
+                    peakHeatMap: new Float32Array(sim.peakHeatMap),
+                    maxStress: sim.maxStress
                 };
 
                 updateScoreLabels();
@@ -1086,7 +877,7 @@
         }
 
         const legend = document.getElementById('bucketLegend');
-        bucketColors.forEach((color, i) => {
+        renderer.bucketColors.forEach((color, i) => {
             const item = document.createElement('div');
             item.className = 'legend-item';
             item.innerHTML = `<div class="color-box" style="background:${color}"></div> Sector ${i}`;
@@ -1097,18 +888,15 @@
             if (hoveredIdx === -1) return;
             const gx = hoveredIdx % GRID_SIZE;
             const gy = Math.floor(hoveredIdx / GRID_SIZE);
-            const si = getSimIdx(gx, gy);
-            
-            const heat = heatMap[si];
-            const peak = peakHeatMap[si];
-            const bucket = getBucket(gx, gy);
+            const state = sim.getStateAt(gx, gy);
+            const bucket = PathStrategies.getBucket(gx, gy, mode, GRID_SIZE);
 
-            document.getElementById('gp-heat').textContent = heat.toFixed(2);
-            document.getElementById('gp-peak').textContent = peak.toFixed(2);
+            document.getElementById('gp-heat').textContent = state.heat.toFixed(2);
+            document.getElementById('gp-peak').textContent = state.peak.toFixed(2);
             document.getElementById('gp-bucket').textContent = bucket;
             
-            const isControlled = (mode !== 'horizontal' && mode !== 'diagonal' && mode !== 'triphase');
-            document.getElementById('gp-bucket-row').style.display = isControlled ? 'flex' : 'none';
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('gp-bucket-row').style.display = !isSequential ? 'flex' : 'none';
         }
 
         const gridPopup = document.getElementById('gridPopup');
@@ -1139,9 +927,10 @@
             gridPopup.style.display = 'none';
         });
 
-        testAll(); 
+        restart();
         updateExampleImage();
         animate();
     </script>
+
 </body>
 </html>
