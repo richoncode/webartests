@@ -4,6 +4,17 @@
  * Supports different visualization modes (Heat, Peak, Buckets).
  */
 class HeatRenderer {
+    static SS304_STOPS = [
+        { t: 400, r: 180, g: 185, b: 190, name: 'Silver' },
+        { t: 550, r: 200, g: 176, b: 96,  name: 'Straw' },
+        { t: 620, r: 208, g: 144, b: 32,  name: 'Gold' },
+        { t: 680, r: 200, g: 64,  b: 32,  name: 'Red' },
+        { t: 720, r: 128, g: 48,  b: 96,  name: 'Purple' },
+        { t: 760, r: 21,  g: 53,  b: 176, name: 'Deep Blue' },
+        { t: 850, r: 18,  g: 144, b: 176, name: 'Cyan' },
+        { t: 950, r: 58,  g: 58,  b: 58,  name: 'Burnt Grey' }
+    ];
+
     constructor(canvas, config = {}) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -30,6 +41,30 @@ class HeatRenderer {
             r = 255; g = 255; b = (n-0.7) * (1/0.3) * 255;
         }
         return `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${Math.min(1, n * 2)})`;
+    }
+
+    getSS304Color(t) {
+        const stops = HeatRenderer.SS304_STOPS;
+        if (t <= stops[0].t) return `rgb(110, 110, 120)`;
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (t <= stops[i+1].t) {
+                const f = (t - stops[i].t) / (stops[i+1].t - stops[i].t);
+                const r = Math.round(stops[i].r + f * (stops[i+1].r - stops[i].r));
+                const g = Math.round(stops[i].g + f * (stops[i+1].g - stops[i].g));
+                const b = Math.round(stops[i].b + f * (stops[i+1].b - stops[i].b));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+        }
+        return `rgb(58, 58, 58)`;
+    }
+
+    static getSS304Name(t) {
+        const stops = HeatRenderer.SS304_STOPS;
+        if (t < 450) return 'Silver';
+        for (let i = stops.length - 1; i >= 0; i--) {
+            if (t >= stops[i].t) return stops[i].name;
+        }
+        return 'Silver';
     }
 
     /**
@@ -67,7 +102,7 @@ class HeatRenderer {
     /**
      * Renders the current state of a HeatSimulator.
      * @param {HeatSimulator} sim 
-     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold }
+     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold, colorMode }
      */
     render(sim, options = {}) {
         const { ctx, canvas, gridSize, cellPixels } = this;
@@ -75,6 +110,7 @@ class HeatRenderer {
         const viewHeat = options.viewHeat !== undefined ? options.viewHeat : true;
         const heatThreshold = options.heatThreshold || 90.0;
         const mode = options.mode || 'triphase';
+        const colorMode = options.colorMode || 'heat'; // 'heat' or 'ss304'
 
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -85,7 +121,7 @@ class HeatRenderer {
                 
                 // 1. Sector/Bucket Visualization
                 if (viewBuckets && state.etched) {
-                    const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+                    const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert' || mode === 'square' || mode === 'taper');
                     if (isSequential) {
                         ctx.fillStyle = '#334155';
                     } else {
@@ -97,7 +133,11 @@ class HeatRenderer {
                 
                 // 2. Persistent Peak Heat Visualization
                 if (viewHeat && state.peak > 0.01) {
-                    ctx.fillStyle = this.getHeatColor(state.peak, heatThreshold);
+                    if (colorMode === 'ss304') {
+                        ctx.fillStyle = this.getSS304Color(state.peak);
+                    } else {
+                        ctx.fillStyle = this.getHeatColor(state.peak, heatThreshold);
+                    }
                     ctx.fillRect(x * cellPixels, y * cellPixels, cellPixels, cellPixels);
                 }
 

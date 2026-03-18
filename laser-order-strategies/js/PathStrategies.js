@@ -163,5 +163,46 @@ const PathStrategies = {
         }
         
         return path;
+    },
+
+    /**
+     * Generates paths for arbitrary shapes.
+     * @param {string} type - 'square' or 'taper'
+     * @param {number} gridSize - Grid resolution
+     * @param {Object} params - Shape parameters (size for square, direction for taper)
+     * @returns {Array} List of {x, y} coordinates in reverse order (stack).
+     */
+    generateShapePath(type, gridSize, params = {}) {
+        let path = [];
+        
+        if (type === 'square') {
+            const w = params.size || gridSize;
+            const h = params.size || gridSize;
+            const sx = Math.floor(gridSize / 2 - w / 2);
+            const sy = Math.floor(gridSize / 2 - h / 2);
+            // Pushing in reverse order so pop() gives Top-to-Bottom, Left-to-Right
+            for (let y = h - 1; y >= 0; y--) {
+                for (let x = w - 1; x >= 0; x--) {
+                    path.push({ x: sx + x, y: sy + y });
+                }
+            }
+        } else if (type === 'taper') {
+            const h = Math.floor(gridSize * 0.8);
+            const sy = Math.floor(gridSize * 0.1);
+            const fw = gridSize;
+            const sx = 0;
+            const taperDir = params.direction || 'into'; // 'into' (narrowing) or 'away' (widening)
+            
+            for (let y = h - 1; y >= 0; y--) {
+                const ty = taperDir === 'into' ? y : h - 1 - y;
+                const cw = Math.floor(fw * (1 - ty / h));
+                const rx = sx + Math.floor((fw - cw) / 2);
+                for (let x = cw - 1; x >= 0; x--) {
+                    path.push({ x: rx + x, y: sy + ty });
+                }
+            }
+        }
+        
+        return path;
     }
 };
