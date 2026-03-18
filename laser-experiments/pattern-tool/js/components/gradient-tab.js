@@ -253,15 +253,13 @@ export const GradientTab = {
 
     const addText = (text, tx, ty, angle, size) => {
       const id = uuid();
-      // XCS uses 72pt = 19.85mm as unscaled height for Lato
-      const baseHeight = 19.85;
-      const scale = size / baseHeight;
-      const fontSize = 72;
-      const textWidth = text.length * baseHeight * 0.5; // Unscaled width
+      // XCS Spec: fontSize (pt) ≈ height (mm) * 3.626
+      const fontSize = Math.round(size * 3.626);
+      const textWidth = text.length * size * 0.5; // mm width at scale 1
 
       displays.push({ 
         id, name: null, type: 'TEXT', x: tx, y: ty, angle, 
-        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
         zOrder: displays.length, sourceId: id, groupTag: "", layerTag: labelColor,
         layerColor: labelColor, visible: true, originColor: "#000000",
@@ -269,14 +267,14 @@ export const GradientTab = {
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: textWidth, height: baseHeight, isFill: true, lineColor: 0, fillColor: labelColor,
+        width: textWidth, height: size, isFill: true, lineColor: 0, fillColor: labelColor,
         text, resolution: 1,
         style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "center" }
       });
 
       const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
       displayValues.push([id, { 
-        isFill: true, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
+        isFill: true, type: 'TEXT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false,
         data: {
           VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
           VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
