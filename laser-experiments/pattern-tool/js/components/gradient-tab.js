@@ -253,35 +253,34 @@ export const GradientTab = {
 
     const addText = (text, tx, ty, angle, size) => {
       const id = uuid();
-      // Visual height of Lato Bold at 72pt is ~19.85mm
-      const baseHeight = 19.85;
-      const scale = size / baseHeight;
-      const fontSize = 72;
-      
-      // Approximate width logic (Lato Bold is ~0.5 width-to-height ratio)
-      const textWidth = text.length * baseHeight * 0.5;
+      // XCS Formula: fontSize (pt) ≈ height (mm) * 3.626
+      const fontSize = Math.round(size * 3.626);
+      const textWidth = text.length * size * 0.5; // Approximate
 
-      let adjustedX = tx;
-      let adjustedY = ty;
-      
       displays.push({ 
-        id, name: null, type: 'TEXT', x: adjustedX, y: adjustedY, angle, 
-        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: adjustedX, offsetY: adjustedY, lockRatio: true, isClosePath: true,
+        id, name: null, type: 'TEXT', x: tx, y: ty, angle, 
+        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
         zOrder: displays.length, sourceId: id, groupTag: "", layerTag: labelColor,
         layerColor: labelColor, visible: true, originColor: "#000000",
         enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: textWidth * scale, height: size, isFill: true, lineColor: 0, fillColor: labelColor,
+        width: textWidth, height: size, isFill: true, lineColor: 0, fillColor: labelColor,
         text, resolution: 1,
         style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "center" }
       });
+
+      const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
       displayValues.push([id, { 
-        isFill: true, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
+        isFill: true, type: 'TEXT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false,
         data: {
-          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource } } }
+          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
+          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } }
         }
       }]);
     };
@@ -339,7 +338,7 @@ export const GradientTab = {
           INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserSource } } }
         };
 
-        displayValues.push([id, { isFill: true, type: 'RECT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
+        displayValues.push([id, { isFill: true, type, processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
       }
     }
 
@@ -359,14 +358,12 @@ export const GradientTab = {
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
 
-      // Bottom axis (X): Start at grid left (gridL), and move up 2mm (subtract from Y)
-      addText(xLabel, gridL, gridB + labelSize - 0.8, 0, labelSize);
-      // Left axis (Y): Start at grid bottom (gridB), and move 1.2mm + labelSize left of edge
-      addText(yLabel, gridL - labelSize - 1.2, gridB, -90, labelSize);
-      // Top axis (Fixed): Center on the grid (CX) by manually offsetting the x coordinate. Move up 2mm.
-      // Lato Bold is approx 0.5 width-to-height ratio. 
-      const fLabelWidth = fLabel.length * labelSize * 0.5;
-      addText(fLabel, CX - (fLabelWidth / 2), gridT - 3.2, 0, labelSize);
+      // Bottom axis (X): Baseline anchor = targetY + height/2
+      addText(xLabel, gridL + effectiveTotal/2, gridB + labelSize, 0, labelSize);
+      // Left axis (Y): Baseline anchor = targetX - height/2 for rotated text
+      addText(yLabel, gridL - labelSize, CY, -90, labelSize);
+      // Top axis (Fixed):
+      addText(fLabel, CX, gridT - 3.2, 0, labelSize);
     }
 
     const layerData = {};

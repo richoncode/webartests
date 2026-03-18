@@ -58,29 +58,34 @@ export const BitmapLineTab = {
 
     const addText = (text, tx, ty, size, color, layerTag) => {
       const id = uuid();
-      const baseHeight = 19.85;
-      const scale = size / baseHeight;
-      const fontSize = 72;
-      const textWidth = text.length * baseHeight * 0.5;
+      // XCS Formula: fontSize (pt) ≈ height (mm) * 3.626
+      const fontSize = Math.round(size * 3.626);
+      const textWidth = text.length * size * 0.5; // Approximate
 
       displays.push({
         id, name: null, type: 'TEXT', x: tx, y: ty, angle: 0,
-        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: layerTag || color,
+        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: color,
         layerColor: color, visible: true, originColor: "#000000",
         enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: textWidth * scale, height: size, isFill: true, lineColor: 0, fillColor: color,
+        width: textWidth, height: size, isFill: true, lineColor: 0, fillColor: color,
         text, resolution: 1,
         style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "right" }
       });
+
+      const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
       displayValues.push([id, {
-        isFill: true, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
+        isFill: true, type: 'TEXT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false,
         data: {
-          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource } } }
+          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
+          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } }
         }
       }]);
     };
@@ -98,8 +103,8 @@ export const BitmapLineTab = {
       const getUnit = (a) => ({ power: '%', speed: ' ms', dpi: ' DPI' }[a]);
       const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${axisAbbrevs[line.rangeAxis]}`;
       const textX = gridX - 4;
-      const textY = (y + 1.5) + (labelSize / 2);
-      addText(labelText, textX, textY, labelSize, labelColor, "Labels");
+      const textY = (y + 1.5) + (labelSize / 2); // Baseline adjustment
+      addText(labelText, textX, textY, labelSize, labelColor);
 
       const id = uuid();
       const currentDpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
@@ -108,7 +113,7 @@ export const BitmapLineTab = {
         id, name: null, type: 'IMAGE', x: gridX + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3, angle: 0,
         scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: gridX + totalWidth / 2, offsetY: y + 1.5, lockRatio: false, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: "Lines",
+        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: lineColor,
         layerColor: lineColor, visible: true, originColor: "#000000",
         enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
@@ -120,7 +125,7 @@ export const BitmapLineTab = {
         widthPixels, heightPixels: 1
       });
 
-      const pm = {
+      const bitmapPm = {
         power: line.rangeAxis === 'power' ? 100 : line.fixedPower,
         speed: line.rangeAxis === 'speed' ? 100 : line.fixedSpeed,
         dpi: line.rangeAxis === 'dpi' ? 300 : line.fixedDpi,
@@ -130,12 +135,18 @@ export const BitmapLineTab = {
       displayValues.push([id, {
         isFill: true, type: 'IMAGE', processingType: "FILL_VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
         data: {
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } }
+          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
+          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: bitmapPm } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: bitmapPm } },
+          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } }
         }
       }]);
     });
 
-    const layerData = { "Labels": { name: "Labels", order: 2, visible: true }, "Lines": { name: "Lines", order: 1, visible: true } };
+    const layerData = {};
+    layerData[labelColor] = { name: "Labels", order: 2, visible: true };
+    layerData[lineColor] = { name: "Lines", order: 1, visible: true };
     return {
       canvasId: canvasId,
       canvas: [{ id: canvasId, title: "{panel}1", layerData, groupData: {}, displays }],
