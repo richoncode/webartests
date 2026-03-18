@@ -181,7 +181,8 @@ class HeatSimulator {
                                   heatMap[i - size] + heatMap[i + size];
                 
                 // Thermal conduction formula + dissipation
-                nextHeatMap[i] = (heatMap[i] + k * (neighborSum - 4 * heatMap[i])) * decay;
+                // Enforce baseTemp floor
+                nextHeatMap[i] = Math.max(this.baseTemp, (heatMap[i] + k * (neighborSum - 4 * heatMap[i])) * decay);
             }
         }
         

@@ -102,7 +102,7 @@ class HeatRenderer {
     /**
      * Renders the current state of a HeatSimulator.
      * @param {HeatSimulator} sim 
-     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold, colorMode, activeHeatThreshold, activeHeatScale }
+     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold, colorMode, activeHeatThreshold, activeHeatScale, peakThreshold }
      */
     render(sim, options = {}) {
         const { ctx, canvas, gridSize, cellPixels } = this;
@@ -113,6 +113,9 @@ class HeatRenderer {
         const colorMode = options.colorMode || 'heat'; // 'heat' or 'ss304'
         const activeHeatThreshold = options.activeHeatThreshold || 0.01;
         const activeHeatScale = options.activeHeatScale || 15.0;
+        
+        // Default peakThreshold to baseTemp + 1 to avoid background washout
+        const peakThreshold = options.peakThreshold !== undefined ? options.peakThreshold : (sim.baseTemp + 1 || 0.01);
 
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -134,7 +137,7 @@ class HeatRenderer {
                 }
                 
                 // 2. Persistent Peak Heat Visualization
-                if (viewHeat && state.peak > 0.01) {
+                if (viewHeat && state.peak > peakThreshold) {
                     if (colorMode === 'ss304') {
                         ctx.fillStyle = this.getSS304Color(state.peak);
                     } else {
