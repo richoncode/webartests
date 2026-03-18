@@ -8,6 +8,7 @@ class HeatSimulator {
         this.gridSize = config.gridSize || 40;
         this.margin = config.margin || 15; // Buffer for diffusion beyond the active area
         this.simSize = this.gridSize + this.margin * 2;
+        this.baseTemp = config.baseTemp || 0;
         
         // Physics parameters
         this.k = config.diffusionRate || 0.1;
@@ -52,13 +53,13 @@ class HeatSimulator {
 
     reset() {
         const totalSize = this.simSize * this.simSize;
-        this.heatMap = new Float32Array(totalSize);
-        this.peakHeatMap = new Float32Array(totalSize);
-        this.nextHeatMap = new Float32Array(totalSize);
+        this.heatMap = new Float32Array(totalSize).fill(this.baseTemp);
+        this.peakHeatMap = new Float32Array(totalSize).fill(this.baseTemp);
+        this.nextHeatMap = new Float32Array(totalSize).fill(this.baseTemp);
         this.etchedState = new Uint8Array(this.gridSize * this.gridSize);
-        this.maxStress = 0;
-        this.maxCurrentHeat = 0;
-        this.totalHeat = 0;
+        this.maxStress = this.baseTemp;
+        this.maxCurrentHeat = this.baseTemp;
+        this.totalHeat = this.baseTemp * (this.gridSize * this.gridSize);
         this.etchedCount = 0;
     }
 
@@ -82,6 +83,7 @@ class HeatSimulator {
         if (path && path.length > 0) {
             const cell = path.pop();
             this.addHeat(cell.x, cell.y, intensity);
+            this.updateStats(); // Ensure stats reflect new heat immediately
             return cell;
         }
         return null;
@@ -94,13 +96,14 @@ class HeatSimulator {
      * @param {number} intensity - Heat energy per cell
      */
     processBatch(path, batchSize = 1, intensity = 12.0) {
-        this.step(); // One diffusion step per batch
+        this.step(false); // One diffusion step per batch, skip stats for now
         for (let i = 0; i < batchSize; i++) {
             if (path && path.length > 0) {
                 const cell = path.pop();
                 this.addHeat(cell.x, cell.y, intensity);
             }
         }
+        this.updateStats(); // Recalculate stats AFTER all injections
     }
 
     /**
