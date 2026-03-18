@@ -130,15 +130,35 @@ Every exported file must pass these two structural tests:
 
 ---
 
-## 8. Confirmed Properties & Values
+## 9. XCS Reference Files (`xcs-references/`)
 
-| Property | Value | Notes |
+Authoritative samples exported directly from xTool Creative Space.
+
+### `XCSFONTEXAMPLE1.xcs` (Scribe/Score Text)
+*   **Purpose**: Shows "Lato Regular" text set to **Score** (Scribe) for 304 Stainless Steel.
+*   **Geometry (`displays`)**:
+    *   `type`: `"TEXT"`
+    *   `isFill`: `false` (Required for Score/Scribe).
+    *   `scale`: Uses non-uniform/non-identity scaling (e.g., `0.155`).
+    *   **CRITICAL**: Includes a `fontData` block with `glyphData` (baked SVG paths). This may be required for F2 offline processing.
+*   **Processing (`device`)**:
+    *   `processingType`: `"VECTOR_ENGRAVING"` (Score).
+    *   `isWhiteModel`: `true`.
+    *   `planType`: `"red"` (for IR Laser).
+    *   **Settings (Official 304 Score)**:
+        *   Power: `90`
+        *   Speed: `500`
+        *   Repeat: `1`
+        *   ProcessingLightSource: `"red"` (IR).
+
+---
+
+## 10. Summary of Findings (Scribe vs Fill)
+| Feature | Fill (Engrave) | Scribe (Score) |
 | :--- | :--- | :--- |
-| `processingLightSource` | `"blue"` | F2 Diode (Blue) Laser. |
-| `processingLightSource` | `"red"` | F2 IR (1064nm) Laser. |
-| `processingType` | `"COLOR_FILL_ENGRAVE"` | Canonical name for Fill (1:1 LPCM). |
-| `pivot` | `{"x": 0, "y": 0}` | CONFIRMED for primitives. |
-| `alignment` | `0.5` | CONFIRMED requirement for stroke logic. |
-| `isFill` | `true` | Required for visual rendering in XCS. |
-| `fill.visible` | `false` | Counter-intuitive: MUST be false for simple fills. |
-| `stroke.visible` | `true` | Required even for fills. |
+| `processingType` | `COLOR_FILL_ENGRAVE` | `VECTOR_ENGRAVING` |
+| `isFill` (Root) | `true` | `false` |
+| `isWhiteModel` | `false` | `true` |
+| `planType` | `red` / `blue` | `red` / `blue` |
+| `fontSize` | Ratio ~0.275 | Ratio ~0.275 |
+

@@ -253,13 +253,15 @@ export const GradientTab = {
 
     const addText = (text, tx, ty, angle, size) => {
       const id = uuid();
-      // XCS Spec: fontSize (pt) ≈ height (mm) * 3.626
-      const fontSize = Math.round(size * 3.626);
-      const textWidth = text.length * size * 0.5; // mm width at scale 1
+      // XCS Reference Analysis: Lato Regular 72pt = ~23.35mm unscaled height.
+      const unscaledHeight = 23.35;
+      const scale = size / unscaledHeight;
+      const fontSize = 72 * scale;
+      const width = (text.length * 11.44) * scale; // 11.44 is base char width
 
       displays.push({ 
         id, name: null, type: 'TEXT', x: tx, y: ty, angle, 
-        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
         zOrder: displays.length, sourceId: id, groupTag: "", layerTag: labelColor,
         layerColor: labelColor, visible: true, originColor: "#000000",
@@ -267,20 +269,30 @@ export const GradientTab = {
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: textWidth, height: size, isFill: true, lineColor: 0, fillColor: labelColor,
+        width: width, height: size, isFill: false, lineColor: 0, fillColor: labelColor,
         text, resolution: 1,
-        style: { fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Bold", fontSource: "build-in", align: "center" }
+        style: { 
+          fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in", 
+          letterSpacing: 0, leading: 0, align: "center", curveX: 0, curveY: 0, 
+          isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed" 
+        }
       });
 
       const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
       displayValues.push([id, { 
-        isFill: true, type: 'TEXT', processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false,
+        isFill: false, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: true,
         data: {
           VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
-          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } }
+          VECTOR_ENGRAVING: { 
+            materialType: "official", planType: planType, 
+            parameter: { 
+              customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 },
+              official: { power: 90, speed: 500, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 }
+            } 
+          },
+          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 100, needGapNumDensity: true, bitmapScanMode: "zMode" } } },
+          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 300, dotDuration: 100, dpi: 500 } } },
+          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource, sliceNumber: 100 } } }
         }
       }]);
     };

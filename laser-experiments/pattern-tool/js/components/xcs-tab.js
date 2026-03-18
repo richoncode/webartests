@@ -60,10 +60,7 @@ export const XcsTab = {
       const pm = (pt && cfg.data?.[pt]) ? (cfg.data[pt].parameter?.customize || {}) : {};
       const src = pm.processingLightSource || null;
       const laser = (src === 'red' || src === 'ir') ? 'ir' : src;
-      const s = d.scale || { x: 1, y: 1 };
-      const sx = typeof s === 'number' ? s : (s.x || 1);
-      const sy = typeof s === 'number' ? s : (s.y || 1);
-      return { idx:i, id:d.id, type:d.type, x:d.x, y:d.y, w:d.width*sx, h:d.height*sy,
+      return { idx:i, id:d.id, type:d.type, x:d.x, y:d.y, w:d.width, h:d.height,
                angle:d.angle||0, layerColor:d.layerColor||'#5b9bd5', zOrder:d.zOrder||0,
                processingType:pt, power:pm.power??null, speed:pm.speed??null,
                density:pm.density ?? pm.dpi ?? null, repeat:pm.repeat??1,
