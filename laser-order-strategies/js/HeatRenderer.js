@@ -45,7 +45,18 @@ class HeatRenderer {
 
     getSS304Color(t) {
         const stops = HeatRenderer.SS304_STOPS;
-        if (t <= stops[0].t) return `rgb(110, 110, 120)`;
+        // Add a subtle warm-up gradient for temperatures below the first stop (400)
+        // to ensure the "Heat Wall" is visible as it builds up.
+        if (t <= 20) return '#000';
+        if (t < stops[0].t) {
+            const n = (t - 20) / (stops[0].t - 20);
+            // Fade from dark grey to the Silver stop color
+            const r = Math.round(20 + n * 160);
+            const g = Math.round(20 + n * 165);
+            const b = Math.round(25 + n * 165);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+        
         for (let i = 0; i < stops.length - 1; i++) {
             if (t <= stops[i+1].t) {
                 const f = (t - stops[i].t) / (stops[i+1].t - stops[i].t);
@@ -60,7 +71,7 @@ class HeatRenderer {
 
     static getSS304Name(t) {
         const stops = HeatRenderer.SS304_STOPS;
-        if (t < 450) return 'Silver';
+        if (t < 420) return 'Silver';
         for (let i = stops.length - 1; i >= 0; i--) {
             if (t >= stops[i].t) return stops[i].name;
         }
@@ -76,14 +87,15 @@ class HeatRenderer {
         const py = y * cellPixels + cellPixels / 2;
         
         ctx.save();
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, cellPixels * 2);
-        grad.addColorStop(0, `rgba(255, 255, 255, ${0.8 * intensity})`);
-        grad.addColorStop(0.2, `rgba(255, 200, 0, ${0.4 * intensity})`);
-        grad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        ctx.globalCompositeOperation = 'lighter';
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, cellPixels * 3);
+        grad.addColorStop(0, `rgba(255, 255, 255, ${0.9 * intensity})`);
+        grad.addColorStop(0.2, `rgba(255, 220, 100, ${0.5 * intensity})`);
+        grad.addColorStop(1, 'rgba(255, 50, 0, 0)');
         
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(px, py, cellPixels * 2, 0, Math.PI * 2);
+        ctx.arc(px, py, cellPixels * 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
@@ -114,18 +126,26 @@ class HeatRenderer {
         const activeHeatThreshold = options.activeHeatThreshold || 0.01;
         const activeHeatScale = options.activeHeatScale || 15.0;
         
-        // Default peakThreshold to baseTemp + 1 to avoid background washout
-        const peakThreshold = options.peakThreshold !== undefined ? options.peakThreshold : (sim.baseTemp + 1 || 0.01);
+        const peakThreshold = options.peakThreshold !== undefined ? options.peakThreshold : (sim.baseTemp + 0.1 || 0.01);
 
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Performance Optimization: Direct access to TypedArrays to avoid object allocation in loop
+        const heatMap = sim.heatMap;
+        const peakMap = sim.peakHeatMap;
+        const etchedState = sim.etchedState;
+
         for (let y = 0; y < gridSize; y++) {
+            const yOffset = y * gridSize;
             for (let x = 0; x < gridSize; x++) {
-                const state = sim.getStateAt(x, y);
+                const si = sim.getSimIdx(x, y);
+                const etched = etchedState[yOffset + x] === 1;
+                const peak = peakMap[si];
+                const heat = heatMap[si];
                 
                 // 1. Sector/Bucket Visualization
-                if (viewBuckets && state.etched) {
+                if (viewBuckets && etched) {
                     const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert' || mode === 'square' || mode === 'taper');
                     if (isSequential) {
                         ctx.fillStyle = '#334155';
@@ -137,20 +157,25 @@ class HeatRenderer {
                 }
                 
                 // 2. Persistent Peak Heat Visualization
-                if (viewHeat && state.peak > peakThreshold) {
+                if (viewHeat && peak > peakThreshold) {
                     if (colorMode === 'ss304') {
-                        ctx.fillStyle = this.getSS304Color(state.peak);
+                        ctx.fillStyle = this.getSS304Color(peak);
                     } else {
-                        ctx.fillStyle = this.getHeatColor(state.peak, heatThreshold);
+                        ctx.fillStyle = this.getHeatColor(peak, heatThreshold);
                     }
                     ctx.fillRect(x * cellPixels, y * cellPixels, cellPixels, cellPixels);
                 }
 
-                // 3. Active "Live" Heat Overlay
-                if (!viewBuckets && state.heat > activeHeatThreshold) {
-                    const activeIntensity = Math.min(1, state.heat / activeHeatScale);
-                    ctx.fillStyle = `rgba(255, 255, 255, ${activeIntensity})`;
-                    ctx.fillRect(x * cellPixels, y * cellPixels, cellPixels, cellPixels);
+                // 3. Active "Live" Heat Overlay (Additive Glow)
+                if (!viewBuckets && heat > activeHeatThreshold) {
+                    const activeIntensity = Math.min(1, (heat - sim.baseTemp) / activeHeatScale);
+                    if (activeIntensity > 0.05) {
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'lighter';
+                        ctx.fillStyle = `rgba(255, 255, 255, ${activeIntensity})`;
+                        ctx.fillRect(x * cellPixels, y * cellPixels, cellPixels, cellPixels);
+                        ctx.restore();
+                    }
                 }
             }
         }
