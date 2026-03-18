@@ -102,7 +102,7 @@ class HeatRenderer {
     /**
      * Renders the current state of a HeatSimulator.
      * @param {HeatSimulator} sim 
-     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold, colorMode }
+     * @param {Object} options { viewBuckets, viewHeat, mode, heatThreshold, colorMode, activeHeatThreshold, activeHeatScale }
      */
     render(sim, options = {}) {
         const { ctx, canvas, gridSize, cellPixels } = this;
@@ -111,6 +111,8 @@ class HeatRenderer {
         const heatThreshold = options.heatThreshold || 90.0;
         const mode = options.mode || 'triphase';
         const colorMode = options.colorMode || 'heat'; // 'heat' or 'ss304'
+        const activeHeatThreshold = options.activeHeatThreshold || 0.01;
+        const activeHeatScale = options.activeHeatScale || 15.0;
 
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -142,8 +144,8 @@ class HeatRenderer {
                 }
 
                 // 3. Active "Live" Heat Overlay
-                if (!viewBuckets && state.heat > 0.01) {
-                    const activeIntensity = Math.min(1, state.heat / 15.0);
+                if (!viewBuckets && state.heat > activeHeatThreshold) {
+                    const activeIntensity = Math.min(1, state.heat / activeHeatScale);
                     ctx.fillStyle = `rgba(255, 255, 255, ${activeIntensity})`;
                     ctx.fillRect(x * cellPixels, y * cellPixels, cellPixels, cellPixels);
                 }

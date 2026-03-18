@@ -88,6 +88,22 @@ class HeatSimulator {
     }
 
     /**
+     * Processes a batch of cells from the path in a single physics frame.
+     * @param {Array} path - The coordinate stack
+     * @param {number} batchSize - Number of cells to process
+     * @param {number} intensity - Heat energy per cell
+     */
+    processBatch(path, batchSize = 1, intensity = 12.0) {
+        this.step(); // One diffusion step per batch
+        for (let i = 0; i < batchSize; i++) {
+            if (path && path.length > 0) {
+                const cell = path.pop();
+                this.addHeat(cell.x, cell.y, intensity);
+            }
+        }
+    }
+
+    /**
      * Encapsulates the entire "Instant Render" lifecycle: full path + cool-down.
      */
     processInstant(path, intensity = 12.0) {
@@ -95,14 +111,15 @@ class HeatSimulator {
         while (path && path.length > 0) {
             const cell = path.pop();
             this.addHeat(cell.x, cell.y, intensity);
-            this.step();
+            this.step(false); // Skip stats for speed
         }
         // 2. Automated Cool-down until thermally stable
         let safetyLimit = 2000; 
         while (!this.isStable() && safetyLimit > 0) {
-            this.step();
+            this.step(false);
             safetyLimit--;
         }
+        this.updateStats();
     }
 
     /**
@@ -143,8 +160,9 @@ class HeatSimulator {
 
     /**
      * Performs one physics step (diffusion and decay).
+     * @param {boolean} runStats - Whether to recalculate global stats (peak, avg).
      */
-    step() {
+    step(runStats = true) {
         const size = this.simSize;
         const heatMap = this.heatMap;
         const nextHeatMap = this.nextHeatMap;
@@ -165,7 +183,7 @@ class HeatSimulator {
         }
         
         this.heatMap.set(nextHeatMap);
-        this.updateStats();
+        if (runStats) this.updateStats();
     }
 
     updateStats() {
