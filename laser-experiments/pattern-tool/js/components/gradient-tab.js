@@ -277,25 +277,26 @@ export const GradientTab = {
       const gridT = CY - (effectiveTotal/2);
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
-      const gap = 2; // mm gap from grid
+      const gap = 1; // mm gap from grid
 
       // Labels match XCS baseline
       const unscaledHeight = 23.35;
       const scale = labelSize / unscaledHeight;
       const fontSize = 72 * scale;
 
-      // Bottom axis (X): baseline anchor = targetY + height. Chars grow UP.
+      // Bottom axis (X): baseline anchor = gridB + gap + labelSize. Chars grow UP from there.
+      // Top of text will be at gridB + gap.
       XCSExporter.addText(project, {
         text: xLabel, x: gridL + effectiveTotal/2, y: gridB + gap + labelSize, width: xLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
       });
-      // Left axis (Y): vertical anchor. Chars grow RIGHT from anchor. 
-      // To be outside, anchorX must be left of the grid by (gap + height).
+      // Left axis (Y): vertical anchor. Chars grow LEFT from anchor. 
+      // To be outside, anchorX must be left of the grid by (gap).
       XCSExporter.addText(project, {
-        text: yLabel, x: gridL - gap - labelSize, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        text: yLabel, x: gridL - gap, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center", angle: -90
       });
-      // Top axis (Fixed): baseline anchor = targetY. Chars grow UP.
+      // Top axis (Fixed): baseline anchor = gridT - gap. Chars grow UP from there.
       XCSExporter.addText(project, {
         text: fLabel, x: CX, y: gridT - gap, width: fLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
