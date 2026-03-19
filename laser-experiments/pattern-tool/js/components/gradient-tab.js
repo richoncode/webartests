@@ -4,6 +4,7 @@ import { XCSViewer } from '../viewer.js';
 import { uuid } from '../utils.js';
 import { XcsTab } from './xcs-tab.js';
 import { MandalaTab } from './mandala-tab.js';
+import { XCSExporter } from '../xcs-exporter.js';
 
 const M8 = [
   [ 0, 32,  8, 40,  2, 34, 10, 42],
@@ -39,7 +40,6 @@ export const GradientTab = {
 
     const defaults = {
       laserType: 'ir',
-      renderMode: 'vector',
       disperseHeat: false,
       xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
       roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
@@ -49,7 +49,8 @@ export const GradientTab = {
       overlap: 0,
       showLabels: true,
       fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000,
-      totalSize: 20
+      totalSize: 20,
+      renderMode: 'vector'
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
     const state = { rawData:null, shapes:[], selection: null };
@@ -91,11 +92,10 @@ export const GradientTab = {
       const cellSize = totalSize / resolution;
       const gap = overlap < 0 ? Math.abs(overlap) : 0;
       const pitch = cellSize + gap;
-      const effectiveTotal = pitch * resolution;
       
       const CX = 50, CY = 50;
-      const startX = CX - effectiveTotal/2;
-      const startY = CY - effectiveTotal/2;
+      const startX = CX - (pitch * resolution)/2;
+      const startY = CY - (pitch * resolution)/2;
 
       const ix = Math.floor((mmX - startX) / pitch);
       const iy = Math.floor((mmY - startY) / pitch);
@@ -147,48 +147,25 @@ export const GradientTab = {
     const svg = inst.pane.querySelector('.svg-canvas');
     if (!svg) return;
     let overlay = svg.querySelector('.selection-overlay');
-    let label = svg.querySelector('.selection-label');
     
     if (!inst.state.selection) {
       if (overlay) overlay.remove();
-      if (label) label.remove();
       return;
     }
 
     if (!overlay) {
       overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       overlay.setAttribute('class', 'selection-overlay');
-      overlay.setAttribute('fill', 'rgba(91, 155, 213, 0.25)');
+      overlay.setAttribute('fill', 'rgba(91, 155, 213, 0.2)');
       overlay.setAttribute('stroke', '#5b9bd5');
-      overlay.setAttribute('stroke-width', '1.5');
+      overlay.setAttribute('stroke-width', '2');
       overlay.setAttribute('pointer-events', 'none');
       svg.appendChild(overlay);
-    } else {
-      svg.appendChild(overlay);
-    }
-
-    if (!label) {
-      label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('class', 'selection-label');
-      label.setAttribute('fill', '#fff');
-      label.setAttribute('font-size', '12');
-      label.setAttribute('font-weight', 'bold');
-      label.setAttribute('pointer-events', 'none');
-      label.setAttribute('text-anchor', 'middle');
-      label.style.textShadow = '0 0 3px #000';
-      svg.appendChild(label);
-    } else {
-      svg.appendChild(label);
     }
 
     const { ix1, iy1, ix2, iy2 } = inst.state.selection;
-    const mix = Math.min(ix1, ix2);
-    const max = Math.max(ix1, ix2);
-    const miy = Math.min(iy1, iy2);
-    const may = Math.max(iy1, iy2);
-
-    const selW = max - mix + 1;
-    const selH = may - miy + 1;
+    const xMin = Math.min(ix1, ix2), xMax = Math.max(ix1, ix2);
+    const yMin = Math.min(iy1, iy2), yMax = Math.max(iy1, iy2);
 
     const vb = svg.viewBox.baseVal;
     const W = vb.width||500, H = vb.height||500;
@@ -203,24 +180,19 @@ export const GradientTab = {
     const gap = overlap < 0 ? Math.abs(overlap) : 0;
     const pitch = cellSize + gap;
     const effectiveTotal = pitch * resolution;
-    
     const CX = 50, CY = 50;
     const startX = CX - effectiveTotal/2;
     const startY = CY - effectiveTotal/2;
 
-    const rx = startX + mix * pitch;
-    const ry = startY + miy * pitch;
-    const rw = (max - mix + 1) * pitch - gap;
-    const rh = (may - miy + 1) * pitch - gap;
+    const x = ox + (startX + xMin * pitch) * sc;
+    const y = oy + (startY + yMin * pitch) * sc;
+    const w = (xMax - xMin + 1) * pitch * sc;
+    const h = (yMax - yMin + 1) * pitch * sc;
 
-    overlay.setAttribute('x', rx * sc + ox);
-    overlay.setAttribute('y', ry * sc + oy);
-    overlay.setAttribute('width', rw * sc);
-    overlay.setAttribute('height', rh * sc);
-
-    label.textContent = `${selW} × ${selH}`;
-    label.setAttribute('x', (rx + rw/2) * sc + ox);
-    label.setAttribute('y', (ry + rh/2) * sc + oy + 4);
+    overlay.setAttribute('x', x);
+    overlay.setAttribute('y', y);
+    overlay.setAttribute('width', w);
+    overlay.setAttribute('height', h);
   },
 
   refresh(tabId, lazy = false) {
@@ -228,13 +200,10 @@ export const GradientTab = {
     inst.state.rawData = this.generateXCS(inst.cfg);
     inst.state.shapes = XcsTab.parseXCS(inst.state.rawData);
     XCSViewer.update(inst.pane, inst.state, lazy);
-    this.updateSelectionOverlay(tabId);
   },
 
   generateXCS(cfg) {
-    const canvasId = uuid();
-    const displays = [];
-    const displayValues = [];
+    const project = XCSExporter.createProject();
     const CX = 50, CY = 50;
     const { resolution, totalSize, laserType, xAxis, yAxis, overlap } = cfg;
     
@@ -247,59 +216,10 @@ export const GradientTab = {
     const startY = CY - effectiveTotal/2;
 
     const laserSource = laserType === 'ir' ? 'red' : 'blue';
-    const planType = laserType === 'ir' ? 'ir' : 'blue';
-
     const labelColor = cfg.disperseHeat ? "#000000" : "#5b9bd5";
-
-    const addText = (text, tx, ty, angle, size) => {
-      const id = uuid();
-      // XCS Reference Analysis: Lato Regular 72pt = ~23.35mm unscaled height.
-      const unscaledHeight = 23.35;
-      const scale = size / unscaledHeight;
-      const fontSize = 72 * scale;
-      const width = (text.length * 11.44) * scale; // 11.44 is base char width
-
-      displays.push({ 
-        id, name: null, type: 'TEXT', x: tx, y: ty, angle, 
-        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: labelColor,
-        layerColor: labelColor, visible: true, originColor: "#000000",
-        enableTransform: true, visibleState: true, lockState: false,
-        resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
-        fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-        stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: width, height: size, isFill: false, lineColor: 0, fillColor: labelColor,
-        text, resolution: 1,
-        style: { 
-          fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in", 
-          letterSpacing: 0, leading: 0, align: "center", curveX: 0, curveY: 0, 
-          isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed" 
-        }
-      });
-
-      const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
-      displayValues.push([id, { 
-        isFill: false, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: true,
-        data: {
-          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
-          VECTOR_ENGRAVING: { 
-            materialType: "official", planType: planType, 
-            parameter: { 
-              customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 },
-              official: { power: 90, speed: 500, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 }
-            } 
-          },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 100, needGapNumDensity: true, bitmapScanMode: "zMode" } } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 300, dotDuration: 100, dpi: 500 } } },
-          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource, sliceNumber: 100 } } }
-        }
-      }]);
-    };
 
     for (let iy = 0; iy < resolution; iy++) {
       for (let ix = 0; ix < resolution; ix++) {
-        const id = uuid();
         const x = startX + ix * pitch + pitch/2;
         const y = startY + iy * pitch + pitch/2;
         
@@ -321,36 +241,24 @@ export const GradientTab = {
         const color = cfg.disperseHeat ? BUCKET_COLORS[bucket] : "#5b9bd5";
 
         const actualOverlap = overlap > 0 ? overlap : 0;
-        const type = cfg.renderMode === 'bitmap' ? 'IMAGE' : 'RECT';
-        displays.push({ 
-          id, name: null, type, x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap, angle: 0,
-          scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-          offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
-          zOrder: displays.length, sourceId: id, groupTag: "", layerTag: color,
-          layerColor: color, visible: true, originColor: "#000000",
-          enableTransform: true, visibleState: true, lockState: false,
-          resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
-          fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-          stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-          isFill: true, lineColor: 0, fillColor: color, hideLabels: true, power: null,
-          ix, iy
-        });
-
         const pm = { 
           power: Math.round(p), speed: Math.round(s), density: Math.round(d), repeat: 1,
-          processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
-          dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0
-        };
-        
-        const nodes = {
-          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 16, repeat: 1, processingLightSource: laserSource } } },
-          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource } } },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 80, repeat: 1, processingLightSource: laserSource } } }
+          processingLightSource: laserSource
         };
 
-        displayValues.push([id, { isFill: true, type, processingType: "COLOR_FILL_ENGRAVE", processIgnore: false, isWhiteModel: false, data: nodes }]);
+        if (cfg.renderMode === 'bitmap') {
+          XCSExporter.addImage(project, {
+            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
+            layerColor: color, laserSource, params: pm,
+            extraDisplayData: { ix, iy, hideLabels: true }
+          });
+        } else {
+          XCSExporter.addRect(project, {
+            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
+            layerColor: color, laserSource, params: pm,
+            extraDisplayData: { ix, iy, hideLabels: true }
+          });
+        }
       }
     }
 
@@ -370,45 +278,40 @@ export const GradientTab = {
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
 
-      // Bottom axis (X): Baseline anchor = targetY + height/2
-      addText(xLabel, gridL + effectiveTotal/2, gridB + labelSize, 0, labelSize);
-      // Left axis (Y): Baseline anchor = targetX - height/2 for rotated text
-      addText(yLabel, gridL - labelSize, CY, -90, labelSize);
-      // Top axis (Fixed):
-      addText(fLabel, CX, gridT - 3.2, 0, labelSize);
-    }
+      // Labels match XCS baseline
+      const unscaledHeight = 23.35;
+      const scale = labelSize / unscaledHeight;
+      const fontSize = 72 * scale;
 
-    const layerData = {};
-    if (cfg.disperseHeat) {
-      BIT_REVERSE_SEQ.forEach((bucketIdx, i) => {
-        const color = BUCKET_COLORS[bucketIdx];
-        layerData[color] = {
-          name: bucketIdx === 7 ? "Sector 7 + Labels" : `Sector ${bucketIdx}`,
-          order: 8 - i, // 8 down to 1
-          visible: true
-        };
+      XCSExporter.addText(project, {
+        text: xLabel, x: gridL + effectiveTotal/2, y: gridB + labelSize, width: xLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        layerColor: labelColor, laserSource, align: "center"
       });
-    } else {
-      layerData["#5b9bd5"] = { name: "Grid", order: 1, visible: true };
+      XCSExporter.addText(project, {
+        text: yLabel, x: gridL - labelSize, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        layerColor: labelColor, laserSource, align: "center", angle: -90
+      });
+      XCSExporter.addText(project, {
+        text: fLabel, x: CX, y: gridT - 3.2, width: fLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        layerColor: labelColor, laserSource, align: "center"
+      });
     }
 
-    return {
-      canvasId: canvasId,
-      canvas: [{ id: canvasId, title: "{panel}1", layerData, groupData: {}, displays }],
-      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: planType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: cfg.disperseHeat, pathPlanning: cfg.disperseHeat ? "custom" : "auto", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
-      extId: "GS006", extName: "F2", version: "1.5.8", minRequiredVersion: "2.6.0", created: Date.now(), modify: Date.now(), projectTraceID: uuid()
-    };
+    const dvEntry = project.device.data.value[0][1];
+    dvEntry.data.LASER_PLANE.isProcessByLayer = cfg.disperseHeat;
+    dvEntry.data.LASER_PLANE.pathPlanning = cfg.disperseHeat ? "custom" : "auto";
+
+    return project;
   },
 
   renderControls(tabId) {
-    const { pane, cfg } = App.instances[tabId];
+    const { pane, cfg, state } = App.instances[tabId];
     const scroll = pane.querySelector('.tool-scroll');
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
 
-    const axisLabels = { power: 'PWR', speed: 'SPD', lpcm: 'LPC' };
-    const axisTitles = { power: 'Power', speed: 'Speed', lpcm: 'Lines Per CM' };
+    const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
     const axisOpts = ['power', 'speed', 'lpcm'];
 
     const swapAxes = (targetRole, newValue) => {
@@ -433,93 +336,76 @@ export const GradientTab = {
 
     scroll.appendChild(MandalaTab.makeSection('Global', [
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
-      MandalaTab.makeRow('Mode', MandalaTab.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
+      MandalaTab.makeRow('Render', MandalaTab.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
       MandalaTab.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
       MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
-      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), ' mm')),
-      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), ' mm')),
+      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
+      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
       MandalaTab.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
     ]));
 
     const getRanges = (axis) => {
-      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
-      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: ' mm/s' };
-      return { min: 10, max: 1000, step: 50, unit: ' lpcm' };
+      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: 'pwr%' };
+      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: 'mm/s' };
+      return { min: 10, max: 1000, step: 50, unit: 'lpcm' };
     };
 
     const xr = getRanges(cfg.xAxis);
     scroll.appendChild(MandalaTab.makeSection('X Axis:', [
       MandalaTab.makeRow(`Min (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMin, v => set('xMin', +v), xr.unit)),
       MandalaTab.makeRow(`Max (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMax, v => set('xMax', +v), xr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels, axisTitles)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels)));
 
     const yr = getRanges(cfg.yAxis);
     scroll.appendChild(MandalaTab.makeSection('Y Axis:', [
       MandalaTab.makeRow(`Min (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMin, v => set('yMin', +v), yr.unit)),
       MandalaTab.makeRow(`Max (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMax, v => set('yMax', +v), yr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels, axisTitles)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels)));
 
     const fr = getRanges(cfg.fixedAxis);
     const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
     scroll.appendChild(MandalaTab.makeSection('Fixed:', [
       MandalaTab.makeRow(`Value (${fr.unit})`, MandalaTab.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels, axisTitles)));
+    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
 
-    // ── Selection Zoom ──
-    if (App.instances[tabId].state.selection) {
-      const { ix1, iy1, ix2, iy2 } = App.instances[tabId].state.selection;
-      const mix = Math.min(ix1, ix2), max = Math.max(ix1, ix2);
-      const miy = Math.min(iy1, iy2), may = Math.max(iy1, iy2);
+    if (state.selection) {
+      const { ix1, iy1, ix2, iy2 } = state.selection;
+      const xMin = Math.min(ix1, ix2), xMax = Math.max(ix1, ix2);
+      const yMin = Math.min(iy1, iy2), yMax = Math.max(iy1, iy2);
+      const count = (xMax - xMin + 1) * (yMax - yMin + 1);
       
-      const getValForIdx = (axis, idx) => {
-        let minVal, maxVal;
-        if (axis === cfg.xAxis) { minVal = cfg.xMin; maxVal = cfg.xMax; }
-        else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; }
-        else return null;
-        if (cfg.resolution === 1) return minVal;
-        return minVal + (maxVal - minVal) * idx / (cfg.resolution - 1);
-      };
-
-      const xMinZoom = getValForIdx(cfg.xAxis, mix);
-      const xMaxZoom = getValForIdx(cfg.xAxis, max);
-      
-      // Recall stepIdx = (resolution - 1) - iy
-      const yMinZoom = getValForIdx(cfg.yAxis, (cfg.resolution - 1) - may);
-      const yMaxZoom = getValForIdx(cfg.yAxis, (cfg.resolution - 1) - miy);
-
-      const selW = max - mix + 1;
-      const selH = may - miy + 1;
-
-      const zoomBtn = document.createElement('button');
-      zoomBtn.className = 'hbtn primary';
-      zoomBtn.style.width = '100%';
-      zoomBtn.style.marginTop = '8px';
-      zoomBtn.textContent = 'Gradient Zoom';
-      zoomBtn.onclick = () => {
-        const newCfg = { ...cfg, xMin: Math.round(xMinZoom), xMax: Math.round(xMaxZoom), yMin: Math.round(yMinZoom), yMax: Math.round(yMaxZoom) };
+      const sec = MandalaTab.makeSection('Selection', [
+        MandalaTab.makeRow('Cells', `${count} (${xMin},${yMin}) to (${xMax},${yMax})`),
+        MandalaTab.makeRow('', `<button class="tool-btn zoom-btn">Zoom to selection</button>`)
+      ]);
+      sec.querySelector('.zoom-btn').onclick = () => {
+        const xMinVal = this.getValAt(tabId, cfg.xAxis, xMin);
+        const xMaxVal = this.getValAt(tabId, cfg.xAxis, xMax);
+        const yMinVal = this.getValAt(tabId, cfg.yAxis, yMin);
+        const yMaxVal = this.getValAt(tabId, cfg.yAxis, yMax);
         
-        const getLabelPart = (axisName) => {
-          const abbrev = { lpcm: 'LPC', power: 'PWR', speed: 'SPD' }[axisName];
-          if (cfg.xAxis === axisName) return `${abbrev}${Math.round(xMinZoom)}-${Math.round(xMaxZoom)}`;
-          if (cfg.yAxis === axisName) return `${abbrev}${Math.round(yMinZoom)}-${Math.round(yMaxZoom)}`;
-          const fixedVal = axisName === 'lpcm' ? cfg.fixedLpcm : axisName === 'power' ? cfg.fixedPower : cfg.fixedSpeed;
-          return `${abbrev}${Math.round(fixedVal)}`;
-        };
-
-        const newLabel = `Grad${getLabelPart('lpcm')}${getLabelPart('power')}${getLabelPart('speed')}`;
-        const newId = TabMgr.newGradient(newCfg, newLabel);
-        TabMgr.activate(newId);
+        cfg.xMin = Math.min(xMinVal, xMaxVal);
+        cfg.xMax = Math.max(xMinVal, xMaxVal);
+        cfg.yMin = Math.min(yMinVal, yMaxVal);
+        cfg.yMax = Math.max(yMinVal, yMaxVal);
+        
+        state.selection = null;
+        this.updateSelectionOverlay(tabId);
+        this.renderControls(tabId);
+        update();
       };
-
-      const xr = getRanges(cfg.xAxis);
-      const yr = getRanges(cfg.yAxis);
-
-      scroll.appendChild(MandalaTab.makeSection('Selection Zoom', [
-        MandalaTab.makeRow(`Size`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${selW} × ${selH} cells</span>`)),
-        MandalaTab.makeRow(`X Range`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${Math.round(xMinZoom)}–${Math.round(xMaxZoom)} ${xr.unit} (Cells ${mix}–${max})</span>`)),
-        MandalaTab.makeRow(`Y Range`, document.createRange().createContextualFragment(`<span class="range-val" style="flex:1;text-align:left">${Math.round(yMinZoom)}–${Math.round(yMaxZoom)} ${yr.unit} (Cells ${(cfg.resolution - 1) - may}–${(cfg.resolution - 1) - miy})</span>`)),
-        zoomBtn
-      ]));
+      scroll.appendChild(sec);
     }
+  },
+
+  getValAt(tabId, axis, idx) {
+    const { cfg } = App.instances[tabId];
+    let minVal, maxVal;
+    if (axis === cfg.xAxis) { minVal = cfg.xMin; maxVal = cfg.xMax; }
+    else if (axis === cfg.yAxis) { minVal = cfg.yMin; maxVal = cfg.yMax; idx = (cfg.resolution - 1) - idx; }
+    else return 0;
+    
+    if (cfg.resolution === 1) return minVal;
+    return minVal + (maxVal - minVal) * idx / (cfg.resolution - 1);
   }
 };

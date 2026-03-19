@@ -4,6 +4,7 @@ import { XCSViewer } from '../viewer.js';
 import { uuid } from '../utils.js';
 import { XcsTab } from './xcs-tab.js';
 import { MandalaTab } from './mandala-tab.js';
+import { XCSExporter } from '../xcs-exporter.js';
 
 export const BitmapLineTab = {
   create(tabId, initialCfg) {
@@ -12,7 +13,7 @@ export const BitmapLineTab = {
     pane.dataset.paneId = tabId;
     pane.innerHTML = `
       <div class="left-tool-panel">
-        <div class="tool-header"><span class="tool-title">Bitmap Lines</span></div>
+        <div class="tool-header"><span class="tool-title">Bitmap Line Test</span></div>
         <div class="tool-scroll"></div>
       </div>`;
 
@@ -23,9 +24,11 @@ export const BitmapLineTab = {
 
     const defaults = {
       laserType: 'ir',
-      totalWidth: 30,
+      totalWidth: 50,
       lines: [
-        { id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 0.1, fixedDpi: 300 }
+        { id: uuid(), min: 10, max: 100, rangeAxis: 'power', fixedDpi: 300, fixedSpeed: 100, fixedPower: 20 },
+        { id: uuid(), min: 1, max: 500, rangeAxis: 'speed', fixedDpi: 300, fixedSpeed: 100, fixedPower: 20 },
+        { id: uuid(), min: 100, max: 1000, rangeAxis: 'dpi', fixedDpi: 300, fixedSpeed: 100, fixedPower: 20 }
       ]
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
@@ -45,62 +48,13 @@ export const BitmapLineTab = {
   },
 
   generateXCS(cfg) {
-    const canvasId = uuid();
-    const displays = [];
-    const displayValues = [];
+    const project = XCSExporter.createProject();
     const CX = 50, CY = 50;
     const { laserType, totalWidth, lines } = cfg;
 
     const laserSource = laserType === 'ir' ? 'red' : 'blue';
-    const planType = laserType === 'ir' ? 'ir' : 'blue';
     const labelColor = "#5b9bd5";
     const lineColor = "#ffffff";
-
-    const addText = (text, tx, ty, size, color) => {
-      const id = uuid();
-      // XCS Reference Analysis: Lato Regular 72pt = ~23.35mm unscaled height.
-      const unscaledHeight = 23.35;
-      const scale = size / unscaledHeight;
-      const fontSize = 72 * scale;
-      const width = (text.length * 11.44) * scale; // 11.44 is base char width
-
-      displays.push({
-        id, name: null, type: 'TEXT', x: tx, y: ty, angle: 0,
-        scale: { x: scale, y: scale }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: tx, offsetY: ty, lockRatio: true, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: color,
-        layerColor: color, visible: true, originColor: "#000000",
-        enableTransform: true, visibleState: true, lockState: false,
-        resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
-        fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-        stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: width, height: size, isFill: false, lineColor: 0, fillColor: color,
-        text, resolution: 1,
-        style: { 
-          fontSize: fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in", 
-          letterSpacing: 0, leading: 0, align: "right", curveX: 0, curveY: 0, 
-          isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed" 
-        }
-      });
-
-      const pm = { power: 20, speed: 100, repeat: 1, processingLightSource: laserSource };
-      displayValues.push([id, {
-        isFill: false, type: 'TEXT', processingType: "VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: true,
-        data: {
-          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
-          VECTOR_ENGRAVING: { 
-            materialType: "official", planType: planType, 
-            parameter: { 
-              customize: { power: 1, speed: 20, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 },
-              official: { power: 90, speed: 500, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 }
-            } 
-          },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 100, needGapNumDensity: true, bitmapScanMode: "zMode" } } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: { ...pm, density: 300, dotDuration: 100, dpi: 500 } } },
-          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource, sliceNumber: 100 } } }
-        }
-      }]);
-    };
 
     const startY = CY - ((lines.length * 7) - 4) / 2;
 
@@ -116,27 +70,21 @@ export const BitmapLineTab = {
       const labelText = `${getVal(fixedAxes[0])}${getUnit(fixedAxes[0])} ${getVal(fixedAxes[1])}${getUnit(fixedAxes[1])} ${axisAbbrevs[line.rangeAxis]}`;
       const textX = gridX - 4;
       const textY = (y + 1.5) + (labelSize / 2); // Baseline adjustment
-      addText(labelText, textX, textY, labelSize, labelColor);
 
-      const id = uuid();
-      const currentDpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
-      const widthPixels = Math.round(totalWidth * currentDpi / 25.4);
-      displays.push({
-        id, name: null, type: 'IMAGE', x: gridX + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3, angle: 0,
-        scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: gridX + totalWidth / 2, offsetY: y + 1.5, lockRatio: false, isClosePath: true,
-        zOrder: displays.length, sourceId: id, groupTag: "", layerTag: lineColor,
-        layerColor: lineColor, visible: true, originColor: "#000000",
-        enableTransform: true, visibleState: true, lockState: false,
-        resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
-        fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-        stroke: { paintType: "color", visible: false, color: 0, alpha: 1, width: 0, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        isFill: true, lineColor: 0, fillColor: lineColor,
-        isGrayscaleGradient: true,
-        minVal: line.min, maxVal: line.max, rangeAxis: line.rangeAxis,
-        widthPixels, heightPixels: 1
+      // XCS Reference Analysis: Lato Regular 72pt = ~23.35mm unscaled height.
+      const unscaledHeight = 23.35;
+      const scale = labelSize / unscaledHeight;
+      const fontSize = 72 * scale;
+      const width = (labelText.length * 11.44) * scale;
+
+      XCSExporter.addText(project, {
+        text: labelText, x: textX, y: textY, width, height: labelSize, fontSize, scale,
+        layerColor: labelColor, laserSource, align: "right"
       });
 
+      const currentDpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
+      const widthPixels = Math.round(totalWidth * currentDpi / 25.4);
+      
       const bitmapPm = {
         power: line.rangeAxis === 'power' ? 100 : line.fixedPower,
         speed: line.rangeAxis === 'speed' ? 100 : line.fixedSpeed,
@@ -144,27 +92,26 @@ export const BitmapLineTab = {
         repeat: 1, processingLightSource: laserSource, bitmapScanMode: "zMode"
       };
 
-      displayValues.push([id, {
-        isFill: true, type: 'IMAGE', processingType: "FILL_VECTOR_ENGRAVING", processIgnore: false, isWhiteModel: false,
-        data: {
-          VECTOR_CUTTING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 10, repeat: 1, processingLightSource: laserSource } } },
-          VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } },
-          FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: bitmapPm } },
-          COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: bitmapPm } },
-          INTAGLIO: { materialType: "customize", planType: planType, parameter: { customize: { power: 1, speed: 100, repeat: 1, processingLightSource: laserSource } } }
+      XCSExporter.addImage(project, {
+        x: gridX + totalWidth / 2, y: y + 1.5, width: totalWidth, height: 3,
+        layerColor: lineColor, laserSource, params: bitmapPm,
+        extraDisplayData: {
+          isGrayscaleGradient: true,
+          minVal: line.min, maxVal: line.max, rangeAxis: line.rangeAxis,
+          widthPixels, heightPixels: 1
         }
-      }]);
+      });
     });
 
-    const layerData = {};
-    layerData[labelColor] = { name: "Labels", order: 2, visible: true };
-    layerData[lineColor] = { name: "Lines", order: 1, visible: true };
-    return {
-      canvasId: canvasId,
-      canvas: [{ id: canvasId, title: "{panel}1", layerData, groupData: {}, displays }],
-      device: { id: "GS006", power: [5, 15], data: { dataType: "Map", value: [[canvasId, { mode: "LASER_PLANE", data: { LASER_PLANE: { material: 0, lightSourceMode: planType, thickness: null, perimeter: null, diameter: null, isProcessByLayer: true, pathPlanning: "custom", fillPlanning: "separate", dreedyTsp: false, avoidSmokeModal: false, scanDirection: "topToBottom", enableOddEvenKerf: true, xcsUsed: [] } }, displays: { dataType: "Map", value: displayValues } }]] } },
-      extId: "GS006", extName: "F2", version: "1.5.8", minRequiredVersion: "2.6.0", created: Date.now(), modify: Date.now(), projectTraceID: uuid()
-    };
+    const canvas = project.canvas[0];
+    const dvEntry = project.device.data.value[0][1];
+    dvEntry.data.LASER_PLANE.isProcessByLayer = false;
+    dvEntry.data.LASER_PLANE.pathPlanning = "auto";
+    
+    canvas.layerData[labelColor] = { name: "Labels", order: 2, visible: true };
+    canvas.layerData[lineColor] = { name: "Bitmap Lines", order: 1, visible: true };
+
+    return project;
   },
 
   renderControls(tabId) {
@@ -172,103 +119,54 @@ export const BitmapLineTab = {
     const scroll = pane.querySelector('.tool-scroll');
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
-    const set = (path, val) => {
-      const parts = path.split('.');
-      let obj = cfg;
-      for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
-      obj[parts[parts.length - 1]] = val;
-      update(true); Persistence.save();
-    };
-
-    const getMaxDpi = (type) => type === 'ir' ? 846 : 422;
-
-    const handleManualEdit = (line, p, key, isDur) => (valStr) => {
-      if (!isDur) {
-        const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
-        if (!isNaN(parsed)) set(p + key, parsed);
-        return;
-      }
-      const dpi = line.rangeAxis === 'dpi' ? line.max : line.fixedDpi;
-      const speedMatch = valStr.match(/^([\d.]+)\s*(mms|mm\/s)$/i);
-      if (speedMatch) {
-        const v = parseFloat(speedMatch[1]);
-        if (v > 0) {
-          const t = 25400 / (dpi * v);
-          set(p + key, Math.round(t * 100) / 100);
-        }
-      } else {
-        const parsed = parseFloat(valStr.replace(/[^\d.]/g, ''));
-        if (!isNaN(parsed)) set(p + key, parsed);
-      }
-    };
-
-    const makeDpiControl = (line, p, key, r) => {
-      const rangeCtrl = MandalaTab.makeRange(r.min, r.max, r.step, line[key], v => set(p + key, +v), r.unit, handleManualEdit(line, p, key, false));
-      rangeCtrl.style.position = 'relative';
-      
-      const fullVal = getMaxDpi(cfg.laserType);
-      const fullBtn = document.createElement('button');
-      fullBtn.className = 'dpi-full-popout';
-      fullBtn.textContent = `Full (${fullVal} DPI)`;
-      fullBtn.title = 'Best resolution based on laser spot size';
-      fullBtn.onclick = (e) => { 
-        e.stopPropagation(); 
-        set(p + key, fullVal);
-        this.renderControls(tabId); // Re-render to update sliders/labels
-      };
-      rangeCtrl.appendChild(fullBtn);
-      return rangeCtrl;
-    };
-
-    const getRanges = (axis) => {
-      if (axis === 'power') return { min: 1, max: 100, step: 1, unit: '%' };
-      if (axis === 'speed') return { min: 0.1, max: 10, step: 0.1, unit: ' ms' };
-      return { min: 10, max: 1000, step: 10, unit: ' DPI' };
-    };
+    const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
 
     scroll.appendChild(MandalaTab.makeSection('Global', [
       MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), { ir: 'IR', blue: 'BLUE' })),
-      MandalaTab.makeRow('Width', MandalaTab.makeRange(10, 100, 1, cfg.totalWidth, v => set('totalWidth', +v), ' mm')),
-      (() => {
-        const btn = document.createElement('button');
-        btn.className = 'hbtn primary'; btn.style.width = '100%'; btn.style.marginTop = '8px';
-        btn.textContent = '+ Add Line';
-        btn.onclick = () => {
-          cfg.lines.push({ id: uuid(), rangeAxis: 'power', min: 10, max: 100, fixedPower: 20, fixedSpeed: 0.1, fixedDpi: 300 });
-          this.renderControls(tabId); update();
-        };
-        return btn;
-      })()
+      MandalaTab.makeRow('Total Width', MandalaTab.makeRange(10, 100, 5, cfg.totalWidth, v => set('totalWidth', +v), 'mm'))
     ]));
 
-    cfg.lines.forEach((line, i) => {
-      const p = `lines.${i}.`;
-      const axisLabels = { power: 'PWR', speed: 'DUR', dpi: 'DPI' };
-      const axisTitles = { power: 'Power', speed: 'Dot Duration', dpi: 'Dots Per Inch' };
-      const axisOpts = ['power', 'speed', 'dpi'];
-      const r = getRanges(line.rangeAxis);
-      const isRangeDur = line.rangeAxis === 'speed';
-      const fixedAxes = axisOpts.filter(a => a !== line.rangeAxis);
-
-      const children = [
-        MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(axisOpts, line.rangeAxis, v => { set(p + 'rangeAxis', v); this.renderControls(tabId); }, axisLabels, axisTitles)),
-        MandalaTab.makeRow(`Min (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl(line, p, 'min', r) : MandalaTab.makeRange(r.min, r.max, r.step, line.min, v => set(p + 'min', +v), r.unit, handleManualEdit(line, p, 'min', isRangeDur))),
-        MandalaTab.makeRow(`Max (${r.unit})`, line.rangeAxis === 'dpi' ? makeDpiControl(line, p, 'max', r) : MandalaTab.makeRange(r.min, r.max, r.step, line.max, v => set(p + 'max', +v), r.unit, handleManualEdit(line, p, 'max', isRangeDur)))
+    cfg.lines.forEach((line, idx) => {
+      const setLine = (path, val) => { line[path] = val; update(); Persistence.save(); };
+      const axes = { power: 'Power', speed: 'Dot Duration', dpi: 'DPI' };
+      
+      const rows = [
+        MandalaTab.makeRow('Range Axis', MandalaTab.makeToggles(Object.keys(axes), line.rangeAxis, v => setLine('rangeAxis', v), axes)),
+        MandalaTab.makeRow('Min', MandalaTab.makeRange(1, line.rangeAxis === 'speed' ? 500 : 1000, 1, line.min, v => setLine('min', +v))),
+        MandalaTab.makeRow('Max', MandalaTab.makeRange(1, line.rangeAxis === 'speed' ? 500 : 1000, 1, line.max, v => setLine('max', +v)))
       ];
 
-      fixedAxes.forEach(fa => {
-        const fr = getRanges(fa);
-        const key = fa === 'power' ? 'fixedPower' : fa === 'speed' ? 'fixedSpeed' : 'fixedDpi';
-        const isDur = fa === 'speed';
-        const ctrl = fa === 'dpi' ? makeDpiControl(line, p, key, fr) : MandalaTab.makeRange(fr.min, fr.max, fr.step, line[key], v => set(p + key, +v), fr.unit, handleManualEdit(line, p, key, isDur));
-        children.push(MandalaTab.makeRow(`Fixed ${axisLabels[fa]}`, ctrl));
-      });
+      if (line.rangeAxis !== 'power') rows.push(MandalaTab.makeRow('Fixed Power', MandalaTab.makeRange(1, 100, 1, line.fixedPower, v => setLine('fixedPower', +v), '%')));
+      if (line.rangeAxis !== 'speed') rows.push(MandalaTab.makeRow('Fixed Duration', MandalaTab.makeRange(0.01, 10, 0.05, line.fixedSpeed, v => setLine('fixedSpeed', +v), 'ms')));
+      if (line.rangeAxis !== 'dpi') rows.push(MandalaTab.makeRow('Fixed DPI', MandalaTab.makeRange(10, 1000, 10, line.fixedDpi, v => setLine('fixedDpi', +v), 'DPI')));
 
+      const sec = MandalaTab.makeSection(`Line ${idx + 1}`, rows);
+      
       const delBtn = document.createElement('button');
-      delBtn.className = 'hbtn sm'; delBtn.style.color = '#e07070'; delBtn.style.marginLeft = 'auto';
+      delBtn.className = 'tool-btn-small';
+      delBtn.style.color = '#e07070';
       delBtn.textContent = 'Remove';
-      delBtn.onclick = (e) => { e.stopPropagation(); cfg.lines.splice(i, 1); this.renderControls(tabId); update(); };
-      scroll.appendChild(MandalaTab.makeSection(`Line ${i + 1}`, children, false, delBtn));
+      delBtn.onclick = () => {
+        cfg.lines.splice(idx, 1);
+        this.renderControls(tabId);
+        update();
+        Persistence.save();
+      };
+      sec.querySelector('.tool-section-header').appendChild(delBtn);
+      
+      scroll.appendChild(sec);
     });
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'tool-btn';
+    addBtn.style.marginTop = '10px';
+    addBtn.textContent = '+ Add Line';
+    addBtn.onclick = () => {
+      cfg.lines.push({ id: uuid(), min: 10, max: 100, rangeAxis: 'power', fixedDpi: 300, fixedSpeed: 100, fixedPower: 20 });
+      this.renderControls(tabId);
+      update();
+      Persistence.save();
+    };
+    scroll.appendChild(addBtn);
   }
 };

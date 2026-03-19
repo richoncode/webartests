@@ -5,8 +5,9 @@ import { XcsTab } from './components/xcs-tab.js';
 import { MandalaTab } from './components/mandala-tab.js';
 import { GradientTab } from './components/gradient-tab.js';
 import { BitmapLineTab } from './components/bitmap-line-tab.js';
+import { TestTab } from './components/test-tab.js';
 
-export { XcsTab, MandalaTab, GradientTab, BitmapLineTab };
+export { XcsTab, MandalaTab, GradientTab, BitmapLineTab, TestTab };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB MANAGER
@@ -50,6 +51,17 @@ export const TabMgr = {
     const finalLabel = label || getTimestampedName('BitmapLine');
     App.tabs.push({ id, type: 'bitmap-line', label: finalLabel });
     const pane = BitmapLineTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
+  newTest(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('Test');
+    App.tabs.push({ id, type: 'test', label: finalLabel });
+    const pane = TestTab.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
     Persistence.save();

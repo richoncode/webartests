@@ -24,6 +24,7 @@ function setupEventListeners() {
   listen('newMandalaBtn', () => TabMgr.newMandala());
   listen('newGradientBtn', () => TabMgr.newGradient());
   listen('newBitmapLineBtn', () => TabMgr.newBitmapLine());
+  listen('newTestBtn', () => TabMgr.newTest());
   listen('saveRnrBtn', () => Persistence.saveRNR());
   listen('loadRnrBtn', () => document.getElementById('rnrInput').click());
   listen('clearAllBtn', () => Persistence.clearAll());
@@ -42,6 +43,7 @@ function setupEventListeners() {
   listen('welcomeNewMandalaBtn', () => TabMgr.newMandala());
   listen('welcomeNewGradientBtn', () => TabMgr.newGradient());
   listen('welcomeNewBitmapLineBtn', () => TabMgr.newBitmapLine());
+  listen('welcomeNewTestBtn', () => TabMgr.newTest());
 
   const vEl = document.getElementById('appVersion');
   if (vEl) vEl.textContent = `v${VERSION}`;
