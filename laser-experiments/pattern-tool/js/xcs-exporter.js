@@ -54,11 +54,12 @@ export const XCSExporter = {
 
   addText(project, options) {
     const {
-      text, x, y, width, height, fontSize, scale: manualScale,
+      text, x, y, width: manualWidth, height, fontSize, scale: manualScale,
       layerColor = "#00befe",
       processingType = "VECTOR_ENGRAVING",
       laserSource = "red",
-      align = "center"
+      align = "center",
+      angle = 0
     } = options;
 
     const id = uuid();
@@ -71,140 +72,88 @@ export const XCSExporter = {
     const sy = scaleObj.y;
 
     // --- Layout Engine (Baking Glyphs) ---
-    const charJSONs = [];
-    
     // First pass: calculate total advance width
-    let totalAdvance = 0;
     const glyphs = text.split('').map(char => LATO_REGULAR_GLYPHS[char] || LATO_REGULAR_GLYPHS[" "]);
+    let totalAdvance = 0;
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
+    
+    const totalWidth = totalAdvance * sx;
+    const totalHeight = height;
 
-    // Alignment offset (relative to origin x)
-    let relativeX = 0;
-    if (align === "center") relativeX = -totalAdvance / 2;
-    else if (align === "right") relativeX = -totalAdvance;
+    // Determine the baseline anchor point (ax, ay)
+    let ax = x;
+    let ay = y;
+    
+    if (align === "center") {
+      if (angle === -90) ay = y + totalWidth / 2;
+      else ax = x - totalWidth / 2;
+    } else if (align === "right") {
+      if (angle === -90) ay = y + totalWidth;
+      else ax = x - totalWidth;
+    }
 
-    // Second pass: generate PATH objects
+    const charJSONs = [];
+    let currentRelativeX = 0;
+
     for (let i = 0; i < text.length; i++) {
       const glyph = glyphs[i];
       const charId = uuid();
       
-      // Calculate character position
-      // In XCS, x/y for the char seem to match the baseline anchor point
-      const cx = x + (relativeX * sx);
-      const cy = y; 
+      // Character position relative to baseline anchor
+      let cx, cy;
+      if (angle === -90) {
+        cx = ax;
+        cy = ay - (currentRelativeX * sx);
+      } else {
+        cx = ax + (currentRelativeX * sx);
+        cy = ay;
+      }
 
       charJSONs.push({
-        id: charId,
-        name: null,
-        type: "PATH",
-        x: cx,
-        y: cy,
-        angle: 0,
-        scale: { x: sx, y: sy },
-        skew: { x: 0, y: 0 },
-        pivot: { x: 0, y: 0 },
-        localSkew: { x: 0, y: 0 },
-        offsetX: cx,
-        offsetY: cy,
-        lockRatio: true,
-        isClosePath: true,
-        zOrder: 0,
-        groupTag: uuid(),
-        layerTag: layerColor,
-        layerColor: layerColor,
-        visible: true,
-        originColor: "#000000",
-        enableTransform: true,
-        visibleState: true,
-        lockState: false,
-        resourceOrigin: "",
-        customData: {},
-        rootComponentId: "",
-        minCanvasVersion: "0.0.0",
+        id: charId, name: null, type: "PATH", x: cx, y: cy, angle,
+        scale: { x: sx, y: sy }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+        offsetX: cx, offsetY: cy, lockRatio: true, isClosePath: true,
+        zOrder: 0, groupTag: uuid(), layerTag: layerColor, layerColor: layerColor,
+        visible: true, originColor: "#000000", enableTransform: true, visibleState: true, lockState: false,
+        resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: (glyph.bbox.maxX - glyph.bbox.minX) || 0,
-        height: (glyph.bbox.maxY - glyph.bbox.minY) || 0,
-        isFill: false,
-        lineColor: 0,
-        fillColor: layerColor,
-        points: [],
-        dPath: glyph.dPath,
-        fillRule: "nonzero",
-        graphicX: cx,
-        graphicY: cy,
-        isCompoundPath: false
+        width: (glyph.bbox.maxX - glyph.bbox.minX) * sx,
+        height: (glyph.bbox.maxY - glyph.bbox.minY) * sy,
+        isFill: false, lineColor: 0, fillColor: layerColor,
+        points: [], dPath: glyph.dPath, fillRule: "nonzero",
+        graphicX: cx, graphicY: cy, isCompoundPath: false
       });
 
-      relativeX += glyph.advanceWidth;
+      currentRelativeX += glyph.advanceWidth;
     }
 
     const display = {
-      id,
-      name: null,
-      type: "TEXT",
-      x, y,
-      angle: options.angle || 0,
-      scale: scaleObj,
-      skew: { x: 0, y: 0 },
-      pivot: { x: 0, y: 0 },
-      localSkew: { x: 0, y: 0 },
-      offsetX: x,
-      offsetY: y,
-      lockRatio: true,
-      isClosePath: true,
-      zOrder: canvas.displays.length,
-      sourceId: id,
-      groupTag: uuid(),
-      layerTag: layerColor,
-      layerColor: layerColor,
-      visible: true,
-      originColor: "#000000",
-      enableTransform: true,
-      visibleState: true,
-      lockState: false,
-      resourceOrigin: "",
-      customData: {},
-      rootComponentId: "",
-      minCanvasVersion: "0.0.0",
+      id, name: null, type: "TEXT",
+      x: ax, y: ay, // Parent anchor matches first char baseline
+      angle, scale: scaleObj, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+      offsetX: ax, offsetY: ay, lockRatio: true, isClosePath: true,
+      zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(),
+      layerTag: layerColor, layerColor: layerColor, visible: true, originColor: "#000000",
+      enableTransform: true, visibleState: true, lockState: false,
+      resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
       stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-      width,
-      height,
-      isFill: false,
-      lineColor: 0,
-      fillColor: layerColor,
-      fillRule: "nonzero",
+      width: totalWidth, height: totalHeight,
+      isFill: false, lineColor: 0, fillColor: layerColor, fillRule: "nonzero",
       charJSONs,
       fontData: {
         fontInfo: LATO_REGULAR_INFO,
         glyphData: LATO_REGULAR_GLYPHS,
         layout: {
-          chars: text.split("").map((c, i) => ({
-            char: c,
-            gid: i,
-            offset: { x: 0, y: 0 },
-            advance: (LATO_REGULAR_GLYPHS[c] || LATO_REGULAR_GLYPHS[" "]).advanceWidth
-          }))
+          chars: text.split("").map((c, i) => ({ char: c, gid: i, offset: { x: 0, y: 0 }, advance: (LATO_REGULAR_GLYPHS[c] || LATO_REGULAR_GLYPHS[" "]).advanceWidth }))
         }
       },
-      text,
-      resolution: 1,
+      text, resolution: 1,
       style: {
-        fontSize,
-        fontFamily: "Lato",
-        fontSubfamily: "Regular",
-        fontSource: "build-in",
-        letterSpacing: 0,
-        leading: 0,
-        align,
-        curveX: 0,
-        curveY: 0,
-        isUppercase: false,
-        isWeld: false,
-        direction: "auto",
-        writingMode: "horizontal-tb",
-        textOrientation: "mixed"
+        fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
+        letterSpacing: 0, leading: 0, align, curveX: 0, curveY: 0,
+        isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"
       }
     };
 
