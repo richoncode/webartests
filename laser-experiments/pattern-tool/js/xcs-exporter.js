@@ -72,15 +72,18 @@ export const XCSExporter = {
     const sy = scaleObj.y;
 
     // --- Layout Engine (Baking Glyphs) ---
-    // First pass: calculate total advance width
+    const charJSONs = [];
     const glyphs = text.split('').map(char => LATO_REGULAR_GLYPHS[char] || LATO_REGULAR_GLYPHS[" "]);
+    
+    // Calculate total advance width
     let totalAdvance = 0;
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
-    
     const totalWidth = totalAdvance * sx;
     const totalHeight = height;
 
     // Determine the baseline anchor point (ax, ay)
+    // We manually handle alignment by shifting the anchor point,
+    // so we must set the internal XCS alignment to "left" to avoid double-shifting.
     let ax = x;
     let ay = y;
     
@@ -92,14 +95,11 @@ export const XCSExporter = {
       else ax = x - totalWidth;
     }
 
-    const charJSONs = [];
     let currentRelativeX = 0;
-
     for (let i = 0; i < text.length; i++) {
       const glyph = glyphs[i];
       const charId = uuid();
       
-      // Character position relative to baseline anchor
       let cx, cy;
       if (angle === -90) {
         cx = ax;
@@ -130,7 +130,7 @@ export const XCSExporter = {
 
     const display = {
       id, name: null, type: "TEXT",
-      x: ax, y: ay, // Parent anchor matches first char baseline
+      x: ax, y: ay,
       angle, scale: scaleObj, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
       offsetX: ax, offsetY: ay, lockRatio: true, isClosePath: true,
       zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(),
@@ -152,7 +152,8 @@ export const XCSExporter = {
       text, resolution: 1,
       style: {
         fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
-        letterSpacing: 0, leading: 0, align, curveX: 0, curveY: 0,
+        letterSpacing: 0, leading: 0, align: "left", // Force left to match our manual anchor
+        curveX: 0, curveY: 0,
         isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"
       }
     };
