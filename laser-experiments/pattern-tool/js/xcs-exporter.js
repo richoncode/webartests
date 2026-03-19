@@ -65,6 +65,10 @@ export const XCSExporter = {
     const dvEntry = project.device.data.value[0][1];
     const displayValues = dvEntry.displays.value;
 
+    // XCS uses bounding box center for offsetX/Y
+    const offsetX = x;
+    const offsetY = y - (height / 2); // Simple approximation of center from baseline
+
     const display = {
       id,
       name: null,
@@ -75,8 +79,8 @@ export const XCSExporter = {
       skew: { x: 0, y: 0 },
       pivot: { x: 0, y: 0 },
       localSkew: { x: 0, y: 0 },
-      offsetX: x,
-      offsetY: y,
+      offsetX,
+      offsetY,
       lockRatio: true,
       isClosePath: true,
       zOrder: canvas.displays.length,
@@ -100,6 +104,8 @@ export const XCSExporter = {
       isFill: false,
       lineColor: 0,
       fillColor: layerColor,
+      fillRule: "nonzero",
+      charJSONs: [],
       text,
       resolution: 1,
       style: {
