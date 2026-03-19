@@ -277,7 +277,7 @@ export const GradientTab = {
       const gridT = CY - (effectiveTotal/2);
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
-      const gap = 1; // mm gap from grid
+      const gap = 2; // mm gap from grid
 
       // Labels match XCS baseline
       const unscaledHeight = 23.35;

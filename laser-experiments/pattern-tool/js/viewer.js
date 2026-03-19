@@ -333,6 +333,7 @@ export const XCSViewer = {
         el = svgEl('text', {
           x: cx, y: cy, fill: renderColor, 'font-size': fs,
           'text-anchor': anchor,
+          'dominant-baseline': 'alphabetic',
           transform: `rotate(${s.angle||0}, ${cx}, ${cy})`,
           'font-family': 'Lato, system-ui, -apple-system, sans-serif', 'font-weight': '700',
           'fill-opacity': '0.8'

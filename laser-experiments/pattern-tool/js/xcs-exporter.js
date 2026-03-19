@@ -100,31 +100,78 @@ export const XCSExporter = {
       else ax = x - totalWidth;
     }
 
+    // Calculate overall text bounding box in baseline-relative space
+    let minBX = Infinity, minBY = Infinity, maxBX = -Infinity, maxBY = -Infinity;
+    let relX = 0;
+    for (const g of glyphs) {
+      if (g.bbox && g.bbox.minX !== null) {
+        minBX = Math.min(minBX, relX + g.bbox.minX);
+        maxBX = Math.max(maxBX, relX + g.bbox.maxX);
+        minBY = Math.min(minBY, -g.bbox.maxY); // Y is up from baseline in bbox
+        maxBY = Math.max(maxBY, -g.bbox.minY);
+      }
+      relX += g.advanceWidth;
+    }
+    
+    // Fallback if no visible characters
+    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = 0; maxBY = 0; }
+    
+    const totalW = (maxBX - minBX) * sx;
+    const totalH = (maxBY - minBY) * sy;
+    
+    // Parent offsets (center of the bounding box)
+    let parentOffsetX, parentOffsetY;
+    if (angle === -90) {
+      const localCX = (minBX + maxBX) / 2 * sx;
+      const localCY = (minBY + maxBY) / 2 * sy;
+      parentOffsetX = ax + localCY;
+      parentOffsetY = ay - localCX;
+    } else {
+      parentOffsetX = ax + ((minBX + maxBX) / 2 * sx);
+      parentOffsetY = ay + ((minBY + maxBY) / 2 * sy);
+    }
+
     let currentRelativeX = 0;
     for (let i = 0; i < text.length; i++) {
       const glyph = glyphs[i];
       const charId = uuid();
+      const hasBBox = glyph.bbox && glyph.bbox.minX !== null;
+      const charW = hasBBox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
+      const charH = hasBBox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
       
-      let cx, cy;
+      let cx, cy, cOffsetX, cOffsetY;
       if (angle === -90) {
         cx = ax;
         cy = ay - (currentRelativeX * sx);
+        if (hasBBox) {
+          const lCX = (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx;
+          const lCY = (-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy;
+          cOffsetX = cx + lCY;
+          cOffsetY = cy - lCX;
+        } else {
+          cOffsetX = cx; cOffsetY = cy;
+        }
       } else {
         cx = ax + (currentRelativeX * sx);
         cy = ay;
+        if (hasBBox) {
+          cOffsetX = cx + ((glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx);
+          cOffsetY = cy + ((-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy);
+        } else {
+          cOffsetX = cx; cOffsetY = cy;
+        }
       }
 
       charJSONs.push({
         id: charId, name: null, type: "PATH", x: cx, y: cy, angle,
         scale: { x: sx, y: sy }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-        offsetX: cx, offsetY: cy, lockRatio: true, isClosePath: true,
+        offsetX: cOffsetX, offsetY: cOffsetY, lockRatio: true, isClosePath: true,
         zOrder: 0, groupTag: uuid(), layerTag: layerColor, layerColor: layerColor,
         visible: true, originColor: "#000000", enableTransform: true, visibleState: true, lockState: false,
         resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
         fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-        width: (glyph.bbox.maxX - glyph.bbox.minX) * sx,
-        height: (glyph.bbox.maxY - glyph.bbox.minY) * sy,
+        width: charW, height: charH,
         isFill: false, lineColor: 0, fillColor: layerColor,
         points: [], dPath: glyph.dPath, fillRule: "nonzero",
         graphicX: cx, graphicY: cy, isCompoundPath: false
@@ -137,14 +184,14 @@ export const XCSExporter = {
       id, name: null, type: "TEXT",
       x: ax, y: ay,
       angle, scale: scaleObj, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-      offsetX: ax, offsetY: ay, lockRatio: true, isClosePath: true,
+      offsetX: parentOffsetX, offsetY: parentOffsetY, lockRatio: true, isClosePath: true,
       zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(),
       layerTag: layerColor, layerColor: layerColor, visible: true, originColor: "#000000",
       enableTransform: true, visibleState: true, lockState: false,
       resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
       stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-      width: totalWidth, height: totalHeight,
+      width: totalW, height: totalH,
       isFill: false, lineColor: 0, fillColor: layerColor, fillRule: "nonzero",
       charJSONs,
       fontData: {
