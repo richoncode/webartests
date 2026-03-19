@@ -50,6 +50,11 @@ export const XcsTab = {
     reader.readAsText(file);
   },
 
+  // ═══════════════════════════════════════════════════════════════════
+  // XCS PARSER
+  // Normalizes formal XCS data into Internal Representation.
+  // WAIT, ASK, and CONFIRM for any features not supported in xcsformat.md.
+  // ═══════════════════════════════════════════════════════════════════
   parseXCS(data) {
     const canvas = data.canvas[0];
     const dvEntry = Object.fromEntries(data.device.data.value)[canvas.id];

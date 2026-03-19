@@ -51,6 +51,11 @@ export const Popup = {
   hide() { document.getElementById('globalPopup').classList.remove('show'); }
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// XCS VIEWER
+// Renders the Internal Representation (IR) of XCS data.
+// WAIT, ASK, and CONFIRM for any features not supported in xcsformat.md.
+// ═══════════════════════════════════════════════════════════════════
 export const XCSViewer = {
   create(tabId) {
     const viewer = document.createElement('div');

@@ -1,6 +1,11 @@
 import { uuid } from './utils.js';
 import { LATO_REGULAR_GLYPHS, LATO_REGULAR_INFO } from './xcs-glyphs.js';
 
+// ═══════════════════════════════════════════════════════════════════
+// XCS EXPORTER ADAPTER
+// Strictly follows xcsformat.md. 
+// WAIT, ASK, and CONFIRM for any features not supported in xcsformat.md.
+// ═══════════════════════════════════════════════════════════════════
 export const XCSExporter = {
   createProject(canvasId = uuid()) {
     return {
