@@ -60,25 +60,24 @@ TEXT objects in XCS are complex as they often include baked glyph paths for offl
 ### Root TEXT Fields:
 *   `type`: `"TEXT"`
 *   `text`: The actual string content.
-*   `width`/`height`: Dimensions in mm of the bounding box at `scale: 1`.
+*   `width`/`height`: Dimensions in mm of the bounding box.
+*   `charJSONs`: **MANDATORY FOR F2**. An array of `PATH` objects, one per character, containing baked SVG `dPath` data. Without this, text remains invisible in XCS.
+*   `fontData`: **MANDATORY FOR F2**. Contains `fontInfo` (metrics) and `glyphData` (dictionary of paths/advances).
+*   `fillRule`: `"nonzero"`.
 *   `style`: Object containing formatting:
     *   `fontSize`: Size in points (pt). **CRITICAL:** XCS uses a ratio of approx **0.275 mm per point** for the visual height of built-in fonts like Lato.
         *   Example: `fontSize: 72` pt results in `height: 19.85` mm.
         *   Formula: `height (mm) ≈ fontSize (pt) * 0.2757`.
         *   Formula: `fontSize (pt) ≈ height (mm) * 3.626`.
-    *   `fontFamily`: e.g., `"Lato"`.
-    *   `fontSubfamily`: e.g., `"Bold"`.
-    *   `fontSource`: `"build-in"` or `"system"`.
-    *   `align`: `"center"`, `"left"`, or `"right"`. **CRITICAL:** `align` only centers the text *along* the baseline. It does NOT center the text across its height.
-*   `fontData`: (Often required for F2) Contains `fontInfo` and `glyphData` (Map of char to SVG-like path data).
+    *   `align`: `"center"`, `"left"`, or `"right"`. **CRITICAL:** `align` is often metadata only; the exporter must manually calculate the anchor shift.
 
 ### Coordinate & Scaling Logic for TEXT:
-1.  **Scaling**: Always prefer `scale: {x: 1, y: 1}` and set the desired size via `fontSize` and `width`/`height`.
-2.  **Positioning (x, y)**:
-    *   XCS uses the **baseline anchor** for its `x` and `y` properties.
-    *   **Horizontal (0°)**: To center text at `targetY`, set `y = targetY + height/2`.
-    *   **Vertical (-90°)**: To center text at `targetX`, set `x = targetX - height/2`. (Note: Rotated text expands rightward from the vertical baseline).
-    *   **OffsetX/OffsetY**: Usually match `x` and `y` for newly created objects; XCS may recalculate them as the bounding box center upon saving.
+1.  **Anchor Point**: The `x` and `y` properties of the parent `TEXT` object define the **baseline anchor of the first character**.
+2.  **Manual Centering**: XCS does NOT automatically center the bounding box based on the `align` property. The exporter must:
+    *   Calculate `totalWidth = sum(glyph.advanceWidth) * scale`.
+    *   **Horizontal Centering**: Set parent `x = targetX - totalWidth / 2`.
+    *   **Vertical Centering (-90°)**: Set parent `y = targetY + totalWidth / 2`. (Note: Rotated text expands "down" from the anchor).
+3.  **Character Synchronization**: The first character's `x` and `y` in `charJSONs` MUST match the parent's `x` and `y`. Subsequent characters are offset by the `advanceWidth * scale`.
 
 ---
 
@@ -159,6 +158,30 @@ Authoritative samples exported directly from xTool Creative Space.
 | `processingType` | `COLOR_FILL_ENGRAVE` | `VECTOR_ENGRAVING` |
 | `isFill` (Root) | `true` | `false` |
 | `isWhiteModel` | `false` | `true` |
-| `planType` | `red` / `blue` | `red` / `blue` |
+| `charJSONs` | Required | Required |
 | `fontSize` | Ratio ~0.275 | Ratio ~0.275 |
+| `anchor` | Left-Baseline | Left-Baseline |
 
+---
+
+## 11. Glyph Baking & Layout (Galvo/F2 Specific)
+
+To ensure text renders on Galvo-based machines (F2), the exporter must act as a mini-typesetter.
+
+1.  **Glyph Cache**: Store a dictionary of characters mapped to their SVG `dPath` and `advanceWidth` (metric in pts/mm at 72pt).
+2.  **Layout Pass**: 
+    *   Iterate through characters.
+    *   Accumulate `advanceWidth` to find the string's length.
+    *   Factor in `scale = fontSize / 72`.
+3.  **Hydration**: Every `TEXT` object must contain a redundant array of `PATH` objects (`charJSONs`) representing the "baked" visual representation of the string.
+
+---
+
+## 12. Anchoring & Rotation Facts
+
+| Scenario | Anchor Point (x, y) | Growth Direction |
+| :--- | :--- | :--- |
+| **Horizontal (0°)** | Left-edge Baseline | Grows Right (+X) |
+| **Vertical (-90°)** | Top-edge Baseline | Grows Down (+Y) |
+| **Centering (Horiz)** | `targetX - (width/2)` | Centered on targetX |
+| **Centering (Vert)** | `targetY + (width/2)` | Centered on targetY |
