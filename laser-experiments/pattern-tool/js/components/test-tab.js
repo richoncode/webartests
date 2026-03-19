@@ -23,7 +23,8 @@ export const TestTab = {
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
-    viewer.querySelector('.viewer-fname').textContent = 'XCS Baseline Test';
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Test Baseline';
+    viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
     const state = { rawData: null, shapes: [] };

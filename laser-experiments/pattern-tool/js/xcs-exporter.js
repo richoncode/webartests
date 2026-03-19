@@ -1,4 +1,5 @@
 import { uuid } from './utils.js';
+import { LATO_REGULAR_GLYPHS, LATO_REGULAR_INFO } from './xcs-glyphs.js';
 
 export const XCSExporter = {
   createProject(canvasId = uuid()) {
@@ -53,7 +54,7 @@ export const XCSExporter = {
 
   addText(project, options) {
     const {
-      text, x, y, width, height, fontSize, scale,
+      text, x, y, width, height, fontSize, scale: manualScale,
       layerColor = "#00befe",
       processingType = "VECTOR_ENGRAVING",
       laserSource = "red",
@@ -65,27 +66,96 @@ export const XCSExporter = {
     const dvEntry = project.device.data.value[0][1];
     const displayValues = dvEntry.displays.value;
 
-    // XCS uses bounding box center for offsetX/Y
-    const offsetX = x;
-    const offsetY = y - (height / 2); // Simple approximation of center from baseline
+    const scaleObj = typeof manualScale === 'number' ? { x: manualScale, y: manualScale } : (manualScale || { x: 1, y: 1 });
+    const sx = scaleObj.x;
+    const sy = scaleObj.y;
+
+    // --- Layout Engine (Baking Glyphs) ---
+    const charJSONs = [];
+    
+    // First pass: calculate total advance width
+    let totalAdvance = 0;
+    const glyphs = text.split('').map(char => LATO_REGULAR_GLYPHS[char] || LATO_REGULAR_GLYPHS[" "]);
+    glyphs.forEach(g => totalAdvance += g.advanceWidth);
+
+    // Alignment offset (relative to origin x)
+    let relativeX = 0;
+    if (align === "center") relativeX = -totalAdvance / 2;
+    else if (align === "right") relativeX = -totalAdvance;
+
+    // Second pass: generate PATH objects
+    for (let i = 0; i < text.length; i++) {
+      const glyph = glyphs[i];
+      const charId = uuid();
+      
+      // Calculate character position
+      // In XCS, x/y for the char seem to match the baseline anchor point
+      const cx = x + (relativeX * sx);
+      const cy = y; 
+
+      charJSONs.push({
+        id: charId,
+        name: null,
+        type: "PATH",
+        x: cx,
+        y: cy,
+        angle: 0,
+        scale: { x: sx, y: sy },
+        skew: { x: 0, y: 0 },
+        pivot: { x: 0, y: 0 },
+        localSkew: { x: 0, y: 0 },
+        offsetX: cx,
+        offsetY: cy,
+        lockRatio: true,
+        isClosePath: true,
+        zOrder: 0,
+        groupTag: uuid(),
+        layerTag: layerColor,
+        layerColor: layerColor,
+        visible: true,
+        originColor: "#000000",
+        enableTransform: true,
+        visibleState: true,
+        lockState: false,
+        resourceOrigin: "",
+        customData: {},
+        rootComponentId: "",
+        minCanvasVersion: "0.0.0",
+        fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
+        stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+        width: (glyph.bbox.maxX - glyph.bbox.minX) || 0,
+        height: (glyph.bbox.maxY - glyph.bbox.minY) || 0,
+        isFill: false,
+        lineColor: 0,
+        fillColor: layerColor,
+        points: [],
+        dPath: glyph.dPath,
+        fillRule: "nonzero",
+        graphicX: cx,
+        graphicY: cy,
+        isCompoundPath: false
+      });
+
+      relativeX += glyph.advanceWidth;
+    }
 
     const display = {
       id,
       name: null,
       type: "TEXT",
       x, y,
-      angle: 0,
-      scale: typeof scale === 'number' ? { x: scale, y: scale } : (scale || { x: 1, y: 1 }),
+      angle: options.angle || 0,
+      scale: scaleObj,
       skew: { x: 0, y: 0 },
       pivot: { x: 0, y: 0 },
       localSkew: { x: 0, y: 0 },
-      offsetX,
-      offsetY,
+      offsetX: x,
+      offsetY: y,
       lockRatio: true,
       isClosePath: true,
       zOrder: canvas.displays.length,
       sourceId: id,
-      groupTag: "",
+      groupTag: uuid(),
       layerTag: layerColor,
       layerColor: layerColor,
       visible: true,
@@ -105,7 +175,19 @@ export const XCSExporter = {
       lineColor: 0,
       fillColor: layerColor,
       fillRule: "nonzero",
-      charJSONs: [],
+      charJSONs,
+      fontData: {
+        fontInfo: LATO_REGULAR_INFO,
+        glyphData: LATO_REGULAR_GLYPHS,
+        layout: {
+          chars: text.split("").map((c, i) => ({
+            char: c,
+            gid: i,
+            offset: { x: 0, y: 0 },
+            advance: (LATO_REGULAR_GLYPHS[c] || LATO_REGULAR_GLYPHS[" "]).advanceWidth
+          }))
+        }
+      },
       text,
       resolution: 1,
       style: {
@@ -154,7 +236,6 @@ export const XCSExporter = {
 
     displayValues.push([id, processingConfig]);
 
-    // Ensure layer exists in layerData
     if (!canvas.layerData[layerColor]) {
       canvas.layerData[layerColor] = {
         name: layerColor,
@@ -166,60 +247,7 @@ export const XCSExporter = {
     return id;
   },
 
-  addRect(project, options) {
-    const {
-      x, y, width, height, angle = 0,
-      layerColor = "#5b9bd5",
-      processingType = "COLOR_FILL_ENGRAVE",
-      laserSource = "red",
-      params = {}
-    } = options;
-
-    const id = uuid();
-    const canvas = project.canvas[0];
-    const dvEntry = project.device.data.value[0][1];
-    const displayValues = dvEntry.displays.value;
-
-    const display = {
-      id, name: null, type: 'RECT', x, y, width, height, angle,
-      scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-      offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
-      zOrder: canvas.displays.length, sourceId: id, groupTag: "", layerTag: layerColor,
-      layerColor: layerColor, visible: true, originColor: "#000000",
-      enableTransform: true, visibleState: true, lockState: false,
-      resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
-      fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-      stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-      isFill: true, lineColor: 0, fillColor: layerColor,
-      ...options.extraDisplayData
-    };
-
-    canvas.displays.push(display);
-
-    const planType = laserSource === 'red' ? 'red' : 'blue';
-    const pm = { 
-      power: 20, speed: 100, density: 1000, repeat: 1,
-      processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
-      dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0,
-      ...params
-    };
-
-    const processingConfig = {
-      isFill: true, type: 'RECT', processingType, processIgnore: false, isWhiteModel: false,
-      data: {
-        VECTOR_CUTTING: this.createNode("VECTOR_CUTTING", planType, laserSource),
-        VECTOR_ENGRAVING: this.createNode("VECTOR_ENGRAVING", planType, laserSource),
-        FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-        COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-        INTAGLIO: this.createNode("INTAGLIO", planType, laserSource)
-      }
-    };
-
-    displayValues.push([id, processingConfig]);
-    return id;
-    },
-
-    addCircle(project, options) {
+  addCircle(project, options) {
     const {
       x, y, width, height,
       layerColor = "#5b9bd5",
@@ -237,7 +265,7 @@ export const XCSExporter = {
       id, name: null, type: 'CIRCLE', x, y, width, height, angle: 0,
       scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
       offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
-      zOrder: canvas.displays.length, sourceId: id, groupTag: "", layerTag: layerColor,
+      zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(), layerTag: layerColor,
       layerColor: layerColor, visible: true, originColor: "#000000",
       enableTransform: true, visibleState: true, lockState: false,
       resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
@@ -270,9 +298,62 @@ export const XCSExporter = {
 
     displayValues.push([id, processingConfig]);
     return id;
-    },
+  },
 
-    addRect(project, options) {
+  addRect(project, options) {
+    const {
+      x, y, width, height, angle = 0,
+      layerColor = "#5b9bd5",
+      processingType = "COLOR_FILL_ENGRAVE",
+      laserSource = "red",
+      params = {}
+    } = options;
+
+    const id = uuid();
+    const canvas = project.canvas[0];
+    const dvEntry = project.device.data.value[0][1];
+    const displayValues = dvEntry.displays.value;
+
+    const display = {
+      id, name: null, type: 'RECT', x, y, width, height, angle,
+      scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+      offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
+      zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(), layerTag: layerColor,
+      layerColor: layerColor, visible: true, originColor: "#000000",
+      enableTransform: true, visibleState: true, lockState: false,
+      resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
+      fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
+      stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+      isFill: true, lineColor: 0, fillColor: layerColor,
+      ...options.extraDisplayData
+    };
+
+    canvas.displays.push(display);
+
+    const planType = laserSource === 'red' ? 'red' : 'blue';
+    const pm = { 
+      power: 20, speed: 100, density: 1000, repeat: 1,
+      processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
+      dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0,
+      ...params
+    };
+
+    const processingConfig = {
+      isFill: true, type: 'RECT', processingType, processIgnore: false, isWhiteModel: false,
+      data: {
+        VECTOR_CUTTING: this.createNode("VECTOR_CUTTING", planType, laserSource),
+        VECTOR_ENGRAVING: this.createNode("VECTOR_ENGRAVING", planType, laserSource),
+        FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        INTAGLIO: this.createNode("INTAGLIO", planType, laserSource)
+      }
+    };
+
+    displayValues.push([id, processingConfig]);
+    return id;
+  },
+
+  addImage(project, options) {
     const {
       x, y, width, height,
       layerColor = "#ffffff",
@@ -290,12 +371,12 @@ export const XCSExporter = {
       id, name: null, type: 'IMAGE', x, y, width, height, angle: 0,
       scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
       offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
-      zOrder: canvas.displays.length, sourceId: id, groupTag: "", layerTag: layerColor,
+      zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(), layerTag: layerColor,
       layerColor: layerColor, visible: true, originColor: "#000000",
       enableTransform: true, visibleState: true, lockState: false,
       resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
-      stroke: { paintType: "color", visible: false, color: 0, alpha: 1, width: 0, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+      stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
       isFill: true, lineColor: 0, fillColor: layerColor,
       ...options.extraDisplayData
     };
@@ -328,13 +409,12 @@ export const XCSExporter = {
     if (type === "COLOR_FILL_ENGRAVE") {
       return {
         materialType: "customize",
-        planType: "blue", // Often defaults to blue in reference
+        planType: "blue",
         parameter: {
           customize: { ...common, speed: 80, density: 300, dotDuration: 100, dpi: 500, bitmapScanMode: "zMode", notResize: true, scanAngle: 0, angleType: 2, crossAngle: false }
         }
       };
     }
-    // Simple default node
     return {
       materialType: "customize",
       planType: "blue",
