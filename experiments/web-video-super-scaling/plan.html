@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web-Based Neural Rendering Architecture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body { background-color: #f8fafc; color: #0f172a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        .chart-container { 
+            position: relative; 
+            width: 100%; 
+            max-width: 800px; 
+            margin-left: auto; 
+            margin-right: auto; 
+            height: 40vh; 
+            max-height: 400px; 
+            min-height: 300px;
+        }
+        
+        .custom-canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            height: 350px;
+            background: #1e293b;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .tab-btn.active { border-bottom: 2px solid #0d9488; color: #0d9488; font-weight: 600; }
+        .node-active { background-color: #0d9488; color: white; border-color: #0f766e; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white p-6 shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div>
+                <a href="./index.html" class="text-slate-500 hover:text-teal-400 text-sm transition-colors">← Back to Hub</a>
+                <h1 class="text-2xl font-bold tracking-tight mt-1">Project "Giant's Eye" - Plan</h1>
+                <p class="text-slate-400 text-sm">Web-Based Neural Super Resolution Architecture Report</p>
+            </div>
+            <div class="text-4xl text-teal-400">&#x1F4F9;&#x1F4F9;</div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-12">
+
+        <!-- Executive Summary Section -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-xl font-semibold mb-4 text-slate-800 border-b pb-2">1. Feasibility & Technology Stack</h2>
+            <p class="text-slate-600 mb-6">
+                This section evaluates the feasibility of executing DLSS-style neural rendering inside a web browser using Slang shaders on a video stream. It highlights the constraints of the web platform versus native hardware and defines the viable technological path.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-lg font-medium text-slate-800 mb-2">The Reality of Web "DLSS"</h3>
+                    <p class="text-slate-600 text-sm mb-4">
+                        True NVIDIA DLSS relies on proprietary Tensor Cores and closed-source drivers, which are <strong>inaccessible from a Web View</strong>. However, <em>Neural Rendering</em> and <em>Spatial/Temporal Super Resolution</em> (like FSR or custom CNNs) are highly feasible using <strong>WebGPU</strong>. 
+                    </p>
+                    <ul class="space-y-3 text-sm text-slate-700">
+                        <li class="flex items-start">
+                            <span class="text-teal-600 mr-2">&#10004;</span>
+                            <div><strong>Slang Shader Language:</strong> Excellent choice. Slang can compile down to WGSL (WebGPU Shading Language) via WebAssembly, allowing you to write high-performance compute shaders for the web.</div>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-teal-600 mr-2">&#10004;</span>
+                            <div><strong>WebGPU Compute:</strong> Required. Standard WebGL cannot efficiently execute the matrix multiplications needed for neural upscaling.</div>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-teal-600 mr-2">&#10004;</span>
+                            <div><strong>Video Texture Mapping:</strong> HTML5 <code>&lt;video&gt;</code> elements can be zero-copy mapped directly to WebGPU textures using <code>importExternalTexture</code>.</div>
+                        </li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-medium text-slate-800 mb-2">Compute Capability Comparison</h3>
+                    <p class="text-xs text-slate-500 mb-2">Estimated TFLOPS availability for ML/Rendering tasks.</p>
+                    <div class="chart-container">
+                        <canvas id="computeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Camera Geometry Section -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-xl font-semibold mb-4 text-slate-800 border-b pb-2">2. The "Giant's Eye" Stereo Setup</h2>
+            <p class="text-slate-600 mb-6">
+                This section analyzes your specific hardware setup: two stationary cameras with a massive 3-meter horizontal baseline, aimed at a 3-meter distance. Understanding this geometry is critical for utilizing the dual streams for enhancement.
+            </p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                        <h4 class="font-semibold text-teal-700">The 3-Meter Baseline</h4>
+                        <p class="text-sm text-slate-600 mt-1">Average human interpupillary distance is ~0.065m. A 3m baseline creates extreme hyperstereoscopy. The world will appear as a miniature model (the "Giant's Eye" effect).</p>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                        <h4 class="font-semibold text-teal-700">Focal Point Convergence</h4>
+                        <p class="text-sm text-slate-600 mt-1">Camera 1 at X=0. Camera 2 at X=3m. Both looking at a spot X=3m, Z=3m (assuming Z is depth towards field). This means Camera 1 is angled 45 degrees, while Camera 2 is looking straight ahead (90 degrees). <em>*Assuming 50 yard line setup.</em></p>
+                    </div>
+                    <div class="p-4 bg-teal-50 rounded-lg border border-teal-100">
+                        <h4 class="font-semibold text-teal-800">Super Resolution Advantage</h4>
+                        <p class="text-sm text-teal-700 mt-1">The massive parallax provides incredibly distinct sub-pixel information for the shared frustum. By running optical flow/stereo matching across the two streams, your Slang compute shader can merge details from both views to reconstruct a higher-resolution master frame.</p>
+                    </div>
+                </div>
+                
+                <div class="lg:col-span-2">
+                    <div class="custom-canvas-container shadow-inner relative">
+                        <canvas id="geometryCanvas" width="600" height="350" class="w-full h-full"></canvas>
+                        <div class="absolute bottom-2 right-2 bg-slate-800/80 text-white text-xs px-2 py-1 rounded">Top-Down View</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture Flow Section -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-xl font-semibold mb-4 text-slate-800 border-b pb-2">3. WebGPU + Slang Pipeline Architecture</h2>
+            <p class="text-slate-600 mb-6">
+                This interactive diagram details the flow of data from the remote video streams into the browser, through the Slang-compiled WebGPU compute shaders, and to the final display. Click the components to view technical details.
+            </p>
+
+            <div class="flex flex-col md:flex-row gap-6">
+                <div class="w-full md:w-1/2 flex flex-col items-center justify-center space-y-2 bg-slate-50 p-6 rounded-lg border border-slate-100">
+                    
+                    <div class="flex space-x-4 w-full justify-center">
+                        <button onclick="updatePipelineDetail('vid1')" id="btn-vid1" class="w-32 py-2 text-sm font-medium border-2 border-slate-300 rounded-md bg-white hover:border-teal-500 transition-colors">Stream 1 (Cam A)</button>
+                        <button onclick="updatePipelineDetail('vid2')" id="btn-vid2" class="w-32 py-2 text-sm font-medium border-2 border-slate-300 rounded-md bg-white hover:border-teal-500 transition-colors">Stream 2 (Cam B)</button>
+                    </div>
+                    
+                    <div class="text-slate-400">&#x25BC;</div>
+                    
+                    <button onclick="updatePipelineDetail('webgpu')" id="btn-webgpu" class="w-64 py-3 font-bold border-2 border-slate-300 rounded-md bg-white hover:border-teal-500 transition-colors shadow-sm">WebGPU Texture Import</button>
+                    
+                    <div class="text-slate-400">&#x25BC;</div>
+                    
+                    <div class="flex border-2 border-teal-600 rounded-lg p-3 bg-teal-50 w-full max-w-sm justify-center relative">
+                        <span class="absolute -top-3 left-4 bg-teal-50 px-1 text-xs font-bold text-teal-800">Slang Compute Pipeline</span>
+                        <div class="flex flex-col space-y-2 w-full">
+                            <button onclick="updatePipelineDetail('slang1')" id="btn-slang1" class="w-full py-2 text-sm font-medium border border-teal-200 rounded bg-white hover:bg-teal-100 transition-colors">1. Stereo Depth & Alignment</button>
+                            <button onclick="updatePipelineDetail('slang2')" id="btn-slang2" class="w-full py-2 text-sm font-medium border border-teal-200 rounded bg-white hover:bg-teal-100 transition-colors">2. Neural Upscale (CNN)</button>
+                            <button onclick="updatePipelineDetail('slang3')" id="btn-slang3" class="w-full py-2 text-sm font-medium border border-teal-200 rounded bg-white hover:bg-teal-100 transition-colors">3. Temporal Accumulation</button>
+                        </div>
+                    </div>
+
+                    <div class="text-slate-400">&#x25BC;</div>
+
+                    <button onclick="updatePipelineDetail('display')" id="btn-display" class="w-48 py-2 font-bold border-2 border-slate-300 rounded-md bg-slate-800 text-white hover:bg-slate-700 transition-colors shadow-sm">Canvas Presentation</button>
+
+                </div>
+
+                <!-- Detail Panel -->
+                <div class="w-full md:w-1/2 p-6 bg-slate-800 text-slate-200 rounded-lg shadow-inner">
+                    <h3 id="detail-title" class="text-xl font-bold text-teal-400 mb-3">Select a pipeline step</h3>
+                    <p id="detail-desc" class="text-sm leading-relaxed mb-4">Click on the flowchart blocks on the left to reveal the specific technical architecture and exact steps required for that stage of the web application.</p>
+                    <div class="bg-slate-900 p-3 rounded border border-slate-700 text-xs font-mono text-teal-200 overflow-x-auto" id="detail-code">
+                        // Awaiting selection...
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step-by-Step Implementation Section -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <!-- ... (existing content) ... -->
+        </section>
+
+        <!-- Lab & Technology Tests Section -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-xl font-semibold mb-4 text-slate-800 border-b pb-2">5. Lab & Technology Tests</h2>
+            <p class="text-slate-600 mb-6">
+                Active experimentation modules to validate individual components of the neural rendering pipeline.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="streams-test.html" class="flex items-center p-4 bg-slate-50 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 transition-all group">
+                    <div class="text-3xl mr-4 group-hover:scale-110 transition-transform">📡</div>
+                    <div>
+                        <h4 class="font-bold text-slate-800 group-hover:text-teal-700">HLS Ingest & Bitrate Test</h4>
+                        <p class="text-xs text-slate-500">Validate multi-bitrate stream decoding and network stability up to 80Mbps.</p>
+                    </div>
+                </a>
+                
+                <div class="flex items-center p-4 bg-slate-50/50 rounded-lg border border-slate-100 opacity-60">
+                    <div class="text-3xl mr-4">🧠</div>
+                    <div>
+                        <h4 class="font-bold text-slate-400">WebGPU Shader Benchmark</h4>
+                        <p class="text-xs text-slate-400">Upcoming: Test CNN inference latency using Slang-compiled WGSL.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('computeChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Native DLSS (RTX)', 'WebGPU (Custom Shader)', 'WebGL (Legacy)', 'CPU (WASM)'],
+                    datasets: [{
+                        label: 'Estimated Relative Performance (Higher is Better)',
+                        data: [100, 35, 8, 2],
+                        backgroundColor: [
+                            'rgba(15, 118, 110, 0.8)',
+                            'rgba(20, 184, 166, 0.8)',
+                            'rgba(148, 163, 184, 0.8)',
+                            'rgba(203, 213, 225, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgb(15, 118, 110)',
+                            'rgb(20, 184, 166)',
+                            'rgb(148, 163, 184)',
+                            'rgb(203, 213, 225)'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const notes = [
+                                        "Requires Tensor Cores. Unavailable in Web.",
+                                        "Uses standard GPU Compute. Highly viable.",
+                                        "Lacks Compute Shaders. Too slow.",
+                                        "Too slow for real-time video inference."
+                                    ];
+                                    return notes[context.dataIndex];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, display: false },
+                        x: { 
+                            ticks: { 
+                                maxRotation: 45, 
+                                minRotation: 45,
+                                font: { size: 11 }
+                            } 
+                        }
+                    }
+                }
+            });
+
+            drawGeometryDiagram();
+        });
+
+        function drawGeometryDiagram() {
+            const canvas = document.getElementById('geometryCanvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+            
+            // --- SCALE DEFINITION (Visual Designer Refinement) ---
+            const meter = 2.4; // Optimized for vertical space
+            const fieldWidthM = 48.8;
+            const playingFieldM = 91.44;
+            const endZoneM = 9.144;
+            const totalFieldLengthM = playingFieldM + (2 * endZoneM);
+            
+            const fieldCenterX = w / 2 + 100; // Shifted RIGHT to reduce right empty space
+            const fieldTopY = 30;
+            const fieldWidthPx = fieldWidthM * meter;
+            const fieldBottomY = fieldTopY + fieldWidthPx;
+            const fieldLengthPx = totalFieldLengthM * meter;
+            const fieldStartX = fieldCenterX - (fieldLengthPx / 2);
+            
+            // Cameras are 60m back from the sideline
+            const standsOffsetM = 60; 
+            const camY = fieldBottomY + (standsOffsetM * meter);
+            const cam1X = fieldCenterX - (1.5 * meter);
+            const cam2X = fieldCenterX + (1.5 * meter);
+
+            // Targets are halfway across field depth, exactly parallel to cameras
+            const targetY = fieldBottomY - (fieldWidthM / 2 * meter);
+            const target1X = cam1X;
+            const target2X = cam2X;
+
+            // --- DRAWING ---
+
+            // Draw Field Surface
+            ctx.fillStyle = '#114224'; 
+            ctx.fillRect(fieldStartX, fieldTopY, fieldLengthPx, fieldWidthPx);
+            
+            // Draw End Zones
+            ctx.fillStyle = '#0a301a';
+            ctx.fillRect(fieldStartX, fieldTopY, endZoneM * meter, fieldWidthPx); 
+            ctx.fillRect(fieldStartX + (playingFieldM + endZoneM) * meter, fieldTopY, endZoneM * meter, fieldWidthPx);
+            
+            // Draw Sidelines
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(fieldStartX, fieldTopY, fieldLengthPx, fieldWidthPx);
+
+            // Draw Yard Lines
+            const tenYardsPx = 9.144 * meter;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            for(let i = 0; i <= 12; i++) {
+                const x = fieldStartX + (i * tenYardsPx);
+                ctx.beginPath();
+                ctx.moveTo(x, fieldTopY); ctx.lineTo(x, fieldBottomY);
+                ctx.stroke();
+                if(i === 1 || i === 11) { ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
+            }
+
+            // NFL Center Circle
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(fieldCenterX, fieldTopY + fieldWidthPx / 2, (9.144/2) * meter, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Parallel Optical Axis Indicators (Full length)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath();
+            ctx.moveTo(cam1X, camY); ctx.lineTo(cam1X, fieldTopY - 10);
+            ctx.moveTo(cam2X, camY); ctx.lineTo(cam2X, fieldTopY - 10);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // FOV Cones
+            const fovRad = (80 * Math.PI) / 180;
+            const halfFov = fovRad / 2;
+            const fovLength = (standsOffsetM + fieldWidthM) * meter;
+
+            function drawFov(x, y) {
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, fovLength);
+                gradient.addColorStop(0, 'rgba(20, 184, 166, 0.3)');
+                gradient.addColorStop(1, 'rgba(20, 184, 166, 0.0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - Math.tan(halfFov) * fovLength, y - fovLength);
+                ctx.lineTo(x + Math.tan(halfFov) * fovLength, y - fovLength);
+                ctx.closePath();
+                ctx.fill();
+            }
+            drawFov(cam1X, camY);
+            drawFov(cam2X, camY);
+
+            // Optical Axes (Solid segments between cam and target)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(cam1X, camY); ctx.lineTo(target1X, targetY);
+            ctx.moveTo(cam2X, camY); ctx.lineTo(target2X, targetY);
+            ctx.stroke();
+
+            // Focal Points
+            function drawTarget(x, y, label, side) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 9px Arial';
+                ctx.textAlign = side === 'left' ? 'right' : 'left';
+                ctx.fillText(label, x + (side === 'left' ? -8 : 8), y + 3);
+            }
+            drawTarget(target1X, targetY, "Focus A", 'left');
+            drawTarget(target2X, targetY, "Focus B", 'right');
+
+            // Cameras & Corrected Labels (No overlap, side of icons)
+            function drawCam(x, y, label, side) {
+                ctx.fillStyle = '#0ea5e9';
+                ctx.fillRect(x - 5, y - 4, 10, 8);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 9px Arial';
+                ctx.textAlign = side === 'left' ? 'right' : 'left';
+                ctx.fillText(label, x + (side === 'left' ? -10 : 10), y + 3);
+            }
+            drawCam(cam1X, camY, "CAM A", 'left');
+            drawCam(cam2X, camY, "CAM B", 'right');
+
+            // Math Overlay (Bottom LEFT)
+            const overlayW = 175; // 25% narrower
+            const overlayH = 90;
+            const ox = 15;
+            const oy = h - overlayH - 15;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+            if (ctx.roundRect) {
+                ctx.beginPath(); ctx.roundRect(ox, oy, overlayW, overlayH, 8); ctx.fill();
+            } else {
+                ctx.fillRect(ox, oy, overlayW, overlayH);
+            }
+            ctx.strokeStyle = '#0d9488';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#5eead4';
+            ctx.font = 'bold 9px SF Mono, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText("GEOMETRIC DERIVATION", ox + 10, oy + 18);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = '8px SF Mono, monospace';
+            const lines = [
+                "Sideline: x = ±45.72m",
+                "Cam Offs: x = ±1.50m",
+                "Δx to cover:  47.22m",
+                "Dist: 47.22 / tan(40°)",
+                "Result: ~56.3 meters"
+            ];
+            lines.forEach((line, i) => ctx.fillText(line, ox + 10, oy + 34 + (i * 10)));
+
+            // Baseline Label
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(cam1X, camY + 12); ctx.lineTo(cam2X, camY + 12);
+            ctx.moveTo(cam1X, camY + 9); ctx.lineTo(cam1X, camY + 15);
+            ctx.moveTo(cam2X, camY + 9); ctx.lineTo(cam2X, camY + 15);
+            ctx.stroke();
+            ctx.fillStyle = '#f43f5e';
+            ctx.font = 'bold 9px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText("3m BASELINE", fieldCenterX, camY + 22);
+
+            // Separation at Target Depth
+            ctx.strokeStyle = '#f43f5e';
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(target1X, targetY + 15); ctx.lineTo(target2X, targetY + 15);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillText("3m PARALLEL SEPARATION", fieldCenterX, targetY + 28);
+
+            // Stands & Field labels
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.textAlign = 'center';
+            ctx.fillText("50 YARD LINE", fieldCenterX, fieldTopY - 10);
+            ctx.textAlign = 'left';
+            ctx.fillText("STANDS (" + standsOffsetM + "m back)", fieldCenterX + 45, camY + 3);
+        }
+
+        const pipelineData = {
+            'vid1': { title: 'Video Stream 1 API', desc: 'Ingests the primary camera feed.', code: 'const vid1 = document.createElement("video");\nvid1.src = "wss://stream1.url";\nvid1.crossOrigin = "anonymous";\nvid1.play();' },
+            'vid2': { title: 'Video Stream 2 API', desc: 'Ingests the secondary camera feed.', code: 'const vid2 = document.createElement("video");\nvid2.src = "wss://stream2.url";' },
+            'webgpu': { title: 'Zero-Copy WebGPU Import', desc: 'Maps hardware video decoder buffer directly to GPU texture.', code: 'const texture1 = device.importExternalTexture({\n  source: vid1\n});' },
+            'slang1': { title: 'Slang Step 1: Stereo Alignment', desc: 'Compute shader maps coordinates from Cam 2 to Cam 1.', code: '[shader("compute")]\nvoid alignStereo(...) { ... }' },
+            'slang2': { title: 'Slang Step 2: Neural Render (CNN)', desc: 'Lightweight convolution network.', code: 'const wgslCode = slangCompiler.compile(slangSource);' },
+            'slang3': { title: 'Slang Step 3: Accumulation', desc: 'Blends high-res frame with history.', code: 'RWTexture2D<float4> output;' },
+            'display': { title: 'Presentation', desc: 'Copies texture to swap chain.', code: 'commandEncoder.beginRenderPass(...);' }
+        };
+
+        function updatePipelineDetail(stepId) {
+            document.querySelectorAll('[id^="btn-"]').forEach(btn => btn.classList.remove('node-active'));
+            document.getElementById('btn-' + stepId).classList.add('node-active');
+            const data = pipelineData[stepId];
+            document.getElementById('detail-title').textContent = data.title;
+            document.getElementById('detail-desc').textContent = data.desc;
+            document.getElementById('detail-code').textContent = data.code;
+        }
+
+        function toggleAccordion(stepId) {
+            const content = document.getElementById('content-' + stepId);
+            const icon = document.getElementById('icon-' + stepId);
+            content.classList.toggle('hidden');
+            icon.innerHTML = content.classList.contains('hidden') ? '&#x25BC;' : '&#x25B2;';
+        }
+    </script>
+</body>
+</html>

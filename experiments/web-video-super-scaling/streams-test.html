@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Stream Bitrate Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', sans-serif; }
+        
+        .video-wrapper { 
+            background: #000; 
+            position: relative; 
+            width: 100%; 
+            border-radius: 0.75rem; 
+            overflow: hidden; 
+            border: 1px solid #1e293b; 
+            /* Default to showing full height for top-bottom stereo */
+            transition: aspect-ratio 0.3s ease;
+        }
+
+        /* Raw mode shows the full 3840x4320 stack */
+        .video-wrapper.mode-raw {
+            aspect-ratio: 16 / 18; /* 2x 16:9 frames stacked */
+        }
+
+        /* Mono mode crops to the top 16:9 frame */
+        .video-wrapper.mode-mono {
+            aspect-ratio: 16 / 9;
+        }
+
+        .video-wrapper.mode-mono video {
+            height: 200%; /* Scale up so top half fills the 16:9 container */
+            position: absolute;
+            top: 0;
+            left: 0;
+            object-fit: fill;
+        }
+
+        video { width: 100%; height: 100%; object-fit: contain; }
+        
+        .stream-btn.active { border-color: #0d9488; background-color: #134e4a; }
+        .anchor-badge { background: #0d9488; color: white; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 8px; }
+        
+        .toggle-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: all 0.2s;
+            border: 1px solid #334155;
+            background: #1e293b;
+        }
+        .toggle-btn.active {
+            background: #0d9488;
+            border-color: #14b8a6;
+            color: white;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <header class="bg-slate-900 border-b border-slate-800 p-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div>
+                <a href="./index.html" class="text-slate-500 hover:text-teal-400 text-sm transition-colors">← Back to Hub</a>
+                <h1 class="text-xl font-bold mt-1">HLS Multi-Bitrate Ingest Test</h1>
+            </div>
+            <div id="status-indicator" class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-slate-600" id="status-dot"></span>
+                    <span class="text-xs text-slate-400 font-mono" id="status-text">IDLE</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col lg:flex-row p-4 lg:p-6 gap-6 max-w-7xl mx-auto w-full">
+        
+        <!-- Sidebar: Stream Selection -->
+        <div class="w-full lg:w-80 flex-shrink-0 space-y-4">
+            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest px-2">Available Streams</h2>
+            <div class="space-y-2" id="stream-list"></div>
+
+            <div class="p-4 bg-slate-800/50 rounded-lg border border-slate-700 mt-6">
+                <h3 class="text-sm font-bold text-teal-400 mb-2">Stereo Decoding</h3>
+                <p class="text-xs text-slate-400 leading-relaxed mb-4">
+                    Source: <strong>Dual 4K Top-Bottom</strong> (3840x4320).<br>
+                    Use toggles to switch between the raw stack or a mono crop of the primary eye.
+                </p>
+                <div class="flex space-x-2">
+                    <button id="view-raw" class="toggle-btn active" onclick="setViewMode('raw')">View Both</button>
+                    <button id="view-mono" class="toggle-btn" onclick="setViewMode('mono')">Mono (Top)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Player Area -->
+        <div class="flex-grow space-y-4">
+            <div id="player-container" class="video-wrapper mode-raw shadow-2xl">
+                <video id="video" controls playsinline></video>
+                <div id="loading-overlay" class="absolute inset-0 flex items-center justify-center bg-black/60 hidden">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div>
+                </div>
+            </div>
+
+            <!-- URL Display -->
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-center justify-between gap-4">
+                <div class="flex-grow overflow-hidden">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">Source URL</div>
+                    <div class="text-xs font-mono text-slate-300 truncate" id="current-url">--</div>
+                </div>
+                <button onclick="copyUrl()" class="flex-shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded text-xs font-bold transition-colors flex items-center gap-2 border border-slate-700">
+                    <span id="copy-icon">📋</span>
+                    <span id="copy-text">Copy</span>
+                </button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Target</div>
+                    <div class="text-sm font-mono text-teal-400" id="stat-target">--</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Actual</div>
+                    <div class="text-sm font-mono text-teal-400" id="stat-actual">--</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Resolution</div>
+                    <div class="text-sm font-mono text-white" id="stat-res">--</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Buffer</div>
+                    <div class="text-sm font-mono text-white" id="stat-buffer">0.0s</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Dropped</div>
+                    <div class="text-sm font-mono text-red-400" id="stat-dropped">0</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Latency</div>
+                    <div class="text-sm font-mono text-amber-400" id="stat-latency">--</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const streams = [
+            { id: 1, name: "Stream 8Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/8Mbps/index.m3u8", target: "8 Mbps", actual: "6.5 Mbps" },
+            { id: 2, name: "Stream 15Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/15Mbps/index.m3u8", target: "15 Mbps", actual: "9.1 Mbps" },
+            { id: 3, name: "Stream 30Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/30Mbps/index.m3u8", target: "30 Mbps", actual: "20.5 Mbps" },
+            { id: 4, name: "Stream 40Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8", target: "40 Mbps", actual: "28.2 Mbps", anchor: true },
+            { id: 5, name: "Stream 50Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/50Mbps/index.m3u8", target: "50 Mbps", actual: "36 Mbps" },
+            { id: 6, name: "Stream 65Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/65Mbps/index.m3u8", target: "65 Mbps", actual: "49.4 Mbps" },
+            { id: 7, name: "Stream 80Mbps", url: "https://streams.quintar.ai/kyle/20251207-red-green/80Mbps/index.m3u8", target: "80 Mbps", actual: "64 Mbps" }
+        ];
+
+        const video = document.getElementById('video');
+        const streamList = document.getElementById('stream-list');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const playerContainer = document.getElementById('player-container');
+        
+        let hls = null;
+
+        function init() {
+            streams.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'stream-btn w-full text-left p-3 rounded-lg border border-slate-700 bg-slate-800/30 hover:border-slate-500 transition-all flex flex-col group';
+                btn.onclick = () => loadStream(s, btn);
+                btn.id = `btn-${s.id}`;
+                
+                const titleRow = document.createElement('div');
+                titleRow.className = 'flex items-center justify-between mb-1';
+                
+                const name = document.createElement('span');
+                name.className = 'text-sm font-semibold group-hover:text-teal-400';
+                name.innerText = s.name;
+                
+                titleRow.appendChild(name);
+                if (s.anchor) {
+                    const anchor = document.createElement('span');
+                    anchor.className = 'anchor-badge';
+                    anchor.innerText = 'ANCHOR';
+                    titleRow.appendChild(anchor);
+                }
+                
+                const meta = document.createElement('div');
+                meta.className = 'text-[10px] text-slate-500 font-mono';
+                meta.innerText = `T: ${s.target} | A: ${s.actual}`;
+                
+                btn.appendChild(titleRow);
+                btn.appendChild(meta);
+                streamList.appendChild(btn);
+            });
+
+            const anchor = streams.find(s => s.anchor);
+            if (anchor) loadStream(anchor, document.getElementById(`btn-${anchor.id}`));
+        }
+
+        function loadStream(s, btn) {
+            document.querySelectorAll('.stream-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadingOverlay.classList.remove('hidden');
+            
+            document.getElementById('stat-target').innerText = s.target;
+            document.getElementById('stat-actual').innerText = s.actual;
+            document.getElementById('current-url').innerText = s.url;
+
+            statusDot.className = 'w-3 h-3 rounded-full bg-amber-500 animate-pulse';
+            statusText.innerText = "BUFFERING";
+
+            if (Hls.isSupported()) {
+                if (hls) hls.destroy();
+                hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(s.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play();
+                    loadingOverlay.classList.add('hidden');
+                    statusDot.className = 'w-3 h-3 rounded-full bg-emerald-500';
+                    statusText.innerText = "LIVE";
+                });
+                hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+                    const level = hls.levels[data.level];
+                    document.getElementById('stat-res').innerText = `${level.width}x${level.height}`;
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = s.url;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play();
+                    loadingOverlay.classList.add('hidden');
+                    statusDot.className = 'w-3 h-3 rounded-full bg-emerald-500';
+                    statusText.innerText = "LIVE (NATIVE)";
+                    document.getElementById('stat-res').innerText = `${video.videoWidth}x${video.videoHeight}`;
+                });
+            }
+        }
+
+        function copyUrl() {
+            const url = document.getElementById('current-url').innerText;
+            if (url === '--') return;
+            
+            navigator.clipboard.writeText(url).then(() => {
+                const btnText = document.getElementById('copy-text');
+                const btnIcon = document.getElementById('copy-icon');
+                const oldText = btnText.innerText;
+                const oldIcon = btnIcon.innerText;
+                
+                btnText.innerText = 'Copied!';
+                btnIcon.innerText = '✅';
+                
+                setTimeout(() => {
+                    btnText.innerText = oldText;
+                    btnIcon.innerText = oldIcon;
+                }, 2000);
+            });
+        }
+
+        function setViewMode(mode) {
+            document.getElementById('view-raw').classList.toggle('active', mode === 'raw');
+            document.getElementById('view-mono').classList.toggle('active', mode === 'mono');
+            
+            playerContainer.classList.remove('mode-raw', 'mode-mono');
+            playerContainer.classList.add(`mode-${mode}`);
+        }
+
+        // Stats Polling
+        setInterval(() => {
+            if (video.readyState > 0) {
+                if (video.buffered.length > 0) {
+                    const bufferLen = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+                    document.getElementById('stat-buffer').innerText = Math.max(0, bufferLen).toFixed(1) + 's';
+                }
+                document.getElementById('stat-res').innerText = `${video.videoWidth}x${video.videoHeight}`;
+                if (video.getVideoPlaybackQuality) {
+                    const stats = video.getVideoPlaybackQuality();
+                    document.getElementById('stat-dropped').innerText = stats.droppedVideoFrames;
+                }
+                if (hls && hls.latency) {
+                    document.getElementById('stat-latency').innerText = hls.latency.toFixed(2) + 's';
+                }
+            }
+        }, 1000);
+
+        init();
+    </script>
+</body>
+</html>
