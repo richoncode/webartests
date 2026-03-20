@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Heat Wall — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #000; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .gauge-container { margin-top: 24px; }
+        .gauge-bar { width: 100%; height: 8px; background: #222; border-radius: 4px; border: 1px solid #333; overflow: hidden; position: relative; }
+        .gauge-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--emerald), var(--amber), var(--red)); transition: width 0.3s ease; }
+
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../07-thermal-diffusion/index.html">← Thermal Diffusion (k)</a>
+        
+        <div class="seq-label">Sequence 08</div>
+        <h1>The Heat Wall</h1>
+        <p class="subtitle">Heat compounds in small designs because there is less "bulk metal" to act as a heat sink. The settings that worked for a large plaque will instantly melt a tiny ring.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Tiny Design" Burn</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Design Size</span>
+                                <span id="valFailSize" class="label-val">2 mm</span>
+                            </div>
+                            <input type="range" id="inputFailSize" min="1" max="20" step="1" value="2">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Sink Area</span>
+                                <div id="metFailSink" class="metric-value">4.0 mm²</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Saturation</span>
+                                <div id="metFailSat" class="metric-value" style="color: var(--red);">Critical</div>
+                            </div>
+                        </div>
+                        <div class="gauge-container">
+                            <span class="label-text">Thermal Stress</span>
+                            <div class="gauge-bar"><div id="failGauge" class="gauge-fill"></div></div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> When your design area shrinks, the laser returns to the same neighborhood 10x faster. This leads to <span data-tooltip="Thermal Saturation&#10;When heat accumulation exceeds the material's ability to dissipate energy into the surrounding mass.">Thermal Saturation</span>—the part stays hot, compounding with every pass until it burns.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" disabled onclick="unlockSuccess()">I see the runaway heat</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">Thermal Budgeting (Scaling)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Power Scale</span>
+                                <span id="valSuccessPower" class="label-val">100%</span>
+                            </div>
+                            <input type="range" id="inputSuccessPower" min="10" max="100" step="5" value="100">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Heat Budget</span>
+                                <div id="metSuccessBudget" class="metric-value">100%</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Result</span>
+                                <div id="metSuccessRes" class="metric-value" style="color: var(--emerald);">Solid</div>
+                            </div>
+                        </div>
+                        <div class="gauge-container">
+                            <span class="label-text">Thermal Stress</span>
+                            <div class="gauge-bar"><div id="successGauge" class="gauge-fill"></div></div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> For tiny scales, you must <strong>scale down your power</strong> to match the smaller thermal sink. By budgeting the energy dose, you keep the peak temperature in the "Green" zone, preserving detail and color.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../07-thermal-diffusion/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Thermal Diffusion (k)
+            </a>
+            <a href="../09-return-time-limit/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                Thermal Return Time →
+            </a>
+        </div>
+    </div>
+
+    <script src="../../../laser-experiments/heat-wall-test/js/HeatSimulator.js"></script>
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Budget Balanced';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Act I Simulation (Tiny Design)
+        const inputFailSize = document.getElementById('inputFailSize');
+        const valFailSize = document.getElementById('valFailSize');
+        const metFailSink = document.getElementById('metFailSink');
+        const metFailSat = document.getElementById('metFailSat');
+        const failGauge = document.getElementById('failGauge');
+
+        function drawFail(ctx, width, height) {
+            ctx.clearRect(0, 0, width, height);
+            const size = parseFloat(inputFailSize.value);
+            valFailSize.textContent = size + ' mm';
+            
+            const area = size * size;
+            metFailSink.textContent = area.toFixed(1) + ' mm²';
+            
+            // Saturation logic: Smaller area = higher saturation
+            const saturation = Math.min(100, (40 / area) * 10);
+            failGauge.style.width = saturation + '%';
+            
+            const isCritical = saturation > 80;
+            metFailSat.textContent = isCritical ? 'Critical' : 'High';
+            metFailSat.style.color = isCritical ? COLORS.red : COLORS.amber;
+
+            if (size <= 2) {
+                document.getElementById('btn-fix-fail').disabled = false;
+                document.getElementById('btn-fix-fail').style.background = COLORS.blue;
+            }
+
+            // Draw Design Representation
+            const cx = width/2;
+            const cy = height/2;
+            const pxSize = size * 10;
+
+            // Base Substrate
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(cx - 80, cy - 80, 160, 160);
+
+            // Animated Heat Map
+            const time = Date.now() / 1000;
+            const heatAlpha = 0.2 + (saturation/100) * 0.6;
+            const glowSize = pxSize * (1 + Math.sin(time*5)*0.1);
+
+            ctx.fillStyle = isCritical ? COLORS.red : COLORS.amber;
+            ctx.globalAlpha = heatAlpha;
+            ctx.fillRect(cx - glowSize/2, cy - glowSize/2, glowSize, glowSize);
+            
+            // Core
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = '#fff';
+            ctx.strokeRect(cx - pxSize/2, cy - pxSize/2, pxSize, pxSize);
+        }
+
+        // Act II Simulation (Thermal Budgeting)
+        const inputSuccessPower = document.getElementById('inputSuccessPower');
+        const valSuccessPower = document.getElementById('valSuccessPower');
+        const metSuccessBudget = document.getElementById('metSuccessBudget');
+        const metSuccessRes = document.getElementById('metSuccessRes');
+        const successGauge = document.getElementById('successGauge');
+
+        function drawSuccess(ctx, width, height) {
+            if (width === 0 || height === 0) return;
+            ctx.clearRect(0, 0, width, height);
+            const pScale = parseFloat(inputSuccessPower.value);
+            valSuccessPower.textContent = pScale + '%';
+
+            const size = 2; // Tiny logo fixed
+            const area = 4;
+            
+            // Stress = (Base Saturation for 2mm) * PowerScale
+            const baseSaturation = 100; 
+            const currentStress = (baseSaturation * (pScale/100));
+            successGauge.style.width = Math.min(100, currentStress) + '%';
+            
+            const isGreen = currentStress < 40;
+            metSuccessRes.textContent = isGreen ? 'Pristine' : (currentStress < 70 ? 'Hot' : 'Melted');
+            metSuccessRes.style.color = isGreen ? COLORS.emerald : (currentStress < 70 ? COLORS.amber : COLORS.red);
+            metSuccessBudget.textContent = pScale + '%';
+
+            const cx = width/2;
+            const cy = height/2;
+            const pxSize = size * 20;
+
+            // Substrate
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(cx - 80, cy - 80, 160, 160);
+
+            // Heat Glow
+            const time = Date.now() / 1000;
+            const glowColor = isGreen ? COLORS.emerald : (currentStress < 70 ? COLORS.amber : COLORS.red);
+            ctx.fillStyle = glowColor;
+            ctx.globalAlpha = (currentStress/100) * 0.8;
+            ctx.fillRect(cx - pxSize, cy - pxSize, pxSize * 2, pxSize * 2);
+
+            // Logo
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx - pxSize/2, cy - pxSize/2, pxSize, pxSize);
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailSize.oninput = redoFail;
+            const loop = () => { redoFail(); requestAnimationFrame(loop); };
+            loop();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessPower.oninput = redoSuccess;
+            const loop = () => {
+                if (!document.getElementById('act-success').classList.contains('locked')) {
+                    redoSuccess();
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

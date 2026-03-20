@@ -1,4 +1,5 @@
-# Confirmation of XCS File Format (xTool F2) - Confirmed Requirements
+# Confirmation of XCS File Format (xTool F2) - VANTAGE-ALPHA Baseline
+(LOCKED 2026-03-18)
 
 This document defines the strictly required structure for `.xcs` files to ensure full compatibility with xTool Creative Space and the F2 system.
 

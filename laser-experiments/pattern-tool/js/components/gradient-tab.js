@@ -1,3 +1,7 @@
+/**
+ * Gradient Grid Tab - VANTAGE-ALPHA Baseline
+ * Revisions: 2mm label gaps, baseline-compatible anchor positioning.
+ */
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';

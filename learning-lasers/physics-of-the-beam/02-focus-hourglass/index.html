@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Focus Hourglass (SS304) — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: var(--blue); border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../01-mirror-divergence/index.html">← Mirror Steering & Divergence</a>
+        
+        <div class="seq-label">Sequence 02</div>
+        <h1>The Focus Hourglass (SS304)</h1>
+        <p class="subtitle">Focus isn't just about "sharpness." In laser physics, it's about controlling <strong>Irradiance Thresholds</strong>. Understanding the hourglass shape allows you to choose between surface destruction and structural color.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Geometry -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--blue);">Act I: The Geometry</div>
+                <h2 style="margin-bottom: 16px;">The Rayleigh Range (Beam Shape)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Z-Offset (Height)</span>
+                                <span id="valFailZ" class="label-val">0.0 mm</span>
+                            </div>
+                            <input type="range" id="inputFailZ" min="-4" max="4" step="0.1" value="0">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Effective Spot</span>
+                                <div id="metFailSpot" class="metric-value">30μm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Beam State</span>
+                                <div id="metFailState" class="metric-value">Waist</div>
+                            </div>
+                        </div>
+                        <div class="callout">
+                            <strong>The Principle:</strong> Every laser beam converges to its tightest point (the <strong>Waist</strong>) and then diverges. The <span data-tooltip="Rayleigh Range&#10;The distance from the waist where the beam area doubles. Within this zone, the beam is at its most consistent and powerful.">Rayleigh Range</span> defines your vertical depth of field.
+                        </div>
+                        <button id="btn-fix" class="btn-next" onclick="unlockSuccess()">Learn the Thresholds</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Thresholds -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Thresholds</div>
+                <h2 style="margin-bottom: 16px;">Ablation vs. Annealing</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Height Offset (+Z)</span>
+                                <span id="valSuccessOffset" class="label-val">+2.0 mm</span>
+                            </div>
+                            <input type="range" id="inputSuccessOffset" min="0" max="5" step="0.1" value="2">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Peak Irradiance</span>
+                                <div id="metSuccessIrr" class="metric-value">25%</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Surface Interaction</span>
+                                <div id="metSuccessQual" class="metric-value" style="color: var(--emerald);">Annealing</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Equivalent LPCM</span>
+                                <div id="metSuccessLPCM" class="metric-value">154</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Effective DPI</span>
+                                <div id="metSuccessDPI" class="metric-value">391</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong id="thresholdTitle">Annealing Window:</strong> <span id="thresholdDesc">At lower intensity, the metal surface remains intact. Heat drives chromium to the surface to grow a smooth oxide film, creating vibrant interference colors.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../01-mirror-divergence/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Mirror Steering & Divergence
+            </a>
+            <a href="../03-wavelength-absorption/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                Wavelength Absorption →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            document.getElementById('btn-fix').disabled = true;
+            document.getElementById('btn-fix').textContent = 'Thresholds Unlocked';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Hourglass Physics (F2 IR)
+        const w0 = 15; // waist pixels (~0.03mm)
+        const zR = 40; // rayleigh pixels (~0.6mm)
+        const beamW = (z) => w0 * Math.sqrt(1 + Math.pow(z/zR, 2));
+
+        // Act I: Geometry Simulation
+        const inputFailZ = document.getElementById('inputFailZ');
+        const valFailZ = document.getElementById('valFailZ');
+        const metFailSpot = document.getElementById('metFailSpot');
+        const metFailState = document.getElementById('metFailState');
+
+        function drawFail(ctx, w, h) {
+            ctx.clearRect(0, 0, w, h);
+            const z = parseFloat(inputFailZ.value);
+            const zPixels = z * 30; // Exaggerated scale for visibility
+            valFailZ.textContent = z.toFixed(1) + ' mm';
+            
+            const currentSpotPx = beamW(zPixels);
+            metFailSpot.textContent = Math.round((currentSpotPx/w0) * 30) + 'μm';
+            
+            const absZ = Math.abs(z);
+            metFailState.textContent = absZ < 0.5 ? 'Waist' : (absZ < 1.5 ? 'Rayleigh Range' : 'Diverging');
+            metFailState.style.color = absZ < 0.5 ? COLORS.emerald : (absZ < 1.5 ? COLORS.blue : COLORS.amber);
+
+            const cx = w/2;
+            const focusY = h/2;
+            const surfaceY = focusY + zPixels;
+
+            // Draw Beam
+            ctx.beginPath();
+            ctx.moveTo(cx - 100, 0);
+            for(let y=0; y<h; y++) {
+                const bw = beamW(y - focusY);
+                ctx.lineTo(cx - bw, y);
+            }
+            for(let y=h; y>=0; y--) {
+                const bw = beamW(y - focusY);
+                ctx.lineTo(cx + bw, y);
+            }
+            ctx.closePath();
+            
+            const grad = ctx.createLinearGradient(cx, 0, cx, h);
+            grad.addColorStop(0, 'rgba(91, 155, 213, 0.05)');
+            grad.addColorStop(0.5, 'rgba(91, 155, 213, 0.8)');
+            grad.addColorStop(1, 'rgba(91, 155, 213, 0.05)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Focal Plane Marker
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(cx-120, focusY); ctx.lineTo(cx+120, focusY); ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Substrate Plane
+            ctx.strokeStyle = COLORS.blue;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(cx-80, surfaceY); ctx.lineTo(cx+80, surfaceY); ctx.stroke();
+            
+            ctx.fillStyle = COLORS.blue;
+            ctx.font = '10px SF Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText('MATERIAL SURFACE', cx + 90, surfaceY + 4);
+        }
+
+        // Act II: Threshold Simulation
+        const inputSuccessOffset = document.getElementById('inputSuccessOffset');
+        const valSuccessOffset = document.getElementById('valSuccessOffset');
+        const metSuccessIrr = document.getElementById('metSuccessIrr');
+        const metSuccessQual = document.getElementById('metSuccessQual');
+        const metSuccessLPCM = document.getElementById('metSuccessLPCM');
+        const metSuccessDPI = document.getElementById('metSuccessDPI');
+        const thresholdTitle = document.getElementById('thresholdTitle');
+        const thresholdDesc = document.getElementById('thresholdDesc');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            ctx.clearRect(0, 0, w, h);
+            const offset = parseFloat(inputSuccessOffset.value);
+            valSuccessOffset.textContent = '+' + offset.toFixed(1) + ' mm';
+
+            const zPixels = offset * 25; 
+            const currentW = beamW(zPixels);
+            const spotAtSurface = (currentW / w0) * 0.03;
+            
+            // Density Calculations
+            const equivLPCM = Math.round(10 / spotAtSurface);
+            const effectiveDPI = Math.round(equivLPCM * 2.54);
+            metSuccessLPCM.textContent = equivLPCM;
+            metSuccessDPI.textContent = effectiveDPI;
+
+            const relIrradiance = Math.pow(w0 / currentW, 2);
+            metSuccessIrr.textContent = (relIrradiance * 100).toFixed(0) + '%';
+            
+            // Interaction Zones
+            let colorHex, interaction, title, desc, useNoise = false;
+            if (relIrradiance > 0.8) { 
+                interaction = 'Ablation (Pitting)';
+                colorHex = '#444'; 
+                metSuccessQual.style.color = COLORS.red;
+                title = 'Ablation Threshold (Danger):';
+                desc = 'Intensity is too high. Photons are vaporizing the metal, creating a microscopic crater (pit). This rough texture destroys specular reflection, resulting in a dull grey or "burnt" look.';
+                useNoise = true;
+            } else if (relIrradiance > 0.15) { 
+                interaction = 'Annealing (Color)';
+                colorHex = COLORS.blue; 
+                metSuccessQual.style.color = COLORS.emerald;
+                title = 'Annealing Window (Success):';
+                desc = 'Optimal intensity. The metal is heated but not vaporized. This allows a smooth chromium-oxide film to grow, creating vibrant interference colors (Blue, Gold, Purple).';
+            } else { 
+                interaction = 'Sub-Threshold';
+                colorHex = '#222'; 
+                metSuccessQual.style.color = '#888';
+                title = 'Sub-Threshold:';
+                desc = 'Intensity is too low to drive the oxidation reaction. The energy is dissipated as bulk heat without marking the surface.';
+            }
+
+            metSuccessQual.textContent = interaction;
+            thresholdTitle.textContent = title;
+            thresholdDesc.textContent = desc;
+
+            const cx = w/2;
+            const surfaceY = 140;
+            const focusY = surfaceY - zPixels;
+
+            // Substrate
+            ctx.fillStyle = 'rgba(100, 100, 110, 0.4)';
+            ctx.fillRect(cx - 100, surfaceY, 200, 60);
+            
+            // Beam
+            ctx.beginPath();
+            ctx.moveTo(cx - 120, 0);
+            for(let y=0; y<h; y++) {
+                const bw = beamW(y - focusY);
+                ctx.lineTo(cx - bw, y);
+            }
+            for(let y=h; y>=0; y--) {
+                const bw = beamW(y - focusY);
+                ctx.lineTo(cx + bw, y);
+            }
+            ctx.closePath();
+            
+            const beamBase = relIrradiance > 0.8 ? COLORS.red : (relIrradiance > 0.15 ? COLORS.emerald : COLORS.blue);
+            const grad = ctx.createLinearGradient(cx, 0, cx, h);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+            grad.addColorStop(focusY/h, beamBase + 'aa');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Result Rendering
+            const markW = (spotAtSurface * 1500);
+            if (useNoise) {
+                // Render Ablation (Noise/Roughness)
+                ctx.fillStyle = '#222';
+                for(let i=0; i<50; i++) {
+                    const rx = cx + (Math.random() - 0.5) * markW * 2;
+                    const ry = surfaceY + (Math.random() - 0.5) * 10;
+                    ctx.fillRect(rx, ry, 2, 2);
+                }
+            } else if (interaction === 'Annealing (Color)') {
+                // Render Annealing (Smooth Color)
+                const bloomGrad = ctx.createLinearGradient(cx - markW, 0, cx + markW, 0);
+                bloomGrad.addColorStop(0, 'transparent');
+                bloomGrad.addColorStop(0.5, colorHex);
+                bloomGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = bloomGrad;
+                ctx.fillRect(cx - markW, surfaceY - 2, markW * 2, 6);
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.fillRect(cx - markW, surfaceY, markW * 2, 2);
+            }
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailZ.oninput = redoFail;
+            redoFail();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessOffset.oninput = redoSuccess;
+            if (!document.getElementById('act-success').classList.contains('locked')) {
+                redoSuccess();
+            }
+        });
+    </script>
+</body>
+</html>

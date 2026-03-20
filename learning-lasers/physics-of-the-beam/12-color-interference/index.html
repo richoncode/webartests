@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thin-Film Interference — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #050505; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../11-surface-roughness/index.html">← Surface Roughness (Ra)</a>
+        
+        <div class="seq-label">Sequence 12</div>
+        <h1>Thin-Film Interference</h1>
+        <p class="subtitle">Laser colors aren't pigments—they are optical effects created by nanometer-thin oxide layers (Cr<sub>2</sub>O<sub>3</sub>) that split and recombine light waves.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "White Gap" Transition</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Oxide Thickness</span>
+                                <span id="valFailThick" class="label-val">55 nm</span>
+                            </div>
+                            <input type="range" id="inputFailThick" min="45" max="65" step="1" value="55">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Wavelength Interference</span>
+                                <div id="metFailPhase" class="metric-value">Destructive</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Visual State</span>
+                                <div id="metFailLook" class="metric-value" style="color: var(--red);">Milky/White</div>
+                            </div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> Between the radiant Gold and Deep Blue zones lies the <span data-tooltip="The White Gap&#10;A thickness range (~50-60nm) where the phase shifts of reflected light waves cancel each other out across the visible spectrum, resulting in a desaturated, milky white appearance.">White Gap</span>. In this range, interference is destructive, and the vibrant metallic color disappears.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" onclick="unlockSuccess()">Push past the gap</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">Specular Bloom (Radiant Color)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Target Color Layer</span>
+                                <span id="valSuccessThick" class="label-val">100 nm</span>
+                            </div>
+                            <input type="range" id="inputSuccessThick" min="10" max="400" step="2" value="100">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Dominant Reflection</span>
+                                <div id="metSuccessRef" class="metric-value">Deep Blue</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Color Order</span>
+                                <div id="metSuccessOrder" class="metric-value" style="color: var(--emerald);">1st Order</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> By precisely controlling the <span data-tooltip="Chromium Oxide (Cr2O3)&#10;The transparent film that grows on SS304 when heated. Its thickness determines which light waves reinforce and which cancel.">Oxide Thickness</span>, you can skip the "White Gap" and achieve radiant, high-contrast colors like Deep Blue (100nm) or Radiant Gold (35nm).
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../11-surface-roughness/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Surface Roughness (Ra)
+            </a>
+            <a href="../13-parabolic-growth/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                Parabolic Growth →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        // Real interference stops for SS304 (Extended for 2nd order)
+        const STOPS = [
+            { nm: 0,   rgb: [180, 185, 190], name: 'Silver' },
+            { nm: 18,  rgb: [200, 176, 96],  name: 'Straw' },
+            { nm: 36,  rgb: [208, 144, 32],  name: 'Gold' },
+            { nm: 55,  rgb: [220, 225, 230], name: 'White Gap' },
+            { nm: 72,  rgb: [128, 48, 96],   name: 'Purple' },
+            { nm: 95,  rgb: [21, 53, 176],   name: 'Deep Blue' },
+            { nm: 120, rgb: [16, 144, 176],  name: 'Cyan' },
+            { nm: 150, rgb: [58, 180, 120],  name: 'Pale Green' },
+            { nm: 185, rgb: [200, 120, 150], name: 'Pink' },
+            { nm: 220, rgb: [180, 160, 40],  name: '2nd Order Gold' },
+            { nm: 280, rgb: [100, 140, 180], name: '2nd Order Blue' },
+            { nm: 350, rgb: [80, 160, 100],  name: '2nd Order Green' },
+            { nm: 400, rgb: [50, 50, 50],    name: 'Black/Grey' }
+        ];
+
+        function getInterferenceColor(nm) {
+            if (nm <= STOPS[0].nm) return `rgb(${STOPS[0].rgb.join(',')})`;
+            for (let i = 0; i < STOPS.length - 1; i++) {
+                if (nm <= STOPS[i+1].nm) {
+                    const t = (nm - STOPS[i].nm) / (STOPS[i+1].nm - STOPS[i].nm);
+                    const r = Math.round(STOPS[i].rgb[0] + t * (STOPS[i+1].rgb[0] - STOPS[i].rgb[0]));
+                    const g = Math.round(STOPS[i].rgb[1] + t * (STOPS[i+1].rgb[1] - STOPS[i].rgb[1]));
+                    const b = Math.round(STOPS[i].rgb[2] + t * (STOPS[i+1].rgb[2] - STOPS[i].rgb[2]));
+                    return { css: `rgb(${r},${g},${b})`, name: STOPS[i+1].name };
+                }
+            }
+            const last = STOPS[STOPS.length-1];
+            return { css: `rgb(${last.rgb.join(',')})`, name: last.name };
+        }
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Gap Passed';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Act I: The White Gap
+        const inputFailThick = document.getElementById('inputFailThick');
+        const valFailThick = document.getElementById('valFailThick');
+        const metFailLook = document.getElementById('metFailLook');
+
+        function drawFail(ctx, w, h) {
+            const thick = parseInt(inputFailThick.value);
+            ctx.clearRect(0, 0, w, h);
+            valFailThick.textContent = thick + ' nm';
+            
+            const color = getInterferenceColor(thick);
+            metFailLook.textContent = color.name;
+            metFailLook.style.color = (thick > 50 && thick < 60) ? '#fff' : COLORS.amber;
+
+            // Render Substrate with Film
+            ctx.fillStyle = color.css;
+            ctx.fillRect(40, 40, w-80, h-80);
+            
+            // Phase Cancellation Visual (Sine waves)
+            const time = Date.now() / 1000;
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let x=0; x<w; x++) {
+                // Destructive interference looks like a flat line or messy noise
+                const noise = (thick > 50 && thick < 60) ? Math.random() * 5 : Math.sin(x/10 + time)*10;
+                ctx.lineTo(x, h/2 + noise);
+            }
+            ctx.stroke();
+        }
+
+        // Act II: Specular Bloom
+        const inputSuccessThick = document.getElementById('inputSuccessThick');
+        const valSuccessThick = document.getElementById('valSuccessThick');
+        const metSuccessRef = document.getElementById('metSuccessRef');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            const thick = parseInt(inputSuccessThick.value);
+            ctx.clearRect(0, 0, w, h);
+            valSuccessThick.textContent = thick + ' nm';
+
+            const color = getInterferenceColor(thick);
+            metSuccessRef.textContent = color.name;
+            
+            // Substrate
+            ctx.fillStyle = '#111';
+            ctx.fillRect(40, 40, w-80, h-80);
+
+            // Radiant Color Bloom
+            const cx = w/2;
+            const cy = h/2;
+            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+            grad.addColorStop(0, color.css);
+            grad.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Constructive Wave
+            ctx.strokeStyle = color.css;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            const time = Date.now() / 1000;
+            for(let x=40; x<w-40; x++) {
+                const y = cy + Math.sin(x/15 + time * 2) * 20;
+                if(x===40) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            }
+            ctx.stroke();
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailThick.oninput = redoFail;
+            const loop = () => { redoFail(); requestAnimationFrame(loop); };
+            loop();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessThick.oninput = redoSuccess;
+            const loop = () => {
+                if (!document.getElementById('act-success').classList.contains('locked')) {
+                    redoSuccess();
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

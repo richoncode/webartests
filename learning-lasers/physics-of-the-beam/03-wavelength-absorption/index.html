@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wavelength Absorption — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: var(--blue); border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* Substrate Buttons */
+        .substrate-grid { display: flex; gap: 8px; margin-bottom: 24px; }
+        .sub-btn { flex: 1; padding: 12px; background: #111; border: 1px solid #333; color: #666; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase; transition: all 0.2s; }
+        .sub-btn.active { border-color: var(--blue); color: var(--blue); background: #1e2d40; }
+        .sub-btn.active.emerald { border-color: var(--emerald); color: var(--emerald); background: #0d2016; }
+
+        /* Wavelength Presets */
+        .wv-grid { display: flex; gap: 8px; margin-bottom: 12px; }
+        .wv-btn { flex: 1; padding: 8px; background: #1a1a1a; border: 1px solid #333; color: #888; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 800; text-transform: uppercase; transition: all 0.2s; }
+        .wv-btn:hover { border-color: var(--blue); color: #fff; }
+        .wv-btn.active.blue { border-color: var(--blue); color: var(--blue); background: #0a1520; }
+        .wv-btn.active.red { border-color: var(--red); color: var(--red); background: #1a0d0d; }
+
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../02-focus-hourglass/index.html">← The Focus Hourglass</a>
+        
+        <div class="seq-label">Sequence 03</div>
+        <h1>Wavelength Absorption</h1>
+        <p class="subtitle">Substrate matching is the first principle of laser engraving. The choice between 1064nm (Infrared) and 455nm (Blue) depends entirely on the material's atomic response to light.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Ghost Zone" (Clear Substrates)</h2>
+                
+                <div class="substrate-grid">
+                    <button id="btnFailSS304" class="sub-btn active" onclick="setFailSubstrate('ss304')">SS304 Stainless</button>
+                    <button id="btnFailClear" class="sub-btn" onclick="setFailSubstrate('clear')">Clear Acrylic</button>
+                </div>
+
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Quick Presets</span>
+                            </div>
+                            <div class="wv-grid">
+                                <button class="wv-btn" id="btnFail455" onclick="setFailWave(455)">455 nm</button>
+                                <button class="wv-btn active red" id="btnFail1064" onclick="setFailWave(1064)">1064 nm</button>
+                            </div>
+                            <div class="label-row">
+                                <span class="label-text">Select Wavelength</span>
+                                <span id="valFailWave" class="label-val">1064 nm</span>
+                            </div>
+                            <input type="range" id="inputFailWave" min="400" max="1100" step="10" value="1064">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Photons Captured</span>
+                                <div id="metFailAbs" class="metric-value">38%</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Photons Escaped</span>
+                                <div id="metFailEscape" class="metric-value">0%</div>
+                            </div>
+                        </div>
+                        <div class="callout failure" id="failCallout">
+                            <strong>The Transparency Window:</strong> For clear acrylic, the photons simply don't "see" the atoms. Whether you use Blue or IR, 95%+ of the energy passes straight through.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" disabled onclick="unlockSuccess()">I see the ghosting</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: Master Matching</div>
+                <h2 style="margin-bottom: 16px;">Finding the Resonance</h2>
+                
+                <div class="substrate-grid">
+                    <button id="btnSuccessSS304" class="sub-btn active" onclick="setSuccessSubstrate('ss304')">SS304</button>
+                    <button id="btnSuccessBlack" class="sub-btn" onclick="setSuccessSubstrate('black')">Black Acrylic</button>
+                    <button id="btnSuccessClear" class="sub-btn" onclick="setSuccessSubstrate('clear')">Clear Acrylic</button>
+                </div>
+
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Quick Presets</span>
+                            </div>
+                            <div class="wv-grid">
+                                <button class="wv-btn" id="btnSuccess455" onclick="setSuccessWave(455)">455 nm</button>
+                                <button class="wv-btn active red" id="btnSuccess1064" onclick="setSuccessWave(1064)">1064 nm</button>
+                            </div>
+                            <div class="label-row">
+                                <span class="label-text">Select Wavelength</span>
+                                <span id="valSuccessWave" class="label-val" style="color: var(--blue);">1064 nm</span>
+                            </div>
+                            <input type="range" id="inputSuccessWave" min="400" max="1100" step="10" value="1064">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Coupling</span>
+                                <div id="metSuccessEff" class="metric-value">Excellent</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Result</span>
+                                <div id="metSuccessRes" class="metric-value">Precise Mark</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong id="calloutTitle">Optimal Pairing:</strong> <span id="calloutDesc">IR is the king of metals. It couples perfectly with the dense atomic structure of SS304.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../02-focus-hourglass/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← The Focus Hourglass
+            </a>
+            <a href="../04-spot-and-gap/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                The Spot & The Gap →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+        let failSubstrate = 'ss304';
+        let successSubstrate = 'ss304';
+        let act1Unlocked = false;
+
+        function unlockSuccess() {
+            act1Unlocked = true;
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Substrate Decoupled';
+            btn.style.background = '#333';
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'not-allowed';
+            btn.style.pointerEvents = 'none';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function setFailSubstrate(sub) {
+            failSubstrate = sub;
+            document.getElementById('btnFailSS304').classList.toggle('active', sub === 'ss304');
+            document.getElementById('btnFailClear').classList.toggle('active', sub === 'clear');
+            if (redoFail) redoFail();
+        }
+
+        function setSuccessSubstrate(sub) {
+            successSubstrate = sub;
+            document.getElementById('btnSuccessSS304').classList.toggle('active', sub === 'ss304');
+            document.getElementById('btnSuccessBlack').classList.toggle('active', sub === 'black');
+            document.getElementById('btnSuccessClear').classList.toggle('active', sub === 'clear');
+            if (redoSuccess) redoSuccess();
+        }
+
+        function setFailWave(wv) {
+            inputFailWave.value = wv;
+            document.getElementById('btnFail455').classList.toggle('active', wv === 455);
+            document.getElementById('btnFail455').classList.toggle('blue', wv === 455);
+            document.getElementById('btnFail1064').classList.toggle('active', wv === 1064);
+            document.getElementById('btnFail1064').classList.toggle('red', wv === 1064);
+            if (redoFail) redoFail();
+        }
+
+        function setSuccessWave(wv) {
+            inputSuccessWave.value = wv;
+            document.getElementById('btnSuccess455').classList.toggle('active', wv === 455);
+            document.getElementById('btnSuccess455').classList.toggle('blue', wv === 455);
+            document.getElementById('btnSuccess1064').classList.toggle('active', wv === 1064);
+            document.getElementById('btnSuccess1064').classList.toggle('red', wv === 1064);
+            if (redoSuccess) redoSuccess();
+        }
+
+        // Failure Simulation (IR on Substrates)
+        const inputFailWave = document.getElementById('inputFailWave');
+        const valFailWave = document.getElementById('valFailWave');
+        const metFailAbs = document.getElementById('metFailAbs');
+        const metFailEscape = document.getElementById('metFailEscape');
+        const failCallout = document.getElementById('failCallout');
+
+        function drawFail(ctx, w, h) {
+            ctx.clearRect(0, 0, w, h);
+            const cx = w/2;
+            const cy = h/2;
+            const wv = parseInt(inputFailWave.value);
+            valFailWave.textContent = wv + ' nm';
+
+            // Map wavelength to color
+            let beamColor = COLORS.red;
+            if (wv < 500) beamColor = COLORS.blue;
+            else if (wv < 650) beamColor = COLORS.emerald;
+            valFailWave.style.color = beamColor;
+
+            let abs, escape, desc, isGhost, isReflected, absVal;
+            if (failSubstrate === 'ss304') {
+                isGhost = false;
+                if (wv >= 1000) { abs = '38%'; absVal = 0.38; escape = '0%'; isReflected = false; }
+                else if (wv < 500) { abs = '62%'; absVal = 0.62; escape = '0%'; isReflected = false; }
+                else { abs = '15%'; absVal = 0.15; escape = '0%'; isReflected = true; }
+                desc = '<strong>Metals Capture Heat:</strong> Photons are absorbed or reflected at the surface. They cannot pass through the dense crystalline structure.';
+            } else { // Clear Acrylic
+                abs = (wv < 400 ? '20%' : '5%'); 
+                absVal = (wv < 400 ? 0.20 : 0.05);
+                escape = (wv < 400 ? '80%' : '95%');
+                isGhost = true; isReflected = false;
+                desc = '<strong>The Transparency Window:</strong> For clear acrylic, both Blue and IR wavelengths are effectively "Ghosts." 95% of photons escape through the bottom.';
+            }
+
+            // Sync Button State
+            if (!act1Unlocked) {
+                const btnFix = document.getElementById('btn-fix-fail');
+                if (isGhost) {
+                    btnFix.disabled = false;
+                    btnFix.style.background = COLORS.blue;
+                    btnFix.style.opacity = '1';
+                    btnFix.style.cursor = 'pointer';
+                    btnFix.style.pointerEvents = 'auto';
+                } else {
+                    btnFix.disabled = true;
+                    btnFix.style.background = '#333';
+                    btnFix.style.opacity = '0.4';
+                    btnFix.style.cursor = 'not-allowed';
+                    btnFix.style.pointerEvents = 'none';
+                }
+            }
+
+            metFailAbs.textContent = abs;
+            metFailEscape.textContent = escape;
+            metFailEscape.style.color = isGhost ? COLORS.red : '#fff';
+            failCallout.innerHTML = desc;
+            failCallout.className = 'callout ' + (isGhost ? 'failure' : 'success');
+
+            // Material Render
+            const subColor = failSubstrate === 'ss304' ? 'rgba(100, 100, 110, 0.4)' : 'rgba(255, 255, 255, 0.1)';
+            ctx.fillStyle = subColor;
+            ctx.fillRect(cx - 100, cy - 20, 200, 40);
+            ctx.strokeStyle = '#444';
+            ctx.strokeRect(cx - 100, cy - 20, 200, 40);
+
+            // Beam Render
+            ctx.strokeStyle = beamColor;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx, 0);
+            
+            if (isGhost) {
+                // EXTREMELY DISTINCT GHOST RENDERING
+                ctx.setLineDash([10, 5]);
+                ctx.lineWidth = 2;
+                ctx.lineTo(cx, h); 
+                ctx.stroke();
+                
+                // Show photons escaping bottom
+                ctx.beginPath();
+                ctx.moveTo(cx - 20, h - 15);
+                ctx.lineTo(cx, h);
+                ctx.lineTo(cx + 20, h - 15);
+                ctx.strokeStyle = beamColor + '66';
+                ctx.stroke();
+            } else if (isReflected) {
+                ctx.lineTo(cx, cy - 20); // Hits surface
+                ctx.stroke();
+                // Draw Reflection
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - 20);
+                ctx.lineTo(cx + 40, 0);
+                ctx.strokeStyle = beamColor + '44';
+                ctx.stroke();
+            } else {
+                ctx.lineTo(cx, cy - 20); // Stops
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            // Scale glow by absorption
+            if (!isGhost && !isReflected) {
+                const glowSize = 10 + (absVal * 30);
+                const grad = ctx.createRadialGradient(cx, cy-20, 0, cx, cy-20, glowSize);
+                grad.addColorStop(0, beamColor + 'cc');
+                grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(cx, cy-20, glowSize, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        // Success Simulation (Master Matching)
+        const inputSuccessWave = document.getElementById('inputSuccessWave');
+        const valSuccessWave = document.getElementById('valSuccessWave');
+        const metSuccessEff = document.getElementById('metSuccessEff');
+        const metSuccessRes = document.getElementById('metSuccessRes');
+        const calloutTitle = document.getElementById('calloutTitle');
+        const calloutDesc = document.getElementById('calloutDesc');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            ctx.clearRect(0, 0, w, h);
+            const cx = w/2;
+            const cy = h/2;
+            const wv = parseInt(inputSuccessWave.value);
+            valSuccessWave.textContent = wv + ' nm';
+
+            let beamColor = COLORS.red;
+            if (wv < 500) beamColor = COLORS.blue;
+            else if (wv < 650) beamColor = COLORS.emerald;
+            valSuccessWave.style.color = beamColor;
+
+            let eff, res, title, desc, isAbsorbed, isReflected, absVal = 0;
+            
+            if (successSubstrate === 'ss304') {
+                if (wv >= 1000) {
+                    eff = 'Excellent'; res = 'Precise Mark'; isAbsorbed = true; isReflected = false; absVal = 0.38;
+                    title = 'Optimal Pairing (IR):';
+                    desc = '1064nm IR couples perfectly with the dense atomic structure of SS304.';
+                } else if (wv < 500) {
+                    eff = 'Moderate'; res = 'Bulky Heat'; isAbsorbed = true; isReflected = false; absVal = 0.62;
+                    title = 'Blue Absorption:';
+                    desc = 'Steel absorbs blue light well, but the larger diode spot reduces precision compared to IR.';
+                } else {
+                    eff = 'Poor'; res = 'Reflection'; isAbsorbed = false; isReflected = true;
+                    title = 'Inefficient:';
+                    desc = 'Mid-spectrum light is mostly reflected by the polished metal surface.';
+                }
+            } else if (successSubstrate === 'black') {
+                isReflected = false;
+                if (wv < 500) {
+                    eff = 'Excellent'; res = 'Clean Cut'; isAbsorbed = true; absVal = 0.95;
+                    title = 'Optimal Pairing (Blue):';
+                    desc = 'Blue light is the natural enemy of polymers. Vaporization is fast and clean.';
+                } else {
+                    eff = 'Good'; res = 'Melted Edge'; isAbsorbed = true; absVal = 0.70;
+                    title = 'Pigment Trap:';
+                    desc = 'IR only works on black plastic because the carbon pigment absorbs the energy.';
+                }
+            } else { // Clear Acrylic
+                isReflected = false;
+                eff = 'Zero'; res = 'Ghosting'; isAbsorbed = false; absVal = 0.05;
+                title = 'Substrate Fail:';
+                desc = 'Clear acrylic is transparent to both Blue and IR. You need 10,600nm (CO2) to cut clear plastic.';
+            }
+
+            metSuccessEff.textContent = eff;
+            metSuccessRes.textContent = res;
+            metSuccessEff.style.color = (eff === 'Excellent') ? COLORS.emerald : (eff === 'Zero' ? COLORS.red : COLORS.amber);
+            calloutTitle.textContent = title;
+            calloutDesc.textContent = desc;
+
+            const subColor = successSubstrate === 'ss304' ? 'rgba(100, 100, 110, 0.4)' : (successSubstrate === 'black' ? 'rgba(20, 20, 20, 0.9)' : 'rgba(255, 255, 255, 0.1)');
+            ctx.fillStyle = subColor;
+            ctx.fillRect(cx - 100, cy - 20, 200, 40);
+            ctx.strokeStyle = '#444';
+            ctx.strokeRect(cx - 100, cy - 20, 200, 40);
+
+            ctx.strokeStyle = beamColor;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx, 0);
+            if (isAbsorbed) {
+                ctx.lineTo(cx, cy - 20);
+                ctx.stroke();
+                const glowSize = 10 + (absVal * 40);
+                const grad = ctx.createRadialGradient(cx, cy-20, 0, cx, cy-20, glowSize);
+                grad.addColorStop(0, beamColor + '88');
+                grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(cx, cy-20, glowSize, 0, Math.PI*2); ctx.fill();
+            } else if (isReflected) {
+                ctx.lineTo(cx, cy - 20);
+                ctx.stroke();
+                // Reflection
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - 20);
+                ctx.lineTo(cx + 40, 0);
+                ctx.strokeStyle = beamColor + '44';
+                ctx.stroke();
+            } else {
+                ctx.setLineDash([5, 2]);
+                ctx.lineTo(cx, h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailWave.oninput = () => {
+                setFailWave(parseInt(inputFailWave.value));
+            };
+            redoFail();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessWave.oninput = () => {
+                setSuccessWave(parseInt(inputSuccessWave.value));
+            };
+            if (!document.getElementById('act-success').classList.contains('locked')) {
+                redoSuccess();
+            }
+        });
+
+        // Initialize Fail State
+        setFailSubstrate('ss304');
+    </script>
+</body>
+</html>

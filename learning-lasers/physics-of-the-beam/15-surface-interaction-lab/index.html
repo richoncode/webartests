@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surface Interaction Lab — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #000; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1.4; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 12px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: #333; border-radius: 3px; outline: none; margin: 10px 0; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid #000; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin-top: 32px; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-052</div>
+    <div class="page">
+        <a class="back" href="../14-corrosion-limit/index.html">← The Corrosion Limit</a>
+        
+        <div class="seq-label">Sequence 15</div>
+        <h1>Surface Interaction Lab</h1>
+        <p class="subtitle">An interactive laboratory to explore the microscopic physics of **Oxide Growth** vs. **Surface Pitting**. Observe how light waves scatter as the surface integrity breaks down.</p>
+
+        <div class="act-card">
+            <div class="seq-label" style="color: var(--blue);">Interaction Diagnostics</div>
+            <div class="viz-layout">
+                <div class="canvas-container">
+                    <canvas id="labCanvas"></canvas>
+                </div>
+                <div class="controls">
+                    <div class="control-group">
+                        <div class="label-row">
+                            <span class="label-text">Oxide Thickness</span>
+                            <span id="valThick" class="label-val">100 nm</span>
+                        </div>
+                        <input type="range" id="inputThick" min="0" max="400" step="2" value="100">
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="label-row">
+                            <span class="label-text">Overheat Pitting</span>
+                            <span id="valRa" class="label-val">Smooth</span>
+                        </div>
+                        <input type="range" id="inputRa" min="0" max="1" step="0.05" value="0">
+                    </div>
+
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <span class="metric-label">Reflection</span>
+                            <div id="metRefMode" class="metric-value">Specular</div>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Color State</span>
+                            <div id="metColorState" class="metric-value">Deep Blue</div>
+                        </div>
+                    </div>
+
+                    <div class="callout">
+                        <strong>Lab Logic:</strong> Thickness grows the film ($Cr_2O_3$) while Pitting physically jaggs the surface. When <strong>Ra > λ</strong>, light scatters randomly (Diffuse), destroying the radiant structural color.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../14-corrosion-limit/index.html" class="prev">
+                ← Previous: Corrosion
+            </a>
+            <a href="../16-galvo-dynamics/index.html" class="next">
+                Next: Galvo Dynamics →
+            </a>
+        </div>
+    </div>
+
+    <script src="../js/OxidePhysics.js"></script>
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        const oxide = new OxidePhysics();
+        const inputThick = document.getElementById('inputThick');
+        const inputRa = document.getElementById('inputRa');
+        const valThick = document.getElementById('valThick');
+        const valRa = document.getElementById('valRa');
+        const metRefMode = document.getElementById('metRefMode');
+        const metColorState = document.getElementById('metColorState');
+
+        function drawLab(ctx, w, h) {
+            const nm = parseInt(inputThick.value);
+            const ra = parseFloat(inputRa.value);
+            
+            valThick.textContent = nm + ' nm';
+            valRa.textContent = ra === 0 ? 'Smooth' : (ra > 0.8 ? 'Slag' : (ra > 0.4 ? 'Pitted' : 'Breaking'));
+            
+            const colorData = oxide.getColor(nm, ra);
+            metRefMode.textContent = ra < 0.3 ? 'Specular' : 'Diffuse';
+            metRefMode.style.color = ra < 0.3 ? COLORS.emerald : COLORS.amber;
+            metColorState.textContent = colorData.name;
+            metColorState.style.color = colorData.css;
+
+            oxide.renderSideView(ctx, { w, h, nm, ra, time: Date.now()/1000 });
+        }
+
+        SimUtils.setupCanvas('labCanvas', (ctx, w, h) => {
+            const loop = () => {
+                drawLab(ctx, w, h);
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

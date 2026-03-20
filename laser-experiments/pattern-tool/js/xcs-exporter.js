@@ -1,3 +1,7 @@
+/**
+ * XCS Exporter - VANTAGE-ALPHA Baseline
+ * Revisions: Refined bounding box/offset logic for text.
+ */
 import { uuid } from './utils.js';
 import { LATO_REGULAR_GLYPHS, LATO_REGULAR_INFO } from './xcs-glyphs.js';
 

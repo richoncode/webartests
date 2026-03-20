@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thermal Diffusion (k) — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #050505; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../06-energy-fluence/index.html">← Energy Fluence</a>
+        
+        <div class="seq-label">Sequence 07</div>
+        <h1>Thermal Diffusion (k)</h1>
+        <p class="subtitle">Material conductivity (k) limits the ultimate resolution of a mark. On high-conductive materials like Copper, heat travels laterally—blurring your edges before you can even finish the line.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Heat Bleed" Blob (Copper)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Scan Speed</span>
+                                <span id="valFailSpeed" class="label-val">100 mm/s</span>
+                            </div>
+                            <input type="range" id="inputFailSpeed" min="50" max="500" step="50" value="100">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Conductivity (k)</span>
+                                <div class="metric-value" style="color: #f0a040;">400 W/m·K</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Edge Definition</span>
+                                <div id="metFailQual" class="metric-value" style="color: var(--red);">Blurry</div>
+                            </div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> Copper is an excellent thermal conductor. At low speeds, the material pulls heat away from the spot so fast that it melts the <strong>neighborhood</strong> instead of just the point. This lateral <span data-tooltip="Thermal Diffusion&#10;The transfer of heat from a hot zone to a cooler one. In high-k materials, this happens fast enough to ruin fine detail at slow scan speeds.">diffusion</span> ruins sharp edges.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" disabled onclick="unlockSuccess()">Outrun the diffusion</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">High-Speed Gating (Sharpness)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Scan Speed</span>
+                                <span id="valSuccessSpeed" class="label-val">2000 mm/s</span>
+                            </div>
+                            <input type="range" id="inputSuccessSpeed" min="500" max="4000" step="100" value="2000">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Lateral Bleed</span>
+                                <div id="metSuccessBleed" class="metric-value">0.01 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Resolution</span>
+                                <div id="metSuccessRes" class="metric-value" style="color: var(--emerald);">High</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> To mark Copper cleanly, you must move the laser <strong>faster than the heat can travel</strong>. High-speed gating (2000mm/s+) dumps energy so quickly that the material has no time to conduct it laterally before the mark is frozen.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../06-energy-fluence/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Energy Fluence
+            </a>
+            <a href="../08-heat-wall/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                The Heat Wall →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Diffusion Outrun';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Act I Simulation (Heat Bleed)
+        const inputFailS = document.getElementById('inputFailSpeed');
+        const valFailS = document.getElementById('valFailSpeed');
+        const metFailQual = document.getElementById('metFailQual');
+
+        function drawFail(ctx, width, height) {
+            ctx.clearRect(0, 0, width, height);
+            const s = parseFloat(inputFailS.value);
+            valFailS.textContent = s + ' mm/s';
+
+            // Diffusion logic: Amplify for high signal
+            const diffusionK = 400; 
+            const bloomRadius = (diffusionK / s) * 15; // Increased multiplier
+            
+            metFailQual.textContent = s < 150 ? 'Blurry' : (s < 300 ? 'Fair' : 'Sharp');
+            metFailQual.style.color = s < 150 ? COLORS.red : (s < 300 ? COLORS.amber : COLORS.emerald);
+
+            if (s <= 100) {
+                document.getElementById('btn-fix-fail').disabled = false;
+                document.getElementById('btn-fix-fail').style.background = COLORS.blue;
+            }
+
+            // Substrate (Copper)
+            ctx.fillStyle = '#b87333';
+            ctx.fillRect(40, 40, width-80, height-80);
+
+            // Animated Bloom (to show heat movement)
+            const time = Date.now() / 1000;
+            const pulse = 1 + Math.sin(time * 4) * 0.05;
+            const currentBloom = bloomRadius * pulse;
+
+            // Mark Render with Bloom
+            const mx = width/2 - 50;
+            const my = height/2 - 50;
+            const mw = 100;
+            const mh = 100;
+
+            // Draw the "Bleed" using multiple radial gradients at corners
+            ctx.globalAlpha = 0.6;
+            const corners = [[mx,my], [mx+mw,my], [mx,my+mh], [mx+mw,my+mh]];
+            corners.forEach(pos => {
+                const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], currentBloom);
+                grad.addColorStop(0, 'rgba(255, 100, 0, 0.8)');
+                grad.addColorStop(0.5, 'rgba(255, 50, 0, 0.2)');
+                grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(pos[0], pos[1], currentBloom, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Main Edge Bleed (Stroke)
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+            ctx.lineWidth = 10;
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = currentBloom / 2;
+            ctx.shadowColor = 'rgba(255, 50, 0, 0.5)';
+            ctx.strokeRect(mx, my, mw, mh);
+            ctx.shadowBlur = 0;
+        }
+
+        // Act II Simulation (High Speed)
+        const inputSuccessS = document.getElementById('inputSuccessSpeed');
+        const valSuccessS = document.getElementById('valSuccessSpeed');
+        const metSuccessBleed = document.getElementById('metSuccessBleed');
+        const metSuccessRes = document.getElementById('metSuccessRes');
+
+        function drawSuccess(ctx, width, height) {
+            if (width === 0 || height === 0) return;
+            ctx.clearRect(0, 0, width, height);
+            const s = parseFloat(inputSuccessS.value);
+            valSuccessS.textContent = s + ' mm/s';
+
+            // Bleed drops significantly as speed increases
+            // Amplify range for high signal (High: ~12px, Low: ~1px)
+            const bloomRadius = (400 / s) * 15;
+            metSuccessBleed.textContent = (bloomRadius / 100).toFixed(3) + ' mm';
+            
+            const isHighRes = s >= 2000;
+            metSuccessRes.textContent = isHighRes ? 'High' : 'Moderate';
+            metSuccessRes.style.color = isHighRes ? COLORS.emerald : COLORS.amber;
+
+            // Substrate (Copper)
+            ctx.fillStyle = '#b87333';
+            ctx.fillRect(40, 40, width-80, height-80);
+
+            const mx = width/2 - 60;
+            const my = height/2 - 60;
+            const mw = 120;
+            const mh = 120;
+
+            // Animated Bloom (consistent with Act I)
+            const time = Date.now() / 1000;
+            const pulse = 1 + Math.sin(time * 4) * 0.05;
+            const currentBloom = bloomRadius * pulse;
+
+            // Draw the "Bleed" using radial gradients at corners
+            ctx.globalAlpha = 0.4;
+            const corners = [[mx,my], [mx+mw,my], [mx,my+mh], [mx+mw,my+mh]];
+            corners.forEach(pos => {
+                const grad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], currentBloom);
+                grad.addColorStop(0, 'rgba(255, 100, 0, 0.6)');
+                grad.addColorStop(0.5, 'rgba(255, 50, 0, 0.1)');
+                grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(pos[0], pos[1], currentBloom, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Sharp Mark
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 8;
+            ctx.lineJoin = 'round';
+            
+            // Faint precise glow
+            ctx.shadowBlur = currentBloom / 3;
+            ctx.shadowColor = 'rgba(255, 100, 0, 0.4)';
+            ctx.strokeRect(mx, my, mw, mh);
+            ctx.shadowBlur = 0;
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailS.oninput = redoFail;
+            
+            const loop = () => {
+                redoFail();
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessS.oninput = redoSuccess;
+            const loop = () => {
+                if (!document.getElementById('act-success').classList.contains('locked')) {
+                    redoSuccess();
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

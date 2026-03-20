@@ -1,3 +1,7 @@
+/**
+ * Pattern Tool Viewer - VANTAGE-ALPHA Baseline
+ * Synced to Left-Baseline Alphabetic rendering.
+ */
 import { App } from './app.js';
 import { PAD } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';

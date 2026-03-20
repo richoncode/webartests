@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mirror Steering & Divergence — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: var(--blue); border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../../index.html">← Back to Hub</a>
+        
+        <div class="seq-label">Sequence 01</div>
+        <h1>Mirror Steering & Divergence</h1>
+        <p class="subtitle">Galvanometric (Galvo) mirrors enable microsecond direction changes, but unlike Gantry systems that move the entire laser head, Galvo systems rely on a fixed distance where beam divergence can ruin your detail at the edges of the field.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Fuzzy Corner" Problem (Galvo Systems)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Mirror Divergence</span>
+                                <span id="valFailDiv" class="label-val">5.0 mrad</span>
+                            </div>
+                            <input type="range" id="inputFailDiv" min="0.5" max="10.0" step="0.5" value="5.0">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Spot Growth</span>
+                                <div id="metGrowth" class="metric-value">1.00 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Field Quality</span>
+                                <div id="metQual" class="metric-value">Poor</div>
+                            </div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> High <span data-tooltip="Milliradian (mrad)&#10;A unit of angular measurement. 1 mrad = 1mm of growth per 1m of travel.">divergence</span> causes the beam to grow as it travels. In a Galvo system, the path to the <strong>center</strong> is shortest (sharpest), while the path to the <strong>corners</strong> is longer, allowing the beam to expand and become blurry.
+                        </div>
+                        <button id="btn-fix" class="btn-next" onclick="unlockSuccess()">I see why it's blurry</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">High-Fidelity Galvo Steering</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Mirror Divergence</span>
+                                <span id="valSuccessDiv" class="label-val" style="color: var(--emerald);">1.5 mrad</span>
+                            </div>
+                            <input type="range" id="inputSuccessDiv" min="0.5" max="2.5" step="0.1" value="1.5">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Spot Growth</span>
+                                <div id="metSuccessGrowth" class="metric-value">0.30 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Field Quality</span>
+                                <div id="metSuccessQual" class="metric-value" style="color: var(--emerald);">Excellent</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> The xTool F2 achieves <strong>< 1.5 mrad</strong>. This ensures that even at the furthest reaches of the marking field, the IR spot remains identical to the center.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../../index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Laser Hub
+            </a>
+            <a href="../02-focus-hourglass/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                The Focus Hourglass →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return; // Wait if hidden
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100); // Small delay to ensure layout is ready
+                return resize;
+            }
+        };
+
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            document.getElementById('btn-fix').disabled = true;
+            document.getElementById('btn-fix').textContent = 'Fixed';
+            
+            // Re-trigger resize now that it is visible
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Failure Simulation
+        const inputFailDiv = document.getElementById('inputFailDiv');
+        const valFailDiv = document.getElementById('valFailDiv');
+        const metGrowth = document.getElementById('metGrowth');
+        const metQual = document.getElementById('metQual');
+
+        function drawFail(ctx, w, h) {
+            ctx.clearRect(0, 0, w, h);
+            const div = parseFloat(inputFailDiv.value);
+            const growth = (200 * div / 1000); 
+            
+            valFailDiv.textContent = div.toFixed(1) + ' mrad';
+            metGrowth.textContent = growth.toFixed(2) + ' mm';
+            
+            // Unified Quality Scale
+            const quality = div <= 1.5 ? 'Excellent' : (div <= 3.0 ? 'Good' : (div <= 5.0 ? 'Fair' : 'Poor'));
+            metQual.textContent = quality;
+            metQual.style.color = div <= 1.5 ? COLORS.emerald : (div <= 3.0 ? COLORS.blue : (div <= 5.0 ? COLORS.amber : COLORS.red));
+
+            // Field boundary
+            const bx = 60;
+            const by = 60;
+            const bw = w - 120;
+            const bh = h - 120;
+
+            // Grid
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=w; i+=40) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+            }
+            for(let i=0; i<=h; i+=40) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+            }
+
+            // Draw Boundary
+            ctx.strokeStyle = COLORS.red;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.setLineDash([]);
+
+            // Animate
+            const time = Date.now() / 1000;
+            const centerX = w/2;
+            const centerY = h/2;
+            
+            // Scaled spot radius for corners (Blur)
+            // Range: 10px to 40px
+            const blurRadius = 5 + (div * 4);
+
+            // 1. Center Spot (SHARP)
+            ctx.fillStyle = COLORS.blue;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 3, 0, Math.PI*2);
+            ctx.fill();
+            // Sharp glow
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = COLORS.blue;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px SF Mono';
+            ctx.textAlign = 'center';
+            ctx.fillText('SHARP CENTER', centerX, centerY + 20);
+
+            // 2. Corner Spots (FUZZY)
+            const corners = [
+                {x: bx, y: by}, {x: bx + bw, y: by},
+                {x: bx, y: by + bh}, {x: bx + bw, y: by + bh}
+            ];
+
+            corners.forEach((pos, i) => {
+                // Orbit
+                const ox = pos.x + Math.sin(time + i) * 15;
+                const oy = pos.y + Math.cos(time + i) * 15;
+                
+                // Outer Blur
+                const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, blurRadius);
+                grad.addColorStop(0, 'rgba(248, 113, 113, 0.8)');
+                grad.addColorStop(0.3, 'rgba(248, 113, 113, 0.3)');
+                grad.addColorStop(1, 'rgba(248, 113, 113, 0)');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(ox, oy, blurRadius, 0, Math.PI*2);
+                ctx.fill();
+
+                // Core (Still fuzzy)
+                ctx.fillStyle = 'rgba(248, 113, 113, 0.5)';
+                ctx.beginPath();
+                ctx.arc(ox, oy, 4, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            ctx.fillStyle = COLORS.red;
+            ctx.fillText('FUZZY CORNERS', bx + bw/2, by - 10);
+        }
+
+        // Success Simulation
+        const inputSuccessDiv = document.getElementById('inputSuccessDiv');
+        const valSuccessDiv = document.getElementById('valSuccessDiv');
+        const metSuccessGrowth = document.getElementById('metSuccessGrowth');
+        const metSuccessQual = document.getElementById('metSuccessQual');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            ctx.clearRect(0, 0, w, h);
+            const div = parseFloat(inputSuccessDiv.value);
+            const growth = (200 * div / 1000); 
+            
+            valSuccessDiv.textContent = div.toFixed(1) + ' mrad';
+            metSuccessGrowth.textContent = growth.toFixed(2) + ' mm';
+            
+            // Unified Quality Scale
+            const quality = div <= 1.5 ? 'Excellent' : (div <= 3.0 ? 'Good' : (div <= 5.0 ? 'Fair' : 'Poor'));
+            metSuccessQual.textContent = quality;
+            metSuccessQual.style.color = div <= 1.5 ? COLORS.emerald : (div <= 3.0 ? COLORS.blue : (div <= 5.0 ? COLORS.amber : COLORS.red));
+
+            // Field boundary
+            const bx = 60;
+            const by = 60;
+            const bw = w - 120;
+            const bh = h - 120;
+
+            // Grid
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=w; i+=40) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+            }
+            for(let i=0; i<=h; i+=40) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+            }
+
+            // Draw Boundary
+            ctx.strokeStyle = COLORS.emerald;
+            ctx.setLineDash([2, 2]);
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.setLineDash([]);
+
+            // Animate
+            const time = Date.now() / 1000;
+            const centerX = w/2;
+            const centerY = h/2;
+            
+            // Scaled spot radius for corners (Tight for success)
+            const blurRadius = 4 + (div * 1.5);
+
+            // 1. Center Spot (SHARP)
+            ctx.fillStyle = COLORS.emerald;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 3, 0, Math.PI*2);
+            ctx.fill();
+            // Sharp glow
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = COLORS.emerald;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px SF Mono';
+            ctx.textAlign = 'center';
+            ctx.fillText('SHARP CENTER', centerX, centerY + 20);
+
+            // 2. Corner Spots (STILL SHARP)
+            const corners = [
+                {x: bx, y: by}, {x: bx + bw, y: by},
+                {x: bx, y: by + bh}, {x: bx + bw, y: by + bh}
+            ];
+
+            corners.forEach((pos, i) => {
+                // Orbit
+                const ox = pos.x + Math.sin(time + i) * 15;
+                const oy = pos.y + Math.cos(time + i) * 15;
+                
+                // Outer Blur (Minimal)
+                const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, blurRadius);
+                grad.addColorStop(0, 'rgba(16, 185, 129, 0.9)');
+                grad.addColorStop(0.5, 'rgba(16, 185, 129, 0.4)');
+                grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(ox, oy, blurRadius, 0, Math.PI*2);
+                ctx.fill();
+
+                // Core (Sharp)
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
+                ctx.beginPath();
+                ctx.arc(ox, oy, 3, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            ctx.fillStyle = COLORS.emerald;
+            ctx.fillText('SHARP CORNERS', bx + bw/2, by - 10);
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailDiv.oninput = redoFail;
+            const loop = () => { redoFail(); requestAnimationFrame(loop); };
+            loop();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessDiv.oninput = redoSuccess;
+            const loop = () => {
+                if (!document.getElementById('act-success').classList.contains('locked')) {
+                    redoSuccess();
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

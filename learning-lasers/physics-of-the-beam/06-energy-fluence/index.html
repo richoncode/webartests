@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Fluence (J/mm²) — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #050505; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .math-box { background: #0a0a0a; border: 1px dashed #333; border-radius: 8px; padding: 16px; margin-top: 24px; font-family: var(--font-mono); font-size: 12px; color: #888; }
+        .math-box strong { color: var(--blue); }
+
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../05-speed-reciprocal/index.html">← The Speed Reciprocal</a>
+        
+        <div class="seq-label">Sequence 06</div>
+        <h1>Energy Fluence (J/mm²)</h1>
+        <p class="subtitle">Power, Speed, and Density are not separate controls—they are variables in a single equation that determines the <strong>Total Energy Dose</strong> delivered to the material.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Under-Threshold" Ghost</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Power (%)</span>
+                                <span id="valFailPower" class="label-val">10%</span>
+                            </div>
+                            <input type="range" id="inputFailPower" min="1" max="100" step="1" value="10">
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Speed (mm/s)</span>
+                                <span id="valFailSpeed" class="label-val">1000 mm/s</span>
+                            </div>
+                            <input type="range" id="inputFailSpeed" min="100" max="2000" step="100" value="1000">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Calculated Fluence</span>
+                                <div id="metFailFluence" class="metric-value">0.016 J/mm²</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Mark Visibility</span>
+                                <div id="metFailMark" class="metric-value" style="color: var(--red);">Invisible</div>
+                            </div>
+                        </div>
+                        <div class="math-box">
+                            Fluence = (Power × α) / (Speed × Spot × Density)<br>
+                            Result: <strong>Under-Threshold</strong>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> At very high speeds or low power, the total <span data-tooltip="Fluence&#10;The total radiant energy delivered per unit area (Joules per square millimeter).">Fluence</span> is too low to raise the surface temperature to the oxidation point (~450°C). The photons simply bounce off the mirror-polished SS304.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" disabled onclick="unlockSuccess()">I need more dose</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">Dose Balancing (Target Hitting)</h2>
+                
+                <div class="wv-grid" style="margin-bottom: 24px;">
+                    <button id="btnSuccessIR" class="wv-btn active red" onclick="setSuccessLaser('ir')">IR Module (0.03mm)</button>
+                    <button id="btnSuccessBlue" class="wv-btn" onclick="setSuccessLaser('blue')">Blue Module (0.08mm)</button>
+                </div>
+
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Power (%)</span>
+                                <span id="valSuccessPower" class="label-val">30%</span>
+                            </div>
+                            <input type="range" id="inputSuccessPower" min="1" max="100" step="1" value="30">
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Speed (mm/s)</span>
+                                <span id="valSuccessSpeed" class="label-val">200 mm/s</span>
+                            </div>
+                            <input type="range" id="inputSuccessSpeed" min="50" max="1500" step="50" value="200">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Current Fluence</span>
+                                <div id="metSuccessFluence" class="metric-value">0.380 J/mm²</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label" data-tooltip="Annealing (Laser)&#10;A surface-level thermal process where heat is applied to grow a protective oxide film (color) without vaporizing or removing material. It preserves the smooth texture required for specular reflection.">Interaction</span>
+                                <div id="metSuccessQual" class="metric-value" style="color: var(--emerald);">Annealing</div>
+                            </div>
+                        </div>
+                        <div class="math-box">
+                            Target Window: <strong>0.35 - 0.45 J/mm²</strong><br>
+                            (The Golden Window for Deep Blue SS304)
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> By balancing Power and Speed, you can hit the same <strong>Fluence Target</strong> using multiple combinations. High Power/High Speed is efficient; Low Power/Low Speed is precise. As long as the dose is the same, the color will match.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../05-speed-reciprocal/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← The Speed Reciprocal
+            </a>
+            <a href="../07-thermal-diffusion/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                Thermal Diffusion →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return null;
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+        let successLaser = 'ir';
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Dose Balanced';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function setSuccessLaser(type) {
+            successLaser = type;
+            document.getElementById('btnSuccessIR').classList.toggle('active', type === 'ir');
+            document.getElementById('btnSuccessIR').classList.toggle('red', type === 'ir');
+            document.getElementById('btnSuccessBlue').classList.toggle('active', type === 'blue');
+            document.getElementById('btnSuccessBlue').classList.toggle('blue', type === 'blue');
+            if (redoSuccess) redoSuccess();
+        }
+
+        // Physics Constants
+        const IR_ALPHA = 0.38;
+        const BLUE_ALPHA = 0.62;
+        const IR_SPOT = 0.03;
+        const BLUE_SPOT = 0.08;
+
+        // Act I Simulation (Fixed to IR for failure mode)
+        const alpha = IR_ALPHA;
+        const spotW = IR_SPOT;
+
+        // Act I Simulation
+        const inputFailP = document.getElementById('inputFailPower');
+        const inputFailS = document.getElementById('inputFailSpeed');
+        const valFailP = document.getElementById('valFailPower');
+        const valFailS = document.getElementById('valFailSpeed');
+        const metFailFluence = document.getElementById('metFailFluence');
+        const metFailMark = document.getElementById('metFailMark');
+
+        function drawFail(ctx, width, height) {
+            ctx.clearRect(0, 0, width, height);
+            const p = parseFloat(inputFailP.value);
+            const s = parseFloat(inputFailS.value);
+            valFailP.textContent = p + '%';
+            valFailS.textContent = s + ' mm/s';
+
+            // Dose = (P_watt * alpha) / (speed * spotW)
+            const fluence = (5 * (p/100) * alpha) / (s * spotW); 
+            metFailFluence.textContent = fluence.toFixed(3) + ' J/mm²';
+            
+            const isVisible = fluence > 0.08;
+            metFailMark.textContent = isVisible ? 'Trace' : 'Invisible';
+            metFailMark.style.color = isVisible ? COLORS.amber : COLORS.red;
+
+            if (fluence < 0.05) {
+                const btn = document.getElementById('btn-fix-fail');
+                btn.disabled = false;
+                btn.style.background = COLORS.blue;
+            }
+
+            // Substrate Render (Mirror Polished)
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(40, 40, width-80, height-80);
+            
+            // 1mm Scale Bar
+            const mmPx = (width - 80) / 10; // 10mm field
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(50, height - 50);
+            ctx.lineTo(50 + mmPx, height - 50);
+            ctx.stroke();
+            ctx.fillStyle = '#555';
+            ctx.font = '8px SF Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText('1mm', 50, height - 55);
+            
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, 'rgba(255,255,255,0)');
+            grad.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(40, 40, width-80, height-80);
+
+            if (isVisible) {
+                // Amplify visual feedback
+                const opacity = Math.min(0.8, (fluence - 0.08) * 10);
+                ctx.fillStyle = 'rgba(255, 255, 255, ' + opacity + ')';
+                ctx.font = 'bold 24px SF Mono';
+                ctx.textAlign = 'center';
+                ctx.fillText('TRACE MARK', width/2, height/2);
+                
+                // Add a faint heat glow
+                ctx.globalAlpha = opacity * 0.5;
+                const glow = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, 60);
+                glow.addColorStop(0, COLORS.amber);
+                glow.addColorStop(1, 'transparent');
+                ctx.fillStyle = glow;
+                ctx.beginPath(); ctx.arc(width/2, height/2, 60, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // Act II Simulation
+        const inputSuccessP = document.getElementById('inputSuccessPower');
+        const inputSuccessS = document.getElementById('inputSuccessSpeed');
+        const valSuccessP = document.getElementById('valSuccessPower');
+        const valSuccessS = document.getElementById('valSuccessSpeed');
+        const metSuccessFluence = document.getElementById('metSuccessFluence');
+        const metSuccessQual = document.getElementById('metSuccessQual');
+
+        function drawSuccess(ctx, width, height) {
+            if (width === 0 || height === 0) return;
+            ctx.clearRect(0, 0, width, height);
+            const p = parseFloat(inputSuccessP.value);
+            const s = parseFloat(inputSuccessS.value);
+            valSuccessP.textContent = p + '%';
+            valSuccessS.textContent = s + ' mm/s';
+
+            const activeAlpha = successLaser === 'ir' ? IR_ALPHA : BLUE_ALPHA;
+            const activeSpot = successLaser === 'ir' ? IR_SPOT : BLUE_SPOT;
+
+            const fluence = (5 * (p/100) * activeAlpha) / (s * activeSpot);
+            metSuccessFluence.textContent = fluence.toFixed(3) + ' J/mm²';
+
+            let color, state;
+            if (fluence < 0.2) { state = 'Under-Dose'; color = '#444'; }
+            else if (fluence < 0.35) { state = 'Straw/Gold'; color = COLORS.amber; }
+            else if (fluence < 0.45) { state = 'Annealing'; color = COLORS.emerald; }
+            else if (fluence < 0.7) { state = 'Purple/Blue'; color = COLORS.blue; }
+            else { state = 'Ablation'; color = COLORS.red; }
+
+            metSuccessQual.textContent = state;
+            metSuccessQual.style.color = color;
+
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(40, 40, width-80, height-80);
+
+            // 1mm Scale Bar
+            const mmPx = (width - 80) / 10;
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(50, height - 50);
+            ctx.lineTo(50 + mmPx, height - 50);
+            ctx.stroke();
+            ctx.fillStyle = '#555';
+            ctx.font = '8px SF Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText('1mm', 50, height - 55);
+
+            const markAlpha = Math.min(1, fluence * 1.5);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = markAlpha;
+            ctx.font = 'bold 40px SF Mono';
+            ctx.textAlign = 'center';
+            ctx.fillText('SS304', width/2, height/2 + 15);
+            ctx.globalAlpha = 1.0;
+
+            if (fluence >= 0.35 && fluence <= 0.45) {
+                ctx.strokeStyle = COLORS.emerald;
+                ctx.lineWidth = 4;
+                ctx.strokeRect(35, 35, width-70, height-70);
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = COLORS.emerald;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailP.oninput = redoFail;
+            inputFailS.oninput = redoFail;
+            redoFail();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessP.oninput = redoSuccess;
+            inputSuccessS.oninput = redoSuccess;
+            if (!document.getElementById('act-success').classList.contains('locked')) {
+                redoSuccess();
+            }
+        });
+    </script>
+</body>
+</html>

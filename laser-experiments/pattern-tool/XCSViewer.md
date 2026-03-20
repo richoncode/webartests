@@ -1,4 +1,5 @@
-# XCS Viewer & Internal Representation Guidance
+# XCS Viewer & Internal Representation Guidance - VANTAGE-ALPHA Baseline
+(LOCKED 2026-03-18)
 
 This document defines how the Pattern Tool internally represents and adapts XCS content. It acts as the official bridge between the tool's state and the formal requirements defined in `xcsformat.md`.
 

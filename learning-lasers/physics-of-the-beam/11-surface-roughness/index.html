@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surface Roughness (Ra) — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #111; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1.2; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../10-thermal-equilibrium/index.html">← Thermal Equilibrium</a>
+        
+        <div class="seq-label">Sequence 11</div>
+        <h1>Surface Roughness (Ra)</h1>
+        <p class="subtitle">The metallic "look" isn't a color—it's **Specular Reflection**. If the laser pits the surface, the result is **Diffuse Scattering**, turning your vibrant marks into a matte, frosted gray.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "Sandpaper" Effect (Diffuse)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Laser Power</span>
+                                <span id="valFailPower" class="label-val">80%</span>
+                            </div>
+                            <input type="range" id="inputFailPower" min="40" max="100" step="1" value="80">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Roughness (Ra)</span>
+                                <div id="metFailRa" class="metric-value">1.50 μm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Reflection</span>
+                                <div id="metFailRef" class="metric-value" style="color: var(--red);">Diffuse</div>
+                            </div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> High power vaporizes the metal surface irregularly, creating <span data-tooltip="Ablative Pitting&#10;Microscopic craters formed when the laser intensity exceeds the material's boiling point. This prevents light from reflecting cleanly.">micro-pits</span>. Because the surface peaks are larger than the wavelength of light, the reflection is scattered in all directions (Diffuse), appearing matte gray.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" onclick="unlockSuccess()">Preserve the Mirror</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">The Mirror Finish (Specular)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Laser Power</span>
+                                <span id="valSuccessPower" class="label-val">20%</span>
+                            </div>
+                            <input type="range" id="inputSuccessPower" min="5" max="40" step="1" value="20">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Roughness (Ra)</span>
+                                <div id="metSuccessRa" class="metric-value">0.05 μm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Reflection</span>
+                                <div id="metSuccessRef" class="metric-value" style="color: var(--emerald);">Specular</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> By dropping power into the <span data-tooltip="Annealing Window&#10;The energy range where the metal melts just enough to grow an oxide layer but not enough to vaporize or pit the surface.">Annealing Window</span>, we keep the surface smooth (R<sub>a</sub> < λ). This preserves the mirror finish, allowing light to reflect cleanly (Specular), which is the prerequisite for vibrant colors.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../10-thermal-equilibrium/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Thermal Equilibrium
+            </a>
+            <a href="../12-color-interference/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                Thin-Film Interference →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Surface Preserved';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Act I: Roughness (Failure)
+        const inputFailP = document.getElementById('inputFailPower');
+        const valFailP = document.getElementById('valFailPower');
+        const metFailRa = document.getElementById('metFailRa');
+
+        function drawFail(ctx, w, h) {
+            const p = parseFloat(inputFailP.value);
+            ctx.clearRect(0, 0, w, h);
+            
+            // Grid background for contrast
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            for(let i=0; i<w; i+=20) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,h); ctx.stroke(); }
+            for(let i=0; i<h; i+=20) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(w,i); ctx.stroke(); }
+
+            valFailP.textContent = p + '%';
+            const ra = (p / 100) * 2.0;
+            metFailRa.textContent = ra.toFixed(2) + ' μm';
+
+            // Substrate Base (Solid Metal - Lightened for contrast)
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, h/2 + 20, w, h/2);
+
+            // Side View Label
+            ctx.fillStyle = '#666';
+            ctx.font = 'bold 9px SF Mono';
+            ctx.textAlign = 'right';
+            ctx.fillText('SIDE VIEW: METAL CROSS-SECTION', w - 20, h - 20);
+
+            // Micro-pitting Visual (The jagged surface)
+            ctx.fillStyle = '#444';
+            ctx.beginPath();
+            ctx.moveTo(0, h/2 + 20);
+            for(let i=0; i<=100; i++) {
+                const rx = (i * w/100);
+                const noise = Math.random() * (ra * 35); 
+                ctx.lineTo(rx, h/2 - noise);
+            }
+            ctx.lineTo(w, h/2 + 20);
+            ctx.closePath();
+            ctx.fill();
+
+            // Incoming Rays (The Laser physically tearing the surface)
+            ctx.strokeStyle = COLORS.red;
+            ctx.setLineDash([2, 4]);
+            ctx.lineWidth = 2;
+            for(let i=0; i<5; i++) {
+                const beamX = 40 + i * (w-80)/4;
+                ctx.beginPath();
+                ctx.moveTo(beamX, 0);
+                ctx.lineTo(beamX, h/2 - 10);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            // Light scattering (Diffuse Reflection)
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            for(let i=0; i<15; i++) {
+                const ang = (Math.PI * 1.5) + (Math.random() - 0.5) * Math.PI;
+                ctx.beginPath();
+                ctx.moveTo(w/2, h/2 - 10);
+                ctx.lineTo(w/2 + Math.cos(ang)*60, h/2 - 10 + Math.sin(ang)*60);
+                ctx.stroke();
+            }
+        }
+
+        // Act II: Smooth (Success)
+        const inputSuccessP = document.getElementById('inputSuccessPower');
+        const valSuccessP = document.getElementById('valSuccessPower');
+        const metSuccessRa = document.getElementById('metSuccessRa');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            const p = parseFloat(inputSuccessP.value);
+            ctx.clearRect(0, 0, w, h);
+            
+            // Grid background
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            for(let i=0; i<w; i+=20) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,h); ctx.stroke(); }
+            for(let i=0; i<h; i+=20) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(w,i); ctx.stroke(); }
+
+            valSuccessP.textContent = p + '%';
+            const ra = (p / 100) * 0.2;
+            metSuccessRa.textContent = ra.toFixed(3) + ' μm';
+
+            // Substrate Base
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, h/2, w, h/2);
+
+            // Side View Label
+            ctx.fillStyle = '#666';
+            ctx.font = 'bold 9px SF Mono';
+            ctx.textAlign = 'right';
+            ctx.fillText('SIDE VIEW: ANNEALED SURFACE', w - 20, h - 20);
+
+            // Substrate Top (Mirror Polished side-view)
+            const grad = ctx.createLinearGradient(0, h/2 - 5, 0, h/2 + 20);
+            grad.addColorStop(0, '#aaa');
+            grad.addColorStop(1, '#2a2a2a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, h/2 - 2, w, 22);
+
+            // Clean Reflection (Specular)
+            const time = Date.now() / 1000;
+            const glintX = w/2 + Math.sin(time) * 40;
+            const glintGrad = ctx.createRadialGradient(glintX, h/2, 0, glintX, h/2, 30);
+            glintGrad.addColorStop(0, 'rgba(255,255,255,0.4)');
+            glintGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = glintGrad;
+            ctx.fillRect(0, h/2 - 5, w, 10);
+
+            // Incoming/Outgoing Ray
+            ctx.strokeStyle = COLORS.blue;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(w/2 - 60, 40);
+            ctx.lineTo(w/2, h/2);
+            ctx.lineTo(w/2 + 60, 40);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailP.oninput = redoFail;
+            const loop = () => { redoFail(); requestAnimationFrame(loop); };
+            loop();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessP.oninput = redoSuccess;
+            const loop = () => {
+                if (!document.getElementById('act-success').classList.contains('locked')) {
+                    redoSuccess();
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Spot & The Gap — Learning Lasers</title>
+    <style>
+        /* VANTAGE-ALPHA Design Tokens */
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: 1px solid #2a2a2a;
+            --radius: 16px;
+            --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --blue: #5b9bd5;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --red: #f87171;
+            --gray: #555;
+            --gray-hover: #aaa;
+        }
+
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            padding: 4px 12px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            z-index: 2000;
+            letter-spacing: 1px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: var(--font-main); font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+        .page { max-width: 900px; margin: 0 auto; }
+        a.back { display: inline-block; margin-bottom: 40px; color: var(--gray); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        a.back:hover { color: var(--gray-hover); }
+        .seq-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px; }
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: #888; font-size: 16px; line-height: 1.6; max-width: 680px; margin-bottom: 56px; }
+        .module-container { display: flex; flex-direction: column; gap: 32px; }
+        .act-card { background: var(--card); border: var(--border); border-radius: var(--radius); padding: 32px; }
+        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+        .canvas-container { background: #050505; border: 1px solid #333; border-radius: 8px; aspect-ratio: 1; position: relative; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+        
+        /* Wavelength Presets */
+        .wv-grid { display: flex; gap: 8px; margin-bottom: 12px; }
+        .wv-btn { flex: 1; padding: 8px; background: #1a1a1a; border: 1px solid #333; color: #888; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 800; text-transform: uppercase; transition: all 0.2s; }
+        .wv-btn:hover { border-color: var(--blue); color: #fff; }
+        .wv-btn.active.blue { border-color: var(--blue); color: var(--blue); background: #0a1520; }
+        .wv-btn.active.red { border-color: var(--red); color: var(--red); background: #1a0d0d; }
+
+        .controls { display: flex; flex-direction: column; gap: 24px; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; }
+        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+        .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--blue); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--blue); border-radius: 50%; cursor: pointer; border: 3px solid var(--card); }
+        
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+        .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; display: block; }
+        .metric-value { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+        
+        .callout { border-left: 3px solid var(--blue); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
+        .callout.failure { border-color: var(--red); background: #200d0d; }
+        .callout.success { border-color: var(--emerald); background: #0d2016; }
+        
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dashed #444; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            background: #111; border: 1px solid #333; color: #bbb;
+            padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;
+            width: 240px; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: all 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none; text-transform: none; font-weight: 400; text-align: left;
+        }
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; bottom: 150%; }
+        .locked { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
+        .btn-next { display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer; }
+        .btn-next:disabled { background: #333; color: #666; cursor: not-allowed; }
+        
+        .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; }
+        .chapter-nav a { text-decoration: none; color: var(--gray); font-size: 14px; transition: color 0.1s; }
+        .chapter-nav a:hover { color: var(--gray-hover); }
+        .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="version-badge">V-ALPHA-050</div>
+    <div class="page">
+        <a class="back" href="../03-wavelength-absorption/index.html">← Wavelength Absorption</a>
+        
+        <div class="seq-label">Sequence 04</div>
+        <h1>The Spot & The Gap</h1>
+        <p class="subtitle">Resolution isn't just about PPI. In laser engraving, the relationship between the <strong>Physical Spot Size</strong> and the <strong>Scan Density (LPCM)</strong> determines if you get a solid fill or a field of stripes.</p>
+
+        <div class="module-container">
+            <!-- Act I: The Failure -->
+            <div id="act-failure" class="act-card">
+                <div class="seq-label" style="color: var(--red);">Act I: The Bug</div>
+                <h2 style="margin-bottom: 16px;">The "White Striping" Trap</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="failCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Select Module</span>
+                            </div>
+                            <div class="wv-grid">
+                                <button id="btnFailBlue" class="wv-btn" onclick="setFailLaser('blue')">Blue</button>
+                                <button id="btnFailIR" class="wv-btn active red" onclick="setFailLaser('ir')">IR</button>
+                            </div>
+                            <div class="label-row">
+                                <span class="label-text">Wavelength</span>
+                                <span id="valFailWave" class="label-val">1064 nm</span>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Lines Per CM (LPCM)</span>
+                                <span id="valFailLPCM" class="label-val">40</span>
+                            </div>
+                            <input type="range" id="inputFailLPCM" min="5" max="1000" step="5" value="40">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Scan Gap</span>
+                                <div id="metFailGap" class="metric-value">0.200 mm</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Fill Continuity</span>
+                                <div id="metFailCont" class="metric-value">Gaps Visible</div>
+                            </div>
+                        </div>
+                        <div class="callout failure">
+                            <strong>The Failure:</strong> When LPCM is too low, the distance between scan lines (Scan Gap) is larger than the 0.03mm laser spot. This leaves untouched "white space" between every pass, ruining the solid finish.
+                        </div>
+                        <button id="btn-fix-fail" class="btn-next" disabled onclick="unlockSuccess()">I see the gaps</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Act II: The Success -->
+            <div id="act-success" class="act-card locked">
+                <div class="seq-label" style="color: var(--emerald);">Act II: The Fix</div>
+                <h2 style="margin-bottom: 16px;">Perfect Overlap (Overdraw)</h2>
+                <div class="viz-layout">
+                    <div class="canvas-container">
+                        <canvas id="successCanvas"></canvas>
+                    </div>
+                    <div class="controls">
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Select Module</span>
+                            </div>
+                            <div class="wv-grid">
+                                <button id="btnSuccessBlue" class="wv-btn" onclick="setSuccessLaser('blue')">Blue</button>
+                                <button id="btnSuccessIR" class="wv-btn active red" onclick="setSuccessLaser('ir')">IR</button>
+                            </div>
+                            <div class="label-row">
+                                <span class="label-text">Wavelength</span>
+                                <span id="valSuccessWave" class="label-val">1064 nm</span>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row">
+                                <span class="label-text">Increase Density</span>
+                                <span id="valSuccessLPCM" class="label-val" style="color: var(--emerald);">333 LPCM</span>
+                            </div>
+                            <input type="range" id="inputSuccessLPCM" min="5" max="1000" step="10" value="333">
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-label">Overdraw</span>
+                                <div id="metSuccessOverlap" class="metric-value">0%</div>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-label">Thermal Fill</span>
+                                <div id="metSuccessRes" class="metric-value" style="color: var(--emerald);">Solid</div>
+                            </div>
+                        </div>
+                        <div class="callout success">
+                            <strong>The Success:</strong> To achieve a <span data-tooltip="Perfect Fill&#10;When the scan gap is exactly equal to or smaller than the laser spot size. For the F2 IR (0.03mm), this occurs at ~333 LPCM.">Solid Fill</span>, you must deliver enough density to ensure the lines overlap. This "Overdraw" eliminates the gap and ensures uniform thermal coverage.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chapter-nav">
+            <a href="../03-wavelength-absorption/index.html" class="prev">
+                <span class="label">Previous</span>
+                ← Wavelength Absorption
+            </a>
+            <a href="../05-speed-reciprocal/index.html" class="next">
+                <span class="label">Next Chapter</span>
+                The Speed Reciprocal →
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#5b9bd5',
+            emerald: '#10b981',
+            amber: '#f59e0b',
+            red: '#f87171'
+        };
+
+        const SimUtils = {
+            setupCanvas: (canvasId, drawFn) => {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const resize = () => {
+                    const rect = canvas.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    drawFn(ctx, rect.width, rect.height);
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 100);
+                return resize;
+            }
+        };
+
+        let redoFail = null;
+        let redoSuccess = null;
+        let successResize = null;
+        let failLaser = 'ir';
+        let successLaser = 'ir';
+
+        function unlockSuccess() {
+            const successAct = document.getElementById('act-success');
+            successAct.classList.remove('locked');
+            const btn = document.getElementById('btn-fix-fail');
+            btn.disabled = true;
+            btn.textContent = 'Solid Fill Enabled';
+            if (successResize) successResize();
+            if (redoSuccess) redoSuccess();
+            successAct.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function setFailLaser(type) {
+            failLaser = type;
+            document.getElementById('btnFailIR').classList.toggle('active', type === 'ir');
+            document.getElementById('btnFailIR').classList.toggle('red', type === 'ir');
+            document.getElementById('btnFailBlue').classList.toggle('active', type === 'blue');
+            document.getElementById('btnFailBlue').classList.toggle('blue', type === 'blue');
+            document.getElementById('valFailWave').textContent = type === 'ir' ? '1064 nm' : '455 nm';
+            if (redoFail) redoFail();
+        }
+
+        function setSuccessLaser(type) {
+            successLaser = type;
+            document.getElementById('btnSuccessIR').classList.toggle('active', type === 'ir');
+            document.getElementById('btnSuccessIR').classList.toggle('red', type === 'ir');
+            document.getElementById('btnSuccessBlue').classList.toggle('active', type === 'blue');
+            document.getElementById('btnSuccessBlue').classList.toggle('blue', type === 'blue');
+            document.getElementById('valSuccessWave').textContent = type === 'ir' ? '1064 nm' : '455 nm';
+            if (redoSuccess) redoSuccess();
+        }
+
+        // Failure Simulation (Low LPCM)
+        const inputFailLPCM = document.getElementById('inputFailLPCM');
+        const valFailLPCM = document.getElementById('valFailLPCM');
+        const metFailGap = document.getElementById('metFailGap');
+        const metFailCont = document.getElementById('metFailCont');
+
+        function drawFail(ctx, w, h) {
+            ctx.clearRect(0, 0, w, h);
+            const lpcm = parseInt(inputFailLPCM.value);
+            valFailLPCM.textContent = lpcm;
+            
+            const gap = 10 / lpcm; // mm
+            metFailGap.textContent = gap.toFixed(3) + ' mm';
+            
+            const spotSize = failLaser === 'ir' ? 0.03 : 0.08;
+            const isBad = gap > (spotSize + 0.005);
+            metFailCont.textContent = isBad ? 'Gaps Visible' : 'Solid Fill';
+            metFailCont.style.color = isBad ? COLORS.red : COLORS.emerald;
+
+            const btnFix = document.getElementById('btn-fix-fail');
+            if (lpcm <= 40) { 
+                btnFix.disabled = false;
+                btnFix.style.background = COLORS.blue;
+                btnFix.style.opacity = '1';
+            }
+
+            // Draw Magnified View
+            const scale = 1000; 
+            const spotSizePx = spotSize * scale;
+            const gapPx = gap * scale;
+
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, w, h);
+
+            // Darker for overlap: Low alpha source-over on black makes overlaps more saturated
+            const beamColor = failLaser === 'ir' ? COLORS.red : COLORS.blue;
+            ctx.fillStyle = beamColor;
+            ctx.globalAlpha = 0.4;
+            
+            for (let y = 20; y < h + spotSizePx; y += gapPx) {
+                ctx.fillRect(0, y, w, spotSizePx);
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Success Simulation (High LPCM / Overdraw)
+        const inputSuccessLPCM = document.getElementById('inputSuccessLPCM');
+        const valSuccessLPCM = document.getElementById('valSuccessLPCM');
+        const metSuccessOverlap = document.getElementById('metSuccessOverlap');
+        const metSuccessRes = document.getElementById('metSuccessRes');
+
+        function drawSuccess(ctx, w, h) {
+            if (w === 0 || h === 0) return;
+            ctx.clearRect(0, 0, w, h);
+            const lpcm = parseInt(inputSuccessLPCM.value);
+            valSuccessLPCM.textContent = lpcm + ' LPCM';
+
+            const gap = 10 / lpcm;
+            const spotSize = successLaser === 'ir' ? 0.03 : 0.08;
+            
+            let overlapPct = 0;
+            if (gap < spotSize) {
+                overlapPct = ((spotSize - gap) / spotSize) * 100;
+            }
+            metSuccessOverlap.textContent = Math.max(0, overlapPct).toFixed(0) + '%';
+            
+            const isSolid = gap <= spotSize;
+            metSuccessRes.textContent = isSolid ? 'Solid Fill' : 'Striated';
+            metSuccessRes.style.color = isSolid ? COLORS.emerald : COLORS.amber;
+
+            // Draw Magnified View
+            const scale = 1200; 
+            const spotSizePx = spotSize * scale;
+            const gapPx = gap * scale;
+
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, w, h);
+
+            // Compounding Heat: Low alpha source-over on black makes overlaps more saturated
+            const beamColor = successLaser === 'ir' ? COLORS.red : COLORS.blue;
+            ctx.fillStyle = beamColor;
+            ctx.globalAlpha = 0.4;
+            
+            for (let y = 20; y < h + spotSizePx; y += gapPx) {
+                ctx.fillRect(0, y, w, spotSizePx);
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        const redoFailFn = SimUtils.setupCanvas('failCanvas', (ctx, w, h) => {
+            redoFail = () => drawFail(ctx, w, h);
+            inputFailLPCM.oninput = redoFail;
+            redoFail();
+        });
+
+        successResize = SimUtils.setupCanvas('successCanvas', (ctx, w, h) => {
+            redoSuccess = () => drawSuccess(ctx, w, h);
+            inputSuccessLPCM.oninput = redoSuccess;
+            if (!document.getElementById('act-success').classList.contains('locked')) {
+                redoSuccess();
+            }
+        });
+    </script>
+</body>
+</html>
