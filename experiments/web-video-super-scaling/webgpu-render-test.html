@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU High-Perf Render Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', sans-serif; }
+        .canvas-container { 
+            background: #000; 
+            position: relative; 
+            width: 100%; 
+            aspect-ratio: 16 / 9; 
+            border-radius: 0.75rem; 
+            overflow: hidden; 
+            border: 1px solid #1e293b; 
+            transition: aspect-ratio 0.3s ease;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+        .toggle-btn.active { background: #0d9488; border-color: #14b8a6; color: white; }
+        
+        #log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            background: #020617;
+            border: 1px solid #1e293b;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .log-entry { margin-bottom: 2px; border-left: 2px solid #334155; padding-left: 8px; }
+        .log-error { border-color: #ef4444; color: #f87171; }
+        .log-warn { border-color: #f59e0b; color: #fbbf24; }
+        .log-info { border-color: #0ea5e9; color: #7dd3fc; }
+
+        input[type=range]::-webkit-slider-runnable-track { background: #1e293b; height: 6px; border-radius: 3px; }
+        input[type=range]::-webkit-slider-thumb { margin-top: -5px; }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <header class="bg-slate-900 border-b border-slate-800 p-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div>
+                <a href="./index.html" class="text-slate-500 hover:text-teal-400 text-sm transition-colors">← Back to Hub</a>
+                <h1 class="text-xl font-bold mt-1">WebGPU Zero-Copy Render Stack</h1>
+            </div>
+            <div id="gpu-status" class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-slate-600" id="gpu-dot"></span>
+                <span class="text-[10px] text-slate-400 font-mono" id="gpu-text">INITIALIZING</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col lg:flex-row p-4 lg:p-6 gap-6 max-w-7xl mx-auto w-full">
+        
+        <!-- Sidebar -->
+        <div class="w-full lg:w-80 flex-shrink-0 space-y-4">
+            <div class="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Render Strategy</h2>
+                <div class="space-y-2">
+                    <button id="mode-stereo" class="w-full text-left p-3 rounded border border-slate-700 bg-slate-800/30 hover:border-slate-500 transition-all text-sm" onclick="setRenderMode(0)">
+                        <div class="font-bold">Raw Passthrough</div>
+                        <div class="text-[10px] text-slate-500">Show full Top-Bottom 4K stack</div>
+                    </button>
+                    <button id="mode-mono" class="w-full text-left p-3 rounded border border-slate-700 bg-slate-800/30 hover:border-slate-500 transition-all text-sm" onclick="setRenderMode(1)">
+                        <div class="font-bold">Mono Crop (Top)</div>
+                        <div class="text-[10px] text-slate-500">Extract primary eye in shader</div>
+                    </button>
+                    <button id="mode-sbs" class="w-full text-left p-3 rounded border border-slate-700 bg-slate-800/30 hover:border-slate-500 transition-all text-sm active" onclick="setRenderMode(2)">
+                        <div class="font-bold">Side by Side</div>
+                        <div class="text-[10px] text-slate-500">Remap stacked eyes to horizontal</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-teal-400 mb-2">Architecture Check</h3>
+                <ul class="text-[11px] text-slate-400 space-y-2">
+                    <li class="flex items-start gap-2">
+                        <span id="check-zero-copy" class="text-slate-600">○</span>
+                        <span><strong>importExternalTexture:</strong> Active.</span>
+                    </li>
+                    <li id="check-compute" class="flex items-start gap-2">
+                        <span class="text-slate-600">○</span>
+                        <span><strong>Storage Texture:</strong> Planned.</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Player Area -->
+        <div class="flex-grow space-y-4">
+            <div class="canvas-container shadow-2xl" id="container">
+                <canvas id="canvas-webgpu"></canvas>
+                <video id="video-source" crossorigin="anonymous" playsinline muted style="display:none"></video>
+            </div>
+
+            <!-- Transport Controls -->
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col gap-3">
+                <div class="flex items-center gap-4">
+                    <button id="play-pause" onclick="togglePlay()" class="w-10 h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-full transition-colors border border-slate-700">
+                        <span id="play-icon">▶</span>
+                    </button>
+                    
+                    <div class="flex-grow flex items-center gap-3">
+                        <span class="text-[10px] font-mono text-slate-500 w-12 text-right" id="current-time">0:00</span>
+                        <input type="range" id="progress-bar" min="0" max="100" value="0" step="0.1" 
+                               class="flex-grow h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                               oninput="seekVideo(this.value)">
+                        <span class="text-[10px] font-mono text-slate-500 w-12" id="duration">0:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- URL Display -->
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-center justify-between gap-4">
+                <div class="flex-grow overflow-hidden">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">Source URL</div>
+                    <div class="text-xs font-mono text-slate-300 truncate" id="current-url">--</div>
+                </div>
+                <button onclick="copyUrl()" class="flex-shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded text-xs font-bold transition-colors flex items-center gap-2 border border-slate-700">
+                    <span id="copy-icon">📋</span>
+                    <span id="copy-text">Copy</span>
+                </button>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Frame Time</div>
+                    <div class="text-lg font-mono text-teal-400" id="stat-frame">0.00ms</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Video State</div>
+                    <div class="text-lg font-mono text-white" id="stat-video">IDLE</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Res Per Eye</div>
+                    <div class="text-sm font-mono text-amber-400" id="stat-res">--</div>
+                </div>
+                <div class="bg-slate-800 p-3 rounded border border-slate-700">
+                    <div class="text-[10px] text-slate-500 uppercase font-bold">Latency</div>
+                    <div class="text-lg font-mono text-white" id="stat-latency">--</div>
+                </div>
+            </div>
+
+            <!-- Debug Logs -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between px-1">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">System Logs</h3>
+                    <button onclick="copyLogs()" class="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded border border-slate-700 transition-colors">Copy Logs</button>
+                </div>
+                <div id="log-container"></div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
+        
+        const video = document.getElementById('video-source');
+        const canvas = document.getElementById('canvas-webgpu');
+        const logContainer = document.getElementById('log-container');
+        
+        const stats = {
+            frame: document.getElementById('stat-frame'),
+            video: document.getElementById('stat-video'),
+            res: document.getElementById('stat-res'),
+            latency: document.getElementById('stat-latency')
+        };
+
+        function log(msg, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const time = new Date().toLocaleTimeString([], { hour12: false, fractionDigits: 3 });
+            entry.innerText = `[${time}] ${msg}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console[type === 'info' ? 'log' : type](msg);
+        }
+
+        window.copyLogs = () => {
+            const text = Array.from(logContainer.querySelectorAll('.log-entry')).map(el => el.innerText).join('\n');
+            navigator.clipboard.writeText(text);
+            log("Logs copied to clipboard", "info");
+        };
+
+        window.copyUrl = () => {
+            const url = document.getElementById('current-url').innerText;
+            if (url === '--') return;
+            navigator.clipboard.writeText(url).then(() => {
+                const btnText = document.getElementById('copy-text');
+                btnText.innerText = 'Copied!';
+                setTimeout(() => { btnText.innerText = 'Copy'; }, 2000);
+            });
+        };
+
+        let adapter, device, context, pipeline, uniformBuffer, sampler;
+        let renderMode = 2; // Default to Side-by-Side
+        window.isSeeking = false;
+
+        async function initWebGPU() {
+            log("Requesting WebGPU adapter...");
+            if (!navigator.gpu) {
+                log("WebGPU not supported in this browser.", "error");
+                updateStatus("FAILED", "bg-red-500");
+                return false;
+            }
+
+            adapter = await navigator.gpu.requestAdapter();
+            if (!adapter) {
+                log("No WebGPU adapter found.", "error");
+                return false;
+            }
+
+            device = await adapter.requestDevice();
+            log(`Device initialized: ${device.label || 'WebGPU Device'}`);
+
+            device.pushErrorScope('validation');
+            
+            context = canvas.getContext('webgpu');
+            const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+            context.configure({
+                device,
+                format: presentationFormat,
+                alphaMode: 'premultiplied',
+            });
+
+            const shaderCode = `
+                struct VertexOutput {
+                    @builtin(position) Position : vec4<f32>,
+                    @location(0) fragUV : vec2<f32>,
+                }
+
+                @vertex
+                fn vs_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
+                    var pos = array<vec2<f32>, 4>(
+                        vec2<f32>(-1.0,  1.0),
+                        vec2<f32>( 1.0,  1.0),
+                        vec2<f32>(-1.0, -1.0),
+                        vec2<f32>( 1.0, -1.0)
+                    );
+                    var uv = array<vec2<f32>, 4>(
+                        vec2<f32>(0.0, 0.0),
+                        vec2<f32>(1.0, 0.0),
+                        vec2<f32>(0.0, 1.0),
+                        vec2<f32>(1.0, 1.0)
+                    );
+                    var output : VertexOutput;
+                    output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+                    output.fragUV = uv[VertexIndex];
+                    return output;
+                }
+
+                struct Params {
+                    mode: u32,
+                }
+
+                @group(0) @binding(0) var mySampler: sampler;
+                @group(0) @binding(1) var myTexture: texture_external;
+                @group(0) @binding(2) var<uniform> renderParams: Params;
+
+                @fragment
+                fn fs_main(input : VertexOutput) -> @location(0) vec4<f32> {
+                    var uv = input.fragUV;
+                    
+                    if (renderParams.mode == 1u) {
+                        uv.y = uv.y * 0.5;
+                        return textureSampleBaseClampToEdge(myTexture, mySampler, uv);
+                    } else if (renderParams.mode == 2u) {
+                        if (uv.x < 0.5) {
+                            var sbs_uv = vec2<f32>(uv.x * 2.0, uv.y * 0.5);
+                            return textureSampleBaseClampToEdge(myTexture, mySampler, sbs_uv);
+                        } else {
+                            var sbs_uv = vec2<f32>((uv.x - 0.5) * 2.0, 0.5 + (uv.y * 0.5));
+                            return textureSampleBaseClampToEdge(myTexture, mySampler, sbs_uv);
+                        }
+                    }
+                    
+                    return textureSampleBaseClampToEdge(myTexture, mySampler, uv);
+                }
+            `;
+
+            const shaderModule = device.createShaderModule({ code: shaderCode });
+            const compilationInfo = await shaderModule.getCompilationInfo();
+            if (compilationInfo.messages.some(m => m.type === 'error')) {
+                log("Shader compilation failed!", "error");
+                compilationInfo.messages.forEach(m => log(`${m.lineNum}:${m.linePos} - ${m.message}`, "error"));
+                return false;
+            }
+
+            sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
+            uniformBuffer = device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+
+            pipeline = device.createRenderPipeline({
+                layout: 'auto',
+                vertex: { module: shaderModule, entryPoint: 'vs_main' },
+                fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format: presentationFormat }] },
+                primitive: { topology: 'triangle-strip' },
+            });
+
+            const error = await device.popErrorScope();
+            if (error) {
+                log(`Pipeline validation error: ${error.message}`, "error");
+                return false;
+            }
+
+            updateStatus("READY", "bg-emerald-500");
+            log("WebGPU Pipeline established.");
+            return true;
+        }
+
+        function initHLS() {
+            log("Initializing HLS.js...");
+            if (Hls.isSupported()) {
+                const hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(ANCHOR_URL);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    log("Manifest parsed, playing anchor stream.");
+                    document.getElementById('current-url').innerText = ANCHOR_URL;
+                    video.play().catch(e => log(`Autoplay blocked: ${e.message}`, "warn"));
+                });
+                hls.on(Hls.Events.ERROR, (e, data) => {
+                    if (data.fatal) log(`HLS Fatal Error: ${data.type}`, "error");
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                log("Using native HLS support.");
+                video.src = ANCHOR_URL;
+                document.getElementById('current-url').innerText = ANCHOR_URL;
+                video.play();
+            }
+        }
+
+        function updateStatus(text, dotClass) {
+            document.getElementById('gpu-text').innerText = text;
+            document.getElementById('gpu-dot').className = `w-2 h-2 rounded-full ${dotClass}`;
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "0:00";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        window.togglePlay = () => {
+            if (video.paused) video.play();
+            else video.pause();
+        };
+
+        window.seekVideo = (val) => {
+            window.isSeeking = true;
+            const time = (val / 100) * video.duration;
+            video.currentTime = time;
+            clearTimeout(window.seekTimeout);
+            window.seekTimeout = setTimeout(() => { window.isSeeking = false; }, 500);
+        };
+
+        function frame() {
+            if (video.readyState >= 2) {
+                const start = performance.now();
+                
+                if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    stats.res.innerText = `${video.videoWidth}x${video.videoHeight / 2}`;
+                    const container = document.getElementById('container');
+                    if (renderMode === 1) container.style.aspectRatio = "16/9";
+                    else if (renderMode === 2) container.style.aspectRatio = "32/9";
+                    else container.style.aspectRatio = "16/18";
+                    log(`Input resolution detected: ${video.videoWidth}x${video.videoHeight}`);
+                }
+
+                // Update Transport UI
+                const progress = (video.currentTime / video.duration) * 100;
+                if (!window.isSeeking) {
+                    document.getElementById('progress-bar').value = progress || 0;
+                }
+                document.getElementById('current-time').innerText = formatTime(video.currentTime);
+                document.getElementById('duration').innerText = formatTime(video.duration);
+                document.getElementById('play-icon').innerText = video.paused ? '▶' : '⏸';
+
+                device.queue.writeBuffer(uniformBuffer, 0, new Uint32Array([renderMode]));
+
+                const commandEncoder = device.createCommandEncoder();
+                const textureView = context.getCurrentTexture().createView();
+
+                const passEncoder = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: textureView,
+                        clearValue: { r: 0, g: 0, b: 0, a: 1.0 },
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    }],
+                });
+
+                passEncoder.setPipeline(pipeline);
+                
+                try {
+                    const externalTexture = device.importExternalTexture({ source: video });
+                    const bindGroup = device.createBindGroup({
+                        layout: pipeline.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: sampler },
+                            { binding: 1, resource: externalTexture },
+                            { binding: 2, resource: { buffer: uniformBuffer } },
+                        ],
+                    });
+
+                    passEncoder.setBindGroup(0, bindGroup);
+                    passEncoder.draw(4);
+                    document.getElementById('check-zero-copy').className = "text-emerald-500";
+                } catch (e) {
+                    log(`Render Loop Error: ${e.message}`, "error");
+                }
+
+                passEncoder.end();
+                device.queue.submit([commandEncoder.finish()]);
+                
+                stats.frame.innerText = `${(performance.now() - start).toFixed(2)}ms`;
+                stats.video.innerText = video.paused ? "PAUSED" : "PLAYING";
+            }
+            requestAnimationFrame(frame);
+        }
+
+        window.setRenderMode = (mode) => {
+            renderMode = mode;
+            document.getElementById('mode-stereo').classList.toggle('active', mode === 0);
+            document.getElementById('mode-mono').classList.toggle('active', mode === 1);
+            document.getElementById('mode-sbs').classList.toggle('active', mode === 2);
+            const container = document.getElementById('container');
+            if (mode === 1) container.style.aspectRatio = "16/9";
+            else if (mode === 2) container.style.aspectRatio = "32/9";
+            else container.style.aspectRatio = "16/18";
+            log(`Render mode changed to: ${mode === 2 ? 'Side by Side' : (mode === 1 ? 'Mono Crop' : 'Raw Stereo')}`);
+        };
+
+        initWebGPU().then(success => {
+            if (success) {
+                initHLS();
+                frame();
+            }
+        });
+    </script>
+</body>
+</html>
