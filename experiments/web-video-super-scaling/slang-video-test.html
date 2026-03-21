@@ -109,7 +109,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            max-width: 600px;
+            flex: 1.5;
         }
 
         .canvas-wrapper {
@@ -205,6 +205,57 @@
             font-size: 12px;
             color: #10b981;
         }
+
+        /* Panel Controls */
+        .panel {
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .panel-ctrl {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 100;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #888;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .panel-ctrl:hover {
+            background: #333;
+            color: #fff;
+            border-color: #555;
+        }
+
+        .collapsed {
+            flex: 0 0 48px !important;
+            padding: 24px 8px !important;
+            overflow: hidden !important;
+        }
+
+        .collapsed > *:not(.panel-ctrl) {
+            display: none !important;
+        }
+
+        .workspace.video-maximized .narrative,
+        .workspace.video-maximized .editor-container {
+            display: none !important;
+        }
+
+        .workspace.video-maximized .viewport-container {
+            flex: 1 !important;
+            max-width: none !important;
+        }
     </style>
 </head>
 
@@ -216,29 +267,21 @@
     </nav>
 
     <div class="workspace">
-        <div class="panel narrative">
+        <div class="panel narrative" id="panel-narrative">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')" title="Collapse Tutorial">«</button>
             <h2>Tutorial Engine Integration</h2>
             <p>This experiment adapts the <strong>Slang Tutorial Engine</strong> for real-time video processing. It utilizes <code>importExternalTexture</code> for zero-copy HLS stream ingestion.</p>
             <p><strong>Workflow:</strong> Slang kernels are compiled to WGSL (currently using the pre-compiled hack) and executed via a WebGPU compute/fragment pipeline.</p>
             <p><strong>Modes:</strong>
                 <br>• 0: Raw Passthrough
-                <br>• 1: Mono Crop (Top Eye)
-                <br>• 2: Side-by-Side Remapping
+                <br>• 1: Left Eye (Top)
+                <br>• 2: Right Eye (Bottom)
+                <br>• 3: Side-by-Side Remapping
             </p>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Frame Time</div>
-                    <div id="stat-frame" class="stat-value">0.00ms</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Stream Status</div>
-                    <div id="stat-video" class="stat-value">IDLE</div>
-                </div>
-            </div>
         </div>
 
-        <div class="panel editor-container">
+        <div class="panel editor-container" id="panel-editor">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')" title="Collapse Code">«</button>
             <slang-editor class="editor-content">
                 <div data-tab="Slang Shader" data-lang="cpp"><!--
 [shader("vertex")]
@@ -262,9 +305,11 @@ VertexOutput vsMain(uint vertexID : SV_VertexID) {
 float4 fsMain(VertexOutput input) : SV_Target {
     float2 uv = input.fragUV;
     
-    if (uniforms.mode == 1) {
+    if (uniforms.mode == 1) { // Left
         uv.y *= 0.5;
-    } else if (uniforms.mode == 2) {
+    } else if (uniforms.mode == 2) { // Right
+        uv.y = 0.5 + (uv.y * 0.5);
+    } else if (uniforms.mode == 3) { // SBS
         if (uv.x < 0.5) {
             uv = float2(uv.x * 2.0, uv.y * 0.5);
         } else {
@@ -309,9 +354,11 @@ struct Params {
 fn fsMain(input : VertexOutput) -> @location(0) vec4<f32> {
     var uv = input.fragUV;
     
-    if (uniforms.mode == 1u) {
+    if (uniforms.mode == 1u) { // Left
         uv.y = uv.y * 0.5;
-    } else if (uniforms.mode == 2u) {
+    } else if (uniforms.mode == 2u) { // Right
+        uv.y = 0.5 + (uv.y * 0.5);
+    } else if (uniforms.mode == 3u) { // SBS
         if (uv.x < 0.5) {
             uv = vec2<f32>(uv.x * 2.0, uv.y * 0.5);
         } else {
@@ -380,6 +427,12 @@ class VideoProcessor {
 
         document.getElementById('stat-frame').innerText = (performance.now() - start).toFixed(2) + 'ms';
         document.getElementById('stat-video').innerText = video.paused ? 'PAUSED' : 'PLAYING';
+
+        // Dynamic Aspect Ratio Adjustment
+        const wrapper = document.querySelector('.canvas-wrapper');
+        if (mode === 0) wrapper.style.aspectRatio = "16/18"; // Stacked 4K
+        else if (mode === 3) wrapper.style.aspectRatio = "32/9"; // Side-by-Side
+        else wrapper.style.aspectRatio = "16/9"; // Mono (Left or Right)
     }
 }
 window.ModuleRenderer = VideoProcessor;
@@ -387,20 +440,32 @@ window.ModuleRenderer = VideoProcessor;
             </slang-editor>
         </div>
 
-        <div class="panel viewport-container">
+        <div class="panel viewport-container" id="panel-viewport">
+            <button class="panel-ctrl" onclick="toggleVideoMaximize()" title="Maximize Video">⛶</button>
             <div class="canvas-wrapper">
                 <slang-viewport></slang-viewport>
                 <video id="video-source" crossorigin="anonymous" playsinline muted></video>
             </div>
             <div class="controls">
+                <div class="stats-grid" style="margin-top: 0; margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Frame Time</div>
+                        <div id="stat-frame" class="stat-value">0.00ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Stream Status</div>
+                        <div id="stat-video" class="stat-value">IDLE</div>
+                    </div>
+                </div>
                 <div class="control-group">
                     <label>Render Mode</label>
                     <div class="mode-group">
                         <button class="mode-btn" onclick="setMode(0)">Raw</button>
-                        <button class="mode-btn" onclick="setMode(1)">Mono</button>
-                        <button class="mode-btn active" onclick="setMode(2)">SBS</button>
+                        <button class="mode-btn" onclick="setMode(1)">Left</button>
+                        <button class="mode-btn" onclick="setMode(2)">Right</button>
+                        <button class="mode-btn active" onclick="setMode(3)">SBS</button>
                     </div>
-                    <input id="slider-mode" type="hidden" value="2">
+                    <input id="slider-mode" type="hidden" value="3">
                 </div>
                 <div class="control-group" style="margin-top: 16px;">
                     <slang-playback-controls></slang-playback-controls>
@@ -412,6 +477,24 @@ window.ModuleRenderer = VideoProcessor;
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
         
+        window.toggleCollapse = (id) => {
+            const panel = document.getElementById(id);
+            const btn = panel.querySelector('.panel-ctrl');
+            panel.classList.toggle('collapsed');
+            btn.innerText = panel.classList.contains('collapsed') ? '»' : '«';
+            // Trigger Monaco resize
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.toggleVideoMaximize = () => {
+            const ws = document.querySelector('.workspace');
+            const btn = document.querySelector('#panel-viewport .panel-ctrl');
+            ws.classList.toggle('video-maximized');
+            btn.innerText = ws.classList.contains('video-maximized') ? '⧉' : '⛶';
+            // Trigger Monaco resize
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('video-source');
             

@@ -233,6 +233,16 @@ class SlangViewport extends HTMLElement {
     drawFrame() {
         if (!this.device || !this.context) return;
 
+        // Auto-resize canvas to match display size and DPI
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.floor(this.canvas.clientWidth * dpr);
+        const height = Math.floor(this.canvas.clientHeight * dpr);
+
+        if (this.canvas.width !== width || this.canvas.height !== height) {
+            this.canvas.width = width;
+            this.canvas.height = height;
+        }
+
         // Dummy render pass to simulate changing activity
         // In reality, this dispatches compute / fragment pipelines
         const commandEncoder = this.device.createCommandEncoder();
