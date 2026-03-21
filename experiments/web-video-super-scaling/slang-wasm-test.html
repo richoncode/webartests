@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slang-WASM Test - Video Super Scaling</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0d0d0d; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        pre { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1rem; overflow-x: auto; }
+        .accent-blue { color: #5b9bd5; }
+        .accent-emerald { color: #10b981; }
+        .accent-amber { color: #f59e0b; }
+        .accent-red { color: #f87171; }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8">
+            <a href="index.html" class="text-gray-500 hover:text-gray-300 text-sm mb-4 inline-block">← Back</a>
+            <h1 class="text-3xl font-bold mb-2">Slang-WASM <span class="accent-blue">Integration Test</span></h1>
+            <p class="text-gray-400">Verifying runtime Slang-to-WGSL compilation for the Super Scaling pipeline.</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold accent-amber">Slang Source</h2>
+                <textarea id="slang-input" class="w-full h-64 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 font-mono text-sm focus:outline-none focus:border-blue-500" spellcheck="false">[numthreads(16, 16, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    // Basic test kernel
+    float2 uv = float2(id.xy) / 1024.0;
+    float val = sin(uv.x * 10.0) * cos(uv.y * 10.0);
+}</textarea>
+                <button id="compile-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                    Compile to WGSL
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold accent-emerald">WGSL Output</h2>
+                <pre id="wgsl-output" class="h-64 text-sm font-mono text-gray-300">// Output will appear here...</pre>
+                <div id="status" class="text-sm font-medium">Status: Initializing...</div>
+            </div>
+        </div>
+
+        <div class="mt-12 p-6 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl relative">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">Compiler Console</h2>
+                <button id="copy-console-btn" onclick="copyConsole()" class="text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 py-1 px-3 rounded transition-colors">
+                    Copy Log
+                </button>
+            </div>
+            <pre id="console-output" class="text-xs text-gray-400 h-32 overflow-y-auto"></pre>
+        </div>
+    </div>
+
+    <!-- Hidden iframe to leverage functional local playground assets -->
+    <iframe id="playground-bridge" src="../../slang-playground/index.html" style="display:none"></iframe>
+
+    <script>
+        const slangInput = document.getElementById('slang-input');
+        const wgslOutput = document.getElementById('wgsl-output');
+        const consoleOutput = document.getElementById('console-output');
+        const statusDiv = document.getElementById('status');
+        const compileBtn = document.getElementById('compile-btn');
+        const bridge = document.getElementById('playground-bridge');
+
+        let slangSession = null;
+        let slangModule = null;
+
+        function log(msg, type = 'info') {
+            const span = document.createElement('span');
+            span.className = type === 'error' ? 'accent-red' : (type === 'warn' ? 'accent-amber' : 'text-gray-400');
+            span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+            consoleOutput.appendChild(span);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            console.log(`[Slang] ${msg}`);
+        }
+
+        async function init() {
+            log('Initializing Slang via local Playground bridge...');
+            
+            // Check if the bridge is already loaded
+            const bridgeWin = bridge.contentWindow;
+            
+            const checkSlang = async () => {
+                // The playground assets seem to use a 'ga' class or similar.
+                // We'll look for any global that looks like a Slang session.
+                try {
+                    // Try to find the Slang session in the bridge window
+                    // We look for common Slang WASM entry points
+                    const slang = bridgeWin.slang || bridgeWin.Slang || bridgeWin.initSlang;
+                    
+                    if (slang) {
+                        log('Slang object detected in bridge!');
+                        slangModule = slang;
+                        if (typeof slang.createGlobalSession === 'function') {
+                            slangSession = await slang.createGlobalSession();
+                        } else if (typeof slang === 'function') {
+                            slangModule = await slang();
+                            slangSession = await slangModule.createGlobalSession();
+                        }
+                        
+                        if (slangSession) {
+                            onSuccess();
+                            return true;
+                        }
+                    }
+                    return false;
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            // Listen for the slangLoaded event from the bridge
+            bridgeWin.addEventListener('slangLoaded', async () => {
+                log('Received "slangLoaded" event from playground bridge.');
+                if (await checkSlang()) return;
+            });
+
+            // Poll as a backup
+            let attempts = 0;
+            const poll = setInterval(async () => {
+                attempts++;
+                if (await checkSlang()) {
+                    clearInterval(poll);
+                } else if (attempts > 100) {
+                    clearInterval(poll);
+                    log('Bridge initialization timed out. CDNs likely blocked and local assets failed.', 'error');
+                    statusDiv.innerText = 'Status: Load Error';
+                    statusDiv.className = 'text-sm font-medium accent-red';
+                }
+            }, 100);
+        }
+
+        function onSuccess() {
+            statusDiv.innerText = 'Status: Ready';
+            statusDiv.className = 'text-sm font-medium accent-emerald';
+            log('Slang-WASM bridge established successfully.');
+            compileBtn.addEventListener('click', compile);
+        }
+
+        async function compile() {
+            if (!slangSession) {
+                log('Slang session not initialized', 'error');
+                return;
+            }
+            
+            const source = slangInput.value;
+            log('Compiling Slang source...');
+            wgslOutput.textContent = '// Compiling...';
+            
+            try {
+                const startTime = performance.now();
+                const request = slangSession.createCompileRequest();
+                request.addTranslationUnit(0, source); // 0 = Slang
+                const targetIdx = request.addTarget('wgsl');
+                const entryPointIdx = request.addEntryPoint(0, 'main', 0); // stage 0 = compute
+                
+                await request.execute();
+                const code = request.getEntryPointCode(entryPointIdx, targetIdx);
+
+                const endTime = performance.now();
+                const duration = (endTime - startTime).toFixed(2);
+                
+                wgslOutput.textContent = code;
+                log(`Compilation successful in ${duration}ms`);
+            } catch (err) {
+                let errMsg = err.message;
+                wgslOutput.textContent = `// Error:\n${errMsg}`;
+                log(`Compilation failed: ${errMsg}`, 'error');
+            }
+        }
+
+        window.copyConsole = async function() {
+            const text = consoleOutput.innerText;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    textArea.style.top = "0";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                }
+                
+                const btn = document.getElementById('copy-console-btn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.classList.add('bg-emerald-700');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('bg-emerald-700');
+                }, 2000);
+            } catch (err) {
+                alert(`Copy failed: ${err.message}`);
+            }
+        };
+
+        init();
+    </script>
+</body>
+</html>

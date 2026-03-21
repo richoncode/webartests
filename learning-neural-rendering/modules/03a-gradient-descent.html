@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gradient Descent - Learning Neural Rendering</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+        .nav-header .back-link:hover { color: #fff; }
+        .header { padding: 16px 24px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+        a.back { color: #555; text-decoration: none; font-size: 14px; }
+        a.back:hover { color: #aaa; }
+        
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; }
+        
+        .narrative { max-width: 550px; }
+        .narrative h2 { font-size: 22px; font-weight: 700; margin-bottom: 16px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+        
+        .interactive-container { display: block; overflow-y: auto; background: #111; padding-bottom: 60px; }
+        
+        .flowchart { background: #1a1a1a; border-radius: 0 0 8px 8px; padding: 24px 32px; position: sticky; top: 0; min-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; z-index: 100; border-bottom: 2px solid #2a2a2a; margin-bottom: 24px; }
+        .dashboard { background: #151515; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; width: 100%; max-width: 580px; display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+        
+        button.action-btn { background: #1e2d40; border: 1px solid #5b9bd5; color: #5b9bd5; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 14px; }
+        button.action-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; border-color: #444; color: #888; background: #222; }
+        button.action-btn:not(:disabled):hover { filter: brightness(1.2); }
+        
+        .node { padding: 16px; background: #222; border: 2px solid #444; border-radius: 8px; text-align: center; width: 140px; font-family: monospace; font-size: 16px; transition: all 0.3s ease; position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: center; }
+        .node.active { box-shadow: 0 0 20px rgba(255,255,255,0.1); transform: scale(1.05); }
+        
+        .arrow-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 60px; opacity: 0.35; transition: all 0.3s ease; z-index: 1; }
+        .arrow-container.active { opacity: 1.0; }
+        .arrow-container.completed { opacity: 0.6; }
+        .arrow-container .arrow { font-size: 28px; font-weight: bold; margin-top: -8px; color: #555; transition: 0.3s; }
+        .arrow-container.active .arrow { transform: scale(1.2); }
+        
+        .math-label { font-size: 11px; color: #ccc; font-family: monospace; background: #111; padding: 2px 6px; border-radius: 4px; border: 1px solid #333; z-index: 5; white-space: nowrap; font-weight: bold; margin-bottom: 4px; opacity: 0.5; transition: 0.3s; }
+        .arrow-container.active .math-label { opacity: 1.0; background: #222; border-color: #555; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+        .arrow-container.completed .math-label { opacity: 0.8; }
+        
+        .row { display: flex; align-items: stretch; justify-content: center; gap: 12px; margin-bottom: 0; }
+        .badge { display: block; font-size: 11px; text-transform: uppercase; color: #888; margin-bottom: 4px; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        /* Unified Faded State Color (#555 for all completed steps) */
+        .arrow-container.completed .arrow { color: #555; }
+        
+        #arr-fwd-1.active .arrow, #arr-fwd-2.active .arrow { color: #3b82f6; text-shadow: 0 0 12px rgba(59,130,246,0.8); }
+        #arr-loss-1.active .arrow, #arr-loss-2.active .arrow { color: #e74c3c; text-shadow: 0 0 12px rgba(231,76,60,0.8); }
+
+        /* Backward Pass Styling */
+        .bwd-label { background:#1a1a1a; padding:6px 12px; border:1px solid #444; border-radius:6px; color:#888; font-size:13px; font-weight:bold; z-index:10; position:absolute; right: 100%; margin-right: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space:nowrap; transition: 0.3s; opacity: 0.5; }
+        .bwd-arrow { color: #555; font-size: 28px; font-weight:bold; transform: scaleY(1.4); margin-top: -10px; transition: 0.3s; }
+        
+        .bwd-container { opacity: 0.35; transition: 0.3s ease; }
+        .bwd-container.active { opacity: 1.0; }
+        .bwd-container.completed { opacity: 0.6; }
+        
+        #arr-bwd-1.active .bwd-label { border-color: #f472b6; color: #f472b6; opacity: 1.0; box-shadow: 0 0 15px rgba(244,114,182,0.3); }
+        #arr-bwd-1.active .bwd-arrow { color: #f472b6; text-shadow: 0 0 12px rgba(244,114,182,0.8); transform: scaleY(1.4) scale(1.2); }
+        
+        #arr-bwd-1.completed .bwd-label { border-color: #555; color: #555; opacity: 0.6; }
+        #arr-bwd-1.completed .bwd-arrow { color: #555; transform: scaleY(1.4); }
+        
+        .log-entry { margin-bottom: 8px; padding: 10px; border-radius: 6px; background: #151515; border: 1px solid #2a2a2a; border-left-width: 4px; border-left-style: solid; font-size: 13px; }
+        .log-entry.active { background: #1a2333; border-color: #5b9bd5; border-left-color: #5b9bd5; }
+        .log-code { font-family: 'SF Mono', 'Fira Code', monospace; display: inline-block; padding: 2px 8px; background: #000; border-radius: 4px; font-size: 13px; line-height: 1.2; }
+        
+        .feedback-log { padding: 0 32px; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; }
+        .tooltip-trigger { position: relative; display: inline-block; cursor: help; }
+        .tooltip-content { 
+            visibility: hidden; width: 140px; background-color: #222; color: #fff; text-align: left; 
+            border-radius: 6px; padding: 10px; position: absolute; z-index: 100; bottom: 125%; right: 0; 
+            opacity: 0; transition: opacity 0.3s; font-size: 11px; line-height: 1.4; border: 1px solid #444; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none;
+        }
+        .tooltip-trigger:hover .tooltip-content { visibility: visible; opacity: 1; }
+        .math-term { cursor: help; transition: text-shadow 0.2s, background 0.2s; border-bottom: 1px dotted transparent; }
+        .math-highlight { background: rgba(255, 255, 255, 0.08); text-shadow: 0 0 8px currentColor; border-radius: 4px; }
+        
+        .math-popover {
+            position: fixed; background: #1a1a1a; border: 1px solid #333; padding: 10px 14px;
+            border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.8); z-index: 1000;
+            pointer-events: none; display: none; flex-direction: column; min-width: 150px;
+        }
+        .popover-title { font-weight: bold; margin-bottom: 4px; font-size: 13px; }
+        .popover-color-name { align-self: flex-end; font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; color: #fff; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="03-neural-fields.html">← 03: Neural Fields</a>
+        <a href="../index.html" class="back-link">Return to Hub</a>
+        <a href="04-autodiff-optimization.html">04: AutoDiff Optimization →</a>
+    </nav>
+    <div class="header">
+        <a class="back" href="../index.html">← Back to Modules</a>
+        <h1>3a. The Learning Process (Gradient Descent)</h1>
+        <div style="width:100px"></div>
+    </div>
+    
+    <div class="workspace">
+        <div class="panel narrative">
+            <h2>Calculus inside the Network</h2>
+            <p>Before diving into complex multi-layer WebGPU renderers, it helps to firmly understand what a neural network actually does mathematically when it learns.</p>
+            <p>Click through the interactive flowchart on the right. You are manually stepping a 1-parameter mathematical engine. Watch how the glowing arrows physically highlight the direction of data flow:</p>
+            
+            <ul style="margin-left: 0; padding: 0; list-style: none; color: #bbb; margin-bottom: 24px;">
+                <li id="desc-step-1" style="margin-bottom: 8px; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #2a2a2a; transition: 0.3s; background: transparent;">
+                    <strong style="color:#fff;">1. Forward Predict:</strong> Data flows left-to-right. The <span class="math-term" data-term="x" style="color:#a855f7; font-weight:bold;">Input (x)</span> is mathematically transformed by the network <span class="math-term" data-term="w" style="color:#f0a040; font-weight:bold;">Weight (w)</span> to form a <span class="math-term" data-term="y-pred" style="color:#3b82f6; font-weight:bold;">Prediction (y')</span>.
+                </li>
+                <li id="desc-step-2" style="margin-bottom: 8px; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #2a2a2a; transition: 0.3s; background: transparent;">
+                    <strong style="color:#fff;">2. Compute Loss:</strong> The <span class="math-term" data-term="y-pred" style="color:#3b82f6; font-weight:bold;">Prediction (y')</span> is compared with the <span class="math-term" data-term="y-target" style="color:#10b981; font-weight:bold;">Target (y)</span> to find the <span class="math-term" data-term="diff" style="color:#fbbf24; font-weight:bold;">Difference</span>. We raise this difference to the <span class="math-term" data-term="power" style="color:#22d3ee; font-weight:bold;">Power of 2</span> to get the <span class="math-term" data-term="loss" style="color:#e74c3c; font-weight:bold;">MSE Loss</span>.
+                </li>
+                <li id="desc-step-3" style="margin-bottom: 8px; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #2a2a2a; transition: 0.3s; background: transparent;">
+                    <strong style="color:#fff;">3. Compute Gradient:</strong> The <span class="math-term" data-term="grad" style="color:#f472b6; font-weight:bold;">Gradient (dL/dw)</span> is computed. Note how the <span class="math-term" data-term="power" style="color:#22d3ee; font-weight:bold;">2</span> from the loss "falls down" to become a multiplier for the <span class="math-term" data-term="diff" style="color:#fbbf24; font-weight:bold;">Difference</span>.
+                </li>
+                <li id="desc-step-4" style="margin-bottom: 8px; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #2a2a2a; transition: 0.3s; background: transparent;">
+                    <strong style="color:#fff;">4. Update Weight:</strong> The <span class="math-term" data-term="w" style="color:#f0a040; font-weight:bold;">Weight (w)</span> is altered using <code class="math-term" data-term="w" style="color:#f0a040;">w = w - (α * dL/dw)</code>. It shifts opposite to the <span class="math-term" data-term="grad" style="color:#f472b6; font-weight:bold;">Gradient</span>, scaled by the <span class="math-term" data-term="lr" style="color:#14b8a6; font-weight:bold;">Learning Rate (α)</span>.
+                </li>
+            </ul>
+
+            <div style="border-left: 3px solid #f0a040; background: #1a1200; padding: 16px; border-radius: 0 8px 8px 0; margin-top: 32px;">
+                <h3 style="color:#f0a040; font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Why Mean Squared Error (MSE)?</h3>
+                <p style="color:#bbb; font-size: 14px; margin-bottom: 12px;">Notice we use MSE <code>(Prediction - Target)²</code> instead of absolute difference. Why?</p>
+                <ul style="margin-left: 16px; color: #888; font-size: 14px;">
+                    <li style="margin-bottom: 8px;"><strong>Heavy Penalties:</strong> Squaring heavily penalizes massive errors (an error of 10 becomes 100). This forces the network to relentlessly prioritize fixing its absolute worst predictions first.</li>
+                    <li style="margin-bottom: 8px;"><strong>Direction Agnostic:</strong> A negative mistake squared becomes positive. It prevents positive and negative errors from mathematically canceling each other out.</li>
+                    <li><strong>Smooth Gradients:</strong> Most crucially for Calculus, parabolas (squares) create smooth, perfectly continuous curve geometries. They have exactly one perfect valley (global minimum) and no sharp, unpredictable mathematical cliffs, ensuring the gradient can flawlessly slide down the hill to zero.</li>
+                </ul>
+            </div>
+            
+            <div style="background: #111; padding: 16px; border-radius: 8px; margin-top: 24px; border: 1px solid #2a2a2a;">
+                <h3 style="color:#5b9bd5; font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Key Definitions</h3>
+                <ul style="margin-left: 16px; color: #888; font-size: 14px;">
+                    <li style="margin-bottom: 12px;"><strong style="color: #ddd;">Epoch:</strong> One complete cycle of training algorithm processing. In this simulation, clicking through all 4 phases exactly completes 1 full Epoch.</li>
+                    <li><strong style="color: #ddd;">Learning Rate (α):</strong> The Gradient mathematically tells us <em>which direction</em> to step, but the Learning Rate dictates <em>how big</em> of a step to take. Too small = freezing slow learning. Too big = the weight violently overcorrects and explodes.</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="panel interactive-container">
+            <div class="flowchart">
+                <h2 id="val-phase" style="margin-top:0; margin-bottom: 32px; color:#5b9bd5; font-size: 18px; text-align: center;">Forward Pass: <span style="color:#fff;">Awaiting Initialization</span></h2>
+                
+                <!-- ROW 1 -->
+                <div class="row">
+                    <div class="node math-term" id="node-x" data-term="x" style="border-color: #a855f7;"><span class="badge" style="color: #a855f7;">Input (x)</span> <span style="color: #a855f7; font-weight: bold;">2.0</span></div>
+                    <div class="arrow-container" id="arr-fwd-1">
+                        <div class="math-label">* w</div>
+                        <div class="arrow">→</div>
+                    </div>
+                    <div class="node math-term" id="node-w" data-term="w" style="border-color: #f0a040;"><span class="badge" style="color: #f0a040;">Weight (w)</span> <span id="val-w" style="color: #f0a040; font-weight: bold;">0.50</span></div>
+                    <div class="arrow-container" id="arr-fwd-2">
+                        <div class="math-label">= y'</div>
+                        <div class="arrow">→</div>
+                    </div>
+                    <div class="node math-term" id="node-y" data-term="y-pred" style="border-color: #3b82f6;"><span class="badge" style="color: #3b82f6;">Prediction (y')</span> <span id="val-y" style="color: #3b82f6; font-weight: bold;">?</span></div>
+                </div>
+                
+                <!-- ROW 2 Vertical Bridge -->
+                <div class="row" style="height: 60px;">
+                    <div style="width: 140px;"></div> <!-- padding under x -->
+                    <div style="width: 60px;"></div> <!-- padding under arr -->
+                    
+                    <div style="width: 140px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        <!-- Backward dL/dw pointing up to Weight horizontally text -->
+                        <div id="arr-bwd-1" class="bwd-container" style="text-align:center; position:relative; margin-top:10px; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <div class="bwd-label math-term" data-term="grad">
+                                dL/dw = <span id="val-bwd-math" style="color:#fff;">?</span>
+                            </div>
+                            <!-- Standardization: Custom up arrow that matches arrow-container style -->
+                            <div style="display:flex; flex-direction:column; align-items:center;" id="arr-bwd-arrow-box">
+                                <div class="bwd-arrow">↑</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="width: 60px;"></div> <!-- padding under arr -->
+                    
+                    <!-- Downward flow of prediction into target -->
+                    <div style="width: 140px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        <div class="arrow-container" id="arr-loss-1" style="height:100%; margin-top:20px;">
+                            <div class="math-label" style="margin-bottom:-4px;">Combine</div>
+                            <div class="arrow" style="transform: rotate(90deg);">→</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ROW 3 -->
+                <div class="row">
+                    <div style="width: 140px;"></div>
+                    <div style="width: 60px;"></div>
+                    
+                    <div class="node math-term" id="node-loss" data-term="loss" style="border-color: #e74c3c;"><span class="badge" style="color: #e74c3c;">MSE Loss</span> <span id="val-loss" style="color: #e74c3c; font-weight: bold;">?</span></div>
+                    
+                    <div class="arrow-container" id="arr-loss-2">
+                        <div class="math-label" style="font-size:11px; padding:2px 6px;">(y' - y)²</div>
+                        <div class="arrow">←</div>
+                    </div>
+                    
+                    <div class="node math-term" id="node-target" data-term="y-target" style="border-color: #10b981;"><span class="badge" style="color: #10b981;">Target (y)</span> <span style="color: #10b981; font-weight: bold;">10.0</span></div>
+                </div>
+
+                <!-- Integrated Dashboard -->
+                <div class="dashboard">
+                    <div style="display: flex; gap: 16px; align-items: stretch; margin-bottom: 0; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px;">
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; justify-content: center;">
+                            <div style="display:flex; align-items: center; gap: 12px;">
+                                <span style="font-size:13px; color:#fff; font-weight: bold; text-transform: uppercase; width: 60px;">(Cycle):</span>
+                                <span id="val-epoch" style="background:#333; padding:4px 12px; border-radius:12px; color:#fff; font-size: 13px; font-weight: bold; font-family: monospace; white-space: nowrap;">EPOCH 0</span>
+                            </div>
+                            <div style="display:flex; align-items: center; gap: 12px;" class="math-term" data-term="lr">
+                                <span style="font-size:13px; color:#fff; font-weight: bold; text-transform: uppercase; width: 60px;">(α):</span>
+                                <span style="font-family:monospace; background:#222; padding:4px 12px; border-radius:6px; font-size: 13px; font-weight: bold; color: #14b8a6;">0.01</span>
+                            </div>
+                        </div>
+                        
+                        <div style="width: 140px; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 2px;" class="math-term" data-term="loss">
+                                <span style="font-size: 9px; color: #e74c3c; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Loss (MSE)</span>
+                                <div class="tooltip-trigger" style="color: #666; font-size: 11px;">ⓘ
+                                    <div class="tooltip-content">
+                                        <strong style="color: #e74c3c;">MSE Loss History</strong><br>
+                                        As the model learns, this error curve should trend downwards. A lower score means higher performance.
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="flex: 1; min-height: 48px; background: #0a0a0a; border-radius: 4px; border: 1px solid #222;">
+                                <canvas id="loss-chart" width="140" height="48" style="width: 100%; height: 100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <button class="action-btn" id="btn-prev" style="width: 44px; flex-shrink: 0; font-size: 18px;" title="Step Back" disabled>&lt;</button>
+                        <button class="action-btn" id="btn-next" style="flex: 1;" title="Advance to Next Step">1. Forward Predict</button>
+                        <button class="action-btn" id="btn-play" style="width: 44px; flex-shrink: 0; font-size: 16px; border-color: #5b9bd5; color: #5b9bd5;" title="Auto-Play Mode">▶</button>
+                        <button class="action-btn" id="btn-reset" style="width: 44px; flex-shrink: 0; font-size: 18px; border-color: #5b9bd5; color: #5b9bd5;" title="Reset to Beginning">↺</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="feedback-log" class="feedback-log">
+                <div class="log-entry">Click <strong>Forward Predict</strong> to begin.</div>
+            </div>
+
+            <div id="popover" class="math-popover">
+                <div class="popover-title" id="popover-title">Variable</div>
+                <div class="popover-color-name" id="popover-color">COLOR</div>
+            </div>
+        </div>
+        </div>
+    </div>
+    
+    <script>
+        let abs_step = 0;
+        let playInterval = null;
+
+        const termsMeta = {
+            'x': { name: 'Input (x)', color: 'Purple', hex: '#a855f7' },
+            'w': { name: 'Weight (w)', color: 'Orange', hex: '#f0a040' },
+            'y-pred': { name: "Prediction (y')", color: 'Blue', hex: '#3b82f6' },
+            'y-target': { name: 'Target (y)', color: 'Green', hex: '#10b981' },
+            'loss': { name: 'MSE Loss', color: 'Red', hex: '#e74c3c' },
+            'grad': { name: 'Gradient (dL/dw)', color: 'Pink', hex: '#f472b6' },
+            'diff': { name: 'Error Difference', color: 'Amber', hex: '#fbbf24' },
+            'power': { name: 'Power of 2', color: 'Cyan', hex: '#22d3ee' },
+            'lr': { name: 'Learning Rate (α)', color: 'Teal', hex: '#14b8a6' }
+        };
+
+        const popoverEl = document.getElementById('popover');
+        const popoverTitle = document.getElementById('popover-title');
+        const popoverColor = document.getElementById('popover-color');
+
+        const x = 2.0;
+        const target = 10.0;
+        const lr = 0.01;
+        const wHistory = [0.5];
+        const gHistory = []; // Calculated Gradients
+        const lossHistory = [];
+
+        const btnNext = document.getElementById('btn-next');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnPlay = document.getElementById('btn-play');
+        const btnReset = document.getElementById('btn-reset');
+
+        function render(animateNew = false) {
+            const epoch = Math.floor(abs_step / 4);
+            const state = abs_step % 4; // 1: Forward, 2: Loss, 3: Gradient, 0: Update
+
+            // Update Histories
+            while (wHistory.length <= epoch + 1) {
+                const curEpoch = wHistory.length - 1;
+                const curW = wHistory[curEpoch];
+                const curY = x * curW;
+                const curL = Math.pow(curY - target, 2);
+                const curG = 2.0 * (curY - target) * x;
+                lossHistory[curEpoch] = curL;
+                gHistory[curEpoch] = curG;
+                wHistory.push(curW - (lr * curG));
+            }
+
+            const w = wHistory[epoch];
+            const y_pred = x * w;
+            const diff = y_pred - target;
+            const loss = diff * diff;
+            const grad = 2.0 * diff * x;
+            
+            // 1. Reset
+            document.getElementById('val-epoch').innerText = "EPOCH " + epoch;
+            
+            // Sync Loss History
+            for (let i = 0; i <= epoch; i++) {
+                if (lossHistory[i] === undefined || i < epoch) {
+                    const w_i = wHistory[i];
+                    lossHistory[i] = Math.pow((x * w_i) - target, 2);
+                }
+            }
+            // Always ensure the current epoch's live loss is reflected if we've reached step 2
+            if (state >= 2) lossHistory[epoch] = loss;
+            
+            drawLossChart();
+
+            document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+            
+            const allArrows = ['arr-fwd-1', 'arr-fwd-2', 'arr-loss-1', 'arr-loss-2', 'arr-bwd-1'];
+            allArrows.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.classList.remove('active'); el.classList.remove('completed'); el.classList.remove('math-highlight'); }
+            });
+
+            document.getElementById('node-x').style.borderColor = '#a855f7';
+            document.getElementById('node-w').style.borderColor = '#f0a040';
+            document.getElementById('node-y').style.borderColor = '#3b82f6';
+            document.getElementById('node-target').style.borderColor = '#10b981';
+            document.getElementById('node-loss').style.borderColor = '#e74c3c';
+
+            [1, 2, 3, 4].forEach(i => {
+                const el = document.getElementById(`desc-step-${i}`);
+                el.style.backgroundColor = 'transparent';
+                el.style.borderColor = '#2a2a2a';
+            });
+
+            // 2. Data
+            document.getElementById('val-w').innerText = w.toFixed(2);
+            
+            const valY = document.getElementById('val-y');
+            const valLoss = document.getElementById('val-loss');
+            
+            if (state >= 1) {
+                valY.innerText = y_pred.toFixed(2);
+                valY.style.opacity = "1.0";
+            } else if (epoch > 0) {
+                valY.innerText = (x * wHistory[epoch-1]).toFixed(2);
+                valY.style.opacity = "0.3";
+            } else {
+                valY.innerText = "?";
+                valY.style.opacity = "1.0";
+            }
+
+            if (state >= 2) {
+                valLoss.innerText = loss.toFixed(2);
+                valLoss.style.opacity = "1.0";
+            } else if (epoch > 0) {
+                valLoss.innerText = Math.pow((x * wHistory[epoch-1]) - target, 2).toFixed(2);
+                valLoss.style.opacity = "0.3";
+            } else {
+                valLoss.innerText = "?";
+                valLoss.style.opacity = "1.0";
+            }
+
+            const elBwdMath = document.getElementById('val-bwd-math');
+            const elBwdLabel = document.querySelector('.bwd-label');
+            
+            if (state === 3 || state === 0) {
+                // Active phases
+                const prev_epoch = (state === 0) ? epoch - 1 : epoch;
+                const prev_w = wHistory[prev_epoch];
+                const prev_grad = 2.0 * ((x * prev_w) - target) * x;
+                elBwdMath.innerText = prev_grad.toFixed(2);
+                elBwdMath.style.opacity = "1.0";
+                if (elBwdLabel) elBwdLabel.style.opacity = "1.0";
+            } else if (state === 1 && epoch > 0) {
+                // Persistent dimmed phase (showing last epoch's gradient)
+                const last_w = wHistory[epoch-1];
+                const last_grad = 2.0 * ((x * last_w) - target) * x;
+                elBwdMath.innerText = last_grad.toFixed(2);
+                elBwdMath.style.opacity = "0.3";
+                if (elBwdLabel) elBwdLabel.style.opacity = "0.3";
+            } else {
+                // Clear phase
+                elBwdMath.innerText = "?";
+                elBwdMath.style.opacity = "1.0";
+                if (elBwdLabel && state !== 2) elBwdLabel.style.opacity = "0.5"; // Normal idle
+                else if (elBwdLabel) elBwdLabel.style.opacity = "0.3"; // Dimmed during loss calc
+            }
+            btnPrev.disabled = (abs_step === 0);
+
+            const logContainer = document.getElementById('feedback-log');
+            logContainer.innerHTML = "";
+
+            for (let i = 0; i <= abs_step; i++) {
+                const s_epoch = Math.floor(i / 4);
+                const s_state = i % 4;
+                const s_w = wHistory[s_epoch];
+                const s_y_pred = x * s_w;
+                const s_diff = (s_y_pred - target).toFixed(2);
+                const s_loss = (s_y_pred - target) * (s_y_pred - target);
+
+                let logHtml = "";
+                let title = "";
+                let stepNum = "";
+                
+                if (s_state === 1) {
+                    title = "Forward Predict";
+                    stepNum = "Step 1";
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#3b82f6; font-weight:bold; width:65px; flex-shrink:0;">Predict:</span> <code class="log-code"><span class="math-term" data-term="y-pred" style="color:#3b82f6;">y'</span> = <span class="math-term" data-term="x" style="color:#a855f7;">${x.toFixed(1)}</span> * <span class="math-term" data-term="w" style="color:#f0a040;">${s_w.toFixed(2)}</span> = <strong class="math-term" data-term="y-pred" style="color:#3b82f6;">${s_y_pred.toFixed(2)}</strong></code></div>`;
+                } else if (s_state === 2) {
+                    title = "Loss Computation";
+                    stepNum = "Step 2";
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#e74c3c; font-weight:bold; width:65px; flex-shrink:0;">Error:</span> <code class="log-code"><span class="math-term" data-term="loss" style="color:#e74c3c;">MSE</span> = (<span class="math-term" data-term="y-pred" style="color:#3b82f6;">${s_y_pred.toFixed(2)}</span> - <span class="math-term" data-term="y-target" style="color:#10b981;">${target.toFixed(1)}</span>)<span class="math-term" data-term="power" style="color:#22d3ee;">²</span> = <strong class="math-term" data-term="loss" style="color:#e74c3c;">${s_loss.toFixed(2)}</strong></code></div>`;
+                } else if (s_state === 3) {
+                    const s_diff = (s_y_pred - target).toFixed(2);
+                    const s_grad = 2.0 * (s_y_pred - target) * x;
+                    title = "Compute Gradient";
+                    stepNum = "Step 3";
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f472b6; font-weight:bold; width:65px; flex-shrink:0;">Gradient:</span> <code class="log-code"><span class="math-term" data-term="grad" style="color:#f472b6;">dL/dw</span> = <span class="math-term" data-term="power" style="color:#22d3ee;">2</span>*(<span class="math-term" data-term="diff" style="color:#fbbf24;">${s_diff}</span>)*<span class="math-term" data-term="x" style="color:#a855f7;">${x.toFixed(1)}</span> = <strong class="math-term" data-term="grad" style="color:#f472b6;">${s_grad.toFixed(2)}</strong></code></div>`;
+                } else if (s_state === 0 && i > 0) {
+                    const prev_epoch = s_epoch - 1;
+                    const prev_w = wHistory[prev_epoch];
+                    const prev_grad = 2.0 * ((x * prev_w) - target) * x;
+                    const next_w = wHistory[s_epoch];
+                    title = "Update Weight";
+                    stepNum = "Step 4";
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f0a040; font-weight:bold; width:65px; flex-shrink:0;">Update:</span> <code class="log-code"><span class="math-term" data-term="w" style="color:#f0a040;">w</span> = <span class="math-term" data-term="w" style="color:#f0a040;">${prev_w.toFixed(2)}</span> - (<span class="math-term" data-term="lr" style="color:#14b8a6;">0.01</span> * <span class="math-term" data-term="grad" style="color:#f472b6;">${prev_grad.toFixed(2)}</span>) = <strong class="math-term" data-term="w" style="color:#f0a040;">${next_w.toFixed(2)}</strong></code></div>`;
+                }
+
+                if (logHtml) {
+                    const entry = document.createElement('div');
+                    entry.className = "log-entry" + (i === abs_step ? " active" : "");
+                    
+                    // Phase-indexed color border (0=Update/Orange, 1=Predict, 2=Loss, 3=Gradient)
+                    const colors = ["#f0a040", "#3b82f6", "#e74c3c", "#f472b6"];
+                    entry.style.borderLeftColor = colors[s_state];
+
+                    entry.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; text-transform:uppercase; color:#aaa; font-weight:bold;">
+                        <span>${stepNum}: ${title}</span>
+                        <span style="background:#333; padding:1px 6px; border-radius:10px; color:#fff;">Epoch ${s_epoch}</span>
+                    </div>` + logHtml;
+                    logContainer.prepend(entry);
+                } else if (i === 0) {
+                    const entry = document.createElement('div');
+                    entry.className = "log-entry";
+                    entry.style.borderLeftColor = "#888";
+                    entry.innerText = "Training Initialized. Click Forward Predict.";
+                    logContainer.prepend(entry);
+                }
+            }
+
+            // 3. Narrative Highlighting
+            [1, 2, 3, 4].forEach(i => {
+                const el = document.getElementById(`desc-step-${i}`);
+                if (el) { el.style.backgroundColor = 'transparent'; el.style.borderColor = '#2a2a2a'; }
+            });
+
+            // 4. Graph Highlighting
+            const elements = ['arr-fwd-1', 'arr-fwd-2', 'arr-loss-1', 'arr-loss-2', 'arr-bwd-1', 'node-x', 'node-w', 'node-y', 'node-target', 'node-loss'];
+            elements.forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('active', 'completed'); });
+
+            const active = (...ids) => ids.forEach(id => document.getElementById(id)?.classList.add('active'));
+            const complete = (...ids) => ids.forEach(id => document.getElementById(id)?.classList.add('completed'));
+
+            const phaseHeader = document.getElementById('val-phase');
+
+            if (state === 1) {
+                const el = document.getElementById(`desc-step-1`);
+                if (el) { el.style.backgroundColor = '#1a2233'; el.style.borderColor = '#5b9bd5'; }
+                active('arr-fwd-1', 'arr-fwd-2', 'node-x', 'node-w', 'node-y');
+                // Persistence: Only show completed backward pass if we've actually done one (abs_step >= 4)
+                if (abs_step >= 4) complete('arr-bwd-1');
+                btnNext.innerText = "2. Calculate MSE Loss";
+                phaseHeader.innerHTML = `Forward Pass: <span style="color:#fff;">1. Predict (y' = x * w)</span>`;
+            } else if (state === 2) {
+                const el = document.getElementById(`desc-step-2`);
+                if (el) { el.style.backgroundColor = '#331a1a'; el.style.borderColor = '#e74c3c'; }
+                complete('arr-fwd-1', 'arr-fwd-2');
+                if (abs_step >= 4) complete('arr-bwd-1');
+                active('arr-loss-1', 'arr-loss-2', 'node-y', 'node-target', 'node-loss');
+                btnNext.innerText = "3. Compute Gradient";
+                phaseHeader.innerHTML = `Forward Pass: <span style="color:#fff;">2. Compute Error (MSE)</span>`;
+            } else if (state === 3) {
+                const el = document.getElementById(`desc-step-3`);
+                if (el) { el.style.backgroundColor = '#332211'; el.style.borderColor = '#f472b6'; }
+                complete('arr-fwd-1', 'arr-fwd-2', 'arr-loss-1', 'arr-loss-2');
+                active('arr-bwd-1', 'node-loss', 'node-w');
+                btnNext.innerText = "4. Update Weight";
+                phaseHeader.innerHTML = `Back Propagation: <span style="color:#fff;">3. Compute Gradient</span>`;
+            } else if (state === 0) {
+                btnNext.innerText = "1. Forward Predict";
+                if (abs_step > 0) {
+                    const el = document.getElementById(`desc-step-4`);
+                    if (el) { el.style.backgroundColor = '#332211'; el.style.borderColor = '#f0a040'; }
+                    active('arr-bwd-1', 'node-w');
+                    phaseHeader.innerHTML = `Back Propagation: <span style="color:#fff;">4. Update Weight</span>`;
+                } else {
+                    phaseHeader.innerHTML = `Forward Pass: <span style="color:#fff;">Awaiting Initialization</span>`;
+                }
+            }
+
+            // Button Color Mapping (0=Orange/Step4, 1=Blue/Step1, 2=Red/Step2, 3=Pink/Step3)
+            const buttonColors = ["#f0a040", "#3b82f6", "#e74c3c", "#f472b6"];
+            const nextStep = (abs_step % 4) + 1;
+            const nextIdx = (nextStep === 4) ? 0 : nextStep; // Fix mapping for 4=Green
+            btnNext.style.borderColor = buttonColors[nextIdx];
+            btnNext.style.color = buttonColors[nextIdx];
+            
+            if (abs_step > 0) {
+                const prevStep = ((abs_step - 1) % 4) + 1;
+                const prevIdx = (prevStep === 4) ? 0 : prevStep;
+                btnPrev.style.borderColor = buttonColors[prevIdx];
+                btnPrev.style.color = buttonColors[prevIdx];
+            } else {
+                btnPrev.style.borderColor = "#444";
+                btnPrev.style.color = "#888";
+            }
+        }
+
+        btnNext.onclick = () => {
+            abs_step++;
+            render(true);
+            document.querySelector('.interactive-container').scrollTop = 0;
+        };
+        
+        btnPrev.onclick = () => {
+            stopAutoPlay();
+            if (abs_step > 0) abs_step--;
+            render(false);
+        };
+
+
+        function stopAutoPlay() {
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+                btnPlay.innerText = "▶";
+            }
+        }
+
+        btnPlay.onclick = () => {
+            if (playInterval) {
+                stopAutoPlay();
+            } else {
+                playInterval = setInterval(() => {
+                    abs_step++;
+                    render(true);
+                    document.querySelector('.interactive-container').scrollTop = 0;
+                }, 800);
+                btnPlay.innerText = "⏸";
+            }
+        };
+
+        btnReset.onclick = () => {
+            stopAutoPlay();
+            abs_step = 0;
+            wHistory.length = 1; // Keep first weight
+            lossHistory.length = 0;
+            render(false);
+            
+            // Re-populate the feedback log intro
+            const logPanel = document.getElementById('feedback-log');
+            logPanel.innerHTML = '<div class="log-entry">Click <strong>Forward Predict</strong> to begin.</div>';
+        };
+
+        function drawLossChart() {
+            const canvas = document.getElementById('loss-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (lossHistory.length < 2) return;
+            
+            const maxL = Math.max(...lossHistory) * 1.1;
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            
+            for (let i = 0; i < lossHistory.length; i++) {
+                const xPos = (i / (lossHistory.length - 1)) * canvas.width;
+                const yPos = canvas.height - ((lossHistory[i] / maxL) * canvas.height);
+                if (i === 0) ctx.moveTo(xPos, yPos);
+                else ctx.lineTo(xPos, yPos);
+            }
+            ctx.stroke();
+            
+            // Fill area
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.15)';
+            ctx.fill();
+        }
+
+        // --- Interaction Listeners for Highlighting & Popovers ---
+        document.addEventListener('mouseover', (e) => {
+            const termEl = e.target.closest('.math-term');
+            if (!termEl) return;
+            const type = termEl.dataset.term;
+            if (!termsMeta[type]) return;
+            const data = termsMeta[type];
+            document.querySelectorAll(`.math-term[data-term="${type}"]`).forEach(el => {
+                el.classList.add('math-highlight');
+                el.style.color = data.hex;
+                if (el.classList.contains('node')) el.style.borderColor = data.hex;
+            });
+            popoverTitle.innerText = data.name;
+            popoverColor.innerText = data.color;
+            popoverEl.style.borderColor = data.hex;
+            popoverTitle.style.color = data.hex;
+            popoverEl.style.display = 'flex';
+            const rect = termEl.getBoundingClientRect();
+            let top = rect.top - popoverEl.offsetHeight - 12;
+            let left = rect.left + (rect.width / 2) - (popoverEl.offsetWidth / 2);
+            if (top < 10) top = rect.bottom + 12;
+            if (left < 10) left = 10;
+            if (left + popoverEl.offsetWidth > window.innerWidth - 10) left = window.innerWidth - popoverEl.offsetWidth - 10;
+            popoverEl.style.top = top + 'px'; popoverEl.style.left = left + 'px';
+        });
+
+        document.addEventListener('mouseout', (e) => {
+            const termEl = e.target.closest('.math-term');
+            if (!termEl) return;
+            document.querySelectorAll('.math-term').forEach(el => {
+                el.classList.remove('math-highlight');
+                el.style.color = '';
+                if (el.classList.contains('node')) el.style.borderColor = '';
+            });
+            popoverEl.style.display = 'none';
+            render(false); // Restore original colors
+        });
+
+        render();
+    </script>
+</body>
+</html>

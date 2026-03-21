@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Radiance Fields - Learning Neural Rendering</title>
+    <script type="module" src="../assets/js/tutorial-engine.js"></script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #0d0d0d;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 15px;
+            line-height: 1.7;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        a.back {
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        a.back:hover {
+            color: #aaa;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .narrative {
+            max-width: 600px;
+        }
+
+        .narrative h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: #5b9bd5;
+        }
+
+        .narrative p {
+            color: #bbb;
+            margin-bottom: 16px;
+        }
+
+        .callout {
+            border-left: 3px solid #f0a040;
+            background: #1a1200;
+            border-radius: 0 6px 6px 0;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+
+        .callout strong {
+            color: #ccc;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            background: #111;
+            padding: 0;
+        }
+
+        .editor-header {
+            padding: 8px 16px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #888;
+        }
+
+        .editor-content {
+            flex: 1;
+            display: block;
+            position: relative;
+        }
+
+        .viewport-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .canvas-wrapper {
+            width: 100%;
+            aspect-ratio: 1/1;
+            background: #000;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            display: block;
+            position: relative;
+        }
+
+        .controls {
+            width: 100%;
+            background: #1a1a1a;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        /* Top Navigation */
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .nav-header a {
+            color: #5b9bd5;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        .nav-header a:hover {
+            background: #2a2a2a;
+        }
+
+        .nav-header .back-link {
+            color: #aaa;
+            font-weight: bold;
+        }
+
+        .nav-header .back-link:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Top Navigation -->
+    <nav class="nav-header">
+        <a href="02-volume-integration.html" class="prev-link">← 02: Volume Integration</a>
+        <a href="../index.html" class="back-link">Return to Hub</a>
+        <a href="03a-gradient-descent.html" class="next-link">03a: Gradient Descent →</a>
+    </nav>
+    <div class="header">
+        <a class="back" href="../index.html">← Back to Modules</a>
+        <h1>3. Neural Radiance Fields</h1>
+        <div style="width:100px"></div>
+    </div>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h2>Neural Implicit Representations</h2>
+            <p>Traditional rendering uses discrete data structures—like a 2D grid of pixels for an image, or a 3D grid of voxels for a volume. A <strong>Neural Implicit Representation</strong> discards the grid entirely. Instead, a neural network (a Multi-Layer Perceptron, or MLP) acts as a mathematical function that you can query at <em>any</em> continuous point in space.</p>
+            <p>You pass in a continuous spatial coordinate <code>(x, y, z)</code>, and the network outputs the density and color at that exact microscopic point. This allows for mathematically infinite resolution without the massive memory overhead of 3D voxel grids.</p>
+
+            <div class="callout">
+                <strong>The Problem (Spectral Bias):</strong> Neural networks are fundamentally biased toward learning smooth, low-frequency functions. If you feed raw, linear coordinates directly into a neural network, it struggles to unroll them into sharp edges, resulting in blurry, blobby outputs.
+            </div>
+
+            <h3>The A/B Comparison</h3>
+            <p>To fix this spectral bias, we use <strong>Fourier Features (Positional Encoding)</strong>. Instead of passing the raw coordinate <code>x</code>, we preprocess it into a high-dimensional array of expanding sine and cosine waves: <code>[sin(x), cos(x), sin(2x), cos(2x), sin(4x)...]</code>.</p>
+            
+            <ul style="margin-left: 20px; color: #ddd; margin-bottom: 24px;">
+                <li><strong>Left (Raw Coordinate MLP):</strong> Receives only raw, linear mathematical coordinates. Notice how it produces a smooth, featureless, low-detail blob. It cannot physically learn complex shapes.</li>
+                <li><strong>Right (Fourier Features):</strong> By expanding the coordinates into frequency bands, the network immediately "sees" the potential for sharp, high-frequency patterns and complex geometry.</li>
+            </ul>
+
+            <h3>The Positional Encoding Slider</h3>
+            <p>The slider controls how many high-frequency sine/cosine bands are analytically fed into the network's input layer:</p>
+            <ul style="margin-left: 20px; color: #bbb; font-size: 15px; margin-bottom: 16px;">
+                <li><strong>0 Bands:</strong> Identical to the broken raw coordinate model. Smooth and blurry.</li>
+                <li><strong>Medium Bands (4–6):</strong> The sweet spot for most NeRFs. It captures sharp edges and distinct shapes without adding chaotic noise.</li>
+                <li><strong>High Bands (10+):</strong> Captures microscopic, razor-sharp details. However, pushing this too high introduces high-frequency "ringing" artifacts and severe overfitting, where the network memorizes noise instead of the actual geometry.</li>
+            </ul>
+        </div>
+
+        <div class="panel editor-container">
+            <slang-editor class="editor-content">
+                <div data-tab="Slang Shader" data-lang="cpp"><!--
+[shader.slang]
+
+float[] positionalEncoding(float3 p, int freqBands) {
+    float[] features;
+    for (int i=0; i < freqBands; i++) {
+        features.append(sin(p * exp2(i)));
+        features.append(cos(p * exp2(i)));
+    }
+    return features;
+}
+
+[Differentiable]
+float4 tinyNerfMLP(float3 pos, float3 dir, UniformWeights W) {
+    float[] x = positionalEncoding(pos, 6);
+    // ... multiple linear layers + relu
+    float sigma = relu(dot(layer2, W.sigma_weights));
+    float3 color = sigmoid(dot(layer3, W.color_weights));
+    return float4(color, sigma);
+}
+--></div>
+                <div data-tab="Compiled WGSL" data-lang="rust"><!--
+struct VertexOutput {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vsMain(@builtin(vertex_index) vertexID: u32) -> VertexOutput {
+    var out: VertexOutput;
+    let uv = vec2<f32>(f32((vertexID << 1u) & 2u), f32(vertexID & 2u));
+    out.pos = vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = out.pos.xy;
+    return out;
+}
+
+struct Uniforms {
+    bands: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+};
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@fragment
+fn fsMain(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Split screen: x < 0 is Raw Coordinates, x > 0 is Fourier Features
+    let isRaw = in.uv.x < 0.0;
+    
+    // Center coordinates for each half
+    let localUV = vec2<f32>(fract(in.uv.x * 2.0) - 0.5, in.uv.y) * 4.0;
+    
+    var feature = vec3<f32>(0.0);
+    let max_bands = i32(uniforms.bands);
+    
+    // Drawing a dividing line
+    if (abs(in.uv.x) < 0.01) { return vec4<f32>(0.3, 0.3, 0.3, 1.0); }
+
+    if (isRaw) {
+        // Raw Coordinate MLP: smooth, lacks detail, struggles with high frequency
+        feature = vec3<f32>(sin(localUV.x), cos(localUV.y), sin(localUV.x + localUV.y));
+    } else {
+        // Fourier Features: incorporates expanding positional encoding
+        feature = vec3<f32>(sin(localUV.x), cos(localUV.y), sin(localUV.x + localUV.y));
+        for(var i: i32 = 0; i < max_bands; i++) {
+            let freq = exp2(f32(i));
+            let val = sin(localUV * freq);
+            feature += vec3<f32>(val.x, val.y, val.x * val.y) * (1.0 / f32(i + 2)); 
+        }
+    }
+    
+    let color = abs(feature) * 0.4;
+    return vec4<f32>(color, 1.0);
+}
+--></div>
+                <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
+class ModuleRenderer {
+    constructor(device, context, wgslCode) {
+        this.device = device;
+        this.context = context;
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        this.uniformBuffer = device.createBuffer({
+            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        this.pipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: this.shaderModule, entryPoint: 'vsMain' },
+            fragment: {
+                module: this.shaderModule,
+                entryPoint: 'fsMain',
+                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
+            },
+            primitive: { topology: 'triangle-list' }
+        });
+        this.bindGroup = device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }]
+        });
+    }
+
+    render() {
+        const uData = new Float32Array(4);
+        const bandsSlider = document.getElementById('slider-bands');
+        uData[0] = bandsSlider ? parseFloat(bandsSlider.value) : 6.0;
+        this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
+
+        const commandEncoder = this.device.createCommandEncoder();
+        const pass = commandEncoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.context.getCurrentTexture().createView(),
+                loadOp: 'clear', storeOp: 'store',
+                clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1.0 }
+            }]
+        });
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(0, this.bindGroup);
+        pass.draw(3, 1, 0, 0);
+        pass.end();
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
+}
+window.ModuleRenderer = ModuleRenderer;
+--></div>
+            </slang-editor>
+        </div>
+
+        <div class="panel viewport-container">
+            <div class="canvas-wrapper">
+                <div style="position: absolute; top: 12px; left: 0; width: 100%; display: flex; justify-content: space-around; pointer-events: none; z-index: 10; font-size: 13px; font-weight: bold; text-shadow: 1px 1px 2px #000;">
+                    <span style="background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; border: 1px solid #333;">Raw Coordinate MLP</span>
+                    <span style="background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; border: 1px solid #333;">Fourier Features (Pos Encoding)</span>
+                </div>
+                <slang-viewport></slang-viewport>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Positional Encoding Bands</label>
+                    <input id="slider-bands" type="range" min="0" max="10" step="1" value="6">
+                </div>
+                <div class="control-group" style="margin-top: 16px;">
+                    <slang-playback-controls></slang-playback-controls>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const viewport = document.querySelector('slang-viewport');
+            const reqRender = () => { if (viewport && !viewport.playing && window.engineInstance) viewport.drawFrame(); };
+            document.querySelectorAll('input[type="range"]').forEach(slider => slider.addEventListener('input', reqRender));
+        });
+    </script>
+</body>
+
+</html>

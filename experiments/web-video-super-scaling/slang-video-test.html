@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slang Video Shading Test - Video Super Scaling</title>
+    <script type="module" src="../../learning-neural-rendering/assets/js/tutorial-engine.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #0d0d0d;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 15px;
+            line-height: 1.7;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .nav-header a {
+            color: #5b9bd5;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        .nav-header a:hover {
+            background: #2a2a2a;
+        }
+
+        .header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .narrative {
+            max-width: 450px;
+        }
+
+        .narrative h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: #5b9bd5;
+        }
+
+        .narrative p {
+            color: #bbb;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            background: #111;
+            padding: 0;
+        }
+
+        .viewport-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            max-width: 600px;
+        }
+
+        .canvas-wrapper {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            display: block;
+            position: relative;
+        }
+
+        .controls {
+            width: 100%;
+            background: #1a1a1a;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 8px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .mode-btn:hover {
+            background: #333;
+        }
+
+        .mode-btn.active {
+            background: #1e2d40;
+            border-color: #5b9bd5;
+            color: #5b9bd5;
+        }
+
+        .mode-group {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        #video-source {
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-cols: 1fr 1fr;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .stat-card {
+            background: #111;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #222;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: #555;
+        }
+
+        .stat-value {
+            font-family: 'SF Mono', monospace;
+            font-size: 12px;
+            color: #10b981;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="nav-header">
+        <a href="index.html" class="back-link">← Back</a>
+        <h1>Slang Video Processing</h1>
+        <div style="width:60px"></div>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h2>Tutorial Engine Integration</h2>
+            <p>This experiment adapts the <strong>Slang Tutorial Engine</strong> for real-time video processing. It utilizes <code>importExternalTexture</code> for zero-copy HLS stream ingestion.</p>
+            <p><strong>Workflow:</strong> Slang kernels are compiled to WGSL (currently using the pre-compiled hack) and executed via a WebGPU compute/fragment pipeline.</p>
+            <p><strong>Modes:</strong>
+                <br>• 0: Raw Passthrough
+                <br>• 1: Mono Crop (Top Eye)
+                <br>• 2: Side-by-Side Remapping
+            </p>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Frame Time</div>
+                    <div id="stat-frame" class="stat-value">0.00ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Stream Status</div>
+                    <div id="stat-video" class="stat-value">IDLE</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel editor-container">
+            <slang-editor class="editor-content">
+                <div data-tab="Slang Shader" data-lang="cpp"><!--
+[shader("vertex")]
+VertexOutput vsMain(uint vertexID : SV_VertexID) {
+    float2 pos[4] = {
+        float2(-1.0,  1.0), float2( 1.0,  1.0),
+        float2(-1.0, -1.0), float2( 1.0, -1.0)
+    };
+    float2 uv[4] = {
+        float2(0.0, 0.0), float2(1.0, 0.0),
+        float2(0.0, 1.0), float2(1.0, 1.0)
+    };
+    
+    VertexOutput out;
+    out.Position = float4(pos[vertexID], 0.0, 1.0);
+    out.fragUV = uv[vertexID];
+    return out;
+}
+
+[shader("fragment")]
+float4 fsMain(VertexOutput input) : SV_Target {
+    float2 uv = input.fragUV;
+    
+    if (uniforms.mode == 1) {
+        uv.y *= 0.5;
+    } else if (uniforms.mode == 2) {
+        if (uv.x < 0.5) {
+            uv = float2(uv.x * 2.0, uv.y * 0.5);
+        } else {
+            uv = float2((uv.x - 0.5) * 2.0, 0.5 + (uv.y * 0.5));
+        }
+    }
+    
+    return videoTexture.Sample(videoSampler, uv);
+}
+--></div>
+                <div data-tab="Compiled WGSL" data-lang="rust"><!--
+struct VertexOutput {
+    @builtin(position) Position : vec4<f32>,
+    @location(0) fragUV : vec2<f32>,
+}
+
+@vertex
+fn vsMain(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
+    var pos = array<vec2<f32>, 4>(
+        vec2<f32>(-1.0,  1.0), vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>( 1.0, -1.0)
+    );
+    var uv = array<vec2<f32>, 4>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 1.0)
+    );
+    var output : VertexOutput;
+    output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+    output.fragUV = uv[VertexIndex];
+    return output;
+}
+
+struct Params {
+    mode: u32,
+}
+
+@group(0) @binding(0) var videoSampler: sampler;
+@group(0) @binding(1) var videoTexture: texture_external;
+@group(0) @binding(2) var<uniform> uniforms: Params;
+
+@fragment
+fn fsMain(input : VertexOutput) -> @location(0) vec4<f32> {
+    var uv = input.fragUV;
+    
+    if (uniforms.mode == 1u) {
+        uv.y = uv.y * 0.5;
+    } else if (uniforms.mode == 2u) {
+        if (uv.x < 0.5) {
+            uv = vec2<f32>(uv.x * 2.0, uv.y * 0.5);
+        } else {
+            uv = vec2<f32>((uv.x - 0.5) * 2.0, 0.5 + (uv.y * 0.5));
+        }
+    }
+    
+    return textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
+}
+--></div>
+                <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
+class VideoProcessor {
+    constructor(device, context, wgslCode) {
+        this.device = device;
+        this.context = context;
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        this.uniformBuffer = device.createBuffer({
+            size: 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        this.pipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: this.shaderModule, entryPoint: 'vsMain' },
+            fragment: {
+                module: this.shaderModule,
+                entryPoint: 'fsMain',
+                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
+            },
+            primitive: { topology: 'triangle-strip' }
+        });
+    }
+
+    render() {
+        const video = document.getElementById('video-source');
+        if (video.readyState < 2) return;
+
+        const start = performance.now();
+        const mode = parseInt(document.getElementById('slider-mode').value);
+        this.device.queue.writeBuffer(this.uniformBuffer, 0, new Uint32Array([mode]));
+
+        const commandEncoder = this.device.createCommandEncoder();
+        const textureView = this.context.getCurrentTexture().createView();
+        const externalTexture = this.device.importExternalTexture({ source: video });
+
+        const bindGroup = this.device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: this.sampler },
+                { binding: 1, resource: externalTexture },
+                { binding: 2, resource: { buffer: this.uniformBuffer } }
+            ]
+        });
+
+        const pass = commandEncoder.beginRenderPass({
+            colorAttachments: [{
+                view: textureView,
+                loadOp: 'clear', storeOp: 'store',
+                clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1.0 }
+            }]
+        });
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.draw(4);
+        pass.end();
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        document.getElementById('stat-frame').innerText = (performance.now() - start).toFixed(2) + 'ms';
+        document.getElementById('stat-video').innerText = video.paused ? 'PAUSED' : 'PLAYING';
+    }
+}
+window.ModuleRenderer = VideoProcessor;
+--></div>
+            </slang-editor>
+        </div>
+
+        <div class="panel viewport-container">
+            <div class="canvas-wrapper">
+                <slang-viewport></slang-viewport>
+                <video id="video-source" crossorigin="anonymous" playsinline muted></video>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Render Mode</label>
+                    <div class="mode-group">
+                        <button class="mode-btn" onclick="setMode(0)">Raw</button>
+                        <button class="mode-btn" onclick="setMode(1)">Mono</button>
+                        <button class="mode-btn active" onclick="setMode(2)">SBS</button>
+                    </div>
+                    <input id="slider-mode" type="hidden" value="2">
+                </div>
+                <div class="control-group" style="margin-top: 16px;">
+                    <slang-playback-controls></slang-playback-controls>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('video-source');
+            
+            // Init HLS
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(ANCHOR_URL);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(e => console.warn("Autoplay blocked"));
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = ANCHOR_URL;
+                video.play();
+            }
+
+            const viewport = document.querySelector('slang-viewport');
+            const reqRender = () => { 
+                if (viewport && !viewport.playing && window.engineInstance) {
+                    viewport.drawFrame();
+                }
+            };
+            window.reqRender = reqRender;
+
+            window.setMode = (mode) => {
+                document.getElementById('slider-mode').value = mode;
+                document.querySelectorAll('.mode-btn').forEach((btn, idx) => {
+                    btn.classList.toggle('active', idx === mode);
+                });
+                reqRender();
+            };
+        });
+    </script>
+</body>
+
+</html>
