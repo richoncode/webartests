@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMA Background Prior - Video Super Scaling</title>
+    <script type="module" src="../../learning-neural-rendering/assets/js/tutorial-engine.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        .nav-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .header { padding: 16px 24px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between; }
+        h1 { font-size: 18px; font-weight: 700; }
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 24px; border-right: 1px solid #2a2a2a; position: relative; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .panel:last-child { border-right: none; }
+        .narrative { max-width: 400px; }
+        .narrative h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #f59e0b; }
+        .narrative p { color: #bbb; margin-bottom: 16px; font-size: 13px; }
+        .editor-container { display: flex; flex-direction: column; background: #111; padding: 0; }
+        .viewport-container { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; flex: 1.5; }
+        .canvas-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid #2a2a2a; border-radius: 8px; margin-bottom: 24px; display: block; position: relative; }
+        .controls { width: 100%; background: #1a1a1a; padding: 16px; border-radius: 8px; }
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+        .mode-btn { flex: 1; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .mode-btn.active { background: #1e2d40; border-color: #f59e0b; color: #f59e0b; }
+        .mode-group { display: flex; gap: 4px; width: 100%; }
+        .stats-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .stat-card { background: #111; padding: 8px; border-radius: 4px; border: 1px solid #222; }
+        .stat-label { font-size: 9px; text-transform: uppercase; color: #555; }
+        .stat-value { font-family: 'SF Mono', monospace; font-size: 12px; color: #f59e0b; }
+        .panel-ctrl { position: absolute; top: 12px; right: 12px; z-index: 100; background: #2a2a2a; border: 1px solid #444; color: #888; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+        .collapsed { flex: 0 0 48px !important; padding: 24px 8px !important; overflow: hidden !important; }
+        .collapsed > *:not(.panel-ctrl) { display: none !important; }
+        .workspace.video-maximized .narrative, .workspace.video-maximized .editor-container { display: none !important; }
+        .workspace.video-maximized .viewport-container { flex: 1 !important; max-width: none !important; }
+    </style>
+</head>
+
+<body>
+    <nav class="nav-header">
+        <a href="index.html" class="back-link">← Back</a>
+        <h1>Static Background Prior (EMA)</h1>
+        <div style="width:60px"></div>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative" id="panel-narrative">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
+            <h2>Background Modeling</h2>
+            <p>This POC verifies the <strong>Selective Processing</strong> architecture by maintaining a persistent background model.</p>
+            <p><strong>EMA Math:</strong><br><code>Bₜ = (1-α)Bₜ₋₁ + αCₜ</code><br>Where <code>α</code> is the learning rate. Low alpha creates a stable background; high alpha adapts quickly to changes.</p>
+            <p><strong>Foreground Mask:</strong> Computed as the difference between the current frame and the background model, thresholded to identify moving players.</p>
+        </div>
+
+        <div class="panel editor-container" id="panel-editor">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
+            <slang-editor class="editor-content">
+                <div data-tab="Background Slang" data-lang="cpp"><!--
+struct Params {
+    float alpha;      // Learning rate (0.01 - 0.1)
+    float threshold;  // Difference threshold
+    uint mode;        // 0: Result, 1: Background, 2: Mask
+    uint _pad;
+};
+
+ParameterBlock<Params> params;
+
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    float2 uv = float2(id.xy) / float2(3840, 1080); // Assume Left Eye
+    
+    float4 current = videoTexture.Sample(videoSampler, uv);
+    float4 prevBackground = backgroundTexture.Load(id.xy);
+    
+    // Exponential Moving Average
+    float4 newBackground = lerp(prevBackground, current, params.alpha);
+    
+    // Difference detection
+    float diff = distance(current.rgb, prevBackground.rgb);
+    float mask = diff > params.threshold ? 1.0 : 0.0;
+    
+    backgroundTexture.Store(id.xy, newBackground);
+    
+    float4 output;
+    if (params.mode == 0) output = current;
+    else if (params.mode == 1) output = newBackground;
+    else output = float4(mask, mask, mask, 1.0);
+    
+    outputTexture.Store(id.xy, output);
+}
+--></div>
+                <div data-tab="Compiled WGSL" data-lang="rust"><!--
+struct Params {
+    alpha: f32,
+    threshold: f32,
+    mode: u32,
+}
+
+@group(0) @binding(0) var videoSampler: sampler;
+@group(0) @binding(1) var videoTexture: texture_external;
+@group(0) @binding(2) var backgroundTexture: texture_storage_2d<rgba8unorm, read_write>;
+@group(0) @binding(3) var outputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var<uniform> uniforms: Params;
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(dispatch_thread_id) id: vec3<u32>) {
+    let size = textureDimensions(outputTexture);
+    if (id.x >= size.x || id.y >= size.y) { return; }
+
+    let uv = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
+    let current = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
+    let prevBG = textureLoad(backgroundTexture, id.xy);
+    
+    let newBG = mix(prevBG, current, uniforms.alpha);
+    textureStore(backgroundTexture, id.xy, newBG);
+    
+    let diff = distance(current.rgb, prevBG.rgb);
+    let mask = select(0.0, 1.0, diff > uniforms.threshold);
+    
+    var output: vec4<f32>;
+    if (uniforms.mode == 0u) {
+        output = current;
+    } else if (uniforms.mode == 1u) {
+        output = newBG;
+    } else {
+        output = vec4<f32>(mask, mask, mask, 1.0);
+    }
+    
+    textureStore(outputTexture, id.xy, output);
+}
+--></div>
+                <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
+class BackgroundProcessor {
+    constructor(device, context, wgslCode) {
+        this.device = device;
+        this.context = context;
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        
+        // Storage Textures (4K per eye = 3840x1080)
+        this.bgTexture = device.createTexture({
+            size: [3840, 1080], format: 'rgba8unorm',
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+        });
+        this.outTexture = device.createTexture({
+            size: [3840, 1080], format: 'rgba8unorm',
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+        });
+
+        this.uniformBuffer = device.createBuffer({
+            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        this.pipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: this.shaderModule, entryPoint: 'main' }
+        });
+
+        // Full-screen Quad for Display
+        this.renderShader = device.createShaderModule({ code: `
+            @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+                var pos = array<vec2f, 4>(vec2f(-1,1), vec2f(1,1), vec2f(-1,-1), vec2f(1,-1));
+                return vec4f(pos[i], 0, 1);
+            }
+            @group(0) @binding(0) var t: texture_2d<f32>;
+            @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
+                return textureLoad(t, vec2u(p.xy), 0);
+            }
+        `});
+        this.renderPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: this.renderShader, entryPoint: 'vs' },
+            fragment: { module: this.renderShader, entryPoint: 'fs', targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }] },
+            primitive: { topology: 'triangle-strip' }
+        });
+    }
+
+    render() {
+        const video = document.getElementById('video-source');
+        if (video.readyState < 2) return;
+
+        const alpha = parseFloat(document.getElementById('slider-alpha').value);
+        const threshold = parseFloat(document.getElementById('slider-threshold').value);
+        const mode = parseInt(document.getElementById('mode-val').value);
+        
+        const uData = new ArrayBuffer(16);
+        const dv = new DataView(uData);
+        dv.setFloat32(0, alpha, true);
+        dv.setFloat32(4, threshold, true);
+        dv.setUint32(8, mode, true);
+        this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
+
+        const commandEncoder = this.device.createCommandEncoder();
+        const externalTexture = this.device.importExternalTexture({ source: video });
+
+        const computePass = commandEncoder.beginComputePass();
+        computePass.setPipeline(this.pipeline);
+        computePass.setBindGroup(0, this.device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: this.sampler },
+                { binding: 1, resource: externalTexture },
+                { binding: 2, resource: this.bgTexture.createView() },
+                { binding: 3, resource: this.outTexture.createView() },
+                { binding: 4, resource: { buffer: this.uniformBuffer } }
+            ]
+        }));
+        computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(1080/16));
+        computePass.end();
+
+        const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.context.getCurrentTexture().createView(),
+                loadOp: 'clear', storeOp: 'store', clearValue: {r:0,g:0,b:0,a:1}
+            }]
+        });
+        renderPass.setPipeline(this.renderPipeline);
+        renderPass.setBindGroup(0, this.device.createBindGroup({
+            layout: this.renderPipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: this.outTexture.createView() }]
+        }));
+        renderPass.draw(4);
+        renderPass.end();
+
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
+}
+window.ModuleRenderer = BackgroundProcessor;
+--></div>
+            </slang-editor>
+        </div>
+
+        <div class="panel viewport-container" id="panel-viewport">
+            <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
+            <div class="canvas-wrapper">
+                <slang-viewport></slang-viewport>
+                <video id="video-source" crossorigin="anonymous" playsinline muted></video>
+            </div>
+            <div class="controls">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Process Time</div>
+                        <div id="stat-frame" class="stat-value">0.00ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">State</div>
+                        <div id="stat-video" class="stat-value">IDLE</div>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>View Mode</label>
+                    <div class="mode-group">
+                        <button class="mode-btn active" onclick="setBGMode(0)">Live</button>
+                        <button class="mode-btn" onclick="setBGMode(1)">Background</button>
+                        <button class="mode-btn" onclick="setBGMode(2)">Mask</button>
+                    </div>
+                    <input id="mode-val" type="hidden" value="0">
+                </div>
+                <div class="control-group">
+                    <label>EMA Alpha (Persistence): <span id="alpha-val">0.02</span></label>
+                    <input id="slider-alpha" type="range" min="0.001" max="0.2" step="0.001" value="0.02" oninput="document.getElementById('alpha-val').innerText=this.value">
+                </div>
+                <div class="control-group">
+                    <label>Motion Threshold: <span id="thresh-val">0.10</span></label>
+                    <input id="slider-threshold" type="range" min="0.01" max="0.5" step="0.01" value="0.10" oninput="document.getElementById('thresh-val').innerText=this.value">
+                </div>
+                <div class="control-group" style="margin-top: 16px;">
+                    <slang-playback-controls></slang-playback-controls>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
+        
+        window.toggleCollapse = (id) => {
+            const panel = document.getElementById(id);
+            panel.classList.toggle('collapsed');
+            const btn = panel.querySelector('.panel-ctrl');
+            btn.innerText = panel.classList.contains('collapsed') ? '»' : '«';
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.toggleVideoMaximize = () => {
+            document.querySelector('.workspace').classList.toggle('video-maximized');
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.setBGMode = (m) => {
+            document.getElementById('mode-val').value = m;
+            document.querySelectorAll('.mode-btn').forEach((b, i) => b.classList.toggle('active', i === m));
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('video-source');
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(ANCHOR_URL);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(e => {}));
+            }
+        });
+    </script>
+</body>
+</html>
