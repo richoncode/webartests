@@ -92,6 +92,21 @@
         }
         .popover-title { font-weight: bold; margin-bottom: 4px; font-size: 13px; }
         .popover-color-name { align-self: flex-end; font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; color: #fff; }
+        .math-popover .popover-color-name { font-size: 10px; font-family: 'SF Mono', monospace; font-weight: bold; color: #888; text-transform: uppercase; margin-top: 4px; pointer-events: none; }
+
+        /* Learning Rate Slider Styling */
+        .lr-container { position: relative; }
+        .lr-slider-popover { 
+            position: absolute; top: 100%; left: 0; background: #1a1a1a; border: 1px solid #333; 
+            padding: 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); 
+            z-index: 200; visibility: hidden; opacity: 0; transition: 0.2s; min-width: 140px; margin-top: 8px;
+        }
+        .lr-container:hover .lr-slider-popover { visibility: visible; opacity: 1.0; margin-top: 4px; }
+        .lr-slider-popover::after {
+            content: ''; position: absolute; bottom: 100%; left: 24px; border: 6px solid transparent; border-bottom-color: #333;
+        }
+        
+        button#btn-play { border-radius: 50% !important; padding: 0 !important; display: flex; align-items: center; justify-content: center; line-height: 1; }
     </style>
 </head>
 <body>
@@ -217,9 +232,16 @@
                                 <span style="font-size:13px; color:#fff; font-weight: bold; text-transform: uppercase; width: 60px;">(Cycle):</span>
                                 <span id="val-epoch" style="background:#333; padding:4px 12px; border-radius:12px; color:#fff; font-size: 13px; font-weight: bold; font-family: monospace; white-space: nowrap;">EPOCH 0</span>
                             </div>
-                            <div style="display:flex; align-items: center; gap: 12px;" class="math-term" data-term="lr">
-                                <span style="font-size:13px; color:#fff; font-weight: bold; text-transform: uppercase; width: 60px;">(α):</span>
-                                <span style="font-family:monospace; background:#222; padding:4px 12px; border-radius:6px; font-size: 13px; font-weight: bold; color: #14b8a6;">0.01</span>
+                            <div style="flex: 1; min-width: 130px; position:relative;" class="lr-container">
+                                <div class="badge" style="margin-bottom: 6px;">Learning Rate (α)</div>
+                                <div style="display:flex; align-items: center; gap: 12px; cursor: pointer;" class="math-term" data-term="lr">
+                                    <span id="val-lr-display" style="font-family:monospace; background:#222; padding:4px 12px; border-radius:6px; font-size: 13px; font-weight: bold; color: #14b8a6; border: 1px solid #333;">0.01</span>
+                                </div>
+                                <!-- Hover Slider Popover -->
+                                <div class="lr-slider-popover">
+                                    <div style="font-size: 10px; color: #888; margin-bottom: 8px; text-transform: uppercase;">Adjust Rate</div>
+                                    <input type="range" id="lr-slider" min="0.001" max="0.1" step="0.001" value="0.01" style="width: 100%; accent-color: #14b8a6; cursor: ew-resize;">
+                                </div>
                             </div>
                         </div>
                         
@@ -282,10 +304,23 @@
 
         const x = 2.0;
         const target = 10.0;
-        const lr = 0.01;
+        let lr = 0.01;
         const wHistory = [0.5];
         const gHistory = []; // Calculated Gradients
         const lossHistory = [];
+
+        function getPrec(v, nSig = 2) {
+            if (!v || v <= 0 || isNaN(v)) return 2;
+            const pos = Math.floor(Math.log10(v));
+            // e.g. v=0.00123 -> log10 is -2.9 -> pos=-3 -> prec = 3 + (2-1) = 4 -> toFixed(4) = 0.0012
+            return Math.max(2, -pos + (nSig - 1));
+        }
+
+        function fmt(val, prec = 2) {
+            if (val === undefined || val === null || isNaN(val)) return "?";
+            if (val === 0) return (0).toFixed(prec);
+            return val.toFixed(prec);
+        }
 
         const btnNext = document.getElementById('btn-next');
         const btnPrev = document.getElementById('btn-prev');
@@ -350,16 +385,16 @@
             });
 
             // 2. Data
-            document.getElementById('val-w').innerText = w.toFixed(2);
+            document.getElementById('val-w').innerText = fmt(w, p);
             
             const valY = document.getElementById('val-y');
             const valLoss = document.getElementById('val-loss');
             
             if (state >= 1) {
-                valY.innerText = y_pred.toFixed(2);
+                valY.innerText = fmt(y_pred, p);
                 valY.style.opacity = "1.0";
             } else if (epoch > 0) {
-                valY.innerText = (x * wHistory[epoch-1]).toFixed(2);
+                valY.innerText = fmt(x * wHistory[epoch-1], p);
                 valY.style.opacity = "0.3";
             } else {
                 valY.innerText = "?";
@@ -367,10 +402,10 @@
             }
 
             if (state >= 2) {
-                valLoss.innerText = loss.toFixed(4);
+                valLoss.innerText = fmt(loss, p);
                 valLoss.style.opacity = "1.0";
             } else if (epoch > 0) {
-                valLoss.innerText = Math.pow((x * wHistory[epoch-1]) - target, 2).toFixed(4);
+                valLoss.innerText = fmt(Math.pow((x * wHistory[epoch-1]) - target, 2), p);
                 valLoss.style.opacity = "0.3";
             } else {
                 valLoss.innerText = "?";
@@ -385,14 +420,14 @@
                 const prev_epoch = (state === 0) ? epoch - 1 : epoch;
                 const prev_w = wHistory[prev_epoch];
                 const prev_grad = 2.0 * ((x * prev_w) - target) * x;
-                elBwdMath.innerText = prev_grad.toFixed(2);
+                elBwdMath.innerText = fmt(prev_grad, p);
                 elBwdMath.style.opacity = "1.0";
                 if (elBwdLabel) elBwdLabel.style.opacity = "1.0";
             } else if (state === 1 && epoch > 0) {
                 // Persistent dimmed phase (showing last epoch's gradient)
                 const last_w = wHistory[epoch-1];
                 const last_grad = 2.0 * ((x * last_w) - target) * x;
-                elBwdMath.innerText = last_grad.toFixed(2);
+                elBwdMath.innerText = fmt(last_grad, p);
                 elBwdMath.style.opacity = "0.3";
                 if (elBwdLabel) elBwdLabel.style.opacity = "0.3";
             } else {
@@ -412,8 +447,8 @@
                 const s_state = i % 4;
                 const s_w = wHistory[s_epoch];
                 const s_y_pred = x * s_w;
-                const s_diff = (s_y_pred - target).toFixed(2);
-                const s_loss = (s_y_pred - target) * (s_y_pred - target);
+                const s_loss = Math.pow(s_y_pred - target, 2);
+                const sp = getPrec(s_loss, 2); // Step-specific precision
 
                 let logHtml = "";
                 let title = "";
@@ -422,25 +457,27 @@
                 if (s_state === 1) {
                     title = "Forward Predict";
                     stepNum = "Step 1";
-                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#3b82f6; font-weight:bold; width:65px; flex-shrink:0;">Predict:</span> <code class="log-code"><span class="math-term" data-term="y-pred" style="color:#3b82f6;">y'</span> = <span class="math-term" data-term="x" style="color:#a855f7;">${x.toFixed(1)}</span> * <span class="math-term" data-term="w" style="color:#f0a040;">${s_w.toFixed(2)}</span> = <strong class="math-term" data-term="y-pred" style="color:#3b82f6;">${s_y_pred.toFixed(2)}</strong></code></div>`;
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#3b82f6; font-weight:bold; width:65px; flex-shrink:0;">Predict:</span> <code class="log-code"><span class="math-term" data-term="y-pred" style="color:#3b82f6;">y'</span> = <span class="math-term" data-term="x" style="color:#a855f7;">${fmt(x, 1)}</span> * <span class="math-term" data-term="w" style="color:#f0a040;">${fmt(s_w, sp)}</span> = <strong class="math-term" data-term="y-pred" style="color:#3b82f6;">${fmt(s_y_pred, sp)}</strong></code></div>`;
                 } else if (s_state === 2) {
                     title = "Loss Computation";
                     stepNum = "Step 2";
-                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#e74c3c; font-weight:bold; width:65px; flex-shrink:0;">Error:</span> <code class="log-code"><span class="math-term" data-term="loss" style="color:#e74c3c;">MSE</span> = (<span class="math-term" data-term="y-pred" style="color:#3b82f6;">${s_y_pred.toFixed(2)}</span> - <span class="math-term" data-term="y-target" style="color:#10b981;">${target.toFixed(1)}</span>)<span class="math-term" data-term="power" style="color:#22d3ee;">²</span> = <strong class="math-term" data-term="loss" style="color:#e74c3c;">${s_loss.toFixed(4)}</strong></code></div>`;
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#e74c3c; font-weight:bold; width:65px; flex-shrink:0;">Loss:</span> <code class="log-code"><span class="math-term" data-term="loss" style="color:#e74c3c;">MSE</span> = (<span class="math-term" data-term="y-pred" style="color:#3b82f6;">${fmt(s_y_pred, sp)}</span> - <span class="math-term" data-term="y-target" style="color:#10b981;">${fmt(target, 1)}</span>)<span class="math-term" data-term="power" style="color:#22d3ee;">²</span> = <strong class="math-term" data-term="loss" style="color:#e74c3c;">${fmt(s_loss, sp)}</strong></code></div>`;
                 } else if (s_state === 3) {
-                    const s_diff = (s_y_pred - target).toFixed(2);
-                    const s_grad = 2.0 * (s_y_pred - target) * x;
+                    const s_diff = s_y_pred - target;
+                    const s_grad = 2.0 * s_diff * x;
                     title = "Compute Gradient";
                     stepNum = "Step 3";
-                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f472b6; font-weight:bold; width:65px; flex-shrink:0;">Gradient:</span> <code class="log-code"><span class="math-term" data-term="grad" style="color:#f472b6;">dL/dw</span> = <span class="math-term" data-term="power" style="color:#22d3ee;">2</span>*(<span class="math-term" data-term="diff" style="color:#fbbf24;">${s_diff}</span>)*<span class="math-term" data-term="x" style="color:#a855f7;">${x.toFixed(1)}</span> = <strong class="math-term" data-term="grad" style="color:#f472b6;">${s_grad.toFixed(2)}</strong></code></div>`;
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f472b6; font-weight:bold; width:65px; flex-shrink:0;">Gradient:</span> <code class="log-code"><span class="math-term" data-term="grad" style="color:#f472b6;">dL/dw</span> = <span class="math-term" data-term="power" style="color:#22d3ee;">2</span>*(<span class="math-term" data-term="diff" style="color:#fbbf24;">${fmt(s_diff, sp)}</span>)*<span class="math-term" data-term="x" style="color:#a855f7;">${fmt(x, 1)}</span> = <strong class="math-term" data-term="grad" style="color:#f472b6;">${fmt(s_grad, sp)}</strong></code></div>`;
                 } else if (s_state === 0 && i > 0) {
                     const prev_epoch = s_epoch - 1;
                     const prev_w = wHistory[prev_epoch];
                     const prev_grad = 2.0 * ((x * prev_w) - target) * x;
                     const next_w = wHistory[s_epoch];
+                    const prev_loss = Math.pow((x * prev_w) - target, 2);
+                    const psp = getPrec(prev_loss, 2); // Precision based on previous loss
                     title = "Update Weight";
                     stepNum = "Step 4";
-                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f0a040; font-weight:bold; width:65px; flex-shrink:0;">Update:</span> <code class="log-code"><span class="math-term" data-term="w" style="color:#f0a040;">w</span> = <span class="math-term" data-term="w" style="color:#f0a040;">${prev_w.toFixed(2)}</span> - (<span class="math-term" data-term="lr" style="color:#14b8a6;">0.01</span> * <span class="math-term" data-term="grad" style="color:#f472b6;">${prev_grad.toFixed(2)}</span>) = <strong class="math-term" data-term="w" style="color:#f0a040;">${next_w.toFixed(2)}</strong></code></div>`;
+                    logHtml = `<div style="display:flex; align-items:center; gap:8px;"><span style="color:#f0a040; font-weight:bold; width:65px; flex-shrink:0;">Update:</span> <code class="log-code"><span class="math-term" data-term="w" style="color:#f0a040;">w</span> = <span class="math-term" data-term="w" style="color:#f0a040;">${fmt(prev_w, psp)}</span> - (<span class="math-term" data-term="lr" style="color:#14b8a6;">${fmt(lr, 3)}</span> * <span class="math-term" data-term="grad" style="color:#f472b6;">${fmt(prev_grad, psp)}</span>) = <strong class="math-term" data-term="w" style="color:#f0a040;">${fmt(next_w, psp)}</strong></code></div>`;
                 }
 
                 if (logHtml) {
@@ -645,6 +682,23 @@
             });
             popoverEl.style.display = 'none';
             render(false); // Restore original colors
+        });
+
+        // --- Learning Rate Slider Listener ---
+        const lrSlider = document.getElementById('lr-slider');
+        const lrDisplay = document.getElementById('val-lr-display');
+        lrSlider.addEventListener('input', (e) => {
+            lr = parseFloat(e.target.value);
+            lrDisplay.innerText = fmt(lr, 3);
+            
+            // Recalculate histories from current point if lr is changed
+            // We'll keep wHistory up to epoch 0, and clear the rest to avoid weird logic
+            // For simplicity in this demo: if lr changes, we force a recalculation of wHistory from the current point
+            const currentEpoch = Math.floor(abs_step / 4);
+            wHistory.length = currentEpoch + 1; // Preserve w up to current epoch
+            gHistory.length = currentEpoch;
+            lossHistory.length = currentEpoch;
+            render(false);
         });
 
         render();

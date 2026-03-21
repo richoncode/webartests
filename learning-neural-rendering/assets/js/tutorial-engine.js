@@ -230,10 +230,8 @@ class SlangViewport extends HTMLElement {
         requestAnimationFrame(() => this.renderLoop());
     }
 
-    drawFrame() {
-        if (!this.device || !this.context) return;
-
-        // Auto-resize canvas to match display size and DPI
+    updateCanvasSize() {
+        if (!this.canvas) return;
         const dpr = window.devicePixelRatio || 1;
         const width = Math.floor(this.canvas.clientWidth * dpr);
         const height = Math.floor(this.canvas.clientHeight * dpr);
@@ -242,6 +240,11 @@ class SlangViewport extends HTMLElement {
             this.canvas.width = width;
             this.canvas.height = height;
         }
+    }
+
+    drawFrame() {
+        if (!this.device || !this.context) return;
+        this.updateCanvasSize();
 
         // Dummy render pass to simulate changing activity
         // In reality, this dispatches compute / fragment pipelines
@@ -335,7 +338,7 @@ class SlangPlaybackControls extends HTMLElement {
 
         viewport.device.onuncapturederror = (event) => {
             console.error(event.error);
-            window.showErrorModal("WebGPU Pipeline Error:\\n" + event.error.message);
+            if (window.showErrorModal) window.showErrorModal("WebGPU Pipeline Error:\n" + event.error.message);
         };
 
         let wgslCode = "", jsCode = "";
@@ -354,150 +357,127 @@ class SlangPlaybackControls extends HTMLElement {
                 if (window.ModuleRenderer) {
                     window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
                     viewport.drawFrame = () => {
+                        viewport.updateCanvasSize();
                         if (window.engineInstance) window.engineInstance.render();
                     };
                     this.compiled = true;
                     viewport.drawFrame();
-                    if (this.wantsPlay) viewport.play();
                 }
-            }, 50);
-            return false;
+            }, 100);
+            return true;
         } catch (err) {
-            window.showErrorModal("JS Evaluation Error:\\n" + err.message);
+            if (window.showErrorModal) window.showErrorModal("JS Evaluation Error:\n" + err.message);
+            console.error(err);
             return false;
         }
     }
 
     handleAnimate() {
+        if (!this.compileIfNeeded()) return;
         const viewport = this.getViewport();
-        if (!this.compiled) {
-            this.wantsPlay = true;
-            this.compileIfNeeded();
-            this.btnAnimate.innerText = 'Pause';
-            this.btnAnimate.style.background = '#2a2a2a';
-            this.btnAnimate.style.color = '#fff';
-            this.btnAnimate.style.borderColor = '#444';
+        if (!viewport) return;
+
+        if (viewport.playing) {
+            viewport.pause();
+            this.btnAnimate.innerText = 'Animate';
+            this.btnAnimate.style.background = '#1e2d40';
         } else {
-            if (viewport.playing) {
-                viewport.pause();
-                this.btnAnimate.innerText = 'Animate';
-                this.btnAnimate.style.background = '#1e2d40';
-                this.btnAnimate.style.color = '#5b9bd5';
-                this.btnAnimate.style.borderColor = '#5b9bd5';
-            } else {
-                viewport.play();
-                this.btnAnimate.innerText = 'Pause';
-                this.btnAnimate.style.background = '#2a2a2a';
-                this.btnAnimate.style.color = '#fff';
-                this.btnAnimate.style.borderColor = '#444';
-            }
+            viewport.play();
+            this.btnAnimate.innerText = 'Pause';
+            this.btnAnimate.style.background = '#401e1e';
+            this.btnAnimate.style.borderColor = '#d55b5b';
+            this.btnAnimate.style.color = '#d55b5b';
         }
     }
 
     handleStep() {
+        if (!this.compileIfNeeded()) return;
         const viewport = this.getViewport();
-        if (viewport && viewport.playing) this.handleAnimate(); 
-        
-        if (!this.compiled) {
-            this.compileIfNeeded();
-        } else {
-            if (viewport) viewport.drawFrame();
+        if (viewport) {
+            viewport.pause();
+            this.btnAnimate.innerText = 'Animate';
+            this.btnAnimate.style.background = '#1e2d40';
+            viewport.drawFrame();
         }
     }
 
     handleRestart() {
         const viewport = this.getViewport();
         const editor = this.getEditor();
-        if (!viewport || !editor || !window.ModuleRenderer) return;
-        
-        let wgslCode = "";
-        const tabs = editor.tabs || [];
-        tabs.forEach(t => {
-            if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
-        });
-        
-        window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
-        viewport.drawFrame();
-        
-        if (viewport.playing) this.handleAnimate();
+        if (viewport) {
+            viewport.pause();
+            this.btnAnimate.innerText = 'Animate';
+            this.btnAnimate.style.background = '#1e2d40';
+            this.compiled = false;
+            this.compileIfNeeded();
+        }
     }
 }
+
 customElements.define('slang-playback-controls', SlangPlaybackControls);
 
-window.showErrorModal = function(message) {
-    document.querySelectorAll('slang-viewport').forEach(v => v.pause());
-
-    if (document.getElementById('error-modal-overlay')) {
-        return;
-    }
+window.showErrorModal = (msg) => {
     const overlay = document.createElement('div');
-    overlay.id = 'error-modal-overlay';
     overlay.style.position = 'fixed';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '100vw';
-    overlay.style.height = '100vh';
-    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-    overlay.style.display = 'flex';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.zIndex = '9999';
+    overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
+    overlay.style.background = 'rgba(0,0,0,0.85)';
+    overlay.style.zIndex = '10000';
+    overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
+    overlay.style.padding = '40px';
 
     const modal = document.createElement('div');
     modal.style.background = '#1a1a1a';
-    modal.style.border = '1px solid #e74c3c';
-    modal.style.borderRadius = '8px';
+    modal.style.border = '1px solid #f87171';
+    modal.style.borderRadius = '12px';
     modal.style.padding = '24px';
-    modal.style.maxWidth = '600px';
-    modal.style.width = '90%';
-    modal.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
-    modal.style.color = '#fff';
-    modal.style.fontFamily = "system-ui, sans-serif";
+    modal.style.maxWidth = '800px';
+    modal.style.width = '100%';
+    modal.style.maxHeight = '80vh';
+    modal.style.overflowY = 'auto';
+    modal.style.boxShadow = '0 20px 50px rgba(0,0,0,0.5)';
 
-    const title = document.createElement('h3');
-    title.innerText = 'Error';
-    title.style.color = '#e74c3c';
+    const title = document.createElement('h2');
+    title.innerText = 'Pipeline Compilation Error';
+    title.style.color = '#f87171';
     title.style.marginTop = '0';
+    title.style.marginBottom = '16px';
+    title.style.fontSize = '18px';
 
     const pre = document.createElement('pre');
-    pre.innerText = message;
-    pre.style.background = '#0d0d0d';
-    pre.style.padding = '12px';
-    pre.style.borderRadius = '4px';
-    pre.style.overflowX = 'auto';
-    pre.style.fontSize = '13px';
+    pre.innerText = msg;
+    pre.style.background = '#000';
+    pre.style.padding = '16px';
+    pre.style.borderRadius = '8px';
+    pre.style.color = '#eee';
+    pre.style.fontSize = '12px';
     pre.style.whiteSpace = 'pre-wrap';
-    pre.style.wordBreak = 'break-all';
+    pre.style.fontFamily = 'monospace';
 
     const buttons = document.createElement('div');
+    buttons.style.marginTop = '24px';
     buttons.style.display = 'flex';
     buttons.style.justifyContent = 'flex-end';
     buttons.style.gap = '12px';
-    buttons.style.marginTop = '16px';
 
     const copyBtn = document.createElement('button');
-    copyBtn.innerText = 'Copy';
+    copyBtn.innerText = 'Copy Error';
     copyBtn.style.padding = '8px 16px';
-    copyBtn.style.background = '#2a2a2a';
+    copyBtn.style.borderRadius = '6px';
     copyBtn.style.border = '1px solid #444';
+    copyBtn.style.background = '#2a2a2a';
     copyBtn.style.color = '#fff';
-    copyBtn.style.borderRadius = '4px';
     copyBtn.style.cursor = 'pointer';
-    copyBtn.onclick = () => {
-        navigator.clipboard.writeText(message);
-        copyBtn.innerText = 'Copied!';
-        setTimeout(() => copyBtn.innerText = 'Copy', 2000);
-    };
+    copyBtn.onclick = () => navigator.clipboard.writeText(msg);
 
     const closeBtn = document.createElement('button');
-    closeBtn.innerText = 'Close';
+    closeBtn.innerText = 'Dismiss';
     closeBtn.style.padding = '8px 16px';
-    closeBtn.style.background = '#e74c3c';
+    closeBtn.style.borderRadius = '6px';
     closeBtn.style.border = 'none';
+    closeBtn.style.background = '#f87171';
     closeBtn.style.color = '#fff';
-    closeBtn.style.borderRadius = '4px';
     closeBtn.style.cursor = 'pointer';
-    closeBtn.onclick = () => overlay.remove();
+    closeBtn.onclick = () => document.body.removeChild(overlay);
 
     buttons.appendChild(copyBtn);
     buttons.appendChild(closeBtn);
