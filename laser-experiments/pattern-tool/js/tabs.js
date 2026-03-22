@@ -5,6 +5,7 @@ import { XCSIR } from './xcs-ir.js';
 import { XcsTab } from './components/xcs-tab.js';
 import { MandalaTab } from './components/mandala-tab.js';
 import { GeometryTab } from './components/geometry-tab.js';
+import { FractalTab } from './components/fractal-tab.js';
 import { GradientTab } from './components/gradient-tab.js';
 import { BitmapLineTab } from './components/bitmap-line-tab.js';
 import { TestTab } from './components/test-tab.js';
@@ -12,7 +13,7 @@ import { VoronoiTab } from './components/voronoi-tab.js';
 import { HilbertTab } from './components/hilbert-tab.js';
 import { PaletteGridTab } from './components/palette-grid-tab.js';
 
-export { XCSIR, XcsTab, MandalaTab, GeometryTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab };
+export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB MANAGER
@@ -45,6 +46,17 @@ export const TabMgr = {
     const finalLabel = label || getTimestampedName('Geometry');
     App.tabs.push({ id, type:'geometry', label: finalLabel });
     const pane = GeometryTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
+  newFractal(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('Fractal');
+    App.tabs.push({ id, type:'fractal', label: finalLabel });
+    const pane = FractalTab.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
     Persistence.save();

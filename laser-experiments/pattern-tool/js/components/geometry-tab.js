@@ -45,18 +45,17 @@ export const GeometryTab = {
       rangeStartIdx: 0,
       rangeEndIdx: 10,
       folRings: 3,
-      folRadius: 5,
       roseK: 4,
-      roseSamples: 200,
+      roseSamples: 400,
       spiralTurns: 5,
-      spiralSpacing: 2,
       concCount: 5,
       concSides: 6,
       concRotation: 5,
       starSymmetry: 8,
       starV: 0.5,
       penroseSteps: 3,
-      girihSymmetry: 10
+      girihSymmetry: 10,
+      girihComplexity: 1.0
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
     const state = { rawData: null, shapes: [] };
@@ -86,30 +85,22 @@ export const GeometryTab = {
 
     const addLine = (x1, y1, x2, y2, color, entry) => {
       usedColors.add(color);
-      const params = entry ? { 
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
-
+      const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
       XCSExporter.addPath(project, {
         x: CX + (x1+x2)/2, y: CY + (y1+y2)/2, width: Math.max(0.1, Math.abs(x2-x1)), height: Math.max(0.1, Math.abs(y2-y1)),
         dPath: `M ${CX+x1} ${CY+y1} L ${CX+x2} ${CY+y2}`,
         layerColor: color, laserSource, params,
-        extraDisplayData: { paletteName: palette.name, colorName: entry?.label }
+        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
       });
     };
 
     const addCircle = (lx, ly, r, color, entry) => {
       usedColors.add(color);
-      const params = entry ? { 
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
-
+      const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
       XCSExporter.addCircle(project, {
         x: CX + lx, y: CY + ly, width: r*2, height: r*2,
         layerColor: color, laserSource, params,
-        extraDisplayData: { paletteName: palette.name, colorName: entry?.label }
+        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
       });
     };
 
@@ -120,20 +111,30 @@ export const GeometryTab = {
       return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
     };
 
-    if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube') {
-      const r = cfg.folRadius;
+    if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
       const rings = cfg.folRings;
+      const r = (cfg.totalSize / 2) / (rings * 1.5 || 1);
       const centers = [];
       const addGrid = (q, r_grid) => {
         const x = r * 1.5 * q;
         const y = r * Math.sqrt(3) * (r_grid + q/2);
-        centers.push({x, y});
+        const dist = Math.sqrt(x*x + y*y);
+        const t = Math.min(1, dist / (cfg.totalSize / 2 || 1));
+        const entry = getColor(t);
+
         if (cfg.mode === 'flower-of-life') {
-          const dist = Math.sqrt(x*x + y*y);
-          const maxDist = r * 1.5 * rings;
-          const entry = getColor(Math.min(1, dist / (maxDist || 1)));
           addCircle(x, y, r, entry.rgb, entry);
+        } else if (cfg.mode === 'honeycomb') {
+          let px = null, py = null;
+          for (let s = 0; s <= 6; s++) {
+            const ang = (s / 6) * Math.PI * 2;
+            const nx = x + r * Math.cos(ang);
+            const ny = y + r * Math.sin(ang);
+            if (px !== null) addLine(px, py, nx, ny, entry.rgb, entry);
+            px = nx; py = ny;
+          }
         }
+        centers.push({x, y});
       };
       for (let q = -rings; q <= rings; q++) {
         for (let r_grid = Math.max(-rings, -q-rings); r_grid <= Math.min(rings, -q+rings); r_grid++) {
@@ -141,8 +142,9 @@ export const GeometryTab = {
         }
       }
       if (cfg.mode === 'metatrons-cube') {
-        const entry = getColor(0.5);
         for (let i = 0; i < centers.length; i++) {
+          const distFromCenter = Math.sqrt(centers[i].x**2 + centers[i].y**2);
+          const entry = getColor(distFromCenter / (cfg.totalSize/2));
           for (let j = i + 1; j < centers.length; j++) {
             const d2 = Math.pow(centers[i].x - centers[j].x, 2) + Math.pow(centers[i].y - centers[j].y, 2);
             const threshold = Math.pow(r * Math.sqrt(3) * 2.1, 2);
@@ -152,9 +154,10 @@ export const GeometryTab = {
       }
     } else if (cfg.mode === 'vesica-piscis') {
       const r = cfg.totalSize / 4;
-      const entry = getColor(0.5);
-      addCircle(-r, 0, r*2, entry.rgb, entry);
-      addCircle(r, 0, r*2, entry.rgb, entry);
+      const entry1 = getColor(0.2);
+      const entry2 = getColor(0.8);
+      addCircle(-r, 0, r*2, entry1.rgb, entry1);
+      addCircle(r, 0, r*2, entry2.rgb, entry2);
     } else if (cfg.mode === 'rose-curve') {
       const k = cfg.roseK;
       const samples = cfg.roseSamples;
@@ -173,8 +176,8 @@ export const GeometryTab = {
       }
     } else if (cfg.mode === 'archimedean-spiral') {
       const turns = cfg.spiralTurns;
-      const spacing = cfg.spiralSpacing;
-      const samples = turns * 50;
+      const samples = turns * 100;
+      const spacing = (cfg.totalSize / 2) / turns;
       let prev = null;
       for (let i = 0; i <= samples; i++) {
         const theta = (i / samples) * turns * Math.PI * 2;
@@ -187,7 +190,7 @@ export const GeometryTab = {
         prev = {x, y};
       }
     } else if (cfg.mode === 'fermat-spiral') {
-      const count = cfg.spiralTurns * 20;
+      const count = Math.round(cfg.spiralTurns * 20);
       const goldenAngle = Math.PI * (3 - Math.sqrt(5));
       const scale = cfg.totalSize / (2 * Math.sqrt(count));
       for (let i = 0; i < count; i++) {
@@ -196,9 +199,9 @@ export const GeometryTab = {
         const entry = getColor(i / count);
         addCircle(r * Math.cos(theta), r * Math.sin(theta), 1, entry.rgb, entry);
       }
-    } else if (cfg.mode === 'concentric-polygons' || cfg.mode === 'honeycomb') {
+    } else if (cfg.mode === 'concentric-polygons') {
       const count = cfg.concCount;
-      const sides = cfg.mode === 'honeycomb' ? 6 : cfg.concSides;
+      const sides = cfg.concSides;
       const baseScale = cfg.totalSize / (2 * count);
       for (let i = 1; i <= count; i++) {
         const r = i * baseScale;
@@ -212,10 +215,10 @@ export const GeometryTab = {
           prev = {x, y};
         }
       }
-    } else if (cfg.mode === 'islamic-star' || cfg.mode === 'girih') {
-      const sym = cfg.mode === 'girih' ? cfg.girihSymmetry : cfg.starSymmetry;
+    } else if (cfg.mode === 'islamic-star') {
+      const sym = cfg.starSymmetry;
       const r = cfg.totalSize / 2;
-      const v = cfg.mode === 'girih' ? 0.7 : cfg.starV;
+      const v = cfg.starV;
       const entry = getColor(0.5);
       let prev = null;
       for (let i = 0; i <= sym * 2; i++) {
@@ -225,6 +228,36 @@ export const GeometryTab = {
         if (prev) addLine(prev.x, prev.y, x, y, entry.rgb, entry);
         prev = {x, y};
       }
+    } else if (cfg.mode === 'girih') {
+      const sym = 10; // Classical decagonal Girih
+      const r = cfg.totalSize / 2;
+      const strapAngle = 54 * Math.PI / 180;
+      const entry = getColor(0.5);
+      
+      const drawTile = (cx, cy, radius, rotation) => {
+        const vertices = [];
+        for (let i = 0; i < sym; i++) {
+          const ang = (i / sym) * Math.PI * 2 + rotation;
+          vertices.push({ x: cx + radius * Math.cos(ang), y: cy + radius * Math.sin(ang) });
+        }
+        // Draw strapwork crossing midpoints
+        for (let i = 0; i < sym; i++) {
+          const v1 = vertices[i], v2 = vertices[(i + 1) % sym];
+          const midX = (v1.x + v2.x) / 2, midY = (v1.y + v2.y) / 2;
+          const edgeAng = Math.atan2(v2.y - v1.y, v2.x - v1.x);
+          
+          const L = radius * 0.6 * cfg.girihComplexity;
+          const x1 = midX + L * Math.cos(edgeAng + strapAngle);
+          const y1 = midY + L * Math.sin(edgeAng + strapAngle);
+          const x2 = midX + L * Math.cos(edgeAng - strapAngle);
+          const y2 = midY + L * Math.sin(edgeAng - strapAngle);
+          addLine(midX, midY, x1, y1, entry.rgb, entry);
+          addLine(midX, midY, x2, y2, entry.rgb, entry);
+        }
+      };
+      drawTile(0, 0, r, 0);
+      // Small decorative ring
+      drawTile(0, 0, r * 0.4, Math.PI / 10);
     } else if (cfg.mode === 'penrose') {
       const phi = (1 + Math.sqrt(5)) / 2;
       let triangles = [];
@@ -251,10 +284,13 @@ export const GeometryTab = {
         });
         triangles = next;
       }
-      const colors = { thin: getColor(0.3), thick: getColor(0.7) };
       triangles.forEach(t => {
-        const [type, A, B, C] = t; const entry = colors[type];
-        addLine(A.x, A.y, B.x, B.y, entry.rgb, entry); addLine(B.x, B.y, C.x, C.y, entry.rgb, entry); addLine(C.x, C.y, A.x, A.y, entry.rgb, entry);
+        const [type, A, B, C] = t;
+        const dist = Math.sqrt(((A.x+B.x+C.x)/3)**2 + ((A.y+B.y+C.y)/3)**2);
+        const entry = getColor(dist / (cfg.totalSize/2));
+        addLine(A.x, A.y, B.x, B.y, entry.rgb, entry);
+        addLine(B.x, B.y, C.x, C.y, entry.rgb, entry);
+        addLine(C.x, C.y, A.x, A.y, entry.rgb, entry);
       });
     }
 
@@ -288,29 +324,23 @@ export const GeometryTab = {
       })())
     ]));
 
-    if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube') {
-      scroll.appendChild(UI.makeSection(cfg.mode === 'flower-of-life' ? 'Flower of Life' : 'Metatron', [
-        UI.makeRow('Rings', UI.makeStepCounter(cfg.folRings, 1, 10, v => set('folRings', v))),
-        UI.makeRow('Node Spacing', UI.makeRange(1, 20, 0.5, cfg.folRadius, v => set('folRadius', +v), 'mm'))
+    if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
+      scroll.appendChild(UI.makeSection('Geometry', [
+        UI.makeRow('Rings', UI.makeStepCounter(cfg.folRings, 1, 10, v => set('folRings', v)))
       ]));
     } else if (cfg.mode === 'rose-curve') {
       scroll.appendChild(UI.makeSection('Rose Curve', [
         UI.makeRow('k (n/d)', UI.makeRange(1, 20, 0.1, cfg.roseK, v => set('roseK', +v))),
         UI.makeRow('Samples', UI.makeRange(50, 1000, 10, cfg.roseSamples, v => set('roseSamples', +v)))
       ]));
-    } else if (cfg.mode === 'archimedean-spiral') {
+    } else if (cfg.mode === 'archimedean-spiral' || cfg.mode === 'fermat-spiral') {
       scroll.appendChild(UI.makeSection('Spiral', [
-        UI.makeRow('Turns', UI.makeRange(1, 20, 0.5, cfg.spiralTurns, v => set('spiralTurns', +v))),
-        UI.makeRow('Spacing', UI.makeRange(0.5, 10, 0.1, cfg.spiralSpacing, v => set('spiralSpacing', +v), 'mm'))
-      ]));
-    } else if (cfg.mode === 'fermat-spiral') {
-      scroll.appendChild(UI.makeSection('Fermat Spiral', [
         UI.makeRow('Turns', UI.makeRange(1, 20, 0.5, cfg.spiralTurns, v => set('spiralTurns', +v)))
       ]));
-    } else if (cfg.mode === 'concentric-polygons' || cfg.mode === 'honeycomb') {
+    } else if (cfg.mode === 'concentric-polygons') {
       scroll.appendChild(UI.makeSection('Repetition', [
         UI.makeRow('Count', UI.makeStepCounter(cfg.concCount, 1, 20, v => set('concCount', v))),
-        ...(cfg.mode === 'concentric-polygons' ? [UI.makeRow('Sides', UI.makeStepCounter(cfg.concSides, 3, 12, v => set('concSides', v)))] : []),
+        UI.makeRow('Sides', UI.makeStepCounter(cfg.concSides, 3, 12, v => set('concSides', v))),
         UI.makeRow('Twist', UI.makeRange(-45, 45, 1, cfg.concRotation, v => set('concRotation', +v), '°'))
       ]));
     } else if (cfg.mode === 'islamic-star') {
@@ -318,13 +348,13 @@ export const GeometryTab = {
         UI.makeRow('Symmetry', UI.makeStepCounter(cfg.starSymmetry, 3, 24, v => set('starSymmetry', v))),
         UI.makeRow('Inset', UI.makeRange(0.1, 0.9, 0.05, cfg.starV, v => set('starV', +v)))
       ]));
+    } else if (cfg.mode === 'girih') {
+      scroll.appendChild(UI.makeSection('Girih Pattern', [
+        UI.makeRow('Extension', UI.makeRange(0.5, 2.0, 0.1, cfg.girihComplexity, v => set('girihComplexity', +v)))
+      ]));
     } else if (cfg.mode === 'penrose') {
       scroll.appendChild(UI.makeSection('Penrose P2', [
         UI.makeRow('Subdivisions', UI.makeStepCounter(cfg.penroseSteps, 1, 6, v => set('penroseSteps', v)))
-      ]));
-    } else if (cfg.mode === 'girih') {
-      scroll.appendChild(UI.makeSection('Girih', [
-        UI.makeRow('Symmetry', UI.makeStepCounter(cfg.girihSymmetry, 5, 20, v => set('girihSymmetry', v)))
       ]));
     }
   }

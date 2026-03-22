@@ -61,6 +61,7 @@ export const Popup = {
   },
   move(ev) {
     const p = document.getElementById('globalPopup');
+    if (!p || !ev) return;
     const pw = p.offsetWidth||180, ph = p.offsetHeight||130;
     let l = ev.clientX+14, t = ev.clientY+14;
     if (l+pw > innerWidth-8) l = ev.clientX-pw-10;
@@ -165,7 +166,7 @@ export const XCSViewer = {
         q('.rtab[data-tab="json"]').click();
         const block = q(`.json-display-block[data-idx="${idx}"]`);
         if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        this.onHover(viewer, App.instances[tabId].state, idx);
+        this.onHover(viewer, App.instances[tabId].state, idx, e);
       }
     });
 
@@ -177,7 +178,7 @@ export const XCSViewer = {
         q('.rtab[data-tab="json"]').click();
         const block = q(`.json-display-block[data-idx="${idx}"]`);
         if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        this.onHover(viewer, App.instances[tabId].state, idx);
+        this.onHover(viewer, App.instances[tabId].state, idx, e);
       }
     });
 
@@ -189,7 +190,7 @@ export const XCSViewer = {
         q('.rtab[data-tab="shapes"]').click();
         const row = q(`.shape-row[data-idx="${idx}"]`);
         if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        this.onHover(viewer, App.instances[tabId].state, idx);
+        this.onHover(viewer, App.instances[tabId].state, idx, e);
       }
     });
 
@@ -346,6 +347,16 @@ export const XCSViewer = {
           el.setAttribute('stroke-dasharray', '2 1');
         }
       }
+      else if (s.type==='PATH' && s.dPath) {
+        const scaledD = s.dPath.replace(/([ML])\s*([\d.-]+)[,\s]+([\d.-]+)/g, (m, cmd, px, py) => {
+          const [sx, sy] = mm2(+px, +py);
+          return `${cmd} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
+        });
+        el = svgEl('path', {
+          d: scaledD, fill: isFill ? renderColor : 'none', 
+          'fill-opacity': fillOp, stroke: strC, 'stroke-width': strW
+        });
+      }
       else if (s.type==='TEXT') {
         const fs = s.h * sc;
         const anchor = s.style?.align === 'center' ? 'middle' : (s.style?.align === 'right' ? 'end' : 'start');
@@ -368,14 +379,7 @@ export const XCSViewer = {
       el.addEventListener('mousemove',  ev => Popup.move(ev));
       el.addEventListener('mouseleave', () => this.onLeave(v));
       svg.appendChild(el);
-      
-      // Only show auto-power labels for larger shapes if NOT explicitly hidden
-      if (s.power != null && rx > 12 && !s.hideLabels && s.type !== 'TEXT') {
-        const t = svgEl('text',{x:cx,y:cy+4,'text-anchor':'middle','font-size':Math.min(rx*.55,12),'font-family':'SF Mono,Fira Code,monospace',fill:isFill?'#000':'#fff','fill-opacity':isFill?'0.8':'0.7','font-weight':'800','pointer-events':'none'});
-        t.textContent = s.power+'%'; labels.push(t);
-      }
     }
-    labels.forEach(t => svg.appendChild(t));
     v.querySelector('.canvas-label').textContent = `Laser Area: 100 × 100 mm`;
   },
 

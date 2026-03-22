@@ -22,7 +22,7 @@ export const XCSIR = {
                laser: laser, hideLabels: !!d.hideLabels,
                ix: d.ix??null, iy: d.iy??null,
                paletteName: d.paletteName || null, colorName: d.colorName || null,
-               text: d.text || null, style: d.style || null };
+               text: d.text || null, style: d.style || null, dPath: d.dPath || null };
     });
   }
 };

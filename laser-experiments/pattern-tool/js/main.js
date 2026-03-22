@@ -32,6 +32,21 @@ const PATTERNS = [
     ]
   },
   {
+    category: 'Fractals & Recursion',
+    items: [
+      { id: 'fract-gasket', label: 'Sierpinski Gasket', icon: '▲', action: () => TabMgr.newFractal({ mode: 'sierpinski-gasket' }, 'Sierpinski Gasket') },
+      { id: 'fract-carpet', label: 'Sierpinski Carpet', icon: '▦', action: () => TabMgr.newFractal({ mode: 'sierpinski-carpet' }, 'Sierpinski Carpet') },
+      { id: 'fract-koch', label: 'Koch Snowflake', icon: '❄', action: () => TabMgr.newFractal({ mode: 'koch-snowflake' }, 'Koch Snowflake') },
+      { id: 'fract-dragon', label: 'Dragon Curve', icon: '🐉', action: () => TabMgr.newFractal({ mode: 'dragon-curve' }, 'Dragon Curve') },
+      { id: 'fract-mandelbrot', label: 'Mandelbrot Set', icon: '⚛', action: () => TabMgr.newFractal({ mode: 'mandelbrot' }, 'Mandelbrot Set') },
+      { id: 'fract-julia', label: 'Julia Set', icon: '❃', action: () => TabMgr.newFractal({ mode: 'julia-set' }, 'Julia Set') },
+      { id: 'fract-pythagoras', label: 'Pythagoras Tree', icon: '🌳', action: () => TabMgr.newFractal({ mode: 'pythagoras-tree' }, 'Pythagoras Tree') },
+      { id: 'fract-menger', label: 'Menger Sponge', icon: '🧊', action: () => TabMgr.newFractal({ mode: 'menger-sponge-2d' }, 'Menger Sponge') },
+      { id: 'fract-vicsek', label: 'Vicsek Fractal', icon: '✛', action: () => TabMgr.newFractal({ mode: 'vicsek-fractal' }, 'Vicsek Fractal') },
+      { id: 'fract-barnsley', label: 'Barnsley Fern', icon: '🌿', action: () => TabMgr.newFractal({ mode: 'barnsley-fern' }, 'Barnsley Fern') }
+    ]
+  },
+  {
     category: 'Organic & Biological',
     items: [
       { id: 'voronoi', label: 'Voronoi', icon: '⬢', action: () => TabMgr.newVoronoi() }
