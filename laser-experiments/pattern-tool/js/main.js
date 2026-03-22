@@ -18,7 +18,16 @@ const PATTERNS = [
     category: 'Math & Symmetry',
     items: [
       { id: 'mandala', label: 'Dot Mandala', icon: '✦', action: () => TabMgr.newMandala() },
-      { id: 'geometry', label: 'Geometric Symmetry', icon: '⌬', action: () => TabMgr.newGeometry() },
+      { id: 'fol', label: 'Flower of Life', icon: '🝊', action: () => TabMgr.newGeometry({ mode: 'flower-of-life' }, 'Flower of Life') },
+      { id: 'metatron', label: "Metatron's Cube", icon: '⌬', action: () => TabMgr.newGeometry({ mode: 'metatrons-cube' }, "Metatron's Cube") },
+      { id: 'rose', label: 'Rose Curve', icon: '✿', action: () => TabMgr.newGeometry({ mode: 'rose-curve' }, 'Rose Curve') },
+      { id: 'spiral', label: 'Archimedean Spiral', icon: '🌀', action: () => TabMgr.newGeometry({ mode: 'archimedean-spiral' }, 'Archimedean Spiral') },
+      { id: 'fermat', label: 'Fermat Spiral', icon: '🌻', action: () => TabMgr.newGeometry({ mode: 'fermat-spiral' }, 'Fermat Spiral') },
+      { id: 'concentric', label: 'Concentric Polygons', icon: '⬔', action: () => TabMgr.newGeometry({ mode: 'concentric-polygons' }, 'Concentric Polygons') },
+      { id: 'honeycomb', label: 'Hex Honeycomb', icon: '⬢', action: () => TabMgr.newGeometry({ mode: 'honeycomb' }, 'Hex Honeycomb') },
+      { id: 'islamic', label: 'Islamic Star', icon: '☪', action: () => TabMgr.newGeometry({ mode: 'islamic-star' }, 'Islamic Star') },
+      { id: 'girih', label: 'Girih Tiling', icon: '⛬', action: () => TabMgr.newGeometry({ mode: 'girih' }, 'Girih Tiling') },
+      { id: 'penrose', label: 'Penrose P2', icon: '⧉', action: () => TabMgr.newGeometry({ mode: 'penrose' }, 'Penrose P2') },
       { id: 'hilbert', label: 'Hilbert Curve', icon: '₪', action: () => TabMgr.newHilbert() }
     ]
   },

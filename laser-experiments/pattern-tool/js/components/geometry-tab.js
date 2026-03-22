@@ -8,17 +8,32 @@ import { XCSExporter } from '../xcs-exporter.js';
 
 export const GeometryTab = {
   create(tabId, initialCfg) {
+    const modeLabels = {
+      'flower-of-life': 'Flower of Life',
+      'metatrons-cube': "Metatron's Cube",
+      'vesica-piscis': 'Vesica Piscis',
+      'rose-curve': 'Rose Curve',
+      'archimedean-spiral': 'Archimedean Spiral',
+      'fermat-spiral': 'Fermat Spiral',
+      'concentric-polygons': 'Concentric Polygons',
+      'honeycomb': 'Hex Honeycomb',
+      'islamic-star': 'Islamic Star',
+      'girih': 'Girih Tiling',
+      'penrose': 'Penrose P2'
+    };
+
     const pane = document.createElement('div');
     pane.className = 'tab-pane';
     pane.dataset.paneId = tabId;
+    const title = modeLabels[initialCfg?.mode] || 'Geometric Symmetry';
     pane.innerHTML = `
       <div class="left-tool-panel">
-        <div class="tool-header"><span class="tool-title">Geometric Symmetry</span></div>
+        <div class="tool-header"><span class="tool-title">${title}</span></div>
         <div class="tool-scroll"></div>
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Geometry';
+    const label = App.tabs.find(t => t.id === tabId)?.label || title;
     viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
@@ -259,11 +274,6 @@ export const GeometryTab = {
 
     scroll.appendChild(UI.makeSection('Global', [
       UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Pattern', UI.makeToggles([
-        'flower-of-life', 'metatrons-cube', 'vesica-piscis', 'rose-curve', 'archimedean-spiral', 'fermat-spiral', 'concentric-polygons', 'honeycomb', 'islamic-star', 'penrose', 'girih'
-      ], cfg.mode, v => { cfg.mode = v; this.renderControls(tabId); update(); Persistence.save(); }, {
-        'flower-of-life': 'FoL', 'metatrons-cube': 'Metatron', 'vesica-piscis': 'Vesica', 'rose-curve': 'Rose', 'archimedean-spiral': 'Spiral', 'fermat-spiral': 'Fermat', 'concentric-polygons': 'Conc', 'honeycomb': 'Honey', 'islamic-star': 'Star', 'penrose': 'Penrose', 'girih': 'Girih'
-      })),
       UI.makeRow('Total Size', UI.makeRange(10, 100, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
       UI.makeRow('Color Range', (() => {
         const wrap = document.createElement('div'); wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '8px';
