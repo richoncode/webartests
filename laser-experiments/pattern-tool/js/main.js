@@ -27,8 +27,32 @@ const PATTERNS = [
       { id: 'honeycomb', label: 'Hex Honeycomb', icon: '⬢', action: () => TabMgr.newGeometry({ mode: 'honeycomb' }, 'Hex Honeycomb') },
       { id: 'islamic', label: 'Islamic Star', icon: '☪', action: () => TabMgr.newGeometry({ mode: 'islamic-star' }, 'Islamic Star') },
       { id: 'girih', label: 'Girih Tiling', icon: '⛬', action: () => TabMgr.newGeometry({ mode: 'girih' }, 'Girih Tiling') },
-      { id: 'penrose', label: 'Penrose P2', icon: '⧉', action: () => TabMgr.newGeometry({ mode: 'penrose' }, 'Penrose P2') },
-      { id: 'hilbert', label: 'Hilbert Curve', icon: '₪', action: () => TabMgr.newHilbert() }
+      { id: 'penrose', label: 'Penrose P2', icon: '⧉', action: () => TabMgr.newGeometry({ mode: 'penrose' }, 'Penrose P2') }
+    ]
+  },
+  {
+    category: 'Space-Filling Paths',
+    items: [
+      { id: 'path-hilbert', label: 'Hilbert Curve', icon: '₪', action: () => TabMgr.newPath({ mode: 'hilbert' }, 'Hilbert Curve') },
+      { id: 'path-peano', label: 'Peano Curve', icon: '⧉', action: () => TabMgr.newPath({ mode: 'peano' }, 'Peano Curve') },
+      { id: 'path-gosper', label: 'Gosper Curve', icon: '❄', action: () => TabMgr.newPath({ mode: 'gosper' }, 'Gosper Curve') },
+      { id: 'path-moore', label: 'Moore Curve', icon: '⧓', action: () => TabMgr.newPath({ mode: 'moore' }, 'Moore Curve') },
+      { id: 'path-arrowhead', label: 'Sierpinski Arrowhead', icon: '▲', action: () => TabMgr.newPath({ mode: 'sierpinski-arrowhead' }, 'Sierpinski Arrowhead') },
+      { id: 'path-lebesgue', label: 'Lebesgue O-curve', icon: '➰', action: () => TabMgr.newPath({ mode: 'lebesgue' }, 'Lebesgue Curve') },
+      { id: 'path-morton', label: 'Morton Curve', icon: '☊', action: () => TabMgr.newPath({ mode: 'morton' }, 'Morton Curve') },
+      { id: 'path-htree', label: 'H-Tree', icon: '🪜', action: () => TabMgr.newPath({ mode: 'h-tree' }, 'H-Tree') },
+      { id: 'path-lsystem', label: 'L-System Grid', icon: '▦', action: () => TabMgr.newPath({ mode: 'lsystem-grid' }, 'L-System Grid') },
+      { id: 'path-dragon', label: 'Dragon Folding', icon: '🐲', action: () => TabMgr.newPath({ mode: 'dragon-folding' }, 'Dragon Folding') }
+    ]
+  },
+  {
+    category: 'Chaotic Attractors',
+    items: [
+      { id: 'attr-lorenz', label: 'Lorenz Attractor', icon: '🦋', action: () => TabMgr.newAttractor({ mode: 'lorenz' }, 'Lorenz Attractor') },
+      { id: 'attr-clifford', label: 'Clifford Attractor', icon: '🌪️', action: () => TabMgr.newAttractor({ mode: 'clifford' }, 'Clifford Attractor') },
+      { id: 'attr-dejong', label: 'Peter de Jong', icon: '🌀', action: () => TabMgr.newAttractor({ mode: 'dejong' }, 'Peter de Jong') },
+      { id: 'attr-ikeda', label: 'Ikeda Map', icon: '🗺️', action: () => TabMgr.newAttractor({ mode: 'ikeda' }, 'Ikeda Map') },
+      { id: 'attr-henon', label: 'Hénon Map', icon: '☄️', action: () => TabMgr.newAttractor({ mode: 'henon' }, 'Hénon Map') }
     ]
   },
   {

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laser Color Stability Simulator</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Recharts dependencies -->
+    <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <style>
+      input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 16px; width: 16px;
+          border-radius: 50%; background: #3b82f6;
+          cursor: pointer;
+      }
+      .popover-shadow { shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+        const { 
+          LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
+        } = window.Recharts;
+
+        const Icon = ({ children, className, ...props }) => (
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            {children}
+          </svg>
+        );
+        const Activity = (p) => <Icon {...p}><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></Icon>;
+        const Thermometer = (p) => <Icon {...p}><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></Icon>;
+        const Layers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></Icon>;
+        const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></Icon>;
+        const Info = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></Icon>;
+        const Droplet = (p) => <Icon {...p}><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></Icon>;
+
+        // --- PHYSICS & OPTICS ENGINE ---
+        const C_SPEED = 500;
+        const C_POWER = 20;
+
+        function cie1931(lambda) {
+          const x = 1.065 * Math.exp(-0.5 * Math.pow((lambda - 595.8) / 33.3, 2)) +
+                    0.366 * Math.exp(-0.5 * Math.pow((lambda - 446.8) / 19.4, 2));
+          const y = 1.014 * Math.exp(-0.5 * Math.pow((lambda - 556.3) / 42.9, 2));
+          const z = 1.839 * Math.exp(-0.5 * Math.pow((lambda - 449.8) / 23.4, 2));
+          return { x, y, z };
+        }
+
+        const REF_WHITE = (() => {
+          let X = 0, Y = 0, Z = 0;
+          for (let w = 400; w <= 700; w += 1) {
+            const { x, y, z } = cie1931(w);
+            X += x; Y += y; Z += z;
+          }
+          return { X: X / Y, Y: 1.0, Z: Z / Y };
+        })();
+
+        function getThickness(power, speed) {
+          const thermalFactor = (power / Math.sqrt(speed)) / (C_POWER / Math.sqrt(C_SPEED));
+          return 120 * Math.pow(thermalFactor, 2.0); 
+        }
+
+        function getTemperature(power, speed) {
+          const thermalFactor = (power / Math.sqrt(speed)) / (C_POWER / Math.sqrt(C_SPEED));
+          return 25 + 775 * thermalFactor;
+        }
+
+        function getReflectance(thickness, lambda, material) {
+          const n = material === 'Ti' ? 2.5 : 2.1; 
+          const phase = (4 * Math.PI * n * thickness) / lambda;
+          const r1 = Math.abs((1 - n) / (1 + n)); 
+          const r2 = 0.6; 
+          const R = (r1 * r1 + r2 * r2 + 2 * r1 * r2 * Math.cos(phase + Math.PI)) / Math.pow(r1 + r2, 2);
+          const R_min = 0.15;
+          return R_min + (1 - R_min) * R;
+        }
+
+        function spectrumToXYZ(thickness, material) {
+          let X = 0, Y = 0, Z = 0, sumY = 0;
+          for (let lambda = 400; lambda <= 700; lambda += 1) {
+            const { x, y, z } = cie1931(lambda);
+            const R = getReflectance(thickness, lambda, material);
+            X += R * x; Y += R * y; Z += R * z; sumY += y;
+          }
+          return { X: X / sumY, Y: Y / sumY, Z: Z / sumY };
+        }
+
+        function xyzToRGB(X, Y, Z) {
+          let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
+          let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
+          let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+          const max = Math.max(r, g, b);
+          if (max > 1) { r /= max; g /= max; b /= max; }
+          const gamma = (v) => v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+          return `rgb(${Math.round(Math.max(0, gamma(r)) * 255)}, ${Math.round(Math.max(0, gamma(g)) * 255)}, ${Math.round(Math.max(0, gamma(b)) * 255)})`;
+        }
+
+        function xyzToLab(X, Y, Z) {
+          let x = X / REF_WHITE.X; let y = Y / REF_WHITE.Y; let z = Z / REF_WHITE.Z;
+          const f = (t) => t > 0.008856 ? Math.pow(t, 1/3) : (7.787 * t) + (16 / 116);
+          x = f(x); y = f(y); z = f(z);
+          return { L: (116 * y) - 16, a: 500 * (x - y), b: 200 * (y - z) };
+        }
+
+        function getStability(power, speed, material) {
+          const noise = 0.02;
+          const d1 = getThickness(power, speed * (1 - noise));
+          const d2 = getThickness(power, speed * (1 + noise));
+          const xyz1 = spectrumToXYZ(d1, material); const xyz2 = spectrumToXYZ(d2, material);
+          const lab1 = xyzToLab(xyz1.X, xyz1.Y, xyz1.Z); const lab2 = xyzToLab(xyz2.X, xyz2.Y, xyz2.Z);
+          return Math.hypot(lab1.L - lab2.L, lab1.a - lab2.a, lab1.b - lab2.b);
+        }
+
+        // --- COMPONENTS ---
+
+        const Popover = ({ show, title, content, side = 'top', children }) => {
+          const isTop = side === 'top';
+          return (
+            <div className="relative inline-block">
+              {children}
+              {show && (
+                <div className={`absolute ${isTop ? 'bottom-full mb-3' : 'top-full mt-3'} left-0 w-80 p-4 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-[100] pointer-events-none overflow-visible`}>
+                  {title && <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">{title}</h3>}
+                  <div className="text-xs text-slate-300 leading-relaxed">{content}</div>
+                  <div className={`absolute ${isTop ? '-bottom-1.5 border-b border-r' : '-top-1.5 border-t border-l'} left-6 w-3 h-3 bg-slate-900 border-slate-700 transform rotate-45`}></div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        // --- MAIN APP ---
+
+        function App() {
+          const [power, setPower] = useState(20);
+          const [speed, setSpeed] = useState(500);
+          const [material, setMaterial] = useState('SS');
+          const [isThresholdHovered, setIsThresholdHovered] = useState(false);
+          const [barHover, setBarHover] = useState(null);
+          const [activePopover, setActivePopover] = useState(null);
+          const [showInstability, setShowInstability] = useState(false);
+
+          const currentTemp = getTemperature(power, speed);
+          const currentThickness = getThickness(power, speed);
+          const currentXYZ = spectrumToXYZ(currentThickness, material);
+          const currentColor = xyzToRGB(currentXYZ.X, currentXYZ.Y, currentXYZ.Z);
+          const currentStability = getStability(power, speed, material);
+
+          const spectrumData = useMemo(() => {
+            const data = [];
+            for (let w = 400; w <= 700; w += 2) {
+              data.push({ wavelength: w, reflectance: getReflectance(currentThickness, w, material) * 100 });
+            }
+            return data;
+          }, [currentThickness, material]);
+
+          const { graphData, gradientStops } = useMemo(() => {
+            const data = []; const stops = [];
+            const minV = 100, maxV = 1000, steps = 150;
+            for (let i = 0; i <= steps; i++) {
+              const v = minV + (maxV - minV) * (i / steps);
+              const d = getThickness(power, v);
+              const dE = getStability(power, v, material);
+              const xyz = spectrumToXYZ(d, material);
+              const lab = xyzToLab(xyz.X, xyz.Y, xyz.Z);
+              const chroma = Math.hypot(lab.a, lab.b);
+              const color = xyzToRGB(xyz.X, xyz.Y, xyz.Z);
+              data.push({ 
+                speed: v, thickness: d, deltaE: dE, 
+                chroma: chroma 
+              });
+              stops.push(`${color} ${(i / steps) * 100}%`);
+            }
+            return { graphData: data, gradientStops: `linear-gradient(to right, ${stops.join(', ')})` };
+          }, [power, material]);
+
+          const getStabilityColor = (dE) => {
+            if (dE < 2.5) return 'text-emerald-400';
+            if (dE < 5) return 'text-amber-400';
+            return 'text-rose-500';
+          };
+
+          const stabilityExplanation = (
+            <div>
+              <p className="mb-3">Vivid colors act as visual "anchors" (highly stable), while muddy transition states are visual "tripwires" (highly unstable).</p>
+              <div className="space-y-2">
+                <div className="bg-slate-950/50 p-2 rounded border border-slate-800">
+                  <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">Stable Valleys (High Saturation)</div>
+                  <p className="text-[11px] text-slate-400">Resonant interference peaks are locked within a color receptor band. Small speed fluctuations stay within the same vivid color.</p>
+                </div>
+                <div className="bg-slate-950/50 p-2 rounded border border-slate-800">
+                  <div className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-1">Unstable Peaks (Low Saturation)</div>
+                  <p className="text-[11px] text-slate-400">Peaks are overlapping color receptors. Microscopic speed changes cause the dominant wavelength to wildly flip, causing massive color shifts.</p>
+                </div>
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="min-h-screen bg-slate-950 text-slate-200 p-4 md:p-8 font-sans">
+              <div className="max-w-6xl mx-auto space-y-8">
+                <header className="border-b border-slate-800 pb-6">
+                  <a href="../index.html" className="text-slate-500 hover:text-slate-300 text-sm mb-4 inline-block">← Back to Experiments</a>
+                  <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                    <Activity className="text-blue-500 w-8 h-8" />
+                    Laser Color Stability Simulator
+                  </h1>
+                  <p className="text-slate-400 mt-2 max-w-4xl leading-relaxed text-sm">
+                    Based on <a href="https://doi.org/10.1016/j.optlaseng.2022.107225" target="_blank" className="text-blue-400 hover:text-blue-300 underline decoration-blue-400/30 underline-offset-2">Geng Y, et al. (2022)</a>. This model demonstrates that color stability fluctuates periodically with scanning speed, validating that high relative temperature differences lead to unstable coloration.
+                  </p>
+                </header>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  <div className="lg:col-span-4 space-y-6">
+                    <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 shadow-xl">
+                      <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-6">
+                        <Settings className="w-5 h-5 text-slate-400" />
+                        Parameters
+                      </h2>
+                      <div className="space-y-6">
+                        <div>
+                          <div className="flex justify-between mb-2">
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Laser Power</label>
+                            <span className="text-blue-400 font-mono text-sm">{power} W</span>
+                          </div>
+                          <input type="range" min="10" max="40" value={power} onChange={(e) => setPower(Number(e.target.value))} className="w-full accent-blue-500 bg-slate-800 rounded-lg appearance-none h-1.5" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between mb-2">
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Scanning Speed</label>
+                            <span className="text-blue-400 font-mono text-sm">{speed} mm/s</span>
+                          </div>
+                          <input type="range" min="100" max="1000" step="10" value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="w-full accent-blue-500 bg-slate-800 rounded-lg appearance-none h-1.5" />
+                        </div>
+                        <div>
+                          <div className="mb-2">
+                            <Popover 
+                              show={activePopover === 'material'} 
+                              title={<span><Info className="w-4 h-4 text-blue-400" /> Optical Properties</span>}
+                              content={`Modeled using 1064nm IR laser. Bare ${material === 'Ti' ? 'Titanium' : 'SS304'} has ~${material === 'Ti' ? '45%' : '32%'} absorption, which shifts dynamically as oxidation layer grows.`}
+                            >
+                              <div className="flex items-center gap-1.5 cursor-help" onMouseEnter={() => setActivePopover('material')} onMouseLeave={() => setActivePopover(null)}>
+                                <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Material</label>
+                                <Info className={`w-3.5 h-3.5 ${activePopover === 'material' ? 'text-blue-400' : 'text-slate-600'}`} />
+                              </div>
+                            </Popover>
+                          </div>
+                          <div className="flex gap-2">
+                            {['Ti', 'SS'].map((mat) => (
+                              <button key={mat} onClick={() => setMaterial(mat)} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${material === mat ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                                {mat === 'Ti' ? 'Ti6Al4V' : 'SS304'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                        <div className="flex items-center gap-2 text-slate-500 text-[10px] uppercase tracking-wider mb-1">
+                          <Thermometer className="w-3.5 h-3.5" /> Peak Temp
+                        </div>
+                        <div className="text-xl font-semibold text-white font-mono">
+                          {Math.round(currentTemp)}<span className="text-xs text-slate-500 ml-1">°C</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                        <div className="flex items-center gap-2 text-slate-500 text-[10px] uppercase tracking-wider mb-1">
+                          <Layers className="w-3.5 h-3.5" /> Oxide Layer
+                        </div>
+                        <div className="text-xl font-semibold text-white font-mono">
+                          {currentThickness.toFixed(1)}<span className="text-xs text-slate-500 ml-1">nm</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 col-span-2 flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="mb-1">
+                            <Popover show={activePopover === 'stability'} title="Color Stability Concept" content={stabilityExplanation}>
+                              <div className="flex items-center gap-1.5 cursor-help" onMouseEnter={() => setActivePopover('stability')} onMouseLeave={() => setActivePopover(null)}>
+                                <Droplet className="w-3.5 h-3.5 text-slate-500" />
+                                <span className="text-slate-500 text-[10px] uppercase tracking-wider">Stability (ΔE)</span>
+                                <Info className={`w-3 h-3 ${activePopover === 'stability' ? 'text-blue-400' : 'text-slate-600'}`} />
+                              </div>
+                            </Popover>
+                          </div>
+                          <div className={`text-3xl font-bold font-mono ${getStabilityColor(currentStability)}`}>
+                            {currentStability.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="w-16 h-16 rounded-full border-4 border-slate-800 shadow-xl" style={{ backgroundColor: currentColor, backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(0,0,0,0.3) 100%)' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-8 flex flex-col gap-6">
+                    <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 shadow-xl flex-1 min-h-[450px] flex flex-col overflow-visible">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex flex-col gap-2">
+                          <Popover show={activePopover === 'fluctuation'} title="Perceptual Phase Coupling" content={stabilityExplanation} side="bottom">
+                            <div className="flex items-center gap-2 cursor-help" onMouseEnter={() => setActivePopover('fluctuation')} onMouseLeave={() => setActivePopover(null)}>
+                              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                                <Activity className="w-5 h-5 text-rose-500" />
+                                {showInstability ? 'Instability Fluctuation' : 'Stability Performance'}
+                              </h2>
+                              <Info className={`w-4 h-4 ${activePopover === 'fluctuation' ? 'text-blue-400' : 'text-slate-600'}`} />
+                            </div>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      <div className="relative w-full h-4 rounded mb-4 cursor-crosshair group shadow-inner" style={{ background: gradientStops }}
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const pct = Math.max(0, Math.min(1, x / rect.width));
+                          const spd = 100 + pct * 900;
+                          const d = getThickness(power, spd); const xyz = spectrumToXYZ(d, material);
+                          const lab = xyzToLab(xyz.X, xyz.Y, xyz.Z); const color = xyzToRGB(xyz.X, xyz.Y, xyz.Z);
+                          setBarHover({ x: pct * 100, speed: spd, chroma: Math.hypot(lab.a, lab.b), color });
+                        }}
+                        onMouseLeave={() => setBarHover(null)}
+                      >
+                        <div className="absolute top-0 bottom-0 w-0.5 bg-white border border-slate-900 shadow-sm" style={{ left: `calc(${((speed - 100) / 900) * 100}% - 1px)` }} />
+                        {barHover && (
+                          <div className="absolute bottom-full mb-2 -translate-x-1/2 bg-slate-950 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] z-50 pointer-events-none whitespace-nowrap flex flex-col items-center" style={{ left: `${barHover.x}%` }}>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <div className="w-2.5 h-2.5 rounded-full border border-slate-600" style={{ background: barHover.color }} />
+                              <span className="font-mono font-bold text-white">{Math.round(barHover.speed)} mm/s</span>
+                            </div>
+                            <div className="text-slate-400">Saturation (C*): <span className="text-blue-400 font-mono">{barHover.chroma.toFixed(1)}</span></div>
+                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-950 border-b border-r border-slate-700 transform rotate-45" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={graphData} margin={{ top: 10, right: 45, left: -20, bottom: 25 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                            <XAxis type="number" domain={[100, 1000]} dataKey="speed" stroke="#64748b" label={{ value: 'Speed (mm/s)', position: 'insideBottom', offset: -15, fill: '#64748b', fontSize: 10 }} />
+                            <YAxis yAxisId="left" reversed={!showInstability} stroke={showInstability ? "#f43f5e" : "#10b981"} label={{ value: showInstability ? 'Instability ΔE' : 'Stability (Reversed ΔE)', angle: -90, position: 'insideLeft', fill: showInstability ? "#f43f5e" : "#10b981", offset: 25, fontSize: 10 }} />
+                            <YAxis yAxisId="right" orientation="right" stroke="#64748b" label={{ value: 'Saturation (C*)', angle: 90, position: 'insideRight', fill: '#64748b', offset: 20, fontSize: 10 }} />
+                            <Tooltip position={{ y: 0 }} offset={25} contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid #334155', borderRadius: '4px', fontSize: '10px', padding: '4px 8px' }} formatter={(val, name) => [val.toFixed(1), name]} labelFormatter={(l) => `V: ${l} mm/s`} />
+                            <Legend verticalAlign="top" height={30} iconType="circle" wrapperStyle={{ fontSize: '10px' }}/>
+                            <Line yAxisId="left" type="monotone" dataKey="deltaE" name={showInstability ? "Instability (ΔE)" : "Stability (Inv ΔE)"} stroke={showInstability ? "#f43f5e" : "#10b981"} dot={false} activeDot={{ r: 4, fill: showInstability ? '#f43f5e' : '#10b981', strokeWidth: 0 }} strokeWidth={2} />
+                            <Line yAxisId="right" type="monotone" dataKey="chroma" name="Saturation (C*)" stroke="#3b82f6" dot={false} activeDot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }} strokeWidth={2} opacity={0.4} />
+                            <ReferenceLine yAxisId="left" x={speed} stroke="#fcd34d" strokeDasharray="4 4" label={{ position: 'insideTopLeft', value: 'V', fill: '#fcd34d', fontSize: 10 }} />
+                            <ReferenceLine 
+                              yAxisId="left" 
+                              y={3} 
+                              stroke={isThresholdHovered ? "#f43f5e" : "#f87171"} 
+                              strokeWidth={isThresholdHovered ? 2 : 1} 
+                              strokeDasharray={isThresholdHovered ? "0" : "3 3"} 
+                              opacity={isThresholdHovered ? 1 : 0.8}
+                              label={{ position: 'right', value: 'LIMIT (ΔE=3)', fill: isThresholdHovered ? "#f43f5e" : "#f87171", fontSize: 9, fontWeight: 'bold' }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
+                        <div 
+                          className={`text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 px-2 py-1 rounded w-max ${isThresholdHovered ? 'bg-rose-500/10 text-rose-400 font-bold' : 'text-slate-500'}`}
+                          onMouseEnter={() => setIsThresholdHovered(true)} onMouseLeave={() => setIsThresholdHovered(false)}
+                        >
+                          <Info className="w-3 h-3" /> ΔE {'>'} 3 indicates visibly degraded stability
+                        </div>
+                        <div className="flex bg-slate-950/50 rounded-lg p-1 border border-slate-800">
+                          <button onClick={() => setShowInstability(true)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all ${showInstability ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Instability</button>
+                          <button onClick={() => setShowInstability(false)} className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all ${!showInstability ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Stability</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 shadow-xl h-[240px] flex flex-col">
+                      <h2 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">Current Spectrum</h2>
+                      <div className="h-32 mb-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={spectrumData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                            <XAxis dataKey="wavelength" stroke="#64748b" domain={[400, 700]} type="number" fontSize={9} />
+                            <YAxis stroke="#64748b" domain={[0, 100]} fontSize={9} />
+                            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', color: '#fff', fontSize: '10px' }} formatter={(val) => [`${val.toFixed(1)}%`, 'R']} labelFormatter={(l) => `${l}nm`} />
+                            <Line type="monotone" dataKey="reflectance" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {/* Visible Spectrum Color Bar */}
+                      <div className="h-1.5 rounded-sm opacity-80" style={{ 
+                        background: 'linear-gradient(to right, #4b0082, #0000ff, #00ffff, #00ff00, #ffff00, #ff7f00, #ff0000)',
+                        marginLeft: '24px',
+                        width: 'calc(100% - 34px)'
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

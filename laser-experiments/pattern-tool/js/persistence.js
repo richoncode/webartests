@@ -36,6 +36,8 @@ export const Persistence = {
         if (t.type === 'mandala') newId = TabMgr.newMandala(cfg, t.label);
         else if (t.type === 'geometry') newId = TabMgr.newGeometry(cfg, t.label);
         else if (t.type === 'fractal') newId = TabMgr.newFractal(cfg, t.label);
+        else if (t.type === 'path') newId = TabMgr.newPath(cfg, t.label);
+        else if (t.type === 'attractor') newId = TabMgr.newAttractor(cfg, t.label);
         else if (t.type === 'voronoi') newId = TabMgr.newVoronoi(cfg, t.label);
         else if (t.type === 'hilbert') newId = TabMgr.newHilbert(cfg, t.label);
         else if (t.type === 'palette-grid') newId = TabMgr.newPaletteGrid(cfg, t.label);
@@ -86,6 +88,8 @@ export const Persistence = {
         if (data.type === 'mandala') TabMgr.newMandala(data.cfg, label);
         else if (data.type === 'geometry') TabMgr.newGeometry(data.cfg, label);
         else if (data.type === 'fractal') TabMgr.newFractal(data.cfg, label);
+        else if (data.type === 'path') TabMgr.newPath(data.cfg, label);
+        else if (data.type === 'attractor') TabMgr.newAttractor(data.cfg, label);
         else if (data.type === 'voronoi') TabMgr.newVoronoi(data.cfg, label);
         else if (data.type === 'hilbert') TabMgr.newHilbert(data.cfg, label);
         else if (data.type === 'palette-grid') TabMgr.newPaletteGrid(data.cfg, label);
