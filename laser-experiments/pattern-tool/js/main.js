@@ -18,6 +18,7 @@ const PATTERNS = [
     category: 'Math & Symmetry',
     items: [
       { id: 'mandala', label: 'Dot Mandala', icon: '✦', action: () => TabMgr.newMandala() },
+      { id: 'geometry', label: 'Geometric Symmetry', icon: '⌬', action: () => TabMgr.newGeometry() },
       { id: 'hilbert', label: 'Hilbert Curve', icon: '₪', action: () => TabMgr.newHilbert() }
     ]
   },

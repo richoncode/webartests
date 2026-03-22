@@ -2,7 +2,7 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XcsTab } from './xcs-tab.js';
+import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -42,7 +42,7 @@ export const PaletteGridTab = {
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
     inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XcsTab.parseXCS(inst.state.rawData);
+    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
