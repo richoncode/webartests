@@ -6,8 +6,11 @@ import { MandalaTab } from './components/mandala-tab.js';
 import { GradientTab } from './components/gradient-tab.js';
 import { BitmapLineTab } from './components/bitmap-line-tab.js';
 import { TestTab } from './components/test-tab.js';
+import { VoronoiTab } from './components/voronoi-tab.js';
+import { HilbertTab } from './components/hilbert-tab.js';
+import { PaletteGridTab } from './components/palette-grid-tab.js';
 
-export { XcsTab, MandalaTab, GradientTab, BitmapLineTab, TestTab };
+export { XcsTab, MandalaTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB MANAGER
@@ -26,9 +29,42 @@ export const TabMgr = {
 
   newMandala(initialCfg, label) {
     const id = this.newId();
-    const finalLabel = label || getTimestampedName('Mandala');
+    const finalLabel = label || getTimestampedName('DotMandala');
     App.tabs.push({ id, type:'mandala', label: finalLabel });
     const pane = MandalaTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
+  newVoronoi(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('Voronoi');
+    App.tabs.push({ id, type:'voronoi', label: finalLabel });
+    const pane = VoronoiTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
+  newHilbert(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('Hilbert');
+    App.tabs.push({ id, type:'hilbert', label: finalLabel });
+    const pane = HilbertTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
+  newPaletteGrid(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('PaletteGrid');
+    App.tabs.push({ id, type:'palette-grid', label: finalLabel });
+    const pane = PaletteGridTab.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
     Persistence.save();

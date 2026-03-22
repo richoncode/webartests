@@ -359,6 +359,60 @@ export const XCSExporter = {
     return id;
   },
 
+  addPath(project, options) {
+    const {
+      x, y, width, height, dPath,
+      layerColor = "#5b9bd5",
+      processingType = "VECTOR_ENGRAVING",
+      laserSource = "red",
+      params = {}
+    } = options;
+
+    const id = uuid();
+    const canvas = project.canvas[0];
+    const dvEntry = project.device.data.value[0][1];
+    const displayValues = dvEntry.displays.value;
+
+    const display = {
+      id, name: null, type: 'PATH', x, y, width, height, angle: 0,
+      scale: { x: 1, y: 1 }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+      offsetX: x, offsetY: y, lockRatio: false, isClosePath: true,
+      zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(), layerTag: layerColor,
+      layerColor: layerColor, visible: true, originColor: "#000000",
+      enableTransform: true, visibleState: true, lockState: false,
+      resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
+      fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
+      stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
+      isFill: processingType.includes("FILL"), 
+      lineColor: 0, fillColor: layerColor, dPath,
+      ...options.extraDisplayData
+    };
+
+    canvas.displays.push(display);
+
+    const planType = laserSource === 'red' ? 'red' : 'blue';
+    const pm = { 
+      power: 20, speed: 100, density: 1000, repeat: 1,
+      processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
+      dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0,
+      ...params
+    };
+
+    const processingConfig = {
+      isFill: display.isFill, type: 'PATH', processingType, processIgnore: false, isWhiteModel: !display.isFill,
+      data: {
+        VECTOR_CUTTING: this.createNode("VECTOR_CUTTING", planType, laserSource),
+        VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
+        INTAGLIO: this.createNode("INTAGLIO", planType, laserSource)
+      }
+    };
+
+    displayValues.push([id, processingConfig]);
+    return id;
+  },
+
   addImage(project, options) {
     const {
       x, y, width, height,

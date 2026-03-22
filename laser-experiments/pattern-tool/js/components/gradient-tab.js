@@ -5,9 +5,8 @@
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
-import { uuid } from '../utils.js';
+import { uuid, UI } from '../utils.js';
 import { XcsTab } from './xcs-tab.js';
-import { MandalaTab } from './mandala-tab.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
 const M8 = [
@@ -344,14 +343,14 @@ export const GradientTab = {
       Persistence.save();
     };
 
-    scroll.appendChild(MandalaTab.makeSection('Global', [
-      MandalaTab.makeRow('Laser', MandalaTab.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
-      MandalaTab.makeRow('Render', MandalaTab.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
-      MandalaTab.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
-      MandalaTab.makeRow('Resolution', MandalaTab.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
-      MandalaTab.makeRow('Overall Size', MandalaTab.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      MandalaTab.makeRow('Overlap/Gap', MandalaTab.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
-      MandalaTab.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
+    scroll.appendChild(UI.makeSection('Global', [
+      UI.makeRow('Laser', UI.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
+      UI.makeRow('Render', UI.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
+      UI.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
+      UI.makeRow('Resolution', UI.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
+      UI.makeRow('Overall Size', UI.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
+      UI.makeRow('Overlap/Gap', UI.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
+      UI.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
     ]));
 
     const getRanges = (axis) => {
@@ -361,22 +360,22 @@ export const GradientTab = {
     };
 
     const xr = getRanges(cfg.xAxis);
-    scroll.appendChild(MandalaTab.makeSection('X Axis:', [
-      MandalaTab.makeRow(`Min (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMin, v => set('xMin', +v), xr.unit)),
-      MandalaTab.makeRow(`Max (${xr.unit})`, MandalaTab.makeRange(xr.min, xr.max, xr.step, cfg.xMax, v => set('xMax', +v), xr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels)));
+    scroll.appendChild(UI.makeSection('X Axis:', [
+      UI.makeRow(`Min (${xr.unit})`, UI.makeRange(xr.min, xr.max, xr.step, cfg.xMin, v => set('xMin', +v), xr.unit)),
+      UI.makeRow(`Max (${xr.unit})`, UI.makeRange(xr.min, xr.max, xr.step, cfg.xMax, v => set('xMax', +v), xr.unit))
+    ], false, UI.makeToggles(axisOpts, cfg.xAxis, v => swapAxes('xAxis', v), axisLabels)));
 
     const yr = getRanges(cfg.yAxis);
-    scroll.appendChild(MandalaTab.makeSection('Y Axis:', [
-      MandalaTab.makeRow(`Min (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMin, v => set('yMin', +v), yr.unit)),
-      MandalaTab.makeRow(`Max (${yr.unit})`, MandalaTab.makeRange(yr.min, yr.max, yr.step, cfg.yMax, v => set('yMax', +v), yr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels)));
+    scroll.appendChild(UI.makeSection('Y Axis:', [
+      UI.makeRow(`Min (${yr.unit})`, UI.makeRange(yr.min, yr.max, yr.step, cfg.yMin, v => set('yMin', +v), yr.unit)),
+      UI.makeRow(`Max (${yr.unit})`, UI.makeRange(yr.min, yr.max, yr.step, cfg.yMax, v => set('yMax', +v), yr.unit))
+    ], false, UI.makeToggles(axisOpts, cfg.yAxis, v => swapAxes('yAxis', v), axisLabels)));
 
     const fr = getRanges(cfg.fixedAxis);
     const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
-    scroll.appendChild(MandalaTab.makeSection('Fixed:', [
-      MandalaTab.makeRow(`Value (${fr.unit})`, MandalaTab.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
-    ], false, MandalaTab.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
+    scroll.appendChild(UI.makeSection('Fixed:', [
+      UI.makeRow(`Value (${fr.unit})`, UI.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
+    ], false, UI.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
 
     if (state.selection) {
       const { ix1, iy1, ix2, iy2 } = state.selection;
@@ -384,9 +383,9 @@ export const GradientTab = {
       const yMin = Math.min(iy1, iy2), yMax = Math.max(iy1, iy2);
       const count = (xMax - xMin + 1) * (yMax - yMin + 1);
       
-      const sec = MandalaTab.makeSection('Selection', [
-        MandalaTab.makeRow('Cells', `${count} (${xMin},${yMin}) to (${xMax},${yMax})`),
-        MandalaTab.makeRow('', `<button class="tool-btn zoom-btn">Zoom to selection</button>`)
+      const sec = UI.makeSection('Selection', [
+        UI.makeRow('Cells', `${count} (${xMin},${yMin}) to (${xMax},${yMax})`),
+        UI.makeRow('', `<button class="tool-btn zoom-btn">Zoom to selection</button>`)
       ]);
       sec.querySelector('.zoom-btn').onclick = () => {
         const xMinVal = this.getValAt(tabId, cfg.xAxis, xMin);

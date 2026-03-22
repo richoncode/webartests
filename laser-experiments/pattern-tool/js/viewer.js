@@ -34,6 +34,21 @@ export const Popup = {
     document.getElementById('gpSize').textContent    = `${s.w.toFixed(1)} × ${s.h.toFixed(1)} mm`;
     document.getElementById('gpPos').textContent     = `${s.x.toFixed(1)}, ${s.y.toFixed(1)} mm`;
 
+    const palRow = document.getElementById('gpPaletteRow');
+    const colRow = document.getElementById('gpColorRow');
+    if (s.paletteName) {
+      document.getElementById('gpPalette').textContent = s.paletteName;
+      palRow.style.display = 'flex';
+    } else {
+      palRow.style.display = 'none';
+    }
+    if (s.colorName) {
+      document.getElementById('gpColor').textContent = s.colorName;
+      colRow.style.display = 'flex';
+    } else {
+      colRow.style.display = 'none';
+    }
+
     const cellRow = document.getElementById('gpCellRow');
     if (s.ix != null && s.iy != null) {
       document.getElementById('gpCell').textContent = `[${s.ix}, ${s.iy}]`;

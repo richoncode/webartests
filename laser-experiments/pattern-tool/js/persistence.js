@@ -34,7 +34,12 @@ export const Persistence = {
         const cfg = state.cfgs[t.id];
         let newId = null;
         if (t.type === 'mandala') newId = TabMgr.newMandala(cfg, t.label);
+        else if (t.type === 'voronoi') newId = TabMgr.newVoronoi(cfg, t.label);
+        else if (t.type === 'hilbert') newId = TabMgr.newHilbert(cfg, t.label);
+        else if (t.type === 'palette-grid') newId = TabMgr.newPaletteGrid(cfg, t.label);
         else if (t.type === 'gradient') newId = TabMgr.newGradient(cfg, t.label);
+        else if (t.type === 'bitmap-line') newId = TabMgr.newBitmapLine(cfg, t.label);
+        else if (t.type === 'test') newId = TabMgr.newTest(cfg, t.label);
         
         if (t.id === state.activeTabId) lastCreatedId = newId;
       });
@@ -58,12 +63,12 @@ export const Persistence = {
   },
   saveRNR() {
     const inst = App.instances[App.activeTabId];
-    if (!inst || (inst.type !== 'mandala' && inst.type !== 'gradient')) {
-      alert('Please select a Mandala or Gradient tab to save.');
+    if (!inst) {
+      alert('Please select a pattern tab to save.');
       return;
     }
     const tab = App.tabs.find(t => t.id === App.activeTabId);
-    const defaultName = (tab ? tab.label : (inst.type==='mandala'?'mandala':'gradient')) + '.rnr';
+    const defaultName = (tab ? tab.label : (inst.type==='mandala'?'dot-mandala':inst.type)) + '.rnr';
     const data = { type: inst.type, cfg: inst.cfg, version: '1.0' };
     const name = prompt('Save settings as:', defaultName);
     if (!name) return;
@@ -77,8 +82,13 @@ export const Persistence = {
         const data = JSON.parse(e.target.result);
         const label = file.name.replace(/\.rnr$/i, '');
         if (data.type === 'mandala') TabMgr.newMandala(data.cfg, label);
+        else if (data.type === 'voronoi') TabMgr.newVoronoi(data.cfg, label);
+        else if (data.type === 'hilbert') TabMgr.newHilbert(data.cfg, label);
+        else if (data.type === 'palette-grid') TabMgr.newPaletteGrid(data.cfg, label);
         else if (data.type === 'gradient') TabMgr.newGradient(data.cfg, label);
-        else alert('Invalid RNR file.');
+        else if (data.type === 'bitmap-line') TabMgr.newBitmapLine(data.cfg, label);
+        else if (data.type === 'test') TabMgr.newTest(data.cfg, label);
+        else alert('Unsupported pattern type in RNR file.');
       } catch(err) { alert('Load failed: ' + err.message); }
     };
     reader.readAsText(file);
