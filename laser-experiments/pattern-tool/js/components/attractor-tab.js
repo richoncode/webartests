@@ -50,9 +50,13 @@ export const AttractorTab = {
     
     // Adjust defaults based on mode
     if (cfg.mode === 'clifford' || cfg.mode === 'dejong') {
-      cfg.a = 1.5; cfg.b = -1.8; cfg.c = 1.6; cfg.d = 0.9;
+      if (!initialCfg) { cfg.a = 1.5; cfg.b = -1.8; cfg.c = 1.6; cfg.d = 0.9; }
     } else if (cfg.mode === 'ikeda') {
-      cfg.a = 0.9;
+      if (!initialCfg) cfg.a = 0.9;
+    } else if (cfg.mode === 'rossler') {
+      if (!initialCfg) { cfg.a = 0.2; cfg.b = 0.2; cfg.c = 5.7; }
+    } else if (cfg.mode === 'bedhead') {
+      if (!initialCfg) { cfg.a = 0.06; cfg.b = 0.98; }
     }
 
     const state = { rawData: null, shapes: [] };
@@ -107,6 +111,24 @@ export const AttractorTab = {
         let dz = (x * y - cfg.c * z) * dt;
         x += dx; y += dy; z += dz;
         pts.push([x, y, z]);
+      }
+    } else if (cfg.mode === 'rossler') {
+      let x = 0.1, y = 0, z = 0;
+      const dt = 0.01;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let dx = (-y - z) * dt;
+        let dy = (x + cfg.a * y) * dt;
+        let dz = (cfg.b + z * (x - cfg.c)) * dt;
+        x += dx; y += dy; z += dz;
+        pts.push([x, y, z]);
+      }
+    } else if (cfg.mode === 'bedhead') {
+      let x = 0.1, y = 0.1;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let nx = Math.sin(x*y/cfg.b)*y + Math.cos(cfg.a*x-y);
+        let ny = x + Math.sin(y)/cfg.b;
+        x = nx; y = ny;
+        pts.push([x, y]);
       }
     } else if (cfg.mode === 'clifford') {
       let x = 0, y = 0;

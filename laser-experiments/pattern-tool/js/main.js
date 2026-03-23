@@ -49,8 +49,10 @@ const PATTERNS = [
     category: 'Chaotic Attractors',
     items: [
       { id: 'attr-lorenz', label: 'Lorenz Attractor', icon: '🦋', action: () => TabMgr.newAttractor({ mode: 'lorenz' }, 'Lorenz Attractor') },
+      { id: 'attr-rossler', label: 'Rossler Attractor', icon: '🌀', action: () => TabMgr.newAttractor({ mode: 'rossler' }, 'Rossler Attractor') },
       { id: 'attr-clifford', label: 'Clifford Attractor', icon: '🌪️', action: () => TabMgr.newAttractor({ mode: 'clifford' }, 'Clifford Attractor') },
       { id: 'attr-dejong', label: 'Peter de Jong', icon: '🌀', action: () => TabMgr.newAttractor({ mode: 'dejong' }, 'Peter de Jong') },
+      { id: 'attr-bedhead', label: 'Bedhead Attractor', icon: '🛌', action: () => TabMgr.newAttractor({ mode: 'bedhead' }, 'Bedhead Attractor') },
       { id: 'attr-ikeda', label: 'Ikeda Map', icon: '🗺️', action: () => TabMgr.newAttractor({ mode: 'ikeda' }, 'Ikeda Map') },
       { id: 'attr-henon', label: 'Hénon Map', icon: '☄️', action: () => TabMgr.newAttractor({ mode: 'henon' }, 'Hénon Map') }
     ]
@@ -73,20 +75,15 @@ const PATTERNS = [
   {
     category: 'Organic & Biological',
     items: [
-      { id: 'voronoi', label: 'Voronoi', icon: '⬢', action: () => TabMgr.newVoronoi() }
+      { id: 'voronoi', label: 'Voronoi Tiling', icon: '⬢', action: () => TabMgr.newVoronoi() }
     ]
   },
   {
-    category: 'Material Tests',
+    category: 'Material & Technical',
     items: [
       { id: 'palette-grid', label: 'Palette Grid', icon: '▦', action: () => TabMgr.newPaletteGrid() },
       { id: 'gradient', label: 'Gradient Grid', icon: '▦', action: () => TabMgr.newGradient() },
-      { id: 'bitmap-line', label: 'Bitmap Line', icon: '▤', action: () => TabMgr.newBitmapLine() }
-    ]
-  },
-  {
-    category: 'XCS Tests',
-    items: [
+      { id: 'bitmap-line', label: 'Bitmap Line', icon: '▤', action: () => TabMgr.newBitmapLine() },
       { id: 'test', label: 'XCS Reference Test', icon: '⚙', action: () => TabMgr.newTest() }
     ]
   }
@@ -94,26 +91,22 @@ const PATTERNS = [
 
 function renderPatternMenu(menuId) {
   const menu = document.getElementById(menuId);
-  if (!menu) {
-    console.warn('Menu element not found:', menuId);
-    return;
-  }
+  if (!menu) return;
   menu.innerHTML = '';
-  console.log('Rendering menu:', menuId);
 
-  PATTERNS.forEach((cat, idx) => {
+  PATTERNS.forEach(cat => {
     if (cat.items.length === 0) return;
     
-    if (idx > 0) {
-      const divider = document.createElement('div');
-      divider.className = 'menu-divider';
-      menu.appendChild(divider);
-    }
+    const col = document.createElement('div');
+    col.className = 'menu-column';
 
     const catEl = document.createElement('div');
     catEl.className = 'menu-category';
-    catEl.textContent = cat.category;
-    menu.appendChild(catEl);
+    catEl.innerHTML = `<span>${cat.category}</span><span style="opacity:0.3; font-weight:400; font-family:monospace">${cat.items.length}</span>`;
+    col.appendChild(catEl);
+
+    const grid = document.createElement('div');
+    grid.className = 'menu-items-grid';
 
     cat.items.forEach(item => {
       const itemEl = document.createElement('div');
@@ -123,13 +116,14 @@ function renderPatternMenu(menuId) {
         <span class="menu-item-label">${item.label}</span>
       `;
       itemEl.onclick = (e) => {
-        console.log('Menu item clicked:', item.id);
         e.stopPropagation();
         item.action();
-        menu.classList.remove('show');
+        document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
       };
-      menu.appendChild(itemEl);
+      grid.appendChild(itemEl);
     });
+    col.appendChild(grid);
+    menu.appendChild(col);
   });
 }
 
@@ -139,24 +133,17 @@ function setupEventListeners() {
     if (el) el.addEventListener('click', fn);
   };
 
-  // Header buttons
   listen('openXcsBtn', () => TabMgr.openXcs());
   
   const addBtn = document.getElementById('addPatternBtn');
   const addMenu = document.getElementById('addPatternMenu');
   if (addBtn && addMenu) {
-    console.log('Attaching header add pattern listener');
     renderPatternMenu('addPatternMenu');
     addBtn.addEventListener('click', (e) => {
-      console.log('Header add pattern clicked');
       e.stopPropagation();
       const isShow = addMenu.classList.contains('show');
-      // Close all first
       document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
-      if (!isShow) {
-        addMenu.classList.add('show');
-        console.log('Showing header menu');
-      }
+      if (!isShow) addMenu.classList.add('show');
     });
   }
 
@@ -167,34 +154,24 @@ function setupEventListeners() {
   const rnrInput = document.getElementById('rnrInput');
   if (rnrInput) {
     rnrInput.addEventListener('change', e => {
-      if (e.target.files && e.target.files[0]) {
-        Persistence.loadRNR(e.target.files[0]);
-      }
+      if (e.target.files && e.target.files[0]) Persistence.loadRNR(e.target.files[0]);
     });
   }
 
-  // Welcome screen buttons
   listen('welcomeOpenXcsBtn', () => TabMgr.openXcs());
   
   const welcomeAddBtn = document.getElementById('welcomeAddPatternBtn');
   const welcomeAddMenu = document.getElementById('welcomeAddPatternMenu');
   if (welcomeAddBtn && welcomeAddMenu) {
-    console.log('Attaching welcome add pattern listener');
     renderPatternMenu('welcomeAddPatternMenu');
     welcomeAddBtn.addEventListener('click', (e) => {
-      console.log('Welcome add pattern clicked');
       e.stopPropagation();
       const isShow = welcomeAddMenu.classList.contains('show');
-      // Close all first
       document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
-      if (!isShow) {
-        welcomeAddMenu.classList.add('show');
-        console.log('Showing welcome menu');
-      }
+      if (!isShow) welcomeAddMenu.classList.add('show');
     });
   }
 
-  // Global click to close menus
   document.addEventListener('click', () => {
     if (addMenu) addMenu.classList.remove('show');
     if (welcomeAddMenu) welcomeAddMenu.classList.remove('show');
@@ -216,11 +193,10 @@ async function init() {
     setupEventListeners();
     await PalMgr.load();
     if (!Persistence.load()) {
-      TabMgr.newMandala();
+      document.getElementById('welcomeScreen').style.display = 'flex';
     }
   } catch (err) {
     console.error('Initialization failed', err);
-    // Even if init fails, try to show the welcome screen so buttons might work
     document.getElementById('welcomeScreen').style.display = 'flex';
   }
 }
