@@ -1,6 +1,5 @@
 /**
  * Pattern Tool Viewer - VANTAGE-ALPHA Baseline
- * Synced to Left-Baseline Alphabetic rendering.
  */
 import { App } from './app.js';
 import { PAD } from './constants.js';
@@ -13,7 +12,7 @@ export const Popup = {
     if (!p) {
       p = document.createElement('div');
       p.id = 'globalPopup';
-      p.className = 'ui-popup';
+      p.className = 'popup';
       document.body.appendChild(p);
     }
     p.innerHTML = html;
@@ -41,62 +40,66 @@ export const XCSViewer = {
     const v = document.createElement('div');
     v.className = 'xcs-viewer';
     v.innerHTML = `
-      <div class="viewer-header">
+      <div class="viewer-top">
         <div class="viewer-fname">Untitled.xcs</div>
         <div class="viewer-actions">
-          <button class="hbtn export-xcs-btn">Export XCS</button>
-          <button class="hbtn export-pal-btn">Export Palette</button>
+          <div class="btn-group">
+            <button class="hbtn export-xcs-btn">Export XCS</button>
+            <button class="hbtn export-pal-btn">Export Palette</button>
+          </div>
         </div>
       </div>
-      <div class="viewer-layout">
-        <div class="viewer-main">
-          <div class="canvas-container">
-            <div class="canvas-label">Laser Area: 100 × 100 mm</div>
-            <svg class="svg-canvas" viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet">
-              <!-- Grid -->
-              <defs>
-                <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-                  <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-                </pattern>
-              </defs>
-              <rect width="500" height="500" fill="url(#grid)" />
-              <g class="svg-content"></g>
-            </svg>
-          </div>
-          <div class="viewer-stats">
-            <div class="stat-pill s-shapes"><strong>0</strong> shapes</div>
-            <div class="stat-pill s-power">Power: -</div>
-            <div class="stat-pill s-speed">Speed: -</div>
-            <div class="stat-pill s-density">Density: -</div>
-          </div>
+      <div class="viewer-main">
+        <div class="canvas-panel">
+          <div class="canvas-label">Laser Area: 100 × 100 mm</div>
+          <svg class="svg-canvas" viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <rect width="500" height="500" fill="url(#grid)" />
+            <g class="svg-content"></g>
+          </svg>
         </div>
-        <div class="viewer-side">
+        <div class="right-info-panel">
           <div class="right-tabs">
-            <div class="rtab active" data-tab="shapes">Shapes</div>
-            <div class="rtab" data-tab="palette">Palette</div>
-            <div class="rtab" data-tab="process">Process</div>
-            <div class="rtab" data-tab="json">JSON</div>
+            <button class="rtab active" data-tab="shapes">Shapes</button>
+            <button class="rtab" data-tab="palette">Palette</button>
+            <button class="rtab" data-tab="process">Process</button>
+            <button class="rtab" data-tab="json">JSON</button>
           </div>
-          <div class="right-pane active" data-pane="shapes">
-            <div class="shapes-hdr">Shapes (0)</div>
-            <div class="shapes-body"></div>
-          </div>
-          <div class="right-pane" data-pane="palette">
-            <div class="pal-body"></div>
-          </div>
-          <div class="right-pane" data-pane="process">
-            <div class="process-tree"></div>
-          </div>
-          <div class="right-pane" data-pane="json">
-            <pre class="json-code"></pre>
+          <div class="panel-body">
+            <div class="right-pane active" data-pane="shapes">
+              <div class="list-header shapes-hdr">Shapes (0)</div>
+              <div class="shape-list shapes-body"></div>
+            </div>
+            <div class="right-pane" data-pane="palette">
+              <div class="list-header">Unique Parameters</div>
+              <div class="pal-list pal-body"></div>
+            </div>
+            <div class="right-pane" data-pane="process">
+              <div class="list-header">Processing Order</div>
+              <div class="shape-list process-tree" style="padding:10px"></div>
+            </div>
+            <div class="right-pane" data-pane="json">
+              <div class="json-scroll">
+                <pre class="json-code"></pre>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+      <div class="stats-bar">
+        <div class="stat s-shapes"><strong>0</strong> shapes</div>
+        <div class="stat s-power">Power: -</div>
+        <div class="stat s-speed">Speed: -</div>
+        <div class="stat s-density">Density: -</div>
       </div>
     `;
 
     const q = s => v.querySelector(s);
     
-    // Tab switching
     v.querySelectorAll('.rtab').forEach(t => {
       t.onclick = () => {
         v.querySelectorAll('.rtab, .right-pane').forEach(el => el.classList.remove('active'));
@@ -105,7 +108,6 @@ export const XCSViewer = {
       };
     });
 
-    // Interaction setup
     q('.shapes-body').addEventListener('click', e => {
       const row = e.target.closest('.shape-row');
       if (row) {
@@ -145,17 +147,9 @@ export const XCSViewer = {
     return v;
   },
 
-  update(v, state, lazy = false) {
+  update(v, state) {
     this.renderSVG(v, state);
     this.renderStats(v, state);
-    
-    // Performance: Skip heavy UI tabs if lazy and dataset is huge
-    if (lazy && state.shapes.length > 2000) {
-      v.querySelector('.shapes-body').innerHTML = '<div style="padding:20px; color:#666;">UI limited for performance. Toggle a control to refresh full view.</div>';
-      v.querySelector('.json-code').innerHTML = '';
-      return;
-    }
-
     this.renderList(v, state);
     this.renderPalette(v, state);
     this.renderProcessTree(v, state);
@@ -165,7 +159,7 @@ export const XCSViewer = {
   renderSVG(v, state) {
     const svg = v.querySelector('.svg-content');
     svg.innerHTML = '';
-    const sc = 5; // 100mm -> 500px
+    const sc = 5;
     const mm2 = (x, y) => [x * sc, y * sc];
 
     state.shapes.forEach(s => {
@@ -225,56 +219,32 @@ export const XCSViewer = {
     const list = v.querySelector('.shapes-body');
     v.querySelector('.shapes-hdr').textContent = `Shapes (${state.shapes.length})`;
     list.innerHTML = '';
-    
-    // UI Cap for performance
-    const maxItems = 500;
-    const items = state.shapes.slice(0, maxItems);
-    
-    items.forEach(s => {
+    state.shapes.forEach(s => {
       const row = document.createElement('div');
       row.className = 'shape-row';
       row.dataset.idx = s.idx;
       row.innerHTML = `
-        <div class="shape-swatch" style="background:${s.layerColor}"></div>
+        <div class="shape-dot" style="background:${s.layerColor}"></div>
         <div class="shape-info">
-          <div class="shape-type">${s.type} ${s.w.toFixed(1)}×${s.h.toFixed(1)}mm</div>
-          <div class="shape-params">${s.power}% / ${s.speed} / ${s.density}</div>
+          <div class="shape-row-title">${s.type} ${s.w.toFixed(1)}×${s.h.toFixed(1)}mm</div>
+          <div class="shape-row-sub">${s.power}% / ${s.speed} / ${s.density}</div>
         </div>
       `;
       row.onmouseenter = ev => this.onHover(v, state, s.idx, ev);
       row.onmouseleave = () => this.onLeave(v);
       list.appendChild(row);
     });
-
-    if (state.shapes.length > maxItems) {
-      const more = document.createElement('div');
-      more.style.padding = '10px'; more.style.color = '#666'; more.style.fontSize = '11px';
-      more.textContent = `... and ${state.shapes.length - maxItems} more shapes (view disabled for performance)`;
-      list.appendChild(more);
-    }
   },
 
   renderJSON(v, state) {
-    const code = v.querySelector('.json-code');
-    code.innerHTML = '';
-
-    // Safeguard for very large datasets
-    if (state.shapes.length > 2000) {
-      code.innerHTML = `<div class="json-display-block" style="color:#666; font-style:italic; padding:20px;">
-        JSON preview disabled for large datasets (${state.shapes.length} shapes). 
-        Export XCS to view full raw data.
-      </div>`;
-      return;
-    }
-
     let raw;
     try {
       raw = JSON.stringify(state.rawData, null, 2);
-    } catch (e) {
-      code.innerHTML = `<div class="json-display-block" style="color:#f87171; padding:20px;">Data too large to stringify.</div>`;
-      return;
+    } catch(e) { 
+      v.querySelector('.json-code').textContent = "Data too large to display.";
+      return; 
     }
-
+    
     const positions = [];
     state.shapes.forEach(s => {
       const needle = `"id": "${s.id}"`;
@@ -285,7 +255,23 @@ export const XCSViewer = {
       positions.push({id:s.id, start, end:i, type:'geo', idx:s.idx});
     });
 
-    positions.sort((a,b) => a.start - b.start);
+    const findNodes = (obj, path='') => {
+      if (obj && typeof obj === 'object') {
+        if (obj.id || obj.processingType) {
+          const needle = obj.id ? `"id": "${obj.id}"` : `"processingType": "${obj.processingType}"`;
+          const pos = raw.indexOf(needle);
+          if (pos !== -1) {
+            let start = raw.lastIndexOf('{', pos), depth = 1, i = start+1;
+            while (i < raw.length && depth > 0) { if (raw[i]==='{') depth++; else if (raw[i]==='}') depth--; i++; }
+            positions.push({id:obj.id||obj.processingType, start, end:i, type:'proc'});
+          }
+        }
+        Object.keys(obj).forEach(k => findNodes(obj[k], path ? `${path}.${k}` : k));
+      }
+    };
+    findNodes(state.rawData.device);
+
+    positions.sort((a,b) => a.start-b.start);
     let html = '', cursor = 0;
     for (const p of positions) {
       if (p.start < cursor) continue;
@@ -295,7 +281,7 @@ export const XCSViewer = {
       cursor = p.end;
     }
     html += syntaxHL(raw.slice(cursor));
-    code.innerHTML = html;
+    v.querySelector('.json-code').innerHTML = html;
   },
 
   renderPalette(v, state) {
@@ -306,13 +292,16 @@ export const XCSViewer = {
       const row = document.createElement('div');
       row.className = 'pal-row';
       row.innerHTML = `
-        <div class="pal-idx">${i+1}</div>
-        <div class="pal-vals">
-          <span>P: <strong>${c.power}%</strong></span>
-          <span>S: <strong>${c.speed}</strong></span>
-          <span>D: <strong>${c.density}</strong></span>
+        <div class="pal-row-top">
+          <div class="pal-id">LAYER ${i+1}</div>
+          <div class="pal-count">${c.count}</div>
         </div>
-        <div class="pal-count">${c.count}</div>
+        <div class="pal-params">
+          <span>P: <span class="pal-v">${c.power}%</span></span>
+          <span>S: <span class="pal-v">${c.speed}</span><span class="pal-u">mm/s</span></span>
+          <span>D: <span class="pal-v">${c.density}</span></span>
+        </div>
+        <div class="pal-types">${[...c.types].join(', ')}</div>
       `;
       body.appendChild(row);
     });
@@ -372,29 +361,26 @@ export const XCSViewer = {
   onHover(v, state, idx, ev) {
     const s = state.shapes.find(x => x.idx === idx);
     if (!s) return;
-    v.querySelectorAll('.shape-row, .json-display-block').forEach(el => el.classList.remove('hover'));
+    v.querySelectorAll('.shape-row, .json-display-block, [data-svg-idx]').forEach(el => el.classList.remove('hl', 'hover', 'json-hl'));
     const row = v.querySelector(`.shape-row[data-idx="${idx}"]`);
-    if (row) row.classList.add('hover');
+    if (row) row.classList.add('hl');
     const block = v.querySelector(`.json-display-block[data-idx="${idx}"]`);
-    if (block) block.classList.add('hover');
-    
+    if (block) block.classList.add('json-hl');
     const svgEl = v.querySelector(`[data-svg-idx="${idx}"]`);
     if (svgEl) svgEl.classList.add('hover');
 
     const html = `
-      <div class="pop-title">${s.paletteName || 'Shape'} - ${s.colorName || s.type}</div>
-      <div class="pop-grid">
-        <span>Power:</span> <strong>${s.power}%</strong>
-        <span>Speed:</span> <strong>${s.speed}</strong>
-        <span>Density:</span> <strong>${s.density}</strong>
-        <span>Size:</span> <strong>${s.w.toFixed(2)}x${s.h.toFixed(2)}mm</strong>
-      </div>
+      <div class="popup-title">${s.paletteName || 'Shape'} - ${s.colorName || s.type}</div>
+      <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}%</span></div>
+      <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
+      <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>
+      <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val">${s.w.toFixed(2)}x${s.h.toFixed(2)}mm</span></div>
     `;
     Popup.show(ev, html);
   },
 
   onLeave(v) {
-    v.querySelectorAll('.shape-row, .json-display-block, [data-svg-idx]').forEach(el => el.classList.remove('hover'));
+    v.querySelectorAll('.shape-row, .json-display-block, [data-svg-idx]').forEach(el => el.classList.remove('hl', 'hover', 'json-hl'));
     Popup.hide();
   },
 
