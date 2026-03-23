@@ -5,11 +5,6 @@
 import { uuid } from './utils.js';
 import { LATO_REGULAR_GLYPHS, LATO_REGULAR_INFO } from './xcs-glyphs.js';
 
-// ═══════════════════════════════════════════════════════════════════
-// XCS EXPORTER ADAPTER
-// Strictly follows xcsformat.md. 
-// WAIT, ASK, and CONFIRM for any features not supported in xcsformat.md.
-// ═══════════════════════════════════════════════════════════════════
 export const XCSExporter = {
   createProject(canvasId = uuid()) {
     return {
@@ -63,8 +58,8 @@ export const XCSExporter = {
 
   addText(project, options) {
     const {
-      text, x, y, width: manualWidth, height, fontSize, scale: manualScale,
-      layerColor = "#00befe",
+      text, x, y, fontSize, scale: manualScale,
+      layerColor = "#ffffff",
       processingType = "VECTOR_ENGRAVING",
       laserSource = "red",
       align = "center",
@@ -76,9 +71,9 @@ export const XCSExporter = {
     const dvEntry = project.device.data.value[0][1];
     const displayValues = dvEntry.displays.value;
 
-    const scaleObj = typeof manualScale === 'number' ? { x: manualScale, y: manualScale } : (manualScale || { x: 1, y: 1 });
-    const sx = scaleObj.x;
-    const sy = scaleObj.y;
+    const scale = typeof manualScale === 'number' ? manualScale : (manualScale?.y || 1.0);
+    const sx = scale;
+    const sy = scale;
 
     // --- Layout Engine (Baking Glyphs) ---
     const charJSONs = [];
@@ -88,11 +83,8 @@ export const XCSExporter = {
     let totalAdvance = 0;
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
     const totalWidth = totalAdvance * sx;
-    const totalHeight = height;
 
     // Determine the baseline anchor point (ax, ay)
-    // We manually handle alignment by shifting the anchor point,
-    // so we must set the internal XCS alignment to "left" to avoid double-shifting.
     let ax = x;
     let ay = y;
     
@@ -108,7 +100,7 @@ export const XCSExporter = {
     let minBX = Infinity, minBY = Infinity, maxBX = -Infinity, maxBY = -Infinity;
     let relX = 0;
     for (const g of glyphs) {
-      if (g.bbox && g.bbox.minX !== null) {
+      if (g.bbox) {
         minBX = Math.min(minBX, relX + g.bbox.minX);
         maxBX = Math.max(maxBX, relX + g.bbox.maxX);
         minBY = Math.min(minBY, -g.bbox.maxY); // Y is up from baseline in bbox
@@ -117,57 +109,34 @@ export const XCSExporter = {
       relX += g.advanceWidth;
     }
     
-    // Fallback if no visible characters
-    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = 0; maxBY = 0; }
+    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = -18; maxBY = 0; }
     
     const totalW = (maxBX - minBX) * sx;
     const totalH = (maxBY - minBY) * sy;
     
     // Parent offsets (center of the bounding box)
-    let parentOffsetX, parentOffsetY;
-    if (angle === -90) {
-      const localCX = (minBX + maxBX) / 2 * sx;
-      const localCY = (minBY + maxBY) / 2 * sy;
-      parentOffsetX = ax + localCY;
-      parentOffsetY = ay - localCX;
-    } else {
-      parentOffsetX = ax + ((minBX + maxBX) / 2 * sx);
-      parentOffsetY = ay + ((minBY + maxBY) / 2 * sy);
-    }
+    const localCX = (minBX + maxBX) / 2 * sx;
+    const localCY = (minBY + maxBY) / 2 * sy;
+    let parentOffsetX = ax + localCX;
+    let parentOffsetY = ay + localCY;
 
     let currentRelativeX = 0;
     for (let i = 0; i < text.length; i++) {
       const glyph = glyphs[i];
       const charId = uuid();
-      const hasBBox = glyph.bbox && glyph.bbox.minX !== null;
-      const charW = hasBBox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
-      const charH = hasBBox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
+      const charW = glyph.bbox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
+      const charH = glyph.bbox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
       
-      let cx, cy, cOffsetX, cOffsetY;
-      if (angle === -90) {
-        cx = ax;
-        cy = ay - (currentRelativeX * sx);
-        if (hasBBox) {
-          const lCX = (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx;
-          const lCY = (-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy;
-          cOffsetX = cx + lCY;
-          cOffsetY = cy - lCX;
-        } else {
-          cOffsetX = cx; cOffsetY = cy;
-        }
-      } else {
-        cx = ax + (currentRelativeX * sx);
-        cy = ay;
-        if (hasBBox) {
-          cOffsetX = cx + ((glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx);
-          cOffsetY = cy + ((-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy);
-        } else {
-          cOffsetX = cx; cOffsetY = cy;
-        }
-      }
+      const cx = ax + (currentRelativeX * sx);
+      const cy = ay;
+      
+      const lCX = glyph.bbox ? (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx : 0;
+      const lCY = glyph.bbox ? (-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy : 0;
+      const cOffsetX = cx + lCX;
+      const cOffsetY = cy + lCY;
 
       charJSONs.push({
-        id: charId, name: null, type: "PATH", x: cx, y: cy, angle,
+        id: charId, name: null, type: "PATH", x: cx, y: cy, angle: 0,
         scale: { x: sx, y: sy }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
         offsetX: cOffsetX, offsetY: cOffsetY, lockRatio: true, isClosePath: true,
         zOrder: 0, groupTag: uuid(), layerTag: layerColor, layerColor: layerColor,
@@ -187,7 +156,7 @@ export const XCSExporter = {
     const display = {
       id, name: null, type: "TEXT",
       x: ax, y: ay,
-      angle, scale: scaleObj, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
+      angle, scale: { x: sx, y: sy }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
       offsetX: parentOffsetX, offsetY: parentOffsetY, lockRatio: true, isClosePath: true,
       zOrder: canvas.displays.length, sourceId: id, groupTag: uuid(),
       layerTag: layerColor, layerColor: layerColor, visible: true, originColor: "#000000",
@@ -196,19 +165,17 @@ export const XCSExporter = {
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
       stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
       width: totalW, height: totalH,
-      isFill: false, lineColor: 0, fillColor: layerColor, fillRule: "nonzero",
+      isFill: processingType.includes("FILL"), 
+      lineColor: 0, fillColor: layerColor, fillRule: "nonzero",
       charJSONs,
       fontData: {
         fontInfo: LATO_REGULAR_INFO,
-        glyphData: LATO_REGULAR_GLYPHS,
-        layout: {
-          chars: text.split("").map((c, i) => ({ char: c, gid: i, offset: { x: 0, y: 0 }, advance: (LATO_REGULAR_GLYPHS[c] || LATO_REGULAR_GLYPHS[" "]).advanceWidth }))
-        }
+        glyphData: LATO_REGULAR_GLYPHS
       },
       text, resolution: 1,
       style: {
         fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
-        letterSpacing: 0, leading: 0, align: "left", // Force left to match our manual anchor
+        letterSpacing: 0, leading: 0, align: "left", 
         curveX: 0, curveY: 0,
         isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"
       }
@@ -217,8 +184,9 @@ export const XCSExporter = {
     canvas.displays.push(display);
 
     const planType = laserSource === 'red' ? 'red' : 'blue';
+    const isFill = processingType.includes("FILL");
     const processingConfig = {
-      isFill: false,
+      isFill,
       type: "TEXT",
       processingType,
       data: {
@@ -237,7 +205,7 @@ export const XCSExporter = {
         BITMAP_ENGRAVING: this.createNode("BITMAP_ENGRAVING", planType, laserSource)
       },
       processIgnore: false,
-      isWhiteModel: true
+      isWhiteModel: !isFill
     };
 
     displayValues.push([id, processingConfig]);
@@ -266,6 +234,7 @@ export const XCSExporter = {
     const canvas = project.canvas[0];
     const dvEntry = project.device.data.value[0][1];
     const displayValues = dvEntry.displays.value;
+    const isFill = processingType.includes("FILL") || processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING");
 
     const display = {
       id, name: null, type: 'CIRCLE', x, y, width, height, angle: 0,
@@ -277,7 +246,7 @@ export const XCSExporter = {
       resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
       stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-      isFill: true, lineColor: 0, fillColor: layerColor,
+      isFill, lineColor: 0, fillColor: layerColor,
       ...options.extraDisplayData
     };
 
@@ -292,7 +261,7 @@ export const XCSExporter = {
     };
 
     const processingConfig = {
-      isFill: true, type: 'CIRCLE', processingType, processIgnore: false, isWhiteModel: false,
+      isFill, type: 'CIRCLE', processingType, processIgnore: false, isWhiteModel: !isFill,
       data: {
         VECTOR_CUTTING: this.createNode("VECTOR_CUTTING", planType, laserSource),
         VECTOR_ENGRAVING: this.createNode("VECTOR_ENGRAVING", planType, laserSource),
@@ -319,6 +288,7 @@ export const XCSExporter = {
     const canvas = project.canvas[0];
     const dvEntry = project.device.data.value[0][1];
     const displayValues = dvEntry.displays.value;
+    const isFill = processingType.includes("FILL") || processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING");
 
     const display = {
       id, name: null, type: 'RECT', x, y, width, height, angle,
@@ -330,7 +300,7 @@ export const XCSExporter = {
       resourceOrigin: "", customData: {}, rootComponentId: "", minCanvasVersion: "0.0.0",
       fill: { paintType: "color", visible: false, color: 0, alpha: 1 },
       stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
-      isFill: true, lineColor: 0, fillColor: layerColor,
+      isFill, lineColor: 0, fillColor: layerColor,
       ...options.extraDisplayData
     };
 
@@ -345,7 +315,7 @@ export const XCSExporter = {
     };
 
     const processingConfig = {
-      isFill: true, type: 'RECT', processingType, processIgnore: false, isWhiteModel: false,
+      isFill, type: 'RECT', processingType, processIgnore: false, isWhiteModel: !isFill,
       data: {
         VECTOR_CUTTING: this.createNode("VECTOR_CUTTING", planType, laserSource),
         VECTOR_ENGRAVING: this.createNode("VECTOR_ENGRAVING", planType, laserSource),

@@ -14,8 +14,10 @@ import { TestTab } from './components/test-tab.js';
 import { VoronoiTab } from './components/voronoi-tab.js';
 import { HilbertTab } from './components/hilbert-tab.js';
 import { PaletteGridTab } from './components/palette-grid-tab.js';
+import { PaletteTestTab } from './components/palette-test-tab.js';
+import { MathTab } from './components/math-tab.js';
 
-export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab };
+export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab, PaletteTestTab, MathTab };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB MANAGER
@@ -120,6 +122,17 @@ export const TabMgr = {
     return id;
   },
 
+  newPaletteTest(initialCfg, label) {
+    const id = this.newId();
+    const finalLabel = label || getTimestampedName('PaletteTest');
+    App.tabs.push({ id, type:'palette-test', label: finalLabel });
+    const pane = PaletteTestTab.create(id, initialCfg);
+    document.getElementById('tabContent').appendChild(pane);
+    this.activate(id);
+    Persistence.save();
+    return id;
+  },
+
   newGradient(initialCfg, label) {
     const id = this.newId();
     const finalLabel = label || getTimestampedName('Gradient');
@@ -216,5 +229,3 @@ export const TabMgr = {
     });
   }
 };
-
-App.TabMgr = TabMgr;

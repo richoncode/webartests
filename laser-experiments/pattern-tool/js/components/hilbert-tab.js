@@ -24,13 +24,17 @@ export const HilbertTab = {
 
     const defaults = {
       paletteId: 'laFont-1000lpcm',
+      paletteOffset: 0,
       order: 4,
       size: 40,
-      border: true,
-      colorMode: 'single', // 'single' or 'gradient'
-      paletteEntryIndex: 0
+      renderMode: 'path',
+      border: true
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+    if (cfg.paletteEntryIndex !== undefined) {
+      cfg.paletteOffset = cfg.paletteEntryIndex;
+      delete cfg.paletteEntryIndex;
+    }
     const state = { rawData: null, shapes: [] };
     App.instances[tabId] = { type: 'hilbert', pane, cfg, state };
 
@@ -99,7 +103,7 @@ export const HilbertTab = {
 
     const dPath = "M" + points.map(p => p.map(c => c.toFixed(3)).join(",")).join("L");
     
-    const entry = palette.entries[cfg.paletteEntryIndex % palette.entries.length];
+    const entry = palette.entries[cfg.paletteOffset % palette.entries.length];
     const params = {
       power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
       processingLightSource: laserSource
@@ -129,17 +133,19 @@ export const HilbertTab = {
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const rebuild = () => this.renderControls(tabId);
 
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
+    if (!palette) return;
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Order', UI.makeStepCounter(cfg.order, 1, 8, v => set('order', v))),
-      UI.makeRow('Size', UI.makeRange(10, 100, 1, cfg.size, v => set('size', +v), 'mm')),
-      UI.makeRow('Color', UI.makePalettePicker(palette.entries, cfg.paletteEntryIndex, v => set('paletteEntryIndex', v))),
-      UI.makeToggleRow('Show Border', cfg.border, v => set('border', v))
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true, supportFill: false, supportColorRange: true, supportBorder: true,
+      minSize: 10, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Hilbert Settings', [
+      UI.makeRow('Order', UI.makeStepCounter(cfg.order, 1, 8, v => set('order', v)))
     ]));
   }
 };
+

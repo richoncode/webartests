@@ -17,7 +17,7 @@ export const Persistence = {
     });
     localStorage.setItem(this.KEY, JSON.stringify(state));
   },
-  load() {
+  restore() {
     try {
       const raw = localStorage.getItem(this.KEY);
       if (!raw) return false;
@@ -39,6 +39,7 @@ export const Persistence = {
         else if (t.type === 'path') newId = TabMgr.newPath(cfg, t.label);
         else if (t.type === 'attractor') newId = TabMgr.newAttractor(cfg, t.label);
         else if (t.type === 'voronoi') newId = TabMgr.newVoronoi(cfg, t.label);
+        else if (t.type === 'palette-test') newId = TabMgr.newPaletteTest(cfg, t.label);
         else if (t.type === 'hilbert') newId = TabMgr.newHilbert(cfg, t.label);
         else if (t.type === 'palette-grid') newId = TabMgr.newPaletteGrid(cfg, t.label);
         else if (t.type === 'gradient') newId = TabMgr.newGradient(cfg, t.label);
@@ -91,6 +92,7 @@ export const Persistence = {
         else if (data.type === 'path') TabMgr.newPath(data.cfg, label);
         else if (data.type === 'attractor') TabMgr.newAttractor(data.cfg, label);
         else if (data.type === 'voronoi') TabMgr.newVoronoi(data.cfg, label);
+        else if (data.type === 'palette-test') TabMgr.newPaletteTest(data.cfg, label);
         else if (data.type === 'hilbert') TabMgr.newHilbert(data.cfg, label);
         else if (data.type === 'palette-grid') TabMgr.newPaletteGrid(data.cfg, label);
         else if (data.type === 'gradient') TabMgr.newGradient(data.cfg, label);

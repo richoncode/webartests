@@ -135,7 +135,7 @@ export const UI = {
   },
 
   makePalettePicker(entries, currentIdx, onChange, options = {}) {
-    const { labelPrefix = "", onInteract = null, title = "" } = options;
+    const { labelPrefix = "", onInteract = null, title = "", autoIndicator = false } = options;
     const wrap = document.createElement('div');
     wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '4px';
     wrap.style.position = 'relative'; wrap.style.cursor = 'pointer';
@@ -154,6 +154,13 @@ export const UI = {
     }
     wrap.appendChild(swatch);
 
+    if (autoIndicator) {
+      const ai = document.createElement('span');
+      ai.style.fontSize = '9px'; ai.style.color = '#10b981'; ai.style.fontWeight = 'bold'; ai.style.opacity = '0.7';
+      ai.textContent = 'AUTO';
+      wrap.appendChild(ai);
+    }
+
     const getInfo = (idx) => {
       const e = entries[idx];
       return e ? `${title ? title + ': ' : ''}${e.label} (${e.power}%)` : title;
@@ -167,7 +174,6 @@ export const UI = {
       e.stopPropagation();
       this.hideTooltip();
       
-      // Create custom dropdown
       const menu = document.createElement('div');
       menu.className = 'palette-dropdown-menu';
       menu.style.position = 'fixed';
@@ -212,7 +218,7 @@ export const UI = {
       });
 
       document.body.appendChild(menu);
-      const rect = wrap.getBoundingClientRect();
+      const rect = swatch.getBoundingClientRect();
       let top = rect.bottom + 4;
       if (top + menu.offsetHeight > window.innerHeight) top = rect.top - menu.offsetHeight - 4;
       menu.style.left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 10) + 'px';
@@ -243,5 +249,186 @@ export const UI = {
     inc.onclick = () => { if (val < max) { val += step; disp.textContent = val; onChange(val); } };
     wrap.appendChild(dec); wrap.appendChild(disp); wrap.appendChild(inc);
     return wrap;
+  },
+
+  makeModeToggle(current, onPath, onFill, supported = { path: true, fill: true }) {
+    const wrap = document.createElement('div');
+    wrap.className = 'btn-group';
+    
+    const pathBtn = document.createElement('button');
+    pathBtn.className = 'hbtn sm' + (current === 'path' ? ' primary' : '');
+    pathBtn.textContent = 'Path';
+    pathBtn.disabled = !supported.path;
+    pathBtn.onclick = () => {
+      if (current !== 'path') onPath();
+    };
+
+    const fillBtn = document.createElement('button');
+    fillBtn.className = 'hbtn sm' + (current === 'fill' ? ' primary' : '');
+    fillBtn.textContent = 'Fill';
+    fillBtn.disabled = !supported.fill;
+    fillBtn.onclick = () => {
+      if (current !== 'fill') onFill();
+    };
+
+    wrap.appendChild(pathBtn);
+    wrap.appendChild(fillBtn);
+    return wrap;
+  },
+
+  makeGeneralSettingsSection(cfg, setFn, rebuildFn, palettes, currentPaletteObj, options = {}) {
+    const opts = {
+      supportPath: true,
+      supportFill: true,
+      supportColorRange: true,
+      supportBorder: true,
+      minSize: 10,
+      maxSize: 200,
+      ...options
+    };
+
+    const rows = [];
+    
+    // 1. Size
+    rows.push(this.makeRow('Size', this.makeRange(
+      opts.minSize, opts.maxSize, 1, cfg.size || 40, 
+      v => setFn('size', +v), 'mm'
+    )));
+
+    // 2. Palette
+    if (palettes) {
+      const palOpts = Object.keys(palettes);
+      const palLabels = {}; palOpts.forEach(id => palLabels[id] = palettes[id].name);
+      rows.push(this.makeRow('Palette', this.makeToggles(
+        palOpts, cfg.paletteId, 
+        v => { 
+          cfg.paletteId = v; 
+          setFn('paletteId', v); 
+          if(rebuildFn) rebuildFn(); 
+        }, 
+        palLabels
+      )));
+    }
+
+    // 3. Color (Single or Range)
+    if (opts.supportColorRange && currentPaletteObj && currentPaletteObj.entries) {
+      rows.push(this.makeRow('Color', (() => {
+        const wrap = document.createElement('div');
+        wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '8px';
+        
+        const btn = document.createElement('button');
+        btn.className = 'hbtn sm' + (cfg.colorRangeMode ? ' primary' : '');
+        btn.textContent = cfg.colorRangeMode ? 'AUTO' : 'MANUAL';
+        btn.onclick = () => {
+          cfg.colorRangeMode = !cfg.colorRangeMode;
+          setFn('colorRangeMode', cfg.colorRangeMode);
+          if (rebuildFn) rebuildFn();
+        };
+        wrap.appendChild(btn);
+
+        wrap.appendChild(this.makePalettePicker(
+          currentPaletteObj.entries, 
+          cfg.paletteOffset || 0, 
+          v => setFn('paletteOffset', v),
+          { title: cfg.colorRangeMode ? "Start Color" : "Color" }
+        ));
+
+        if (cfg.colorRangeMode) {
+          const arrow = document.createElement('span');
+          arrow.innerHTML = '&rarr;'; arrow.style.color = '#444'; arrow.style.fontSize = '10px';
+          wrap.appendChild(arrow);
+          wrap.appendChild(this.makePalettePicker(
+            currentPaletteObj.entries, 
+            cfg.rangeEndIdx !== undefined ? cfg.rangeEndIdx : 10, 
+            v => setFn('rangeEndIdx', v), 
+            { title: "End Color" }
+          ));
+        }
+        return wrap;
+      })()));
+    } else if (currentPaletteObj && currentPaletteObj.entries) {
+      // Just single start color if range not supported
+      rows.push(this.makeRow('Start Color', this.makePalettePicker(
+        currentPaletteObj.entries, 
+        cfg.paletteOffset || 0, 
+        v => setFn('paletteOffset', v)
+      )));
+    }
+
+    // 4. Mode (Fill/Path)
+    rows.push(this.makeRow('Mode', this.makeModeToggle(
+      cfg.renderMode || 'fill', 
+      () => setFn('renderMode', 'path'), 
+      () => setFn('renderMode', 'fill'),
+      { path: opts.supportPath, fill: opts.supportFill }
+    )));
+
+    // 5. Border
+    if (opts.supportBorder) {
+      rows.push(this.makeToggleRow('Show Border', cfg.border || false, v => setFn('border', v)));
+    }
+
+    return this.makeSection('General', rows);
+  },
+
+  showPatternMenu(patterns) {
+    const menu = document.getElementById('addPatternMenu');
+    if (!menu) return;
+
+    if (menu.classList.contains('show')) {
+      menu.classList.remove('show');
+      return;
+    }
+
+    if (menu.innerHTML === '') {
+      const cats = [...new Set(patterns.map(p => p.cat))];
+      cats.forEach(cat => {
+        const col = document.createElement('div');
+        col.className = 'menu-column';
+        col.innerHTML = `<div class="menu-category"><span>${cat}</span></div>`;
+        
+        const grid = document.createElement('div');
+        grid.className = 'menu-items-grid';
+        
+        patterns.filter(p => p.cat === cat).forEach(p => {
+          const item = document.createElement('div');
+          item.className = 'menu-item';
+          item.innerHTML = `
+            <span class="menu-item-icon">${p.icon || '◈'}</span>
+            <span class="menu-item-label">${p.label}</span>
+          `;
+          item.onclick = (e) => {
+            e.stopPropagation();
+            import('./app.js').then(m => {
+              m.App.addTab(p.label, p.comp, p.cfg);
+              menu.classList.remove('show');
+            });
+          };
+          grid.appendChild(item);
+        });
+        col.appendChild(grid);
+        menu.appendChild(col);
+      });
+    }
+
+    menu.classList.add('show');
+    
+    const btn = document.getElementById('addPatternBtn');
+    const rect = btn.getBoundingClientRect();
+    const menuW = 840;
+    let left = rect.left;
+    if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 20;
+    menu.style.left = Math.max(10, left) + 'px';
+    menu.style.top = (rect.bottom + 8) + 'px';
+
+    setTimeout(() => {
+      const close = (e) => {
+        if (!menu.contains(e.target) && e.target !== btn) {
+          menu.classList.remove('show');
+          document.removeEventListener('click', close);
+        }
+      };
+      document.addEventListener('click', close);
+    }, 10);
   }
 };

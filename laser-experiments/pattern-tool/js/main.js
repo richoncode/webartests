@@ -1,204 +1,77 @@
 import { App } from './app.js';
 import { Persistence } from './persistence.js';
-import { PalMgr } from './palettes.js';
-import { TabMgr } from './tabs.js';
-import { XCSViewer, Popup } from './viewer.js';
-import { VERSION } from './constants.js';
+import { UI } from './utils.js';
+import { 
+  MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, 
+  VoronoiTab, PaletteTestTab, GradientTab, MathTab, TabMgr,
+  PaletteGridTab, HilbertTab
+} from './tabs.js';
 
-// Attach to window for global access
-window.App = App;
-window.Persistence = Persistence;
-window.PalMgr = PalMgr;
-window.TabMgr = TabMgr;
-window.XCSViewer = XCSViewer;
-window.Popup = Popup;
+// Dependency Injection
+App.TabMgr = TabMgr;
 
 const PATTERNS = [
-  {
-    category: 'Math & Symmetry',
-    items: [
-      { id: 'mandala', label: 'Dot Mandala', icon: '✦', action: () => TabMgr.newMandala() },
-      { id: 'fol', label: 'Flower of Life', icon: '🝊', action: () => TabMgr.newGeometry({ mode: 'flower-of-life' }, 'Flower of Life') },
-      { id: 'metatron', label: "Metatron's Cube", icon: '⌬', action: () => TabMgr.newGeometry({ mode: 'metatrons-cube' }, "Metatron's Cube") },
-      { id: 'rose', label: 'Rose Curve', icon: '✿', action: () => TabMgr.newGeometry({ mode: 'rose-curve' }, 'Rose Curve') },
-      { id: 'spiral', label: 'Archimedean Spiral', icon: '🌀', action: () => TabMgr.newGeometry({ mode: 'archimedean-spiral' }, 'Archimedean Spiral') },
-      { id: 'fermat', label: 'Fermat Spiral', icon: '🌻', action: () => TabMgr.newGeometry({ mode: 'fermat-spiral' }, 'Fermat Spiral') },
-      { id: 'concentric', label: 'Concentric Polygons', icon: '⬔', action: () => TabMgr.newGeometry({ mode: 'concentric-polygons' }, 'Concentric Polygons') },
-      { id: 'honeycomb', label: 'Hex Honeycomb', icon: '⬢', action: () => TabMgr.newGeometry({ mode: 'honeycomb' }, 'Hex Honeycomb') },
-      { id: 'islamic', label: 'Islamic Star', icon: '☪', action: () => TabMgr.newGeometry({ mode: 'islamic-star' }, 'Islamic Star') },
-      { id: 'girih', label: 'Girih Tiling', icon: '⛬', action: () => TabMgr.newGeometry({ mode: 'girih' }, 'Girih Tiling') },
-      { id: 'penrose', label: 'Penrose P2', icon: '⧉', action: () => TabMgr.newGeometry({ mode: 'penrose' }, 'Penrose P2') }
-    ]
-  },
-  {
-    category: 'Space-Filling Paths',
-    items: [
-      { id: 'path-hilbert', label: 'Hilbert Curve', icon: '₪', action: () => TabMgr.newPath({ mode: 'hilbert' }, 'Hilbert Curve') },
-      { id: 'path-peano', label: 'Peano Curve', icon: '⧉', action: () => TabMgr.newPath({ mode: 'peano' }, 'Peano Curve') },
-      { id: 'path-gosper', label: 'Gosper Curve', icon: '❄', action: () => TabMgr.newPath({ mode: 'gosper' }, 'Gosper Curve') },
-      { id: 'path-moore', label: 'Moore Curve', icon: '⧓', action: () => TabMgr.newPath({ mode: 'moore' }, 'Moore Curve') },
-      { id: 'path-arrowhead', label: 'Sierpinski Arrowhead', icon: '▲', action: () => TabMgr.newPath({ mode: 'sierpinski-arrowhead' }, 'Sierpinski Arrowhead') },
-      { id: 'path-lebesgue', label: 'Lebesgue O-curve', icon: '➰', action: () => TabMgr.newPath({ mode: 'lebesgue' }, 'Lebesgue Curve') },
-      { id: 'path-morton', label: 'Morton Curve', icon: '☊', action: () => TabMgr.newPath({ mode: 'morton' }, 'Morton Curve') },
-      { id: 'path-htree', label: 'H-Tree', icon: '🪜', action: () => TabMgr.newPath({ mode: 'h-tree' }, 'H-Tree') },
-      { id: 'path-lsystem', label: 'L-System Grid', icon: '▦', action: () => TabMgr.newPath({ mode: 'lsystem-grid' }, 'L-System Grid') },
-      { id: 'path-dragon', label: 'Dragon Folding', icon: '🐲', action: () => TabMgr.newPath({ mode: 'dragon-folding' }, 'Dragon Folding') }
-    ]
-  },
-  {
-    category: 'Chaotic Attractors',
-    items: [
-      { id: 'attr-lorenz', label: 'Lorenz Attractor', icon: '🦋', action: () => TabMgr.newAttractor({ mode: 'lorenz' }, 'Lorenz Attractor') },
-      { id: 'attr-rossler', label: 'Rossler Attractor', icon: '🌀', action: () => TabMgr.newAttractor({ mode: 'rossler' }, 'Rossler Attractor') },
-      { id: 'attr-clifford', label: 'Clifford Attractor', icon: '🌪️', action: () => TabMgr.newAttractor({ mode: 'clifford' }, 'Clifford Attractor') },
-      { id: 'attr-dejong', label: 'Peter de Jong', icon: '🌀', action: () => TabMgr.newAttractor({ mode: 'dejong' }, 'Peter de Jong') },
-      { id: 'attr-bedhead', label: 'Bedhead Attractor', icon: '🛌', action: () => TabMgr.newAttractor({ mode: 'bedhead' }, 'Bedhead Attractor') },
-      { id: 'attr-ikeda', label: 'Ikeda Map', icon: '🗺️', action: () => TabMgr.newAttractor({ mode: 'ikeda' }, 'Ikeda Map') },
-      { id: 'attr-henon', label: 'Hénon Map', icon: '☄️', action: () => TabMgr.newAttractor({ mode: 'henon' }, 'Hénon Map') }
-    ]
-  },
-  {
-    category: 'Fractals & Recursion',
-    items: [
-      { id: 'fract-gasket', label: 'Sierpinski Gasket', icon: '▲', action: () => TabMgr.newFractal({ mode: 'sierpinski-gasket' }, 'Sierpinski Gasket') },
-      { id: 'fract-carpet', label: 'Sierpinski Carpet', icon: '▦', action: () => TabMgr.newFractal({ mode: 'sierpinski-carpet' }, 'Sierpinski Carpet') },
-      { id: 'fract-koch', label: 'Koch Snowflake', icon: '❄', action: () => TabMgr.newFractal({ mode: 'koch-snowflake' }, 'Koch Snowflake') },
-      { id: 'fract-dragon', label: 'Dragon Curve', icon: '🐉', action: () => TabMgr.newFractal({ mode: 'dragon-curve' }, 'Dragon Curve') },
-      { id: 'fract-mandelbrot', label: 'Mandelbrot Set', icon: '⚛', action: () => TabMgr.newFractal({ mode: 'mandelbrot' }, 'Mandelbrot Set') },
-      { id: 'fract-julia', label: 'Julia Set', icon: '❃', action: () => TabMgr.newFractal({ mode: 'julia-set' }, 'Julia Set') },
-      { id: 'fract-pythagoras', label: 'Pythagoras Tree', icon: '🌳', action: () => TabMgr.newFractal({ mode: 'pythagoras-tree' }, 'Pythagoras Tree') },
-      { id: 'fract-menger', label: 'Menger Sponge', icon: '🧊', action: () => TabMgr.newFractal({ mode: 'menger-sponge-2d' }, 'Menger Sponge') },
-      { id: 'fract-vicsek', label: 'Vicsek Fractal', icon: '✛', action: () => TabMgr.newFractal({ mode: 'vicsek-fractal' }, 'Vicsek Fractal') },
-      { id: 'fract-barnsley', label: 'Barnsley Fern', icon: '🌿', action: () => TabMgr.newFractal({ mode: 'barnsley-fern' }, 'Barnsley Fern') }
-    ]
-  },
-  {
-    category: 'Organic & Biological',
-    items: [
-      { id: 'voronoi', label: 'Voronoi Tiling', icon: '⬢', action: () => TabMgr.newVoronoi() }
-    ]
-  },
-  {
-    category: 'Material & Technical',
-    items: [
-      { id: 'palette-grid', label: 'Palette Grid', icon: '▦', action: () => TabMgr.newPaletteGrid() },
-      { id: 'gradient', label: 'Gradient Grid', icon: '▦', action: () => TabMgr.newGradient() },
-      { id: 'bitmap-line', label: 'Bitmap Line', icon: '▤', action: () => TabMgr.newBitmapLine() },
-      { id: 'test', label: 'XCS Reference Test', icon: '⚙', action: () => TabMgr.newTest() }
-    ]
-  }
+  // Math & Symmetry
+  { id: 'mandala', label: 'Dot Mandala', cat: 'Math & Symmetry', comp: MandalaTab, icon: '<svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;display:inline-block;vertical-align:middle;"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><circle cx="7" cy="7" r="2"/></svg>' },
+  { id: 'fol', label: 'Flower of Life', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'flower-of-life' }, icon: '🝊' },
+  { id: 'metatron', label: "Metatron's Cube", cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'metatrons-cube' }, icon: '⌬' },
+  { id: 'rose', label: 'Rose Curve', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'rose-curve' }, icon: '✿' },
+  { id: 'spiral', label: 'Archimedean Spiral', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'archimedean-spiral' }, icon: '🌀' },
+  { id: 'fermat', label: 'Fermat Spiral', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'fermat-spiral' }, icon: '🌻' },
+  { id: 'concentric', label: 'Concentric Polygons', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'concentric-polygons' }, icon: '⬔' },
+  { id: 'honeycomb', label: 'Hex Honeycomb', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'honeycomb' }, icon: '⬢' },
+  { id: 'islamic', label: 'Islamic Star', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'islamic-star' }, icon: '☪' },
+  { id: 'girih', label: 'Girih Tiling', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'girih' }, icon: '⛬' },
+  { id: 'penrose', label: 'Penrose P2', cat: 'Math & Symmetry', comp: GeometryTab, cfg: { mode: 'penrose' }, icon: '⧉' },
+  
+  // Fractals & Recursion
+  { id: 'fractal-gasket', label: 'Sierpinski Gasket', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'sierpinski-gasket' }, icon: '▲' },
+  { id: 'fractal-carpet', label: 'Sierpinski Carpet', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'sierpinski-carpet' }, icon: '▦' },
+  { id: 'fractal-koch', label: 'Koch Snowflake', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'koch-snowflake' }, icon: '❄' },
+  { id: 'fractal-dragon', label: 'Dragon Curve', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'dragon-curve' }, icon: '🐉' },
+  { id: 'fractal-mandelbrot', label: 'Mandelbrot Set', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'mandelbrot' }, icon: '⚛' },
+  { id: 'fractal-julia', label: 'Julia Set', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'julia-set' }, icon: '❃' },
+  { id: 'fractal-pythagoras', label: 'Pythagoras Tree', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'pythagoras-tree' }, icon: '🌳' },
+  { id: 'fractal-menger', label: 'Menger Sponge', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'menger-sponge-2d' }, icon: '🧊' },
+  { id: 'fractal-vicsek', label: 'Vicsek Fractal', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'vicsek-fractal' }, icon: '✛' },
+  { id: 'fractal-barnsley', label: 'Barnsley Fern', cat: 'Fractals & Recursion', comp: FractalTab, cfg: { type: 'barnsley-fern' }, icon: '🌿' },
+
+  // Space-Filling Paths
+  { id: 'path-hilbert', label: 'Hilbert Curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'hilbert' }, icon: '₪' },
+  { id: 'path-peano', label: 'Peano Curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'peano' }, icon: '⧉' },
+  { id: 'path-gosper', label: 'Gosper Curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'gosper' }, icon: '❄' },
+  { id: 'path-moore', label: 'Moore Curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'moore' }, icon: '⧓' },
+  { id: 'path-arrowhead', label: 'Sierpinski Arrowhead', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'sierpinski-arrowhead' }, icon: '▲' },
+  { id: 'path-lebesgue', label: 'Lebesgue O-curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'lebesgue' }, icon: '➰' },
+  { id: 'path-morton', label: 'Morton Curve', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'morton' }, icon: '☊' },
+  { id: 'path-htree', label: 'H-Tree', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'h-tree' }, icon: '🪜' },
+  { id: 'path-lsystem', label: 'L-System Grid', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'lsystem-grid' }, icon: '▦' },
+  { id: 'path-dragon', label: 'Dragon Folding', cat: 'Space-Filling Paths', comp: PathTab, cfg: { mode: 'dragon-folding' }, icon: '🐲' },
+
+  // Chaotic Attractors
+  { id: 'attr-lorenz', label: 'Lorenz', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'lorenz' }, icon: '🦋' },
+  { id: 'attr-rossler', label: 'Rossler', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'rossler' }, icon: '🌀' },
+  { id: 'attr-clifford', label: 'Clifford', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'clifford' }, icon: '🌪️' },
+  { id: 'attr-dejong', label: 'Peter de Jong', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'dejong' }, icon: '🌀' },
+  { id: 'attr-bedhead', label: 'Bedhead Attractor', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'bedhead' }, icon: '🛌' },
+  { id: 'attr-ikeda', label: 'Ikeda Map', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'ikeda' }, icon: '🗺️' },
+  { id: 'attr-henon', label: 'Hénon Map', cat: 'Chaotic Attractors', comp: AttractorTab, cfg: { mode: 'henon' }, icon: '☄️' },
+
+  // Organic & Biological
+  { id: 'org-voronoi', label: 'Voronoi Tiling', cat: 'Organic & Biological', comp: VoronoiTab, cfg: { type: 'voronoi' }, icon: '⬢' },
+
+  // Material & Technical
+  { id: 'test-palette', label: 'Palette Test', cat: 'Material & Technical', comp: PaletteTestTab, icon: '▦' },
+  { id: 'test-palette-grid', label: 'Palette Grid', cat: 'Material & Technical', comp: PaletteGridTab, icon: '▦' },
+  { id: 'test-gradient', label: 'Gradient Grid', cat: 'Material & Technical', comp: GradientTab, icon: '▦' },
+  { id: 'test-bitmap', label: 'Bitmap Line', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'bitmap-line' }, icon: '▤' },
+  { id: 'test-xcs', label: 'XCS Reference Test', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'test' }, icon: '⚙' }
 ];
 
-function renderPatternMenu(menuId) {
-  const menu = document.getElementById(menuId);
-  if (!menu) return;
-  menu.innerHTML = '';
-
-  PATTERNS.forEach(cat => {
-    if (cat.items.length === 0) return;
-    
-    const col = document.createElement('div');
-    col.className = 'menu-column';
-
-    const catEl = document.createElement('div');
-    catEl.className = 'menu-category';
-    catEl.innerHTML = `<span>${cat.category}</span><span style="opacity:0.3; font-weight:400; font-family:monospace">${cat.items.length}</span>`;
-    col.appendChild(catEl);
-
-    const grid = document.createElement('div');
-    grid.className = 'menu-items-grid';
-
-    cat.items.forEach(item => {
-      const itemEl = document.createElement('div');
-      itemEl.className = 'menu-item';
-      itemEl.innerHTML = `
-        <span class="menu-item-icon">${item.icon}</span>
-        <span class="menu-item-label">${item.label}</span>
-      `;
-      itemEl.onclick = (e) => {
-        e.stopPropagation();
-        item.action();
-        document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
-      };
-      grid.appendChild(itemEl);
-    });
-    col.appendChild(grid);
-    menu.appendChild(col);
-  });
-}
-
-function setupEventListeners() {
-  const listen = (id, fn) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', fn);
-  };
-
-  listen('openXcsBtn', () => TabMgr.openXcs());
+window.addEventListener('DOMContentLoaded', async () => {
+  await App.init(PATTERNS);
+  Persistence.restore();
   
-  const addBtn = document.getElementById('addPatternBtn');
-  const addMenu = document.getElementById('addPatternMenu');
-  if (addBtn && addMenu) {
-    renderPatternMenu('addPatternMenu');
-    addBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isShow = addMenu.classList.contains('show');
-      document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
-      if (!isShow) addMenu.classList.add('show');
-    });
-  }
-
-  listen('saveRnrBtn', () => Persistence.saveRNR());
-  listen('loadRnrBtn', () => document.getElementById('rnrInput').click());
-  listen('clearAllBtn', () => Persistence.clearAll());
-  
-  const rnrInput = document.getElementById('rnrInput');
-  if (rnrInput) {
-    rnrInput.addEventListener('change', e => {
-      if (e.target.files && e.target.files[0]) Persistence.loadRNR(e.target.files[0]);
-    });
-  }
-
-  listen('welcomeOpenXcsBtn', () => TabMgr.openXcs());
-  
-  const welcomeAddBtn = document.getElementById('welcomeAddPatternBtn');
-  const welcomeAddMenu = document.getElementById('welcomeAddPatternMenu');
-  if (welcomeAddBtn && welcomeAddMenu) {
-    renderPatternMenu('welcomeAddPatternMenu');
-    welcomeAddBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isShow = welcomeAddMenu.classList.contains('show');
-      document.querySelectorAll('.add-pattern-menu').forEach(m => m.classList.remove('show'));
-      if (!isShow) welcomeAddMenu.classList.add('show');
-    });
-  }
-
-  document.addEventListener('click', () => {
-    if (addMenu) addMenu.classList.remove('show');
-    if (welcomeAddMenu) welcomeAddMenu.classList.remove('show');
-  });
-
-  const vEl = document.getElementById('appVersion');
-  if (vEl) vEl.textContent = `v${VERSION}`;
-
-  window.addEventListener('resize', () => {
-    if (!App.activeTabId) return;
-    const inst = App.instances[App.activeTabId];
-    if (inst) XCSViewer.update(inst.pane, inst.state);
-    Persistence.save();
-  });
-}
-
-async function init() {
-  try {
-    setupEventListeners();
-    await PalMgr.load();
-    if (!Persistence.load()) {
-      document.getElementById('welcomeScreen').style.display = 'flex';
-    }
-  } catch (err) {
-    console.error('Initialization failed', err);
-    document.getElementById('welcomeScreen').style.display = 'flex';
-  }
-}
-
-init();
+  // UI Hooks
+  document.getElementById('addPatternBtn').onclick = () => UI.showPatternMenu(PATTERNS);
+});

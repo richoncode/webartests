@@ -24,13 +24,15 @@ export const MandalaTab = {
 
     const defaults = {
       paletteId: 'laFont-1000lpcm',
-      totalSize: 40,
+      paletteOffset: 0,
+      size: 40,
+      renderMode: 'fill',
+      border: false,
       ringCount: 4,
       symmetry: 8,
       dotScaling: 0.2,
       alternateRotation: true,
-      colorRangeMode: false,
-      rangeStartIdx: 0,
+      colorRangeMode: true,
       rangeEndIdx: 10,
       ringSpiral: 5,
       centerDot: true,
@@ -38,12 +40,16 @@ export const MandalaTab = {
       centerDotEntry: 0,
       rings: [
         { dotDiameter: 1.5, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 0, rotationOffset: 0, shape: 'circle' },
-        { dotDiameter: 2.0, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 1, rotationOffset: 0, shape: 'circle' },
-        { dotDiameter: 2.5, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 2, rotationOffset: 0, shape: 'circle' },
-        { dotDiameter: 3.0, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 3, rotationOffset: 0, shape: 'circle' }
+        { dotDiameter: 2.0, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 3, rotationOffset: 0, shape: 'circle' },
+        { dotDiameter: 2.5, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 7, rotationOffset: 0, shape: 'circle' },
+        { dotDiameter: 3.0, ringRadius: 5, countMultiplier: 1, count: 8, paletteEntryIndex: 10, rotationOffset: 0, shape: 'circle' }
       ]
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+    if (cfg.totalSize !== undefined) {
+      cfg.size = cfg.totalSize;
+      delete cfg.totalSize;
+    }
     const state = { rawData: null, shapes: [] };
     App.instances[tabId] = { type: 'mandala', pane, cfg, state };
 
@@ -72,6 +78,8 @@ export const MandalaTab = {
     const CX = 50, CY = 50;
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
+    const isFill = cfg.renderMode === 'fill';
+    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
     const addShape = (lx, ly, r, type, color, entry, paletteName, colorName) => {
       const x = CX + lx, y = CY + ly;
@@ -83,7 +91,7 @@ export const MandalaTab = {
 
       const options = {
         x, y, width: r*2, height: r*2,
-        layerColor: color, laserSource, params,
+        layerColor: color, laserSource, params, processingType,
         extraDisplayData: { hideLabels: true, paletteName, colorName }
       };
       if (type === 'circle') XCSExporter.addCircle(project, options);
@@ -92,9 +100,8 @@ export const MandalaTab = {
 
     const radii = this.computeRadii(cfg);
     const maxRadius = radii.length > 0 ? radii[radii.length - 1] : 1;
-    const scaleFactor = (cfg.totalSize / 2) / maxRadius;
+    const scaleFactor = (cfg.size / 2) / maxRadius;
 
-    // Treat Center Dot as Index 0 if visible
     const colorSteps = cfg.centerDot ? cfg.ringCount : Math.max(0, cfg.ringCount - 1);
 
     cfg.rings.forEach((ring, i) => {
@@ -104,10 +111,10 @@ export const MandalaTab = {
       
       let entryIdx;
       if (cfg.colorRangeMode) {
-        // If center dot is visible, it takes index 0, Ring 1 takes index 1.
         const colorIdx = cfg.centerDot ? i + 1 : i;
         const t = colorSteps > 0 ? colorIdx / colorSteps : 0;
-        entryIdx = Math.round(cfg.rangeStartIdx + (cfg.rangeEndIdx - cfg.rangeStartIdx) * t);
+        const start = cfg.paletteOffset;
+        entryIdx = Math.round(start + (cfg.rangeEndIdx - start) * t);
       } else {
         entryIdx = ring.paletteEntryIndex;
       }
@@ -124,9 +131,19 @@ export const MandalaTab = {
     });
 
     if (cfg.centerDot) {
-      const entryIdx = cfg.colorRangeMode ? cfg.rangeStartIdx : cfg.centerDotEntry;
+      const entryIdx = cfg.colorRangeMode ? cfg.paletteOffset : cfg.centerDotEntry;
       const entry = palette.entries[Math.max(0, Math.min(palette.entries.length - 1, entryIdx))];
       addShape(0, 0, cfg.centerDotDiameter/2, 'circle', entry.rgb, entry, palette.name, entry.label);
+    }
+
+    if (cfg.border) {
+      XCSExporter.addRect(project, {
+        x: CX, y: CY, width: cfg.size, height: cfg.size,
+        layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
+        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+        extraDisplayData: { hideLabels: true }
+      });
     }
 
     const canvas = project.canvas[0];
@@ -140,10 +157,51 @@ export const MandalaTab = {
     const radii = [];
     let currentR = 0;
     for (let i = 0; i < cfg.ringCount; i++) {
-      currentR += cfg.rings[i].ringRadius;
+      currentR += cfg.rings[i]?.ringRadius || 5;
       radii.push(currentR);
     }
     return radii;
+  },
+
+  syncAllToAuto(cfg) {
+    const colorSteps = cfg.centerDot ? cfg.ringCount : Math.max(0, cfg.ringCount - 1);
+    const start = cfg.paletteOffset;
+    const end = cfg.rangeEndIdx;
+    
+    if (cfg.centerDot) cfg.centerDotEntry = start;
+    
+    for (let i = 0; i < cfg.ringCount; i++) {
+      const colorIdx = cfg.centerDot ? i + 1 : i;
+      const t = colorSteps > 0 ? colorIdx / colorSteps : 0;
+      cfg.rings[i].paletteEntryIndex = Math.round(start + (end - start) * t);
+    }
+  },
+
+  reconcileAutoMode(cfg) {
+    const colorSteps = cfg.centerDot ? cfg.ringCount : Math.max(0, cfg.ringCount - 1);
+    const start = cfg.paletteOffset;
+    const end = cfg.rangeEndIdx;
+    
+    let allMatch = true;
+    if (cfg.centerDot && cfg.centerDotEntry !== start) allMatch = false;
+    
+    if (allMatch) {
+      for (let i = 0; i < cfg.ringCount; i++) {
+        const colorIdx = cfg.centerDot ? i + 1 : i;
+        const t = colorSteps > 0 ? colorIdx / colorSteps : 0;
+        const expected = Math.round(start + (end - start) * t);
+        if (cfg.rings[i].paletteEntryIndex !== expected) {
+          allMatch = false;
+          break;
+        }
+      }
+    }
+
+    if (allMatch !== cfg.colorRangeMode) {
+      cfg.colorRangeMode = allMatch;
+      return true; // state shifted
+    }
+    return false;
   },
 
   renderControls(tabId) {
@@ -151,65 +209,51 @@ export const MandalaTab = {
     const scroll = pane.querySelector('.tool-scroll');
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
-    const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const set = (path, val) => { 
+      cfg[path] = val; 
+      if (path === 'colorRangeMode' && val === true) {
+        this.syncAllToAuto(cfg);
+        rebuild();
+      } else if (path === 'paletteOffset' || path === 'rangeEndIdx') {
+        if (cfg.colorRangeMode) {
+          this.syncAllToAuto(cfg);
+          rebuild();
+        }
+      }
+      update(true); 
+      Persistence.save(); 
+    };
+    const rebuild = () => this.renderControls(tabId);
+
+    const updateColor = (element, key, newIdx) => {
+      element[key] = newIdx;
+      const stateShifted = this.reconcileAutoMode(cfg);
+      if (stateShifted) rebuild();
+      update();
+      Persistence.save();
+    };
 
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
+    if (!palette) return;
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Overall Size', UI.makeRange(10, 100, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      UI.makeRow('Rings', UI.makeStepCounter(cfg.ringCount, 1, 10, v => { cfg.ringCount = v; this.renderControls(tabId); update(); Persistence.save(); })),
-      UI.makeRow('Symmetry', UI.makeStepCounter(cfg.symmetry, 1, 32, v => { cfg.symmetry = v; this.renderControls(tabId); update(); Persistence.save(); })),
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true, supportFill: true, supportColorRange: true, supportBorder: true,
+      minSize: 10, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Mandala Settings', [
+      UI.makeRow('Rings', UI.makeStepCounter(cfg.ringCount, 1, 10, v => { cfg.ringCount = v; this.syncAllToAuto(cfg); rebuild(); update(); Persistence.save(); })),
+      UI.makeRow('Symmetry', UI.makeStepCounter(cfg.symmetry, 1, 32, v => { cfg.symmetry = v; rebuild(); update(); Persistence.save(); })),
       UI.makeRow('Scaling', UI.makeRange(-0.5, 1, 0.05, cfg.dotScaling, v => set('dotScaling', +v))),
       UI.makeRow('Twist', UI.makeRange(-20, 20, 1, cfg.ringSpiral, v => set('ringSpiral', +v), '°')),
-      UI.makeToggleRow('Alternate rotation', cfg.alternateRotation, v => set('alternateRotation', v)),
-      UI.makeRow('Color Range', (() => {
-        const wrap = document.createElement('div');
-        wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '8px';
-        
-        const btn = document.createElement('button');
-        btn.className = 'hbtn sm' + (cfg.colorRangeMode ? ' primary' : '');
-        btn.textContent = cfg.colorRangeMode ? 'ON' : 'OFF';
-        btn.onclick = () => {
-          cfg.colorRangeMode = !cfg.colorRangeMode;
-          this.renderControls(tabId); update(); Persistence.save();
-        };
-        wrap.appendChild(btn);
-
-        if (cfg.colorRangeMode) {
-          wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeStartIdx, v => set('rangeStartIdx', v), { title: "Start Color" }));
-          const arrow = document.createElement('span');
-          arrow.innerHTML = '&rarr;'; arrow.style.color = '#444'; arrow.style.fontSize = '10px';
-          wrap.appendChild(arrow);
-          wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeEndIdx, v => set('rangeEndIdx', v), { title: "End Color" }));
-        }
-        return wrap;
-      })())
+      UI.makeToggleRow('Alternate rotation', cfg.alternateRotation, v => set('alternateRotation', v))
     ]));
 
+    // Center Dot Section
     scroll.appendChild(UI.makeSection('Center Dot', [
-      UI.makeToggleRow('Visible', cfg.centerDot, v => { cfg.centerDot = v; this.renderControls(tabId); update(); Persistence.save(); }),
+      UI.makeToggleRow('Visible', cfg.centerDot, v => { cfg.centerDot = v; this.syncAllToAuto(cfg); rebuild(); update(); Persistence.save(); }),
       UI.makeRow('Size', UI.makeRange(0.1, 20, 0.1, cfg.centerDotDiameter, v => set('centerDotDiameter', +v), 'mm')),
-      UI.makeRow('Color', (() => {
-        const wrap = document.createElement('div');
-        wrap.style.display = 'flex'; wrap.style.gap = '8px'; wrap.style.alignItems = 'center';
-        const currentIdx = cfg.colorRangeMode ? cfg.rangeStartIdx : cfg.centerDotEntry;
-        wrap.appendChild(UI.makePalettePicker(palette.entries, currentIdx, v => {
-          if (cfg.colorRangeMode) {
-            cfg.rangeStartIdx = v;
-          } else {
-            cfg.centerDotEntry = v;
-          }
-          this.renderControls(tabId); update(); Persistence.save();
-        }));
-        wrap.appendChild(UI.makeActionBtn('Auto', cfg.colorRangeMode, () => {
-          cfg.colorRangeMode = !cfg.colorRangeMode;
-          this.renderControls(tabId); update(); Persistence.save();
-        }));
-        return wrap;
-      })())
+      UI.makeRow('Color', UI.makePalettePicker(palette.entries, cfg.centerDotEntry, v => updateColor(cfg, 'centerDotEntry', v), { autoIndicator: cfg.colorRangeMode }))
     ]));
 
     for (let i = 0; i < cfg.ringCount; i++) {
@@ -220,16 +264,6 @@ export const MandalaTab = {
       const symCount = cfg.symmetry * ring.countMultiplier;
       const isSymmetric = ring.count === symCount;
 
-      let currentIdx;
-      if (cfg.colorRangeMode) {
-        const colorSteps = cfg.centerDot ? cfg.ringCount : Math.max(0, cfg.ringCount - 1);
-        const colorIdx = cfg.centerDot ? i + 1 : i;
-        const t = colorSteps > 0 ? colorIdx / colorSteps : 0;
-        currentIdx = Math.round(cfg.rangeStartIdx + (cfg.rangeEndIdx - cfg.rangeStartIdx) * t);
-      } else {
-        currentIdx = ring.paletteEntryIndex;
-      }
-
       scroll.appendChild(UI.makeSection(`Ring ${i + 1} Dots`, [
         UI.makeRow('Rotation', UI.makeRange(0, 360, 5, ring.rotationOffset, v => setRing('rotationOffset', +v), '°')),
         UI.makeRow('Shape', UI.makeToggles(['circle', 'rect'], ring.shape, v => setRing('shape', v), { circle: 'Circle', rect: 'Rect' })),
@@ -239,28 +273,15 @@ export const MandalaTab = {
           const wrap = document.createElement('div');
           wrap.style.display = 'flex'; wrap.style.gap = '8px'; wrap.style.alignItems = 'center';
           wrap.appendChild(UI.makeStepCounter(ring.count, 1, 128, v => { 
-            ring.count = v; this.renderControls(tabId); update(); Persistence.save(); 
+            ring.count = v; rebuild(); update(); Persistence.save(); 
           }));
           wrap.appendChild(UI.makeActionBtn('Symmetry', isSymmetric, () => {
             ring.count = symCount;
-            this.renderControls(tabId); update(); Persistence.save();
+            rebuild(); update(); Persistence.save();
           }));
           return wrap;
         })()),
-        UI.makeRow('Color', (() => {
-          const wrap = document.createElement('div');
-          wrap.style.display = 'flex'; wrap.style.gap = '8px'; wrap.style.alignItems = 'center';
-          wrap.appendChild(UI.makePalettePicker(palette.entries, currentIdx, v => {
-            cfg.colorRangeMode = false;
-            ring.paletteEntryIndex = v;
-            this.renderControls(tabId); update(); Persistence.save();
-          }));
-          wrap.appendChild(UI.makeActionBtn('Auto', cfg.colorRangeMode, () => {
-            cfg.colorRangeMode = true;
-            this.renderControls(tabId); update(); Persistence.save();
-          }));
-          return wrap;
-        })())
+        UI.makeRow('Color', UI.makePalettePicker(palette.entries, ring.paletteEntryIndex, v => updateColor(ring, 'paletteEntryIndex', v), { autoIndicator: cfg.colorRangeMode }))
       ]));
     }
   }

@@ -102,9 +102,15 @@ export const XCSViewer = {
     
     v.querySelectorAll('.rtab').forEach(t => {
       t.onclick = () => {
+        const wasJSON = v.querySelector('.rtab.active')?.dataset.tab === 'json';
         v.querySelectorAll('.rtab, .right-pane').forEach(el => el.classList.remove('active'));
         t.classList.add('active');
         q(`.right-pane[data-pane="${t.dataset.tab}"]`).classList.add('active');
+        
+        // If switched TO json, render it now
+        if (t.dataset.tab === 'json' && !wasJSON) {
+          this.renderJSON(v, App.instances[tabId].state);
+        }
       };
     });
 
@@ -112,9 +118,11 @@ export const XCSViewer = {
       const row = e.target.closest('.shape-row');
       if (row) {
         const idx = +row.dataset.idx;
-        q('.rtab[data-tab="json"]').click();
-        const block = q(`.json-display-block[data-idx="${idx}"]`);
-        if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const isJSONVisible = q('.rtab[data-tab="json"]').classList.contains('active');
+        if (isJSONVisible) {
+          const block = q(`.json-display-block[data-idx="${idx}"]`);
+          if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         this.onHover(v, App.instances[tabId].state, idx, e);
       }
     });
@@ -123,9 +131,11 @@ export const XCSViewer = {
       const el = e.target.closest('[data-svg-idx]');
       if (el) {
         const idx = +el.getAttribute('data-svg-idx');
-        q('.rtab[data-tab="json"]').click();
-        const block = q(`.json-display-block[data-idx="${idx}"]`);
-        if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const isJSONVisible = q('.rtab[data-tab="json"]').classList.contains('active');
+        if (isJSONVisible) {
+          const block = q(`.json-display-block[data-idx="${idx}"]`);
+          if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         this.onHover(v, App.instances[tabId].state, idx, e);
       }
     });
@@ -134,7 +144,7 @@ export const XCSViewer = {
       const b = e.target.closest('.json-display-block');
       if (b) {
         const idx = +b.dataset.idx;
-        q('.rtab[data-tab="shapes"]').click();
+        // Don't switch tab automatically, but sync selection
         const row = q(`.shape-row[data-idx="${idx}"]`);
         if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         this.onHover(v, App.instances[tabId].state, idx, e);
@@ -153,7 +163,13 @@ export const XCSViewer = {
     this.renderList(v, state);
     this.renderPalette(v, state);
     this.renderProcessTree(v, state);
-    this.renderJSON(v, state);
+    
+    // Performance: Only render JSON if tab is visible
+    if (v.querySelector('.rtab[data-tab="json"]').classList.contains('active')) {
+      this.renderJSON(v, state);
+    } else {
+      v.querySelector('.json-code').innerHTML = ''; // Clear stale heavy DOM
+    }
   },
 
   renderSVG(v, state) {
@@ -163,10 +179,10 @@ export const XCSViewer = {
     const mm2 = (x, y) => [x * sc, y * sc];
 
     state.shapes.forEach(s => {
-      const isFill = s.processingType === 'VECTOR_ENGRAVING' || s.processingType === 'BITMAP_ENGRAVING';
+      const isFill = !!s.isFill; // Use the parsed flag from IR
       const renderColor = s.layerColor === '#000000' && isFill ? '#333' : s.layerColor;
-      const strC = isFill ? 'none' : renderColor;
-      const strW = isFill ? 0 : 1;
+      const strC = renderColor; // Always show stroke for vector work
+      const strW = isFill ? 0.2 : 1.0; // Subtle outline for fills, bold for paths
       const fillOp = isFill ? 0.6 : 0;
       const [cx, cy] = mm2(s.x, s.y);
       const rw = s.w * sc, rh = s.h * sc;
@@ -202,6 +218,16 @@ export const XCSViewer = {
           x: cx - rw/2, y: cy - rh/2, width: rw, height: rh, 
           fill: 'rgba(255,255,255,0.1)', stroke: '#666', 'stroke-width': 1, 'stroke-dasharray': '2 2'
         });
+      }
+      else if (s.type === 'TEXT') {
+        const fs = (s.style?.fontSize || 12);
+        const sy = (s.scale?.y || 1.0);
+        el = svgEl('text', {
+          x: cx, y: cy, 'text-anchor': 'start', // Growing right from Left-Baseline anchor
+          fill: renderColor, 'font-size': fs * sy * sc,
+          'font-family': 'monospace', 'font-weight': 'bold'
+        });
+        el.textContent = s.text;
       }
 
       if (el) {

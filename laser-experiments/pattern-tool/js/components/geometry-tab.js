@@ -39,10 +39,12 @@ export const GeometryTab = {
 
     const defaults = {
       paletteId: 'laFont-1000lpcm',
-      totalSize: 40,
+      paletteOffset: 0,
+      size: 40,
+      renderMode: 'fill',
+      border: false,
       mode: 'flower-of-life',
-      colorRangeMode: false,
-      rangeStartIdx: 0,
+      colorRangeMode: true,
       rangeEndIdx: 10,
       folRings: 3,
       roseK: 4,
@@ -58,6 +60,16 @@ export const GeometryTab = {
       girihComplexity: 1.0
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons'];
+    if (!fillableModes.includes(cfg.mode)) {
+      cfg.renderMode = 'path';
+    }
+
+    if (cfg.totalSize !== undefined) {
+      cfg.size = cfg.totalSize;
+      delete cfg.totalSize;
+    }
     const state = { rawData: null, shapes: [] };
     App.instances[tabId] = { type: 'geometry', pane, cfg, state };
 
@@ -75,13 +87,19 @@ export const GeometryTab = {
 
   generateXCS(cfg) {
     const project = XCSExporter.createProject();
-    let palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
+    let palette = PalMgr.get(cfg.paletteId);
+    if (!palette) {
+      const all = PalMgr.list();
+      if (all.length > 0) palette = all[0];
+    }
     if (!palette) return project;
 
     const usedColors = new Set();
     const CX = 50, CY = 50;
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
+    const isFill = cfg.renderMode === 'fill';
+    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
     const addLine = (x1, y1, x2, y2, color, entry) => {
       usedColors.add(color);
@@ -89,7 +107,7 @@ export const GeometryTab = {
       XCSExporter.addPath(project, {
         x: CX + (x1+x2)/2, y: CY + (y1+y2)/2, width: Math.max(0.1, Math.abs(x2-x1)), height: Math.max(0.1, Math.abs(y2-y1)),
         dPath: `M ${CX+x1} ${CY+y1} L ${CX+x2} ${CY+y2}`,
-        layerColor: color, laserSource, params,
+        layerColor: color, laserSource, params, processingType,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
       });
     };
@@ -99,27 +117,29 @@ export const GeometryTab = {
       const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
       XCSExporter.addCircle(project, {
         x: CX + lx, y: CY + ly, width: r*2, height: r*2,
-        layerColor: color, laserSource, params,
+        layerColor: color, laserSource, params, processingType,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
       });
     };
 
     const getColor = (t) => {
+      const start = cfg.paletteOffset;
+      const range = 10; // Default range size
       const idx = cfg.colorRangeMode 
-        ? Math.round(cfg.rangeStartIdx + (cfg.rangeEndIdx - cfg.rangeStartIdx) * t)
-        : cfg.rangeStartIdx;
+        ? Math.round(start + range * t)
+        : start;
       return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
     };
 
     if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
       const rings = cfg.folRings;
-      const r = (cfg.totalSize / 2) / (rings * 1.5 || 1);
+      const r = (cfg.size / 2) / (rings * 1.5 || 1);
       const centers = [];
       const addGrid = (q, r_grid) => {
         const x = r * 1.5 * q;
         const y = r * Math.sqrt(3) * (r_grid + q/2);
         const dist = Math.sqrt(x*x + y*y);
-        const t = Math.min(1, dist / (cfg.totalSize / 2 || 1));
+        const t = Math.min(1, dist / (cfg.size / 2 || 1));
         const entry = getColor(t);
 
         if (cfg.mode === 'flower-of-life') {
@@ -144,7 +164,7 @@ export const GeometryTab = {
       if (cfg.mode === 'metatrons-cube') {
         for (let i = 0; i < centers.length; i++) {
           const distFromCenter = Math.sqrt(centers[i].x**2 + centers[i].y**2);
-          const entry = getColor(distFromCenter / (cfg.totalSize/2));
+          const entry = getColor(distFromCenter / (cfg.size/2));
           for (let j = i + 1; j < centers.length; j++) {
             const d2 = Math.pow(centers[i].x - centers[j].x, 2) + Math.pow(centers[i].y - centers[j].y, 2);
             const threshold = Math.pow(r * Math.sqrt(3) * 2.1, 2);
@@ -153,7 +173,7 @@ export const GeometryTab = {
         }
       }
     } else if (cfg.mode === 'vesica-piscis') {
-      const r = cfg.totalSize / 4;
+      const r = cfg.size / 4;
       const entry1 = getColor(0.2);
       const entry2 = getColor(0.8);
       addCircle(-r, 0, r*2, entry1.rgb, entry1);
@@ -161,7 +181,7 @@ export const GeometryTab = {
     } else if (cfg.mode === 'rose-curve') {
       const k = cfg.roseK;
       const samples = cfg.roseSamples;
-      const scale = cfg.totalSize / 2;
+      const scale = cfg.size / 2;
       let prev = null;
       const cycles = Number.isInteger(k) ? 1 : 10;
       for (let i = 0; i <= samples; i++) {
@@ -177,7 +197,7 @@ export const GeometryTab = {
     } else if (cfg.mode === 'archimedean-spiral') {
       const turns = cfg.spiralTurns;
       const samples = turns * 100;
-      const spacing = (cfg.totalSize / 2) / turns;
+      const spacing = (cfg.size / 2) / turns;
       let prev = null;
       for (let i = 0; i <= samples; i++) {
         const theta = (i / samples) * turns * Math.PI * 2;
@@ -192,7 +212,7 @@ export const GeometryTab = {
     } else if (cfg.mode === 'fermat-spiral') {
       const count = Math.round(cfg.spiralTurns * 20);
       const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-      const scale = cfg.totalSize / (2 * Math.sqrt(count));
+      const scale = cfg.size / (2 * Math.sqrt(count));
       for (let i = 0; i < count; i++) {
         const theta = i * goldenAngle;
         const r = Math.sqrt(i) * scale;
@@ -202,7 +222,7 @@ export const GeometryTab = {
     } else if (cfg.mode === 'concentric-polygons') {
       const count = cfg.concCount;
       const sides = cfg.concSides;
-      const baseScale = cfg.totalSize / (2 * count);
+      const baseScale = cfg.size / (2 * count);
       for (let i = 1; i <= count; i++) {
         const r = i * baseScale;
         const rot = (i * cfg.concRotation) * Math.PI / 180;
@@ -217,7 +237,7 @@ export const GeometryTab = {
       }
     } else if (cfg.mode === 'islamic-star') {
       const sym = cfg.starSymmetry;
-      const r = cfg.totalSize / 2;
+      const r = cfg.size / 2;
       const v = cfg.starV;
       const entry = getColor(0.5);
       let prev = null;
@@ -230,7 +250,7 @@ export const GeometryTab = {
       }
     } else if (cfg.mode === 'girih') {
       const sym = 10; // Classical decagonal Girih
-      const r = cfg.totalSize / 2;
+      const r = cfg.size / 2;
       const strapAngle = 54 * Math.PI / 180;
       const entry = getColor(0.5);
       
@@ -261,7 +281,7 @@ export const GeometryTab = {
     } else if (cfg.mode === 'penrose') {
       const phi = (1 + Math.sqrt(5)) / 2;
       let triangles = [];
-      const size = cfg.totalSize / 2;
+      const size = cfg.size / 2;
       for (let i = 0; i < 10; i++) {
         const a = { x: 0, y: 0 };
         const b = { x: size * Math.cos((i-0.5)*Math.PI/5), y: size * Math.sin((i-0.5)*Math.PI/5) };
@@ -287,10 +307,20 @@ export const GeometryTab = {
       triangles.forEach(t => {
         const [type, A, B, C] = t;
         const dist = Math.sqrt(((A.x+B.x+C.x)/3)**2 + ((A.y+B.y+C.y)/3)**2);
-        const entry = getColor(dist / (cfg.totalSize/2));
+        const entry = getColor(dist / (cfg.size/2));
         addLine(A.x, A.y, B.x, B.y, entry.rgb, entry);
         addLine(B.x, B.y, C.x, C.y, entry.rgb, entry);
         addLine(C.x, C.y, A.x, A.y, entry.rgb, entry);
+      });
+    }
+
+    if (cfg.border) {
+      XCSExporter.addRect(project, {
+        x: CX, y: CY, width: cfg.size, height: cfg.size,
+        layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
+        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+        extraDisplayData: { hideLabels: true }
       });
     }
 
@@ -304,56 +334,53 @@ export const GeometryTab = {
     const scroll = pane.querySelector('.tool-scroll'); scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
-    const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
+    const rebuild = () => this.renderControls(tabId);
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Total Size', UI.makeRange(10, 100, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      UI.makeRow('Color Range', (() => {
-        const wrap = document.createElement('div'); wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '8px';
-        const btn = document.createElement('button'); btn.className = 'hbtn sm' + (cfg.colorRangeMode ? ' primary' : ''); btn.textContent = cfg.colorRangeMode ? 'ON' : 'OFF';
-        btn.onclick = () => { cfg.colorRangeMode = !cfg.colorRangeMode; this.renderControls(tabId); update(); Persistence.save(); };
-        wrap.appendChild(btn); wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeStartIdx, v => set('rangeStartIdx', v), { title: "Start" }));
-        if (cfg.colorRangeMode) {
-          const arrow = document.createElement('span'); arrow.innerHTML = '&rarr;'; arrow.style.color = '#444';
-          wrap.appendChild(arrow); wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeEndIdx, v => set('rangeEndIdx', v), { title: "End" }));
-        }
-        return wrap;
-      })())
-    ]));
+    const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
+    if (!palette) return;
+
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons'];
+    const supportsFill = fillableModes.includes(cfg.mode);
+
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true,
+      supportFill: supportsFill,
+      supportColorRange: true,
+      supportBorder: true,
+      minSize: 10,
+      maxSize: 100
+    }));
 
     if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
-      scroll.appendChild(UI.makeSection('Geometry', [
+      scroll.appendChild(UI.makeSection('Geometry Settings', [
         UI.makeRow('Rings', UI.makeStepCounter(cfg.folRings, 1, 10, v => set('folRings', v)))
       ]));
     } else if (cfg.mode === 'rose-curve') {
-      scroll.appendChild(UI.makeSection('Rose Curve', [
+      scroll.appendChild(UI.makeSection('Rose Settings', [
         UI.makeRow('k (n/d)', UI.makeRange(1, 20, 0.1, cfg.roseK, v => set('roseK', +v))),
         UI.makeRow('Samples', UI.makeRange(50, 1000, 10, cfg.roseSamples, v => set('roseSamples', +v)))
       ]));
     } else if (cfg.mode === 'archimedean-spiral' || cfg.mode === 'fermat-spiral') {
-      scroll.appendChild(UI.makeSection('Spiral', [
-        UI.makeRow('Turns', UI.makeRange(1, 20, 0.5, cfg.spiralTurns, v => set('spiralTurns', +v)))
+      scroll.appendChild(UI.makeSection('Spiral Settings', [
+        UI.makeRow('Turns', UI.makeRange(1, 80, 0.5, cfg.spiralTurns, v => set('spiralTurns', +v)))
       ]));
     } else if (cfg.mode === 'concentric-polygons') {
-      scroll.appendChild(UI.makeSection('Repetition', [
+      scroll.appendChild(UI.makeSection('Polygon Settings', [
         UI.makeRow('Count', UI.makeStepCounter(cfg.concCount, 1, 20, v => set('concCount', v))),
         UI.makeRow('Sides', UI.makeStepCounter(cfg.concSides, 3, 12, v => set('concSides', v))),
         UI.makeRow('Twist', UI.makeRange(-45, 45, 1, cfg.concRotation, v => set('concRotation', +v), '°'))
       ]));
     } else if (cfg.mode === 'islamic-star') {
-      scroll.appendChild(UI.makeSection('Star', [
+      scroll.appendChild(UI.makeSection('Star Settings', [
         UI.makeRow('Symmetry', UI.makeStepCounter(cfg.starSymmetry, 3, 24, v => set('starSymmetry', v))),
         UI.makeRow('Inset', UI.makeRange(0.1, 0.9, 0.05, cfg.starV, v => set('starV', +v)))
       ]));
     } else if (cfg.mode === 'girih') {
-      scroll.appendChild(UI.makeSection('Girih Pattern', [
+      scroll.appendChild(UI.makeSection('Girih Settings', [
         UI.makeRow('Extension', UI.makeRange(0.5, 2.0, 0.1, cfg.girihComplexity, v => set('girihComplexity', +v)))
       ]));
     } else if (cfg.mode === 'penrose') {
-      scroll.appendChild(UI.makeSection('Penrose P2', [
+      scroll.appendChild(UI.makeSection('Penrose Settings', [
         UI.makeRow('Subdivisions', UI.makeStepCounter(cfg.penroseSteps, 1, 6, v => set('penroseSteps', v)))
       ]));
     }

@@ -2,7 +2,7 @@
 
 This document tracks the implementation of mathematical and geometric generators for the Pattern Tool.
 
-**Current Count: 43 / 100**
+**Current Count: 44 / 100**
 *(Note: [x] indicates the pattern is fully implemented. **[IN MENU]** indicates the category is active in the "+ Add Pattern" menu as of v1.2.3)*
 
 ---
@@ -92,7 +92,8 @@ This document tracks the implementation of mathematical and geometric generators
 - [ ] Stippling (Weighted Voronoi)
 - [ ] Biological Membrane simulation
 
-## 6. Material & Technical [IN MENU] (4/10)
+## 6. Material & Technical [IN MENU] (5/10)
+- [x] Palette Test (Grid + Power Labels)
 - [x] Palette Grid (Power/Speed/Density)
 - [x] Gradient Grid
 - [x] Bitmap Line (Gray vs Power)
@@ -103,6 +104,24 @@ This document tracks the implementation of mathematical and geometric generators
 - [ ] Hatch/Fill Density Step
 - [ ] Air Assist / Burn Test
 - [ ] Resolution/LPCM Micro-test
+
+---
+
+## Mandatory Engineering Checklist (Pre-Completion)
+*Before marking any pattern as [x], the following must be verified:*
+
+1. **Typography**: Does text use the `VANTAGE-ALPHA` derived constants? 
+   - `scale = targetHeight / 23.35`
+   - `fontSize = 72 * scale`
+2. **Anchoring**: Is the anchor set to **Left-Baseline** (`align: "center"` or `"right"` must be manually calculated into the `x/y` coordinates)?
+3. **Fills**: Are fill shapes using `COLOR_FILL_ENGRAVE`?
+4. **Thinning**: If shapes > 2000, is a thinning or resolution guard implemented?
+5. **Reference**: Have I checked `gradient-tab.js` or `mandala-tab.js` for the latest "Known Good" math for this pattern type?
+
+6. **Hardware Export Audit**: Does the JSON output (visible in the JSON tab) contain ALL required fields from `xcsformat.md`? 
+   - [ ] Root: `extId: "GS006"`, `extName: "F2"`
+   - [ ] TEXT: `charJSONs` (Array of paths), `fontData` (Metrics/Glyphs)
+   - [ ] Device Tree: `COLOR_FILL_ENGRAVE` node with `customize` parameters
 
 ---
 

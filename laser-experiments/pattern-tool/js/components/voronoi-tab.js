@@ -25,12 +25,14 @@ export const VoronoiTab = {
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
+      colorRangeMode: true,
+      rangeEndIdx: 10,
       pointsCount: 50,
       seed: 12345,
       padding: 2,
       border: true,
       relaxIterations: 2,
-      renderMode: 'path', // 'path' or 'points'
+      renderMode: 'fill', // 'fill' or 'path'
       cellScale: 0.9,
       size: 40
     };
@@ -100,6 +102,16 @@ export const VoronoiTab = {
     const voronoi = delaunay.voronoi(bounds);
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
+    const isFill = cfg.renderMode === 'fill';
+    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
+
+    const getColor = (t) => {
+      const start = cfg.paletteOffset;
+      const idx = cfg.colorRangeMode 
+        ? Math.round(start + (cfg.rangeEndIdx - start) * t)
+        : start;
+      return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+    };
 
     for (let i = 0; i < points.length; i++) {
       const polygon = voronoi.cellPolygon(i);
@@ -120,8 +132,7 @@ export const VoronoiTab = {
         maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
       });
 
-      const entryIdx = (cfg.paletteOffset + i) % palette.entries.length;
-      const entry = palette.entries[entryIdx];
+      const entry = getColor(i / (points.length - 1 || 1));
       const params = {
         power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
         processingLightSource: laserSource
@@ -131,6 +142,7 @@ export const VoronoiTab = {
         x: (minX + maxX) / 2, y: (minY + maxY) / 2,
         width: maxX - minX, height: maxY - minY,
         dPath, layerColor: entry.rgb, laserSource, params,
+        processingType,
         extraDisplayData: { hideLabels: true }
       });
     }
@@ -139,6 +151,7 @@ export const VoronoiTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
@@ -153,20 +166,21 @@ export const VoronoiTab = {
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const rebuild = () => this.renderControls(tabId);
 
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
+    if (!palette) return; // Wait for palettes to load or alert error
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Start Color', UI.makePalettePicker(palette.entries, cfg.paletteOffset, v => set('paletteOffset', v))),
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true, supportFill: true, supportColorRange: true, supportBorder: true,
+      minSize: 10, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Voronoi Settings', [
       UI.makeRow('Points', UI.makeRange(10, 200, 1, cfg.pointsCount, v => set('pointsCount', +v))),
       UI.makeRow('Seed', UI.makeRange(1, 100000, 1, cfg.seed, v => set('seed', +v))),
-      UI.makeRow('Size', UI.makeRange(10, 100, 1, cfg.size, v => set('size', +v), 'mm')),
       UI.makeRow('Cell Scale', UI.makeRange(0.1, 1.0, 0.05, cfg.cellScale, v => set('cellScale', +v))),
-      UI.makeRow('Relaxation', UI.makeStepCounter(cfg.relaxIterations, 0, 10, v => set('relaxIterations', v))),
-      UI.makeToggleRow('Show Border', cfg.border, v => set('border', v))
+      UI.makeRow('Relaxation', UI.makeStepCounter(cfg.relaxIterations, 0, 10, v => set('relaxIterations', v)))
     ]));
   }
 };

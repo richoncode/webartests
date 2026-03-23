@@ -38,15 +38,21 @@ export const AttractorTab = {
 
     const defaults = {
       paletteId: 'laFont-1000lpcm',
-      totalSize: 40,
+      paletteOffset: 0,
+      size: 40,
+      renderMode: 'path',
+      border: false,
       mode: 'lorenz',
       iterations: 5000,
-      colorRangeMode: false,
-      rangeStartIdx: 0,
+      colorRangeMode: true,
       rangeEndIdx: 10,
       a: 10, b: 28, c: 8/3, d: 1 // parameters
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+    if (cfg.totalSize !== undefined) {
+      cfg.size = cfg.totalSize;
+      delete cfg.totalSize;
+    }
     
     // Adjust defaults based on mode
     if (cfg.mode === 'clifford' || cfg.mode === 'dejong') {
@@ -76,7 +82,11 @@ export const AttractorTab = {
 
   generateXCS(cfg) {
     const project = XCSExporter.createProject();
-    let palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
+    let palette = PalMgr.get(cfg.paletteId);
+    if (!palette) {
+      const all = PalMgr.list();
+      if (all.length > 0) palette = all[0];
+    }
     if (!palette) return project;
 
     const usedColors = new Set();
@@ -85,9 +95,11 @@ export const AttractorTab = {
     const laserSource = isIR ? 'red' : 'blue';
 
     const getColor = (t) => {
+      const start = cfg.paletteOffset;
+      const range = 10;
       const idx = cfg.colorRangeMode 
-        ? Math.round(cfg.rangeStartIdx + (cfg.rangeEndIdx - cfg.rangeStartIdx) * t)
-        : cfg.rangeStartIdx;
+        ? Math.round(start + range * t)
+        : start;
       return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
     };
 
@@ -96,7 +108,7 @@ export const AttractorTab = {
       const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
       XCSExporter.addCircle(project, {
         x: CX + x, y: CY + y, width: 0.1, height: 0.1,
-        layerColor: color, laserSource, params,
+        layerColor: color, laserSource, params, processingType: "VECTOR_ENGRAVING",
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
       });
     };
@@ -166,14 +178,14 @@ export const AttractorTab = {
     }
 
     if (pts.length > 0) {
-      // Normalize to totalSize
+      // Normalize to size
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       pts.forEach(p => {
         minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
         maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
       });
       const w = maxX - minX, h = maxY - minY;
-      const sc = cfg.totalSize / Math.max(w, h, 0.1);
+      const sc = cfg.size / Math.max(w, h, 0.1);
       
       pts.forEach((p, i) => {
         if (i % 5 !== 0 && cfg.iterations > 5000) return; // thinning for XCS performance
@@ -181,6 +193,16 @@ export const AttractorTab = {
         const ty = (p[1] - (minY + maxY)/2) * sc;
         const entry = getColor(i / pts.length);
         addPoint(tx, ty, entry.rgb, entry);
+      });
+    }
+
+    if (cfg.border) {
+      XCSExporter.addRect(project, {
+        x: CX, y: CY, width: cfg.size, height: cfg.size,
+        layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
+        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+        extraDisplayData: { hideLabels: true }
       });
     }
 
@@ -192,31 +214,25 @@ export const AttractorTab = {
     const scroll = pane.querySelector('.tool-scroll'); scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const rebuild = () => this.renderControls(tabId);
+    
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
+    if (!palette) return;
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
-      UI.makeRow('Total Size', UI.makeRange(10, 100, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      UI.makeRow('Points', UI.makeRange(1000, 20000, 1000, cfg.iterations, v => set('iterations', +v))),
-      UI.makeRow('Color Range', (() => {
-        const wrap = document.createElement('div'); wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '8px';
-        const btn = document.createElement('button'); btn.className = 'hbtn sm' + (cfg.colorRangeMode ? ' primary' : ''); btn.textContent = cfg.colorRangeMode ? 'ON' : 'OFF';
-        btn.onclick = () => { cfg.colorRangeMode = !cfg.colorRangeMode; this.renderControls(tabId); update(); Persistence.save(); };
-        wrap.appendChild(btn); wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeStartIdx, v => set('rangeStartIdx', v), { title: "Start" }));
-        if (cfg.colorRangeMode) {
-          const arrow = document.createElement('span'); arrow.innerHTML = '&rarr;'; arrow.style.color = '#444';
-          wrap.appendChild(arrow); wrap.appendChild(UI.makePalettePicker(palette.entries, cfg.rangeEndIdx, v => set('rangeEndIdx', v), { title: "End" }));
-        }
-        return wrap;
-      })())
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true, supportFill: false, supportColorRange: true, supportBorder: true,
+      minSize: 10, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Attractor Settings', [
+      UI.makeRow('Points', UI.makeRange(1000, 20000, 1000, cfg.iterations, v => set('iterations', +v)))
     ]));
 
-    scroll.appendChild(UI.makeSection('Parameters', [
+    scroll.appendChild(UI.makeSection('Equation Parameters', [
       UI.makeRow('Param A', UI.makeRange(-3, 30, 0.1, cfg.a, v => set('a', +v))),
       UI.makeRow('Param B', UI.makeRange(-3, 30, 0.1, cfg.b, v => set('b', +v))),
       UI.makeRow('Param C', UI.makeRange(-3, 30, 0.1, cfg.c, v => set('c', +v)))
     ]));
   }
 };
+

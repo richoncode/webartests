@@ -1,13 +1,10 @@
-/**
- * Gradient Grid Tab - VANTAGE-ALPHA Baseline
- * Revisions: 2mm label gaps, baseline-compatible anchor positioning.
- */
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
 import { XCSIR } from '../xcs-ir.js';
 import { XCSExporter } from '../xcs-exporter.js';
+import { PalMgr } from '../palettes.js';
 
 const M8 = [
   [ 0, 32,  8, 40,  2, 34, 10, 42],
@@ -42,20 +39,27 @@ export const GradientTab = {
     pane.appendChild(viewer);
 
     const defaults = {
+      paletteId: 'laFont-1000lpcm',
+      paletteOffset: 0,
+      size: 40,
+      renderMode: 'fill',
+      border: false,
       laserType: 'ir',
       disperseHeat: false,
       xAxis: 'power', yAxis: 'speed', fixedAxis: 'lpcm',
-      roleHistory: ['fixedAxis', 'yAxis', 'xAxis'], // most recent at end
+      roleHistory: ['fixedAxis', 'yAxis', 'xAxis'],
       xMin: 10, xMax: 100,
       yMin: 10, yMax: 200,
       resolution: 20,
       overlap: 0,
       showLabels: true,
-      fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000,
-      totalSize: 20,
-      renderMode: 'vector'
+      fixedPower: 20, fixedSpeed: 100, fixedLpcm: 1000
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+    if (cfg.totalSize !== undefined) {
+      cfg.size = cfg.totalSize;
+      delete cfg.totalSize;
+    }
     const state = { rawData:null, shapes:[], selection: null };
     App.instances[tabId] = { type:'gradient', pane, cfg, state };
 
@@ -91,8 +95,8 @@ export const GradientTab = {
       const mmX = (x - ox) / sc;
       const mmY = (y - oy) / sc;
 
-      const { resolution, totalSize, overlap } = inst.cfg;
-      const cellSize = totalSize / resolution;
+      const { resolution, size, overlap } = inst.cfg;
+      const cellSize = size / resolution;
       const gap = overlap < 0 ? Math.abs(overlap) : 0;
       const pitch = cellSize + gap;
       
@@ -178,8 +182,8 @@ export const GradientTab = {
     const ox = PAD + ((W-PAD*2) - AREA*sc)/2;
     const oy = PAD + ((H-PAD*2) - AREA*sc)/2;
 
-    const { resolution, totalSize, overlap } = inst.cfg;
-    const cellSize = totalSize / resolution;
+    const { resolution, size, overlap } = inst.cfg;
+    const cellSize = size / resolution;
     const gap = overlap < 0 ? Math.abs(overlap) : 0;
     const pitch = cellSize + gap;
     const effectiveTotal = pitch * resolution;
@@ -208,9 +212,16 @@ export const GradientTab = {
   generateXCS(cfg) {
     const project = XCSExporter.createProject();
     const CX = 50, CY = 50;
-    const { resolution, totalSize, laserType, xAxis, yAxis, overlap } = cfg;
+    const { resolution, size, xAxis, yAxis, overlap } = cfg;
     
-    const cellSize = totalSize / resolution;
+    let palette = PalMgr.get(cfg.paletteId);
+    if (!palette) palette = PalMgr.list()[0];
+    if (!palette) return project;
+
+    const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
+    const laserSource = isIR ? 'red' : 'blue';
+
+    const cellSize = size / resolution;
     const gap = overlap < 0 ? Math.abs(overlap) : 0;
     const pitch = cellSize + gap;
     const effectiveTotal = pitch * resolution;
@@ -218,7 +229,6 @@ export const GradientTab = {
     const startX = CX - effectiveTotal/2;
     const startY = CY - effectiveTotal/2;
 
-    const laserSource = laserType === 'ir' ? 'red' : 'blue';
     const labelColor = cfg.disperseHeat ? "#000000" : "#5b9bd5";
 
     for (let iy = 0; iy < resolution; iy++) {
@@ -249,19 +259,14 @@ export const GradientTab = {
           processingLightSource: laserSource
         };
 
-        if (cfg.renderMode === 'bitmap') {
-          XCSExporter.addImage(project, {
-            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
-            layerColor: color, laserSource, params: pm,
-            extraDisplayData: { ix, iy, hideLabels: true }
-          });
-        } else {
-          XCSExporter.addRect(project, {
-            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
-            layerColor: color, laserSource, params: pm,
-            extraDisplayData: { ix, iy, hideLabels: true }
-          });
-        }
+        const isFill = cfg.renderMode === 'fill';
+        const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
+
+        XCSExporter.addRect(project, {
+          x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
+          layerColor: color, laserSource, params: pm, processingType,
+          extraDisplayData: { ix, iy, hideLabels: true }
+        });
       }
     }
 
@@ -282,27 +287,31 @@ export const GradientTab = {
       const labelSize = 2.4;
       const gap = 2; // mm gap from grid
 
-      // Labels match XCS baseline
       const unscaledHeight = 23.35;
       const scale = labelSize / unscaledHeight;
       const fontSize = 72 * scale;
 
-      // Bottom axis (X): baseline anchor = gridB + gap + labelSize. Chars grow UP from there.
-      // Top of text will be at gridB + gap.
       XCSExporter.addText(project, {
         text: xLabel, x: gridL + effectiveTotal/2, y: gridB + gap + labelSize, width: xLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
       });
-      // Left axis (Y): vertical anchor. Chars grow LEFT from anchor. 
-      // To be outside, anchorX must be left of the grid by (gap).
       XCSExporter.addText(project, {
         text: yLabel, x: gridL - gap, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center", angle: -90
       });
-      // Top axis (Fixed): baseline anchor = gridT - gap. Chars grow UP from there.
       XCSExporter.addText(project, {
         text: fLabel, x: CX, y: gridT - gap, width: fLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
+      });
+    }
+
+    if (cfg.border) {
+      XCSExporter.addRect(project, {
+        x: CX, y: CY, width: size, height: size,
+        layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
+        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+        extraDisplayData: { hideLabels: true }
       });
     }
 
@@ -319,6 +328,22 @@ export const GradientTab = {
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const rebuild = () => this.renderControls(tabId);
+
+    const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
+    if (!palette) return;
+
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: true, supportFill: true, supportColorRange: false, supportBorder: true,
+      minSize: 10, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Grid Settings', [
+      UI.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
+      UI.makeRow('Resolution', UI.makeStepCounter(cfg.resolution, 1, 100, v => set('resolution', v), 1)),
+      UI.makeRow('Overlap/Gap', UI.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
+      UI.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
+    ]));
 
     const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
     const axisOpts = ['power', 'speed', 'lpcm'];
@@ -328,30 +353,12 @@ export const GradientTab = {
       if (cfg.xAxis === newValue) currentRoleOfValue = 'xAxis';
       else if (cfg.yAxis === newValue) currentRoleOfValue = 'yAxis';
       else if (cfg.fixedAxis === newValue) currentRoleOfValue = 'fixedAxis';
-      
       if (!currentRoleOfValue || currentRoleOfValue === targetRole) return;
-
-      const oldValueOfTargetRole = cfg[targetRole];
+      const oldVal = cfg[targetRole];
       cfg[targetRole] = newValue;
-      cfg[currentRoleOfValue] = oldValueOfTargetRole;
-      
-      cfg.roleHistory = cfg.roleHistory.filter(r => r !== targetRole);
-      cfg.roleHistory.push(targetRole);
-      
-      this.renderControls(tabId);
-      update();
-      Persistence.save();
+      cfg[currentRoleOfValue] = oldVal;
+      rebuild(); update(); Persistence.save();
     };
-
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Laser', UI.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
-      UI.makeRow('Render', UI.makeToggles(['vector', 'bitmap'], cfg.renderMode, v => set('renderMode', v), {vector:'Vector', bitmap:'Bitmap'})),
-      UI.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
-      UI.makeRow('Resolution', UI.makeStepCounter(cfg.resolution, 20, 100, v => set('resolution', v), 5)),
-      UI.makeRow('Overall Size', UI.makeRange(10, 100, 5, cfg.totalSize, v => set('totalSize', +v), 'mm')),
-      UI.makeRow('Overlap/Gap', UI.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
-      UI.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
-    ]));
 
     const getRanges = (axis) => {
       if (axis === 'power') return { min: 1, max: 100, step: 1, unit: 'pwr%' };
@@ -373,7 +380,7 @@ export const GradientTab = {
 
     const fr = getRanges(cfg.fixedAxis);
     const fixedKey = cfg.fixedAxis === 'power' ? 'fixedPower' : cfg.fixedAxis === 'speed' ? 'fixedSpeed' : 'fixedLpcm';
-    scroll.appendChild(UI.makeSection('Fixed:', [
+    scroll.appendChild(UI.makeSection('Fixed Axis:', [
       UI.makeRow(`Value (${fr.unit})`, UI.makeRange(fr.min, fr.max, fr.step, cfg[fixedKey], v => set(fixedKey, +v), fr.unit))
     ], false, UI.makeToggles(axisOpts, cfg.fixedAxis, v => swapAxes('fixedAxis', v), axisLabels)));
 
@@ -385,24 +392,20 @@ export const GradientTab = {
       
       const sec = UI.makeSection('Selection', [
         UI.makeRow('Cells', `${count} (${xMin},${yMin}) to (${xMax},${yMax})`),
-        UI.makeRow('', `<button class="tool-btn zoom-btn">Zoom to selection</button>`)
+        UI.makeRow('', UI.makeActionBtn('Zoom to selection', false, () => {
+          const xMinVal = this.getValAt(tabId, cfg.xAxis, xMin);
+          const xMaxVal = this.getValAt(tabId, cfg.xAxis, xMax);
+          const yMinVal = this.getValAt(tabId, cfg.yAxis, yMin);
+          const yMaxVal = this.getValAt(tabId, cfg.yAxis, yMax);
+          cfg.xMin = Math.min(xMinVal, xMaxVal);
+          cfg.xMax = Math.max(xMinVal, xMaxVal);
+          cfg.yMin = Math.min(yMinVal, yMaxVal);
+          cfg.yMax = Math.max(yMinVal, yMaxVal);
+          state.selection = null;
+          this.updateSelectionOverlay(tabId);
+          rebuild(); update();
+        }))
       ]);
-      sec.querySelector('.zoom-btn').onclick = () => {
-        const xMinVal = this.getValAt(tabId, cfg.xAxis, xMin);
-        const xMaxVal = this.getValAt(tabId, cfg.xAxis, xMax);
-        const yMinVal = this.getValAt(tabId, cfg.yAxis, yMin);
-        const yMaxVal = this.getValAt(tabId, cfg.yAxis, yMax);
-        
-        cfg.xMin = Math.min(xMinVal, xMaxVal);
-        cfg.xMax = Math.max(xMinVal, xMaxVal);
-        cfg.yMin = Math.min(yMinVal, yMaxVal);
-        cfg.yMax = Math.max(yMinVal, yMaxVal);
-        
-        state.selection = null;
-        this.updateSelectionOverlay(tabId);
-        this.renderControls(tabId);
-        update();
-      };
       scroll.appendChild(sec);
     }
   },
@@ -418,3 +421,4 @@ export const GradientTab = {
     return minVal + (maxVal - minVal) * idx / (cfg.resolution - 1);
   }
 };
+

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid Diagrams — webartests</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { 
+            background: #0d0d0d; 
+            color: #bbb; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            font-size: 15px; 
+            line-height: 1.7; 
+            min-height: 100vh; 
+            padding: 60px 24px 80px; 
+        }
+        
+        /* Navigation */
+        .top-nav {
+            position: sticky;
+            top: 0;
+            background: #0d0d0d;
+            padding: 10px 0;
+            z-index: 1000;
+            border-bottom: 1px solid #1a1a1a;
+            margin-bottom: 40px;
+        }
+
+        .nav-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        a.back { 
+            color: #555; 
+            text-decoration: none; 
+            font-size: 14px; 
+            transition: color 0.15s;
+            white-space: nowrap;
+        }
+        a.back:hover { color: #aaa; }
+
+        .jump-links {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none; /* Firefox */
+        }
+        .jump-links::-webkit-scrollbar { display: none; /* Chrome/Safari */ }
+
+        .jump-link {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #5b9bd5;
+            background: #1e2d40;
+            border: 1px solid #5b9bd544;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-decoration: none;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .jump-link:hover { background: #243550; border-color: #5b9bd5; }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; color: #fff; }
+        .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 56px; }
+
+        /* Section headers */
+        .section { margin-bottom: 80px; scroll-margin-top: 80px; }
+        .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+        .section-name { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #fff; }
+        .section-desc { font-size: 14px; color: #666; margin-bottom: 28px; max-width: 600px; line-height: 1.6; }
+
+        /* Card-like editor & preview */
+        .diagram-box {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 16px;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 400px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 800px) {
+            .diagram-box { grid-template-columns: 1fr; }
+        }
+
+        .editor-side {
+            padding: 24px;
+            border-right: 1px solid #2a2a2a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (max-width: 800px) {
+            .editor-side { border-right: none; border-bottom: 1px solid #2a2a2a; }
+        }
+
+        .editor-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #444;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        textarea {
+            flex: 1;
+            background: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #ddd;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            padding: 16px;
+            resize: vertical;
+            min-height: 200px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        textarea:focus { border-color: #5b9bd5; }
+
+        .preview-side {
+            padding: 24px;
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .preview-label-group {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            right: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .preview-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #444;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+        }
+
+        .mermaid-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            padding-top: 60px;
+        }
+
+        /* Buttons */
+        button {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #ccc;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover { background: #222; border-color: #555; color: #fff; }
+        button:active { transform: translateY(1px); }
+        
+        button.success { border-color: #10b98144; color: #10b981; }
+        button.success:hover { background: #0a1a15; border-color: #10b981; }
+
+        /* Copy message animation */
+        .copy-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #10b981;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            pointer-events: none;
+            z-index: 2000;
+        }
+        .copy-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Custom Mermaid styling to fit dark theme */
+        .mermaid svg {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="top-nav">
+    <div class="nav-container">
+        <a class="back" href="../">← Back</a>
+        <div class="jump-links">
+            <a href="#flowchart" class="jump-link">Flow</a>
+            <a href="#sequence" class="jump-link">Seq</a>
+            <a href="#class" class="jump-link">Class</a>
+            <a href="#er" class="jump-link">ER</a>
+            <a href="#gantt" class="jump-link">Gantt</a>
+            <a href="#mindmap" class="jump-link">Mind</a>
+            <a href="#state" class="jump-link">State</a>
+            <a href="#timeline" class="jump-link">Time</a>
+            <a href="#git" class="jump-link">Git</a>
+            <a href="#c4" class="jump-link">C4</a>
+            <a href="#sankey" class="jump-link">Sankey</a>
+            <a href="#block" class="jump-link">Block</a>
+            <a href="#pie" class="jump-link">Pie</a>
+            <a href="#quadrant" class="jump-link">Quad</a>
+            <a href="#requirement" class="jump-link">Req</a>
+            <a href="#journey" class="jump-link">UX</a>
+            <a href="#xy" class="jump-link">XY</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <h1>Mermaid Diagrams in Git</h1>
+    <p class="subtitle">
+        Mermaid lets you create diagrams and visualizations using text and code. 
+        It renders Markdown-inspired definitions to create and modify diagrams dynamically. 
+        Perfect for direct documentation in Git.
+    </p>
+
+    <!-- SECTION MACRO -->
+    <script>
+        function createSection(id, title, subtitle, desc, defaultCode) {
+            const html = `
+    <section class="section" id="${id}">
+        <p class="section-title">${title}</p>
+        <h2 class="section-name">${subtitle}</h2>
+        <p class="section-desc">${desc}</p>
+        <div class="diagram-box">
+            <div class="editor-side">
+                <div class="editor-label"><span>Syntax</span> <button onclick="copyText('${id}-text')">Copy Code</button></div>
+                <textarea id="${id}-text" oninput="updateDiagram('${id}', this.value)">${defaultCode}</textarea>
+            </div>
+            <div class="preview-side">
+                <div class="preview-label-group">
+                    <div class="preview-label">Live Preview</div>
+                    <div class="preview-actions">
+                        <button class="success" onclick="copyHtml('${id}-text')">Copy HTML</button>
+                        <button class="success" onclick="copyImage('${id}-render')">Copy Image</button>
+                    </div>
+                </div>
+                <div class="mermaid-container" id="${id}-container"><div class="mermaid" id="${id}-render">${defaultCode}</div></div>
+            </div>
+        </div>
+    </section>`;
+            document.write(html);
+        }
+    </script>
+
+    <script>
+        createSection('flowchart', 'Visualizing Logic', 'Flowcharts', 'Nodes (shapes) and edges (arrows). Top-down (TD) or Left-Right (LR) orientation.', `graph TD
+    A[Start] --> B{Is it working?}
+    B -- Yes --> C[Great!]
+    B -- No --> D[Check Logs]
+    D --> B
+    C --> E[End]`);
+
+        createSection('sequence', 'Communication', 'Sequence Diagrams', 'Interaction order between processes or objects.', `sequenceDiagram
+    Alice->>John: Hello John, how are you?
+    John-->>Alice: Great!
+    Alice-)John: See you later!`);
+
+        createSection('class', 'Object Oriented', 'Class Diagrams', 'Static structure of systems with classes, attributes, and relationships.', `classDiagram
+    Animal <|-- Duck
+    Animal <|-- Fish
+    Animal : +int age
+    Animal: +mate()
+    class Duck{
+        +String beakColor
+        +quack()
+    }`);
+
+        createSection('er', 'Database', 'ER Diagrams', 'Entity-Relationship modeling for data structures.', `erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER }|..|{ DELIVERY-ADDRESS : uses`);
+
+        createSection('gantt', 'Planning', 'Gantt Charts', 'Project schedule visualization via bar charts.', `gantt
+    title A Gantt Diagram
+    dateFormat  YYYY-MM-DD
+    section Work
+    Task 1 :a1, 2024-01-01, 30d
+    Task 2 :after a1, 20d`);
+
+        createSection('mindmap', 'Ideation', 'Mindmaps', 'Hierarchical nodes for brainstorming and info mapping.', `mindmap
+  root((mermaid))
+    Origins
+      Long history
+    Features
+      Diagrams
+      Charts`);
+
+        createSection('state', 'Behavior', 'State Diagrams', 'Transitions between states in a system.', `stateDiagram-v2
+    [*] --> Still
+    Still --> [*]
+    Still --> Moving
+    Moving --> Still
+    Moving --> Crash
+    Crash --> [*]`);
+
+        createSection('timeline', 'Chronology', 'Timeline', 'Sequence of events over time.', `timeline
+    title Tech Milestones
+    2004 : Facebook
+    2005 : YouTube
+    2006 : Twitter`);
+
+        createSection('git', 'Version Control', 'Git Graph', 'Visualize branching, commits, and merges.', `gitGraph
+   commit
+   branch develop
+   checkout develop
+   commit
+   checkout main
+   merge develop`);
+
+        createSection('c4', 'Architecture', 'C4 Diagram', 'Context, containers, and components architecture.', `C4Context
+  title System Context
+  Person(customer, "Customer")
+  System(system, "System")
+  Rel(customer, system, "Uses")`);
+
+        createSection('sankey', 'Flow', 'Sankey Chart', 'Distribute flows between process stages.', `sankey-beta
+L1,L2,10
+L1,L3,5
+L2,L4,7`);
+
+        createSection('block', 'Layout', 'Block Map', 'Grid-based block diagramming.', `block-beta
+  columns 3
+  doc>"Document"]:3
+  block:group1:3
+    columns 2
+    a b
+  end`);
+
+        createSection('pie', 'Distribution', 'Pie Chart', 'Categorical proportions.', `pie title Adoption
+    "Dogs" : 386
+    "Cats" : 85`);
+
+        createSection('quadrant', 'Evaluation', 'Quadrant Chart', '2x2 matrix for evaluation and categorization.', `quadrantChart
+    title Reach and Engagement
+    x-axis Low Reach --> High Reach
+    y-axis Low Engagement --> High Engagement
+    quadrant-1 Expand
+    Campaign A: [0.3, 0.6]`);
+
+        createSection('requirement', 'Systems', 'Requirement', 'SysML requirement modeling.', `requirementDiagram
+    requirement test {
+      id: 1
+      text: the test text.
+      risk: high
+      verification: test
+    }`);
+
+        createSection('journey', 'UX Design', 'User Journey', 'Steps and emotions in a user's experience.', `journey
+    title My working day
+    section Work
+      Make tea: 5: Me
+      Do work: 1: Me, Cat`);
+
+        createSection('xy', 'Data Viz', 'XY Chart', 'Plotting data points and bars.', `xychart-beta
+    title "Revenue"
+    x-axis [jan, feb, mar, apr]
+    y-axis "($)" 4000 --> 11000
+    bar [5000, 6000, 7500, 8200]`);
+    </script>
+
+</div>
+
+<div id="toast" class="copy-toast">Copied to clipboard!</div>
+
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    
+    mermaid.initialize({ 
+        startOnLoad: true,
+        theme: 'dark',
+        securityLevel: 'loose',
+        fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+        flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+        gantt: { useMaxWidth: true }
+    });
+
+    // Debounce function
+    function debounce(func, timeout = 300) {
+        let timer;
+        return (...args) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => { func.apply(this, args); }, timeout);
+        };
+    }
+
+    const updateDiagramHandler = async (id, code) => {
+        const container = document.getElementById(id + '-container');
+        const renderId = id + '-render';
+        
+        try {
+            // Remove previous content
+            container.innerHTML = `<div class="mermaid" id="${renderId}"></div>`;
+            const element = document.getElementById(renderId);
+            
+            // Render new diagram
+            const { svg } = await mermaid.render(renderId + '-svg', code);
+            element.innerHTML = svg;
+        } catch (e) {
+            console.error('Mermaid render error:', e);
+            const element = document.getElementById(renderId);
+            if(element) element.innerHTML = `<pre style="color: #e74c3c; font-size: 11px; padding: 20px; white-space: pre-wrap;">Syntax Error: ${e.message}</pre>`;
+        }
+    };
+
+    window.updateDiagram = debounce(updateDiagramHandler);
+
+    window.copyText = (id) => {
+        const text = document.getElementById(id).value;
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('Code copied!');
+        });
+    };
+
+    window.copyHtml = (id) => {
+        const text = document.getElementById(id).value;
+        const html = `<pre class="mermaid">\n${text}\n</pre>`;
+        navigator.clipboard.writeText(html).then(() => {
+            showToast('HTML copied!');
+        });
+    };
+
+    window.copyImage = async (id) => {
+        const container = document.getElementById(id);
+        const svgElement = container.querySelector('svg');
+        if (!svgElement) return;
+
+        try {
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const canvas = document.createElement('canvas');
+            const svgSize = svgElement.getBoundingClientRect();
+            
+            // Increase resolution for better quality
+            const scale = 2;
+            canvas.width = svgSize.width * scale;
+            canvas.height = svgSize.height * scale;
+            
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            // Standard background for transparency-unfriendly apps
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => {
+                    try {
+                        const item = new ClipboardItem({ "image/png": blob });
+                        navigator.clipboard.write([item]);
+                        showToast('Image copied!');
+                    } catch (err) {
+                        // Fallback: Download image if clipboard API fails for images
+                        const link = document.createElement('a');
+                        link.download = 'diagram.png';
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                        showToast('Browser restricted clipboard; image downloaded.');
+                    }
+                    URL.revokeObjectURL(url);
+                });
+            };
+            img.src = url;
+        } catch (err) {
+            console.error('Copy Image error:', err);
+            showToast('Error copying image');
+        }
+    };
+
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.innerText = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+</script>
+
+</body>
+</html>

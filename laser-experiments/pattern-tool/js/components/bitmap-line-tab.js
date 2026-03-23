@@ -4,6 +4,7 @@ import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
 import { XCSIR } from '../xcs-ir.js';
 import { XCSExporter } from '../xcs-exporter.js';
+import { PalMgr } from '../palettes.js';
 
 export const BitmapLineTab = {
   create(tabId, initialCfg) {
@@ -22,14 +23,22 @@ export const BitmapLineTab = {
     pane.appendChild(viewer);
 
     const defaults = {
-      laserType: 'ir',
-      power: 20,
-      speed: 100,
-      lpcm: 1000,
-      width: 50,
-      height: 10
+      paletteId: 'laFont-1000lpcm',
+      paletteOffset: 0,
+      size: 50,
+      renderMode: 'fill',
+      border: false,
+      rectHeight: 10
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
+    if (cfg.width !== undefined) {
+      cfg.size = cfg.width;
+      delete cfg.width;
+    }
+    if (cfg.height !== undefined) {
+      cfg.rectHeight = cfg.height;
+      delete cfg.height;
+    }
     const state = { rawData:null, shapes:[] };
     App.instances[tabId] = { type:'bitmap-line', pane, cfg, state };
 
@@ -48,20 +57,37 @@ export const BitmapLineTab = {
   generateXCS(cfg) {
     const project = XCSExporter.createProject();
     const CX = 50, CY = 50;
-    const laserSource = cfg.laserType === 'ir' ? 'red' : 'blue';
+    
+    let palette = PalMgr.get(cfg.paletteId);
+    if (!palette) palette = PalMgr.list()[0];
+    if (!palette) return project;
+
+    const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
+    const laserSource = isIR ? 'red' : 'blue';
+    const entry = palette.entries[cfg.paletteOffset % palette.entries.length];
 
     XCSExporter.addImage(project, {
-      x: CX, y: CY, width: cfg.width, height: cfg.height,
-      layerColor: "#ffffff", laserSource,
+      x: CX, y: CY, width: cfg.size, height: cfg.rectHeight,
+      layerColor: entry.rgb, laserSource,
       params: { 
-        power: Math.round(cfg.power), 
-        speed: Math.round(cfg.speed), 
-        density: Math.round(cfg.lpcm),
+        power: entry.power, 
+        speed: palette.speed, 
+        density: palette.lpcm,
         repeat: 1,
         processingLightSource: laserSource
       },
       extraDisplayData: { hideLabels: true }
     });
+
+    if (cfg.border) {
+      XCSExporter.addRect(project, {
+        x: CX, y: CY, width: cfg.size, height: cfg.rectHeight,
+        layerColor: "#ffffff", laserSource, 
+        processingType: "VECTOR_ENGRAVING",
+        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+        extraDisplayData: { hideLabels: true }
+      });
+    }
 
     return project;
   },
@@ -72,14 +98,19 @@ export const BitmapLineTab = {
     scroll.innerHTML = '';
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
+    const rebuild = () => this.renderControls(tabId);
 
-    scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Laser', UI.makeToggles(['ir', 'blue'], cfg.laserType, v => set('laserType', v), {ir:'IR', blue:'BLUE'})),
-      UI.makeRow('Power', UI.makeRange(1, 100, 1, cfg.power, v => set('power', +v), 'pwr%')),
-      UI.makeRow('Speed', UI.makeRange(1, 500, 5, cfg.speed, v => set('speed', +v), 'mm/s')),
-      UI.makeRow('LPCM', UI.makeRange(10, 1000, 50, cfg.lpcm, v => set('lpcm', +v), 'lpcm')),
-      UI.makeRow('Width', UI.makeRange(5, 100, 1, cfg.width, v => set('width', +v), 'mm')),
-      UI.makeRow('Height', UI.makeRange(1, 100, 1, cfg.height, v => set('height', +v), 'mm'))
+    const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
+    if (!palette) return;
+
+    scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
+      supportPath: false, supportFill: true, supportColorRange: true, supportBorder: true,
+      minSize: 5, maxSize: 100
+    }));
+
+    scroll.appendChild(UI.makeSection('Bitmap Settings', [
+      UI.makeRow('Rect Height', UI.makeRange(1, 100, 1, cfg.rectHeight, v => set('rectHeight', +v), 'mm'))
     ]));
   }
 };
+
