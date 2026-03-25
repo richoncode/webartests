@@ -258,11 +258,10 @@ export const GradientTab = {
         };
 
         const isFill = cfg.renderMode === 'fill';
-        const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
         XCSExporter.addRect(project, {
           x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
-          layerColor: color, laserSource, params: pm, processingType,
+          layerColor: color, laserSource, params: pm, isFill,
           extraDisplayData: { ix, iy, hideLabels: true }
         });
       }
@@ -307,15 +306,13 @@ export const GradientTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: size, height: size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
     }
 
-    const dvEntry = project.device.data.value[0][1];
-    dvEntry.data.LASER_PLANE.isProcessByLayer = cfg.disperseHeat;
-    dvEntry.data.LASER_PLANE.pathPlanning = cfg.disperseHeat ? "custom" : "auto";
+    project.setPathPlanning(cfg.disperseHeat ? "custom" : "auto");
 
     return project;
   },

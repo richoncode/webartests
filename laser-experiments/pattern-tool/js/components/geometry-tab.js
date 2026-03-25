@@ -97,7 +97,6 @@ export const GeometryTab = {
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
     const isFill = cfg.renderMode === 'fill';
-    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
     const addLine = (x1, y1, x2, y2, color, entry, idx, t) => {
       usedColors.add(color);
@@ -105,7 +104,7 @@ export const GeometryTab = {
       XCSExporter.addPath(project, {
         x: CX + (x1+x2)/2, y: CY + (y1+y2)/2, width: Math.max(0.1, Math.abs(x2-x1)), height: Math.max(0.1, Math.abs(y2-y1)),
         dPath: `M ${CX+x1} ${CY+y1} L ${CX+x2} ${CY+y2}`,
-        layerColor: color, laserSource, params, processingType,
+        layerColor: color, laserSource, params, isFill,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label, t }
       });
     };
@@ -115,7 +114,7 @@ export const GeometryTab = {
       const params = PalMgr.getParams(cfg.paletteId, idx);
       XCSExporter.addCircle(project, {
         x: CX + lx, y: CY + ly, width: r*2, height: r*2,
-        layerColor: color, laserSource, params, processingType,
+        layerColor: color, laserSource, params, isFill,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label, t }
       });
     };
@@ -318,14 +317,13 @@ export const GeometryTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
     }
 
-    const canvas = project.canvas[0];
-    [...usedColors].forEach((c, idx) => { canvas.layerData[c] = { name: `Layer ${idx+1}`, order: idx+1, visible: true }; });
+    [...usedColors].forEach((c, idx) => { project.setLayerName(c, `Layer ${idx+1}`); });
     return project;
   },
 
@@ -353,7 +351,7 @@ export const GeometryTab = {
 
     if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
       scroll.appendChild(UI.makeSection('Geometry Settings', [
-        UI.makeRow('Rings', UI.makeStepCounter(cfg.folRings, 1, 10, v => set('folRings', v)))
+        UI.makeRow('Rings', UI.makeRange(1, 40, 1, cfg.folRings, v => set('folRings', +v)))
       ]));
     } else if (cfg.mode === 'rose-curve') {
       scroll.appendChild(UI.makeSection('Rose Settings', [

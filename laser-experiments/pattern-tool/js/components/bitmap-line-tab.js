@@ -77,7 +77,7 @@ export const BitmapLineTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.rectHeight,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });

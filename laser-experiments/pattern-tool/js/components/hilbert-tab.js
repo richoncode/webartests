@@ -104,21 +104,22 @@ export const HilbertTab = {
     const entryIdx = cfg.paletteOffset % palette.entries.length;
     const entry = palette.entries[entryIdx];
     const params = PalMgr.getParams(cfg.paletteId, entryIdx);
+XCSExporter.addPath(project, {
+  x: CX, y: CY, width: cfg.size, height: cfg.size,
+  dPath, layerColor: entry.rgb, laserSource, params,
+  isFill: false,
+  extraDisplayData: { hideLabels: true }
+});
 
-    XCSExporter.addPath(project, {
-      x: CX, y: CY, width: cfg.size, height: cfg.size,
-      dPath, layerColor: entry.rgb, laserSource, params,
-      extraDisplayData: { hideLabels: true }
-    });
-
-    if (cfg.border) {
-      XCSExporter.addRect(project, {
-        x: CX, y: CY, width: cfg.size, height: cfg.size,
-        layerColor: "#ffffff", laserSource, 
-        params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
-        extraDisplayData: { hideLabels: true }
-      });
-    }
+if (cfg.border) {
+  XCSExporter.addRect(project, {
+    x: CX, y: CY, width: cfg.size, height: cfg.size,
+    layerColor: "#ffffff", laserSource, 
+    isFill: false,
+    params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
+    extraDisplayData: { hideLabels: true }
+  });
+}
 
     return project;
   },

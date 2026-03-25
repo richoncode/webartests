@@ -87,16 +87,47 @@ export const UI = {
   makeRange(min, max, step, val, onChange, unit='') {
     const wrap = document.createElement('div');
     wrap.className = 'ctrl-val-wrap';
+    
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = val;
-    const disp = document.createElement('span');
-    disp.className = 'range-val'; disp.textContent = val + unit;
-    inp.addEventListener('input', () => { 
-      val = inp.value;
-      disp.textContent = val + unit; 
-      onChange(val); 
+    inp.style.flex = '1';
+
+    const num = document.createElement('input');
+    num.type = 'number'; num.min = min; num.max = max; num.step = step; num.value = val;
+    num.className = 'range-num-input';
+    num.style.width = '50px';
+    num.style.background = 'transparent';
+    num.style.border = 'none';
+    num.style.borderBottom = '1px solid #333';
+    num.style.color = '#5b9bd5';
+    num.style.fontSize = '11px';
+    num.style.textAlign = 'right';
+    num.style.padding = '0';
+    num.style.marginLeft = '8px';
+
+    const unitSpan = unit ? document.createElement('span') : null;
+    if (unitSpan) {
+      unitSpan.textContent = unit;
+      unitSpan.style.fontSize = '10px';
+      unitSpan.style.opacity = '0.5';
+      unitSpan.style.marginLeft = '2px';
+    }
+
+    const updateAll = (v) => {
+      inp.value = v;
+      num.value = v;
+      onChange(v);
+    };
+
+    inp.addEventListener('input', () => updateAll(inp.value));
+    num.addEventListener('change', () => updateAll(num.value));
+    num.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') num.blur();
     });
-    wrap.appendChild(inp); wrap.appendChild(disp);
+
+    wrap.appendChild(inp);
+    wrap.appendChild(num);
+    if (unitSpan) wrap.appendChild(unitSpan);
     return wrap;
   },
 

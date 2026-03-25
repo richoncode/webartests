@@ -77,7 +77,6 @@ export const MandalaTab = {
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
     const isFill = cfg.renderMode === 'fill';
-    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
     const addShape = (lx, ly, r, type, color, entry, paletteName, colorName, idx, t) => {
       const x = CX + lx, y = CY + ly;
@@ -86,7 +85,7 @@ export const MandalaTab = {
 
       const options = {
         x, y, width: r*2, height: r*2,
-        layerColor: color, laserSource, params, processingType,
+        layerColor: color, laserSource, params, isFill,
         extraDisplayData: { hideLabels: true, paletteName, colorName, t }
       };
       if (type === 'circle') XCSExporter.addCircle(project, options);
@@ -109,7 +108,8 @@ export const MandalaTab = {
         const colorIdx = cfg.centerDot ? i + 1 : i;
         const t = colorSteps > 0 ? colorIdx / colorSteps : 0;
         const start = cfg.paletteOffset;
-        entryIdx = Math.round(start + (cfg.rangeEndIdx - start) * t);
+        const end = cfg.rangeEndIdx !== undefined ? cfg.rangeEndIdx : 10;
+        entryIdx = Math.round(start + (end - start) * t);
       } else {
         entryIdx = ring.paletteEntryIndex;
       }
@@ -137,15 +137,14 @@ export const MandalaTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
     }
 
-    const canvas = project.canvas[0];
     [...usedColors].forEach((c, idx) => {
-      canvas.layerData[c] = { name: `Layer ${idx+1}`, order: idx+1, visible: true };
+      project.setLayerName(c, `Layer ${idx+1}`);
     });
     return project;
   },

@@ -45,24 +45,22 @@ export const AttractorTab = {
       iterations: 5000,
       colorRangeMode: true,
       rangeEndIdx: 10,
-      a: 10, b: 28, c: 8/3, d: 1 // parameters
+      a: 10, b: 28, c: 8/3, d: 1
     };
+
+    // Apply mode-specific defaults BEFORE merging initialCfg
+    const mode = initialCfg?.mode || 'lorenz';
+    if (mode === 'clifford' || mode === 'dejong') {
+      Object.assign(defaults, { a: 1.5, b: -1.8, c: 1.6, d: 0.9 });
+    } else if (mode === 'ikeda') {
+      Object.assign(defaults, { a: 0.9 });
+    } else if (mode === 'rossler') {
+      Object.assign(defaults, { a: 0.2, b: 0.2, c: 5.7 });
+    } else if (mode === 'bedhead') {
+      Object.assign(defaults, { a: 0.06, b: 0.98 });
+    }
+
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    if (cfg.totalSize !== undefined) {
-      cfg.size = cfg.totalSize;
-      delete cfg.totalSize;
-    }
-    
-    // Adjust defaults based on mode
-    if (cfg.mode === 'clifford' || cfg.mode === 'dejong') {
-      if (!initialCfg) { cfg.a = 1.5; cfg.b = -1.8; cfg.c = 1.6; cfg.d = 0.9; }
-    } else if (cfg.mode === 'ikeda') {
-      if (!initialCfg) cfg.a = 0.9;
-    } else if (cfg.mode === 'rossler') {
-      if (!initialCfg) { cfg.a = 0.2; cfg.b = 0.2; cfg.c = 5.7; }
-    } else if (cfg.mode === 'bedhead') {
-      if (!initialCfg) { cfg.a = 0.06; cfg.b = 0.98; }
-    }
 
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'attractor', pane, cfg, state };
@@ -94,22 +92,22 @@ export const AttractorTab = {
 
     const getColor = (t) => {
       const start = cfg.paletteOffset;
-      const range = 10;
+      const end = cfg.rangeEndIdx !== undefined ? cfg.rangeEndIdx : 10;
       const idx = cfg.colorRangeMode 
-        ? Math.round(start + range * t)
+        ? Math.round(start + (end - start) * t)
         : start;
       const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
       const entry = palette.entries[actualIdx];
-      return { entry, idx: actualIdx };
+      return { entry, idx: actualIdx, t, paletteName: palette.name, colorName: entry.label };
     };
 
-    const addPoint = (x, y, color, entry, idx) => {
+    const addPoint = (x, y, color, entry, idx, t) => {
       usedColors.add(color);
       const params = PalMgr.getParams(cfg.paletteId, idx);
       XCSExporter.addCircle(project, {
         x: CX + x, y: CY + y, width: 0.1, height: 0.1,
-        layerColor: color, laserSource, params, processingType: "VECTOR_ENGRAVING",
-        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
+        layerColor: color, laserSource, params, isFill: false,
+        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label, t }
       });
     };
 
@@ -191,8 +189,13 @@ export const AttractorTab = {
         if (i % 5 !== 0 && cfg.iterations > 5000) return; // thinning for XCS performance
         const tx = (p[0] - (minX + maxX)/2) * sc;
         const ty = (p[1] - (minY + maxY)/2) * sc;
-        const { entry, idx } = getColor(i / pts.length);
-        addPoint(tx, ty, entry.rgb, entry, idx);
+        
+        // Safety: skip non-finite numbers
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+
+        const tValue = i / pts.length;
+        const { entry, idx } = getColor(tValue);
+        addPoint(tx, ty, entry.rgb, entry, idx, tValue);
       });
     }
 
@@ -200,7 +203,7 @@ export const AttractorTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
@@ -228,11 +231,37 @@ export const AttractorTab = {
       UI.makeRow('Points', UI.makeRange(1000, 20000, 1000, cfg.iterations, v => set('iterations', +v)))
     ]));
 
-    scroll.appendChild(UI.makeSection('Equation Parameters', [
-      UI.makeRow('Param A', UI.makeRange(-3, 30, 0.1, cfg.a, v => set('a', +v))),
-      UI.makeRow('Param B', UI.makeRange(-3, 30, 0.1, cfg.b, v => set('b', +v))),
-      UI.makeRow('Param C', UI.makeRange(-3, 30, 0.1, cfg.c, v => set('c', +v)))
-    ]));
+    scroll.appendChild(UI.makeSection('Equation Parameters', (() => {
+      if (cfg.mode === 'lorenz' || cfg.mode === 'rossler') {
+        const isRossler = cfg.mode === 'rossler';
+        const step = isRossler ? 0.01 : 0.1;
+        const maxA = isRossler ? 1.0 : 30;
+        const maxB = isRossler ? 1.0 : 30;
+        return [
+          UI.makeRow('Param A', UI.makeRange(-1, maxA, step, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B', UI.makeRange(-1, maxB, step, cfg.b, v => set('b', +v))),
+          UI.makeRow('Param C', UI.makeRange(-3, 30, 0.1, cfg.c, v => set('c', +v)))
+        ];
+      }
+      if (cfg.mode === 'ikeda') {
+        return [
+          UI.makeRow('Param A (u)', UI.makeRange(0, 1.0, 0.0001, cfg.a, v => set('a', +v)))
+        ];
+      }
+      if (cfg.mode === 'clifford' || cfg.mode === 'dejong') {
+        return [
+          UI.makeRow('Param A', UI.makeRange(-3, 3, 0.01, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B', UI.makeRange(-3, 3, 0.01, cfg.b, v => set('b', +v))),
+          UI.makeRow('Param C', UI.makeRange(-3, 3, 0.01, cfg.c, v => set('c', +v))),
+          UI.makeRow('Param D', UI.makeRange(-3, 3, 0.01, cfg.d, v => set('d', +v)))
+        ];
+      }
+      return [
+        UI.makeRow('Param A', UI.makeRange(-3, 30, 0.1, cfg.a, v => set('a', +v))),
+        UI.makeRow('Param B', UI.makeRange(-3, 30, 0.1, cfg.b, v => set('b', +v))),
+        UI.makeRow('Param C', UI.makeRange(-3, 30, 0.1, cfg.c, v => set('c', +v)))
+      ];
+    })()));
   }
 };
 

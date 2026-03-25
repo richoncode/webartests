@@ -101,15 +101,16 @@ export const VoronoiTab = {
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
     const isFill = cfg.renderMode === 'fill';
-    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
+
 
     const getColor = (t) => {
       const start = cfg.paletteOffset;
       const idx = cfg.colorRangeMode 
         ? Math.round(start + (cfg.rangeEndIdx - start) * t)
         : start;
-      const entry = palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
-      return { entry, idx: Math.max(0, Math.min(palette.entries.length - 1, idx)) };
+      const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
+      const entry = palette.entries[actualIdx];
+      return { entry, idx: actualIdx, paletteName: palette.name, colorName: entry.label };
     };
 
     for (let i = 0; i < points.length; i++) {
@@ -132,15 +133,15 @@ export const VoronoiTab = {
       });
 
       const tValue = i / (points.length - 1 || 1);
-      const { entry, idx } = getColor(tValue);
+      const { entry, idx, paletteName, colorName } = getColor(tValue);
       const params = PalMgr.getParams(cfg.paletteId, idx);
 
       XCSExporter.addPath(project, {
         x: (minX + maxX) / 2, y: (minY + maxY) / 2,
         width: maxX - minX, height: maxY - minY,
         dPath, layerColor: entry.rgb, laserSource, params,
-        processingType,
-        extraDisplayData: { hideLabels: true, t: tValue }
+        isFill,
+        extraDisplayData: { hideLabels: true, t: tValue, paletteName, colorName }
       });
     }
 
@@ -148,7 +149,7 @@ export const VoronoiTab = {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });

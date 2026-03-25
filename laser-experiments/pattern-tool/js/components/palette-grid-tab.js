@@ -81,6 +81,7 @@ export const PaletteGridTab = {
       const options = {
         x, y, width: cellW, height: cellH,
         layerColor: entry.rgb, laserSource, params,
+        isFill: true,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry.label }
       };
 
@@ -95,7 +96,8 @@ export const PaletteGridTab = {
         const labelText = (entry.speed !== undefined && entry.speed !== palette.speed) ? `${entry.speed}` : `${entry.power}%`;
         XCSExporter.addText(project, {
           text: labelText, x, y: y + cellH/2 + 1.5, width: 5, height: labelSize, fontSize, scale,
-          layerColor: "#ffffff", laserSource, align: "center"
+          layerColor: "#ffffff", laserSource, align: "center",
+          isFill: false
         });
       }
     });

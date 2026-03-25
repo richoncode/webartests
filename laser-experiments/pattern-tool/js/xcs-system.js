@@ -25,9 +25,12 @@ export class XCSItem {
    */
   getRenderProps() {
     const d = this.display;
-    const l = this.laser || {};
+    const l = this.laser || { data: {} };
     const pt = l.processingType || '';
-    const pm = (pt && l.data?.[pt]) ? (l.data[pt].parameter?.customize || {}) : {};
+    
+    // Always resolve parameters from the active operation node to ensure they match the machine state
+    const opNode = l.data?.[pt] || {};
+    const pm = opNode.parameter?.customize || {};
     const src = pm.processingLightSource || null;
     const laser = (src === 'red' || src === 'ir') ? 'ir' : src;
 
@@ -326,7 +329,15 @@ export class XCSProject {
   addItem(type, options) {
     const id = uuid();
     const layerColor = options.layerColor || "#5b9bd5";
-    const processingType = options.processingType || (type === 'TEXT' ? "VECTOR_ENGRAVING" : "COLOR_FILL_ENGRAVE");
+    
+    // Abstract the processing type away from the components
+    let processingType = options.processingType; 
+    if (!processingType) {
+      if (options.isFill === true) processingType = "COLOR_FILL_ENGRAVE";
+      else if (options.isFill === false) processingType = "VECTOR_ENGRAVING";
+      else processingType = type === 'TEXT' ? "VECTOR_ENGRAVING" : "COLOR_FILL_ENGRAVE";
+    }
+
     const laserSource = options.laserSource || "red";
     const canvas = this.canvas[0];
     
@@ -351,6 +362,31 @@ export class XCSProject {
 
     // 4. Return appropriate subclass instance
     return (type === 'TEXT') ? new XCSText(display, laser, zOrder) : new XCSShape(display, laser, zOrder);
+  }
+
+  /**
+   * Safe setter for layer metadata.
+   */
+  setLayerName(color, name) {
+    const canvas = this.canvas[0];
+    if (!canvas.layerData[color]) {
+      canvas.layerData[color] = { order: Object.keys(canvas.layerData).length + 1, visible: true };
+    }
+    canvas.layerData[color].name = name;
+  }
+
+  /**
+   * Safe setter for hardware path planning strategy.
+   */
+  setPathPlanning(mode) {
+    const dvEntry = this.device.data.value[0][1];
+    if (mode === 'custom') {
+      dvEntry.data.LASER_PLANE.isProcessByLayer = true;
+      dvEntry.data.LASER_PLANE.pathPlanning = "custom";
+    } else {
+      dvEntry.data.LASER_PLANE.isProcessByLayer = false;
+      dvEntry.data.LASER_PLANE.pathPlanning = "auto";
+    }
   }
 
   getItems() {

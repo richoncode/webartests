@@ -161,6 +161,10 @@ export const XCSViewer = {
   },
 
   update(v, state) {
+    state.renderedShapes = state.project 
+      ? state.project.getItems().map(item => item.getRenderProps()) 
+      : (state.shapes || []);
+
     this.renderSVG(v, state);
     this.renderStats(v, state);
     this.renderList(v, state);
@@ -181,7 +185,7 @@ export const XCSViewer = {
     const sc = 5;
     const mm2 = (x, y) => [x * sc, y * sc];
 
-    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const shapes = state.renderedShapes || [];
 
     shapes.forEach(s => {
       const isFill = !!s.isFill; // Use the parsed flag from IR
@@ -248,7 +252,7 @@ export const XCSViewer = {
 
   renderList(v, state) {
     const list = v.querySelector('.shapes-body');
-    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const shapes = state.renderedShapes || [];
     v.querySelector('.shapes-hdr').textContent = `Shapes (${shapes.length})`;
     list.innerHTML = '';
     shapes.forEach(s => {
@@ -279,7 +283,7 @@ export const XCSViewer = {
     }
     
     const positions = [];
-    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const shapes = state.renderedShapes || [];
     
     shapes.forEach(s => {
       const needle = `"id": "${s.id}"`;
@@ -367,7 +371,7 @@ export const XCSViewer = {
   },
 
   renderStats(v, state) {
-    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const shapes = state.renderedShapes || [];
     const formatRange = (label, vals, unit) => {
       if (!vals.length) return '';
       const sorted = [...new Set(vals)].sort((a,b) => a-b);
@@ -385,7 +389,7 @@ export const XCSViewer = {
   },
 
   onHover(v, state, idx, ev) {
-    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const shapes = state.renderedShapes || [];
     const s = shapes.find(x => x.idx === idx);
     if (!s) return;
     v.querySelectorAll('.shape-row, .json-display-block, [data-svg-idx]').forEach(el => el.classList.remove('hl', 'hover', 'json-hl'));

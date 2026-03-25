@@ -46,7 +46,7 @@ export const TestTab = {
     if (cfg.testType === 'text-scribe') {
       XCSExporter.addText(project, {
         text: "XCS FORMAT TEST", x: 50, y: 50, height: 10, fontSize: 36,
-        layerColor: "#5b9bd5", laserSource, processingType: "VECTOR_ENGRAVING",
+        layerColor: "#5b9bd5", laserSource, isFill: false,
         align: "center"
       });
     } else if (cfg.testType === 'shapes') {

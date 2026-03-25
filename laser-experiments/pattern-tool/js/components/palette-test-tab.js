@@ -98,7 +98,7 @@ export const PaletteTestTab = {
         height: labelHeight,
         fontSize, scale, align: "center",
         layerColor: labelColor, laserSource,
-        processingType: "VECTOR_ENGRAVING"
+        isFill: false
       });
     }
 
@@ -113,7 +113,7 @@ export const PaletteTestTab = {
       const options = {
         x: CX + lx, y: CY + ly, width: shapeSize, height: shapeSize,
         layerColor: entry.rgb, laserSource, params,
-        processingType: "COLOR_FILL_ENGRAVE",
+        isFill: true,
         extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry.label }
       };
 
@@ -136,7 +136,7 @@ export const PaletteTestTab = {
           height: labelHeight,
           fontSize, scale, align: "center",
           layerColor: labelColor, laserSource,
-          processingType: "VECTOR_ENGRAVING"
+          isFill: false
         });
       }
     });

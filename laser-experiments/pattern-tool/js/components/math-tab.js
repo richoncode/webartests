@@ -82,7 +82,6 @@ export const MathTab = {
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
     const isFill = cfg.renderMode === 'fill';
-    const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
     
     const entryIdx = cfg.paletteOffset % palette.entries.length;
     const entry = palette.entries[entryIdx];
@@ -96,21 +95,23 @@ export const MathTab = {
         : start;
       const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
       const entry = palette.entries[actualIdx];
-      return { entry, idx: actualIdx, t };
+      return { entry, idx: actualIdx, t, paletteName: palette.name, colorName: entry.label };
     };
 
     if (cfg.type === 'rose') {
       const k = cfg.n / cfg.d;
       let dPath = '';
-      for (let a = 0; a <= Math.PI * 2 * cfg.d; a += 0.05) {
+      const samples = Math.PI * 2 * cfg.d;
+      for (let a = 0; a <= samples; a += 0.05) {
         const r = (cfg.size / 2) * Math.cos(k * a);
         const x = CX + r * Math.cos(a);
         const y = CY + r * Math.sin(a);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
     } 
-    else if (cfg.type === 'spiral') {
+ 
+      else if (cfg.type === 'spiral') {
       let dPath = '';
       const turns = 10;
       for (let a = 0; a <= Math.PI * 2 * turns; a += 0.1) {
@@ -122,21 +123,21 @@ export const MathTab = {
         if (r * 2 > cfg.size) break;
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
-    }
-    else if (cfg.type === 'penrose-p3') {
-      this.generatePenrose(project, cfg, pm, getColor, processingType, laserSource, CX, CY);
-    }
-    else if (cfg.type === 'lissajous') {
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
+      }
+      else if (cfg.type === 'penrose-p3') {
+      this.generatePenrose(project, cfg, pm, getColor, isFill, laserSource, CX, CY, palette);
+      }
+      else if (cfg.type === 'lissajous') {
       let dPath = '';
       for (let t = 0; t <= Math.PI * 2; t += 0.02) {
         const x = CX + (cfg.size / 2) * Math.sin(cfg.freqX * t + cfg.phase);
         const y = CY + (cfg.size / 2) * Math.sin(cfg.freqY * t);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
-    }
-    else if (cfg.type === 'chladni') {
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
+      }
+      else if (cfg.type === 'chladni') {
       const res = 50;
       const step = cfg.size / res;
       let count = 0;
@@ -160,49 +161,60 @@ export const MathTab = {
             const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
             XCSExporter.addRect(project, {
               x: CX + (i/res-0.5)*cfg.size, y: CY + (j/res-0.5)*cfg.size,
-              width: step*0.8, height: step*0.8, params: entryParams, processingType, laserSource, layerColor: ent.rgb,
+              width: step*0.8, height: step*0.8, params: entryParams, isFill, laserSource, layerColor: ent.rgb,
               extraDisplayData: { t: actualT }
             });
             idx++;
           }
         }
       }
-    }
-    else if (cfg.type === 'harmonograph') {
+      }
+      else if (cfg.type === 'harmonograph') {
       let dPath = '';
       for (let t = 0; t < 100; t += 0.05) {
         const x = CX + (cfg.size/2) * Math.exp(-cfg.d1 * t) * Math.sin(t * cfg.f1 + cfg.p1);
         const y = CY + (cfg.size/2) * Math.exp(-cfg.d2 * t) * Math.sin(t * cfg.f2 + cfg.p2);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
-    }
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
+      }
 
-    if (cfg.border) {
+      else if (cfg.type === 'bitmap-line') {
+        XCSExporter.addImage(project, {
+          x: CX, y: CY, width: cfg.size, height: cfg.rectHeight || 10,
+          layerColor: entry.rgb, laserSource,
+          params: pm,
+          extraDisplayData: { hideLabels: true, t: 0, paletteName: palette.name, colorName: entry.label }
+        });
+      }
+      else if (cfg.type === 'test') {
+        this.generateTestPattern(project, CX, CY, cfg.size, pm, laserSource);
+      }
+      if (cfg.border) {
       XCSExporter.addRect(project, {
         x: CX, y: CY, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
-        processingType: "VECTOR_ENGRAVING",
+        isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },
         extraDisplayData: { hideLabels: true }
       });
-    }
+      }
 
-    return project;
-  },
+      return project;
+      },
 
-  generatePenrose(project, cfg, pm, getColor, processingType, laserSource, CX, CY) {
-    const phi = (1 + Math.sqrt(5)) / 2;
-    let triangles = [];
-    for (let i = 0; i < 10; i++) {
+      generatePenrose(project, cfg, pm, getColor, isFill, laserSource, CX, CY) {
+      const phi = (1 + Math.sqrt(5)) / 2;
+      let triangles = [];
+      for (let i = 0; i < 10; i++) {
       const a = { x: 0, y: 0 };
       const b = { x: Math.cos((2*i-1)*Math.PI/10), y: Math.sin((2*i-1)*Math.PI/10) };
       const c = { x: Math.cos((2*i+1)*Math.PI/10), y: Math.sin((2*i+1)*Math.PI/10) };
       if (i % 2 === 0) triangles.push([0, a, b, c]);
       else triangles.push([0, a, c, b]);
-    }
+      }
 
-    for (let i = 0; i < cfg.iterations; i++) {
+      for (let i = 0; i < cfg.iterations; i++) {
       let next = [];
       triangles.forEach(([type, a, b, c]) => {
         if (type === 0) {
@@ -218,17 +230,27 @@ export const MathTab = {
         }
       });
       triangles = next;
-    }
+      }
 
-    const scale = cfg.size / 2;
-    triangles.forEach(([type, a, b, c], i) => {
+      const scale = cfg.size / 2;
+      triangles.forEach(([type, a, b, c], i) => {
       const tValue = i / (triangles.length - 1 || 1);
       const { entry: ent, idx: colorIdx, t: actualT } = getColor(tValue);
       const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
       const dPath = `M ${CX+a.x*scale} ${CY+a.y*scale} L ${CX+b.x*scale} ${CY+b.y*scale} L ${CX+c.y*scale} ${CY+c.y*scale} Z`;
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: entryParams, processingType, laserSource, layerColor: ent.rgb, extraDisplayData: { t: actualT } });
-    });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: entryParams, isFill, laserSource, layerColor: ent.rgb, extraDisplayData: { t: actualT } });
+      });
+      },
 
+  generateTestPattern(project, CX, CY, size, pm, laserSource) {
+    const s2 = size / 2;
+    // Crosshair
+    XCSExporter.addPath(project, { dPath: `M ${CX-s2} ${CY} L ${CX+s2} ${CY} M ${CX} ${CY-s2} L ${CX} ${CY+s2}`, x: CX, y: CY, width: size, height: size, params: pm, isFill: false, laserSource, layerColor: "#ff0000" });
+    // Circles
+    XCSExporter.addCircle(project, { x: CX, y: CY, width: size, height: size, params: pm, isFill: false, laserSource, layerColor: "#00ff00" });
+    XCSExporter.addCircle(project, { x: CX, y: CY, width: size/2, height: size/2, params: pm, isFill: false, laserSource, layerColor: "#0000ff" });
+    // Square
+    XCSExporter.addRect(project, { x: CX, y: CY, width: size, height: size, params: pm, isFill: false, laserSource, layerColor: "#ffff00" });
   },
 
   renderControls(tabId) {
