@@ -1,8 +1,7 @@
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
-import { UI, uuid } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
+import { UI } from '../utils.js';
 import { XCSExporter } from '../xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
 
@@ -18,6 +17,8 @@ export const PathTab = {
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Path Curve';
+    viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
     const defaults = {
@@ -34,8 +35,8 @@ export const PathTab = {
       cfg.size = cfg.totalSize;
       delete cfg.totalSize;
     }
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'path', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'path', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -44,8 +45,7 @@ export const PathTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -67,21 +67,17 @@ export const PathTab = {
     
     const entryIdx = cfg.paletteOffset % palette.entries.length;
     const entry = palette.entries[entryIdx];
-    const pm = {
-      power: entry.power, 
-      speed: palette.speed, 
-      density: palette.lpcm, 
-      repeat: 1,
-      processingLightSource: laserSource
-    };
+    const pm = PalMgr.getParams(cfg.paletteId, entryIdx);
 
-    if (cfg.type === 'hilbert') {
+    const mode = cfg.mode || cfg.type;
+
+    if (mode === 'hilbert') {
       this.drawHilbert(project, cfg, pm, entry.rgb, processingType, laserSource, CX, CY);
     } 
-    else if (cfg.type === 'peano') {
+    else if (mode === 'peano') {
       this.drawPeano(project, cfg, pm, entry.rgb, processingType, laserSource, CX, CY);
     }
-    else if (cfg.type === 'l-system-plant') {
+    else if (mode === 'l-system-plant') {
       this.drawLSystem(project, 'X', { 'X': 'F-[[X]+X]+F[+FX]-X', 'F': 'FF' }, 25, cfg.order, pm, entry.rgb, processingType, laserSource, CX, CY + cfg.size / 2, cfg.size);
     }
 
@@ -110,7 +106,7 @@ export const PathTab = {
       const py = CY - cfg.size / 2 + y * step + step / 2;
       dPath += (i === 0 ? 'M' : 'L') + `${px.toFixed(3)} ${py.toFixed(3)}`;
     }
-    XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: color });
+    XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: color, extraDisplayData: { t: 0 } });
   },
 
   hilbertCoord(i, n) {
@@ -136,11 +132,34 @@ export const PathTab = {
   },
 
   drawPeano(project, cfg, pm, color, processingType, laserSource, CX, CY) {
+    const rules = {
+      'X': 'XFYFX+F+YFXFY-F-XFYFX',
+      'Y': 'YFXFY-F-XFYFX+F+YFXFY'
+    };
+    let s = 'X';
+    for (let i = 0; i < cfg.order; i++) {
+      let next = '';
+      for (const char of s) next += rules[char] || char;
+      s = next;
+    }
+
     const n = Math.pow(3, cfg.order);
-    const step = cfg.size / n;
-    let dPath = '';
-    // (Basic Peano logic)
-    XCSExporter.addPath(project, { dPath: "M 0 0 L 1 1", x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: color });
+    const step = cfg.size / (n - 1 || 1);
+    let x = CX - cfg.size / 2, y = CY - cfg.size / 2, a = 0;
+    let dPath = `M ${x.toFixed(3)} ${y.toFixed(3)}`;
+
+    for (const char of s) {
+      if (char === 'F') {
+        x += step * Math.cos(a);
+        y += step * Math.sin(a);
+        dPath += ` L ${x.toFixed(3)} ${y.toFixed(3)}`;
+      } else if (char === '+') {
+        a += Math.PI / 2;
+      } else if (char === '-') {
+        a -= Math.PI / 2;
+      }
+    }
+    XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: color, extraDisplayData: { t: 0 } });
   },
 
   drawLSystem(project, axiom, rules, angle, iter, pm, color, processingType, laserSource, startX, startY, totalSize) {
@@ -173,7 +192,7 @@ export const PathTab = {
         dPath += ` M ${x} ${y}`;
       }
     }
-    XCSExporter.addPath(project, { dPath, x: startX, y: startY, width: totalSize, height: totalSize, params: pm, processingType, laserSource, layerColor: color });
+    XCSExporter.addPath(project, { dPath, x: startX, y: startY, width: totalSize, height: totalSize, params: pm, processingType, laserSource, layerColor: color, extraDisplayData: { t: 0 } });
   },
 
   renderControls(tabId) {
@@ -196,4 +215,3 @@ export const PathTab = {
     ]));
   }
 };
-

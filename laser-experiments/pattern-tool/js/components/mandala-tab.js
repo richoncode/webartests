@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -50,8 +49,8 @@ export const MandalaTab = {
       cfg.size = cfg.totalSize;
       delete cfg.totalSize;
     }
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'mandala', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'mandala', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -60,8 +59,7 @@ export const MandalaTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -81,18 +79,15 @@ export const MandalaTab = {
     const isFill = cfg.renderMode === 'fill';
     const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
-    const addShape = (lx, ly, r, type, color, entry, paletteName, colorName) => {
+    const addShape = (lx, ly, r, type, color, entry, paletteName, colorName, idx, t) => {
       const x = CX + lx, y = CY + ly;
       usedColors.add(color);
-      const params = entry ? { 
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
+      const params = PalMgr.getParams(cfg.paletteId, idx);
 
       const options = {
         x, y, width: r*2, height: r*2,
         layerColor: color, laserSource, params, processingType,
-        extraDisplayData: { hideLabels: true, paletteName, colorName }
+        extraDisplayData: { hideLabels: true, paletteName, colorName, t }
       };
       if (type === 'circle') XCSExporter.addCircle(project, options);
       else XCSExporter.addRect(project, options);
@@ -124,16 +119,18 @@ export const MandalaTab = {
       const diam = Math.max(0.1, ring.dotDiameter * scale);
       const halfStep = cfg.alternateRotation && i % 2 === 1 ? (180 / count) : 0;
       const spiralOffset = cfg.ringSpiral * i;
+      const t = colorSteps > 0 ? (cfg.centerDot ? i + 1 : i) / colorSteps : 0;
       for (let j = 0; j < count; j++) {
         const ang = ((360/count)*j + (ring.rotationOffset||0) + halfStep + spiralOffset) * Math.PI / 180;
-        addShape(Math.cos(ang) * r, Math.sin(ang) * r, diam/2, ring.shape, entry.rgb, entry, palette.name, entry.label);
+        addShape(Math.cos(ang) * r, Math.sin(ang) * r, diam/2, ring.shape, entry.rgb, entry, palette.name, entry.label, entryIdx, t);
       }
     });
 
     if (cfg.centerDot) {
       const entryIdx = cfg.colorRangeMode ? cfg.paletteOffset : cfg.centerDotEntry;
-      const entry = palette.entries[Math.max(0, Math.min(palette.entries.length - 1, entryIdx))];
-      addShape(0, 0, cfg.centerDotDiameter/2, 'circle', entry.rgb, entry, palette.name, entry.label);
+      const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, entryIdx));
+      const entry = palette.entries[actualIdx];
+      addShape(0, 0, cfg.centerDotDiameter/2, 'circle', entry.rgb, entry, palette.name, entry.label, actualIdx, 0);
     }
 
     if (cfg.border) {

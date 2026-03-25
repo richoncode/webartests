@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -65,8 +64,8 @@ export const AttractorTab = {
       if (!initialCfg) { cfg.a = 0.06; cfg.b = 0.98; }
     }
 
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'attractor', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'attractor', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -75,8 +74,7 @@ export const AttractorTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -100,12 +98,14 @@ export const AttractorTab = {
       const idx = cfg.colorRangeMode 
         ? Math.round(start + range * t)
         : start;
-      return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+      const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
+      const entry = palette.entries[actualIdx];
+      return { entry, idx: actualIdx };
     };
 
-    const addPoint = (x, y, color, entry) => {
+    const addPoint = (x, y, color, entry, idx) => {
       usedColors.add(color);
-      const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
+      const params = PalMgr.getParams(cfg.paletteId, idx);
       XCSExporter.addCircle(project, {
         x: CX + x, y: CY + y, width: 0.1, height: 0.1,
         layerColor: color, laserSource, params, processingType: "VECTOR_ENGRAVING",
@@ -191,8 +191,8 @@ export const AttractorTab = {
         if (i % 5 !== 0 && cfg.iterations > 5000) return; // thinning for XCS performance
         const tx = (p[0] - (minX + maxX)/2) * sc;
         const ty = (p[1] - (minY + maxY)/2) * sc;
-        const entry = getColor(i / pts.length);
-        addPoint(tx, ty, entry.rgb, entry);
+        const { entry, idx } = getColor(i / pts.length);
+        addPoint(tx, ty, entry.rgb, entry, idx);
       });
     }
 

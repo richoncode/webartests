@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -37,8 +36,8 @@ export const VoronoiTab = {
       size: 40
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'voronoi', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'voronoi', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -47,8 +46,7 @@ export const VoronoiTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -110,7 +108,8 @@ export const VoronoiTab = {
       const idx = cfg.colorRangeMode 
         ? Math.round(start + (cfg.rangeEndIdx - start) * t)
         : start;
-      return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+      const entry = palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+      return { entry, idx: Math.max(0, Math.min(palette.entries.length - 1, idx)) };
     };
 
     for (let i = 0; i < points.length; i++) {
@@ -132,18 +131,16 @@ export const VoronoiTab = {
         maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
       });
 
-      const entry = getColor(i / (points.length - 1 || 1));
-      const params = {
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      };
+      const tValue = i / (points.length - 1 || 1);
+      const { entry, idx } = getColor(tValue);
+      const params = PalMgr.getParams(cfg.paletteId, idx);
 
       XCSExporter.addPath(project, {
         x: (minX + maxX) / 2, y: (minY + maxY) / 2,
         width: maxX - minX, height: maxY - minY,
         dPath, layerColor: entry.rgb, laserSource, params,
         processingType,
-        extraDisplayData: { hideLabels: true }
+        extraDisplayData: { hideLabels: true, t: tValue }
       });
     }
 

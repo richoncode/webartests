@@ -25,6 +25,43 @@ export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, PathTab, AttractorT
 export const TabMgr = {
   newId() { return `tab-${++App.tabCounter}-${Date.now()}`; },
 
+  /**
+   * Generic tab creator using the PATTERNS registry.
+   */
+  createTab(patternId, initialCfg, label) {
+    if (patternId === 'xcs') return this.openXcs();
+
+    // Alias mapping for backward compatibility with old persistence data
+    const aliases = {
+      'geometry': 'fol',
+      'fractal': 'fractal-gasket',
+      'path': 'path-hilbert',
+      'attractor': 'attr-lorenz',
+      'voronoi': 'org-voronoi',
+      'palette-test': 'test-palette',
+      'palette-grid': 'test-palette-grid',
+      'gradient': 'test-gradient',
+      'bitmap-line': 'test-bitmap',
+      'test': 'test-xcs'
+    };
+
+    const targetId = aliases[patternId] || patternId;
+    const pattern = App.patterns.find(p => p.id === targetId);
+    
+    if (!pattern) {
+      console.warn(`Pattern ID "${targetId}" not found in registry.`);
+      return null;
+    }
+
+    // Use short name if defined, otherwise clean up the label
+    const prefix = pattern.short || pattern.label.replace(/[^a-z0-9]/gi, '');
+    const finalLabel = label || getTimestampedName(prefix);
+    const finalCfg = { ...pattern.cfg, ...initialCfg };
+    
+    // We pass pattern.id to App.addTab so it's stored in App.tabs[].type for persistence
+    return App.addTab(finalLabel, pattern.comp, finalCfg, pattern.id);
+  },
+
   openXcs() {
     const id = this.newId();
     App.tabs.push({ id, type:'xcs', label:'Untitled.xcs' });
@@ -32,139 +69,21 @@ export const TabMgr = {
     document.getElementById('tabContent').appendChild(pane);
     this.activate(id);
     Persistence.save();
-  },
-
-  newMandala(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('DotMandala');
-    App.tabs.push({ id, type:'mandala', label: finalLabel });
-    const pane = MandalaTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
     return id;
   },
 
-  newGeometry(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Geometry');
-    App.tabs.push({ id, type:'geometry', label: finalLabel });
-    const pane = GeometryTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newFractal(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Fractal');
-    App.tabs.push({ id, type:'fractal', label: finalLabel });
-    const pane = FractalTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newPath(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Path');
-    App.tabs.push({ id, type:'path', label: finalLabel });
-    const pane = PathTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newAttractor(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Attractor');
-    App.tabs.push({ id, type:'attractor', label: finalLabel });
-    const pane = AttractorTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newVoronoi(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Voronoi');
-    App.tabs.push({ id, type:'voronoi', label: finalLabel });
-    const pane = VoronoiTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newHilbert(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Hilbert');
-    App.tabs.push({ id, type:'hilbert', label: finalLabel });
-    const pane = HilbertTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newPaletteGrid(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('PaletteGrid');
-    App.tabs.push({ id, type:'palette-grid', label: finalLabel });
-    const pane = PaletteGridTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newPaletteTest(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('PaletteTest');
-    App.tabs.push({ id, type:'palette-test', label: finalLabel });
-    const pane = PaletteTestTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newGradient(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Gradient');
-    App.tabs.push({ id, type:'gradient', label: finalLabel });
-    const pane = GradientTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newBitmapLine(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('BitmapLine');
-    App.tabs.push({ id, type: 'bitmap-line', label: finalLabel });
-    const pane = BitmapLineTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
-
-  newTest(initialCfg, label) {
-    const id = this.newId();
-    const finalLabel = label || getTimestampedName('Test');
-    App.tabs.push({ id, type: 'test', label: finalLabel });
-    const pane = TestTab.create(id, initialCfg);
-    document.getElementById('tabContent').appendChild(pane);
-    this.activate(id);
-    Persistence.save();
-    return id;
-  },
+  newMandala(initialCfg, label) { return this.createTab('mandala', initialCfg, label); },
+  newGeometry(initialCfg, label) { return this.createTab('fol', initialCfg, label); }, // Mapping old calls
+  newFractal(initialCfg, label) { return this.createTab('fractal-gasket', initialCfg, label); },
+  newPath(initialCfg, label) { return this.createTab('path-hilbert', initialCfg, label); },
+  newAttractor(initialCfg, label) { return this.createTab('attr-lorenz', initialCfg, label); },
+  newVoronoi(initialCfg, label) { return this.createTab('org-voronoi', initialCfg, label); },
+  newHilbert(initialCfg, label) { return this.createTab('path-hilbert', initialCfg, label); },
+  newPaletteGrid(initialCfg, label) { return this.createTab('test-palette-grid', initialCfg, label); },
+  newPaletteTest(initialCfg, label) { return this.createTab('test-palette', initialCfg, label); },
+  newGradient(initialCfg, label) { return this.createTab('test-gradient', initialCfg, label); },
+  newBitmapLine(initialCfg, label) { return this.createTab('test-bitmap', initialCfg, label); },
+  newTest(initialCfg, label) { return this.createTab('test-xcs', initialCfg, label); },
 
   close(id) {
     const idx = App.tabs.findIndex(t => t.id === id);

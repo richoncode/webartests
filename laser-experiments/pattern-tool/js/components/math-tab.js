@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { UI, uuid } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { XCSExporter } from '../xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
 
@@ -18,6 +17,8 @@ export const MathTab = {
       </div>`;
 
     const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Math Pattern';
+    viewer.querySelector('.viewer-fname').textContent = label;
     pane.appendChild(viewer);
 
     const defaults = {
@@ -53,8 +54,8 @@ export const MathTab = {
       cfg.size = cfg.totalSize;
       delete cfg.totalSize;
     }
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'math', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'math', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -63,8 +64,7 @@ export const MathTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -86,20 +86,17 @@ export const MathTab = {
     
     const entryIdx = cfg.paletteOffset % palette.entries.length;
     const entry = palette.entries[entryIdx];
-    const pm = {
-      power: entry.power, 
-      speed: palette.speed, 
-      density: palette.lpcm, 
-      repeat: 1,
-      processingLightSource: laserSource
-    };
+    const pm = PalMgr.getParams(cfg.paletteId, entryIdx);
 
     const getColor = (t) => {
       const start = cfg.paletteOffset;
+      const end = cfg.rangeEndIdx !== undefined ? cfg.rangeEndIdx : 10;
       const idx = cfg.colorRangeMode 
-        ? Math.round(start + (cfg.rangeEndIdx - start) * t)
+        ? Math.round(start + (end - start) * t)
         : start;
-      return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+      const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
+      const entry = palette.entries[actualIdx];
+      return { entry, idx: actualIdx, t };
     };
 
     if (cfg.type === 'rose') {
@@ -111,7 +108,7 @@ export const MathTab = {
         const y = CY + r * Math.sin(a);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
     } 
     else if (cfg.type === 'spiral') {
       let dPath = '';
@@ -125,7 +122,7 @@ export const MathTab = {
         if (r * 2 > cfg.size) break;
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
     }
     else if (cfg.type === 'penrose-p3') {
       this.generatePenrose(project, cfg, pm, getColor, processingType, laserSource, CX, CY);
@@ -137,7 +134,7 @@ export const MathTab = {
         const y = CY + (cfg.size / 2) * Math.sin(cfg.freqY * t);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
     }
     else if (cfg.type === 'chladni') {
       const res = 50;
@@ -158,10 +155,13 @@ export const MathTab = {
           const y = (j / res - 0.5) * Math.PI * 2;
           const val = Math.cos(cfg.n_chladni * x) * Math.cos(cfg.m * y) - Math.cos(cfg.m * x) * Math.cos(cfg.n_chladni * y);
           if (Math.abs(val) < 0.1) {
-            const ent = getColor(idx / (count - 1 || 1));
+            const tValue = idx / (count - 1 || 1);
+            const { entry: ent, idx: colorIdx, t: actualT } = getColor(tValue);
+            const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
             XCSExporter.addRect(project, {
               x: CX + (i/res-0.5)*cfg.size, y: CY + (j/res-0.5)*cfg.size,
-              width: step*0.8, height: step*0.8, params: { ...pm, power: ent.power }, processingType, laserSource, layerColor: ent.rgb
+              width: step*0.8, height: step*0.8, params: entryParams, processingType, laserSource, layerColor: ent.rgb,
+              extraDisplayData: { t: actualT }
             });
             idx++;
           }
@@ -175,7 +175,7 @@ export const MathTab = {
         const y = CY + (cfg.size/2) * Math.exp(-cfg.d2 * t) * Math.sin(t * cfg.f2 + cfg.p2);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb });
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, processingType, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0 } });
     }
 
     if (cfg.border) {
@@ -222,10 +222,13 @@ export const MathTab = {
 
     const scale = cfg.size / 2;
     triangles.forEach(([type, a, b, c], i) => {
-      const ent = getColor(i / (triangles.length - 1 || 1));
-      const dPath = `M ${CX+a.x*scale} ${CY+a.y*scale} L ${CX+b.x*scale} ${CY+b.y*scale} L ${CX+c.x*scale} ${CY+c.y*scale} Z`;
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: { ...pm, power: ent.power }, processingType, laserSource, layerColor: ent.rgb });
+      const tValue = i / (triangles.length - 1 || 1);
+      const { entry: ent, idx: colorIdx, t: actualT } = getColor(tValue);
+      const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
+      const dPath = `M ${CX+a.x*scale} ${CY+a.y*scale} L ${CX+b.x*scale} ${CY+b.y*scale} L ${CX+c.y*scale} ${CY+c.y*scale} Z`;
+      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: entryParams, processingType, laserSource, layerColor: ent.rgb, extraDisplayData: { t: actualT } });
     });
+
   },
 
   renderControls(tabId) {

@@ -100,6 +100,83 @@ export const UI = {
     return wrap;
   },
 
+  makePaletteSelector(palettes, currentId, onChange) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '4px';
+    wrap.style.position = 'relative'; wrap.style.cursor = 'pointer';
+
+    const currentPalette = palettes[currentId] || Object.values(palettes)[0];
+    const btn = document.createElement('button');
+    btn.className = 'hbtn sm';
+    btn.style.minWidth = '140px';
+    btn.style.textAlign = 'left';
+    btn.style.justifyContent = 'space-between';
+    btn.innerHTML = `<span>${currentPalette?.name || 'Select Palette'}</span> <span style="opacity:0.5;font-size:10px">▼</span>`;
+    wrap.appendChild(btn);
+
+    wrap.onclick = (e) => {
+      e.stopPropagation();
+      const menu = document.createElement('div');
+      menu.className = 'palette-dropdown-menu';
+      menu.style.position = 'fixed';
+      menu.style.background = '#1a1a1a';
+      menu.style.border = '1px solid #333';
+      menu.style.borderRadius = '8px';
+      menu.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
+      menu.style.zIndex = '3000';
+      menu.style.maxHeight = '300px';
+      menu.style.overflowY = 'auto';
+      menu.style.padding = '4px';
+      menu.style.minWidth = '200px';
+
+      Object.keys(palettes).forEach(id => {
+        const pal = palettes[id];
+        const item = document.createElement('div');
+        item.style.display = 'flex'; item.style.alignItems = 'center'; item.style.gap = '8px';
+        item.style.padding = '8px 10px'; item.style.borderRadius = '4px';
+        item.style.cursor = 'pointer'; item.style.fontSize = '12px';
+        item.style.color = (id === currentId) ? '#fff' : '#aaa';
+        item.style.background = (id === currentId) ? '#2a2a2a' : 'transparent';
+
+        const isIR = pal.laser === 'ir' || pal.name.toUpperCase().includes('IR');
+        const laserColor = isIR ? '#ff4444' : '#4444ff';
+
+        item.innerHTML = `
+          <div style="width:8px;height:8px;border-radius:50%;background:${laserColor}"></div>
+          <div style="flex:1">${pal.name}</div>
+          <div style="font-size:9px;opacity:0.5">${pal.entries.length} steps</div>
+        `;
+
+        item.onmouseenter = () => { item.style.background = '#333'; item.style.color = '#fff'; };
+        item.onmouseleave = () => { item.style.background = (id === currentId) ? '#2a2a2a' : 'transparent'; item.style.color = (id === currentId) ? '#fff' : '#aaa'; };
+        item.onclick = (e) => {
+          e.stopPropagation();
+          onChange(id);
+          document.body.removeChild(menu);
+        };
+        menu.appendChild(item);
+      });
+
+      const rect = wrap.getBoundingClientRect();
+      document.body.appendChild(menu);
+      const mRect = menu.getBoundingClientRect();
+      let top = rect.bottom + 4;
+      if (top + mRect.height > window.innerHeight) top = rect.top - mRect.height - 4;
+      menu.style.top = top + 'px';
+      menu.style.left = Math.max(10, rect.left) + 'px';
+
+      const close = (e) => {
+        if (!menu.contains(e.target)) {
+          if (document.body.contains(menu)) document.body.removeChild(menu);
+          window.removeEventListener('mousedown', close);
+        }
+      };
+      window.addEventListener('mousedown', close);
+    };
+
+    return wrap;
+  },
+
   makeToggles(options, current, onChange, labels = {}) {
     const wrap = document.createElement('div');
     wrap.style.display = 'flex'; wrap.style.gap = '4px';
@@ -297,16 +374,13 @@ export const UI = {
 
     // 2. Palette
     if (palettes) {
-      const palOpts = Object.keys(palettes);
-      const palLabels = {}; palOpts.forEach(id => palLabels[id] = palettes[id].name);
-      rows.push(this.makeRow('Palette', this.makeToggles(
-        palOpts, cfg.paletteId, 
+      rows.push(this.makeRow('Palette', this.makePaletteSelector(
+        palettes, cfg.paletteId, 
         v => { 
           cfg.paletteId = v; 
           setFn('paletteId', v); 
           if(rebuildFn) rebuildFn(); 
-        }, 
-        palLabels
+        }
       )));
     }
 
@@ -358,8 +432,14 @@ export const UI = {
     // 4. Mode (Fill/Path)
     rows.push(this.makeRow('Mode', this.makeModeToggle(
       cfg.renderMode || 'fill', 
-      () => setFn('renderMode', 'path'), 
-      () => setFn('renderMode', 'fill'),
+      () => { 
+        setFn('renderMode', 'path'); 
+        if (rebuildFn) rebuildFn();
+      }, 
+      () => { 
+        setFn('renderMode', 'fill'); 
+        if (rebuildFn) rebuildFn();
+      },
       { path: opts.supportPath, fill: opts.supportFill }
     )));
 
@@ -371,7 +451,7 @@ export const UI = {
     return this.makeSection('General', rows);
   },
 
-  showPatternMenu(patterns) {
+  showPatternMenu(patterns, onSelect) {
     const menu = document.getElementById('addPatternMenu');
     if (!menu) return;
 
@@ -380,9 +460,45 @@ export const UI = {
       return;
     }
 
-    if (menu.innerHTML === '') {
+    const renderMenu = (filterText = '') => {
+      menu.innerHTML = '';
+      
+      const searchWrap = document.createElement('div');
+      searchWrap.style.padding = '12px 16px 8px 16px';
+      searchWrap.style.borderBottom = '1px solid #2a2a2a';
+      searchWrap.style.position = 'sticky';
+      searchWrap.style.top = '0';
+      searchWrap.style.background = '#1a1a1a';
+      searchWrap.style.zIndex = '10';
+
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.placeholder = 'Search patterns...';
+      searchInput.style.width = '100%';
+      searchInput.style.background = '#0d0d0d';
+      searchInput.style.border = '1px solid #333';
+      searchInput.style.borderRadius = '6px';
+      searchInput.style.padding = '8px 12px';
+      searchInput.style.color = '#fff';
+      searchInput.style.fontSize = '13px';
+      searchInput.value = filterText;
+      
+      searchInput.oninput = (e) => {
+        const text = e.target.value.toLowerCase();
+        renderMenu(text);
+        const inp = menu.querySelector('input');
+        inp.focus();
+        inp.setSelectionRange(text.length, text.length);
+      };
+
+      searchWrap.appendChild(searchInput);
+      menu.appendChild(searchWrap);
+
       const cats = [...new Set(patterns.map(p => p.cat))];
       cats.forEach(cat => {
+        const filteredPatterns = patterns.filter(p => p.cat === cat && (p.label.toLowerCase().includes(filterText) || cat.toLowerCase().includes(filterText)));
+        if (filteredPatterns.length === 0) return;
+
         const col = document.createElement('div');
         col.className = 'menu-column';
         col.innerHTML = `<div class="menu-category"><span>${cat}</span></div>`;
@@ -390,7 +506,7 @@ export const UI = {
         const grid = document.createElement('div');
         grid.className = 'menu-items-grid';
         
-        patterns.filter(p => p.cat === cat).forEach(p => {
+        filteredPatterns.forEach(p => {
           const item = document.createElement('div');
           item.className = 'menu-item';
           item.innerHTML = `
@@ -399,18 +515,17 @@ export const UI = {
           `;
           item.onclick = (e) => {
             e.stopPropagation();
-            import('./app.js').then(m => {
-              m.App.addTab(p.label, p.comp, p.cfg);
-              menu.classList.remove('show');
-            });
+            if (onSelect) onSelect(p);
+            menu.classList.remove('show');
           };
           grid.appendChild(item);
         });
         col.appendChild(grid);
         menu.appendChild(col);
       });
-    }
+    };
 
+    renderMenu();
     menu.classList.add('show');
     
     const btn = document.getElementById('addPatternBtn');
@@ -420,6 +535,12 @@ export const UI = {
     if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 20;
     menu.style.left = Math.max(10, left) + 'px';
     menu.style.top = (rect.bottom + 8) + 'px';
+
+    // Focus search input
+    setTimeout(() => {
+      const inp = menu.querySelector('input');
+      if (inp) inp.focus();
+    }, 50);
 
     setTimeout(() => {
       const close = (e) => {

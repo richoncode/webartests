@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { XCSExporter } from '../xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
 
@@ -39,8 +38,8 @@ export const BitmapLineTab = {
       cfg.rectHeight = cfg.height;
       delete cfg.height;
     }
-    const state = { rawData:null, shapes:[] };
-    App.instances[tabId] = { type:'bitmap-line', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'bitmap-line', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -49,8 +48,7 @@ export const BitmapLineTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -64,18 +62,14 @@ export const BitmapLineTab = {
 
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
-    const entry = palette.entries[cfg.paletteOffset % palette.entries.length];
+    const entryIdx = cfg.paletteOffset % palette.entries.length;
+    const entry = palette.entries[entryIdx];
+    const params = PalMgr.getParams(cfg.paletteId, entryIdx);
 
     XCSExporter.addImage(project, {
       x: CX, y: CY, width: cfg.size, height: cfg.rectHeight,
       layerColor: entry.rgb, laserSource,
-      params: { 
-        power: entry.power, 
-        speed: palette.speed, 
-        density: palette.lpcm,
-        repeat: 1,
-        processingLightSource: laserSource
-      },
+      params,
       extraDisplayData: { hideLabels: true }
     });
 

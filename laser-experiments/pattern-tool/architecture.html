@@ -150,17 +150,17 @@
   <h1>System Architecture & AI Guidance</h1>
   <p>The Pattern Tool architecture is organized into logical modules, each governed by specific engineering mandates and hardware constraints.</p>
 
+  <h1>System Flow & Registry</h1>
+  <p>The logical organization of modules and data flow from discovery to visualization.</p>
+
   <div class="mermaid-container" id="diagram1">
     <button class="code-btn" onclick="showCode()">Show Code</button>
     <button class="copy-btn" onclick="copyPng('diagram1')">Copy as PNG</button>
     <pre class="mermaid" id="mermaidSource">
-graph LR
+graph TD
     subgraph Key [Diagram Legend]
-        direction TB
-        K1[Core State / App]
-        K2[Math Component]
-        K3[Hardware Export]
-        K4[AI Rule / Mandate]
+        direction LR
+        K1[Core State / App] ~~~ K2[Math Component] ~~~ K3[Hardware Model] ~~~ K4[AI Rule / Mandate]
         style K1 fill:#1a1a1a,stroke:#5b9bd5,color:#5b9bd5
         style K2 fill:#1a1a1a,stroke:#10b981,color:#10b981
         style K3 fill:#1a1a1a,stroke:#f59e0b,color:#f59e0b
@@ -192,22 +192,21 @@ graph LR
 
         subgraph Math_Module [Mathematical Generation]
             direction TB
-            TabComp -- "implements" --> GenXCS["generateXCS()"]
-            GenXCS -- "Rule: Implementation Checklist" --> PMD2[patterns.md]
-            TabComp -- "breaks Auto" --> Negotiator
+            TabComp -- "generates" --> XCSProj[XCSProject Instance]
+            XCSProj -- "uses bridge" --> Exporter[js/xcs-exporter.js]
         end
 
-        subgraph Export_Module [Hardware Precision]
+        subgraph Core_Module [XCSSystem Module]
             direction TB
-            GenXCS -- "Calls" --> Exporter[js/xcs-exporter.js]
-            Exporter -- "Follows" --> XCSMD[xcsformat.md]
-            Exporter -- "Lock: Typography/Anchoring" --> VAlpha[VANTAGE-ALPHA Mandate]
+            System[js/xcs-system.js] -- "Defines" --> XCSProj
+            System -- "Defines" --> XCSItem[XCSItem Class]
+            XCSItem -- "Bakes" --> VAlpha[VANTAGE-ALPHA Rules]
         end
 
         subgraph Visual_Module [Visualization]
             direction TB
-            GenXCS -- "Dual View" --> Viewer[js/viewer.js]
-            Viewer -- "Parsed By" --> IR[js/xcs-ir.js]
+            Viewer[js/viewer.js] -- "Consumes" --> XCSItem
+            XCSItem -- "Standard IR" --> Render["getRenderProps()"]
         end
 
         %% Internal Flow
@@ -215,16 +214,18 @@ graph LR
         TabMgr --> TabComp
         TabComp --> Utils
         Negotiator --> GSettings
+        Exporter -- "Internal" --> System
+        XCSProj -- "Items" --> Viewer
     end
 
     %% Styling
     classDef aiRule fill:#1a1a1a,stroke:#8b5cf6,stroke-width:2px,stroke-dasharray: 5 5,color:#8b5cf6;
-    class GMD,XCSMD,PMD,PMD2,VAlpha,K4 aiRule;
-    class Registry_Module,State_Module,UX_Module,Math_Module,Export_Module,Visual_Module default;
+    class GMD,PMD,VAlpha,K4 aiRule;
+    class Registry_Module,State_Module,UX_Module,Math_Module,Core_Module,Visual_Module default;
     
     style App fill:#1a1a1a,stroke:#5b9bd5,color:#5b9bd5
     style TabComp fill:#1a1a1a,stroke:#10b981,color:#10b981
-    style Exporter fill:#1a1a1a,stroke:#f59e0b,color:#f59e0b
+    style System fill:#1a1a1a,stroke:#f59e0b,color:#f59e0b
 
     %% Invisible Link to position Key on the left
     Key ~~~ Architecture_Flow
@@ -241,12 +242,73 @@ graph LR
     </div>
   </div>
 
+  <div class="mermaid-container" id="diagram2">
+    <button class="copy-btn" onclick="copyPng('diagram2')">Copy as PNG</button>
+    <pre class="mermaid">
+graph TD
+    subgraph XCS_System_Core ["XCS System Core Classes"]
+        direction TB
+        
+        subgraph XCSProject_Class ["XCSProject Class"]
+            direction TB
+            P1["<b>Internal State</b>"]
+            P1 --- P1a["canvasId: UUID"]
+            P1 --- P1b["canvas: {id, layerData, displays[]}"]
+            P1 --- P1c["device: {id, power, data: ProcessingTree}"]
+            P1 --- P1d["root: Formal XCS Metadata"]
+            
+            P2["<b>Public Methods</b>"]
+            P2 --- P2a["addItem(type, options)"]
+            P2 --- P2b["getItems(): XCSItem[]"]
+            P2 --- P2c["toJSON(): Object"]
+            P2 --- P2d["static fromJSON(data)"]
+        end
+
+        subgraph XCSItem_Class ["XCSItem Class (Base)"]
+            direction TB
+            I1["<b>Instance Data</b>"]
+            I1 --- I1a["display: DisplayNode"]
+            I1 --- I1b["laser: LaserNode"]
+            I1 --- I1c["idx: Selection Index"]
+            
+            I2["<b>Item Properties (Render)</b>"]
+            I2 --- I2a["Geometry: x, y, w, h, angle, scale"]
+            I2 --- I2b["Laser: power, speed, density, repeat"]
+            I2 --- I2c["Metadata: laser, isFill, id, type"]
+            
+            I3["<b>Methods</b>"]
+            I3 --- I3a["updateParams(params)"]
+            I3 --- I3b["static createDisplayNode()"]
+            I3 --- I3c["static createLaserNode()"]
+            I3 --- I3d["static createOpNode()"]
+        end
+
+        subgraph XCSItem_Subclasses ["Subclasses"]
+            direction LR
+            S1["XCSShape (RECT, CIRCLE, ...)"]
+            S2["XCSText (Baked Glyphs)"]
+            S2 --- S2a["static bake(): Typesetter"]
+        end
+
+        XCSProject_Class -- "Factory For" --> XCSItem_Class
+        XCSItem_Class -- "Inherited By" --> S1
+        XCSItem_Class -- "Inherited By" --> S2
+    end
+
+    %% Styling
+    style XCSProject_Class fill:#1a1a1a,stroke:#f59e0b,color:#f59e0b
+    style XCSItem_Class fill:#1a1a1a,stroke:#10b981,color:#10b981
+    style XCS_System_Core fill:#0d0d0d,stroke:#333
+    </pre>
+  </div>
+
   <div class="grid">
     <div class="info-card">
-      <h3>Registry & Discovery</h3>
+      <h3>XCSSystem (Core Model)</h3>
       <ul>
-        <li><span class="ai-rule">Rule: patterns.md</span> - Tracks roadmap and implementation status.</li>
-        <li><code>main.js</code> is the single source of truth for active pattern registration.</li>
+        <li>Encapsulates <code>XCSProject</code> and <code>XCSItem</code> classes.</li>
+        <li>Centralizes hardware IDs, layer manifest, and anchoring math.</li>
+        <li>Exposes <code>getRenderProps()</code> for agnostic viewing.</li>
       </ul>
     </div>
     <div class="info-card">
@@ -259,8 +321,8 @@ graph LR
     <div class="info-card">
       <h3>Hardware Precision</h3>
       <ul>
-        <li><span class="ai-rule">Rule: xcsformat.md</span> - Mandates JSON structure for F2 compatibility.</li>
-        <li><span class="ai-rule">Rule: VANTAGE-ALPHA</span> - Locks Left-Baseline anchoring and baked glyphs.</li>
+        <li><span class="ai-rule">Rule: VANTAGE-ALPHA</span> - Locks Left-Baseline anchoring and baked glyphs within <code>XCSSystem</code>.</li>
+        <li>Exporter and IR modules serve as thin compatibility bridges.</li>
       </ul>
     </div>
   </div>

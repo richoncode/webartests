@@ -116,7 +116,7 @@ This document tracks the implementation of mathematical and geometric generators
 2. **Anchoring**: Is the anchor set to **Left-Baseline** (`align: "center"` or `"right"` must be manually calculated into the `x/y` coordinates)?
 3. **Fills**: Are fill shapes using `COLOR_FILL_ENGRAVE`?
 4. **Thinning**: If shapes > 2000, is a thinning or resolution guard implemented?
-5. **Reference**: Have I checked `gradient-tab.js` or `mandala-tab.js` for the latest "Known Good" math for this pattern type?
+5. **Reference**: Have I checked `xcs-system.js` for the latest "Known Good" math for this pattern type?
 
 6. **Hardware Export Audit**: Does the JSON output (visible in the JSON tab) contain ALL required fields from `xcsformat.md`? 
    - [ ] Root: `extId: "GS006"`, `extName: "F2"`

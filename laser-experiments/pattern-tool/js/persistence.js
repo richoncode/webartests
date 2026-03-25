@@ -32,20 +32,8 @@ export const Persistence = {
       let lastCreatedId = null;
       state.tabs.forEach(t => {
         const cfg = state.cfgs[t.id];
-        let newId = null;
-        if (t.type === 'mandala') newId = TabMgr.newMandala(cfg, t.label);
-        else if (t.type === 'geometry') newId = TabMgr.newGeometry(cfg, t.label);
-        else if (t.type === 'fractal') newId = TabMgr.newFractal(cfg, t.label);
-        else if (t.type === 'path') newId = TabMgr.newPath(cfg, t.label);
-        else if (t.type === 'attractor') newId = TabMgr.newAttractor(cfg, t.label);
-        else if (t.type === 'voronoi') newId = TabMgr.newVoronoi(cfg, t.label);
-        else if (t.type === 'palette-test') newId = TabMgr.newPaletteTest(cfg, t.label);
-        else if (t.type === 'hilbert') newId = TabMgr.newHilbert(cfg, t.label);
-        else if (t.type === 'palette-grid') newId = TabMgr.newPaletteGrid(cfg, t.label);
-        else if (t.type === 'gradient') newId = TabMgr.newGradient(cfg, t.label);
-        else if (t.type === 'bitmap-line') newId = TabMgr.newBitmapLine(cfg, t.label);
-        else if (t.type === 'test') newId = TabMgr.newTest(cfg, t.label);
-        
+        // Use generic creator based on type
+        const newId = TabMgr.createTab(t.type, cfg, t.label);
         if (t.id === state.activeTabId) lastCreatedId = newId;
       });
       
@@ -86,19 +74,8 @@ export const Persistence = {
       try {
         const data = JSON.parse(e.target.result);
         const label = file.name.replace(/\.rnr$/i, '');
-        if (data.type === 'mandala') TabMgr.newMandala(data.cfg, label);
-        else if (data.type === 'geometry') TabMgr.newGeometry(data.cfg, label);
-        else if (data.type === 'fractal') TabMgr.newFractal(data.cfg, label);
-        else if (data.type === 'path') TabMgr.newPath(data.cfg, label);
-        else if (data.type === 'attractor') TabMgr.newAttractor(data.cfg, label);
-        else if (data.type === 'voronoi') TabMgr.newVoronoi(data.cfg, label);
-        else if (data.type === 'palette-test') TabMgr.newPaletteTest(data.cfg, label);
-        else if (data.type === 'hilbert') TabMgr.newHilbert(data.cfg, label);
-        else if (data.type === 'palette-grid') TabMgr.newPaletteGrid(data.cfg, label);
-        else if (data.type === 'gradient') TabMgr.newGradient(data.cfg, label);
-        else if (data.type === 'bitmap-line') TabMgr.newBitmapLine(data.cfg, label);
-        else if (data.type === 'test') TabMgr.newTest(data.cfg, label);
-        else alert('Unsupported pattern type in RNR file.');
+        const newId = TabMgr.createTab(data.type, data.cfg, label);
+        if (!newId) alert('Unsupported pattern type in RNR file.');
       } catch(err) { alert('Load failed: ' + err.message); }
     };
     reader.readAsText(file);

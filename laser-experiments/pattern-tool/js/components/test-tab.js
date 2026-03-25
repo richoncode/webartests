@@ -1,8 +1,7 @@
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
-import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
+import { UI } from '../utils.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
 export const TestTab = {
@@ -26,8 +25,8 @@ export const TestTab = {
       laserType: 'ir'
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    const state = { rawData:null, shapes:[] };
-    App.instances[tabId] = { type:'test', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'test', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -36,8 +35,7 @@ export const TestTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 

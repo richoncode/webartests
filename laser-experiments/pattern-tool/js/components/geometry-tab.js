@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -61,7 +60,7 @@ export const GeometryTab = {
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
-    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons'];
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral'];
     if (!fillableModes.includes(cfg.mode)) {
       cfg.renderMode = 'path';
     }
@@ -70,8 +69,8 @@ export const GeometryTab = {
       cfg.size = cfg.totalSize;
       delete cfg.totalSize;
     }
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'geometry', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'geometry', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -80,8 +79,7 @@ export const GeometryTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -101,34 +99,36 @@ export const GeometryTab = {
     const isFill = cfg.renderMode === 'fill';
     const processingType = isFill ? "COLOR_FILL_ENGRAVE" : "VECTOR_ENGRAVING";
 
-    const addLine = (x1, y1, x2, y2, color, entry) => {
+    const addLine = (x1, y1, x2, y2, color, entry, idx, t) => {
       usedColors.add(color);
-      const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
+      const params = PalMgr.getParams(cfg.paletteId, idx);
       XCSExporter.addPath(project, {
         x: CX + (x1+x2)/2, y: CY + (y1+y2)/2, width: Math.max(0.1, Math.abs(x2-x1)), height: Math.max(0.1, Math.abs(y2-y1)),
         dPath: `M ${CX+x1} ${CY+y1} L ${CX+x2} ${CY+y2}`,
         layerColor: color, laserSource, params, processingType,
-        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
+        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label, t }
       });
     };
 
-    const addCircle = (lx, ly, r, color, entry) => {
+    const addCircle = (lx, ly, r, color, entry, idx, t) => {
       usedColors.add(color);
-      const params = entry ? { power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1, processingLightSource: laserSource } : { power: 20, speed: 200, density: 100, repeat: 1, processingLightSource: laserSource };
+      const params = PalMgr.getParams(cfg.paletteId, idx);
       XCSExporter.addCircle(project, {
         x: CX + lx, y: CY + ly, width: r*2, height: r*2,
         layerColor: color, laserSource, params, processingType,
-        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label }
+        extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry?.label, t }
       });
     };
 
     const getColor = (t) => {
       const start = cfg.paletteOffset;
-      const range = 10; // Default range size
+      const end = cfg.rangeEndIdx !== undefined ? cfg.rangeEndIdx : 10;
       const idx = cfg.colorRangeMode 
-        ? Math.round(start + range * t)
+        ? Math.round(start + (end - start) * t)
         : start;
-      return palette.entries[Math.max(0, Math.min(palette.entries.length - 1, idx))];
+      const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
+      const entry = palette.entries[actualIdx];
+      return { entry, idx: actualIdx, t };
     };
 
     if (cfg.mode === 'flower-of-life' || cfg.mode === 'metatrons-cube' || cfg.mode === 'honeycomb') {
@@ -140,17 +140,17 @@ export const GeometryTab = {
         const y = r * Math.sqrt(3) * (r_grid + q/2);
         const dist = Math.sqrt(x*x + y*y);
         const t = Math.min(1, dist / (cfg.size / 2 || 1));
-        const entry = getColor(t);
+        const { entry, idx, t: actualT } = getColor(t);
 
         if (cfg.mode === 'flower-of-life') {
-          addCircle(x, y, r, entry.rgb, entry);
+          addCircle(x, y, r, entry.rgb, entry, idx, actualT);
         } else if (cfg.mode === 'honeycomb') {
           let px = null, py = null;
           for (let s = 0; s <= 6; s++) {
             const ang = (s / 6) * Math.PI * 2;
             const nx = x + r * Math.cos(ang);
             const ny = y + r * Math.sin(ang);
-            if (px !== null) addLine(px, py, nx, ny, entry.rgb, entry);
+            if (px !== null) addLine(px, py, nx, ny, entry.rgb, entry, idx, actualT);
             px = nx; py = ny;
           }
         }
@@ -164,20 +164,20 @@ export const GeometryTab = {
       if (cfg.mode === 'metatrons-cube') {
         for (let i = 0; i < centers.length; i++) {
           const distFromCenter = Math.sqrt(centers[i].x**2 + centers[i].y**2);
-          const entry = getColor(distFromCenter / (cfg.size/2));
+          const { entry, idx, t: actualT } = getColor(distFromCenter / (cfg.size/2));
           for (let j = i + 1; j < centers.length; j++) {
             const d2 = Math.pow(centers[i].x - centers[j].x, 2) + Math.pow(centers[i].y - centers[j].y, 2);
             const threshold = Math.pow(r * Math.sqrt(3) * 2.1, 2);
-            if (d2 < threshold) addLine(centers[i].x, centers[i].y, centers[j].x, centers[j].y, entry.rgb, entry);
+            if (d2 < threshold) addLine(centers[i].x, centers[i].y, centers[j].x, centers[j].y, entry.rgb, entry, idx, actualT);
           }
         }
       }
     } else if (cfg.mode === 'vesica-piscis') {
       const r = cfg.size / 4;
-      const entry1 = getColor(0.2);
-      const entry2 = getColor(0.8);
-      addCircle(-r, 0, r*2, entry1.rgb, entry1);
-      addCircle(r, 0, r*2, entry2.rgb, entry2);
+      const { entry: entry1, idx: idx1, t: t1 } = getColor(0.2);
+      const { entry: entry2, idx: idx2, t: t2 } = getColor(0.8);
+      addCircle(-r, 0, r*2, entry1.rgb, entry1, idx1, t1);
+      addCircle(r, 0, r*2, entry2.rgb, entry2, idx2, t2);
     } else if (cfg.mode === 'rose-curve') {
       const k = cfg.roseK;
       const samples = cfg.roseSamples;
@@ -189,8 +189,8 @@ export const GeometryTab = {
         const r = Math.cos(k * theta) * scale;
         const x = r * Math.cos(theta), y = r * Math.sin(theta);
         if (prev) {
-          const entry = getColor(i / samples);
-          addLine(prev.x, prev.y, x, y, entry.rgb, entry);
+          const { entry, idx, t: actualT } = getColor(i / samples);
+          addLine(prev.x, prev.y, x, y, entry.rgb, entry, idx, actualT);
         }
         prev = {x, y};
       }
@@ -204,8 +204,8 @@ export const GeometryTab = {
         const r = (spacing * theta) / (Math.PI * 2);
         const x = r * Math.cos(theta), y = r * Math.sin(theta);
         if (prev) {
-          const entry = getColor(i / samples);
-          addLine(prev.x, prev.y, x, y, entry.rgb, entry);
+          const { entry, idx, t: actualT } = getColor(i / samples);
+          addLine(prev.x, prev.y, x, y, entry.rgb, entry, idx, actualT);
         }
         prev = {x, y};
       }
@@ -216,8 +216,8 @@ export const GeometryTab = {
       for (let i = 0; i < count; i++) {
         const theta = i * goldenAngle;
         const r = Math.sqrt(i) * scale;
-        const entry = getColor(i / count);
-        addCircle(r * Math.cos(theta), r * Math.sin(theta), 1, entry.rgb, entry);
+        const { entry, idx, t: actualT } = getColor(i / count);
+        addCircle(r * Math.cos(theta), r * Math.sin(theta), 1, entry.rgb, entry, idx, actualT);
       }
     } else if (cfg.mode === 'concentric-polygons') {
       const count = cfg.concCount;
@@ -226,12 +226,12 @@ export const GeometryTab = {
       for (let i = 1; i <= count; i++) {
         const r = i * baseScale;
         const rot = (i * cfg.concRotation) * Math.PI / 180;
-        const entry = getColor(i / count);
+        const { entry, idx, t: actualT } = getColor(i / count);
         let prev = null;
         for (let s = 0; s <= sides; s++) {
           const ang = (s / sides) * Math.PI * 2 + rot;
           const x = r * Math.cos(ang), y = r * Math.sin(ang);
-          if (prev) addLine(prev.x, prev.y, x, y, entry.rgb, entry);
+          if (prev) addLine(prev.x, prev.y, x, y, entry.rgb, entry, idx, actualT);
           prev = {x, y};
         }
       }
@@ -239,20 +239,20 @@ export const GeometryTab = {
       const sym = cfg.starSymmetry;
       const r = cfg.size / 2;
       const v = cfg.starV;
-      const entry = getColor(0.5);
+      const { entry, idx, t: actualT } = getColor(0.5);
       let prev = null;
       for (let i = 0; i <= sym * 2; i++) {
         const ang = (i / (sym * 2)) * Math.PI * 2;
         const currR = i % 2 === 0 ? r : r * v;
         const x = currR * Math.cos(ang), y = currR * Math.sin(ang);
-        if (prev) addLine(prev.x, prev.y, x, y, entry.rgb, entry);
+        if (prev) addLine(prev.x, prev.y, x, y, entry.rgb, entry, idx, actualT);
         prev = {x, y};
       }
     } else if (cfg.mode === 'girih') {
       const sym = 10; // Classical decagonal Girih
       const r = cfg.size / 2;
       const strapAngle = 54 * Math.PI / 180;
-      const entry = getColor(0.5);
+      const { entry, idx, t: actualT } = getColor(0.5);
       
       const drawTile = (cx, cy, radius, rotation) => {
         const vertices = [];
@@ -271,8 +271,8 @@ export const GeometryTab = {
           const y1 = midY + L * Math.sin(edgeAng + strapAngle);
           const x2 = midX + L * Math.cos(edgeAng - strapAngle);
           const y2 = midY + L * Math.sin(edgeAng - strapAngle);
-          addLine(midX, midY, x1, y1, entry.rgb, entry);
-          addLine(midX, midY, x2, y2, entry.rgb, entry);
+          addLine(midX, midY, x1, y1, entry.rgb, entry, idx, actualT);
+          addLine(midX, midY, x2, y2, entry.rgb, entry, idx, actualT);
         }
       };
       drawTile(0, 0, r, 0);
@@ -307,10 +307,10 @@ export const GeometryTab = {
       triangles.forEach(t => {
         const [type, A, B, C] = t;
         const dist = Math.sqrt(((A.x+B.x+C.x)/3)**2 + ((A.y+B.y+C.y)/3)**2);
-        const entry = getColor(dist / (cfg.size/2));
-        addLine(A.x, A.y, B.x, B.y, entry.rgb, entry);
-        addLine(B.x, B.y, C.x, C.y, entry.rgb, entry);
-        addLine(C.x, C.y, A.x, A.y, entry.rgb, entry);
+        const { entry, idx, t: actualT } = getColor(dist / (cfg.size/2));
+        addLine(A.x, A.y, B.x, B.y, entry.rgb, entry, idx, actualT);
+        addLine(B.x, B.y, C.x, C.y, entry.rgb, entry, idx, actualT);
+        addLine(C.x, C.y, A.x, A.y, entry.rgb, entry, idx, actualT);
       });
     }
 
@@ -339,7 +339,7 @@ export const GeometryTab = {
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
     if (!palette) return;
 
-    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons'];
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral'];
     const supportsFill = fillableModes.includes(cfg.mode);
 
     scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {

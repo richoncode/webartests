@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { XCSExporter } from '../xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
 
@@ -60,8 +59,8 @@ export const GradientTab = {
       cfg.size = cfg.totalSize;
       delete cfg.totalSize;
     }
-    const state = { rawData:null, shapes:[], selection: null };
-    App.instances[tabId] = { type:'gradient', pane, cfg, state };
+    const state = { project: null, selection: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'gradient', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -204,8 +203,7 @@ export const GradientTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 

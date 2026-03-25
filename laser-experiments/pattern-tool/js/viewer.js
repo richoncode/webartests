@@ -4,7 +4,6 @@
 import { App } from './app.js';
 import { PAD } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';
-import { XCSIR } from './xcs-ir.js';
 
 export const Popup = {
   show(ev, html) {
@@ -151,7 +150,11 @@ export const XCSViewer = {
       }
     });
 
-    q('.export-xcs-btn').onclick = () => dl(v.querySelector('.viewer-fname').textContent + '.xcs', JSON.stringify(App.instances[tabId].state.rawData), 'application/json');
+    q('.export-xcs-btn').onclick = () => {
+      const inst = App.instances[tabId];
+      const data = inst.state.project ? inst.state.project.toJSON() : inst.state.rawData;
+      dl(v.querySelector('.viewer-fname').textContent + '.xcs', JSON.stringify(data), 'application/json');
+    };
     q('.export-pal-btn').onclick = () => this.exportPaletteSummary(tabId);
 
     return v;
@@ -178,7 +181,9 @@ export const XCSViewer = {
     const sc = 5;
     const mm2 = (x, y) => [x * sc, y * sc];
 
-    state.shapes.forEach(s => {
+    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+
+    shapes.forEach(s => {
       const isFill = !!s.isFill; // Use the parsed flag from IR
       const renderColor = s.layerColor === '#000000' && isFill ? '#333' : s.layerColor;
       const strC = renderColor; // Always show stroke for vector work
@@ -243,9 +248,10 @@ export const XCSViewer = {
 
   renderList(v, state) {
     const list = v.querySelector('.shapes-body');
-    v.querySelector('.shapes-hdr').textContent = `Shapes (${state.shapes.length})`;
+    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    v.querySelector('.shapes-hdr').textContent = `Shapes (${shapes.length})`;
     list.innerHTML = '';
-    state.shapes.forEach(s => {
+    shapes.forEach(s => {
       const row = document.createElement('div');
       row.className = 'shape-row';
       row.dataset.idx = s.idx;
@@ -264,15 +270,18 @@ export const XCSViewer = {
 
   renderJSON(v, state) {
     let raw;
+    const projectObj = state.project ? state.project.toJSON() : state.rawData;
     try {
-      raw = JSON.stringify(state.rawData, null, 2);
+      raw = JSON.stringify(projectObj, null, 2);
     } catch(e) { 
       v.querySelector('.json-code').textContent = "Data too large to display.";
       return; 
     }
     
     const positions = [];
-    state.shapes.forEach(s => {
+    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    
+    shapes.forEach(s => {
       const needle = `"id": "${s.id}"`;
       const pos = raw.indexOf(needle);
       if (pos === -1) return;
@@ -295,7 +304,7 @@ export const XCSViewer = {
         Object.keys(obj).forEach(k => findNodes(obj[k], path ? `${path}.${k}` : k));
       }
     };
-    findNodes(state.rawData.device);
+    findNodes(projectObj.device);
 
     positions.sort((a,b) => a.start-b.start);
     let html = '', cursor = 0;
@@ -313,7 +322,7 @@ export const XCSViewer = {
   renderPalette(v, state) {
     const body = v.querySelector('.pal-body');
     body.innerHTML = '';
-    const combos = this.getUniqueCombos(state);
+    const combos = state.project ? state.project.getSummary() : [];
     combos.forEach((c, i) => {
       const row = document.createElement('div');
       row.className = 'pal-row';
@@ -336,6 +345,7 @@ export const XCSViewer = {
   renderProcessTree(v, state) {
     const list = v.querySelector('.process-tree');
     list.innerHTML = '';
+    const projectObj = state.project ? state.project.toJSON() : state.rawData;
     const build = (obj, depth=0) => {
       if (!obj || typeof obj !== 'object' || depth > 10) return;
       Object.entries(obj).forEach(([k, val]) => {
@@ -353,21 +363,11 @@ export const XCSViewer = {
         }
       });
     };
-    build(state.rawData.device);
-  },
-
-  getUniqueCombos(state) {
-    const combos = new Map();
-    state.shapes.forEach(s => {
-      const key = `${s.power}|${s.speed}|${s.density}|${s.repeat}|${s.laser}`;
-      if (!combos.has(key)) combos.set(key, {power:s.power, speed:s.speed, density:s.density, repeat:s.repeat, laser:s.laser, count:0, types:new Set()});
-      const c = combos.get(key); c.count++; c.types.add(s.type);
-    });
-    return [...combos.values()];
+    build(projectObj.device);
   },
 
   renderStats(v, state) {
-    const { shapes } = state;
+    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
     const formatRange = (label, vals, unit) => {
       if (!vals.length) return '';
       const sorted = [...new Set(vals)].sort((a,b) => a-b);
@@ -385,7 +385,8 @@ export const XCSViewer = {
   },
 
   onHover(v, state, idx, ev) {
-    const s = state.shapes.find(x => x.idx === idx);
+    const shapes = state.project ? state.project.getItems().map(item => item.getRenderProps()) : state.shapes;
+    const s = shapes.find(x => x.idx === idx);
     if (!s) return;
     v.querySelectorAll('.shape-row, .json-display-block, [data-svg-idx]').forEach(el => el.classList.remove('hl', 'hover', 'json-hl'));
     const row = v.querySelector(`.shape-row[data-idx="${idx}"]`);
@@ -401,6 +402,7 @@ export const XCSViewer = {
       <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
       <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>
       <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val">${s.w.toFixed(2)}x${s.h.toFixed(2)}mm</span></div>
+      ${s.t !== null ? `<div class="popup-row" style="margin-top:4px; opacity:0.5; font-size:9px"><span class="popup-key">Normalized (t)</span><span class="popup-val">${s.t.toFixed(4)}</span></div>` : ''}
     `;
     Popup.show(ev, html);
   },
@@ -412,7 +414,7 @@ export const XCSViewer = {
 
   exportPaletteSummary(tabId) {
     const inst = App.instances[tabId];
-    const combos = this.getUniqueCombos(inst.state);
+    const combos = inst.state.project ? inst.state.project.getSummary() : [];
     const name = (App.tabs.find(t => t.id === tabId)?.label || 'Palette') + '-Summary.txt';
     let lines = [`Palette Summary for ${inst.pane.querySelector('.viewer-fname').textContent}`, `Generated: ${new Date().toLocaleString()}`, ''];
     lines.push(` ID | Power  | Speed    | Density   | Repeat | Count | Types`);

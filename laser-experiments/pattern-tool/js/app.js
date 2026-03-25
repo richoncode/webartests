@@ -13,10 +13,10 @@ export const App = {
     this.setupGlobalEvents();
   },
 
-  addTab(label, Component, initialCfg) {
+  addTab(label, Component, initialCfg, registryId = null) {
     // TabMgr is injected into App in main.js
     const id = this.TabMgr.newId();
-    const type = initialCfg?.type || 'generic';
+    const type = registryId || initialCfg?.type || 'generic';
     this.tabs.push({ id, type, label });
     
     const pane = Component.create(id, initialCfg);

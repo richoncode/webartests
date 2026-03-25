@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -31,8 +30,8 @@ export const PaletteGridTab = {
       showLabels: true
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'palette-grid', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'palette-grid', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -41,8 +40,7 @@ export const PaletteGridTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -78,10 +76,7 @@ export const PaletteGridTab = {
       const x = startX + ix * (cellW + cfg.padding) + cellW / 2;
       const y = startY + iy * (cellH + cfg.padding) + cellH / 2;
 
-      const params = {
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      };
+      const params = PalMgr.getParams(cfg.paletteId, i);
 
       const options = {
         x, y, width: cellW, height: cellH,
@@ -97,8 +92,9 @@ export const PaletteGridTab = {
         const unscaledHeight = 23.35;
         const scale = labelSize / unscaledHeight;
         const fontSize = 72 * scale;
+        const labelText = (entry.speed !== undefined && entry.speed !== palette.speed) ? `${entry.speed}` : `${entry.power}%`;
         XCSExporter.addText(project, {
-          text: `${entry.power}%`, x, y: y + cellH/2 + 1.5, width: 5, height: labelSize, fontSize, scale,
+          text: labelText, x, y: y + cellH/2 + 1.5, width: 5, height: labelSize, fontSize, scale,
           layerColor: "#ffffff", laserSource, align: "center"
         });
       }
@@ -114,11 +110,8 @@ export const PaletteGridTab = {
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
 
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
-
     scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
+      UI.makeRow('Palette', UI.makePaletteSelector(App.palettes, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); })),
       UI.makeRow('Overall Size', UI.makeRange(10, 100, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
       UI.makeRow('Columns', UI.makeStepCounter(cfg.columns, 1, 10, v => set('columns', v))),
       UI.makeRow('Padding', UI.makeRange(0, 10, 0.5, cfg.padding, v => set('padding', +v), 'mm')),

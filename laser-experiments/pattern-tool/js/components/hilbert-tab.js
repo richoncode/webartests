@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -35,8 +34,8 @@ export const HilbertTab = {
       cfg.paletteOffset = cfg.paletteEntryIndex;
       delete cfg.paletteEntryIndex;
     }
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'hilbert', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'hilbert', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -45,8 +44,7 @@ export const HilbertTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -103,11 +101,9 @@ export const HilbertTab = {
 
     const dPath = "M" + points.map(p => p.map(c => c.toFixed(3)).join(",")).join("L");
     
-    const entry = palette.entries[cfg.paletteOffset % palette.entries.length];
-    const params = {
-      power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-      processingLightSource: laserSource
-    };
+    const entryIdx = cfg.paletteOffset % palette.entries.length;
+    const entry = palette.entries[entryIdx];
+    const params = PalMgr.getParams(cfg.paletteId, entryIdx);
 
     XCSExporter.addPath(project, {
       x: CX, y: CY, width: cfg.size, height: cfg.size,

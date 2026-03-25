@@ -16,6 +16,19 @@ export const PalMgr = {
   },
   list() { return Object.values(App.palettes); },
   get(id) { return App.palettes[id] || null; },
+  getParams(paletteId, entryIdx) {
+    const p = this.get(paletteId);
+    if (!p) return { power: 20, speed: 100, density: 333, repeat: 1, processingLightSource: 'blue' };
+    const e = p.entries[entryIdx] || p.entries[0] || {};
+    const isIR = p.laser === 'ir' || p.name.toUpperCase().includes('IR');
+    return {
+      power: e.power ?? p.power ?? 20,
+      speed: e.speed ?? p.speed ?? 100,
+      density: e.lpcm ?? p.lpcm ?? 333,
+      repeat: e.repeat ?? p.repeat ?? 1,
+      processingLightSource: isIR ? 'red' : 'blue'
+    };
+  },
   entryColor(paletteId, idx) {
     const p = this.get(paletteId);
     return (p && p.entries[idx]) ? p.entries[idx].rgb : '#5b9bd5';

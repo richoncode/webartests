@@ -2,7 +2,6 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { UI } from '../utils.js';
-import { XCSIR } from '../xcs-ir.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../xcs-exporter.js';
 
@@ -36,8 +35,8 @@ export const PaletteTestTab = {
       labelScale: 1.0
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
-    const state = { rawData: null, shapes: [] };
-    App.instances[tabId] = { type: 'palette-test', pane, cfg, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'palette-test', pane, cfg, state };
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -46,8 +45,7 @@ export const PaletteTestTab = {
 
   refresh(tabId, lazy = false) {
     const inst = App.instances[tabId];
-    inst.state.rawData = this.generateXCS(inst.cfg);
-    inst.state.shapes = XCSIR.parseXCS(inst.state.rawData);
+    inst.state.project = this.generateXCS(inst.cfg);
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
@@ -59,7 +57,6 @@ export const PaletteTestTab = {
     const CX = 50, CY = 50;
     const isIR = palette.laser === 'ir' || palette.name.toUpperCase().includes('IR');
     const laserSource = isIR ? 'red' : 'blue';
-    const canvas = project.canvas[0];
 
     const entries = palette.entries;
     const count = entries.length;
@@ -83,22 +80,16 @@ export const PaletteTestTab = {
     const startX = -totalW / 2 + cellW / 2;
     const startY = -totalH / 2 + cellW / 2;
 
-    // MANDATORY: Register layer colors in manifest
-    const registerLayer = (color) => {
-      if (!canvas.layerData[color]) {
-        canvas.layerData[color] = { name: color, order: Object.keys(canvas.layerData).length + 1, visible: true };
-      }
-    };
-
     // --- Header Text (Verified Pattern from Gradient Grid) ---
     if (cfg.showText) {
-      const headerText = `${palette.name} - ${palette.speed}mm/s`;
+      const isVariableSpeed = palette.entries.some(e => e.speed !== undefined && e.speed !== palette.speed);
+      const speedText = isVariableSpeed ? "Variable Speed" : `${palette.speed}mm/s`;
+      const headerText = `${palette.name} - ${speedText}`;
       const labelHeight = 4.0 * scaleFactor * cfg.labelScale;
       const scale = labelHeight / this.UNSCALED_HEIGHT;
       const fontSize = 72 * scale;
       const labelColor = "#ffffff";
       
-      registerLayer(labelColor);
       XCSExporter.addText(project, {
         text: headerText,
         x: CX, 
@@ -117,12 +108,8 @@ export const PaletteTestTab = {
       const lx = startX + c * cellW;
       const ly = startY + r * cellW;
 
-      const params = {
-        power: entry.power, speed: palette.speed, density: palette.lpcm, repeat: 1,
-        processingLightSource: laserSource
-      };
+      const params = PalMgr.getParams(cfg.paletteId, i);
 
-      registerLayer(entry.rgb);
       const options = {
         x: CX + lx, y: CY + ly, width: shapeSize, height: shapeSize,
         layerColor: entry.rgb, laserSource, params,
@@ -141,7 +128,6 @@ export const PaletteTestTab = {
         const fontSize = 72 * scale;
         const labelColor = "#ffffff";
 
-        registerLayer(labelColor);
         XCSExporter.addText(project, {
           text: entryText,
           x: CX + lx, 
@@ -164,11 +150,8 @@ export const PaletteTestTab = {
     const update = (lazy = false) => this.refresh(tabId, lazy);
     const set = (path, val) => { cfg[path] = val; update(true); Persistence.save(); };
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
-    const palOpts = Object.keys(App.palettes);
-    const palLabels = {}; palOpts.forEach(id => palLabels[id] = App.palettes[id].name);
-
     scroll.appendChild(UI.makeSection('Global', [
-      UI.makeRow('Palette', UI.makeToggles(palOpts, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); }, palLabels)),
+      UI.makeRow('Palette', UI.makePaletteSelector(App.palettes, cfg.paletteId, v => { cfg.paletteId = v; this.renderControls(tabId); update(); Persistence.save(); })),
       UI.makeRow('Total Width', UI.makeRange(10, 200, 1, cfg.totalSize, v => set('totalSize', +v), 'mm')),
       UI.makeRow('Layout', UI.makeToggles(['grid', 'line'], cfg.layout, v => set('layout', v))),
       UI.makeRow('Shape', UI.makeToggles(['square', 'circle'], cfg.shape, v => set('shape', v))),

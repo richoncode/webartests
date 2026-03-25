@@ -1,9 +1,9 @@
 import { App } from '../app.js';
 import { XCSViewer } from '../viewer.js';
-import { XCSIR } from '../xcs-ir.js';
+import { XCSProject } from '../xcs-system.js';
 
 export const XcsTab = {
-  create(tabId) {
+  create(tabId, initialCfg) {
     const pane = document.createElement('div');
     pane.className = 'tab-pane';
     pane.dataset.paneId = tabId;
@@ -19,8 +19,8 @@ export const XcsTab = {
     pane.appendChild(viewer);
 
     const q = s => pane.querySelector(s);
-    const state = { rawData:null, shapes:[] };
-    App.instances[tabId] = { type:'xcs', pane, state };
+    const state = { project: null };
+    App.instances[tabId] = { type: initialCfg?.type || 'xcs', pane, state };
 
     q('.drop-zone').addEventListener('click', () => q('.file-input').click());
     q('.file-input').addEventListener('change', e => { if (e.target.files[0]) this.loadFile(tabId, pane, state, e.target.files[0]); });
@@ -39,8 +39,7 @@ export const XcsTab = {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        state.rawData = JSON.parse(e.target.result);
-        state.shapes  = XCSIR.parseXCS(state.rawData);
+        state.project = XCSProject.fromJSON(JSON.parse(e.target.result));
         pane.querySelector('.drop-zone').style.display = 'none';
         pane.querySelector('.viewer-fname').textContent = file.name;
         if (App.TabMgr) App.TabMgr.setLabel(tabId, file.name);

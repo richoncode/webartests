@@ -1,13 +1,13 @@
 # XCS Viewer & Internal Representation Guidance - VANTAGE-ALPHA Baseline
 (LOCKED 2026-03-18)
 
-This document defines how the Pattern Tool internally represents and adapts XCS content. It acts as the official bridge between the tool's state and the formal requirements defined in `xcsformat.md`.
+This document defines how the Pattern Tool internally represents and adapts XCS content. The **XCSSystem module** (`js/xcs-system.js`) acts as the authoritative core for these representations.
 
 ---
 
 ## 1. Internal State vs. Formal XCS Format
 
-The tool maintains an **Internal Representation (IR)** of shapes to simplify rendering and UI logic. This IR must be mapped to the formal format upon export.
+The tool uses the `XCSProject` and `XCSItem` classes to bridge internal math and formal hardware requirements. The `XCSItem.getRenderProps()` method provides a normalized view for the UI.
 
 ### Shape Representation
 | Property | Internal Representation | Formal XCS (`xcsformat.md`) |
@@ -19,12 +19,14 @@ The tool maintains an **Internal Representation (IR)** of shapes to simplify ren
 
 ---
 
-## 2. The Adapter Pattern (`xcs-exporter.js`)
+## 2. The Core Model (`xcs-system.js`)
 
-The `XCSExporter` is the only module permitted to generate formal XCS JSON. It must strictly follow the "Baking" rules:
-1.  **Text Baking**: Must use the `charJSONs` logic documented in `xcsformat.md`.
-2.  **Node Boilerplate**: Must include all 5 operation nodes for every shape.
-3.  **Coordinate Translation**: Must convert tool coordinates to the **Left-Baseline anchor** required by XCS.
+The `XCSSystem` module is the only module permitted to generate and manage formal XCS structures. It strictly follows the "Baking" rules:
+1.  **Text Baking**: Implements the `charJSONs` logic documented in `xcsformat.md`.
+2.  **Node Boilerplate**: Automatically includes all 5 operation nodes for every shape.
+3.  **Coordinate Translation**: Handles the conversion to the **Left-Baseline anchor** required by XCS.
+
+The `XCSExporter` and `XCSIR` modules now serve as thin compatibility bridges to this core logic.
 
 ---
 
