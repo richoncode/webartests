@@ -1,4 +1,4 @@
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 
 export const PALETTE_FILES = ['laFont-1000lpcm', 'rr-lines-10-200-mixed'];
 
