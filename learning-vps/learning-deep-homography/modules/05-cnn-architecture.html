@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>05: CNN Architecture — Deep Homography</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 40px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; background: #050505; display: flex; align-items: center; justify-content: center; }
+        
+        .narrative { max-width: 600px; }
+        .narrative h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+        .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+
+        .arch-viz { background: #111; border: 1px solid #222; border-radius: 20px; padding: 32px; width: 100%; max-width: 500px; }
+        .layer-box { background: #1a1a1a; border: 1px solid #333; padding: 16px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; transition: transform 0.2s; }
+        .layer-box:hover { transform: scale(1.02); border-color: #5b9bd566; }
+        .layer-type { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #555; }
+        .layer-name { font-weight: 600; font-size: 14px; color: #ddd; }
+        .layer-shape { font-family: 'SF Mono', monospace; font-size: 11px; color: #10b981; }
+
+        .code-snippet { background: #0a0a0a; padding: 16px; border-radius: 8px; font-family: 'SF Mono', monospace; font-size: 11px; color: #888; border: 1px solid #1a1a1a; margin-top: 24px; line-height: 1.8; }
+        .code-snippet b { color: #5b9bd5; }
+        .code-snippet i { color: #8b5cf6; font-style: normal; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="04-synthetic-data.html" class="back-link">← 04: Synthetic Data</a>
+        <div style="color: #666; font-size: 14px; font-weight: 500;">Module 5: CNN Architecture</div>
+        <a href="06-training-loop.html" style="background: #1e2d40; color: #5b9bd5;">Next: Training Loop →</a>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h1>Building the Regression Engine</h1>
+            <p>To estimate a 16-point homography in real-time, we need a lightweight but powerful architecture. We implement a VGG-style <strong>Convolutional Neural Network (CNN)</strong> designed specifically for coordinate regression.</p>
+
+            <h2>The Input Pipeline</h2>
+            <p>Our raw camera feed is high-resolution, but the network doesn't need every detail. We downsample the frames to <strong>128x128</strong> pixels and convert them to grayscale. Most importantly, we normalize the pixel values from range [0, 255] to [0.0, 1.0] to keep the gradients stable.</p>
+
+            <h2>Feature Extraction Layers</h2>
+            <p>We stack multiple <code>conv2d</code> layers to extract high-level patterns. We use <strong>Max Pooling</strong> after every block to reduce spatial dimensions and focus on the macro-geometry of our 21x21 grid's nested squares.</p>
+
+            <h2>The Regression Head</h2>
+            <p>At the end of the network, we "flatten" the spatial features into a single vector and pass them through a <strong>Dense (Fully Connected)</strong> layer. Unlike classification networks that use Softmax, we use a <code>linear</code> activation function with 8 units.</p>
+            
+            <div style="background: #1e2d40; border-radius: 8px; padding: 16px; margin: 24px 0; border-left: 3px solid #5b9bd5; font-size: 14px;">
+                <strong style="color: #fff;">Absolute Sub-Pixel Output:</strong> These 8 units output the continuous (x, y) coordinates for our four anchor corners. This is the raw data that feeds our inverse mapping system.
+            </div>
+
+            <div class="code-snippet">
+                model.add(tf.layers.<i>conv2d</i>({<b>filters: 32, kernelSize: 3</b>})); <br/>
+                model.add(tf.layers.<i>maxPooling2d</i>({<b>poolSize: 2</b>})); <br/>
+                model.add(tf.layers.<i>flatten</i>()); <br/>
+                model.add(tf.layers.<i>dense</i>({<b>units: 8, activation: 'linear'</b>}));
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="arch-viz">
+                <div class="layer-box">
+                    <span class="layer-type">Input</span>
+                    <span class="layer-name">Grayscale Tensor</span>
+                    <span class="layer-shape">[128, 128, 1]</span>
+                </div>
+                <div style="text-align: center; color: #333; margin: -4px 0 8px;">▼</div>
+                <div class="layer-box" style="border-left: 4px solid #5b9bd5;">
+                    <span class="layer-type">Conv2D</span>
+                    <span class="layer-name">Feature Map 32</span>
+                    <span class="layer-shape">[126, 126, 32]</span>
+                </div>
+                <div class="layer-box" style="border-left: 4px solid #8b5cf6;">
+                    <span class="layer-type">MaxPool</span>
+                    <span class="layer-name">Spatial Reduction</span>
+                    <span class="layer-shape">[63, 63, 32]</span>
+                </div>
+                <div style="text-align: center; color: #333; margin: -4px 0 8px;">▼</div>
+                <div class="layer-box" style="border-left: 4px solid #5b9bd5;">
+                    <span class="layer-type">Conv2D</span>
+                    <span class="layer-name">Feature Map 64</span>
+                    <span class="layer-shape">[61, 61, 64]</span>
+                </div>
+                <div class="layer-box">
+                    <span class="layer-type">Flatten</span>
+                    <span class="layer-name">Spatial to Vector</span>
+                    <span class="layer-shape">[238144]</span>
+                </div>
+                <div class="layer-box" style="background: #10b98111; border-color: #10b98133;">
+                    <span class="layer-type" style="color: #10b981;">Output</span>
+                    <span class="layer-name" style="color: #10b981;">Regression Head</span>
+                    <span class="layer-shape" style="color: #10b981;">[8]</span>
+                </div>
+
+                <p style="text-align: center; font-size: 10px; color: #444; margin-top: 16px; text-transform: uppercase; letter-spacing: 1px;">VGG-Style Regression Pipeline</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07: The 16-Point Paradigm — Mastering RANSAC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  
+  .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+  .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+  .nav-header a:hover { background: #2a2a2a; }
+  .nav-header .back-link { color: #aaa; font-weight: bold; }
+  .nav-header .back-link:hover { color: #fff; }
+
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+  .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+  .panel:last-child { border-right: none; }
+  
+  .narrative { max-width: 550px; }
+  .narrative h1 { font-size: 24px; font-weight: 800; margin-bottom: 16px; color: #fff; }
+  .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+  .narrative p { color: #bbb; margin-bottom: 16px; font-size: 14px; }
+  
+  .math-block { background: #111; padding: 20px; border-radius: 8px; border: 1px solid #222; font-family: 'SF Mono', monospace; font-size: 12px; margin: 20px 0; overflow-x: auto; color: #fff; line-height: 1.4; text-align: left; }
+
+  .interactive-container { background: #000; position: relative; display: flex; flex-direction: column; }
+  #canvas-container { flex: 1; position: relative; }
+
+  .ui-overlay { position: absolute; bottom: 24px; left: 24px; right: 24px; background: rgba(26,26,26,0.9); border: 1px solid #333; border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: auto; }
+  .ui-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .ui-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-right: 6px; }
+  .badge-red { background: #2a1010; color: #f87171; border: 1px solid #f8717144; }
+</style>
+</head>
+<body>
+  <nav class="nav-header">
+    <a href="06-gcm.html">← 06: Generalized Cameras</a>
+    <a href="../index.html" class="back-link">Return to Hub</a>
+    <a href="08-lm-refinement.html">08: LM Refinement →</a>
+  </nav>
+
+  <div class="workspace">
+    <div class="panel narrative">
+      <h1>The 16-Point Paradigm</h1>
+      <p>In central vision, we need only 4 points for a homography. In <strong>non-central vision</strong> (multi-camera rigs), estimating the homography from a planar scene requires a more complex solver.</p>
+      
+      <h2>The Minimal Solver</h2>
+      <p>The movement of a generalized camera over a plane can be solved using 16 point correspondences. This "minimal" set allows us to recover the relative 6-DOF pose ($R, \mathbf{t}$) and the plane parameters ($\mathbf{n}, d$).</p>
+      
+      <div class="math-block">
+        $\mathbf{q}_i \cdot (\mathbf{R} \mathbf{u}_i' \times \mathbf{n}) + \mathbf{u}_i \cdot (\mathbf{t} \times \mathbf{R} \mathbf{u}_i' + \mathbf{R} \mathbf{q}_i') = 0$
+      </div>
+      <p style="font-size: 11px; color: #666;">This is the Generalized Epipolar Constraint (GEC) specialized for planar homography.</p>
+
+      <h2>Linearization</h2>
+      <p>By defining 16 intermediate variables, the problem can be linearized into a matrix $A$ of size $N \times 16$. Just like DLT, we solve this via SVD. This is the heart of the 16-Point RANSAC framework.</p>
+
+      <div style="margin-top: 40px; padding: 20px; background: #201010; border-left: 3px solid #f87171; border-radius: 0 8px 8px 0; font-size: 13px;">
+        <span class="badge badge-red">Complexity Alert</span> 16 points is a "large" minimal set for RANSAC. This makes the iteration count $N$ much higher compared to the 4-point central case, requiring highly optimized sampling strategies.
+      </div>
+    </div>
+
+    <div class="panel interactive-container">
+      <div id="canvas-container"></div>
+      
+      <div class="ui-overlay">
+        <div class="ui-row">
+          <div class="ui-label">Rig Position (X)</div>
+          <input type="range" id="rig-x" min="-4" max="4" step="0.1" value="0" style="flex:1; margin: 0 16px; accent-color: #f87171;">
+        </div>
+        <div class="ui-row">
+          <div class="ui-label">Rig Rotation (Y)</div>
+          <input type="range" id="rig-ry" min="0" max="6.28" step="0.01" value="0" style="flex:1; margin: 0 16px; accent-color: #f87171;">
+        </div>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 8px;">Observe how the 16 rays from different camera centers "anchor" the plane intersection.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    camera.position.set(10, 8, 10);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+    dl.position.set(5, 10, 5);
+    scene.add(dl);
+
+    // Ground Plane
+    const planeGeo = new THREE.PlaneGeometry(20, 20);
+    const planeMat = new THREE.MeshPhongMaterial({ color: 0x222222, side: THREE.DoubleSide });
+    const plane = new THREE.Mesh(planeGeo, planeMat);
+    plane.rotation.x = Math.PI / 2;
+    plane.position.y = -2;
+    scene.add(plane);
+    scene.add(new THREE.GridHelper(20, 20, 0x333333, 0x111111));
+
+    // Rig
+    const rig = new THREE.Group();
+    scene.add(rig);
+
+    const bodyGeo = new THREE.BoxGeometry(2, 0.5, 1.2);
+    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x5b9bd5, transparent: true, opacity: 0.5 });
+    rig.add(new THREE.Mesh(bodyGeo, bodyMat));
+
+    // 16 Rays
+    const rayContainer = new THREE.Group();
+    rig.add(rayContainer);
+
+    function updateRays() {
+      rayContainer.clear();
+      for (let i = 0; i < 16; i++) {
+        // Random camera origin within the rig
+        const origin = new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 0.5,
+          (Math.random() - 0.5) * 1.2
+        );
+        
+        // Direction facing down toward plane
+        const dir = new THREE.Vector3(
+          (Math.random() - 0.5) * 0.5,
+          -1,
+          (Math.random() - 0.5) * 0.5
+        ).normalize();
+
+        const endpoint = origin.clone().add(dir.multiplyScalar(6));
+        
+        const geo = new THREE.BufferGeometry().setFromPoints([origin, endpoint]);
+        const mat = new THREE.LineBasicMaterial({ color: 0xf87171, transparent: true, opacity: 0.6 });
+        rayContainer.add(new THREE.Line(geo, mat));
+
+        // Dot at origin
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        dot.position.copy(origin);
+        rayContainer.add(dot);
+      }
+    }
+
+    const xSlider = document.getElementById('rig-x');
+    const rySlider = document.getElementById('rig-ry');
+
+    function update() {
+      rig.position.x = parseFloat(xSlider.value);
+      rig.rotation.y = parseFloat(rySlider.value);
+    }
+
+    xSlider.addEventListener('input', update);
+    rySlider.addEventListener('input', update);
+
+    updateRays();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+  </script>
+</body>
+</html>

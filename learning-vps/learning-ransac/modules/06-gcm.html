@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>06: Generalized Camera Models — Mastering RANSAC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  
+  .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+  .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+  .nav-header a:hover { background: #2a2a2a; }
+  .nav-header .back-link { color: #aaa; font-weight: bold; }
+  .nav-header .back-link:hover { color: #fff; }
+
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+  .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+  .panel:last-child { border-right: none; }
+  
+  .narrative { max-width: 550px; }
+  .narrative h1 { font-size: 24px; font-weight: 800; margin-bottom: 16px; color: #fff; }
+  .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+  .narrative p { color: #bbb; margin-bottom: 16px; font-size: 14px; }
+  
+  .math-block { background: #111; padding: 20px; border-radius: 8px; border: 1px solid #222; font-family: 'SF Mono', monospace; font-size: 13px; margin: 20px 0; overflow-x: auto; color: #fff; line-height: 1.5; text-align: center; }
+
+  .interactive-container { background: #000; position: relative; display: flex; flex-direction: column; }
+  #canvas-container { flex: 1; position: relative; }
+
+  .ui-overlay { position: absolute; bottom: 24px; left: 24px; right: 24px; background: rgba(26,26,26,0.9); border: 1px solid #333; border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: auto; }
+  .ui-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .ui-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .legend { position: absolute; top: 24px; right: 24px; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 11px; border: 1px solid #222; z-index: 10; }
+  .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+  .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; }
+</style>
+</head>
+<body>
+  <nav class="nav-header">
+    <a href="05-ransac.html">← 05: Robust RANSAC</a>
+    <a href="../index.html" class="back-link">Return to Hub</a>
+    <a href="07-16-point-paradigm.html">07: 16-Point Paradigm →</a>
+  </nav>
+
+  <div class="workspace">
+    <div class="panel narrative">
+      <h1>Generalized Camera Models</h1>
+      <p>Standard cameras are <strong>central</strong>—all rays pass through a single optical center. However, multi-camera rigs (like those on self-driving cars) are <strong>non-central</strong>. Rays from different cameras do not share a common convergence point.</p>
+      
+      <h2>Plücker Coordinates</h2>
+      <p>In a Generalized Camera Model (GCM), we represent each light ray as a Plücker line $\mathbf{L} = (\mathbf{u}, \mathbf{q})$.</p>
+      <div class="math-block">
+        $\mathbf{u} = \text{Ray Direction}$<br>
+        $\mathbf{q} = \mathbf{c} \times \mathbf{u} \text{ (Moment)}$
+      </div>
+      <p>Where $\mathbf{c}$ is the origin of the specific camera in the rig coordinate system.</p>
+
+      <h2>The Non-Central Challenge</h2>
+      <p>Because there is no single center of projection, a simple $3 \times 3$ homography cannot relate two views of a scene if the rig moves. The transformation depends on depth, creating a parallax effect that traditional central models cannot resolve.</p>
+
+      <div style="margin-top: 40px; padding: 20px; background: #0d1620; border-left: 3px solid #5b9bd5; border-radius: 0 8px 8px 0; font-size: 13px;">
+        <strong style="color: #5b9bd5;">Why Plücker?</strong> Plücker coordinates allow us to treat rays as basic geometric entities, enabling the 16-point and 17-point solvers used for robust motion estimation in multi-camera systems.
+      </div>
+    </div>
+
+    <div class="panel interactive-container">
+      <div id="canvas-container">
+        <div class="legend">
+          <div class="legend-item"><div class="legend-color" style="background: #10b981;"></div> Car Body</div>
+          <div class="legend-item"><div class="legend-color" style="background: #5b9bd5;"></div> Cameras</div>
+          <div class="legend-item"><div class="legend-color" style="background: #e74c3c;"></div> Rays ($\mathbf{u}, \mathbf{q}$)</div>
+        </div>
+      </div>
+      
+      <div class="ui-overlay">
+        <div class="ui-row">
+          <div class="ui-label">Rig Rotation</div>
+          <input type="range" id="rig-rot" min="0" max="6.28" step="0.01" value="0" style="flex:1; margin: 0 16px; accent-color: #5b9bd5;">
+        </div>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 8px;">Drag the car to observe how rays from 4 separate cameras move in the rig coordinate system.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    camera.position.set(8, 6, 8);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+    dl.position.set(5, 10, 5);
+    scene.add(dl);
+
+    // Car Rig
+    const rig = new THREE.Group();
+    scene.add(rig);
+
+    const bodyGeo = new THREE.BoxGeometry(4, 1, 2);
+    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x10b981, transparent: true, opacity: 0.3 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    rig.add(body);
+
+    // 4 Cameras
+    const camGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const camMat = new THREE.MeshPhongMaterial({ color: 0x5b9bd5 });
+    
+    const camOffsets = [
+      { x: 2, y: 0.5, z: 0 },   // Front
+      { x: -2, y: 0.5, z: 0 },  // Rear
+      { x: 0, y: 0.5, z: 1 },   // Left
+      { x: 0, y: 0.5, z: -1 }   // Right
+    ];
+
+    camOffsets.forEach(pos => {
+      const cam = new THREE.Mesh(camGeo, camMat);
+      cam.position.set(pos.x, pos.y, pos.z);
+      rig.add(cam);
+
+      // Frustum rays for each cam
+      const rayMat = new THREE.LineBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.4 });
+      const rayPoints = [
+        new THREE.Vector3(0,0,0), new THREE.Vector3(2, 1, 1),
+        new THREE.Vector3(0,0,0), new THREE.Vector3(2, -1, 1),
+        new THREE.Vector3(0,0,0), new THREE.Vector3(2, 1, -1),
+        new THREE.Vector3(0,0,0), new THREE.Vector3(2, -1, -1)
+      ];
+      
+      // Rotate rays to face outward
+      const rayGroup = new THREE.Group();
+      rayGroup.position.copy(cam.position);
+      if (pos.x === 2) rayGroup.rotation.y = 0;
+      if (pos.x === -2) rayGroup.rotation.y = Math.PI;
+      if (pos.z === 1) rayGroup.rotation.y = Math.PI/2;
+      if (pos.z === -1) rayGroup.rotation.y = -Math.PI/2;
+      
+      for(let i=0; i<rayPoints.length; i+=2) {
+        const geo = new THREE.BufferGeometry().setFromPoints([rayPoints[i], rayPoints[i+1]]);
+        rayGroup.add(new THREE.Line(geo, rayMat));
+      }
+      rig.add(rayGroup);
+    });
+
+    const rotSlider = document.getElementById('rig-rot');
+    rotSlider.addEventListener('input', () => {
+      rig.rotation.y = parseFloat(rotSlider.value);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+  </script>
+</body>
+</html>

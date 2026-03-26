@@ -39,6 +39,7 @@ export function getTimestampedName(prefix) {
 
 export const UI = {
   _tip: null,
+  _searchState: "",
   getTooltip() {
     if (!this._tip) {
       this._tip = document.createElement('div');
@@ -491,7 +492,7 @@ export const UI = {
       return;
     }
 
-    const renderMenu = (filterText = '') => {
+    const renderMenu = (filterText = UI._searchState) => {
       menu.innerHTML = '';
       
       const searchWrap = document.createElement('div');
@@ -501,11 +502,14 @@ export const UI = {
       searchWrap.style.top = '0';
       searchWrap.style.background = '#1a1a1a';
       searchWrap.style.zIndex = '10';
+      searchWrap.style.display = 'flex';
+      searchWrap.style.gap = '8px';
+      searchWrap.style.alignItems = 'center';
 
       const searchInput = document.createElement('input');
       searchInput.type = 'text';
       searchInput.placeholder = 'Search patterns...';
-      searchInput.style.width = '100%';
+      searchInput.style.flex = '1';
       searchInput.style.background = '#0d0d0d';
       searchInput.style.border = '1px solid #333';
       searchInput.style.borderRadius = '6px';
@@ -515,19 +519,37 @@ export const UI = {
       searchInput.value = filterText;
       
       searchInput.oninput = (e) => {
-        const text = e.target.value.toLowerCase();
+        const text = e.target.value;
+        UI._searchState = text;
         renderMenu(text);
         const inp = menu.querySelector('input');
         inp.focus();
         inp.setSelectionRange(text.length, text.length);
       };
 
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'hbtn sm';
+      clearBtn.innerHTML = '&times;';
+      clearBtn.title = 'Clear search';
+      clearBtn.style.padding = '4px 10px';
+      clearBtn.style.fontSize = '16px';
+      clearBtn.style.display = filterText ? 'block' : 'none';
+      clearBtn.onclick = (e) => {
+        e.stopPropagation();
+        UI._searchState = "";
+        renderMenu("");
+        const inp = menu.querySelector('input');
+        if (inp) inp.focus();
+      };
+
       searchWrap.appendChild(searchInput);
+      searchWrap.appendChild(clearBtn);
       menu.appendChild(searchWrap);
 
       const cats = [...new Set(patterns.map(p => p.cat))];
       cats.forEach(cat => {
-        const filteredPatterns = patterns.filter(p => p.cat === cat && (p.label.toLowerCase().includes(filterText) || cat.toLowerCase().includes(filterText)));
+        const lowerFilter = filterText.toLowerCase();
+        const filteredPatterns = patterns.filter(p => p.cat === cat && (p.label.toLowerCase().includes(lowerFilter) || cat.toLowerCase().includes(lowerFilter)));
         if (filteredPatterns.length === 0) return;
 
         const col = document.createElement('div');

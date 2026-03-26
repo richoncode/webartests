@@ -57,8 +57,10 @@ export const XCSViewer = {
                 <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
               </pattern>
             </defs>
-            <rect width="500" height="500" fill="url(#grid)" />
-            <g class="svg-content"></g>
+            <g class="canvas-root">
+              <rect width="500" height="500" fill="url(#grid)" />
+              <g class="svg-content"></g>
+            </g>
           </svg>
         </div>
         <div class="right-info-panel">
@@ -150,6 +152,110 @@ export const XCSViewer = {
       }
     });
 
+    const svg = q('.svg-canvas');
+    const state = App.instances[tabId].state;
+    if (!state.view) state.view = { scale: 1, x: 0, y: 0 };
+
+    let isPanning = false;
+    let lastMouse = { x: 0, y: 0 };
+    let lastTouchDist = 0;
+    let lastTouchMid = { x: 0, y: 0 };
+
+    svg.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomSpeed = 0.001;
+      const delta = -e.deltaY;
+      const factor = Math.pow(1.1, delta / 100);
+      
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Zoom towards mouse point
+      const newScale = Math.max(0.1, Math.min(20, state.view.scale * factor));
+      const actualFactor = newScale / state.view.scale;
+
+      state.view.x = mouseX - (mouseX - state.view.x) * actualFactor;
+      state.view.y = mouseY - (mouseY - state.view.y) * actualFactor;
+      state.view.scale = newScale;
+
+      this.applyTransform(v, state);
+    }, { passive: false });
+
+    svg.addEventListener('mousedown', e => {
+      if (e.button === 0 && (e.altKey || e.shiftKey || e.metaKey)) { // Pan with modifier or middle click
+        isPanning = true;
+        lastMouse = { x: e.clientX, y: e.clientY };
+        svg.style.cursor = 'grabbing';
+      } else if (e.button === 1) { // Middle click pan
+        isPanning = true;
+        lastMouse = { x: e.clientX, y: e.clientY };
+        svg.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!isPanning) return;
+      const dx = e.clientX - lastMouse.x;
+      const dy = e.clientY - lastMouse.y;
+      state.view.x += dx;
+      state.view.y += dy;
+      lastMouse = { x: e.clientX, y: e.clientY };
+      this.applyTransform(v, state);
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      svg.style.cursor = 'default';
+    });
+
+    svg.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0], t2 = e.touches[1];
+        lastTouchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        lastTouchMid = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+      } else if (e.touches.length === 1) {
+        lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    });
+
+    svg.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 || e.touches.length === 1) e.preventDefault();
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0], t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const mid = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+        
+        const factor = dist / lastTouchDist;
+        const newScale = Math.max(0.1, Math.min(20, state.view.scale * factor));
+        const actualFactor = newScale / state.view.scale;
+
+        const rect = svg.getBoundingClientRect();
+        const midRelX = mid.x - rect.left;
+        const midRelY = mid.y - rect.top;
+
+        state.view.x = midRelX - (midRelX - state.view.x) * actualFactor + (mid.x - lastTouchMid.x);
+        state.view.y = midRelY - (midRelY - state.view.y) * actualFactor + (mid.y - lastTouchMid.y);
+        state.view.scale = newScale;
+
+        lastTouchDist = dist;
+        lastTouchMid = mid;
+        this.applyTransform(v, state);
+      } else if (e.touches.length === 1) {
+        const dx = e.touches[0].clientX - lastMouse.x;
+        const dy = e.touches[0].clientY - lastMouse.y;
+        state.view.x += dx;
+        state.view.y += dy;
+        lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        this.applyTransform(v, state);
+      }
+    }, { passive: false });
+
+    svg.addEventListener('dblclick', () => {
+      state.view = { scale: 1, x: 0, y: 0 };
+      this.applyTransform(v, state);
+    });
+
     q('.export-xcs-btn').onclick = () => {
       const inst = App.instances[tabId];
       const data = inst.state.project ? inst.state.project.toJSON() : inst.state.rawData;
@@ -166,6 +272,7 @@ export const XCSViewer = {
       : (state.shapes || []);
 
     this.renderSVG(v, state);
+    this.applyTransform(v, state);
     this.renderStats(v, state);
     this.renderList(v, state);
     this.renderPalette(v, state);
@@ -176,6 +283,13 @@ export const XCSViewer = {
       this.renderJSON(v, state);
     } else {
       v.querySelector('.json-code').innerHTML = ''; // Clear stale heavy DOM
+    }
+  },
+
+  applyTransform(v, state) {
+    const content = v.querySelector('.canvas-root');
+    if (content && state.view) {
+      content.setAttribute('transform', `translate(${state.view.x}, ${state.view.y}) scale(${state.view.scale})`);
     }
   },
 

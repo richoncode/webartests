@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01: Projective Geometry — Mastering RANSAC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  
+  .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+  .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+  .nav-header a:hover { background: #2a2a2a; }
+  .nav-header .back-link { color: #aaa; font-weight: bold; }
+  .nav-header .back-link:hover { color: #fff; }
+
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+  .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+  .panel:last-child { border-right: none; }
+  
+  .narrative { max-width: 550px; }
+  .narrative h1 { font-size: 24px; font-weight: 800; margin-bottom: 16px; color: #fff; }
+  .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+  .narrative p { color: #bbb; margin-bottom: 16px; font-size: 14px; }
+  
+  .math-term { color: #5b9bd5; font-weight: 600; cursor: help; border-bottom: 1px dotted #5b9bd5; }
+  
+  .var-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+  .var-table th { text-align: left; color: #5b9bd5; padding: 8px; border-bottom: 1px solid #2a2a2a; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+  .var-table td { padding: 12px 8px; border-bottom: 1px solid #1a1a1a; color: #888; }
+  .var-table .var-sym { font-family: 'SF Mono', 'Fira Code', monospace; color: #fff; font-weight: 600; width: 60px; }
+
+  .interactive-container { background: #000; position: relative; display: flex; flex-direction: column; }
+  #canvas-container { flex: 1; position: relative; }
+  .ui-overlay { position: absolute; bottom: 24px; left: 24px; right: 24px; background: rgba(26,26,26,0.9); border: 1px solid #333; border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: auto; }
+  .ui-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .ui-row:last-child { margin-bottom: 0; }
+  .ui-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ui-value { font-family: 'SF Mono', monospace; color: #5b9bd5; font-size: 13px; }
+  
+  input[type=range] { flex: 1; margin: 0 16px; accent-color: #5b9bd5; }
+
+  .popover { position: fixed; background: #1a1a1a; border: 1px solid #333; padding: 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.8); z-index: 1000; pointer-events: none; display: none; max-width: 240px; }
+  .popover-title { color: #5b9bd5; font-weight: bold; margin-bottom: 4px; font-size: 14px; }
+  .popover-desc { color: #bbb; font-size: 12px; line-height: 1.4; }
+
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-right: 6px; }
+  .badge-blue { background: #1e2d40; color: #5b9bd5; border: 1px solid #5b9bd544; }
+
+  .legend { position: absolute; top: 24px; right: 24px; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 12px; border: 1px solid #222; }
+  .legend-item { display: flex; align-items: center; margin-bottom: 6px; }
+  .legend-color { width: 12px; height: 12px; border-radius: 2px; margin-right: 8px; }
+</style>
+</head>
+<body>
+  <nav class="nav-header">
+    <a href="../index.html" class="back-link">← Return to Subtopic</a>
+    <div style="color: #666; font-size: 14px; font-weight: 500;">Module 1: Foundational Projective Geometry</div>
+    <a href="02-homography-matrix.html">02: Homography Matrix →</a>
+  </nav>
+
+  <div class="workspace">
+    <div class="panel narrative">
+      <h1>Projective Foundations</h1>
+      <p>Standard Euclidean geometry is built on the assumption that parallel lines stay equidistant forever. However, the human eye and camera sensors don't see the world this way. Parallel railroad tracks appear to converge toward a single point on the horizon.</p>
+      
+      <h2>Moving to $\mathbb{P}^2$</h2>
+      <p>The <span class="math-term" data-var="Pn">Projective Plane ($\mathbb{P}^2$)</span> is an extension of the Euclidean plane that includes "points at infinity." In computer vision, we map points from the 3D world onto 2D sensors using this projective framework.</p>
+      
+      <h2>Homogeneous Coordinates</h2>
+      <p>To perform linear operations in projective space, we represent a 2D point $(x, y)$ as a 3D vector <span class="math-term" data-var="x">$\mathbf{x} = [x, y, 1]^T$</span>. This 3rd component, <span class="math-term" data-var="w">$w$</span>, acts as a scale factor. If $w=1$, the point is "on the plane." As $w$ approaches 0, the point moves toward infinity.</p>
+
+      <table class="var-table">
+        <thead>
+          <tr>
+            <th>Sym</th>
+            <th>Definition</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="var-sym">$\mathbb{P}^n$</td>
+            <td>Projective space of dimension $n$ derived from a vector space of dimension $n+1$.</td>
+          </tr>
+          <tr>
+            <td class="var-sym">$\mathbf{x}$</td>
+            <td>A point represented as a $3 \times 1$ column vector in homogeneous coordinates.</td>
+          </tr>
+          <tr>
+            <td class="var-sym">$\mathbf{l}$</td>
+            <td>A vector representing a line in the projective plane such that $\mathbf{l}^T \mathbf{x} = 0$.</td>
+          </tr>
+          <tr>
+            <td class="var-sym">$w$</td>
+            <td>An arbitrary, non-zero homogeneous scale factor. Required to map back to Euclidean coordinates.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top: 40px; padding: 20px; background: #0d1620; border-left: 3px solid #5b9bd5; border-radius: 0 8px 8px 0; font-size: 13px;">
+        <strong style="color: #5b9bd5;">Visual Insight:</strong> As a point moves toward the horizon in the simulation, its homogeneous coordinate $w$ approaches zero. This illustrates how "points at infinity" are naturally handled by the projective model.
+      </div>
+    </div>
+
+    <div class="panel interactive-container">
+      <div id="canvas-container">
+        <div class="legend">
+          <div class="legend-item"><div class="legend-color" style="background: #5b9bd5;"></div> Image Plane</div>
+          <div class="legend-item"><div class="legend-color" style="background: #10b981;"></div> World Plane</div>
+          <div class="legend-item"><div class="legend-color" style="background: #e74c3c;"></div> Rays</div>
+        </div>
+      </div>
+      
+      <div class="ui-overlay">
+        <div class="ui-row">
+          <div class="ui-label">World Plane Distance ($d$)</div>
+          <input type="range" id="plane-dist" min="2" max="20" step="0.1" value="10">
+          <div class="ui-value" id="val-dist">10.0</div>
+        </div>
+        <div class="ui-row">
+          <div class="ui-label">Plane Tilt (Rotation)</div>
+          <input type="range" id="plane-tilt" min="-1" max="1" step="0.01" value="0">
+          <div class="ui-value" id="val-tilt">0°</div>
+        </div>
+        <div class="ui-row" style="margin-top: 16px; border-top: 1px solid #333; padding-top: 16px;">
+          <div style="flex: 1;">
+            <div class="ui-label">Projection Result</div>
+            <div style="font-size: 11px; color: #666;">Observe how parallel lines converge on the sensor.</div>
+          </div>
+          <div class="ui-value" style="color: #ccc; font-size: 11px;">$x' \sim Hx$</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="popover" class="popover">
+    <div class="popover-title" id="pop-title"></div>
+    <div class="popover-desc" id="pop-desc"></div>
+  </div>
+
+  <script>
+    const varData = {
+      'Pn': { title: 'Projective Space', desc: 'A space that includes points at infinity, allowing parallel lines to meet mathematically.' },
+      'x': { title: 'Homogeneous Point', desc: 'A representation where scaling the vector does not change the point location: [kx, ky, k].' },
+      'w': { title: 'Scale Factor (w)', desc: 'The 3rd component of a homogeneous vector. Maps to Euclidean as (x/w, y/w).' }
+    };
+
+    const popover = document.getElementById('popover');
+    const popTitle = document.getElementById('pop-title');
+    const popDesc = document.getElementById('pop-desc');
+
+    document.querySelectorAll('.math-term').forEach(term => {
+      term.addEventListener('mouseenter', (e) => {
+        const data = varData[e.target.dataset.var];
+        if (!data) return;
+        popTitle.innerText = data.title;
+        popDesc.innerText = data.desc;
+        popover.style.display = 'block';
+        const rect = e.target.getBoundingClientRect();
+        popover.style.left = rect.left + 'px';
+        popover.style.top = (rect.bottom + 8) + 'px';
+      });
+      term.addEventListener('mouseleave', () => {
+        popover.style.display = 'none';
+      });
+    });
+
+    // --- THREE.JS SIMULATION ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    camera.position.set(15, 10, 15);
+    controls.update();
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0xffffff, 0.8);
+    pointLight.position.set(10, 20, 10);
+    scene.add(pointLight);
+
+    // Camera Point (Optical Center)
+    const centerGeo = new THREE.SphereGeometry(0.2, 16, 16);
+    const centerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const center = new THREE.Mesh(centerGeo, centerMat);
+    scene.add(center);
+
+    // Image Plane (Sensor)
+    const sensorGeo = new THREE.PlaneGeometry(2, 2);
+    const sensorMat = new THREE.MeshPhongMaterial({ color: 0x5b9bd5, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const sensor = new THREE.Mesh(sensorGeo, sensorMat);
+    sensor.position.z = -2;
+    scene.add(sensor);
+
+    // World Plane
+    const worldGeo = new THREE.PlaneGeometry(10, 10, 10, 10);
+    const worldMat = new THREE.MeshPhongMaterial({ color: 0x10b981, transparent: true, opacity: 0.3, side: THREE.DoubleSide, wireframe: true });
+    const worldPlane = new THREE.Mesh(worldGeo, worldMat);
+    scene.add(worldPlane);
+
+    // Grid on World Plane
+    const worldGrid = new THREE.GridHelper(10, 10, 0x10b981, 0x222222);
+    worldGrid.rotation.x = Math.PI / 2;
+    worldPlane.add(worldGrid);
+
+    // Rays
+    const rayContainer = new THREE.Group();
+    scene.add(rayContainer);
+
+    function updateRays() {
+      rayContainer.clear();
+      const points = [
+        new THREE.Vector3(-2, -2, 0),
+        new THREE.Vector3(2, -2, 0),
+        new THREE.Vector3(2, 2, 0),
+        new THREE.Vector3(-2, 2, 0),
+        new THREE.Vector3(0, 0, 0)
+      ];
+
+      points.forEach(p => {
+        // Transform local world point to scene space
+        const worldP = p.clone().applyMatrix4(worldPlane.matrixWorld);
+        
+        // Ray from world point through origin (0,0,0)
+        const dir = worldP.clone().negate().normalize();
+        
+        // Find intersection with sensor plane at z = -2
+        // Line: P = worldP + t * dir
+        // sensor plane: z = -2
+        // worldP.z + t * dir.z = -2  => t = (-2 - worldP.z) / dir.z
+        const t = (-2 - worldP.z) / dir.z;
+        const intersectP = worldP.clone().add(dir.multiplyScalar(t));
+
+        // Draw line
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([worldP, intersectP]);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.4 });
+        const line = new THREE.Line(lineGeo, lineMat);
+        rayContainer.add(line);
+
+        // Dot at intersection
+        const dotGeo = new THREE.SphereGeometry(0.05, 8, 8);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.copy(intersectP);
+        rayContainer.add(dot);
+      });
+    }
+
+    // UI Listeners
+    const distSlider = document.getElementById('plane-dist');
+    const tiltSlider = document.getElementById('plane-tilt');
+    const valDist = document.getElementById('val-dist');
+    const valTilt = document.getElementById('val-tilt');
+
+    function updateSimulation() {
+      const d = parseFloat(distSlider.value);
+      const t = parseFloat(tiltSlider.value);
+      
+      worldPlane.position.z = d;
+      worldPlane.rotation.y = t;
+      
+      valDist.innerText = d.toFixed(1);
+      valTilt.innerText = Math.round(t * 57.29) + '°';
+      
+      updateRays();
+    }
+
+    distSlider.addEventListener('input', updateSimulation);
+    tiltSlider.addEventListener('input', updateSimulation);
+
+    // Animation Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    updateSimulation();
+    animate();
+
+    // Handle Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+  </script>
+</body>
+</html>

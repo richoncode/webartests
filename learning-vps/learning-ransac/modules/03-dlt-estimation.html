@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03: DLT Estimation — Mastering RANSAC</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  
+  .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+  .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+  .nav-header a:hover { background: #2a2a2a; }
+  .nav-header .back-link { color: #aaa; font-weight: bold; }
+  .nav-header .back-link:hover { color: #fff; }
+
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+  .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+  .panel:last-child { border-right: none; }
+  
+  .narrative { max-width: 550px; }
+  .narrative h1 { font-size: 24px; font-weight: 800; margin-bottom: 16px; color: #fff; }
+  .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+  .narrative p { color: #bbb; margin-bottom: 16px; font-size: 14px; }
+  
+  .math-block { background: #111; padding: 20px; border-radius: 8px; border: 1px solid #222; font-family: 'SF Mono', monospace; font-size: 13px; margin: 20px 0; overflow-x: auto; color: #fff; line-height: 1.5; }
+
+  .interactive-container { background: #000; position: relative; display: flex; flex-direction: column; padding: 40px; }
+  
+  .coord-pool { display: flex; gap: 12px; margin-bottom: 32px; background: #1a1a1a; padding: 20px; border-radius: 12px; border: 1px solid #333; flex-wrap: wrap; }
+  .coord-item { background: #222; border: 1px solid #444; color: #5b9bd5; padding: 8px 16px; border-radius: 6px; font-family: 'SF Mono', monospace; cursor: grab; user-select: none; font-size: 14px; }
+  .coord-item:active { cursor: grabbing; }
+
+  .matrix-a { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; background: #111; padding: 20px; border-radius: 12px; border: 1px solid #222; max-width: 800px; margin: 0 auto; }
+  .matrix-cell { background: #0d0d0d; border: 1px dashed #333; height: 40px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: 'SF Mono', monospace; font-size: 12px; }
+  .matrix-cell.filled { border-style: solid; border-color: #5b9bd5; color: #5b9bd5; background: #1e2d4044; }
+  .matrix-cell.error { border-color: #e74c3c; background: #2a101044; }
+  .matrix-cell.constant { border-style: none; color: #444; background: transparent; }
+
+  .feedback { margin-top: 24px; text-align: center; font-size: 14px; color: #888; height: 24px; }
+  .success-msg { color: #10b981; font-weight: bold; }
+</style>
+</head>
+<body>
+  <nav class="nav-header">
+    <a href="02-homography-matrix.html">← 02: Homography Matrix</a>
+    <a href="../index.html" class="back-link">Return to Hub</a>
+    <a href="04-normalization.html">04: Normalization →</a>
+  </nav>
+
+  <div class="workspace">
+    <div class="panel narrative">
+      <h1>Direct Linear Transformation</h1>
+      <p>Given 4 or more point correspondences $(x_i, y_i) \leftrightarrow (x'_i, y'_i)$, we can solve for $H$ using the Direct Linear Transformation (DLT) algorithm.</p>
+      
+      <h2>Linearizing the Constraint</h2>
+      <p>The core relationship $\mathbf{x}' \times H\mathbf{x} = \mathbf{0}$ yields two linearly independent equations for each point pair:</p>
+      <div class="math-block">
+        $-w'_i \mathbf{x}_i^T \mathbf{h}_1^T + y'_i \mathbf{x}_i^T \mathbf{h}_3^T = 0$<br>
+        $w'_i \mathbf{x}_i^T \mathbf{h}_2^T - x'_i \mathbf{x}_i^T \mathbf{h}_3^T = 0$
+      </div>
+      <p>Where $\mathbf{h}_j$ is the $j$-th row of $H$. Stacking these for multiple points forms a large matrix $A$.</p>
+
+      <h2>The SVD Solution</h2>
+      <p>In practice, we solve $A\mathbf{h} = \mathbf{0}$ as a least-squares problem using Singular Value Decomposition (SVD). The optimal solution is the unit singular vector corresponding to the smallest singular value of $A$.</p>
+
+      <div style="margin-top: 40px; padding: 20px; background: #1a1200; border-left: 3px solid #f0a040; border-radius: 0 8px 8px 0; font-size: 13px;">
+        <strong style="color: #f0a040;">Professional Note:</strong> Each point pair provides 2 rows to matrix $A$. With 9 elements in $H$ (minus 1 for scale), we need at least 4 point pairs (8 equations) to find a unique solution.
+      </div>
+    </div>
+
+    <div class="panel interactive-container">
+      <h2 style="font-size: 16px; margin-bottom: 12px; color: #5b9bd5; text-transform: uppercase; letter-spacing: 1px;">Interactive Matrix Constructor</h2>
+      <p style="font-size: 13px; color: #666; margin-bottom: 24px;">Drag the projected coordinates into the correct slots for Point 1 ($x_1, y_1, 1 \leftrightarrow x'_1, y'_1, w'_1$).</p>
+      
+      <div class="coord-pool" id="pool">
+        <div class="coord-item" draggable="true" data-val="x1">x1</div>
+        <div class="coord-item" draggable="true" data-val="y1">y1</div>
+        <div class="coord-item" draggable="true" data-val="1">1</div>
+        <div class="coord-item" draggable="true" data-val="nx1">-x1</div>
+        <div class="coord-item" draggable="true" data-val="ny1">-y1</div>
+        <div class="coord-item" draggable="true" data-val="n1">-1</div>
+        <div class="coord-item" draggable="true" data-val="x_prime1">x'1</div>
+        <div class="coord-item" draggable="true" data-val="y_prime1">y'1</div>
+        <div class="coord-item" draggable="true" data-val="w_prime1">w'1</div>
+        <div class="coord-item" draggable="true" data-val="nw_prime1">-w'1</div>
+      </div>
+
+      <div class="matrix-a" id="matrix">
+        <!-- Row 1: [0 0 0 -w'x -w'y -w' y'x y'y y'] -->
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell dropzone" data-target="nw_prime1_x1">-w'x</div>
+        <div class="matrix-cell dropzone" data-target="nw_prime1_y1">-w'y</div>
+        <div class="matrix-cell dropzone" data-target="nw_prime1">-w'</div>
+        <div class="matrix-cell dropzone" data-target="y_prime1_x1">y'x</div>
+        <div class="matrix-cell dropzone" data-target="y_prime1_y1">y'y</div>
+        <div class="matrix-cell dropzone" data-target="y_prime1">y'</div>
+
+        <!-- Row 2: [w'x w'y w' 0 0 0 -x'x -x'y -x'] -->
+        <div class="matrix-cell dropzone" data-target="w_prime1_x1">w'x</div>
+        <div class="matrix-cell dropzone" data-target="w_prime1_y1">w'y</div>
+        <div class="matrix-cell dropzone" data-target="w_prime1">w'</div>
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell constant">0</div>
+        <div class="matrix-cell dropzone" data-target="nx_prime1_x1">-x'x</div>
+        <div class="matrix-cell dropzone" data-target="nx_prime1_y1">-x'y</div>
+        <div class="matrix-cell dropzone" data-target="nx_prime1">-x'</div>
+      </div>
+
+      <div class="feedback" id="feedback"></div>
+    </div>
+  </div>
+
+  <script>
+    const pool = document.getElementById('pool');
+    const matrix = document.getElementById('matrix');
+    const feedback = document.getElementById('feedback');
+    const dropzones = document.querySelectorAll('.dropzone');
+
+    let draggedItem = null;
+
+    pool.addEventListener('dragstart', (e) => {
+      draggedItem = e.target;
+      e.dataTransfer.setData('text/plain', e.target.dataset.val);
+    });
+
+    dropzones.forEach(zone => {
+      zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!zone.classList.contains('filled')) {
+          zone.style.background = '#1e2d4044';
+        }
+      });
+
+      zone.addEventListener('dragleave', (e) => {
+        if (!zone.classList.contains('filled')) {
+          zone.style.background = '';
+        }
+      });
+
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const val = e.dataTransfer.getData('text/plain');
+        const target = zone.dataset.target;
+
+        // Simple check: for this module, we just want to see if they are dragging the right 'component'
+        // Matrix looks like:
+        // [-w'x, -w'y, -w', y'x, y'y, y']
+        // [w'x, w'y, w', -x'x, -x'y, -x']
+        
+        let correct = false;
+        if (target === 'nw_prime1_x1') correct = (val === 'nw_prime1' || val === 'x1'); // This is a simplification for the tutorial UI
+        // To keep it simple for the user, let's just match the symbols
+        if (val === 'x1' && target.includes('x1')) correct = true;
+        if (val === 'y1' && target.includes('y1')) correct = true;
+        if (val === 'x_prime1' && target.includes('nx_prime1')) correct = true;
+        if (val === 'y_prime1' && target.includes('y_prime1')) correct = true;
+        if (val === 'w_prime1' && target.includes('w_prime1')) correct = true;
+        if (val === 'nw_prime1' && target.includes('nw_prime1')) correct = true;
+
+        // Let's make it more explicit: the slot requires a specific drag
+        const logic = {
+          'nw_prime1_x1': 'nw_prime1',
+          'nw_prime1_y1': 'nw_prime1',
+          'nw_prime1': 'nw_prime1',
+          'y_prime1_x1': 'y_prime1',
+          'y_prime1_y1': 'y_prime1',
+          'y_prime1': 'y_prime1',
+          'w_prime1_x1': 'w_prime1',
+          'w_prime1_y1': 'w_prime1',
+          'w_prime1': 'w_prime1',
+          'nx_prime1_x1': 'x_prime1',
+          'nx_prime1_y1': 'x_prime1',
+          'nx_prime1': 'x_prime1'
+        };
+
+        // Actually, let's just make it a "matching" game where they drag the right base variable
+        // to a slot that mentions it.
+        const baseVar = val.replace('n', '').replace('_prime', '').replace('1', '');
+        if (target.includes(val)) correct = true;
+        // special cases for negated versions
+        if (val === 'nw_prime1' && target.includes('nw_prime1')) correct = true;
+        if (val === 'x_prime1' && target.includes('nx_prime1')) correct = true;
+
+        if (correct) {
+          zone.innerText = val;
+          zone.classList.add('filled');
+          zone.classList.remove('error');
+          checkComplete();
+        } else {
+          zone.classList.add('error');
+          feedback.innerText = "Incorrect placement. Check the DLT equation above.";
+          setTimeout(() => zone.classList.remove('error'), 1000);
+        }
+      });
+    });
+
+    function checkComplete() {
+      const filled = document.querySelectorAll('.dropzone.filled').length;
+      if (filled === dropzones.length) {
+        feedback.innerHTML = '<span class="success-msg">Correct! You have constructed the block matrix for one point correspondence.</span>';
+      }
+    }
+  </script>
+</body>
+</html>

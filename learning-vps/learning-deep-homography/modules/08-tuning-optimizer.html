@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>08: Tuning & Strategy — Deep Homography</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 40px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; background: #050505; padding: 40px; }
+        
+        .narrative { max-width: 620px; }
+        .narrative h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+        .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+        .narrative strong { color: #fff; }
+
+        .symptom-card { background: #1a1a1a; border-left: 4px solid #e74c3c; padding: 16px; border-radius: 4px; margin: 24px 0; }
+        .symptom-card h3 { font-size: 14px; color: #f87171; margin-bottom: 8px; }
+
+        .strategy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+        .strategy-item { background: #111; border: 1px solid #2a2a2a; padding: 20px; border-radius: 12px; }
+        .strategy-item h4 { font-size: 14px; color: #5b9bd5; margin-bottom: 8px; }
+        .strategy-item p { font-size: 13px; color: #888; margin-bottom: 12px; line-height: 1.5; }
+        .code-pill { background: #0a0a0a; border: 1px solid #222; padding: 4px 8px; border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 11px; color: #ddd; }
+
+        .viz-card { background: #111; border: 1px solid #222; border-radius: 20px; padding: 24px; position: sticky; top: 0; }
+        .viz-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #444; margin-bottom: 20px; display: block; }
+        
+        .loss-plot { height: 200px; width: 100%; border-bottom: 2px solid #333; border-left: 2px solid #333; position: relative; margin-top: 20px; overflow: hidden; }
+        .plateau-line { position: absolute; top: 150px; left: 0; width: 100%; border-top: 1px dashed #e74c3c66; }
+        .plateau-text { position: absolute; top: 155px; left: 10px; font-size: 9px; color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="07-inference-inverse-mapping.html" class="back-link">← 07: Inference & Mapping</a>
+        <div style="color: #666; font-size: 14px; font-weight: 500;">Module 8: Tuning & Optimizer</div>
+        <a href="../index.html" style="background: #10b981; color: #fff;">Complete Track</a>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h1>Escaping the Plateau</h1>
+            <p>You have the architecture and the data, but the network isn't converging. A training loss plateauing at around <strong>0.01</strong> for a coordinate regression task is a classic symptom of <strong>Model Collapse</strong>—the network has given up and is simply predicting the "average" shape for every input.</p>
+
+            <div class="symptom-card">
+                <h3>The 0.01 Failure</h3>
+                <p style="font-size: 13px; color: #aaa;">In a 256x256 pixel normalized space, an MSE of 0.01 equals an RMSE of 10% (0.1). This means your network is guessing <strong>25.6 pixels away</strong> from the true corner—a total failure.</p>
+            </div>
+
+            <h2>1. Learning Rate Discipline</h2>
+            <p>If your learning rate is too high (e.g., $0.001$), the network takes steps that overshoot the target, continuously bouncing around the optimal localized valley without ever dropping in.</p>
+            <p><strong>The Fix:</strong> Manually drop the learning rate to <code>0.0001</code> or <code>0.00001</code> when the plateau begins. <span class="code-pill">optimizer: tf.train.adam(0.0001)</span></p>
+
+            <h2>2. The Huber Loss Strategy</h2>
+            <p>Initially, random 3D perspective tilts produce massive errors. <strong>MSE</strong> squares these errors, creating gradient spikes that destabilize the weights early on. </p>
+            <p><strong>The Fix:</strong> Use <strong>Huber Loss</strong> (<span class="code-pill">tf.losses.huberLoss</span>). It acts linearly for large outlier errors (preventing spikes) but acts quadratically like MSE as errors approach zero, ensuring sub-pixel precision in the final phase.</p>
+
+            <h2>3. Multi-Scale Normalization</h2>
+            <p>Neural networks struggle with disparate scales. Always ensure your <strong>input pixels</strong> are [0, 1] (divide by 255) and your <strong>target coordinates</strong> are [0, 1] (divide by canvas dimensions).</p>
+
+            <h2>4. Output Layer Pureness</h2>
+            <p>Coordinate regression must output negative values if a corner is pulled off-canvas. <strong>Never</strong> use <code>relu</code> or <code>sigmoid</code> on your final Dense layer. It must stay <code>'linear'</code>.</p>
+        </div>
+
+        <div class="panel">
+            <div class="viz-card">
+                <span class="viz-label">Plateau Diagnosis (MSE vs Time)</span>
+                <div class="loss-plot" id="plot">
+                    <div class="plateau-line"></div>
+                    <div class="plateau-text">AVERAGE SHAPE COLLAPSE (MSE ~0.01)</div>
+                    <!-- Lines added by JS -->
+                </div>
+                
+                <div class="strategy-grid">
+                    <div class="strategy-item">
+                        <h4>Normalization Check</h4>
+                        <p>Pixels: 0-255 vs 0-1.0</p>
+                        <span id="normStatus" style="color: #10b981; font-weight: bold; font-size: 11px;">PASS (Scaled)</span>
+                    </div>
+                    <div class="strategy-item">
+                        <h4>Activation Check</h4>
+                        <p>Final layer activation function</p>
+                        <span style="color: #5b9bd5; font-weight: bold; font-size: 11px;">Linear (True Regression)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const plot = document.getElementById('plot');
+        
+        // Draw the Plateau Curve
+        function drawCurve() {
+            let x = 0;
+            let y = 0.8;
+            for(let i=0; i<400; i++) {
+                const line = document.createElement('div');
+                line.style.position = 'absolute';
+                line.style.width = '2px';
+                line.style.background = (i < 150) ? '#e74c3c' : '#5b9bd5';
+                line.style.left = i + 'px';
+                
+                // Simulated loss curve
+                if (i < 150) {
+                    y *= 0.98;
+                    if(y < 0.15) y = 0.15 + (Math.random() * 0.05); // The Plateau
+                } else {
+                    // Recovering with Huber/Lower LR
+                    y *= 0.97;
+                }
+
+                line.style.bottom = '0px';
+                line.style.height = (y * 180) + 'px';
+                plot.appendChild(line);
+            }
+        }
+        window.onload = drawCurve;
+    </script>
+</body>
+</html>

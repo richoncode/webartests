@@ -16,11 +16,6 @@ export const FractalTab = {
         <div class="tool-scroll"></div>
       </div>`;
 
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Fractal';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       type: 'sierpinski-gasket',
       size: 80,
@@ -57,6 +52,11 @@ export const FractalTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'fractal', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Fractal';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -161,7 +161,7 @@ export const FractalTab = {
       let angle = 0;
       const totalSteps = cfg.iterations * 3;
       for (let i = 0; i < totalSteps; i++) {
-        const { rgb, idx, t: actualT, entry } = this.getColor(ctx, i, totalSteps);
+        const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, i, totalSteps);
         const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
         
         const s2 = currentSize / 2;
@@ -182,7 +182,7 @@ export const FractalTab = {
         XCSExporter.addPath(ctx.project, { 
           dPath, x: CX, y: CY, width: currentSize, height: currentSize, 
           params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-          extraDisplayData: { t: actualT, paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true } 
+          extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true } 
         });
         
         const rot = cfg.squareRotation || 0.1;
@@ -215,7 +215,7 @@ export const FractalTab = {
       : start;
     const actualIdx = Math.max(0, Math.min(palette.entries.length - 1, idx));
     const entry = palette.entries[actualIdx];
-    return { rgb: entry.rgb, idx: actualIdx, t, paletteName: palette.name, colorName: entry.label };
+    return { rgb: entry.rgb, idx: actualIdx, t, paletteName: palette.name, colorName: entry.label, entry };
   },
 
   drawGasket(ctx, x, y, size, iter, maxIter) {
@@ -387,7 +387,7 @@ export const FractalTab = {
     points.forEach(p => {
       const dist = Math.sqrt(Math.pow(p[0] - midX, 2) + Math.pow(p[1] - midY, 2));
       const t = Math.min(1, dist / maxDist);
-      const { rgb, idx, t: actualT } = this.getColor(ctx, Math.round((1-t)*10), 10);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, Math.round((1-t)*10), 10);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       
       // Scale up as t approaches 0 (near center/stem)
@@ -396,19 +396,19 @@ export const FractalTab = {
       XCSExporter.addCircle(ctx.project, { 
         x: p[0], y: p[1], width: dotSize, height: dotSize, 
         params, isFill: false, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: t, paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: t, paletteName, colorName, hideLabels: true }
       });
     });
   },
 
   drawVicsek(ctx, x, y, size, iter, maxIter) {
     if (iter === 0) {
-      const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       XCSExporter.addRect(ctx.project, { 
         x: x + size / 2, y: y + size / 2, width: size, height: size, 
         params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
       });
       return;
     }
@@ -424,12 +424,12 @@ export const FractalTab = {
 
   drawMenger(ctx, x, y, size, iter, maxIter) {
     if (iter === 0) {
-      const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       XCSExporter.addRect(ctx.project, { 
         x: x + size / 2, y: y + size / 2, width: size, height: size, 
         params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
       });
       return;
     }
@@ -443,12 +443,12 @@ export const FractalTab = {
   },
 
   drawRecursiveCircles(ctx, x, y, r, iter, maxIter) {
-    const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+    const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
     const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
     XCSExporter.addCircle(ctx.project, { 
       x, y, width: r * 2, height: r * 2, 
       params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-      extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+      extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
     });
 
     if (iter === 0) return;
@@ -460,12 +460,12 @@ export const FractalTab = {
   },
 
   drawRecursiveRects(ctx, x, y, w, h, angle, iter, maxIter) {
-    const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+    const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
     const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
     XCSExporter.addRect(ctx.project, { 
       x, y, width: w, height: h, angle,
       params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-      extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+      extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
     });
 
     if (iter === 0) return;
@@ -475,7 +475,7 @@ export const FractalTab = {
   },
 
   drawRecursivePolygons(ctx, x, y, r, angle, iter, maxIter) {
-    const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+    const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
     const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
     const sides = ctx.cfg.polySides || 6;
     
@@ -490,7 +490,7 @@ export const FractalTab = {
     XCSExporter.addPath(ctx.project, { 
       dPath: dPath + " Z", x, y, width: r * 2, height: r * 2, 
       params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-      extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+      extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
     });
 
     if (iter === 0) return;
@@ -500,7 +500,7 @@ export const FractalTab = {
   },
 
   drawRecursiveStars(ctx, x, y, r, angle, iter, maxIter) {
-    const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+    const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
     const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
     const points = ctx.cfg.starPoints || 5;
     const inset = ctx.cfg.starInset || 0.5;
@@ -517,7 +517,7 @@ export const FractalTab = {
     XCSExporter.addPath(ctx.project, { 
       dPath: dPath + " Z", x, y, width: r * 2, height: r * 2, 
       params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-      extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+      extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
     });
 
     if (iter === 0) return;
@@ -528,7 +528,7 @@ export const FractalTab = {
 
   drawPentagonGasket(ctx, x, y, r, iter, maxIter) {
     if (iter === 0) {
-      const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       let dPath = "";
       for (let i = 0; i < 5; i++) {
@@ -540,7 +540,7 @@ export const FractalTab = {
       XCSExporter.addPath(ctx.project, { 
         dPath: dPath + " Z", x, y, width: r * 2, height: r * 2, 
         params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
       });
       return;
     }
@@ -558,12 +558,12 @@ export const FractalTab = {
   drawCesaro(ctx, x1, y1, x2, y2, iter, maxIter) {
     if (iter === 0) {
       const dPath = `M ${x1.toFixed(3)} ${y1.toFixed(3)} L ${x2.toFixed(3)} ${y2.toFixed(3)}`;
-      const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       XCSExporter.addPath(ctx.project, { 
-        dPath, x: (x1 + x2) / 2, y: (y1 + y2) / 2, width: Math.abs(x1 - x2), height: Math.abs(y1 - y2), 
+        dPath, x: (x1 + x2) / 2, y: (y1 + y2) / 2, width: Math.abs(x1 - x2) || 0.1, height: Math.abs(y1 - y2) || 0.1, 
         params, isFill: false, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
       });
       return;
     }
@@ -572,20 +572,23 @@ export const FractalTab = {
     const dy = y2 - y1;
     const len = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
-    const cesaroAngle = (ctx.cfg.cesaroAngle || 85) * Math.PI / 180;
+    const cesaroAngle = (ctx.cfg.cesaroAngle || 85) * (Math.PI / 180);
     
-    // Scale factor for Cesaro: 1 / (2 * (1 + cos(cesaroAngle)))
-    // Simplified for 85-90 degrees: approx 0.5
-    const sideLen = len / (2 * (1 + Math.cos(cesaroAngle)));
+    // Cesaro subdivision: 
+    // Side length s = L / (2 * (1 + sin(angle/2)))
+    const s = len / (2 * (1 + Math.sin(cesaroAngle / 2)));
     
-    const p1x = x1 + sideLen * Math.cos(angle);
-    const p1y = y1 + sideLen * Math.sin(angle);
+    const p1x = x1 + s * Math.cos(angle);
+    const p1y = y1 + s * Math.sin(angle);
     
-    const p2x = p1x + sideLen * Math.cos(angle - cesaroAngle);
-    const p2y = p1y + sideLen * Math.sin(angle - cesaroAngle);
+    // Peak of the triangle
+    const peakAngle = angle + (Math.PI - cesaroAngle) / 2;
+    const p2x = p1x + s * Math.cos(peakAngle);
+    const p2y = p1y + s * Math.sin(peakAngle);
     
-    const p3x = p2x + sideLen * Math.cos(angle + cesaroAngle);
-    const p3y = p2y + sideLen * Math.sin(angle + cesaroAngle);
+    const peakAngleDown = peakAngle - (Math.PI - cesaroAngle);
+    const p3x = p2x + s * Math.cos(peakAngleDown);
+    const p3y = p2y + s * Math.sin(peakAngleDown);
 
     this.drawCesaro(ctx, x1, y1, p1x, p1y, iter - 1, maxIter);
     this.drawCesaro(ctx, p1x, p1y, p2x, p2y, iter - 1, maxIter);
@@ -595,7 +598,7 @@ export const FractalTab = {
 
   drawHexagonGasket(ctx, x, y, r, iter, maxIter) {
     if (iter === 0) {
-      const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+      const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
       const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
       let dPath = "";
       for (let i = 0; i < 6; i++) {
@@ -607,7 +610,7 @@ export const FractalTab = {
       XCSExporter.addPath(ctx.project, { 
         dPath: dPath + " Z", x, y, width: r * 2, height: r * 2, 
         params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-        extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+        extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
       });
       return;
     }
@@ -640,14 +643,14 @@ export const FractalTab = {
     const y4 = y1 + size * Math.sin(angle);
 
     const dPath = `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`;
-    const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+    const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
     const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
 
     XCSExporter.addPath(ctx.project, { 
       dPath, x: (x1+x2+x3+x4)/4, y: (y1+y2+y3+y4)/4, 
       width: size, height: size, 
       params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-      extraDisplayData: { t: 1 - (iter / (maxIter || 1)), paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+      extraDisplayData: { t: actualT, paletteName, colorName, hideLabels: true }
     });
 
 
@@ -688,13 +691,13 @@ export const FractalTab = {
         
         if (iter < maxIter) {
           const tValue = iter / maxIter;
-          const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+          const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
           const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
           XCSExporter.addRect(ctx.project, { 
             x: cx + (ix/res-0.5)*size, y: cy + (iy/res-0.5)*size, 
             width: step*0.95, height: step*0.95, 
             params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-            extraDisplayData: { t: tValue, paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+            extraDisplayData: { t: tValue, paletteName, colorName, hideLabels: true }
           });
         }
       }
@@ -722,13 +725,13 @@ export const FractalTab = {
         
         if (iter < maxIter) {
           const tValue = iter / maxIter;
-          const { rgb, idx, t: actualT, entry } = this.getColor(ctx, iter, maxIter);
+          const { rgb, idx, t: actualT, paletteName, colorName } = this.getColor(ctx, iter, maxIter);
           const params = PalMgr.getParams(ctx.cfg.paletteId, idx);
           XCSExporter.addRect(ctx.project, { 
             x: cx + (ix/res-0.5)*size, y: cy + (iy/res-0.5)*size, 
             width: step*0.95, height: step*0.95, 
             params, isFill: ctx.isFill, laserSource: ctx.laserSource, layerColor: rgb,
-            extraDisplayData: { t: tValue, paletteName: ctx.palette.name, colorName: entry.label, hideLabels: true }
+            extraDisplayData: { t: tValue, paletteName, colorName, hideLabels: true }
           });
         }
       }

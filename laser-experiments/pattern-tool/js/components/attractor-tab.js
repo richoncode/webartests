@@ -35,11 +35,6 @@ export const AttractorTab = {
         <div class="tool-scroll"></div>
       </div>`;
 
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || title;
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -83,6 +78,11 @@ export const AttractorTab = {
 
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'attractor', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || title;
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

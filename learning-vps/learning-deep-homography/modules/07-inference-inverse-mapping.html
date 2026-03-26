@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>07: Inference & Mapping — Deep Homography</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 40px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; background: #080808; display: flex; align-items: center; justify-content: center; }
+        
+        .narrative { max-width: 600px; }
+        .narrative h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+        .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+
+        .viz-card { background: #111; border: 1px solid #222; border-radius: 16px; padding: 24px; width: 100%; max-width: 540px; }
+        .viz-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #444; margin-bottom: 20px; display: block; }
+
+        .mapping-flow { display: flex; gap: 12px; align-items: center; justify-content: center; }
+        .flow-node { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; width: 140px; text-align: center; }
+        .flow-title { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 4px; display: block; }
+        .flow-val { font-size: 13px; font-weight: 600; color: #5b9bd5; }
+        .arrow { color: #333; font-size: 20px; }
+
+        .formula-card { background: #0a0a0a; padding: 16px; border-radius: 8px; font-family: 'SF Mono', monospace; font-size: 13px; color: #ddd; margin: 24px 0; border: 1px solid #1a1a1a; }
+        .formula-card b { color: #8b5cf6; }
+
+        .pill { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; background: #1a1a1a; border: 1px solid #333; color: #888; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="06-training-loop.html" class="back-link">← 06: Training Loop</a>
+        <div style="color: #666; font-size: 14px; font-weight: 500;">Module 7: Inference & Mapping</div>
+        <a href="08-tuning-optimizer.html" style="background: #1e2d40; color: #5b9bd5;">Next: Optimization →</a>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h1>Bridging Two Worlds</h1>
+            <p>Once our TensorFlow.js model is trained, we have a system that can take a raw video frame and output 8 precise floating-point numbers. To make this data useful, we must bridge the gap into <strong>OpenCV.js</strong> for final geometric reconstruction.</p>
+
+            <h2>Resolving the Homography</h2>
+            <p>We take the 4 corner (x,y) pairs predicted by our network and pass them into <code>cv.getPerspectiveTransform</code> alongside our "Ideal" square coordinates. This generates the 3x3 Homography matrix $H$.</p>
+
+            <h2>Inverse Mapping vs. Forward Warp</h2>
+            <p>Traditional image warping (<code>cv.warpPerspective</code>) pulls pixels from the source into a destination grid. This often causes <strong>Bilinear Blur</strong>, where colors are averaged across adjacent cells—killing our colorimetric precision.</p>
+            
+            <p>Instead, we use <strong>Inverse Mapping</strong>. We invert $H$ to get $H^{-1}$. For every cell in our 21x21 ideal grid, we mathematically map its center back to the exact sub-pixel location in the *original* raw frame.</p>
+
+            <div class="formula-card">
+                P_source = <b>H_inv</b> * P_target <br/>
+                Result: <b>Pure, Raw Pixel Sampling</b>
+            </div>
+
+            <div style="background: #1a1a1a; border-radius: 8px; padding: 16px; border-left: 4px solid #10b981;">
+                <strong style="color: #fff;">Pristine Extraction:</strong> Sampling the raw source frame ensures we pull the exact color values without the interpolation noise introduced by image warping.
+            </div>
+
+            <span class="pill">Final step for 21x21 Color Grid Reconstruction</span>
+        </div>
+
+        <div class="panel">
+            <div class="viz-card">
+                <span class="viz-label">Inference-to-Sampling Pipeline</span>
+                
+                <div class="mapping-flow">
+                    <div class="flow-node">
+                        <span class="flow-title">TFJS Inference</span>
+                        <div class="flow-val">Corners (x,y)</div>
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="flow-node">
+                        <span class="flow-title">OpenCV.js</span>
+                        <div class="flow-val">Matrix $H$</div>
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="flow-node" style="border-color: #5b9bd5; background: #1e2d4022;">
+                        <span class="flow-title">Inversion $H^{-1}$</span>
+                        <div class="flow-val" style="color: #fff;">Precision Map</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 48px; text-align: center;">
+                    <svg width="200" height="150" viewBox="0 0 200 150">
+                        <!-- Simulated Source Frame -->
+                        <rect x="10" y="10" width="100" height="80" fill="none" stroke="#333" stroke-width="2" />
+                        <circle cx="50" cy="40" r="3" fill="#10b981" />
+                        <text x="10" y="105" fill="#444" font-size="8" font-family="monospace">RAW IMAGE (SOURCE)</text>
+
+                        <!-- Simulated Target Cell -->
+                        <rect x="140" y="40" width="40" height="40" fill="#10b98133" stroke="#10b981" stroke-width="1" />
+                        <text x="140" y="95" fill="#10b981" font-size="8" font-family="monospace">TARGET GRID</text>
+
+                        <!-- Path Arrow -->
+                        <path d="M 140 60 Q 100 60 50 40" stroke="#5b9bd5" fill="none" stroke-width="2" marker-end="url(#arrowhead)" />
+                        <defs>
+                          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                            <polygon points="0 0, 10 3.5, 0 7" fill="#5b9bd5" />
+                          </marker>
+                        </defs>
+                        <text x="65" y="80" fill="#5b9bd5" font-size="9" font-family="monospace" font-weight="bold">Inverse Map</text>
+                    </svg>
+                </div>
+                
+                <p style="text-align: center; color: #444; font-size: 10px; margin-top: 12px; text-transform: uppercase;">Direct Sub-pixel Coordinate Mapping</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

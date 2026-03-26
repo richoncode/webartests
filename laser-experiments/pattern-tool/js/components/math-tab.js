@@ -16,11 +16,6 @@ export const MathTab = {
         <div class="tool-scroll"></div>
       </div>`;
 
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Math Pattern';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       type: 'rose',
       size: 80,
@@ -82,7 +77,7 @@ export const MathTab = {
       // DLA
       dlaCount: 200, dlaResolution: 50,
       // Reaction Diffusion
-      rdResolution: 30, rdIterations: 50,
+      rdResolution: 40, rdIterations: 200, rdPreset: 'mazzitelli',
       // Membrane
       memResolution: 40, memFrequency: 5, memAmplitude: 1,
       // Stippling
@@ -101,6 +96,11 @@ export const MathTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'math', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Math Pattern';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -337,7 +337,6 @@ export const MathTab = {
         }
         
         // 2. Spiral Cross-Lines
-        let dPath = "";
         const totalSegments = rings * spokes;
         
         for (let i = 0; i < totalSegments; i++) {
@@ -356,22 +355,23 @@ export const MathTab = {
           const y2 = CY + r2 * Math.sin(a2);
           
           // Control point for the curve (Quadratic Bezier)
-          // Bow towards center: average angle, shorter radius
           const midA = (a1 + a2) / 2;
           const midR = ((r1 + r2) / 2) * (1 - sag);
           const qx = CX + midR * Math.cos(midA);
           const qy = CY + midR * Math.sin(midA);
           
-          if (i === 0) dPath += `M ${x1.toFixed(3)} ${y1.toFixed(3)}`;
-          dPath += ` Q ${qx.toFixed(3)} ${qy.toFixed(3)} ${x2.toFixed(3)} ${y2.toFixed(3)}`;
+          const segPath = `M ${x1.toFixed(3)} ${y1.toFixed(3)} Q ${qx.toFixed(3)} ${qy.toFixed(3)} ${x2.toFixed(3)} ${y2.toFixed(3)}`;
+          
+          const tValue = i / (totalSegments - 1 || 1);
+          const { entry: webEnt, idx: webColorIdx } = getColor(tValue);
+          const webParams = PalMgr.getParams(cfg.paletteId, webColorIdx);
+          
+          XCSExporter.addPath(project, { 
+            dPath: segPath, x: CX, y: CY, width: cfg.size, height: cfg.size, 
+            params: webParams, isFill: false, laserSource, layerColor: webEnt.rgb,
+            extraDisplayData: { t: tValue, hideLabels: true }
+          });
         }
-        
-        const { entry: webEnt, idx: webColorIdx } = getColor(0.5);
-        const webParams = PalMgr.getParams(cfg.paletteId, webColorIdx);
-        XCSExporter.addPath(project, { 
-          dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, 
-          params: webParams, isFill: false, laserSource, layerColor: webEnt.rgb 
-        });
       }
       else if (cfg.type === 'inscribed-circles') {
         const count = cfg.circleCount || 50;
@@ -467,44 +467,55 @@ export const MathTab = {
         });
       }
       else if (cfg.type === 'reaction-diffusion') {
-        const res = cfg.rdResolution || 30;
-        const iter = cfg.rdIterations || 50;
+        const res = cfg.rdResolution || 40;
+        const iter = cfg.rdIterations || 200;
         const step = cfg.size / res;
         
         let A = Array.from({ length: res }, () => new Array(res).fill(1.0));
         let B = Array.from({ length: res }, () => new Array(res).fill(0.0));
         
-        // Seed
-        for (let i = res/2-2; i < res/2+2; i++) {
-          for (let j = res/2-2; j < res/2+2; j++) {
-            B[Math.floor(i)][Math.floor(j)] = 1.0;
+        // Seed center
+        for (let i = Math.floor(res/2-3); i < Math.floor(res/2+3); i++) {
+          for (let j = Math.floor(res/2-3); j < Math.floor(res/2+3); j++) {
+            if (i >= 0 && i < res && j >= 0 && j < res) B[i][j] = 1.0;
           }
         }
 
-        const dA = 1.0, dB = 0.5, feed = 0.055, kill = 0.062;
+        const presets = {
+          'mazzitelli': { f: 0.0367, k: 0.0649 },
+          'mitosis': { f: 0.0367, k: 0.0649 },
+          'coral': { f: 0.0545, k: 0.062 },
+          'fingerprint': { f: 0.0545, k: 0.062 },
+          'spirals': { f: 0.018, k: 0.051 },
+          'worms': { f: 0.058, k: 0.065 }
+        };
+        const p = presets[cfg.rdPreset] || presets['mazzitelli'];
+        const feed = p.f, kill = p.k;
+        const dA = 1.0, dB = 0.5;
 
         for (let n = 0; n < iter; n++) {
           let nextA = Array.from({ length: res }, () => new Array(res).fill(0));
           let nextB = Array.from({ length: res }, () => new Array(res).fill(0));
           for (let y = 0; y < res; y++) {
             for (let x = 0; x < res; x++) {
-              let la = 0, lb = 0;
-              // Laplacian
-              la += A[y][x] * -1;
-              la += A[y][(x-1+res)%res] * 0.2;
-              la += A[y][(x+1)%res] * 0.2;
-              la += A[(y-1+res)%res][x] * 0.2;
-              la += A[(y+1)%res][x] * 0.2;
+              // 3x3 Laplacian stencil
+              const ym1 = (y - 1 + res) % res, yp1 = (y + 1) % res;
+              const xm1 = (x - 1 + res) % res, xp1 = (x + 1) % res;
               
-              lb += B[y][x] * -1;
-              lb += B[y][(x-1+res)%res] * 0.2;
-              lb += B[y][(x+1)%res] * 0.2;
-              lb += B[(y-1+res)%res][x] * 0.2;
-              lb += B[(y+1)%res][x] * 0.2;
+              const la = A[y][x] * -1.0 +
+                         (A[ym1][x] + A[yp1][x] + A[y][xm1] + A[y][xp1]) * 0.2 +
+                         (A[ym1][xm1] + A[ym1][xp1] + A[yp1][xm1] + A[yp1][xp1]) * 0.05;
+              
+              const lb = B[y][x] * -1.0 +
+                         (B[ym1][x] + B[yp1][x] + B[y][xm1] + B[y][xp1]) * 0.2 +
+                         (B[ym1][xm1] + B[ym1][xp1] + B[yp1][xm1] + B[yp1][xp1]) * 0.05;
 
               const abb = A[y][x] * B[y][x] * B[y][x];
               nextA[y][x] = A[y][x] + (dA * la - abb + feed * (1 - A[y][x]));
               nextB[y][x] = B[y][x] + (dB * lb + abb - (kill + feed) * B[y][x]);
+              
+              nextA[y][x] = Math.max(0, Math.min(1, nextA[y][x]));
+              nextB[y][x] = Math.max(0, Math.min(1, nextB[y][x]));
             }
           }
           A = nextA; B = nextB;
@@ -512,7 +523,7 @@ export const MathTab = {
 
         for (let y = 0; y < res; y++) {
           for (let x = 0; x < res; x++) {
-            if (B[y][x] > 0.1) {
+            if (B[y][x] > 0.15) {
               const tValue = Math.min(1, B[y][x]);
               const { entry: ent, idx: colorIdx, t: actualT } = getColor(tValue);
               const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
@@ -1291,9 +1302,11 @@ export const MathTab = {
       ]));
     } else if (cfg.type === 'reaction-diffusion') {
       scroll.appendChild(UI.makeSection('RD Settings', [
-        UI.makeRow('Resolution', UI.makeRange(10, 60, 1, cfg.rdResolution, v => set('rdResolution', +v))),
-        UI.makeRow('Iterations', UI.makeRange(1, 200, 1, cfg.rdIterations, v => set('rdIterations', +v)))
-        ]));
+        UI.makeRow('Pattern Type', UI.makeSelect(['mazzitelli', 'mitosis', 'coral', 'fingerprint', 'spirals', 'worms'], cfg.rdPreset, v => set('rdPreset', v))),
+        UI.makeRow('Resolution', UI.makeRange(10, 100, 1, cfg.rdResolution, v => set('rdResolution', +v))),
+        UI.makeRow('Iterations', UI.makeRange(10, 1000, 10, cfg.rdIterations, v => set('rdIterations', +v)))
+      ]));
+
         } else if (cfg.type === 'membrane') {
         scroll.appendChild(UI.makeSection('Membrane Settings', [
         UI.makeRow('Resolution', UI.makeRange(10, 100, 1, cfg.memResolution, v => set('memResolution', +v))),

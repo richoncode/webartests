@@ -16,11 +16,6 @@ export const PathTab = {
         <div class="tool-scroll"></div>
       </div>`;
 
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Path Curve';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       type: 'hilbert',
       size: 80,
@@ -40,6 +35,11 @@ export const PathTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'path', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Path Curve';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);
@@ -445,8 +445,9 @@ export const PathTab = {
     // First pass to find bounding box
     let minX = 0, maxX = 0, minY = 0, maxY = 0;
     let drawCmdsCount = 0;
+    const drawChars = ['F', 'G', 'A', 'B', 'L', 'R'];
     for (const char of s) {
-      if (char === 'F' || char === 'A' || char === 'B' || char === 'G') {
+      if (drawChars.includes(char)) {
         x += step * Math.cos(a);
         y += step * Math.sin(a);
         minX = Math.min(minX, x); maxX = Math.max(maxX, x);
@@ -471,7 +472,7 @@ export const PathTab = {
       let currentIdx = 0;
       const radius = totalSize / 2;
       for (const char of s) {
-        if (char === 'F' || char === 'A' || char === 'B' || char === 'G') {
+        if (drawChars.includes(char)) {
           const nx = x + step * scale * Math.cos(a);
           const ny = y + step * scale * Math.sin(a);
           const t = currentIdx / (drawCmdsCount || 1);
@@ -502,17 +503,13 @@ export const PathTab = {
     } else {
       let dPath = `M ${x.toFixed(3)} ${y.toFixed(3)}`;
       for (const char of s) {
-        if (char === 'F' || char === 'A' || char === 'B' || char === 'G') {
+        if (drawChars.includes(char)) {
           x += step * scale * Math.cos(a);
           y += step * scale * Math.sin(a);
           dPath += ` L ${x.toFixed(3)} ${y.toFixed(3)}`;
         } else if (char === '+') a += angle * Math.PI / 180;
         else if (char === '-') a -= angle * Math.PI / 180;
         else if (char === '[') {
-          // Note: Branching L-systems with a single dPath is tricky.
-          // For simple paths like Hilbert/Peano it's fine.
-          // For plants, we might need multiple paths anyway.
-          // But here we use 'M' to jump back.
           stack.push({ x, y, a });
         } else if (char === ']') {
           const state = stack.pop();

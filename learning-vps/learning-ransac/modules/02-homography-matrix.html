@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02: Homography Matrix — Mastering RANSAC</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  
+  .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+  .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+  .nav-header a:hover { background: #2a2a2a; }
+  .nav-header .back-link { color: #aaa; font-weight: bold; }
+  .nav-header .back-link:hover { color: #fff; }
+
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+  .panel { flex: 1; overflow-y: auto; padding: 32px; border-right: 1px solid #2a2a2a; }
+  .panel:last-child { border-right: none; }
+  
+  .narrative { max-width: 550px; }
+  .narrative h1 { font-size: 24px; font-weight: 800; margin-bottom: 16px; color: #fff; }
+  .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+  .narrative p { color: #bbb; margin-bottom: 16px; font-size: 14px; }
+  
+  .math-block { background: #111; padding: 20px; border-radius: 8px; border: 1px solid #222; font-family: 'SF Mono', monospace; font-size: 14px; margin: 20px 0; overflow-x: auto; text-align: center; color: #fff; }
+
+  .spec-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+  .spec-table th { text-align: left; color: #5b9bd5; padding: 8px; border-bottom: 1px solid #2a2a2a; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+  .spec-table td { padding: 12px 8px; border-bottom: 1px solid #1a1a1a; color: #888; }
+
+  .interactive-container { background: #000; position: relative; display: flex; flex-direction: column; }
+  #canvas-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  
+  .matrix-ui { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; background: rgba(26,26,26,0.9); border: 1px solid #333; border-radius: 12px; padding: 20px; margin: 24px; }
+  .matrix-cell { display: flex; flex-direction: column; gap: 4px; }
+  .matrix-label { font-size: 10px; color: #666; text-transform: uppercase; }
+  .matrix-val { font-family: 'SF Mono', monospace; font-size: 12px; color: #5b9bd5; }
+  
+  input[type=range] { width: 100%; accent-color: #5b9bd5; }
+
+  .visualizer-card { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; width: 400px; height: 400px; position: relative; overflow: hidden; }
+  #warped-img { position: absolute; top: 50%; left: 50%; transform-origin: center; width: 200px; height: 200px; margin-left: -100px; margin-top: -100px; border: 2px solid #5b9bd5; transition: none; }
+  .grid-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.1; pointer-events: none; }
+
+  .reset-btn { position: absolute; top: 20px; right: 20px; background: #222; border: 1px solid #444; color: #aaa; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .reset-btn:hover { background: #333; color: #fff; }
+</style>
+</head>
+<body>
+  <nav class="nav-header">
+    <a href="01-projective-geometry.html">← 01: Projective Geometry</a>
+    <a href="../index.html" class="back-link">Return to Subtopic</a>
+    <a href="03-dlt-estimation.html">03: Linear Estimation (DLT) →</a>
+  </nav>
+
+  <div class="workspace">
+    <div class="panel narrative">
+      <h1>The Homography Matrix</h1>
+      <p>A homography is a linear transformation that relates two projections of the same planar surface. Mathematically, it is represented by a $3 \times 3$ matrix $H$.</p>
+      
+      <div class="math-block">
+        $\mathbf{x}' \sim H\mathbf{x} = \begin{bmatrix} h_{11} & h_{12} & h_{13} \\ h_{21} & h_{22} & h_{23} \\ h_{31} & h_{32} & h_{33} \end{bmatrix} \begin{bmatrix} x \\ y \\ 1 \end{bmatrix}$
+      </div>
+
+      <h2>8 Degrees of Freedom</h2>
+      <p>Although the matrix has 9 elements, it is defined up to a scale factor. We typically set $h_{33} = 1$, leaving 8 independent variables that control translation, rotation, scale, shear, and perspective.</p>
+
+      <h2>Decomposition</h2>
+      <p>A homography can be decomposed to reveal the physical camera motion and plane geometry:</p>
+      <div class="math-block">
+        $H = K(R - \frac{\mathbf{t}\mathbf{n}^T}{d})K^{-1}$
+      </div>
+      <p style="font-size: 12px; color: #666;">Where $K$ is intrinsics, $R$ is rotation, $\mathbf{t}$ is translation, $\mathbf{n}$ is the plane normal, and $d$ is distance.</p>
+
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>Transformation</th>
+            <th>DOF</th>
+            <th>Invariants</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Translation</td>
+            <td>2</td>
+            <td>Area, Orientation, Parallelism</td>
+          </tr>
+          <tr>
+            <td>Affine</td>
+            <td>6</td>
+            <td>Parallelism, Ratio of Areas</td>
+          </tr>
+          <tr>
+            <td>Homography</td>
+            <td>8</td>
+            <td>Collinearity, Cross-ratio</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel interactive-container">
+      <div id="canvas-container">
+        <button class="reset-btn" onclick="resetMatrix()">Reset Matrix</button>
+        <div class="visualizer-card">
+          <svg class="grid-bg" viewBox="0 0 400 400">
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#fff" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+          </svg>
+          <div id="warped-img">
+            <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background: #1e2d4088; border: 1px solid #5b9bd5; font-weight: bold; color: #5b9bd5;">IMG</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="matrix-ui">
+        <div class="matrix-cell">
+          <div class="matrix-label">h11 (sx)</div>
+          <input type="range" class="h-slider" data-idx="0" min="0.1" max="2" step="0.1" value="1">
+          <div class="matrix-val" id="val-0">1.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h12 (shx)</div>
+          <input type="range" class="h-slider" data-idx="1" min="-1" max="1" step="0.1" value="0">
+          <div class="matrix-val" id="val-1">0.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h13 (tx)</div>
+          <input type="range" class="h-slider" data-idx="2" min="-100" max="100" step="1" value="0">
+          <div class="matrix-val" id="val-2">0.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h21 (shy)</div>
+          <input type="range" class="h-slider" data-idx="3" min="-1" max="1" step="0.1" value="0">
+          <div class="matrix-val" id="val-3">0.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h22 (sy)</div>
+          <input type="range" class="h-slider" data-idx="4" min="0.1" max="2" step="0.1" value="1">
+          <div class="matrix-val" id="val-4">1.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h23 (ty)</div>
+          <input type="range" class="h-slider" data-idx="5" min="-100" max="100" step="1" value="0">
+          <div class="matrix-val" id="val-5">0.0</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h31 (px)</div>
+          <input type="range" class="h-slider" data-idx="6" min="-0.005" max="0.005" step="0.0001" value="0">
+          <div class="matrix-val" id="val-6">0.000</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h32 (py)</div>
+          <input type="range" class="h-slider" data-idx="7" min="-0.005" max="0.005" step="0.0001" value="0">
+          <div class="matrix-val" id="val-7">0.000</div>
+        </div>
+        <div class="matrix-cell">
+          <div class="matrix-label">h33 (scale)</div>
+          <div class="matrix-val" style="padding-top: 10px; color: #444;">1.000 (Fixed)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sliders = document.querySelectorAll('.h-slider');
+    const image = document.getElementById('warped-img');
+    const values = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
+    function updateMatrix() {
+      sliders.forEach(s => {
+        const idx = parseInt(s.dataset.idx);
+        values[idx] = parseFloat(s.value);
+        document.getElementById('val-' + idx).innerText = values[idx].toFixed(idx >= 6 ? 4 : 1);
+      });
+
+      // CSS matrix3d(a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3, a4, b4, c4, d4)
+      // Homography H = [h11 h12 h13; h21 h22 h23; h31 h32 h33]
+      // In CSS matrix3d, it maps (x, y, 0, 1) -> (X, Y, Z, W)
+      // We want mapping x' = (h11*x + h12*y + h13) / (h31*x + h32*y + h33)
+      // Comparison:
+      // CSS matrix3d:
+      // X = a1*x + a2*y + a3*z + a4
+      // Y = b1*x + b2*y + b3*z + b4
+      // Z = c1*x + c2*y + c3*z + c4
+      // W = d1*x + d2*y + d3*z + d4
+      // Here z=0, so:
+      // x' = (a1*x + a2*y + a4) / (d1*x + d2*y + d4)
+      
+      const transform = `matrix3d(
+        ${values[0]}, ${values[3]}, 0, ${values[6]},
+        ${values[1]}, ${values[4]}, 0, ${values[7]},
+        0, 0, 1, 0,
+        ${values[2]}, ${values[5]}, 0, ${values[8]}
+      )`;
+
+      image.style.transform = transform;
+    }
+
+    function resetMatrix() {
+      sliders.forEach(s => {
+        const idx = parseInt(s.dataset.idx);
+        if (idx === 0 || idx === 4) s.value = 1;
+        else s.value = 0;
+      });
+      updateMatrix();
+    }
+
+    sliders.forEach(s => s.addEventListener('input', updateMatrix));
+    updateMatrix();
+  </script>
+</body>
+</html>
