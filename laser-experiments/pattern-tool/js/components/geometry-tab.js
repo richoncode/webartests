@@ -60,7 +60,7 @@ export const GeometryTab = {
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
-    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral'];
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral', 'honeycomb'];
     if (!fillableModes.includes(cfg.mode)) {
       cfg.renderMode = 'path';
     }
@@ -144,15 +144,22 @@ export const GeometryTab = {
         if (cfg.mode === 'flower-of-life') {
           addCircle(x, y, r, entry.rgb, entry, idx, actualT);
         } else if (cfg.mode === 'honeycomb') {
-          let px = null, py = null;
-          for (let s = 0; s <= 6; s++) {
+          let dPath = "";
+          for (let s = 0; s < 6; s++) {
             const ang = (s / 6) * Math.PI * 2;
             const nx = x + r * Math.cos(ang);
             const ny = y + r * Math.sin(ang);
-            if (px !== null) addLine(px, py, nx, ny, entry.rgb, entry, idx, actualT);
-            px = nx; py = ny;
+            dPath += (s === 0 ? "M" : "L") + `${(CX+nx).toFixed(3)} ${(CY+ny).toFixed(3)}`;
           }
+          const params = PalMgr.getParams(cfg.paletteId, idx);
+          XCSExporter.addPath(project, {
+            x: CX + x, y: CY + y, width: r*2, height: r*Math.sqrt(3),
+            dPath: dPath + " Z",
+            layerColor: entry.rgb, laserSource, params, isFill,
+            extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: entry.label, t: actualT }
+          });
         }
+
         centers.push({x, y});
       };
       for (let q = -rings; q <= rings; q++) {
@@ -337,7 +344,7 @@ export const GeometryTab = {
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
     if (!palette) return;
 
-    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral'];
+    const fillableModes = ['flower-of-life', 'vesica-piscis', 'islamic-star', 'concentric-polygons', 'fermat-spiral', 'honeycomb'];
     const supportsFill = fillableModes.includes(cfg.mode);
 
     scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {

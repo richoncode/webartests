@@ -103,8 +103,32 @@ export const PathTab = {
     else if (mode === 'dragon-folding') {
       this.drawLSystem(project, 'FX', { 'X': 'X+YF+', 'Y': '-FX-Y' }, 90, Math.min(12, cfg.order), pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
     }
+    else if (mode === 'sierpinski-curve') {
+      this.drawLSystem(project, 'F+XF+F+XF', { 'X': 'XF-F+F-XF+F+XF-F+F-X' }, 90, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
     else if (mode === 'l-system-plant') {
       this.drawLSystem(project, 'X', { 'X': 'F-[[X]+X]+F[+FX]-X', 'F': 'FF' }, 25, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'l-system-algae') {
+      this.drawLSystem(project, 'A', { 'A': 'AB', 'B': 'A' }, 60, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'koch-island') {
+      this.drawLSystem(project, 'F-F-F-F', { 'F': 'F-F+F+FF-F-F+F' }, 90, Math.min(4, cfg.order), pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'fass-curve') {
+      this.drawLSystem(project, 'L', { 'L': 'L+R++R-L--LL-R+', 'R': '-L+RR++R+L--L-R' }, 60, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'cross') {
+      this.drawLSystem(project, 'F+F+F+F', { 'F': 'F+F-F-F+F' }, 90, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'quadratic-snowflake') {
+      this.drawLSystem(project, 'F+F+F+F', { 'F': 'F-F+F+F-F' }, 90, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'terdragon') {
+      this.drawLSystem(project, 'F', { 'F': 'F+F-F' }, 120, cfg.order, pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
+    }
+    else if (mode === 'minkowski') {
+      this.drawLSystem(project, 'F+F+F+F', { 'F': 'F+F-F-FF+F+F-F' }, 90, Math.min(4, cfg.order), pm, entry.rgb, isFill, laserSource, CX, CY, cfg.size, cfg, palette);
     }
 
     if (cfg.border) {

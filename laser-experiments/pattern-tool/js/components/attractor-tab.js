@@ -17,7 +17,12 @@ export const AttractorTab = {
       'gumowski-mira': 'Gumowski-Mira Map',
       'henon': 'Hénon Map',
       'duffing': 'Duffing Map',
-      'chirikov': 'Standard Map'
+      'chirikov': 'Standard Map',
+      'gingerbreadman': 'Gingerbreadman Map',
+      'tinkerbell': 'Tinkerbell Map',
+      'chen': 'Chen Attractor',
+      'thomas': 'Thomas Attractor',
+      'aizawa': 'Aizawa Attractor'
     };
 
     const pane = document.createElement('div');
@@ -58,6 +63,20 @@ export const AttractorTab = {
       Object.assign(defaults, { a: 0.2, b: 0.2, c: 5.7 });
     } else if (mode === 'bedhead') {
       Object.assign(defaults, { a: 0.06, b: 0.98 });
+    } else if (mode === 'gumowski-mira') {
+      Object.assign(defaults, { a: 0.008, b: 1.0 });
+    } else if (mode === 'duffing') {
+      Object.assign(defaults, { a: 2.75, b: 0.2 });
+    } else if (mode === 'chirikov') {
+      Object.assign(defaults, { a: 0.9716 });
+    } else if (mode === 'tinkerbell') {
+      Object.assign(defaults, { a: 0.9, b: -0.6013, c: 2.0, d: 0.5 });
+    } else if (mode === 'chen') {
+      Object.assign(defaults, { a: 35, b: 3, c: 28 });
+    } else if (mode === 'thomas') {
+      Object.assign(defaults, { b: 0.2081 });
+    } else if (mode === 'aizawa') {
+      Object.assign(defaults, { a: 0.95, b: 0.7, c: 0.6, d: 3.5, e: 0.25, f: 0.1 });
     }
 
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
@@ -173,6 +192,78 @@ export const AttractorTab = {
         x = nx; y = ny;
         pts.push([x, y]);
       }
+    } else if (cfg.mode === 'gumowski-mira') {
+      let x = 0.1, y = 0.1;
+      const f = (v) => cfg.a * v + (2 * (1 - cfg.a) * v * v) / (1 + v * v);
+      for (let i = 0; i < cfg.iterations; i++) {
+        let nx = cfg.b * y + f(x);
+        let ny = -x + f(nx);
+        x = nx; y = ny;
+        pts.push([x, y]);
+      }
+    } else if (cfg.mode === 'duffing') {
+      let x = 0.1, y = 0.1;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let nx = y;
+        let ny = -cfg.b * x + cfg.a * y - y * y * y;
+        x = nx; y = ny;
+        pts.push([x, y]);
+      }
+    } else if (cfg.mode === 'chirikov') {
+      let p = 0.1, t = 0.1;
+      for (let i = 0; i < cfg.iterations; i++) {
+        p = (p + cfg.a * Math.sin(t)) % (2 * Math.PI);
+        t = (t + p) % (2 * Math.PI);
+        pts.push([t, p]);
+      }
+    } else if (cfg.mode === 'gingerbreadman') {
+      let x = -0.1, y = 0.1;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let nx = 1 - y + Math.abs(x);
+        let ny = x;
+        x = nx; y = ny;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) break;
+        pts.push([x, y]);
+      }
+    } else if (cfg.mode === 'tinkerbell') {
+      let x = -0.72, y = -0.64;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let nx = x * x - y * y + cfg.a * x + cfg.b * y;
+        let ny = 2 * x * y + cfg.c * x + cfg.d * y;
+        x = nx; y = ny;
+        pts.push([x, y]);
+      }
+    } else if (cfg.mode === 'chen') {
+      let x = 5, y = 10, z = 10;
+      const dt = 0.005;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let dx = cfg.a * (y - x) * dt;
+        let dy = (cfg.c - cfg.a) * x - x * z + cfg.c * y;
+        let dz = (x * y - cfg.b * z) * dt;
+        x += dx; y += (dy * dt); z += dz;
+        pts.push([x, y, z]);
+      }
+    } else if (cfg.mode === 'thomas') {
+      let x = 0.1, y = 0.1, z = 0.1;
+      const dt = 0.1;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let dx = (Math.sin(y) - cfg.b * x) * dt;
+        let dy = (Math.sin(z) - cfg.b * y) * dt;
+        let dz = (Math.sin(x) - cfg.b * z) * dt;
+        x += dx; y += dy; z += dz;
+        pts.push([x, y, z]);
+      }
+    } else if (cfg.mode === 'aizawa') {
+      let x = 0.1, y = 0, z = 0;
+      const dt = 0.01;
+      const { a, b, c, d, e, f } = cfg;
+      for (let i = 0; i < cfg.iterations; i++) {
+        let dx = ((z - b) * x - d * y) * dt;
+        let dy = (d * x + (z - b) * y) * dt;
+        let dz = (c + a * z - (z * z * z) / 3 - (x * x + y * y) * (1 + e * z) + f * z * (x * x * x)) * dt;
+        x += dx; y += dy; z += dz;
+        pts.push([x, y, z]);
+      }
     }
 
     if (pts.length > 0) {
@@ -254,6 +345,58 @@ export const AttractorTab = {
           UI.makeRow('Param B', UI.makeRange(-3, 3, 0.01, cfg.b, v => set('b', +v))),
           UI.makeRow('Param C', UI.makeRange(-3, 3, 0.01, cfg.c, v => set('c', +v))),
           UI.makeRow('Param D', UI.makeRange(-3, 3, 0.01, cfg.d, v => set('d', +v)))
+        ];
+      }
+      if (cfg.mode === 'gumowski-mira') {
+        return [
+          UI.makeRow('Param A (mu)', UI.makeRange(-1, 1, 0.001, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B (sig)', UI.makeRange(0.5, 1.5, 0.01, cfg.b, v => set('b', +v)))
+        ];
+      }
+      if (cfg.mode === 'duffing') {
+        return [
+          UI.makeRow('Param A (a)', UI.makeRange(0, 5, 0.05, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B (b)', UI.makeRange(0, 1, 0.01, cfg.b, v => set('b', +v)))
+        ];
+      }
+      if (cfg.mode === 'chirikov') {
+        return [
+          UI.makeRow('K (Stiffness)', UI.makeRange(0, 5, 0.01, cfg.a, v => set('a', +v)))
+        ];
+      }
+      if (cfg.mode === 'tinkerbell') {
+        return [
+          UI.makeRow('Param A', UI.makeRange(-2, 2, 0.01, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B', UI.makeRange(-2, 2, 0.01, cfg.b, v => set('b', +v))),
+          UI.makeRow('Param C', UI.makeRange(-3, 3, 0.01, cfg.c, v => set('c', +v))),
+          UI.makeRow('Param D', UI.makeRange(-1, 1, 0.01, cfg.d, v => set('d', +v)))
+        ];
+      }
+      if (cfg.mode === 'gingerbreadman') {
+        return [
+          UI.makeRow('Info', 'No parameters for this map.')
+        ];
+      }
+      if (cfg.mode === 'chen') {
+        return [
+          UI.makeRow('Param A', UI.makeRange(0, 50, 1, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B', UI.makeRange(0, 10, 0.1, cfg.b, v => set('b', +v))),
+          UI.makeRow('Param C', UI.makeRange(0, 50, 1, cfg.c, v => set('c', +v)))
+        ];
+      }
+      if (cfg.mode === 'thomas') {
+        return [
+          UI.makeRow('Param B', UI.makeRange(0, 1, 0.001, cfg.b, v => set('b', +v)))
+        ];
+      }
+      if (cfg.mode === 'aizawa') {
+        return [
+          UI.makeRow('Param A', UI.makeRange(0, 2, 0.01, cfg.a, v => set('a', +v))),
+          UI.makeRow('Param B', UI.makeRange(0, 2, 0.01, cfg.b, v => set('b', +v))),
+          UI.makeRow('Param C', UI.makeRange(0, 2, 0.01, cfg.c, v => set('c', +v))),
+          UI.makeRow('Param D', UI.makeRange(0, 5, 0.1, cfg.d, v => set('d', +v))),
+          UI.makeRow('Param E', UI.makeRange(0, 1, 0.01, cfg.e, v => set('e', +v))),
+          UI.makeRow('Param F', UI.makeRange(0, 1, 0.01, cfg.f, v => set('f', +v)))
         ];
       }
       return [
