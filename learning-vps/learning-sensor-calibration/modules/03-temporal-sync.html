@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>03: Temporal Sync — VPS</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 40px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 40px 20px; }
+        
+        .narrative { max-width: 600px; }
+        .narrative h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+        .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+
+        .viz-card { background: #111; border: 1px solid #222; border-radius: 20px; padding: 24px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 20px; }
+        
+        .sim-container { width: 100%; height: 200px; background: #000; border: 1px solid #333; position: relative; overflow: hidden; }
+        .moving-object { width: 40px; height: 40px; background: #f87171; position: absolute; border-radius: 4px; }
+        .shutter-line { position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: rgba(255,255,255,0.3); }
+
+        .controls { background: #1a1a1a; border: 1px solid #222; border-radius: 12px; padding: 20px; width: 100%; max-width: 400px; }
+        .control-group { margin-bottom: 16px; }
+        .control-group label { display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+        
+        .btn { background: #5b9bd522; border: 1px solid #5b9bd544; color: #5b9bd5; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; width: 100%; text-align: center; margin-top: 10px; }
+        .btn:hover { background: #5b9bd544; border-color: #5b9bd5; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="02-lidar-camera-projection.html" class="back-link">← 02: Projection</a>
+        <div style="color: #666; font-size: 14px; font-weight: 500;">Module 03: Temporal Sync & Shutter Lag</div>
+        <a href="04-extrinsic-refinement.html" style="background: #1e2d40; color: #5b9bd5;">Next: Refinement →</a>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h1>The Fourth Dimension</h1>
+            <p>Spatial alignment is useless if the sensors are not synchronized in <strong>Time</strong>. If a robot is moving at 1 m/s, a tiny 10ms synchronization error results in a 1cm spatial misalignment.</p>
+
+            <h2>Rolling Shutter Pathologies</h2>
+            <p>Most CMOS cameras use a **Rolling Shutter**, where pixels are read row-by-row. If the camera or object is moving during this readback, the image appears tilted or "skewed". This is known as the <strong>Jello Effect</strong>.</p>
+
+            <h2>Solving for Delay</h2>
+            <p>Advanced VPS tracks use <strong>PTP (Precision Time Protocol)</strong> or hardware triggers to lock sensors to a microsecond clock. Without hardware clock sync, we must solve for the constant time offset $\Delta t$ by matching motion trajectories across sensors.</p>
+        </div>
+
+        <div class="panel">
+            <div class="viz-card">
+                <div id="sim" class="sim-container">
+                    <div id="movingObj" class="moving-object"></div>
+                    <div id="shutter" class="shutter-line" style="display: none;"></div>
+                </div>
+
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Sensor Latency (Lag): <span id="lagVal">0</span>ms</label>
+                        <input type="range" id="lagRange" min="0" max="100" value="0">
+                    </div>
+                    <button id="toggleRolling" class="btn">Toggle Rolling Shutter Sim</button>
+                    <p style="text-align: center; color: #444; font-size: 10px; text-transform: uppercase; margin-top: 12px;">Visualizing misalignment during dynamic motion</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const movingObj = document.getElementById('movingObj');
+        const lagRange = document.getElementById('lagRange');
+        const lagVal = document.getElementById('lagVal');
+        const toggleBtn = document.getElementById('toggleRolling');
+        const shutter = document.getElementById('shutter');
+
+        let time = 0;
+        let isRolling = false;
+
+        function animate() {
+            time += 0.05;
+            const lag = parseInt(lagRange.value) / 10; // scaled for sim
+            
+            lagVal.innerText = lagRange.value;
+
+            // Ground Truth Position
+            const x = 50 + Math.sin(time) * 100;
+            const y = 80;
+
+            // Predicted Position (with lag)
+            const xLag = 50 + Math.sin(time - lag) * 100;
+
+            movingObj.style.left = (150 + xLag) + 'px';
+            movingObj.style.top = y + 'px';
+
+            if(isRolling) {
+                // Simulate roll by skewing the object based on temporal delay per pixel row
+                movingObj.style.transform = `skewX(${Math.sin(time) * 20}deg)`;
+            } else {
+                movingObj.style.transform = `none`;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            isRolling = !isRolling;
+            shutter.style.display = isRolling ? 'block' : 'none';
+        });
+
+        animate();
+    </script>
+</body>
+</html>

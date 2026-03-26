@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>01: Hand-Eye Calibration — VPS</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 100; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header .back-link { color: #aaa; font-weight: bold; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        .panel { flex: 1; overflow-y: auto; padding: 40px; border-right: 1px solid #2a2a2a; }
+        .panel:last-child { border-right: none; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        
+        .narrative { max-width: 600px; }
+        .narrative h1 { font-size: 28px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+        .narrative h2 { font-size: 18px; font-weight: 700; margin-top: 32px; margin-bottom: 12px; color: #5b9bd5; }
+        .narrative p { color: #bbb; margin-bottom: 16px; }
+        .narrative code { background: #1a1a1a; padding: 2px 4px; border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 13px; color: #e74c3c; }
+
+        .viz-container { width: 100%; height: 400px; background: #111; border-radius: 20px; border: 1px solid #222; position: relative; overflow: hidden; perspective: 1000px; }
+        .scene { width: 100%; height: 100%; position: absolute; transform-style: preserve-3d; transition: transform 0.1s; }
+        
+        .coordinate-frame { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
+        .axis { position: absolute; width: 60px; height: 2px; transform-origin: left; }
+        .axis.x { background: #f87171; transform: rotateY(0deg); }
+        .axis.y { background: #10b981; transform: rotateZ(90deg); }
+        .axis.z { background: #5b9bd5; transform: rotateY(-90deg); }
+        .label { position: absolute; font-size: 10px; font-weight: bold; color: #444; pointer-events: none; }
+
+        .controls { background: #1a1a1a; border: 1px solid #222; border-radius: 12px; padding: 20px; width: 100%; max-width: 400px; margin-top: 24px; }
+        .control-group { margin-bottom: 16px; }
+        .control-group label { display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+        input[type="range"] { width: 100%; background: #2a2a2a; height: 4px; border-radius: 2px; appearance: none; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: #5b9bd5; border-radius: 50%; cursor: pointer; }
+
+        .math-block { background: #111; border: 1px solid #222; padding: 16px; border-radius: 8px; font-family: 'SF Mono', monospace; font-size: 14px; color: #ddd; margin: 20px 0; text-align: center; }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <a href="../index.html" class="back-link">← Topic Hub</a>
+        <div style="color: #666; font-size: 14px; font-weight: 500;">Module 01: Hand-Eye Calibration</div>
+        <a href="02-lidar-camera-projection.html" style="background: #1e2d40; color: #5b9bd5;">Next: Projection →</a>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative">
+            <h1>The Coordinate Bridge</h1>
+            <p>In robotics, a sensor is rarely at the origin. It is mounted on a robot base or mechanical arm. <strong>Hand-Eye Calibration</strong> is the process of finding the exact transform between the robot's base and the sensor's optical center.</p>
+
+            <div class="math-block">
+                AX = XB
+            </div>
+
+            <h2>Static vs. Dynamic Calibration</h2>
+            <p>In a <strong>Static</strong> setup, the sensor is fixed relative to the base (e.g., a camera mounted on a tripod next to a conveyor). In a <strong>Dynamic</strong> setup (In-hand), the sensor moves with the robot arm, requiring the system to solve for the constant offset <code>X</code> given varying base poses <code>A</code> and target observations <code>B</code>.</p>
+
+            <h2>Degrees of Freedom</h2>
+            <p>Hand-eye alignment requires solving for 6 degrees of freedom: 3 for translation (x, y, z) and 3 for rotation (roll, pitch, yaw). Small errors in these parameters lead to massive "reprojection" errors in the actual vision task.</p>
+        </div>
+
+        <div class="panel">
+            <div class="viz-container">
+                <div id="scene" class="scene">
+                    <!-- Base Frame -->
+                    <div class="coordinate-frame" id="baseFrame" style="transform: translate3d(200px, 200px, 0);">
+                        <div class="axis x"></div><div class="axis y"></div><div class="axis z"></div>
+                        <div class="label" style="transform: translate3d(65px, -10px, 0);">BASE</div>
+                    </div>
+                    <!-- Sensor Frame -->
+                    <div class="coordinate-frame" id="sensorFrame">
+                        <div class="axis x"></div><div class="axis y"></div><div class="axis z"></div>
+                        <div class="label" style="transform: translate3d(65px, -10px, 0); color: #5b9bd5;">SENSOR</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label>X-Offset: <span id="xVal">100</span>px</label>
+                    <input type="range" id="xRange" min="0" max="200" value="100">
+                </div>
+                <div class="control-group">
+                    <label>Yaw Rotation: <span id="yawVal">45</span>°</label>
+                    <input type="range" id="yawRange" min="0" max="360" value="45">
+                </div>
+                <p style="font-size: 11px; color: #444; text-transform: uppercase; text-align: center;">Transform (X) = Base-to-Sensor Offset</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const scene = document.getElementById('scene');
+        const sensorFrame = document.getElementById('sensorFrame');
+        const xRange = document.getElementById('xRange');
+        const yawRange = document.getElementById('yawRange');
+        const xVal = document.getElementById('xVal');
+        const yawVal = document.getElementById('yawVal');
+
+        let rotX = -20;
+        let rotY = -30;
+
+        function update() {
+            const tx = parseInt(xRange.value);
+            const yaw = parseInt(yawRange.value);
+            
+            xVal.innerText = tx;
+            yawVal.innerText = yaw;
+
+            // Update Sensor Frame relative to Base (200, 200)
+            const basePos = {x: 200, y: 200};
+            sensorFrame.style.transform = `translate3d(${basePos.x + tx}px, ${basePos.y}px, 0) rotateY(${yaw}deg)`;
+            
+            scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        }
+
+        // Simple mouse rotation for scene
+        let isDragging = false;
+        let lastX, lastY;
+
+        document.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if(!isDragging) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            rotY += dx * 0.5;
+            rotX -= dy * 0.5;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            update();
+        });
+
+        document.addEventListener('mouseup', () => isDragging = false);
+
+        xRange.addEventListener('input', update);
+        yawRange.addEventListener('input', update);
+
+        window.onload = update;
+    </script>
+</body>
+</html>

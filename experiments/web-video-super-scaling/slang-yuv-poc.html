@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YUV Chroma Interpolation - Video Super Scaling</title>
+    <script type="module" src="../../learning-neural-rendering/assets/js/tutorial-engine.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 10; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        h1 { font-size: 18px; font-weight: 700; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        
+        .panel { 
+            position: relative; 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            border-right: 1px solid #2a2a2a;
+            overflow-y: auto;
+        }
+        
+        .panel.narrative { max-width: 350px; padding: 24px; }
+        .panel.editor-container { flex: 1; background: #111; display: flex; flex-direction: column; }
+        .panel.viewport-container { flex: 2; padding: 0; background: #050505; overflow: hidden; }
+
+        .narrative h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #8b5cf6; }
+        .narrative p { color: #bbb; margin-bottom: 16px; font-size: 13px; }
+
+        /* Floating Controls */
+        .controls-overlay {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            width: 320px;
+            background: rgba(20, 20, 20, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 1000;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .controls-overlay.collapsed-ctrl {
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            overflow: hidden;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .controls-overlay.collapsed-ctrl > *:not(.header-ctrl) {
+            display: none;
+        }
+
+        .header-ctrl {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls-overlay.collapsed-ctrl .header-ctrl {
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+        }
+
+        .control-group { margin-bottom: 4px; }
+        .control-group label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+        
+        .mode-btn { flex: 1; padding: 6px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .mode-btn.active { background: #1e2d40; border-color: #8b5cf6; color: #8b5cf6; }
+        .mode-group { display: flex; gap: 4px; width: 100%; }
+
+        .stats-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
+        .stat-card { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; border: 1px solid #333; }
+        .stat-label { font-size: 8px; text-transform: uppercase; color: #555; }
+        .stat-value { font-family: 'SF Mono', monospace; font-size: 11px; color: #8b5cf6; }
+
+        .panel-ctrl { position: absolute; top: 12px; right: 12px; z-index: 100; background: #2a2a2a; border: 1px solid #444; color: #888; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+        
+        .collapsed { flex: 0 0 48px !important; padding: 24px 8px !important; overflow: hidden !important; }
+        .collapsed > *:not(.panel-ctrl) { display: none !important; }
+        
+        .workspace.video-maximized .narrative, .workspace.video-maximized .editor-container { display: none !important; }
+        .workspace.video-maximized .viewport-container { flex: 1 !important; }
+
+        input[type="range"] { width: 100%; accent-color: #8b5cf6; }
+        
+        #video-source { display: none; }
+        slang-viewport { width: 100%; height: 100%; display: block; }
+
+        /* Log Panel */
+        .log-panel {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #log-output {
+            height: 80px;
+            overflow-y: auto;
+            font-family: 'SF Mono', monospace;
+            font-size: 9px;
+            color: #888;
+            white-space: pre-wrap;
+        }
+        .log-line { border-bottom: 1px solid #1a1a1a; padding: 1px 0; }
+        .log-err { color: #f87171; }
+        .log-warn { color: #fbbf24; }
+    </style>
+</head>
+
+<body>
+    <nav class="nav-header">
+        <a href="index.html" class="back-link">← Back</a>
+        <h1>YUV Chroma Separation</h1>
+        <div style="width:60px"></div>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative" id="panel-narrative">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
+            <h2>Color Space Optimization</h2>
+            <p>Separating <strong>Luminance (Y)</strong> from <strong>Chrominance (U, V)</strong> to drastically reduce neural processing cost.</p>
+            <p>In this POC, we convert incoming RGB to YUV (Rec. 709). The target for the heavy 6-layer CNN is only the Y channel, where most high-frequency detail resides.</p>
+            <p><strong>Channel Roles:</strong>
+                <br>• <strong>Y (Luminance):</strong> High-res neural upscaling target.
+                <br>• <strong>U/V (Chrominance):</strong> Lightweight bicubic upscaling target.
+            </p>
+        </div>
+
+        <div class="panel editor-container" id="panel-editor">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
+            <slang-editor class="editor-content">
+                <div data-tab="YUV Slang" data-lang="cpp"><!--
+struct Params {
+    uint mode;        // 0: RGB, 1: Y, 2: U, 3: V, 4: Reconstructed
+    float contrast;   // Visualization contrast
+    uint filter;      // 0: Bilinear, 1: Bicubic
+    uint pad;         // Padding
+};
+
+ParameterBlock<Params> params;
+TextureExternal videoTexture;
+SamplerState videoSampler;
+RWTexture2D<float4> outputTexture;
+
+// Catmull-Rom Bicubic Filter
+float4 cubic(float x) {
+    float x2 = x * x;
+    float x3 = x2 * x;
+    float4 w;
+    w.x = -x3 + 2.0 * x2 - x;
+    w.y = 3.0 * x3 - 5.0 * x2 + 2.0;
+    w.z = -3.0 * x3 + 4.0 * x2 + x;
+    w.w = x3 - x2;
+    return 0.5 * w;
+}
+
+float3 sampleBicubic(float2 uv, float2 res) {
+    float2 pixel = uv * res - 0.5;
+    float2 frac = frac(pixel);
+    pixel = floor(pixel);
+
+    float4 wx = cubic(frac.x);
+    float4 wy = cubic(frac.y);
+
+    float3 color = float3(0.0);
+    for (int y = -1; y <= 2; y++) {
+        for (int x = -1; x <= 2; x++) {
+            float2 offset = float2(x, y);
+            float2 sampleUV = (pixel + offset + 0.5) / res;
+            // Note: External textures require Sample()
+            color += videoTexture.Sample(videoSampler, sampleUV).rgb * wx[x + 1] * wy[y + 1];
+        }
+    }
+    return color;
+}
+
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    uint2 size = uint2(3840, 1080);
+    if (id.x >= size.x || id.y >= size.y) return;
+
+    float2 uv = float2(id.xy) / float2(size);
+    // Stacked 4K (Top: Left, Bottom: Right). Using Top frame.
+    uv.y *= 0.5;
+
+    float3 rgb;
+    if (params.filter == 1) {
+        rgb = sampleBicubic(uv, float2(3840, 2160));
+    } else {
+        rgb = videoTexture.Sample(videoSampler, uv).rgb;
+    }
+
+    // Rec. 709 RGB to YUV conversion
+    float Y  =  0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+    float Cb = (rgb.b - Y) / 1.8556;
+    float Cr = (rgb.r - Y) / 1.5748;
+
+    // UV are often offset by 0.5 in normalized representation
+    float U = Cb + 0.5;
+    float V = Cr + 0.5;
+
+    float4 color;
+    if (params.mode == 0) {
+        color = float4(rgb, 1.0);
+    } else if (params.mode == 1) {
+        color = float4(Y, Y, Y, 1.0);
+    } else if (params.mode == 2) {
+        color = float4(U, U, U, 1.0);
+    } else if (params.mode == 3) {
+        color = float4(V, V, V, 1.0);
+    } else {
+        // Reconstruct RGB from YUV
+        float R = Y + 1.5748 * (V - 0.5);
+        float G = Y - 0.1873 * (U - 0.5) - 0.4681 * (V - 0.5);
+        float B = Y + 1.8556 * (U - 0.5);
+        color = float4(R, G, B, 1.0);
+    }
+    
+    outputTexture.Store(id.xy, color);
+}
+--></div>
+                <div data-tab="Compiled WGSL" data-lang="rust"><!--
+struct Params {
+    mode: u32,
+    contrast: f32,
+    filter: u32,
+    pad: u32,
+}
+
+@group(0) @binding(0) var videoSampler: sampler;
+@group(0) @binding(1) var videoTexture: texture_external;
+@group(0) @binding(2) var outputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(3) var<uniform> uniforms: Params;
+
+fn cubic(x: f32) -> vec4<f32> {
+    let x2 = x * x;
+    let x3 = x2 * x;
+    var w: vec4<f32>;
+    w.x = -x3 + 2.0 * x2 - x;
+    w.y = 3.0 * x3 - 5.0 * x2 + 2.0;
+    w.z = -3.0 * x3 + 4.0 * x2 + x;
+    w.w = x3 - x2;
+    return 0.5 * w;
+}
+
+fn sampleBicubic(uv: vec2<f32>, res: vec2<f32>) -> vec3<f32> {
+    let pixel = uv * res - 0.5;
+    let fractional = fract(pixel);
+    let pixelCenter = floor(pixel);
+
+    let wx = cubic(fractional.x);
+    let wy = cubic(fractional.y);
+
+    var color = vec3<f32>(0.0);
+    for (var y: i32 = -1; y <= 2; y = y + 1) {
+        for (var x: i32 = -1; x <= 2; x = x + 1) {
+            let offset = vec2<f32>(f32(x), f32(y));
+            let sampleUV = (pixelCenter + offset + 0.5) / res;
+            let weights = vec4<f32>(wx[u32(x + 1)], wy[u32(y + 1)], 0.0, 0.0);
+            color = color + textureSampleBaseClampToEdge(videoTexture, videoSampler, sampleUV).rgb * wx[u32(x + 1)] * wy[u32(y + 1)];
+        }
+    }
+    return color;
+}
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let size = textureDimensions(outputTexture);
+    if (id.x >= size.x || id.y >= size.y) { return; }
+
+    let uv = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
+    
+    var rgb: vec3<f32>;
+    if (uniforms.filter == 1u) {
+        rgb = sampleBicubic(uv, vec2<f32>(3840.0, 2160.0));
+    } else {
+        rgb = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv).rgb;
+    }
+
+    let Y  =  0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+    let Cb = (rgb.b - Y) / 1.8556;
+    let Cr = (rgb.r - Y) / 1.5748;
+
+    let U = Cb + 0.5;
+    let V = Cr + 0.5;
+
+    var color: vec4<f32>;
+    if (uniforms.mode == 0u) {
+        color = vec4<f32>(rgb, 1.0);
+    } else if (uniforms.mode == 1u) {
+        color = vec4<f32>(Y, Y, Y, 1.0);
+    } else if (uniforms.mode == 2u) {
+        color = vec4<f32>(U, U, U, 1.0);
+    } else if (uniforms.mode == 3u) {
+        color = vec4<f32>(V, V, V, 1.0);
+    } else {
+        let R = Y + 1.5748 * (V - 0.5);
+        let G = Y - 0.1873 * (U - 0.5) - 0.4681 * (V - 0.5);
+        let B = Y + 1.8556 * (U - 0.5);
+        color = vec4<f32>(R, G, B, 1.0);
+    }
+    
+    textureStore(outputTexture, id.xy, color);
+}
+--></div>
+                <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
+class YUVProcessor {
+    constructor(device, context, wgslCode) {
+        this.device = device;
+        this.context = context;
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
+        this.outTexture = device.createTexture({
+            size: [3840, 1080], format: 'rgba8unorm',
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+        });
+
+        this.uniformBuffer = device.createBuffer({
+            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        this.pipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: this.shaderModule, entryPoint: 'main' }
+        });
+
+        this.renderShader = device.createShaderModule({ code: `
+            struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+            @vertex fn vs(@builtin(vertex_index) i: u32) -> VSOut {
+                var pos = array<vec2f, 4>(vec2f(-1,1), vec2f(1,1), vec2f(-1,-1), vec2f(1,-1));
+                var uv = array<vec2f, 4>(vec2f(0,0), vec2f(1,0), vec2f(0,1), vec2f(1,1));
+                var out: VSOut; out.pos = vec4f(pos[i], 0, 1); out.uv = uv[i]; return out;
+            }
+            @group(0) @binding(0) var t: texture_2d<f32>;
+            @group(0) @binding(1) var s: sampler;
+            @fragment fn fs(in: VSOut) -> @location(0) vec4f {
+                return textureSample(t, s, in.uv);
+            }
+        `});
+        this.renderPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: this.renderShader, entryPoint: 'vs' },
+            fragment: { module: this.renderShader, entryPoint: 'fs', targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }] },
+            primitive: { topology: 'triangle-strip' }
+        });
+    }
+
+    render() {
+        const video = document.getElementById('video-source');
+        if (video.readyState < 2) return;
+
+        try {
+            const start = performance.now();
+            const mode = parseInt(document.getElementById('mode-val').value);
+            const filter = parseInt(document.getElementById('filter-val').value);
+            const contrast = 1.0;
+            
+            const uData = new Uint32Array(4);
+            uData[0] = mode;
+            const fData = new Float32Array(uData.buffer);
+            fData[1] = contrast;
+            uData[2] = filter;
+            this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
+
+            const commandEncoder = this.device.createCommandEncoder();
+            const externalTexture = this.device.importExternalTexture({ source: video });
+
+            const computePass = commandEncoder.beginComputePass();
+            computePass.setPipeline(this.pipeline);
+            computePass.setBindGroup(0, this.device.createBindGroup({
+                layout: this.pipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.sampler },
+                    { binding: 1, resource: externalTexture },
+                    { binding: 2, resource: this.outTexture.createView() },
+                    { binding: 3, resource: { buffer: this.uniformBuffer } }
+                ]
+            }));
+            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(1080/16));
+            computePass.end();
+
+            const renderPass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: this.context.getCurrentTexture().createView(),
+                    loadOp: 'clear', storeOp: 'store', clearValue: {r:0,g:0,b:0,a:1}
+                }]
+            });
+            
+            const canvasW = this.context.canvas.width;
+            const canvasH = this.context.canvas.height;
+            const drawH = (canvasW / 3840.0) * 1080.0;
+            
+            renderPass.setViewport(0, 0, canvasW, drawH, 0, 1);
+            renderPass.setPipeline(this.renderPipeline);
+            renderPass.setBindGroup(0, this.device.createBindGroup({
+                layout: this.renderPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.outTexture.createView() },
+                    { binding: 1, resource: this.sampler }
+                ]
+            }));
+            renderPass.draw(4);
+            renderPass.end();
+
+            this.device.queue.submit([commandEncoder.finish()]);
+            
+            document.getElementById('stat-frame').innerText = (performance.now() - start).toFixed(2) + 'ms';
+            const mins = Math.floor(video.currentTime / 60);
+            const secs = (video.currentTime % 60).toFixed(2).padStart(5, '0');
+            document.getElementById('stat-time').innerText = `${mins}:${secs}`;
+            
+        } catch (err) {
+            window.log(`Render Error: ${err.message}`, 'error');
+            document.getElementById('stat-video').innerText = "ERROR";
+        }
+    }
+}
+window.ModuleRenderer = YUVProcessor;
+--></div>
+            </slang-editor>
+        </div>
+
+        <div class="panel viewport-container" id="panel-viewport">
+            <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
+            <slang-viewport></slang-viewport>
+            <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
+            
+            <div class="controls-overlay" id="controls-overlay">
+                <div class="header-ctrl">
+                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Controls</span>
+                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Engine</div>
+                        <div id="stat-frame" class="stat-value">0.00ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Timestamp</div>
+                        <div id="stat-time" class="stat-value">0:00.00</div>
+                    </div>
+                    <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
+                        <div>
+                            <div class="stat-label">HLS</div>
+                            <div id="stat-video" class="stat-value">IDLE</div>
+                        </div>
+                        <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>View Channel</label>
+                    <div class="mode-group">
+                        <button class="mode-btn active" onclick="setYUVMode(0)">RGB</button>
+                        <button class="mode-btn" onclick="setYUVMode(1)">Y</button>
+                        <button class="mode-btn" onclick="setYUVMode(2)">U</button>
+                        <button class="mode-btn" onclick="setYUVMode(3)">V</button>
+                        <button class="mode-btn" onclick="setYUVMode(4)">Rec</button>
+                    </div>
+                    <input id="mode-val" type="hidden" value="0">
+                </div>
+
+                <div class="control-group">
+                    <label>Interpolation</label>
+                    <div class="mode-group">
+                        <button class="mode-btn filter-btn active" onclick="setFilter(0)">Bilinear</button>
+                        <button class="mode-btn filter-btn" onclick="setFilter(1)">Bicubic</button>
+                    </div>
+                    <input id="filter-val" type="hidden" value="0">
+                </div>
+
+                <div class="flex gap-2">
+                    <div style="flex:1">
+                        <slang-playback-controls></slang-playback-controls>
+                    </div>
+                </div>
+
+                <div class="log-panel">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
+                        <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
+                    </div>
+                    <div id="log-output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
+
+        window.toggleControls = () => {
+            const overlay = document.getElementById('controls-overlay');
+            const btn = overlay.querySelector('.panel-ctrl');
+            overlay.classList.toggle('collapsed-ctrl');
+            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
+        };
+
+        window.toggleCollapse = (id) => {
+            const panel = document.getElementById(id);
+            panel.classList.toggle('collapsed');
+            const btn = panel.querySelector('.panel-ctrl');
+            btn.innerText = panel.classList.contains('collapsed') ? '»' : '«';
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.toggleVideoMaximize = () => {
+            document.querySelector('.workspace').classList.toggle('video-maximized');
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.setYUVMode = (m) => {
+            document.getElementById('mode-val').value = m;
+            document.querySelectorAll('.mode-btn').forEach((b, i) => {
+                if (!b.classList.contains('filter-btn')) {
+                    b.classList.toggle('active', i === m);
+                }
+            });
+        };
+
+        window.setFilter = (f) => {
+            document.getElementById('filter-val').value = f;
+            document.querySelectorAll('.filter-btn').forEach((b, i) => {
+                b.classList.toggle('active', i === f);
+            });
+        };
+
+        window.log = (msg, type = 'info') => {
+            const out = document.getElementById('log-output');
+            if (!out) return;
+            const line = document.createElement('div');
+            line.className = `log-line ${type === 'error' ? 'log-err' : (type === 'warn' ? 'log-warn' : '')}`;
+            line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+            out.appendChild(line);
+            out.scrollTop = out.scrollHeight;
+        };
+
+        window.copyLogs = () => {
+            const text = document.getElementById('log-output').innerText;
+            navigator.clipboard.writeText(text);
+            window.log("Logs copied to buffer.");
+        };
+
+        window.toggleVideo = () => {
+            const video = document.getElementById('video-source');
+            const btn = document.getElementById('play-btn');
+            if (video.paused) {
+                video.play().then(() => {
+                    btn.innerText = "PAUSE";
+                    btn.classList.replace('bg-violet-600', 'bg-slate-700');
+                });
+            } else {
+                video.pause();
+                btn.innerText = "PLAY";
+                btn.classList.replace('bg-slate-700', 'bg-violet-600');
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('video-source');
+            
+            if (Hls.isSupported()) {
+                const hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(ANCHOR_URL);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => window.log("Autoplay blocked.", "warn"));
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = ANCHOR_URL;
+                video.play();
+            }
+        });
+    </script>
+</body>
+</html>
