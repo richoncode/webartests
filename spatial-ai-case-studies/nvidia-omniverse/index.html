@@ -3,398 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVIDIA Omniverse: Architecture, Data Flows, & Partnerships</title>
+    <title>NVIDIA Omniverse | Industrial Digital Twin Architecture Case Study</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%2376b900%22/><text y=%2255%22 x=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-weight=%22bold%22 font-size=%2240%22 fill=%22black%22>NV</text></svg>">
-    
-    <!-- Chosen Palette: Warm Neutrals & Emerald Accent (Minimalist & Calm) -->
-    <!-- Application Structure Plan: The SPA uses a modular, dashboard-style layout organized into four key pillars: Architecture & Data Flow, Workloads & Data Types, Foundational Research (Case Studies), and Partnership Opportunities. This structure was chosen because Omniverse is a platform of platforms; a linear report fails to capture its interconnected nature. Users can explore the core "Nucleus" architecture interactively, compare data type resource profiles via dynamic charts, read summary cards of key academic papers, and filter a matrix of partnership strategies. This allows different personas (technical architects, business development, researchers) to find relevant information quickly. -->
-    <!-- Visualization & Content Choices: 
-        1. Architecture: HTML/CSS Grid with interactive nodes -> Goal: Explain Nucleus and Connectors -> Justification: Better than static images, allows users to click to understand specific data flows. NO SVG used (pure CSS/HTML).
-        2. Data Types: Radar Chart (Chart.js) -> Goal: Compare Gaussians, Meshes, RL -> Justification: Shows multi-dimensional resource requirements (compute, bandwidth, etc.) intuitively. 
-        3. Research/Papers: Interactive Tabbed Cards -> Goal: Summarize foundational papers (Isaac Gym, Gaussians) -> Justification: Keeps UI clean while providing deep textual context.
-        4. Partnerships: Filterable CSS Grid -> Goal: Highlight partnership paths -> Justification: Allows users to sort by their industry (AEC, M&E, AI). 
-    -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        stone: {
-                            50: '#fafaf9',
-                            100: '#f5f5f4',
-                            200: '#e7e5e4',
-                            800: '#292524',
-                            900: '#1c1917',
-                        },
-                        emerald: {
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <style>
-        /* Base Styling & Smooth Scrolling */
-        html { scroll-behavior: smooth; }
-        body { background-color: #fafaf9; color: #1c1917; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
         
-        /* Chart Container Requirements */
         .chart-container {
             position: relative;
             width: 100%;
-            max-width: 700px;
+            max-width: 600px;
             margin-left: auto;
             margin-right: auto;
-            height: 400px;
-            max-height: 500px;
+            height: 350px;
         }
 
-        /* Custom Interactive Flow CSS (No SVG) */
+        .section-card {
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            padding: 2.5rem;
+        }
+
         .flow-node {
             transition: all 0.3s ease;
-            border: 2px solid #e7e5e4;
+            cursor: pointer;
+            border: 2px solid #e2e8f0;
         }
-        .flow-node:hover {
-            border-color: #10b981;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.1);
-        }
-        .flow-node.active {
-            border-color: #059669;
-            background-color: #ecfdf5;
-            font-weight: 600;
-        }
-        .arrow-down {
-            text-align: center;
-            font-size: 1.5rem;
-            color: #a8a29e;
-            margin: 0.5rem 0;
-        }
-
-        /* Filter Buttons */
-        .filter-btn.active {
-            background-color: #1c1917;
-            color: #fafaf9;
-        }
+        .flow-node:hover { border-color: #0d9488; transform: translateY(-2px); }
+        .flow-node.active { border-color: #0d9488; background-color: #f0fdfa; font-weight: 600; }
 
         a.back {
             display: inline-block;
-            color: #78716c;
+            color: #94a3b8;
             text-decoration: none;
             font-size: 14px;
             transition: color 0.2s;
         }
-        a.back:hover {
-            color: #1c1917;
+        a.back:hover { color: #1e293b; }
+
+        .tag-badge {
+            display: inline-block;
+            background-color: #f0fdfa;
+            color: #0f766e;
+            font-size: 10px;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
         }
     </style>
 </head>
-<body class="antialiased selection:bg-emerald-200 selection:text-stone-900">
+<body class="antialiased pb-20">
 
-    <!-- Navigation -->
-    <nav class="sticky top-0 z-50 bg-stone-50/90 backdrop-blur-md border-b border-stone-200">
+    <!-- Sticky Nav -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
+            <div class="flex justify-between h-14 items-center">
                 <div class="flex items-center gap-6">
-                    <a class="back" href="../">← Back</a>
-                    <div class="text-xl font-bold tracking-tight text-stone-900 flex items-center gap-2">
-                        <span class="text-emerald-600 text-2xl">⬡</span> Omniverse Analysis
+                    <a class="back mb-0" href="../">← Back</a>
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded bg-teal-600 flex items-center justify-center text-white font-bold text-[10px]">NV</div>
+                        <span class="text-slate-800 font-bold text-sm tracking-tight">Omniverse Analysis</span>
                     </div>
                 </div>
-                <div class="hidden md:flex space-x-8 text-sm font-medium text-stone-600">
-                    <a href="#architecture" class="hover:text-emerald-600 transition-colors">Architecture & Flow</a>
-                    <a href="#datatypes" class="hover:text-emerald-600 transition-colors">Data & Workloads</a>
-                    <a href="#research" class="hover:text-emerald-600 transition-colors">Case Studies</a>
-                    <a href="#partnerships" class="hover:text-emerald-600 transition-colors">Partnerships</a>
+                <div class="hidden md:flex space-x-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <a href="#architecture" class="hover:text-teal-600 transition-colors">Architecture</a>
+                    <a href="#workloads" class="hover:text-teal-600 transition-colors">Workloads</a>
+                    <a href="#partnerships" class="hover:text-teal-600 transition-colors">Partnerships</a>
                 </div>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <header class="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
-        <div class="inline-block px-3 py-1 mb-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold tracking-wide uppercase">
-            Executive Synthesis Report
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-12 px-4 sm:px-6 lg:px-8 shadow-md">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-2">NVIDIA Omniverse: The Industrial Operating System</h1>
+            <p class="text-slate-300 text-lg max-w-3xl">A deep-dive into the Nucleus architecture, OpenUSD data flows, and real-time simulation workloads.</p>
         </div>
-        <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-stone-900 mb-6 leading-tight">
-            Deconstructing <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-emerald-400">NVIDIA Omniverse</span>
-        </h1>
-        <p class="max-w-3xl mx-auto text-lg md:text-xl text-stone-600 mb-10 leading-relaxed">
-            An interactive exploration of the underlying architecture, diverse data types (Gaussians, Meshes, Prompts), foundational research, and strategic partnership opportunities within the USD-based digital twin ecosystem.
-        </p>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24 pb-24">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
 
-        <!-- 1. Architecture & Data Flow -->
-        <section id="architecture" class="scroll-mt-20">
-            <div class="mb-10 text-center md:text-left">
-                <h2 class="text-3xl font-bold text-stone-900 mb-4">Platform Architecture & Data Flows</h2>
-                <p class="text-stone-600 max-w-4xl">
-                    Omniverse is not a single application, but an extensible platform built on Universal Scene Description (OpenUSD). 
-                    Interact with the diagram below to understand how data flows from disparate creator tools into a unified, real-time simulation environment.
-                </p>
-            </div>
-
+        <!-- Section 1: Architecture -->
+        <section id="architecture" class="section-card">
+            <h2 class="text-2xl font-semibold text-slate-800 mb-8">1. Platform Architecture & Data Flow</h2>
+            <p class="text-slate-600 mb-10 leading-relaxed">
+                Omniverse is built on <strong>OpenUSD</strong> and the <strong>Nucleus</strong> database. Nucleus manages delta-synchronization between disparate creator tools, enabling a unified, real-time simulation environment.
+            </p>
+            
             <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-                <!-- Interactive Diagram (HTML/CSS) -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <h3 class="text-sm font-bold text-stone-400 uppercase tracking-wider mb-6 text-center">Data Pipeline</h3>
-                    
-                    <div class="flex justify-center gap-4 mb-2">
-                        <button class="flow-node active w-1/3 p-4 rounded-lg bg-stone-50 text-center cursor-pointer shadow-sm" onclick="updateFlow('connectors')">
-                            <span class="text-2xl block mb-2">🔌</span>
-                            <span class="font-semibold text-sm">Connectors</span>
-                        </button>
-                        <button class="flow-node w-1/3 p-4 rounded-lg bg-stone-50 text-center cursor-pointer shadow-sm" onclick="updateFlow('generators')">
-                            <span class="text-2xl block mb-2">🧠</span>
-                            <span class="font-semibold text-sm">Gen AI Tools</span>
-                        </button>
+                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6 text-center">Data Pipeline</h3>
+                    <div class="flex justify-center gap-4 mb-4">
+                        <div class="flow-node active w-1/3 p-4 rounded-lg bg-white text-center shadow-sm" onclick="updateFlow('connectors')">
+                            <span class="text-xl block mb-1">🔌</span>
+                            <span class="text-[10px] uppercase font-bold">Connectors</span>
+                        </div>
+                        <div class="flow-node w-1/3 p-4 rounded-lg bg-white text-center shadow-sm" onclick="updateFlow('nucleus')">
+                            <span class="text-xl block mb-1">⬡</span>
+                            <span class="text-[10px] uppercase font-bold">Nucleus</span>
+                        </div>
                     </div>
-                    
-                    <div class="arrow-down">⬇</div>
-                    
-                    <div class="flex justify-center mb-2">
-                        <button class="flow-node w-2/3 p-6 rounded-xl bg-stone-50 text-center cursor-pointer shadow-md border-emerald-200" onclick="updateFlow('nucleus')">
-                            <span class="text-3xl block mb-2 text-emerald-600">⬡</span>
-                            <span class="font-bold text-lg">Omniverse Nucleus</span>
-                            <span class="block text-xs text-stone-500 mt-1">OpenUSD Database / Pub-Sub</span>
-                        </button>
-                    </div>
-                    
-                    <div class="arrow-down">⬇</div>
-                    
-                    <div class="flex justify-center gap-4">
-                        <button class="flow-node w-1/3 p-4 rounded-lg bg-stone-50 text-center cursor-pointer shadow-sm" onclick="updateFlow('isaac')">
-                            <span class="text-2xl block mb-2">🤖</span>
-                            <span class="font-semibold text-sm">Isaac Sim</span>
-                        </button>
-                        <button class="flow-node w-1/3 p-4 rounded-lg bg-stone-50 text-center cursor-pointer shadow-sm" onclick="updateFlow('rtx')">
-                            <span class="text-2xl block mb-2">🖥️</span>
-                            <span class="font-semibold text-sm">RTX Renderer</span>
-                        </button>
+                    <div class="flex justify-center">
+                        <div class="flow-node w-1/3 p-4 rounded-lg bg-white text-center shadow-sm" onclick="updateFlow('isaac')">
+                            <span class="text-xl block mb-1">🤖</span>
+                            <span class="text-[10px] uppercase font-bold">Isaac Sim</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Info Panel -->
-                <div class="bg-stone-100 p-8 rounded-2xl h-full flex flex-col justify-center border border-stone-200">
-                    <div class="inline-flex items-center gap-2 mb-4">
-                        <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span class="text-sm font-bold uppercase tracking-wider text-emerald-700">Live Data Flow</span>
-                    </div>
-                    <h3 id="flow-title" class="text-2xl font-bold text-stone-900 mb-4">Connectors (DCC Tools)</h3>
-                    <p id="flow-desc" class="text-stone-600 mb-6 leading-relaxed">
-                        Digital Content Creation (DCC) tools like Maya, Blender, and Unreal Engine use Omniverse Connectors to export live updates. The data type here primarily consists of <strong>polygonal 3D meshes, materials, and skeletal animation data</strong>. As a designer moves a vertex in Blender, the delta is transmitted instantly.
-                    </p>
-                    <div class="bg-white p-4 rounded-lg border border-stone-200">
-                        <h4 class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">Key Data Formats Involved</h4>
-                        <ul id="flow-formats" class="text-sm font-mono text-stone-700 space-y-1">
-                            <li>• .usd, .usda, .usdc</li>
-                            <li>• Mesh Deltas</li>
-                            <li>• MDL (Material Definition Language)</li>
-                        </ul>
-                    </div>
+                <div class="flex flex-col justify-center h-full">
+                    <h4 id="flow-title" class="text-xl font-bold text-teal-700 mb-2">Connectors (DCC Tools)</h4>
+                    <p id="flow-desc" class="text-sm text-slate-600 leading-relaxed">Digital Content Creation (DCC) tools like Maya and Blender export live updates. Data consists of polygonal meshes, materials, and skeletal animation.</p>
                 </div>
             </div>
         </section>
 
-        <hr class="border-stone-200">
-
-        <!-- 2. Data Types & Workloads -->
-        <section id="datatypes" class="scroll-mt-20">
-            <div class="mb-10 text-center md:text-left">
-                <h2 class="text-3xl font-bold text-stone-900 mb-4">Data Types & Workload Profiles</h2>
-                <p class="text-stone-600 max-w-4xl">
-                    Omniverse handles vastly different data structures simultaneously. Compare the computational and storage profiles of traditional meshes against emerging technologies like 3D Gaussian Splatting and GenAI prompt workloads.
+        <!-- Section 2: Workloads -->
+        <section id="workloads" class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div class="section-card flex flex-col justify-center">
+                <h2 class="text-2xl font-semibold text-slate-800 mb-4">2. Data Type & Workload Profiles</h2>
+                <p class="text-slate-600 leading-relaxed mb-6">
+                    Omniverse handles vastly different data structures simultaneously, from traditional meshes to 3D Gaussian Splats and GenAI prompts.
                 </p>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-                
-                <!-- Chart Container -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <div class="chart-container">
-                        <canvas id="workloadChart"></canvas>
+                <div class="space-y-3">
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                        <h4 class="font-bold text-slate-800 text-sm">3D Gaussian Splatting</h4>
+                        <p class="text-xs text-slate-500 mt-1">Requires massive VRAM and bandwidth but allows for photorealistic rendering of scanned spaces.</p>
                     </div>
-                    <p class="text-center text-xs text-stone-500 mt-4">Relative intensity metrics (1-10 scale) based on processing requirements within Omniverse Kit.</p>
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                        <h4 class="font-bold text-slate-800 text-sm">Robot Model Training</h4>
+                        <p class="text-xs text-slate-500 mt-1">Isaac Gym utilizes GPU-accelerated tensor APIs to run thousands of robot environments in parallel.</p>
+                    </div>
                 </div>
-
-                <!-- Content Selector -->
-                <div class="space-y-4">
-                    <!-- Interactive Accordions -->
-                    <div class="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                        <button class="w-full text-left px-6 py-4 font-bold text-stone-900 bg-stone-50 hover:bg-stone-100 flex justify-between items-center" onclick="toggleAccordion('acc-mesh')">
-                            <span>Traditional 3D Meshes & Physics</span>
-                            <span id="acc-mesh-icon">▼</span>
-                        </button>
-                        <div id="acc-mesh" class="px-6 py-4 text-stone-600 hidden text-sm leading-relaxed border-t border-stone-200">
-                            The foundational data type of OpenUSD. Involves vertex coordinates, faces, and UV maps. In Omniverse, physics are applied to these meshes using PhysX, requiring high CPU/GPU compute for collision detection, but relatively low bandwidth once loaded into memory.
-                        </div>
-                    </div>
-
-                    <div class="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                        <button class="w-full text-left px-6 py-4 font-bold text-stone-900 bg-stone-50 hover:bg-stone-100 flex justify-between items-center" onclick="toggleAccordion('acc-gaussian')">
-                            <span>3D Gaussian Splatting / NeRFs</span>
-                            <span id="acc-gaussian-icon">▶</span>
-                        </button>
-                        <div id="acc-gaussian" class="px-6 py-4 text-stone-600 hidden text-sm leading-relaxed border-t border-stone-200">
-                            A novel data type bypassing traditional geometry. Scenes are represented by millions of 3D Gaussians (ellipsoids with color, opacity, and spherical harmonics). Requires massive VRAM and bandwidth to stream, but allows for real-time, photorealistic rendering of real-world scanned spaces without manual modeling.
-                        </div>
-                    </div>
-
-                    <div class="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                        <button class="w-full text-left px-6 py-4 font-bold text-stone-900 bg-stone-50 hover:bg-stone-100 flex justify-between items-center" onclick="toggleAccordion('acc-robot')">
-                            <span>Robot Model Training (Isaac)</span>
-                            <span id="acc-robot-icon">▶</span>
-                        </button>
-                        <div id="acc-robot" class="px-6 py-4 text-stone-600 hidden text-sm leading-relaxed border-t border-stone-200">
-                            Involves articulated body data (URDF/MJCF converted to USD) and Reinforcement Learning (RL) tensor data. Isaac Gym utilizes GPU-accelerated tensor APIs to run thousands of robot environments in parallel. The data flow is continuous states/actions/rewards exchanged directly within GPU memory.
-                        </div>
-                    </div>
-
-                    <div class="border border-stone-200 rounded-xl overflow-hidden bg-white">
-                        <button class="w-full text-left px-6 py-4 font-bold text-stone-900 bg-stone-50 hover:bg-stone-100 flex justify-between items-center" onclick="toggleAccordion('acc-prompt')">
-                            <span>Prompt Workload Generation</span>
-                            <span id="acc-prompt-icon">▶</span>
-                        </button>
-                        <div id="acc-prompt" class="px-6 py-4 text-stone-600 hidden text-sm leading-relaxed border-t border-stone-200">
-                            Using LLMs to generate OpenUSD Python scripts or spatial instructions. The initial data type is text strings (prompts). This requires low bandwidth but triggers high burst compute as the Omniverse Kit executes the generated Python code to instantiate 3D assets or configure scene layouts dynamically.
-                        </div>
-                    </div>
+            </div>
+            <div class="section-card flex items-center justify-center">
+                <div class="chart-container">
+                    <canvas id="workloadChart"></canvas>
                 </div>
             </div>
         </section>
 
-        <hr class="border-stone-200">
-
-        <!-- 3. Foundational Research & Case Studies -->
-        <section id="research" class="scroll-mt-20 bg-stone-900 text-stone-50 p-8 md:p-12 rounded-3xl">
-            <div class="mb-10 text-center md:text-left">
-                <h2 class="text-3xl font-bold mb-4 text-white">Foundational Research & Papers</h2>
-                <p class="text-stone-400 max-w-3xl">
-                    Omniverse's capabilities are rooted in cutting-edge academic and industrial research. Select a paper below to understand the technical underpinnings of the platform's simulation and rendering engines.
-                </p>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <button class="paper-tab bg-stone-800 hover:bg-emerald-800 p-6 rounded-xl text-left transition-colors border border-stone-700 focus:outline-none ring-2 ring-transparent active-ring-emerald-500" onclick="showPaper('isaac')">
-                    <span class="text-emerald-400 font-mono text-xs block mb-2">2021 • Robotics & AI</span>
-                    <h3 class="font-bold text-lg mb-2">Isaac Gym</h3>
-                    <p class="text-sm text-stone-400">High Performance GPU-Based Physics Simulation For Robot Learning.</p>
-                </button>
-                <button class="paper-tab bg-stone-800 hover:bg-emerald-800 p-6 rounded-xl text-left transition-colors border border-stone-700 focus:outline-none" onclick="showPaper('gaussian')">
-                    <span class="text-emerald-400 font-mono text-xs block mb-2">2023 • Rendering</span>
-                    <h3 class="font-bold text-lg mb-2">3D Gaussian Splatting</h3>
-                    <p class="text-sm text-stone-400">Real-Time Radiance Field Rendering for Digital Twins.</p>
-                </button>
-                <button class="paper-tab bg-stone-800 hover:bg-emerald-800 p-6 rounded-xl text-left transition-colors border border-stone-700 focus:outline-none" onclick="showPaper('replicator')">
-                    <span class="text-emerald-400 font-mono text-xs block mb-2">2022 • Synthetic Data</span>
-                    <h3 class="font-bold text-lg mb-2">Omniverse Replicator</h3>
-                    <p class="text-sm text-stone-400">Generating Physically Accurate Synthetic Data for Computer Vision.</p>
-                </button>
-            </div>
-
-            <div class="bg-stone-800 p-8 rounded-2xl border border-stone-700 min-h-[250px]">
-                <div id="paper-content">
-                    <h4 class="text-2xl font-bold mb-4 text-white">Isaac Gym: High Performance GPU-Based Physics Simulation</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                            <p class="text-stone-300 mb-4 leading-relaxed text-sm">
-                                <strong>Core Concept:</strong> Traditional reinforcement learning (RL) required moving data back and forth between the CPU (physics simulation) and GPU (neural network training), creating a massive bottleneck.
-                            </p>
-                            <p class="text-stone-300 leading-relaxed text-sm">
-                                <strong>Omniverse Integration:</strong> This paper introduced an end-to-end GPU RL pipeline. By keeping physics state tensors (robot joint positions, forces) entirely on the GPU via PhysX, Omniverse enables millions of simulation steps per second, reducing robot model training time from weeks to hours.
-                            </p>
-                        </div>
-                        <div class="bg-stone-900 p-6 rounded-xl border border-stone-700">
-                            <h5 class="text-emerald-400 font-bold mb-2 text-sm uppercase tracking-wide">Key Data Flow</h5>
-                            <ul class="text-stone-300 text-sm space-y-2 font-mono">
-                                <li>1. CPU initiates environments.</li>
-                                <li>2. GPU loads USD robot articulation.</li>
-                                <li>3. GPU runs PhysX step (Tensors).</li>
-                                <li>4. GPU runs PyTorch RL Policy.</li>
-                                <li>5. <span class="text-emerald-500">Zero CPU-GPU data transfer during loop.</span></li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 4. Partnership Opportunities -->
+        <!-- Section 3: Strategic Partnership Opportunities -->
         <section id="partnerships" class="scroll-mt-20">
             <div class="mb-10 text-center md:text-left">
-                <h2 class="text-3xl font-bold text-stone-900 mb-4">Strategic Partnership Opportunities</h2>
-                <p class="text-stone-600 max-w-4xl">
-                    The open nature of OpenUSD and Omniverse Kit creates multiple vectors for commercial partnerships. Filter below to discover opportunities based on technical domains and business models.
+                <h2 class="text-3xl font-bold text-slate-800 mb-4">Strategic Partnership Opportunities</h2>
+                <p class="text-slate-600 max-w-4xl">
+                    The open nature of OpenUSD and Omniverse Kit creates multiple vectors for commercial partnerships across software development and system integration.
                 </p>
             </div>
 
-            <!-- Filters -->
-            <div class="flex flex-wrap gap-2 mb-8 justify-center md:justify-start">
-                <button class="filter-btn active px-4 py-2 rounded-full text-sm font-semibold transition-colors border border-stone-300" onclick="filterPartnerships('all')">All Opportunities</button>
-                <button class="filter-btn bg-white hover:bg-stone-100 text-stone-700 px-4 py-2 rounded-full text-sm font-semibold transition-colors border border-stone-300" onclick="filterPartnerships('software')">Software & Connectors</button>
-                <button class="filter-btn bg-white hover:bg-stone-100 text-stone-700 px-4 py-2 rounded-full text-sm font-semibold transition-colors border border-stone-300" onclick="filterPartnerships('integrators')">System Integrators (AEC/Auto)</button>
-                <button class="filter-btn bg-white hover:bg-stone-100 text-stone-700 px-4 py-2 rounded-full text-sm font-semibold transition-colors border border-stone-300" onclick="filterPartnerships('ai')">AI & Data Providers</button>
-            </div>
-
-            <!-- Opportunities Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="partnership-grid">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
-                <div class="ptn-card software bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">🔌</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">Custom Connector Dev</h3>
-                    <p class="text-sm text-stone-600 mb-4">Develop OpenUSD connectors for proprietary CAD, PLM, or specialized rendering software, creating a bridge into the Omniverse ecosystem.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">Software Dev</span>
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group flex flex-col">
+                    <div class="text-4xl mb-6 group-hover:scale-110 transition-transform">🔌</div>
+                    <h3 class="font-bold text-lg mb-2 text-slate-800">Custom Connector Dev</h3>
+                    <p class="text-sm text-slate-600 mb-8 leading-relaxed flex-grow">Develop OpenUSD connectors for proprietary CAD, PLM, or specialized rendering software.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="tag-badge">Software Dev</span>
+                        <a href="https://www.nvidia.com/en-us/omniverse/" target="_blank" class="text-teal-600 text-xs font-bold hover:underline italic">Official &rarr;</a>
+                    </div>
                 </div>
 
-                <div class="ptn-card integrators bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">🏭</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">Factory Digital Twins</h3>
-                    <p class="text-sm text-stone-600 mb-4">Act as a System Integrator for automotive and manufacturing. Combine IoT data streams with Omniverse visuals to create operational digital twins.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">Consulting / SI</span>
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group flex flex-col">
+                    <div class="text-4xl mb-6 group-hover:scale-110 transition-transform">🏭</div>
+                    <h3 class="font-bold text-lg mb-2 text-slate-800">Factory Digital Twins</h3>
+                    <p class="text-sm text-slate-600 mb-8 leading-relaxed flex-grow">Act as a System Integrator for automotive and manufacturing operation digital twins.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="tag-badge">Consulting / SI</span>
+                        <a href="https://www.nvidia.com/en-us/omniverse/" target="_blank" class="text-teal-600 text-xs font-bold hover:underline italic">Solutions &rarr;</a>
+                    </div>
                 </div>
 
-                <div class="ptn-card ai bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">📊</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">Synthetic Data Services</h3>
-                    <p class="text-sm text-stone-600 mb-4">Utilize Omniverse Replicator to generate domain-specific, physically accurate synthetic datasets to train bespoke computer vision models for clients.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">AI Services</span>
-                </div>
-
-                <div class="ptn-card software ai bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">🧠</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">GenAI / Prompt Plugins</h3>
-                    <p class="text-sm text-stone-600 mb-4">Build Omniverse Extensions (Kit apps) that integrate specialized LLMs to automate scene generation, texture creation, or coding via natural language.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">AI Tooling</span>
-                </div>
-
-                <div class="ptn-card integrators bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">🏗️</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">AEC Virtual Collaboration</h3>
-                    <p class="text-sm text-stone-600 mb-4">Provide managed hosting and deployment of Omniverse Nucleus servers for global architecture firms requiring real-time multi-user design review.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">Infrastructure</span>
-                </div>
-
-                <div class="ptn-card ai bg-white p-6 rounded-xl border border-stone-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="text-3xl mb-4">🤖</div>
-                    <h3 class="font-bold text-lg mb-2 text-stone-900">Robotics Pipeline Integration</h3>
-                    <p class="text-sm text-stone-600 mb-4">Partner to integrate specific robot hardware specifications into Isaac Sim, offering "Sim-as-a-Service" for rapid reinforcement learning model training.</p>
-                    <span class="inline-block bg-stone-100 text-stone-600 text-xs px-2 py-1 rounded font-mono">Robotics</span>
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group flex flex-col">
+                    <div class="text-4xl mb-6 group-hover:scale-110 transition-transform">📊</div>
+                    <h3 class="font-bold text-lg mb-2 text-slate-800">Synthetic Data Services</h3>
+                    <p class="text-sm text-slate-600 mb-8 leading-relaxed flex-grow">Utilize Replicator to generate domain-specific, physically accurate synthetic datasets.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="tag-badge">AI Services</span>
+                        <span class="text-slate-400 text-[10px] font-bold italic">Deduced: needs validation</span>
+                    </div>
                 </div>
 
             </div>
@@ -402,243 +196,38 @@
 
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-stone-900 text-stone-400 py-8 text-center border-t border-stone-800">
-        <p class="text-sm">Analysis Dashboard generated based on OpenUSD and Omniverse architectural literature.</p>
+    <footer class="bg-slate-900 text-slate-400 py-6 text-center text-sm">
+        <p>Interactive Analysis generated based on NVIDIA Omniverse architectural literature.</p>
     </footer>
 
-    <!-- Application Logic -->
     <script>
-        // ---------------------------------------------------------
-        // State Management
-        // ---------------------------------------------------------
-        const appState = {
-            currentFlow: 'connectors',
-            currentPaper: 'isaac',
-            currentFilter: 'all'
-        };
-
-        // ---------------------------------------------------------
-        // 1. Architecture & Data Flow Logic
-        // ---------------------------------------------------------
         const flowData = {
-            connectors: {
-                title: "Connectors (DCC Tools)",
-                desc: "Digital Content Creation (DCC) tools like Maya, Blender, and Unreal Engine use Omniverse Connectors to export live updates. The data type here primarily consists of polygonal 3D meshes, materials, and skeletal animation data. As a designer moves a vertex, the delta is transmitted instantly.",
-                formats: ["• .usd, .usda, .usdc", "• Mesh Vertex Deltas", "• MDL (Material Definition)"]
-            },
-            generators: {
-                title: "Generative AI Tools",
-                desc: "LLMs and Diffusion models interact with Omniverse via the Kit SDK. Workloads begin as text prompts or 2D images, which are processed by AI models to output USD-compliant Python scripts. These scripts dynamically instantiate 3D geometry or apply textures within the scene.",
-                formats: ["• Text Strings (Prompts)", "• JSON Payloads", "• Generated Python (Omni.kit.commands)"]
-            },
-            nucleus: {
-                title: "Omniverse Nucleus",
-                desc: "The heart of the ecosystem. Nucleus is not a renderer, but a database and publish/subscribe server for OpenUSD. It manages file locking, delta synchronization, and user permissions. It routes specific data types (e.g., streaming Gaussians vs static Meshes) to connected applications seamlessly.",
-                formats: ["• Delta Sync Payloads", "• Asset URI Pointers", "• Live Live-Sync Metadata"]
-            },
-            isaac: {
-                title: "Isaac Sim / Gym",
-                desc: "A specialized application built on Omniverse Kit. It ingests USD environments and robot articulation data, mapping them to the PhysX engine. For robot training (Isaac Gym), it outputs massive arrays of tensor data representing physical states directly to GPU memory for PyTorch reinforcement learning.",
-                formats: ["• URDF/MJCF (Imported to USD)", "• PhysX State Tensors", "• Action/Reward Vectors (RL)"]
-            },
-            rtx: {
-                title: "RTX Renderer",
-                desc: "The visual output layer. It ingests scene graphs from Nucleus and applies real-time ray tracing or path tracing. Recently adapted to render volumetric data and 3D Gaussian Splatting alongside traditional rasterized meshes, requiring massive VRAM bandwidth.",
-                formats: ["• Render Graphs", "• Radiance Fields (Gaussians)", "• Framebuffers"]
-            }
+            connectors: { title: "Connectors (DCC Tools)", desc: "DCC tools like Maya and Blender export live updates. Data consists of polygonal meshes, materials, and skeletal animation." },
+            nucleus: { title: "Omniverse Nucleus", desc: "The database and publish/subscribe server for OpenUSD. Manages file locking, delta synchronization, and user permissions." },
+            isaac: { title: "Isaac Sim / Gym", desc: "Specialized robotics application. Ingests USD environments and outputs massive arrays of tensor data directly to GPU memory." }
         };
 
         function updateFlow(nodeId) {
-            // Update UI styling
-            document.querySelectorAll('.flow-node').forEach(n => {
-                n.classList.remove('active', 'border-emerald-500');
-            });
-            event.currentTarget.classList.add('active', 'border-emerald-500');
-
-            // Update content
-            const data = flowData[nodeId];
-            document.getElementById('flow-title').innerText = data.title;
-            document.getElementById('flow-desc').innerHTML = data.desc.replace(/(3D Gaussians|Python scripts|PhysX|OpenUSD)/g, '<strong>$1</strong>');
-            
-            const formatList = document.getElementById('flow-formats');
-            formatList.innerHTML = '';
-            data.formats.forEach(f => {
-                const li = document.createElement('li');
-                li.innerText = f;
-                formatList.appendChild(li);
-            });
+            document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.getElementById('flow-title').innerText = flowData[nodeId].title;
+            document.getElementById('flow-desc').innerText = flowData[nodeId].desc;
         }
 
-        // ---------------------------------------------------------
-        // 2. Chart.js Visualization Logic
-        // ---------------------------------------------------------
         document.addEventListener('DOMContentLoaded', () => {
             const ctx = document.getElementById('workloadChart').getContext('2d');
-            
-            // Radar chart comparing resource intensity of different data types
             new Chart(ctx, {
                 type: 'radar',
                 data: {
-                    labels: ['VRAM Storage', 'Memory Bandwidth', 'GPU Compute (Physics/RL)', 'Network Sync', 'Setup Complexity'],
+                    labels: ['VRAM Storage', 'Memory Bandwidth', 'GPU Compute', 'Network Sync', 'Setup Complexity'],
                     datasets: [
-                        {
-                            label: 'Traditional 3D Meshes',
-                            data: [4, 4, 8, 3, 5],
-                            backgroundColor: 'rgba(28, 25, 23, 0.2)', // stone-900
-                            borderColor: 'rgba(28, 25, 23, 1)',
-                            pointBackgroundColor: 'rgba(28, 25, 23, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: '3D Gaussians / NeRFs',
-                            data: [9, 9, 2, 7, 6],
-                            backgroundColor: 'rgba(16, 185, 129, 0.2)', // emerald-500
-                            borderColor: 'rgba(16, 185, 129, 1)',
-                            pointBackgroundColor: 'rgba(16, 185, 129, 1)',
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'GenAI Prompts -> USD',
-                            data: [2, 2, 6, 1, 8],
-                            backgroundColor: 'rgba(14, 165, 233, 0.2)', // sky-500
-                            borderColor: 'rgba(14, 165, 233, 1)',
-                            pointBackgroundColor: 'rgba(14, 165, 233, 1)',
-                            borderWidth: 2
-                        }
+                        { label: 'Traditional Meshes', data: [4, 4, 8, 3, 5], backgroundColor: 'rgba(71, 85, 105, 0.2)', borderColor: '#475569' },
+                        { label: '3D Gaussians', data: [9, 9, 2, 7, 6], backgroundColor: 'rgba(13, 148, 136, 0.2)', borderColor: '#0d9488' }
                     ]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom' },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return ' ' + context.dataset.label + ': ' + context.raw + '/10 Intensity';
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        r: {
-                            angleLines: { color: 'rgba(0, 0, 0, 0.1)' },
-                            grid: { color: 'rgba(0, 0, 0, 0.1)' },
-                            pointLabels: { font: { size: 12, family: 'Inter' }, color: '#444' },
-                            ticks: { display: false, max: 10, min: 0 }
-                        }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, scales: { r: { ticks: { display: false } } } }
             });
         });
-
-        // Accordion Logic
-        function toggleAccordion(id) {
-            const el = document.getElementById(id);
-            const icon = document.getElementById(id + '-icon');
-            
-            // Close all others
-            ['acc-mesh', 'acc-gaussian', 'acc-robot', 'acc-prompt'].forEach(accId => {
-                if (accId !== id) {
-                    document.getElementById(accId).classList.add('hidden');
-                    document.getElementById(accId + '-icon').innerText = '▶';
-                }
-            });
-
-            // Toggle selected
-            if (el.classList.contains('hidden')) {
-                el.classList.remove('hidden');
-                icon.innerText = '▼';
-            } else {
-                el.classList.add('hidden');
-                icon.innerText = '▶';
-            }
-        }
-
-        // ---------------------------------------------------------
-        // 3. Research Papers Logic
-        // ---------------------------------------------------------
-        const paperData = {
-            isaac: {
-                title: "Isaac Gym: High Performance GPU-Based Physics Simulation",
-                p1: "<strong>Core Concept:</strong> Traditional reinforcement learning (RL) required moving data back and forth between the CPU (physics simulation) and GPU (neural network training), creating a massive bottleneck.",
-                p2: "<strong>Omniverse Integration:</strong> This paper introduced an end-to-end GPU RL pipeline. By keeping physics state tensors (robot joint positions, forces) entirely on the GPU via PhysX, Omniverse enables millions of simulation steps per second, reducing robot model training time from weeks to hours.",
-                flow: ["1. CPU initiates environments.", "2. GPU loads USD robot articulation.", "3. GPU runs PhysX step (Tensors).", "4. GPU runs PyTorch RL Policy.", "5. <span class='text-emerald-500'>Zero CPU-GPU data transfer during loop.</span>"]
-            },
-            gaussian: {
-                title: "3D Gaussian Splatting for Digital Twins",
-                p1: "<strong>Core Concept:</strong> Representing 3D scenes not as polygons, but as millions of overlapping, semi-transparent ellipsoids (Gaussians) trained from 2D images. It offers faster rendering than NeRFs.",
-                p2: "<strong>Omniverse Integration:</strong> Integrated into the RTX rendering pipeline, allowing users to drop a scanned real-world factory (represented as Gaussians) into Omniverse, and seamlessly overlay traditional CAD data (meshes) or run robot simulations within that photorealistic space.",
-                flow: ["1. Drones capture 2D photos of factory.", "2. External tool computes point cloud.", "3. Gaussians trained to represent scene.", "4. Imported to Nucleus as novel data type.", "5. <span class='text-emerald-500'>RTX renders Gaussians + Meshes together.</span>"]
-            },
-            replicator: {
-                title: "Omniverse Replicator: Synthetic Data Generation",
-                p1: "<strong>Core Concept:</strong> Training computer vision models requires massive amounts of labeled data, which is expensive to collect manually in the real world.",
-                p2: "<strong>Omniverse Integration:</strong> Replicator is an extension that programmatically generates diverse, physically accurate synthetic datasets. It manipulates USD scenes (changing lighting, materials, object placement) and automatically outputs perfectly annotated frames (bounding boxes, segmentation masks).",
-                flow: ["1. Load base USD scene via Kit.", "2. Define randomization domains (Python).", "3. Replicator iterates environment state.", "4. RTX renders RGB and Ground Truth data.", "5. <span class='text-emerald-500'>Output exported to train CV models.</span>"]
-            }
-        };
-
-        function showPaper(paperId) {
-            // Update UI tabs
-            document.querySelectorAll('.paper-tab').forEach(tab => {
-                tab.classList.remove('ring-2', 'ring-emerald-500');
-            });
-            event.currentTarget.classList.add('ring-2', 'ring-emerald-500');
-
-            // Update content
-            const data = paperData[paperId];
-            const contentDiv = document.getElementById('paper-content');
-            
-            let flowHtml = '';
-            data.flow.forEach(f => {
-                flowHtml += `<li>${f}</li>`;
-            });
-
-            contentDiv.innerHTML = `
-                <h4 class="text-2xl font-bold mb-4 text-white">${data.title}</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <p class="text-stone-300 mb-4 leading-relaxed text-sm">${data.p1}</p>
-                        <p class="text-stone-300 leading-relaxed text-sm">${data.p2}</p>
-                    </div>
-                    <div class="bg-stone-900 p-6 rounded-xl border border-stone-700">
-                        <h5 class="text-emerald-400 font-bold mb-2 text-sm uppercase tracking-wide">Key Data Flow</h5>
-                        <ul class="text-stone-300 text-sm space-y-2 font-mono">
-                            ${flowHtml}
-                        </ul>
-                    </div>
-                </div>
-            `;
-        }
-
-        // ---------------------------------------------------------
-        // 4. Partnerships Filter Logic
-        // ---------------------------------------------------------
-        function filterPartnerships(category) {
-            // Update buttons
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active', 'bg-stone-900', 'text-white');
-                btn.classList.add('bg-white', 'text-stone-700');
-            });
-            event.currentTarget.classList.remove('bg-white', 'text-stone-700');
-            event.currentTarget.classList.add('active', 'bg-stone-900', 'text-white');
-
-            // Filter cards
-            const cards = document.querySelectorAll('.ptn-card');
-            cards.forEach(card => {
-                if (category === 'all') {
-                    card.style.display = 'block';
-                } else {
-                    if (card.classList.contains(category)) {
-                        card.style.display = 'block';
-                    } else {
-                        card.style.display = 'none';
-                    }
-                }
-            });
-        }
     </script>
 </body>
 </html>
