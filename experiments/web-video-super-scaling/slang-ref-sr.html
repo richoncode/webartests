@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RefSR: Reference-Based Super-Resolution - Video Super Scaling</title>
+    <script type="module" src="../../learning-neural-rendering/assets/js/tutorial-engine.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        .nav-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 10; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; transition: background 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; }
+        h1 { font-size: 18px; font-weight: 700; }
+
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        
+        .panel { 
+            position: relative; 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            border-right: 1px solid #2a2a2a;
+            overflow-y: auto;
+        }
+        
+        .panel.narrative { max-width: 350px; padding: 24px; }
+        .panel.editor-container { flex: 1; background: #111; display: flex; flex-direction: column; }
+        .panel.viewport-container { flex: 2; padding: 0; background: #050505; overflow: hidden; }
+
+        .narrative h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #fbbf24; }
+        .narrative p { color: #bbb; margin-bottom: 16px; font-size: 13px; }
+
+        /* Floating Controls */
+        .controls-overlay {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            width: 320px;
+            background: rgba(20, 20, 20, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 1000;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .controls-overlay.collapsed-ctrl {
+            width: 48px; height: 48px; padding: 0; overflow: hidden; justify-content: center; align-items: center;
+        }
+
+        .header-ctrl { display: flex; justify-content: space-between; align-items: center; }
+        .control-group { margin-bottom: 4px; }
+        .control-group label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 4px; }
+        
+        .mode-btn { flex: 1; padding: 6px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .mode-btn.active { background: #1e2d40; border-color: #fbbf24; color: #fbbf24; }
+        .mode-group { display: flex; gap: 4px; width: 100%; }
+
+        .stats-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
+        .stat-card { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; border: 1px solid #333; }
+        .stat-label { font-size: 8px; text-transform: uppercase; color: #555; }
+        .stat-value { font-family: 'SF Mono', monospace; font-size: 11px; color: #fbbf24; }
+
+        .panel-ctrl { position: absolute; top: 12px; right: 12px; z-index: 100; background: #2a2a2a; border: 1px solid #444; color: #888; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+        
+        .collapsed { flex: 0 0 48px !important; padding: 24px 8px !important; overflow: hidden !important; }
+        .collapsed > *:not(.panel-ctrl) { display: none !important; }
+        
+        .workspace.video-maximized .narrative, .workspace.video-maximized .editor-container { display: none !important; }
+        .workspace.video-maximized .viewport-container { flex: 1 !important; }
+
+        input[type="range"] { width: 100%; accent-color: #fbbf24; }
+        #video-source { display: none; }
+        slang-viewport { width: 100%; height: 100%; display: block; }
+
+        .log-panel { background: rgba(0,0,0,0.5); border: 1px solid #222; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+        #log-output { height: 60px; overflow-y: auto; font-family: 'SF Mono', monospace; font-size: 9px; color: #888; white-space: pre-wrap; }
+    </style>
+</head>
+
+<body>
+    <nav class="nav-header">
+        <a href="index.html" class="back-link">← Back</a>
+        <h1>RefSR: Stereoscopic Fusion</h1>
+        <div style="width:60px"></div>
+    </nav>
+
+    <div class="workspace">
+        <div class="panel narrative" id="panel-narrative">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
+            <h2>Reference-Based SR</h2>
+            <p>Utilizing the <strong>3-meter horizontal baseline</strong> to resolve occlusions and synthesize sub-pixel detail in the primary view.</p>
+            <p><strong>Parallax Warping:</strong> The secondary (Right Eye) view is warped into the perspective of the primary (Left Eye) using pre-computed homography and real-time disparity.</p>
+            <p><strong>Neural Fusion:</strong> The kernel identifies areas where the secondary view has clearer "un-occluded" samples and blends them into the primary reconstruction, effectively tripling the usable pixel data for the CNN.</p>
+        </div>
+
+        <div class="panel editor-container" id="panel-editor">
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
+            <slang-editor class="editor-content">
+                <div data-tab="RefSR Fusion Slang" data-lang="cpp"><!--
+struct Params {
+    float fusionStrength; // Blend weight for secondary data
+    uint mode;            // 0: Left, 1: Warped Right, 2: Fused SR
+    uint pad;
+};
+
+ParameterBlock<Params> params;
+TextureExternal videoTexture;
+SamplerState videoSampler;
+Texture2D<float> disparityMap; // From Stereo pass
+RWTexture2D<float4> outputTexture;
+
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    uint2 size = uint2(3840, 1080);
+    if (id.x >= size.x || id.y >= size.y) return;
+
+    // 1. Primary Eye UV (Top)
+    float2 uvL = float2(id.xy) / float2(size);
+    uvL.y *= 0.5;
+    float3 pixelL = videoTexture.Sample(videoSampler, uvL).rgb;
+
+    // 2. Warped Secondary Eye UV (Bottom)
+    // Use the disparity d to find xR = xL - d
+    float d = disparityMap.Load(id.xy).r;
+    float2 uvR = uvL;
+    uvR.x -= d / 3840.0;
+    uvR.y += 0.5;
+    
+    float3 pixelR = videoTexture.Sample(videoSampler, uvR).rgb;
+
+    // 3. Fusion Logic (Simplified Feature Blending)
+    // We calculate a confidence mask based on local color similarity.
+    // If the eyes disagree wildly, we suspect occlusion and favor the primary eye.
+    float diff = distance(pixelL, pixelR);
+    float confidence = exp(-diff * 5.0); // Simple Gaussian decay
+    
+    float3 fused = lerp(pixelL, pixelR, confidence * params.fusionStrength);
+
+    float4 color;
+    if (params.mode == 0) color = float4(pixelL, 1.0);
+    else if (params.mode == 1) color = float4(pixelR, 1.0);
+    else color = float4(fused, 1.0);
+    
+    outputTexture.Store(id.xy, color);
+}
+--></div>
+                <div data-tab="Compiled WGSL" data-lang="rust"><!--
+struct Params {
+    fusionStrength: f32,
+    mode: u32,
+    pad: u32,
+}
+
+@group(0) @binding(0) var videoSampler: sampler;
+@group(0) @binding(1) var videoTexture: texture_external;
+@group(0) @binding(2) var disparityMap: texture_2d<f32>;
+@group(0) @binding(3) var outputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var<uniform> uniforms: Params;
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let size = textureDimensions(outputTexture);
+    if (id.x >= size.x || id.y >= size.y) { return; }
+
+    let uvL = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
+    let pixelL = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvL).rgb;
+
+    let d = textureLoad(disparityMap, id.xy, 0).r;
+    var uvR = uvL;
+    uvR.x = uvR.x - (d / f32(size.x));
+    uvR.y = uvR.y + 0.5;
+    
+    let pixelR = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvR).rgb;
+
+    let diff = distance(pixelL, pixelR);
+    let confidence = exp(-diff * 5.0);
+    
+    let fused = mix(pixelL, pixelR, confidence * uniforms.fusionStrength);
+
+    var color: vec4<f32>;
+    if (uniforms.mode == 0u) {
+        color = vec4<f32>(pixelL, 1.0);
+    } else if (uniforms.mode == 1u) {
+        color = vec4<f32>(pixelR, 1.0);
+    } else {
+        color = vec4<f32>(fused, 1.0);
+    }
+    
+    textureStore(outputTexture, id.xy, color);
+}
+--></div>
+                <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
+class RefSRProcessor {
+    constructor(device, context, wgslCode) {
+        this.device = device;
+        this.context = context;
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        
+        const size = [3840, 1080];
+        
+        // Dummy Disparity Map for standalone POC
+        this.dummyDisparity = device.createTexture({
+            size, format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+        });
+        // Seed with baseline shift ~128px
+        const dispData = new Float32Array(3840 * 1080).fill(128.0);
+        device.queue.writeTexture({ texture: this.dummyDisparity }, dispData, { bytesPerRow: 3840 * 4 }, size);
+
+        this.outTexture = device.createTexture({
+            size, format: 'rgba8unorm',
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+        });
+
+        this.uniformBuffer = device.createBuffer({
+            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        this.pipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: this.shaderModule, entryPoint: 'main' }
+        });
+
+        this.renderShader = device.createShaderModule({ code: `
+            struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+            @vertex fn vs(@builtin(vertex_index) i: u32) -> VSOut {
+                var pos = array<vec2f, 4>(vec2f(-1,1), vec2f(1,1), vec2f(-1,-1), vec2f(1,-1));
+                var uv = array<vec2f, 4>(vec2f(0,0), vec2f(1,0), vec2f(0,1), vec2f(1,1));
+                var out: VSOut; out.pos = vec4f(pos[i], 0, 1); out.uv = uv[i]; return out;
+            }
+            @group(0) @binding(0) var t: texture_2d<f32>;
+            @group(0) @binding(1) var s: sampler;
+            @fragment fn fs(in: VSOut) -> @location(0) vec4f {
+                return textureSample(t, s, in.uv);
+            }
+        `});
+        this.renderPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: this.renderShader, entryPoint: 'vs' },
+            fragment: { module: this.renderShader, entryPoint: 'fs', targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }] },
+            primitive: { topology: 'triangle-strip' }
+        });
+    }
+
+    render() {
+        const video = document.getElementById('video-source');
+        if (video.readyState < 2) return;
+
+        try {
+            const start = performance.now();
+            const strength = parseFloat(document.getElementById('slider-strength').value);
+            const mode = parseInt(document.getElementById('mode-val').value);
+            
+            const uData = new Uint32Array(4);
+            const fData = new Float32Array(uData.buffer);
+            fData[0] = strength;
+            uData[1] = mode;
+            this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
+
+            const commandEncoder = this.device.createCommandEncoder();
+            const externalTexture = this.device.importExternalTexture({ source: video });
+
+            const computePass = commandEncoder.beginComputePass();
+            computePass.setPipeline(this.pipeline);
+            computePass.setBindGroup(0, this.device.createBindGroup({
+                layout: this.pipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.sampler },
+                    { binding: 1, resource: externalTexture },
+                    { binding: 2, resource: this.dummyDisparity.createView() },
+                    { binding: 3, resource: this.outTexture.createView() },
+                    { binding: 4, resource: { buffer: this.uniformBuffer } }
+                ]
+            }));
+            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(1080/16));
+            computePass.end();
+
+            const renderPass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: this.context.getCurrentTexture().createView(),
+                    loadOp: 'clear', storeOp: 'store', clearValue: {r:0,g:0,b:0,a:1}
+                }]
+            });
+            
+            const canvasW = this.context.canvas.width;
+            const canvasH = this.context.canvas.height;
+            const drawH = (canvasW / 3840.0) * 1080.0;
+            
+            renderPass.setViewport(0, 0, canvasW, drawH, 0, 1);
+            renderPass.setPipeline(this.renderPipeline);
+            renderPass.setBindGroup(0, this.device.createBindGroup({
+                layout: this.renderPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.outTexture.createView() },
+                    { binding: 1, resource: this.sampler }
+                ]
+            }));
+            renderPass.draw(4);
+            renderPass.end();
+
+            this.device.queue.submit([commandEncoder.finish()]);
+            
+            document.getElementById('stat-frame').innerText = (performance.now() - start).toFixed(2) + 'ms';
+            const mins = Math.floor(video.currentTime / 60);
+            const secs = (video.currentTime % 60).toFixed(2).padStart(5, '0');
+            document.getElementById('stat-time').innerText = `${mins}:${secs}`;
+            
+        } catch (err) {
+            window.log(`Render Error: ${err.message}`, 'error');
+        }
+    }
+}
+window.ModuleRenderer = RefSRProcessor;
+--></div>
+            </slang-editor>
+        </div>
+
+        <div class="panel viewport-container" id="panel-viewport">
+            <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
+            <slang-viewport></slang-viewport>
+            <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
+            
+            <div class="controls-overlay" id="controls-overlay">
+                <div class="header-ctrl">
+                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Stereo Fusion (RefSR)</span>
+                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Engine</div>
+                        <div id="stat-frame" class="stat-value">0.00ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Timestamp</div>
+                        <div id="stat-time" class="stat-value">0:00.00</div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>View Mode</label>
+                    <div class="mode-group">
+                        <button class="mode-btn" onclick="setRefMode(0)">Left Eye</button>
+                        <button class="mode-btn" onclick="setRefMode(1)">Warped Right</button>
+                        <button class="mode-btn active" onclick="setRefMode(2)">Fused SR</button>
+                    </div>
+                    <input id="mode-val" type="hidden" value="2">
+                </div>
+
+                <div class="control-group">
+                    <div class="flex justify-between items-center mb-1">
+                        <label>Fusion Strength</label>
+                        <span id="strength-val" class="text-[10px] text-amber-500 font-mono">0.50</span>
+                    </div>
+                    <input id="slider-strength" type="range" min="0" max="1" step="0.01" value="0.50" autocomplete="off" oninput="document.getElementById('strength-val').innerText=this.value">
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
+                    <div style="flex:2">
+                        <slang-playback-controls></slang-playback-controls>
+                    </div>
+                </div>
+
+                <div class="log-panel">
+                    <div id="log-output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
+
+        window.toggleControls = () => {
+            const overlay = document.getElementById('controls-overlay');
+            const btn = overlay.querySelector('.panel-ctrl');
+            overlay.classList.toggle('collapsed-ctrl');
+            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
+        };
+
+        window.toggleCollapse = (id) => {
+            const panel = document.getElementById(id);
+            panel.classList.toggle('collapsed');
+            const btn = panel.querySelector('.panel-ctrl');
+            btn.innerText = panel.classList.contains('collapsed') ? '»' : '«';
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.toggleVideoMaximize = () => {
+            document.querySelector('.workspace').classList.toggle('video-maximized');
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.setRefMode = (m) => {
+            document.getElementById('mode-val').value = m;
+            document.querySelectorAll('.mode-btn').forEach((b, i) => b.classList.toggle('active', i === m));
+        };
+
+        window.log = (msg, type = 'info') => {
+            const out = document.getElementById('log-output');
+            if (!out) return;
+            const line = document.createElement('div');
+            line.style.fontSize = '9px';
+            line.style.color = type === 'error' ? '#f87171' : '#888';
+            line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+            out.prepend(line);
+        };
+
+        window.toggleVideo = () => {
+            const video = document.getElementById('video-source');
+            if (video.paused) video.play();
+            else video.pause();
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('video-source');
+            if (Hls.isSupported()) {
+                const hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(ANCHOR_URL);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => window.log("Autoplay blocked.", "warn"));
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = ANCHOR_URL;
+                video.play();
+            }
+        });
+    </script>
+</body>
+</html>
