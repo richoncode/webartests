@@ -4,7 +4,7 @@ import { UI } from './utils.js';
 import { 
   MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, 
   VoronoiTab, PaletteTestTab, GradientTab, MathTab, TabMgr,
-  PaletteGridTab, HilbertTab
+  PaletteGridTab, HilbertTab, BitmapTab
 } from './tabs.js';
 
 // Dependency Injection
@@ -123,7 +123,10 @@ const PATTERNS = [
   { id: 'test-kerf', short: 'Kerf', label: 'Kerf Offset Test', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'kerf-test' }, icon: '📏' },
   { id: 'test-density', short: 'Density', label: 'Line Density Test', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'density-test' }, icon: '▤' },
   { id: 'test-scale', short: 'Scale', label: 'Measurement Scale', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'test-scale' }, icon: '📏' },
-  { id: 'test-thermal', short: 'Thermal', label: 'Thermal Return Wall', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'thermal-wall' }, icon: '🧱' }
+  { id: 'test-thermal', short: 'Thermal', label: 'Thermal Return Wall', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'thermal-wall' }, icon: '🧱' },
+
+  // Bitmap & Dithering
+  { id: 'bitmap-dither', short: 'Dither', label: 'Dither Density Test', cat: 'Bitmap', comp: BitmapTab, cfg: { type: 'dither-test' }, icon: '▞' }
 ];
 
 window.addEventListener('DOMContentLoaded', async () => {

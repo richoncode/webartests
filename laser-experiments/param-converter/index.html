@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laser Parameter Converter</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --card: #1a1a1a;
+      --border: #2a2a2a;
+      --primary: #5b9bd5;
+      --accent: #f0a040;
+      --text: #eee;
+      --text-dim: #888;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container { max-width: 900px; width: 100%; }
+    header { margin-bottom: 40px; }
+    .back { color: var(--text-dim); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: inline-block; }
+    .back:hover { color: var(--text); }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    p.subtitle { color: var(--text-dim); font-size: 15px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--primary);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .preset-row {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #222;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .preset-row select {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      color: #aaa;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .preset-row select:focus { border-color: var(--primary); color: #fff; }
+
+    .entry-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: #222;
+      border: 1px solid #333;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .input-group { margin-bottom: 16px; }
+    .input-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+    .input-row { display: flex; align-items: center; gap: 10px; }
+    input {
+      flex: 1;
+      background: #000;
+      border: 1px solid #333;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 14px;
+    }
+    input:focus { outline: none; border-color: var(--primary); }
+    .unit { font-size: 12px; color: var(--text-dim); min-width: 45px; }
+    .calc-power { font-size: 11px; color: var(--accent); font-family: monospace; font-weight: bold; margin-left: 4px; }
+
+    .result-box {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .result-val { font-size: 24px; font-weight: 700; color: var(--accent); font-family: monospace; }
+    .result-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; }
+
+    .sync-indicator {
+      grid-column: 1 / -1;
+      background: rgba(91, 155, 213, 0.1);
+      color: var(--primary);
+      border: 1px solid rgba(91, 155, 213, 0.3);
+      padding: 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .info-card {
+      background: rgba(91, 155, 213, 0.05);
+      border: 1px solid rgba(91, 155, 213, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 40px;
+    }
+    .info-card h3 { font-size: 14px; color: var(--primary); margin-bottom: 10px; }
+    .info-card p { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+    code { font-family: monospace; color: var(--accent); background: #000; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <a href="../" class="back">← Back to Experiments</a>
+    <header>
+      <h1>Laser Parameter Converter</h1>
+      <p class="subtitle">Convert between continuous scanning (LPCM) and pulsed dithering (DPI) to maintain consistent energy density.</p>
+    </header>
+
+    <div class="grid">
+      <!-- SCANNING SECTION -->
+      <div class="section" id="scanSection">
+        <div class="section-title">
+          <span>Engrave / Scan (Continuous)</span>
+        </div>
+
+        <div class="preset-row">
+          <select id="paletteSel"><option value="">Loading palettes...</option></select>
+          <div class="entry-row">
+            <div id="colorSwatch" class="color-swatch"></div>
+            <select id="entrySel"><option value="">No palette</option></select>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Max Source Power (W)</label>
+          <div class="input-row">
+            <input type="number" id="scanMaxPower" value="5" step="1">
+            <span class="unit">Watts</span>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label>Power (%) <span class="calc-power" id="scanWattsLabel"></span></label>
+          <div class="input-row">
+            <input type="number" id="scanPct" value="25" step="1" min="0" max="100">
+            <span class="unit">%</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Line Density (LPCM)</label>
+          <div class="input-row">
+            <input type="number" id="scanLPCM" value="100" step="10">
+            <span class="unit">LPCM</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Speed (mm/s)</label>
+          <div class="input-row">
+            <input type="number" id="scanSpeed" value="200" step="10">
+            <span class="unit">mm/s</span>
+          </div>
+        </div>
+
+        <div class="result-box">
+          <div class="result-label">Target Energy Dose</div>
+          <div class="result-val" id="scanDose">0.00</div>
+          <div class="result-label">J/mm²</div>
+        </div>
+      </div>
+
+      <!-- DITHERING SECTION -->
+      <div class="section" id="ditherSection">
+        <div class="section-title">Bitmap / Dither (Pulsed)</div>
+
+        <!-- Spacer to align with scanning presets -->
+        <div style="height: 106px;"></div>
+
+        <div class="input-group" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #222;">
+          <label>Max Source Power (W)</label>
+          <div class="input-row">
+            <input type="number" id="ditherMaxPower" value="5" step="1">
+            <span class="unit">Watts</span>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label>Power (%) <span class="calc-power" id="ditherWattsLabel"></span></label>
+          <div class="input-row">
+            <input type="number" id="ditherPct" value="25" step="1" min="0" max="100">
+            <span class="unit">%</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Resolution (DPI)</label>
+          <div class="input-row">
+            <input type="number" id="ditherDPI" value="300" step="10">
+            <span class="unit">DPI</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Dot Duration (ms) <span style="color:var(--primary)">[AUTO]</span></label>
+          <div class="input-row">
+            <input type="number" id="ditherDuration" value="0.1" step="0.01">
+            <span class="unit">ms</span>
+          </div>
+        </div>
+
+        <div class="result-box">
+          <div class="result-label">Current Energy Dose</div>
+          <div class="result-val" id="ditherDose">0.00</div>
+          <div class="result-label">J/mm²</div>
+        </div>
+      </div>
+
+      <div class="sync-indicator">
+        <span>⚡</span> Automatic Synchronization Active: Dot Duration is tracking Target Dose.
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>Physics & Formulae</h3>
+      <p>Maintain consistent material effects by matching the <strong>Energy Dose ($J/mm^2$)</strong> between different processing modes.</p>
+      <p><strong>Scanning:</strong> <code>Dose = (MaxPower × Pct%) / (Speed × (10 / LPCM))</code></p>
+      <p><strong>Dithering:</strong> <code>Dose = (MaxPower × Pct% × Duration) / (25.4 / DPI)²</code></p>
+      <p><em>Note: This model assumes 100% duty cycle within the pulse duration and ignores thermal diffusion time constants.</em></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { App } from '../pattern-tool/js/app.js';
+    import { PalMgr } from '../pattern-tool/js/palettes.js';
+
+    const get = id => document.getElementById(id);
+    let isUpdatingFromPreset = false;
+    let isSyncing = false;
+
+    function getContrastYIQ(hexcolor){
+      hexcolor = hexcolor.replace("#", "");
+      if (hexcolor.length === 3) {
+        hexcolor = hexcolor.split('').map(c => c + c).join('');
+      }
+      var r = parseInt(hexcolor.substr(0,2),16);
+      var g = parseInt(hexcolor.substr(2,2),16);
+      var b = parseInt(hexcolor.substr(4,2),16);
+      var yiq = ((r*299)+(g*587)+(b*114))/1000;
+      return (yiq >= 128) ? 'black' : 'white';
+    }
+
+    async function init() {
+      if (!App.palettes) App.palettes = {};
+      
+      const originalFetch = window.fetch;
+      window.fetch = (url) => {
+        if (url.startsWith('palettes/')) {
+          return originalFetch(`../pattern-tool/${url}`);
+        }
+        return originalFetch(url);
+      };
+
+      await PalMgr.load();
+      window.fetch = originalFetch;
+
+      PalMgr.fillPaletteSelect(get('paletteSel'), "");
+      
+      get('paletteSel').onchange = (e) => {
+        const palId = e.target.value;
+        const sel = get('entrySel');
+        sel.innerHTML = '';
+        const p = PalMgr.get(palId);
+        if (!p) { 
+          sel.innerHTML = '<option value="-1">— select color —</option>'; 
+          get('colorSwatch').style.background = '#222';
+          return; 
+        }
+        
+        const noneOpt = document.createElement('option');
+        noneOpt.value = "-1"; noneOpt.textContent = "— select color —";
+        sel.appendChild(noneOpt);
+
+        p.entries.forEach((e, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = `${e.label} (${e.power}%)`;
+          opt.style.backgroundColor = e.rgb;
+          opt.style.color = getContrastYIQ(e.rgb);
+          sel.appendChild(opt);
+        });
+        
+        get('colorSwatch').style.background = '#222';
+      };
+
+      get('entrySel').onchange = (e) => {
+        const palId = get('paletteSel').value;
+        const entryIdx = parseInt(e.target.value);
+        if (entryIdx < 0) {
+          get('colorSwatch').style.background = '#222';
+          return;
+        }
+
+        const p = PalMgr.get(palId);
+        if (!p) return;
+        const eData = p.entries[entryIdx];
+        if (!eData) return;
+
+        get('colorSwatch').style.background = eData.rgb;
+
+        isUpdatingFromPreset = true;
+        get('scanPct').value = eData.power;
+        get('scanSpeed').value = eData.speed || p.speed || 100;
+        get('scanLPCM').value = eData.lpcm || p.lpcm || 333;
+        isUpdatingFromPreset = false;
+        
+        syncAndCalculate();
+      };
+
+      // Source inputs (triggers sync)
+      ['scanMaxPower', 'scanPct', 'scanSpeed', 'scanLPCM', 'ditherMaxPower', 'ditherPct', 'ditherDPI'].forEach(id => {
+        get(id).addEventListener('input', () => {
+          if (id.startsWith('scan') && !isUpdatingFromPreset && id !== 'scanMaxPower') {
+            get('entrySel').value = "-1";
+            get('colorSwatch').style.background = '#222';
+          }
+          syncAndCalculate();
+        });
+      });
+
+      get('ditherDuration').addEventListener('input', calculate);
+
+      syncAndCalculate();
+    }
+
+    function calculate() {
+      // 1. Scan Watts & Dose
+      const sMax = parseFloat(get('scanMaxPower').value) || 1;
+      const sPct = parseFloat(get('scanPct').value) || 0;
+      const sWatts = (sMax * sPct) / 100;
+      get('scanWattsLabel').textContent = `(${sWatts.toFixed(2)}W)`;
+
+      const sS = parseFloat(get('scanSpeed').value) || 1;
+      const sL = parseFloat(get('scanLPCM').value) || 1;
+      const lineSpacing = 10 / sL; 
+      const scanDose = sWatts / (sS * lineSpacing);
+      get('scanDose').textContent = scanDose.toFixed(4);
+
+      // 2. Dither Watts & Dose
+      const dMax = parseFloat(get('ditherMaxPower').value) || 1;
+      const dPct = parseFloat(get('ditherPct').value) || 0;
+      const dWatts = (dMax * dPct) / 100;
+      get('ditherWattsLabel').textContent = `(${dWatts.toFixed(2)}W)`;
+
+      const dRes = parseFloat(get('ditherDPI').value) || 1;
+      const dDur = parseFloat(get('ditherDuration').value) / 1000; 
+      const dotSpacing = 25.4 / dRes;
+      const dotArea = dotSpacing * dotSpacing;
+      const ditherDose = (dWatts * dDur) / dotArea;
+      get('ditherDose').textContent = ditherDose.toFixed(4);
+    }
+
+    function syncAndCalculate() {
+      if (isSyncing) return;
+      isSyncing = true;
+
+      calculate();
+
+      const targetDose = parseFloat(get('scanDose').textContent);
+      const dMax = parseFloat(get('ditherMaxPower').value) || 1;
+      const dPct = parseFloat(get('ditherPct').value) || 1;
+      const dWatts = (dMax * dPct) / 100;
+      const dRes = parseFloat(get('ditherDPI').value) || 1;
+      
+      const dotSpacing = 25.4 / dRes;
+      const dotArea = dotSpacing * dotSpacing;
+      
+      const durationSec = dWatts > 0 ? (targetDose * dotArea) / dWatts : 0;
+      get('ditherDuration').value = (durationSec * 1000).toFixed(4);
+      
+      calculate();
+      isSyncing = false;
+    }
+
+    init();
+  </script>
+</body>
+</html>

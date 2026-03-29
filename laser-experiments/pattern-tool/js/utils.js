@@ -85,6 +85,30 @@ export const UI = {
     return row;
   },
 
+  makeSelect(options, current, onChange) {
+    const sel = document.createElement('select');
+    sel.className = 'ui-select';
+    sel.style.background = '#0d0d0d';
+    sel.style.border = '1px solid #333';
+    sel.style.color = '#5b9bd5';
+    sel.style.fontSize = '11px';
+    sel.style.borderRadius = '4px';
+    sel.style.padding = '2px 4px';
+    sel.style.outline = 'none';
+    sel.style.cursor = 'pointer';
+
+    options.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o;
+      opt.textContent = o;
+      if (o === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    sel.onchange = (e) => onChange(e.target.value);
+    return sel;
+  },
+
   makeRange(min, max, step, val, onChange, unit='') {
     const wrap = document.createElement('div');
     wrap.className = 'ctrl-val-wrap';

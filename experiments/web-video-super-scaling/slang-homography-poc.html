@@ -37,7 +37,7 @@
             position: absolute;
             bottom: 24px;
             right: 24px;
-            width: 340px;
+            width: 360px;
             background: rgba(20, 20, 20, 0.9);
             backdrop-filter: blur(12px);
             border: 1px solid #333;
@@ -115,8 +115,8 @@
         }
         .matrix-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 4px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 2px;
             margin-top: 8px;
         }
         .matrix-input {
@@ -124,10 +124,12 @@
             border: 1px solid #333;
             color: #fbbf24;
             font-family: 'SF Mono', monospace;
-            font-size: 10px;
-            padding: 2px;
+            font-size: 13px;
+            padding: 8px 0;
             text-align: center;
-            border-radius: 2px;
+            border-radius: 4px;
+            width: 100%;
+            min-width: 0;
         }
     </style>
 </head>
@@ -140,22 +142,92 @@
     </nav>
 
     <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Geometric Alignment</h2>
-            <p>Mapping the <strong>Right Eye</strong> (bottom frame) into the perspective of the <strong>Left Eye</strong> (top frame) using a $3 \times 3$ homography matrix.</p>
-            <p>This projective transformation is mathematically defined as:</p>
-            <p style="font-family:'SF Mono'; font-size:11px; color:#fbbf24; background:#111; padding:8px; border-radius:4px;">
-                x' = (h00x + h01y + h02) / w<br>
-                y' = (h10x + h11y + h12) / w<br>
-                w = (h20x + h21y + 1.0)
-            </p>
-            <p>Alignment is critical for <strong>Reference-Based Super-Resolution</strong>, allowing the network to sample pixel-perfect data from the secondary camera.</p>
-        </div>
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #fbbf24;">Geometric Alignment</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Mapping the <strong>Right Eye</strong> (bottom frame) into the perspective of the <strong>Left Eye</strong> (top frame) using a $3 \times 3$ homography matrix.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">This projective transformation is mathematically defined as:</p>
+                    <p style="font-family:'SF Mono'; font-size:11px; color:#fbbf24; background:#111; padding:12px; border-radius:4px; margin-bottom: 16px;">
+                        x' = (h00x + h01y + h02) / w<br>
+                        y' = (h10x + h11y + h12) / w<br>
+                        w = (h20x + h21y + 1.0)
+                    </p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Alignment is critical for <strong>Reference-Based Super-Resolution</strong>, allowing the network to sample pixel-perfect data from the secondary camera.</p>
+                </div>
 
-        <div class="panel editor-container" id="panel-editor">
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn" onclick="setHMode(0)">Left</button>
+                            <button class="mode-btn" onclick="setHMode(1)">WarpR</button>
+                            <button class="mode-btn" onclick="setHMode(2)">Diff</button>
+                            <button class="mode-btn active" onclick="setHMode(3)">Blend</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="3">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Comparison Blend</label>
+                            <span id="blend-val" class="text-[10px] text-amber-500 font-mono">0.50</span>
+                        </div>
+                        <input id="slider-blend" type="range" min="0" max="1" step="0.01" value="0.5" autocomplete="off" oninput="document.getElementById('blend-val').innerText=this.value">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Homography Matrix (H)</label>
+                        <div class="matrix-grid">
+                            <input id="h00" type="number" class="matrix-input" value="1.00000" step="0.001">
+                            <input id="h01" type="number" class="matrix-input" value="0.10703" step="0.001">
+                            <input id="h02" type="number" class="matrix-input" value="-26.14" step="0.5">
+                            
+                            <input id="h10" type="number" class="matrix-input" value="0.00000" step="0.001">
+                            <input id="h11" type="number" class="matrix-input" value="1.00000" step="0.001">
+                            <input id="h12" type="number" class="matrix-input" value="0.00" step="0.5">
+                            
+                            <input id="h20" type="number" class="matrix-input" value="0.00000000" step="0.00000001">
+                            <input id="h21" type="number" class="matrix-input" value="0.00000000" step="0.00000001">
+                            <div class="matrix-input" style="color:#555">1.0</div>
+                        </div>
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="resetMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Reset Calib</button>
+                            <button onclick="copyMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Copy JSON</button>
+                            <button onclick="pasteMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Paste JSON</button>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
+
                 <div data-tab="Homography Slang" data-lang="cpp"><!--
 struct Params {
     float3x3 H;       // Homography Matrix (Right to Left)
@@ -171,7 +243,7 @@ RWTexture2D<float4> outputTexture;
 [shader("compute")]
 [numthreads(16, 16, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
-    uint2 size = uint2(3840, 1080);
+    uint2 size = uint2(3840, 2160);
     if (id.x >= size.x || id.y >= size.y) return;
 
     float2 uvL = float2(id.xy) / float2(size);
@@ -266,7 +338,7 @@ class HomographyProcessor {
         this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
 
         this.outTexture = device.createTexture({
-            size: [3840, 1080], format: 'rgba8unorm',
+            size: [3840, 2160], format: 'rgba8unorm',
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
         });
 
@@ -351,7 +423,7 @@ class HomographyProcessor {
                     { binding: 3, resource: { buffer: this.uniformBuffer } }
                 ]
             }));
-            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(1080/16));
+            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(2160/16));
             computePass.end();
 
             const renderPass = commandEncoder.beginRenderPass({
@@ -363,7 +435,7 @@ class HomographyProcessor {
             
             const canvasW = this.context.canvas.width;
             const canvasH = this.context.canvas.height;
-            const drawH = (canvasW / 3840.0) * 1080.0;
+            const drawH = (canvasW / 3840.0) * 2160.0;
             
             renderPass.setViewport(0, 0, canvasW, drawH, 0, 1);
             renderPass.setPipeline(this.renderPipeline);
@@ -399,87 +471,11 @@ window.ModuleRenderer = HomographyProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Calibration & Blend</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn" onclick="setHMode(0)">Left</button>
-                        <button class="mode-btn" onclick="setHMode(1)">WarpR</button>
-                        <button class="mode-btn" onclick="setHMode(2)">Diff</button>
-                        <button class="mode-btn active" onclick="setHMode(3)">Blend</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="3">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Comparison Blend</label>
-                        <span id="blend-val" class="text-[10px] text-amber-500 font-mono">0.50</span>
-                    </div>
-                    <input id="slider-blend" type="range" min="0" max="1" step="0.01" value="0.5" autocomplete="off" oninput="document.getElementById('blend-val').innerText=this.value">
-                </div>
-
-                <div class="control-group">
-                    <label>Homography Matrix (H)</label>
-                    <div class="matrix-grid">
-                        <input id="h00" type="number" class="matrix-input" value="1.0" step="0.001">
-                        <input id="h01" type="number" class="matrix-input" value="0.0" step="0.001">
-                        <input id="h02" type="number" class="matrix-input" value="128.0" step="0.5">
-                        
-                        <input id="h10" type="number" class="matrix-input" value="0.0" step="0.001">
-                        <input id="h11" type="number" class="matrix-input" value="1.0" step="0.001">
-                        <input id="h12" type="number" class="matrix-input" value="0.0" step="0.5">
-                        
-                        <input id="h20" type="number" class="matrix-input" value="0.0" step="0.00001">
-                        <input id="h21" type="number" class="matrix-input" value="0.0" step="0.00001">
-                        <div class="matrix-input" style="color:#555">1.0</div>
-                    </div>
-                    <div class="flex gap-2 mt-2">
-                        <button onclick="resetMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Identity</button>
-                        <button onclick="copyMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Copy JSON</button>
-                    </div>
-                </div>
-
-                <div class="flex gap-2">
-                    <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -502,15 +498,16 @@ window.ModuleRenderer = HomographyProcessor;
         };
 
         window.resetMatrix = () => {
-            document.getElementById('h00').value = 1.0;
-            document.getElementById('h01').value = 0.0;
-            document.getElementById('h02').value = 128.0;
-            document.getElementById('h10').value = 0.0;
-            document.getElementById('h11').value = 1.0;
-            document.getElementById('h12').value = 0.0;
-            document.getElementById('h20').value = 0.0;
-            document.getElementById('h21').value = 0.0;
-            window.log("Matrix reset to identity (with 128px shift)");
+            const h = [1.0, 0.10703, -26.14025, 0.0, 1.0, 0.0, 0.0, 0.0];
+            document.getElementById('h00').value = h[0].toFixed(5);
+            document.getElementById('h01').value = h[1].toFixed(5);
+            document.getElementById('h02').value = h[2].toFixed(2);
+            document.getElementById('h10').value = h[3].toFixed(5);
+            document.getElementById('h11').value = h[4].toFixed(5);
+            document.getElementById('h12').value = h[5].toFixed(2);
+            document.getElementById('h20').value = h[6].toFixed(8);
+            document.getElementById('h21').value = h[7].toFixed(8);
+            window.log("Matrix reset to Cardinals Rectified anchor");
         };
 
         window.copyMatrix = () => {
@@ -527,6 +524,28 @@ window.ModuleRenderer = HomographyProcessor;
             ];
             navigator.clipboard.writeText(JSON.stringify(h));
             window.log("Matrix copied to clipboard");
+        };
+
+        window.pasteMatrix = async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                const h = JSON.parse(text);
+                if (Array.isArray(h) && h.length >= 8) {
+                    document.getElementById('h00').value = h[0].toFixed(5);
+                    document.getElementById('h01').value = h[1].toFixed(5);
+                    document.getElementById('h02').value = h[2].toFixed(2);
+                    document.getElementById('h10').value = h[3].toFixed(5);
+                    document.getElementById('h11').value = h[4].toFixed(5);
+                    document.getElementById('h12').value = h[5].toFixed(2);
+                    document.getElementById('h20').value = h[6].toFixed(8);
+                    document.getElementById('h21').value = h[7].toFixed(8);
+                    window.log("Matrix pasted from clipboard");
+                } else {
+                    window.log("Invalid matrix format in clipboard", "error");
+                }
+            } catch (err) {
+                window.log("Failed to read clipboard: " + err.message, "error");
+            }
         };
 
         window.log = (msg, type = 'info') => {
@@ -567,6 +586,42 @@ window.ModuleRenderer = HomographyProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
         });
     </script>
 </body>

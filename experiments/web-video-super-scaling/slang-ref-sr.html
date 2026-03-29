@@ -120,7 +120,7 @@ RWTexture2D<float4> outputTexture;
 [shader("compute")]
 [numthreads(16, 16, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
-    uint2 size = uint2(3840, 1080);
+    uint2 size = uint2(3840, 2160);
     if (id.x >= size.x || id.y >= size.y) return;
 
     // 1. Primary Eye UV (Top)
@@ -206,14 +206,14 @@ class RefSRProcessor {
         this.shaderModule = device.createShaderModule({ code: wgslCode });
         this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
         
-        const size = [3840, 1080];
+        const size = [3840, 2160];
         
         // Dummy Disparity Map for standalone POC
         this.dummyDisparity = device.createTexture({
             size, format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
         });
-        // Seed with baseline shift ~128px
-        const dispData = new Float32Array(3840 * 1080).fill(128.0);
+        // Seed with baseline shift ~31px
+        const dispData = new Float32Array(3840 * 2160).fill(31.0);
         device.queue.writeTexture({ texture: this.dummyDisparity }, dispData, { bytesPerRow: 3840 * 4 }, size);
 
         this.outTexture = device.createTexture({
@@ -281,7 +281,7 @@ class RefSRProcessor {
                     { binding: 4, resource: { buffer: this.uniformBuffer } }
                 ]
             }));
-            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(1080/16));
+            computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(2160/16));
             computePass.end();
 
             const renderPass = commandEncoder.beginRenderPass({
@@ -293,7 +293,7 @@ class RefSRProcessor {
             
             const canvasW = this.context.canvas.width;
             const canvasH = this.context.canvas.height;
-            const drawH = (canvasW / 3840.0) * 1080.0;
+            const drawH = (canvasW / 3840.0) * 2160.0;
             
             renderPass.setViewport(0, 0, canvasW, drawH, 0, 1);
             renderPass.setPipeline(this.renderPipeline);

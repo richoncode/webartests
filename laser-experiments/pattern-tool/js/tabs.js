@@ -16,8 +16,9 @@ import { HilbertTab } from './components/hilbert-tab.js';
 import { PaletteGridTab } from './components/palette-grid-tab.js';
 import { PaletteTestTab } from './components/palette-test-tab.js';
 import { MathTab } from './components/math-tab.js';
+import { BitmapTab } from './components/bitmap-tab.js';
 
-export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab, PaletteTestTab, MathTab };
+export { XCSIR, XcsTab, MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, GradientTab, BitmapLineTab, TestTab, VoronoiTab, HilbertTab, PaletteGridTab, PaletteTestTab, MathTab, BitmapTab };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB MANAGER
