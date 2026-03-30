@@ -15,12 +15,6 @@ export const BitmapLineTab = {
         <div class="tool-header"><span class="tool-title">Bitmap Line Test</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Bitmap Line Test';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -40,6 +34,11 @@ export const BitmapLineTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'bitmap-line', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Bitmap Line Test';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

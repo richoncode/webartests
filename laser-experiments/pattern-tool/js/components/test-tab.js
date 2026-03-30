@@ -14,12 +14,6 @@ export const TestTab = {
         <div class="tool-header"><span class="tool-title">XCS Format Test</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Format Test';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       testType: 'text-scribe',
       laserType: 'ir'
@@ -27,6 +21,11 @@ export const TestTab = {
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'test', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Format Test';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

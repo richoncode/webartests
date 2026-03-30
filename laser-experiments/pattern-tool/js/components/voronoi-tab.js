@@ -15,12 +15,6 @@ export const VoronoiTab = {
         <div class="tool-header"><span class="tool-title">Voronoi Generator</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Voronoi Design';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -38,6 +32,11 @@ export const VoronoiTab = {
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'voronoi', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Voronoi Design';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

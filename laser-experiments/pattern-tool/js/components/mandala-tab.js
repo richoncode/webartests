@@ -15,12 +15,6 @@ export const MandalaTab = {
         <div class="tool-header"><span class="tool-title">Dot Mandala</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Dot Mandala';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -51,6 +45,11 @@ export const MandalaTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'mandala', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Dot Mandala';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

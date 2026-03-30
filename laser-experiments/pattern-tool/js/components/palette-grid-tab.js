@@ -15,12 +15,6 @@ export const PaletteGridTab = {
         <div class="tool-header"><span class="tool-title">Palette Grid</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Palette Grid';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       totalSize: 40,
@@ -32,6 +26,11 @@ export const PaletteGridTab = {
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'palette-grid', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Palette Grid';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

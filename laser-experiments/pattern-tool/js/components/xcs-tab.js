@@ -15,12 +15,12 @@ export const XcsTab = {
         <input type="file" class="file-input" accept=".xcs,.json" style="display:none">
       </div>`;
     
-    const viewer = XCSViewer.create(tabId);
-    pane.appendChild(viewer);
-
     const q = s => pane.querySelector(s);
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'xcs', pane, state };
+
+    const viewer = XCSViewer.create(tabId);
+    pane.appendChild(viewer);
 
     q('.drop-zone').addEventListener('click', () => q('.file-input').click());
     q('.file-input').addEventListener('change', e => { if (e.target.files[0]) this.loadFile(tabId, pane, state, e.target.files[0]); });

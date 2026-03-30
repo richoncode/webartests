@@ -49,5 +49,12 @@ export const XCSExporter = {
    */
   addImage(project, options) {
     return wrap(project).addItem('IMAGE', options).id;
+  },
+
+  /**
+   * Adds a bitmap to a project.
+   */
+  addBitmap(project, options) {
+    return wrap(project).addItem('BITMAP', options).id;
   }
 };

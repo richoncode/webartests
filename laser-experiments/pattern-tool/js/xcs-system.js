@@ -61,7 +61,8 @@ export class XCSItem {
       text: d.text || null,
       style: d.style || null,
       dPath: d.dPath || null,
-      scale: d.scale || { x: 1, y: 1 }
+      scale: d.scale || { x: 1, y: 1 },
+      base64: d.base64 || null
     };
   }
 
@@ -78,7 +79,7 @@ export class XCSItem {
   // --- Factory Helpers (MANDATORY for Hardware Compatibility) ---
 
   static createDisplayNode(id, type, options, layerColor, processingType, zOrder) {
-    const isFill = processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
+    const isFill = type === 'BITMAP' || processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
     
     const node = {
       id, name: null, type, x: options.x, y: options.y, 
@@ -86,7 +87,7 @@ export class XCSItem {
       angle: options.angle || 0,
       scale: options.scale || { x: 1, y: 1 }, 
       skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-      offsetX: options.x, offsetY: options.y, lockRatio: options.lockRatio ?? true, isClosePath: true,
+      offsetX: options.x, offsetY: options.y, lockRatio: options.lockRatio ?? true, isClosePath: type !== 'BITMAP',
       zOrder, sourceId: id, groupTag: uuid(), layerTag: layerColor,
       layerColor: layerColor, visible: true, originColor: "#000000",
       enableTransform: true, visibleState: true, lockState: false,
@@ -101,24 +102,46 @@ export class XCSItem {
     if (type === 'TEXT') {
       XCSText.bake(node, options, layerColor);
     }
+    if (type === 'BITMAP') {
+      node.base64 = options.base64;
+      node.originWidth = options.originWidth || 1;
+      node.originHeight = options.originHeight || 1;
+      node.dpi = options.dpi || { dpiX: 25.4, dpiY: 25.4 };
+      node.grayValue = [0, 255];
+      node.sharpness = 50;
+      node.brightness = 0;
+      node.contrast = 0;
+      node.saturation = 0;
+      node.temperature = 0;
+      node.tone = 0;
+      node.colorInverted = false;
+      node.filterList = [];
+      node.filterAttrsMap = {
+        emboss: { strength: 5 },
+        halftone: { radius: 4, angle: 45 },
+        binary: { threshold: 128 },
+        sketch: { strength: 2 },
+        dot: { angle: 45, scale: 14 }
+      };
+    }
 
     return node;
   }
 
   static createLaserNode(id, type, options, laserSource, processingType) {
-    const isFill = processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
+    const isFill = type === 'BITMAP' || processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
     const planType = laserSource === 'red' ? 'red' : 'blue';
     
     // Core parameters from palette or defaults
     const pm = { 
       power: 20, speed: 100, density: 1000, repeat: 1,
-      processingLightSource: laserSource, bitmapScanMode: "zMode", needGapNumDensity: true,
+      processingLightSource: laserSource, bitmapScanMode: "oneWay", needGapNumDensity: true,
       dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0,
       ...(options.params || {})
     };
 
-    return {
-      isFill, type, processingType, processIgnore: false, isWhiteModel: !isFill,
+    const laserNode = {
+      isFill, type, processingType, processIgnore: false, isWhiteModel: type === 'BITMAP' ? true : !isFill,
       data: {
         VECTOR_CUTTING: this.createOpNode("VECTOR_CUTTING", planType, laserSource, pm),
         VECTOR_ENGRAVING: type === 'TEXT' ? {
@@ -134,6 +157,14 @@ export class XCSItem {
         INTAGLIO: this.createOpNode("INTAGLIO", planType, laserSource, pm)
       }
     };
+
+    if (type === 'BITMAP') {
+      laserNode.data.BITMAP_ENGRAVING = this.createOpNode("BITMAP_ENGRAVING", planType, laserSource, pm);
+      laserNode.data.RELIEF = this.createOpNode("RELIEF", planType, laserSource, pm);
+      laserNode.data.COLOR_ENGRAVE = this.createOpNode("COLOR_ENGRAVE", planType, laserSource, pm);
+    }
+
+    return laserNode;
   }
 
   static createOpNode(type, planType, laserSource, overrides = {}) {
@@ -155,11 +186,41 @@ export class XCSItem {
         density: overrides.density || 300,
         dotDuration: 100,
         dpi: overrides.density || 500,
-        bitmapScanMode: "zMode",
+        bitmapScanMode: "oneWay",
         notResize: true,
         scanAngle: 0,
         angleType: 2,
         crossAngle: false
+      });
+    }
+
+    if (type === "BITMAP_ENGRAVING") {
+      Object.assign(node.parameter.customize, {
+        bitmapMode: overrides.bitmapMode || "grayscale",
+        bitmapScanMode: overrides.bitmapScanMode || "oneWay",
+        bitmapEngraveMode: overrides.bitmapEngraveMode || "dot",
+        dotDuration: overrides.dotDuration || 200,
+        dpi: overrides.dpi || 847,
+        powerMinMaxRange: overrides.powerMinMaxRange || [overrides.power || 65, overrides.power || 65]
+      });
+    }
+
+    if (type === "RELIEF") {
+      Object.assign(node.parameter.customize, {
+        bitmapScanMode: "zMode",
+        sliceNumber: 256,
+        density: 100,
+        processAngle: 15,
+        zAxisMove: false,
+        zLayers: 1,
+        zDecline: 0.01,
+        reliefCleanUp: false,
+        cleanUpLayers: 256,
+        cleanUpPower: 1,
+        cleanUpSpeed: 80,
+        cleanUpRepeat: 1,
+        cleanUpDensity: 100,
+        cleanUpProcessAngle: 15
       });
     }
 
@@ -171,6 +232,11 @@ export class XCSItem {
  * Standard geometric shape (RECT, CIRCLE, PATH, IMAGE).
  */
 export class XCSShape extends XCSItem {}
+
+/**
+ * Bitmap image object.
+ */
+export class XCSBitmap extends XCSItem {}
 
 /**
  * Specialized text object with baked glyph paths for hardware compatibility.
@@ -333,7 +399,8 @@ export class XCSProject {
     // Abstract the processing type away from the components
     let processingType = options.processingType; 
     if (!processingType) {
-      if (options.isFill === true) processingType = "COLOR_FILL_ENGRAVE";
+      if (type === 'BITMAP') processingType = "BITMAP_ENGRAVING";
+      else if (options.isFill === true) processingType = "COLOR_FILL_ENGRAVE";
       else if (options.isFill === false) processingType = "VECTOR_ENGRAVING";
       else processingType = type === 'TEXT' ? "VECTOR_ENGRAVING" : "COLOR_FILL_ENGRAVE";
     }
@@ -361,7 +428,9 @@ export class XCSProject {
     dvEntry.displays.value.push([id, laser]);
 
     // 4. Return appropriate subclass instance
-    return (type === 'TEXT') ? new XCSText(display, laser, zOrder) : new XCSShape(display, laser, zOrder);
+    if (type === 'TEXT') return new XCSText(display, laser, zOrder);
+    if (type === 'BITMAP') return new XCSBitmap(display, laser, zOrder);
+    return new XCSShape(display, laser, zOrder);
   }
 
   /**
@@ -394,7 +463,9 @@ export class XCSProject {
     const dispMap = Object.fromEntries(dvEntry.displays.value);
     return this.canvas[0].displays.map((d, i) => {
       const laser = dispMap[d.id];
-      return (d.type === 'TEXT') ? new XCSText(d, laser, i) : new XCSShape(d, laser, i);
+      if (d.type === 'TEXT') return new XCSText(d, laser, i);
+      if (d.type === 'BITMAP') return new XCSBitmap(d, laser, i);
+      return new XCSShape(d, laser, i);
     });
   }
 
@@ -439,7 +510,7 @@ export class XCSProject {
     if (!data || !data.canvas || !data.canvas[0]) return null;
     const project = new XCSProject(data.canvasId);
     project.root = data;
-    project.canvas = data.canvas[0];
+    project.canvas = [data.canvas[0]];
     project.device = data.device;
     project.canvasId = data.canvasId;
     return project;

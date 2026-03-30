@@ -31,12 +31,6 @@ export const GradientTab = {
         <div class="tool-header"><span class="tool-title">Gradient Test</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Gradient Test Grid';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -61,6 +55,11 @@ export const GradientTab = {
     }
     const state = { project: null, selection: null };
     App.instances[tabId] = { type: initialCfg?.type || 'gradient', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Gradient Test Grid';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);

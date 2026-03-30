@@ -15,12 +15,6 @@ export const HilbertTab = {
         <div class="tool-header"><span class="tool-title">Hilbert Curve</span></div>
         <div class="tool-scroll"></div>
       </div>`;
-
-    const viewer = XCSViewer.create(tabId);
-    const label = App.tabs.find(t => t.id === tabId)?.label || 'Hilbert Curve';
-    viewer.querySelector('.viewer-fname').textContent = label;
-    pane.appendChild(viewer);
-
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
@@ -36,6 +30,11 @@ export const HilbertTab = {
     }
     const state = { project: null };
     App.instances[tabId] = { type: initialCfg?.type || 'hilbert', pane, cfg, state };
+
+    const viewer = XCSViewer.create(tabId);
+    const label = App.tabs.find(t => t.id === tabId)?.label || 'Hilbert Curve';
+    viewer.querySelector('.viewer-fname').textContent = label;
+    pane.appendChild(viewer);
 
     this.renderControls(tabId);
     this.refresh(tabId);
