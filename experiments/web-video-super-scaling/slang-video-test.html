@@ -260,29 +260,66 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>Slang Video Processing</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-ref-sr.html" class="prev-link">← Stereo Fusion</a>
+        </div>
+        <div class="nav-center">Slang Engine</div>
+        <div class="nav-right">
+            
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')" title="Collapse Tutorial">«</button>
-            <h2>Tutorial Engine Integration</h2>
-            <p>This experiment adapts the <strong>Slang Tutorial Engine</strong> for real-time video processing. It utilizes <code>importExternalTexture</code> for zero-copy HLS stream ingestion.</p>
-            <p><strong>Workflow:</strong> Slang kernels are compiled to WGSL (currently using the pre-compiled hack) and executed via a WebGPU compute/fragment pipeline.</p>
-            <p><strong>Modes:</strong>
-                <br>• 0: Raw Passthrough
-                <br>• 1: Left Eye (Top)
-                <br>• 2: Right Eye (Bottom)
-                <br>• 3: Side-by-Side Remapping
-            </p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')" title="Collapse Code">«</button>
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #5b9bd5;">Tutorial Engine Integration</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">This experiment adapts the <strong>Slang Tutorial Engine</strong> for real-time video processing. It utilizes <code>importExternalTexture</code> for zero-copy HLS stream ingestion.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Workflow:</strong> Slang kernels are compiled to WGSL (currently using the pre-compiled hack) and executed via a WebGPU compute/fragment pipeline.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Modes:</strong>
+                        <br>• 0: Raw Passthrough
+                        <br>• 1: Left Eye (Top)
+                        <br>• 2: Right Eye (Bottom)
+                        <br>• 3: Side-by-Side Remapping
+                    </p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid" style="margin-top: 0;">
+                        <div class="stat-card">
+                            <div class="stat-label">Frame Time</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Stream Status</div>
+                            <div id="stat-video" class="stat-value">IDLE</div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Render Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn" onclick="setMode(0)">Raw</button>
+                            <button class="mode-btn" onclick="setMode(1)">Left</button>
+                            <button class="mode-btn" onclick="setMode(2)">Right</button>
+                            <button class="mode-btn active" onclick="setMode(3)">SBS</button>
+                        </div>
+                        <input id="slider-mode" type="hidden" value="3">
+                    </div>
+                    <div class="control-group" style="margin-top: 8px;">
+                        <slang-playback-controls></slang-playback-controls>
+                    </div>
+                </div>
+            </div>
+
+            <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Slang Shader" data-lang="cpp"><!--
 [shader("vertex")]
 VertexOutput vsMain(uint vertexID : SV_VertexID) {
@@ -446,31 +483,6 @@ window.ModuleRenderer = VideoProcessor;
                 <slang-viewport></slang-viewport>
                 <video id="video-source" crossorigin="anonymous" playsinline muted></video>
             </div>
-            <div class="controls">
-                <div class="stats-grid" style="margin-top: 0; margin-bottom: 16px;">
-                    <div class="stat-card">
-                        <div class="stat-label">Frame Time</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Stream Status</div>
-                        <div id="stat-video" class="stat-value">IDLE</div>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>Render Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn" onclick="setMode(0)">Raw</button>
-                        <button class="mode-btn" onclick="setMode(1)">Left</button>
-                        <button class="mode-btn" onclick="setMode(2)">Right</button>
-                        <button class="mode-btn active" onclick="setMode(3)">SBS</button>
-                    </div>
-                    <input id="slider-mode" type="hidden" value="3">
-                </div>
-                <div class="control-group" style="margin-top: 16px;">
-                    <slang-playback-controls></slang-playback-controls>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -520,8 +532,55 @@ window.ModuleRenderer = VideoProcessor;
             window.reqRender = reqRender;
 
             window.setMode = (mode) => {
-                document.getElementById('slider-mode').value = mode;
+                const modeInput = document.getElementById('slider-mode');
+                if (modeInput) modeInput.value = mode;
                 document.querySelectorAll('.mode-btn').forEach((btn, idx) => {
+                    btn.classList.toggle('active', idx === mode);
+                });
+                reqRender();
+            };
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+
+</html>
+).forEach((btn, idx) => {
                     btn.classList.toggle('active', idx === mode);
                 });
                 reqRender();

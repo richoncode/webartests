@@ -336,10 +336,11 @@ export const XCSViewer = {
           'fill-opacity': fillOp, stroke: strC, 'stroke-width': strW
         });
       }
-      else if (s.type === 'IMAGE') {
+      else if (s.type === 'IMAGE' || s.type === 'BITMAP') {
         el = svgEl('rect', {
           x: cx - rw/2, y: cy - rh/2, width: rw, height: rh, 
-          fill: 'rgba(255,255,255,0.1)', stroke: '#666', 'stroke-width': 1, 'stroke-dasharray': '2 2'
+          fill: renderColor, 'fill-opacity': 0.3,
+          stroke: strC, 'stroke-width': 1, 'stroke-dasharray': s.type === 'IMAGE' ? '2 2' : 'none'
         });
       }
       else if (s.type === 'TEXT') {

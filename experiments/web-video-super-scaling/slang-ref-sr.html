@@ -86,24 +86,77 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>RefSR: Stereoscopic Fusion</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-temporal-accumulation.html" class="prev-link">← Temporal</a>
+        </div>
+        <div class="nav-center">Stereo Fusion</div>
+        <div class="nav-right">
+            <a href="slang-video-test.html" class="next-link">Slang Engine →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Reference-Based SR</h2>
-            <p>Utilizing the <strong>3-meter horizontal baseline</strong> to resolve occlusions and synthesize sub-pixel detail in the primary view.</p>
-            <p><strong>Parallax Warping:</strong> The secondary (Right Eye) view is warped into the perspective of the primary (Left Eye) using pre-computed homography and real-time disparity.</p>
-            <p><strong>Neural Fusion:</strong> The kernel identifies areas where the secondary view has clearer "un-occluded" samples and blends them into the primary reconstruction, effectively tripling the usable pixel data for the CNN.</p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #fbbf24;">Reference-Based SR</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Utilizing the <strong>3-meter horizontal baseline</strong> to resolve occlusions and synthesize sub-pixel detail in the primary view.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Parallax Warping:</strong> The secondary (Right Eye) view is warped into the perspective of the primary (Left Eye) using pre-computed homography and real-time disparity.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Neural Fusion:</strong> The kernel identifies areas where the secondary view has clearer "un-occluded" samples and blends them into the primary reconstruction, effectively tripling the usable pixel data for the CNN.</p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn" onclick="setRefMode(0)">Left Eye</button>
+                            <button class="mode-btn" onclick="setRefMode(1)">Warped Right</button>
+                            <button class="mode-btn active" onclick="setRefMode(2)">Fused SR</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="2">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Fusion Strength</label>
+                            <span id="strength-val" class="text-[10px] text-amber-500 font-mono">0.50</span>
+                        </div>
+                        <input id="slider-strength" type="range" min="0" max="1" step="0.01" value="0.50" autocomplete="off" oninput="document.getElementById('strength-val').innerText=this.value">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="RefSR Fusion Slang" data-lang="cpp"><!--
 struct Params {
     float fusionStrength; // Blend weight for secondary data
@@ -328,65 +381,11 @@ window.ModuleRenderer = RefSRProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Stereo Fusion (RefSR)</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn" onclick="setRefMode(0)">Left Eye</button>
-                        <button class="mode-btn" onclick="setRefMode(1)">Warped Right</button>
-                        <button class="mode-btn active" onclick="setRefMode(2)">Fused SR</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="2">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Fusion Strength</label>
-                        <span id="strength-val" class="text-[10px] text-amber-500 font-mono">0.50</span>
-                    </div>
-                    <input id="slider-strength" type="range" min="0" max="1" step="0.01" value="0.50" autocomplete="off" oninput="document.getElementById('strength-val').innerText=this.value">
-                </div>
-
-                <div class="flex gap-2">
-                    <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -435,6 +434,48 @@ window.ModuleRenderer = RefSRProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+ updateUI(0);
+            }, 500);
         });
     </script>
 </body>

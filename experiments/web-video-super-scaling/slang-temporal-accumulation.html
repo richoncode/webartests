@@ -86,24 +86,77 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>Temporal Accumulation</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-cnn-upscale.html" class="prev-link">← CNN Upscale</a>
+        </div>
+        <div class="nav-center">Temporal</div>
+        <div class="nav-right">
+            <a href="slang-ref-sr.html" class="next-link">Stereo Fusion →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Sample History</h2>
-            <p>Reconstructing a stable high-resolution output by blending the current frame with <strong>historical pixel data</strong>.</p>
-            <p><strong>Reprojection:</strong> Using the <strong>Motion Vectors</strong> generated in the previous pass, we look up where the current pixel was in the previous frame.</p>
-            <p><strong>Clamping:</strong> To prevent "ghosting" (trails behind moving objects), the historical sample is mathematically clamped to the color range of the current local 3x3 neighborhood.</p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #10b981;">Sample History</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Reconstructing a stable high-resolution output by blending the current frame with <strong>historical pixel data</strong>.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Reprojection:</strong> Using the <strong>Motion Vectors</strong> generated in the previous pass, we look up where the current pixel was in the previous frame.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Clamping:</strong> To prevent "ghosting" (trails behind moving objects), the historical sample is mathematically clamped to the color range of the current local 3x3 neighborhood.</p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn" onclick="setAccumMode(0)">Live</button>
+                            <button class="mode-btn active" onclick="setAccumMode(1)">Accum</button>
+                            <button class="mode-btn" onclick="setAccumMode(2)">Diff</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="1">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Temporal Alpha (Feedback)</label>
+                            <span id="alpha-val" class="text-[10px] text-emerald-500 font-mono">0.900</span>
+                        </div>
+                        <input id="slider-alpha" type="range" min="0" max="0.99" step="0.001" value="0.900" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset History</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Accumulation Slang" data-lang="cpp"><!--
 struct Params {
     float alpha;      // Temporal feedback (0.95 = heavy history)
@@ -384,65 +437,11 @@ window.ModuleRenderer = TemporalAccumulator;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Temporal Blending</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn" onclick="setAccumMode(0)">Live</button>
-                        <button class="mode-btn active" onclick="setAccumMode(1)">Accum</button>
-                        <button class="mode-btn" onclick="setAccumMode(2)">Diff</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="1">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Temporal Alpha (Feedback)</label>
-                        <span id="alpha-val" class="text-[10px] text-emerald-500 font-mono">0.900</span>
-                    </div>
-                    <input id="slider-alpha" type="range" min="0" max="0.99" step="0.001" value="0.900" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
-                </div>
-
-                <div class="flex gap-2">
-                    <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset History</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -491,6 +490,49 @@ window.ModuleRenderer = TemporalAccumulator;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+     // Initial state
+                updateUI(0);
+            }, 500);
         });
     </script>
 </body>

@@ -130,23 +130,95 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>Static Background Prior (EMA)</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-homography-poc.html" class="prev-link">← Homography</a>
+        </div>
+        <div class="nav-center">Background</div>
+        <div class="nav-right">
+            <a href="slang-stereo-depth.html" class="next-link">Stereo Depth →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Background Modeling</h2>
-            <p>Maintaining a persistent 4K background model via <strong>Exponential Moving Average</strong>.</p>
-            <p>This approach allows us to separate static "pitch" detail from dynamic "player" updates, enabling Selective Super-Resolution.</p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #f59e0b;">Background Modeling</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Maintaining a persistent 4K background model via <strong>Exponential Moving Average</strong>.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">This approach allows us to separate static "pitch" detail from dynamic "player" updates, enabling Selective Super-Resolution.</p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                        <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
+                            <div>
+                                <div class="stat-label">HLS</div>
+                                <div id="stat-video" class="stat-value">IDLE</div>
+                            </div>
+                            <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn active" onclick="setBGMode(0)">Live</button>
+                            <button class="mode-btn" onclick="setBGMode(1)">BG</button>
+                            <button class="mode-btn" onclick="setBGMode(2)">Mask</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="0">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>EMA Alpha</label>
+                            <span id="alpha-val" class="text-[10px] text-amber-500 font-mono">0.046</span>
+                        </div>
+                        <input id="slider-alpha" type="range" min="0.001" max="0.2" step="0.001" value="0.046" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Threshold</label>
+                            <span id="thresh-val" class="text-[10px] text-amber-500 font-mono">0.20</span>
+                        </div>
+                        <input id="slider-threshold" type="range" min="0.01" max="0.5" step="0.01" value="0.20" autocomplete="off" oninput="document.getElementById('thresh-val').innerText=this.value">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset BG</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
+                            <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
+                        </div>
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Background Slang" data-lang="cpp"><!--
 struct Params {
     float alpha;      // Learning rate
@@ -381,85 +453,12 @@ window.ModuleRenderer = BackgroundProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Controls</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                    <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
-                        <div>
-                            <div class="stat-label">HLS</div>
-                            <div id="stat-video" class="stat-value">IDLE</div>
-                        </div>
-                        <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn active" onclick="setBGMode(0)">Live</button>
-                        <button class="mode-btn" onclick="setBGMode(1)">BG</button>
-                        <button class="mode-btn" onclick="setBGMode(2)">Mask</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="0">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>EMA Alpha</label>
-                        <span id="alpha-val" class="text-[10px] text-amber-500 font-mono">0.046</span>
-                    </div>
-                    <input id="slider-alpha" type="range" min="0.001" max="0.2" step="0.001" value="0.046" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Threshold</label>
-                        <span id="thresh-val" class="text-[10px] text-amber-500 font-mono">0.20</span>
-                    </div>
-                    <input id="slider-threshold" type="range" min="0.01" max="0.5" step="0.01" value="0.20" autocomplete="off" oninput="document.getElementById('thresh-val').innerText=this.value">
-                </div>
-
-                <div class="flex gap-2">
-                    <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset BG</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div class="flex justify-between items-center">
-                        <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
-                        <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
-                    </div>
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
         let previousPanelState = {};
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id, auto = false) => {
             const panel = document.getElementById(id);
@@ -482,27 +481,14 @@ window.ModuleRenderer = BackgroundProcessor;
 
             if (isMobile && isLandscape) {
                 // If transitioning to landscape, store current state and collapse
-                const narrative = document.getElementById('panel-narrative');
                 const editor = document.getElementById('panel-editor');
                 
-                if (narrative && !narrative.classList.contains('collapsed')) {
-                    previousPanelState['panel-narrative'] = true;
-                    window.toggleCollapse('panel-narrative', true);
-                }
                 if (editor && !editor.classList.contains('collapsed')) {
                     previousPanelState['panel-editor'] = true;
                     window.toggleCollapse('panel-editor', true);
                 }
             } else if (isMobile && !isLandscape) {
                 // If transitioning back to portrait, restore if we collapsed them
-                if (previousPanelState['panel-narrative']) {
-                    const narrative = document.getElementById('panel-narrative');
-                    if (narrative) {
-                        narrative.classList.remove('collapsed');
-                        narrative.querySelector('.panel-ctrl').innerText = '«';
-                    }
-                    delete previousPanelState['panel-narrative'];
-                }
                 if (previousPanelState['panel-editor']) {
                     const editor = document.getElementById('panel-editor');
                     if (editor) {
@@ -529,17 +515,11 @@ window.ModuleRenderer = BackgroundProcessor;
         };
 
         window.copyLogs = () => {
-            const text = document.getElementById('log-output').innerText;
+            const out = document.getElementById('log-output');
+            if (!out) return;
+            const text = out.innerText;
             navigator.clipboard.writeText(text);
             window.log("Logs copied to buffer.");
-        };
-
-        window.toggleCollapse = (id) => {
-            const panel = document.getElementById(id);
-            panel.classList.toggle('collapsed');
-            const btn = panel.querySelector('.panel-ctrl');
-            btn.innerText = panel.classList.contains('collapsed') ? '»' : '«';
-            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
         };
 
         window.toggleVideoMaximize = () => {
@@ -548,7 +528,8 @@ window.ModuleRenderer = BackgroundProcessor;
         };
 
         window.setBGMode = (m) => {
-            document.getElementById('mode-val').value = m;
+            const modeVal = document.getElementById('mode-val');
+            if (modeVal) modeVal.value = m;
             document.querySelectorAll('.mode-btn').forEach((b, i) => b.classList.toggle('active', i === m));
         };
 
@@ -561,8 +542,10 @@ window.ModuleRenderer = BackgroundProcessor;
                 window.log("Attempting video.play()...");
                 video.play().then(() => {
                     window.log("Video playing successfully.");
-                    btn.innerText = "PAUSE";
-                    btn.classList.replace('bg-amber-600', 'bg-slate-700');
+                    if (btn) {
+                        btn.innerText = "PAUSE";
+                        btn.classList.replace('bg-amber-600', 'bg-slate-700');
+                    }
                 }).catch(err => {
                     window.log(`Playback failed: ${err.name} - ${err.message}`, 'error');
                     if (err.name === "NotAllowedError") {
@@ -573,17 +556,27 @@ window.ModuleRenderer = BackgroundProcessor;
             } else {
                 video.pause();
                 window.log("Video paused manually.");
-                btn.innerText = "PLAY";
-                btn.classList.replace('bg-slate-700', 'bg-amber-600');
+                if (btn) {
+                    btn.innerText = "PLAY";
+                    btn.classList.replace('bg-slate-700', 'bg-amber-600');
+                }
             }
         };
 
         document.addEventListener('DOMContentLoaded', () => {
             // Force defaults to bypass browser form caching
-            document.getElementById('slider-alpha').value = 0.046;
-            document.getElementById('alpha-val').innerText = '0.046';
-            document.getElementById('slider-threshold').value = 0.20;
-            document.getElementById('thresh-val').innerText = '0.20';
+            const sliderAlpha = document.getElementById('slider-alpha');
+            const alphaVal = document.getElementById('alpha-val');
+            if (sliderAlpha && alphaVal) {
+                sliderAlpha.value = 0.046;
+                alphaVal.innerText = '0.046';
+            }
+            const sliderThreshold = document.getElementById('slider-threshold');
+            const threshVal = document.getElementById('thresh-val');
+            if (sliderThreshold && threshVal) {
+                sliderThreshold.value = 0.20;
+                threshVal.innerText = '0.20';
+            }
 
             const video = document.getElementById('video-source');
             
@@ -598,7 +591,8 @@ window.ModuleRenderer = BackgroundProcessor;
             setInterval(() => {
                 if (video) {
                     const status = `T=${video.currentTime.toFixed(2)}s | P=${video.paused} | R=${video.readyState} | N=${video.networkState}`;
-                    document.getElementById('stat-video').innerText = video.paused ? "PAUSED" : "PLAYING";
+                    const statVideo = document.getElementById('stat-video');
+                    if (statVideo) statVideo.innerText = video.paused ? "PAUSED" : "PLAYING";
                     // Only log if playing to avoid spam, or if time is stuck
                     if (!video.paused && video.currentTime === 0) window.log(`DIAG: ${status}`, 'warn');
                 }
@@ -618,8 +612,11 @@ window.ModuleRenderer = BackgroundProcessor;
                     window.log("HLS Manifest parsed. Attempting auto-play...");
                     video.play().then(() => {
                         window.log("Auto-play started.");
-                        document.getElementById('play-btn').innerText = "PAUSE";
-                        document.getElementById('play-btn').classList.replace('bg-amber-600', 'bg-slate-700');
+                        const playBtn = document.getElementById('play-btn');
+                        if (playBtn) {
+                            playBtn.innerText = "PAUSE";
+                            playBtn.classList.replace('bg-amber-600', 'bg-slate-700');
+                        }
                     }).catch(err => {
                         window.log("Auto-play blocked. User interaction required.", "warn");
                     });
@@ -637,7 +634,56 @@ window.ModuleRenderer = BackgroundProcessor;
                     video.play().catch(() => window.log("Auto-play blocked."));
                 });
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
         });
+    </script>
+</body>
+</html>
+    </script>
+</body>
+</html>
+te
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>

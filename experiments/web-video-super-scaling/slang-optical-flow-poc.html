@@ -117,28 +117,85 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>Optical Flow POC</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-stereo-depth.html" class="prev-link">← Stereo Depth</a>
+        </div>
+        <div class="nav-center">Optical Flow</div>
+        <div class="nav-right">
+            <a href="slang-cnn-upscale.html" class="next-link">CNN Upscale →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Temporal Motion</h2>
-            <p>Generating synthetic <strong>Motion Vectors</strong> via block-matching to track pixel movement between consecutive frames.</p>
-            <p>Since we lack engine-provided G-buffers, this flow field enables <strong>Temporal Accumulation</strong> (DLSS-style), allowing the CNN to reuse historical details correctly.</p>
-            <p><strong>Optimization:</strong> Following the architecture, we restrict the search to the <strong>Foreground Mask</strong> $M_t$. If a pixel is marked as static background, the expensive search is bypassed.</p>
-            <p><strong>Color Encoding:</strong>
-                <br>• <strong>Hue:</strong> Direction of motion.
-                <br>• <strong>Saturation:</strong> Velocity (magnitude).
-            </p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #10b981;">Temporal Motion</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Generating synthetic <strong>Motion Vectors</strong> via block-matching to track pixel movement between consecutive frames.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Since we lack engine-provided G-buffers, this flow field enables <strong>Temporal Accumulation</strong> (DLSS-style), allowing the CNN to reuse historical details correctly.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Optimization:</strong> Following the architecture, we restrict the search to the <strong>Foreground Mask</strong> $M_t$. If a pixel is marked as static background, the expensive search is bypassed.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Color Encoding:</strong>
+                        <br>• <strong>Hue:</strong> Direction of motion.
+                        <br>• <strong>Saturation:</strong> Velocity (magnitude).
+                    </p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn active" onclick="setFMode(0)">Live</button>
+                            <button class="mode-btn" onclick="setFMode(1)">Flow</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="0">
+                    </div>
+
+                    <div class="control-group flex items-center justify-between bg-[#222] p-2 rounded">
+                        <label style="margin:0">Restrict to Mask</label>
+                        <input type="checkbox" id="toggle-mask" checked>
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Search Radius</label>
+                            <span id="radius-val" class="text-[10px] text-emerald-500 font-mono">16</span>
+                        </div>
+                        <input id="slider-radius" type="range" min="4" max="32" step="1" value="16" autocomplete="off" oninput="document.getElementById('radius-val').innerText=this.value">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="play-btn" onclick="toggleVideo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Optical Flow Slang" data-lang="cpp"><!--
 struct Params {
     uint searchRadius; // Search window size
@@ -188,11 +245,30 @@ void main(uint3 id : SV_DispatchThreadID) {
     int radius = int(params.searchRadius);
 
     if (shouldSearch) {
-        // Block Matching (Simple SSD Search)
-        // Low-res search (step 2) to keep real-time 60fps
-        for (int y = -radius; y <= radius; y += 2) {
-            for (int x = -radius; x <= radius; x += 2) {
+        // --- Hierarchical Search (Optimization) ---
+        
+        // 1. Coarse Search (Step 4)
+        for (int y = -radius; y <= radius; y += 4) {
+            for (int x = -radius; x <= radius; x += 4) {
                 float2 offset = float2(x, y);
+                float2 sampleUV = (float2(id.xy) + offset) / float2(size);
+                sampleUV.y *= 0.5;
+                
+                float3 pixelPrev = prevFrame.SampleLevel(videoSampler, sampleUV, 0).rgb;
+                float ssd = distance(pixelCurr, pixelPrev);
+                
+                if (ssd < minSSD) {
+                    minSSD = ssd;
+                    bestV = offset;
+                }
+            }
+        }
+
+        // 2. Refinement Search (Step 1) around the best coarse candidate
+        float2 coarseV = bestV;
+        for (int y = -2; y <= 2; y++) {
+            for (int x = -2; x <= 2; x++) {
+                float2 offset = coarseV + float2(x, y);
                 float2 sampleUV = (float2(id.xy) + offset) / float2(size);
                 sampleUV.y *= 0.5;
                 
@@ -272,9 +348,28 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let radius = i32(uniforms.searchRadius);
     
     if (shouldSearch) {
-        for (var y: i32 = -radius; y <= radius; y = y + 2) {
-            for (var x: i32 = -radius; x <= radius; x = x + 2) {
+        // Coarse Search (Step 4)
+        for (var y: i32 = -radius; y <= radius; y = y + 4) {
+            for (var x: i32 = -radius; x <= radius; x = x + 4) {
                 let offset = vec2<f32>(f32(x), f32(y));
+                var sampleUV = (vec2<f32>(f32(id.x), f32(id.y)) + offset) / vec2<f32>(f32(size.x), f32(size.y));
+                sampleUV.y = sampleUV.y * 0.5;
+                
+                let pixelPrev = textureSampleLevel(prevFrame, videoSampler, sampleUV, 0.0).rgb;
+                let ssd = distance(pixelCurr, pixelPrev);
+                
+                if (ssd < minSSD) {
+                    minSSD = ssd;
+                    bestV = offset;
+                }
+            }
+        }
+
+        // Refinement Search
+        let coarseV = bestV;
+        for (var y: i32 = -2; y <= 2; y = y + 1) {
+            for (var x: i32 = -2; x <= 2; x = x + 1) {
+                let offset = coarseV + vec2<f32>(f32(x), f32(y));
                 var sampleUV = (vec2<f32>(f32(id.x), f32(id.y)) + offset) / vec2<f32>(f32(size.x), f32(size.y));
                 sampleUV.y = sampleUV.y * 0.5;
                 
@@ -466,69 +561,11 @@ window.ModuleRenderer = FlowProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Motion Estimation</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn active" onclick="setFMode(0)">Live</button>
-                        <button class="mode-btn" onclick="setFMode(1)">Flow</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="0">
-                </div>
-
-                <div class="control-group flex items-center justify-between bg-[#222] p-2 rounded">
-                    <label style="margin:0">Restrict to Mask</label>
-                    <input type="checkbox" id="toggle-mask" checked>
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Search Radius</label>
-                        <span id="radius-val" class="text-[10px] text-emerald-500 font-mono">16</span>
-                    </div>
-                    <input id="slider-radius" type="range" min="4" max="32" step="1" value="16" autocomplete="off" oninput="document.getElementById('radius-val').innerText=this.value">
-                </div>
-
-                <div class="flex gap-2">
-                    <button id="play-btn" onclick="toggleVideo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -588,6 +625,49 @@ window.ModuleRenderer = FlowProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+      // Initial state
+                updateUI(0);
+            }, 500);
         });
     </script>
 </body>

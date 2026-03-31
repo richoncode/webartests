@@ -119,6 +119,24 @@
             color: #888;
             white-space: pre-wrap;
         }
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 2px;
+            margin-top: 8px;
+        }
+        .matrix-input {
+            background: #111;
+            border: 1px solid #333;
+            color: #fbbf24;
+            font-family: 'SF Mono', monospace;
+            font-size: 13px;
+            padding: 8px 0;
+            text-align: center;
+            border-radius: 4px;
+            width: 100%;
+            min-width: 0;
+        }
         .log-line { border-bottom: 1px solid #1a1a1a; padding: 1px 0; }
         .log-err { color: #f87171; }
         .log-warn { color: #fbbf24; }
@@ -126,30 +144,128 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>Stereo Depth Extraction</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-background-poc.html" class="prev-link">← Background</a>
+        </div>
+        <div class="nav-center">Stereo Depth</div>
+        <div class="nav-right">
+            <a href="slang-optical-flow-poc.html" class="next-link">Optical Flow →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Horizontal Disparity</h2>
-            <p>Utilizing the <strong>3-meter baseline</strong> parallel camera setup to extract scene depth.</p>
-            <p>The compute shader performs a 1D horizontal search between the top (Left Eye) and bottom (Right Eye) frames to find pixel correspondences.</p>
-            <p><strong>Color Key:</strong>
-                <br>• <span style="color:#10b981">Emerald</span>: Close (High Disparity)
-                <br>• <span style="color:#f59e0b">Amber</span>: Mid-range
-                <br>• <span style="color:#e74c3c">Red</span>: Distant (Low Disparity)
-            </p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #10b981;">Horizontal Disparity</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Utilizing the <strong>3-meter baseline</strong> parallel camera setup to extract scene depth.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">The compute shader performs a 1D horizontal search between the top (Left Eye) and bottom (Right Eye) frames to find pixel correspondences.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Color Key:</strong>
+                        <br>• <span style="color:#10b981">Emerald</span>: Close (High Disparity)
+                        <br>• <span style="color:#f59e0b">Amber</span>: Mid-range
+                        <br>• <span style="color:#e74c3c">Red</span>: Distant (Low Disparity)
+                    </p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                        <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
+                            <div>
+                                <div class="stat-label">HLS</div>
+                                <div id="stat-video" class="stat-value">IDLE</div>
+                            </div>
+                            <button id="play-btn" onclick="toggleVideo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Mode</label>
+                        <div class="mode-group">
+                            <button class="mode-btn active" onclick="setDepthMode(0)">Heatmap</button>
+                            <button class="mode-btn" onclick="setDepthMode(1)">Gray</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="0">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Max Disparity</label>
+                            <span id="maxd-val" class="text-[10px] text-emerald-500 font-mono">64</span>
+                        </div>
+                        <input id="slider-maxd" type="range" min="32" max="256" step="1" value="64" autocomplete="off" oninput="document.getElementById('maxd-val').innerText=this.value">
+                    </div>
+
+                    <div class="control-group">
+                        <div class="flex justify-between items-center mb-1">
+                            <label>Smoothing (Alpha)</label>
+                            <span id="alpha-val" class="text-[10px] text-emerald-500 font-mono">0.100</span>
+                        </div>
+                        <input id="slider-alpha" type="range" min="0.001" max="1.0" step="0.001" value="0.100" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
+                    </div>
+
+                    <div class="control-group" style="border-top: 1px solid #333; padding-top: 12px;">
+                        <label>Homography Matrix (H)</label>
+                        <div class="matrix-grid">
+                            <input id="h00" type="number" class="matrix-input" value="1.00000" step="0.001">
+                            <input id="h01" type="number" class="matrix-input" value="0.10703" step="0.001">
+                            <input id="h02" type="number" class="matrix-input" value="-26.14" step="0.5">
+                            
+                            <input id="h10" type="number" class="matrix-input" value="0.00000" step="0.001">
+                            <input id="h11" type="number" class="matrix-input" value="1.00000" step="0.001">
+                            <input id="h12" type="number" class="matrix-input" value="0.00" step="0.5">
+                            
+                            <input id="h20" type="number" class="matrix-input" value="0.00000000" step="0.00000001">
+                            <input id="h21" type="number" class="matrix-input" value="0.00000000" step="0.00000001">
+                            <div class="matrix-input" style="color:#555">1.0</div>
+                        </div>
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="resetMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Reset Calib</button>
+                            <button onclick="copyMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Copy JSON</button>
+                            <button onclick="pasteMatrix()" class="mode-btn" style="background:#333; font-size:9px;">Paste JSON</button>
+                        </div>
+                        <div class="flex gap-2 mt-1">
+                            <button onclick="saveToCookie()" class="mode-btn" style="background:#1e3a8a; font-size:9px;">Save Cookie</button>
+                            <button onclick="loadFromCookie()" class="mode-btn" style="background:#1e3a8a; font-size:9px;">Load Cookie</button>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset Map</button>
+                        <div style="flex:2">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
+                            <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
+                        </div>
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Disparity Slang" data-lang="cpp"><!--
 struct Params {
+    float3x3 H;        // Homography Matrix (Right to Left)
     uint maxDisparity; // Max pixels to search
     float alpha;       // Temporal smoothing
     uint mode;         // 0: Heatmap, 1: Grayscale
@@ -177,14 +293,23 @@ void main(uint3 id : SV_DispatchThreadID) {
     float minSAD = 1000.0;
     uint bestD = 0;
 
-    // 1D Horizontal Search
-    // Note: In parallel stereo, xL = xR + d, so xR = xL - d
+    // 1. Calculate Rectified Right UV for d=0
+    // We apply homography to find where Left Eye (x,y) maps in the Right Eye
+    float3 coord = float3(float(id.x), float(id.y), 1.0);
+    float3 warped = mul(params.H, coord);
+    float2 warpedXY = warped.xy / warped.z;
+    
+    // Base uvR (d=0) in the Bottom half
+    float2 uvR_base = warpedXY / float2(size);
+    uvR_base.y = 0.5 + (uvR_base.y * 0.5);
+
+    // 1D Horizontal Search along the rectified epipolar line
     for (uint d = 0; d < params.maxDisparity; d++) {
-        if (id.x < d) break;
-        
-        float2 uvR = uvL;
+        float2 uvR = uvR_base;
         uvR.x -= float(d) / 3840.0;
-        uvR.y += 0.5; // Bottom half (Right Eye)
+        
+        // Bounds check
+        if (uvR.x < 0.0 || uvR.x > 1.0) continue;
         
         float3 pixelR = videoTexture.Sample(videoSampler, uvR).rgb;
         float diff = distance(pixelL, pixelR);
@@ -301,7 +426,7 @@ class DepthProcessor {
         });
 
         this.uniformBuffer = device.createBuffer({
-            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
         this.pipeline = device.createComputePipeline({
@@ -342,12 +467,29 @@ class DepthProcessor {
             const reset = (window.needsReset) ? 1 : 0;
             window.needsReset = false;
             
-            const uData = new Uint32Array(4);
-            uData[0] = maxD;
-            const fData = new Float32Array(uData.buffer);
-            fData[1] = alpha;
-            uData[2] = mode;
-            uData[3] = reset;
+            // Collect matrix from UI inputs
+            const h00 = parseFloat(document.getElementById('h00').value);
+            const h01 = parseFloat(document.getElementById('h01').value);
+            const h02 = parseFloat(document.getElementById('h02').value);
+            const h10 = parseFloat(document.getElementById('h10').value);
+            const h11 = parseFloat(document.getElementById('h11').value);
+            const h12 = parseFloat(document.getElementById('h12').value);
+            const h20 = parseFloat(document.getElementById('h20').value);
+            const h21 = parseFloat(document.getElementById('h21').value);
+            
+            const uData = new Float32Array(16);
+            // float3x3 H (aligned to 4-float vectors in memory)
+            uData[0] = h00; uData[1] = h01; uData[2] = h02; 
+            uData[4] = h10; uData[5] = h11; uData[6] = h12;
+            uData[8] = h20; uData[9] = h21; uData[10] = 1.0;
+            
+            // Other params start at offset 48 (index 12)
+            const iData = new Uint32Array(uData.buffer);
+            iData[12] = maxD;
+            uData[13] = alpha;
+            iData[14] = mode;
+            iData[15] = reset;
+            
             this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
 
             const commandEncoder = this.device.createCommandEncoder();
@@ -418,83 +560,11 @@ window.ModuleRenderer = DepthProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Controls</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                    <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
-                        <div>
-                            <div class="stat-label">HLS</div>
-                            <div id="stat-video" class="stat-value">IDLE</div>
-                        </div>
-                        <button id="play-btn" onclick="toggleVideo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Mode</label>
-                    <div class="mode-group">
-                        <button class="mode-btn active" onclick="setDepthMode(0)">Heatmap</button>
-                        <button class="mode-btn" onclick="setDepthMode(1)">Gray</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="0">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Max Disparity</label>
-                        <span id="maxd-val" class="text-[10px] text-emerald-500 font-mono">64</span>
-                    </div>
-                    <input id="slider-maxd" type="range" min="32" max="256" step="1" value="64" autocomplete="off" oninput="document.getElementById('maxd-val').innerText=this.value">
-                </div>
-
-                <div class="control-group">
-                    <div class="flex justify-between items-center mb-1">
-                        <label>Smoothing (Alpha)</label>
-                        <span id="alpha-val" class="text-[10px] text-emerald-500 font-mono">0.100</span>
-                    </div>
-                    <input id="slider-alpha" type="range" min="0.001" max="1.0" step="0.001" value="0.100" autocomplete="off" oninput="document.getElementById('alpha-val').innerText=this.value">
-                </div>
-
-                <div class="flex gap-2">
-                    <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset Map</button>
-                    <div style="flex:2">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div class="flex justify-between items-center">
-                        <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
-                        <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
-                    </div>
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -520,8 +590,7 @@ window.ModuleRenderer = DepthProcessor;
             const line = document.createElement('div');
             line.className = `log-line ${type === 'error' ? 'log-err' : (type === 'warn' ? 'log-warn' : '')}`;
             line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
-            out.appendChild(line);
-            out.scrollTop = out.scrollHeight;
+            out.prepend(line);
         };
 
         window.copyLogs = () => {
@@ -545,6 +614,97 @@ window.ModuleRenderer = DepthProcessor;
             }
         };
 
+        window.loadFromCookie = () => {
+            const name = "vantage_homography=";
+            const decodedCookie = decodeURIComponent(document.cookie);
+            const ca = decodedCookie.split(';');
+            for(let i = 0; i <ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1);
+                if (c.indexOf(name) == 0) {
+                    const h = JSON.parse(c.substring(name.length, c.length));
+                    document.getElementById('h00').value = h[0];
+                    document.getElementById('h01').value = h[1];
+                    document.getElementById('h02').value = h[2];
+                    document.getElementById('h10').value = h[3];
+                    document.getElementById('h11').value = h[4];
+                    document.getElementById('h12').value = h[5];
+                    document.getElementById('h20').value = h[6];
+                    document.getElementById('h21').value = h[7];
+                    window.log("Matrix loaded from cookie");
+                    return;
+                }
+            }
+            window.log("No homography cookie found", "warn");
+        };
+
+        window.saveToCookie = () => {
+            const h = [
+                document.getElementById('h00').value,
+                document.getElementById('h01').value,
+                document.getElementById('h02').value,
+                document.getElementById('h10').value,
+                document.getElementById('h11').value,
+                document.getElementById('h12').value,
+                document.getElementById('h20').value,
+                document.getElementById('h21').value,
+                "1.0"
+            ];
+            document.cookie = "vantage_homography=" + JSON.stringify(h) + "; path=/; max-age=31536000";
+            window.log("Matrix saved to cookie");
+        };
+
+        window.resetMatrix = () => {
+            const h = [1.0, 0.10703, -26.14025, 0.0, 1.0, 0.0, 0.0, 0.0];
+            document.getElementById('h00').value = h[0].toFixed(5);
+            document.getElementById('h01').value = h[1].toFixed(5);
+            document.getElementById('h02').value = h[2].toFixed(2);
+            document.getElementById('h10').value = h[3].toFixed(5);
+            document.getElementById('h11').value = h[4].toFixed(5);
+            document.getElementById('h12').value = h[5].toFixed(2);
+            document.getElementById('h20').value = h[6].toFixed(8);
+            document.getElementById('h21').value = h[7].toFixed(8);
+            window.log("Matrix reset to Cardinals Rectified anchor");
+        };
+
+        window.copyMatrix = () => {
+            const h = [
+                parseFloat(document.getElementById('h00').value),
+                parseFloat(document.getElementById('h01').value),
+                parseFloat(document.getElementById('h02').value),
+                parseFloat(document.getElementById('h10').value),
+                parseFloat(document.getElementById('h11').value),
+                parseFloat(document.getElementById('h12').value),
+                parseFloat(document.getElementById('h20').value),
+                parseFloat(document.getElementById('h21').value),
+                1.0
+            ];
+            navigator.clipboard.writeText(JSON.stringify(h));
+            window.log("Matrix copied to clipboard");
+        };
+
+        window.pasteMatrix = async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                const h = JSON.parse(text);
+                if (Array.isArray(h) && h.length >= 8) {
+                    document.getElementById('h00').value = h[0].toFixed(5);
+                    document.getElementById('h01').value = h[1].toFixed(5);
+                    document.getElementById('h02').value = h[2].toFixed(2);
+                    document.getElementById('h10').value = h[3].toFixed(5);
+                    document.getElementById('h11').value = h[4].toFixed(5);
+                    document.getElementById('h12').value = h[5].toFixed(2);
+                    document.getElementById('h20').value = h[6].toFixed(8);
+                    document.getElementById('h21').value = h[7].toFixed(8);
+                    window.log("Matrix pasted from clipboard");
+                } else {
+                    window.log("Invalid matrix format in clipboard", "error");
+                }
+            } catch (err) {
+                window.log("Failed to read clipboard: " + err.message, "error");
+            }
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('video-source');
             
@@ -559,6 +719,52 @@ window.ModuleRenderer = DepthProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Attempt to load calibration from cookie on start
+            setTimeout(window.loadFromCookie, 1000);
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+    // Initial state
+                updateUI(0);
+            }, 500);
         });
     </script>
 </body>

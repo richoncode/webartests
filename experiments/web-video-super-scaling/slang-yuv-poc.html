@@ -12,8 +12,10 @@
         body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
         .nav-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; z-index: 10; }
-        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; transition: background 0.2s ease; }
-        .nav-header a:hover { background: #2a2a2a; }
+        .nav-header a { color: #5b9bd5; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; transition: all 0.2s ease; }
+        .nav-header a:hover { background: #2a2a2a; color: #fff; }
+        .nav-header a.hub-link { color: #fff; font-weight: 700; background: #3b82f6; }
+        .nav-header a.hub-link:hover { background: #2563eb; }
         h1 { font-size: 18px; font-weight: 700; }
 
         .workspace { display: flex; flex: 1; overflow: hidden; }
@@ -126,27 +128,93 @@
 </head>
 
 <body>
+    
     <nav class="nav-header">
-        <a href="index.html" class="back-link">← Back</a>
-        <h1>YUV Chroma Separation</h1>
-        <div style="width:60px"></div>
+        <div class="nav-left">
+            <a href="index.html" class="hub-link">Return to Hub</a>
+            <a href="slang-wasm-test.html" class="prev-link">← Slang Compiler</a>
+        </div>
+        <div class="nav-center">YUV Separation</div>
+        <div class="nav-right">
+            <a href="slang-homography-poc.html" class="next-link">Homography →</a>
+        </div>
     </nav>
 
-    <div class="workspace">
-        <div class="panel narrative" id="panel-narrative">
-            <button class="panel-ctrl" onclick="toggleCollapse('panel-narrative')">«</button>
-            <h2>Color Space Optimization</h2>
-            <p>Separating <strong>Luminance (Y)</strong> from <strong>Chrominance (U, V)</strong> to drastically reduce neural processing cost.</p>
-            <p>In this POC, we convert incoming RGB to YUV (Rec. 709). The target for the heavy 6-layer CNN is only the Y channel, where most high-frequency detail resides.</p>
-            <p><strong>Channel Roles:</strong>
-                <br>• <strong>Y (Luminance):</strong> High-res neural upscaling target.
-                <br>• <strong>U/V (Chrominance):</strong> Lightweight bicubic upscaling target.
-            </p>
-        </div>
 
-        <div class="panel editor-container" id="panel-editor">
+    <div class="workspace">
+        <div class="panel editor-container" id="panel-editor" style="position: relative;">
+            <!-- UI Overlays for Tabs -->
+            <div id="tab-ui-overlay" style="position: absolute; top: 33px; left: 0; right: 0; bottom: 0; background: #111; z-index: 10; display: block; overflow-y: auto;">
+                <div id="tab-info-content" class="tab-pane" style="display: block; padding: 20px;">
+                    <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #8b5cf6;">Color Space Optimization</h2>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">Separating <strong>Luminance (Y)</strong> from <strong>Chrominance (U, V)</strong> to drastically reduce neural processing cost.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;">In this POC, we convert incoming RGB to YUV (Rec. 709). The target for the heavy 6-layer CNN is only the Y channel, where most high-frequency detail resides.</p>
+                    <p style="color: #bbb; margin-bottom: 16px; font-size: 13px;"><strong>Channel Roles:</strong>
+                        <br>• <strong>Y (Luminance):</strong> High-res neural upscaling target.
+                        <br>• <strong>U/V (Chrominance):</strong> Lightweight bicubic upscaling target.
+                    </p>
+                </div>
+
+                <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Engine</div>
+                            <div id="stat-frame" class="stat-value">0.00ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Timestamp</div>
+                            <div id="stat-time" class="stat-value">0:00.00</div>
+                        </div>
+                        <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
+                            <div>
+                                <div class="stat-label">HLS</div>
+                                <div id="stat-video" class="stat-value">IDLE</div>
+                            </div>
+                            <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>View Channel</label>
+                        <div class="mode-group">
+                            <button class="mode-btn active" onclick="setYUVMode(0)">RGB</button>
+                            <button class="mode-btn" onclick="setYUVMode(1)">Y</button>
+                            <button class="mode-btn" onclick="setYUVMode(2)">U</button>
+                            <button class="mode-btn" onclick="setYUVMode(3)">V</button>
+                            <button class="mode-btn" onclick="setYUVMode(4)">Rec</button>
+                        </div>
+                        <input id="mode-val" type="hidden" value="0">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Interpolation</label>
+                        <div class="mode-group">
+                            <button class="mode-btn filter-btn active" onclick="setFilter(0)">Bilinear</button>
+                            <button class="mode-btn filter-btn" onclick="setFilter(1)">Bicubic</button>
+                        </div>
+                        <input id="filter-val" type="hidden" value="0">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <div style="flex:1">
+                            <slang-playback-controls></slang-playback-controls>
+                        </div>
+                    </div>
+
+                    <div class="log-panel">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
+                            <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
+                        </div>
+                        <div id="log-output" style="height: 100px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <button class="panel-ctrl" onclick="toggleCollapse('panel-editor')">«</button>
             <slang-editor class="editor-content">
+                <div data-tab="Info" data-lang="none"></div>
+                <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="YUV Slang" data-lang="cpp"><!--
 struct Params {
     uint mode;        // 0: RGB, 1: Y, 2: U, 3: V, 4: Reconstructed
@@ -444,78 +512,11 @@ window.ModuleRenderer = YUVProcessor;
             <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
-            
-            <div class="controls-overlay" id="controls-overlay">
-                <div class="header-ctrl">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Controls</span>
-                    <button class="panel-ctrl" style="position:static;" onclick="toggleControls()">«</button>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Engine</div>
-                        <div id="stat-frame" class="stat-value">0.00ms</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Timestamp</div>
-                        <div id="stat-time" class="stat-value">0:00.00</div>
-                    </div>
-                    <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
-                        <div>
-                            <div class="stat-label">HLS</div>
-                            <div id="stat-video" class="stat-value">IDLE</div>
-                        </div>
-                        <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>View Channel</label>
-                    <div class="mode-group">
-                        <button class="mode-btn active" onclick="setYUVMode(0)">RGB</button>
-                        <button class="mode-btn" onclick="setYUVMode(1)">Y</button>
-                        <button class="mode-btn" onclick="setYUVMode(2)">U</button>
-                        <button class="mode-btn" onclick="setYUVMode(3)">V</button>
-                        <button class="mode-btn" onclick="setYUVMode(4)">Rec</button>
-                    </div>
-                    <input id="mode-val" type="hidden" value="0">
-                </div>
-
-                <div class="control-group">
-                    <label>Interpolation</label>
-                    <div class="mode-group">
-                        <button class="mode-btn filter-btn active" onclick="setFilter(0)">Bilinear</button>
-                        <button class="mode-btn filter-btn" onclick="setFilter(1)">Bicubic</button>
-                    </div>
-                    <input id="filter-val" type="hidden" value="0">
-                </div>
-
-                <div class="flex gap-2">
-                    <div style="flex:1">
-                        <slang-playback-controls></slang-playback-controls>
-                    </div>
-                </div>
-
-                <div class="log-panel">
-                    <div class="flex justify-between items-center">
-                        <span class="text-[9px] font-bold text-gray-500 tracking-widest uppercase">System Logs</span>
-                        <button onclick="copyLogs()" class="text-[9px] bg-[#2a2a2a] px-2 py-1 rounded hover:bg-[#333]">Copy Logs</button>
-                    </div>
-                    <div id="log-output"></div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
         const ANCHOR_URL = "https://streams.quintar.ai/kyle/20251207-red-green/40Mbps/index.m3u8";
-
-        window.toggleControls = () => {
-            const overlay = document.getElementById('controls-overlay');
-            const btn = overlay.querySelector('.panel-ctrl');
-            overlay.classList.toggle('collapsed-ctrl');
-            btn.innerText = overlay.classList.contains('collapsed-ctrl') ? '»' : '«';
-        };
 
         window.toggleCollapse = (id) => {
             const panel = document.getElementById(id);
@@ -552,8 +553,7 @@ window.ModuleRenderer = YUVProcessor;
             const line = document.createElement('div');
             line.className = `log-line ${type === 'error' ? 'log-err' : (type === 'warn' ? 'log-warn' : '')}`;
             line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
-            out.appendChild(line);
-            out.scrollTop = out.scrollHeight;
+            out.prepend(line);
         };
 
         window.copyLogs = () => {
@@ -591,6 +591,42 @@ window.ModuleRenderer = YUVProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Tab Interception Logic
+            setTimeout(() => {
+                const editor = document.querySelector('slang-editor');
+                if (!editor) return;
+                
+                const tabs = editor.querySelectorAll('.editor-tabs button');
+                const overlay = document.getElementById('tab-ui-overlay');
+                const infoPane = document.getElementById('tab-info-content');
+                const ctrlPane = document.getElementById('tab-controls-content');
+
+                const updateUI = (index) => {
+                    if (index === 0) { // Info
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'block';
+                        ctrlPane.style.display = 'none';
+                    } else if (index === 1) { // Controls
+                        overlay.style.display = 'block';
+                        infoPane.style.display = 'none';
+                        ctrlPane.style.display = 'flex';
+                    } else { // Code Tabs
+                        overlay.style.display = 'none';
+                    }
+                };
+
+                tabs.forEach((btn, idx) => {
+                    const originalClick = btn.onclick;
+                    btn.onclick = () => {
+                        if (originalClick) originalClick.call(btn);
+                        updateUI(idx);
+                    };
+                });
+
+                // Initial state
+                updateUI(0);
+            }, 500);
         });
     </script>
 </body>

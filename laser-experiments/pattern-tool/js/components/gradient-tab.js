@@ -31,11 +31,13 @@ export const GradientTab = {
         <div class="tool-header"><span class="tool-title">Gradient Test</span></div>
         <div class="tool-scroll"></div>
       </div>`;
+
     const defaults = {
       paletteId: 'laFont-1000lpcm',
       paletteOffset: 0,
       size: 40,
       renderMode: 'fill',
+      procMode: 'vector', // 'vector' or 'bitmap'
       border: false,
       laserType: 'ir',
       disperseHeat: false,
@@ -206,6 +208,16 @@ export const GradientTab = {
     XCSViewer.update(inst.pane, inst.state, lazy);
   },
 
+  // Generates a 1x1 solid black PNG base64 for bitmap mode
+  createSolidBlackBase64() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1; canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 1, 1);
+    return canvas.toDataURL('image/png');
+  },
+
   generateXCS(cfg) {
     const project = XCSExporter.createProject();
     const CX = 50, CY = 50;
@@ -251,25 +263,44 @@ export const GradientTab = {
         const color = cfg.disperseHeat ? BUCKET_COLORS[bucket] : "#5b9bd5";
 
         const actualOverlap = overlap > 0 ? overlap : 0;
+        const dpi = Math.round(d * 2.54); // Convert LPCM to DPI (1cm = 2.54in)
+        
         const pm = { 
           power: Math.round(p), speed: Math.round(s), density: Math.round(d), repeat: 1,
-          processingLightSource: laserSource
+          processingLightSource: laserSource,
+          dpi: dpi, dotDuration: 100 // Defaults for bitmap mode
         };
 
-        const isFill = cfg.renderMode === 'fill';
+        if (cfg.procMode === 'bitmap') {
+          // Map "speed" axis value to dotDuration
+          pm.dotDuration = Math.round(s);
+          // If speed is being used as duration, set actual machine speed to a sensible default or the fixed speed
+          pm.speed = (cfg.xAxis === 'speed' || cfg.yAxis === 'speed') ? 100 : Math.round(s);
 
-        XCSExporter.addRect(project, {
-          x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
-          layerColor: color, laserSource, params: pm, isFill,
-          extraDisplayData: { ix, iy, hideLabels: true }
-        });
+          XCSExporter.addBitmap(project, {
+            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
+            layerColor: color, laserSource, params: pm,
+            base64: this.createSolidBlackBase64(),
+            originWidth: 1, originHeight: 1,
+            dpi: { dpiX: dpi, dpiY: dpi },
+            extraDisplayData: { ix, iy, hideLabels: true }
+          });
+        } else {
+          const isFill = cfg.renderMode === 'fill';
+          XCSExporter.addRect(project, {
+            x, y, width: cellSize + actualOverlap, height: cellSize + actualOverlap,
+            layerColor: color, laserSource, params: pm, isFill,
+            extraDisplayData: { ix, iy, hideLabels: true }
+          });
+        }
       }
     }
 
     if (cfg.showLabels) {
-      const xr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.xAxis];
-      const yr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.yAxis];
-      const fr = { power: {u:'pwr%'}, speed: {u:'mm/s'}, lpcm: {u:'lpcm'} }[cfg.fixedAxis];
+      const isBM = cfg.procMode === 'bitmap';
+      const xr = { power: {u:'pwr%'}, speed: {u: isBM ? 'µs' : 'mm/s'}, lpcm: {u:'lpcm'} }[cfg.xAxis];
+      const yr = { power: {u:'pwr%'}, speed: {u: isBM ? 'µs' : 'mm/s'}, lpcm: {u:'lpcm'} }[cfg.yAxis];
+      const fr = { power: {u:'pwr%'}, speed: {u: isBM ? 'µs' : 'mm/s'}, lpcm: {u:'lpcm'} }[cfg.fixedAxis];
       
       const xLabel = `${cfg.xMin} - ${xr.u} - ${cfg.xMax}`;
       const yLabel = `${cfg.yMin} - ${yr.u} - ${cfg.yMax}`;
@@ -281,22 +312,22 @@ export const GradientTab = {
       const gridT = CY - (effectiveTotal/2);
       const gridB = CY + (effectiveTotal/2);
       const labelSize = 2.4;
-      const gap = 2; // mm gap from grid
+      const labelGap = 2; // mm gap from grid
 
       const unscaledHeight = 23.35;
       const scale = labelSize / unscaledHeight;
       const fontSize = 72 * scale;
 
       XCSExporter.addText(project, {
-        text: xLabel, x: gridL + effectiveTotal/2, y: gridB + gap + labelSize, width: xLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        text: xLabel, x: gridL + effectiveTotal/2, y: gridB + labelGap + labelSize, width: xLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
       });
       XCSExporter.addText(project, {
-        text: yLabel, x: gridL - gap, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        text: yLabel, x: gridL - labelGap, y: CY, width: yLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center", angle: -90
       });
       XCSExporter.addText(project, {
-        text: fLabel, x: CX, y: gridT - gap, width: fLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
+        text: fLabel, x: CX, y: gridT - labelGap, width: fLabel.length * 11.44 * scale, height: labelSize, fontSize, scale,
         layerColor: labelColor, laserSource, align: "center"
       });
     }
@@ -333,13 +364,15 @@ export const GradientTab = {
     }));
 
     scroll.appendChild(UI.makeSection('Grid Settings', [
+      UI.makeRow('Proc Mode', UI.makeToggles(['vector', 'bitmap'], cfg.procMode, v => { cfg.procMode = v; rebuild(); })),
       UI.makeToggleRow('Disperse heat', cfg.disperseHeat, v => set('disperseHeat', v)),
       UI.makeRow('Resolution', UI.makeStepCounter(cfg.resolution, 1, 100, v => set('resolution', v), 1)),
       UI.makeRow('Overlap/Gap', UI.makeRange(-1, 1, 0.05, cfg.overlap, v => set('overlap', +v), 'mm')),
       UI.makeToggleRow('Show labels', cfg.showLabels, v => set('showLabels', v))
     ]));
 
-    const axisLabels = { power: 'pwr%', speed: 'mm/s', lpcm: 'lpcm' };
+    const isBM = cfg.procMode === 'bitmap';
+    const axisLabels = { power: 'pwr%', speed: isBM ? 'dur (µs)' : 'mm/s', lpcm: 'lpcm' };
     const axisOpts = ['power', 'speed', 'lpcm'];
 
     const swapAxes = (targetRole, newValue) => {
@@ -356,7 +389,10 @@ export const GradientTab = {
 
     const getRanges = (axis) => {
       if (axis === 'power') return { min: 1, max: 100, step: 1, unit: 'pwr%' };
-      if (axis === 'speed') return { min: 1, max: 500, step: 5, unit: 'mm/s' };
+      if (axis === 'speed') {
+        if (isBM) return { min: 10, max: 1000, step: 10, unit: 'µs' };
+        return { min: 1, max: 500, step: 5, unit: 'mm/s' };
+      }
       return { min: 10, max: 1000, step: 50, unit: 'lpcm' };
     };
 
@@ -415,4 +451,3 @@ export const GradientTab = {
     return minVal + (maxVal - minVal) * idx / (cfg.resolution - 1);
   }
 };
-
