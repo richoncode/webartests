@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lithos Pre-Processor — Halftone CMYK</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+    body { background-color: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; }
+    input[type="range"] { accent-color: #22d3ee; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+    // --- Inline Lucide-style Icons ---
+    const Icon = ({ children, size = 24, className, ...props }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+        {children}
+      </svg>
+    );
+    const Upload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></Icon>;
+    const Grid = (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="3" x2="21" y1="15" y2="15"/><line x1="9" x2="9" y1="3" y2="21"/><line x1="15" x2="15" y1="3" y2="21"/></Icon>;
+    const Layers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></Icon>;
+    const Sliders = (p) => <Icon {...p}><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></Icon>;
+    const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+    const Check = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>;
+    const ImageIcon = (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></Icon>;
+    const Copy = (p) => <Icon {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></Icon>;
+    const Download = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></Icon>;
+    const Loader2 = (p) => <Icon {...p} className={`${p.className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></Icon>;
+    const AlertCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></Icon>;
+
+    const App = () => {
+      const [image, setImage] = useState(null);
+      const [channels, setChannels] = useState(null);
+      const [sourceDim, setSourceDim] = useState({ w: 0, h: 0 });
+      const [widthInches, setWidthInches] = useState(1.0);
+      const [lpi, setLpi] = useState(40);
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [isCopying, setIsCopying] = useState(false);
+      const [copyStatus, setCopyStatus] = useState(null);
+      const [errorMessage, setErrorMessage] = useState("");
+      const [showLpiStandards, setShowLpiStandards] = useState(false);
+      
+      const fileInputRef = useRef(null);
+
+      const lpiStandards = [
+        { label: 'Newspaper', val: 65, desc: 'Absorbent newsprint stock' },
+        { label: 'Magazine', val: 133, desc: 'Standard web offset coated' },
+        { label: 'Art Book', val: 150, desc: 'High-quality sheet-fed' },
+        { label: 'Premium', val: 175, desc: 'Fine Detail / High Glamour' }
+      ];
+
+      const gridCellsX = Math.round(widthInches * lpi);
+
+      const presets = [
+        { id: 'peacock', name: 'SS304 Color Peacock', url: 'assets/peacock.jpg' },
+        { id: 'earth', name: 'Earth at Night', url: 'assets/earth.jpg' },
+        { id: 'kite', name: 'Michael Holden Cube Kite', url: 'assets/cube-kite.jpg' },
+        { id: 'glacier', name: 'Glacier Expedition', url: 'assets/glacier.jpg' },
+        { id: 'parachutist', name: 'Parachutist Magazine', url: 'assets/parachutist.jpg' },
+        { id: 'snow-trees', name: 'Aerial Snow Trees', url: 'assets/snow-trees.jpg' },
+        { id: 'burning-man', name: 'Burning Man Social', url: 'assets/burning-man.jpg' },
+        { id: 'starfish', name: 'Starfish Seabed', url: 'assets/starfish.jpg' },
+        { id: 'rgb', name: 'RGB Calibration Test', url: 'generated:rgb' }
+      ];
+
+      const generateRgbTest = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024; canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1024, 1024);
+        const rGrad = ctx.createLinearGradient(0, 0, 1024, 0);
+        rGrad.addColorStop(0, '#f00'); rGrad.addColorStop(1, '#000');
+        ctx.fillStyle = rGrad; ctx.fillRect(0, 0, 1024, 150);
+        const gGrad = ctx.createLinearGradient(0, 0, 1024, 0);
+        gGrad.addColorStop(0, '#0f0'); gGrad.addColorStop(1, '#000');
+        ctx.fillStyle = gGrad; ctx.fillRect(0, 150, 1024, 150);
+        const bGrad = ctx.createLinearGradient(0, 0, 1024, 0);
+        bGrad.addColorStop(0, '#00f'); bGrad.addColorStop(1, '#000');
+        ctx.fillStyle = bGrad; ctx.fillRect(0, 300, 1024, 150);
+        ctx.fillStyle = '#0ff'; ctx.fillRect(0, 450, 340, 300);
+        ctx.fillStyle = '#f0f'; ctx.fillRect(340, 450, 340, 300);
+        ctx.fillStyle = '#ff0'; ctx.fillRect(680, 450, 344, 300);
+        const kGrad = ctx.createLinearGradient(0, 0, 1024, 0);
+        kGrad.addColorStop(0, '#fff'); kGrad.addColorStop(1, '#000');
+        ctx.fillStyle = kGrad; ctx.fillRect(0, 750, 1024, 274);
+        return canvas.toDataURL('image/png');
+      };
+
+      const handlePresetSelect = (preset) => {
+        if (preset === 'open') { fileInputRef.current.click(); return; }
+        const selected = presets.find(p => p.id === preset);
+        if (!selected) return;
+        if (selected.url === 'generated:rgb') {
+          const dataUrl = generateRgbTest();
+          setImage(dataUrl);
+          const img = new Image();
+          img.onload = () => processImage(img);
+          img.src = dataUrl;
+        } else {
+          const img = new Image();
+          img.src = selected.url;
+          img.crossOrigin = "Anonymous";
+          img.onload = () => { setImage(selected.url); processImage(img); };
+          img.onerror = () => setErrorMessage("Failed to load preset. Check path.");
+        }
+      };
+
+      useEffect(() => {
+        const script = document.createElement('script');
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        script.async = true;
+        document.body.appendChild(script);
+      }, []);
+
+      const handleCopyPng = async () => {
+        if (!window.html2canvas) { setErrorMessage("Capture library not loaded yet."); setCopyStatus('error'); setTimeout(() => setCopyStatus(null), 3000); return; }
+        setIsCopying(true); setErrorMessage("");
+        try {
+          const element = document.getElementById('app-content');
+          const canvas = await window.html2canvas(element, { backgroundColor: '#020617', scale: 2, useCORS: true, allowTaint: true });
+          canvas.toBlob(async (blob) => {
+            if (!blob) throw new Error("Failed to create image blob.");
+            try {
+              if (navigator.clipboard && window.ClipboardItem) {
+                const data = [new ClipboardItem({ [blob.type]: blob })];
+                await navigator.clipboard.write(data);
+                setCopyStatus('success');
+              } else { throw new Error("Clipboard API not supported."); }
+            } catch (err) {
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url; link.download = `lithos-halftone-${Date.now()}.png`; link.click(); URL.revokeObjectURL(url);
+              setErrorMessage("Clipboard blocked. Downloaded instead."); setCopyStatus('success');
+            }
+            setIsCopying(false); setTimeout(() => { setCopyStatus(null); setErrorMessage(""); }, 4000);
+          }, 'image/png');
+        } catch (err) { setIsCopying(false); setCopyStatus('error'); setErrorMessage(err.message || "Capture error."); setTimeout(() => setCopyStatus(null), 5000); }
+      };
+
+      // --- Persistence ---
+      useEffect(() => {
+        if (image && channels) {
+          try {
+            const session = {
+              lpi,
+              widthInches,
+              sourceDim,
+              image,
+              masks: channels.downsampled.data,
+              grid: { cols: channels.downsampled.cols, rows: channels.downsampled.rows },
+              timestamp: Date.now()
+            };
+            localStorage.setItem('halftone_cmyk_session', JSON.stringify(session));
+          } catch (e) {
+            console.warn("Storage limit reached. Masks may be too large.", e);
+          }
+        }
+      }, [image, channels, lpi, widthInches]);
+
+      const processImage = (imgElement) => {
+        setIsProcessing(true);
+        setSourceDim({ w: imgElement.naturalWidth || imgElement.width, h: imgElement.naturalHeight || imgElement.height });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const maxDim = 800;
+        let width = imgElement.width;
+        let height = imgElement.height;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+        canvas.width = width; canvas.height = height;
+        ctx.drawImage(imgElement, 0, 0, width, height);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        const cMap = new Float32Array(width * height);
+        const mMap = new Float32Array(width * height);
+        const yMap = new Float32Array(width * height);
+        const kMap = new Float32Array(width * height);
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i] / 255; const g = data[i+1] / 255; const b = data[i+2] / 255;
+          const k = 1 - Math.max(r, g, b);
+          const c = k === 1 ? 0 : (1 - r - k) / (1 - k);
+          const m = k === 1 ? 0 : (1 - g - k) / (1 - k);
+          const y = k === 1 ? 0 : (1 - b - k) / (1 - k);
+          const pixelIdx = i / 4;
+          cMap[pixelIdx] = Math.max(0, Math.min(1, c));
+          mMap[pixelIdx] = Math.max(0, Math.min(1, m));
+          yMap[pixelIdx] = Math.max(0, Math.min(1, y));
+          kMap[pixelIdx] = Math.max(0, Math.min(1, k));
+        }
+        const result = {
+          width, height,
+          raw: { C: cMap, M: mMap, Y: yMap, K: kMap },
+          downsampled: generateGrid(width, height, { C: cMap, M: mMap, Y: yMap, K: kMap }, gridCellsX)
+        };
+        setChannels(result);
+        setIsProcessing(false);
+      };
+
+      const generateGrid = (width, height, rawChannels, gxCount) => {
+        const cellSize = width / gxCount;
+        const gyCount = Math.floor(height / cellSize);
+        const grids = { C: [], M: [], Y: [], K: [] };
+        for (let gy = 0; gy < gyCount; gy++) {
+          for (let gx = 0; gx < gxCount; gx++) {
+            const startX = Math.floor(gx * cellSize);
+            const startY = Math.floor(gy * cellSize);
+            const endX = Math.floor((gx + 1) * cellSize);
+            const endY = Math.floor((gy + 1) * cellSize);
+            const channelSums = { C: 0, M: 0, Y: 0, K: 0 };
+            let count = 0;
+            for (let py = startY; py < endY; py++) {
+              for (let px = startX; px < endX; px++) {
+                const idx = py * width + px;
+                if (idx >= 0 && idx < rawChannels.C.length) {
+                  channelSums.C += rawChannels.C[idx];
+                  channelSums.M += rawChannels.M[idx];
+                  channelSums.Y += rawChannels.Y[idx];
+                  channelSums.K += rawChannels.K[idx];
+                  count++;
+                }
+              }
+            }
+            grids.C.push(count > 0 ? channelSums.C / count : 0);
+            grids.M.push(count > 0 ? channelSums.M / count : 0);
+            grids.Y.push(count > 0 ? channelSums.Y / count : 0);
+            grids.K.push(count > 0 ? channelSums.K / count : 0);
+          }
+        }
+        return { data: grids, cols: gxCount, rows: gyCount };
+      };
+
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => { setImage(event.target.result); processImage(img); };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      useEffect(() => { if (image && !isProcessing) { const img = new Image(); img.onload = () => processImage(img); img.src = image; } }, [widthInches, lpi]);
+
+      const ChannelView = ({ title, data, width, height, color }) => {
+        const canvasRef = useRef(null);
+        useEffect(() => {
+          if (canvasRef.current && data) {
+            const ctx = canvasRef.current.getContext('2d');
+            const imageData = ctx.createImageData(width, height);
+            for (let i = 0; i < data.length; i++) {
+              const val = 255 - (data[i] * 255);
+              const idx = i * 4;
+              imageData.data[idx] = color === 'cyan' ? val : 255;
+              imageData.data[idx+1] = color === 'magenta' ? val : 255;
+              imageData.data[idx+2] = color === 'yellow' ? val : 255;
+              if (color === 'black') { imageData.data[idx] = val; imageData.data[idx+1] = val; imageData.data[idx+2] = val; }
+              imageData.data[idx+3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+          }
+        }, [data, width, height]);
+        return (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+            <h4 className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">{title}</h4>
+            <canvas ref={canvasRef} width={width} height={height} className="w-full rounded bg-white" />
+          </div>
+        );
+      };
+
+      const GridPreview = ({ title, channelData, cols, rows, themeColor }) => {
+        const containerRef = useRef(null);
+        return (
+          <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+            <h4 className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-widest flex items-center gap-2"><Grid size={12} /> {title} Halftone Grid</h4>
+            <div ref={containerRef} className="relative bg-white border border-slate-800 shadow-2xl overflow-hidden" style={{ aspectRatio: `${cols}/${rows}` }}>
+              <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '1px' }}>
+                {channelData.map((density, i) => (
+                  <div key={i} className="w-full h-full flex items-center justify-center">
+                    <div style={{ width: `${Math.sqrt(Math.max(0, density)) * 100}%`, height: `${Math.sqrt(Math.max(0, density)) * 100}%`, backgroundColor: themeColor, borderRadius: '50%' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div id="app-content" className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans relative">
+          <div className="max-w-7xl mx-auto">
+            <header className="mb-8 border-b border-slate-800 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <a href="index.html" className="text-xs text-slate-500 hover:text-slate-300 transition-colors block mb-4">← Back to Hub</a>
+                <h1 className="text-3xl font-black bg-gradient-to-r from-cyan-400 via-magenta-400 to-yellow-400 bg-clip-text text-transparent flex items-center gap-3">
+                  <Layers className="text-white" size={28} /> LITHOS PRE-PROCESSOR
+                </h1>
+                <p className="text-slate-400 mt-2 font-light">Module 1: Image Decomposition & Subtractive Density Mapping</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {errorMessage && <div className="text-red-400 text-xs flex items-center gap-1 bg-red-400/10 px-3 py-2 rounded-lg border border-red-400/20"><AlertCircle size={14}/> {errorMessage}</div>}
+                <button onClick={handleCopyPng} disabled={isCopying || !image} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm border ${!image ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600'}`}>
+                  {isCopying ? <Loader2 size={16} /> : copyStatus === 'success' ? <Check size={16} /> : <Copy size={16} />}
+                  {isCopying ? 'Capturing...' : copyStatus === 'success' ? 'Copied Page PNG' : 'Copy Page as PNG'}
+                </button>
+              </div>
+            </header>
+
+            {!image ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4 border border-slate-800 rounded-[2.5rem] bg-slate-900/40 shadow-2xl backdrop-blur-sm">
+                <header className="text-center mb-10">
+                  <h2 className="text-3xl font-black text-white mb-3">Initialize Lithos</h2>
+                  <p className="text-slate-500 max-w-md mx-auto">Select a reference image or upload a custom bitmap.</p>
+                </header>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 w-full max-w-6xl mb-12">
+                  {presets.filter(p => p.id !== 'rgb').map(p => (
+                    <button key={p.id} onClick={() => handlePresetSelect(p.id)} className="group relative flex flex-col items-start p-2 bg-slate-800/50 hover:bg-slate-700/50 rounded-2xl border border-slate-700 transition-all hover:border-cyan-500 overflow-hidden">
+                      <div className="w-full aspect-video rounded-xl bg-slate-950 mb-2 overflow-hidden border border-slate-900">
+                        <img src={p.url} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <div className="px-1 text-left"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">{p.name}</span></div>
+                    </button>
+                  ))}
+                  <button onClick={() => handlePresetSelect('rgb')} className="group flex flex-col items-start p-2 bg-slate-800/50 hover:bg-slate-700/50 rounded-2xl border border-slate-700 active:scale-95">
+                    <div className="w-full aspect-video rounded-xl bg-slate-950 mb-2 overflow-hidden flex flex-col">
+                      <div className="flex-1 flex"><div className="w-1/3 bg-red-600"></div><div className="w-1/3 bg-green-600"></div><div className="w-1/3 bg-blue-600"></div></div>
+                      <div className="flex-1 flex"><div className="w-1/3 bg-cyan-500"></div><div className="w-1/3 bg-magenta-500"></div><div className="w-1/3 bg-yellow-400"></div></div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">RGB Calibration</span>
+                  </button>
+                </div>
+                <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-3 px-8 py-4 bg-white text-slate-950 rounded-2xl font-bold transition-all hover:scale-105 active:scale-95"><Upload size={20} /> Upload Custom</button>
+                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*" />
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                  <div className="lg:col-span-1 space-y-4">
+                    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="font-bold text-lg flex items-center gap-2 text-slate-200"><Sliders size={18}/> Controls</h3>
+                        <button onClick={() => setImage(null)} className="text-xs text-slate-500 hover:text-white uppercase tracking-tight">Reset</button>
+                      </div>
+                      <div className="space-y-8">
+                        <div>
+                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500"><span>Width (Inches)</span><span className="text-cyan-400 font-mono">{widthInches.toFixed(1)} in</span></div>
+                          <input type="range" min="0.5" max="10.0" step="0.1" value={widthInches} onChange={(e) => setWidthInches(parseFloat(e.target.value))} className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+                        <div className="relative">
+                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500">
+                            <span className="flex items-center gap-1">
+                              Density (LPI)
+                              <button 
+                                onClick={() => setShowLpiStandards(!showLpiStandards)}
+                                className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold border transition-all ${showLpiStandards ? 'bg-violet-500 border-violet-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                              >
+                                ?
+                              </button>
+                            </span>
+                            <span className="text-violet-400 font-mono">{lpi} Lines/In</span>
+                          </div>
+                          
+                          {showLpiStandards && (
+                            <div className="absolute bottom-full left-0 mb-3 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-bottom-2">
+                              <h4 className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest flex items-center justify-between">
+                                Offset Standards
+                                <button onClick={() => setShowLpiStandards(false)} className="text-slate-600 hover:text-slate-400 text-xs">×</button>
+                              </h4>
+                              <div className="space-y-1.5">
+                                {lpiStandards.map(s => (
+                                  <button 
+                                    key={s.label}
+                                    onClick={() => { setLpi(s.val); setShowLpiStandards(false); }}
+                                    className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-slate-800 transition-colors text-left group"
+                                  >
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-200 group-hover:text-violet-400">{s.label}</div>
+                                      <div className="text-[10px] text-slate-500">{s.desc}</div>
+                                    </div>
+                                    <div className="text-xs font-mono font-bold text-slate-400">{s.val}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <input type="range" min="10" max="200" step="1" value={lpi} onChange={(e) => setLpi(parseInt(e.target.value))} className="w-full accent-violet-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center"><span className="text-[10px] uppercase text-slate-500 tracking-widest">Compute Grid</span><span className="text-white font-mono font-bold text-sm bg-slate-800 px-2 py-1 rounded">{gridCellsX} × {channels ? channels.downsampled.rows : '?'}</span></div>
+                        <div className="pt-4 border-t border-slate-800">
+                          <img src={image} className="w-full rounded-lg border border-slate-700" />
+                          <p className="text-[10px] mt-2 text-center text-slate-500 font-mono uppercase tracking-widest leading-none">Source Bitmap</p>
+                          {sourceDim.w > 0 && <p className="text-[9px] text-center text-slate-600 font-mono mt-1 opacity-80 uppercase">{sourceDim.w} × {sourceDim.h} PX</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="lg:col-span-3 space-y-8">
+                    {channels && (
+                      <React.Fragment>
+                        <section><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4"><Layers size={14} /> 1. Density Map Decomposition</h3><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><ChannelView title="Cyan Map" data={channels.raw.C} width={channels.width} height={channels.height} color="cyan" /><ChannelView title="Magenta Map" data={channels.raw.M} width={channels.width} height={channels.height} color="magenta" /><ChannelView title="Yellow Map" data={channels.raw.Y} width={channels.width} height={channels.height} color="yellow" /><ChannelView title="Black Map" data={channels.raw.K} width={channels.width} height={channels.height} color="black" /></div></section>
+                        <section><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4"><Grid size={14} /> 2. Halftone Grid Downsampling (Interactive)</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20"><GridPreview title="Cyan" channelData={channels.downsampled.data.C} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#22d3ee" /><GridPreview title="Magenta" channelData={channels.downsampled.data.M} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#e879f9" /><GridPreview title="Yellow" channelData={channels.downsampled.data.Y} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#facc15" /><GridPreview title="Black" channelData={channels.downsampled.data.K} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#000000" /></div></section>
+                      </React.Fragment>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+
+  <div style="text-align: center; color: #333; font-size: 10px; font-family: monospace; padding: 20px 0;">
+    ########################################<br>
+    # !!! REMINDER: Hard Refresh (Cmd+Shift+R) !!! #<br>
+    ########################################
+  </div>
+</body>
+</html>
