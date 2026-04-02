@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Micro-Plate View — Halftone CMYK</title>
+  <title>Explaining Halftoning — Halftone CMYK</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -64,28 +64,17 @@
       const [settings, setSettings] = useState({
         lpi: 85, 
         dotMicrons: { c: 150, m: 150, y: 150, k: 150 }, 
+        densities: { c: 50, m: 30, y: 80, k: 10 },
         jitter: 0.15,
         showC: true,
         showM: true,
         showY: true,
         showK: true,
         showGrids: false,
+        samplingMode: 'direct', // 'direct', 'pre', 'post'
         intensityMode: 'solid', 
         blendMode: 'multiply'
       });
-
-      const [session, setSession] = useState(null);
-
-      useEffect(() => {
-        const stored = localStorage.getItem('halftone_cmyk_session');
-        if (stored) {
-          try {
-            const data = JSON.parse(stored);
-            setSession(data);
-            setSettings(s => ({ ...s, lpi: data.lpi || s.lpi }));
-          } catch (e) { console.error("Session parse error", e); }
-        }
-      }, []);
 
       const [isDrawing, setIsDrawing] = useState(false);
       const canvasRef = useRef(null);
@@ -142,9 +131,7 @@
               const y1 = u * sinA + (-scanSize/2) * cosA + height / 2;
               const x2 = u * cosA - (scanSize/2) * sinA + width / 2;
               const y2 = u * sinA + (scanSize/2) * cosA + height / 2;
-              ctx.moveTo(x1, y1);
-              ctx.lineTo(x2, y2);
-              ctx.stroke();
+              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
             }
             for (let v = -scanSize/2; v < scanSize/2; v += step) {
               ctx.beginPath();
@@ -152,42 +139,37 @@
               const y1 = (-scanSize/2) * sinA + v * cosA + height / 2;
               const x2 = (scanSize/2) * cosA - v * sinA + width / 2;
               const y2 = (scanSize/2) * sinA + v * cosA + height / 2;
-              ctx.moveTo(x1, y1);
-              ctx.lineTo(x2, y2);
-              ctx.stroke();
+              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
             }
             ctx.restore();
             ctx.globalCompositeOperation = settings.blendMode;
           }
 
-          ctx.fillStyle = channel.color;
           for (let u = -scanSize/2; u < scanSize/2; u += step) {
             for (let v = -scanSize/2; v < scanSize/2; v += step) {
-              let x = u * cosA - v * sinA + width / 2;
-              let y = u * sinA + v * cosA + height / 2;
-
-              if (x < -step || x > width + step || y < -step || y > height + step) continue;
-
-              if (settings.jitter > 0) {
-                const hx = hash(u, v, channelIdx + settings.jitter * 100);
-                const hy = hash(v, u, channelIdx + settings.jitter * 100 + 1);
-                x += (hx - 0.5) * step * settings.jitter;
-                y += (hy - 0.5) * step * settings.jitter;
-              }
-
-              let intensity = settings.intensityMode === 'solid' ? 1.0 : 0.5;
+              let perfectX = u * cosA - v * sinA + width / 2;
+              let perfectY = u * sinA + v * cosA + height / 2;
               
-              if (session && session.masks) {
-                const col = Math.floor(u / step + session.grid.cols / 2);
-                const row = Math.floor(v / step + session.grid.rows / 2);
-                const channelKey = channel.key.toUpperCase();
+              if (perfectX < -step || perfectX > width + step || perfectY < -step || perfectY > height + step) continue;
+
+              let uJitter = 0, vJitter = 0, xJitter = 0, yJitter = 0;
+              if (settings.jitter > 0 && settings.samplingMode !== 'direct') {
+                const hjx = hash(u, v, channelIdx + settings.jitter * 100);
+                const hjy = hash(v, u, channelIdx + settings.jitter * 100 + 1);
+                const offX = (hjx - 0.5) * step * settings.jitter;
+                const offY = (hjy - 0.5) * step * settings.jitter;
                 
-                if (session.masks[channelKey] && col >= 0 && col < session.grid.cols && row >= 0 && row < session.grid.rows) {
-                  intensity = session.masks[channelKey][row * session.grid.cols + col];
+                if (settings.samplingMode === 'pre') {
+                  uJitter = offX; vJitter = offY;
+                  xJitter = offX; yJitter = offY;
                 } else {
-                  intensity = 0;
+                  xJitter = offX; yJitter = offY;
                 }
               }
+
+              // In the concept module, we use fixed densities, but we'll maintain 
+              // the coordinate logic for educational consistency.
+              const intensity = settings.densities[channel.key] / 100;
 
               if (intensity <= 0.01) continue;
 
@@ -196,7 +178,7 @@
 
               if (radius > 0.1) {
                 ctx.beginPath();
-                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.arc(perfectX + xJitter, perfectY + yJitter, radius, 0, Math.PI * 2);
                 ctx.fill();
               }
             }
@@ -268,42 +250,73 @@
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2 text-emerald-400">
                     <Microscope size={20} />
-                    <h1 className="font-bold tracking-tight uppercase text-sm">Micro-Plate View</h1>
+                    <h1 className="font-bold tracking-tight uppercase text-sm">Explaining Halftoning</h1>
                   </div>
                   {isDrawing && <RefreshCw size={14} className="animate-spin text-zinc-500" />}
                 </div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Dot Matrix Geometry</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Interactive Principles</p>
               </header>
 
               <div className="space-y-8">
                 <section>
                   <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Move size={12} /> Frequency (LPI)
+                    <Move size={12} /> Grid Configuration
                   </h3>
                   <div className="space-y-5">
                     <div>
                       <label className="text-xs flex justify-between mb-2">
-                        <span className="text-zinc-400">Screen Freq</span>
+                        <span className="text-zinc-400">Lines Per Inch</span>
                         <span className="font-mono text-emerald-400 font-bold">{settings.lpi} LPI</span>
                       </label>
-                      <input type="range" min="45" max="150" value={settings.lpi} 
+                      <input type="range" min="20" max="150" value={settings.lpi} 
                         onChange={e => setSettings(s => ({...s, lpi: +e.target.value}))}
                         className="w-full accent-emerald-500 bg-zinc-800 h-1 rounded-lg appearance-none cursor-pointer" />
                     </div>
+                    
+                    <div>
+                      <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-zinc-500">
+                        <span className="flex items-center gap-1 group relative">
+                          Sampling Mode
+                          <span className="ml-1 text-zinc-700 cursor-help font-bold">(?)</span>
+                          <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-zinc-900 border border-zinc-700 rounded-lg text-[9px] font-normal normal-case opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl">
+                            <p className="text-emerald-400 font-bold mb-1">Expert Intuition:</p>
+                            <p className="mb-1"><span className="text-white">Direct:</span> Perfect mathematical grid. Order over organic.</p>
+                            <p className="mb-1"><span className="text-white">Pre-Jitter:</span> Samples detail according to jittered center.</p>
+                            <p><span className="text-white">Post-Jitter:</span> Mimics head-wobble/mechanical slop. Softer.</p>
+                          </div>
+                        </span>
+                      </div>
+                      <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800 gap-1">
+                        {['direct', 'pre', 'post'].map(m => (
+                          <button 
+                            key={m} 
+                            onClick={() => setSettings(s => ({...s, samplingMode: m}))}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all ${
+                              settings.samplingMode === m ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div>
                       <label className="text-xs flex justify-between mb-2">
                         <span className="text-zinc-400">Stochastic Jitter</span>
                         <span className="font-mono text-emerald-400 font-bold">{Math.round(settings.jitter * 100)}%</span>
                       </label>
-                      <input type="range" min="0" max="0.4" step="0.01" value={settings.jitter} 
+                      <input type="range" min="0" max="1.0" step="0.01" value={settings.jitter} 
                         onChange={e => setSettings(s => ({...s, jitter: +e.target.value}))}
                         className="w-full accent-emerald-500 bg-zinc-800 h-1 rounded-lg appearance-none cursor-pointer" />
                     </div>
                   </div>
-                </section>                <section>
+                </section>
+
+                <section>
                   <div className="flex items-center justify-between mb-4 mt-2">
                     <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                      <Target size={12} /> Plate Channels & Dot Sizes (µm)
+                      <Target size={12} /> CMYK Tonal Densities
                     </h3>
                     <button 
                       onClick={() => setSettings(s => ({...s, showGrids: !s.showGrids}))}
@@ -331,26 +344,16 @@
                             {c.label}
                             <span className="font-mono opacity-60 ml-2">{c.angle}°</span>
                           </button>
-                          <span className="font-mono text-[10px] text-emerald-400 font-bold bg-zinc-950 px-2 py-1 rounded border border-emerald-500/20">{settings.dotMicrons[c.key]}µm</span>
+                          <span className="font-mono text-[10px] text-emerald-400 font-bold bg-zinc-950 px-2 py-1 rounded border border-emerald-500/20">{settings.densities[c.key]}%</span>
                         </div>
-                        <input type="range" min="80" max="600" value={settings.dotMicrons[c.key]} 
-                          onChange={e => setSettings(s => ({...s, dotMicrons: {...s.dotMicrons, [c.key]: +e.target.value}}))}
+                        <input type="range" min="0" max="100" value={settings.densities[c.key]} 
+                          onChange={e => setSettings(s => ({...s, densities: {...s.densities, [c.key]: +e.target.value}}))}
                           className="w-full accent-emerald-500 bg-zinc-900 h-1 rounded-lg appearance-none cursor-pointer" />
                       </div>
                     ))}
                   </div>
                 </section>
                 
-                {session && session.image && (
-                  <section className="mt-8 pt-6 border-t border-zinc-800">
-                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <ImageIcon size={12} /> Source Reference
-                    </h3>
-                    <div className="p-1 bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden group">
-                      <img src={session.image} className="w-full h-auto opacity-70 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </section>
-                )}
                 <section className="pt-6 border-t border-zinc-800 text-center">
                   <div className="font-mono text-[9px] text-zinc-600 leading-tight">
                     ########################################<br/>
@@ -380,8 +383,8 @@
                     </span>
                   </div>
                   <div className="flex flex-col gap-0.5 text-[9px] font-mono text-zinc-400 border-t border-zinc-800 pt-2">
-                     <span className="text-emerald-500/70 font-bold uppercase tracking-widest leading-none">100% SOLID</span>
-                     <span className="mt-1">SCALE: 1:1 REFERENCE</span>
+                     <span className="text-emerald-500/70 font-bold uppercase tracking-widest leading-none">C{settings.densities.c}% M{settings.densities.m}% Y{settings.densities.y}% K{settings.densities.k}%</span>
+                     <span className="mt-1 uppercase">Direct Slider Input</span>
                   </div>
                 </div>
               </div>
@@ -399,7 +402,7 @@
                     <Microscope size={14} className="text-emerald-400" />
                     <div className="flex flex-col leading-[1.1]">
                       <h2 className="text-emerald-400 font-black text-[11px] uppercase tracking-[0.2em]">
-                        Plate
+                        Concept
                       </h2>
                       <h2 className="text-emerald-400 font-black text-[11px] uppercase tracking-[0.2em]">
                         Magnified
@@ -409,11 +412,11 @@
                   <div className="flex flex-col gap-1.5 text-[9px] font-mono text-zinc-400 border-t border-zinc-800 pt-3">
                      <div className="flex items-center gap-2">
                        <span className="text-zinc-500">ZOOM:</span>
-                       <span className="text-zinc-200">800%</span>
+                       <span className="text-zinc-200">Interactive</span>
                      </div>
                      <div className="flex flex-col pt-0.5 leading-tight">
-                       <span className="text-emerald-500/80 font-bold uppercase tracking-[0.1em]">100% SOLID</span>
-                       <span className="text-emerald-500/80 font-bold uppercase tracking-[0.1em]">FIELD</span>
+                       <span className="text-emerald-500/80 font-bold uppercase tracking-[0.1em]">Explaining</span>
+                       <span className="text-emerald-500/80 font-bold uppercase tracking-[0.1em]">Density</span>
                      </div>
                   </div>
                 </div>

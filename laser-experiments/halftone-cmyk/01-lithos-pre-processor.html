@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lithos Pre-Processor — Halftone CMYK</title>
+  <title>Bitmap to Halftone</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -39,16 +39,28 @@
     const AlertCircle = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></Icon>;
 
     const App = () => {
+      // --- DESIGN PRINCIPLE ---
+      // Module 1 is a purely high-fidelity Graphic Pre-Processor (Lithos).
+      // Avoid referring to Laser hardware, Substrates, or Galvo specs in this module.
+      // Focus on Print Industry standards (LPI, CMYK, Halftoning).
+      
       const [image, setImage] = useState(null);
       const [channels, setChannels] = useState(null);
       const [sourceDim, setSourceDim] = useState({ w: 0, h: 0 });
       const [widthInches, setWidthInches] = useState(1.0);
-      const [lpi, setLpi] = useState(40);
+      const [lpi, setLpi] = useState(133);
       const [isProcessing, setIsProcessing] = useState(false);
       const [isCopying, setIsCopying] = useState(false);
       const [copyStatus, setCopyStatus] = useState(null);
       const [errorMessage, setErrorMessage] = useState("");
       const [showLpiStandards, setShowLpiStandards] = useState(false);
+      
+      // --- New UI & Combined Preview State ---
+      const [showChannels, setShowChannels] = useState({ C: true, M: true, Y: true, K: true });
+      const [showGridlines, setShowGridlines] = useState(false);
+      const [zoomLevel, setZoomLevel] = useState(1.0);
+      const [jitter, setJitter] = useState(0.15);
+      const [samplingMode, setSamplingMode] = useState('post'); // 'direct', 'pre', 'post'
       
       const fileInputRef = useRef(null);
 
@@ -57,6 +69,15 @@
         { label: 'Magazine', val: 133, desc: 'Standard web offset coated' },
         { label: 'Art Book', val: 150, desc: 'High-quality sheet-fed' },
         { label: 'Premium', val: 175, desc: 'Fine Detail / High Glamour' }
+      ];
+
+      const widthStandards = [
+        { label: '1 cm', val: 0.394, desc: 'Micro-Detail Graphic' },
+        { label: '2.5 cm', val: 0.984, desc: 'Standard Unit approx' },
+        { label: '5 cm', val: 1.969, desc: 'Business Card Format' },
+        { label: '1 in', val: 1.0, desc: 'Standard Imperial Unit' },
+        { label: '2 in', val: 2.0, desc: 'Medium Format Graphic' },
+        { label: '3 in', val: 3.0, desc: 'Large Format Display' }
       ];
 
       const gridCellsX = Math.round(widthInches * lpi);
@@ -156,23 +177,22 @@
               widthInches,
               sourceDim,
               image,
-              masks: channels.downsampled.data,
-              grid: { cols: channels.downsampled.cols, rows: channels.downsampled.rows },
+              samplingMode,
               timestamp: Date.now()
             };
             localStorage.setItem('halftone_cmyk_session', JSON.stringify(session));
           } catch (e) {
-            console.warn("Storage limit reached. Masks may be too large.", e);
+            console.warn("Storage limit reached.", e);
           }
         }
-      }, [image, channels, lpi, widthInches]);
+      }, [image, channels, lpi, widthInches, samplingMode]);
 
       const processImage = (imgElement) => {
         setIsProcessing(true);
         setSourceDim({ w: imgElement.naturalWidth || imgElement.width, h: imgElement.naturalHeight || imgElement.height });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        const maxDim = 800;
+        const maxDim = 1024; // High-res map for direct sampling
         let width = imgElement.width;
         let height = imgElement.height;
         if (width > maxDim || height > maxDim) {
@@ -202,45 +222,12 @@
         }
         const result = {
           width, height,
-          raw: { C: cMap, M: mMap, Y: yMap, K: kMap },
-          downsampled: generateGrid(width, height, { C: cMap, M: mMap, Y: yMap, K: kMap }, gridCellsX)
+          raw: { C: cMap, M: mMap, Y: yMap, K: kMap }
         };
         setChannels(result);
         setIsProcessing(false);
       };
 
-      const generateGrid = (width, height, rawChannels, gxCount) => {
-        const cellSize = width / gxCount;
-        const gyCount = Math.floor(height / cellSize);
-        const grids = { C: [], M: [], Y: [], K: [] };
-        for (let gy = 0; gy < gyCount; gy++) {
-          for (let gx = 0; gx < gxCount; gx++) {
-            const startX = Math.floor(gx * cellSize);
-            const startY = Math.floor(gy * cellSize);
-            const endX = Math.floor((gx + 1) * cellSize);
-            const endY = Math.floor((gy + 1) * cellSize);
-            const channelSums = { C: 0, M: 0, Y: 0, K: 0 };
-            let count = 0;
-            for (let py = startY; py < endY; py++) {
-              for (let px = startX; px < endX; px++) {
-                const idx = py * width + px;
-                if (idx >= 0 && idx < rawChannels.C.length) {
-                  channelSums.C += rawChannels.C[idx];
-                  channelSums.M += rawChannels.M[idx];
-                  channelSums.Y += rawChannels.Y[idx];
-                  channelSums.K += rawChannels.K[idx];
-                  count++;
-                }
-              }
-            }
-            grids.C.push(count > 0 ? channelSums.C / count : 0);
-            grids.M.push(count > 0 ? channelSums.M / count : 0);
-            grids.Y.push(count > 0 ? channelSums.Y / count : 0);
-            grids.K.push(count > 0 ? channelSums.K / count : 0);
-          }
-        }
-        return { data: grids, cols: gxCount, rows: gyCount };
-      };
 
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -283,18 +270,237 @@
         );
       };
 
-      const GridPreview = ({ title, channelData, cols, rows, themeColor }) => {
-        const containerRef = useRef(null);
+      const HalftoneThumbnail = ({ channels, lpi, jitter, samplingMode }) => {
+        const canvasRef = useRef(null);
+        
+        const CMYK_CONFIG = [
+          { color: '#22d3ee', angle: 15 },
+          { color: '#e879f9', angle: 75 },
+          { color: '#facc15', angle: 0 },
+          { color: '#000000', angle: 45 },
+        ];
+
+        const gridSpacing = (96 / lpi) * 25; 
+
+        const hash = (x, y, salt) => {
+          const h = Math.sin(x * 12.9898 + y * 78.233 + salt) * 43758.5453123;
+          return h - Math.floor(h);
+        };
+
+        useEffect(() => {
+          const canvas = canvasRef.current;
+          if (!canvas || !channels) return;
+          const ctx = canvas.getContext('2d');
+          const width = 300; 
+          const height = 300 * (channels.height / channels.width);
+          canvas.width = width; canvas.height = height;
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.globalCompositeOperation = 'multiply';
+
+          CMYK_CONFIG.forEach((channel, idx) => {
+            const angleRad = (channel.angle * Math.PI) / 180;
+            const cosA = Math.cos(angleRad);
+            const sinA = Math.sin(angleRad);
+            const step = gridSpacing * (width / 800); 
+            const maskData = channels.raw[['C','M','Y','K'][idx]];
+            const rawW = channels.width;
+            const rawH = channels.height;
+
+            ctx.fillStyle = channel.color;
+            const scanSize = Math.sqrt(width*width + height*height) * 1.5;
+            for (let u = -scanSize/2; u < scanSize/2; u += step) {
+              for (let v = -scanSize/2; v < scanSize/2; v += step) {
+                let px = u * cosA - v * sinA + width / 2;
+                let py = u * sinA + v * cosA + height / 2;
+                if (px < 0 || px > width || py < 0 || py > height) continue;
+
+                let xJitter = 0, yJitter = 0, uJitter = 0, vJitter = 0;
+                if (jitter > 0 && samplingMode !== 'direct') {
+                  const hjx = hash(u, v, idx + jitter * 100);
+                  const hjy = hash(v, u, idx + jitter * 100 + 1);
+                  const offX = (hjx - 0.5) * step * jitter;
+                  const offY = (hjy - 0.5) * step * jitter;
+                  if (samplingMode === 'pre') { uJitter = offX; vJitter = offY; xJitter = offX; yJitter = offY; }
+                  else { xJitter = offX; yJitter = offY; }
+                }
+
+                const sWorldX = (u + uJitter) * cosA - (v + vJitter) * sinA + width / 2;
+                const sWorldY = (u + uJitter) * sinA + (v + vJitter) * cosA + height / 2;
+                const srcX = Math.floor((sWorldX / width) * rawW);
+                const srcY = Math.floor((sWorldY / height) * rawH);
+
+                if (srcX >= 0 && srcX < rawW && srcY >= 0 && srcY < rawH) {
+                  const intensity = maskData[srcY * rawW + srcX];
+                  if (intensity > 0.05) {
+                    const radius = Math.sqrt(intensity) * (step / 2) * 1.2;
+                    ctx.beginPath(); ctx.arc(px + xJitter, py + yJitter, radius, 0, Math.PI * 2); ctx.fill();
+                  }
+                }
+              }
+            }
+          });
+        }, [channels, lpi, jitter, samplingMode]);
+
+        return <canvas ref={canvasRef} className="w-full rounded-lg border border-slate-700 shadow-lg bg-white" />;
+      };
+
+      const CombinedGridPreview = ({ channels, lpi, zoom, showChannels, showGridlines, jitter, samplingMode }) => {
+        const canvasRef = useRef(null);
+        
+        const CMYK_CONFIG = [
+          { label: 'Cyan', color: '#22d3ee', angle: 15, key: 'C' },
+          { label: 'Magenta', color: '#e879f9', angle: 75, key: 'M' },
+          { label: 'Yellow', color: '#facc15', angle: 0, key: 'Y' },
+          { label: 'Black', color: '#000000', angle: 45, key: 'K' },
+        ];
+
+        const gridSpacing = (96 / lpi) * 25; 
+
+        const hash = (x, y, salt) => {
+          const h = Math.sin(x * 12.9898 + y * 78.233 + salt) * 43758.5453123;
+          return h - Math.floor(h);
+        };
+
+        const draw = useCallback(() => {
+          const canvas = canvasRef.current;
+          if (!canvas || !channels) return;
+          const ctx = canvas.getContext('2d');
+          const { width, height } = canvas;
+          const rawW = channels.width;
+          const rawH = channels.height;
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          
+          ctx.save();
+          ctx.translate(width/2, height/2);
+          ctx.scale(zoom, zoom);
+          ctx.translate(-width/2, -height/2);
+
+          ctx.globalCompositeOperation = 'multiply';
+
+          CMYK_CONFIG.forEach((channel, idx) => {
+            if (!showChannels[channel.key]) return;
+
+            const angleRad = (channel.angle * Math.PI) / 180;
+            const cosA = Math.cos(angleRad);
+            const sinA = Math.sin(angleRad);
+            const scanSize = Math.sqrt(width * width + height * height) * 2;
+            const step = gridSpacing;
+            const maskData = channels.raw[channel.key];
+
+            if (showGridlines) {
+              ctx.save();
+              ctx.globalCompositeOperation = 'source-over';
+              ctx.strokeStyle = channel.color;
+              ctx.lineWidth = 1.0 / zoom;
+              ctx.globalAlpha = 0.5;
+              for (let u = -scanSize/2; u < scanSize/2; u += step) {
+                ctx.beginPath();
+                const x1 = u * cosA - (-scanSize/2) * sinA + width / 2;
+                const y1 = u * sinA + (-scanSize/2) * cosA + height / 2;
+                const x2 = u * cosA - (scanSize/2) * sinA + width / 2;
+                const y2 = u * sinA + (scanSize/2) * cosA + height / 2;
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+              }
+              for (let v = -scanSize/2; v < scanSize/2; v += step) {
+                ctx.beginPath();
+                const x1 = (-scanSize/2) * cosA - v * sinA + width / 2;
+                const y1 = (-scanSize/2) * sinA + v * cosA + height / 2;
+                const x2 = (scanSize/2) * cosA - v * sinA + width / 2;
+                const y2 = (scanSize/2) * sinA + v * cosA + height / 2;
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+              }
+              ctx.restore();
+            }
+
+            ctx.fillStyle = channel.color;
+            for (let u = -scanSize/2; u < scanSize/2; u += step) {
+              for (let v = -scanSize/2; v < scanSize/2; v += step) {
+                let perfectX = u * cosA - v * sinA + width / 2;
+                let perfectY = u * sinA + v * cosA + height / 2;
+                
+                if (perfectX < -step || perfectX > width + step || perfectY < -step || perfectY > height + step) continue;
+
+                let uJitter = 0, vJitter = 0, xJitter = 0, yJitter = 0;
+                if (jitter > 0 && samplingMode !== 'direct') {
+                  const hjx = hash(u, v, idx + jitter * 100);
+                  const hjy = hash(v, u, idx + jitter * 100 + 1);
+                  const offX = (hjx - 0.5) * step * jitter;
+                  const offY = (hjy - 0.5) * step * jitter;
+                  
+                  if (samplingMode === 'pre') {
+                    uJitter = offX; vJitter = offY;
+                    xJitter = offX; yJitter = offY;
+                  } else {
+                    xJitter = offX; yJitter = offY;
+                  }
+                }
+
+                const sampleUX = u + uJitter;
+                const sampleVX = v + vJitter;
+                const sampleWorldX = sampleUX * cosA - sampleVX * sinA + width / 2;
+                const sampleWorldY = sampleUX * sinA + sampleVX * cosA + height / 2;
+
+                const srcX = Math.floor((sampleWorldX / width) * rawW);
+                const srcY = Math.floor((sampleWorldY / height) * rawH);
+
+                if (srcX >= 0 && srcX < rawW && srcY >= 0 && srcY < rawH) {
+                  const intensity = maskData[srcY * rawW + srcX];
+                  if (intensity > 0.005) {
+                    const radius = Math.sqrt(intensity) * (step / 2) * 1.1; 
+                    ctx.beginPath();
+                    ctx.arc(perfectX + xJitter, perfectY + yJitter, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                  }
+                }
+              }
+            }
+          });
+          ctx.restore();
+        }, [channels, lpi, zoom, showChannels, showGridlines, jitter, samplingMode]);
+
+        useEffect(() => {
+          const canvas = canvasRef.current;
+          if (!canvas || !channels) return;
+
+          const handleWheelManual = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            setZoomLevel(prev => Math.max(0.5, Math.min(10, prev * delta)));
+          };
+
+          canvas.addEventListener('wheel', handleWheelManual, { passive: false });
+          
+          const dpr = window.devicePixelRatio || 2;
+          const containerWidth = canvas.offsetWidth;
+          const aspectRatio = channels.height / channels.width;
+          
+          canvas.width = containerWidth * dpr;
+          canvas.height = (containerWidth * aspectRatio) * dpr;
+          
+          draw();
+
+          return () => canvas.removeEventListener('wheel', handleWheelManual);
+        }, [draw, channels]);
+
+        const aspectRatio = channels ? (channels.height / channels.width) : 1;
+
         return (
-          <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
-            <h4 className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-widest flex items-center gap-2"><Grid size={12} /> {title} Halftone Grid</h4>
-            <div ref={containerRef} className="relative bg-white border border-slate-800 shadow-2xl overflow-hidden" style={{ aspectRatio: `${cols}/${rows}` }}>
-              <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '1px' }}>
-                {channelData.map((density, i) => (
-                  <div key={i} className="w-full h-full flex items-center justify-center">
-                    <div style={{ width: `${Math.sqrt(Math.max(0, density)) * 100}%`, height: `${Math.sqrt(Math.max(0, density)) * 100}%`, backgroundColor: themeColor, borderRadius: '50%' }} />
-                  </div>
-                ))}
+          <div 
+            className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative group mb-8"
+            style={{ width: '100%', height: 'auto', aspectRatio: `${channels.width} / ${channels.height}` }}
+          >
+            <canvas 
+              ref={canvasRef} 
+              className="w-full h-full block cursor-crosshair bg-white" 
+              style={{ imageRendering: 'pixelated' }}
+            />
+            <div className="absolute top-6 left-6 flex flex-col gap-2">
+              <div className="bg-slate-950/90 backdrop-blur px-3 py-1.5 rounded-full text-[10px] font-mono text-slate-200 border border-slate-700 self-start uppercase tracking-widest font-bold shadow-lg">
+                Scroll to Zoom: {(zoomLevel * 100).toFixed(0)}%
               </div>
             </div>
           </div>
@@ -308,7 +514,7 @@
               <div>
                 <a href="index.html" className="text-xs text-slate-500 hover:text-slate-300 transition-colors block mb-4">← Back to Hub</a>
                 <h1 className="text-3xl font-black bg-gradient-to-r from-cyan-400 via-magenta-400 to-yellow-400 bg-clip-text text-transparent flex items-center gap-3">
-                  <Layers className="text-white" size={28} /> LITHOS PRE-PROCESSOR
+                  <Layers className="text-white" size={28} /> Bitmap to Halftone
                 </h1>
                 <p className="text-slate-400 mt-2 font-light">Module 1: Image Decomposition & Subtractive Density Mapping</p>
               </div>
@@ -356,65 +562,202 @@
                         <h3 className="font-bold text-lg flex items-center gap-2 text-slate-200"><Sliders size={18}/> Controls</h3>
                         <button onClick={() => setImage(null)} className="text-xs text-slate-500 hover:text-white uppercase tracking-tight">Reset</button>
                       </div>
+                      
                       <div className="space-y-8">
-                        <div>
-                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500"><span>Width (Inches)</span><span className="text-cyan-400 font-mono">{widthInches.toFixed(1)} in</span></div>
-                          <input type="range" min="0.5" max="10.0" step="0.1" value={widthInches} onChange={(e) => setWidthInches(parseFloat(e.target.value))} className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        <div className="mb-4">
+                          <img src={image} className="w-full rounded-lg border border-slate-700 shadow-lg" />
+                          <p className="text-[10px] mt-2 text-center text-slate-500 font-mono uppercase tracking-[0.2em] leading-none">Source Bitmap Reference</p>
+                          {sourceDim.w > 0 && <p className="text-[9px] text-center text-slate-600 font-mono mt-1 opacity-80 uppercase">{sourceDim.w} × {sourceDim.h} PX</p>}
                         </div>
-                        <div className="relative">
-                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500">
-                            <span className="flex items-center gap-1">
-                              Density (LPI)
-                              <button 
-                                onClick={() => setShowLpiStandards(!showLpiStandards)}
-                                className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold border transition-all ${showLpiStandards ? 'bg-violet-500 border-violet-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}
-                              >
-                                ?
-                              </button>
-                            </span>
-                            <span className="text-violet-400 font-mono">{lpi} Lines/In</span>
-                          </div>
-                          
-                          {showLpiStandards && (
-                            <div className="absolute bottom-full left-0 mb-3 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-bottom-2">
-                              <h4 className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest flex items-center justify-between">
-                                Offset Standards
-                                <button onClick={() => setShowLpiStandards(false)} className="text-slate-600 hover:text-slate-400 text-xs">×</button>
-                              </h4>
-                              <div className="space-y-1.5">
-                                {lpiStandards.map(s => (
-                                  <button 
-                                    key={s.label}
-                                    onClick={() => { setLpi(s.val); setShowLpiStandards(false); }}
-                                    className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-slate-800 transition-colors text-left group"
-                                  >
-                                    <div>
-                                      <div className="text-xs font-bold text-slate-200 group-hover:text-violet-400">{s.label}</div>
-                                      <div className="text-[10px] text-slate-500">{s.desc}</div>
+
+                        <div className="pt-6 border-t border-slate-800/50">
+                          <div className="flex justify-between items-center text-[10px] mb-2 uppercase tracking-widest text-slate-500">
+                            <div className="flex items-center gap-1">
+                              <span>Width</span>
+                              <div className="group relative inline-block">
+                                <span className="ml-1 text-slate-700 cursor-help font-bold underline decoration-slate-800 underline-offset-4">(?)</span>
+                                <div className="absolute left-0 bottom-full pb-2 w-56 invisible group-hover:visible z-50 shadow-2xl">
+                                  <div className="p-3 bg-slate-900 border border-slate-700 rounded-xl text-[9px] font-normal normal-case opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
+                                    <p className="text-cyan-400 font-bold mb-2">Common Output Sizes:</p>
+                                    <div className="space-y-2">
+                                      {widthStandards.map(std => (
+                                        <div 
+                                          key={std.label} 
+                                          onClick={() => setWidthInches(std.val)}
+                                          className="p-1.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500/50 cursor-pointer transition-colors"
+                                        >
+                                          <div className="flex justify-between items-center mb-0.5">
+                                            <span className="text-white font-bold">{std.label}</span>
+                                            <span className="text-cyan-400 font-mono">{std.val.toFixed(2)} in</span>
+                                          </div>
+                                          <p className="text-slate-600 leading-tight">{std.desc}</p>
+                                        </div>
+                                      ))}
                                     </div>
-                                    <div className="text-xs font-mono font-bold text-slate-400">{s.val}</div>
-                                  </button>
-                                ))}
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          )}
-
-                          <input type="range" min="10" max="200" step="1" value={lpi} onChange={(e) => setLpi(parseInt(e.target.value))} className="w-full accent-violet-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <span className="text-cyan-400 font-mono">{widthInches.toFixed(2)} in</span>
+                          </div>
+                          <input type="range" min="0.1" max="10.0" step="0.01" value={widthInches} onChange={(e) => setWidthInches(parseFloat(e.target.value))} className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </div>
-                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center"><span className="text-[10px] uppercase text-slate-500 tracking-widest">Halftone Grid</span><span className="text-white font-mono font-bold text-sm bg-slate-800 px-2 py-1 rounded">{gridCellsX} × {channels ? channels.downsampled.rows : '?'}</span></div>
-                        <div className="pt-4 border-t border-slate-800">
-                          <img src={image} className="w-full rounded-lg border border-slate-700" />
-                          <p className="text-[10px] mt-2 text-center text-slate-500 font-mono uppercase tracking-widest leading-none">Source Bitmap</p>
-                          {sourceDim.w > 0 && <p className="text-[9px] text-center text-slate-600 font-mono mt-1 opacity-80 uppercase">{sourceDim.w} × {sourceDim.h} PX</p>}
+                        
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] mb-2 uppercase tracking-widest text-slate-500">
+                            <div className="flex items-center gap-1">
+                              <span>Density (LPI)</span>
+                              <div className="group relative inline-block">
+                                <span className="ml-1 text-slate-700 cursor-help font-bold underline decoration-slate-800 underline-offset-4">(?)</span>
+                                <div className="absolute left-0 bottom-full pb-2 w-56 invisible group-hover:visible z-50 shadow-2xl">
+                                  <div className="p-3 bg-slate-900 border border-slate-700 rounded-xl text-[9px] font-normal normal-case opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
+                                    <p className="text-violet-400 font-bold mb-2">Print Industry Standards:</p>
+                                    <div className="space-y-2">
+                                      {lpiStandards.map(std => (
+                                        <div 
+                                          key={std.val} 
+                                          onClick={() => setLpi(std.val)}
+                                          className="p-1.5 rounded bg-slate-950 border border-slate-800 hover:border-violet-500/50 cursor-pointer transition-colors"
+                                        >
+                                          <div className="flex justify-between items-center mb-0.5">
+                                            <span className="text-white font-bold">{std.label}</span>
+                                            <span className="text-violet-400 font-mono">{std.val} LPI</span>
+                                          </div>
+                                          <p className="text-slate-500 leading-tight">{std.desc}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-violet-400 font-mono">{lpi} Lines/In</span>
+                          </div>
+                          <input type="range" min="10" max="250" step="1" value={lpi} onChange={(e) => setLpi(parseInt(e.target.value))} className="w-full accent-violet-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500">
+                            <div className="flex items-center gap-1">
+                              <span>Sampling Mode</span>
+                              <div className="group relative inline-block">
+                                <span className="ml-1 text-slate-700 cursor-help">(?)</span>
+                                <div className="absolute left-0 bottom-full pb-2 w-48 invisible group-hover:visible z-50 shadow-2xl">
+                                  <div className="p-2 bg-slate-900 border border-slate-700 rounded-lg text-[9px] font-normal normal-case opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
+                                    <p className="text-cyan-400 font-bold mb-1">Expert Intuition:</p>
+                                    <p className="mb-1"><span className="text-white">Direct:</span> Perfect mathematical grid. Order over organic.</p>
+                                    <p className="mb-1"><span className="text-white">Pre-Jitter:</span> Samples extra detail from source. Stochastic-like.</p>
+                                    <p><span className="text-white">Post-Jitter:</span> Mimics mechanical press friction or gear slop.</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
+                            {['direct', 'pre', 'post'].map(m => (
+                              <button 
+                                key={m} 
+                                onClick={() => setSamplingMode(m)}
+                                className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all ${
+                                  samplingMode === m ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                              >
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-[10px] mb-2 uppercase tracking-widest text-slate-500">
+                            <span>Stochastic Jitter</span>
+                            <span className="text-emerald-400 font-mono">{(jitter * 100).toFixed(0)}%</span>
+                          </div>
+                          <input type="range" min="0" max="1.0" step="0.01" value={jitter} onChange={(e) => setJitter(parseFloat(e.target.value))} className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center text-emerald-400">
+                          <span className="text-[10px] uppercase text-slate-500 tracking-widest">Estimated Dots</span>
+                          <span className="font-mono font-bold text-sm bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
+                            {(widthInches * lpi * (widthInches * (sourceDim.h/sourceDim.w) * lpi)).toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          </span>
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-800/50">
+                          <div className="mb-2 flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Composite Plate View</span>
+                            <span className="text-[9px] text-slate-600 font-mono uppercase">Preview</span>
+                          </div>
+                          <HalftoneThumbnail 
+                            channels={channels} 
+                            lpi={lpi} 
+                            jitter={jitter} 
+                            samplingMode={samplingMode} 
+                          />
+                          <p className="text-[10px] mt-2 text-center text-slate-500 font-mono uppercase tracking-[0.2em] leading-none">Output Graphic Simulation</p>
                         </div>
                       </div>
                     </div>
                   </div>
+
                   <div className="lg:col-span-3 space-y-8">
                     {channels && (
                       <React.Fragment>
-                        <section><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4"><Layers size={14} /> 1. Density Map Decomposition</h3><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><ChannelView title="Cyan Map" data={channels.raw.C} width={channels.width} height={channels.height} color="cyan" /><ChannelView title="Magenta Map" data={channels.raw.M} width={channels.width} height={channels.height} color="magenta" /><ChannelView title="Yellow Map" data={channels.raw.Y} width={channels.width} height={channels.height} color="yellow" /><ChannelView title="Black Map" data={channels.raw.K} width={channels.width} height={channels.height} color="black" /></div></section>
-                        <section><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4"><Grid size={14} /> 2. Halftone Grid Downsampling (Interactive)</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20"><GridPreview title="Cyan" channelData={channels.downsampled.data.C} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#22d3ee" /><GridPreview title="Magenta" channelData={channels.downsampled.data.M} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#e879f9" /><GridPreview title="Yellow" channelData={channels.downsampled.data.Y} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#facc15" /><GridPreview title="Black" channelData={channels.downsampled.data.K} cols={channels.downsampled.cols} rows={channels.downsampled.rows} themeColor="#000000" /></div></section>
+                        <section>
+                          <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                            <Layers size={14} /> 1. Density Map Decomposition
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <ChannelView title="Cyan Map" data={channels.raw.C} width={channels.width} height={channels.height} color="cyan" />
+                            <ChannelView title="Magenta Map" data={channels.raw.M} width={channels.width} height={channels.height} color="magenta" />
+                            <ChannelView title="Yellow Map" data={channels.raw.Y} width={channels.width} height={channels.height} color="yellow" />
+                            <ChannelView title="Black Map" data={channels.raw.K} width={channels.width} height={channels.height} color="black" />
+                          </div>
+                        </section>
+                        <section>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                              <Grid size={14} /> 2. Halftone Micro-Plate (Interactive)
+                            </h3>
+                            <div className="flex bg-slate-900/50 p-1.5 rounded-2xl border border-slate-800/80 items-center gap-2">
+                              {[
+                                { label: 'Cyan', color: '#22d3ee', angle: 15, key: 'C' },
+                                { label: 'Magenta', color: '#e879f9', angle: 75, key: 'M' },
+                                { label: 'Yellow', color: '#facc15', angle: 0, key: 'Y' },
+                                { label: 'Black', color: '#000000', angle: 45, key: 'K' },
+                              ].map(c => (
+                                <button 
+                                  key={c.key}
+                                  onClick={() => setShowChannels(prev => ({ ...prev, [c.key]: !prev[c.key] }))}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                                    showChannels[c.key] ? 'bg-slate-800 border-slate-500 text-white shadow-xl' : 'bg-slate-900/50 border-transparent text-slate-600'
+                                  }`}
+                                >
+                                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color }} />
+                                  {c.key} {c.angle}°
+                                </button>
+                              ))}
+                              <div className="w-px h-4 bg-slate-800 mx-1" />
+                              <button 
+                                onClick={() => setShowGridlines(!showGridlines)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                                  showGridlines ? 'bg-violet-500/20 border-violet-500 text-violet-400' : 'bg-slate-900/50 border-transparent text-slate-600'
+                                }`}
+                              >
+                                GRIDLINES
+                              </button>
+                            </div>
+                          </div>
+                          <CombinedGridPreview 
+                            channels={channels} 
+                            lpi={lpi} 
+                            zoom={zoomLevel} 
+                            showChannels={showChannels}
+                            showGridlines={showGridlines}
+                            jitter={jitter}
+                            samplingMode={samplingMode}
+                          />
+                        </section>
                       </React.Fragment>
                     )}
                   </div>
