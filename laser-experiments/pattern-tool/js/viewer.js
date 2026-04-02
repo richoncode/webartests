@@ -154,52 +154,78 @@ export const XCSViewer = {
 
     const svg = q('.svg-canvas');
     const state = App.instances[tabId].state;
+    const getSVGPoint = (clientX, clientY) => {
+      const pt = svg.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const ctm = svg.getScreenCTM();
+      return pt.matrixTransform(ctm ? ctm.inverse() : null);
+    };
+
     if (!state.view) state.view = { scale: 1, x: 0, y: 0 };
 
     let isPanning = false;
+    let isSpaceDown = false;
     let lastMouse = { x: 0, y: 0 };
     let lastTouchDist = 0;
     let lastTouchMid = { x: 0, y: 0 };
 
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && (e.target === document.body || e.target === svg)) {
+        isSpaceDown = true;
+        svg.style.cursor = 'grab';
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'Space') {
+        isSpaceDown = false;
+        svg.style.cursor = 'default';
+      }
+    });
+
+    svg.oncontextmenu = e => { isPanning && e.preventDefault(); };
+
     svg.addEventListener('wheel', e => {
       e.preventDefault();
-      const zoomSpeed = 0.001;
       const delta = -e.deltaY;
       const factor = Math.pow(1.1, delta / 100);
       
-      const rect = svg.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
+      const p = getSVGPoint(e.clientX, e.clientY);
 
       // Zoom towards mouse point
       const newScale = Math.max(0.1, Math.min(20, state.view.scale * factor));
       const actualFactor = newScale / state.view.scale;
 
-      state.view.x = mouseX - (mouseX - state.view.x) * actualFactor;
-      state.view.y = mouseY - (mouseY - state.view.y) * actualFactor;
+      state.view.x = p.x - (p.x - state.view.x) * actualFactor;
+      state.view.y = p.y - (p.y - state.view.y) * actualFactor;
       state.view.scale = newScale;
 
       this.applyTransform(v, state);
     }, { passive: false });
 
     svg.addEventListener('mousedown', e => {
-      if (e.button === 0 && (e.altKey || e.shiftKey || e.metaKey)) { // Pan with modifier or middle click
-        isPanning = true;
-        lastMouse = { x: e.clientX, y: e.clientY };
-        svg.style.cursor = 'grabbing';
-      } else if (e.button === 1) { // Middle click pan
+      const isBg = e.target === svg || e.target.classList.contains('canvas-root') || e.target.tagName === 'rect';
+      const canPan = (e.button === 1 || e.button === 2 || (e.button === 0 && (isSpaceDown || isBg || e.altKey || e.shiftKey || e.metaKey)));
+      
+      if (canPan) {
         isPanning = true;
         lastMouse = { x: e.clientX, y: e.clientY };
         svg.style.cursor = 'grabbing';
       }
     });
 
+    svg.addEventListener('mouseup', e => {
+      if (isPanning && e.button === 2) {
+        e.preventDefault(); // Final suppression
+      }
+    });
+
     window.addEventListener('mousemove', e => {
       if (!isPanning) return;
-      const dx = e.clientX - lastMouse.x;
-      const dy = e.clientY - lastMouse.y;
-      state.view.x += dx;
-      state.view.y += dy;
+      const p = getSVGPoint(e.clientX, e.clientY);
+      const pLast = getSVGPoint(lastMouse.x, lastMouse.y);
+      state.view.x += (p.x - pLast.x);
+      state.view.y += (p.y - pLast.y);
       lastMouse = { x: e.clientX, y: e.clientY };
       this.applyTransform(v, state);
     });
@@ -230,22 +256,21 @@ export const XCSViewer = {
         const newScale = Math.max(0.1, Math.min(20, state.view.scale * factor));
         const actualFactor = newScale / state.view.scale;
 
-        const rect = svg.getBoundingClientRect();
-        const midRelX = mid.x - rect.left;
-        const midRelY = mid.y - rect.top;
+        const pMid = getSVGPoint(mid.x, mid.y);
+        const pMidLast = getSVGPoint(lastTouchMid.x, lastTouchMid.y);
 
-        state.view.x = midRelX - (midRelX - state.view.x) * actualFactor + (mid.x - lastTouchMid.x);
-        state.view.y = midRelY - (midRelY - state.view.y) * actualFactor + (mid.y - lastTouchMid.y);
+        state.view.x = pMid.x - (pMid.x - state.view.x) * actualFactor + (pMid.x - pMidLast.x);
+        state.view.y = pMid.y - (pMid.y - state.view.y) * actualFactor + (pMid.y - pMidLast.y);
         state.view.scale = newScale;
 
         lastTouchDist = dist;
         lastTouchMid = mid;
         this.applyTransform(v, state);
       } else if (e.touches.length === 1) {
-        const dx = e.touches[0].clientX - lastMouse.x;
-        const dy = e.touches[0].clientY - lastMouse.y;
-        state.view.x += dx;
-        state.view.y += dy;
+        const p = getSVGPoint(e.touches[0].clientX, e.touches[0].clientY);
+        const pLast = getSVGPoint(lastMouse.x, lastMouse.y);
+        state.view.x += (p.x - pLast.x);
+        state.view.y += (p.y - pLast.y);
         lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         this.applyTransform(v, state);
       }

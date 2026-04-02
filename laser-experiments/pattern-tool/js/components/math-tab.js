@@ -81,7 +81,9 @@ export const MathTab = {
       // Membrane
       memResolution: 40, memFrequency: 5, memAmplitude: 1,
       // Stippling
-      stippleResolution: 20, stippleSeed: 12345, stippleScale: 0.8
+      stippleResolution: 20, stippleSeed: 12345, stippleScale: 0.8,
+      // Halftone Test
+      hlLPCM: 846, hlPower: 100
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
@@ -1142,6 +1144,72 @@ export const MathTab = {
         }
         XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill: false, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, hideLabels: true } });
       }
+      else if (cfg.type === 'halftone-test') {
+        const lpcm = cfg.hlLPCM || 846;
+        const power = cfg.hlPower || 100;
+        const hParams = { ...pm, density: Math.round(lpcm), power: Math.round(power) };
+        
+        const drawRow = (startY, startDia, endDia, step, dotNoOffset = 1) => {
+          let currentX = CX - 40; // Start towards the left
+          const count = Math.round((endDia - startDia) / step) + 1;
+          const dots = [];
+          
+          for (let i = 0; i < count; i++) {
+            const dotNo = dotNoOffset + i;
+            const d = startDia + i * step;
+            const x = currentX + d / 2;
+            
+            dots.push({ x, y: startY, d, dotNo });
+
+            const dotColor = (dotNo % 2 === 0) ? "#5b9bd5" : "#10b981"; // Even: Blue, Odd: Green
+            const tickColor = "#8b5cf6"; // Ticks: Violet
+            
+            // 1. Draw Dot
+            XCSExporter.addCircle(project, {
+              x, y: startY, width: d, height: d,
+              params: hParams, isFill: true, laserSource, layerColor: dotColor,
+              extraDisplayData: { hideLabels: true }
+            });
+            
+            // 2. Ticks (Only on Even dots, Small 0.8mm)
+            if (dotNo % 2 === 0) {
+              const tickLen = 0.8;
+              const ty1 = startY + d/2 + 1;
+              const ty2 = ty1 + tickLen;
+              XCSExporter.addPath(project, {
+                dPath: `M ${x.toFixed(3)} ${ty1.toFixed(3)} L ${x.toFixed(3)} ${ty2.toFixed(3)}`,
+                x, y: (ty1 + ty2) / 2, width: 0.1, height: tickLen,
+                params: hParams, isFill: false, laserSource, layerColor: tickColor,
+                extraDisplayData: { hideLabels: true }
+              });
+            }
+            
+            // 4. Update X for next dot (1mm fixed gap)
+            const nextD = startDia + (i + 1) * step;
+            currentX += (d/2 + 1.0 + nextD/2);
+          }
+          return dots;
+        };
+
+        // Row 1: 0.10 - 1.00 (Dots 1-10)
+        drawRow(CY - 15, 0.1, 1.0, 0.1, 1);
+        
+        // Row 2: 1.10 - 2.00 (Dots 11-20)
+        const row2Dots = drawRow(CY - 10, 1.1, 2.0, 0.1, 11);
+        
+        // Repositioned 6.0mm dot (Above dot #19, which is index 8 in row 2)
+        const dot19 = row2Dots[8];
+        const isoX = dot19.x;
+        const isoY = CY - 16;
+        const isoD = 6.0;
+        const isoColor = "#f59e0b"; // 6mm dot is Layer 3 (Amber)
+        
+        XCSExporter.addCircle(project, {
+          x: isoX, y: isoY, width: isoD, height: isoD,
+          params: hParams, isFill: true, laserSource, layerColor: isoColor,
+          extraDisplayData: { hideLabels: true }
+        });
+      }
 
       if (cfg.border) {
         XCSExporter.addRect(project, {
@@ -1216,7 +1284,7 @@ export const MathTab = {
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
     if (!palette) return;
 
-    const fillableTypes = ['penrose-p3', 'chladni', 'phyllotaxis', 'cellular-automata', 'kerf-test', 'thermal-wall', 'game-of-life', 'worley-noise', 'inscribed-circles', 'dla', 'reaction-diffusion', 'superformula', 'slime-mold', 'membrane', 'truchet-squares', 'stippling', 'density-test', 'test-scale'];
+    const fillableTypes = ['penrose-p3', 'chladni', 'phyllotaxis', 'cellular-automata', 'kerf-test', 'thermal-wall', 'game-of-life', 'worley-noise', 'inscribed-circles', 'dla', 'reaction-diffusion', 'superformula', 'slime-mold', 'membrane', 'truchet-squares', 'stippling', 'density-test', 'test-scale', 'halftone-test'];
     const supportsFill = fillableTypes.includes(cfg.type);
     const supportsColorRange = cfg.type !== 'density-test';
 
@@ -1411,6 +1479,11 @@ export const MathTab = {
         UI.makeRow('Resolution', UI.makeRange(5, 100, 1, cfg.worleyResolution, v => set('worleyResolution', +v))),
         UI.makeRow('Points', UI.makeStepCounter(cfg.worleyPoints, 1, 50, v => set('worleyPoints', v))),
         UI.makeRow('Seed', UI.makeRange(1, 100000, 1, cfg.worleySeed, v => set('worleySeed', +v)))
+      ]));
+    } else if (cfg.type === 'halftone-test') {
+      scroll.appendChild(UI.makeSection('Halftone Settings', [
+        UI.makeRow('LPCM', UI.makeRange(1, 1000, 1, cfg.hlLPCM, v => set('hlLPCM', +v))),
+        UI.makeRow('Power', UI.makeRange(1, 100, 1, cfg.hlPower, v => set('hlPower', +v), '%'))
       ]));
     }
   }

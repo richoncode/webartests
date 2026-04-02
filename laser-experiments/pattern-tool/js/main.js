@@ -124,6 +124,7 @@ const PATTERNS = [
   { id: 'test-density', short: 'Density', label: 'Line Density Test', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'density-test' }, icon: '▤' },
   { id: 'test-scale', short: 'Scale', label: 'Measurement Scale', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'test-scale' }, icon: '📏' },
   { id: 'test-thermal', short: 'Thermal', label: 'Thermal Return Wall', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'thermal-wall' }, icon: '🧱' },
+  { id: 'test-halftone', short: 'Halftone', label: 'Halftone Dot Test', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'halftone-test' }, icon: '⠿' },
 
   // Bitmap & Dithering
   { id: 'bitmap-dither', short: 'Dither', label: 'Dither Density Test', cat: 'Bitmap', comp: BitmapTab, cfg: { type: 'dither-test' }, icon: '▞' }
