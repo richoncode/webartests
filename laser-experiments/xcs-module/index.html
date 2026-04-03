@@ -211,9 +211,26 @@
     <script type="module">
         import { XCSProject } from './js/xcs-system.js';
         import { XCSExporter } from './js/xcs-exporter.js';
+        import { XCSCanvas }   from './js/xcs-canvas.js';
 
         const svg = document.getElementById('testCanvas');
         const pop = document.getElementById('canvasPopover');
+
+        // XCSCanvas — single shared renderer. All SVG details encapsulated.
+        const xcsCanvas = new XCSCanvas(
+            svg,
+            document.getElementById('svgContent'),
+            pop
+        );
+        // Wire dashboard-specific cross-highlight between canvas items and test rows
+        xcsCanvas.onItemEnter = (item) => {
+            const testId = item.display?.testId;
+            if (testId) document.getElementById(`test-row-${testId}`)?.classList.add('highlighted');
+        };
+        xcsCanvas.onItemLeave = (item) => {
+            const testId = item.display?.testId;
+            if (testId) document.getElementById(`test-row-${testId}`)?.classList.remove('highlighted');
+        };
         const view = { scale: 1.0, x: 0, y: 0 };
         let isPanning = false;
         let lastMouse = { x: 0, y: 0 };
@@ -516,129 +533,10 @@
             const raw = JSON.stringify(trace, null, 2);
             document.getElementById('jsonTrace').textContent = raw;
             document.getElementById('jsonSize').textContent = (raw.length / 1024).toFixed(1) + " KB";
-            
-            const content = document.getElementById('svgContent');
-            content.innerHTML = '';
-            const items = project.getItems();
-            document.getElementById('canvasStats').textContent = `${items.length} items`;
 
-            items.forEach(item => {
-                const p = item.getRenderProps();
-                let el;
-                if (p.type === 'RECT' || p.type === 'IMAGE') {
-                    el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                    el.setAttribute('x', p.x - p.w/2);
-                    el.setAttribute('y', p.y - p.h/2);
-                    el.setAttribute('width', p.w);
-                    el.setAttribute('height', p.h);
-                } else if (p.type === 'CIRCLE') {
-                    el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                    el.setAttribute('cx', p.x);
-                    el.setAttribute('cy', p.y);
-                    el.setAttribute('r', p.w/2);
-                } else if (p.type === 'PATH') {
-                    el = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                    el.setAttribute("d", p.dPath);
-                    el.setAttribute('transform', `translate(${p.x - p.w/2}, ${p.y - p.h/2})`);
-                } else if (p.type === 'BITMAP') {
-                    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-                    
-                    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    bg.setAttribute("x", p.x - p.w/2);
-                    bg.setAttribute("y", p.y - p.h/2);
-                    bg.setAttribute("width", p.w);
-                    bg.setAttribute("height", p.h);
-                    bg.setAttribute("fill", "transparent"); 
-                    bg.setAttribute("stroke", p.layerColor);
-                    bg.setAttribute("stroke-width", "0.2");
-                    bg.setAttribute("stroke-dasharray", "1, 1");
-                    g.appendChild(bg);
-
-                    const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
-                    img.setAttribute("x", p.x - p.w/2);
-                    img.setAttribute("y", p.y - p.h/2);
-                    img.setAttribute("width", p.w);
-                    img.setAttribute("height", p.h);
-                    img.setAttribute("preserveAspectRatio", "none");
-                    img.setAttribute("href", p.base64);
-                    // Standard correct fallback for SVG 1.1 namespaces
-                    img.setAttributeNS("http://www.w3.org/1999/xlink", "href", p.base64);
-                    // Ensure opacity and visibility so it renders properly
-                    img.style.opacity = '1';
-                    img.style.visibility = 'visible';
-                    img.style.imageRendering = 'pixelated';
-                    g.appendChild(img);
-                    el = g;
-                } else if (p.type === 'TEXT') {
-                    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                    item.display.charJSONs.forEach(c => {
-                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                        path.setAttribute('d', c.dPath);
-                        // XCS export uses Y-up glyph paths with positive scale.
-                        // SVG is Y-down, so negate scaleY for correct browser display.
-                        path.setAttribute('transform', `translate(${c.x}, ${c.y}) scale(${c.scale.x}, ${-c.scale.y})`); 
-                        path.setAttribute('fill', p.layerColor);
-                        g.appendChild(path);
-                    });
-                    el = g;
-                }
-                
-                if (el) {
-                    const testId = item.display.testId;
-                    if (testId) el.setAttribute('data-test-id', testId);
-
-                    if (p.type !== 'TEXT' && p.type !== 'BITMAP') {
-                        el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
-                        el.setAttribute('stroke', p.layerColor);
-                        el.setAttribute('stroke-width', '0.4');
-                        if (p.type === 'IMAGE' || p.type === 'BITMAP') el.setAttribute('stroke-dasharray', '1, 1');
-                        el.style.pointerEvents = 'auto';
-                        el.style.cursor = 'help';
-                    } else if (p.type === 'BITMAP') {
-                        // Bitmap group needs pointers but NOT fill/stroke (handled by 'bg' child)
-                        el.style.pointerEvents = 'auto';
-                        el.style.cursor = 'help';
-                    }
-
-                    // Attach Hover
-                    el.addEventListener('mouseenter', e => {
-                        if (testId) {
-                            const row = document.getElementById(`test-row-${testId}`);
-                            if (row) row.classList.add('highlighted');
-                        }
-
-                        // ... popover logic ...
-                        pop.style.display = 'block';
-                        pop.innerHTML = `
-                            <div style="color:var(--primary); font-weight:bold; margin-bottom:4px">${p.type}</div>
-                            <div style="display:grid; grid-template-columns: 50px 1fr; gap: 4px;">
-                                <span>MODE:</span> <span style="color:var(--warning)">${p.processingType}</span>
-                                <span>POS:</span> <span>${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>
-                                <span>SIZE:</span> <span>${p.w.toFixed(1)}x${p.h.toFixed(1)}</span>
-                                <span>LAYER:</span> <span style="color:${p.layerColor}">${p.layerColor}</span>
-                                <span>PWR:</span> <span>${p.power}%</span>
-                                <span>SPD:</span> <span>${p.speed} mm/s</span>
-                                <span>LPCM:</span> <span>${p.density}</span>
-                            </div>
-                        `;
-                    });
-                    el.addEventListener('mousemove', e => {
-                        pop.style.display = 'block';
-                        pop.style.left = (e.clientX + 15) + 'px';
-                        pop.style.top = (e.clientY + 15) + 'px';
-                        pop.style.position = 'fixed';
-                    });
-                    el.addEventListener('mouseleave', () => {
-                        pop.style.display = 'none';
-                        if (testId) {
-                            const row = document.getElementById(`test-row-${testId}`);
-                            if (row) row.classList.remove('highlighted');
-                        }
-                    });
-                    
-                    content.appendChild(el);
-                }
-            });
+            // All SVG rendering delegated to XCSCanvas — zero SVG code in index.html.
+            const count = xcsCanvas.render(project);
+            document.getElementById('canvasStats').textContent = `${count} items`;
         }
 
         run();
