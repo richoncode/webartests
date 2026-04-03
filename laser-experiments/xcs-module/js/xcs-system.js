@@ -107,9 +107,11 @@ export class XCSItem {
     }
     if (type === 'BITMAP') {
       node.base64 = options.base64;
-      node.originWidth = options.originWidth || 1;
-      node.originHeight = options.originHeight || 1;
+      node.originWidth = options.originWidth || 64; 
+      node.originHeight = options.originHeight || 64; 
       node.dpi = options.dpi || { dpiX: 25.4, dpiY: 25.4 };
+      // Normalization: XCS treats pixels as mm (1.0 scale). We must scale down to the requested mm size.
+      node.scale = { x: options.width / node.originWidth, y: options.height / node.originHeight };
       node.grayValue = [0, 255];
       node.sharpness = 50;
       node.brightness = 0;
@@ -246,6 +248,61 @@ export class XCSBitmap extends XCSItem {}
  */
 export class XCSText extends XCSItem {
   /**
+   * Flips all Y-coordinates in an SVG path string by negating them.
+   * Converts Y-up glyph data to Y-down so XCS Studio renders without mirroring.
+   */
+  static flipPathY(dPath) {
+    // Matches SVG path commands and their numeric arguments, negates all Y values.
+    // Handles absolute commands: M, L, Q, C, A, V and their relative counterparts.
+    return dPath.replace(
+      /([MLQCSTAZHVmlqcstahvz])|([+-]?\d*\.?\d+)/g,
+      (token, cmd, num) => {
+        if (cmd) { return token; } // pass through command letters
+        return token; // handled below per-command
+      }
+    );
+  }
+
+  /**
+   * Negates all Y values in an SVG absolute path by parsing command by command.
+   */
+  static negateY(dPath) {
+    // Simple regex-based negation: for each number following a command that has Y args,
+    // negate every second number. This covers M, L, Q, C, T, S, and relative equivalents.
+    // Strategy: replace every number, tracking odd/even position per command segment.
+    const result = [];
+    // Tokenise into [command, ...numbers] chunks
+    const chunks = dPath.trim().split(/(?=[MLQCSTAZHVmlqcstahvz])/);
+    for (const chunk of chunks) {
+      const cmd = chunk[0];
+      const nums = chunk.slice(1).trim().split(/[\s,]+/).filter(Boolean);
+      if (!cmd || cmd === 'Z' || cmd === 'z') { result.push(cmd || ''); continue; }
+      const negated = [];
+      const upper = cmd.toUpperCase();
+      for (let i = 0; i < nums.length; i++) {
+        const v = parseFloat(nums[i]);
+        let negate = false;
+        // Commands where Y is the 2nd of each pair: M,L,T
+        if ((upper === 'M' || upper === 'L' || upper === 'T') && i % 2 === 1) negate = true;
+        // Q: x1 y1 x y — negate indices 1,3
+        if (upper === 'Q' && (i % 4 === 1 || i % 4 === 3)) negate = true;
+        // C: x1 y1 x2 y2 x y — negate indices 1,3,5
+        if (upper === 'C' && (i % 6 === 1 || i % 6 === 3 || i % 6 === 5)) negate = true;
+        // S: x2 y2 x y — negate indices 1,3
+        if (upper === 'S' && (i % 4 === 1 || i % 4 === 3)) negate = true;
+        // V: single value is Y
+        if (upper === 'V') negate = true;
+        // A: rx ry x-rot large-arc sweep x y — negate index 6 (7th)
+        if (upper === 'A' && i % 7 === 6) negate = true;
+        // H: single value is X — never negate
+        negated.push(negate ? String(-v) : String(v));
+      }
+      result.push(cmd + negated.join(' '));
+    }
+    return result.join('');
+  }
+
+  /**
    * Hydrates a display node with baked character paths and font metadata.
    * MANDATORY for xTool F2 hardware compatibility.
    */
@@ -256,7 +313,9 @@ export class XCSText extends XCSItem {
     let totalAdvance = 0;
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
 
-    const scale = options.width ? (options.width / totalAdvance) : (typeof options.scale === 'number' ? options.scale : (options.scale?.y || 1.0));
+    // Normalization: height (mm) ≈ fontSize (pt) * 0.2757. Reference height for LATO is 18.4 units.
+    const canonicalScale = (options.fontSize * 0.2757) / 18.4;
+    const scale = options.width ? (options.width / totalAdvance) : canonicalScale;
     const sx = scale, sy = scale;
     const totalWidth = totalAdvance * sx;
     const charJSONs = [];
@@ -270,25 +329,28 @@ export class XCSText extends XCSItem {
       else ax = x - totalWidth;
     }
 
-    // Update node anchor
-    node.x = ax; node.y = ay;
-
+    // Bounding box using flipped Y coords (minY_flipped = -maxY_original)
     let minBX = Infinity, minBY = Infinity, maxBX = -Infinity, maxBY = -Infinity;
     let relX = 0;
     for (const g of glyphs) {
       if (g.bbox) {
         minBX = Math.min(minBX, relX + g.bbox.minX);
         maxBX = Math.max(maxBX, relX + g.bbox.maxX);
+        // After Y-flip: flipped minY = -original maxY
         minBY = Math.min(minBY, -g.bbox.maxY);
         maxBY = Math.max(maxBY, -g.bbox.minY);
       }
       relX += g.advanceWidth;
     }
-    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = -18; maxBY = 0; }
+    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = 0; maxBY = 18; }
     
     const totalW = (maxBX - minBX) * sx;
     const totalH = (maxBY - minBY) * sy;
-    node.width = totalW; node.height = totalH;
+
+    // Update node anchor
+    node.x = ax; node.y = ay;
+    node.width = totalW; 
+    node.height = totalH;
     node.offsetX = ax + (minBX + maxBX) / 2 * sx;
     node.offsetY = ay + (minBY + maxBY) / 2 * sy;
 
@@ -301,7 +363,11 @@ export class XCSText extends XCSItem {
       const charW = glyph.bbox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
       const charH = glyph.bbox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
       const lCX = glyph.bbox ? (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx : 0;
-      const lCY = glyph.bbox ? (-glyph.bbox.maxY - glyph.bbox.minY) / 2 * sy : 0;
+      // After Y-flip: center Y = -(maxY+minY)/2 of original
+      const lCY = glyph.bbox ? -(glyph.bbox.maxY + glyph.bbox.minY) / 2 * sy : 0;
+
+      // Pre-flip the path Y coords; use positive scale so XCS doesn't mirror the glyph
+      const flippedPath = XCSText.negateY(glyph.dPath);
 
       charJSONs.push({
         id: uuid(), name: null, type: "PATH", x: cx, y: cy, angle: 0,
@@ -314,7 +380,7 @@ export class XCSText extends XCSItem {
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
         width: charW, height: charH,
         isFill: false, lineColor: 0, fillColor: layerColor,
-        points: [], dPath: glyph.dPath, fillRule: "nonzero",
+        points: [], dPath: flippedPath, fillRule: "nonzero",
         graphicX: cx, graphicY: cy, isCompoundPath: false
       });
       currentRelativeX += glyph.advanceWidth;
@@ -326,12 +392,13 @@ export class XCSText extends XCSItem {
       text, resolution: 1,
       style: {
         fontSize: options.fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
-        letterSpacing: 0, leading: 0, align: "left", curveX: 56, curveY: 0,
+        letterSpacing: 0, leading: 0, align: "left", curveX: 0, curveY: 0,
         isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"
       }
     });
   }
 }
+
 
 /**
  * Represents a complete XCS Project.

@@ -151,7 +151,10 @@
 <body>
     <div class="header">
         <h1>XCS Module Validation Tool <span style="font-size: 12px; opacity: 0.4; font-weight: normal; margin-left:8px">VANTAGE-ALPHA</span></h1>
-        <a href="../../" class="back-link">← Back to Experiments</a>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="toggle-btn" onclick="testExport()" style="background: var(--success); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;">Test Export (PNG + XCS)</button>
+            <a href="../../" class="back-link">← Back to Experiments</a>
+        </div>
     </div>
 
     <div class="grid">
@@ -172,7 +175,7 @@
                 </div>
                 <button class="toggle-btn" onclick="downloadCanvasPNG()">Download PNG</button>
             </div>
-            <div class="canvas-preview" id="canvasContainer" style="cursor: default; overflow: hidden;">
+            <div class="canvas-preview" id="canvasContainer" style="cursor: default; overflow: hidden; position: relative;">
                 <svg id="testCanvas" viewBox="0 0 100 100">
                     <defs>
                         <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
@@ -277,7 +280,7 @@
             applyTransform();
         };
 
-        window.downloadCanvasPNG = () => {
+        window.downloadCanvasPNG = (filename = 'xcs-canvas-projection') => {
             const svg = document.getElementById('testCanvas');
             const serializer = new XMLSerializer();
             const svgStr = serializer.serializeToString(svg);
@@ -293,10 +296,22 @@
                 ctx.drawImage(img, 0, 0, 2000, 2000);
                 const url = canvas.toDataURL('image/png');
                 const a = document.createElement('a');
-                a.download = 'xcs-canvas-projection.png';
+                a.download = `${filename}.png`;
                 a.href = url;
                 a.click();
             };
+        };
+
+        window.testExport = () => {
+            const now = new Date();
+            const month = now.toLocaleString('en-US', { month: 'short' });
+            const day = now.getDate();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const filename = `XCSTest${month}${day}-${hours}${minutes}`;
+            
+            window.downloadProject(filename);
+            window.downloadCanvasPNG(filename);
         };
 
         let currentProject = null;
@@ -311,9 +326,9 @@
             });
         };
 
-        window.downloadProject = () => {
+        window.downloadProject = (filename = "xcs-module-test") => {
             if (currentProject) {
-                XCSExporter.exportProject(currentProject, "xcs-module-test");
+                XCSExporter.exportProject(currentProject, filename);
             }
         };
 
@@ -415,7 +430,9 @@
                     processingType: "COLOR_ENGRAVE", 
                     layerColor: "#ec4899",
                     params: { power: 60, speed: 200, density: 300 },
-                    base64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH6AIBDBcWpS8zHwAAAD1JREFUeN7t0EERAAAIA6HZvzQsYAcX9EkDDAAAAAAAAAAAAADA3oB7AwAAAAAAAAAAAADA3oB7AwAAAAAAAAAAsFsP5uUAt6JpXwAAAABJRU5ErkJggg==" 
+                    originWidth: 64, originHeight: 64,
+                    // 64x64 High-Fidelity Grayscale Gradient (Verified Valid PNG)
+                    base64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAAcklEQVR42mNgYOHgERCRkFFQ0dAxMLGwcXDx8AkIjYxNTM3MLSytrG1s7eydOHXm3IVLV63btG3XvkPHTp27dO3WvUfPXr379O3Xf4ZRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVguBsAAKbB8Orca5pHAAAAAElFTkSuQmCC" 
                 });
                 bitmap.display.testId = "BITMAP";
                 log("BITMAP / COLOR", !!bitmap.display.base64 && bitmap.laser.processingType === "COLOR_ENGRAVE", "64x64 RAMP", "Color Engrave mode requires persistent 'base64' source data.", "BITMAP", "Verifies the integration of high-resolution raster assets with grayscale (Color Engrave) machine instructions.", "core");
@@ -454,7 +471,7 @@
             items.forEach(item => {
                 const p = item.getRenderProps();
                 let el;
-                if (p.type === 'RECT' || p.type === 'IMAGE' || p.type === 'BITMAP') {
+                if (p.type === 'RECT' || p.type === 'IMAGE') {
                     el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                     el.setAttribute('x', p.x - p.w/2);
                     el.setAttribute('y', p.y - p.h/2);
@@ -466,15 +483,46 @@
                     el.setAttribute('cy', p.y);
                     el.setAttribute('r', p.w/2);
                 } else if (p.type === 'PATH') {
-                    el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    el.setAttribute('d', p.dPath);
+                    el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    el.setAttribute("d", p.dPath);
                     el.setAttribute('transform', `translate(${p.x - p.w/2}, ${p.y - p.h/2})`);
+                } else if (p.type === 'BITMAP') {
+                    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    
+                    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    bg.setAttribute("x", p.x - p.w/2);
+                    bg.setAttribute("y", p.y - p.h/2);
+                    bg.setAttribute("width", p.w);
+                    bg.setAttribute("height", p.h);
+                    bg.setAttribute("fill", "transparent"); 
+                    bg.setAttribute("stroke", p.layerColor);
+                    bg.setAttribute("stroke-width", "0.2");
+                    bg.setAttribute("stroke-dasharray", "1, 1");
+                    g.appendChild(bg);
+
+                    const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+                    img.setAttribute("x", p.x - p.w/2);
+                    img.setAttribute("y", p.y - p.h/2);
+                    img.setAttribute("width", p.w);
+                    img.setAttribute("height", p.h);
+                    img.setAttribute("preserveAspectRatio", "none");
+                    img.setAttribute("href", p.base64);
+                    // Standard correct fallback for SVG 1.1 namespaces
+                    img.setAttributeNS("http://www.w3.org/1999/xlink", "href", p.base64);
+                    // Ensure opacity and visibility so it renders properly
+                    img.style.opacity = '1';
+                    img.style.visibility = 'visible';
+                    img.style.imageRendering = 'pixelated';
+                    g.appendChild(img);
+                    el = g;
                 } else if (p.type === 'TEXT') {
                     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                     item.display.charJSONs.forEach(c => {
                         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                         path.setAttribute('d', c.dPath);
-                        path.setAttribute('transform', `translate(${c.x}, ${c.y}) scale(${c.scale.x / 1}, ${-c.scale.y / 1})`); 
+                        // Paths are pre-flipped (Y negated) for XCS export.
+                        // Apply negative scaleY here to un-flip for browser display.
+                        path.setAttribute('transform', `translate(${c.x}, ${c.y}) scale(${c.scale.x}, ${-c.scale.y})`); 
                         path.setAttribute('fill', p.layerColor);
                         g.appendChild(path);
                     });
@@ -485,15 +533,17 @@
                     const testId = item.display.testId;
                     if (testId) el.setAttribute('data-test-id', testId);
 
-                    if (p.type !== 'TEXT') {
-                        el.setAttribute('fill', p.isFill ? p.layerColor + '33' : 'transparent');
+                    if (p.type !== 'TEXT' && p.type !== 'BITMAP') {
+                        el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
                         el.setAttribute('stroke', p.layerColor);
                         el.setAttribute('stroke-width', '0.4');
-                        if (p.type === 'BITMAP' || p.type === 'IMAGE') el.setAttribute('stroke-dasharray', '1, 1');
+                        if (p.type === 'IMAGE' || p.type === 'BITMAP') el.setAttribute('stroke-dasharray', '1, 1');
                         el.style.pointerEvents = 'auto';
                         el.style.cursor = 'help';
-                    } else {
-                        el.style.pointerEvents = 'auto'; // Enable pointer for text too
+                    } else if (p.type === 'BITMAP') {
+                        // Bitmap group needs pointers but NOT fill/stroke (handled by 'bg' child)
+                        el.style.pointerEvents = 'auto';
+                        el.style.cursor = 'help';
                     }
 
                     // Attach Hover
@@ -519,9 +569,10 @@
                         `;
                     });
                     el.addEventListener('mousemove', e => {
-                        const rect = document.getElementById('canvasContainer').getBoundingClientRect();
-                        pop.style.left = (e.clientX - rect.left + 15) + 'px';
-                        pop.style.top = (e.clientY - rect.top + 15) + 'px';
+                        pop.style.display = 'block';
+                        pop.style.left = (e.clientX + 15) + 'px';
+                        pop.style.top = (e.clientY + 15) + 'px';
+                        pop.style.position = 'fixed';
                     });
                     el.addEventListener('mouseleave', () => {
                         pop.style.display = 'none';
