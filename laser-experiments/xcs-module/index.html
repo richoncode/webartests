@@ -153,7 +153,8 @@
         <h1>XCS Module Validation Tool <span style="font-size: 12px; opacity: 0.4; font-weight: normal; margin-left:8px">VANTAGE-ALPHA</span></h1>
         <div style="display: flex; align-items: center; gap: 12px;">
             <button class="toggle-btn" onclick="testExport()" style="background: var(--success); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;">Test Export (PNG + XCS)</button>
-            <button class="toggle-btn" onclick="textCalExport()" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Export 5 text rows at different pt sizes for XCS Studio calibration">Text Cal Export</button>
+            <button class="toggle-btn" onclick="textCalExport()" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Export 5-size text calibration .xcs">Text Cal Export</button>
+            <button class="toggle-btn" onclick="previewTextCal()" style="background: #f59e0b; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Preview text cal in canvas (shared renderer)">Preview Text Cal</button>
             <a href="../../" class="back-link">← Back to Experiments</a>
         </div>
     </div>
@@ -315,39 +316,56 @@
             window.downloadCanvasPNG(filename);
         };
 
-        /**
-         * Text Calibration Export
-         * Generates an .xcs with 5 text rows at different fontSize values.
-         * User corrects sizes in XCS Studio and sends back the file for analysis.
-         */
-        window.textCalExport = () => {
+        // ── TEXT CAL SHARED BUILDER ─────────────────────────────────────────
+        // Checkpoint: VANTAGE-ALPHA stable text sizes (Apr 2026)
+        // scale=fontSize/72, height=22.76*scale — verified against native XCS reference.
+        // Both export and preview use this builder → one shared code path.
+        function buildTextCalProject() {
             const calProject = new XCSProject();
             const testSizes = [12, 24, 36, 48, 72];
             const colors = ['#e74c3c', '#f59e0b', '#10b981', '#5b9bd5', '#8b5cf6'];
             const yPositions = [10, 26, 45, 67, 88];
-
             testSizes.forEach((fs, i) => {
                 calProject.addItem('TEXT', {
                     x: 50, y: yPositions[i],
-                    text: `${fs}pt LATO REGULAR`, 
+                    text: `${fs}pt LATO REGULAR`,
                     fontSize: fs,
                     align: 'center',
                     layerColor: colors[i],
                     params: { power: 10, speed: 100 }
                 });
             });
+            return calProject;
+        }
 
+        // Preview in the SVG canvas (shared renderer — same charJSONs as export)
+        window.previewTextCal = () => {
+            const calProject = buildTextCalProject();
+            currentProject = calProject;
+            render(calProject);
+        };
+
+        // Download timestamped .xcs
+        window.textCalExport = () => {
+            const now = new Date();
+            const month = now.toLocaleString('en-US', { month: 'short' });
+            const day = now.getDate();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const filename = `XCSTextCal${month}${day}-${hours}${minutes}`;
+
+            const calProject = buildTextCalProject();
             const data = JSON.stringify(calProject.toJSON(), null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'XCSTextCal.xcs';
+            a.download = `${filename}.xcs`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            console.log('Text Calibration Export: 5 text rows at', testSizes, 'pt');
+            console.log(`Text Cal Export → ${filename}.xcs`);
         };
 
         let currentProject = null;
