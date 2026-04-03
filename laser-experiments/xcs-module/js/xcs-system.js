@@ -333,6 +333,9 @@ export class XCSText extends XCSItem {
       scale = 24 / 72;
     }
     const sx = scale, sy = scale;
+    // CRITICAL: Set parent node scale — XCS Studio derives the UI pt value from this.
+    // Formula: displayed_pt = node.scale.x * 72. Without this, XCS shows 72pt for everything.
+    node.scale = { x: sx, y: sy };
     const totalWidth = totalAdvance * sx;
     const charJSONs = [];
 
