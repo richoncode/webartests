@@ -314,16 +314,23 @@ export class XCSText extends XCSItem {
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
 
     // Normalization: scale ↔ fontSize equivalence
-    // 1 Lato font unit ≈ 1mm at scale 1.0. Canonical cap-height = 18.4 units.
-    // fontSize_pt = scale * 18.4 / 0.2757   (from: 1pt = 0.2757mm)
-    let scale, derivedFontSize;
-    if (options.width) {
+    // XCS Studio native formula: 72pt = scale 1.0 (glyph paths are in pt units at 72pt baseline)
+    // scale = desiredFontSize / 72
+    // When width-constrained: derive fontSize from width coverage, then scale from that.
+    let derivedFontSize, scale;
+    if (options.fontSize) {
+      derivedFontSize = options.fontSize;
+      scale = options.fontSize / 72;
+    } else if (options.width) {
+      // Fit text to width: advanceWidth units * scale = width(mm)
+      // We need: totalAdvance * scale = width
+      // But scale = fontSize/72, and 1 font unit ≈ 1mm at scale 1
+      // So: fontSize = width / totalAdvance * 72
+      derivedFontSize = (options.width / totalAdvance) * 72;
       scale = options.width / totalAdvance;
-      derivedFontSize = scale * 18.4 / 0.2757;  // derive pt from scale
     } else {
-      const fs = options.fontSize || 24;
-      scale = (fs * 0.2757) / 18.4;
-      derivedFontSize = fs;
+      derivedFontSize = 24;
+      scale = 24 / 72;
     }
     const sx = scale, sy = scale;
     const totalWidth = totalAdvance * sx;
@@ -338,46 +345,46 @@ export class XCSText extends XCSItem {
       else ax = x - totalWidth;
     }
 
-    // Bounding box using flipped Y coords (minY_flipped = -maxY_original)
+    // Compute bounding box from glyph data (Y-up coord system — bbox.maxY is cap-height)
     let minBX = Infinity, minBY = Infinity, maxBX = -Infinity, maxBY = -Infinity;
     let relX = 0;
     for (const g of glyphs) {
-      if (g.bbox) {
+      if (g.bbox && g.bbox.minX != null) {
         minBX = Math.min(minBX, relX + g.bbox.minX);
         maxBX = Math.max(maxBX, relX + g.bbox.maxX);
-        // After Y-flip: flipped minY = -original maxY
-        minBY = Math.min(minBY, -g.bbox.maxY);
-        maxBY = Math.max(maxBY, -g.bbox.minY);
+        minBY = Math.min(minBY, g.bbox.minY);
+        maxBY = Math.max(maxBY, g.bbox.maxY);
       }
       relX += g.advanceWidth;
     }
-    if (minBX === Infinity) { minBX = 0; maxBX = totalWidth / sx; minBY = 0; maxBY = 18; }
-    
+    if (minBX === Infinity) { minBX = 0; maxBX = totalAdvance; minBY = 0; maxBY = 18.2; }
+
     const totalW = (maxBX - minBX) * sx;
     const totalH = (maxBY - minBY) * sy;
 
-    // Update node anchor
+    // Update node anchor — XCS coordinate system: Y increases downward
+    // offsetX/offsetY are the geometric center of the text block
     node.x = ax; node.y = ay;
-    node.width = totalW; 
+    node.width = totalW;
     node.height = totalH;
     node.offsetX = ax + (minBX + maxBX) / 2 * sx;
-    node.offsetY = ay + (minBY + maxBY) / 2 * sy;
+    node.offsetY = ay + (maxBY - minBY) / 2 * sy;
 
     let currentRelativeX = 0;
     for (let i = 0; i < text.length; i++) {
       const glyph = glyphs[i];
       const cx = ax + (currentRelativeX * sx);
       const cy = ay;
-      
-      const charW = glyph.bbox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
-      const charH = glyph.bbox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
-      const lCX = glyph.bbox ? (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx : 0;
-      // After Y-flip: center Y = -(maxY+minY)/2 of original
-      const lCY = glyph.bbox ? -(glyph.bbox.maxY + glyph.bbox.minY) / 2 * sy : 0;
 
-      // Pre-flip the path Y coords; use positive scale so XCS doesn't mirror the glyph
-      const flippedPath = XCSText.negateY(glyph.dPath);
+      // Glyph bounding box dimensions (raw font units, Y-up)
+      const hasBox = glyph.bbox && glyph.bbox.minX != null;
+      const charW = hasBox ? (glyph.bbox.maxX - glyph.bbox.minX) * sx : 0;
+      const charH = hasBox ? (glyph.bbox.maxY - glyph.bbox.minY) * sy : 0;
+      const lCX   = hasBox ? (glyph.bbox.minX + glyph.bbox.maxX) / 2 * sx : 0;
+      const lCY   = hasBox ? (glyph.bbox.minY + glyph.bbox.maxY) / 2 * sy : 0;
 
+      // Use the ORIGINAL Y-up dPath — XCS Studio applies its own Y-flip internally.
+      // Scale is POSITIVE (XCS native). Do NOT negate or pre-flip paths.
       charJSONs.push({
         id: uuid(), name: null, type: "PATH", x: cx, y: cy, angle: 0,
         scale: { x: sx, y: sy }, skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
@@ -389,7 +396,7 @@ export class XCSText extends XCSItem {
         stroke: { paintType: "color", visible: true, color: 0, alpha: 1, width: 1, cap: "butt", join: "miter", miterLimit: 4, alignment: 0.5 },
         width: charW, height: charH,
         isFill: false, lineColor: 0, fillColor: layerColor,
-        points: [], dPath: flippedPath, fillRule: "nonzero",
+        points: [], dPath: glyph.dPath, fillRule: "nonzero",
         graphicX: cx, graphicY: cy, isCompoundPath: false
       });
       currentRelativeX += glyph.advanceWidth;
@@ -400,7 +407,7 @@ export class XCSText extends XCSItem {
       fontData: { fontInfo: LATO_REGULAR_INFO, glyphData: LATO_REGULAR_GLYPHS },
       text, resolution: 1,
       style: {
-        fontSize: Math.round(derivedFontSize * 10) / 10,  // always a valid pt value
+        fontSize: Math.round(derivedFontSize * 10) / 10,  // exact pt value
         fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
         letterSpacing: 0, leading: 0, align: "left", curveX: 0, curveY: 0,
         isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"

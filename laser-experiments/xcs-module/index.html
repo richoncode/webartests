@@ -153,6 +153,7 @@
         <h1>XCS Module Validation Tool <span style="font-size: 12px; opacity: 0.4; font-weight: normal; margin-left:8px">VANTAGE-ALPHA</span></h1>
         <div style="display: flex; align-items: center; gap: 12px;">
             <button class="toggle-btn" onclick="testExport()" style="background: var(--success); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;">Test Export (PNG + XCS)</button>
+            <button class="toggle-btn" onclick="textCalExport()" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Export 5 text rows at different pt sizes for XCS Studio calibration">Text Cal Export</button>
             <a href="../../" class="back-link">← Back to Experiments</a>
         </div>
     </div>
@@ -312,6 +313,41 @@
             
             window.downloadProject(filename);
             window.downloadCanvasPNG(filename);
+        };
+
+        /**
+         * Text Calibration Export
+         * Generates an .xcs with 5 text rows at different fontSize values.
+         * User corrects sizes in XCS Studio and sends back the file for analysis.
+         */
+        window.textCalExport = () => {
+            const calProject = new XCSProject();
+            const testSizes = [12, 24, 36, 48, 72];
+            const colors = ['#e74c3c', '#f59e0b', '#10b981', '#5b9bd5', '#8b5cf6'];
+            const yPositions = [10, 26, 45, 67, 88];
+
+            testSizes.forEach((fs, i) => {
+                calProject.addItem('TEXT', {
+                    x: 50, y: yPositions[i],
+                    text: `${fs}pt LATO REGULAR`, 
+                    fontSize: fs,
+                    align: 'center',
+                    layerColor: colors[i],
+                    params: { power: 10, speed: 100 }
+                });
+            });
+
+            const data = JSON.stringify(calProject.toJSON(), null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'XCSTextCal.xcs';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            console.log('Text Calibration Export: 5 text rows at', testSizes, 'pt');
         };
 
         let currentProject = null;
@@ -520,8 +556,8 @@
                     item.display.charJSONs.forEach(c => {
                         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                         path.setAttribute('d', c.dPath);
-                        // Paths are pre-flipped (Y negated) for XCS export.
-                        // Apply negative scaleY here to un-flip for browser display.
+                        // XCS export uses Y-up glyph paths with positive scale.
+                        // SVG is Y-down, so negate scaleY for correct browser display.
                         path.setAttribute('transform', `translate(${c.x}, ${c.y}) scale(${c.scale.x}, ${-c.scale.y})`); 
                         path.setAttribute('fill', p.layerColor);
                         g.appendChild(path);
