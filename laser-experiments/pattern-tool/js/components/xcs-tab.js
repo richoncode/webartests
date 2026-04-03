@@ -1,6 +1,6 @@
 import { App } from '../app.js';
 import { XCSViewer } from '../viewer.js';
-import { XCSProject } from '../xcs-system.js';
+import { XCSProject } from '../../../xcs-module/js/xcs-system.js';
 
 export const XcsTab = {
   create(tabId, initialCfg) {

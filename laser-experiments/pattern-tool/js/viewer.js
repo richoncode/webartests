@@ -1,7 +1,5 @@
-/**
- * Pattern Tool Viewer - VANTAGE-ALPHA Baseline
- */
 import { App } from './app.js';
+import { XCSProject } from '../../xcs-module/js/xcs-system.js';
 import { PAD } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';
 

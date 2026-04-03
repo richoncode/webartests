@@ -2,7 +2,7 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { UI, uuid } from '../utils.js';
-import { XCSExporter } from '../xcs-exporter.js';
+import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
 
 export const MathTab = {

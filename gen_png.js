@@ -1,0 +1,3 @@
+const fs = require('fs');
+const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2rVq1X8GBgYmBgRgAAMCAEbwBHwb+aB3AAAAAElFTkSuQmCC";
+console.log("data:image/png;base64," + b64);

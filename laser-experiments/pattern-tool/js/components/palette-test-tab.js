@@ -3,7 +3,7 @@ import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { UI } from '../utils.js';
 import { PalMgr } from '../palettes.js';
-import { XCSExporter } from '../xcs-exporter.js';
+import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 
 export const PaletteTestTab = {
   // Verified XCS Lato Metrics (from gradient-tab.js)

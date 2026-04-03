@@ -2,7 +2,7 @@ import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { UI } from '../utils.js';
-import { XCSExporter } from '../xcs-exporter.js';
+import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 
 export const TestTab = {
   create(tabId, initialCfg) {

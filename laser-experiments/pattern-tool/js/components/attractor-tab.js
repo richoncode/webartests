@@ -3,7 +3,7 @@ import { Persistence } from '../persistence.js';
 import { XCSViewer } from '../viewer.js';
 import { uuid, UI } from '../utils.js';
 import { PalMgr } from '../palettes.js';
-import { XCSExporter } from '../xcs-exporter.js';
+import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 
 export const AttractorTab = {
   create(tabId, initialCfg) {

@@ -1,7 +1,7 @@
 import { App } from './app.js';
 import { Persistence } from './persistence.js';
 import { getTimestampedName, esc } from './utils.js';
-import { XCSIR } from './xcs-ir.js';
+import { XCSIR } from '../../xcs-module/js/xcs-ir.js';
 import { XcsTab } from './components/xcs-tab.js';
 import { MandalaTab } from './components/mandala-tab.js';
 import { GeometryTab } from './components/geometry-tab.js';
