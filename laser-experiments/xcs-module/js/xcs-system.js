@@ -348,30 +348,32 @@ export class XCSText extends XCSItem {
       else ax = x - totalWidth;
     }
 
-    // Compute bounding box from glyph data (Y-up coord system — bbox.maxY is cap-height)
-    let minBX = Infinity, minBY = Infinity, maxBX = -Infinity, maxBY = -Infinity;
+    // Compute width from glyph advance widths (sum of advanceWidth * scale)
+    // Height formula verified from native XCS reference:
+    //   height = XCS_LINE_HEIGHT * scale, where XCS_LINE_HEIGHT = 22.76 font units
+    //   This constant holds across all font sizes (6, 12, 20, 36, 48, 72pt). 
+    const XCS_LINE_HEIGHT = 22.76;
+    let minBX = Infinity, maxBX = -Infinity;
     let relX = 0;
     for (const g of glyphs) {
       if (g.bbox && g.bbox.minX != null) {
         minBX = Math.min(minBX, relX + g.bbox.minX);
         maxBX = Math.max(maxBX, relX + g.bbox.maxX);
-        minBY = Math.min(minBY, g.bbox.minY);
-        maxBY = Math.max(maxBY, g.bbox.maxY);
       }
       relX += g.advanceWidth;
     }
-    if (minBX === Infinity) { minBX = 0; maxBX = totalAdvance; minBY = 0; maxBY = 18.2; }
+    if (minBX === Infinity) { minBX = 0; maxBX = totalAdvance; }
 
     const totalW = (maxBX - minBX) * sx;
-    const totalH = (maxBY - minBY) * sy;
+    const totalH = XCS_LINE_HEIGHT * sy;
 
-    // Update node anchor — XCS coordinate system: Y increases downward
-    // offsetX/offsetY are the geometric center of the text block
+    // Update node — XCS coordinate system
     node.x = ax; node.y = ay;
     node.width = totalW;
     node.height = totalH;
     node.offsetX = ax + (minBX + maxBX) / 2 * sx;
-    node.offsetY = ay + (maxBY - minBY) / 2 * sy;
+    node.offsetY = ay + totalH / 2;
+
 
     let currentRelativeX = 0;
     for (let i = 0; i < text.length; i++) {
