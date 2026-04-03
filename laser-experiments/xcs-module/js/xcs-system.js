@@ -313,9 +313,18 @@ export class XCSText extends XCSItem {
     let totalAdvance = 0;
     glyphs.forEach(g => totalAdvance += g.advanceWidth);
 
-    // Normalization: height (mm) ≈ fontSize (pt) * 0.2757. Reference height for LATO is 18.4 units.
-    const canonicalScale = (options.fontSize * 0.2757) / 18.4;
-    const scale = options.width ? (options.width / totalAdvance) : canonicalScale;
+    // Normalization: scale ↔ fontSize equivalence
+    // 1 Lato font unit ≈ 1mm at scale 1.0. Canonical cap-height = 18.4 units.
+    // fontSize_pt = scale * 18.4 / 0.2757   (from: 1pt = 0.2757mm)
+    let scale, derivedFontSize;
+    if (options.width) {
+      scale = options.width / totalAdvance;
+      derivedFontSize = scale * 18.4 / 0.2757;  // derive pt from scale
+    } else {
+      const fs = options.fontSize || 24;
+      scale = (fs * 0.2757) / 18.4;
+      derivedFontSize = fs;
+    }
     const sx = scale, sy = scale;
     const totalWidth = totalAdvance * sx;
     const charJSONs = [];
@@ -391,7 +400,8 @@ export class XCSText extends XCSItem {
       fontData: { fontInfo: LATO_REGULAR_INFO, glyphData: LATO_REGULAR_GLYPHS },
       text, resolution: 1,
       style: {
-        fontSize: options.fontSize, fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
+        fontSize: Math.round(derivedFontSize * 10) / 10,  // always a valid pt value
+        fontFamily: "Lato", fontSubfamily: "Regular", fontSource: "build-in",
         letterSpacing: 0, leading: 0, align: "left", curveX: 0, curveY: 0,
         isUppercase: false, isWeld: false, direction: "auto", writingMode: "horizontal-tb", textOrientation: "mixed"
       }
