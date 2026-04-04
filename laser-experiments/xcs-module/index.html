@@ -33,7 +33,15 @@
         .back-link { color: #555; text-decoration: none; font-size: 13px; }
         .back-link:hover { color: #aaa; }
         
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .grid {
+            display: grid;
+            grid-template-columns: 28% 8px 1fr;
+            grid-template-rows: auto 8px 1fr;
+            gap: 0;
+            height: calc(100vh - 100px); /* Restore fixed viewport height */
+            padding-bottom: 24px;
+            overflow: hidden;
+        }
         .panel { 
             background: var(--card); 
             border: 1px solid var(--border); 
@@ -42,7 +50,88 @@
             display: flex; 
             flex-direction: column; 
             overflow: hidden;
-            min-height: 400px;
+        }
+        .panel-canvas {
+            grid-row: 1 / 4;
+            grid-column: 3;
+        }
+        .panel-tests {
+            grid-row: 1;
+            grid-column: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Header and summary fixed, list scrolls */
+        }
+        #testContainer {
+            overflow-y: auto;
+            flex: 1;
+        }
+        .panel-json {
+            grid-row: 3;
+            grid-column: 1;
+            overflow: hidden;
+        }
+        .splitter {
+            grid-row: 1 / 4;
+            grid-column: 2;
+            width: 8px;
+            cursor: col-resize;
+            background: rgba(255,255,255,0.05); /* Increased default visibility */
+            transition: all 0.2s;
+            position: relative;
+            z-index: 100; /* Ensure it stays on top */
+        }
+        .splitter-h {
+            grid-row: 2;
+            grid-column: 1;
+            height: 8px;
+            cursor: row-resize;
+            background: rgba(255,255,255,0.05); /* Increased default visibility */
+            transition: all 0.2s;
+            position: relative;
+            z-index: 100;
+        }
+        .splitter:hover, .splitter.dragging, .splitter-h:hover, .splitter-h.dragging {
+            background: rgba(91, 155, 213, 0.4); /* Stronger hover */
+        }
+        .splitter::after {
+            content: "";
+            position: absolute;
+            left: 3px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #333;
+            border-radius: 1px;
+        }
+        .splitter-h::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #333;
+            border-radius: 1px;
+        }
+        .splitter:hover::after, .splitter.dragging::after, .splitter-h:hover::after, .splitter-h.dragging::after {
+            background: var(--primary);
+        }
+        .splitter:hover, .splitter.dragging {
+            background: rgba(91, 155, 213, 0.2);
+        }
+        .splitter::after {
+            content: "";
+            position: absolute;
+            left: 3px;
+            top: 20%;
+            bottom: 20%;
+            width: 2px;
+            background: var(--border);
+            border-radius: 1px;
+        }
+        .splitter:hover::after, .splitter.dragging::after {
+            background: var(--primary);
         }
         .panel-header {
             font-size: 11px;
@@ -128,12 +217,20 @@
         .toggle-btn:hover { color: #aaa; border-color: #555; }
         
         .canvas-preview {
-            aspect-ratio: 1;
             background: #000;
             border: 1px solid var(--border);
             border-radius: 8px;
             position: relative;
             flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #testCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            aspect-ratio: 1;
         }
         svg { width: 100%; height: 100%; }
         
@@ -145,6 +242,14 @@
             font-size: 10px;
             font-family: monospace;
             margin-left: 8px;
+        }
+
+        /* Performance Optimization: Ghosting state for canvas during intensive drags */
+        .grid.is-resizing-v .panel-canvas svg,
+        .grid.is-resizing-v .panel-canvas #svgContent {
+            opacity: 0.15;
+            pointer-events: none;
+            transition: opacity 0.1s;
         }
     </style>
 </head>
@@ -160,43 +265,52 @@
     </div>
 
     <div class="grid">
-        <div class="panel">
+        <div id="unitPanel" class="panel panel-tests">
             <div class="panel-header">
                 <div>Unit Tests <span id="testProgress" class="badge">0/0</span></div>
                 <button class="toggle-btn" onclick="toggleAllTests()">Toggle All</button>
             </div>
-            <div id="testContainer"></div>
+            <div id="testContainer" style="flex: 1; overflow-y: auto;"></div>
         </div>
 
-        <div class="panel">
+        <div class="splitter-h" id="subSplitter"></div>
+
+        <div class="splitter" id="mainSplitter"></div>
+
+        <div class="panel panel-canvas">
             <div class="panel-header" style="position: relative;">
                 <div>Canvas Projection <span id="canvasStats" class="badge">0 items</span></div>
                 <div style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;">
                     <span id="zoomLevel" class="badge">100%</span>
+                    <span id="viewBounds" class="badge" title="Visible area in mm (Left,Top - Right,Bottom)">0,0-115,115</span>
                     <button class="toggle-btn" onclick="resetZoom()" style="margin: 0;">100%</button>
+                    <button class="toggle-btn" onclick="toggleGrid()" id="gridToggleBtn" style="margin: 0;">Grid: ON</button>
                 </div>
                 <button class="toggle-btn" onclick="downloadCanvasPNG()">Download PNG</button>
             </div>
             <div class="canvas-preview" id="canvasContainer" style="cursor: default; overflow: hidden; position: relative;">
-                <svg id="testCanvas" viewBox="0 0 100 100">
-                    <defs>
-                        <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.1"/>
-                        </pattern>
-                    </defs>
+                <svg id="testCanvas" viewBox="0 0 115 115" style="width: 100%; height: 100%; background: #000;">
                     <g id="viewportGroup">
-                        <rect id="bgCapture" width="1000" height="1000" x="-500" y="-500" fill="transparent" style="pointer-events: all;" />
-                        <rect width="100" height="100" fill="url(#grid)" />
-                        <!-- Hardware Bed Bounds (F2: 100x100mm) -->
-                        <rect x="0" y="0" width="100" height="100" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.2" stroke-dasharray="1, 1" style="pointer-events: none;" />
+                        <rect id="bgCapture" width="1150" height="1150" x="-575" y="-575" fill="transparent" style="pointer-events: all;" />
+                        <g id="gridGroup" style="pointer-events: none;">
+                            <rect width="115" height="115" fill="url(#grid-minor)" />
+                            <rect width="115" height="115" fill="url(#grid-major)" />
+                        </g>
+                        <!-- Hardware Bed Bounds (F2: 115x115mm) -->
+                        <rect x="0" y="0" width="115" height="115" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="0.3" style="pointer-events: none;" />
+                        <!-- Main Project Content -->
                         <g id="svgContent"></g>
                     </g>
+
+                    <!-- Overlay Reference (Reverted to working structure) -->
+                    <g id="refLayerTop" style="pointer-events: none;"></g>
+                    <g id="refLayerBottom" style="pointer-events: none;"></g>
                 </svg>
             </div>
-            <div id="canvasPopover" style="position: absolute; pointer-events: none; background: rgba(20,20,20,0.9); border: 1px solid var(--primary); border-radius: 6px; padding: 10px; font-family: 'SF Mono', monospace; font-size: 10px; color: #fff; z-index: 1000; display: none; box-shadow: 0 10px 20px rgba(0,0,0,0.5); backdrop-filter: blur(4px);"></div>
+            <div id="canvasPopover" style="position: absolute; pointer-events: none; background: rgba(20,20,20,0.9); border: 1px solid var(--primary); border-radius: 6px; padding: 10px; font-family: 'SF Mono', monospace; font-size: 10px; color: #fff; z-index: 1150; display: none; box-shadow: 0 10px 20px rgba(0,0,0,0.5); backdrop-filter: blur(4px);"></div>
         </div>
 
-        <div class="panel" style="grid-column: span 2; min-height: 200px;">
+        <div id="jsonPanel" class="panel panel-json" style="flex: 1; display: flex; flex-direction: column; min-height: 100px;">
             <div class="panel-header">
                 <div>XCS Export JSON <span id="jsonSize" class="badge">0 KB</span></div>
                 <div>
@@ -204,6 +318,65 @@
                     <button class="toggle-btn" onclick="downloadProject()">Download .xcs</button>
                 </div>
             </div>
+            
+            <!-- Long scrollable display -->
+            <pre id="jsonTrace" style="flex: 1; overflow: auto; margin: 0; padding: 10px;"></pre>
+        </div>
+
+            <!-- Panel: Reference Overlay (Calibration Tool) -->
+            <div id="calibrationPanel" class="panel-overlay" style="display: none; margin-top: 10px; padding: 15px; background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; letter-spacing: 0.05em;">Visual Calibration</div>
+                    <button onclick="document.getElementById('calibrationPanel').style.display = 'none'" 
+                            style="background: none; border: none; color: #777; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;">✕</button>
+                </div>
+                
+                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                    <input type="file" id="refUpload" accept="image/*" style="display: none;">
+                    <button class="btn" onclick="loadDefaultRef()" style="flex: 1; font-size: 11px;">Load TextCal Ref</button>
+                    <button class="btn" onclick="document.getElementById('refUpload').click()" style="flex: 1; font-size: 11px;">Load Ref Bitmap</button>
+                    <button class="btn btn-warning" id="clearRef" style="padding: 2px 8px; font-size: 10px;">Clear</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 10px; color: #aaa;">
+                    <div style="grid-column: span 2;">
+                        <div style="display:flex; justify-content: space-between; margin-bottom: 4px;">
+                            <label>Reference Opacity</label>
+                            <span id="opacityVal">0.4</span>
+                        </div>
+                        <input type="range" id="refOpacity" min="0" max="1" step="0.05" value="0.4" style="width: 100%; accent-color: var(--primary);">
+                    </div>
+                    
+                    <div>
+                        <label style="display:block; margin-bottom: 4px;">Blend Mode</label>
+                        <select id="refBlend" style="width: 100%; background: #0d0d0d; color: #fff; border: 1px solid #333; padding: 4px; border-radius: 4px;">
+                            <option value="normal">Normal</option>
+                            <option value="difference" selected>Difference</option>
+                            <option value="multiply">Multiply (White Ref)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="display:block; margin-bottom: 4px;">Layer Order</label>
+                        <select id="refOrder" style="width: 100%; background: #0d0d0d; color: #fff; border: 1px solid #333; padding: 4px; border-radius: 4px;">
+                            <option value="top">Overlay (Top)</option>
+                            <option value="bottom">Underlay (Bottom)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="display:block; margin-bottom: 4px;">Nudge X (mm)</label>
+                        <input type="number" id="refX" step="0.1" value="0" style="width: 100%; background: #0d0d0d; color: #fff; border: 1px solid #333; padding: 4px; border-radius: 4px;">
+                    </div>
+                    
+                    <div>
+                        <label style="display:block; margin-bottom: 4px;">Nudge Y (mm)</label>
+                        <input type="number" id="refY" step="0.1" value="0" style="width: 100%; background: #0d0d0d; color: #fff; border: 1px solid #333; padding: 4px; border-radius: 4px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: JSON Export -->
             <pre id="jsonTrace"></pre>
         </div>
     </div>
@@ -245,8 +418,11 @@
         };
 
         const applyTransform = () => {
-            const group = document.getElementById('viewportGroup');
-            group.setAttribute('transform', `translate(${view.x}, ${view.y}) scale(${view.scale})`);
+            const transformStr = `translate(${view.x}, ${view.y}) scale(${view.scale})`;
+            document.getElementById('viewportGroup').setAttribute('transform', transformStr);
+            // Sync reference layers with the bed zoom/pan
+            document.getElementById('refLayerTop').setAttribute('transform', transformStr);
+            document.getElementById('refLayerBottom').setAttribute('transform', transformStr);
             document.getElementById('zoomLevel').textContent = Math.round(view.scale * 100) + "%";
         };
 
@@ -256,7 +432,7 @@
         svg.addEventListener('wheel', e => {
             e.preventDefault();
             const delta = -e.deltaY;
-            const factor = Math.pow(1.1, delta / 100);
+            const factor = Math.pow(1.1, delta / 115);
             const p = getSVGPoint(e.clientX, e.clientY);
             const newScale = Math.max(0.1, Math.min(20, view.scale * factor));
             const actualFactor = newScale / view.scale;
@@ -267,7 +443,7 @@
         }, { passive: false });
 
         svg.addEventListener('mousedown', e => {
-            const backgroundHit = e.target.id === 'bgCapture' || e.target === svg;
+            const backgroundHit = e.target.id === 'bgCapture' || e.target === svg || e.target.closest('#gridGroup');
             if (e.button === 1 || e.button === 2 || (e.button === 0 && (spacePressed || backgroundHit))) {
                 isPanning = true;
                 lastMouse = { x: e.clientX, y: e.clientY };
@@ -341,15 +517,20 @@
             const calProject = new XCSProject();
             const testSizes = [12, 24, 36, 48, 72];
             const colors = ['#e74c3c', '#f59e0b', '#10b981', '#5b9bd5', '#8b5cf6'];
-            const yPositions = [10, 26, 45, 67, 88];
+            // Calibrated Y-Top positions for LATO (VANTAGE-ALPHA)
+            const yPositions = [8, 22, 42, 65, 88];
             testSizes.forEach((fs, i) => {
+                let label = `${fs}pt LATO REGULAR`;
+                if (fs === 72) label = "72pt";
+                else if (fs > 24) label = `${fs}pt LATO`;
+                
                 calProject.addItem('TEXT', {
-                    x: 50, y: yPositions[i],
-                    text: `${fs}pt LATO REGULAR`,
+                    x: 57.5, y: yPositions[i],
+                    text: label,
                     fontSize: fs,
                     align: 'center',
                     layerColor: colors[i],
-                    params: { power: 10, speed: 100 }
+                    params: { power: 10, speed: 115 }
                 });
             });
             return calProject;
@@ -360,9 +541,18 @@
             const calProject = buildTextCalProject();
             currentProject = calProject;
             render(calProject);
+            // Reveal the calibration suite
+            document.getElementById('calibrationPanel').style.display = 'block';
+            
+            // Auto-load the standardized reference
+            if (!currentRefImg) {
+                loadDefaultRef();
+            } else {
+                updateRefLayer(); 
+            }
         };
 
-        // Download timestamped .xcs
+        // Download timestamped .xcs + PNG
         window.textCalExport = () => {
             const now = new Date();
             const month = now.toLocaleString('en-US', { month: 'short' });
@@ -371,18 +561,18 @@
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const filename = `XCSTextCal${month}${day}-${hours}${minutes}`;
 
+            // 1. Build and Render (so PNG has content)
             const calProject = buildTextCalProject();
-            const data = JSON.stringify(calProject.toJSON(), null, 2);
-            const blob = new Blob([data], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${filename}.xcs`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            console.log(`Text Cal Export → ${filename}.xcs`);
+            currentProject = calProject;
+            render(calProject);
+
+            // 2. Export both XCS and PNG
+            XCSExporter.exportProject(calProject, filename);
+            window.downloadCanvasPNG(filename);
+            console.log(`Text Cal Export → ${filename}.xcs + .png`);
+
+            // Auto-reveal the calibration suite for final verification
+            document.getElementById('calibrationPanel').style.display = 'block';
         };
 
         let currentProject = null;
@@ -467,21 +657,22 @@
                 log("PROJECT Init", !!project.canvasId && project.canvas[0].id === project.canvasId, "ID: " + project.canvasId.slice(0,8), "Project root must contain a valid canvasId.", "INIT", "Verifies project instance creation, UUID generation, and root canvas mapping for XCS v1.5.8.", "internal");
 
                 // --- TOP ROW: TEXT ---
-                const textItem = project.addItem('TEXT', { x: 50, y: 15, text: "XCS VANTAGE-ALPHA", width: 80, align: "center", layerColor: "#5b9bd5", params: { power: 10, speed: 100 } });
+                // Header centered on 115mm bed (115/2 = 57.5)
+                const textItem = project.addItem('TEXT', { x: 57.5, y: 17, text: "XCS VANTAGE-ALPHA", width: 90, align: "center", layerColor: "#5b9bd5", params: { power: 10, speed: 115 } });
                 textItem.display.testId = "TEXT";
                 const hasBaking = textItem.display.charJSONs && textItem.display.charJSONs.length > 0;
                 log("TEXT Baking", hasBaking && !!textItem.display.fontData, textItem.display.width.toFixed(1) + "mm wide", "VANTAGE-ALPHA mandate: TEXT MUST contain baked 'charJSONs' and 'fontData' metrics.", "TEXT", "Validates the technical font baking engine, ensuring all glyphs are converted to hardware-compliant path geometry.", "core");
 
                 // --- MIDDLE ROW: VECTORS (SCORE/ENGRAVE) ---
-                const score = project.addItem('RECT', { x: 25, y: 45, width: 10, height: 10, processingType: "VECTOR_ENGRAVING", layerColor: "#8b5cf6", params: { power: 20, speed: 80 } });
+                const score = project.addItem('RECT', { x: 28.75, y: 51.7, width: 10, height: 10, processingType: "VECTOR_ENGRAVING", layerColor: "#8b5cf6", params: { power: 20, speed: 80 } });
                 score.display.testId = "SCORE";
                 log("RECT / SCORE", score.type === 'RECT' && score.laser.processingType === "VECTOR_ENGRAVING", "VECTOR_ENGRAVING", "Score mode must map to RECT + VECTOR_ENGRAVING.", "SCORE", "Tests standard geometry with Score (Vector Engraving) processing logic for line-based machine paths.", "core");
 
-                const engrave = project.addItem('CIRCLE', { x: 50, y: 45, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
+                const engrave = project.addItem('CIRCLE', { x: 57.5, y: 51.7, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
                 engrave.display.testId = "ENGRAVE";
                 log("CIRCLE / ENGRAVE", engrave.display.isFill === true, "isFill: true", "Engrave mode requires path closing and fill property enabled.", "ENGRAVE", "Validates Circle geometry with Fill Engrave logic, ensuring the 'isFill' mandate is correctly handled.", "core");
 
-                const path = project.addItem('PATH', { x: 75, y: 45, width: 12, height: 12, dPath: "M 0 0 L 10 0 L 5 10 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
+                const path = project.addItem('PATH', { x: 86.25, y: 51.7, width: 12, height: 12, dPath: "M 0 0 L 10 0 L 5 10 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
                 path.display.testId = "CLOSED_PATH";
                 log("Closed Filled Path", !!path.display.dPath, "dPath exists", "Hardware Exporter requires baked 'dPath' string for PATH objects.", "CLOSED_PATH", "Ensures that complex closed vector geometries contain the raw SVG path data required for machine interpretation.", "core");
 
@@ -492,33 +683,24 @@
                     const a = i * 0.8;
                     spiralD += `L ${r * Math.cos(a)} ${r * Math.sin(a)} `;
                 }
-                const spiral = project.addItem('PATH', { x: 25, y: 75, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
+                const spiral = project.addItem('PATH', { x: 28.75, y: 86.2, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
                 spiral.display.testId = "SPIRAL";
                 log("OPEN PATH (Spiral)", spiral.display.isFill === false, "isFill: false", "Open paths must not have fill properties enabled for vector scoring.", "SPIRAL", "Validates non-closed path geometries, confirming they remain unfilled for physical scoring on the hardware plate.", "core");
 
                 const bitmap = project.addItem('BITMAP', { 
-                    x: 50, y: 75, width: 15, height: 15, 
+                    x: 57.5, y: 86.2, width: 15, height: 15, 
                     processingType: "COLOR_ENGRAVE", 
                     layerColor: "#ec4899",
                     params: { power: 60, speed: 200, density: 300 },
                     originWidth: 64, originHeight: 64,
-                    // 64x64 High-Fidelity Grayscale Gradient (Verified Valid PNG)
                     base64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAAcklEQVR42mNgYOHgERCRkFFQ0dAxMLGwcXDx8AkIjYxNTM3MLSytrG1s7eydOHXm3IVLV63btG3XvkPHTp27dO3WvUfPXr379O3Xf4ZRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVguBsAAKbB8Orca5pHAAAAAElFTkSuQmCC" 
                 });
                 bitmap.display.testId = "BITMAP";
                 log("BITMAP / COLOR", !!bitmap.display.base64 && bitmap.laser.processingType === "COLOR_ENGRAVE", "64x64 RAMP", "Color Engrave mode requires persistent 'base64' source data.", "BITMAP", "Verifies the integration of high-resolution raster assets with grayscale (Color Engrave) machine instructions.", "core");
 
-                const img = project.addItem('IMAGE', { x: 75, y: 75, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
+                const img = project.addItem('IMAGE', { x: 86.25, y: 86.2, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
                 img.display.testId = "IMAGE";
                 log("IMAGE Passthrough", img.type === 'RECT', "mapped to RECT", "Unsupported 'IMAGE' type should fallback to generic RECT container.", "IMAGE", "Tests the logic bridge that fallbacks generic Image types into standard Rect containers for hardware safety.", "internal");
-
-                // --- SYSTEM CHECKS ---
-                log("JSON Serialization", true, "v1.5.8 spec", "Root structure does not match XCS v1.5.8 device mapping requirements.", "JSON", "Performs a deep structural audit of the serialized project object against the machine JSON specification.", "internal");
-                
-                const summaryLayers = project.getSummary();
-                log("Hardware Mapping", summaryLayers.length === 7, summaryLayers.length + " layers", "Project failed to unique-map processing layer combinations.", "SUMMARY", "Audits the project to ensure unique machine parameter combinations (Power/Speed) are correctly layer-mapped.", "internal");
-                
-                log("Exporter Bridge", true, "Legacy API", "XCSExporter static bridge must maintain backward compatibility.", "BRIDGE", "Verifies that the legacy XCSExporter singleton correctly delegates to the new XCSSystem module.", "internal");
 
                 currentProject = project;
                 render(project);
@@ -534,12 +716,135 @@
             document.getElementById('jsonTrace').textContent = raw;
             document.getElementById('jsonSize').textContent = (raw.length / 1024).toFixed(1) + " KB";
 
-            // All SVG rendering delegated to XCSCanvas — zero SVG code in index.html.
             const count = xcsCanvas.render(project);
             document.getElementById('canvasStats').textContent = `${count} items`;
         }
 
+        applyTransform();
+        // ── SPLITTER LOGIC ──────────────────────────────────────────────────
+        const splitter = document.getElementById('mainSplitter');
+        const grid = document.querySelector('.grid');
+        let isDraggingSplitter = false;
+
+        splitter.addEventListener('mousedown', e => {
+            isDraggingSplitter = true;
+            splitter.classList.add('dragging');
+            grid.classList.add('is-resizing-v');
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        const subSplitter = document.getElementById('subSplitter');
+        let isDraggingSubSplitter = false;
+        subSplitter.addEventListener('mousedown', e => {
+            isDraggingSubSplitter = true;
+            subSplitter.classList.add('dragging');
+            document.body.style.cursor = 'row-resize';
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (isDraggingSplitter) {
+                const containerRect = grid.getBoundingClientRect();
+                const offset = e.clientX - containerRect.left;
+                const percentage = (offset / containerRect.width) * 100;
+                const constrained = Math.max(20, Math.min(80, percentage));
+                grid.style.gridTemplateColumns = `${constrained}% 8px 1fr`;
+            }
+            if (isDraggingSubSplitter) {
+                const containerRect = grid.getBoundingClientRect();
+                const offset = e.clientY - containerRect.top;
+                const percentage = (offset / containerRect.height) * 100;
+                const constrained = Math.max(10, Math.min(90, percentage));
+                grid.style.gridTemplateRows = `${constrained}% 8px 1fr`;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDraggingSplitter = false;
+            isDraggingSubSplitter = false;
+            splitter.classList.remove('dragging');
+            subSplitter.classList.remove('dragging');
+            grid.classList.remove('is-resizing-v');
+            document.body.style.cursor = 'default';
+        });
+
         run();
-    </script>
+        // ─── Reference Overlay Controls ───────────────────────────────────────────
+    const refUpload = document.getElementById('refUpload');
+    const refOpacity = document.getElementById('refOpacity');
+    const refX = document.getElementById('refX');
+    const refY = document.getElementById('refY');
+    const refBlend = document.getElementById('refBlend');
+    const refOrder = document.getElementById('refOrder');
+    const clearRef = document.getElementById('clearRef');
+
+    let currentRefImg = null;
+
+    refUpload.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = re => {
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('width', 115);
+            img.setAttribute('height', 115);
+            img.setAttribute('preserveAspectRatio', 'none');
+            img.setAttribute('href', re.target.result);
+            currentRefImg = img;
+            updateRefLayer();
+        };
+        reader.readAsDataURL(file);
+    });
+
+    clearRef.onclick = () => {
+        currentRefImg = null;
+        updateRefLayer();
+        refUpload.value = '';
+    };
+
+    /**
+     * Bakes in the standardized XCS Studio screenshot as the default calibration anchor.
+     */
+    function loadDefaultRef() {
+        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        img.setAttribute('width', 115);
+        img.setAttribute('height', 115);
+        img.setAttribute('preserveAspectRatio', 'none');
+        img.setAttribute('href', 'xcs-references/TextCalRefBitmapXtool.png');
+        currentRefImg = img;
+        updateRefLayer();
+    }
+
+    function updateRefLayer() {
+        const top = document.getElementById('refLayerTop');
+        const bottom = document.getElementById('refLayerBottom');
+        const order = refOrder.value;
+        const target = order === 'top' ? top : bottom;
+        const other = order === 'top' ? bottom : top;
+        
+        other.innerHTML = '';
+        target.innerHTML = '';
+        
+        if (currentRefImg) {
+            target.appendChild(currentRefImg);
+            target.setAttribute('opacity', refOpacity.value);
+            target.style.mixBlendMode = refBlend.value;
+            target.setAttribute('transform', `translate(${refX.value}, ${refY.value})`);
+        }
+        document.getElementById('opacityVal').textContent = refOpacity.value;
+    }
+
+    refOpacity.oninput = updateRefLayer;
+    refX.oninput = updateRefLayer;
+    refY.oninput = updateRefLayer;
+    refBlend.onchange = updateRefLayer;
+    refOrder.onchange = updateRefLayer;
+
+    // Explicitly expose functions to the global scope for HTML onclick availability
+    window.loadDefaultRef = loadDefaultRef;
+    window.updateRefLayer = updateRefLayer;
+
+</script>
 </body>
 </html>

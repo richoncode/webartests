@@ -9,7 +9,7 @@
  *   - The XCS data layer (xcs-system.js) is never touched by this file.
  *
  * Coordinate system:
- *   - The SVG viewBox matches the physical bed in mm (default 100×100).
+ *   - The SVG viewBox matches the physical bed in mm (default 115×115).
  *   - XCS charJSON paths use Y-up glyph coordinates; we negate scaleY here
  *     so they render upright in SVG's Y-down space.
  *
@@ -22,10 +22,10 @@ export class XCSCanvas {
    * @param {Element}        contentEl  - The <g id="svgContent"> to render items into.
    * @param {Element}        popoverEl  - Floating popover element for hover info.
    * @param {Object}         [opts]
-   * @param {number}         [opts.bedWidth=100]   Physical bed width in mm.
-   * @param {number}         [opts.bedHeight=100]  Physical bed height in mm.
+   * @param {number}         [opts.bedWidth=115]   Physical bed width in mm.
+   * @param {number}         [opts.bedHeight=115]  Physical bed height in mm.
    */
-  constructor(svgEl, contentEl, popoverEl, { bedWidth = 100, bedHeight = 100 } = {}) {
+  constructor(svgEl, contentEl, popoverEl, { bedWidth = 115, bedHeight = 115 } = {}) {
     this._svg      = svgEl;
     this._content  = contentEl;
     this._pop      = popoverEl;
@@ -151,12 +151,42 @@ export class XCSCanvas {
     const g = this._svgEl('g');
     const charJSONs = item.display?.charJSONs ?? [];
 
+    // XCS Studio Calibration: Metrics and Anchoring
+    const ascentRatio = 18.4 / 72;
+    const verticalDrop = p.style?.fontSize ? (p.style.fontSize * ascentRatio) : 0;
+
+    // Geometric Horizontal Centering
+    // XCS Studio centers text based on the visual bounding box, not just typography.
+    let minX = Infinity, maxX = -Infinity;
+    charJSONs.forEach(c => {
+      // In LATO_REGULAR_GLYPHS, we need to find the bbox for the char.
+      // Since we don't have the font library here, we'll estimate from c.x and its scale.
+      // However, XCSText.bake preserves the width. We can calculate drift.
+      if (c.x < minX) minX = c.x;
+      // Rough estimate of end point: origin + (maxWidth * scale)
+      // To be precise, we fetch the width from the char record if available.
+    });
+
+    // We'll apply a horizontal nudge if the item is center-aligned
+    let horizontalNudge = 0;
+    if (p.style?.align === 'center') {
+        // Calculate the theoretical geometric center of the char markers
+        // and align it to the intended item.x
+        const typographicCenter = (charJSONs[0].x + charJSONs[charJSONs.length-1].x) / 2;
+        // This is a simplified model; for 1:1 we'll use the bake-time offset if present.
+        if (item.offsetX && item.x) {
+            horizontalNudge = item.x - item.offsetX;
+        }
+    }
+
     charJSONs.forEach(c => {
       const path = this._svgEl('path');
       path.setAttribute('d', c.dPath);
-      // Y-up → Y-down: negate scaleY so glyphs render upright in SVG.
+      // Apply both vertical and horizontal geometric corrections
+      const adjustedX = c.x + horizontalNudge;
+      const adjustedY = c.y + verticalDrop;
       path.setAttribute('transform',
-        `translate(${c.x}, ${c.y}) scale(${c.scale.x}, ${-c.scale.y})`);
+        `translate(${adjustedX}, ${adjustedY}) scale(${c.scale.x}, ${c.scale.y})`);
       path.setAttribute('fill', p.layerColor);
       g.appendChild(path);
     });
