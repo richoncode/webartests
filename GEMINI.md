@@ -22,6 +22,11 @@ Rigorously adhere to the design tokens defined in `style-guide/index.html`:
   - Red/Alert: `#e74c3c` / `#f87171`
 - **Navigation:** Every sub-page must include a `← Back` link (color `#555`, hover `#aaa`, 14px) to its parent directory.
 
+## Sub-Pixel Metrology (color-test-qr)
+- **Source of Truth**: The `laser-experiments/color-test-qr/design.md` file is the fundamental technical context for sub-pixel precision metrology and hybrid vision.
+- **Maintenance**: I must update `design.md` with any revisions to the vision theory, geometric metrics, or AI architecture.
+- **Verification**: All metrology extraction logic must be validated against the **MACE (<0.5px)** and **Cross-Ratio Deviation (<5%)** metrics defined in `design.md`.
+
 ## Domain Knowledge: Learning Lasers (xTool F2)
 When modifying or creating laser educational content, respect these physical constants and hardware specs:
 

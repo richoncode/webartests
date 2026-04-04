@@ -4,6 +4,7 @@ import { XCSViewer } from '../viewer.js';
 import { UI, uuid } from '../utils.js';
 import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 import { PalMgr } from '../palettes.js';
+import { XCS_LAYERS } from '../constants.js';
 
 export const MathTab = {
   create(tabId, initialCfg) {
@@ -83,7 +84,12 @@ export const MathTab = {
       // Stippling
       stippleResolution: 20, stippleSeed: 12345, stippleScale: 0.8,
       // Halftone Test
-      hlLPCM: 846, hlPower: 100
+      hlLPCM: 846, hlPower: 100,
+      // Blend Circles
+      bcCount: 5, bcSize: 5.0, bcGap: 2.0, bcNumInner: 5, bcNumOuter: 5,
+      bcRingSpacing: 0.01, 
+      bcEdgeReductionStart: 0.2, bcEdgeReductionEnd: 1.0, 
+      bcFadeReductionStart: 0.1, bcFadeReductionEnd: 0.5
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
@@ -1210,6 +1216,77 @@ export const MathTab = {
           extraDisplayData: { hideLabels: true }
         });
       }
+      else if (cfg.type === 'blend-circles') {
+        const count = cfg.bcCount || 5;
+        const size = cfg.bcSize || 5.0;
+        const gap = cfg.bcGap || 2.0;
+        const numInner = cfg.bcNumInner || 0;
+        const numOuter = cfg.bcNumOuter || 0;
+        const ringSpacing = cfg.bcRingSpacing || 0.01;
+        
+        const erStart = cfg.bcEdgeReductionStart ?? 0;
+        const erEnd = cfg.bcEdgeReductionEnd ?? erStart;
+        const frStart = cfg.bcFadeReductionStart ?? 0;
+        const frEnd = cfg.bcFadeReductionEnd ?? frStart;
+
+        const CORE_LAYER = XCS_LAYERS[0]; // Layer 1
+
+        const totalW = count * size + (count - 1) * gap;
+        const startX = CX - totalW / 2 + size / 2;
+
+        for (let i = 0; i < count; i++) {
+          const t = count > 1 ? i / (count - 1) : 0;
+          const edgeRed = erStart + t * (erEnd - erStart);
+          const fadeRed = frStart + t * (frEnd - frStart);
+          
+          const x = startX + i * (size + gap);
+          const y = CY;
+          const ringLayer = XCS_LAYERS[(i + 1) % XCS_LAYERS.length];
+
+          // 1. Filled Core (Layer 1)
+          XCSExporter.addCircle(project, {
+            x, y, width: size, height: size,
+            params: pm, isFill: true, laserSource, layerColor: CORE_LAYER,
+            extraDisplayData: { hideLabels: true }
+          });
+
+          // Calibration Metadata for rings
+          const basePower = pm.power;
+          const edgePower = Math.max(1, Math.min(100, basePower - edgeRed));
+
+          // 2. Edge Ring (Exactly at diameter)
+          XCSExporter.addCircle(project, {
+            x, y, width: size, height: size,
+            params: { ...pm, power: edgePower },
+            isFill: false, laserSource, layerColor: ringLayer,
+            extraDisplayData: { hideLabels: true }
+          });
+
+          // 3. Inner Rings (Radii < Diameter/2)
+          for (let j = 1; j <= numInner; j++) {
+            const r = (size / 2) - (j * ringSpacing);
+            const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
+            XCSExporter.addCircle(project, {
+              x, y, width: r * 2, height: r * 2,
+              params: { ...pm, power: ringPower },
+              isFill: false, laserSource, layerColor: ringLayer,
+              extraDisplayData: { hideLabels: true }
+            });
+          }
+
+          // 4. Outer Rings (Radii > Diameter/2)
+          for (let j = 1; j <= numOuter; j++) {
+            const r = (size / 2) + (j * ringSpacing);
+            const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
+            XCSExporter.addCircle(project, {
+              x, y, width: r * 2, height: r * 2,
+              params: { ...pm, power: ringPower },
+              isFill: false, laserSource, layerColor: ringLayer,
+              extraDisplayData: { hideLabels: true }
+            });
+          }
+        }
+      }
 
       if (cfg.border) {
         XCSExporter.addRect(project, {
@@ -1484,6 +1561,23 @@ export const MathTab = {
       scroll.appendChild(UI.makeSection('Halftone Settings', [
         UI.makeRow('LPCM', UI.makeRange(1, 1000, 1, cfg.hlLPCM, v => set('hlLPCM', +v))),
         UI.makeRow('Power', UI.makeRange(1, 100, 1, cfg.hlPower, v => set('hlPower', +v), '%'))
+      ]));
+    } else if (cfg.type === 'blend-circles') {
+      scroll.appendChild(UI.makeSection('Blend Circle Settings', [
+        UI.makeRow('Count', UI.makeStepCounter(cfg.bcCount, 1, 20, v => set('bcCount', v))),
+        UI.makeRow('Diameter', UI.makeRange(1, 50, 0.1, cfg.bcSize, v => set('bcSize', +v), 'mm')),
+        UI.makeRow('Gap', UI.makeRange(0, 20, 0.5, cfg.bcGap, v => set('bcGap', +v), 'mm'))
+      ]));
+      scroll.appendChild(UI.makeSection('Ring Settings (0.001mm Step)', [
+        UI.makeRow('Num Inner', UI.makeStepCounter(cfg.bcNumInner, 0, 100, v => set('bcNumInner', v))),
+        UI.makeRow('Num Outer', UI.makeStepCounter(cfg.bcNumOuter, 0, 100, v => set('bcNumOuter', v))),
+        UI.makeRow('Spacing', UI.makeRange(0.001, 0.1, 0.001, cfg.bcRingSpacing, v => set('bcRingSpacing', +v), 'mm'))
+      ]));
+      scroll.appendChild(UI.makeSection('Power Reductions (%)', [
+        UI.makeRow('Edge Red (Start)', UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionStart, v => set('bcEdgeReductionStart', +v), '%')),
+        UI.makeRow('Edge Red (End)',   UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionEnd, v => set('bcEdgeReductionEnd', +v), '%')),
+        UI.makeRow('Fade Step (Start)', UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionStart, v => set('bcFadeReductionStart', +v), '%')),
+        UI.makeRow('Fade Step (End)',   UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionEnd, v => set('bcFadeReductionEnd', +v), '%'))
       ]));
     }
   }

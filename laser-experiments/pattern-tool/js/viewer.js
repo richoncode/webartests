@@ -1,6 +1,6 @@
 import { App } from './app.js';
 import { XCSProject } from '../../xcs-module/js/xcs-system.js';
-import { PAD } from './constants.js';
+import { PAD, XCS_LAYERS } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';
 
 export const Popup = {
@@ -397,10 +397,12 @@ export const XCSViewer = {
       const row = document.createElement('div');
       row.className = 'shape-row';
       row.dataset.idx = s.idx;
+      const lIdx = XCS_LAYERS.indexOf(s.layerColor?.toLowerCase());
+      const layerTag = lIdx !== -1 ? `<span class="shape-layer-tag">L${lIdx+1}</span>` : '';
       row.innerHTML = `
         <div class="shape-dot" style="background:${s.layerColor}"></div>
         <div class="shape-info">
-          <div class="shape-row-title">${s.type} ${s.w.toFixed(1)}×${s.h.toFixed(1)}mm</div>
+          <div class="shape-row-title">${layerTag} ${s.type} ${s.w.toFixed(1)}×${s.h.toFixed(1)}mm</div>
           <div class="shape-row-sub">${s.power}% / ${s.speed} / ${s.density}</div>
         </div>
       `;
@@ -543,7 +545,7 @@ export const XCSViewer = {
       <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}%</span></div>
       <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
       <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>
-      <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val">${s.w.toFixed(2)}x${s.h.toFixed(2)}mm</span></div>
+      <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val">${s.w.toFixed(3)}x${s.h.toFixed(3)}mm</span></div>
       ${s.ditherPct != null ? `<div class="popup-row"><span class="popup-key">Dither</span><span class="popup-val">${s.ditherPct}%</span></div>` : ''}
       ${s.t !== null ? `<div class="popup-row" style="margin-top:4px; opacity:0.5; font-size:9px"><span class="popup-key">Normalized (t)</span><span class="popup-val">${s.t.toFixed(4)}</span></div>` : ''}
     `;

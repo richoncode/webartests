@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XCS File Format Specification - xTool F2</title>
+    <style>
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: #2a2a2a;
+            --primary: #5b9bd5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #e74c3c;
+            --violet: #8b5cf6;
+            --text: #ccc;
+            --text-muted: #888;
+            --text-bright: #fff;
+            --code-bg: #111;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 16px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: #aaa;
+        }
+
+        h1 {
+            color: var(--text-bright);
+            font-size: 32px;
+            margin: 0 0 8px 0;
+            font-weight: 600;
+        }
+
+        .version-badge {
+            background: var(--border);
+            color: var(--text-muted);
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        h2 {
+            color: var(--primary);
+            font-size: 22px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+            margin-top: 48px;
+            margin-bottom: 24px;
+        }
+
+        h3 {
+            color: var(--text-bright);
+            font-size: 18px;
+            margin-top: 32px;
+            margin-bottom: 16px;
+        }
+
+        p {
+            margin-bottom: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .critical {
+            border-left: 4px solid var(--error);
+        }
+
+        .warning {
+            border-left: 4px solid var(--warning);
+        }
+
+        .success {
+            border-left: 4px solid var(--success);
+        }
+
+        code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: var(--violet);
+        }
+
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            margin-bottom: 24px;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #d1d1d1;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+        }
+
+        th {
+            text-align: left;
+            color: var(--text-muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        .tag {
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .tag-mandatory { background: rgba(231, 76, 60, 0.2); color: #f87171; }
+        .tag-info { background: rgba(91, 155, 213, 0.2); color: #5b9bd5; }
+
+        ul {
+            padding-left: 20px;
+            margin-bottom: 24px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .mapping-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--code-bg);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-family: 'SF Mono', monospace;
+            font-size: 12px;
+        }
+
+        .flow-node {
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+
+        .flow-arrow {
+            color: var(--text-muted);
+        }
+
+        strong {
+            color: var(--text-bright);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="./index.html" class="back-link">← Back to XCS Module</a>
+            <h1>XCS File Format Specification</h1>
+            <span class="version-badge">VANTAGE-ALPHA Baseline | Locked 2026-03-18</span>
+        </div>
+
+        <p>This document defines the strictly required structure for <code>.xcs</code> (xTool Creative Space) files to ensure full compatibility with the <strong>xTool F2</strong> hardware system.</p>
+
+        <div class="card critical">
+            <h3>Root Metadata & Hierarchy</h3>
+            <p>Every XCS project must follow a specific top-level node hierarchy to be recognized by the F2 system.</p>
+            <ul>
+                <li><strong>Project Root:</strong> Contains the <code>canvasId</code> and device metadata.
+                    <ul>
+                        <li><code>extId</code>: <code>"GS006"</code> <span class="tag tag-mandatory">Mandatory</span> (Identifies xTool F2)</li>
+                        <li><code>extName</code>: <code>"F2"</code> <span class="tag tag-mandatory">Mandatory</span></li>
+                        <li><code>version</code>: <code>"1.5.8"</code> (Stable baseline)</li>
+                    </ul>
+                </li>
+                <li><strong>Canvas Tree (<code>canvas[]</code>):</strong> Contains visual shape definitions and layer manifests.</li>
+                <li><strong>Device Tree (<code>device</code>):</strong> Contains hardware-specific processing parameters.</li>
+            </ul>
+        </div>
+
+        <h2>1. Laser Source & Unit Mapping</h2>
+        <p>The xTool F2 hardware switches between two distinct laser sources. The XCS format handles this via specific string keys and internal mappings.</p>
+
+        <div class="card">
+            <h3>Hardware Constants</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Wavelength</th>
+                        <th>Spot Size</th>
+                        <th>XCS Key (<code>processingLightSource</code>)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>IR Laser</strong></td>
+                        <td>1064nm (Fiber)</td>
+                        <td>0.03mm (Circular)</td>
+                        <td><code>"red"</code> or <code>"ir"</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Blue Laser</strong></td>
+                        <td>455nm (Diode)</td>
+                        <td>0.08 x 0.06mm (Rect)</td>
+                        <td><code>"blue"</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h3>Parameter Definitions</h3>
+        <ul>
+            <li><strong>Power:</strong> Integer range <code>1-100</code> (Percentage).</li>
+            <li><strong>Speed:</strong> 
+                <ul>
+                    <li><strong>Vector/Scan:</strong> <code>1-500</code> mm/s.</li>
+                    <li><strong>Bitmap Dot:</strong> Expressed as <code>dotDuration</code> (µs) in some modes.</li>
+                </ul>
+            </li>
+            <li><strong>Line Density (LPCM):</strong> Lines Per Centimeter.
+                <ul>
+                    <li>In <code>COLOR_FILL_ENGRAVE</code>, the <code>density</code> field uses a <strong>1:1 mapping</strong> (e.g., <code>1000</code> in JSON = 1000 LPCM in UI).</li>
+                    <li><strong>Calculation:</strong> Line Spacing (mm) = <code>10 / LPCM</code>.</li>
+                </ul>
+            </li>
+            <li><strong>Resolution (DPI):</strong> Dots Per Inch.
+                <ul>
+                    <li>Used primarily in <code>BITMAP_ENGRAVING</code>.</li>
+                    <li><strong>Conversion:</strong> <code>DPI ≈ LPCM * 2.54</code>.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>2. Shape-to-Parameter Mapping</h2>
+        <p>XCS links geometry (on the canvas) to processing settings (in the device tree) using a strict three-point synchronization logic.</p>
+        
+        <div class="mapping-flow">
+            <div class="flow-node">canvasId</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">canvas[0].id</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">device.data.value[canvasId]</div>
+        </div>
+
+        <p>Individual shapes are linked via their unique GUIDs:</p>
+        <ul>
+            <li><strong>Shape ID:</strong> <code>canvas[0].displays[i].id</code></li>
+            <li><strong>Parameter Key:</strong> <code>device.data.value[0][1].displays.value[j][0]</code></li>
+        </ul>
+
+        <h2>3. Mandatory Processing Structure</h2>
+        <div class="card warning">
+            <p><strong>UI Integrity Rule:</strong> For the xTool F2 user interface to function correctly (showing power/speed sliders), every shape in the <code>device</code> tree <strong>MUST</strong> include all four operation nodes, even if they are empty or inactive.</p>
+        </div>
+
+        <h3>Operation Keys (Processing Types)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>COLOR_FILL_ENGRAVE</code></td>
+                    <td>Fill</td>
+                    <td>Standard area engrave. Uses 1:1 LPCM mapping. Includes <code>scanAngle</code> and <code>bitmapScanMode</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>VECTOR_ENGRAVING</code></td>
+                    <td>Score</td>
+                    <td>Outlines / line-following. Used for "Score" in UI.</td>
+                </tr>
+                <tr>
+                    <td><code>VECTOR_CUTTING</code></td>
+                    <td>Cut</td>
+                    <td>High-power cutting operations.</td>
+                </tr>
+                <tr>
+                    <td><code>BITMAP_ENGRAVING</code></td>
+                    <td>Image</td>
+                    <td>Specific to BITMAP types. Uses <code>dpi</code> and <code>dotDuration</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>RELIEF</code></td>
+                    <td>3D</td>
+                    <td>Advanced depth mode. Includes <code>sliceNumber</code> (usually 256) and <code>zAxisMove</code>.</td>
+                </tr>
+                <tr>
+                    <td><code>INTAGLIO</code></td>
+                    <td>3D</td>
+                    <td>Relief and deep engraving operations.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>4. Text Object Specification</h2>
+        <p>Text objects are the most complex node in XCS. For the F2 system (which often processes offline), the file must contain <strong>baked glyph paths</strong>.</p>
+        
+        <div class="card">
+            <h3>Mandatory Text Fields</h3>
+            <ul>
+                <li><code>type</code>: <code>"TEXT"</code></li>
+                <li><code>charJSONs</code>: <span class="tag tag-mandatory">Mandatory</span> An array of <code>PATH</code> objects containing the SVG <code>dPath</code> data for every character.</li>
+                <li><code>fontData</code>: <span class="tag tag-mandatory">Mandatory</span> Full metrics and glyph dictionary.</li>
+                <li><code>style.fontSize</code>: Points (pt).
+                    <br><small>Formula: <code>height (mm) ≈ fontSize (pt) * 0.2757</code></small>
+                </li>
+            </ul>
+        </div>
+
+        <h3>Anchoring & Layout</h3>
+        <p>XCS uses a <strong>Left-Baseline</strong> anchor for text. The exporter must manually calculate positions for alignment.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Scenario</th>
+                    <th>Anchor (x, y)</th>
+                    <th>Growth Direction</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Horizontal (0°)</td>
+                    <td>Left-edge Baseline</td>
+                    <td>Grows Right (+X)</td>
+                </tr>
+                <tr>
+                    <td>Vertical (-90°)</td>
+                    <td>Top-edge Baseline</td>
+                    <td>Grows Down (+Y)</td>
+                </tr>
+                <tr>
+                    <td>Centering</td>
+                    <td>Manual Offset Required</td>
+                    <td><code>x = targetX - (width/2)</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>5. Layer Sequencing & Processing Order</h2>
+        <p>Sequencing is controlled by layer metadata combined with global path planning flags.</p>
+
+        <h3>Layer Metadata</h3>
+        <p>Located in <code>canvas[0].layerData[HEX_COLOR].order</code>.
+        <br><strong>Note:</strong> Processing typically occurs from <strong>Highest Order to Lowest Order</strong>.</p>
+
+        <h3>Global Sequencing Config</h3>
+        <p>Path: <code>device.data.value[canvasId].data.LASER_PLANE</code></p>
+        <ul>
+            <li><code>pathPlanning: "custom"</code>: Respects layer order.</li>
+            <li><code>isProcessByLayer: true</code>: Completes each layer before starting the next.</li>
+        </ul>
+
+        <h2>6. Integrity Rules (Validation)</h2>
+        <div class="card success">
+            <ul>
+                <li><strong>Join Test A:</strong> The <code>canvasId</code> MUST match the ID of the first canvas and exist as a key in the device map.</li>
+                <li><strong>Join Test B:</strong> Every <code>display.id</code> on the canvas MUST have a corresponding entry in the device parameter tree.</li>
+                <li><strong>Map Wrapping:</strong> All Map structures must be wrapped in <code>{"dataType": "Map", "value": [...]}</code>.</li>
+            </ul>
+        </div>
+
+        <h2>7. Unknown & Unverified Details</h2>
+        <div class="card warning">
+            <p>The following aspects of the XCS format have been observed but their exact behavioral impact or implementation details remain unverified:</p>
+            <ul>
+                <li><strong><code>isWhiteModel</code>:</strong> Frequently found on BITMAP and non-fill objects. Suspected to relate to how the hardware treats "empty" space or background transparency, but its toggle logic in the UI is inconsistent.</li>
+                <li><strong><code>bitmapScanMode</code>:</strong> Options include <code>"oneWay"</code>, <code>"twoWay"</code>, and <code>"zMode"</code>. While <code>zMode</code> is clearly for relief, the performance difference between <code>oneWay</code> and <code>twoWay</code> in Galvo-based systems (like F2) vs Gantry systems is not fully benchmarked.</li>
+                <li><strong><code>planType</code>:</strong> Appears to be a redundant flag for the laser source (<code>"red"</code>/<code>"blue"</code>) but may also trigger specific trajectory planning algorithms in the Galvo controller.</li>
+                <li><strong>Glyph <code>A-arc</code> Commands:</strong> Some baked glyph paths contain absolute Arcs. XCS handles these, but the exact tolerance for "broken" arcs or non-standard SVG arc flags is unknown.</li>
+                <li><strong>Internal Units:</strong> While coordinates are <code>mm</code>, some internal metadata (like <code>unitsPerEm</code> in fontData) remains fixed at <code>2000</code> regardless of actual font metrics.</li>
+            </ul>
+        </div>
+        
+        <div style="margin-top: 60px; text-align: center; color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border); padding-top: 20px;">
+            ########################################<br>
+            # !!! REMINDER: Hard Refresh (Cmd+Shift+R) !!! #<br>
+            ########################################
+        </div>
+    </div>
+</body>
+</html>

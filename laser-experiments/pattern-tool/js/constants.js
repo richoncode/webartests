@@ -89,3 +89,4 @@ export const FALLBACK_PALETTES = {
 };
 
 export const PAD = 20;
+export const XCS_LAYERS = ["#000000", "#ff0000", "#ff8000", "#0000ff", "#00ff00", "#8000ff", "#00ffff", "#ff00ff"];
