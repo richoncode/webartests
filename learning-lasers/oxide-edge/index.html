@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Oxide Edge - Learning Lasers</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .back-link { position: fixed; top: 24px; left: 24px; color: #555; text-decoration: none; font-size: 14px; z-index: 100; transition: color 0.15s; }
+        .back-link:hover { color: #aaa; }
+        /* Custom Tailwind for this app */
+        .bg-slate-900 { background-color: #0d0d0d !important; }
+        .bg-slate-800 { background-color: #1a1a1a !important; }
+        .border-slate-700 { border-color: #2a2a2a !important; }
+        .bg-slate-950 { background-color: #050505 !important; }
+    </style>
+</head>
+<body>
+    <a href="../" class="back-link">← Back</a>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Simple SVG Icons to replace Lucide for no-build environment
+        const Square = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+        );
+        const Zap = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 14.71 14 2 11.39 9.38 20 9.29 10 22l2.61-7.38Z"/></svg>
+        );
+        const Info = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        );
+        const ArrowRight = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        );
+        const ArrowLeft = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        );
+        const AlertTriangle = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        );
+
+        const App = () => {
+            const [step, setStep] = useState(0);
+
+            const steps = [
+                {
+                    title: "1. First Oxide Layer (Gold)",
+                    description: "A stable gold oxide layer ($d_1$) is etched. It covers the left side and extends well past the center line.",
+                    physics: "Specular reflection: Light bounces cleanly off a uniform film."
+                },
+                {
+                    title: "2. Second Pass (Blue) Overlap",
+                    description: "The blue pulse arrives. It begins its etch ON TOP of the existing gold layer. Notice how it overlaps the territory of the first pass.",
+                    physics: "Stacking: Total thickness becomes $d_1 + d_2$ in the overlap region."
+                },
+                {
+                    title: "3. The 'White' Interface Cliff",
+                    description: "At the exact point where the blue layer starts (the red line), the laser energy is at its 'tail'. It creates a vertical step or 'cliff'.",
+                    physics: "Scattering: Light hits the vertical side of the 'cliff' and bounces randomly, creating the white look."
+                },
+                {
+                    title: "4. The Cleanup Trace (Ideal)",
+                    description: "The cleanup pass is a thin line that melts this specific vertical cliff, smoothing it into a diagonal ramp.",
+                    physics: "Annealing: Removing the vertical geometry eliminates the source of diffuse scattering."
+                },
+                {
+                    title: "5. Overburn to Black (Failure)",
+                    description: "Excessive energy vaporizes the metal. The heat bleeds into the blue layer, destroying the oxide thickness and creating a charred 'heat-affected zone'.",
+                    physics: "Ablation & HAZ: Thermal damage extends beyond the impact point, replacing colors with light-absorbing soot."
+                }
+            ];
+
+            const nextStep = () => setStep((s) => (s + 1) % steps.length);
+            const prevStep = () => setStep((s) => (s - 1 + steps.length) % steps.length);
+
+            return (
+                <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
+                    <div className="max-w-4xl mx-auto w-full space-y-6 pt-12 md:pt-0">
+                        
+                        <div className="text-center space-y-2">
+                            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-amber-400 bg-clip-text text-transparent">
+                                True Stacking Interface
+                            </h1>
+                            <p className="text-slate-400 italic">Synchronized 1:1 View of Layer Overlap & Overburn</p>
+                        </div>
+
+                        {/* Unified Viewport */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
+                            {/* Top Down View */}
+                            <div className="bg-slate-800 rounded-xl p-4 shadow-xl border border-slate-700">
+                                <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2">
+                                    <Square className="w-4 h-4 text-blue-400" />
+                                    <h2 className="font-semibold text-sm uppercase tracking-wider">Top-Down View</h2>
+                                </div>
+                                
+                                <div className="relative aspect-video w-full bg-slate-950 rounded-lg border border-slate-900 flex items-center justify-center overflow-hidden">
+                                    <div className="w-full h-full bg-slate-500 relative">
+                                        
+                                        {/* Gold Square (Base) */}
+                                        <div className={`absolute left-[15%] top-1/2 -translate-y-1/2 w-[50%] h-2/3 transition-all duration-500 bg-amber-500/80 border border-amber-400/20 ${step >= 0 ? 'opacity-100' : 'opacity-0'}`}></div>
+                                        
+                                        {/* Blue Square (Overlapping) */}
+                                        <div className={`absolute left-[40%] top-1/2 -translate-y-1/2 w-[45%] h-2/3 transition-all duration-700 
+                                            ${step >= 1 ? 'bg-blue-600/80 opacity-100' : 'opacity-0'}
+                                            ${step === 2 ? 'border-l-[8px] border-white/90 shadow-[-10px_0_15px_rgba(255,255,255,0.4)]' : ''}
+                                            ${step === 3 ? 'border-l-2 border-cyan-400 shadow-[-2px_0_15px_cyan]' : ''}
+                                            ${step === 4 ? 'border-l-[16px] border-black/95 shadow-[inset_10px_0_10px_rgba(0,0,0,0.5)]' : ''}
+                                            ${step < 2 ? 'border border-blue-400/20' : ''}
+                                        `}></div>
+
+                                        {/* Overlap Zone Label */}
+                                        <div className="absolute left-[52%] top-4 -translate-x-1/2 bg-black/80 px-3 py-1 rounded text-[10px] text-slate-300 border border-slate-700 uppercase font-bold z-30">
+                                            Overlap Zone
+                                        </div>
+
+                                        {/* Sync Line */}
+                                        <div className="absolute left-[40%] top-0 bottom-0 w-[2px] bg-red-500 z-20">
+                                            <div className="absolute top-4 -left-12 bg-red-600 text-[9px] font-bold px-2 py-0.5 rounded shadow-lg text-white">X-SECTION</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Cross Section View */}
+                            <div className="bg-slate-800 rounded-xl p-4 shadow-xl border border-slate-700">
+                                <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2">
+                                    <Zap className="w-4 h-4 text-amber-400" />
+                                    <h2 className="font-semibold text-sm uppercase tracking-wider">Cross-Section (1:1 Scale)</h2>
+                                </div>
+                                
+                                <div className="relative aspect-video w-full bg-slate-950 rounded-lg border border-slate-900 flex flex-col justify-end p-0 overflow-hidden">
+                                    {/* Metal Bulk */}
+                                    <div className="w-full h-1/4 bg-slate-600 z-10 border-t border-slate-500"></div>
+
+                                    {/* Stacked Layers */}
+                                    <div className="absolute bottom-[25%] inset-x-0 h-24 z-20">
+                                        
+                                        {/* Gold Base Layer */}
+                                        <div className={`absolute left-[15%] bottom-0 h-4 bg-amber-500/80 transition-all duration-500
+                                            ${step >= 0 ? 'w-[50%]' : 'w-0'}
+                                        `}></div>
+
+                                        {/* Blue Top Layer */}
+                                        <div className={`absolute left-[40%] bottom-0 bg-blue-600/90 transition-all duration-700
+                                            ${step >= 1 ? 'w-[45%] h-12 mb-4 border-l border-blue-400/30' : 'w-0 h-0'}
+                                        `}>
+                                            
+                                            {/* The Scattering Cliff (Step 2 Only) */}
+                                            {step === 2 && (
+                                                <div className="absolute left-[-20px] inset-y-0 w-[20px] bg-white z-30 shadow-[-10px_0_20px_white]">
+                                                    <div className="absolute inset-0 flex flex-col justify-around overflow-hidden">
+                                                        {[...Array(8)].map((_, i) => (
+                                                            <div key={i} className="w-[40px] h-[1px] bg-white/40 rotate-[-45deg] animate-pulse"></div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Smoothed Transition (Step 3) */}
+                                            {step === 3 && (
+                                                <div className="absolute left-[-40px] bottom-0 w-[40px] h-12 bg-gradient-to-r from-amber-500 to-blue-600"
+                                                     style={{clipPath: 'polygon(100% 0, 0 100%, 100% 100%)'}}>
+                                                </div>
+                                            )}
+
+                                            {/* Overburn/Carbonization (Step 4) */}
+                                            {step === 4 && (
+                                                <div className="absolute left-[-35px] bottom-[-4px] w-[90px] h-[20px] bg-black z-40 border-2 border-slate-800 shadow-[0_0_10px_black]"
+                                                     style={{clipPath: 'polygon(0% 100%, 8% 40%, 15% 90%, 25% 20%, 35% 75%, 45% 10%, 55% 85%, 65% 15%, 75% 90%, 85% 5%, 95% 60%, 100% 100%)'}}>
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-black via-black to-transparent opacity-50"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Red Line Sync */}
+                                    <div className="absolute left-[40%] top-0 bottom-0 w-[1px] bg-red-500/50 z-0 border-r border-dashed border-red-500/20"></div>
+                                    
+                                    <div className="absolute left-0 right-0 bottom-[25%] h-[1px] bg-white/20 z-0 font-mono text-[8px] text-slate-500 flex items-center justify-end pr-2">
+                                        SS304 SURFACE
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className={`bg-slate-800 rounded-xl p-6 shadow-2xl border-b-4 transition-colors duration-500 ${step === 4 ? 'border-red-600' : 'border-amber-500'}`}>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                        {step === 4 && <AlertTriangle className="w-5 h-5 text-red-500" />}
+                                        {steps[step].title}
+                                    </h3>
+                                    <p className="text-slate-300 text-sm leading-relaxed max-w-xl">
+                                        {steps[step].description}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button onClick={prevStep} className="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
+                                        <ArrowLeft className="w-5 h-5" />
+                                    </button>
+                                    <button 
+                                        onClick={nextStep} 
+                                        className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all shadow-lg ${step === 4 ? 'bg-red-700 hover:bg-red-600' : 'bg-amber-600 hover:bg-amber-500'}`}
+                                    >
+                                        {step === steps.length - 1 ? "Reset" : "Next Step"}
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-4 p-3 bg-slate-950 rounded border border-slate-700">
+                                <div className="flex items-center gap-2">
+                                    <Info className={`w-4 h-4 shrink-0 ${step === 4 ? 'text-red-400' : 'text-cyan-400'}`} />
+                                    <span className={`text-[10px] font-mono uppercase tracking-tighter ${step === 4 ? 'text-red-200' : 'text-cyan-100'}`}>
+                                        Physics: {steps[step].physics}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'center', marginTop: '60px', color: '#555', fontSize: '12px' }}>
+                            ########################################<br/>
+                            # !!! REMINDER: Hard Refresh (Cmd+Shift+R) !!! #<br/>
+                            ########################################
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
