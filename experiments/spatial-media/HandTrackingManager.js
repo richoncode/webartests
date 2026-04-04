@@ -1,7 +1,4 @@
-/**
- * HandTrackingManager.js
- * Manages WebXR Hand Input API and pinch gesture detection.
- */
+import * as THREE from 'three';
 
 export class HandTrackingManager {
     constructor(renderer, scene) {

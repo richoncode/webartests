@@ -139,6 +139,12 @@
             filter: brightness(1.1);
         }
 
+        .cta-button.secondary {
+            background: transparent;
+            border: 1px solid var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
         pre {
             font-family: var(--font-mono);
             background: #050505;
@@ -188,6 +194,7 @@
             <div class="status-badge">Phase 1: Foundation</div>
             <h1>Lumina Spatial Gallery</h1>
             <p class="tagline">Engineering the Open Spatial Web: Agent-Orchestrated WebXR Media</p>
+            <a href="aibuilder.html" style="font-size: 0.8rem; color: var(--accent-blue); text-decoration: none; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">AI Builder Notes &rarr;</a>
         </header>
 
         <div class="card">
@@ -201,7 +208,10 @@
                 <div class="dot"></div>
             </div>
             
-            <a href="#" class="cta-button" id="enter-xr">In Development</a>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <a href="#" class="cta-button" id="enter-xr">In Development</a>
+                <a href="#" class="cta-button secondary" id="enter-desktop">Desktop Preview</a>
+            </div>
             
             <div id="immersion-control" style="display: none; margin-top: 2rem;">
                 <label style="font-size: 0.9rem; color: var(--text-muted);">Environment Immersion</label>
@@ -251,10 +261,54 @@
 
         let spatialRenderer;
         const enterBtn = document.getElementById('enter-xr');
+        const enterDesktopBtn = document.getElementById('enter-desktop');
         const metadataEl = document.getElementById('metadata-display');
 
+        async function launchGallery(mode) {
+            try {
+                document.querySelector('.container').style.display = 'none';
+                const viewer = document.createElement('div');
+                viewer.id = 'spatial-viewport';
+                document.body.appendChild(viewer);
+
+                // Add Exit Button for Desktop
+                const exitBtn = document.createElement('button');
+                exitBtn.innerHTML = "&times; Exit Preview";
+                exitBtn.style.cssText = `
+                    position: fixed; top: 20px; right: 20px; z-index: 1000;
+                    background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.2);
+                    padding: 8px 16px; border-radius: 8px; cursor: pointer; backdrop-filter: blur(10px);
+                `;
+                exitBtn.onclick = () => {
+                    document.body.removeChild(viewer);
+                    document.querySelector('.container').style.display = 'block';
+                    if (spatialRenderer) {
+                        spatialRenderer.isXR = false;
+                        spatialRenderer.renderer.setAnimationLoop(null);
+                        spatialRenderer.renderer.dispose();
+                    }
+                };
+                viewer.appendChild(exitBtn);
+
+                spatialRenderer = new SpatialRenderer(viewer);
+                
+                if (mode === 'desktop') {
+                    spatialRenderer.startDesktopMode();
+                } else {
+                    await spatialRenderer.startXRMode(mode);
+                }
+
+                await spatialRenderer.addPhoto('sample.png', 'depth.png');
+                console.log("Gallery Initialized in mode:", mode);
+            } catch (err) {
+                console.error("Launcher error:", err);
+            }
+        }
+
         async function init() {
-            // Check for WebXR support
+            enterDesktopBtn.addEventListener('click', () => launchGallery('desktop'));
+            document.getElementById('immersion-control').style.display = 'block';
+
             if ('xr' in navigator) {
                 const isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
                 const isARSupported = await navigator.xr.isSessionSupported('immersive-ar');
@@ -262,8 +316,7 @@
                 if (isVRSupported || isARSupported) {
                     enterBtn.textContent = "Enter Immersive Gallery";
                     enterBtn.classList.add('ready');
-                    document.getElementById('immersion-control').style.display = 'block';
-
+                    
                     const slider = document.getElementById('immersion-slider');
                     slider.addEventListener('input', (e) => {
                         if (spatialRenderer) spatialRenderer.setImmersion(parseFloat(e.target.value));
@@ -271,23 +324,7 @@
                     
                     enterBtn.addEventListener('click', async () => {
                         const mode = isARSupported ? 'immersive-ar' : 'immersive-vr';
-                        
-                        try {
-                            // Clear landing page and setup spatial view
-                            document.querySelector('.container').style.display = 'none';
-                            const viewer = document.createElement('div');
-                            viewer.id = 'spatial-viewport';
-                            document.body.appendChild(viewer);
-                            
-                            spatialRenderer = new SpatialRenderer(viewer);
-                            await spatialRenderer.enterXR(mode);
-                            
-                            // Load Initial Spatial Photo
-                            await spatialRenderer.addPhoto('sample.png', 'depth.png');
-                            console.log("Spatial Photo Loaded Successfully");
-                        } catch (err) {
-                            console.error("Launcher error:", err);
-                        }
+                        launchGallery(mode);
                     });
                 } else {
                     document.getElementById('xr-notice').style.display = 'block';

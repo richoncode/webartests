@@ -1,8 +1,4 @@
-/**
- * SpatialMaterial.js
- * Custom Three.js material for depth-displaced spatial photos.
- * Implements vertex displacement and feathered edges via GLSL.
- */
+import * as THREE from 'three';
 
 export class SpatialMaterial extends THREE.MeshStandardMaterial {
     constructor(parameters) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'https://unpkg.com/three@0.168.0/examples/jsm/controls/OrbitControls.js';
 import { PhotoCard } from './PhotoCard.js';
 import { HandTrackingManager } from './HandTrackingManager.js';
 import { SpatialUI } from './SpatialUI.js';
@@ -9,7 +10,8 @@ export class SpatialRenderer {
     constructor(container) {
         this.container = container;
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+        this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+        this.camera.position.set(0, 0, 5); // Default desktop position
         
         this.renderer = new THREE.WebGLRenderer({ 
             antialias: true, 
@@ -18,9 +20,11 @@ export class SpatialRenderer {
         });
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.xr.enabled = true;
         
         this.container.appendChild(this.renderer.domElement);
+        
+        this.controls = null;
+        this.isXR = false;
         
         this.initLights();
         this.initXR();
@@ -34,8 +38,26 @@ export class SpatialRenderer {
         this.audio.init(this.camera);
 
         this.initSky();
+    }
+
+    startDesktopMode() {
+        this.isXR = false;
+        this.renderer.xr.enabled = false;
+        
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = true;
+        this.controls.minDistance = 1;
+        this.controls.maxDistance = 15;
         
         this.renderer.setAnimationLoop(this.render.bind(this));
+        console.log("Desktop Mode Started");
+    }
+
+    startXRMode(mode) {
+        this.isXR = true;
+        this.renderer.xr.enabled = true;
+        this.renderer.setAnimationLoop(this.render.bind(this));
+        this.enterXR(mode);
     }
 
     initSky() {
@@ -124,7 +146,12 @@ export class SpatialRenderer {
     }
 
     render(timestamp, frame) {
-        if (this.handTracking) this.handTracking.update();
+        if (this.isXR && this.handTracking) {
+            this.handTracking.update();
+        } else if (this.controls) {
+            this.controls.update();
+        }
+        
         if (this.ui) this.ui.update(this.camera);
         this.renderer.render(this.scene, this.camera);
     }

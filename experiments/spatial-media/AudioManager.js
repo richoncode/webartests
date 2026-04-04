@@ -1,7 +1,4 @@
-/**
- * AudioManager.js
- * Manages spatial ambient audio and interaction sound effects.
- */
+import * as THREE from 'three';
 
 export class AudioManager {
     constructor() {

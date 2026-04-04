@@ -1,8 +1,4 @@
-/**
- * PhotoCard.js
- * Represents a spatialized 2D photo with depth displacement.
- */
-
+import * as THREE from 'three';
 import { SpatialMaterial } from './SpatialMaterial.js';
 
 export class PhotoCard {
