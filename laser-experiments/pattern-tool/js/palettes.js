@@ -1,26 +1,35 @@
 import { PALETTE_FILES, FALLBACK_PALETTES } from './constants.js';
 import { App } from './app.js';
+import { PalletStore } from '../../xcs-module/js/XCSPallet.js';
 
 export const PalMgr = {
   async load() {
     for (const id of PALETTE_FILES) {
+      let data = null;
       try {
         const r = await fetch(`palettes/${id}.json`);
         if (!r.ok) throw new Error();
-        const data = await r.json();
-        App.palettes[data.id || id] = data;
+        data = await r.json();
       } catch {
-        if (FALLBACK_PALETTES[id]) App.palettes[id] = FALLBACK_PALETTES[id];
+        if (FALLBACK_PALETTES[id]) data = FALLBACK_PALETTES[id];
+      }
+      
+      if (data) {
+        PalletStore.register(data);
+        App.palettes[data.id || id] = PalletStore.get(data.id || id);
       }
     }
   },
-  list() { return Object.values(App.palettes); },
-  get(id) { return App.palettes[id] || null; },
+  list() { return PalletStore.list(); },
+  get(id) { return PalletStore.get(id); },
   getParams(paletteId, entryIdx) {
     const p = this.get(paletteId);
     if (!p) return { power: 20, speed: 100, density: 333, repeat: 1, processingLightSource: 'blue' };
-    const e = p.entries[entryIdx] || p.entries[0] || {};
+    
+    // entries in XCSPallet have index property added, but we use the provided entryIdx
+    const e = p.getEntry(entryIdx) || {};
     const isIR = p.laser === 'ir' || p.name.toUpperCase().includes('IR');
+    
     return {
       power: e.power ?? p.power ?? 20,
       speed: e.speed ?? p.speed ?? 100,
@@ -31,7 +40,9 @@ export const PalMgr = {
   },
   entryColor(paletteId, idx) {
     const p = this.get(paletteId);
-    return (p && p.entries[idx]) ? p.entries[idx].rgb : '#5b9bd5';
+    if (!p) return '#5b9bd5';
+    const e = p.getEntry(idx);
+    return e ? e.rgb : '#5b9bd5';
   },
   fillEntrySelect(sel, paletteId, currentIdx) {
     sel.innerHTML = '';
