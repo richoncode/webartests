@@ -26,9 +26,17 @@ export class SpatialRenderer {
         this.controls = null;
         this.isXR = false;
         
+        // Desktop Raycasting
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        this.draggedObject = null;
+        this.dragOffset = new THREE.Vector3();
+        this.dragPlane = new THREE.Plane();
+        
         this.initLights();
         this.initXR();
         this.setupEventListeners();
+        this.setupInteraction();
         
         this.handTracking = new HandTrackingManager(this.renderer, this.scene);
         this.setupHandMesh();
@@ -38,6 +46,75 @@ export class SpatialRenderer {
         this.audio.init(this.camera);
 
         this.initSky();
+    }
+
+    setupInteraction() {
+        window.addEventListener('pointerdown', (e) => {
+            if (this.isXR || !this.controls) return;
+            
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+            
+            if (intersects.length > 0) {
+                let object = intersects[0].object;
+                
+                // Only drag things that aren't the sky or lights
+                if (object.name !== 'sky' && !object.isLight) {
+                    // Bubble up to the high-level group (PhotoCard or SpatialUI)
+                    while (object.parent && object.parent !== this.scene) {
+                        object = object.parent;
+                    }
+                    this.draggedObject = object;
+                    this.controls.enabled = false;
+                    
+                    // Create a drag plane perpendicular to the camera at the object's depth
+                    this.dragPlane.setFromNormalAndCoplanarPoint(
+                        this.camera.getWorldDirection(new THREE.Vector3()).negate(),
+                        this.draggedObject.position
+                    );
+                    
+                    const intersectionPoint = new THREE.Vector3();
+                    this.raycaster.ray.intersectPlane(this.dragPlane, intersectionPoint);
+                    this.dragOffset.copy(this.draggedObject.position).sub(intersectionPoint);
+                    
+                    document.body.style.cursor = 'grabbing';
+                    this.audio.playInteraction('click');
+                }
+            }
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (this.isXR || !this.draggedObject) return;
+            
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            
+            const intersectPoint = new THREE.Vector3();
+            if (this.raycaster.ray.intersectPlane(this.dragPlane, intersectPoint)) {
+                // Target position in world space
+                const targetPos = intersectPoint.add(this.dragOffset);
+                
+                // Safety: Prevent teleportation/disappearance if the distance is extreme (>10 units per frame)
+                const dist = this.draggedObject.position.distanceTo(targetPos);
+                if (dist < 10 && !isNaN(targetPos.x)) {
+                    // Reduce lerp to 0.1 for silky smooth, controlled movement
+                    this.draggedObject.position.lerp(targetPos, 0.1);
+                }
+            }
+        });
+
+        window.addEventListener('pointerup', () => {
+            if (this.draggedObject) {
+                this.draggedObject = null;
+                this.controls.enabled = true;
+                document.body.style.cursor = 'default';
+            }
+        });
     }
 
     startDesktopMode() {
