@@ -8,6 +8,11 @@ export class PhotoCard {
         this.height = options.height || 4;
         this.imagePath = options.imagePath;
         this.depthPath = options.depthPath;
+        this.metadata = {
+            resolution: options.resolution || "4096 x 2731",
+            depth: "32-bit Float",
+            format: "Spatial-PNG"
+        };
         
         this.mesh = null;
         this.init();
@@ -38,6 +43,51 @@ export class PhotoCard {
         this.mesh.position.set(0, 0, -5); // 5 meters in front
         
         this.scene.add(this.mesh);
-        console.log('PhotoCard Initialized:', this.imagePath);
+    }
+
+    async updateTexture(imagePath, depthPath) {
+        const loader = new THREE.TextureLoader();
+        
+        try {
+            const [colorTexture, depthTexture] = await Promise.all([
+                new Promise((resolve, reject) => loader.load(imagePath, resolve, undefined, reject)),
+                new Promise((resolve, reject) => loader.load(depthPath, resolve, undefined, reject))
+            ]);
+
+            colorTexture.colorSpace = THREE.SRGBColorSpace;
+            
+            // Clean up old textures to prevent memory leaks
+            if (this.material.map) this.material.map.dispose();
+            if (this.material.displacementMap) this.material.displacementMap.dispose();
+
+            this.material.map = colorTexture;
+            this.material.displacementMap = depthTexture;
+            this.material.needsUpdate = true;
+            
+            console.log(`Gallery: Texture updated to ${imagePath}`);
+        } catch (e) {
+            console.error("Gallery: Failed to update texture:", e);
+        }
+    }
+
+    remove() {
+        if (this.mesh) {
+            this.scene.remove(this.mesh);
+            if (this.mesh.geometry) this.mesh.geometry.dispose();
+            if (this.mesh.material) {
+                if (this.mesh.material.map) this.mesh.material.map.dispose();
+                if (this.mesh.material.displacementMap) this.mesh.material.displacementMap.dispose();
+                this.mesh.material.dispose();
+            }
+        }
+    }
+
+    update(options = {}) {
+        if (options.displacementScale !== undefined && this.material) {
+            this.material.uniforms.uDisplacementScale.value = options.displacementScale;
+        }
+        if (options.position !== undefined && this.mesh) {
+            this.mesh.position.copy(options.position);
+        }
     }
 }

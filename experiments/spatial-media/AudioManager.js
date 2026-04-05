@@ -20,6 +20,16 @@ export class AudioManager {
         console.log("Audio Manager Initialized (Awaiting assets)");
     }
 
+    playInteraction(type = 'click') {
+        const sound = type === 'success' ? this.ambient : this.pinchSound;
+        if (sound && sound.buffer) {
+            if (sound.isPlaying) sound.stop();
+            sound.play();
+        } else {
+            console.log(`Audio: Mock playing ${type} interaction`);
+        }
+    }
+
     playPinch() {
         if (this.pinchSound && this.pinchSound.buffer) {
             if (this.pinchSound.isPlaying) this.pinchSound.stop();

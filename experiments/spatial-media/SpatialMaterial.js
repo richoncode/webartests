@@ -2,11 +2,20 @@ import * as THREE from 'three';
 
 export class SpatialMaterial extends THREE.MeshStandardMaterial {
     constructor(parameters) {
-        super(parameters);
+        // Strip custom properties before super() to avoid Three.js warnings
+        const { displacementScale = 1.0, featherRange = [0.95, 1.0], ...rest } = parameters;
+        super(rest);
         
+        // Define persistent uniforms for the instance
+        this.uniforms = {
+            uDisplacementScale: { value: displacementScale },
+            uFeatherRange: { value: new THREE.Vector2(...featherRange) }
+        };
+
         this.onBeforeCompile = (shader) => {
-            shader.uniforms.uDisplacementScale = { value: parameters.displacementScale || 1.0 };
-            shader.uniforms.uFeatherRange = { value: parameters.featherRange || [0.95, 1.0] };
+            // Link our persistent uniforms to the shader's internal uniform pool
+            shader.uniforms.uDisplacementScale = this.uniforms.uDisplacementScale;
+            shader.uniforms.uFeatherRange = this.uniforms.uFeatherRange;
             
             shader.vertexShader = `
                 uniform float uDisplacementScale;
@@ -17,8 +26,8 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
                 `
                 #include <begin_vertex>
                 vUvOrigin = uv;
-                float depth = texture2D(displacementMap, uv).r;
-                transformed.z += depth * uDisplacementScale;
+                float depthValue = texture2D(displacementMap, uv).r;
+                transformed.z += depthValue * uDisplacementScale;
                 `
             );
 
@@ -30,12 +39,9 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
                 '#include <dithering_fragment>',
                 `
                 #include <dithering_fragment>
-                
-                // Feathered Edge Calculation
                 float edgeX = smoothstep(uFeatherRange.y, uFeatherRange.x, abs(vUvOrigin.x * 2.0 - 1.0));
                 float edgeY = smoothstep(uFeatherRange.y, uFeatherRange.x, abs(vUvOrigin.y * 2.0 - 1.0));
                 float alpha = edgeX * edgeY;
-                
                 gl_FragColor.a *= alpha;
                 `
             );
