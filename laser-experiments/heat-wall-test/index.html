@@ -4,400 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laser Etching Thermal Strategy</title>
+    <link rel="stylesheet" href="../../shared/css/main.css">
     <style>
-        :root {
-            --bg: #0d0d0d;
-            --card: #1a1a1a;
-            --text: #ddd;
-            --accent: #5b9bd5;
-            --danger: #f87171; 
-            --warning: #fbbf24; 
-            --success: #10b981;
-            --tooltip-bg: #020617;
-            --btn-base: #222;
-            --deterministic-color: #94a3b8;
-            --stochastic-color: #a78bfa;
-            --test-all-color: #0ea5e9;
-        }
-
-        body { 
-            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-            background: var(--bg); 
-            color: var(--text); 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 60px 24px 80px; 
-            margin: 0; 
-            min-height: 100vh;
-        }
-
-        /* Metadata Bar */
-        .metadata-bar { 
-            display: flex; 
-            gap: 24px; 
-            background: #1a1a1a; 
-            border: 1px solid #2a2a2a; 
-            border-radius: 12px; 
-            padding: 16px 24px; 
-            margin-bottom: 32px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            color: #aaa;
-            width: 100%;
-            max-width: 850px;
-        }
-        .meta-item b { color: var(--accent); margin-right: 4px; }
-        .meta-item strong { color: #fff; }
-
-        /* Cross-Nav */
-        .sim-nav { display: flex; gap: 16px; margin-bottom: 32px; border-bottom: 1px solid #222; padding-bottom: 12px; width: 100%; max-width: 850px; }
-        .sim-nav a { color: #555; text-decoration: none; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.2s; }
-        .sim-nav a:hover { color: #aaa; }
-        .sim-nav a.active { color: var(--accent); pointer-events: none; }
-
-        .controls-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-            width: 100%;
-            max-width: 850px;
-        }
-
-        .controls { 
-            background: var(--card); 
-            padding: 16px 20px; 
-            border-radius: 12px; 
-            display: flex; 
-            flex-wrap: wrap;
-            gap: 20px; 
-            align-items: center; 
-            border: 1px solid #2a2a2a;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            position: relative;
-        }
-
-        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: stretch; }
-
-        .strategy-btn-wrapper {
-            position: relative;
-            display: flex;
-        }
-
+        /* Page-specific Strategy UI */
+        .strategy-btn-wrapper { position: relative; display: flex; }
         .strategy-btn {
-            background: #111;
-            border: 1px solid #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-width: 100px;
-            height: 62px; 
-            padding: 6px 10px;
-            line-height: 1.2;
-            box-sizing: border-box;
+            background: #111; border: 1px solid #333; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; min-width: 100px; height: 62px; 
+            padding: 6px 10px; line-height: 1.2; box-sizing: border-box;
         }
-
         .btn-label { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 4px; }
-        .btn-sub { 
-            font-size: 9px; 
-            color: #666; 
-            text-transform: uppercase; 
-            font-weight: 700;
-            letter-spacing: 0.02em;
-            margin-top: -2px;
-            margin-bottom: 2px;
-        }
-        .btn-score { 
-            font-size: 0.7rem; 
-            font-family: 'JetBrains Mono', monospace; 
-            color: #888; 
-            margin-top: 2px;
-            opacity: 0.9;
-        }
+        .btn-sub { font-size: 9px; color: #666; text-transform: uppercase; font-weight: 700; letter-spacing: 0.02em; margin-top: -2px; margin-bottom: 2px; }
+        .btn-score { font-size: 0.7rem; font-family: var(--font-mono); color: #888; margin-top: 2px; opacity: 0.9; }
+        .btn-score.high-stress { color: var(--danger); font-weight: bold; }
 
-        .btn-score.high-stress {
-            color: var(--danger);
-            font-weight: bold;
-        }
-
-        .type-tag {
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-bottom: 8px;
-            display: inline-block;
-        }
+        .type-tag { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; margin-bottom: 8px; display: inline-block; }
         .tag-det { background: #222; color: var(--deterministic-color); border: 1px solid #333; }
         .tag-stoch { background: #2e1065; color: #ddd6fe; border: 1px solid #4c1d95; }
 
         .tooltip {
-            visibility: hidden;
-            width: 260px;
-            max-width: 85vw;
-            background-color: #080808;
-            color: #aaa;
-            text-align: left;
-            border-radius: 8px;
-            padding: 12px;
-            position: absolute;
-            z-index: 50;
-            top: calc(100% + 10px);
-            left: 50%;
-            transform: translateX(-50%);
-            opacity: 0;
-            transition: opacity 0.2s, transform 0.2s;
-            border: 1px solid var(--accent);
-            font-size: 0.8rem;
-            line-height: 1.4;
-            pointer-events: none;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            visibility: hidden; width: 260px; max-width: 85vw; background-color: #080808; color: #aaa;
+            text-align: left; border-radius: 8px; padding: 12px; position: absolute; z-index: 50;
+            top: calc(100% + 10px); left: 50%; transform: translateX(-50%); opacity: 0;
+            transition: opacity 0.2s, transform 0.2s; border: 1px solid var(--accent-blue);
+            font-size: 0.8rem; line-height: 1.4; pointer-events: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
-
         .tooltip b { color: #fff; }
         .tooltip p { margin: 8px 0; }
-
         .tooltip::after {
-            content: "";
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            margin-left: -5px;
-            border-width: 5px;
-            border-style: solid;
-            border-color: transparent transparent var(--accent) transparent;
+            content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -5px;
+            border-width: 5px; border-style: solid; border-color: transparent transparent var(--accent-blue) transparent;
         }
+        .strategy-btn-wrapper:hover .tooltip { visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); }
 
-        .strategy-btn-wrapper:hover .tooltip {
-            visibility: visible;
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        @media (max-width: 600px) {
-            .btn-group .strategy-btn-wrapper:first-child .tooltip { left: 0; transform: translateX(0); }
-            .btn-group .strategy-btn-wrapper:first-child .tooltip::after { left: 20px; }
-            .btn-group .strategy-btn-wrapper:last-child .tooltip { left: auto; right: 0; transform: translateX(0); }
-            .btn-group .strategy-btn-wrapper:last-child .tooltip::after { left: auto; right: 20px; }
-        }
-
-        canvas { 
-            background: #000; 
-            border: 1px solid #2a2a2a; 
-            border-radius: 8px;
-            image-rendering: pixelated;
-            max-width: 100%;
-            height: auto;
-        }
-
-        .stats-container {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .stat-card {
-            flex: 1;
-            background: #1a1a1a;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #2a2a2a;
-            text-align: center;
-        }
-
+        .stat-card { flex: 1; background: var(--card); padding: 10px; border-radius: 6px; border: 1px solid var(--border); text-align: center; }
         .stat-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
-        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #10b981; }
+        .stat-value { font-family: var(--font-mono); font-size: 14px; color: var(--accent-green); }
         .stat-value.hot { color: var(--danger); }
 
-        button { 
-            background: var(--btn-base); 
-            color: #999; 
-            border: 1px solid #333; 
-            padding: 8px 14px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            transition: all 0.2s; 
-            box-sizing: border-box;
-        }
-
-        button:hover { background: #333; color: #fff; }
-
-        button.active { 
-            border-color: var(--accent); 
-            color: var(--accent);
-            background: #0a1520; 
-        }
-
         button.reset { background: #2a1010; height: 62px; font-weight: 600; border: 1px solid #451a1a; color: #fca5a5; }
-        button.reset:hover { background: #451a1a; color: #fff; }
-
         button.test-all { background: #0a1a2a; height: 62px; font-weight: 600; border: 1px solid #1a3050; color: #7db4e0; }
-        button.test-all:hover { background: #132338; color: #fff; }
-        button.test-all.busy { opacity: 0.5; pointer-events: none; }
-
-        button.recycle, button.copy { 
-            background: #1a1a1a; 
-            height: 62px; 
-            font-size: 20px; 
-            padding: 0 15px;
-            border: 1px solid #2a2a2a;
-            display: none; 
-            align-items: center;
-            justify-content: center;
-        }
-        button.recycle:hover, button.copy:hover { background: #222; }
-        button.recycle.busy, button.copy.busy { opacity: 0.5; pointer-events: none; }
-
-        .legend { 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 8px; 
-            margin-top: 20px; 
-            font-size: 11px; 
-            max-width: 400px; 
-            justify-content: flex-start; 
-        }
-
-        .legend-item { 
-            display: flex; 
-            align-items: center; 
-            gap: 6px; 
-            background: var(--card); 
-            padding: 4px 8px; 
-            border-radius: 4px; 
-            border: 1px solid #2a2a2a; 
-        }
-
-        .color-box { width: 12px; height: 12px; border-radius: 2px; }
-
-        .info-text {
-            max-width: 400px;
-            font-size: 0.9rem;
-            color: #888;
-            margin-top: 20px;
-            line-height: 1.5;
-            text-align: left;
-        }
-
-        .ctrl-section { display: flex; flex-direction: column; gap: 4px; }
-        .ctrl-label { font-size: 10px; color: #888; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        button.recycle, button.copy { background: var(--card); height: 62px; font-size: 20px; padding: 0 15px; border: 1px solid var(--border); display: none; align-items: center; justify-content: center; }
 
         .grid-popup {
-            position: fixed;
-            background: rgba(8, 8, 8, 0.95);
-            border: 1px solid var(--accent);
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 12px;
-            color: #aaa;
-            pointer-events: none;
-            display: none;
-            z-index: 1000;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-            min-width: 120px;
+            position: fixed; background: rgba(8, 8, 8, 0.95); border: 1px solid var(--accent-blue);
+            border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #aaa; pointer-events: none;
+            display: none; z-index: 1000; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); min-width: 120px;
         }
         .grid-popup .popup-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
         .grid-popup .popup-key { color: #666; font-weight: 600; text-transform: uppercase; font-size: 10px; }
-        .grid-popup .popup-val { font-family: 'JetBrains Mono', monospace; color: #fff; }
+        .grid-popup .popup-val { font-family: var(--font-mono); color: #fff; }
 
-        .main-content {
-            display: flex;
-            flex-direction: row;
-            align-items: flex-start;
-            justify-content: space-between;
-            width: 100%;
-            max-width: 850px;
-            margin-top: 20px;
-        }
-
-        .header-container {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-            max-width: 850px;
-            margin-bottom: 24px;
-        }
-
-        .back-link {
-            color: #555;
-            text-decoration: none;
-            font-size: 0.85rem;
-            margin-bottom: 12px;
-            transition: color 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .back-link:hover {
-            color: #aaa;
-        }
-
-        .page-title {
-            font-size: 24px;
-            margin: 0 0 4px 0;
-            font-weight: 700;
-            color: #fff;
-        }
-
-        .page-subtitle {
-            color: #888;
-            font-size: 0.95rem;
-            margin: 0;
-        }
-
+        .main-content { display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; width: 100%; max-width: 850px; margin-top: 20px; }
         .example-result {
-            flex: 0 0 400px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: var(--card);
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid #2a2a2a;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-            box-sizing: border-box;
+            flex: 0 0 400px; display: flex; flex-direction: column; align-items: center; background: var(--card);
+            padding: 12px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            opacity: 0; transition: opacity 0.3s; pointer-events: none; box-sizing: border-box;
         }
-        .example-result.show {
-            opacity: 1;
-            pointer-events: auto;
-        }
-        .example-result img {
-            width: 100%;
-            border-radius: 8px;
-            border: 2px solid #000;
-        }
-        .example-label {
-            font-size: 11px;
-            color: #888;
-            margin-top: 10px;
-            text-transform: uppercase;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-        }
-        .example-disclaimer {
-            font-size: 10px;
-            color: #666;
-            margin-top: 6px;
-            text-align: center;
-            font-style: italic;
-            line-height: 1.3;
-        }
-
-        .simulation-view {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            flex: 0 0 400px;
-        }
+        .example-result.show { opacity: 1; pointer-events: auto; }
+        .example-result img { width: 100%; border-radius: 8px; border: 2px solid #000; }
+        .simulation-view { display: flex; flex-direction: column; align-items: flex-start; flex: 0 0 400px; }
 
         @media (max-width: 1000px) {
             .main-content { flex-direction: column; align-items: center; }
@@ -594,13 +260,21 @@
     <script src="js/HeatSimulator.js"></script>
     <script src="js/PathStrategies.js"></script>
     <script src="js/HeatRenderer.js"></script>
-    <script>
+    <script type="module">
+        import { setupCanvas } from '../../shared/js/utils.js';
+        import { injectBackLink, renderMetadata, StatsController, initGlobal } from '../../shared/js/ui.js';
+
+        // Initialize Shared UI
+        initGlobal();
+        injectBackLink("← Back to Laser Experiments", "../", false);
+
         const canvas = document.getElementById('gridCanvas');
         const GRID_SIZE = 40; 
         const NUM_BUCKETS = 8;
         
         const sim = new HeatSimulator({ gridSize: GRID_SIZE });
         const renderer = new HeatRenderer(canvas, { gridSize: GRID_SIZE });
+        const statsCtrl = new StatsController();
 
         let mode = 'triphase'; 
         let powerPattern = 'gradient'; 
@@ -611,38 +285,99 @@
         let viewBuckets = false;
         let viewHeat = true;
         let hoveredIdx = -1;
-        let simulationCache = {}; // Stores {etchedState, heatMap, peakHeatMap, maxStress}
+        let simulationCache = {}; 
         
-        function updateExampleImage() {
-            const el = document.getElementById('exampleResult');
-            const shouldShow = (mode === 'triphase' && powerPattern === 'gradient');
-            el.classList.toggle('show', shouldShow);
+        // Setup manual redraw trigger for window resizing
+        const redraw = setupCanvas(canvas, (ctx, w, h) => {
+            renderer.render(sim, { viewBuckets, viewHeat, mode, heatThreshold: getHeatThreshold() });
+        }, 400);
+
+        function getHeatThreshold() {
+            return powerPattern === 'gradient' ? 120.0 : 60.0;
         }
 
-        function togglePause() {
+        window.setPower = (newPwr) => {
+            powerPattern = newPwr;
+            document.getElementById('pwrUniform').classList.toggle('active', powerPattern === 'uniform');
+            document.getElementById('pwrGradient').classList.toggle('active', powerPattern === 'gradient');
+            
+            renderMetadata(document.querySelector('.metadata-bar'), {
+                'Material': '10x10mm Stainless Steel',
+                'Hardware': '5W IR Laser (0.03mm spot)',
+                'Settings': `${powerPattern === 'uniform' ? 'Uniform' : 'Color Grid'} · 500mm/s · 40 LPCM`
+            });
+
+            updateExampleImage();
+            updateScoreLabels();
+            if (!tryRestore()) restart();
+        };
+
+        window.setMode = (newMode) => {
+            mode = newMode;
+            ['btnHilbert', 'btnTriPhase', 'btnDiagonal', 'btnQuadrant', 'btnHorizontal', 'btnDispersive'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.toggle('active', btn.onclick.toString().includes(mode));
+            });
+            
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
+            
+            document.getElementById('strategyInfo').innerHTML = getModeDescription(mode);
+            updateExampleImage();
+            updateScoreLabels();
+            if (!tryRestore()) restart();
+        };
+
+        window.setViewMode = (vmode) => {
+            viewBuckets = (vmode === 'buckets');
+            viewHeat = !viewBuckets;
+            document.getElementById('btnViewBuckets').classList.toggle('active', viewBuckets);
+            document.getElementById('btnViewHeat').classList.toggle('active', viewHeat);
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
+        };
+
+        window.togglePause = () => {
             isPaused = !isPaused;
             const btn = document.getElementById('btnPause');
             btn.innerText = isPaused ? '▶' : '⏸';
-            btn.style.background = isPaused ? 'var(--success)' : '#334155';
+            btn.style.background = isPaused ? 'var(--accent-green)' : '#334155';
+        };
+
+        window.restart = restart;
+        window.testAll = testAll;
+        window.recycleAll = recycleAll;
+        window.copyResults = copyResults;
+
+        function getModeDescription(m) {
+            const desc = {
+                'horizontal': 'Simulating <b>Horizontal Raster</b> baseline.',
+                'diagonal': 'Simulating <b>Diagonal Wave</b> baseline.',
+                'triphase': 'Simulating <b>Tri-Phase</b>. Hardware default (e.g. xTool).',
+                'quadrant': 'Simulating <b>Quadrant Leapfrog</b> stochastic dispersion.',
+                'dispersive': 'Simulating <b>Dispersive</b> advanced stochastic dispersion (Bit-Reverse).',
+                'hilbert': 'Simulating <b>Hilbert Curve</b>. Optimal space-filling locality.'
+            };
+            return desc[m] || '';
         }
 
-        function getCacheKey() {
-            return `${mode}-${powerPattern}`;
+        function updateExampleImage() {
+            const el = document.getElementById('exampleResult');
+            el.classList.toggle('show', (mode === 'triphase' && powerPattern === 'gradient'));
         }
+
+        function getCacheKey() { return `${mode}-${powerPattern}`; }
 
         function tryRestore() {
-            const key = getCacheKey();
-            const cached = simulationCache[key];
+            const cached = simulationCache[getCacheKey()];
             if (cached) {
                 sim.etchedState.set(cached.etchedState);
                 sim.heatMap.set(cached.heatMap);
                 sim.peakHeatMap.set(cached.peakHeatMap);
                 sim.maxStress = cached.maxStress;
                 sim.etchedCount = GRID_SIZE * GRID_SIZE;
-                
                 cellsToEtch = []; 
                 if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
-                
                 updateScoreLabels();
                 return true;
             }
@@ -655,21 +390,17 @@
             let allCached = true;
             
             modes.forEach(m => {
-                const key = `${m}-${powerPattern}`;
-                const cached = simulationCache[key];
+                const cached = simulationCache[`${m}-${powerPattern}`];
                 const scoreEl = document.getElementById(`score-${m}`);
                 if (scoreEl) {
                     if (cached) {
-                        const val = cached.maxStress;
-                        scoreEl.innerText = `${val.toFixed(2)} Peak`;
-                        scoreEl.classList.toggle('high-stress', val > stressLimit);
+                        scoreEl.innerText = `${cached.maxStress.toFixed(2)} Peak`;
+                        scoreEl.style.color = cached.maxStress > stressLimit ? 'var(--danger)' : 'var(--accent-green)';
                         scoreEl.style.opacity = "1";
-                        scoreEl.style.color = val > stressLimit ? 'var(--danger)' : 'var(--success)';
                     } else {
                         scoreEl.innerText = "---";
                         scoreEl.style.opacity = "0.5";
                         scoreEl.style.color = "#94a3b8";
-                        scoreEl.classList.remove('high-stress');
                         allCached = false;
                     }
                 }
@@ -678,87 +409,20 @@
             const showBatchTools = (allCached && !isTestingAll);
             document.getElementById('btnRecycleAll').style.display = showBatchTools ? 'flex' : 'none';
             document.getElementById('btnCopy').style.display = showBatchTools ? 'flex' : 'none';
-            
             updatePauseVisibility();
         }
 
         function updatePauseVisibility() {
             const btnPause = document.getElementById('btnPause');
             const stats = sim.getStats();
-            if (btnPause) {
-                btnPause.style.display = (!stats.isComplete && !isTestingAll) ? 'block' : 'none';
-            }
-        }
-
-        function setPower(newPwr) {
-            powerPattern = newPwr;
-            document.getElementById('pwrUniform').classList.toggle('active', powerPattern === 'uniform');
-            document.getElementById('pwrGradient').classList.toggle('active', powerPattern === 'gradient');
-            
-            const metaPower = document.getElementById('metaPower');
-            if (metaPower) metaPower.textContent = powerPattern === 'uniform' ? 'Uniform' : 'Color Grid';
-
-            updateExampleImage();
-            updateScoreLabels();
-            if (!tryRestore()) restart();
-        }
-
-        function setViewMode(vmode) {
-            if (vmode === 'buckets') {
-                viewBuckets = true;
-                viewHeat = false;
-            } else {
-                viewBuckets = false;
-                viewHeat = true;
-            }
-            document.getElementById('btnViewBuckets').classList.toggle('active', viewBuckets);
-            document.getElementById('btnViewHeat').classList.toggle('active', viewHeat);
-            
-            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
-            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
-        }
-
-        function setMode(newMode) {
-            mode = newMode;
-            const idMap = {
-                'triphase': 'btnTriPhase',
-                'horizontal': 'btnHorizontal',
-                'diagonal': 'btnDiagonal',
-                'dispersive': 'btnDispersive',
-                'hilbert': 'btnHilbert',
-                'quadrant': 'btnQuadrant'
-            };
-
-            Object.keys(idMap).forEach(m => {
-                const btn = document.getElementById(idMap[m]);
-                if (btn) btn.classList.toggle('active', mode === m);
-            });
-            
-            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
-            document.getElementById('legendContainer').style.display = (!isSequential && viewBuckets) ? 'block' : 'none';
-            
-            const info = document.getElementById('strategyInfo');
-            const descriptions = {
-                'horizontal': 'Simulating <b>Horizontal Raster</b> baseline.',
-                'diagonal': 'Simulating <b>Diagonal Wave</b> baseline.',
-                'triphase': 'Simulating <b>Tri-Phase</b>. Hardware default (e.g. xTool).',
-                'quadrant': 'Simulating <b>Quadrant Leapfrog</b> stochastic dispersion.',
-                'dispersive': 'Simulating <b>Dispersive</b> advanced stochastic dispersion (Bit-Reverse).',
-                'hilbert': 'Simulating <b>Hilbert Curve</b>. Optimal space-filling locality.'
-            };
-            info.innerHTML = descriptions[mode];
-            updateExampleImage();
-            updateScoreLabels();
-            if (!tryRestore()) restart();
+            if (btnPause) btnPause.style.display = (!stats.isComplete && !isTestingAll) ? 'block' : 'none';
         }
 
         function restart() {
             isPaused = false;
             const btn = document.getElementById('btnPause');
-            btn.innerText = '⏸';
-            btn.style.background = '#334155';
+            if (btn) { btn.innerText = '⏸'; btn.style.background = '#334155'; }
             document.getElementById('btnRecycle').style.display = 'none';
-
             currentBucketIdx = 0;
             sim.reset();
             loadNextPath();
@@ -770,49 +434,20 @@
 
         function copyResults() {
             const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
-            const names = {
-                'hilbert': 'Hilbert',
-                'triphase': 'Tri-Phase',
-                'diagonal': 'Diagonal',
-                'quadrant': 'Quadrant',
-                'horizontal': 'Horizontal',
-                'dispersive': 'Dispersive'
-            };
-            
-            let results = modes.map(m => {
-                const key = `${m}-${powerPattern}`;
-                const cached = simulationCache[key];
-                return {
-                    id: m,
-                    name: names[m],
-                    peak: cached ? cached.maxStress : -1
-                };
-            });
-
+            const names = { 'hilbert': 'Hilbert', 'triphase': 'Tri-Phase', 'diagonal': 'Diagonal', 'quadrant': 'Quadrant', 'horizontal': 'Horizontal', 'dispersive': 'Dispersive' };
+            let results = modes.map(m => ({ name: names[m], peak: (simulationCache[`${m}-${powerPattern}`] || {maxStress:-1}).maxStress }));
             results.sort((a, b) => b.peak - a.peak);
-            
-            let table = `Scan Strategy Results (${powerPattern === 'gradient' ? 'Color Grid' : 'Uniform'})\n`;
-            table += `------------------------------------------\n`;
-            
-            results.forEach(r => {
-                const score = r.peak >= 0 ? `${r.peak.toFixed(2)} Peak` : '---';
-                table += `${r.name.padEnd(12)} : ${score}\n`;
-            });
-            
+            let table = `Scan Strategy Results (${powerPattern})\n------------------------------------------\n`;
+            results.forEach(r => table += `${r.name.padEnd(12)} : ${r.peak >= 0 ? r.peak.toFixed(2) + ' Peak' : '---'}\n`);
             navigator.clipboard.writeText(table).then(() => {
                 const btn = document.getElementById('btnCopy');
-                const oldText = btn.innerText;
-                btn.innerText = '✅';
-                setTimeout(() => btn.innerText = oldText, 2000);
+                const old = btn.innerText; btn.innerText = '✅'; setTimeout(() => btn.innerText = old, 2000);
             });
         }
 
         async function recycleAll() {
             if (isTestingAll) return;
-            const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
-            modes.forEach(m => {
-                delete simulationCache[`${m}-${powerPattern}`];
-            });
+            ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'].forEach(m => delete simulationCache[`${m}-${powerPattern}`]);
             updateScoreLabels();
             await testAll();
         }
@@ -820,102 +455,78 @@
         async function testAll() {
             if (isTestingAll) return;
             isTestingAll = true;
-            document.getElementById('btnTestAll').classList.add('busy');
-            document.getElementById('btnTestAll').innerText = "Testing...";
-            document.getElementById('btnRecycle').style.display = 'none';
-            document.getElementById('btnRecycleAll').style.display = 'none';
-            document.getElementById('btnCopy').style.display = 'none';
+            const btn = document.getElementById('btnTestAll');
+            btn.classList.add('busy'); btn.innerText = "Testing...";
+            ['btnRecycle', 'btnRecycleAll', 'btnCopy'].forEach(id => document.getElementById(id).style.display = 'none');
 
             const modes = ['hilbert', 'triphase', 'diagonal', 'quadrant', 'horizontal', 'dispersive'];
             for (const m of modes) {
-                const cacheKey = `${m}-${powerPattern}`;
-                const alreadyCached = !!simulationCache[cacheKey];
-                
                 setMode(m);
-                
-                if (!alreadyCached) {
+                if (!simulationCache[getCacheKey()]) {
                     await new Promise(resolve => {
-                        const check = () => {
-                            const stats = sim.getStats();
-                            if (stats.isComplete) resolve();
-                            else requestAnimationFrame(check);
-                        };
+                        const check = () => { if (sim.getStats().isComplete) resolve(); else requestAnimationFrame(check); };
                         check();
                     });
                     await new Promise(r => setTimeout(r, 800)); 
                 }
             }
-
             isTestingAll = false;
-            document.getElementById('btnTestAll').classList.remove('busy');
-            document.getElementById('btnTestAll').innerText = "Test All";
+            btn.classList.remove('busy'); btn.innerText = "Test All";
             updateScoreLabels();
         }
 
         function animate() {
-            if (isPaused) {
-                updatePauseVisibility();
-                requestAnimationFrame(animate);
-                return;
-            }
+            if (isPaused) { updatePauseVisibility(); requestAnimationFrame(animate); return; }
 
-            // 1. Physics & Etching logic via processStep
             const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
             const batchSize = !isSequential ? 2 : 1; 
 
             for(let i = 0; i < batchSize; i++) {
                 let intensity = 12.0;
-                // Pre-calculate intensity if needed for the next cell
                 if (cellsToEtch.length > 0 && powerPattern === 'gradient') {
                     const nextCell = cellsToEtch[cellsToEtch.length - 1];
                     const distFromTR = (nextCell.y + (GRID_SIZE - 1 - nextCell.x)) / (2 * (GRID_SIZE - 1));
                     intensity = 12.0 * (1.0 + 3.0 * distFromTR);
                 }
-
                 const cell = sim.processStep(cellsToEtch, intensity);
-                
                 if (!cell && cellsToEtch.length === 0 && !isSequential && currentBucketIdx < NUM_BUCKETS - 1) {
-                    currentBucketIdx++;
-                    loadNextPath();
-                    break; 
+                    currentBucketIdx++; loadNextPath(); break; 
                 }
             }
 
-            // 2. Rendering
-            const heatThreshold = powerPattern === 'gradient' ? 120.0 : 60.0; 
-            renderer.render(sim, {
-                viewBuckets,
-                viewHeat,
-                mode,
-                heatThreshold
-            });
+            renderer.render(sim, { viewBuckets, viewHeat, mode, heatThreshold: getHeatThreshold() });
 
-            // 3. Update Stats
             const stats = sim.getStats();
-            document.getElementById('progress').innerText = `${stats.progress.toFixed(0)}%`;
-            document.getElementById('peakHeat').innerText = stats.peakStress.toFixed(2);
-            document.getElementById('avgHeat').innerText = stats.avgHeat.toFixed(3);
-            
-            const stressLimit = powerPattern === 'gradient' ? 90.0 : 45.0; 
-            document.getElementById('peakHeat').className = stats.peakStress > stressLimit ? 'stat-value hot' : 'stat-value';
+            statsCtrl.updateProgress(stats.progress);
+            statsCtrl.updatePeak(stats.peakStress, stats.peakStress > (powerPattern === 'gradient' ? 90.0 : 45.0));
+            statsCtrl.updateAvg(stats.avgHeat);
 
             if (stats.progress === 100 && !simulationCache[getCacheKey()]) {
-                // Save to cache once path is fully processed
                 if (!isTestingAll) document.getElementById('btnRecycle').style.display = 'flex';
-                
                 simulationCache[getCacheKey()] = {
                     etchedState: new Uint8Array(sim.etchedState),
                     heatMap: new Float32Array(sim.heatMap),
                     peakHeatMap: new Float32Array(sim.peakHeatMap),
                     maxStress: sim.maxStress
                 };
-
                 updateScoreLabels();
             }
 
             updatePauseVisibility();
             updatePopup();
             requestAnimationFrame(animate);
+        }
+
+        function updatePopup() {
+            if (hoveredIdx === -1) return;
+            const gx = hoveredIdx % GRID_SIZE, gy = Math.floor(hoveredIdx / GRID_SIZE);
+            const state = sim.getStateAt(gx, gy);
+            const bucket = PathStrategies.getBucket(gx, gy, mode, GRID_SIZE);
+            document.getElementById('gp-heat').textContent = state.heat.toFixed(2);
+            document.getElementById('gp-peak').textContent = state.peak.toFixed(2);
+            document.getElementById('gp-bucket').textContent = bucket;
+            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
+            document.getElementById('gp-bucket-row').style.display = !isSequential ? 'flex' : 'none';
         }
 
         const legend = document.getElementById('bucketLegend');
@@ -926,48 +537,20 @@
             legend.appendChild(item);
         });
 
-        function updatePopup() {
-            if (hoveredIdx === -1) return;
-            const gx = hoveredIdx % GRID_SIZE;
-            const gy = Math.floor(hoveredIdx / GRID_SIZE);
-            const state = sim.getStateAt(gx, gy);
-            const bucket = PathStrategies.getBucket(gx, gy, mode, GRID_SIZE);
-
-            document.getElementById('gp-heat').textContent = state.heat.toFixed(2);
-            document.getElementById('gp-peak').textContent = state.peak.toFixed(2);
-            document.getElementById('gp-bucket').textContent = bucket;
-            
-            const isSequential = (mode === 'horizontal' || mode === 'diagonal' || mode === 'triphase' || mode === 'hilbert');
-            document.getElementById('gp-bucket-row').style.display = !isSequential ? 'flex' : 'none';
-        }
-
         const gridPopup = document.getElementById('gridPopup');
         canvas.addEventListener('mousemove', (ev) => {
             const rect = canvas.getBoundingClientRect();
-            const x = ev.clientX - rect.left;
-            const y = ev.clientY - rect.top;
-            const gx = Math.floor(x / (rect.width / GRID_SIZE));
-            const gy = Math.floor(y / (rect.height / GRID_SIZE));
-
+            const gx = Math.floor((ev.clientX - rect.left) / (rect.width / GRID_SIZE));
+            const gy = Math.floor((ev.clientY - rect.top) / (rect.height / GRID_SIZE));
             if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
-                hoveredIdx = gy * GRID_SIZE + gx;
-                updatePopup();
-
+                hoveredIdx = gy * GRID_SIZE + gx; updatePopup();
                 gridPopup.style.display = 'block';
-                let left = ev.clientX + 15;
-                let top = ev.clientY + 15;
-                if (left + 150 > window.innerWidth) left = ev.clientX - 160;
-                gridPopup.style.left = left + 'px';
-                gridPopup.style.top = top + 'px';
-            } else {
-                hoveredIdx = -1;
-                gridPopup.style.display = 'none';
-            }
+                let l = ev.clientX + 15, t = ev.clientY + 15;
+                if (l + 150 > window.innerWidth) l = ev.clientX - 160;
+                gridPopup.style.left = l + 'px'; gridPopup.style.top = t + 'px';
+            } else { hoveredIdx = -1; gridPopup.style.display = 'none'; }
         });
-        canvas.addEventListener('mouseleave', () => {
-            hoveredIdx = -1;
-            gridPopup.style.display = 'none';
-        });
+        canvas.addEventListener('mouseleave', () => { hoveredIdx = -1; gridPopup.style.display = 'none'; });
 
         restart();
         updateExampleImage();

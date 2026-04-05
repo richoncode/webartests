@@ -3,260 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Power & Speed: Energy Density — Learning Lasers</title>
-    <style>
-        :root {
-            --bg: #0d0d0d;
-            --card: #1a1a1a;
-            --text: #ddd;
-            --accent: #5b9bd5;
-            --danger: #f87171;
-            --border: 1px solid #2a2a2a;
-        }
+    <title>Power & Speed: Energy Density — Learning Lasers</title  <link rel="stylesheet" href="../../shared/css/main.css">
+  <style>
+    /* Experiment-specific styles */
+    .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
+    
+    .energy-tank-container {
+      height: 350px;
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 2px;
+    }
+    .energy-fill {
+      width: 100%;
+      background: linear-gradient(to top, #1e293b, var(--accent-blue));
+      transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 0 0 10px 10px;
+      position: relative;
+    }
+    .energy-fill::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 20px;
+      background: rgba(255,255,255,0.1);
+      filter: blur(4px);
+    }
+    .tank-label {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+      text-align: center;
+      pointer-events: none;
+    }
+    .tank-val { font-family: var(--font-mono); font-size: 32px; font-weight: 800; color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .tank-unit { font-size: 12px; color: #aaa; text-transform: uppercase; font-weight: 700; margin-top: -4px; }
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
-        .page { max-width: 860px; margin: 0 auto; }
-        a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; transition: color 0.2s; }
-        a.back:hover { color: #aaa; }
-        h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; color: #fff; }
-        .subtitle { color: #aaa; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 56px; }
+    .control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+    .label-row { display: flex; justify-content: space-between; align-items: center; }
+    .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #888; }
+    .label-val { font-family: var(--font-mono); font-size: 13px; color: var(--accent-blue); }
+    
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; background: #222; border-radius: 3px; outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; background: var(--accent-blue); border-radius: 50%; border: 3px solid #111; }
 
-        /* Cross-Nav */
-        .sim-nav { display: flex; gap: 16px; margin-bottom: 32px; border-bottom: 1px solid #222; padding-bottom: 12px; }
-        .sim-nav a { color: #555; text-decoration: none; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.2s; }
-        .sim-nav a:hover { color: #aaa; }
-        .sim-nav a.active { color: var(--accent); pointer-events: none; }
-
-        /* Metadata Bar */
-        .metadata-bar { 
-            display: flex; 
-            gap: 24px; 
-            background: #1a1a1a; 
-            border: 1px solid #2a2a2a; 
-            border-radius: 12px; 
-            padding: 16px 24px; 
-            margin-bottom: 32px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            color: #aaa;
-        }
-        .meta-item b { color: var(--accent); margin-right: 4px; }
-        .meta-item strong { color: #fff; }
-
-        .section { margin-bottom: 64px; }
-        .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
-        .section-name { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #fff; }
-        p { margin-bottom: 20px; }
-
-        .tutorial-container { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 32px; margin-bottom: 32px; }
-        
-        .viz-layout { display: grid; grid-template-columns: 1fr 320px; gap: 40px; align-items: start; }
-        
-        /* Energy Tank Visualizer */
-        .energy-tank-container {
-            height: 350px;
-            background: #000;
-            border: var(--border);
-            border-radius: 12px;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            padding: 2px;
-        }
-        .energy-fill {
-            width: 100%;
-            background: linear-gradient(to top, #1e293b, var(--accent));
-            transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-radius: 0 0 10px 10px;
-            position: relative;
-        }
-        .energy-fill::after {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 20px;
-            background: rgba(255,255,255,0.1);
-            filter: blur(4px);
-        }
-        .tank-label {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 10;
-            text-align: center;
-            pointer-events: none;
-        }
-        .tank-val { font-family: 'SF Mono', monospace; font-size: 32px; font-weight: 800; color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-        .tank-unit { font-size: 12px; color: #aaa; text-transform: uppercase; font-weight: 700; margin-top: -4px; }
-
-        .controls { display: flex; flex-direction: column; gap: 24px; }
-        .control-group { display: flex; flex-direction: column; gap: 8px; }
-        .label-row { display: flex; justify-content: space-between; align-items: center; }
-        .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #888; }
-        .label-val { font-family: 'SF Mono', monospace; font-size: 13px; color: var(--accent); }
-        
-        input[type=range] { width: 100%; height: 6px; background: #222; border-radius: 3px; appearance: none; outline: none; }
-        input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: var(--accent); border-radius: 50%; cursor: pointer; border: 3px solid #111; }
-
-        .equivalence-card { background: #1a1a1a; border: var(--border); border-radius: 12px; padding: 24px; margin-top: 32px; }
-        .eq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        .eq-item { border-left: 2px solid #333; padding-left: 16px; }
-        .eq-title { font-size: 10px; font-weight: 800; color: #666; text-transform: uppercase; margin-bottom: 8px; }
-        .eq-math { font-family: 'SF Mono', monospace; font-size: 14px; color: #fff; }
-
-        .callout { border-left: 3px solid var(--accent); background: #0d1620; padding: 20px; border-radius: 0 8px 8px 0; font-size: 14px; color: #aaa; margin: 32px 0; }
-        .callout strong { color: #fff; }
-    </style>
+    .equivalence-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 24px; margin-top: 32px; }
+    .eq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .eq-item { border-left: 2px solid #333; padding-left: 16px; }
+    .eq-title { font-size: 10px; font-weight: 800; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+    .eq-math { font-family: var(--font-mono); font-size: 14px; color: #fff; }
+  </style>
 </head>
 <body>
-    <div class="page">
-        <a class="back" href="../">← Back to Learning Lasers</a>
+  <div class="page">
+    <h1>Power & Speed</h1>
+    <p class="subtitle">The two primary "knobs" on a laser system. While they seem independent, they combine into a single physical reality: <strong>Energy Density</strong>.</p>
 
-        <nav class="sim-nav">
-            <a href="../engraving-modes/">Engraving Modes</a>
-            <a href="../heat-transfer/">Heat Transfer</a>
-            <a href="../speed-curve/">Speed Curve</a>
-            <a href="../focus-dof/">Focus & DOF</a>
-            <a href="../lpcm-dpi/">LPCM & DPI</a>
-            <a href="../ss304-colours/">SS304 Colours</a>
-            <a href="./" class="active">Power & Speed</a>
-            <a href="../../laser-experiments/heat-wall-test/">Strategy Lab</a>
-        </nav>
-
-        <h1>Power & Speed</h1>
-        <p class="subtitle">The two primary "knobs" on a laser system. While they seem independent, they combine into a single physical reality: <strong>Energy Density</strong>.</p>
-
-        <div class="metadata-bar">
-            <div class="meta-item"><b>Material:</b> <strong>Standard Target</strong></div>
-            <div class="meta-item"><b>Hardware:</b> <strong>5W IR Laser</strong></div>
-            <div class="meta-item"><b>Settings:</b> <strong id="metaPower">30% Power</strong> · <strong id="metaSpeed">500mm/s</strong> · <strong id="metaLPCM">333 LPCM</strong></div>
-        </div>
-
-        <div class="section">
-            <p class="section-title">The Master Variable</p>
-            <h2 class="section-name">J/mm²: The Thermal Dose</h2>
-            <p>Every material has a threshold where it reacts to heat. To reach that threshold, you must deliver a specific amount of energy per unit of area ($J/mm^2$).</p>
-            
-            <div class="tutorial-container">
-                <div class="viz-layout">
-                    <div class="energy-tank-container">
-                        <div id="energyFill" class="energy-fill" style="height: 33%;"></div>
-                        <div class="tank-label">
-                            <div id="statEnergy" class="tank-val">0.33</div>
-                            <div class="tank-unit">Joules / mm²</div>
-                        </div>
-                    </div>
-
-                    <div class="controls">
-                        <div class="control-group">
-                            <div class="label-row">
-                                <span class="label-text">Power (%)</span>
-                                <span id="valPower" class="label-val">30%</span>
-                            </div>
-                            <input type="range" id="inputPower" min="1" max="100" value="30">
-                        </div>
-
-                        <div class="control-group">
-                            <div class="label-row">
-                                <span class="label-text">Speed (mm/s)</span>
-                                <span id="valSpeed" class="label-val">500 mm/s</span>
-                            </div>
-                            <input type="range" id="inputSpeed" min="50" max="2000" value="500" step="50">
-                        </div>
-
-                        <div class="control-group">
-                            <div class="label-row">
-                                <span class="label-text">Scan Density (LPCM)</span>
-                                <span id="valLPCM" class="label-val">333 LPCM</span>
-                            </div>
-                            <input type="range" id="inputLPCM" min="50" max="1000" value="333" step="10">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="callout">
-                <strong>The Reciprocal Rule:</strong> If you double your speed, you must double your power to maintain the same energy density. If you halve your density (LPCM), you must halve your speed to compensate.
-            </div>
-
-            <div class="equivalence-card">
-                <div class="section-title" style="margin-bottom: 16px;">Equivalent Doses</div>
-                <div class="eq-grid">
-                    <div class="eq-item">
-                        <div class="eq-title">High Speed Scenario</div>
-                        <div class="eq-math">100% Power @ 1000 mm/s</div>
-                    </div>
-                    <div class="eq-item">
-                        <div class="eq-title">Low Speed Scenario</div>
-                        <div class="eq-math">10% Power @ 100 mm/s</div>
-                    </div>
-                </div>
-                <p style="font-size: 12px; color: #666; margin-top: 16px; margin-bottom: 0;">* Both scenarios deliver the exact same Joules per mm², though the material might react differently due to thermal conduction time.</p>
-            </div>
-        </div>
+    <div class="meta-bar">
+      <div class="meta-item"><b>Material:</b> <strong>Standard Target</strong></div>
+      <div class="meta-item"><b>Hardware:</b> <strong>5W IR Laser</strong></div>
+      <div class="meta-item"><b>Settings:</b> <strong id="metaPower">30% Power</strong> · <strong id="metaSpeed">500mm/s</strong> · <strong id="metaLPCM">333 LPCM</strong></div>
     </div>
 
-    <script>
-        const inputPower = document.getElementById('inputPower');
-        const inputSpeed = document.getElementById('inputSpeed');
-        const inputLPCM = document.getElementById('inputLPCM');
-        
-        const valPower = document.getElementById('valPower');
-        const valSpeed = document.getElementById('valSpeed');
-        const valLPCM = document.getElementById('valLPCM');
-        
-        const statEnergy = document.getElementById('statEnergy');
-        const energyFill = document.getElementById('energyFill');
-        
-        const metaPower = document.getElementById('metaPower');
-        const metaSpeed = document.getElementById('metaSpeed');
-        const metaLPCM = document.getElementById('metaLPCM');
+    <div class="section">
+      <div class="section-label">The Master Variable</div>
+      <h2>J/mm²: The Thermal Dose</h2>
+      <p>Every material has a threshold where it reacts to heat. To reach that threshold, you must deliver a specific amount of energy per unit of area (J/mm²).</p>
+      
+      <div class="panel">
+        <div class="viz-layout">
+          <div class="energy-tank-container">
+            <div id="energyFill" class="energy-fill" style="height: 33%;"></div>
+            <div class="tank-label">
+              <div id="statEnergy" class="tank-val">0.33</div>
+              <div class="tank-unit">Joules / mm²</div>
+            </div>
+          </div>
 
-        const MAX_WATTS = 5.0; // 5W IR Module
+          <div class="controls-list">
+            <div class="control-group">
+              <div class="label-row">
+                <span class="label-text">Power (%)</span>
+                <span id="valPower" class="label-val">30%</span>
+              </div>
+              <input type="range" id="inputPower" min="1" max="100" value="30">
+            </div>
 
-        function update() {
-            const p = parseInt(inputPower.value);
-            const s = parseInt(inputSpeed.value);
-            const lpc = parseInt(inputLPCM.value);
+            <div class="control-group">
+              <div class="label-row">
+                <span class="label-text">Speed (mm/s)</span>
+                <span id="valSpeed" class="label-val">500 mm/s</span>
+              </div>
+              <input type="range" id="inputSpeed" min="50" max="2000" value="500" step="50">
+            </div>
 
-            valPower.textContent = p + "%";
-            valSpeed.textContent = s + " mm/s";
-            valLPCM.textContent = lpc + " LPCM";
+            <div class="control-group">
+              <div class="label-row">
+                <span class="label-text">Scan Density (LPCM)</span>
+                <span id="valLPCM" class="label-val">333 LPCM</span>
+              </div>
+              <input type="range" id="inputLPCM" min="50" max="1000" value="333" step="10">
+            </div>
+          </div>
+        </div>
+      </div>
 
-            // Update Metadata
-            metaPower.textContent = p + "% Power (" + (p * MAX_WATTS / 100).toFixed(1) + "W)";
-            metaSpeed.textContent = s + " mm/s";
-            metaLPCM.textContent = lpc + " LPCM";
+      <div class="callout blue">
+        <strong>The Reciprocal Rule:</strong> If you double your speed, you must double your power to maintain the same energy density. If you halve your density (LPCM), you must halve your speed to compensate.
+      </div>
 
-            // Calculation:
-            // Spacing (mm) = 10 / LPCM
-            // Time to cover 1mm² (s) = (1 / Spacing) / Speed = (LPCM / 10) / Speed
-            // Energy (J) = Power(W) * Time(s)
-            // Energy Density (J/mm²) = (Watts * LPCM) / (10 * Speed)
-            
-            const watts = (p / 100) * MAX_WATTS;
-            const energyDensity = (watts * lpc) / (10 * s);
+      <div class="equivalence-card">
+        <div class="section-label" style="margin-bottom: 16px;">Equivalent Doses</div>
+        <div class="eq-grid">
+          <div class="eq-item">
+            <div class="eq-title">High Speed Scenario</div>
+            <div class="eq-math">100% Power @ 1000 mm/s</div>
+          </div>
+          <div class="eq-item">
+            <div class="eq-title">Low Speed Scenario</div>
+            <div class="eq-math">10% Power @ 100 mm/s</div>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #666; margin-top: 16px; margin-bottom: 0;">* Both scenarios deliver the exact same Joules per mm², though the material might react differently due to thermal conduction time.</p>
+      </div>
+    </div>
+  </div>
 
-            statEnergy.textContent = energyDensity.toFixed(3);
-            
-            // Visualization scaling: 1.0 J/mm² is "Full"
-            const fillPct = Math.min(100, (energyDensity / 1.0) * 100);
-            energyFill.style.height = fillPct + "%";
-            
-            // Color shift for extreme heat
-            if (energyDensity > 0.8) {
-                energyFill.style.background = "linear-gradient(to top, #450a0a, #f87171)";
-            } else if (energyDensity > 0.4) {
-                energyFill.style.background = "linear-gradient(to top, #451a0a, #f59e0b)";
-            } else {
-                energyFill.style.background = "linear-gradient(to top, #1e293b, #5b9bd5)";
-            }
-        }
+  <script type="module">
+    import { initGlobal, injectBackLink } from '../../shared/js/ui.js';
 
-        [inputPower, inputSpeed, inputLPCM].forEach(el => el.addEventListener('input', update));
-        update();
-    </script>
+    initGlobal();
+    injectBackLink("← Back to Learning Lasers", "../", false);
+
+    const inputPower = document.getElementById('inputPower');
+    const inputSpeed = document.getElementById('inputSpeed');
+    const inputLPCM = document.getElementById('inputLPCM');
+    
+    const valPower = document.getElementById('valPower');
+    const valSpeed = document.getElementById('valSpeed');
+    const valLPCM = document.getElementById('valLPCM');
+    
+    const statEnergy = document.getElementById('statEnergy');
+    const energyFill = document.getElementById('energyFill');
+    
+    const metaPower = document.getElementById('metaPower');
+    const metaSpeed = document.getElementById('metaSpeed');
+    const metaLPCM = document.getElementById('metaLPCM');
+
+    const MAX_WATTS = 5.0; // 5W IR Module
+
+    function update() {
+      const p = parseInt(inputPower.value);
+      const s = parseInt(inputSpeed.value);
+      const lpc = parseInt(inputLPCM.value);
+
+      valPower.textContent = p + "%";
+      valSpeed.textContent = s + " mm/s";
+      valLPCM.textContent = lpc + " LPCM";
+
+      // Update Metadata
+      metaPower.textContent = p + "% Power (" + (p * MAX_WATTS / 100).toFixed(1) + "W)";
+      metaSpeed.textContent = s + " mm/s";
+      metaLPCM.textContent = lpc + " LPCM";
+
+      // Calculation: J/mm² = (Watts * LPCM) / (10 * Speed)
+      const watts = (p / 100) * MAX_WATTS;
+      const energyDensity = (watts * lpc) / (10 * s);
+
+      statEnergy.textContent = energyDensity.toFixed(3);
+      
+      // Visualization scaling: 1.0 J/mm² is "Full"
+      const fillPct = Math.min(100, (energyDensity / 1.0) * 100);
+      energyFill.style.height = fillPct + "%";
+      
+      // Color shift for extreme heat
+      if (energyDensity > 0.8) {
+        energyFill.style.background = "linear-gradient(to top, #450a0a, #f87171)";
+      } else if (energyDensity > 0.4) {
+        energyFill.style.background = "linear-gradient(to top, #451a0a, #f59e0b)";
+      } else {
+        energyFill.style.background = "linear-gradient(to top, #1e293b, var(--accent-blue))";
+      }
+    }
+
+    [inputPower, inputSpeed, inputLPCM].forEach(el => el.addEventListener('input', update));
+    update();
+  </script>
 </body>
 </html>
