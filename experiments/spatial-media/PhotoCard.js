@@ -4,6 +4,7 @@ import { SpatialMaterial } from './SpatialMaterial.js';
 export class PhotoCard {
     constructor(scene, options = {}) {
         this.scene = scene;
+        this.options = options;
         this.width = options.width || 6;
         this.height = options.height || 4;
         this.imagePath = options.imagePath;
@@ -35,9 +36,18 @@ export class PhotoCard {
         this.material = new SpatialMaterial({
             map: colorMap,
             displacementMap: depthMap,
-            displacementScale: 1.5, // How "deep" the diorama is
-            featherRange: [0.95, 1.0]
+            displacementScale: this.options.displacementScale || 1.5, // How "deep" the diorama is
+            featherRange: [0.95, 1.0],
+            curvatureRadius: Math.abs(this.width / 2) * 2 // Default to twice width? Wait. 
+            // Better to use a standard distance or pass it in.
         });
+        
+        // Use provided radius or default to 5.0 (the distance we place it at)
+        if (this.options.curvatureRadius) {
+            this.material.uniforms.uCurvatureRadius.value = this.options.curvatureRadius;
+        } else {
+            this.material.uniforms.uCurvatureRadius.value = 5.0; 
+        }
 
         this.mesh = new THREE.Mesh(geometry, this.material);
         this.mesh.position.set(0, 0, -5); // 5 meters in front
@@ -85,6 +95,9 @@ export class PhotoCard {
     update(options = {}) {
         if (options.displacementScale !== undefined && this.material) {
             this.material.uniforms.uDisplacementScale.value = options.displacementScale;
+        }
+        if (options.curvatureRadius !== undefined && this.material) {
+            this.material.uniforms.uCurvatureRadius.value = options.curvatureRadius;
         }
         if (options.position !== undefined && this.mesh) {
             this.mesh.position.copy(options.position);

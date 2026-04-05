@@ -66,6 +66,11 @@ export class SpatialUI {
             window.renderer.toggleAutoPan();
         });
 
+        // Add Curvature Toggle to Right Panel
+        this.addButtonToPanel('right', "CURVATURE: ON/OFF", 0, -0.85, () => {
+            window.renderer.toggleCurvature();
+        });
+
         this.scene.add(this.group);
         console.log("SpatialUI: Dashboard Initialized.");
     }

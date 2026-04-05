@@ -48,6 +48,7 @@ export class SpatialRenderer {
 
         this.isAutoPanning = false;
         this.panTime = 0;
+        this.isCurved = true;
 
         this.initSky();
     }
@@ -330,7 +331,19 @@ export class SpatialRenderer {
     toggleAutoPan() {
         this.isAutoPanning = !this.isAutoPanning;
         console.log("Auto-Pan Toggled:", this.isAutoPanning);
+        if (this.audio) this.audio.playInteraction('success');
         return this.isAutoPanning;
+    }
+
+    toggleCurvature() {
+        this.isCurved = !this.isCurved || false;
+        const radius = this.isCurved ? 5.0 : 1000.0; // 1000m is effectively flat
+        if (this.activePhotoCard) {
+            this.activePhotoCard.update({ curvatureRadius: radius });
+        }
+        console.log("Gallery: Curvature toggled to", this.isCurved);
+        if (this.audio) this.audio.playInteraction('success');
+        return this.isCurved;
     }
 
     render(timestamp, frame) {
@@ -342,10 +355,10 @@ export class SpatialRenderer {
         
         // Auto-Pan Logic: Rotate all PhotoCards
         if (this.isAutoPanning) {
-            this.panTime += 0.01;
-            const rotation = Math.sin(this.panTime) * 0.2; // +/- 0.2 rads (~11 degrees)
+            this.panTime += (this.panTime !== undefined ? 0.01 : 0);
+            const rotation = Math.sin(this.panTime || 0) * 0.2; // +/- 0.2 rads (~11 degrees)
             this.scene.traverse(obj => {
-                if (obj.isMesh && obj.material.uniforms && obj.material.uniforms.uDisplacementScale) {
+                if (obj.isMesh && obj.material && obj.material.uniforms && obj.material.uniforms.uDisplacementScale) {
                     obj.rotation.y = rotation;
                 }
             });

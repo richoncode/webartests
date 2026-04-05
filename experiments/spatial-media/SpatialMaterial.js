@@ -3,22 +3,25 @@ import * as THREE from 'three';
 export class SpatialMaterial extends THREE.MeshStandardMaterial {
     constructor(parameters) {
         // Strip custom properties before super() to avoid Three.js warnings
-        const { displacementScale = 1.0, featherRange = [0.95, 1.0], ...rest } = parameters;
+        const { displacementScale = 1.0, featherRange = [0.95, 1.0], curvatureRadius = 5.0, ...rest } = parameters;
         super(rest);
         
         // Define persistent uniforms for the instance
         this.uniforms = {
             uDisplacementScale: { value: displacementScale },
-            uFeatherRange: { value: new THREE.Vector2(...featherRange) }
+            uFeatherRange: { value: new THREE.Vector2(...featherRange) },
+            uCurvatureRadius: { value: parameters.curvatureRadius || 5.0 }
         };
 
         this.onBeforeCompile = (shader) => {
             // Link our persistent uniforms to the shader's internal uniform pool
             shader.uniforms.uDisplacementScale = this.uniforms.uDisplacementScale;
             shader.uniforms.uFeatherRange = this.uniforms.uFeatherRange;
+            shader.uniforms.uCurvatureRadius = this.uniforms.uCurvatureRadius;
             
             shader.vertexShader = `
                 uniform float uDisplacementScale;
+                uniform float uCurvatureRadius;
                 varying vec2 vUvOrigin;
                 ${shader.vertexShader}
             `.replace(
@@ -26,6 +29,14 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
                 `
                 #include <begin_vertex>
                 vUvOrigin = uv;
+                
+                // 1. Apply Cylindrical Curvature (Bending horizontally towards the viewer)
+                // Radius of curvature = uCurvatureRadius
+                float distToCenter = transformed.x;
+                float zOffset = uCurvatureRadius - sqrt(max(0.001, uCurvatureRadius * uCurvatureRadius - distToCenter * distToCenter));
+                transformed.z += zOffset;
+
+                // 2. Apply Displacement Mapping
                 float depthValue = texture2D(displacementMap, uv).r;
                 transformed.z += depthValue * uDisplacementScale;
                 `
