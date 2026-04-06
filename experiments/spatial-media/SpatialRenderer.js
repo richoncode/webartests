@@ -21,11 +21,15 @@ export class SpatialRenderer {
         });
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.localClippingEnabled = true; // Essential for scrollable UI masks
         
         this.container.appendChild(this.renderer.domElement);
         
         this.controls = null;
-        this.isXR = false;
+        this.isAutoPanning = true;
+        this.panTime = 0;
+        this.isCurved = false;
+        this.isIndividualBillboarding = true;
         
         // Desktop Raycasting
         this.raycaster = new THREE.Raycaster();
@@ -46,9 +50,7 @@ export class SpatialRenderer {
         this.audio = new AudioManager();
         this.audio.init(this.camera);
 
-        this.isAutoPanning = false;
-        this.panTime = 0;
-        this.isCurved = true;
+
 
         this.initSky();
     }
@@ -208,42 +210,42 @@ export class SpatialRenderer {
             this.controls.reset();
             // OrbitControls.reset() handles position if set up correctly, 
             // but let's be explicit for the mock.
-            this.camera.position.set(0, 0, 5);
+        this.camera.position.set(0, 0, 5);
             this.camera.lookAt(0, 0, 0);
         }
     }
 
+    async updateGalleryByFilename(filename) {
+        if (!this.activePhotoCard) return;
+
+        const imgPath = `./images/${filename}`;
+        // Ensure depth path preserves format (e.g. .jpg image might use .png depth depending on previous pipeline)
+        // But the previous work in 9f091317-63b2-4cd4-94e6-667ca75f4739 suggested they are in depth/
+        // I will check if filename.png exists in depth/ or if it's the same extension.
+        // For now, I'll assume same extension or .png as standard.
+        const baseName = filename.split('.').slice(0, -1).join('.');
+        let depthPath = `./depth/${baseName}.png`; // Most depth maps are PNGs for precision
+        
+        console.log(`Gallery: Transitioning to ${filename}...`);
+        await this.activePhotoCard.updateTexture(imgPath, depthPath);
+        if (this.audio) this.audio.playInteraction('click');
+    }
+
     async updateGallery(id) {
-        const imgBase = './images/';
-        const depthBase = './depth/';
-        
         const catalog = {
-            1: 'burning-man.jpg',
-            2: 'cube-kite.jpg',
-            3: 'earth.jpg',
-            4: 'glacier.jpg',
-            5: 'parachutist.jpg',
-            6: 'peacock.jpg',
-            7: 'snow-trees.jpg',
-            8: 'starfish.jpg',
-            9: 'sample.png',
-            10: 'burning-man.jpg'
+            1: 'snow-trees.jpg',
+            2: 'starfish.jpg',
+            3: 'parachutist.jpg',
+            4: 'peacock.jpg',
+            5: 'earth.jpg',
+            6: 'sample.png',
+            7: 'burning-man.jpg',
+            8: 'glacier.jpg',
+            9: 'cube-kite.jpg'
         };
-
-        const filename = catalog[id] || 'burning-man.jpg';
-        const imagePath = `${imgBase}${filename}`;
         
-        // Derive depth filename by replacing extension with .png
-        const depthFilename = filename.split('.')[0] + '.png';
-        const depthPath = `${depthBase}${depthFilename}`;
-
-        console.log(`Gallery: Selecting Photo ${id} -> ${filename} (Depth: ${depthFilename})`);
-        
-        if (this.activePhotoCard) {
-            await this.activePhotoCard.updateTexture(imagePath, depthPath);
-        }
-        
-        if (this.audio) this.audio.playInteraction('success');
+        const filename = catalog[id] || 'sample.png';
+        await this.updateGalleryByFilename(filename);
     }
 
     initLights() {
@@ -344,6 +346,27 @@ export class SpatialRenderer {
         console.log("Gallery: Curvature toggled to", this.isCurved);
         if (this.audio) this.audio.playInteraction('success');
         return this.isCurved;
+    }
+
+    setPOV(mode) {
+        if (!this.controls) return;
+        if (mode === 'vr') {
+            this.camera.position.set(0, 0, 0.1);
+            this.controls.target.set(0, 0, -5);
+        } else {
+            this.camera.position.set(0, 0, 5);
+            this.controls.target.set(0, 0, 0);
+        }
+        this.controls.update();
+        if (this.audio) this.audio.playInteraction('success');
+        console.log("Gallery: POV changed to", mode);
+    }
+
+    toggleIndividualBillboarding() {
+        this.isIndividualBillboarding = !this.isIndividualBillboarding;
+        if (this.audio) this.audio.playInteraction('success');
+        console.log("Gallery: Individual Billboarding is now", this.isIndividualBillboarding);
+        return this.isIndividualBillboarding;
     }
 
     render(timestamp, frame) {
