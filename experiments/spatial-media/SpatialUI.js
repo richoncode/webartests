@@ -43,35 +43,45 @@ export class SpatialUI {
         this.createPanel('left', 2.2, 5.6, new THREE.Vector3(xLeft, 0, zLeft), new THREE.Euler(0, leftCenterAngle, 0));
         this.setupCatalogPanel();
 
-        // 3. Right Panel: Environment (Expanded for 8-Mode Dashboard)
-        this.createPanel('right', 1.6, 3.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
-        this.addTextToPanel('right', "ENVIRONMENT", 0, 1.45, 0.14);
+        // 3. Right Panel: Environment (Expanded for 12-Mode Ultra-Dashboard)
+        this.createPanel('right', 1.6, 4.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
+        this.addTextToPanel('right', "ENVIRONMENT", 0, 1.95, 0.14);
         
         const btnWStack = 1.2;
-        this.addButtonToPanel('right', "IMMERSION", 0, 1.25, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
-        this.addButtonToPanel('right', "AUTO-PAN", 0, 1.07, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
-        this.addButtonToPanel('right', "CURVATURE", 0, 0.89, btnWStack, () => this.state.set('isCurved', !this.state.get('isCurved')), 'CURVATURE_BTN', true);
+        this.addButtonToPanel('right', "IMMERSION", 0, 1.75, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
+        this.addButtonToPanel('right', "AUTO-PAN", 0, 1.57, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
+        this.addButtonToPanel('right', "CURVATURE", 0, 1.39, btnWStack, () => this.state.set('isCurved', !this.state.get('isCurved')), 'CURVATURE_BTN', true);
 
         // Momentary Size Cluster
-        const ySize = 0.70;
+        const ySize = 1.20;
         this.addButtonToPanel('right', "-", -0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 0.9), 'SIZE_MINUS', false);
         this.addTextToPanel('right', "SIZE", 0, ySize, 0.08, 0.145);
         this.addButtonToPanel('right', "+", 0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 1.1), 'SIZE_PLUS', false);
 
-        // Depth Strategy Group (Expanded to 8 Modes)
-        this.addTextToPanel('right', "DEPTH STRATEGY", 0, 0.42, 0.1);
-        const yBase = 0.18;
+        // Depth Strategy Group (Expanded to 12 Modes)
+        this.addTextToPanel('right', "DEPTH STRATEGY (SOTA)", 0, 0.92, 0.1);
+        const yBase = 0.68;
         const yStep = 0.2;
-        this.addButtonToPanel('right', "PREDICTED", 0, yBase, btnWStack, () => this.state.set('depthStrategy', 'predicted'), 'DEPTH_PREDICTED', true);
-        this.addButtonToPanel('right', "SEMANTIC", 0, yBase - yStep, btnWStack, () => this.state.set('depthStrategy', 'semantic'), 'DEPTH_SEMANTIC', true);
-        this.addButtonToPanel('right', "MPI (LAYERS)", 0, yBase - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'mpi'), 'DEPTH_MPI', true);
-        this.addButtonToPanel('right', "LIDAR", 0, yBase - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'lidar'), 'DEPTH_LIDAR', true);
-        this.addButtonToPanel('right', "FOVEATED", 0, yBase - (yStep*4), btnWStack, () => this.state.set('depthStrategy', 'foveated'), 'DEPTH_FOVEATED', true);
         
-        const ySub = yBase - (yStep*5);
-        this.addButtonToPanel('right', "RADIAL", 0, ySub, btnWStack, () => this.state.set('depthStrategy', 'radial'), 'DEPTH_RADIAL', true);
-        this.addButtonToPanel('right', "LINEAR", 0, ySub - yStep, btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
-        this.addButtonToPanel('right', "SUBJECT", 0, ySub - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
+        // Tier 1: SOTA
+        this.addButtonToPanel('right', "DIFFUSION", 0, yBase, btnWStack, () => this.state.set('depthStrategy', 'diffusion'), 'DEPTH_DIFFUSION', true);
+        this.addButtonToPanel('right', "METRIC (ABS)", 0, yBase - yStep, btnWStack, () => this.state.set('depthStrategy', 'metric'), 'DEPTH_METRIC', true);
+        this.addButtonToPanel('right', "SEGMENT (SAM)", 0, yBase - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'segment'), 'DEPTH_SEGMENT', true);
+        this.addButtonToPanel('right', "TILE-FUSION", 0, yBase - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'fusion'), 'DEPTH_FUSION', true);
+        
+        // Tier 2: Established
+        const yBase2 = yBase - (yStep*4.5);
+        this.addButtonToPanel('right', "PREDICTED (ML)", 0, yBase2, btnWStack, () => this.state.set('depthStrategy', 'predicted'), 'DEPTH_PREDICTED', true);
+        this.addButtonToPanel('right', "SEMANTIC", 0, yBase2 - yStep, btnWStack, () => this.state.set('depthStrategy', 'semantic'), 'DEPTH_SEMANTIC', true);
+        this.addButtonToPanel('right', "MPI (LAYERS)", 0, yBase2 - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'mpi'), 'DEPTH_MPI', true);
+        this.addButtonToPanel('right', "LIDAR", 0, yBase2 - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'lidar'), 'DEPTH_LIDAR', true);
+        this.addButtonToPanel('right', "FOVEATED", 0, yBase2 - (yStep*4), btnWStack, () => this.state.set('depthStrategy', 'foveated'), 'DEPTH_FOVEATED', true);
+        
+        // Tier 3: Heuristics
+        const yBase3 = yBase2 - (yStep*5);
+        this.addButtonToPanel('right', "RADIAL", 0, yBase3, btnWStack, () => this.state.set('depthStrategy', 'radial'), 'DEPTH_RADIAL', true);
+        this.addButtonToPanel('right', "LINEAR", 0, yBase3 - yStep, btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
+        this.addButtonToPanel('right', "SUBJECT", 0, yBase3 - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
 
         // 4. Stats Panel (Diagnostics)
         const yStats = -Math.sin(statsCenterAngle) * radiusStats;
@@ -119,6 +129,10 @@ export class SpatialUI {
         syncLED('CURVATURE_BTN', 'isCurved');
         syncLED('POV-VR', 'povMode', 'vr');
         syncLED('POV-DESK', 'povMode', 'desk');
+        syncLED('DEPTH_DIFFUSION', 'depthStrategy', 'diffusion');
+        syncLED('DEPTH_METRIC', 'depthStrategy', 'metric');
+        syncLED('DEPTH_SEGMENT', 'depthStrategy', 'segment');
+        syncLED('DEPTH_FUSION', 'depthStrategy', 'fusion');
         syncLED('DEPTH_PREDICTED', 'depthStrategy', 'predicted');
         syncLED('DEPTH_SEMANTIC', 'depthStrategy', 'semantic');
         syncLED('DEPTH_MPI', 'depthStrategy', 'mpi');

@@ -124,7 +124,7 @@ export class SpatialRenderer {
         this.scene.traverse(obj => {
             if (obj.isMesh && obj.material && obj.material.uniforms) {
                 const uniforms = obj.material.uniforms;
-                if (uniforms.uDisplacementScale) uniforms.uDisplacementScale.value = this.state.get('immersionActive') ? 1.0 : 0.0;
+                if (uniforms.uDisplacementScale) uniforms.uDisplacementScale.value = this.state.get('immersionActive') ? 2.5 : 0.0;
                 if (uniforms.uCurvatureRadius) uniforms.uCurvatureRadius.value = this.state.get('isCurved') ? 5.0 : 100.0;
                 if (uniforms.uFoveaFactor) uniforms.uFoveaFactor.value = (this.state.get('depthStrategy') === 'foveated') ? 1.0 : 0.0;
             }

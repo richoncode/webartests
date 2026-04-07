@@ -35,24 +35,46 @@ def main():
         print(f"Error: {catalog_path} not found.")
         return
 
+    cwd = os.getcwd()
+    python_cmd = os.path.join(cwd, "experiments", "spatial-media", "venv", "bin", "python3")
+
     with open(catalog_path, "r") as f:
         catalog = json.load(f)
 
-    modes = ["radial", "linear", "subject", "predicted", "semantic", "mpi", "lidar", "foveated"]
+    # Pass 1: Ensure Predicted (ML) maps exist
+    print("PHASE 1: Synchronizing Predicted (ML) Ground Truth...")
+    pred_dir = "experiments/spatial-media/depth/strategies/predicted/"
+    if not os.path.exists(pred_dir): os.makedirs(pred_dir)
+    
+    for item in catalog:
+        filename_base = item['filename'].split('.')[0]
+        output_path = os.path.join(pred_dir, f"{filename_base}.png")
+        if not os.path.exists(output_path):
+            print(f"  [ML] Generating Initial Predicted Depth for: {filename_base}")
+            image_path = os.path.join("experiments/spatial-media/images/", item['filename'])
+            os.system(f"{python_cmd} experiments/spatial-media/depth_service.py {image_path} {output_path}")
+
+    # Pass 2: Generate all derivative research modes
+    print("\nPHASE 2: Orchestrating Derivative Research Filters...")
+    modes = [
+        "radial", "linear", "subject", 
+        "semantic", "mpi", "lidar",
+        "diffusion", "metric", "segment", "fusion"
+    ]
     
     for mode in modes:
-        if mode == 'foveated':
-            # Foveated is a shader-side effect, it uses the 'predicted' depth map as its base topology
-            output_dir = "experiments/spatial-media/depth/strategies/foveated/"
-            if not os.path.exists(output_dir): os.makedirs(output_dir)
-            print(f"Skipping generator for {mode} (Shader-side strategy)...")
-            continue
-            
         output_dir = f"experiments/spatial-media/depth/strategies/{mode}/"
-        print(f"Orchestrating {mode.upper()} depth strategy batch...")
+        if not os.path.exists(output_dir): os.makedirs(output_dir)
+        
+        print(f"Applying {mode.upper()} filter batch...")
         for item in catalog:
             filename_base = item['filename'].split('.')[0]
-            run_generator(mode, filename_base, output_dir)
+            source_path = os.path.join(pred_dir, f"{filename_base}.png")
+            output_path = os.path.join(output_dir, f"{filename_base}.png")
+            
+            # For this fidelity refactor, we FORCE re-generation of derivatives
+            # to ensure they use the new PIL-based ML filtering logic
+            os.system(f"{python_cmd} experiments/spatial-media/depth/scripts/depth_generator.py {mode} {source_path} {output_path}")
 
 if __name__ == "__main__":
     main()

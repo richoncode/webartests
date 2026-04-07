@@ -1,116 +1,124 @@
 import os
 import sys
+from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+import numpy as np
 
-def write_pgm(filename, width, height, data):
-    """Writes a P5 grayscale PGM file."""
-    with open(filename, 'wb') as f:
-        f.write(f"P5\n{width} {height}\n255\n".encode())
-        f.write(bytearray(data))
+def filter_diffusion(img):
+    """Simulates Diffusion Refinement: Sharpness + Micro-Tactile Jitter."""
+    # 1. Enhance Sharpening
+    enhancer = ImageEnhance.Sharpness(img)
+    img = enhancer.enhance(3.0)
+    # 2. Add subtle high-frequency noise
+    arr = np.array(img).astype(np.int16)
+    noise = np.random.randint(-12, 12, arr.shape)
+    arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
 
-def generate_radial(width, height):
-    """Radial gradient: White center, Black edges."""
-    data = []
-    cx, cy = width / 2, height / 2
-    max_dist = (cx**2 + cy**2)**0.5
-    for y in range(height):
-        for x in range(width):
-            dist = ((x - cx)**2 + (y - cy)**2)**0.5
-            val = int(255 * (1 - dist / max_dist))
-            data.append(max(0, min(255, val)))
-    return data
+def filter_metric(img):
+    """Simulates Metric-Absolute Depth: Non-linear distancing."""
+    arr = np.array(img).astype(np.float32) / 255.0
+    # Apply a Power-law (Gamma) to simulate binned focal metrics
+    arr = np.power(arr, 1.4) * 255.0
+    return Image.fromarray(arr.astype(np.uint8))
 
-def generate_linear(width, height):
-    """Linear vertical gradient: Black (top) to White (bottom)."""
-    data = []
-    for y in range(height):
-        val = int(255 * (y / height))
-        for x in range(width):
-            data.append(val)
-    return data
+def filter_segment(img):
+    """Simulates SAM-Segmentation: Zero-bleed instance silhouettes."""
+    arr = np.array(img)
+    # High-contrast threshold to isolate the primary subject from the background
+    # (Otsu-style simplistic implementation)
+    pivot = 127
+    arr[arr < pivot] = 40 # Background depth
+    arr[arr >= pivot] = 255 # Foreground subject
+    return Image.fromarray(arr)
 
-def generate_subject(width, height):
-    """Subject-Aware: Gaussian-ish center. High center-pop."""
-    data = []
-    cx, cy = width / 2, height / 2
-    for y in range(height):
-        for x in range(width):
-            dist_sq = (x - cx)**2 + (y - cy)**2
-            sigma_sq = (width / 3)**2
-            val = int(255 * (2.71828 ** (-dist_sq / (2 * sigma_sq))))
-            data.append(max(0, min(255, val)))
-    return data
-
-def generate_semantic(width, height):
-    """Semantic Segmentation Mock: Ultra-sharp subject mask."""
-    data = []
-    cx, cy = width / 2, height / 2
-    for y in range(height):
-        for x in range(width):
-            dist = ((x - cx)**2 + (y - cy)**2)**0.5
-            # Sharp cutoff to simulate SAM object isolation
-            val = 255 if dist < (width / 4) else 0
-            data.append(val)
-    return data
-
-def generate_mpi(width, height):
-    """MPI (Multi-Plane Image): Posterized depth slices."""
-    data = []
+def filter_mpi(img):
+    """Simulates MPI (Layers): Discrete depth-slices."""
+    arr = np.array(img)
+    # Posterize the ML map into 8 discrete depth planes
     layers = 8
-    for y in range(height):
-        # Quantize the linear gradient into discrete depth planes
-        linear_val = y / height
-        quantized = int(linear_val * layers) / layers
-        val = int(255 * quantized)
-        for x in range(width):
-            data.append(val)
-    return data
+    arr = (np.floor(arr / (256/layers)) * (256/layers)).astype(np.uint8)
+    return Image.fromarray(arr)
 
-def generate_lidar(width, height):
-    """LiDAR Sensor Mock: High-precision with simulated hardware noise."""
-    import random
-    data = []
-    cx, cy = width / 2, height / 2
-    for y in range(height):
-        for x in range(width):
-            dist = ((x - cx)**2 + (y - cy)**2)**0.5
-            base_val = int(255 * (1 - dist / (width * 0.7)))
-            # Add sensor noise (simulating point cloud artifacts)
-            noise = random.randint(-5, 5)
-            data.append(max(0, min(255, base_val + noise)))
-    return data
+def filter_fusion(img):
+    """Simulates Tile-Fusion: High-resolution detail stitching."""
+    # Find edges in the ML map and overlay them to simulate high-precision reconstruction
+    edges = img.filter(ImageFilter.FIND_EDGES)
+    arr = np.array(img).astype(np.int16)
+    edge_arr = np.array(edges).astype(np.int16)
+    arr = np.clip(arr + edge_arr, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
+
+def filter_semantic(img):
+    """Subject-Aware Semantic Mask: Anchored in predicted ground truth."""
+    # Dilated thresholding to provide a slightly softer subject pop
+    arr = np.array(img)
+    pivot = 140
+    arr[arr < pivot] = 0
+    arr[arr >= pivot] = 255
+    return Image.fromarray(arr).filter(ImageFilter.GaussianBlur(radius=4))
+
+def filter_radial(img):
+    """Radial Hybrid: ML Base + Depth Falloff."""
+    arr = np.array(img).astype(np.float32)
+    h, w = arr.shape
+    cx, cy = w/2, h/2
+    y, x = np.ogrid[:h, :w]
+    mask = 1.0 - (np.sqrt((x-cx)**2 + (y-cy)**2) / (w*0.7))
+    arr = np.clip(arr * mask, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
+
+def filter_linear(img):
+    """Linear Hybrid: ML Base + Horizon Gradient."""
+    arr = np.array(img).astype(np.float32)
+    h, w = arr.shape
+    # Blend the ML prediction with a vertical horizon gradient
+    gradient = np.linspace(0.2, 1.0, h).reshape(h, 1)
+    arr = np.clip(arr * gradient, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
+
+def filter_subject(img):
+    """Subject-Aware Pop: ML Base + Gaussian Center Boost."""
+    arr = np.array(img).astype(np.float32)
+    h, w = arr.shape
+    cx, cy = w/2, h/2
+    y, x = np.ogrid[:h, :w]
+    # Multiply ML depth by a Gaussian spread to simulate portrait-mode pop
+    sigma = w / 2.5
+    gaussian = np.exp(-((x-cx)**2 + (y-cy)**2)/(2*sigma**2))
+    arr = np.clip(arr * (0.5 + 0.5 * gaussian), 0, 255).astype(np.uint8)
+    return Image.fromarray(arr)
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python3 depth_generator.py [mode] [output_path]")
+    if len(sys.argv) < 4:
+        print("Usage: python3 depth_generator.py [mode] [source_predicted_path] [output_path]")
         return
 
     mode = sys.argv[1]
-    output_path = sys.argv[2]
-    width, height = 1024, 1024
+    source_path = sys.argv[2]
+    output_path = sys.argv[3]
 
-    if mode == 'radial':
-        data = generate_radial(width, height)
-    elif mode == 'linear':
-        data = generate_linear(width, height)
-    elif mode == 'subject':
-        data = generate_subject(width, height)
-    elif mode == 'semantic':
-        data = generate_semantic(width, height)
-    elif mode == 'mpi':
-        data = generate_mpi(width, height)
-    elif mode == 'lidar':
-        data = generate_lidar(width, height)
-    else:
-        print(f"Unknown mode: {mode}")
+    if not os.path.exists(source_path):
+        print(f"Error: Base predicted asset not found: {source_path}")
         return
 
-    temp_pgm = output_path + ".pgm"
-    write_pgm(temp_pgm, width, height, data)
+    # Ingest the ML ground truth
+    img = Image.open(source_path).convert('L') # Ensure grayscale
+
+    if mode == 'diffusion': img = filter_diffusion(img)
+    elif mode == 'metric': img = filter_metric(img)
+    elif mode == 'segment': img = filter_segment(img)
+    elif mode == 'mpi': img = filter_mpi(img)
+    elif mode == 'fusion': img = filter_fusion(img)
+    elif mode == 'semantic': img = filter_semantic(img)
+    elif mode == 'radial': img = filter_radial(img)
+    elif mode == 'linear': img = filter_linear(img)
+    elif mode == 'subject': img = filter_subject(img)
+    elif mode == 'lidar': 
+        # LiDAR mock: Low-pass filter to simulate sensor blur
+        img = img.filter(ImageFilter.BoxBlur(1))
     
-    # Convert to PNG using macOS 'sips'
-    os.system(f"sips -s format png {temp_pgm} --out {output_path} > /dev/null 2>&1")
-    os.remove(temp_pgm)
-    print(f"Generated {mode} depth: {output_path}")
+    img.save(output_path)
+    print(f"Applied {mode} filter to depth: {output_path}")
 
 if __name__ == "__main__":
     main()
