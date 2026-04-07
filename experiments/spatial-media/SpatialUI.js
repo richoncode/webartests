@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'https://unpkg.com/three@0.168.0/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 export class SpatialUI {
-    constructor(scene) {
+    constructor(scene, state, assetLoader) {
         this.scene = scene;
+        this.state = state;
+        this.assetLoader = assetLoader;
         this.group = new THREE.Group();
-        this.panels = {}; // { group, mesh, clippingPlanes, scrollGroup, scrollY, maxScroll, buttons: {} }
+        this.panels = {}; 
         this.interactiveElements = [];
-        this.billboardEnabled = true;
         this.textureLoader = new THREE.TextureLoader();
-        this.init();
+        this.ready = this.init();
     }
 
     async init() {
-        console.log("SpatialUI: Initializing Dashboards...");
+        console.log("SpatialUI: Building Dashboards...");
         
         const innerEdgeH = 40 * (Math.PI / 180);
         const radiusSide = 3.2;
@@ -25,118 +26,97 @@ export class SpatialUI {
         const statsHalfAngle = Math.asin(0.35 / radiusStats);
         const statsCenterAngle = statsEdgeV + statsHalfAngle;
 
-        // 1. Calculations: Tall Media Pillar (Left)
-        // Original 2.2x1.4. Requested: Twice as high (2.8) and half as wide (1.1). 
-        // NOTE: Previous user request was "twice as large", but current request is "twice as high and half as wide" relative to "Media Wall".
-        // I will implement 2.2m wide x 5.6m high (2x height of the Wall's 2.8m).
         const leftHalfAngle = Math.asin(1.1 / radiusSide);
         const leftCenterAngle = innerEdgeH + leftHalfAngle;
 
         const xStatus = Math.sin(rightCenterAngle) * radiusSide;
         const zStatus = -Math.cos(rightCenterAngle) * radiusSide;
 
-        // 2. Status Panel 
+        // 1. Status Panel (Center)
         this.createPanel('center', 2, 0.6, new THREE.Vector3(xStatus, 2.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
         this.addTextToPanel('center', "LUMINA SYSTEM STATUS", 0, 0.15, 0.12);
         this.addTextToPanel('center', "ACTIVE SESSION: 0x4F2A", 0, -0.02, 0.08);
 
-        // 3. Left Panel: Media Pillar (2.2m x 5.6m) 
+        // 2. Left Panel: Media Catalog
         const xLeft = Math.sin(-leftCenterAngle) * radiusSide;
         const zLeft = -Math.cos(-leftCenterAngle) * radiusSide;
         this.createPanel('left', 2.2, 5.6, new THREE.Vector3(xLeft, 0, zLeft), new THREE.Euler(0, leftCenterAngle, 0));
+        this.setupCatalogPanel();
+
+        // 3. Right Panel: Environment
+        this.createPanel('right', 1.6, 2.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
+        this.addTextToPanel('right', "ENVIRONMENT", 0, 0.95, 0.14);
         
+        const btnWStack = 1.2;
+        this.addButtonToPanel('right', "IMMERSION", 0, 0.75, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
+        this.addButtonToPanel('right', "AUTO-PAN", 0, 0.57, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
+        this.addButtonToPanel('right', "CURVATURE", 0, 0.39, btnWStack, () => this.state.set('isCurved', !this.state.get('isCurved')), 'CURVATURE_BTN', true);
+
+        // Momentary Size Cluster
+        const ySize = 0.20;
+        this.addButtonToPanel('right', "-", -0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 0.9), 'SIZE_MINUS', false);
+        this.addTextToPanel('right', "SIZE", 0, ySize, 0.08, 0.145);
+        this.addButtonToPanel('right', "+", 0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 1.1), 'SIZE_PLUS', false);
+
+        // Depth Strategy Group (Relocated to Right Panel)
+        this.addTextToPanel('right', "DEPTH STRATEGY", 0, -0.08, 0.1);
+        const yBase = -0.32;
+        const yStep = 0.2;
+        this.addButtonToPanel('right', "PREDICTED", 0, yBase, btnWStack, () => this.state.set('depthStrategy', 'predicted'), 'DEPTH_PREDICTED', true);
+        this.addButtonToPanel('right', "RADIAL", 0, yBase - yStep, btnWStack, () => this.state.set('depthStrategy', 'radial'), 'DEPTH_RADIAL', true);
+        this.addButtonToPanel('right', "LINEAR", 0, yBase - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
+        this.addButtonToPanel('right', "SUBJECT", 0, yBase - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
+
+        // 4. Stats Panel (Diagnostics)
+        const yStats = -Math.sin(statsCenterAngle) * radiusStats;
+        const zStats = -Math.cos(statsCenterAngle) * radiusStats;
+        this.createPanel('stats', 2.2, 0.6, new THREE.Vector3(0, yStats, zStats), new THREE.Euler(-statsCenterAngle, 0, 0));
+        this.addTextToPanel('stats', "SYSTEM DIAGNOSTICS", 0, 0.18, 0.08);
+
+        this.addButtonToPanel('stats', "POV: VR", -0.4, -0.1, 0.8, () => this.state.set('povMode', 'vr'), 'POV-VR', true);
+        this.addButtonToPanel('stats', "POV: DESK", 0.4, -0.1, 0.8, () => this.state.set('povMode', 'desk'), 'POV-DESK', true);
+        
+        this.scene.add(this.group);
+        this.setupObservers();
+    }
+
+    setupCatalogPanel() {
         const leftPanel = this.panels['left'];
         leftPanel.scrollGroup = new THREE.Group();
         leftPanel.scrollY = 0;
         leftPanel.group.add(leftPanel.scrollGroup);
-        
-        // Massive vertical viewport (fits the 5.6m pillar)
-        const topViewport = 2.65;
-        const bottomViewport = 2.75;
-        const topPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), topViewport);
-        const bottomPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), bottomViewport);
-        leftPanel.clippingPlanes = [topPlane, bottomPlane];
-
         this.addTextToPanel('left', "MEDIA CATALOG", 0, 2.65, 0.18);
-        
-        try {
-            const response = await fetch('./catalog.json');
-            const catalog = await response.json();
-            const uniqueCatalog = catalog.filter((v, i, a) => a.findIndex(t => t.filename === v.filename) === i);
 
-            // 2-column skyscraper layout
-            uniqueCatalog.forEach((item, i) => {
-                const col = i % 2;
-                const row = Math.floor(i / 2);
-                const x = (col - 0.5) * 1.05; 
-                const y = 2.1 - (row * 1.15); 
-                
-                this.addThumbnailButtonToPanel('left', `./thumbnails/${item.thumbnail}`, x, y, () => {
-                    window.renderer.updateGalleryByFilename(item.filename);
-                }, leftPanel.scrollGroup, leftPanel.clippingPlanes);
-            });
-
-            leftPanel.maxScroll = Math.max(0, (Math.ceil(uniqueCatalog.length / 2) - 2.5) * 1.15);
-        } catch (e) {
-            console.error("SpatialUI: Catalog error", e);
-        }
-
-        // 4. Right Panel: Environment
-        this.createPanel('right', 2.0, 1.4, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
-        this.addTextToPanel('right', "ENVIRONMENT", 0, 0.55, 0.15);
-        this.addButtonToPanel('right', "IMMERSION: ON/OFF", 0, 0.28, 0.8, () => window.renderer.toggleImmersion());
-        this.addButtonToPanel('right', "RESET VIEW", 0, 0.08, 0.8, () => window.renderer.resetView());
-        this.addButtonToPanel('right', "AUTO-PAN", 0, -0.12, 0.8, () => window.renderer.toggleAutoPan());
-        this.addButtonToPanel('right', "CURVATURE: ON/OFF", 0, -0.32, 0.8, () => window.renderer.toggleCurvature());
-        this.addButtonToPanel('right', "+ SIZE", -0.45, -0.58, 0.45, () => window.renderer.scaleActivePhoto(1.1));
-        this.addButtonToPanel('right', "- SIZE", 0.45, -0.58, 0.45, () => window.renderer.scaleActivePhoto(0.9));
-
-        // 5. Stats Panel (Advanced Controls)
-        const yStats = -Math.sin(statsCenterAngle) * radiusStats;
-        const zStats = -Math.cos(statsCenterAngle) * radiusStats;
-        this.createPanel('stats', 2.2, 0.6, new THREE.Vector3(0, yStats, zStats), new THREE.Euler(-statsCenterAngle, 0, 0));
-        this.addTextToPanel('stats', "TECHNICAL SYSTEM DIAGNOSTICS", 0, 0.18, 0.08);
-
-        this.addButtonToPanel('stats', "POV: VR", -0.4, -0.1, 0.8, () => {
-             if (window.renderer) window.renderer.setPOV('vr');
+        const catalog = this.assetLoader.getUniqueCatalog();
+        catalog.forEach((item, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const x = (col - 0.5) * 1.05; 
+            const y = 2.1 - (row * 1.15); 
+            
+            this.addThumbnailButtonToPanel('left', `./thumbnails/${item.thumbnail}`, x, y, () => {
+                this.state.set('currentImage', item.filename);
+            }, leftPanel.scrollGroup, `M${i+1}`);
         });
-        this.addButtonToPanel('stats', "POV: DESK", 0.4, -0.1, 0.8, () => {
-             if (window.renderer) window.renderer.setPOV('desktop');
-        });
-        
-        // Dynamic Billboard Toggle
-        const getBillboardLabel = () => window.renderer && window.renderer.isIndividualBillboarding ? "TRACK: INDIVIDUAL" : "TRACK: GROUP";
-        this.addButtonToPanel('stats', getBillboardLabel(), 0, -0.35, 1.3, (btn) => {
-             if (window.renderer) {
-                 const isIndivid = window.renderer.toggleIndividualBillboarding();
-                 this.updateButtonText(btn, isIndivid ? "TRACK: INDIVIDUAL" : "TRACK: GROUP");
-             }
-        }, 'billboard_btn');
 
-        this.scene.add(this.group);
-        window.addEventListener('wheel', (e) => this.handleScroll('left', e.deltaY * 0.002));
+        leftPanel.maxScroll = Math.max(0, (Math.ceil(catalog.length / 2) - 2.5) * 1.15);
     }
 
-    updateButtonText(btn, newText) {
-        // Find existing text label child
-        const textLabel = btn.userData.textLabel;
-        if (textLabel) {
-            btn.parent.remove(textLabel);
-            textLabel.geometry.dispose();
-            textLabel.material.map.dispose();
-            textLabel.material.dispose();
-        }
-        
-        const newTextLabel = this.addTextToPanel('stats', newText, btn.position.x, btn.position.y, 0.09, 0.145);
-        btn.userData.textLabel = newTextLabel;
-    }
+    setupObservers() {
+        // Sync LEDs with State
+        const syncLED = (id, key, targetValue) => {
+            this.state.on(key, (current) => this.setButtonStatus(id, current === targetValue || current === true && targetValue === undefined));
+        };
 
-    handleScroll(panelName, delta) {
-        const panel = this.panels[panelName];
-        if (!panel || !panel.scrollGroup) return;
-        panel.scrollY += delta;
-        panel.scrollY = Math.max(0, Math.min(panel.scrollY, panel.maxScroll || 0));
-        panel.scrollGroup.position.y = panel.scrollY;
+        syncLED('IMMERSION_BTN', 'immersionActive');
+        syncLED('AUTOPAN_BTN', 'isAutoPanning');
+        syncLED('CURVATURE_BTN', 'isCurved');
+        syncLED('POV-VR', 'povMode', 'vr');
+        syncLED('POV-DESK', 'povMode', 'desk');
+        syncLED('DEPTH_PREDICTED', 'depthStrategy', 'predicted');
+        syncLED('DEPTH_RADIAL', 'depthStrategy', 'radial');
+        syncLED('DEPTH_LINEAR', 'depthStrategy', 'linear');
+        syncLED('DEPTH_SUBJECT', 'depthStrategy', 'subject');
     }
 
     createPanel(name, width, height, position, rotation) {
@@ -157,116 +137,133 @@ export class SpatialUI {
         this.panels[name] = { group: panelGroup, mesh, elements: [], buttons: {} };
     }
 
-    addTextToPanel(panelName, text, x, y, size = 0.1, zOffset = 0.14) {
+    addTextToPanel(panelName, text, x, y, size = 0.1, zOffset = 0.14, parentOverride = null) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        const aspect = Math.max(4, text.length * 0.7); 
+        const lines = text.split('\n');
+        const aspect = Math.max(4, Math.max(...lines.map(l => l.length)) * 0.7); 
         canvas.width = 1024 * (aspect / 4); 
-        canvas.height = 256;
+        canvas.height = 256 * lines.length;
         ctx.fillStyle = 'white';
-        ctx.font = `900 180px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        ctx.font = `900 160px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(text, canvas.width/2, canvas.height/2);
+        lines.forEach((line, i) => ctx.fillText(line, canvas.width/2, (canvas.height/lines.length) * (i + 0.5)));
         
         const texture = new THREE.CanvasTexture(canvas);
         const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size * aspect, size), material);
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size * aspect, size * lines.length), material);
         mesh.position.set(x, y, zOffset);
-        this.panels[panelName].group.add(mesh);
+        (parentOverride || this.panels[panelName].group).add(mesh);
         return mesh;
     }
 
-    addButtonToPanel(panelName, label, x, y, width, callback, id = null) {
-        const btnGeom = new RoundedBoxGeometry(width, 0.18, 0.04, 6, 0.02); 
-        const btnMat = new THREE.MeshStandardMaterial({
-            color: 0x5b9bd5, metalness: 0.2, roughness: 0.1, transparent: true, opacity: 0.95
-        });
-        const btnMesh = new THREE.Mesh(btnGeom, btnMat);
-        btnMesh.position.set(x, y, 0.1); 
-        // Allow callback to receive the button mesh for text updates
-        const wrapper = () => callback(btnMesh);
-        btnMesh.userData = { callback: wrapper, isInteractive: true, originalColor: 0x5b9bd5, hoverColor: 0x10b981, pressedColor: 0x059669, defaultZ: 0.1, pressedZ: 0.08 };
+    addButtonToPanel(panelName, label, x, y, width, callback, id, hasStatus = false) {
+        const btnHeight = 0.18;
+        const btnDepth = 0.04;
+        const visualMesh = new THREE.Mesh(
+            new RoundedBoxGeometry(width, btnHeight, btnDepth, 6, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0x5b9bd5, metalness: 0.2, roughness: 0.1, transparent: true, opacity: 0.95 })
+        );
+        visualMesh.position.set(x, y, 0.1); 
+        this.panels[panelName].group.add(visualMesh);
+
+        let pillMesh = null;
+        if (hasStatus) {
+            const pillWidth = 0.08;
+            const pm = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, emissive: 0x000000, emissiveIntensity: 0 });
+            pillMesh = new THREE.Mesh(new RoundedBoxGeometry(pillWidth, 0.03, 0.02, 4, 0.01), pm);
+            // Move pill slightly inward and lower to avoid occlusion
+            pillMesh.position.set(x + (width/2) - (pillWidth/2) - 0.08, y + 0.05, 0.125);
+            this.panels[panelName].group.add(pillMesh);
+        }
+
+        const collider = new THREE.Mesh(new THREE.BoxGeometry(width, btnHeight, btnDepth + 0.04), new THREE.MeshBasicMaterial({ visible: false }));
+        collider.position.set(x, y, 0.1); 
+        collider.name = id;
+        collider.userData = { 
+            callback, isInteractive: true, visualMesh, statusPill: pillMesh, 
+            originalColor: 0x5b9bd5, hoverColor: 0x10b981, pressedColor: 0x059669, defaultZ: 0.1, pressedZ: 0.08 
+        };
         
-        this.panels[panelName].group.add(btnMesh);
-        this.interactiveElements.push(btnMesh);
-        const labelMesh = this.addTextToPanel(panelName, label, x, y, 0.09, 0.145);
-        btnMesh.userData.textLabel = labelMesh;
-        if (id) this.panels[panelName].buttons[id] = btnMesh;
+        this.panels[panelName].group.add(collider);
+        this.interactiveElements.push(collider);
+        this.panels[panelName].buttons[id] = collider;
+        this.addTextToPanel(panelName, label, x, y, 0.09, 0.145);
     }
 
-    addThumbnailButtonToPanel(panelName, texturePath, x, y, callback, parentOverride = null, clippingPlanes = null) {
+    addThumbnailButtonToPanel(panelName, texturePath, x, y, callback, parentOverride, label) {
         const size = 1.0; 
-        const texture = this.textureLoader.load(texturePath);
-        const btnMat = new THREE.MeshStandardMaterial({
-            map: texture, transparent: true, opacity: 1.0,
-            metalness: 0.1, roughness: 0.5,
-            clippingPlanes: clippingPlanes || []
-        });
+        const visualMesh = new THREE.Mesh(
+            new RoundedBoxGeometry(size, size, 0.06, 4, 0.02),
+            new THREE.MeshStandardMaterial({ map: this.textureLoader.load(texturePath), transparent: true, opacity: 1.0, metalness: 0.1, roughness: 0.5 })
+        );
+        visualMesh.position.set(x, y, 0.1);
+        parentOverride.add(visualMesh);
 
-        const btnMesh = new THREE.Mesh(new RoundedBoxGeometry(size, size, 0.06, 4, 0.02), btnMat);
-        btnMesh.position.set(x, y, 0.1);
-        btnMesh.userData = { callback, isInteractive: true, originalColor: 0xffffff, hoverColor: 0x5b9bd5, pressedColor: 0x10b981, defaultZ: 0.1, pressedZ: 0.08 };
+        const collider = new THREE.Mesh(new THREE.BoxGeometry(size, size, 0.08), new THREE.MeshBasicMaterial({ visible: false }));
+        collider.position.set(x, y, 0.1);
+        collider.name = label;
+        collider.userData = { callback, isInteractive: true, visualMesh, originalColor: 0xffffff, hoverColor: 0x5b9bd5, pressedColor: 0x10b981, defaultZ: 0.1, pressedZ: 0.08, isScrollable: true };
+        parentOverride.add(collider);
+        this.interactiveElements.push(collider);
+    }
 
-        const parent = parentOverride || this.panels[panelName].group;
-        parent.add(btnMesh);
-        this.interactiveElements.push(btnMesh);
-        
-        const borderMat = new THREE.LineBasicMaterial({ color: 0x5b9bd5, transparent: true, opacity: 0.6, clippingPlanes: clippingPlanes || [] });
-        const border = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(size, size)), borderMat);
-        border.position.set(x, y, 0.131);
-        parent.add(border);
+    setButtonStatus(id, isActive) {
+        let button = null;
+        Object.values(this.panels).forEach(p => { if (p.buttons[id]) button = p.buttons[id]; });
+        if (!button || !button.userData.statusPill) return;
+
+        const pill = button.userData.statusPill;
+        if (isActive) {
+            pill.material.color.setHex(0x10b981);
+            pill.material.emissive.setHex(0x10b981);
+            pill.material.emissiveIntensity = 0.8;
+        } else {
+            pill.material.color.setHex(0x2a2a2a);
+            pill.material.emissive.setHex(0x000000);
+            pill.material.emissiveIntensity = 0;
+        }
     }
 
     update(camera) {
         const targetPos = new THREE.Vector3();
         camera.getWorldPosition(targetPos);
-        
-        const isIndivid = window.renderer && window.renderer.isIndividualBillboarding;
-
-        if (this.billboardEnabled) {
-            if (isIndivid) {
-                this.group.quaternion.set(0, 0, 0, 1);
-                Object.values(this.panels).forEach(panel => {
-                    const lookTarget = targetPos.clone();
-                    panel.group.lookAt(lookTarget);
-                });
-            } else {
-                const currentRotation = this.group.quaternion.clone();
-                this.group.lookAt(targetPos);
-                this.group.quaternion.slerp(currentRotation, 0.85); 
-            }
+        const isIndivid = this.state.get('isIndividualBillboarding');
+        if (isIndivid) {
+            this.group.quaternion.set(0, 0, 0, 1);
+            Object.values(this.panels).forEach(p => p.group.lookAt(targetPos));
+        } else {
+            const currentQuat = this.group.quaternion.clone();
+            this.group.lookAt(targetPos);
+            this.group.quaternion.slerp(currentQuat, 0.85); 
         }
-
-        // Sync Clipping Planes
-        Object.values(this.panels).forEach(panel => {
-            if (panel.clippingPlanes) {
-                const worldQuat = new THREE.Quaternion();
-                panel.group.getWorldQuaternion(worldQuat);
-
-                panel.clippingPlanes.forEach((plane, i) => {
-                    const normal = new THREE.Vector3(0, i === 0 ? -1 : 1, 0);
-                    const point = new THREE.Vector3(0, i === 0 ? 2.65 : -2.75, 0);
-                    normal.applyQuaternion(worldQuat).normalize();
-                    point.applyMatrix4(panel.group.matrixWorld);
-                    plane.setFromNormalAndCoplanarPoint(normal, point);
-                });
-            }
-        });
     }
 
     handleHover(object, isHovering) {
-        if (!object || !object.userData.isInteractive) return;
+        if (!object || !object.userData || !object.userData.isInteractive) return;
+        const target = object.userData.visualMesh || object;
         if (isHovering) {
-            if (object.material.map) object.scale.set(1.05, 1.05, 1.05);
-            else { object.material.color.setHex(object.userData.hoverColor); }
+            if (target.material.map) target.scale.set(1.05, 1.05, 1.05);
+            else target.material.color.setHex(object.userData.hoverColor);
         } else {
-            object.scale.set(1, 1, 1);
-            if (!object.material.map) object.material.color.setHex(object.userData.originalColor);
+            target.scale.set(1, 1, 1);
+            if (!target.material.map) target.material.color.setHex(object.userData.originalColor);
         }
     }
 
     handlePress(object, isPressed) {
-        if (!object || !object.userData.isInteractive) return;
-        object.position.z = isPressed ? object.userData.pressedZ : object.userData.defaultZ;
+        if (!object || !object.userData || !object.userData.isInteractive) return;
+        const z = isPressed ? object.userData.pressedZ : object.userData.defaultZ;
+        object.position.z = z;
+        if (object.userData.visualMesh) object.userData.visualMesh.position.z = z;
+    }
+
+    handleScroll(panelName, delta) {
+        const panel = this.panels[panelName];
+        if (!panel || !panel.scrollGroup) return false;
+        panel.scrollY += delta;
+        panel.scrollY = Math.max(0, Math.min(panel.scrollY, panel.maxScroll || 0));
+        panel.scrollGroup.position.y = panel.scrollY;
+        return true;
     }
 }

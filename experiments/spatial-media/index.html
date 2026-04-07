@@ -254,126 +254,104 @@
     </script>
     <script type="module">
         import * as THREE from 'three';
-        import { SpatialRenderer } from './SpatialRenderer.js?v=2';
+        import { GalleryState } from './GalleryState.js?v=4';
+        import { AssetLoader } from './AssetLoader.js?v=4';
+        import { SpatialRenderer } from './SpatialRenderer.js?v=4';
+        import { SpatialUI } from './SpatialUI.js?v=4';
+        import { InteractionPipeline } from './InteractionPipeline.js?v=4';
 
-        // Essential: Expose THREE globally for SpatialRenderer.js
-        window.THREE = THREE;
+        class App {
+            constructor() {
+                this.state = new GalleryState();
+                this.assetLoader = new AssetLoader();
+                this.renderer = null;
+                this.ui = null;
+                this.interaction = null;
+            }
 
-        let spatialRenderer;
-        const enterBtn = document.getElementById('enter-xr');
-        const enterDesktopBtn = document.getElementById('enter-desktop');
-        const metadataEl = document.getElementById('metadata-display');
-
-        async function launchGallery(mode) {
-            try {
-                document.querySelector('.container').style.display = 'none';
-                const viewer = document.createElement('div');
-                viewer.id = 'spatial-viewport';
-                document.body.appendChild(viewer);
-
-                // Add Exit Button for Desktop
-                const exitBtn = document.createElement('button');
-                exitBtn.innerHTML = "&times; Exit Preview";
-                exitBtn.style.cssText = `
-                    position: fixed; top: 20px; right: 20px; z-index: 1000;
-                    background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.2);
-                    padding: 8px 16px; border-radius: 8px; cursor: pointer; backdrop-filter: blur(10px);
-                    font-size: 14px; transition: all 0.2s;
-                `;
+            async init() {
+                console.log("[LUMINA_BOOT] INITIALIZING SPATIAL CORE...");
                 
-                // Interaction Instructions Popout
-                const tooltip = document.createElement('div');
-                tooltip.style.cssText = `
-                    position: fixed; top: 20px; right: 140px; z-index: 1000;
-                    background: rgba(0,0,0,0.8); color: #ccc; border: 1px solid rgba(255,255,255,0.1);
-                    padding: 12px; border-radius: 10px; backdrop-filter: blur(20px);
-                    font-size: 12px; width: 220px; line-height: 1.5;
-                    opacity: 0; pointer-events: none; transition: opacity 0.3s;
-                `;
-                tooltip.innerHTML = `
-                    <div style="font-weight: bold; color: var(--accent-blue); margin-bottom: 4px;">Desktop Interactions</div>
-                    <div style="display: flex; justify-content: space-between;"><span>Orbit:</span> <span style="color: white;">Left Click + Drag</span></div>
-                    <div style="display: flex; justify-content: space-between;"><span>Zoom:</span> <span style="color: white;">Scroll Wheel</span></div>
-                    <div style="display: flex; justify-content: space-between;"><span>Grab Photo:</span> <span style="color: white;">Hold & Drag Image</span></div>
-                `;
-                
-                exitBtn.onmouseover = () => {
-                    tooltip.style.opacity = '1';
-                    exitBtn.style.background = 'rgba(255,255,255,0.1)';
-                };
-                exitBtn.onmouseout = () => {
-                    tooltip.style.opacity = '0';
-                    exitBtn.style.background = 'rgba(0,0,0,0.5)';
-                };
+                // 1. Setup UI Hooks
+                document.getElementById('enter-desktop').onclick = () => this.launch('desktop');
+                document.getElementById('enter-xr').onclick = () => this.launch('xr');
 
-                exitBtn.onclick = () => {
-                    document.body.removeChild(viewer);
-                    document.body.removeChild(tooltip);
-                    document.querySelector('.container').style.display = 'block';
-                    if (spatialRenderer) {
-                        spatialRenderer.isXR = false;
-                        spatialRenderer.renderer.setAnimationLoop(null);
-                        spatialRenderer.renderer.dispose();
+                // 2. Check XR Support
+                if ('xr' in navigator) {
+                    const stands = await Promise.all([
+                        navigator.xr.isSessionSupported('immersive-vr'),
+                        navigator.xr.isSessionSupported('immersive-ar')
+                    ]);
+                    if (stands[0] || stands[1]) {
+                        const btn = document.getElementById('enter-xr');
+                        btn.textContent = "Enter Immersive Gallery";
+                        btn.style.background = "var(--success-green)";
                     }
+                }
+            }
+
+            async launch(mode) {
+                try {
+                    document.querySelector('.container').style.display = 'none';
+                    const viewport = document.createElement('div');
+                    viewport.id = 'gallery-viewer';
+                    document.body.appendChild(viewport);
+
+                    // Exit UI
+                    const exitBtn = document.createElement('button');
+                    exitBtn.innerHTML = "&times; Exit Gallery";
+                    exitBtn.style.cssText = `position:fixed;top:20px;right:20px;z-index:1000;background:rgba(0,0,0,0.5);color:white;border:1px solid rgba(255,255,255,0.2);padding:8px 16px;border-radius:8px;cursor:pointer;backdrop-filter:blur(10px);`;
+                    exitBtn.onclick = () => window.location.reload();
+                    document.body.appendChild(exitBtn);
+
+                    // Core Init
+                    const catalog = await this.assetLoader.init();
+                    this.renderer = new SpatialRenderer(viewport, this.state);
+                    this.ui = new SpatialUI(this.renderer.scene, this.state, this.assetLoader);
+                    await this.ui.ready;
+
+                    this.interaction = new InteractionPipeline(this.renderer.renderer, this.renderer.scene, this.renderer.camera, this.state);
+                    
+                    // State Mapping
+                    this.setupStateSync();
+
+                    // Main Loop
+                    this.renderer.renderer.setAnimationLoop((t, f) => {
+                        const hitData = this.interaction.getHitData();
+                        this.renderer.render(t, f, hitData);
+                        this.interaction.update();
+                        this.ui.update(this.renderer.camera);
+                    });
+
+                    if (catalog.length > 0) this.state.set('currentImage', catalog[0].filename);
+                    console.log(`[LUMINA_BOOT] ${mode.toUpperCase()} MODE ACTIVE.`);
+
+                } catch (e) {
+                    console.error("[LAUNCH_ERROR]", e);
+                    alert("Failed to launch gallery. Check console.");
+                }
+            }
+
+            setupStateSync() {
+                const originalNotify = this.state.notify.bind(this.state);
+                this.state.notify = (key, data) => {
+                    if (key === 'ui_hover') this.ui.handleHover(data.object, data.hover);
+                    if (key === 'ui_press') this.ui.handlePress(data.object, data.pressed);
+                    if (key === 'scroll_event') this.ui.handleScroll('left', data);
+                    originalNotify(key, data);
                 };
-                
-                viewer.appendChild(exitBtn);
-                document.body.appendChild(tooltip); // Tooltip on fixed body to avoid viewer clipping
-
-                spatialRenderer = new SpatialRenderer(viewer);
-                
-                if (mode === 'desktop') {
-                    spatialRenderer.startDesktopMode();
-                } else {
-                    await spatialRenderer.startXRMode(mode);
-                }
-
-                await spatialRenderer.addPhoto('images/glacier.jpg', 'depth/glacier.png');
-                console.log("Gallery Initialized in mode:", mode);
-            } catch (err) {
-                console.error("Launcher error:", err);
             }
         }
 
-        async function init() {
-            enterDesktopBtn.addEventListener('click', () => launchGallery('desktop'));
-            document.getElementById('immersion-control').style.display = 'block';
+        const app = new App();
+        app.init();
 
-            if ('xr' in navigator) {
-                const isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
-                const isARSupported = await navigator.xr.isSessionSupported('immersive-ar');
-
-                if (isVRSupported || isARSupported) {
-                    enterBtn.textContent = "Enter Immersive Gallery";
-                    enterBtn.classList.add('ready');
-                    
-                    const slider = document.getElementById('immersion-slider');
-                    slider.addEventListener('input', (e) => {
-                        if (spatialRenderer) spatialRenderer.setImmersion(parseFloat(e.target.value));
-                    });
-                    
-                    enterBtn.addEventListener('click', async () => {
-                        const mode = isARSupported ? 'immersive-ar' : 'immersive-vr';
-                        launchGallery(mode);
-                    });
-                } else {
-                    document.getElementById('xr-notice').style.display = 'block';
-                }
-            } else {
-                document.getElementById('xr-notice').style.display = 'block';
-            }
-        }
-
-        init();
-
-        const metadata = {
-            id: "LUMINA_WEBXR_PHOTOS",
-            engine: "Three.js r168",
-            input: "WebXR Hand API (Joint-based)",
-            ml: "DepthAnything V3 student pipeline",
-            status: "Framework Initialized"
-        };
-        metadataEl.textContent = JSON.stringify(metadata, null, 2);
+        const metadataEl = document.getElementById('metadata-display');
+        metadataEl.textContent = JSON.stringify({
+            id: "LUMINA_REFAC",
+            architecture: "State-Driven Modular",
+            status: "Orchestration Complete"
+        }, null, 2);
     </script>
 </body>
 </html>
