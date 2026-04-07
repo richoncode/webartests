@@ -11,7 +11,8 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
             uDisplacementScale: { value: displacementScale },
             uFeatherRange: { value: new THREE.Vector2(...featherRange) },
             uCurvatureRadius: { value: parameters.curvatureRadius || 5.0 },
-            uFoveaFactor: { value: 0.0 }
+            uFoveaFactor: { value: 0.0 },
+            uShowDepthOnly: { value: 0.0 }
         };
 
         this.onBeforeCompile = (shader) => {
@@ -20,6 +21,7 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
             shader.uniforms.uFeatherRange = this.uniforms.uFeatherRange;
             shader.uniforms.uCurvatureRadius = this.uniforms.uCurvatureRadius;
             shader.uniforms.uFoveaFactor = this.uniforms.uFoveaFactor;
+            shader.uniforms.uShowDepthOnly = this.uniforms.uShowDepthOnly;
             
             shader.vertexShader = `
                 uniform float uDisplacementScale;
@@ -51,6 +53,8 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
 
             shader.fragmentShader = `
                 uniform vec2 uFeatherRange;
+                uniform float uShowDepthOnly;
+                uniform sampler2D displacementMap;
                 varying vec2 vUvOrigin;
                 ${shader.fragmentShader}
             `.replace(
@@ -60,7 +64,13 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
                 float edgeX = smoothstep(uFeatherRange.y, uFeatherRange.x, abs(vUvOrigin.x * 2.0 - 1.0));
                 float edgeY = smoothstep(uFeatherRange.y, uFeatherRange.x, abs(vUvOrigin.y * 2.0 - 1.0));
                 float alpha = edgeX * edgeY;
-                gl_FragColor.a *= alpha;
+                
+                if (uShowDepthOnly > 0.5) {
+                    float depth = texture2D(displacementMap, vUvOrigin).r;
+                    gl_FragColor = vec4(vec3(depth), alpha);
+                } else {
+                    gl_FragColor.a *= alpha;
+                }
                 `
             );
         };

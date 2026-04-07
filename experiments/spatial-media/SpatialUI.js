@@ -38,17 +38,17 @@ export class SpatialUI {
         this.createPanel('left', 2.2, 5.6, new THREE.Vector3(xLeft, 0, zLeft), new THREE.Euler(0, leftCenterAngle, 0));
         this.setupCatalogPanel();
 
-        // 3. Right Panel: Environment (Expanded for 12-Mode Ultra-Dashboard)
-        this.createPanel('right', 1.6, 4.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
-        const envHeader = this.addTextToPanel('right', "ENVIRONMENT", 0, 1.95, 0.14);
+        // 3. Right Panel: Environment (Expanded for Meta-Documentation)
+        this.createPanel('right', 1.6, 5.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
+        const envHeader = this.addTextToPanel('right', "ENVIRONMENT", 0, 2.45, 0.14);
         
         // Interaction Popover (Desktop Manual) - Now anchored to ENVIRONMENT header
         const manualText = "DESKTOP MANUAL\n- CLICK: Select Strategy\n- DRAG: Pan Workspace\n- SCROLL: Navigate Catalog\n- ESC: Quick Exit";
-        this.createPopover('right', 'ENV_MANUAL', manualText, 0, 2.3);
+        this.createPopover('right', 'ENV_MANUAL', manualText, 0, 2.8);
 
         // Making the ENVIRONMENT text interactive as a manual trigger
         const headerCollider = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.1), new THREE.MeshBasicMaterial({ visible: false }));
-        headerCollider.position.set(0, 1.95, 0.14);
+        headerCollider.position.set(0, 2.45, 0.14);
         headerCollider.userData = { 
             isInteractive: true, 
             onHover: () => this.togglePopover('ENV_MANUAL', true),
@@ -58,40 +58,43 @@ export class SpatialUI {
         this.interactiveElements.push(headerCollider);
 
         const btnWStack = 1.2;
-        this.addButtonToPanel('right', "IMMERSION", 0, 1.75, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
-        this.addButtonToPanel('right', "AUTO-PAN", 0, 1.57, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
-        this.addButtonToPanel('right', "CURVATURE", 0, 1.39, btnWStack, () => this.state.set('isCurved', !this.state.get('isCurved')), 'CURVATURE_BTN', true);
+        this.addButtonToPanel('right', "IMMERSION", 0, 2.25, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
+        this.addButtonToPanel('right', "AUTO-PAN", 0, 2.07, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
+        this.addButtonToPanel('right', "CURVATURE", 0, 1.89, btnWStack, () => this.state.set('isCurved', !this.state.get('isCurved')), 'CURVATURE_BTN', true);
+        this.addButtonToPanel('right', "SHOW DEPTH", 0, 1.71, btnWStack, () => this.state.set('showDepthOnly', !this.state.get('showDepthOnly')), 'DEPTH_TOGGLE_BTN', true);
 
         // Momentary Size Cluster
-        const ySize = 1.20;
+        const ySize = 1.55;
         this.addButtonToPanel('right', "-", -0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 0.9), 'SIZE_MINUS', false);
         this.addTextToPanel('right', "SIZE", 0, ySize, 0.08, 0.145);
         this.addButtonToPanel('right', "+", 0.3, ySize, 0.2, () => this.state.set('scale', this.state.get('scale') * 1.1), 'SIZE_PLUS', false);
 
-        // Depth Strategy Group (Expanded to 12 Modes)
-        this.addTextToPanel('right', "DEPTH STRATEGY (SOTA)", 0, 0.92, 0.1);
-        const yBase = 0.68;
+        // Group 1: Primary Pipeline (Ground Truth)
+        this.addTextToPanel('right', "PRIMARY PIPELINE", 0, 1.32, 0.1);
+        const yBase = 1.12;
         const yStep = 0.2;
         
-        // Tier 1: SOTA
-        this.addButtonToPanel('right', "DIFFUSION", 0, yBase, btnWStack, () => this.state.set('depthStrategy', 'diffusion'), 'DEPTH_DIFFUSION', true);
-        this.addButtonToPanel('right', "METRIC (ABS)", 0, yBase - yStep, btnWStack, () => this.state.set('depthStrategy', 'metric'), 'DEPTH_METRIC', true);
-        this.addButtonToPanel('right', "SEGMENT (SAM)", 0, yBase - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'segment'), 'DEPTH_SEGMENT', true);
-        this.addButtonToPanel('right', "TILE-FUSION", 0, yBase - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'fusion'), 'DEPTH_FUSION', true);
+        this.addButtonToPanel('right', "★ SEGMENT (SAM)", 0, yBase, btnWStack, () => this.state.set('depthStrategy', 'segment'), 'DEPTH_SEGMENT', true);
+        this.addButtonToPanel('right', "PREDICTED (ML)", 0, yBase - yStep, btnWStack, () => this.state.set('depthStrategy', 'predicted'), 'DEPTH_PREDICTED', true);
         
-        // Tier 2: Established
-        const yBase2 = yBase - (yStep*4.5);
-        this.addButtonToPanel('right', "PREDICTED (ML)", 0, yBase2, btnWStack, () => this.state.set('depthStrategy', 'predicted'), 'DEPTH_PREDICTED', true);
-        this.addButtonToPanel('right', "SEMANTIC", 0, yBase2 - yStep, btnWStack, () => this.state.set('depthStrategy', 'semantic'), 'DEPTH_SEMANTIC', true);
-        this.addButtonToPanel('right', "MPI (LAYERS)", 0, yBase2 - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'mpi'), 'DEPTH_MPI', true);
-        this.addButtonToPanel('right', "LIDAR", 0, yBase2 - (yStep*3), btnWStack, () => this.state.set('depthStrategy', 'lidar'), 'DEPTH_LIDAR', true);
-        this.addButtonToPanel('right', "FOVEATED", 0, yBase2 - (yStep*4), btnWStack, () => this.state.set('depthStrategy', 'foveated'), 'DEPTH_FOVEATED', true);
+        // Group 2: Depth Effect Modules (Post-Processed)
+        const yBase2 = yBase - (yStep * 3.5);
+        this.addTextToPanel('right', "DEPTH EFFECT MODULES", 0, yBase2 + 0.18, 0.1);
+        this.addButtonToPanel('right', "DIFFUSION", 0, yBase2, btnWStack, () => this.state.set('depthStrategy', 'diffusion'), 'DEPTH_DIFFUSION', true);
+        this.addButtonToPanel('right', "METRIC (ABS)", 0, yBase2 - yStep, btnWStack, () => this.state.set('depthStrategy', 'metric'), 'DEPTH_METRIC', true);
+        this.addButtonToPanel('right', "TILE-FUSION", 0, yBase2 - (yStep * 2), btnWStack, () => this.state.set('depthStrategy', 'fusion'), 'DEPTH_FUSION', true);
+        this.addButtonToPanel('right', "MPI (LAYERS)", 0, yBase2 - (yStep * 3), btnWStack, () => this.state.set('depthStrategy', 'mpi'), 'DEPTH_MPI', true);
+        this.addButtonToPanel('right', "LIDAR", 0, yBase2 - (yStep * 4), btnWStack, () => this.state.set('depthStrategy', 'lidar'), 'DEPTH_LIDAR', true);
+        this.addButtonToPanel('right', "SEMANTIC", 0, yBase2 - (yStep * 5), btnWStack, () => this.state.set('depthStrategy', 'semantic'), 'DEPTH_SEMANTIC', true);
         
-        // Tier 3: Heuristics
-        const yBase3 = yBase2 - (yStep*5);
-        this.addButtonToPanel('right', "RADIAL", 0, yBase3, btnWStack, () => this.state.set('depthStrategy', 'radial'), 'DEPTH_RADIAL', true);
-        this.addButtonToPanel('right', "LINEAR", 0, yBase3 - yStep, btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
-        this.addButtonToPanel('right', "SUBJECT", 0, yBase3 - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
+        // Group 3: Spatial Heuristics (Proxies)
+        const yBase3 = yBase2 - (yStep * 7.5);
+        this.addTextToPanel('right', "SPATIAL HEURISTICS", 0, yBase3 + 0.18, 0.1);
+        this.addButtonToPanel('right', "FOVEATED", 0, yBase3, btnWStack, () => this.state.set('depthStrategy', 'foveated'), 'DEPTH_FOVEATED', true);
+        this.addButtonToPanel('right', "RADIAL", 0, yBase3 - yStep, btnWStack, () => this.state.set('depthStrategy', 'radial'), 'DEPTH_RADIAL', true);
+        this.addButtonToPanel('right', "LINEAR", 0, yBase3 - (yStep * 2), btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
+        this.addButtonToPanel('right', "SUBJECT", 0, yBase3 - (yStep * 3), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
+;
 
         // 4. Stats Panel (Diagnostics & Status Merged)
         const yStats = -Math.sin(statsCenterAngle) * radiusStats;
@@ -138,6 +141,7 @@ export class SpatialUI {
         syncLED('IMMERSION_BTN', 'immersionActive');
         syncLED('AUTOPAN_BTN', 'isAutoPanning');
         syncLED('CURVATURE_BTN', 'isCurved');
+        syncLED('DEPTH_TOGGLE_BTN', 'showDepthOnly');
         syncLED('POV-VR', 'povMode', 'vr');
         syncLED('POV-DESK', 'povMode', 'desk');
         syncLED('DEPTH_DIFFUSION', 'depthStrategy', 'diffusion');

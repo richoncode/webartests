@@ -52,6 +52,18 @@ export class InteractionPipeline {
             e.preventDefault();
             e.stopPropagation();
         }, { passive: false });
+
+        // trackpad / laptop support: Shift+LeftDrag = Pan
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift') {
+                this.controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+                this.controls.mouseButtons.LEFT = null;
+            }
+        });
     }
 
     updatePointer(e) {
@@ -62,6 +74,10 @@ export class InteractionPipeline {
 
     handlePointerDown(e) {
         if (this.state.get('isXR') || !this.controls) return;
+        
+        // If Shift is down, we let OrbitControls handle Panning (via modified mouseButtons mapping)
+        if (e.shiftKey) return; 
+
         this.updatePointer(e);
         this.raycaster.setFromCamera(this.mouse, this.camera);
         const intersects = this.raycaster.intersectObjects(this.scene.children, true);

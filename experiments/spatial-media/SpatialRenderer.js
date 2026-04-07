@@ -127,6 +127,7 @@ export class SpatialRenderer {
                 if (uniforms.uDisplacementScale) uniforms.uDisplacementScale.value = this.state.get('immersionActive') ? 2.5 : 0.0;
                 if (uniforms.uCurvatureRadius) uniforms.uCurvatureRadius.value = this.state.get('isCurved') ? 5.0 : 100.0;
                 if (uniforms.uFoveaFactor) uniforms.uFoveaFactor.value = (this.state.get('depthStrategy') === 'foveated') ? 1.0 : 0.0;
+                if (uniforms.uShowDepthOnly) uniforms.uShowDepthOnly.value = this.state.get('showDepthOnly') ? 1.0 : 0.0;
             }
         });
 

@@ -10,6 +10,7 @@ export class GalleryState {
             povMode: 'desk', // 'desk' | 'vr'
             isXR: false,
             isInputTestMode: false,
+            showDepthOnly: false,
             scale: 1.0
         };
         this.listeners = {};
