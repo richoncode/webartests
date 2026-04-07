@@ -38,9 +38,16 @@ def main():
     with open(catalog_path, "r") as f:
         catalog = json.load(f)
 
-    modes = ["radial", "linear", "subject", "predicted"]
+    modes = ["radial", "linear", "subject", "predicted", "semantic", "mpi", "lidar", "foveated"]
     
     for mode in modes:
+        if mode == 'foveated':
+            # Foveated is a shader-side effect, it uses the 'predicted' depth map as its base topology
+            output_dir = "experiments/spatial-media/depth/strategies/foveated/"
+            if not os.path.exists(output_dir): os.makedirs(output_dir)
+            print(f"Skipping generator for {mode} (Shader-side strategy)...")
+            continue
+            
         output_dir = f"experiments/spatial-media/depth/strategies/{mode}/"
         print(f"Orchestrating {mode.upper()} depth strategy batch...")
         for item in catalog:

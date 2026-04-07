@@ -74,7 +74,8 @@ export class SpatialRenderer {
         const strategy = this.state.get('depthStrategy');
         const baseName = filename.split('.')[0];
         const imagePath = `./images/${filename}`;
-        const depthPath = `./depth/strategies/${strategy}/${baseName}.png`;
+        const strategyDir = (strategy === 'foveated' || strategy === 'original') ? 'predicted' : strategy;
+        const depthPath = `./depth/strategies/${strategyDir}/${baseName}.png`;
         
         if (!this.activePhotoCard) {
             this.activePhotoCard = new PhotoCard(this.scene, { imagePath, depthPath });
@@ -112,6 +113,16 @@ export class SpatialRenderer {
                 this.activePhotoCard.mesh.rotation.y = rotation;
             }
         }
+
+        // 4. Update Shader Uniforms (Reactive)
+        this.scene.traverse(obj => {
+            if (obj.isMesh && obj.material && obj.material.uniforms) {
+                const uniforms = obj.material.uniforms;
+                if (uniforms.uDisplacementScale) uniforms.uDisplacementScale.value = this.state.get('immersionActive') ? 1.0 : 0.0;
+                if (uniforms.uCurvatureRadius) uniforms.uCurvatureRadius.value = this.state.get('isCurved') ? 5.0 : 100.0;
+                if (uniforms.uFoveaFactor) uniforms.uFoveaFactor.value = (this.state.get('depthStrategy') === 'foveated') ? 1.0 : 0.0;
+            }
+        });
 
         // Reticle Tracking
         if (hitData && hitData.point) {

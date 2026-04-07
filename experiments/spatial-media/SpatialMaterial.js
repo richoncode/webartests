@@ -10,7 +10,8 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
         this.uniforms = {
             uDisplacementScale: { value: displacementScale },
             uFeatherRange: { value: new THREE.Vector2(...featherRange) },
-            uCurvatureRadius: { value: parameters.curvatureRadius || 5.0 }
+            uCurvatureRadius: { value: parameters.curvatureRadius || 5.0 },
+            uFoveaFactor: { value: 0.0 }
         };
 
         this.onBeforeCompile = (shader) => {
@@ -18,10 +19,12 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
             shader.uniforms.uDisplacementScale = this.uniforms.uDisplacementScale;
             shader.uniforms.uFeatherRange = this.uniforms.uFeatherRange;
             shader.uniforms.uCurvatureRadius = this.uniforms.uCurvatureRadius;
+            shader.uniforms.uFoveaFactor = this.uniforms.uFoveaFactor;
             
             shader.vertexShader = `
                 uniform float uDisplacementScale;
                 uniform float uCurvatureRadius;
+                uniform float uFoveaFactor;
                 varying vec2 vUvOrigin;
                 ${shader.vertexShader}
             `.replace(
@@ -30,15 +33,19 @@ export class SpatialMaterial extends THREE.MeshStandardMaterial {
                 #include <begin_vertex>
                 vUvOrigin = uv;
                 
-                // 1. Apply Cylindrical Curvature (Bending horizontally towards the viewer)
-                // Radius of curvature = uCurvatureRadius
+                // 1. Apply Cylindrical Curvature
                 float distToCenter = transformed.x;
                 float zOffset = uCurvatureRadius - sqrt(max(0.001, uCurvatureRadius * uCurvatureRadius - distToCenter * distToCenter));
                 transformed.z += zOffset;
 
-                // 2. Apply Displacement Mapping
+                // 2. Apply Foveated Displacement
                 float depthValue = texture2D(displacementMap, uv).r;
-                transformed.z += depthValue * uDisplacementScale;
+                
+                // Calculate distance from center (0.0 center, ~0.7 corner)
+                float d = distance(uv, vec2(0.5, 0.5));
+                float foveaScale = 1.0 + (max(0.0, 0.5 - d) * uFoveaFactor * 2.0);
+                
+                transformed.z += depthValue * uDisplacementScale * foveaScale;
                 `
             );
 

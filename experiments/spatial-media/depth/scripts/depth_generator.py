@@ -34,11 +34,49 @@ def generate_subject(width, height):
     cx, cy = width / 2, height / 2
     for y in range(height):
         for x in range(width):
-            # Tighter sigma for subject pop
             dist_sq = (x - cx)**2 + (y - cy)**2
             sigma_sq = (width / 3)**2
             val = int(255 * (2.71828 ** (-dist_sq / (2 * sigma_sq))))
             data.append(max(0, min(255, val)))
+    return data
+
+def generate_semantic(width, height):
+    """Semantic Segmentation Mock: Ultra-sharp subject mask."""
+    data = []
+    cx, cy = width / 2, height / 2
+    for y in range(height):
+        for x in range(width):
+            dist = ((x - cx)**2 + (y - cy)**2)**0.5
+            # Sharp cutoff to simulate SAM object isolation
+            val = 255 if dist < (width / 4) else 0
+            data.append(val)
+    return data
+
+def generate_mpi(width, height):
+    """MPI (Multi-Plane Image): Posterized depth slices."""
+    data = []
+    layers = 8
+    for y in range(height):
+        # Quantize the linear gradient into discrete depth planes
+        linear_val = y / height
+        quantized = int(linear_val * layers) / layers
+        val = int(255 * quantized)
+        for x in range(width):
+            data.append(val)
+    return data
+
+def generate_lidar(width, height):
+    """LiDAR Sensor Mock: High-precision with simulated hardware noise."""
+    import random
+    data = []
+    cx, cy = width / 2, height / 2
+    for y in range(height):
+        for x in range(width):
+            dist = ((x - cx)**2 + (y - cy)**2)**0.5
+            base_val = int(255 * (1 - dist / (width * 0.7)))
+            # Add sensor noise (simulating point cloud artifacts)
+            noise = random.randint(-5, 5)
+            data.append(max(0, min(255, base_val + noise)))
     return data
 
 def main():
@@ -56,6 +94,12 @@ def main():
         data = generate_linear(width, height)
     elif mode == 'subject':
         data = generate_subject(width, height)
+    elif mode == 'semantic':
+        data = generate_semantic(width, height)
+    elif mode == 'mpi':
+        data = generate_mpi(width, height)
+    elif mode == 'lidar':
+        data = generate_lidar(width, height)
     else:
         print(f"Unknown mode: {mode}")
         return
