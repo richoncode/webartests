@@ -79,6 +79,7 @@ export class SpatialRenderer {
         
         if (!this.activePhotoCard) {
             this.activePhotoCard = new PhotoCard(this.scene, { imagePath, depthPath });
+            this.activePhotoCard.group.scale.setScalar(this.state.get('scale'));
         } else {
             await this.activePhotoCard.updateTexture(imagePath, depthPath);
         }
