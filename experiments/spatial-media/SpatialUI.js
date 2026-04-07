@@ -8,6 +8,7 @@ export class SpatialUI {
         this.assetLoader = assetLoader;
         this.group = new THREE.Group();
         this.panels = {}; 
+        this.popovers = {};
         this.interactiveElements = [];
         this.textureLoader = new THREE.TextureLoader();
         this.ready = this.init();
@@ -32,12 +33,6 @@ export class SpatialUI {
         const xStatus = Math.sin(rightCenterAngle) * radiusSide;
         const zStatus = -Math.cos(rightCenterAngle) * radiusSide;
 
-        // 1. Status Panel (Center)
-        this.createPanel('center', 2, 0.6, new THREE.Vector3(xStatus, 2.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
-        this.addTextToPanel('center', "LUMINA SYSTEM STATUS", 0, 0.15, 0.12);
-        this.addTextToPanel('center', "ACTIVE SESSION: 0x4F2A", 0, -0.02, 0.08);
-
-        // 2. Left Panel: Media Catalog
         const xLeft = Math.sin(-leftCenterAngle) * radiusSide;
         const zLeft = -Math.cos(-leftCenterAngle) * radiusSide;
         this.createPanel('left', 2.2, 5.6, new THREE.Vector3(xLeft, 0, zLeft), new THREE.Euler(0, leftCenterAngle, 0));
@@ -45,8 +40,23 @@ export class SpatialUI {
 
         // 3. Right Panel: Environment (Expanded for 12-Mode Ultra-Dashboard)
         this.createPanel('right', 1.6, 4.2, new THREE.Vector3(xStatus, 1.2, zStatus), new THREE.Euler(0, -rightCenterAngle, 0));
-        this.addTextToPanel('right', "ENVIRONMENT", 0, 1.95, 0.14);
+        const envHeader = this.addTextToPanel('right', "ENVIRONMENT", 0, 1.95, 0.14);
         
+        // Interaction Popover (Desktop Manual) - Now anchored to ENVIRONMENT header
+        const manualText = "DESKTOP MANUAL\n- CLICK: Select Strategy\n- DRAG: Pan Workspace\n- SCROLL: Navigate Catalog\n- ESC: Quick Exit";
+        this.createPopover('right', 'ENV_MANUAL', manualText, 0, 2.3);
+
+        // Making the ENVIRONMENT text interactive as a manual trigger
+        const headerCollider = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.1), new THREE.MeshBasicMaterial({ visible: false }));
+        headerCollider.position.set(0, 1.95, 0.14);
+        headerCollider.userData = { 
+            isInteractive: true, 
+            onHover: () => this.togglePopover('ENV_MANUAL', true),
+            onBlur: () => this.togglePopover('ENV_MANUAL', false)
+        };
+        this.panels['right'].group.add(headerCollider);
+        this.interactiveElements.push(headerCollider);
+
         const btnWStack = 1.2;
         this.addButtonToPanel('right', "IMMERSION", 0, 1.75, btnWStack, () => this.state.set('immersionActive', !this.state.get('immersionActive')), 'IMMERSION_BTN', true);
         this.addButtonToPanel('right', "AUTO-PAN", 0, 1.57, btnWStack, () => this.state.set('isAutoPanning', !this.state.get('isAutoPanning')), 'AUTOPAN_BTN', true);
@@ -83,11 +93,12 @@ export class SpatialUI {
         this.addButtonToPanel('right', "LINEAR", 0, yBase3 - yStep, btnWStack, () => this.state.set('depthStrategy', 'linear'), 'DEPTH_LINEAR', true);
         this.addButtonToPanel('right', "SUBJECT", 0, yBase3 - (yStep*2), btnWStack, () => this.state.set('depthStrategy', 'subject'), 'DEPTH_SUBJECT', true);
 
-        // 4. Stats Panel (Diagnostics)
+        // 4. Stats Panel (Diagnostics & Status Merged)
         const yStats = -Math.sin(statsCenterAngle) * radiusStats;
         const zStats = -Math.cos(statsCenterAngle) * radiusStats;
-        this.createPanel('stats', 2.2, 0.6, new THREE.Vector3(0, yStats, zStats), new THREE.Euler(-statsCenterAngle, 0, 0));
-        this.addTextToPanel('stats', "SYSTEM DIAGNOSTICS", 0, 0.18, 0.08);
+        this.createPanel('stats', 2.2, 0.8, new THREE.Vector3(0, yStats, zStats), new THREE.Euler(-statsCenterAngle, 0, 0));
+        this.addTextToPanel('stats', "SYSTEM DIAGNOSTICS & STATUS", 0, 0.28, 0.08);
+        this.addTextToPanel('stats', "ACTIVE SESSION: 0x4F2A", 0, 0.18, 0.06);
 
         this.addButtonToPanel('stats', "POV: VR", -0.4, -0.1, 0.8, () => this.state.set('povMode', 'vr'), 'POV-VR', true);
         this.addButtonToPanel('stats', "POV: DESK", 0.4, -0.1, 0.8, () => this.state.set('povMode', 'desk'), 'POV-DESK', true);
@@ -181,6 +192,47 @@ export class SpatialUI {
         return mesh;
     }
 
+    createPopover(panelName, name, text, x, y) {
+        const group = new THREE.Group();
+        group.position.set(x, y, 0.2);
+        group.scale.set(0.001, 0.001, 1); // Start small for pop-in effect
+        group.visible = false;
+
+        const lines = text.split('\n');
+        const height = lines.length * 0.18 + 0.1;
+        const width = 1.4;
+
+        const bg = new THREE.Mesh(
+            new RoundedBoxGeometry(width, height, 0.04, 6, 0.02),
+            new THREE.MeshPhysicalMaterial({ 
+                transmission: 0.95, thickness: 0.1, roughness: 0.05, 
+                color: 0x000000, transparent: true, opacity: 0.9 
+            })
+        );
+        group.add(bg);
+
+        this.addTextToPanel(panelName, text, 0, 0, 0.06, 0.04, group);
+        
+        this.panels[panelName].group.add(group);
+        this.popovers[name] = group;
+        return group;
+    }
+
+    togglePopover(name, visible) {
+        const pop = this.popovers[name];
+        if (!pop) return;
+        
+        if (visible) {
+            pop.visible = true;
+            // Native animation via property setting (Lerp handled in update if needed, but simple toggle for now)
+            pop.scale.set(1.1, 1.1, 1);
+            setTimeout(() => pop.scale.set(1, 1, 1), 100);
+        } else {
+            pop.scale.set(0.001, 0.001, 1);
+            pop.visible = false;
+        }
+    }
+
     addButtonToPanel(panelName, label, x, y, width, callback, id, hasStatus = false) {
         const btnHeight = 0.18;
         const btnDepth = 0.04;
@@ -269,9 +321,11 @@ export class SpatialUI {
         if (isHovering) {
             if (target.material.map) target.scale.set(1.05, 1.05, 1.05);
             else target.material.color.setHex(object.userData.hoverColor);
+            if (object.userData.onHover) object.userData.onHover();
         } else {
             target.scale.set(1, 1, 1);
             if (!target.material.map) target.material.color.setHex(object.userData.originalColor);
+            if (object.userData.onBlur) object.userData.onBlur();
         }
     }
 
