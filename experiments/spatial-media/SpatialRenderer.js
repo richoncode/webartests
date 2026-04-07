@@ -39,6 +39,11 @@ export class SpatialRenderer {
         this.state.on('immersionActive', (active) => {
             if (this.sky) { this.sky.material.opacity = active ? 1 : 0; this.sky.visible = active; }
         });
+        this.state.on('scale', (val) => {
+            if (this.activePhotoCard) {
+                this.activePhotoCard.container.scale.setScalar(val);
+            }
+        });
         this.state.on('isCurved', (active) => {
             if (this.activePhotoCard) this.activePhotoCard.update({ curvatureRadius: active ? 5.0 : 1000.0 });
         });
@@ -79,7 +84,7 @@ export class SpatialRenderer {
         
         if (!this.activePhotoCard) {
             this.activePhotoCard = new PhotoCard(this.scene, { imagePath, depthPath });
-            this.activePhotoCard.group.scale.setScalar(this.state.get('scale'));
+            this.activePhotoCard.container.scale.setScalar(this.state.get('scale'));
         } else {
             await this.activePhotoCard.updateTexture(imagePath, depthPath);
         }

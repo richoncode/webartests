@@ -9,12 +9,11 @@ export class PhotoCard {
         this.height = options.height || 4;
         this.imagePath = options.imagePath;
         this.depthPath = options.depthPath;
-        this.metadata = {
-            resolution: options.resolution || "4096 x 2731",
-            depth: "32-bit Float",
-            format: "Spatial-PNG"
-        };
         
+        // Synchronous container allows immediate scaling/positioning before textures load
+        this.container = new THREE.Group();
+        this.scene.add(this.container);
+
         this.mesh = null;
         this.init();
     }
@@ -50,9 +49,9 @@ export class PhotoCard {
         }
 
         this.mesh = new THREE.Mesh(geometry, this.material);
-        this.mesh.position.set(0, 0, -5); // 5 meters in front
+        this.mesh.position.set(0, 0, -5); 
         
-        this.scene.add(this.mesh);
+        this.container.add(this.mesh);
     }
 
     async updateTexture(imagePath, depthPath) {
