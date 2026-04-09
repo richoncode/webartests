@@ -1,4 +1,57 @@
 // assets/js/tutorial-engine.js
+import Module from "../../../shared/slang/slang-wasm.js";
+
+class SlangCompilerManager {
+    static instance = null;
+    static initializationPromise = null;
+
+    static async get() {
+        if (this.instance) return this.instance;
+        if (this.initializationPromise) return this.initializationPromise;
+
+        this.initializationPromise = (async () => {
+            try {
+                // Determine absolute path if possible or use relative to engine
+                const slangModule = await Module({
+                    locateFile: (path) => {
+                        // This assumes the library is at root /shared/slang/
+                        // We use a relative path from the engine's location
+                        return new URL(`../../../shared/slang/${path}`, import.meta.url).href;
+                    }
+                });
+
+                const targets = slangModule.getCompileTargets();
+                let wgslTargetIndex = -1;
+                for (let i = 0; i < targets.length; i++) {
+                    if (targets[i].name.toLowerCase() === 'wgsl') {
+                        wgslTargetIndex = targets[i].value;
+                        break;
+                    }
+                }
+
+                if (wgslTargetIndex === -1) throw new Error("WGSL target not found");
+
+                const globalSession = slangModule.createGlobalSession();
+                const session = globalSession.createSession(wgslTargetIndex);
+
+                this.instance = {
+                    module: slangModule,
+                    session: session,
+                    targetIndex: wgslTargetIndex
+                };
+                
+                console.log("[SlangEngine] Compiler initialized successfully.");
+                return this.instance;
+            } catch (e) {
+                console.error("[SlangEngine] Initialization failed:", e);
+                this.initializationPromise = null;
+                throw e;
+            }
+        })();
+
+        return this.initializationPromise;
+    }
+}
 
 class SlangEditor extends HTMLElement {
     constructor() {
@@ -201,10 +254,45 @@ class SlangViewport extends HTMLElement {
         }
     }
 
-    compile(shaderCode) {
-        console.log("Compiling Slang Shader:\n", shaderCode);
-        // TODO: Bridge with slang-compiler.wasm here
-        // For now, this is a simulated stub.
+    async compile(shaderCode) {
+        console.log("Compiling Slang Shader...");
+        try {
+            const compiler = await SlangCompilerManager.get();
+            const session = compiler.session;
+
+            // 1. Load module from source
+            const module = session.loadModuleFromSource(shaderCode, "shader", "/user.slang");
+            
+            if (!module) {
+                // Try to get more detailed error info if available
+                let errorDetails = "Unknown Slang loading error.";
+                if (compiler.module.getLastError) {
+                    const lastErr = compiler.module.getLastError();
+                    if (lastErr && lastErr.message) errorDetails = lastErr.message;
+                }
+                throw new Error(errorDetails);
+            }
+
+            // 2. Find entry point
+            const entryPoint = module.findEntryPointByName("main");
+            if (!entryPoint) throw new Error("Entry point 'main' not found in Slang source.");
+
+            // 3. Link
+            const composite = session.createCompositeComponentType([module, entryPoint]);
+            
+            // 4. Get WGSL
+            const wgsl = composite.getTargetCode(0);
+
+            // Cleanup
+            if (module.delete) module.delete();
+            if (entryPoint.delete) entryPoint.delete();
+            if (composite.delete) composite.delete();
+
+            return wgsl;
+        } catch (e) {
+            console.error("[SlangEngine] Compilation error:", e);
+            throw e;
+        }
     }
 
     play() {
@@ -326,7 +414,7 @@ class SlangPlaybackControls extends HTMLElement {
     getViewport() { return document.querySelector('slang-viewport'); }
     getEditor() { return document.querySelector('slang-editor'); }
 
-    compileIfNeeded() {
+    async compileIfNeeded() {
         if (this.compiled) return true;
         const editor = this.getEditor();
         const viewport = this.getViewport();
@@ -341,14 +429,38 @@ class SlangPlaybackControls extends HTMLElement {
             if (window.showErrorModal) window.showErrorModal("WebGPU Pipeline Error:\n" + event.error.message);
         };
 
-        let wgslCode = "", jsCode = "";
+        let slangSource = "", wgslCode = "", jsCode = "";
         const tabs = editor.tabs || [];
         tabs.forEach(t => {
+            if (t.name.includes("Slang")) slangSource = t.content.trim();
             if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
             if (t.name === "WebGPU Wrapper" || t.name === "JavaScript Wrapper") jsCode = t.content.trim();
         });
 
         try {
+            // If we have Slang source, perform runtime compilation
+            if (slangSource) {
+                try {
+                    const result = await viewport.compile(slangSource);
+                    if (result) {
+                        wgslCode = result;
+                        // Update the "Compiled WGSL" tab if it exists
+                        const wgslTab = tabs.find(t => t.name === "Compiled WGSL");
+                        if (wgslTab) {
+                            wgslTab.content = wgslCode;
+                            // If currently viewing WGSL, refresh the editor
+                            if (editor.tabs[editor.activeTabIndex].name === "Compiled WGSL") {
+                                editor.editor.setValue(wgslCode);
+                            }
+                        }
+                        console.log("[SlangEngine] Runtime compilation successful.");
+                    }
+                } catch (compileErr) {
+                    if (window.showErrorModal) window.showErrorModal("Slang Compilation Error:\n" + compileErr.message);
+                    return false;
+                }
+            }
+
             const script = document.createElement('script');
             script.textContent = jsCode;
             document.body.appendChild(script);

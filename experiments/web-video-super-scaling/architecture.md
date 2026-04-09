@@ -25,6 +25,16 @@ Where $f$ represents the focal length of the lenses (which are identical), $b$ r
 
 Because the baseline $b$ is exceptionally large, the disparity $d$ remains a substantial, measurable pixel delta even for objects at extreme distances, such as players operating on the opposite sideline. For instance, if the cameras are positioned 45 meters away from the far sideline, the required disparity to resolve depth at that distance is significantly larger than what a standard stereo camera could capture. This parallel geometry allows the compute shaders to generate highly accurate synthetic depth maps of the players on the field. This synthetically generated depth map serves as a functional proxy for the missing depth buffer required by DLSS-style temporal accumulation algorithms.
 
+### **Streaming Geometry: The 8K Multiplexed Stereo Canvas (Top/Bottom)**
+
+To prevent temporal sync drift between two decoding pipelines, the left and right camera streams are physically multiplexed into a single, massive media container. The incoming video format is a **vertical "Top/Bottom" stack of two full 4K frames**:
+- **Width:** 3840 pixels
+- **Height:** 4320 pixels (2160 pixels for the top eye + 2160 pixels for the bottom eye)
+
+When the WebGPU compute shader extracts the top eye from this `3840x4320` texture and processes it onto a standard `3840x2160` output texture, the shader is performing a **perfect 1:1 spatial crop, not an upscale.** The geometry maps exactly $N$ pixels from the source to $N$ pixels on the output canvas. 
+
+Because the resolution is not actually being stretched, traditional sub-pixel interpolation algorithms (such as Bilinear averaging or Catmull-Rom Bicubic sharpening) will evaluate exactly onto pixel centers. Consequently, they act as pure pass-through filters, returning the original pixel and looking visually identical. Any valid test of a "super scaling" filter upon this specific top/bottom video feed mandates an artificial digital zoom (e.g., $2\times$ scale) injected into the UV coordinate mapping to forcefully trigger the sub-pixel synthesis logic.
+
 ## **Planar Homography of the Playing Surface**
 
 While the players represent dynamic, three-dimensional volumes moving across the field, the football field itself represents a massive, nearly perfect planar surface. Because the cameras are entirely stationary, the geometric relationship between the left camera's view of the field and the right camera's view of the field can be perfectly mapped using a fixed planar homography matrix.

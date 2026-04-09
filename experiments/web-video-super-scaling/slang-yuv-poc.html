@@ -90,15 +90,81 @@
         .stat-label { font-size: 8px; text-transform: uppercase; color: #555; }
         .stat-value { font-family: 'SF Mono', monospace; font-size: 11px; color: #8b5cf6; }
 
-        .panel-ctrl { position: absolute; top: 12px; right: 12px; z-index: 100; background: #2a2a2a; border: 1px solid #444; color: #888; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
-        
-        .collapsed { flex: 0 0 48px !important; padding: 24px 8px !important; overflow: hidden !important; }
-        .collapsed > *:not(.panel-ctrl) { display: none !important; }
-        
         .workspace.video-maximized .narrative, .workspace.video-maximized .editor-container { display: none !important; }
         .workspace.video-maximized .viewport-container { flex: 1 !important; }
 
+        .panel-ctrl { 
+            position: absolute; 
+            top: 12px; 
+            right: 12px; 
+            z-index: 100; 
+            background: #2a2a2a; 
+            border: 1px solid #444; 
+            color: #888; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 4px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            font-size: 14px; 
+        }
+        
+        .collapsed { 
+            flex: 0 0 48px !important; 
+            padding: 24px 8px !important; 
+            overflow: hidden !important; 
+        }
+        .collapsed > *:not(.panel-ctrl) { display: none !important; }
+
+        .viewport-ctrls {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+        }
+
+        .viewport-btn {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #888;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .viewport-btn:hover { background: #333; color: #fff; border-color: #555; }
+
         input[type="range"] { width: 100%; accent-color: #8b5cf6; }
+        
+        /* Debug Crosshair */
+        #zoom-crosshair {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ef4444;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+        #zoom-crosshair::after, #zoom-crosshair::before {
+            content: '';
+            position: absolute;
+            background: #ef4444;
+        }
+        #zoom-crosshair::before { top: 50%; left: -5px; width: 30px; height: 1px; }
+        #zoom-crosshair::after { left: 50%; top: -5px; height: 30px; width: 1px; }
+
         
         #video-source { display: none; }
         slang-viewport { width: 100%; height: 100%; display: block; }
@@ -124,10 +190,67 @@
         .log-line { border-bottom: 1px solid #1a1a1a; padding: 1px 0; }
         .log-err { color: #f87171; }
         .log-warn { color: #fbbf24; }
+
+        /* Tooltip System */
+        .has-tooltip {
+            position: relative;
+        }
+        .tooltip-content {
+            visibility: hidden;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 220px;
+            background: rgba(26, 26, 26, 0.98);
+            backdrop-filter: blur(12px);
+            border: 1px solid #8b5cf6;
+            color: #eee;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            line-height: 1.5;
+            z-index: 3000;
+            opacity: 0;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            text-align: left;
+        }
+        .tooltip-content::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -6px;
+            border-width: 6px;
+            border-style: solid;
+            border-color: #8b5cf6 transparent transparent transparent;
+        }
+        .has-tooltip:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+            bottom: 130%;
+        }
+        .tooltip-title {
+            display: block;
+            color: #8b5cf6;
+            font-weight: 800;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+        .tooltip-section { margin-top: 4px; }
+        .tooltip-label { color: #8b5cf6; font-weight: 600; }
     </style>
 </head>
 
 <body>
+    <div id="zoom-crosshair"></div>
+
     
     <nav class="nav-header">
         <div class="nav-left">
@@ -156,6 +279,7 @@
                 </div>
 
                 <div id="tab-controls-content" class="tab-pane" style="display: none; padding: 20px; flex-direction: column; gap: 16px;">
+                    
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-label">Engine</div>
@@ -166,11 +290,17 @@
                             <div id="stat-time" class="stat-value">0:00.00</div>
                         </div>
                         <div class="stat-card flex justify-between items-center" style="grid-column: span 2;">
-                            <div>
-                                <div class="stat-label">HLS</div>
-                                <div id="stat-video" class="stat-value">IDLE</div>
+                            <div class="flex items-center gap-3">
+                                <div>
+                                    <div class="stat-label">HLS Source Layer</div>
+                                    <div id="stat-video" class="stat-value text-emerald-400">ONLINE</div>
+                                </div>
                             </div>
-                            <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors">PLAY</button>
+                            <div class="flex items-center gap-2">
+                                <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider active">PAUSE</button>
+                                <button onclick="savePNG()" class="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider">CAPTURE PNG</button>
+                                <button id="compile-btn" onclick="compileSlang()" class="bg-[#5b9bd5] hover:bg-[#4a8ac4] text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider">COMPILE</button>
+                            </div>
                         </div>
                     </div>
 
@@ -181,7 +311,14 @@
                             <button class="mode-btn" onclick="setYUVMode(1)">Y</button>
                             <button class="mode-btn" onclick="setYUVMode(2)">U</button>
                             <button class="mode-btn" onclick="setYUVMode(3)">V</button>
-                            <button class="mode-btn" onclick="setYUVMode(4)">Rec</button>
+                            <button class="mode-btn has-tooltip" onclick="setYUVMode(4)">
+                                Rec
+                                <div class="tooltip-content">
+                                    <span class="tooltip-title">Reconstruction</span>
+                                    <div class="tooltip-section"><span class="tooltip-label">Intuition:</span> Merging Luma (detail) and Chroma (color) back to RGB.</div>
+                                    <div class="tooltip-section"><span class="tooltip-label">Look for:</span> "Color bleeding" or smearing at sharp boundaries where low-res color meets high-res detail.</div>
+                                </div>
+                            </button>
                         </div>
                         <input id="mode-val" type="hidden" value="0">
                     </div>
@@ -189,14 +326,36 @@
                     <div class="control-group">
                         <label>Interpolation</label>
                         <div class="mode-group">
-                            <button class="mode-btn filter-btn active" onclick="setFilter(0)">Bilinear</button>
-                            <button class="mode-btn filter-btn" onclick="setFilter(1)">Bicubic</button>
+                            <button class="mode-btn filter-btn active has-tooltip" onclick="setFilter(0)">
+                                Bilinear
+                                <div class="tooltip-content">
+                                    <span class="tooltip-title">Bilinear (Standard)</span>
+                                    <div class="tooltip-section"><span class="tooltip-label">Intuition:</span> Simple 4-pixel average. The "baseline" upscale.</div>
+                                    <div class="tooltip-section"><span class="tooltip-label">Look for:</span> Notice the "softness" or blur on diagonal edges and fine details like grass or text.</div>
+                                </div>
+                            </button>
+                            <button class="mode-btn filter-btn has-tooltip" onclick="setFilter(1)">
+                                Bicubic
+                                <div class="tooltip-content">
+                                    <span class="tooltip-title">Bicubic (Precision)</span>
+                                    <div class="tooltip-section"><span class="tooltip-label">Intuition:</span> 16-pixel cubic math. Significantly sharper than Bilinear.</div>
+                                    <div class="tooltip-section"><span class="tooltip-label">Look for:</span> Sharper lines and better "pop." The goal is to reach this fidelity or higher.</div>
+                                </div>
+                            </button>
+                            <button class="mode-btn filter-btn has-tooltip" onclick="setFilter(2)">
+                                Diff
+                                <div class="tooltip-content">
+                                    <span class="tooltip-title">Diff (Diagnostic)</span>
+                                    <div class="tooltip-section"><span class="tooltip-label">Intuition:</span> Visualizes abs(Bicubic - Bilinear) * 10.</div>
+                                    <div class="tooltip-section"><span class="tooltip-label">Look for:</span> Edge outlines where Catmull-Rom math diverges from simple averaging. If pure black, math is identical.</div>
+                                </div>
+                            </button>
                         </div>
                         <input id="filter-val" type="hidden" value="0">
                     </div>
 
                     <div class="flex gap-2">
-                        <div style="flex:1">
+                        <div style="flex:1; display: none;">
                             <slang-playback-controls></slang-playback-controls>
                         </div>
                     </div>
@@ -216,16 +375,33 @@
                 <div data-tab="Info" data-lang="none"></div>
                 <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="YUV Slang" data-lang="cpp"><!--
+// Slang shim for WebGPU External Textures
+__target_intrinsic(wgsl, "texture_external")
+struct TextureExternal {};
+
+extension TextureExternal {
+    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($1, $2, $3)")
+    float4 Sample(SamplerState s, float2 uv);
+}
+
 struct Params {
     uint mode;        // 0: RGB, 1: Y, 2: U, 3: V, 4: Reconstructed
     float contrast;   // Visualization contrast
-    uint filter;      // 0: Bilinear, 1: Bicubic
-    uint pad;         // Padding
+    uint filterMode;  // 0: Bilinear, 1: Bicubic
+    uint srcW;        // Source width
+    uint srcH;        // Source height
+    float boundaryY;  // Vertical boundary for stacked (e.g., 0.5)
+    uint isFrozen;    // 1 if sampling from static texture
+    float zoom;       // Magnifying glass zoom factor
+    float panX;       // Pan X offset
+    float panY;       // Pan Y offset
+    uint pad1;        // Alignment
 };
 
 ParameterBlock<Params> params;
 TextureExternal videoTexture;
 SamplerState videoSampler;
+Texture2D frozenSourceTexture;
 RWTexture2D<float4> outputTexture;
 
 // Catmull-Rom Bicubic Filter
@@ -236,11 +412,18 @@ float4 cubic(float x) {
     w.x = -x3 + 2.0 * x2 - x;
     w.y = 3.0 * x3 - 5.0 * x2 + 2.0;
     w.z = -3.0 * x3 + 4.0 * x2 + x;
-    w.w = x3 - x2;
     return 0.5 * w;
 }
 
-float3 sampleBicubic(float2 uv, float2 res) {
+float3 getSourceSample(float2 uv) {
+    if (params.isFrozen == 1) {
+        return frozenSourceTexture.SampleLevel(videoSampler, uv, 0.0).rgb;
+    } else {
+        return videoTexture.Sample(videoSampler, uv).rgb;
+    }
+}
+
+float3 sampleBicubic(float2 uv, float2 res, float minY, float maxY) {
     float2 pixel = uv * res - 0.5;
     float2 frac = frac(pixel);
     pixel = floor(pixel);
@@ -253,8 +436,11 @@ float3 sampleBicubic(float2 uv, float2 res) {
         for (int x = -1; x <= 2; x++) {
             float2 offset = float2(x, y);
             float2 sampleUV = (pixel + offset + 0.5) / res;
-            // Note: External textures require Sample()
-            color += videoTexture.Sample(videoSampler, sampleUV).rgb * wx[x + 1] * wy[y + 1];
+            
+            // Boundary clamping for stacked video
+            sampleUV.y = clamp(sampleUV.y, minY, maxY);
+            
+            color += getSourceSample(sampleUV) * wx[x + 1] * wy[y + 1];
         }
     }
     return color;
@@ -266,15 +452,21 @@ void main(uint3 id : SV_DispatchThreadID) {
     uint2 size = uint2(3840, 2160);
     if (id.x >= size.x || id.y >= size.y) return;
 
-    float2 uv = float2(id.xy) / float2(size);
-    // Stacked 4K (Top: Left, Bottom: Right). Using Top frame.
-    uv.y *= 0.5;
+    float2 baseUV = float2(id.xy) / float2(size);
+    baseUV.y *= 0.5;
+    float2 center = float2(0.5, 0.25);
+    float2 uv = (baseUV - center) / params.zoom + center + float2(params.panX, params.panY);
 
     float3 rgb;
-    if (params.filter == 1) {
-        rgb = sampleBicubic(uv, float2(3840, 2160));
+    float2 srcRes = float2(params.srcW, params.srcH);
+    if (params.filterMode == 1) {
+        rgb = sampleBicubic(uv, srcRes, 0.0, params.boundaryY);
+    } else if (params.filterMode == 2) {
+        float3 bicubic = sampleBicubic(uv, srcRes, 0.0, params.boundaryY);
+        float3 bilinear = getSourceSample(uv);
+        rgb = abs(bicubic - bilinear) * 10.0;
     } else {
-        rgb = videoTexture.Sample(videoSampler, uv).rgb;
+        rgb = getSourceSample(uv);
     }
 
     // Rec. 709 RGB to YUV conversion
@@ -310,14 +502,22 @@ void main(uint3 id : SV_DispatchThreadID) {
 struct Params {
     mode: u32,
     contrast: f32,
-    filter: u32,
-    pad: u32,
+    filterMode: u32,
+    srcW: u32,
+    srcH: u32,
+    boundaryY: f32,
+    isFrozen: u32,
+    zoom: f32,
+    panX: f32,
+    panY: f32,
+    pad1: u32,
 }
 
 @group(0) @binding(0) var videoSampler: sampler;
 @group(0) @binding(1) var videoTexture: texture_external;
 @group(0) @binding(2) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(3) var<uniform> uniforms: Params;
+@group(0) @binding(4) var frozenSourceTexture: texture_2d<f32>;
 
 fn cubic(x: f32) -> vec4<f32> {
     let x2 = x * x;
@@ -330,7 +530,15 @@ fn cubic(x: f32) -> vec4<f32> {
     return 0.5 * w;
 }
 
-fn sampleBicubic(uv: vec2<f32>, res: vec2<f32>) -> vec3<f32> {
+fn getSourceSample(uv: vec2<f32>) -> vec3<f32> {
+    if (uniforms.isFrozen == 1u) {
+        return textureSampleLevel(frozenSourceTexture, videoSampler, uv, 0.0).rgb;
+    } else {
+        return textureSampleBaseClampToEdge(videoTexture, videoSampler, uv).rgb;
+    }
+}
+
+fn sampleBicubic(uv: vec2<f32>, res: vec2<f32>, minY: f32, maxY: f32) -> vec3<f32> {
     let pixel = uv * res - 0.5;
     let fractional = fract(pixel);
     let pixelCenter = floor(pixel);
@@ -342,9 +550,9 @@ fn sampleBicubic(uv: vec2<f32>, res: vec2<f32>) -> vec3<f32> {
     for (var y: i32 = -1; y <= 2; y = y + 1) {
         for (var x: i32 = -1; x <= 2; x = x + 1) {
             let offset = vec2<f32>(f32(x), f32(y));
-            let sampleUV = (pixelCenter + offset + 0.5) / res;
-            let weights = vec4<f32>(wx[u32(x + 1)], wy[u32(y + 1)], 0.0, 0.0);
-            color = color + textureSampleBaseClampToEdge(videoTexture, videoSampler, sampleUV).rgb * wx[u32(x + 1)] * wy[u32(y + 1)];
+            var sampleUV = (pixelCenter + offset + 0.5) / res;
+            sampleUV.y = clamp(sampleUV.y, minY, maxY);
+            color = color + getSourceSample(sampleUV) * wx[u32(x + 1)] * wy[u32(y + 1)];
         }
     }
     return color;
@@ -355,13 +563,21 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let size = textureDimensions(outputTexture);
     if (id.x >= size.x || id.y >= size.y) { return; }
 
-    let uv = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
+    let baseUV = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
+    let center = vec2<f32>(0.5, 0.25);
+    let uv = (baseUV - center) / uniforms.zoom + center + vec2<f32>(uniforms.panX, uniforms.panY);
+
     
     var rgb: vec3<f32>;
-    if (uniforms.filter == 1u) {
-        rgb = sampleBicubic(uv, vec2<f32>(3840.0, 2160.0));
+    let srcRes = vec2<f32>(f32(uniforms.srcW), f32(uniforms.srcH));
+    if (uniforms.filterMode == 1u) {
+        rgb = sampleBicubic(uv, srcRes, 0.0, uniforms.boundaryY);
+    } else if (uniforms.filterMode == 2u) {
+        let bicubic = sampleBicubic(uv, srcRes, 0.0, uniforms.boundaryY);
+        let bilinear = getSourceSample(uv);
+        rgb = abs(bicubic - bilinear) * 10.0;
     } else {
-        rgb = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv).rgb;
+        rgb = getSourceSample(uv);
     }
 
     let Y  =  0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
@@ -395,21 +611,44 @@ class YUVProcessor {
     constructor(device, context, wgslCode) {
         this.device = device;
         this.context = context;
+        window.activeProcessor = this;
         this.shaderModule = device.createShaderModule({ code: wgslCode });
         this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
 
         this.outTexture = device.createTexture({
             size: [3840, 2160], format: 'rgba8unorm',
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
         });
 
         this.uniformBuffer = device.createBuffer({
-            size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        this.frozenSourceTexture = device.createTexture({
+            size: [3840, 2160], format: 'rgba8unorm',
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
         });
 
         this.pipeline = device.createComputePipeline({
             layout: 'auto',
             compute: { module: this.shaderModule, entryPoint: 'main' }
+        });
+
+        this.snapshotShader = device.createShaderModule({ code: `
+            @group(0) @binding(0) var s: sampler;
+            @group(0) @binding(1) var t: texture_external;
+            @group(0) @binding(2) var out: texture_storage_2d<rgba8unorm, write>;
+            @compute @workgroup_size(16, 16)
+            fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                let size = textureDimensions(out);
+                if (id.x >= size.x || id.y >= size.y) { return; }
+                let uv = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y));
+                textureStore(out, id.xy, textureSampleBaseClampToEdge(t, s, uv));
+            }
+        `});
+        this.snapshotPipeline = device.createComputePipeline({
+            layout: 'auto',
+            compute: { module: this.snapshotShader, entryPoint: 'main' }
         });
 
         this.renderShader = device.createShaderModule({ code: `
@@ -442,12 +681,22 @@ class YUVProcessor {
             const mode = parseInt(document.getElementById('mode-val').value);
             const filter = parseInt(document.getElementById('filter-val').value);
             const contrast = 1.0;
+            const isFrozen = video.paused ? 1 : 0;
             
-            const uData = new Uint32Array(4);
+            const uData = new Uint32Array(12);
             uData[0] = mode;
             const fData = new Float32Array(uData.buffer);
             fData[1] = contrast;
-            uData[2] = filter;
+            uData[2] = filter; 
+            uData[3] = video.videoWidth || 3840;
+            uData[4] = video.videoHeight || 2160;
+            fData[5] = 0.5; // Top frame boundary
+            uData[6] = isFrozen;
+            fData[7] = window.vpZoom || 1.0;
+            fData[8] = window.vpPanX || 0.0;
+            fData[9] = window.vpPanY || 0.0;
+            uData[10] = 0;
+            
             this.device.queue.writeBuffer(this.uniformBuffer, 0, uData);
 
             const commandEncoder = this.device.createCommandEncoder();
@@ -461,7 +710,8 @@ class YUVProcessor {
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: externalTexture },
                     { binding: 2, resource: this.outTexture.createView() },
-                    { binding: 3, resource: { buffer: this.uniformBuffer } }
+                    { binding: 3, resource: { buffer: this.uniformBuffer } },
+                    { binding: 4, resource: this.frozenSourceTexture.createView() }
                 ]
             }));
             computePass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(2160/16));
@@ -496,11 +746,90 @@ class YUVProcessor {
             const mins = Math.floor(video.currentTime / 60);
             const secs = (video.currentTime % 60).toFixed(2).padStart(5, '0');
             document.getElementById('stat-time').innerText = `${mins}:${secs}`;
-            
         } catch (err) {
             window.log(`Render Error: ${err.message}`, 'error');
             document.getElementById('stat-video').innerText = "ERROR";
         }
+    }
+
+    async snapshot() {
+        const video = document.getElementById('video-source');
+        if (video.readyState < 2) return;
+
+        const commandEncoder = this.device.createCommandEncoder();
+        const externalTexture = this.device.importExternalTexture({ source: video });
+        const pass = commandEncoder.beginComputePass();
+        pass.setPipeline(this.snapshotPipeline);
+        pass.setBindGroup(0, this.device.createBindGroup({
+            layout: this.snapshotPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: this.sampler },
+                { binding: 1, resource: externalTexture },
+                { binding: 2, resource: this.frozenSourceTexture.createView() }
+            ]
+        }));
+        pass.dispatchWorkgroups(Math.ceil(3840/16), Math.ceil(2160/16));
+        pass.end();
+        this.device.queue.submit([commandEncoder.finish()]);
+        window.log("Snapshot captured for frozen comparison.");
+    }
+    async capture() {
+        const width = 3840;
+        const height = 2160;
+        const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
+        const bufferSize = bytesPerRow * height;
+
+        const readBuffer = this.device.createBuffer({
+            size: bufferSize,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+        });
+
+        const commandEncoder = this.device.createCommandEncoder();
+        commandEncoder.copyTextureToBuffer(
+            { texture: this.outTexture },
+            { buffer: readBuffer, bytesPerRow: bytesPerRow },
+            [width, height]
+        );
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        await readBuffer.mapAsync(GPUMapMode.READ);
+        const arrayBuffer = readBuffer.getMappedRange();
+        const data = new Uint8Array(arrayBuffer);
+
+        // Convert centered data (removing padding)
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(width, height);
+
+        for (let y = 0; y < height; y++) {
+            const srcOffset = y * bytesPerRow;
+            const dstOffset = y * width * 4;
+            imageData.data.set(data.subarray(srcOffset, srcOffset + width * 4), dstOffset);
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        const url = canvas.toDataURL('image/png');
+        
+        // Naming logic (Direct DOM lookup for accuracy)
+        const mode = parseInt(document.getElementById('mode-val').value);
+        const filter = parseInt(document.getElementById('filter-val').value);
+        const modes = ["RGB", "Y", "U", "V", "Rec"];
+        const filters = ["Bilinear", "Bicubic"];
+        
+        const fName = filters[filter] || "None";
+        const cName = modes[mode] || "Ch";
+        const now = new Date();
+        const ts = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
+        
+        const link = document.createElement('a');
+        link.download = `${fName}${cName}-${ts}.png`;
+        link.href = url;
+        link.click();
+
+        readBuffer.unmap();
+        window.log(`Captured 4K Frame: ${link.download}`);
     }
 }
 window.ModuleRenderer = YUVProcessor;
@@ -509,7 +838,10 @@ window.ModuleRenderer = YUVProcessor;
         </div>
 
         <div class="panel viewport-container" id="panel-viewport">
-            <button class="panel-ctrl" onclick="toggleVideoMaximize()">⛶</button>
+            <div class="viewport-ctrls">
+                <button class="viewport-btn" onclick="savePNG()" title="Save PNG (4K)">📸</button>
+                <button class="viewport-btn" onclick="toggleVideoMaximize()">⛶</button>
+            </div>
             <slang-viewport></slang-viewport>
             <video id="video-source" crossorigin="anonymous" playsinline muted loop></video>
         </div>
@@ -538,6 +870,7 @@ window.ModuleRenderer = YUVProcessor;
                     b.classList.toggle('active', i === m);
                 }
             });
+            if (window.activeProcessor) window.activeProcessor.render();
         };
 
         window.setFilter = (f) => {
@@ -545,6 +878,7 @@ window.ModuleRenderer = YUVProcessor;
             document.querySelectorAll('.filter-btn').forEach((b, i) => {
                 b.classList.toggle('active', i === f);
             });
+            if (window.activeProcessor) window.activeProcessor.render();
         };
 
         window.log = (msg, type = 'info') => {
@@ -568,18 +902,153 @@ window.ModuleRenderer = YUVProcessor;
             if (video.paused) {
                 video.play().then(() => {
                     btn.innerText = "PAUSE";
-                    btn.classList.replace('bg-violet-600', 'bg-slate-700');
+                    btn.classList.add('active');
                 });
             } else {
                 video.pause();
                 btn.innerText = "PLAY";
-                btn.classList.replace('bg-slate-700', 'bg-violet-600');
+                btn.classList.remove('active');
+            }
+        };
+
+        window.savePNG = () => {
+            if (window.activeProcessor) {
+                window.activeProcessor.capture();
+            } else {
+                window.log("Renderer not ready.", "warn");
+            }
+        };
+
+        window.compileSlang = async () => {
+            const controls = document.querySelector('slang-playback-controls');
+            const btn = document.getElementById('compile-btn');
+            if (controls) {
+                btn.innerText = "COMPILING...";
+                btn.classList.replace('bg-[#5b9bd5]', 'bg-[#1e2d40]');
+                controls.compiled = false; // Force recompile
+                await controls.compileIfNeeded();
+                btn.innerText = "COMPILE";
+                btn.classList.replace('bg-[#1e2d40]', 'bg-[#5b9bd5]');
+                if (window.activeProcessor && document.getElementById('video-source').paused) {
+                    window.activeProcessor.render();
+                }
             }
         };
 
         document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('video-source');
             
+            window.vpZoom = 3.0; // Start with 3x magnifying glass
+            window.vpPanX = 0.0;
+            window.vpPanY = 0.0;
+
+            const viewport = document.querySelector('slang-viewport');
+            let isDragging = false;
+            let lastMouse = { x: 0, y: 0 };
+
+            viewport.addEventListener('mousedown', e => {
+                isDragging = true;
+                lastMouse = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => isDragging = false);
+
+            viewport.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                
+                const canvas = viewport.shadowRoot ? viewport.shadowRoot.querySelector('canvas') : viewport.querySelector('canvas') || viewport;
+                const rect = canvas.getBoundingClientRect();
+                
+                const dx = -(e.clientX - lastMouse.x) / rect.width;
+                const dy = -(e.clientY - lastMouse.y) / rect.height;
+                
+                const crosshair = document.getElementById('zoom-crosshair');
+                if (crosshair) {
+                    crosshair.style.display = 'block';
+                    crosshair.style.left = e.clientX + 'px';
+                    crosshair.style.top = e.clientY + 'px';
+                }
+
+                lastMouse = { x: e.clientX, y: e.clientY };
+
+                window.vpPanX += dx / window.vpZoom;
+                window.vpPanY += (dy * 0.5) / window.vpZoom;
+
+                if (window.activeProcessor && video.paused) {
+                    window.activeProcessor.render();
+                }
+            });
+
+            viewport.addEventListener('wheel', e => {
+                e.preventDefault();
+                const canvas = viewport.shadowRoot ? viewport.shadowRoot.querySelector('canvas') : (viewport.querySelector('canvas') || viewport);
+                const rect = canvas.getBoundingClientRect();
+
+                // To get perfect local offsets, we must account for shadow DOM event retargeting
+                const localX = e.offsetX !== undefined ? e.offsetX : (e.clientX - rect.left);
+                const localY = e.offsetY !== undefined ? e.offsetY : (e.clientY - rect.top);
+                
+                // my is normalized value [0, 1] relative to the DISPLAYED canvas height
+                const mx = Math.max(0, Math.min(1, localX / rect.width));
+                const my = Math.max(0, Math.min(1, localY / rect.height));
+                
+                const baseUvX = mx;
+                const baseUvY = my * 0.5; // Top Eye mapping
+                
+                console.log(`[ZoomCoord] localY: ${localY.toFixed(1)} | rectH: ${rect.height.toFixed(1)} | my: ${my.toFixed(4)} | baseUvY: ${baseUvY.toFixed(4)}`);
+
+
+                const centerX = 0.5;
+                const centerY = 0.25;
+
+
+                const zoomFactor = 1.15;
+                const oldZoom = window.vpZoom;
+
+                if (e.deltaY < 0) {
+                    window.vpZoom *= zoomFactor;
+                } else {
+                    window.vpZoom /= zoomFactor;
+                }
+                window.vpZoom = Math.max(1.0, Math.min(window.vpZoom, 50.0));
+                
+                const newZoom = window.vpZoom;
+
+                // Center the scaling around the mouse pointer
+                const dX = (baseUvX - centerX) * (1 / oldZoom - 1 / newZoom);
+                const dY = (baseUvY - centerY) * (1 / oldZoom - 1 / newZoom);
+                
+                window.vpPanX += dX;
+                window.vpPanY += dY;
+
+                const crosshair = document.getElementById('zoom-crosshair');
+                if (crosshair) {
+                    crosshair.style.display = 'block';
+                    crosshair.style.left = e.clientX + 'px';
+                    crosshair.style.top = e.clientY + 'px';
+                    setTimeout(() => { if (!isDragging) crosshair.style.display = 'none'; }, 2000);
+                }
+
+                console.log(`[ZoomDebug] 
+    Mouse Screen: ${mx.toFixed(3)}, ${my.toFixed(3)}
+    Mouse UV:     ${baseUvX.toFixed(3)}, ${baseUvY.toFixed(3)}
+    Zoom:         ${oldZoom.toFixed(2)} -> ${newZoom.toFixed(2)}
+    Pan Delta:    ${dX.toFixed(4)}, ${dY.toFixed(4)}
+    Total Pan:    ${window.vpPanX.toFixed(4)}, ${window.vpPanY.toFixed(4)}`);
+
+                
+                if (window.vpZoom <= 1.05) { // Snap back
+                    window.vpZoom = 1.0;
+                    window.vpPanX = 0.0;
+                    window.vpPanY = 0.0;
+                }
+
+                if (window.activeProcessor && video.paused) {
+                    window.activeProcessor.render();
+                }
+            }, { passive: false });
+
+
             if (Hls.isSupported()) {
                 const hls = new Hls({ lowLatencyMode: true });
                 hls.loadSource(ANCHOR_URL);
@@ -591,6 +1060,34 @@ window.ModuleRenderer = YUVProcessor;
                 video.src = ANCHOR_URL;
                 video.play();
             }
+
+            // Sync video state to viewport animation
+            let lockTime = -1;
+            video.addEventListener('play', () => {
+                const vp = document.querySelector('slang-viewport');
+                if (vp && !vp.playing) vp.play();
+                lockTime = -1;
+            });
+            video.addEventListener('pause', () => {
+                const vp = document.querySelector('slang-viewport');
+                if (vp && vp.playing) vp.pause();
+                
+                // Capture static frame for frozen comparison
+                if (window.activeProcessor) {
+                    window.activeProcessor.snapshot();
+                }
+            });
+
+            // Override setYUVMode/setFilter to trigger refresh (Static Texture will be used automatically)
+            const originalYUVMode = window.setYUVMode;
+            window.setYUVMode = (m) => {
+                originalYUVMode(m);
+            };
+
+            const originalFilter = window.setFilter;
+            window.setFilter = (f) => {
+                originalFilter(f);
+            };
 
             // Tab Interception Logic
             setTimeout(() => {
