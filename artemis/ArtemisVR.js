@@ -25,6 +25,7 @@ export class ArtemisVR {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.navButtons = [];
+        this.controllers = [];
 
         this.initLights();
         this.setupResize();
@@ -56,20 +57,27 @@ export class ArtemisVR {
         // VR Controllers
         const onSelect = (event) => {
             const controller = event.target;
-            const tempMatrix = new THREE.Matrix4();
-            tempMatrix.identity().extractRotation(controller.matrixWorld);
-            this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-            this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            this.raycaster.set(controller.position, new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion));
             this.checkIntersection();
         };
 
-        const controller1 = this.renderer.xr.getController(0);
-        controller1.addEventListener('select', onSelect);
-        this.scene.add(controller1);
+        const buildController = (index) => {
+            const controller = this.renderer.xr.getController(index);
+            controller.addEventListener('select', onSelect);
+            this.scene.add(controller);
 
-        const controller2 = this.renderer.xr.getController(1);
-        controller2.addEventListener('select', onSelect);
-        this.scene.add(controller2);
+            // Visual Ray
+            const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -5)]);
+            const material = new THREE.LineBasicMaterial({ color: 0x5b9bd5, transparent: true, opacity: 0.5 });
+            const line = new THREE.Line(geometry, material);
+            line.name = 'line';
+            controller.add(line);
+
+            return controller;
+        };
+
+        this.controllers.push(buildController(0));
+        this.controllers.push(buildController(1));
     }
 
     checkIntersection(customCamera = null) {
@@ -85,8 +93,32 @@ export class ArtemisVR {
         }
     }
 
+    updateHoverStates() {
+        this.navButtons.forEach(btn => btn.scale.setScalar(1.0));
+
+        if (!this.active) return;
+
+        const checkRay = (origin, direction) => {
+            this.raycaster.set(origin, direction);
+            const intersects = this.raycaster.intersectObjects(this.navButtons);
+            if (intersects.length > 0) {
+                intersects[0].object.scale.setScalar(1.2);
+            }
+        };
+
+        if (this.renderer.xr.isPresenting) {
+            this.controllers.forEach(controller => {
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
+                checkRay(controller.position, dir);
+            });
+        } else {
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(this.navButtons);
+            if (intersects.length > 0) intersects[0].object.scale.setScalar(1.2);
+        }
+    }
+
     createNavButtons() {
-        // Remove existing
         this.navButtons.forEach(b => this.scene.remove(b));
         this.navButtons = [];
 
@@ -97,7 +129,7 @@ export class ArtemisVR {
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, 128, 128);
-            ctx.strokeStyle = '#444';
+            ctx.strokeStyle = '#5b9bd5';
             ctx.lineWidth = 8;
             ctx.strokeRect(4, 4, 120, 120);
             ctx.fillStyle = '#eee';
@@ -108,7 +140,7 @@ export class ArtemisVR {
 
             const tex = new THREE.CanvasTexture(canvas);
             const geom = new THREE.PlaneGeometry(0.3, 0.3);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.8 });
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9 });
             const mesh = new THREE.Mesh(geom, mat);
             mesh.position.set(x, 0.2, -2.4);
             mesh.userData.action = action;
@@ -228,9 +260,11 @@ export class ArtemisVR {
 
     render(time) {
         if (!this.active) return;
+
+        this.updateHoverStates();
+
         if (this.plane) {
             if (!this.renderer.xr.isPresenting) {
-                // Desktop preview
                 this.plane.rotation.y = Math.sin(time / 2000) * 0.1;
                 this.plane.rotation.x = Math.cos(time / 3000) * 0.05;
                 this.camera.position.z = 2.5;
@@ -239,13 +273,11 @@ export class ArtemisVR {
                 
                 this.navButtons.forEach(b => {
                     b.visible = true;
-                    // Position below the plane on desktop (plane goes from y=-1 to y=1)
                     b.position.y = -1.3;
-                    b.position.z = 0.1; // In front of plane
+                    b.position.z = 0.1;
                     b.lookAt(this.camera.position);
                 });
             } else {
-                // VR mode
                 this.plane.rotation.y = 0;
                 this.plane.rotation.x = 0;
                 this.plane.position.y = 1.4;
@@ -253,8 +285,8 @@ export class ArtemisVR {
                 
                 this.navButtons.forEach(b => {
                     b.visible = true;
-                    b.position.y = 0.2; // 1.2m below center of image
-                    b.position.z = -2.4; // Slightly in front of plane
+                    b.position.y = 0.2;
+                    b.position.z = -2.4;
                     b.lookAt(this.camera.position);
                 });
             }
