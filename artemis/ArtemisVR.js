@@ -1,15 +1,18 @@
 import * as THREE from 'https://unpkg.com/three@0.168.0/build/three.module.js';
 
 export class ArtemisVR {
-    constructor(container) {
+    constructor(container, imageIds = []) {
         this.container = container;
+        this.imageIds = imageIds;
+        this.currentIndex = 0;
+        
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x0a0a0a); // Dark gray instead of pure black
+        this.scene.background = new THREE.Color(0x0a0a0a);
         
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(0, 0, 0); // Reset camera to origin for VR
+        this.camera.position.set(0, 0, 0);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); // Set alpha false for solid background
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.xr.enabled = true;
         this.container.appendChild(this.renderer.domElement);
@@ -17,9 +20,15 @@ export class ArtemisVR {
         this.plane = null;
         this.material = null;
         this.active = false;
+        
+        // Raycaster for interactions
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        this.navButtons = [];
 
         this.initLights();
         this.setupResize();
+        this.setupInteractions();
         this.updateVRButton(); 
     }
 
@@ -33,6 +42,82 @@ export class ArtemisVR {
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
+    }
+
+    setupInteractions() {
+        // Desktop Click
+        window.addEventListener('click', (e) => {
+            if (!this.active) return;
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            this.checkIntersection(this.camera);
+        });
+
+        // VR Controllers
+        const onSelect = (event) => {
+            const controller = event.target;
+            const tempMatrix = new THREE.Matrix4();
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            this.checkIntersection();
+        };
+
+        const controller1 = this.renderer.xr.getController(0);
+        controller1.addEventListener('select', onSelect);
+        this.scene.add(controller1);
+
+        const controller2 = this.renderer.xr.getController(1);
+        controller2.addEventListener('select', onSelect);
+        this.scene.add(controller2);
+    }
+
+    checkIntersection(customCamera = null) {
+        if (customCamera) {
+            this.raycaster.setFromCamera(this.mouse, customCamera);
+        }
+        
+        const intersects = this.raycaster.intersectObjects(this.navButtons);
+        if (intersects.length > 0) {
+            const btn = intersects[0].object;
+            if (btn.userData.action === 'prev') this.prev();
+            else if (btn.userData.action === 'next') this.next();
+        }
+    }
+
+    createNavButtons() {
+        // Remove existing
+        this.navButtons.forEach(b => this.scene.remove(b));
+        this.navButtons = [];
+
+        const createBtn = (label, x, action) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(4, 4, 120, 120);
+            ctx.fillStyle = '#eee';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, 64, 64);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            const geom = new THREE.PlaneGeometry(0.3, 0.3);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.8 });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(x, 0.2, -2.4);
+            mesh.userData.action = action;
+            this.scene.add(mesh);
+            this.navButtons.push(mesh);
+        };
+
+        createBtn('<', -0.3, 'prev');
+        createBtn('>', 0.3, 'next');
     }
 
     async updateVRButton() {
@@ -55,11 +140,9 @@ export class ArtemisVR {
         btn.style.letterSpacing = '1px';
         btn.style.zIndex = '2002';
         btn.textContent = 'VR NOT DETECTED';
-        btn.title = 'Please use a WebXR-compatible headset (Meta Quest 3, Vision Pro) to experience spatial depth.';
 
         this.container.appendChild(btn);
 
-        // Check for WebXR support asynchronously
         if (navigator.xr) {
             const isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
             if (isVRSupported) {
@@ -67,9 +150,7 @@ export class ArtemisVR {
                 btn.style.color = '#5b9bd5';
                 btn.style.borderColor = '#5b9bd5';
                 btn.style.cursor = 'pointer';
-                btn.title = 'Enter immersive VR mode';
 
-                // Import Three's VRButton logic but keep our custom styling
                 import('https://unpkg.com/three@0.168.0/examples/jsm/webxr/VRButton.js').then((module) => {
                     const threeBtn = module.VRButton.createButton(this.renderer);
                     threeBtn.style.display = 'none';
@@ -82,8 +163,16 @@ export class ArtemisVR {
 
     async start(id) {
         this.active = true;
-        
-        // Load textures
+        this.currentIndex = this.imageIds.indexOf(id);
+        if (this.currentIndex === -1) this.currentIndex = 0;
+
+        await this.loadCurrent();
+        this.createNavButtons();
+        this.renderer.setAnimationLoop((time) => this.render(time));
+    }
+
+    async loadCurrent() {
+        const id = this.imageIds[this.currentIndex];
         const loader = new THREE.TextureLoader();
         try {
             const [tex, depth] = await Promise.all([
@@ -95,57 +184,50 @@ export class ArtemisVR {
 
             const aspect = 1.5; 
             const geometry = new THREE.PlaneGeometry(aspect * 2, 2, 512, 512);
-            
             this.material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uImage: { value: tex },
-                    uDepth: { value: depth },
-                    uDisplacement: { value: 0.25 }
-                },
+                uniforms: { uImage: { value: tex }, uDepth: { value: depth }, uDisplacement: { value: 0.25 } },
                 vertexShader: `
                     varying vec2 vUv;
                     uniform sampler2D uDepth;
                     uniform float uDisplacement;
                     void main() {
                         vUv = uv;
-                        vec4 depthData = texture2D(uDepth, uv);
-                        float z = depthData.r * uDisplacement;
-                        vec3 pos = position;
-                        pos.z += z;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                        float z = texture2D(uDepth, uv).r * uDisplacement;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position + vec3(0,0,z), 1.0);
                     }
                 `,
                 fragmentShader: `
                     varying vec2 vUv;
                     uniform sampler2D uImage;
-                    void main() {
-                        gl_FragColor = texture2D(uImage, vUv);
-                    }
+                    void main() { gl_FragColor = texture2D(uImage, vUv); }
                 `,
                 side: THREE.DoubleSide
             });
 
             this.plane = new THREE.Mesh(geometry, this.material);
-            this.plane.position.set(0, 1.4, -2.5); // Position 2.5m away and at eye level
+            this.plane.position.set(0, 1.4, -2.5);
             this.scene.add(this.plane);
+        } catch (err) { console.error(err); }
+    }
 
-            this.renderer.setAnimationLoop((time) => this.render(time));
-        } catch (err) {
-            console.error('Failed to load VR assets:', err);
-        }
+    next() {
+        this.currentIndex = (this.currentIndex + 1) % this.imageIds.length;
+        this.loadCurrent();
+    }
+
+    prev() {
+        this.currentIndex = (this.currentIndex - 1 + this.imageIds.length) % this.imageIds.length;
+        this.loadCurrent();
     }
 
     stop() {
         this.active = false;
         this.renderer.setAnimationLoop(null);
-        if (this.renderer.xr.isPresenting) {
-            this.renderer.xr.getSession().then(session => session.end());
-        }
+        if (this.renderer.xr.isPresenting) this.renderer.xr.getSession().then(s => s.end());
     }
 
     render(time) {
         if (!this.active) return;
-        
         if (this.plane) {
             if (!this.renderer.xr.isPresenting) {
                 // Desktop preview
@@ -153,14 +235,30 @@ export class ArtemisVR {
                 this.plane.rotation.x = Math.cos(time / 3000) * 0.05;
                 this.camera.position.z = 2.5;
                 this.plane.position.y = 0;
+                this.plane.position.z = 0;
+                
+                this.navButtons.forEach(b => {
+                    b.visible = true;
+                    // Position below the plane on desktop (plane goes from y=-1 to y=1)
+                    b.position.y = -1.3;
+                    b.position.z = 0.1; // In front of plane
+                    b.lookAt(this.camera.position);
+                });
             } else {
-                // VR mode: Keep it stable and slightly above ground
+                // VR mode
                 this.plane.rotation.y = 0;
                 this.plane.rotation.x = 0;
                 this.plane.position.y = 1.4;
+                this.plane.position.z = -2.5;
+                
+                this.navButtons.forEach(b => {
+                    b.visible = true;
+                    b.position.y = 0.2; // 1.2m below center of image
+                    b.position.z = -2.4; // Slightly in front of plane
+                    b.lookAt(this.camera.position);
+                });
             }
         }
-
         this.renderer.render(this.scene, this.camera);
     }
 }
