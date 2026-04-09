@@ -4,10 +4,12 @@ export class ArtemisVR {
     constructor(container) {
         this.container = container;
         this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x0a0a0a); // Dark gray instead of pure black
+        
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.z = 2.5;
+        this.camera.position.set(0, 0, 0); // Reset camera to origin for VR
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); // Set alpha false for solid background
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.xr.enabled = true;
         this.container.appendChild(this.renderer.domElement);
@@ -18,7 +20,7 @@ export class ArtemisVR {
 
         this.initLights();
         this.setupResize();
-        this.updateVRButton(); // Create button immediately
+        this.updateVRButton(); 
     }
 
     initLights() {
@@ -36,8 +38,6 @@ export class ArtemisVR {
     async updateVRButton() {
         if (document.getElementById('vr-button')) return;
 
-        const isVRSupported = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr');
-        
         const btn = document.createElement('button');
         btn.id = 'vr-button';
         btn.style.position = 'absolute';
@@ -45,34 +45,39 @@ export class ArtemisVR {
         btn.style.left = '50%';
         btn.style.transform = 'translateX(-50%)';
         btn.style.padding = '12px 24px';
-        btn.style.border = '1px solid #5b9bd5';
+        btn.style.border = '1px solid #444';
         btn.style.borderRadius = '8px';
         btn.style.background = '#1a1a1a';
-        btn.style.color = '#5b9bd5';
-        btn.style.cursor = 'pointer';
+        btn.style.color = '#888';
+        btn.style.cursor = 'help';
         btn.style.fontSize = '14px';
         btn.style.fontWeight = 'bold';
         btn.style.letterSpacing = '1px';
         btn.style.zIndex = '2002';
-        
-        if (isVRSupported) {
-            btn.textContent = 'ENTER VR';
-            // Import Three's VRButton logic but keep our custom styling
-            import('https://unpkg.com/three@0.168.0/examples/jsm/webxr/VRButton.js').then((module) => {
-                const threeBtn = module.VRButton.createButton(this.renderer);
-                threeBtn.style.display = 'none';
-                this.container.appendChild(threeBtn);
-                btn.onclick = () => threeBtn.click();
-            });
-        } else {
-            btn.textContent = 'VR NOT DETECTED';
-            btn.style.color = '#888';
-            btn.style.borderColor = '#444';
-            btn.style.cursor = 'help';
-            btn.title = 'Please use a WebXR-compatible headset (Meta Quest 3, Vision Pro) to experience spatial depth.';
-        }
+        btn.textContent = 'VR NOT DETECTED';
+        btn.title = 'Please use a WebXR-compatible headset (Meta Quest 3, Vision Pro) to experience spatial depth.';
 
         this.container.appendChild(btn);
+
+        // Check for WebXR support asynchronously
+        if (navigator.xr) {
+            const isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
+            if (isVRSupported) {
+                btn.textContent = 'ENTER VR';
+                btn.style.color = '#5b9bd5';
+                btn.style.borderColor = '#5b9bd5';
+                btn.style.cursor = 'pointer';
+                btn.title = 'Enter immersive VR mode';
+
+                // Import Three's VRButton logic but keep our custom styling
+                import('https://unpkg.com/three@0.168.0/examples/jsm/webxr/VRButton.js').then((module) => {
+                    const threeBtn = module.VRButton.createButton(this.renderer);
+                    threeBtn.style.display = 'none';
+                    this.container.appendChild(threeBtn);
+                    btn.onclick = () => threeBtn.click();
+                });
+            }
+        }
     }
 
     async start(id) {
@@ -121,6 +126,7 @@ export class ArtemisVR {
             });
 
             this.plane = new THREE.Mesh(geometry, this.material);
+            this.plane.position.set(0, 1.4, -2.5); // Position 2.5m away and at eye level
             this.scene.add(this.plane);
 
             this.renderer.setAnimationLoop((time) => this.render(time));
@@ -140,9 +146,19 @@ export class ArtemisVR {
     render(time) {
         if (!this.active) return;
         
-        if (this.plane && !this.renderer.xr.isPresenting) {
-            this.plane.rotation.y = Math.sin(time / 2000) * 0.1;
-            this.plane.rotation.x = Math.cos(time / 3000) * 0.05;
+        if (this.plane) {
+            if (!this.renderer.xr.isPresenting) {
+                // Desktop preview
+                this.plane.rotation.y = Math.sin(time / 2000) * 0.1;
+                this.plane.rotation.x = Math.cos(time / 3000) * 0.05;
+                this.camera.position.z = 2.5;
+                this.plane.position.y = 0;
+            } else {
+                // VR mode: Keep it stable and slightly above ground
+                this.plane.rotation.y = 0;
+                this.plane.rotation.x = 0;
+                this.plane.position.y = 1.4;
+            }
         }
 
         this.renderer.render(this.scene, this.camera);
