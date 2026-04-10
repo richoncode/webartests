@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 02: Energy-Based Models — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 820px; margin: 0 auto; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 64px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
+  p { margin-bottom: 20px; color: #ccc; }
+
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; overflow: hidden; height: 500px; }
+  #three-container { width: 100%; height: 100%; border-radius: 8px; cursor: move; }
+  .energy-overlay { position: absolute; top: 48px; left: 48px; background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 8px; border: 1px solid #333; pointer-events: none; }
+  .energy-overlay div { font-family: 'SF Mono', monospace; font-size: 12px; color: #5b9bd5; }
+  .energy-val { font-size: 18px; font-weight: 700; color: #fff; margin-top: 4px; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+  .formula { background: #111; padding: 24px; border-radius: 12px; text-align: center; font-size: 20px; margin-bottom: 24px; font-family: serif; color: #fff; border: 1px solid #222; }
+  .formula span { color: #5b9bd5; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <h1>Module 02: Energy-Based Models (EBMs)</h1>
+  <p class="subtitle">JEPA is an Energy-Based Model. Instead of probabilities, it calculates compatibility.</p>
+
+  <section>
+    <h2>The Mathematical Foundation</h2>
+    <p>JEPA assigns a scalar <strong>"Energy"</strong> to pairs of inputs. Low energy signifies compatibility (the prediction matches the context), while high energy signifies a lack of physical or semantic relationship.</p>
+    <div class="formula">
+      E(x, y, z) = ||<span>S<sub>y</sub></span> - <span>P(S<sub>x</sub>, z)</span>||<sup>2</sup>
+    </div>
+    <p>Where <code>S<sub>x</sub></code> is the <span class="term" data-definition="The module that encodes the visible context into a latent representation.">Context Encoder</span>, <code>P</code> is the Predictor, and <code>z</code> is a <span class="term" data-definition="A variable that allows the model to handle uncertainty by representing multiple possible futures.">Latent Variable</span>.</p>
+  </section>
+
+  <section>
+    <h2>Interactive Simulation: "The Energy Landscape"</h2>
+    <div class="sim-container">
+      <div id="three-container"></div>
+      <div class="energy-overlay">
+        <div>CURRENT ENERGY LEVEL</div>
+        <div class="energy-val" id="energyDisplay">0.42</div>
+      </div>
+    </div>
+    <p>Click and drag to explore the energy landscape. The ball represents a "Future State" prediction. Dropping the ball into a <strong>"Valley"</strong> represents a high-probability, low-energy prediction that is semantically compatible with the context.</p>
+  </section>
+
+  <section>
+    <h2>Escaping the Partition Function</h2>
+    <p>Standard probabilistic models require calculating a <span class="term" data-definition="A mathematically intractable denominator in probabilistic models that EBMs avoid to improve efficiency.">Partition Function</span> to normalize probabilities. EBMs avoid this entirely, making them more efficient for complex, high-dimensional spaces like video or 3D environments.</p>
+    <p>The biggest challenge in EBMs is preventing <span class="term" data-definition="A failure mode where the model ignores input and outputs a constant vector to 'cheat' the loss function.">Representation Collapse</span>, where the model assigns zero energy to everything.</p>
+  </section>
+
+  <div class="cite">
+    References: [3] JEPA Overview (DataOps Labs), [12] Yann LeCun - A Path Towards Autonomous Machine Intelligence.
+  </div>
+</div>
+
+<script>
+  let scene, camera, renderer, terrain, ball;
+  const container = document.getElementById('three-container');
+  const energyDisplay = document.getElementById('energyDisplay');
+
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 40, 60);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 20, 10);
+    scene.add(directionalLight);
+
+    // Create Energy Landscape
+    const geometry = new THREE.PlaneGeometry(80, 80, 64, 64);
+    const pos = geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      // Create a landscape with "Valleys" (Compatibility zones)
+      const h = 10 * Math.sin(x/10) * Math.cos(y/10) + 
+                5 * Math.sin(x/5) + 
+                2 * Math.cos(y/3);
+      pos.setZ(i, h);
+    }
+    geometry.computeVertexNormals();
+    
+    const material = new THREE.MeshPhongMaterial({
+      color: 0x1a1a1a,
+      wireframe: true,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.3
+    });
+    terrain = new THREE.Mesh(geometry, material);
+    terrain.rotation.x = -Math.PI / 2;
+    scene.add(terrain);
+
+    // Ball
+    const ballGeo = new THREE.SphereGeometry(2, 32, 32);
+    const ballMat = new THREE.MeshPhongMaterial({ color: 0x5b9bd5, emissive: 0x5b9bd5, emissiveIntensity: 0.5 });
+    ball = new THREE.Mesh(ballGeo, ballMat);
+    scene.add(ball);
+
+    animate();
+  }
+
+  let mouseX = 0, mouseY = 0;
+  container.addEventListener('mousemove', (e) => {
+    const rect = container.getBoundingClientRect();
+    mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    
+    // Move ball based on mouse
+    const targetX = mouseX * 40;
+    const targetY = mouseY * 40;
+    ball.position.x += (targetX - ball.position.x) * 0.1;
+    ball.position.z += (targetY - ball.position.z) * 0.1;
+    
+    // Get Height at ball position (Simplified)
+    const h = 10 * Math.sin(ball.position.x/10) * Math.cos(ball.position.z/10) + 
+              5 * Math.sin(ball.position.x/5) + 
+              2 * Math.cos(ball.position.z/3);
+    ball.position.y = h + 2;
+
+    // Energy display (Height as energy proxy)
+    const energy = (h + 17) / 34; // Normalize
+    energyDisplay.innerText = energy.toFixed(4);
+    
+    // Color change based on energy
+    ball.material.color.setHSL(0.6 * (1 - energy), 0.8, 0.5);
+    ball.material.emissive.setHSL(0.6 * (1 - energy), 0.8, 0.5);
+
+    terrain.rotation.z += 0.001;
+    renderer.render(scene, camera);
+  }
+
+  init();
+  window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  });
+</script>
+</body>
+</html>

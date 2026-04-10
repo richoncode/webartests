@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 05: VL-JEPA — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 820px; margin: 0 auto; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 64px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
+  p { margin-bottom: 20px; color: #ccc; }
+
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; }
+  canvas { background: #000; display: block; width: 100%; height: 400px; border-radius: 8px; cursor: pointer; }
+  
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+  button { background: #111; border: 1px solid #333; color: #888; padding: 12px; border-radius: 8px; cursor: pointer; text-align: left; transition: all 0.2s; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.active { background: #1a1a1a; border-color: #5b9bd5; color: #5b9bd5; }
+  button b { display: block; font-size: 14px; margin-bottom: 2px; }
+  button span { display: block; font-size: 11px; opacity: 0.6; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <h1>Module 05: VL-JEPA - Multimodal Grounding</h1>
+  <p class="subtitle">Thinking in Meaning Space, Not Token Space.</p>
+
+  <section>
+    <h2>Aligning Vision and Language</h2>
+    <p>VL-JEPA allows an AI to understand the relationship between vision and language without converting everything into discrete text tokens. It treats text as a <strong>continuous embedding target</strong>. This solves the <span class="term" data-definition="The failure of LLMs to understand the physical reality behind the words they use because they only model token statistics.">Symbol Grounding Problem</span>, where LLMs know the "word" but not the "world."</p>
+    <p>By using <span class="term" data-definition="Processing information in a compressed state and only 'talking' when necessary, reducing computation by up to 3x.">Selective Decoding</span>, VL-JEPA only generates text when necessary, staying in the abstract "Meaning Space" for the majority of its reasoning.</p>
+  </section>
+
+  <section>
+    <h2>Interactive Simulation: "The Meaning Matcher"</h2>
+    <div class="sim-container">
+      <canvas id="latentCanvas"></canvas>
+      <div class="controls">
+        <button onclick="match('feline')" id="btn-feline">
+          <b>"Feline Leaping"</b>
+          <span>High semantic compatibility</span>
+        </button>
+        <button onclick="match('barking')" id="btn-barking">
+          <b>"Dog Barking"</b>
+          <span>Low semantic compatibility</span>
+        </button>
+        <button onclick="match('liquid')" id="btn-liquid">
+          <b>"Flowing Liquid"</b>
+          <span>Medium semantic compatibility</span>
+        </button>
+        <button onclick="match('random')" id="btn-random">
+          <b>"Static Noise"</b>
+          <span>Zero semantic compatibility</span>
+        </button>
+      </div>
+    </div>
+    <p>The central blue node represents the <strong>Video Embedding</strong> of a cat jumping. The other nodes represent <strong>Text Embeddings</strong>. Notice how semantically similar concepts naturally cluster together in the latent space, even if their raw byte/token values are vastly different.</p>
+  </section>
+
+  <div class="cite">
+    References: [6] JEPA Model Explained (CreateBytes), [26] VL-JEPA: Joint Embedding Predictive Architecture for Vision-language (arXiv).
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('latentCanvas');
+  const ctx = canvas.getContext('2d');
+  
+  let nodes = [
+    { id: 'video', label: 'VIDEO: CAT JUMPING', x: 0, y: 0, color: '#5b9bd5', size: 12, targetX: 0, targetY: 0 },
+    { id: 'feline', label: 'Text: "feline leaping"', x: 100, y: -80, color: '#10b981', size: 8, targetX: 30, targetY: -20 },
+    { id: 'barking', label: 'Text: "dog barking"', x: -150, y: 120, color: '#e74c3c', size: 8, targetX: -160, targetY: 140 },
+    { id: 'liquid', label: 'Text: "flowing liquid"', x: 50, y: 150, color: '#f59e0b', size: 8, targetX: 80, targetY: 60 },
+    { id: 'random', label: 'Text: "static noise"', x: -180, y: -150, color: '#555', size: 8, targetX: -200, targetY: -180 }
+  ];
+
+  function resize() {
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const centerX = canvas.width / (2 * window.devicePixelRatio);
+    const centerY = canvas.height / (2 * window.devicePixelRatio);
+
+    // Draw grid
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1;
+    for (let i = -10; i <= 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(centerX + i * 50, 0);
+      ctx.lineTo(centerX + i * 50, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, centerY + i * 50);
+      ctx.lineTo(canvas.width, centerY + i * 50);
+      ctx.stroke();
+    }
+
+    // Update and Draw Nodes
+    nodes.forEach(node => {
+      node.x += (node.targetX - node.x) * 0.05;
+      node.y += (node.targetY - node.y) * 0.05;
+
+      const px = centerX + node.x;
+      const py = centerY + node.y;
+
+      // Connection to video node
+      if (node.id !== 'video') {
+        const dist = Math.sqrt(node.x * node.x + node.y * node.y);
+        const alpha = Math.max(0, 1 - dist / 200);
+        ctx.strokeStyle = `rgba(91, 155, 213, ${alpha * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX + nodes[0].x, centerY + nodes[0].y);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = node.color;
+      ctx.beginPath();
+      ctx.arc(px, py, node.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(node.label, px, py + node.size + 15);
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  function match(id) {
+    document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-' + id).classList.add('active');
+    
+    // Animate nodes to show compatibility
+    nodes.forEach(node => {
+      if (node.id === 'video') return;
+      if (node.id === id) {
+        node.targetX = 40;
+        node.targetY = -30;
+      } else {
+        // Push others away
+        const angle = Math.random() * Math.PI * 2;
+        node.targetX = Math.cos(angle) * 150;
+        node.targetY = Math.sin(angle) * 150;
+      }
+    });
+  }
+
+  draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 06: Agentic AI & World Models — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 820px; margin: 0 auto; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 64px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
+  p { margin-bottom: 20px; color: #ccc; }
+
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; }
+  canvas { background: #000; display: block; width: 100%; height: 400px; border-radius: 8px; cursor: crosshair; }
+  
+  .stats { position: absolute; top: 48px; left: 48px; background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 8px; border: 1px solid #333; pointer-events: none; }
+  .stats div { font-family: 'SF Mono', monospace; font-size: 11px; color: #888; margin-bottom: 4px; }
+  .stats span { color: #10b981; font-weight: 700; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <h1>Module 06: Agentic AI & World Models</h1>
+  <p class="subtitle">Planning and Model-Predictive Control (MPC) using JEPA.</p>
+
+  <section>
+    <h2>Imagining the Future</h2>
+    <p>In Mode 2 Planning, the JEPA acts as a <strong>World Model</strong> simulator. Instead of acting blindly, the agent "imagines" sequences of actions in latent space and evaluates their outcomes before executing a single move. It picks the path with the lowest <span class="term" data-definition="Hard-wired drives or learned penalties, e.g., 'don't hit the wall' or 'reach the target quickly'.">Intrinsic Cost</span>.</p>
+    <p>This is achieved through <span class="term" data-definition="An optimization process where an agent plans a sequence of actions but only executes the first step before re-planning with new data.">Model-Predictive Control (MPC)</span>, allowing for zero-shot planning in complex physical environments.</p>
+  </section>
+
+  <section>
+    <h2>Interactive Simulation: "The Robotic Reach"</h2>
+    <div class="sim-container">
+      <canvas id="robotCanvas"></canvas>
+      <div class="stats">
+        <div>ACTIVE ROLLOUTS: <span id="rolloutCount">10</span></div>
+        <div>MIN COST TRAJECTORY: <span id="minCost">---</span></div>
+        <div>ALGORITHM: <span style="color:#5b9bd5">Cross-Entropy Method (CEM)</span></div>
+      </div>
+    </div>
+    <p>Click anywhere on the canvas to set a <strong>Goal Target</strong>. The simulation shows the JEPA World Model running multiple hypothetical "Latent Rollouts" (thin green lines) in parallel. The robot arm then executes the trajectory that minimizes the distance to your target.</p>
+  </section>
+
+  <div class="cite">
+    References: [5] Deep Dive into Yann LeCun's JEPA (Rohit Bandaru), [28] V-JEPA 2: Self-Supervised Video Models Enable Planning (arXiv).
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('robotCanvas');
+  const ctx = canvas.getContext('2d');
+  const rolloutCountSpan = document.getElementById('rolloutCount');
+  const minCostSpan = document.getElementById('minCost');
+
+  let target = { x: 300, y: 100 };
+  let arm = { x: 200, y: 350, a1: -Math.PI/2, a2: 0, l1: 100, l2: 80 };
+  let rollouts = [];
+
+  function resize() {
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function solveIK(tx, ty) {
+    // Very simplified planning: generate many random trajectories and pick best
+    rollouts = [];
+    let best = null;
+    let minCost = Infinity;
+
+    for (let i = 0; i < 15; i++) {
+      let r = { 
+        a1: arm.a1 + (Math.random() - 0.5) * 2, 
+        a2: arm.a2 + (Math.random() - 0.5) * 2,
+        path: [] 
+      };
+      
+      // Predict outcome
+      const x1 = arm.x + Math.cos(r.a1) * arm.l1;
+      const y1 = arm.y + Math.sin(r.a1) * arm.l1;
+      const x2 = x1 + Math.cos(r.a1 + r.a2) * arm.l2;
+      const y2 = y1 + Math.sin(r.a1 + r.a2) * arm.l2;
+      
+      const cost = Math.sqrt((x2 - target.x)**2 + (y2 - target.y)**2);
+      r.cost = cost;
+      rollouts.push(r);
+
+      if (cost < minCost) {
+        minCost = cost;
+        best = r;
+      }
+    }
+    
+    if (best) {
+      arm.a1 += (best.a1 - arm.a1) * 0.1;
+      arm.a2 += (best.a2 - arm.a2) * 0.1;
+      minCostSpan.innerText = minCost.toFixed(2);
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Target
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw Rollouts (Latent Imaginations)
+    rollouts.forEach(r => {
+      const x1 = arm.x + Math.cos(r.a1) * arm.l1;
+      const y1 = arm.y + Math.sin(r.a1) * arm.l1;
+      const x2 = x1 + Math.cos(r.a1 + r.a2) * arm.l2;
+      const y2 = y1 + Math.sin(r.a1 + r.a2) * arm.l2;
+
+      ctx.strokeStyle = `rgba(16, 185, 129, 0.2)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(arm.x, arm.y);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    });
+
+    // Draw Actual Arm
+    const x1 = arm.x + Math.cos(arm.a1) * arm.l1;
+    const y1 = arm.y + Math.sin(arm.a1) * arm.l1;
+    const x2 = x1 + Math.cos(arm.a1 + arm.a2) * arm.l2;
+    const y2 = y1 + Math.sin(arm.a1 + arm.a2) * arm.l2;
+
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(arm.x, arm.y);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#5b9bd5';
+    ctx.beginPath();
+    ctx.arc(arm.x, arm.y, 6, 0, Math.PI * 2);
+    ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    solveIK();
+    requestAnimationFrame(draw);
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    target.x = (e.clientX - rect.left);
+    target.y = (e.clientY - rect.top);
+  });
+
+  draw();
+</script>
+</body>
+</html>

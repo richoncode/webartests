@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 01: Escaping the Generative Bottleneck — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 900px; margin: 0 auto; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 80px; }
+  h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #5b9bd5; }
+  .section-desc { font-size: 15px; color: #888; margin-bottom: 32px; max-width: 600px; }
+
+  /* Common Simulation UI */
+  .sim-box { background: #111; border: 1px solid #222; border-radius: 16px; overflow: hidden; margin-bottom: 24px; }
+  .sim-header { background: #1a1a1a; padding: 16px 24px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+  .sim-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #666; }
+  .sim-content { padding: 32px; }
+
+  /* Sim A: Occlusion Challenge */
+  .canvas-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .view-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #444; margin-bottom: 8px; text-align: center; }
+  canvas { background: #000; width: 100%; height: 240px; border-radius: 8px; display: block; cursor: crosshair; border: 1px solid #1a1a1a; }
+  .cost-meter { height: 4px; background: #222; margin-top: 12px; border-radius: 2px; overflow: hidden; position: relative; }
+  .cost-bar { height: 100%; width: 0%; transition: width 0.1s, background 0.1s; }
+  .cost-label { font-size: 10px; font-family: 'SF Mono', monospace; color: #555; margin-top: 4px; display: flex; justify-content: space-between; }
+
+  .instructions { background: #161616; padding: 20px; border-radius: 12px; border-left: 4px solid #5b9bd5; margin-bottom: 24px; }
+  .instructions h4 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+  .instructions p { font-size: 13px; color: #aaa; margin: 0; }
+
+  /* Sim B: Compute Budget Game */
+  .budget-container { position: relative; }
+  .budget-bar-wrap { height: 12px; background: #222; border-radius: 6px; margin-bottom: 32px; border: 1px solid #1a1a1a; overflow: hidden; }
+  .budget-bar { height: 100%; width: 100%; background: #10b981; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  .budget-stats { display: flex; justify-content: space-between; margin-top: -24px; margin-bottom: 32px; font-family: 'SF Mono', monospace; font-size: 12px; }
+  .budget-val { font-weight: 700; color: #10b981; }
+
+  .scene-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .scene-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
+  .scene-card:hover { border-color: #444; background: #222; transform: translateY(-2px); }
+  .scene-card.resolved { border-color: #10b98133; background: #10b98108; cursor: default; }
+  .scene-card.failed { border-color: #e74c3c33; background: #e74c3c08; }
+  .card-icon { font-size: 24px; margin-bottom: 12px; }
+  .card-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .card-cost { font-size: 11px; font-family: 'SF Mono', monospace; color: #555; }
+  .card-status { position: absolute; top: 12px; right: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 24px; }
+  .mode-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #666; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .mode-btn.active { background: #5b9bd5; border-color: #5b9bd5; color: #fff; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <h1>Module 01: Escaping the Generative Bottleneck</h1>
+  <p class="subtitle">JEPA models are "Observers"—they ignore the noise and focus on predicting high-level semantic meaning.</p>
+
+  <div class="instructions" style="background: #0a1a2a; border-left-color: #5b9bd5; margin-bottom: 48px;">
+    <h4>The Paradigm Shift</h4>
+    <p>JEPA transitions AI from <b>reconstruction</b> (generating every pixel) to <b>prediction</b> (modeling semantic structure). This module demonstrates two critical advantages: **noise invariance** and **computational efficiency**. Effective agents prioritize features required for action over details required for visual fidelity.</p>
+  </div>
+
+  <section id="occlusion-challenge">
+    <h2>1. Invariance to Noise</h2>
+    <p class="section-desc">Traditional generative models collapse when inputs are noisy or occluded. Predictive architectures maintain stable representations by ignoring irrelevant signal fluctuations.</p>
+    
+    <div class="instructions">
+      <h4>Interaction Guide</h4>
+      <p>Paint noise (rain/static) on either view. Monitor the <b>Compute Intensity</b> as the vehicle is occluded by the tree.</p>
+    </div>
+
+    <div class="sim-box">
+      <div class="sim-header">
+        <div class="sim-title">Latent Persistence vs. Pixel Hallucination</div>
+        <button class="mode-btn" onclick="resetNoise()">Clear Noise</button>
+      </div>
+      <div class="sim-content">
+        <div class="canvas-container">
+          <div class="view-panel">
+            <div class="view-label">Generative (MAE)</div>
+            <canvas id="canvasMAE"></canvas>
+            <div class="cost-meter"><div id="barMAE" class="cost-bar"></div></div>
+            <div class="cost-label"><span>COMPUTE INTENSITY</span> <span id="valMAE">0%</span></div>
+          </div>
+          <div class="view-panel">
+            <div class="view-label">Predictive (JEPA)</div>
+            <canvas id="canvasJEPA"></canvas>
+            <div class="cost-meter"><div id="barJEPA" class="cost-bar"></div></div>
+            <div class="cost-label"><span>COMPUTE INTENSITY</span> <span id="valJEPA">0%</span></div>
+          </div>
+        </div>
+        
+        <div style="background: #161616; padding: 20px; border-radius: 12px; margin-top: 24px; border: 1px solid #222;">
+          <h4 style="font-size: 12px; color: #5b9bd5; text-transform: uppercase; margin-bottom: 8px;">Technical Analysis: Invariance</h4>
+          <p style="font-size: 13px; color: #aaa; margin: 0;">Generative models (MAE) produce <b>hallucination artifacts</b> when data is sparse. They exhaust compute resources attempting to "guess" pixels based on local statistics. JEPA maintains <b>Latent Persistence</b> of object identity by predicting in abstract representation space. This enables autonomous systems to identify critical entities through rain or occlusion without the overhead of pixel-perfect reconstruction.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="budget-game">
+    <h2>2. Computational Efficiency</h2>
+    <p class="section-desc">AI performance is constrained by <b>Resource Allocation</b>. Modeling the world at the pixel level is computationally unsustainable for real-time edge agents.</p>
+
+    <div class="sim-box">
+      <div class="sim-header">
+        <div class="sim-title">Semantic Compression Performance</div>
+      </div>
+      <div class="sim-content">
+        <div class="mode-toggle">
+          <button id="btnGen" class="mode-btn active" onclick="setGameMode('generative')">Generative Mode (Pixels)</button>
+          <button id="btnPred" class="mode-btn" onclick="setGameMode('predictive')">Predictive Mode (Vectors)</button>
+          <div style="flex-grow: 1;"></div>
+          <button class="mode-btn" onclick="resetGame()">Reset Budget</button>
+        </div>
+
+        <div class="budget-container">
+          <div class="budget-stats">
+            <div>HARDWARE HEADROOM</div>
+            <div class="budget-val"><span id="budgetTFLOPS">100</span> TFLOPS</div>
+          </div>
+          <div class="budget-bar-wrap">
+            <div id="budgetBar" class="budget-bar"></div>
+          </div>
+        </div>
+
+        <div class="scene-grid" id="sceneGrid" style="margin-bottom: 24px;">
+          <!-- Cards injected by JS -->
+        </div>
+
+        <div style="background: #161616; padding: 20px; border-radius: 12px; border: 1px solid #222;">
+          <h4 style="font-size: 12px; color: #10b981; text-transform: uppercase; margin-bottom: 8px;">Technical Analysis: Semantic Capacity</h4>
+          <p style="font-size: 13px; color: #aaa; margin: 0;">Efficiency is maximized through <b>Semantic Compression</b>. Representing a complex structure (e.g., a tree) as a single high-level vector preserves TFLOPS for high-priority tasks like hazard detection. Generative models encounter hardware bottlenecks by processing high-frequency details that are irrelevant to the agent's navigation or safety goals.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="resources">
+    <h2>Curated Resources</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <a href="https://ai.meta.com/blog/yann-lecun-ai-model-i-jepa/" target="_blank" class="instructions" style="text-decoration: none; border-left-color: #5b9bd5; transition: background 0.2s;">
+        <h4 style="color: #5b9bd5;">Meta AI Blog: I-JEPA</h4>
+        <p>The official announcement of the first working JEPA model and its impact on SSL.</p>
+      </a>
+      <a href="https://www.youtube.com/watch?v=5t1vTLU7s40" target="_blank" class="instructions" style="text-decoration: none; border-left-color: #f59e0b; transition: background 0.2s;">
+        <h4 style="color: #f59e0b;">Lex Fridman Podcast #416</h4>
+        <p>Yann LeCun discusses the limits of LLMs and the need for World Models.</p>
+      </a>
+      <a href="https://openreview.net/pdf?id=BZ5aovWEps" target="_blank" class="instructions" style="text-decoration: none; border-left-color: #e74c3c; transition: background 0.2s;">
+        <h4 style="color: #e74c3c;">Paper: A Path Towards AI</h4>
+        <p>LeCun's foundational 2022 paper outlining the JEPA architecture and EBMs.</p>
+      </a>
+      <a href="https://ai.meta.com/research/publications/self-supervised-learning-from-images-with-a-joint-embedding-predictive-architecture/" target="_blank" class="instructions" style="text-decoration: none; border-left-color: #10b981; transition: background 0.2s;">
+        <h4 style="color: #10b981;">Research: I-JEPA Details</h4>
+        <p>Technical publication covering Vision Transformers and multi-block masking.</p>
+      </a>
+    </div>
+  </section>
+
+  <div class="cite">
+    References: [1] What is JEPA? (Medium, 2026), [3] JEPA Overview (DataOps Labs, 2026), [7] Yann LeCun: Lex Fridman Podcast #416.
+  </div>
+</div>
+
+<script>
+/** SIM A: OCCLUSION CHALLENGE **/
+const canvasMAE = document.getElementById('canvasMAE');
+const canvasJEPA = document.getElementById('canvasJEPA');
+const ctxMAE = canvasMAE.getContext('2d');
+const ctxJEPA = canvasJEPA.getContext('2d');
+const barMAE = document.getElementById('barMAE');
+const barJEPA = document.getElementById('barJEPA');
+const valMAE = document.getElementById('valMAE');
+const valJEPA = document.getElementById('valJEPA');
+
+let carPos = -50;
+let noisePoints = [];
+let isPainting = false;
+
+function initCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  canvas.getContext('2d').scale(dpr, dpr);
+}
+
+function handlePaint(e) {
+  if (!isPainting) return;
+  const rect = e.target.getBoundingClientRect();
+  const x = (e.clientX - rect.left);
+  const y = (e.clientY - rect.top);
+  for (let i = 0; i < 5; i++) {
+    noisePoints.push({
+      x: x + (Math.random() - 0.5) * 30,
+      y: y + (Math.random() - 0.5) * 30,
+      life: 1.0
+    });
+  }
+}
+
+[canvasMAE, canvasJEPA].forEach(c => {
+  c.addEventListener('mousedown', () => isPainting = true);
+  window.addEventListener('mouseup', () => isPainting = false);
+  c.addEventListener('mousemove', handlePaint);
+  initCanvas(c);
+});
+
+function resetNoise() { noisePoints = []; }
+
+function drawCar(ctx, x, y, isJEPA, noiseImpact) {
+  const isOccluded = x > 140 && x < 210;
+  
+  if (isJEPA) {
+    // JEPA: Latent Vector (Stable Bounding Box)
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.setLineDash([]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, 60, 30);
+    ctx.fillStyle = 'rgba(91, 155, 213, 0.2)';
+    ctx.fillRect(x, y, 60, 30);
+    ctx.fillStyle = '#5b9bd5';
+    ctx.font = '9px SF Mono';
+    ctx.fillText('v: 2.0px/f', x, y - 5);
+    ctx.fillText('ID: VEHICLE_01', x, y - 15);
+  } else {
+    // MAE: Generative (Pixel reconstruction)
+    const blur = isOccluded ? 15 : (noiseImpact * 20);
+    ctx.filter = `blur(${blur}px)`;
+    ctx.fillStyle = isOccluded ? '#444' : '#e74c3c';
+    ctx.fillRect(x, y, 60, 30);
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(x + 15, y + 30, 8, 0, Math.PI * 2);
+    ctx.arc(x + 45, y + 30, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = 'none';
+    
+    if (isOccluded || noiseImpact > 0.3) {
+      // Hallucination artifacts
+      ctx.fillStyle = `rgba(231, 76, 60, ${noiseImpact})`;
+      ctx.fillRect(x + Math.random() * 20, y + Math.random() * 20, 10, 10);
+    }
+  }
+}
+
+function updateSimA() {
+  ctxMAE.clearRect(0, 0, 400, 240);
+  ctxJEPA.clearRect(0, 0, 400, 240);
+
+  carPos += 1.5;
+  if (carPos > 450) carPos = -100;
+
+  // Backgrounds
+  [ctxMAE, ctxJEPA].forEach(ctx => {
+    ctx.fillStyle = '#333'; // Road
+    ctx.fillRect(0, 210, 400, 30);
+    ctx.fillStyle = '#1a1a1a'; // Tree Trunk
+    ctx.fillRect(180, 100, 20, 110);
+    ctx.fillStyle = '#082a08'; // Tree Top
+    ctx.beginPath();
+    ctx.arc(190, 100, 40, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Calculate Noise Impact
+  const carBox = { x: carPos, y: 180, w: 60, h: 30 };
+  let noiseInBox = noisePoints.filter(p => 
+    p.x > carBox.x && p.x < carBox.x + carBox.w && 
+    p.y > carBox.y && p.y < carBox.y + carBox.h
+  ).length;
+  const impact = Math.min(1.0, noiseInBox / 20);
+
+  // Draw Car
+  drawCar(ctxMAE, carPos, 180, false, impact);
+  drawCar(ctxJEPA, carPos, 180, true, impact);
+
+  // Draw Noise
+  noisePoints.forEach((p, index) => {
+    p.life -= 0.005;
+    if (p.life <= 0) {
+      noisePoints.splice(index, 1);
+      return;
+    }
+    [ctxMAE, ctxJEPA].forEach(ctx => {
+      ctx.fillStyle = `rgba(255, 255, 255, ${p.life * 0.5})`;
+      ctx.fillRect(p.x, p.y, 2, 2);
+    });
+  });
+
+  // Update Meters
+  const isOccluded = carPos > 140 && carPos < 210;
+  const costMAE = (isOccluded ? 80 : 20) + (impact * 70);
+  const costJEPA = 12 + (isOccluded ? 5 : 0);
+
+  barMAE.style.width = costMAE + '%';
+  barMAE.style.background = costMAE > 70 ? '#e74c3c' : '#f59e0b';
+  valMAE.innerText = Math.round(costMAE) + '%';
+  
+  barJEPA.style.width = costJEPA + '%';
+  barJEPA.style.background = '#10b981';
+  valJEPA.innerText = Math.round(costJEPA) + '%';
+
+  requestAnimationFrame(updateSimA);
+}
+
+/** SIM B: COMPUTE BUDGET GAME **/
+let gameMode = 'generative';
+let budget = 100;
+const sceneElements = [
+  { id: 'sky', name: 'Background Sky', icon: '☁️', genCost: 35, predCost: 2 },
+  { id: 'road', name: 'Road Texture', icon: '🛣️', genCost: 40, predCost: 3 },
+  { id: 'tree', name: 'Complex Tree', icon: '🌳', genCost: 60, predCost: 5 },
+  { id: 'car', name: 'Target Vehicle', icon: '🚗', genCost: 50, predCost: 10, critical: true }
+];
+let resolved = new Set();
+
+function setGameMode(mode) {
+  gameMode = mode;
+  document.getElementById('btnGen').classList.toggle('active', mode === 'generative');
+  document.getElementById('btnPred').classList.toggle('active', mode === 'predictive');
+  resetGame();
+}
+
+function resetGame() {
+  budget = 100;
+  resolved.clear();
+  updateGameUI();
+}
+
+function resolveElement(id) {
+  if (resolved.has(id) || budget <= 0) return;
+  
+  const el = sceneElements.find(e => e.id === id);
+  const cost = gameMode === 'generative' ? el.genCost : el.predCost;
+  
+  if (budget >= cost) {
+    budget -= cost;
+    resolved.add(id);
+  } else {
+    // Failed to resolve
+    const card = document.querySelector(`[data-id="${id}"]`);
+    card.classList.add('failed');
+    setTimeout(() => card.classList.remove('failed'), 500);
+    budget = 0;
+  }
+  updateGameUI();
+}
+
+function updateGameUI() {
+  const budgetBar = document.getElementById('budgetBar');
+  const budgetVal = document.getElementById('budgetTFLOPS');
+  budgetBar.style.width = budget + '%';
+  budgetVal.innerText = Math.round(budget);
+  
+  if (budget < 20) budgetBar.style.background = '#e74c3c';
+  else if (budget < 50) budgetBar.style.background = '#f59e0b';
+  else budgetBar.style.background = '#10b981';
+
+  const grid = document.getElementById('sceneGrid');
+  grid.innerHTML = sceneElements.map(el => `
+    <div class="scene-card ${resolved.has(el.id) ? 'resolved' : ''}" 
+         data-id="${el.id}" 
+         onclick="resolveElement('${el.id}')">
+      <div class="card-status" style="color: ${resolved.has(el.id) ? '#10b981' : '#444'}">
+        ${resolved.has(el.id) ? 'RESOLVED' : 'HIDDEN'}
+      </div>
+      <div class="card-icon">${el.icon}</div>
+      <div class="card-name">${el.name}</div>
+      <div class="card-cost">COST: ${gameMode === 'generative' ? el.genCost : el.predCost} TFLOPS</div>
+    </div>
+  `).join('');
+}
+
+// Kick off
+updateSimA();
+updateGameUI();
+</script>
+</body>
+</html>

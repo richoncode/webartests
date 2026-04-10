@@ -1,6 +1,6 @@
 export const VERSION = '1.4.0';
 
-export const PALETTE_FILES = ['laFont-1000lpcm', 'rr-lines-10-200-mixed'];
+export const PALETTE_FILES = ['laFont-1000lpcm', 'laFont-846lpcm', 'rr-lines-10-200-mixed'];
 
 export const FALLBACK_PALETTES = {
   'laFont-1000lpcm': {
@@ -29,6 +29,25 @@ export const FALLBACK_PALETTES = {
       {label:'Blue-Grey',     power:52, rgb:'#306068'},
       {label:'Dark Grey-Blue',power:54, rgb:'#384858'},
       {label:'Near Grey',     power:56, rgb:'#3a3c48'},
+    ]
+  },
+  'laFont-846lpcm': {
+    id:'laFont-846lpcm', name:'LaFont SS304 IR (846 LPCM)',
+    description:'Brushed SS304, 846 LPCM, 200 mm/s',
+    speed:200, lpcm:846, laser:'ir',
+    entries:[
+      {label:'Medium Blue',   power:20.5, rgb:'#1a73e8'},
+      {label:'Cyan',          power:23.5, rgb:'#00b4f1'},
+      {label:'Ice Blue',      power:26.5, rgb:'#d8ffff'},
+      {label:'Pale Yellow',   power:29.0, rgb:'#ffffd6'},
+      {label:'Bright Yellow', power:33.0, rgb:'#ffff00'},
+      {label:'Peach',         power:35.5, rgb:'#ffcc9b'},
+      {label:'Orange',        power:37.5, rgb:'#ffac00'},
+      {label:'Red',           power:40.3, rgb:'#ff0000'},
+      {label:'Lavender',      power:43.0, rgb:'#c6a5ff'},
+      {label:'Muted Purple',  power:45.0, rgb:'#7c6598'},
+      {label:'Slate Blue',    power:50.0, rgb:'#3c628a'},
+      {label:'Olive Green',   power:59.0, rgb:'#6d9050'},
     ]
   },
   'rr-lines-10-200-mixed': {
