@@ -20,11 +20,13 @@ export class ArtemisVR {
         this.plane = null;
         this.material = null;
         this.active = false;
+        this.displacement = 0.6; // Increased default from 0.25
         
         // Raycaster for interactions
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.navButtons = [];
+        this.depthDisplay = null;
         this.controllers = [];
 
         this.initLights();
@@ -90,7 +92,31 @@ export class ArtemisVR {
             const btn = intersects[0].object;
             if (btn.userData.action === 'prev') this.prev();
             else if (btn.userData.action === 'next') this.next();
+            else if (btn.userData.action === 'depth-inc') this.adjustDepth(0.05);
+            else if (btn.userData.action === 'depth-dec') this.adjustDepth(-0.05);
         }
+    }
+
+    adjustDepth(delta) {
+        this.displacement = Math.max(0.05, Math.min(2.0, this.displacement + delta));
+        if (this.material) {
+            this.material.uniforms.uDisplacement.value = this.displacement;
+        }
+        this.updateDepthDisplay();
+    }
+
+    updateDepthDisplay() {
+        if (!this.depthDisplay) return;
+        const canvas = this.depthDisplay.material.map.image;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, 128, 128);
+        ctx.fillStyle = '#5b9bd5';
+        ctx.font = 'bold 44px SF Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.displacement.toFixed(2), 64, 64);
+        this.depthDisplay.material.map.needsUpdate = true;
     }
 
     updateHoverStates() {
@@ -121,35 +147,51 @@ export class ArtemisVR {
     createNavButtons() {
         this.navButtons.forEach(b => this.scene.remove(b));
         this.navButtons = [];
+        if (this.depthDisplay) this.scene.remove(this.depthDisplay);
 
-        const createBtn = (label, x, action) => {
+        const createBtn = (label, x, y, action, isText = false) => {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 128;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, 128, 128);
-            ctx.strokeStyle = '#5b9bd5';
-            ctx.lineWidth = 8;
-            ctx.strokeRect(4, 4, 120, 120);
-            ctx.fillStyle = '#eee';
-            ctx.font = 'bold 60px Arial';
+            
+            if (!isText) {
+                ctx.strokeStyle = '#5b9bd5';
+                ctx.lineWidth = 8;
+                ctx.strokeRect(4, 4, 120, 120);
+                ctx.fillStyle = '#eee';
+                ctx.font = 'bold 70px Arial';
+            } else {
+                ctx.fillStyle = '#5b9bd5';
+                ctx.font = 'bold 44px SF Mono, monospace';
+            }
+            
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(label, 64, 64);
 
             const tex = new THREE.CanvasTexture(canvas);
-            const geom = new THREE.PlaneGeometry(0.3, 0.3);
+            const geom = new THREE.PlaneGeometry(0.28, 0.28);
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9 });
             const mesh = new THREE.Mesh(geom, mat);
-            mesh.position.set(x, 0.2, -2.4);
+            mesh.position.set(x, y, -2.4);
             mesh.userData.action = action;
+            mesh.userData.origX = x;
+            
             this.scene.add(mesh);
-            this.navButtons.push(mesh);
+            if (!isText) this.navButtons.push(mesh);
+            return mesh;
         };
 
-        createBtn('<', -0.3, 'prev');
-        createBtn('>', 0.3, 'next');
+        // Single Row Layout: [ < ] [ - ] [ 0.60 ] [ + ] [ > ]
+        const y = 0;
+        createBtn('<', -0.8, y, 'prev');
+        createBtn('-', -0.4, y, 'depth-dec');
+        this.depthDisplay = createBtn(this.displacement.toFixed(2), 0, y, 'none', true);
+        createBtn('+', 0.4, y, 'depth-inc');
+        createBtn('>', 0.8, y, 'next');
     }
 
     async updateVRButton() {
@@ -158,13 +200,13 @@ export class ArtemisVR {
         const btn = document.createElement('button');
         btn.id = 'vr-button';
         btn.style.position = 'absolute';
-        btn.style.bottom = '40px';
+        btn.style.bottom = '15px'; // Pushed further down
         btn.style.left = '50%';
         btn.style.transform = 'translateX(-50%)';
-        btn.style.padding = '12px 24px';
+        btn.style.padding = '8px 16px';
         btn.style.border = '1px solid #444';
         btn.style.borderRadius = '8px';
-        btn.style.background = '#1a1a1a';
+        btn.style.background = 'rgba(26, 26, 26, 0.5)'; // Semi-transparent
         btn.style.color = '#888';
         btn.style.cursor = 'help';
         btn.style.fontSize = '14px';
@@ -217,7 +259,7 @@ export class ArtemisVR {
             const aspect = 1.5; 
             const geometry = new THREE.PlaneGeometry(aspect * 2, 2, 512, 512);
             this.material = new THREE.ShaderMaterial({
-                uniforms: { uImage: { value: tex }, uDepth: { value: depth }, uDisplacement: { value: 0.25 } },
+                uniforms: { uImage: { value: tex }, uDepth: { value: depth }, uDisplacement: { value: this.displacement } },
                 vertexShader: `
                     varying vec2 vUv;
                     uniform sampler2D uDepth;
@@ -264,6 +306,9 @@ export class ArtemisVR {
         this.updateHoverStates();
 
         if (this.plane) {
+            const controls = [...this.navButtons];
+            if (this.depthDisplay) controls.push(this.depthDisplay);
+
             if (!this.renderer.xr.isPresenting) {
                 this.plane.rotation.y = Math.sin(time / 2000) * 0.1;
                 this.plane.rotation.x = Math.cos(time / 3000) * 0.05;
@@ -271,9 +316,9 @@ export class ArtemisVR {
                 this.plane.position.y = 0;
                 this.plane.position.z = 0;
                 
-                this.navButtons.forEach(b => {
+                controls.forEach(b => {
                     b.visible = true;
-                    b.position.y = -1.3;
+                    b.position.y = -1.5; // Single Row below Desktop Plane (-1.0)
                     b.position.z = 0.1;
                     b.lookAt(this.camera.position);
                 });
@@ -283,9 +328,9 @@ export class ArtemisVR {
                 this.plane.position.y = 1.4;
                 this.plane.position.z = -2.5;
                 
-                this.navButtons.forEach(b => {
+                controls.forEach(b => {
                     b.visible = true;
-                    b.position.y = 0.2;
+                    b.position.y = 0.0; // Single Row below VR Plane (0.4)
                     b.position.z = -2.4;
                     b.lookAt(this.camera.position);
                 });
