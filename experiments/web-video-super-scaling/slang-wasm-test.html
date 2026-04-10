@@ -4,14 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Slang-WASM Test - Video Super Scaling</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Removed Tailwind CDN for policy compliance -->
     <style>
-        body { background-color: #0d0d0d; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        pre { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1rem; overflow-x: auto; }
+        body { background-color: #0d0d0d; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+        
+        .page-container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+        
+        pre { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0; }
+        
         .accent-blue { color: #5b9bd5; }
         .accent-emerald { color: #10b981; }
         .accent-amber { color: #f59e0b; }
         .accent-red { color: #f87171; }
+
+        /* Grid System */
+        .workspace-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }
+        @media (max-width: 768px) { .workspace-grid { grid-template-columns: 1fr; } }
+        
+        .panel { display: flex; flex-direction: column; gap: 16px; }
+        .panel-title { font-size: 18px; font-weight: 600; margin: 0; }
+        
+        /* UI Components */
+        .editor-area { 
+            width: 100%; height: 300px; background: #1a1a1a; border: 1px solid #2a2a2a; 
+            border-radius: 8px; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace; 
+            font-size: 13px; color: #eee; outline: none; transition: border-color 0.2s;
+            box-sizing: border-box; resize: vertical;
+        }
+        .editor-area:focus { border-color: #5b9bd5; }
+        
+        .output-area { height: 300px; font-size: 12px; color: #aaa; }
+        
+        .btn-primary { 
+            background: #2563eb; color: #fff; font-weight: 700; padding: 10px 24px; 
+            border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+            font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
+            align-self: flex-start;
+        }
+        .btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        
+        .status-box { font-size: 13px; font-weight: 500; }
+        
+        .console-container { 
+            margin-top: 48px; background: #151515; border: 1px solid #2a2a2a; 
+            border-radius: 12px; padding: 20px; 
+        }
+        .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .console-log { font-size: 11px; color: #888; height: 160px; overflow-y: auto; font-family: monospace; }
+        
+        .btn-tiny {
+            background: #2a2a2a; border: 1px solid #333; color: #888; padding: 4px 10px;
+            border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s;
+        }
+        .btn-tiny:hover { background: #333; color: #fff; }
     </style>
 
     <style>
@@ -72,57 +118,49 @@
     </style>
 
 </head>
-<body class="p-8">
-    <div class="max-w-4xl mx-auto">
-        
-    
-    <nav class="nav-header">
-        <div class="nav-left">
-            <a href="index.html" class="hub-link">Return to Hub</a>
-            <a href="webgpu-render-test.html" class="prev-link">← WebGPU Render</a>
-        </div>
-        <div class="nav-center">Slang Compiler</div>
-        <div class="nav-right">
-            <a href="slang-yuv-poc.html" class="next-link">YUV Separation →</a>
-        </div>
-    </nav>
+    <div class="page-container">
+        <nav class="nav-header">
+            <div class="nav-left">
+                <a href="index.html" class="hub-link">Return to Hub</a>
+                <a href="webgpu-render-test.html" class="prev-link">← WebGPU Render</a>
+            </div>
+            <div class="nav-center">Slang Compiler</div>
+            <div class="nav-right">
+                <a href="slang-yuv-poc.html" class="next-link">YUV Separation →</a>
+            </div>
+        </nav>
 
-
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="space-y-4">
-                <h2 class="text-xl font-semibold accent-amber">Slang Source</h2>
-                <textarea id="slang-input" class="w-full h-64 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 font-mono text-sm focus:outline-none focus:border-blue-500" spellcheck="false">[numthreads(16, 16, 1)]
+        <div class="workspace-grid">
+            <div class="panel">
+                <h2 class="panel-title accent-amber">Slang Source</h2>
+                <textarea id="slang-input" class="editor-area" spellcheck="false">[numthreads(16, 16, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
     // Basic test kernel
     float2 uv = float2(id.xy) / 1024.0;
     float val = sin(uv.x * 10.0) * cos(uv.y * 10.0);
 }</textarea>
-                <button id="compile-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                <button id="compile-btn" class="btn-primary">
                     Compile to WGSL
                 </button>
             </div>
 
-            <div class="space-y-4">
-                <h2 class="text-xl font-semibold accent-emerald">WGSL Output</h2>
-                <pre id="wgsl-output" class="h-64 text-sm font-mono text-gray-300">// Output will appear here...</pre>
-                <div id="status" class="text-sm font-medium">Status: Initializing...</div>
+            <div class="panel">
+                <h2 class="panel-title accent-emerald">WGSL Output</h2>
+                <pre id="wgsl-output" class="editor-area output-area">// Output will appear here...</pre>
+                <div id="status" class="status-box">Status: Initializing...</div>
             </div>
         </div>
 
-        <div class="mt-12 p-6 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl relative">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold">Compiler Console</h2>
-                <button id="copy-console-btn" onclick="copyConsole()" class="text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 py-1 px-3 rounded transition-colors">
+        <div class="console-container">
+            <div class="console-header">
+                <h2 class="panel-title" style="font-size: 15px;">Compiler Console</h2>
+                <button id="copy-console-btn" onclick="copyConsole()" class="btn-tiny">
                     Copy Log
                 </button>
             </div>
-            <pre id="console-output" class="text-xs text-gray-400 h-32 overflow-y-auto"></pre>
+            <pre id="console-output" class="console-log"></pre>
         </div>
     </div>
-
-    <!-- Hidden iframe to leverage functional local playground assets -->
-    <iframe id="playground-bridge" src="../../slang-playground/index.html" style="display:none"></iframe>
 
     <script>
         const slangInput = document.getElementById('slang-input');
@@ -130,14 +168,13 @@ void main(uint3 id : SV_DispatchThreadID) {
         const consoleOutput = document.getElementById('console-output');
         const statusDiv = document.getElementById('status');
         const compileBtn = document.getElementById('compile-btn');
-        const bridge = document.getElementById('playground-bridge');
 
         let slangSession = null;
         let slangModule = null;
 
         function log(msg, type = 'info') {
             const span = document.createElement('span');
-            span.className = type === 'error' ? 'accent-red' : (type === 'warn' ? 'accent-amber' : 'text-gray-400');
+            span.style.color = type === 'error' ? '#f87171' : (type === 'warn' ? '#f59e0b' : '#888');
             span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
             consoleOutput.appendChild(span);
             consoleOutput.scrollTop = consoleOutput.scrollHeight;
@@ -145,65 +182,52 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
 
         async function init() {
-            log('Initializing Slang via local Playground bridge...');
+            log('Initializing Slang-WASM compiler via dynamic import...');
             
-            // Check if the bridge is already loaded
-            const bridgeWin = bridge.contentWindow;
-            
-            const checkSlang = async () => {
-                // The playground assets seem to use a 'ga' class or similar.
-                // We'll look for any global that looks like a Slang session.
-                try {
-                    // Try to find the Slang session in the bridge window
-                    // We look for common Slang WASM entry points
-                    const slang = bridgeWin.slang || bridgeWin.Slang || bridgeWin.initSlang;
-                    
-                    if (slang) {
-                        log('Slang object detected in bridge!');
-                        slangModule = slang;
-                        if (typeof slang.createGlobalSession === 'function') {
-                            slangSession = await slang.createGlobalSession();
-                        } else if (typeof slang === 'function') {
-                            slangModule = await slang();
-                            slangSession = await slangModule.createGlobalSession();
-                        }
-                        
-                        if (slangSession) {
-                            onSuccess();
-                            return true;
-                        }
+            try {
+                // Determine path relative to this file
+                const slangWasmPath = '../../shared/slang/slang-wasm.js';
+                const loadModule = await import(slangWasmPath);
+                
+                // Initialize the module
+                const slang = await loadModule.default({
+                    locateFile: (path) => {
+                        return `../../shared/slang/${path}`;
                     }
-                    return false;
-                } catch (e) {
-                    return false;
-                }
-            };
+                });
 
-            // Listen for the slangLoaded event from the bridge
-            bridgeWin.addEventListener('slangLoaded', async () => {
-                log('Received "slangLoaded" event from playground bridge.');
-                if (await checkSlang()) return;
-            });
+                if (!slang) throw new Error("Could not initialize Slang WASM.");
 
-            // Poll as a backup
-            let attempts = 0;
-            const poll = setInterval(async () => {
-                attempts++;
-                if (await checkSlang()) {
-                    clearInterval(poll);
-                } else if (attempts > 100) {
-                    clearInterval(poll);
-                    log('Bridge initialization timed out. CDNs likely blocked and local assets failed.', 'error');
-                    statusDiv.innerText = 'Status: Load Error';
-                    statusDiv.className = 'text-sm font-medium accent-red';
+                log('Slang-WASM module loaded successfully.');
+                
+                const globalSession = slang.createGlobalSession();
+                
+                // 15 = slang.CompileTarget.Wgsl
+                const targets = slang.getCompileTargets();
+                let wgslTargetIndex = -1;
+                for (let i = 0; i < targets.length; i++) {
+                    if (targets[i].name.toLowerCase() === 'wgsl') {
+                        wgslTargetIndex = targets[i].value;
+                        break;
+                    }
                 }
-            }, 100);
+
+                if (wgslTargetIndex === -1) throw new Error("WGSL target not found in compiler targets.");
+                
+                slangSession = globalSession.createSession(wgslTargetIndex);
+                log('Slang session created for WGSL target.');
+                onSuccess();
+            } catch (e) {
+                log(`Initialization failed: ${e.message}`, 'error');
+                statusDiv.innerText = 'Status: Load Error';
+                statusDiv.className = 'status-box accent-red';
+            }
         }
 
         function onSuccess() {
             statusDiv.innerText = 'Status: Ready';
-            statusDiv.className = 'text-sm font-medium accent-emerald';
-            log('Slang-WASM bridge established successfully.');
+            statusDiv.className = 'status-box accent-emerald';
+            log('Slang-WASM compiler ready.');
             compileBtn.addEventListener('click', compile);
         }
 
@@ -219,23 +243,28 @@ void main(uint3 id : SV_DispatchThreadID) {
             
             try {
                 const startTime = performance.now();
-                const request = slangSession.createCompileRequest();
-                request.addTranslationUnit(0, source); // 0 = Slang
-                const targetIdx = request.addTarget('wgsl');
-                const entryPointIdx = request.addEntryPoint(0, 'main', 0); // stage 0 = compute
                 
-                await request.execute();
-                const code = request.getEntryPointCode(entryPointIdx, targetIdx);
+                const module = slangSession.loadModuleFromSource(source, "shader", "/user.slang");
+                if (!module) throw new Error("Could not load module from source.");
 
-                const endTime = performance.now();
-                const duration = (endTime - startTime).toFixed(2);
+                const entryPoint = module.findEntryPointByName("main");
+                if (!entryPoint) throw new Error("Entry point 'main' not found.");
+
+                const composite = slangSession.createCompositeComponentType([module, entryPoint]);
+                const code = composite.getTargetCode(0);
+
+                const duration = (performance.now() - startTime).toFixed(2);
                 
                 wgslOutput.textContent = code;
                 log(`Compilation successful in ${duration}ms`);
+
+                // Cleanup
+                if (module.delete) module.delete();
+                if (entryPoint.delete) entryPoint.delete();
+                if (composite.delete) composite.delete();
             } catch (err) {
-                let errMsg = err.message;
-                wgslOutput.textContent = `// Error:\n${errMsg}`;
-                log(`Compilation failed: ${errMsg}`, 'error');
+                wgslOutput.textContent = `// Error:\n${err.message}`;
+                log(`Compilation failed: ${err.message}`, 'error');
             }
         }
 
@@ -260,10 +289,10 @@ void main(uint3 id : SV_DispatchThreadID) {
                 const btn = document.getElementById('copy-console-btn');
                 const originalText = btn.textContent;
                 btn.textContent = 'Copied!';
-                btn.classList.add('bg-emerald-700');
+                btn.style.background = '#065f46';
                 setTimeout(() => {
                     btn.textContent = originalText;
-                    btn.classList.remove('bg-emerald-700');
+                    btn.style.background = '#2a2a2a';
                 }, 2000);
             } catch (err) {
                 alert(`Copy failed: ${err.message}`);
