@@ -28,7 +28,6 @@ export class ArtemisVR {
         this.mouse = new THREE.Vector2();
         this.navButtons = [];
         this.depthDisplay = null;
-        this.offsetDisplay = null;
         this.controllers = [];
 
         this.initLights();
@@ -96,8 +95,6 @@ export class ArtemisVR {
             else if (btn.userData.action === 'next') this.next();
             else if (btn.userData.action === 'depth-inc') this.adjustDepth(0.05);
             else if (btn.userData.action === 'depth-dec') this.adjustDepth(-0.05);
-            else if (btn.userData.action === 'offset-inc') this.adjustOffset(0.05);
-            else if (btn.userData.action === 'offset-dec') this.adjustOffset(-0.05);
         }
     }
 
@@ -107,14 +104,6 @@ export class ArtemisVR {
             this.material.uniforms.uDisplacement.value = this.displacement;
         }
         this.updateDepthDisplay();
-    }
-
-    adjustOffset(delta) {
-        this.depthOffset = Math.max(0.0, Math.min(1.0, this.depthOffset + delta));
-        if (this.material) {
-            this.material.uniforms.uOffset.value = this.depthOffset;
-        }
-        this.updateOffsetDisplay();
     }
 
     updateDepthDisplay() {
@@ -129,20 +118,6 @@ export class ArtemisVR {
         ctx.textBaseline = 'middle';
         ctx.fillText(this.displacement.toFixed(2), 64, 64);
         this.depthDisplay.material.map.needsUpdate = true;
-    }
-
-    updateOffsetDisplay() {
-        if (!this.offsetDisplay) return;
-        const canvas = this.offsetDisplay.material.map.image;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, 128, 128);
-        ctx.fillStyle = '#f59e0b'; // Amber for offset
-        ctx.font = 'bold 44px SF Mono, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(this.depthOffset.toFixed(2), 64, 64);
-        this.offsetDisplay.material.map.needsUpdate = true;
     }
 
     updateHoverStates() {
@@ -174,9 +149,8 @@ export class ArtemisVR {
         this.navButtons.forEach(b => this.scene.remove(b));
         this.navButtons = [];
         if (this.depthDisplay) this.scene.remove(this.depthDisplay);
-        if (this.offsetDisplay) this.scene.remove(this.offsetDisplay);
 
-        const createBtn = (label, x, y, action, isText = false, color = '#5b9bd5') => {
+        const createBtn = (label, x, y, action, isText = false) => {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 128;
@@ -185,13 +159,13 @@ export class ArtemisVR {
             ctx.fillRect(0, 0, 128, 128);
             
             if (!isText) {
-                ctx.strokeStyle = color;
+                ctx.strokeStyle = '#5b9bd5';
                 ctx.lineWidth = 8;
                 ctx.strokeRect(4, 4, 120, 120);
                 ctx.fillStyle = '#eee';
                 ctx.font = 'bold 70px Arial';
             } else {
-                ctx.fillStyle = color;
+                ctx.fillStyle = '#5b9bd5';
                 ctx.font = 'bold 44px SF Mono, monospace';
             }
             
@@ -213,22 +187,13 @@ export class ArtemisVR {
             return mesh;
         };
 
-        // Two Row Layout
-        // Row 1 (Top): [ < ]  [ > ]
-        createBtn('<', -0.2, 0.15, 'prev');
-        createBtn('>', 0.2, 0.15, 'next');
-
-        // Row 2 (Bottom): [ - ] [ 0.60 ] [ + ]  |  [ [ ] [ 0.50 ] [ ] ]
-        const y2 = -0.15;
-        // Depth
-        createBtn('-', -0.6, y2, 'depth-dec');
-        this.depthDisplay = createBtn(this.displacement.toFixed(2), -0.35, y2, 'none', true);
-        createBtn('+', -0.1, y2, 'depth-inc');
-        
-        // Offset (Amber)
-        createBtn('[', 0.1, y2, 'offset-dec', false, '#f59e0b');
-        this.offsetDisplay = createBtn(this.depthOffset.toFixed(2), 0.35, y2, 'none', true, '#f59e0b');
-        createBtn(']', 0.6, y2, 'offset-inc', false, '#f59e0b');
+        // Simplified Single Row Layout
+        const y = 0;
+        createBtn('<', -0.6, y, 'prev');
+        createBtn('-', -0.3, y, 'depth-dec');
+        this.depthDisplay = createBtn(this.displacement.toFixed(2), 0, y, 'none', true);
+        createBtn('+', 0.3, y, 'depth-inc');
+        createBtn('>', 0.6, y, 'next');
     }
 
     async updateVRButton() {
@@ -362,7 +327,6 @@ export class ArtemisVR {
         if (this.plane) {
             const controls = [...this.navButtons];
             if (this.depthDisplay) controls.push(this.depthDisplay);
-            if (this.offsetDisplay) controls.push(this.offsetDisplay);
 
             if (!this.renderer.xr.isPresenting) {
                 this.plane.rotation.y = Math.sin(time / 2000) * 0.1;
@@ -373,7 +337,7 @@ export class ArtemisVR {
                 
                 controls.forEach(b => {
                     b.visible = true;
-                    b.position.y = -1.3 + (b.userData.origY || 0);
+                    b.position.y = -1.5; // Single row well below plane
                     b.position.z = 0.1;
                     b.lookAt(this.camera.position);
                 });
@@ -385,7 +349,7 @@ export class ArtemisVR {
                 
                 controls.forEach(b => {
                     b.visible = true;
-                    b.position.y = (b.userData.origY || 0) + 0.1; // Balanced below plane
+                    b.position.y = 0.0; // Single row below VR plane
                     b.position.z = -2.4;
                     b.lookAt(this.camera.position);
                 });
