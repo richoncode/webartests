@@ -20,7 +20,8 @@ export class ArtemisVR {
         this.plane = null;
         this.material = null;
         this.active = false;
-        this.displacement = 0.6; // Increased default from 0.25
+        this.displacement = 0.6;
+        this.depthOffset = 0.5; // Neutral point (0.5 = middle grey is flat)
         
         // Raycaster for interactions
         this.raycaster = new THREE.Raycaster();
@@ -229,7 +230,18 @@ export class ArtemisVR {
                     const threeBtn = module.VRButton.createButton(this.renderer);
                     threeBtn.style.display = 'none';
                     this.container.appendChild(threeBtn);
-                    btn.onclick = () => threeBtn.click();
+                    
+                    btn.onclick = () => {
+                        threeBtn.click();
+                    };
+
+                    // Auto-hide our custom button when VR starts
+                    this.renderer.xr.addEventListener('sessionstart', () => {
+                        btn.style.display = 'none';
+                    });
+                    this.renderer.xr.addEventListener('sessionend', () => {
+                        btn.style.display = 'block';
+                    });
                 });
             }
         }
@@ -259,14 +271,20 @@ export class ArtemisVR {
             const aspect = 1.5; 
             const geometry = new THREE.PlaneGeometry(aspect * 2, 2, 512, 512);
             this.material = new THREE.ShaderMaterial({
-                uniforms: { uImage: { value: tex }, uDepth: { value: depth }, uDisplacement: { value: this.displacement } },
+                uniforms: { 
+                    uImage: { value: tex }, 
+                    uDepth: { value: depth }, 
+                    uDisplacement: { value: this.displacement },
+                    uOffset: { value: this.depthOffset }
+                },
                 vertexShader: `
                     varying vec2 vUv;
                     uniform sampler2D uDepth;
                     uniform float uDisplacement;
+                    uniform float uOffset;
                     void main() {
                         vUv = uv;
-                        float z = texture2D(uDepth, uv).r * uDisplacement;
+                        float z = (texture2D(uDepth, uv).r - uOffset) * uDisplacement;
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(position + vec3(0,0,z), 1.0);
                     }
                 `,
