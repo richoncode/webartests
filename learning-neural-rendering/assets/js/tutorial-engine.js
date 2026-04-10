@@ -282,6 +282,18 @@ class SlangViewport extends HTMLElement {
             
             // 4. Get WGSL
             const wgsl = composite.getTargetCode(0);
+            
+            if (!wgsl || wgsl.length === 0) {
+                console.warn("[SlangEngine] getTargetCode(0) returned empty string.");
+                if (compiler.module && compiler.module.getLastError) {
+                    const lastErr = compiler.module.getLastError();
+                    if (lastErr && lastErr.message) {
+                        if (window.log) window.log("Slang Diagnostic: " + lastErr.message, "error");
+                        throw new Error("Slang internal error: " + lastErr.message);
+                    }
+                }
+                // Fallback diagnostics check via module object
+            }
 
             // Cleanup
             if (module.delete) module.delete();

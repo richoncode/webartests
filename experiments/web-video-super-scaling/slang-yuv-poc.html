@@ -300,6 +300,7 @@
                                 <button id="play-btn" onclick="toggleVideo()" class="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider active">PAUSE</button>
                                 <button onclick="savePNG()" class="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider">CAPTURE PNG</button>
                                 <button id="compile-btn" onclick="compileSlang()" class="bg-[#5b9bd5] hover:bg-[#4a8ac4] text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider">COMPILE</button>
+                                <button id="run-btn" onclick="runShader()" class="bg-[#10b981] hover:bg-[#059669] text-white text-[10px] font-bold px-3 py-1.5 rounded transition-colors uppercase tracking-wider">RUN</button>
                             </div>
                         </div>
                     </div>
@@ -380,7 +381,7 @@ __target_intrinsic(wgsl, "texture_external")
 struct TextureExternal {};
 
 extension TextureExternal {
-    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($1, $2, $3)")
+    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($0, $1, $2)")
     float4 Sample(SamplerState s, float2 uv);
 }
 
@@ -398,11 +399,11 @@ struct Params {
     uint pad1;        // Alignment
 };
 
-ParameterBlock<Params> params;
-TextureExternal videoTexture;
-SamplerState videoSampler;
-Texture2D frozenSourceTexture;
-RWTexture2D<float4> outputTexture;
+[[vk::binding(3, 0)]] ConstantBuffer<Params> params;
+[[vk::binding(1, 0)]] TextureExternal videoTexture;
+[[vk::binding(0, 0)]] SamplerState videoSampler;
+[[vk::binding(4, 0)]] Texture2D frozenSourceTexture;
+[[vk::binding(2, 0)]] RWTexture2D<float4> outputTexture;
 
 // Catmull-Rom Bicubic Filter
 float4 cubic(float x) {
@@ -499,112 +500,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 }
 --></div>
                 <div data-tab="Compiled WGSL" data-lang="rust"><!--
-struct Params {
-    mode: u32,
-    contrast: f32,
-    filterMode: u32,
-    srcW: u32,
-    srcH: u32,
-    boundaryY: f32,
-    isFrozen: u32,
-    zoom: f32,
-    panX: f32,
-    panY: f32,
-    pad1: u32,
-}
-
-@group(0) @binding(0) var videoSampler: sampler;
-@group(0) @binding(1) var videoTexture: texture_external;
-@group(0) @binding(2) var outputTexture: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(3) var<uniform> uniforms: Params;
-@group(0) @binding(4) var frozenSourceTexture: texture_2d<f32>;
-
-fn cubic(x: f32) -> vec4<f32> {
-    let x2 = x * x;
-    let x3 = x2 * x;
-    var w: vec4<f32>;
-    w.x = -x3 + 2.0 * x2 - x;
-    w.y = 3.0 * x3 - 5.0 * x2 + 2.0;
-    w.z = -3.0 * x3 + 4.0 * x2 + x;
-    w.w = x3 - x2;
-    return 0.5 * w;
-}
-
-fn getSourceSample(uv: vec2<f32>) -> vec3<f32> {
-    if (uniforms.isFrozen == 1u) {
-        return textureSampleLevel(frozenSourceTexture, videoSampler, uv, 0.0).rgb;
-    } else {
-        return textureSampleBaseClampToEdge(videoTexture, videoSampler, uv).rgb;
-    }
-}
-
-fn sampleBicubic(uv: vec2<f32>, res: vec2<f32>, minY: f32, maxY: f32) -> vec3<f32> {
-    let pixel = uv * res - 0.5;
-    let fractional = fract(pixel);
-    let pixelCenter = floor(pixel);
-
-    let wx = cubic(fractional.x);
-    let wy = cubic(fractional.y);
-
-    var color = vec3<f32>(0.0);
-    for (var y: i32 = -1; y <= 2; y = y + 1) {
-        for (var x: i32 = -1; x <= 2; x = x + 1) {
-            let offset = vec2<f32>(f32(x), f32(y));
-            var sampleUV = (pixelCenter + offset + 0.5) / res;
-            sampleUV.y = clamp(sampleUV.y, minY, maxY);
-            color = color + getSourceSample(sampleUV) * wx[u32(x + 1)] * wy[u32(y + 1)];
-        }
-    }
-    return color;
-}
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let size = textureDimensions(outputTexture);
-    if (id.x >= size.x || id.y >= size.y) { return; }
-
-    let baseUV = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
-    let center = vec2<f32>(0.5, 0.25);
-    let uv = (baseUV - center) / uniforms.zoom + center + vec2<f32>(uniforms.panX, uniforms.panY);
-
-    
-    var rgb: vec3<f32>;
-    let srcRes = vec2<f32>(f32(uniforms.srcW), f32(uniforms.srcH));
-    if (uniforms.filterMode == 1u) {
-        rgb = sampleBicubic(uv, srcRes, 0.0, uniforms.boundaryY);
-    } else if (uniforms.filterMode == 2u) {
-        let bicubic = sampleBicubic(uv, srcRes, 0.0, uniforms.boundaryY);
-        let bilinear = getSourceSample(uv);
-        rgb = abs(bicubic - bilinear) * 10.0;
-    } else {
-        rgb = getSourceSample(uv);
-    }
-
-    let Y  =  0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
-    let Cb = (rgb.b - Y) / 1.8556;
-    let Cr = (rgb.r - Y) / 1.5748;
-
-    let U = Cb + 0.5;
-    let V = Cr + 0.5;
-
-    var color: vec4<f32>;
-    if (uniforms.mode == 0u) {
-        color = vec4<f32>(rgb, 1.0);
-    } else if (uniforms.mode == 1u) {
-        color = vec4<f32>(Y, Y, Y, 1.0);
-    } else if (uniforms.mode == 2u) {
-        color = vec4<f32>(U, U, U, 1.0);
-    } else if (uniforms.mode == 3u) {
-        color = vec4<f32>(V, V, V, 1.0);
-    } else {
-        let R = Y + 1.5748 * (V - 0.5);
-        let G = Y - 0.1873 * (U - 0.5) - 0.4681 * (V - 0.5);
-        let B = Y + 1.8556 * (U - 0.5);
-        color = vec4<f32>(R, G, B, 1.0);
-    }
-    
-    textureStore(outputTexture, id.xy, color);
-}
+// [Dynamic Compilation Active]
+// The Slang compiler will generate WGSL at runtime and update this tab.
 --></div>
                 <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
 class YUVProcessor {
@@ -612,7 +509,14 @@ class YUVProcessor {
         this.device = device;
         this.context = context;
         window.activeProcessor = this;
-        this.shaderModule = device.createShaderModule({ code: wgslCode });
+        
+        // Slang WGSL backend drops [vk::binding] attributes for custom struct intrinsics (like TextureExternal).
+        // HACK: We explicitly patch the binding here via Regex before handing it to WebGPU.
+        // See: https://github.com/shader-slang/slang/issues/5933 (WGSL backend drops binding metadata on struct inputs)
+        const patchedCode = wgslCode.replace(/var\s+(\w+)\s*:\s*texture_external\s*;/g, '@group(0) @binding(1) var $1 : texture_external;')
+                                    .replace(/texture_storage_2d<rgba32float,\s*read_write>/g, 'texture_storage_2d<rgba8unorm, write>');
+        
+        this.shaderModule = device.createShaderModule({ code: patchedCode });
         this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
 
         this.outTexture = device.createTexture({
@@ -920,18 +824,88 @@ window.ModuleRenderer = YUVProcessor;
         };
 
         window.compileSlang = async () => {
-            const controls = document.querySelector('slang-playback-controls');
             const btn = document.getElementById('compile-btn');
-            if (controls) {
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let slangSource = "";
+            editor.tabs.forEach(t => { if (t.name.includes("Slang")) slangSource = t.content.trim(); });
+            
+            if (slangSource && viewport) {
                 btn.innerText = "COMPILING...";
                 btn.classList.replace('bg-[#5b9bd5]', 'bg-[#1e2d40]');
-                controls.compiled = false; // Force recompile
-                await controls.compileIfNeeded();
+                try {
+                    const wgslCode = await viewport.compile(slangSource);
+                    window.log("WGSL text size: " + (wgslCode ? wgslCode.length : "empty"), "info");
+                    
+                    if (wgslCode) {
+                        const wgslTab = editor.tabs.find(t => t.name === "Compiled WGSL");
+                        if (wgslTab) {
+                            wgslTab.content = wgslCode;
+                            window.log("wgslTab populated successfully in background.", "info");
+                            if (editor.tabs[editor.activeTabIndex].name === "Compiled WGSL") {
+                                editor.editor.setValue(wgslCode);
+                            }
+                        } else {
+                            window.log("Could not find Compiled WGSL tab!", "error");
+                        }
+                    } else {
+                        window.log("Slang generated empty wgsl string.", "warn");
+                    }
+                } catch (err) {
+                    window.log("Compilation Error: " + err.message, "error");
+                }
                 btn.innerText = "COMPILE";
                 btn.classList.replace('bg-[#1e2d40]', 'bg-[#5b9bd5]');
-                if (window.activeProcessor && document.getElementById('video-source').paused) {
-                    window.activeProcessor.render();
+            } else {
+                window.log("Viewport or Slang Source not found.", "error");
+            }
+        };
+
+        window.runShader = async () => {
+            const btn = document.getElementById('run-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let wgslCode = "", jsCode = "";
+            editor.tabs.forEach(t => {
+                if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
+                if (t.name.includes("Wrapper")) jsCode = t.content.trim();
+            });
+
+            if (wgslCode && jsCode) {
+                btn.innerText = "RUNNING...";
+                btn.classList.replace('bg-[#10b981]', 'bg-[#1e2d40]');
+                try {
+                    const script = document.createElement('script');
+                    script.textContent = jsCode;
+                    document.body.appendChild(script);
+
+                    setTimeout(() => {
+                        if (window.ModuleRenderer) {
+                            window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
+                            viewport.drawFrame = () => {
+                                viewport.updateCanvasSize();
+                                if (window.engineInstance) window.engineInstance.render();
+                            };
+                            
+                            // Prevent auto-recompile by marking the global control block
+                            const controls = document.querySelector('slang-playback-controls');
+                            if (controls) controls.compiled = true;
+
+                            viewport.drawFrame();
+                            window.log("Pipeline instantiated and running.", "info");
+                        }
+                        btn.innerText = "RUN";
+                        btn.classList.replace('bg-[#1e2d40]', 'bg-[#10b981]');
+                    }, 100);
+                } catch (err) {
+                    window.log("Run Error: " + err.message, "error");
+                    btn.innerText = "RUN";
+                    btn.classList.replace('bg-[#1e2d40]', 'bg-[#10b981]');
                 }
+            } else {
+                window.log("Missing WGSL or JS wrapper. Compile first.", "warn");
             }
         };
 

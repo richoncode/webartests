@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 09: Act-JEPA &amp; Policy Learning — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 820px; margin: 0 auto; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 64px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
+  p { margin-bottom: 20px; color: #ccc; }
+
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; }
+  canvas { background: #000; display: block; width: 100%; height: 300px; border-radius: 8px; }
+  
+  .controls { display: flex; gap: 12px; margin-top: 24px; align-items: center; }
+  .action-btn { background: #222; border: 1px solid #444; color: #fff; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-family: 'SF Mono', monospace; font-size: 13px; }
+  .action-btn:active { background: #5b9bd5; border-color: #5b9bd5; }
+  
+  .prediction-overlay { position: absolute; top: 48px; right: 48px; background: rgba(0,0,0,0.8); border: 1px solid #333; padding: 12px; border-radius: 8px; pointer-events: none; }
+  .prediction-overlay div { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+  .prediction-val { font-family: 'SF Mono', monospace; color: #10b981; font-size: 14px; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="../">← Back</a>
+  <h1>Module 09: Act-JEPA &amp; Action-Conditioned World Models</h1>
+  <p class="subtitle">From Passive Observation to Active Interaction: Learning the causal effects of agency.</p>
+
+  <section>
+    <h2>Action-Conditioned Prediction</h2>
+    <p>Passive JEPAs predict the future based on observation alone. **Act-JEPA** introduces agency by conditioning predictions on an <strong>Action Sequence</strong>. The model asks: "Given the current state $S_t$, what is the representation of the world at $S_{t+1}$ if I apply force $A_t$?"</p>
+    <p>This allows the agent to learn a <span class="term" data-definition="A strategy or set of rules that tells an agent which action to take in a given state to achieve a goal.">Policy</span> in latent space, evaluating the physical consequences of its actions before executing them in the real world.</p>
+  </section>
+
+  <section>
+    <h2>Interactive Simulation: "Latent Physics"</h2>
+    <div class="sim-container">
+      <canvas id="actCanvas"></canvas>
+      <div class="prediction-overlay">
+        <div>Predicted Next State (Latent)</div>
+        <div class="prediction-val" id="predVal">x: 0.00, v: 0.00</div>
+      </div>
+      <div class="controls">
+        <button class="action-btn" onmousedown="applyForce(-5)" onmouseup="stopForce()">[LEFT THRUST]</button>
+        <button class="action-btn" onmousedown="applyForce(5)" onmouseup="stopForce()">[RIGHT THRUST]</button>
+        <div style="font-size: 12px; color: #444; margin-left: 12px;">Hold buttons to apply action.</div>
+      </div>
+    </div>
+    <p>Apply thrust to the block. The green "shadow" represents the **Act-JEPA Prediction** of where the block's latent representation will be in the next time step. Notice how the model accounts for momentum and friction without rendering a single pixel.</p>
+  </section>
+
+  <div class="cite">
+    References: [28] V-JEPA 2: Action-Conditioned World Models, [5] A Path Towards Autonomous Machine Intelligence.
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('actCanvas');
+  const ctx = canvas.getContext('2d');
+  const predVal = document.getElementById('predVal');
+
+  let state = { x: 200, v: 0 };
+  let action = 0;
+  let prediction = { x: 200, v: 0 };
+
+  function resize() {
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function applyForce(f) { action = f; }
+  function stopForce() { action = 0; }
+
+  function update() {
+    // Physical Simulation (Ground Truth)
+    state.v += action * 0.1;
+    state.v *= 0.95; // Friction
+    state.x += state.v;
+
+    if (state.x < 50) { state.x = 50; state.v = 0; }
+    if (state.x > 350) { state.x = 350; state.v = 0; }
+
+    // Act-JEPA Prediction (Simulation of the model's internal prediction)
+    // The model predicts t+10 frames ahead for visual clarity
+    let pv = state.v + action * 1.0;
+    pv *= Math.pow(0.95, 10);
+    prediction.x = state.x + pv * 10;
+    prediction.v = pv;
+
+    predVal.innerText = `x: ${prediction.x.toFixed(2)}, v: ${prediction.v.toFixed(2)}`;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const h = canvas.height / window.devicePixelRatio;
+
+    // Draw Floor
+    ctx.strokeStyle = '#222';
+    ctx.beginPath();
+    ctx.moveTo(0, 250);
+    ctx.lineTo(400, 250);
+    ctx.stroke();
+
+    // Draw Prediction (Latent Shadow)
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+    ctx.strokeStyle = '#10b981';
+    ctx.setLineDash([4, 4]);
+    ctx.fillRect(prediction.x - 20, 210, 40, 40);
+    ctx.strokeRect(prediction.x - 20, 210, 40, 40);
+    ctx.setLineDash([]);
+
+    // Draw Actual Block
+    ctx.fillStyle = '#5b9bd5';
+    ctx.fillRect(state.x - 20, 210, 40, 40);
+    
+    // Action Visual
+    if (action !== 0) {
+      ctx.fillStyle = '#f59e0b';
+      const ax = action > 0 ? state.x - 40 : state.x + 20;
+      ctx.beginPath();
+      ctx.moveTo(ax, 230);
+      ctx.lineTo(ax + (action * 4), 230);
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    update();
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+</script>
+</body>
+</html>
