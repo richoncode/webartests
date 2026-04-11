@@ -286,7 +286,8 @@ class SlangViewport extends HTMLElement {
             // 5. Global WGSL Polyfill Layer (HACK for Slang WebGPU backend bugs)
             if (wgsl && wgsl.length > 0) {
                 wgsl = wgsl.replace(/var\s+(\w+)\s*:\s*texture_external\s*;/g, '@group(0) @binding(1) var $1 : texture_external;')
-                           .replace(/texture_storage_2d<rgba32float,\s*read_write>/g, 'texture_storage_2d<rgba8unorm, write>');
+                           .replace(/texture_storage_2d<rgba32float,\s*read_write>/g, 'texture_storage_2d<rgba8unorm, write>')
+                           .replace(/texture_storage_2d<r32float,\s*read_write>/g, 'texture_storage_2d<r32float, write>');
             }
             
             if (!wgsl || wgsl.length === 0) {

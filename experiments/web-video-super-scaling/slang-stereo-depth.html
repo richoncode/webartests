@@ -244,8 +244,9 @@
 
                     <div class="flex gap-2">
                         <button onclick="window.needsReset=true" class="mode-btn" style="flex:1">Reset Map</button>
-                        <div style="flex:2">
-                            <slang-playback-controls></slang-playback-controls>
+                        <div style="flex:2" class="flex gap-2">
+                            <button id="compile-btn" onclick="compileSlang()" class="bg-[#5b9bd5] hover:bg-[#4a8ac4] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">COMPILE</button>
+                            <button id="run-btn" onclick="runShader()" class="bg-[#10b981] hover:bg-[#0ea5e9] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">RUN</button>
                         </div>
                     </div>
 
@@ -264,6 +265,14 @@
                 <div data-tab="Info" data-lang="none"></div>
                 <div data-tab="Controls" data-lang="none"></div>
                 <div data-tab="Disparity Slang" data-lang="cpp"><!--
+__target_intrinsic(wgsl, "texture_external")
+struct TextureExternal {};
+
+extension TextureExternal {
+    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($0, $1, $2)")
+    float4 Sample(SamplerState s, float2 uv);
+}
+
 struct Params {
     float3x3 H;        // Homography Matrix (Right to Left)
     uint maxDisparity; // Max pixels to search
@@ -272,12 +281,12 @@ struct Params {
     uint reset;        // Reset trigger
 };
 
-ParameterBlock<Params> params;
-TextureExternal videoTexture;
-SamplerState videoSampler;
-RWTexture2D<float> nextDisparity;
-Texture2D<float> prevDisparity;
-RWTexture2D<float4> outputTexture;
+[[vk::binding(5, 0)]] ConstantBuffer<Params> params;
+[[vk::binding(1, 0)]] TextureExternal videoTexture;
+[[vk::binding(0, 0)]] SamplerState videoSampler;
+[[vk::binding(3, 0)]] RWTexture2D<float> nextDisparity;
+[[vk::binding(2, 0)]] Texture2D<float> prevDisparity;
+[[vk::binding(4, 0)]] RWTexture2D<float4> outputTexture;
 
 [shader("compute")]
 [numthreads(16, 16, 1)]
@@ -321,7 +330,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
 
     float currentD = float(bestD);
-    float prevD = prevDisparity.Load(id.xy);
+    float prevD = prevDisparity.Load(int3(id.x, id.y, 0)).r;
     float smoothedD = lerp(prevD, currentD, params.alpha);
     if (params.reset > 0) smoothedD = currentD;
     
@@ -340,64 +349,10 @@ void main(uint3 id : SV_DispatchThreadID) {
 }
 --></div>
                 <div data-tab="Compiled WGSL" data-lang="rust"><!--
-struct Params {
-    maxDisparity: u32,
-    alpha: f32,
-    mode: u32,
-    reset: u32,
-}
-
-@group(0) @binding(0) var videoSampler: sampler;
-@group(0) @binding(1) var videoTexture: texture_external;
-@group(0) @binding(2) var prevDisparity: texture_2d<f32>;
-@group(0) @binding(3) var nextDisparity: texture_storage_2d<r32float, write>;
-@group(0) @binding(4) var outputTexture: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(5) var<uniform> uniforms: Params;
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let size = textureDimensions(outputTexture);
-    if (id.x >= size.x || id.y >= size.y) { return; }
-
-    let uvL = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
-    let pixelL = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvL).rgb;
-
-    var minSAD: f32 = 1000.0;
-    var bestD: u32 = 0u;
-
-    for (var d: u32 = 0u; d < uniforms.maxDisparity; d = d + 1u) {
-        if (id.x < d) { break; }
-        
-        var uvR = uvL;
-        uvR.x = uvR.x - (f32(d) / f32(size.x));
-        uvR.y = uvR.y + 0.5;
-        
-        let pixelR = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvR).rgb;
-        let diff = distance(pixelL, pixelR);
-        
-        if (diff < minSAD) {
-            minSAD = diff;
-            bestD = d;
-        }
-    }
-
-    let currentD = f32(bestD);
-    let prevD = textureLoad(prevDisparity, id.xy, 0).r;
-    var smoothedD = mix(prevD, currentD, uniforms.alpha);
-    if (uniforms.reset > 0u) { smoothedD = currentD; }
-    
-    textureStore(nextDisparity, id.xy, vec4<f32>(smoothedD, 0.0, 0.0, 0.0));
-    
-    let normD = smoothedD / f32(uniforms.maxDisparity);
-    var color: vec4<f32>;
-    if (uniforms.mode == 0u) {
-        color = mix(vec4<f32>(0.9, 0.3, 0.2, 1.0), vec4<f32>(0.06, 0.72, 0.5, 1.0), normD);
-    } else {
-        color = vec4<f32>(normD, normD, normD, 1.0);
-    }
-    
-    textureStore(outputTexture, id.xy, color);
-}
+<!--
+// [Dynamic Compilation Active]
+// The Slang compiler will generate WGSL at runtime and update this tab.
+-->
 --></div>
                 <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
 class DepthProcessor {
@@ -577,6 +532,96 @@ window.ModuleRenderer = DepthProcessor;
         window.toggleVideoMaximize = () => {
             document.querySelector('.workspace').classList.toggle('video-maximized');
             setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.compileSlang = async () => {
+            const btn = document.getElementById('compile-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let slangSource = "";
+            editor.tabs.forEach(t => { if (t.name.includes("Slang")) slangSource = t.content.trim(); });
+            
+            if (slangSource && viewport) {
+                btn.innerText = "COMPILING...";
+                btn.classList.replace('bg-[#5b9bd5]', 'bg-[#1e2d40]');
+                try {
+                    const wgslCode = await viewport.compile(slangSource);
+                    window.log("WGSL text size: " + (wgslCode ? wgslCode.length : "empty"), "info");
+                    
+                    if (wgslCode) {
+                        const wgslTab = editor.tabs.find(t => t.name === "Compiled WGSL");
+                        if (wgslTab) {
+                            wgslTab.content = wgslCode;
+                            window.log("wgslTab populated successfully in background.", "info");
+                            if (editor.tabs[editor.activeTabIndex].name === "Compiled WGSL") {
+                                editor.editor.setValue(wgslCode);
+                            }
+                        } else {
+                            window.log("Could not find Compiled WGSL tab!", "error");
+                        }
+                    } else {
+                        window.log("Slang generated empty wgsl string.", "warn");
+                    }
+                } catch (err) {
+                    window.log("Compilation Error: " + err.message, "error");
+                }
+                btn.innerText = "COMPILE";
+                btn.classList.replace('bg-[#1e2d40]', 'bg-[#5b9bd5]');
+            } else {
+                window.log("Viewport or Slang Source not found.", "error");
+            }
+        };
+
+        window.runShader = async () => {
+            const btn = document.getElementById('run-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let wgslCode = "", jsCode = "";
+            editor.tabs.forEach(t => {
+                if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
+                if (t.name.includes("Wrapper")) jsCode = t.content.trim();
+            });
+
+            if (wgslCode && jsCode) {
+                btn.innerText = "RUNNING...";
+                btn.classList.replace('bg-[#10b981]', 'bg-[#1e2d40]');
+                try {
+                    const script = document.createElement('script');
+                    script.textContent = jsCode;
+                    document.body.appendChild(script);
+
+                    setTimeout(() => {
+                        if (window.ModuleRenderer) {
+                            window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
+                            viewport.drawFrame = () => {
+                                viewport.updateCanvasSize();
+                                if (window.engineInstance) window.engineInstance.render();
+                            };
+                            
+                            // Start continuous animation loop for dynamic video content 
+                            window.isAnimating = true;
+                            const renderLoop = () => {
+                                if (window.isAnimating && viewport.drawFrame) {
+                                    viewport.drawFrame();
+                                    requestAnimationFrame(renderLoop);
+                                }
+                            };
+                            renderLoop();
+                            
+                            window.log("Pipeline instantiated and running.", "info");
+                        }
+                        btn.innerText = "RUN";
+                        btn.classList.replace('bg-[#1e2d40]', 'bg-[#10b981]');
+                    }, 100);
+                } catch (err) {
+                    window.log("Execution Error: " + err.message, "error");
+                    btn.innerText = "ERROR";
+                }
+            } else {
+                window.log("Missing WGSL or Wrapper JS.", "error");
+            }
         };
 
         window.setDepthMode = (m) => {
