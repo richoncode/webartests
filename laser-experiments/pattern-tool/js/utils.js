@@ -48,6 +48,13 @@ export function getTimestampedName(prefix) {
 
 export const UI = {
   _tip: null,
+
+  makeTextNode(text, className = '') {
+    const el = document.createElement('span');
+    el.textContent = text;
+    if (className) el.className = className;
+    return el;
+  },
   _searchState: "",
   getTooltip() {
     if (!this._tip) {

@@ -4,7 +4,7 @@ export const PALETTE_FILES = ['laFont-1000lpcm', 'laFont-846lpcm', 'rr-lines-10-
 
 export const FALLBACK_PALETTES = {
   'laFont-1000lpcm': {
-    id:'laFont-1000lpcm', name:'LaFont SS304 IR',
+    id:'laFont-1000lpcm', name:'LaFont SS304 IR (1000 LPCM)',
     description:'Brushed SS304, 1000 LPCM, 200 mm/s',
     speed:200, lpcm:1000, laser:'ir',
     entries:[

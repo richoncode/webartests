@@ -540,12 +540,20 @@ export const XCSViewer = {
     const svgEl = v.querySelector(`[data-svg-idx="${idx}"]`);
     if (svgEl) svgEl.classList.add('hover');
 
+    const laserLabel = (s.laser === 'red' || s.laser === 'ir') ? 'IR' : 'Blue';
+    const procMode = s.processingType 
+      ? s.processingType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+      : (s.isFill ? 'Fill' : 'Score');
+
     const html = `
       <div class="popup-title">${s.paletteName || 'Shape'} - ${s.typeOverride || s.colorName || s.type}</div>
-      <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}%</span></div>
+      <div class="popup-row"><span class="popup-key">Mode</span><span class="popup-val hi">${procMode}</span></div>
+      <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}% (${laserLabel})</span></div>
+      <div class="popup-row"><span class="popup-key">Pos (X,Y)</span><span class="popup-val">${s.x.toFixed(2)}, ${s.y.toFixed(2)} mm</span></div>
       <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
       <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>
       <div class="popup-row"><span class="popup-key">Size</span><span class="popup-val">${s.w.toFixed(3)}x${s.h.toFixed(3)}mm</span></div>
+      ${s.text ? `<div class="popup-row"><span class="popup-key">Text</span><span class="popup-val hi">${s.text}</span></div>` : ''}
       ${s.ditherPct != null ? `<div class="popup-row"><span class="popup-key">Dither</span><span class="popup-val">${s.ditherPct}%</span></div>` : ''}
       ${s.t !== null ? `<div class="popup-row" style="margin-top:4px; opacity:0.5; font-size:9px"><span class="popup-key">Normalized (t)</span><span class="popup-val">${s.t.toFixed(4)}</span></div>` : ''}
     `;
