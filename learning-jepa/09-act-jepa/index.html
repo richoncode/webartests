@@ -7,9 +7,11 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
-  .page { max-width: 820px; margin: 0 auto; }
-  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
-  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; margin: 0 auto; }
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+  .nav.bottom { margin-top: 80px; margin-bottom: 0; }
+  .nav a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav a:hover { color: #aaa; }
   h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
   .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
 
@@ -21,12 +23,21 @@
   canvas { background: #000; display: block; width: 100%; height: 300px; border-radius: 8px; }
   
   .controls { display: flex; gap: 12px; margin-top: 24px; align-items: center; }
-  .action-btn { background: #222; border: 1px solid #444; color: #fff; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-family: 'SF Mono', monospace; font-size: 13px; }
+  .action-btn { background: #222; border: 1px solid #444; color: #fff; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-family: 'SF Mono', monospace; font-size: 13px; flex: 1; text-align: center; }
   .action-btn:active { background: #5b9bd5; border-color: #5b9bd5; }
   
-  .prediction-overlay { position: absolute; top: 48px; right: 48px; background: rgba(0,0,0,0.8); border: 1px solid #333; padding: 12px; border-radius: 8px; pointer-events: none; }
-  .prediction-overlay div { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 4px; }
-  .prediction-val { font-family: 'SF Mono', monospace; color: #10b981; font-size: 14px; }
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 24px; }
+  .mode-btn { background: #1a1a1a; border: 1px solid #2a2a2a; color: #666; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .mode-btn.active { background: #5b9bd5; border-color: #5b9bd5; color: #fff; }
+
+  .meter-box { position: absolute; top: 48px; right: 48px; background: rgba(0,0,0,0.8); padding: 16px; border-radius: 8px; border: 1px solid #333; min-width: 200px; pointer-events: none; }
+  .meter-label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 8px; font-family: 'SF Mono'; }
+  .meter-bar { height: 4px; background: #222; border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+  .meter-fill { height: 100%; width: 0%; transition: width 0.3s, background 0.3s; }
+
+  .analysis-box { background: #161616; padding: 20px; border-radius: 12px; border: 1px solid #222; margin-top: 24px; }
+  .analysis-box h4 { font-size: 12px; color: #5b9bd5; text-transform: uppercase; margin-bottom: 8px; }
+  .analysis-box p { font-size: 13px; color: #aaa; margin: 0; }
 
   .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
   .term:hover::after {
@@ -40,46 +51,85 @@
 </head>
 <body>
 <div class="page">
-  <a class="back" href="../">← Back</a>
+  <div class="nav">
+    <a href="../">← Back</a>
+    <a href="../10-causal-jepa/">Next Module →</a>
+  </div>
   <h1>Module 09: Act-JEPA &amp; Action-Conditioned World Models</h1>
-  <p class="subtitle">From Passive Observation to Active Interaction: Learning the causal effects of agency.</p>
+  <p class="subtitle">From Passive Observation to Active Interaction: Learning the causal effects of agency while maximizing compute efficiency.</p>
 
   <section>
     <h2>Action-Conditioned Prediction</h2>
     <p>Passive JEPAs predict the future based on observation alone. **Act-JEPA** introduces agency by conditioning predictions on an <strong>Action Sequence</strong>. The model asks: "Given the current state $S_t$, what is the representation of the world at $S_{t+1}$ if I apply force $A_t$?"</p>
-    <p>This allows the agent to learn a <span class="term" data-definition="A strategy or set of rules that tells an agent which action to take in a given state to achieve a goal.">Policy</span> in latent space, evaluating the physical consequences of its actions before executing them in the real world.</p>
+    <p>Predicting in <strong>Latent Space</strong> is fundamentally different from predicting in <strong>Pixel Space</strong>. While a generative model must render every surface detail, a JEPA model only predicts the abstract mathematical features required for control.</p>
   </section>
 
   <section>
-    <h2>Interactive Simulation: "Latent Physics"</h2>
+    <h2>Interactive Simulation: "Predictive Efficiency"</h2>
     <div class="sim-container">
-      <canvas id="actCanvas"></canvas>
-      <div class="prediction-overlay">
-        <div>Predicted Next State (Latent)</div>
-        <div class="prediction-val" id="predVal">x: 0.00, v: 0.00</div>
+      <div class="mode-toggle">
+        <button id="btn-gen" class="mode-btn" onclick="setMode('generative')">Generative (Pixel Prediction)</button>
+        <button id="btn-jepa" class="mode-btn active" onclick="setMode('jepa')">Act-JEPA (Latent Prediction)</button>
       </div>
+      
+      <div class="meter-box">
+        <div class="meter-label">Compute Intensity (TFLOPS)</div>
+        <div class="meter-bar"><div id="computeFill" class="meter-fill" style="width: 12%; background: #10b981;"></div></div>
+        <div style="font-size: 10px; color: #444;" id="computeVal">12 TFLOPS</div>
+      </div>
+
+      <canvas id="actCanvas"></canvas>
+      
       <div class="controls">
-        <button class="action-btn" onmousedown="applyForce(-5)" onmouseup="stopForce()">[LEFT THRUST]</button>
-        <button class="action-btn" onmousedown="applyForce(5)" onmouseup="stopForce()">[RIGHT THRUST]</button>
-        <div style="font-size: 12px; color: #444; margin-left: 12px;">Hold buttons to apply action.</div>
+        <button class="action-btn" onmousedown="applyForce(-5)" onmouseup="stopForce()">[THRUST LEFT]</button>
+        <button class="action-btn" onmousedown="applyForce(5)" onmouseup="stopForce()">[THRUST RIGHT]</button>
+      </div>
+
+      <div class="analysis-box">
+        <h4 id="analysis-title">Analyzing: Act-JEPA Prediction</h4>
+        <p id="analysis-text">By predicting only the (x, v) state vector, Act-JEPA consumes minimal power. The prediction is mathematically perfect because it ignores irrelevant pixel noise and focuses on the underlying physics.</p>
       </div>
     </div>
-    <p>Apply thrust to the block. The green "shadow" represents the **Act-JEPA Prediction** of where the block's latent representation will be in the next time step. Notice how the model accounts for momentum and friction without rendering a single pixel.</p>
   </section>
 
   <div class="cite">
     References: [28] V-JEPA 2: Action-Conditioned World Models, [5] A Path Towards Autonomous Machine Intelligence.
   </div>
+  <div class="nav bottom"><div style="flex-grow: 1;"></div><a href="../10-causal-jepa/">Next Module →</a></div>
 </div>
 
 <script>
   const canvas = document.getElementById('actCanvas');
   const ctx = canvas.getContext('2d');
-  const predVal = document.getElementById('predVal');
+  const computeFill = document.getElementById('computeFill');
+  const computeVal = document.getElementById('computeVal');
+  const analysisTitle = document.getElementById('analysis-title');
+  const analysisText = document.getElementById('analysis-text');
 
+  let mode = 'jepa';
   let state = { x: 200, v: 0 };
   let action = 0;
   let prediction = { x: 200, v: 0 };
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('btn-gen').classList.toggle('active', m === 'generative');
+    document.getElementById('btn-jepa').classList.toggle('active', m === 'jepa');
+    
+    if (m === 'generative') {
+      computeFill.style.width = '95%';
+      computeFill.style.background = '#e74c3c';
+      computeVal.innerText = '950 TFLOPS';
+      analysisTitle.innerText = "Analyzing: Generative Prediction";
+      analysisText.innerText = "Generative models attempt to predict every pixel. This requires a massive decoder and enormous bandwidth. As you move the block, you'll see 'hallucination artifacts' and blur as the model struggles to render the future.";
+    } else {
+      computeFill.style.width = '12%';
+      computeFill.style.background = '#10b981';
+      computeVal.innerText = '12 TFLOPS';
+      analysisTitle.innerText = "Analyzing: Act-JEPA Prediction";
+      analysisText.innerText = "By predicting only the (x, v) state vector, Act-JEPA consumes minimal power. The prediction is mathematically perfect because it ignores irrelevant pixel noise and focuses on the underlying physics.";
+    }
+  }
 
   function resize() {
     canvas.width = canvas.offsetWidth * window.devicePixelRatio;
@@ -101,36 +151,57 @@
     if (state.x < 50) { state.x = 50; state.v = 0; }
     if (state.x > 350) { state.x = 350; state.v = 0; }
 
-    // Act-JEPA Prediction (Simulation of the model's internal prediction)
-    // The model predicts t+10 frames ahead for visual clarity
+    // Internal Prediction (t+10)
     let pv = state.v + action * 1.0;
     pv *= Math.pow(0.95, 10);
     prediction.x = state.x + pv * 10;
     prediction.v = pv;
-
-    predVal.innerText = `x: ${prediction.x.toFixed(2)}, v: ${prediction.v.toFixed(2)}`;
   }
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width / window.devicePixelRatio;
     const h = canvas.height / window.devicePixelRatio;
 
     // Draw Floor
     ctx.strokeStyle = '#222';
-    ctx.beginPath();
-    ctx.moveTo(0, 250);
-    ctx.lineTo(400, 250);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 250); ctx.lineTo(w, 250); ctx.stroke();
 
-    // Draw Prediction (Latent Shadow)
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-    ctx.strokeStyle = '#10b981';
-    ctx.setLineDash([4, 4]);
-    ctx.fillRect(prediction.x - 20, 210, 40, 40);
-    ctx.strokeRect(prediction.x - 20, 210, 40, 40);
-    ctx.setLineDash([]);
+    // DRAW PREDICTION
+    if (mode === 'generative') {
+      // Draw blurry, noisy prediction
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.filter = 'blur(8px)';
+      ctx.fillStyle = '#e74c3c';
+      ctx.fillRect(prediction.x - 25, 205, 50, 50);
+      
+      // Hallucination Artifacts
+      ctx.filter = 'none';
+      for(let i=0; i<10; i++) {
+        ctx.fillStyle = `rgba(231, 76, 60, ${Math.random()})`;
+        ctx.fillRect(prediction.x + (Math.random()-0.5)*60, 210 + (Math.random()-0.5)*40, 5, 5);
+      }
+      ctx.restore();
+      
+      ctx.fillStyle = '#e74c3c';
+      ctx.font = '10px SF Mono';
+      ctx.fillText("PIXEL HALLUCINATION (HEAVY)", prediction.x - 40, 190);
+    } else {
+      // Draw clean, sharp latent shadow
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.strokeStyle = '#10b981';
+      ctx.setLineDash([4, 4]);
+      ctx.fillRect(prediction.x - 20, 210, 40, 40);
+      ctx.strokeRect(prediction.x - 20, 210, 40, 40);
+      ctx.setLineDash([]);
+      
+      ctx.fillStyle = '#10b981';
+      ctx.font = '10px SF Mono';
+      ctx.fillText("LATENT VECTOR (LIGHT)", prediction.x - 30, 190);
+    }
 
-    // Draw Actual Block
+    // Draw Actual Block (The Ground Truth)
     ctx.fillStyle = '#5b9bd5';
     ctx.fillRect(state.x - 20, 210, 40, 40);
     

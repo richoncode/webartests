@@ -115,6 +115,7 @@ class SlangEditor extends HTMLElement {
             btn.style.fontSize = '11px';
             btn.style.fontWeight = '700';
             btn.style.textTransform = 'uppercase';
+            btn.style.whiteSpace = 'nowrap';
             btn.style.cursor = 'pointer';
             btn.style.outline = 'none';
             btn.onclick = () => this.switchTab(index);

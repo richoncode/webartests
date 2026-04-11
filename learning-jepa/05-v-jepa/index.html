@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Module 04: V-JEPA & MC-JEPA — Learning JEPA</title>
+<title>Module 05: V-JEPA &amp; MC-JEPA — Learning JEPA</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
-  .page { max-width: 820px; margin: 0 auto; }
-  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
-  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; margin: 0 auto; }
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+  .nav.bottom { margin-top: 80px; margin-bottom: 0; }
+  .nav a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav a:hover { color: #aaa; }
   h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
   .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
 
@@ -17,19 +19,22 @@
   h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
   p { margin-bottom: 20px; color: #ccc; }
 
-  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; height: 500px; position: relative; }
-  #three-container { width: 100%; height: 100%; border-radius: 8px; cursor: move; }
-  .controls { position: absolute; bottom: 48px; left: 48px; right: 48px; display: flex; gap: 16px; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; }
-  button { background: #222; border: 1px solid #444; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; height: 550px; position: relative; }
+  #three-container { width: 100%; height: 400px; border-radius: 8px; cursor: move; }
+  
+  .controls { display: flex; gap: 16px; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 8px; border: 1px solid #333; margin-top: 20px; }
+  button { background: #222; border: 1px solid #444; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; flex: 1; }
   button:hover { background: #333; border-color: #5b9bd5; }
   button.active { background: #5b9bd5; border-color: #5b9bd5; color: #fff; }
 
-  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
-  .term:hover::after {
-    content: attr(data-definition);
-    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
-    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
-  }
+  .meter-box { position: absolute; top: 48px; right: 48px; background: rgba(0,0,0,0.8); padding: 16px; border-radius: 8px; border: 1px solid #333; min-width: 180px; }
+  .meter-label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 8px; font-family: 'SF Mono'; }
+  .meter-bar { height: 4px; background: #222; border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+  .meter-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+
+  .analysis-box { background: #161616; padding: 20px; border-radius: 12px; border: 1px solid #222; margin-top: 24px; }
+  .analysis-box h4 { font-size: 12px; color: #5b9bd5; text-transform: uppercase; margin-bottom: 8px; }
+  .analysis-box p { font-size: 13px; color: #aaa; margin: 0; }
 
   .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
 </style>
@@ -37,43 +42,55 @@
 </head>
 <body>
 <div class="page">
-  <a class="back" href="../">← Back</a>
-  <h1>Module 04: V-JEPA & MC-JEPA</h1>
-  <p class="subtitle">Moving from Space to Time: Video world models and disentangled features.</p>
+  <div class="nav">
+    <a href="../">← Back</a>
+    <a href="../06-vl-jepa/">Next Module →</a>
+  </div>
+  <h1>Module 05: V-JEPA &amp; MC-JEPA</h1>
+  <p class="subtitle">Moving from Space to Time: Forcing models to learn persistence and dynamics by preventing "Temporal Cheating."</p>
 
   <section>
     <h2>Spatiotemporal Dynamics</h2>
-    <p>V-JEPA extends the architecture to video. To prevent the model from "cheating" by looking at adjacent frames, it hides the same spatial area across the entire temporal block. This forces the model to learn <strong>motion and persistence</strong> rather than just copying pixels from frame <code>t-1</code>.</p>
-    <p>MC-JEPA (Motion-Content) goes further by learning to disentangle <span class="term" data-definition="The pattern of apparent motion of objects, surfaces, and edges in a visual scene.">Optical Flow</span> from object identity using a shared encoder.</p>
+    <p>Predicting video is harder than predicting images because models can "cheat." If you mask random pixels in a video, the model doesn't need to understand motion; it can just look at the exact same pixel in the previous or next frame to find the answer.</p>
+    <p>**V-JEPA** solves this using <strong>Tubelet Masking</strong>: hiding the same spatial area across the <i>entire temporal duration</i> of the video block. This forces the model to learn <strong>World Physics</strong>—the understanding that an object continues to exist and follow a trajectory even when it is completely hidden.</p>
   </section>
 
   <section>
-    <h2>Interactive Simulation: "The 3D Masker"</h2>
+    <h2>Interactive Simulation: "The Cheating Challenge"</h2>
     <div class="sim-container">
       <div id="three-container"></div>
+      <div class="meter-box">
+        <div class="meter-label">Temporal "Cheating" Potential</div>
+        <div class="meter-bar"><div id="cheatFill" class="meter-fill"></div></div>
+        <div style="font-size: 10px; color: #444;" id="cheatVal">HIGH: Interpolation Possible</div>
+      </div>
       <div class="controls">
-        <button id="btn-random" class="active">Random Masking (Cheatable)</button>
-        <button id="btn-contiguous">Contiguous Masking (V-JEPA)</button>
+        <button id="btn-random" class="active" onclick="setMode('random')">Random Masking (Traditional)</button>
+        <button id="btn-tube" onclick="setMode('tube')">Tubelet Masking (V-JEPA)</button>
+      </div>
+      <div class="analysis-box">
+        <h4 id="analysis-title">Analyzing: Random Masking</h4>
+        <p id="analysis-text">In this mode, the moving object is never fully hidden. The model can simply 'see through' the noise by comparing adjacent frames. It learns to interpolate pixels, not to model the world.</p>
       </div>
     </div>
-    <p>The 3D grid represents a <span class="term" data-definition="A 3D patch of video, e.g., 16x16 pixels across 2 temporal frames.">Tubelet</span> of video (X, Y, Time). Switch to <strong>Contiguous Masking</strong> to see how V-JEPA blocks "vertical" tubes in time, forcing the model to predict what happened behind the mask using its internal world model.</p>
   </section>
 
   <div class="cite">
     References: [19] V-JEPA 2: Building Video World Models, [23] MC-JEPA: Motion and Content Learning (OpenReview), [40] How V-JEPA Works.
   </div>
+  <div class="nav bottom"><div style="flex-grow: 1;"></div><a href="../06-vl-jepa/">Next Module →</a></div>
 </div>
 
 <script>
-  let scene, camera, renderer, cubes = [];
+  let scene, camera, renderer, voxels = [], ball;
   const container = document.getElementById('three-container');
   const gridSize = 6;
-  let maskingMode = 'random';
+  let mode = 'random';
 
   function init() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(15, 15, 20);
+    camera.position.set(12, 12, 15);
     camera.lookAt(0, 0, 0);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -86,70 +103,119 @@
     directionalLight.position.set(10, 20, 10);
     scene.add(directionalLight);
 
-    // Create 3D Grid
-    const geometry = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+    // Create 3D Grid (X, Y, Time)
+    const geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
     for (let x = 0; x < gridSize; x++) {
       for (let y = 0; y < gridSize; y++) {
         for (let t = 0; t < gridSize; t++) {
           const material = new THREE.MeshPhongMaterial({ 
             color: 0x5b9bd5, 
             transparent: true, 
-            opacity: 0.6 
+            opacity: 0.1,
+            wireframe: true
           });
-          const cube = new THREE.Mesh(geometry, material);
-          cube.position.set(
-            (x - gridSize/2) * 2.2,
-            (y - gridSize/2) * 2.2,
-            (t - gridSize/2) * 2.2
+          const voxel = new THREE.Mesh(geometry, material);
+          voxel.position.set(
+            (x - gridSize/2) * 1.5,
+            (y - gridSize/2) * 1.5,
+            (t - gridSize/2) * 1.5
           );
-          cube.userData = { x, y, t };
-          scene.add(cube);
-          cubes.push(cube);
+          voxel.userData = { x, y, t, isMasked: false };
+          scene.add(voxel);
+          voxels.push(voxel);
         }
       }
     }
+
+    // The "Concept" Ball
+    const ballGeo = new THREE.SphereGeometry(0.6, 32, 32);
+    const ballMat = new THREE.MeshPhongMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.5 });
+    ball = new THREE.Mesh(ballGeo, ballMat);
+    scene.add(ball);
 
     updateMasking();
     animate();
   }
 
+  function setMode(m) {
+    mode = m;
+    document.getElementById('btn-random').classList.toggle('active', m === 'random');
+    document.getElementById('btn-tube').classList.toggle('active', m === 'tube');
+    
+    const cheatFill = document.getElementById('cheatFill');
+    const cheatVal = document.getElementById('cheatVal');
+    const title = document.getElementById('analysis-title');
+    const text = document.getElementById('analysis-text');
+
+    if (m === 'random') {
+      cheatFill.style.width = '90%';
+      cheatFill.style.background = '#e74c3c';
+      cheatVal.innerText = 'HIGH: Interpolation Possible';
+      title.innerText = 'Analyzing: Random Masking';
+      text.innerText = "In this mode, the moving object is never fully hidden at any spatial location. The model can simply 'see through' the noise by looking at the same spot in adjacent frames. This is temporal interpolation, not intelligence.";
+    } else {
+      cheatFill.style.width = '10%';
+      cheatFill.style.background = '#10b981';
+      cheatVal.innerText = 'LOW: World Model Required';
+      title.innerText = 'Analyzing: Tubelet Masking';
+      text.innerText = "V-JEPA masks entire spatial columns. When the object enters a 'tube,' it is gone for the entire duration of the block. The model MUST understand inertia and trajectory to predict where it went.";
+    }
+    updateMasking();
+  }
+
   function updateMasking() {
-    if (maskingMode === 'random') {
-      cubes.forEach(c => {
-        const isMasked = Math.random() > 0.7;
-        c.material.color.setHex(isMasked ? 0xe74c3c : 0x5b9bd5);
-        c.material.opacity = isMasked ? 0.9 : 0.2;
+    // Reset
+    voxels.forEach(v => {
+      v.userData.isMasked = false;
+      v.material.color.setHex(0x5b9bd5);
+      v.material.opacity = 0.1;
+    });
+
+    if (mode === 'random') {
+      voxels.forEach(v => {
+        if (Math.random() > 0.7) {
+          v.userData.isMasked = true;
+          v.material.color.setHex(0x333333);
+          v.material.opacity = 0.8;
+        }
       });
     } else {
-      // Contiguous (Tubelet)
-      const maskedXY = [];
-      for (let i = 0; i < 6; i++) {
-        maskedXY.push({ x: Math.floor(Math.random()*gridSize), y: Math.floor(Math.random()*gridSize) });
+      // Tubelets: Mask full X,Y columns for all T
+      for (let i = 0; i < 4; i++) {
+        const mx = Math.floor(Math.random() * gridSize);
+        const my = Math.floor(Math.random() * gridSize);
+        voxels.filter(v => v.userData.x === mx && v.userData.y === my).forEach(v => {
+          v.userData.isMasked = true;
+          v.material.color.setHex(0xe74c3c);
+          v.material.opacity = 0.6;
+        });
       }
-      cubes.forEach(c => {
-        const isMasked = maskedXY.some(m => m.x === c.userData.x && m.y === c.userData.y);
-        c.material.color.setHex(isMasked ? 0xe74c3c : 0x5b9bd5);
-        c.material.opacity = isMasked ? 0.9 : 0.2;
-      });
     }
   }
 
-  document.getElementById('btn-random').onclick = () => {
-    maskingMode = 'random';
-    document.getElementById('btn-random').classList.add('active');
-    document.getElementById('btn-contiguous').classList.remove('active');
-    updateMasking();
-  };
-
-  document.getElementById('btn-contiguous').onclick = () => {
-    maskingMode = 'contiguous';
-    document.getElementById('btn-contiguous').classList.add('active');
-    document.getElementById('btn-random').classList.remove('active');
-    updateMasking();
-  };
-
   function animate() {
     requestAnimationFrame(animate);
+    const time = Date.now() * 0.001;
+    
+    // Move ball in a path through X, Y, T
+    // Since T is just an axis in our 3D visualization, the ball moves through the grid
+    const ballX = Math.sin(time) * 4;
+    const ballY = Math.cos(time * 0.5) * 4;
+    const ballT = Math.sin(time * 0.3) * 4;
+    ball.position.set(ballX, ballY, ballT);
+
+    // Check if ball is "masked" by current voxels
+    // In our 3D view, we show the ball as semi-transparent if it's inside a masked voxel
+    let isHidden = false;
+    voxels.forEach(v => {
+      if (v.userData.isMasked) {
+        const dist = v.position.distanceTo(ball.position);
+        if (dist < 1.2) isHidden = true;
+      }
+    });
+    ball.material.opacity = isHidden ? 0.1 : 1.0;
+    ball.material.transparent = true;
+
     scene.rotation.y += 0.005;
     renderer.render(scene, camera);
   }

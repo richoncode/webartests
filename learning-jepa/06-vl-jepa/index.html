@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Module 05: VL-JEPA — Learning JEPA</title>
+<title>Module 06: VL-JEPA — Learning JEPA</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
   .page { max-width: 820px; margin: 0 auto; }
-  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
-  a.back:hover { color: #aaa; }
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+  .nav.bottom { margin-top: 80px; margin-bottom: 0; }
+  .nav a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav a:hover { color: #aaa; }
   h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
   .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
 
@@ -27,6 +29,15 @@
   button b { display: block; font-size: 14px; margin-bottom: 2px; }
   button span { display: block; font-size: 11px; opacity: 0.6; }
 
+  .dist-meter-box { position: absolute; top: 48px; right: 48px; background: rgba(0,0,0,0.8); padding: 16px; border-radius: 8px; border: 1px solid #333; min-width: 180px; pointer-events: none; }
+  .meter-label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 8px; font-family: 'SF Mono'; }
+  .meter-bar { height: 4px; background: #222; border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+  .meter-fill { height: 100%; width: 0%; transition: width 0.3s, background 0.3s; }
+
+  .analysis-box { background: #161616; padding: 20px; border-radius: 12px; border: 1px solid #222; margin-top: 24px; }
+  .analysis-box h4 { font-size: 12px; color: #5b9bd5; text-transform: uppercase; margin-bottom: 8px; }
+  .analysis-box p { font-size: 13px; color: #aaa; margin: 0; }
+
   .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
   .term:hover::after {
     content: attr(data-definition);
@@ -39,8 +50,11 @@
 </head>
 <body>
 <div class="page">
-  <a class="back" href="../">← Back</a>
-  <h1>Module 05: VL-JEPA - Multimodal Grounding</h1>
+  <div class="nav">
+    <a href="../">← Back</a>
+    <a href="../07-sensory-jepa/">Next Module →</a>
+  </div>
+  <h1>Module 06: VL-JEPA - Multimodal Grounding</h1>
   <p class="subtitle">Thinking in Meaning Space, Not Token Space.</p>
 
   <section>
@@ -50,9 +64,14 @@
   </section>
 
   <section>
-    <h2>Interactive Simulation: "The Meaning Matcher"</h2>
+    <h2>Interactive Simulation: "Semantic Distance"</h2>
     <div class="sim-container">
       <canvas id="latentCanvas"></canvas>
+      <div class="dist-meter-box">
+        <div class="meter-label">Semantic Distance (Energy)</div>
+        <div class="meter-bar"><div id="distFill" class="meter-fill"></div></div>
+        <div style="font-size: 10px; color: #444;" id="distVal">SELECT A PROMPT</div>
+      </div>
       <div class="controls">
         <button onclick="match('feline')" id="btn-feline">
           <b>"Feline Leaping"</b>
@@ -71,26 +90,33 @@
           <span>Zero semantic compatibility</span>
         </button>
       </div>
+      <div class="analysis-box">
+        <h4 id="analysis-title">Analyzing Latent Spacing</h4>
+        <p id="analysis-text">Select a text prompt to measure its distance from the video embedding. In a trained JEPA, embeddings are static points; their proximity is determined during training to ensure semantic compatibility results in low 'Energy' (short distance).</p>
+      </div>
     </div>
-    <p>The central blue node represents the <strong>Video Embedding</strong> of a cat jumping. The other nodes represent <strong>Text Embeddings</strong>. Notice how semantically similar concepts naturally cluster together in the latent space, even if their raw byte/token values are vastly different.</p>
   </section>
 
   <div class="cite">
     References: [6] JEPA Model Explained (CreateBytes), [26] VL-JEPA: Joint Embedding Predictive Architecture for Vision-language (arXiv).
   </div>
+  <div class="nav bottom"><div style="flex-grow: 1;"></div><a href="../07-sensory-jepa/">Next Module →</a></div>
 </div>
 
 <script>
   const canvas = document.getElementById('latentCanvas');
   const ctx = canvas.getContext('2d');
   
+  // Fixed "baked" embeddings
   let nodes = [
-    { id: 'video', label: 'VIDEO: CAT JUMPING', x: 0, y: 0, color: '#5b9bd5', size: 12, targetX: 0, targetY: 0 },
-    { id: 'feline', label: 'Text: "feline leaping"', x: 100, y: -80, color: '#10b981', size: 8, targetX: 30, targetY: -20 },
-    { id: 'barking', label: 'Text: "dog barking"', x: -150, y: 120, color: '#e74c3c', size: 8, targetX: -160, targetY: 140 },
-    { id: 'liquid', label: 'Text: "flowing liquid"', x: 50, y: 150, color: '#f59e0b', size: 8, targetX: 80, targetY: 60 },
-    { id: 'random', label: 'Text: "static noise"', x: -180, y: -150, color: '#555', size: 8, targetX: -200, targetY: -180 }
+    { id: 'video', label: 'VIDEO: CAT JUMPING', x: 0, y: 0, color: '#5b9bd5', size: 12 },
+    { id: 'feline', label: 'Text: "feline leaping"', x: 40, y: -30, color: '#10b981', size: 8 },
+    { id: 'barking', label: 'Text: "dog barking"', x: -140, y: 110, color: '#e74c3c', size: 8 },
+    { id: 'liquid', label: 'Text: "flowing liquid"', x: 70, y: 80, color: '#f59e0b', size: 8 },
+    { id: 'random', label: 'Text: "static noise"', x: -160, y: -140, color: '#555', size: 8 }
   ];
+
+  let activeId = null;
 
   function resize() {
     canvas.width = canvas.offsetWidth * window.devicePixelRatio;
@@ -119,32 +145,38 @@
       ctx.stroke();
     }
 
-    // Update and Draw Nodes
+    // Draw Nodes
     nodes.forEach(node => {
-      node.x += (node.targetX - node.x) * 0.05;
-      node.y += (node.targetY - node.y) * 0.05;
-
       const px = centerX + node.x;
       const py = centerY + node.y;
 
-      // Connection to video node
-      if (node.id !== 'video') {
-        const dist = Math.sqrt(node.x * node.x + node.y * node.y);
-        const alpha = Math.max(0, 1 - dist / 200);
-        ctx.strokeStyle = `rgba(91, 155, 213, ${alpha * 0.3})`;
+      // Draw highlighting for active link
+      if (activeId && node.id === activeId) {
+        const videoNode = nodes[0];
+        const dist = Math.sqrt((node.x - videoNode.x)**2 + (node.y - videoNode.y)**2);
+        
+        ctx.strokeStyle = node.color;
+        ctx.setLineDash([5, 5]);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(centerX + nodes[0].x, centerY + nodes[0].y);
+        ctx.moveTo(centerX + videoNode.x, centerY + videoNode.y);
         ctx.lineTo(px, py);
         ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Glow effect
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = node.color;
       }
 
       ctx.fillStyle = node.color;
       ctx.beginPath();
       ctx.arc(px, py, node.size, 0, Math.PI * 2);
       ctx.fill();
+      
+      ctx.shadowBlur = 0; // Reset shadow
 
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = (activeId && node.id !== activeId && node.id !== 'video') ? '#333' : '#fff';
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(node.label, px, py + node.size + 15);
@@ -154,22 +186,46 @@
   }
 
   function match(id) {
+    activeId = id;
     document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
     document.getElementById('btn-' + id).classList.add('active');
     
-    // Animate nodes to show compatibility
-    nodes.forEach(node => {
-      if (node.id === 'video') return;
-      if (node.id === id) {
-        node.targetX = 40;
-        node.targetY = -30;
-      } else {
-        // Push others away
-        const angle = Math.random() * Math.PI * 2;
-        node.targetX = Math.cos(angle) * 150;
-        node.targetY = Math.sin(angle) * 150;
-      }
-    });
+    const node = nodes.find(n => n.id === id);
+    const videoNode = nodes[0];
+    const dist = Math.sqrt((node.x - videoNode.x)**2 + (node.y - videoNode.y)**2);
+    
+    // Max distance in our view is roughly 250
+    const normDist = Math.min(100, (dist / 220) * 100);
+    const fill = document.getElementById('distFill');
+    fill.style.width = normDist + '%';
+    
+    if (normDist < 25) {
+      fill.style.background = '#10b981';
+      document.getElementById('distVal').innerText = 'LOW: Highly Compatible';
+    } else if (normDist < 60) {
+      fill.style.background = '#f59e0b';
+      document.getElementById('distVal').innerText = 'MEDIUM: Low Compatibility';
+    } else {
+      fill.style.background = '#e74c3c';
+      document.getElementById('distVal').innerText = 'HIGH: No Compatibility';
+    }
+
+    const title = document.getElementById('analysis-title');
+    const text = document.getElementById('analysis-text');
+    
+    if (id === 'feline') {
+      title.innerText = "Match: 'Feline Leaping'";
+      text.innerText = "The model has learned that the semantic concept of a jumping cat is physically and semantically identical to the video content. The distance in meaning space is minimal.";
+    } else if (id === 'barking') {
+      title.innerText = "Match: 'Dog Barking'";
+      text.innerText = "While both relate to animals, the specific actions (jumping vs barking) and identities (cat vs dog) create a large semantic gap. The energy is high.";
+    } else if (id === 'liquid') {
+      title.innerText = "Match: 'Flowing Liquid'";
+      text.innerText = "There is a slight structural similarity in motion patterns (fluidity), but the semantic grounding is weak. The distance reflects this partial mismatch.";
+    } else {
+      title.innerText = "Match: 'Static Noise'";
+      text.innerText = "There is zero semantic or structural overlap. The embeddings are pushed to opposite poles of the latent space during training.";
+    }
   }
 
   draw();

@@ -181,8 +181,9 @@
 
                     <div class="flex gap-2">
                         <button id="play-btn" onclick="toggleVideo()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
-                        <div style="flex:2">
-                            <slang-playback-controls></slang-playback-controls>
+                        <div style="flex:2" class="flex gap-2">
+                            <button id="compile-btn" onclick="compileSlang()" class="bg-[#5b9bd5] hover:bg-[#4a8ac4] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">COMPILE</button>
+                            <button id="run-btn" onclick="runShader()" class="bg-[#10b981] hover:bg-[#0ea5e9] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">RUN</button>
                         </div>
                     </div>
 
@@ -196,7 +197,15 @@
             <slang-editor class="editor-content">
                 <div data-tab="Info" data-lang="none"></div>
                 <div data-tab="Controls" data-lang="none"></div>
-                <div data-tab="Optical Flow Slang" data-lang="cpp"><!--
+                <div data-tab="Flow Slang" data-lang="cpp"><!--
+__target_intrinsic(wgsl, "texture_external")
+struct TextureExternal {};
+
+extension TextureExternal {
+    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($0, $1, $2)")
+    float4 Sample(SamplerState s, float2 uv);
+}
+
 struct Params {
     uint searchRadius; // Search window size
     float threshold;   // SSD threshold
@@ -205,15 +214,15 @@ struct Params {
     uint useMask;      // Enable mask-restricted search
 };
 
-ParameterBlock<Params> params;
-TextureExternal videoTexture;
-SamplerState videoSampler;
-Texture2D<float> maskTexture; // From Background Subtraction pass
-RWTexture2D<float2> nextFlow;
-Texture2D<float2> prevFlow;
-Texture2D<float4> prevFrame;
-RWTexture2D<float4> outputTexture;
-RWTexture2D<float4> currFrameStore; // Store current frame for next step
+[[vk::binding(8, 0)]] ConstantBuffer<Params> params;
+[[vk::binding(1, 0)]] TextureExternal videoTexture;
+[[vk::binding(0, 0)]] SamplerState videoSampler;
+[[vk::binding(2, 0)]] Texture2D<float> maskTexture; // From Background Subtraction pass
+[[vk::binding(4, 0)]] RWTexture2D<float2> nextFlow;
+[[vk::binding(3, 0)]] Texture2D<float2> prevFlow;
+[[vk::binding(5, 0)]] Texture2D<float4> prevFrame;
+[[vk::binding(7, 0)]] RWTexture2D<float4> outputTexture;
+[[vk::binding(6, 0)]] RWTexture2D<float4> currFrameStore; // Store current frame for next step
 
 // Helper for Hue to RGB
 float3 hsv2rgb(float3 c) {
@@ -237,7 +246,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     float3 pixelCurr = current.rgb;
     
     // Check mask to bypass expensive search
-    float mask = maskTexture.Load(id.xy).r;
+    float mask = maskTexture.Load(int3(id.x, id.y, 0)).r;
     bool shouldSearch = (params.useMask == 0) || (mask > 0.1);
 
     float minSSD = 1000.0;
@@ -284,7 +293,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
 
     // Temporal Smoothing
-    float2 prevV = prevFlow.Load(id.xy);
+    float2 prevV = prevFlow.Load(int3(id.x, id.y, 0));
     float2 smoothedV = lerp(prevV, bestV, 0.2);
     if (params.reset > 0) smoothedV = bestV;
     
@@ -306,102 +315,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 }
 --></div>
                 <div data-tab="Compiled WGSL" data-lang="rust"><!--
-struct Params {
-    searchRadius: u32,
-    threshold: f32,
-    mode: u32,
-    reset: u32,
-    useMask: u32,
-}
-
-@group(0) @binding(0) var videoSampler: sampler;
-@group(0) @binding(1) var videoTexture: texture_external;
-@group(0) @binding(2) var maskTexture: texture_2d<f32>;
-@group(0) @binding(3) var prevFlow: texture_2d<f32>;
-@group(0) @binding(4) var nextFlow: texture_storage_2d<rg32float, write>;
-@group(0) @binding(5) var prevFrame: texture_2d<f32>;
-@group(0) @binding(6) var currFrameStore: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(7) var outputTexture: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(8) var<uniform> uniforms: Params;
-
-fn hsv2rgb(c: vec3<f32>) -> vec3<f32> {
-    let K = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    let p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let size = textureDimensions(outputTexture);
-    if (id.x >= size.x || id.y >= size.y) { return; }
-
-    let uv = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
-    let current = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
-    textureStore(currFrameStore, id.xy, current);
-    
-    let pixelCurr = current.rgb;
-    let mask = textureLoad(maskTexture, id.xy, 0).r;
-    let shouldSearch = (uniforms.useMask == 0u) || (mask > 0.1);
-
-    var minSSD: f32 = 1000.0;
-    var bestV: vec2<f32> = vec2<f32>(0.0);
-    let radius = i32(uniforms.searchRadius);
-    
-    if (shouldSearch) {
-        // Coarse Search (Step 4)
-        for (var y: i32 = -radius; y <= radius; y = y + 4) {
-            for (var x: i32 = -radius; x <= radius; x = x + 4) {
-                let offset = vec2<f32>(f32(x), f32(y));
-                var sampleUV = (vec2<f32>(f32(id.x), f32(id.y)) + offset) / vec2<f32>(f32(size.x), f32(size.y));
-                sampleUV.y = sampleUV.y * 0.5;
-                
-                let pixelPrev = textureSampleLevel(prevFrame, videoSampler, sampleUV, 0.0).rgb;
-                let ssd = distance(pixelCurr, pixelPrev);
-                
-                if (ssd < minSSD) {
-                    minSSD = ssd;
-                    bestV = offset;
-                }
-            }
-        }
-
-        // Refinement Search
-        let coarseV = bestV;
-        for (var y: i32 = -2; y <= 2; y = y + 1) {
-            for (var x: i32 = -2; x <= 2; x = x + 1) {
-                let offset = coarseV + vec2<f32>(f32(x), f32(y));
-                var sampleUV = (vec2<f32>(f32(id.x), f32(id.y)) + offset) / vec2<f32>(f32(size.x), f32(size.y));
-                sampleUV.y = sampleUV.y * 0.5;
-                
-                let pixelPrev = textureSampleLevel(prevFrame, videoSampler, sampleUV, 0.0).rgb;
-                let ssd = distance(pixelCurr, pixelPrev);
-                
-                if (ssd < minSSD) {
-                    minSSD = ssd;
-                    bestV = offset;
-                }
-            }
-        }
-    }
-
-    let prevV = textureLoad(prevFlow, id.xy, 0).xy;
-    var smoothedV = mix(prevV, bestV, 0.2);
-    if (uniforms.reset > 0u) { smoothedV = bestV; }
-    
-    textureStore(nextFlow, id.xy, vec4<f32>(smoothedV, 0.0, 0.0));
-
-    var color: vec4<f32>;
-    if (uniforms.mode == 0u) {
-        color = current;
-    } else {
-        let angle = atan2(smoothedV.y, smoothedV.x) / (2.0 * 3.14159) + 0.5;
-        let mag = length(smoothedV) / f32(radius);
-        color = vec4<f32>(hsv2rgb(vec3<f32>(angle, clamp(mag * 2.0, 0.0, 1.0), 0.8)), 1.0);
-        if (uniforms.useMask > 0u && mask < 0.1) { color = color * 0.2; color.a = 1.0; }
-    }
-    
-    textureStore(outputTexture, id.xy, color);
-}
+// [Dynamic Compilation Active]
+// The Slang compiler will generate WGSL at runtime and update this tab.
 --></div>
                 <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
 class FlowProcessor {
@@ -578,6 +493,96 @@ window.ModuleRenderer = FlowProcessor;
         window.toggleVideoMaximize = () => {
             document.querySelector('.workspace').classList.toggle('video-maximized');
             setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.compileSlang = async () => {
+            const btn = document.getElementById('compile-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let slangSource = "";
+            editor.tabs.forEach(t => { if (t.name.includes("Slang")) slangSource = t.content.trim(); });
+            
+            if (slangSource && viewport) {
+                btn.innerText = "COMPILING...";
+                btn.classList.replace('bg-[#5b9bd5]', 'bg-[#1e2d40]');
+                try {
+                    const wgslCode = await viewport.compile(slangSource);
+                    window.log("WGSL text size: " + (wgslCode ? wgslCode.length : "empty"), "info");
+                    
+                    if (wgslCode) {
+                        const wgslTab = editor.tabs.find(t => t.name === "Compiled WGSL");
+                        if (wgslTab) {
+                            wgslTab.content = wgslCode;
+                            window.log("wgslTab populated successfully in background.", "info");
+                            if (editor.tabs[editor.activeTabIndex].name === "Compiled WGSL") {
+                                editor.editor.setValue(wgslCode);
+                            }
+                        } else {
+                            window.log("Could not find Compiled WGSL tab!", "error");
+                        }
+                    } else {
+                        window.log("Slang generated empty wgsl string.", "warn");
+                    }
+                } catch (err) {
+                    window.log("Compilation Error: " + err.message, "error");
+                }
+                btn.innerText = "COMPILE";
+                btn.classList.replace('bg-[#1e2d40]', 'bg-[#5b9bd5]');
+            } else {
+                window.log("Viewport or Slang Source not found.", "error");
+            }
+        };
+
+        window.runShader = async () => {
+            const btn = document.getElementById('run-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let wgslCode = "", jsCode = "";
+            editor.tabs.forEach(t => {
+                if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
+                if (t.name.includes("Wrapper")) jsCode = t.content.trim();
+            });
+
+            if (wgslCode && jsCode) {
+                btn.innerText = "RUNNING...";
+                btn.classList.replace('bg-[#10b981]', 'bg-[#1e2d40]');
+                try {
+                    const script = document.createElement('script');
+                    script.textContent = jsCode;
+                    document.body.appendChild(script);
+
+                    setTimeout(() => {
+                        if (window.ModuleRenderer) {
+                            window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
+                            viewport.drawFrame = () => {
+                                viewport.updateCanvasSize();
+                                if (window.engineInstance) window.engineInstance.render();
+                            };
+                            
+                            // Start continuous animation loop for dynamic video content 
+                            window.isAnimating = true;
+                            const renderLoop = () => {
+                                if (window.isAnimating && viewport.drawFrame) {
+                                    viewport.drawFrame();
+                                    requestAnimationFrame(renderLoop);
+                                }
+                            };
+                            renderLoop();
+                            
+                            window.log("Pipeline instantiated and running.", "info");
+                        }
+                        btn.innerText = "RUN";
+                        btn.classList.replace('bg-[#1e2d40]', 'bg-[#10b981]');
+                    }, 100);
+                } catch (err) {
+                    window.log("Execution Error: " + err.message, "error");
+                    btn.innerText = "ERROR";
+                }
+            } else {
+                window.log("Missing WGSL or Wrapper JS.", "error");
+            }
         };
 
         window.setFMode = (m) => {
