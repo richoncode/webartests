@@ -222,8 +222,9 @@
                         </div>
                     <div class="flex gap-2">
                         <button id="play-btn" onclick="toggleVideo()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-4 py-2 rounded transition-colors flex-1">PLAY</button>
-                        <div style="flex:2">
-                            <slang-playback-controls></slang-playback-controls>
+                        <div style="flex:2" class="flex gap-2">
+                            <button id="compile-btn" onclick="compileSlang()" class="bg-[#5b9bd5] hover:bg-[#4a8ac4] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">COMPILE</button>
+                            <button id="run-btn" onclick="runShader()" class="bg-[#10b981] hover:bg-[#0ea5e9] text-white text-[10px] font-bold px-3 py-1 rounded w-full transition-colors">RUN</button>
                         </div>
                     </div>
 
@@ -239,16 +240,24 @@
                 <div data-tab="Controls" data-lang="none"></div>
 
                 <div data-tab="Homography Slang" data-lang="cpp"><!--
+__target_intrinsic(wgsl, "texture_external")
+struct TextureExternal {};
+
+extension TextureExternal {
+    __target_intrinsic(wgsl, "textureSampleBaseClampToEdge($0, $1, $2)")
+    float4 Sample(SamplerState s, float2 uv);
+}
+
 struct Params {
     float3x3 H;       // Homography Matrix (Right to Left)
     uint mode;        // 0: Left, 1: Warped Right, 2: Diff, 3: Blend
     float blend;      // Blend factor
 };
 
-ParameterBlock<Params> params;
-TextureExternal videoTexture;
-SamplerState videoSampler;
-RWTexture2D<float4> outputTexture;
+[[vk::binding(3, 0)]] ConstantBuffer<Params> params;
+[[vk::binding(1, 0)]] TextureExternal videoTexture;
+[[vk::binding(0, 0)]] SamplerState videoSampler;
+[[vk::binding(2, 0)]] RWTexture2D<float4> outputTexture;
 
 [shader("compute")]
 [numthreads(16, 16, 1)]
@@ -291,53 +300,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 }
 --></div>
                 <div data-tab="Compiled WGSL" data-lang="rust"><!--
-struct Params {
-    h00: f32, h01: f32, h02: f32, pad0: f32,
-    h10: f32, h11: f32, h12: f32, pad1: f32,
-    h20: f32, h21: f32, h22: f32, pad2: f32,
-    mode: u32,
-    blend: f32,
-}
-
-@group(0) @binding(0) var videoSampler: sampler;
-@group(0) @binding(1) var videoTexture: texture_external;
-@group(0) @binding(2) var outputTexture: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(3) var<uniform> uniforms: Params;
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let size = textureDimensions(outputTexture);
-    if (id.x >= size.x || id.y >= size.y) { return; }
-
-    let uvL = vec2<f32>(f32(id.x) / f32(size.x), f32(id.y) / f32(size.y) * 0.5);
-    let pixelL = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvL).rgb;
-
-    let x = f32(id.x);
-    let y = f32(id.y);
-    
-    let w = uniforms.h20 * x + uniforms.h21 * y + uniforms.h22;
-    let warpedX = (uniforms.h00 * x + uniforms.h01 * y + uniforms.h02) / w;
-    let warpedY = (uniforms.h10 * x + uniforms.h11 * y + uniforms.h12) / w;
-    
-    var uvR = vec2<f32>(warpedX / f32(size.x), warpedY / f32(size.y) * 0.5);
-    uvR.y = uvR.y + 0.5;
-    
-    let pixelR_warped = textureSampleBaseClampToEdge(videoTexture, videoSampler, uvR).rgb;
-
-    var color: vec4<f32>;
-    if (uniforms.mode == 0u) {
-        color = vec4<f32>(pixelL, 1.0);
-    } else if (uniforms.mode == 1u) {
-        color = vec4<f32>(pixelR_warped, 1.0);
-    } else if (uniforms.mode == 2u) {
-        let diff = distance(pixelL, pixelR_warped);
-        color = vec4<f32>(diff, diff, diff, 1.0);
-    } else {
-        color = vec4<f32>(mix(pixelL, pixelR_warped, uniforms.blend), 1.0);
-    }
-    
-    textureStore(outputTexture, id.xy, color);
-}
+// [Dynamic Compilation Active]
+// The Slang compiler will generate WGSL at runtime and update this tab.
 --></div>
                 <div data-tab="WebGPU Wrapper" data-lang="javascript"><!--
 class HomographyProcessor {
@@ -498,6 +462,96 @@ window.ModuleRenderer = HomographyProcessor;
         window.toggleVideoMaximize = () => {
             document.querySelector('.workspace').classList.toggle('video-maximized');
             setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        };
+
+        window.compileSlang = async () => {
+            const btn = document.getElementById('compile-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let slangSource = "";
+            editor.tabs.forEach(t => { if (t.name.includes("Slang")) slangSource = t.content.trim(); });
+            
+            if (slangSource && viewport) {
+                btn.innerText = "COMPILING...";
+                btn.classList.replace('bg-[#5b9bd5]', 'bg-[#1e2d40]');
+                try {
+                    const wgslCode = await viewport.compile(slangSource);
+                    window.log("WGSL text size: " + (wgslCode ? wgslCode.length : "empty"), "info");
+                    
+                    if (wgslCode) {
+                        const wgslTab = editor.tabs.find(t => t.name === "Compiled WGSL");
+                        if (wgslTab) {
+                            wgslTab.content = wgslCode;
+                            window.log("wgslTab populated successfully in background.", "info");
+                            if (editor.tabs[editor.activeTabIndex].name === "Compiled WGSL") {
+                                editor.editor.setValue(wgslCode);
+                            }
+                        } else {
+                            window.log("Could not find Compiled WGSL tab!", "error");
+                        }
+                    } else {
+                        window.log("Slang generated empty wgsl string.", "warn");
+                    }
+                } catch (err) {
+                    window.log("Compilation Error: " + err.message, "error");
+                }
+                btn.innerText = "COMPILE";
+                btn.classList.replace('bg-[#1e2d40]', 'bg-[#5b9bd5]');
+            } else {
+                window.log("Viewport or Slang Source not found.", "error");
+            }
+        };
+
+        window.runShader = async () => {
+            const btn = document.getElementById('run-btn');
+            const editor = document.querySelector('slang-editor');
+            const viewport = document.querySelector('slang-viewport');
+            
+            let wgslCode = "", jsCode = "";
+            editor.tabs.forEach(t => {
+                if (t.name === "Compiled WGSL") wgslCode = t.content.trim();
+                if (t.name.includes("Wrapper")) jsCode = t.content.trim();
+            });
+
+            if (wgslCode && jsCode) {
+                btn.innerText = "RUNNING...";
+                btn.classList.replace('bg-[#10b981]', 'bg-[#1e2d40]');
+                try {
+                    const script = document.createElement('script');
+                    script.textContent = jsCode;
+                    document.body.appendChild(script);
+
+                    setTimeout(() => {
+                        if (window.ModuleRenderer) {
+                            window.engineInstance = new window.ModuleRenderer(viewport.device, viewport.context, wgslCode);
+                            viewport.drawFrame = () => {
+                                viewport.updateCanvasSize();
+                                if (window.engineInstance) window.engineInstance.render();
+                            };
+                            
+                            // Start continuous animation loop for dynamic video content 
+                            window.isAnimating = true;
+                            const renderLoop = () => {
+                                if (window.isAnimating && viewport.drawFrame) {
+                                    viewport.drawFrame();
+                                    requestAnimationFrame(renderLoop);
+                                }
+                            };
+                            renderLoop();
+                            
+                            window.log("Pipeline instantiated and running.", "info");
+                        }
+                        btn.innerText = "RUN";
+                        btn.classList.replace('bg-[#1e2d40]', 'bg-[#10b981]');
+                    }, 100);
+                } catch (err) {
+                    window.log("Execution Error: " + err.message, "error");
+                    btn.innerText = "ERROR";
+                }
+            } else {
+                window.log("Missing WGSL or Wrapper JS.", "error");
+            }
         };
 
         window.setHMode = (m) => {
