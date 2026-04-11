@@ -511,12 +511,10 @@ class YUVProcessor {
         window.activeProcessor = this;
         
         // Slang WGSL backend drops [vk::binding] attributes for custom struct intrinsics (like TextureExternal).
-        // HACK: We explicitly patch the binding here via Regex before handing it to WebGPU.
+        // HACK RESOLVED: This is now automatically Polyfilled during compile() mapping by tutorial-engine.js.
         // See: https://github.com/shader-slang/slang/issues/5933 (WGSL backend drops binding metadata on struct inputs)
-        const patchedCode = wgslCode.replace(/var\s+(\w+)\s*:\s*texture_external\s*;/g, '@group(0) @binding(1) var $1 : texture_external;')
-                                    .replace(/texture_storage_2d<rgba32float,\s*read_write>/g, 'texture_storage_2d<rgba8unorm, write>');
         
-        this.shaderModule = device.createShaderModule({ code: patchedCode });
+        this.shaderModule = device.createShaderModule({ code: wgslCode });
         this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
 
         this.outTexture = device.createTexture({

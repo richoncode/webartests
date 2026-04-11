@@ -281,7 +281,13 @@ class SlangViewport extends HTMLElement {
             const composite = session.createCompositeComponentType([module, entryPoint]);
             
             // 4. Get WGSL
-            const wgsl = composite.getTargetCode(0);
+            let wgsl = composite.getTargetCode(0);
+            
+            // 5. Global WGSL Polyfill Layer (HACK for Slang WebGPU backend bugs)
+            if (wgsl && wgsl.length > 0) {
+                wgsl = wgsl.replace(/var\s+(\w+)\s*:\s*texture_external\s*;/g, '@group(0) @binding(1) var $1 : texture_external;')
+                           .replace(/texture_storage_2d<rgba32float,\s*read_write>/g, 'texture_storage_2d<rgba8unorm, write>');
+            }
             
             if (!wgsl || wgsl.length === 0) {
                 console.warn("[SlangEngine] getTargetCode(0) returned empty string.");
