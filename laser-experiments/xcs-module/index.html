@@ -29,6 +29,17 @@
             justify-content: space-between;
             align-items: center;
         }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .coords-display {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            color: var(--primary);
+            background: rgba(91, 155, 213, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 120px;
+            text-align: center;
+        }
         h1 { margin: 0; font-size: 20px; color: #fff; font-weight: 600; }
         .back-link { color: #555; text-decoration: none; font-size: 13px; }
         .back-link:hover { color: #aaa; }
@@ -255,13 +266,16 @@
 </head>
 <body>
     <div class="header">
-        <h1>XCS Module Validation Tool <span style="font-size: 12px; opacity: 0.4; font-weight: normal; margin-left:8px">VANTAGE-ALPHA</span></h1>
+        <div class="header-left">
+            <a href="../../" class="back-link">← Back</a>
+            <h1>XCS Module Validation <span style="font-size: 12px; opacity: 0.4; font-weight: normal; margin-left:8px">VANTAGE-ALPHA</span></h1>
+            <div id="mouseCoords" class="coords-display">X: 0.00 Y: 0.00</div>
+        </div>
         <div style="display: flex; align-items: center; gap: 12px;">
             <button class="toggle-btn" onclick="testExport()" style="background: var(--success); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;">Test Export (PNG + XCS)</button>
             <button class="toggle-btn" onclick="textCalExport()" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Export 5-size text calibration .xcs">Text Cal Export</button>
             <button class="toggle-btn" onclick="previewTextCal()" style="background: #f59e0b; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Preview text cal in canvas (shared renderer)">Preview Text Cal</button>
             <a href="./xcs-format.html" class="back-link" style="margin-right: 12px;">XCS Format Specs</a>
-            <a href="../../" class="back-link">← Back to Experiments</a>
         </div>
     </div>
 
@@ -454,11 +468,17 @@
         });
 
         window.addEventListener('mousemove', e => {
-            if (!isPanning) return;
+            // Update Mouse Coordinates (XCS bed system: 0-115mm)
             const p = getSVGPoint(e.clientX, e.clientY);
+            if (p) {
+                document.getElementById('mouseCoords').textContent = `X: ${p.x.toFixed(2)} Y: ${p.y.toFixed(2)}`;
+            }
+
+            if (!isPanning) return;
+            const pPan = getSVGPoint(e.clientX, e.clientY);
             const pLast = getSVGPoint(lastMouse.x, lastMouse.y);
-            view.x += (p.x - pLast.x);
-            view.y += (p.y - pLast.y);
+            view.x += (pPan.x - pLast.x);
+            view.y += (pPan.y - pLast.y);
             lastMouse = { x: e.clientX, y: e.clientY };
             applyTransform();
         });
@@ -658,22 +678,39 @@
                 log("PROJECT Init", !!project.canvasId && project.canvas[0].id === project.canvasId, "ID: " + project.canvasId.slice(0,8), "Project root must contain a valid canvasId.", "INIT", "Verifies project instance creation, UUID generation, and root canvas mapping for XCS v1.5.8.", "internal");
 
                 // --- TOP ROW: TEXT ---
-                // Header centered on 115mm bed (115/2 = 57.5)
+                // Text remains CENTER anchored as per locked-down logic (XCSText.bake calculates its own x/y)
                 const textItem = project.addItem('TEXT', { x: 57.5, y: 17, text: "XCS VANTAGE-ALPHA", width: 90, align: "center", layerColor: "#5b9bd5", params: { power: 10, speed: 115 } });
                 textItem.display.testId = "TEXT";
                 const hasBaking = textItem.display.charJSONs && textItem.display.charJSONs.length > 0;
                 log("TEXT Baking", hasBaking && !!textItem.display.fontData, textItem.display.width.toFixed(1) + "mm wide", "VANTAGE-ALPHA mandate: TEXT MUST contain baked 'charJSONs' and 'fontData' metrics.", "TEXT", "Validates the technical font baking engine, ensuring all glyphs are converted to hardware-compliant path geometry.", "core");
 
                 // --- MIDDLE ROW: VECTORS (SCORE/ENGRAVE) ---
-                const score = project.addItem('RECT', { x: 28.75, y: 51.7, width: 10, height: 10, processingType: "VECTOR_ENGRAVING", layerColor: "#8b5cf6", params: { power: 20, speed: 80 } });
+                // Layout Verification: 3x3mm box above the SCORE rectangle, 2mm gap, horizontally centered
+                // Now using TOP-LEFT logic: 
+                // score is at 28.75, 51.7. 
+                // scoreVerify (3x3) should be at x: 28.75 + (10/2) - (3/2) = 32.25
+                // y: 51.7 - 2 (gap) - 3 (size) = 46.7
+                const scoreX = 28.75, scoreY = 51.7, scoreSize = 10;
+                const vSize = 3, vGap = 2;
+                
+                const scoreVerify = project.addItem('RECT', { 
+                    x: scoreX + (scoreSize/2) - (vSize/2), 
+                    y: scoreY - vGap - vSize, 
+                    width: vSize, height: vSize, 
+                    layerColor: "#5b9bd5", params: { power: 10, speed: 200 } 
+                });
+                scoreVerify.display.testId = "SCORE_VERIFY";
+
+                const score = project.addItem('RECT', { x: scoreX, y: scoreY, width: scoreSize, height: scoreSize, processingType: "VECTOR_ENGRAVING", layerColor: "#8b5cf6", params: { power: 20, speed: 80 } });
                 score.display.testId = "SCORE";
                 log("RECT / SCORE", score.type === 'RECT' && score.laser.processingType === "VECTOR_ENGRAVING", "VECTOR_ENGRAVING", "Score mode must map to RECT + VECTOR_ENGRAVING.", "SCORE", "Tests standard geometry with Score (Vector Engraving) processing logic for line-based machine paths.", "core");
 
-                const engrave = project.addItem('CIRCLE', { x: 57.5, y: 51.7, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
+                // Offset other items to maintain visual row alignment (using top-left)
+                const engrave = project.addItem('CIRCLE', { x: 51.5, y: 50.7, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
                 engrave.display.testId = "ENGRAVE";
                 log("CIRCLE / ENGRAVE", engrave.display.isFill === true, "isFill: true", "Engrave mode requires path closing and fill property enabled.", "ENGRAVE", "Validates Circle geometry with Fill Engrave logic, ensuring the 'isFill' mandate is correctly handled.", "core");
 
-                const path = project.addItem('PATH', { x: 86.25, y: 51.7, width: 12, height: 12, dPath: "M 0 0 L 10 0 L 5 10 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
+                const path = project.addItem('PATH', { x: 80.25, y: 50.7, width: 12, height: 12, dPath: "M 0 0 L 12 0 L 6 12 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
                 path.display.testId = "CLOSED_PATH";
                 log("Closed Filled Path", !!path.display.dPath, "dPath exists", "Hardware Exporter requires baked 'dPath' string for PATH objects.", "CLOSED_PATH", "Ensures that complex closed vector geometries contain the raw SVG path data required for machine interpretation.", "core");
 
@@ -684,12 +721,12 @@
                     const a = i * 0.8;
                     spiralD += `L ${r * Math.cos(a)} ${r * Math.sin(a)} `;
                 }
-                const spiral = project.addItem('PATH', { x: 28.75, y: 86.2, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
+                const spiral = project.addItem('PATH', { x: 21.25, y: 78.7, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
                 spiral.display.testId = "SPIRAL";
                 log("OPEN PATH (Spiral)", spiral.display.isFill === false, "isFill: false", "Open paths must not have fill properties enabled for vector scoring.", "SPIRAL", "Validates non-closed path geometries, confirming they remain unfilled for physical scoring on the hardware plate.", "core");
 
                 const bitmap = project.addItem('BITMAP', { 
-                    x: 57.5, y: 86.2, width: 15, height: 15, 
+                    x: 50.0, y: 78.7, width: 15, height: 15, 
                     processingType: "COLOR_ENGRAVE", 
                     layerColor: "#ec4899",
                     params: { power: 60, speed: 200, density: 300 },
@@ -699,7 +736,7 @@
                 bitmap.display.testId = "BITMAP";
                 log("BITMAP / COLOR", !!bitmap.display.base64 && bitmap.laser.processingType === "COLOR_ENGRAVE", "64x64 RAMP", "Color Engrave mode requires persistent 'base64' source data.", "BITMAP", "Verifies the integration of high-resolution raster assets with grayscale (Color Engrave) machine instructions.", "core");
 
-                const img = project.addItem('IMAGE', { x: 86.25, y: 86.2, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
+                const img = project.addItem('IMAGE', { x: 80.25, y: 80.2, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
                 img.display.testId = "IMAGE";
                 log("IMAGE Passthrough", img.type === 'RECT', "mapped to RECT", "Unsupported 'IMAGE' type should fallback to generic RECT container.", "IMAGE", "Tests the logic bridge that fallbacks generic Image types into standard Rect containers for hardware safety.", "internal");
 

@@ -114,8 +114,8 @@ export class XCSCanvas {
 
   _renderRect(p) {
     const el = this._svgEl('rect');
-    el.setAttribute('x', p.x - p.w / 2);
-    el.setAttribute('y', p.y - p.h / 2);
+    el.setAttribute('x', p.x);
+    el.setAttribute('y', p.y);
     el.setAttribute('width', p.w);
     el.setAttribute('height', p.h);
     return el;
@@ -123,8 +123,8 @@ export class XCSCanvas {
 
   _renderCircle(p) {
     const el = this._svgEl('circle');
-    el.setAttribute('cx', p.x);
-    el.setAttribute('cy', p.y);
+    el.setAttribute('cx', p.x + p.w / 2);
+    el.setAttribute('cy', p.y + p.h / 2);
     el.setAttribute('r', p.w / 2);
     return el;
   }
@@ -132,7 +132,18 @@ export class XCSCanvas {
   _renderPath(p) {
     const el = this._svgEl('path');
     el.setAttribute('d', p.dPath);
-    el.setAttribute('transform', `translate(${p.x - p.w / 2}, ${p.y - p.h / 2})`);
+    el.setAttribute('transform', `translate(${p.x}, ${p.y})`);
+    return el;
+  }
+
+  _renderBitmap(p) {
+    const el = this._svgEl('image');
+    el.setAttribute('x', p.x);
+    el.setAttribute('y', p.y);
+    el.setAttribute('width', p.w);
+    el.setAttribute('height', p.h);
+    el.setAttribute('href', p.base64);
+    el.setAttribute('preserveAspectRatio', 'none');
     return el;
   }
 
@@ -193,45 +204,6 @@ export class XCSCanvas {
 
     // Text group needs pointer events for hover
     g.style.pointerEvents = 'bounding-box';
-    g.style.cursor = 'help';
-    return g;
-  }
-
-  /**
-   * Render a BITMAP item.
-   * Draws a dashed bounding box + the base64 image.
-   */
-  _renderBitmap(p) {
-    const g = this._svgEl('g');
-
-    // Dashed bounding box
-    const bg = this._svgEl('rect');
-    bg.setAttribute('x', p.x - p.w / 2);
-    bg.setAttribute('y', p.y - p.h / 2);
-    bg.setAttribute('width', p.w);
-    bg.setAttribute('height', p.h);
-    bg.setAttribute('fill', 'transparent');
-    bg.setAttribute('stroke', p.layerColor);
-    bg.setAttribute('stroke-width', '0.2');
-    bg.setAttribute('stroke-dasharray', '1, 1');
-    g.appendChild(bg);
-
-    // Raster image
-    const img = this._svgEl('image');
-    img.setAttribute('x', p.x - p.w / 2);
-    img.setAttribute('y', p.y - p.h / 2);
-    img.setAttribute('width', p.w);
-    img.setAttribute('height', p.h);
-    img.setAttribute('preserveAspectRatio', 'none');
-    img.setAttribute('href', p.base64);
-    // SVG 1.1 xlink fallback for broader compatibility
-    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', p.base64);
-    img.style.opacity = '1';
-    img.style.visibility = 'visible';
-    img.style.imageRendering = 'pixelated';
-    g.appendChild(img);
-
-    g.style.pointerEvents = 'auto';
     g.style.cursor = 'help';
     return g;
   }
