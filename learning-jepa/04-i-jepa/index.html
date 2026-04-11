@@ -99,6 +99,26 @@
   </section>
 
   <section>
+    <h2>The Encoder-Predictor Triplet</h2>
+    <p>JEPA consists of three core components: the <b>Context Encoder</b>, the <b>Target Encoder</b>, and the <b>Predictor</b>. A major challenge in non-generative learning is <b>Representation Collapse</b>—where the encoders "cheat" by outputting a constant vector for every input, reducing the loss to zero without learning anything.</p>
+    
+    <div class="sim-container">
+      <div class="controls">
+        <div style="flex: 1; font-size: 11px; color: #666; font-family: 'SF Mono';">COLLAPSE SANDBOX: MANAGE GRADIENT FLOW</div>
+        <button id="btn-sg-off" class="mode-btn" onclick="setStopGradient(false)">Stop-Gradient: OFF (Cheating)</button>
+        <button id="btn-sg-on" class="mode-btn active" onclick="setStopGradient(true)">Stop-Gradient: ON (SOTA)</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: center;">
+        <canvas id="tripletCanvas" style="height: 250px;"></canvas>
+        <div class="analysis-box">
+          <h4 id="sg-title">SOTA: Asymmetric Learning</h4>
+          <p id="sg-text">With the <b>Stop-Gradient</b> active, the Target Encoder is updated via EMA (Exponential Moving Average). This forces the Context Encoder to 'work harder' to match a stable target, preventing collapse and ensuring the latent space covers the full data manifold.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>The "Secret Sauce": EMA Update</h2>
     <p>To prevent <span class="term" data-definition="A failure mode where the model ignores input and outputs a constant vector to 'cheat' the loss function.">Representation Collapse</span>, I-JEPA uses an asymmetric teacher-student setup. The student (context encoder) is updated via gradients, while the teacher (target encoder) is updated via an <span class="term" data-definition="A 'slow teacher' update for the target encoder that provides stable targets for the student encoder.">Exponential Moving Average (EMA)</span>.</p>
     <pre><code><span class="comment"># PyTorch Snippet: The EMA Update</span>
@@ -116,8 +136,30 @@
 
 <script>
   const canvas = document.getElementById('maskCanvas');
+  const tripletCanvas = document.getElementById('tripletCanvas');
   const ctx = canvas.getContext('2d');
+  const tCtx = tripletCanvas.getContext('2d');
+  
   let mode = 'semantic';
+  let stopGradient = true;
+  let points = [];
+  for(let i=0; i<50; i++) points.push({ x: Math.random()*100 - 50, y: Math.random()*100 - 50 });
+
+  function setStopGradient(val) {
+    stopGradient = val;
+    document.getElementById('btn-sg-on').classList.toggle('active', val);
+    document.getElementById('btn-sg-off').classList.toggle('active', !val);
+    
+    const title = document.getElementById('sg-title');
+    const text = document.getElementById('sg-text');
+    if (val) {
+      title.innerText = "SOTA: Asymmetric Learning";
+      text.innerText = "With the Stop-Gradient active, the Target Encoder is updated via EMA. This forces the Context Encoder to 'work harder' to match a stable target, preventing collapse.";
+    } else {
+      title.innerText = "Collapse: Trivial Solution";
+      text.innerText = "Without a Stop-Gradient, the student and teacher encoders simply agree to output a constant value. The latent space 'collapses' into a single point, learning nothing about the data.";
+    }
+  }
 
   function setMode(m) {
     mode = m;
@@ -137,15 +179,58 @@
   }
 
   function resize() {
-    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    [canvas, tripletCanvas].forEach(c => {
+      c.width = c.offsetWidth * window.devicePixelRatio;
+      c.height = c.offsetHeight * window.devicePixelRatio;
+      c.getContext('2d').setTransform(1, 0, 0, 1, 0, 0);
+      c.getContext('2d').scale(window.devicePixelRatio, window.devicePixelRatio);
+    });
   }
   window.addEventListener('resize', resize);
   resize();
 
   let time = 0;
+
+  function drawTriplet() {
+    const w = tripletCanvas.width / window.devicePixelRatio;
+    const h = tripletCanvas.height / window.devicePixelRatio;
+    tCtx.clearRect(0, 0, w, h);
+
+    // Update Points (Simulate Learning)
+    points.forEach(p => {
+      if (!stopGradient) {
+        // Collapse to center
+        p.x *= 0.98;
+        p.y *= 0.98;
+      } else {
+        // Expand/Maintain manifold (Wander slightly)
+        p.x += (Math.random() - 0.5) * 2;
+        p.y += (Math.random() - 0.5) * 2;
+        // Keep in bounds
+        const dist = Math.sqrt(p.x*p.x + p.y*p.y);
+        if (dist > 80) { p.x *= 0.9; p.y *= 0.9; }
+      }
+    });
+
+    // Draw Latent Manifold
+    tCtx.strokeStyle = '#222';
+    tCtx.beginPath(); tCtx.arc(w/2, h/2, 80, 0, Math.PI*2); tCtx.stroke();
+    
+    tCtx.fillStyle = stopGradient ? '#5b9bd5' : '#e74c3c';
+    points.forEach(p => {
+      tCtx.beginPath();
+      tCtx.arc(w/2 + p.x, h/2 + p.y, 3, 0, Math.PI*2);
+      tCtx.fill();
+    });
+
+    tCtx.fillStyle = '#fff';
+    tCtx.font = '10px SF Mono';
+    tCtx.textAlign = 'center';
+    tCtx.fillText(stopGradient ? "STABLE MANIFOLD" : "LATENT COLLAPSE", w/2, h/2 + 110);
+  }
+
   function draw() {
+    drawTriplet();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const w = canvas.width / window.devicePixelRatio;
     const h = canvas.height / window.devicePixelRatio;

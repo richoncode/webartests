@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Module 11: Stochastic Futures &amp; Latent Variable z — Learning JEPA</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; padding: 60px 24px 80px; }
+  .page { max-width: 820px; margin: 0 auto; }
+  .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+  .nav.bottom { margin-top: 80px; margin-bottom: 0; }
+  .nav a { color: #555; text-decoration: none; font-size: 14px; }
+  .nav a:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .subtitle { color: #888; font-size: 18px; margin-bottom: 48px; line-height: 1.6; }
+
+  section { margin-bottom: 64px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; color: #5b9bd5; }
+  p { margin-bottom: 20px; color: #ccc; }
+
+  .sim-container { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; }
+  canvas { background: #000; display: block; width: 100%; height: 350px; border-radius: 8px; margin-bottom: 24px; }
+  
+  .controls { background: #111; padding: 20px; border-radius: 12px; border: 1px solid #222; }
+  .control-row { display: flex; align-items: center; gap: 20px; }
+  .control-row label { font-size: 12px; font-weight: 700; color: #5b9bd5; text-transform: uppercase; letter-spacing: 1px; min-width: 140px; }
+  input[type="range"] { flex: 1; accent-color: #5b9bd5; }
+  .z-val { font-family: 'SF Mono', monospace; font-size: 14px; color: #fff; min-width: 40px; }
+
+  .analysis-box { background: #161616; padding: 20px; border-radius: 12px; border: 1px solid #222; margin-top: 24px; }
+  .analysis-box h4 { font-size: 12px; color: #5b9bd5; text-transform: uppercase; margin-bottom: 8px; }
+  .analysis-box p { font-size: 13px; color: #aaa; margin: 0; }
+
+  .term { border-bottom: 1px dotted #5b9bd5; color: #5b9bd5; cursor: help; position: relative; }
+  .term:hover::after {
+    content: attr(data-definition);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px; border-radius: 8px; font-size: 13px; width: 240px; z-index: 100; border: 1px solid #333;
+  }
+
+  .cite { color: #555; font-size: 12px; margin-top: 40px; border-top: 1px solid #1a1a1a; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="nav">
+    <a href="../">← Back</a>
+    <a href="../12-think-jepa/">Next Module →</a>
+  </div>
+  <h1>Module 11: Stochastic Futures &amp; Latent Variable z</h1>
+  <p class="subtitle">Handling uncertainty: How JEPA predicts multiple valid outcomes without producing "blurry" averages.</p>
+
+  <section>
+    <h2>The Problem of Stochasticity</h2>
+    <p>In the real world, the same action can lead to different results. If a ball hits a peg, it might fall left or it might fall right. Generative models (like MAE) often produce <b>blurry predictions</b> because they attempt to "average" all possible futures.</p>
+    <p>JEPA handles this by introducing a <b>Latent Variable $z$</b>. The predictor receives both the context and $z$. By varying $z$, the model can explore different sharp, physically valid future trajectories rather than a single blurry one.</p>
+  </section>
+
+  <section>
+    <h2>Interactive Simulation: "The Branching Future"</h2>
+    <div class="sim-container">
+      <canvas id="zCanvas"></canvas>
+      <div class="controls">
+        <div class="control-row">
+          <label>Latent Variable (z)</label>
+          <input type="range" id="zSlider" min="-100" max="100" value="0">
+          <div class="z-val" id="zVal">0.00</div>
+        </div>
+      </div>
+      <div class="analysis-box">
+        <h4 id="analysis-title">Modeling Uncertainty</h4>
+        <p id="analysis-text">Adjust the slider <b>z</b> to see different imagined futures. JEPA doesn't predict 'a bit of both'; it predicts a single, sharp trajectory conditioned on the latent variable. This allows agents to plan for specific scenarios (e.g., 'What if the car slips?' vs 'What if the car grips?').</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cite">
+    References: [13] Introduction to Latent Variable Energy-Based Models, [5] Deep Dive into Yann LeCun's JEPA.
+  </div>
+  <div class="nav bottom"><div style="flex-grow: 1;"></div><a href="../12-think-jepa/">Next Module →</a></div>
+</div>
+
+<script>
+  const canvas = document.getElementById('zCanvas');
+  const ctx = canvas.getContext('2d');
+  const slider = document.getElementById('zSlider');
+  const zValDisplay = document.getElementById('zVal');
+
+  function resize() {
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let time = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width / window.devicePixelRatio;
+    const h = canvas.height / window.devicePixelRatio;
+    time += 0.02;
+
+    const z = parseFloat(slider.value) / 100;
+    zValDisplay.innerText = z.toFixed(2);
+
+    // Draw Peg
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(w/2, 150, 15, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#444'; ctx.stroke();
+
+    // Draw Ball (Source)
+    const startX = w/2;
+    const startY = 50;
+    ctx.fillStyle = '#5b9bd5';
+    ctx.beginPath(); ctx.arc(startX, startY, 8, 0, Math.PI*2); ctx.fill();
+
+    // Draw Predicted Trajectories
+    // We show the "Average" (Generative) vs the "Conditioned" (JEPA)
+    
+    // 1. Conditioned Trajectory (Sharp)
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(w/2, 130);
+    
+    // Branching logic based on z
+    const branchX = w/2 + (z * 150);
+    const branchY = 300;
+    
+    // Draw Bezier curve for smooth path
+    ctx.bezierCurveTo(w/2, 180, branchX, 180, branchX, branchY);
+    ctx.stroke();
+    
+    // 2. Ghost "Average" Futures (MAE Blur)
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.1)';
+    ctx.lineWidth = 1;
+    for(let i=-1; i<=1; i+=0.2) {
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(w/2, 130);
+      ctx.bezierCurveTo(w/2, 180, w/2 + (i*150), 180, w/2 + (i*150), branchY);
+      ctx.stroke();
+    }
+
+    // Ball at end of prediction
+    ctx.fillStyle = '#10b981';
+    ctx.beginPath(); ctx.arc(branchX, branchY, 8, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '10px SF Mono'; ctx.textAlign = 'center';
+    ctx.fillText("PREDICTED FUTURE", branchX, branchY + 25);
+
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+</script>
+</body>
+</html>

@@ -151,11 +151,20 @@
     if (state.x < 50) { state.x = 50; state.v = 0; }
     if (state.x > 350) { state.x = 350; state.v = 0; }
 
-    // Internal Prediction (t+10)
-    let pv = state.v + action * 1.0;
-    pv *= Math.pow(0.95, 10);
-    prediction.x = state.x + pv * 10;
-    prediction.v = pv;
+    // Internal Multi-Step Rollout (t+1, t+2, t+3)
+    // We visualize three "imagined" future states
+    prediction.rollout = [];
+    let curX = state.x;
+    let curV = state.v;
+    for (let i = 1; i <= 3; i++) {
+      // Simulate 10 frames of motion per rollout step
+      for (let j = 0; j < 10; j++) {
+        curV += action * 0.1;
+        curV *= 0.95;
+        curX += curV;
+      }
+      prediction.rollout.push({ x: curX, v: curV });
+    }
   }
 
   function draw() {
@@ -167,38 +176,37 @@
     ctx.strokeStyle = '#222';
     ctx.beginPath(); ctx.moveTo(0, 250); ctx.lineTo(w, 250); ctx.stroke();
 
-    // DRAW PREDICTION
+    // DRAW PREDICTION (Tree of imagined futures)
     if (mode === 'generative') {
-      // Draw blurry, noisy prediction
-      ctx.save();
-      ctx.globalAlpha = 0.4;
-      ctx.filter = 'blur(8px)';
-      ctx.fillStyle = '#e74c3c';
-      ctx.fillRect(prediction.x - 25, 205, 50, 50);
-      
-      // Hallucination Artifacts
-      ctx.filter = 'none';
-      for(let i=0; i<10; i++) {
-        ctx.fillStyle = `rgba(231, 76, 60, ${Math.random()})`;
-        ctx.fillRect(prediction.x + (Math.random()-0.5)*60, 210 + (Math.random()-0.5)*40, 5, 5);
-      }
-      ctx.restore();
-      
+      // Generative models struggle with compounding error in rollouts
+      prediction.rollout.forEach((p, idx) => {
+        ctx.save();
+        ctx.globalAlpha = 0.4 / (idx + 1);
+        ctx.filter = `blur(${4 * (idx + 1)}px)`;
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(p.x - 25, 205, 50, 50);
+        ctx.restore();
+      });
       ctx.fillStyle = '#e74c3c';
       ctx.font = '10px SF Mono';
-      ctx.fillText("PIXEL HALLUCINATION (HEAVY)", prediction.x - 40, 190);
+      ctx.fillText("COMPOUNDING PIXEL ERROR", prediction.rollout[0].x - 40, 180);
     } else {
-      // Draw clean, sharp latent shadow
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-      ctx.strokeStyle = '#10b981';
-      ctx.setLineDash([4, 4]);
-      ctx.fillRect(prediction.x - 20, 210, 40, 40);
-      ctx.strokeRect(prediction.x - 20, 210, 40, 40);
+      // Act-JEPA: Sharp, multi-step latent rollouts
+      prediction.rollout.forEach((p, idx) => {
+        ctx.fillStyle = `rgba(16, 185, 129, ${0.4 / (idx + 1)})`;
+        ctx.strokeStyle = `rgba(16, 185, 129, ${1.0 / (idx + 1)})`;
+        ctx.setLineDash([2, 2]);
+        ctx.strokeRect(p.x - 20, 210, 40, 40);
+        ctx.fillRect(p.x - 20, 210, 40, 40);
+        
+        ctx.fillStyle = `rgba(16, 185, 129, ${0.8 / (idx + 1)})`;
+        ctx.font = '8px SF Mono';
+        ctx.fillText(`t+${idx+1}`, p.x - 10, 205);
+      });
       ctx.setLineDash([]);
-      
       ctx.fillStyle = '#10b981';
       ctx.font = '10px SF Mono';
-      ctx.fillText("LATENT VECTOR (LIGHT)", prediction.x - 30, 190);
+      ctx.fillText("MENTAL ROLLOUT (LATENT)", prediction.rollout[0].x - 40, 180);
     }
 
     // Draw Actual Block (The Ground Truth)

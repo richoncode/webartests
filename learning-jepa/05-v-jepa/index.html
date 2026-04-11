@@ -75,6 +75,28 @@
     </div>
   </section>
 
+  <section>
+    <h2>Latent Persistence</h2>
+    <p>A true World Model understands that objects continue to exist even when they are occluded. While a generative model must "hallucinate" pixels to fill gaps, JEPA maintains a stable latent representation of the object's identity and state.</p>
+    
+    <div class="sim-container" style="height: auto;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <div class="sim-label" style="font-size: 10px; color: #444; margin-bottom: 8px;">INPUT: RAW PIXELS (OCCLUDED)</div>
+          <canvas id="persistenceCanvas" style="height: 200px; width: 100%;"></canvas>
+        </div>
+        <div>
+          <div class="sim-label" style="font-size: 10px; color: #5b9bd5; margin-bottom: 8px;">LATENT: SALIENCY MAP (PERSISTENCE)</div>
+          <canvas id="saliencyCanvas" style="height: 200px; width: 100%;"></canvas>
+        </div>
+      </div>
+      <div class="analysis-box">
+        <h4 style="color: #10b981;">Proving Persistence</h4>
+        <p>Watch as the ball passes behind the wall. In the <b>Input</b> view, the pixels are literally gone. However, the <b>Latent Saliency Map</b> continues to track the object's probability distribution using inertia and world-model physics. This is why V-JEPA is robust for navigation in dynamic environments.</p>
+      </div>
+    </div>
+  </section>
+
   <div class="cite">
     References: [19] V-JEPA 2: Building Video World Models, [23] MC-JEPA: Motion and Content Learning (OpenReview), [40] How V-JEPA Works.
   </div>
@@ -84,6 +106,11 @@
 <script>
   let scene, camera, renderer, voxels = [], ball;
   const container = document.getElementById('three-container');
+  const persistenceCanvas = document.getElementById('persistenceCanvas');
+  const saliencyCanvas = document.getElementById('saliencyCanvas');
+  const pCtx = persistenceCanvas.getContext('2d');
+  const sCtx = saliencyCanvas.getContext('2d');
+  
   const gridSize = 6;
   let mode = 'random';
 
@@ -96,6 +123,8 @@
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
+    
+    // ... rest of 3D setup remains same ...
 
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
@@ -197,15 +226,12 @@
     requestAnimationFrame(animate);
     const time = Date.now() * 0.001;
     
-    // Move ball in a path through X, Y, T
-    // Since T is just an axis in our 3D visualization, the ball moves through the grid
+    // ... rest of 3D animation remains same ...
     const ballX = Math.sin(time) * 4;
     const ballY = Math.cos(time * 0.5) * 4;
     const ballT = Math.sin(time * 0.3) * 4;
     ball.position.set(ballX, ballY, ballT);
 
-    // Check if ball is "masked" by current voxels
-    // In our 3D view, we show the ball as semi-transparent if it's inside a masked voxel
     let isHidden = false;
     voxels.forEach(v => {
       if (v.userData.isMasked) {
@@ -218,6 +244,50 @@
 
     scene.rotation.y += 0.005;
     renderer.render(scene, camera);
+
+    drawPersistence(time);
+  }
+
+  function drawPersistence(time) {
+    const pw = persistenceCanvas.width / window.devicePixelRatio;
+    const ph = persistenceCanvas.height / window.devicePixelRatio;
+    const sw = saliencyCanvas.width / window.devicePixelRatio;
+    const sh = saliencyCanvas.height / window.devicePixelRatio;
+
+    pCtx.clearRect(0, 0, pw, ph);
+    sCtx.clearRect(0, 0, sw, sh);
+
+    const bx = (time * 100) % (pw + 100) - 50;
+    const by = ph / 2;
+    const wallX = pw / 2 - 40;
+    const wallW = 80;
+
+    // 1. Draw Ground Truth / Occlusion
+    pCtx.fillStyle = '#333';
+    pCtx.fillRect(wallX, 0, wallW, ph); // Wall
+    
+    const isBehind = bx + 10 > wallX && bx - 10 < wallX + wallW;
+    if (!isBehind) {
+      pCtx.fillStyle = '#10b981';
+      pCtx.beginPath(); pCtx.arc(bx, by, 10, 0, Math.PI*2); pCtx.fill();
+    }
+
+    // 2. Draw Latent Saliency
+    sCtx.fillStyle = '#111';
+    sCtx.fillRect(wallX, 0, wallW, sh); // Wall placeholder
+    
+    // Draw "Uncertainty Cloud" during occlusion
+    const opacity = isBehind ? 0.4 : 0.8;
+    const size = isBehind ? 15 : 10;
+    sCtx.fillStyle = `rgba(91, 155, 213, ${opacity})`;
+    sCtx.shadowBlur = isBehind ? 20 : 0;
+    sCtx.shadowColor = '#5b9bd5';
+    sCtx.beginPath(); sCtx.arc(bx, by, size, 0, Math.PI*2); sCtx.fill();
+    sCtx.shadowBlur = 0;
+
+    sCtx.fillStyle = '#5b9bd5';
+    sCtx.font = '10px SF Mono';
+    sCtx.fillText(isBehind ? "LATENT TRACKING" : "OBSERVED", bx - 30, by - 20);
   }
 
   init();
@@ -225,7 +295,14 @@
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
+
+    [persistenceCanvas, saliencyCanvas].forEach(c => {
+      c.width = c.offsetWidth * window.devicePixelRatio;
+      c.height = c.offsetHeight * window.devicePixelRatio;
+      c.getContext('2d').scale(window.devicePixelRatio, window.devicePixelRatio);
+    });
   });
+  window.dispatchEvent(new Event('resize'));
 </script>
 </body>
 </html>
