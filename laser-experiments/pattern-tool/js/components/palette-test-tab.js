@@ -4,6 +4,7 @@ import { XCSViewer } from '../viewer.js';
 import { UI } from '../utils.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
+import { XCSProject } from '../../../xcs-module/js/xcs-system.js';
 
 export const PaletteTestTab = {
   // Verified XCS Lato Metrics (from gradient-tab.js)
@@ -23,7 +24,7 @@ export const PaletteTestTab = {
       paletteId: 'laFont-1000lpcm',
       lpcm: 1000,
       swatchSize: 6,
-      numSizes: 10,
+      numSizes: 6,
       minSize: 1,
       shape: 'square',
       layout: 'line',
@@ -101,7 +102,8 @@ export const PaletteTestTab = {
         params.processingLightSource = laserSource; // Force sync with palette source
 
         const opts = {
-          x: CX + lx, y: CY + ly, width: swatchSize, height: swatchSize,
+          x: CX + lx - swatchSize / 2, y: CY + ly - swatchSize / 2, // Corrected to Top-Left
+          width: swatchSize, height: swatchSize,
           layerColor: entry.rgb, laserSource, params, isFill: true,
           extraDisplayData: { paletteName: palette.name, colorName: entry.label }
         };
@@ -121,7 +123,7 @@ export const PaletteTestTab = {
       let s = numSizes > 1 ? swatchSize - r * (swatchSize - minSize) / (numSizes - 1) : swatchSize;
       if (r > 0) {
         let sPrev = rowsData[r - 1].size;
-        currentY += (sPrev * 0.5) + (sPrev * 0.2) + (s * 0.5);
+        currentY += (sPrev * 0.5) + 1.0 + (s * 0.5); // Consistent 1mm gap
       }
       rowsData.push({ size: s, y: currentY });
     }
@@ -142,7 +144,7 @@ export const PaletteTestTab = {
       XCSExporter.addText(project, {
         text: headerText, x: CX, y: CY + startY - Math.max(10, swatchSize * 1.0),
         width: headerText.length * this.CHAR_WIDTH * scale, height: labelH,
-        fontSize: 72 * scale, scale, align: "center", layerColor: "#ffffff", laserSource, 
+        fontSize: 72 * scale, scale, align: "center", layerColor: XCSProject.DEFAULT_TEXT_COLOR, laserSource, 
         params: textParams, isFill: false
       });
     }
@@ -161,7 +163,7 @@ export const PaletteTestTab = {
         XCSExporter.addText(project, {
           text: rowLabel, x: labelX, y: CY + ly,
           height: labelH,
-          fontSize: 72 * scale, scale, align: "right", layerColor: "#ffffff", laserSource, 
+          fontSize: 72 * scale, scale, align: "right", layerColor: XCSProject.DEFAULT_TEXT_COLOR, laserSource, 
           params: textParams, isFill: false
         });
       }
@@ -173,7 +175,8 @@ export const PaletteTestTab = {
         params.processingLightSource = laserSource; // Force sync with palette source
 
         const opts = {
-          x: CX + lx, y: CY + ly, width: s, height: s,
+          x: CX + lx - s / 2, y: CY + ly - s / 2, // Corrected to Top-Left
+          width: s, height: s,
           layerColor: entry.rgb, laserSource, params, isFill: true,
           extraDisplayData: { paletteName: palette.name, colorName: entry.label }
         };
@@ -186,9 +189,9 @@ export const PaletteTestTab = {
           const labelH = 2.5 * cfg.labelScale; // Matched to row label size
           const scale = labelH / this.UNSCALED_HEIGHT;
           XCSExporter.addText(project, {
-            text: pLabel, x: CX + lx, y: CY + ly - s / 2 - labelH * 0.8,
+            text: pLabel, x: CX + lx, y: CY + ly - s / 2 - labelH * 0.8 - 2.0,
             height: labelH,
-            fontSize: 72 * scale, scale, align: "center", layerColor: "#ffffff", laserSource, 
+            fontSize: 72 * scale, scale, align: "center", layerColor: XCSProject.DEFAULT_TEXT_COLOR, laserSource, 
             params: textParams, isFill: false
           });
         }

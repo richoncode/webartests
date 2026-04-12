@@ -78,7 +78,7 @@ export const MandalaTab = {
     const isFill = cfg.renderMode === 'fill';
 
     const addShape = (lx, ly, r, type, color, entry, paletteName, colorName, idx, t) => {
-      const x = CX + lx, y = CY + ly;
+      const x = CX + lx - r, y = CY + ly - r; // Corrected to Top-Left
       usedColors.add(color);
       const params = PalMgr.getParams(cfg.paletteId, idx);
 
@@ -134,7 +134,7 @@ export const MandalaTab = {
 
     if (cfg.border) {
       XCSExporter.addRect(project, {
-        x: CX, y: CY, width: cfg.size, height: cfg.size,
+        x: CX - cfg.size / 2, y: CY - cfg.size / 2, width: cfg.size, height: cfg.size,
         layerColor: "#ffffff", laserSource, 
         isFill: false,
         params: { power: 10, speed: 100, repeat: 1, processingLightSource: laserSource },

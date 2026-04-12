@@ -90,6 +90,15 @@
           <canvas id="saliencyCanvas" style="height: 200px; width: 100%;"></canvas>
         </div>
       </div>
+
+      <div class="scrubber-box" style="background: #111; padding: 16px; border-radius: 12px; border: 1px solid #222; margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-size: 10px; font-weight: 700; color: #5b9bd5; text-transform: uppercase; font-family: 'SF Mono';">The Scrubber of Time: Recurrent Look-Ahead</div>
+          <div id="scrubVal" style="font-size: 10px; font-family: 'SF Mono'; color: #666;">t + 0 frames</div>
+        </div>
+        <input type="range" id="timeScrubber" min="0" max="40" value="0" style="width: 100%; accent-color: #5b9bd5;">
+      </div>
+
       <div class="analysis-box">
         <h4 style="color: #10b981;">Proving Persistence</h4>
         <p>Watch as the ball passes behind the wall. In the <b>Input</b> view, the pixels are literally gone. However, the <b>Latent Saliency Map</b> continues to track the object's probability distribution using inertia and world-model physics. This is why V-JEPA is robust for navigation in dynamic environments.</p>
@@ -257,37 +266,49 @@
     pCtx.clearRect(0, 0, pw, ph);
     sCtx.clearRect(0, 0, sw, sh);
 
+    const scrub = parseInt(document.getElementById('timeScrubber').value);
+    document.getElementById('scrubVal').innerText = `t + ${scrub} frames`;
+
     const bx = (time * 100) % (pw + 100) - 50;
     const by = ph / 2;
+    
+    // Future prediction based on scrub
+    const fx = bx + (scrub * 2); // Assume velocity 2px/frame
+    
     const wallX = pw / 2 - 40;
     const wallW = 80;
 
-    // 1. Draw Ground Truth / Occlusion
+    // 1. Draw Ground Truth / Occlusion (at current time t)
     pCtx.fillStyle = '#333';
     pCtx.fillRect(wallX, 0, wallW, ph); // Wall
-    
     const isBehind = bx + 10 > wallX && bx - 10 < wallX + wallW;
     if (!isBehind) {
       pCtx.fillStyle = '#10b981';
       pCtx.beginPath(); pCtx.arc(bx, by, 10, 0, Math.PI*2); pCtx.fill();
     }
 
-    // 2. Draw Latent Saliency
+    // 2. Draw Latent Saliency (at t + scrub)
     sCtx.fillStyle = '#111';
     sCtx.fillRect(wallX, 0, wallW, sh); // Wall placeholder
     
-    // Draw "Uncertainty Cloud" during occlusion
-    const opacity = isBehind ? 0.4 : 0.8;
-    const size = isBehind ? 15 : 10;
-    sCtx.fillStyle = `rgba(91, 155, 213, ${opacity})`;
-    sCtx.shadowBlur = isBehind ? 20 : 0;
+    const isFutureBehind = fx + 10 > wallX && fx - 10 < wallX + wallW;
+    
+    // Draw "Uncertainty Cloud"
+    // Uncertainty grows with scrub distance
+    const uncertainty = scrub * 0.8;
+    const opacity = isFutureBehind ? 0.4 : 0.8;
+    const size = 10 + uncertainty;
+    
+    sCtx.fillStyle = isFutureBehind ? `rgba(91, 155, 213, ${opacity})` : '#5b9bd5';
+    sCtx.shadowBlur = 10 + uncertainty;
     sCtx.shadowColor = '#5b9bd5';
-    sCtx.beginPath(); sCtx.arc(bx, by, size, 0, Math.PI*2); sCtx.fill();
+    sCtx.beginPath(); sCtx.arc(fx, by, size, 0, Math.PI*2); sCtx.fill();
     sCtx.shadowBlur = 0;
 
-    sCtx.fillStyle = '#5b9bd5';
-    sCtx.font = '10px SF Mono';
-    sCtx.fillText(isBehind ? "LATENT TRACKING" : "OBSERVED", bx - 30, by - 20);
+    sCtx.fillStyle = '#fff';
+    sCtx.font = '9px SF Mono';
+    sCtx.textAlign = 'center';
+    sCtx.fillText(isFutureBehind ? "IMAGINED (HIDDEN)" : "IMAGINED (VISIBLE)", fx, by - 20 - uncertainty);
   }
 
   init();

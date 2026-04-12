@@ -161,7 +161,7 @@ export const MathTab = {
         const y = CY + r * Math.sin(a);
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
+      XCSExporter.addPath(project, { dPath, x: 0, y: 0, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
     } 
  
       else if (cfg.type === 'spiral') {
@@ -176,7 +176,7 @@ export const MathTab = {
         if (r * 2 > cfg.size) break;
         dPath += (dPath === '' ? 'M' : 'L') + `${x.toFixed(3)} ${y.toFixed(3)}`;
       }
-      XCSExporter.addPath(project, { dPath, x: CX, y: CY, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
+      XCSExporter.addPath(project, { dPath, x: 0, y: 0, width: cfg.size, height: cfg.size, params: pm, isFill, laserSource, layerColor: entry.rgb, extraDisplayData: { t: 0, paletteName: palette.name, colorName: entry.label, hideLabels: true } });
       }
       else if (cfg.type === 'penrose-p3') {
       this.generatePenrose(project, cfg, pm, getColor, isFill, laserSource, CX, CY, palette);
@@ -212,9 +212,10 @@ export const MathTab = {
             const tValue = idx / (count - 1 || 1);
             const { entry: ent, idx: colorIdx, t: actualT } = getColor(tValue);
             const entryParams = PalMgr.getParams(cfg.paletteId, colorIdx);
+            const rectSize = step * 0.8;
             XCSExporter.addRect(project, {
-              x: CX + (i/res-0.5)*cfg.size, y: CY + (j/res-0.5)*cfg.size,
-              width: step*0.8, height: step*0.8, params: entryParams, isFill, laserSource, layerColor: ent.rgb,
+              x: CX + (i/res-0.5)*cfg.size - rectSize / 2, y: CY + (j/res-0.5)*cfg.size - rectSize / 2,
+              width: rectSize, height: rectSize, params: entryParams, isFill, laserSource, layerColor: ent.rgb,
               extraDisplayData: { t: actualT }
             });
             idx++;

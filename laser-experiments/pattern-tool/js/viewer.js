@@ -1,5 +1,6 @@
 import { App } from './app.js';
 import { XCSProject } from '../../xcs-module/js/xcs-system.js';
+import { XCSCanvas } from '../../xcs-module/js/xcs-canvas.js';
 import { PAD, XCS_LAYERS } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';
 
@@ -49,14 +50,14 @@ export const XCSViewer = {
       <div class="viewer-main">
         <div class="canvas-panel">
           <div class="canvas-label">Laser Area: 100 × 100 mm</div>
-          <svg class="svg-canvas" viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet">
+          <svg class="svg-canvas" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
             <defs>
-              <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.1"/>
               </pattern>
             </defs>
             <g class="canvas-root">
-              <rect width="500" height="500" fill="url(#grid)" />
+              <rect width="100" height="100" fill="url(#grid)" />
               <g class="svg-content"></g>
             </g>
           </svg>
@@ -98,6 +99,23 @@ export const XCSViewer = {
     `;
 
     const q = s => v.querySelector(s);
+    const inst = App.instances[tabId];
+    
+    // Initialize unified XCSCanvas for this viewer instance
+    inst.xcsCanvas = new XCSCanvas(
+      q('.svg-canvas'),
+      q('.svg-content'),
+      document.getElementById('globalPopup'), // Pattern tool uses globalPopup
+      { bedWidth: 100, bedHeight: 100 }
+    );
+
+    // Override hover behavior to sync with Pattern Tool's sidebar and Popup
+    inst.xcsCanvas.onItemEnter = (item, el, ev) => {
+      this.onHover(v, inst.state, item.idx, ev);
+    };
+    inst.xcsCanvas.onItemLeave = () => {
+      this.onLeave(v);
+    };
     
     v.querySelectorAll('.rtab').forEach(t => {
       t.onclick = () => {
@@ -290,11 +308,14 @@ export const XCSViewer = {
   },
 
   update(v, state) {
-    state.renderedShapes = state.project 
-      ? state.project.getItems().map(item => item.getRenderProps()) 
-      : (state.shapes || []);
+    const inst = Object.values(App.instances).find(i => i.pane.contains(v));
+    if (!inst || !state.project) return;
 
-    this.renderSVG(v, state);
+    state.renderedShapes = state.project.getItems().map(item => item.getRenderProps());
+
+    // Delegate rendering to the unified XCSCanvas
+    inst.xcsCanvas.render(state.project);
+
     this.applyTransform(v, state);
     this.renderStats(v, state);
     this.renderList(v, state);
@@ -314,78 +335,6 @@ export const XCSViewer = {
     if (content && state.view) {
       content.setAttribute('transform', `translate(${state.view.x}, ${state.view.y}) scale(${state.view.scale})`);
     }
-  },
-
-  renderSVG(v, state) {
-    const svg = v.querySelector('.svg-content');
-    svg.innerHTML = '';
-    const sc = 5;
-    const mm2 = (x, y) => [x * sc, y * sc];
-
-    const shapes = state.renderedShapes || [];
-
-    shapes.forEach(s => {
-      const isFill = !!s.isFill; // Use the parsed flag from IR
-      const renderColor = s.layerColor === '#000000' && isFill ? '#333' : s.layerColor;
-      const strC = renderColor; // Always show stroke for vector work
-      const strW = isFill ? 0.2 : 1.0; // Subtle outline for fills, bold for paths
-      const fillOp = isFill ? 0.6 : 0;
-      const [cx, cy] = mm2(s.x, s.y);
-      const rw = s.w * sc, rh = s.h * sc;
-
-      let el;
-      if (s.type === 'RECT') {
-        el = svgEl('rect', {
-          x: cx - rw/2, y: cy - rh/2, width: rw, height: rh, 
-          fill: isFill ? renderColor : 'none', 'fill-opacity': fillOp,
-          stroke: strC, 'stroke-width': strW
-        });
-        if (s.angle) el.setAttribute('transform', `rotate(${s.angle}, ${cx}, ${cy})`);
-      } 
-      else if (s.type === 'CIRCLE') {
-        el = svgEl('circle', {
-          cx, cy, r: rw/2, 
-          fill: isFill ? renderColor : 'none', 'fill-opacity': fillOp,
-          stroke: strC, 'stroke-width': strW
-        });
-      }
-      else if (s.type==='PATH' && s.dPath) {
-        const scaledD = s.dPath.replace(/([ML])\s*([\d.-]+)[,\s]+([\d.-]+)/g, (m, cmd, px, py) => {
-          const [sx, sy] = mm2(+px, +py);
-          return `${cmd} ${sx.toFixed(2)} ${sy.toFixed(2)}`;
-        });
-        el = svgEl('path', {
-          d: scaledD, fill: isFill ? renderColor : 'none', 
-          'fill-opacity': fillOp, stroke: strC, 'stroke-width': strW
-        });
-      }
-      else if (s.type === 'IMAGE' || s.type === 'BITMAP') {
-        el = svgEl('rect', {
-          x: cx - rw/2, y: cy - rh/2, width: rw, height: rh, 
-          fill: renderColor, 'fill-opacity': 0.3,
-          stroke: strC, 'stroke-width': 1, 'stroke-dasharray': s.type === 'IMAGE' ? '2 2' : 'none'
-        });
-      }
-      else if (s.type === 'TEXT') {
-        const fs = (s.style?.fontSize || 12);
-        const sy = (s.scale?.y || 1.0);
-        el = svgEl('text', {
-          x: cx, y: cy, 'text-anchor': 'start', // Growing right from Left-Baseline anchor
-          fill: renderColor, 'font-size': fs * sy * sc,
-          'font-family': 'monospace', 'font-weight': 'bold'
-        });
-        el.textContent = s.text;
-      }
-
-      if (el) {
-        el.dataset.svgIdx = s.idx;
-        el.style.cursor = 'pointer';
-        el.addEventListener('mouseenter', ev => this.onHover(v, state, s.idx, ev));
-        el.addEventListener('mousemove',  ev => Popup.move(ev));
-        el.addEventListener('mouseleave', () => this.onLeave(v));
-        svg.appendChild(el);
-      }
-    });
   },
 
   renderList(v, state) {

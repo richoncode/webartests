@@ -429,6 +429,8 @@ export class XCSText extends XCSItem {
  * Manages the tree of canvases and device processing maps.
  */
 export class XCSProject {
+  static DEFAULT_TEXT_COLOR = "#5b9bd5";
+
   constructor(canvasId = uuid()) {
     this.canvasId = canvasId;
     const canvasObj = {
@@ -488,7 +490,7 @@ export class XCSProject {
    */
   addItem(type, options) {
     const id = uuid();
-    const layerColor = options.layerColor || "#5b9bd5";
+    const layerColor = options.layerColor || (type === 'TEXT' ? XCSProject.DEFAULT_TEXT_COLOR : "#5b9bd5");
     
     // Abstract the processing type away from the components
     let processingType = options.processingType; 
