@@ -98,7 +98,7 @@ export class XCSCanvas {
     if (p.type !== 'TEXT' && p.type !== 'BITMAP') {
       el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
       el.setAttribute('stroke', p.layerColor);
-      el.setAttribute('stroke-width', '0.4');
+      el.setAttribute('stroke-width', '0.05');
       el.style.pointerEvents = 'auto';
       el.style.cursor = 'help';
     }

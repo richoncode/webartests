@@ -1,4 +1,5 @@
 import { App } from './app.js';
+import { Persistence } from './persistence.js';
 import { XCSProject } from '../../xcs-module/js/xcs-system.js';
 import { XCSCanvas } from '../../xcs-module/js/xcs-canvas.js';
 import { PAD, XCS_LAYERS } from './constants.js';
@@ -334,6 +335,7 @@ export const XCSViewer = {
     const content = v.querySelector('.canvas-root');
     if (content && state.view) {
       content.setAttribute('transform', `translate(${state.view.x}, ${state.view.y}) scale(${state.view.scale})`);
+      Persistence.save();
     }
   },
 

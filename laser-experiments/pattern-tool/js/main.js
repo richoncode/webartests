@@ -134,6 +134,18 @@ const PATTERNS = [
 window.addEventListener('DOMContentLoaded', async () => {
   await App.init(PATTERNS);
   Persistence.restore();
+
+  // Handle deep-linking via URL parameters
+  const params = new URLSearchParams(window.location.search);
+  const type = params.get('type');
+  const cfgStr = params.get('cfg');
+  const label = params.get('label');
+  if (type && cfgStr) {
+    try {
+      const cfg = JSON.parse(cfgStr);
+      TabMgr.createTab(type, cfg, label);
+    } catch(e) { console.error("Failed to parse URL config", e); }
+  }
   
   // UI Hooks
   document.getElementById('addPatternBtn').onclick = () => {

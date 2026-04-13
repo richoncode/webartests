@@ -10,10 +10,17 @@ export const Persistence = {
     const state = {
       tabs: App.tabs.map(t => ({ id: t.id, type: t.type, label: t.label })),
       activeTabId: App.activeTabId,
-      cfgs: {}
+      cfgs: {},
+      views: {}
     };
     App.tabs.forEach(t => {
-      if (App.instances[t.id]) state.cfgs[t.id] = App.instances[t.id].cfg;
+      const inst = App.instances[t.id];
+      if (inst) {
+        state.cfgs[t.id] = inst.cfg;
+        if (inst.state && inst.state.view) {
+          state.views[t.id] = inst.state.view;
+        }
+      }
     });
     localStorage.setItem(this.KEY, JSON.stringify(state));
   },
@@ -35,6 +42,14 @@ export const Persistence = {
         // Use generic creator based on type
         const newId = TabMgr.createTab(t.type, cfg, t.label);
         if (t.id === state.activeTabId) lastCreatedId = newId;
+        
+        // Restore view state if it exists
+        if (newId && state.views && state.views[t.id]) {
+          const inst = App.instances[newId];
+          if (inst && inst.state) {
+            inst.state.view = state.views[t.id];
+          }
+        }
       });
       
       this._loading = false;

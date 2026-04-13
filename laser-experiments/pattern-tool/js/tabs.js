@@ -137,15 +137,123 @@ export const TabMgr = {
       const el = document.createElement('div');
       el.className = 'tab' + (t.id === App.activeTabId ? ' active' : '');
       el.innerHTML = `<span class="tab-icon">${t.type === 'xcs' ? '📄' : '✦'}</span><span class="tab-label">${esc(t.label)}</span><span class="tab-close" title="Close">×</span>`;
-      const labelEl = el.querySelector('.tab-label');
-      labelEl.addEventListener('click', () => this.activate(t.id));
-      labelEl.addEventListener('dblclick', () => {
+      
+      const onTabClick = (ev) => {
+        if (t.id === App.activeTabId) {
+          this.showTabMenu(t.id, ev);
+        } else {
+          this.activate(t.id);
+        }
+      };
+
+      el.querySelector('.tab-label').addEventListener('click', onTabClick);
+      el.querySelector('.tab-icon').addEventListener('click', onTabClick);
+      
+      el.querySelector('.tab-label').addEventListener('dblclick', () => {
         const newName = prompt('Rename tab:', t.label);
         if (newName) this.setLabel(t.id, newName);
       });
-      el.querySelector('.tab-icon').addEventListener('click', () => this.activate(t.id));
       el.querySelector('.tab-close').addEventListener('click', e => { e.stopPropagation(); this.close(t.id); });
       bar.appendChild(el);
     });
+  },
+
+  showTabMenu(id, ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    // Remove any existing menu
+    const old = document.getElementById('tabContextMenu');
+    if (old) old.remove();
+
+    const menu = document.createElement('div');
+    menu.id = 'tabContextMenu';
+    menu.className = 'popup show'; // Reuse popup styles
+    menu.style.position = 'fixed';
+    menu.style.left = `${ev.clientX}px`;
+    menu.style.top = `${ev.clientY + 10}px`;
+    menu.style.zIndex = '10000';
+    menu.style.padding = '4px 0';
+    menu.style.minWidth = '140px';
+    menu.style.pointerEvents = 'auto'; // Fix: Override .popup { pointer-events: none }
+
+    const addItem = (label, icon, cb) => {
+      const item = document.createElement('div');
+      item.className = 'menu-item'; 
+      item.style.padding = '8px 12px';
+      item.style.cursor = 'pointer';
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '8px';
+      item.style.fontSize = '13px';
+      item.innerHTML = `<span>${icon}</span> <span>${label}</span>`;
+      item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
+      item.onmouseleave = () => { item.style.background = 'transparent'; };
+      item.onclick = (e) => { 
+        // Reordered: Run callback (the copy) before removing UI to keep focus context
+        cb(); 
+        menu.remove(); 
+      };
+      menu.appendChild(item);
+    };
+
+    addItem('Rename Tab', '✏️', () => {
+      const t = App.tabs.find(x => x.id === id);
+      const newName = prompt('Rename tab:', t.label);
+      if (newName) this.setLabel(id, newName);
+    });
+
+    addItem('Copy Shareable URL', '🔗', () => {
+      const inst = App.instances[id];
+      const tab = App.tabs.find(x => x.id === id);
+      const url = new URL(window.location.href);
+      // Ensure we clear existing params before setting new ones
+      url.search = '';
+      url.searchParams.set('type', inst.type);
+      url.searchParams.set('cfg', JSON.stringify(inst.cfg));
+      url.searchParams.set('label', tab.label);
+      
+      const text = url.toString();
+
+      const fallbackCopy = (str) => {
+        const el = document.createElement('textarea');
+        el.value = str;
+        el.setAttribute('readonly', '');
+        el.style.position = 'absolute';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.select();
+        try {
+          document.execCommand('copy');
+          alert('URL copied to clipboard! (Fallback)');
+        } catch (err) {
+          console.error('Fallback copy failed', err);
+          alert('Copy failed. Please copy the URL from the address bar.');
+        }
+        document.body.removeChild(el);
+      };
+
+      if (!navigator.clipboard) {
+        fallbackCopy(text);
+        return;
+      }
+
+      navigator.clipboard.writeText(text).then(() => {
+        alert('URL copied to clipboard!');
+      }).catch(err => {
+        console.error('Clipboard API failed, trying fallback...', err);
+        fallbackCopy(text);
+      });
+    });
+
+    document.body.appendChild(menu);
+
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('mousedown', closeMenu);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
   }
 };
