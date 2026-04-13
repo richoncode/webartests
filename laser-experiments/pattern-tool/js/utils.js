@@ -66,22 +66,43 @@ export const UI = {
   },
   showTooltip(text, x, y) {
     const tip = this.getTooltip();
-    tip.textContent = text;
+    // Allow HTML for rich formatting
+    tip.innerHTML = text.replace(/\n/g, '<br>');
     tip.classList.add('show');
+    
+    // Measure after content is set
     const tw = tip.offsetWidth, th = tip.offsetHeight;
-    tip.style.left = Math.min(x + 10, window.innerWidth - tw - 10) + 'px';
-    tip.style.top = Math.max(10, y - th - 10) + 'px';
+    let finalX = x + 15;
+    let finalY = y - th/2;
+
+    // Boundary checks
+    if (finalX + tw > window.innerWidth - 20) finalX = x - tw - 15;
+    if (finalY + th > window.innerHeight - 20) finalY = window.innerHeight - th - 20;
+    if (finalY < 20) finalY = 20;
+
+    tip.style.left = finalX + 'px';
+    tip.style.top = finalY + 'px';
   },
   hideTooltip() {
     if (this._tip) this._tip.classList.remove('show');
   },
 
-  makeSection(title, rows, collapsed = false, headerExtra = null) {
+  makeSection(title, rows, collapsed = false, headerExtra = null, tooltip = null) {
     const sec = document.createElement('div');
     sec.className = 'tool-section' + (collapsed ? ' collapsed' : '');
     const head = document.createElement('div');
     head.className = 'tool-section-header';
     head.innerHTML = `<span class="tool-section-toggle">▼</span> <span class="tool-section-title">${title}</span>`;
+    
+    const titleEl = head.querySelector('.tool-section-title');
+    if (tooltip) {
+      titleEl.style.cursor = 'help';
+      titleEl.style.borderBottom = '1px dotted #444';
+      titleEl.onmouseenter = (e) => this.showTooltip(tooltip, e.clientX, e.clientY);
+      titleEl.onmousemove = (e) => this.showTooltip(tooltip, e.clientX, e.clientY);
+      titleEl.onmouseleave = () => this.hideTooltip();
+    }
+
     if (headerExtra) head.appendChild(headerExtra);
     head.querySelector('.tool-section-toggle').onclick = () => sec.classList.toggle('collapsed');
     sec.appendChild(head);
@@ -92,11 +113,35 @@ export const UI = {
     return sec;
   },
 
-  makeRow(label, control) {
+  makeHeading(text) {
+    const el = document.createElement('div');
+    el.className = 'ctrl-heading';
+    el.textContent = text;
+    el.style.fontSize = '10px';
+    el.style.fontWeight = '700';
+    el.style.textTransform = 'uppercase';
+    el.style.color = '#666';
+    el.style.marginTop = '12px';
+    el.style.marginBottom = '4px';
+    el.style.paddingLeft = '4px';
+    el.style.borderLeft = '2px solid #333';
+    return el;
+  },
+
+  makeRow(label, control, tooltip = null) {
     const row = document.createElement('div');
     row.className = 'ctrl-row';
     const lbl = document.createElement('span');
     lbl.className = 'ctrl-label'; lbl.textContent = label;
+    
+    if (tooltip) {
+      lbl.style.cursor = 'help';
+      lbl.style.borderBottom = '1px dotted #444';
+      lbl.onmouseenter = (e) => this.showTooltip(tooltip, e.clientX, e.clientY);
+      lbl.onmousemove = (e) => this.showTooltip(tooltip, e.clientX, e.clientY);
+      lbl.onmouseleave = () => this.hideTooltip();
+    }
+
     row.appendChild(lbl); row.appendChild(control);
     return row;
   },

@@ -1246,7 +1246,8 @@ export const MathTab = {
 
           // 1. Filled Core (Layer 1)
           XCSExporter.addCircle(project, {
-            x, y, width: size, height: size,
+            x: x - size / 2, y: y - size / 2, // Corrected to Top-Left
+            width: size, height: size,
             params: pm, isFill: true, laserSource, layerColor: CORE_LAYER,
             extraDisplayData: { hideLabels: true }
           });
@@ -1257,7 +1258,8 @@ export const MathTab = {
 
           // 2. Edge Ring (Exactly at diameter)
           XCSExporter.addCircle(project, {
-            x, y, width: size, height: size,
+            x: x - size / 2, y: y - size / 2, // Corrected to Top-Left
+            width: size, height: size,
             params: { ...pm, power: edgePower },
             isFill: false, laserSource, layerColor: ringLayer,
             extraDisplayData: { hideLabels: true }
@@ -1268,7 +1270,8 @@ export const MathTab = {
             const r = (size / 2) - (j * ringSpacing);
             const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
             XCSExporter.addCircle(project, {
-              x, y, width: r * 2, height: r * 2,
+              x: x - r, y: y - r, // Corrected to Top-Left
+              width: r * 2, height: r * 2,
               params: { ...pm, power: ringPower },
               isFill: false, laserSource, layerColor: ringLayer,
               extraDisplayData: { hideLabels: true }
@@ -1280,7 +1283,8 @@ export const MathTab = {
             const r = (size / 2) + (j * ringSpacing);
             const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
             XCSExporter.addCircle(project, {
-              x, y, width: r * 2, height: r * 2,
+              x: x - r, y: y - r, // Corrected to Top-Left
+              width: r * 2, height: r * 2,
               params: { ...pm, power: ringPower },
               isFill: false, laserSource, layerColor: ringLayer,
               extraDisplayData: { hideLabels: true }
@@ -1565,21 +1569,23 @@ export const MathTab = {
       ]));
     } else if (cfg.type === 'blend-circles') {
       scroll.appendChild(UI.makeSection('Blend Circle Settings', [
-        UI.makeRow('Count', UI.makeStepCounter(cfg.bcCount, 1, 20, v => set('bcCount', v))),
-        UI.makeRow('Diameter', UI.makeRange(1, 50, 0.1, cfg.bcSize, v => set('bcSize', +v), 'mm')),
-        UI.makeRow('Gap', UI.makeRange(0, 20, 0.5, cfg.bcGap, v => set('bcGap', +v), 'mm'))
+        UI.makeRow('Count', UI.makeStepCounter(cfg.bcCount, 1, 20, v => set('bcCount', v)), 'Total number of circles in the row.'),
+        UI.makeRow('Diameter', UI.makeRange(1, 50, 0.1, cfg.bcSize, v => set('bcSize', +v), 'mm'), 'Diameter of each central circle.'),
+        UI.makeRow('Gap', UI.makeRange(0, 20, 0.5, cfg.bcGap, v => set('bcGap', +v), 'mm'), 'Spacing between the center points of the circles.')
       ]));
       scroll.appendChild(UI.makeSection('Ring Settings (0.001mm Step)', [
-        UI.makeRow('Num Inner', UI.makeStepCounter(cfg.bcNumInner, 0, 100, v => set('bcNumInner', v))),
-        UI.makeRow('Num Outer', UI.makeStepCounter(cfg.bcNumOuter, 0, 100, v => set('bcNumOuter', v))),
-        UI.makeRow('Spacing', UI.makeRange(0.001, 0.1, 0.001, cfg.bcRingSpacing, v => set('bcRingSpacing', +v), 'mm'))
+        UI.makeRow('Num Inner', UI.makeStepCounter(cfg.bcNumInner, 0, 100, v => set('bcNumInner', v)), 'Number of concentric rings shrinking inward from the diameter.'),
+        UI.makeRow('Num Outer', UI.makeStepCounter(cfg.bcNumOuter, 0, 100, v => set('bcNumOuter', v)), 'Number of concentric rings growing outward from the diameter.'),
+        UI.makeRow('Spacing', UI.makeRange(0.001, 0.1, 0.001, cfg.bcRingSpacing, v => set('bcRingSpacing', +v), 'mm'), 'Distance between each concentric ring path.')
       ]));
       scroll.appendChild(UI.makeSection('Power Reductions (%)', [
-        UI.makeRow('Edge Red (Start)', UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionStart, v => set('bcEdgeReductionStart', +v), '%')),
-        UI.makeRow('Edge Red (End)',   UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionEnd, v => set('bcEdgeReductionEnd', +v), '%')),
-        UI.makeRow('Fade Step (Start)', UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionStart, v => set('bcFadeReductionStart', +v), '%')),
-        UI.makeRow('Fade Step (End)',   UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionEnd, v => set('bcFadeReductionEnd', +v), '%'))
-      ]));
+        UI.makeHeading('Ring Power Fade'),
+        UI.makeRow('Start', UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionStart, v => set('bcEdgeReductionStart', +v), '%'), 'Initial power drop applied to the edge ring of the first circle.'),
+        UI.makeRow('End',   UI.makeRange(0, 20, 0.1, cfg.bcEdgeReductionEnd, v => set('bcEdgeReductionEnd', +v), '%'), 'Initial power drop applied to the edge ring of the last circle.'),
+        UI.makeHeading('Ring Size Step'),
+        UI.makeRow('Start', UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionStart, v => set('bcFadeReductionStart', +v), '%'), 'Cumulative power reduction per ring for the first circle.'),
+        UI.makeRow('End',   UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionEnd, v => set('bcFadeReductionEnd', +v), '%'), 'Cumulative power reduction per ring for the last circle.')
+      ], false, null, '<b>Power Blending Logic</b><br><br>1. <b>Ring Power Fade</b>: The initial drop from core power to the edge ring.<br>2. <b>Ring Size Step</b>: The amount subtracted cumulatively from each concentric ring moving away from the edge.<br><br><i>Linear interpolation is applied to all values from the first circle to the last in the row.</i>'));
     }
   }
 };

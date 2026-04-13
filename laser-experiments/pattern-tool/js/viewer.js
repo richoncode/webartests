@@ -353,7 +353,7 @@ export const XCSViewer = {
       row.innerHTML = `
         <div class="shape-dot" style="background:${s.layerColor}"></div>
         <div class="shape-info">
-          <div class="shape-row-title">${layerTag} ${s.type} ${s.w.toFixed(1)}×${s.h.toFixed(1)}mm</div>
+          <div class="shape-row-title">${layerTag} ${s.type} ${s.w.toFixed(3)}×${s.h.toFixed(3)}mm</div>
           <div class="shape-row-sub">${s.power}% / ${s.speed} / ${s.density}</div>
         </div>
       `;
