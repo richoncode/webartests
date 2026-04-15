@@ -131,4 +131,11 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   (world.globals as Record<string, unknown>).activeGame = signal<string>("menu");
 
   world.registerSystem(RobotSystem).registerSystem(DropTTTSystem).registerSystem(CornholeSystem);
+
+  // Auto-enter XR when the IWER emulator is active (desktop/emulated sessions).
+  // Skipped on real Quest browsers where IWER is not injected and requestSession
+  // requires an explicit user gesture.
+  if (!/OculusBrowser/i.test(navigator.userAgent)) {
+    world.launchXR();
+  }
 });
