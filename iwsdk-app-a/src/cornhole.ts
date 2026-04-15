@@ -109,6 +109,7 @@ export class CornholeSystem extends createSystem({
   private panelEntity: Entity | null = null;
   private panelOrigPos = new Vector3();
   private panelOrigRotY = 0;
+  private panelOrigScale = 1;
   // ── UI refs ───────────────────────────────────────────────────────────
   private chUI: {
     screen:       UIKit.Text;
@@ -284,10 +285,11 @@ export class CornholeSystem extends createSystem({
     this.lobCharging = false;
     this.lobPower    = 0;
 
-    // Restore panel to its original position
+    // Restore panel to its original position, rotation and scale
     if (this.panelEntity?.object3D) {
       this.panelEntity.object3D.position.copy(this.panelOrigPos);
       this.panelEntity.object3D.rotation.y = this.panelOrigRotY;
+      this.panelEntity.object3D.scale.setScalar(this.panelOrigScale);
     }
 
     this.hideScreen();
@@ -714,13 +716,21 @@ export class CornholeSystem extends createSystem({
     if (!this.chUI) return;
     this.chUI.screen.setProperties({ display: "flex" });
 
-    // Slide the shared panel 2 m further away so bags don't have to fly through it.
-    // Keep its rotation untouched — it was already oriented to face the player.
+    // Move the shared panel to the player's left, clear of the throw path,
+    // and scale it up so text is comfortable to read at the new position.
+    // The panel faces +Z when rotation.y = 0; atan2(-x, -z) gives the Y
+    // rotation needed for it to face the player at the origin from any position.
     if (this.panelEntity?.object3D) {
       const obj = this.panelEntity.object3D;
       this.panelOrigPos.copy(obj.position);
       this.panelOrigRotY = obj.rotation.y;
-      obj.position.z -= 2;
+      this.panelOrigScale = obj.scale.x;
+
+      const px = -1.8;
+      const pz = -1.0;
+      obj.position.set(px, obj.position.y, pz);
+      obj.rotation.y = Math.atan2(-px, -pz); // rotate to face player at origin
+      obj.scale.setScalar(1.5);
     }
 
     this.refreshUI();

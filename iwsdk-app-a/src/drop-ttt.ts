@@ -10,6 +10,8 @@ import {
   PanelDocument,
   UIKitDocument,
   UIKit,
+  DistanceGrabbable,
+  MovementMode,
   eq,
   BoxGeometry,
   TorusGeometry,
@@ -173,7 +175,8 @@ export class DropTTTSystem extends createSystem({
     // Panel entity lives for the whole session
     const panelEntity = this.world.createTransformEntity()
       .addComponent(PanelUI, { config: PANEL_CONFIG, maxWidth: 0.76, maxHeight: 1.1 })
-      .addComponent(Interactable);
+      .addComponent(Interactable)
+      .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget });
     panelEntity.object3D!.position.set(BOARD_X, 1.3, BOARD_Z);
 
     // Wire UIKit when document loads (guard: only wire once)
