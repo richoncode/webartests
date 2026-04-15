@@ -202,6 +202,13 @@ export class DropTTTSystem extends createSystem({
       });
       (doc.getElementById("mode-5") as UIKit.Text)
         ?.addEventListener("click", () => this.launchCornhole());
+      (doc.getElementById("qr-btn") as UIKit.Text)
+        ?.addEventListener("click", () => {
+          const w = window as unknown as Record<string, unknown>;
+          if (typeof w["showQRModal"] === "function") {
+            (w["showQRModal"] as () => void)();
+          }
+        });
       (doc.getElementById("exit-btn") as UIKit.Text)
         ?.addEventListener("click", () => this.world.exitXR());
       (doc.getElementById("change-btn") as UIKit.Text)
@@ -592,11 +599,12 @@ export class DropTTTSystem extends createSystem({
     const zoneZ = BOARD_Z + 0.06;       // slightly in front of panel face
 
     // ── Menu mode buttons + Exit button ──
-    // Panel height now includes Cornhole button (mode-5): 67.0 + 8.8 = 75.8 units
+    // Panel height now includes QR button (between Cornhole and Exit): 75.8 + 6.5 = 82.3 units
     // offsets[0..5] = mode buttons (0=TTT, 5=Cornhole); offsets[6] = Exit to Browser
-    const panelContentHeight = 75.8;
+    // (QR button has no zone — non-VR only; exit offset shifts down by 6.5 units)
+    const panelContentHeight = 82.3;
     const panelTopY = 1.3 + (panelContentHeight * scale) / 2;
-    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 70.0];
+    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 76.5];
     const zoneW = 0.68;
     const zoneH     = 7.6 * scale;    // ≈ 0.080m — mode button height
     const exitZoneH = 6.0 * scale;    // ≈ 0.063m — exit button height

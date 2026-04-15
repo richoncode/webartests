@@ -78,9 +78,10 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     spatialUI: { forwardHtmlEvents: true },
   },
 }).then((world) => {
-  const qrOverlay = document.getElementById('qr-overlay');
   world.visibilityState.subscribe((state) => {
-    qrOverlay?.classList.toggle('hidden', state !== VisibilityState.NonImmersive);
+    if (state !== VisibilityState.NonImmersive) {
+      document.getElementById('qr-modal')?.classList.remove('visible');
+    }
   });
 
   const { camera } = world;
