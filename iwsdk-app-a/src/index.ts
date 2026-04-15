@@ -32,12 +32,12 @@ import { signal } from "@preact/signals-core";
 
 const assets: AssetManifest = {
   chimeSound: {
-    url: "/audio/chime.mp3",
+    url: "./audio/chime.mp3",
     type: AssetType.Audio,
     priority: "background",
   },
   webxr: {
-    url: "/textures/webxr.png",
+    url: "./textures/webxr.png",
     type: AssetType.Texture,
     priority: "critical",
   },
