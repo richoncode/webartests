@@ -206,6 +206,8 @@ export class DropTTTSystem extends createSystem({
       });
       (doc.getElementById("mode-5") as UIKit.Text)
         ?.addEventListener("click", () => this.launchCornhole());
+      (doc.getElementById("mode-6") as UIKit.Text)
+        ?.addEventListener("click", () => this.launchRailroad());
       (doc.getElementById("qr-btn") as UIKit.Text)
         ?.addEventListener("click", () => {
           const w = window as unknown as Record<string, unknown>;
@@ -227,6 +229,7 @@ export class DropTTTSystem extends createSystem({
           }
         });
       this.showMenuScreen();
+      this.buildMenuZones(entity);
     });
 
     // Column hover glow — reactive
@@ -351,7 +354,6 @@ export class DropTTTSystem extends createSystem({
       }
     });
 
-    this.buildMenuZones();
   }
 
   update(delta: number) {
@@ -603,38 +605,35 @@ export class DropTTTSystem extends createSystem({
     this.zoneMaterials = [];
   }
 
-  private buildMenuZones() {
+  private buildMenuZones(panelEntity: Entity) {
+    // All zones are parented to the panel entity so they move/rotate with it when grabbed.
+    // Positions are in panel-local space: origin = panel center, +Y up, +Z toward player.
+    //
     // UIKit scale: maxWidth(0.76m) / root width(72 units) = 0.010556 m/unit
-    // Panel entity at (BOARD_X, 1.3, BOARD_Z). Panel height auto-sizes to content.
-    // Menu screen height ≈ 67.0 units:
-    //   pad(3) + title(9) + 5×btn(7.6) + 4×gap(1.2) + mode-4 margin-bottom(1.2)
-    //   + exit margin-top(2) + exit btn height(6) + pad(3) = 67.0
-    // Panel anchor is its center (y=1.3), so top = 1.3 + height*scale/2.
-    // Button centers from panel top (units): [15.8, 24.6, 33.4, 42.2, 51.0, 61.0]
-    const scale = 0.76 / 72;           // 0.010556 m/unit
+    // Menu-screen content height ≈ 91.1 units (7 mode btns × 8.8 + title + QR + Exit + padding).
+    // Button center from panel top = buttonOffsets[i] units.
+    // Local Y = (panelContentHeight/2 - offset) * scale   (positive = above panel center)
+    const scale = 0.76 / 72;   // 0.010556 m/unit
     const zoneD = 0.04;
-    const zoneZ = BOARD_Z + 0.06;       // slightly in front of panel face
+    const localZ = 0.06;       // in front of panel face
 
     // ── Menu mode buttons + Exit button ──
-    // Panel height: 82.3 (prev) + 8.8 (Railroad mode-btn) = 91.1 units
-    // offsets[0..5] = mode buttons 0-5 (TTT…Cornhole); offsets[6] = Railroad; offsets[7] = Exit
-    // QR button sits between Railroad and Exit but has no zone (non-VR modal only)
     const panelContentHeight = 91.1;
-    const panelTopY = 1.3 + (panelContentHeight * scale) / 2;
+    // offsets = distance from panel top to button center (UIKit units)
     const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 85.3];
-    const zoneW = 0.68;
-    const zoneH     = 7.6 * scale;    // ≈ 0.080m — mode button height
-    const exitZoneH = 6.0 * scale;    // ≈ 0.063m — exit button height
-    const cornholeColor  = 0x22cc66;
-    const railroadColor  = 0xcc8822;
+    const zoneW      = 0.68;
+    const zoneH      = 7.6 * scale;  // mode button height
+    const exitZoneH  = 6.0 * scale;  // exit button height
+    const cornholeColor = 0x22cc66;
+    const railroadColor = 0xcc8822;
 
     for (let i = 0; i <= GAME_MODES.length + 2; i++) {
       const isExit     = i === GAME_MODES.length + 2;
       const isRailroad = i === GAME_MODES.length + 1;
       const isCornhole = i === GAME_MODES.length;
-      const worldY  = panelTopY - buttonOffsets[i] * scale;
-      const height  = isExit ? exitZoneH : zoneH;
-      const color   = isExit ? 0x555555 : isRailroad ? railroadColor : isCornhole ? cornholeColor : 0x22aaff;
+      const localY = (panelContentHeight / 2 - buttonOffsets[i]) * scale;
+      const height = isExit ? exitZoneH : zoneH;
+      const color  = isExit ? 0x555555 : isRailroad ? railroadColor : isCornhole ? cornholeColor : 0x22aaff;
 
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
@@ -643,49 +642,46 @@ export class DropTTTSystem extends createSystem({
       this.menuZoneMaterials[i] = mat;
 
       const mesh = new Mesh(new BoxGeometry(zoneW, height, zoneD), mat);
-      mesh.position.set(BOARD_X, worldY, zoneZ);
+      mesh.position.set(0, localY, localZ);
 
       this.menuZoneEntities.push(
-        this.world.createTransformEntity(mesh)
+        this.world.createTransformEntity(mesh, panelEntity)
           .addComponent(Interactable)
           .addComponent(MenuButton, { modeIndex: i }),
       );
     }
 
     // ── Game-screen action buttons (Reset Score / Change Game) ──
-    // Created WITHOUT Interactable — enabled in startGame(), disabled in returnToMenu()
-    // so they don't block menu zone raycasts (both overlap spatially).
-    // Button layout: width=32, padding=2, font=2.5 → btn height = 2.5 + 2*2 = 6.5 units
-    // Two buttons: 32 + margin(2) + 32 = 66 units = exact content width
-    // Panel height: 38.8 + 2.1 extra (taller buttons) = 40.9 units
-    // Action row center from bottom: padding(3) + btn-height(6.5)/2 = 6.25 units
-    const gameScreenPanelBottomY = 1.3 - (40.9 * scale) / 2;
-    const actionBtnCenterY = gameScreenPanelBottomY + 6.25 * scale;
-    const actionBtnW = 32 * scale;
-    const actionBtnH = 6.5 * scale;
-    const actionZoneW = actionBtnW;        // 100% width — full button coverage
-    const actionZoneH = actionBtnH * 2.5; // 250% height — generous vertical target (~17cm)
-    const contentW = 66 * scale;
-    const resetCenterX  = BOARD_X - contentW / 2 + actionBtnW / 2;
-    const changeCenterX = BOARD_X + contentW / 2 - actionBtnW / 2;
+    // Parented to panel, panel-local coords.
+    // Game-screen content height ≈ 40.9 units.
+    // Action row is 6.25 units above the bottom of game-screen content.
+    // Local Y = -(gameScreenHeight/2 - 6.25) * scale   (below panel center)
+    const gameScreenHeight = 40.9;
+    const actionLocalY = -(gameScreenHeight / 2 - 6.25) * scale;
+    const actionBtnW   = 32 * scale;
+    const actionBtnH   = 6.5 * scale;
+    const actionZoneW  = actionBtnW;
+    const actionZoneH  = actionBtnH * 2.5;
+    // Buttons sit at ±17 units from panel center horizontally (content 66 wide, centered)
+    const actionLocalX = 17 * scale;  // magnitude; sign differs per button
 
     const actionDefs = [
-      { type: 0, x: resetCenterX  },
-      { type: 1, x: changeCenterX },
+      { type: 0, lx: -actionLocalX },  // Reset Score (left)
+      { type: 1, lx: +actionLocalX },  // Change Game (right)
     ];
 
-    for (const { type, x } of actionDefs) {
+    for (const { type, lx } of actionDefs) {
       const mat = new MeshStandardMaterial({
         color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.0,
         transparent: true, opacity: 0.0, depthWrite: false,
       });
       this.gameActionZoneMaterials[type] = mat;
       const mesh = new Mesh(new BoxGeometry(actionZoneW, actionZoneH, zoneD), mat);
-      mesh.position.set(x, actionBtnCenterY, BOARD_Z + 0.12);
+      mesh.position.set(lx, actionLocalY, 0.12);
 
-      // No Interactable here — added by startGame(), removed by returnToMenu()
+      // No Interactable here — added/removed by startGame()/returnToMenu()
       this.gameActionZoneEntities.push(
-        this.world.createTransformEntity(mesh)
+        this.world.createTransformEntity(mesh, panelEntity)
           .addComponent(GameActionButton, { actionType: type }),
       );
     }
