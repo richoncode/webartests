@@ -433,7 +433,7 @@ export class CornholeSystem extends createSystem({
   private spawnArcDots() {
     const dotMat = new MeshStandardMaterial({
       color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.8,
-      transparent: true, opacity: 0.0,
+      transparent: true, opacity: 0.85,
     });
     for (let i = 0; i < CH_ARC_POINTS; i++) {
       const mesh = new Mesh(new CylinderGeometry(0.012, 0.012, 0.012, 8), dotMat.clone());

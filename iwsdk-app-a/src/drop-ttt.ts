@@ -156,8 +156,9 @@ export class DropTTTSystem extends createSystem({
   private menuZoneMaterials: MeshStandardMaterial[] = [];
   private gameActionZoneEntities: Entity[] = [];
   private gameActionZoneMaterials: MeshStandardMaterial[] = [];
-  private gameZonesActive = false;
-  private cornholeActive  = false;
+  private gameZonesActive  = false;
+  private cornholeActive   = false;
+  private railroadActive   = false;
 
   // ── UIKit element refs ─────────────────────────────────────────────────────
   private ui: {
@@ -288,10 +289,12 @@ export class DropTTTSystem extends createSystem({
 
     // Menu mode selection + exit
     this.queries.menuPressed.subscribe("qualify", (entity) => {
-      if (this.gameActive || this.cornholeActive) return;
+      if (this.gameActive || this.cornholeActive || this.railroadActive) return;
       const idx = entity.getValue(MenuButton, "modeIndex") as number;
-      if (idx === GAME_MODES.length + 1) {
+      if (idx === GAME_MODES.length + 2) {
         this.world.exitXR();
+      } else if (idx === GAME_MODES.length + 1) {
+        this.launchRailroad();
       } else if (idx === GAME_MODES.length) {
         this.launchCornhole();
       } else if (idx >= 0 && idx < GAME_MODES.length) {
@@ -304,8 +307,9 @@ export class DropTTTSystem extends createSystem({
     if (activeGame) {
       this.cleanupFuncs.push(
         activeGame.subscribe((game) => {
-          if (game === "menu" && this.cornholeActive) {
-            this.cornholeActive = false;
+          if (game === "menu" && (this.cornholeActive || this.railroadActive)) {
+            this.cornholeActive  = false;
+            this.railroadActive  = false;
             if (this.gameZonesActive) {
               for (const e of this.gameActionZoneEntities) e.removeComponent(Interactable);
               this.gameZonesActive = false;
@@ -432,13 +436,23 @@ export class DropTTTSystem extends createSystem({
   private launchCornhole() {
     if (!this.ui) return;
     this.cornholeActive = true;
-    // Disable menu zones so they don't receive raycasts while cornhole is active
     for (const e of this.menuZoneEntities) {
       if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
     }
     this.ui.menuScreen.setProperties({ display: "none" });
     const activeGame = this.globals.activeGame as Signal<string> | undefined;
     if (activeGame) activeGame.value = "cornhole";
+  }
+
+  private launchRailroad() {
+    if (!this.ui) return;
+    this.railroadActive = true;
+    for (const e of this.menuZoneEntities) {
+      if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+    }
+    this.ui.menuScreen.setProperties({ display: "none" });
+    const activeGame = this.globals.activeGame as Signal<string> | undefined;
+    if (activeGame) activeGame.value = "railroad";
   }
 
   // ── Mode setup ──────────────────────────────────────────────────────────────
@@ -602,24 +616,25 @@ export class DropTTTSystem extends createSystem({
     const zoneZ = BOARD_Z + 0.06;       // slightly in front of panel face
 
     // ── Menu mode buttons + Exit button ──
-    // Panel height now includes QR button (between Cornhole and Exit): 75.8 + 6.5 = 82.3 units
-    // offsets[0..5] = mode buttons (0=TTT, 5=Cornhole); offsets[6] = Exit to Browser
-    // (QR button has no zone — non-VR only; exit offset shifts down by 6.5 units)
-    const panelContentHeight = 82.3;
+    // Panel height: 82.3 (prev) + 8.8 (Railroad mode-btn) = 91.1 units
+    // offsets[0..5] = mode buttons 0-5 (TTT…Cornhole); offsets[6] = Railroad; offsets[7] = Exit
+    // QR button sits between Railroad and Exit but has no zone (non-VR modal only)
+    const panelContentHeight = 91.1;
     const panelTopY = 1.3 + (panelContentHeight * scale) / 2;
-    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 76.5];
+    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 85.3];
     const zoneW = 0.68;
     const zoneH     = 7.6 * scale;    // ≈ 0.080m — mode button height
     const exitZoneH = 6.0 * scale;    // ≈ 0.063m — exit button height
-    // Cornhole button gets a distinct tint (green)
-    const cornholeColor = 0x22cc66;
+    const cornholeColor  = 0x22cc66;
+    const railroadColor  = 0xcc8822;
 
-    for (let i = 0; i <= GAME_MODES.length + 1; i++) {
-      const isExit     = i === GAME_MODES.length + 1;
+    for (let i = 0; i <= GAME_MODES.length + 2; i++) {
+      const isExit     = i === GAME_MODES.length + 2;
+      const isRailroad = i === GAME_MODES.length + 1;
       const isCornhole = i === GAME_MODES.length;
       const worldY  = panelTopY - buttonOffsets[i] * scale;
       const height  = isExit ? exitZoneH : zoneH;
-      const color   = isExit ? 0x555555 : isCornhole ? cornholeColor : 0x22aaff;
+      const color   = isExit ? 0x555555 : isRailroad ? railroadColor : isCornhole ? cornholeColor : 0x22aaff;
 
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
