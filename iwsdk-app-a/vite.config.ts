@@ -10,8 +10,9 @@ export default defineConfig(({ command }) => ({
     iwsdkDev({
       emulator: {
         device: "metaQuest3",
-
         environment: "living_room",
+        injectOnBuild: true,
+        activation: 'always',
       },
       ai: { tools: ["claude"] },
       verbose: true,
