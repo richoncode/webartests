@@ -4,7 +4,7 @@ import { compileUIKit } from "@iwsdk/vite-plugin-uikitml";
 import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     mkcert(),
     iwsdkDev({
@@ -32,5 +32,5 @@ export default defineConfig({
     esbuildOptions: { target: "esnext" },
   },
   publicDir: "public",
-  base: "/webartests/iwsdk-app-a/dist/",
-});
+  base: command === "build" ? "/webartests/iwsdk-app-a/dist/" : "./",
+}));
