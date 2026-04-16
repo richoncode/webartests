@@ -4,6 +4,7 @@ import {
   Types,
   Entity,
   Interactable,
+  Hovered,
   Pressed,
   DistanceGrabbable,
   MovementMode,
@@ -52,6 +53,11 @@ export const TrackTrain = createComponent("TrackTrain", {
   segId:     { type: Types.Int32, default: 0 },
   t:         { type: Types.Float32, default: 0 },
   direction: { type: Types.Int8,    default: 1 },  // 1 = A→B, -1 = B→A
+});
+
+// 0=+Track  1=+Train  2=Clear All  3=Menu
+export const RailroadButtonZone = createComponent("RailroadButtonZone", {
+  actionType: { type: Types.Int8, default: 0 },
 });
 
 // ── Per-segment connectivity (stored in system map, not ECS) ───────────────
@@ -158,10 +164,12 @@ function snapAlign(
 
 // ── System ─────────────────────────────────────────────────────────────────
 export class RailroadSystem extends createSystem({
-  heldTrack:  { required: [TrackSegment, Interactable, Pressed] },
-  allTrack:   { required: [TrackSegment] },
-  allTrains:  { required: [TrackTrain] },
-  panel:      { required: [PanelUI, PanelDocument], where: [eq(PanelUI, "config", PANEL_CONFIG)] },
+  heldTrack:     { required: [TrackSegment, Interactable, Pressed] },
+  allTrack:      { required: [TrackSegment] },
+  allTrains:     { required: [TrackTrain] },
+  panel:         { required: [PanelUI, PanelDocument], where: [eq(PanelUI, "config", PANEL_CONFIG)] },
+  rrBtnHovered:  { required: [RailroadButtonZone, Hovered] },
+  rrBtnPressed:  { required: [RailroadButtonZone, Pressed] },
 }) {
   private active        = false;
   private nextSegId     = 1;
@@ -174,6 +182,10 @@ export class RailroadSystem extends createSystem({
   // Snap indicator dots (one per held segment endpoint)
   private snapDotA: Mesh | null = null;
   private snapDotB: Mesh | null = null;
+
+  // Railroad-screen button zones (4 buttons)
+  private rrBtnZoneEntities:  Entity[] = [];
+  private rrBtnZoneMaterials: MeshStandardMaterial[] = [];
 
   // UI refs
   private rrUI: {
@@ -200,6 +212,7 @@ export class RailroadSystem extends createSystem({
         count:  doc.getElementById("rr-track-count") as UIKit.Text,
       };
 
+      // HTML click events as belt-and-suspenders backup
       (doc.getElementById("rr-track-btn") as UIKit.Text)
         ?.addEventListener("click", () => { if (this.active) this.spawnTrackPiece(); });
       (doc.getElementById("rr-train-btn") as UIKit.Text)
@@ -208,6 +221,33 @@ export class RailroadSystem extends createSystem({
         ?.addEventListener("click", () => { if (this.active) this.clearAll(); });
       (doc.getElementById("rr-menu-btn") as UIKit.Text)
         ?.addEventListener("click", () => { if (this.active) this.endGame(); });
+
+      // Build 3D button zones parented to panel (created without Interactable; enabled on startGame)
+      this.buildButtonZones(entity);
+    });
+
+    // Button hover glow
+    this.queries.rrBtnHovered.subscribe("qualify", (entity) => {
+      const idx = entity.getValue(RailroadButtonZone, "actionType") as number;
+      const mat = this.rrBtnZoneMaterials[idx];
+      if (mat) { mat.opacity = 0.28; mat.emissiveIntensity = 0.55; }
+    });
+    this.queries.rrBtnHovered.subscribe("disqualify", (entity) => {
+      const idx = entity.getValue(RailroadButtonZone, "actionType") as number;
+      const mat = this.rrBtnZoneMaterials[idx];
+      if (mat) { mat.opacity = 0.0; mat.emissiveIntensity = 0.0; }
+    });
+
+    // Button press actions
+    this.queries.rrBtnPressed.subscribe("qualify", (entity) => {
+      if (!this.active) return;
+      const idx = entity.getValue(RailroadButtonZone, "actionType") as number;
+      switch (idx) {
+        case 0: this.spawnTrackPiece(); break;
+        case 1: this.spawnTrain();      break;
+        case 2: this.clearAll();        break;
+        case 3: this.endGame();         break;
+      }
     });
 
     // When a held track piece is released, do snap
@@ -245,6 +285,9 @@ export class RailroadSystem extends createSystem({
     this.active = true;
     this.showScreen();
     this.refreshCountUI();
+    for (const e of this.rrBtnZoneEntities) {
+      if (!e.hasComponent(Interactable)) e.addComponent(Interactable);
+    }
   }
 
   endGame() {
@@ -258,6 +301,9 @@ export class RailroadSystem extends createSystem({
     this.clearAll();
     this.hideSnapIndicators();
     this.hideScreen();
+    for (const e of this.rrBtnZoneEntities) {
+      if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+    }
 
     if (this.panelEntity?.object3D) {
       this.panelEntity.object3D.position.copy(this.panelOrigPos);
@@ -293,6 +339,49 @@ export class RailroadSystem extends createSystem({
     const segs   = this.segMap.size;
     const trains = this.queries.allTrains.entities.size;
     this.rrUI.count.setProperties({ text: `${segs} piece${segs !== 1 ? "s" : ""} · ${trains} train${trains !== 1 ? "s" : ""}` });
+  }
+
+  // ── Railroad-screen button zones ──────────────────────────────────────
+  // Layout mirrors game-screen action buttons (two rows, two columns each).
+  // Railroad-screen content height ≈ 40.9 UIKit units.
+  // Row 1 (+ Track / + Train): center at 25.02 units from panel top.
+  // Row 2 (Clear All / Menu):  center at 34.12 units from panel top.
+  // Buttons are 32 units wide with a 2-unit gap (content 66 units, centered).
+  private buildButtonZones(panelEntity: Entity) {
+    const scale      = 0.76 / 72;         // m per UIKit unit
+    const rrH        = 40.9;              // railroad-screen height (units)
+    const row1Y      = (rrH / 2 - 25.02) * scale;   //  ≈ -0.048 m
+    const row2Y      = (rrH / 2 - 34.12) * scale;   //  ≈ -0.144 m
+    const leftX      = -17 * scale;                   //  ≈ -0.180 m
+    const rightX     = +17 * scale;                   //  ≈ +0.180 m
+    const btnW       = 32  * scale;
+    const btnH       = 7.6 * scale * 1.5;  // 1.5× for easier hit
+    const zoneD      = 0.04;
+    const localZ     = 0.06;
+
+    const defs = [
+      { action: 0, x: leftX,  y: row1Y, color: 0x22bb88 },  // + Track
+      { action: 1, x: rightX, y: row1Y, color: 0xffcc22 },  // + Train
+      { action: 2, x: leftX,  y: row2Y, color: 0x888888 },  // Clear All
+      { action: 3, x: rightX, y: row2Y, color: 0x888888 },  // Menu
+    ];
+
+    for (const { action, x, y, color } of defs) {
+      const mat = new MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0.0,
+        transparent: true, opacity: 0.0, depthWrite: false,
+      });
+      this.rrBtnZoneMaterials[action] = mat;
+
+      const mesh = new Mesh(new BoxGeometry(btnW, btnH, zoneD), mat);
+      mesh.position.set(x, y, localZ);
+
+      // No Interactable yet — added in startGame(), removed in cleanup()
+      this.rrBtnZoneEntities.push(
+        this.world.createTransformEntity(mesh, panelEntity)
+          .addComponent(RailroadButtonZone, { actionType: action }),
+      );
+    }
   }
 
   // ── Spawn track piece ─────────────────────────────────────────────────
