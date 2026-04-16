@@ -301,6 +301,7 @@ export class RailroadSystem extends createSystem({
         case 1: this.spawnTrain();      break;
         case 2: this.clearAll();        break;
         case 3: this.endGame();         break;
+        case 4: this.toggleDebug();     break;
       }
     });
 
@@ -402,31 +403,38 @@ export class RailroadSystem extends createSystem({
   // Buttons are 32 units wide with a 2-unit gap (content 66 units, centered).
   private buildButtonZones(panelEntity: Entity) {
     const scale      = 0.76 / 72;         // m per UIKit unit
-    const rrH        = 40.9;              // railroad-screen height (units)
-    const row1Y      = (rrH / 2 - 25.02) * scale;   //  ≈ -0.048 m
-    const row2Y      = (rrH / 2 - 34.12) * scale;   //  ≈ -0.144 m
-    const leftX      = -17 * scale;                   //  ≈ -0.180 m
-    const rightX     = +17 * scale;                   //  ≈ +0.180 m
+    // rrH = total railroad-screen content height in UIKit units.
+    // Adding the debug button row (+7.5 units) to the original 40.9 → 48.5.
+    // All row Y values are measured from the panel top; rrH/2 converts to
+    // panel-local Y (centre = 0, up = positive).
+    const rrH        = 48.5;
+    const row1Y      = (rrH / 2 - 25.02) * scale;   // + Track / + Train row
+    const row2Y      = (rrH / 2 - 34.12) * scale;   // Clear All / Menu row
+    const debugY     = (rrH / 2 - 42.12) * scale;   // Debug toggle (full-width)
+    const leftX      = -17 * scale;
+    const rightX     = +17 * scale;
     const btnW       = 32  * scale;
-    const btnH       = 7.6 * scale * 1.5;  // 1.5× for easier hit
+    const fullW      = 66  * scale;        // full content width (72 - 2×padding 3)
+    const btnH       = 7.6 * scale * 1.5; // 1.5× height for easier hit
     const zoneD      = 0.04;
     const localZ     = 0.06;
 
-    const defs = [
-      { action: 0, x: leftX,  y: row1Y, color: 0x22bb88 },  // + Track
-      { action: 1, x: rightX, y: row1Y, color: 0xffcc22 },  // + Train
-      { action: 2, x: leftX,  y: row2Y, color: 0x888888 },  // Clear All
-      { action: 3, x: rightX, y: row2Y, color: 0x888888 },  // Menu
+    const defs: Array<{ action: number; x: number; y: number; w: number; color: number }> = [
+      { action: 0, x: leftX,  y: row1Y,  w: btnW,  color: 0x22bb88 },  // + Track
+      { action: 1, x: rightX, y: row1Y,  w: btnW,  color: 0xffcc22 },  // + Train
+      { action: 2, x: leftX,  y: row2Y,  w: btnW,  color: 0x888888 },  // Clear All
+      { action: 3, x: rightX, y: row2Y,  w: btnW,  color: 0x888888 },  // Menu
+      { action: 4, x: 0,      y: debugY, w: fullW, color: 0x334455 },  // Debug
     ];
 
-    for (const { action, x, y, color } of defs) {
+    for (const { action, x, y, w, color } of defs) {
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
         transparent: true, opacity: 0.0, depthWrite: false,
       });
       this.rrBtnZoneMaterials[action] = mat;
 
-      const mesh = new Mesh(new BoxGeometry(btnW, btnH, zoneD), mat);
+      const mesh = new Mesh(new BoxGeometry(w, btnH, zoneD), mat);
       mesh.position.set(x, y, localZ);
       // Pre-parent so mesh.parent != null when addComponent(Interactable) fires
       // InputSystem.updateDescendantArrays — same fix as board column/cell zones.
