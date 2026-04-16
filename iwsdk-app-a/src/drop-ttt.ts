@@ -643,6 +643,9 @@ export class DropTTTSystem extends createSystem({
 
       const mesh = new Mesh(new BoxGeometry(zoneW, height, zoneD), mat);
       mesh.position.set(0, localY, localZ);
+      // Pre-parent so mesh.parent != null when addComponent(Interactable) triggers
+      // InputSystem.updateDescendantArrays — same pattern as board column/cell zones.
+      panelEntity.object3D!.add(mesh);
 
       this.menuZoneEntities.push(
         this.world.createTransformEntity(mesh, panelEntity)
@@ -678,6 +681,9 @@ export class DropTTTSystem extends createSystem({
       this.gameActionZoneMaterials[type] = mat;
       const mesh = new Mesh(new BoxGeometry(actionZoneW, actionZoneH, zoneD), mat);
       mesh.position.set(lx, actionLocalY, 0.12);
+      // Pre-parent so mesh.parent != null when addComponent(Interactable) is
+      // later called by startGame() — same fix as menu zones and board zones.
+      panelEntity.object3D!.add(mesh);
 
       // No Interactable here — added/removed by startGame()/returnToMenu()
       this.gameActionZoneEntities.push(

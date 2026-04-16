@@ -375,6 +375,9 @@ export class RailroadSystem extends createSystem({
 
       const mesh = new Mesh(new BoxGeometry(btnW, btnH, zoneD), mat);
       mesh.position.set(x, y, localZ);
+      // Pre-parent so mesh.parent != null when addComponent(Interactable) fires
+      // InputSystem.updateDescendantArrays — same fix as board column/cell zones.
+      panelEntity.object3D!.add(mesh);
 
       // No Interactable yet — added in startGame(), removed in cleanup()
       this.rrBtnZoneEntities.push(
@@ -392,6 +395,9 @@ export class RailroadSystem extends createSystem({
     // Spawn at arm's reach in front-right of player
     this.player.head.getWorldPosition(this._va);
     mesh.position.set(this._va.x + 0.25, this._va.y - 0.2, this._va.z - 0.45);
+    // Pre-parent to scene NOW so mesh.parent != null when addComponent(Interactable)
+    // triggers InputSystem.updateDescendantArrays — same fix as board column/cell zones.
+    this.scene.add(mesh);
 
     const entity = this.world
       .createTransformEntity(mesh)
