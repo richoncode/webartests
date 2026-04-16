@@ -34,7 +34,7 @@ const TIE_W         = GAUGE + 0.018;  // sleeper width
 const TIE_D         = 0.014;  // sleeper depth (along track)
 const TIE_H         = 0.007;  // sleeper height
 const TIE_COUNT     = 5;
-const SNAP_RADIUS   = 0.10;   // distance at which endpoints snap (m)
+const SNAP_RADIUS   = 0.12;   // distance at which endpoints snap (m)
 const TRAIN_SPEED   = 0.30;   // m/s along track
 
 const RAIL_MAT    = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.7 });
@@ -154,11 +154,21 @@ function snapAlign(
   // Natural continuation (A→B or B→A): same orientation.
   // Back-to-back (A→A or B→B): reversed orientation.
   const sameSide  = newEnd === existEnd;
-  const newDir    = sameSide ? existDir.clone().negate() : existDir.clone();
+
+  // Project existDir onto the XZ plane so snapped tracks stay horizontal and
+  // lay flush with each other regardless of any Y-tilt from how the user held
+  // the existing segment.  Without this, each snap inherits the existing
+  // segment's tilt and successive segments drift apart vertically.
+  const flatLen = Math.sqrt(existDir.x * existDir.x + existDir.z * existDir.z);
+  const flatDir = flatLen > 1e-6
+    ? new Vector3(existDir.x / flatLen, 0, existDir.z / flatLen)
+    : new Vector3(0, 0, 1); // fallback for near-vertical track
+
+  const newDir    = sameSide ? flatDir.clone().negate() : flatDir.clone();
   const endOffset = newEnd === "A" ? -HALF_SEG : HALF_SEG;
 
   obj.quaternion.setFromUnitVectors(Z_AXIS, newDir);
-  // Ensure newEnd is at targetPos: obj.pos + newDir * endOffset = targetPos
+  // Ensure newEnd is at targetPos (flatDir.y=0, so Y is inherited from targetPos)
   obj.position.copy(targetPos).addScaledVector(newDir, -endOffset);
 }
 
@@ -175,9 +185,6 @@ export class RailroadSystem extends createSystem({
   private nextSegId     = 1;
   private segMap        = new Map<number, SegData>();
   private panelEntity:  Entity | null = null;
-  private panelOrigPos  = new Vector3();
-  private panelOrigRotY = 0;
-  private panelOrigScale = 1;
 
   // Snap indicator dots (one per held segment endpoint)
   private snapDotA: Mesh | null = null;
@@ -305,29 +312,17 @@ export class RailroadSystem extends createSystem({
       if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
     }
 
-    if (this.panelEntity?.object3D) {
-      this.panelEntity.object3D.position.copy(this.panelOrigPos);
-      this.panelEntity.object3D.rotation.y = this.panelOrigRotY;
-      this.panelEntity.object3D.scale.setScalar(this.panelOrigScale);
-    }
   }
 
   private showScreen() {
     this.rrUI?.screen.setProperties({ display: "flex" });
-
-    // Position panel to the right of the player, facing them, scaled up
-    if (this.panelEntity?.object3D) {
-      const obj = this.panelEntity.object3D;
-      this.panelOrigPos.copy(obj.position);
-      this.panelOrigRotY = obj.rotation.y;
-      this.panelOrigScale = obj.scale.x;
-
-      const px = 1.8;
-      const pz = -1.0;
-      obj.position.set(px, obj.position.y, pz);
-      obj.rotation.y = Math.atan2(-px, -pz);
-      obj.scale.setScalar(1.4);
-    }
+    // Panel stays at its current position — player can grab it with DistanceGrabbable
+    // if they need to reposition it while placing track.
+    // Removing scale/position manipulation here fixed the button flakiness:
+    // PanelUISystem "accounts for world scale" by shrinking the UIKit layout in
+    // local space, so if the entity scales to 1.4×, the button zone meshes end
+    // up 1.4× further from panel center than the UIKit button faces, causing
+    // raycasts to mostly miss (1-in-30 hit rate).
   }
 
   private hideScreen() {
@@ -657,9 +652,12 @@ export class RailroadSystem extends createSystem({
       this._va.lerpVectors(a, b, t);
       trainEnt.object3D!.position.copy(this._va);
 
-      // Orient train (face travel direction)
-      const faceDir = dir > 0 ? trackDir.clone() : trackDir.clone().negate();
-      trainEnt.object3D!.quaternion.setFromUnitVectors(Z_AXIS, faceDir);
+      // Orient train (face travel direction).
+      // Use atan2 in the XZ plane so the train always stays Y-up regardless of
+      // the track's tilt — setFromUnitVectors can produce unexpected roll on
+      // reversal when trackDir is nearly antiparallel to Z_AXIS.
+      const faceDir = dir > 0 ? trackDir : this._dir.copy(trackDir).negate();
+      trainEnt.object3D!.rotation.set(0, Math.atan2(faceDir.x, faceDir.z), 0);
 
       // Write back
       trainEnt.setValue(TrackTrain, "segId",     segId);
