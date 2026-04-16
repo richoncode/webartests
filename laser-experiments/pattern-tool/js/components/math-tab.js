@@ -20,7 +20,7 @@ export const MathTab = {
     const defaults = {
       type: 'rose',
       size: 80,
-      paletteId: 'laFont-1000lpcm',
+      paletteId: 'laFont-846lpcm',
       paletteOffset: 0,
       colorRangeMode: true,
       rangeEndIdx: 10,
@@ -86,14 +86,18 @@ export const MathTab = {
       // Halftone Test
       hlLPCM: 846, hlPower: 100,
       // Blend Circles
-      bcCount: 5, bcSize: 5.0, bcGap: 2.0, bcNumInner: 5, bcNumOuter: 5,
+      bcCount: 5, bcSizes: "5, 4, 3, 2, 1, 0.5, 0.25", bcGap: 2.0, bcNumInner: 5, bcNumOuter: 5,
       bcRingSpacing: 0.01, 
       bcEdgeReductionStart: 0.2, bcEdgeReductionEnd: 1.0, 
-      bcFadeReductionStart: 0.1, bcFadeReductionEnd: 0.5
+      bcFadeReductionStart: 0.1, bcFadeReductionEnd: 0.5,
+      bcPaletteIndices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      // Tiles
+      tileShape: 'square', tileSize: 5.0, tileGap: 0.5, tileAreaW: 40, tileAreaH: 40,
+      tileColorIndices: [0, 1, 2], tileColorMode: 'linear'
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
-    const fillableTypes = ['penrose-p3', 'chladni'];
+    const fillableTypes = ['penrose-p3', 'chladni', 'tiles'];
     if (!fillableTypes.includes(cfg.type)) {
       cfg.renderMode = 'path';
     }
@@ -1219,8 +1223,12 @@ export const MathTab = {
       }
       else if (cfg.type === 'blend-circles') {
         const count = cfg.bcCount || 5;
-        const size = cfg.bcSize || 5.0;
         const gap = cfg.bcGap || 2.0;
+        
+        // Parse comma-separated sizes string
+        const sizes = (cfg.bcSizes || "5").split(',').map(s => parseFloat(s.trim())).filter(s => !isNaN(s) && s > 0);
+        if (sizes.length === 0) sizes.push(5);
+
         const numInner = cfg.bcNumInner || 0;
         const numOuter = cfg.bcNumOuter || 0;
         const ringSpacing = cfg.bcRingSpacing || 0.01;
@@ -1232,63 +1240,173 @@ export const MathTab = {
 
         const CORE_LAYER = XCS_LAYERS[0]; // Layer 1
 
-        const totalW = count * size + (count - 1) * gap;
-        const startX = CX - totalW / 2 + size / 2;
+        // Horizontal sizing based on the largest diameter in the list
+        const maxSize = Math.max(...sizes);
+        const totalW = count * maxSize + (count - 1) * gap;
+        const startX = CX - totalW / 2 + maxSize / 2;
 
-        for (let i = 0; i < count; i++) {
-          const t = count > 1 ? i / (count - 1) : 0;
-          const edgeRed = erStart + t * (erEnd - erStart);
-          const fadeRed = frStart + t * (frEnd - frStart);
-          
-          const x = startX + i * (size + gap);
-          const y = CY;
-          const ringLayer = XCS_LAYERS[(i + 1) % XCS_LAYERS.length];
+        // Vertical sizing: each row is centered below the previous one
+        // We calculate total height first to center the whole block on CY
+        let totalH = 0;
+        const rowGaps = 2.0; // Fixed vertical gap between rows
+        sizes.forEach((s, idx) => {
+          totalH += s;
+          if (idx < sizes.length - 1) totalH += rowGaps;
+        });
+        
+        let currentY = CY - totalH / 2;
 
-          // 1. Filled Core (Layer 1)
-          XCSExporter.addCircle(project, {
-            x: x - size / 2, y: y - size / 2, // Corrected to Top-Left
-            width: size, height: size,
-            params: pm, isFill: true, laserSource, layerColor: CORE_LAYER,
-            extraDisplayData: { hideLabels: true }
-          });
+        sizes.forEach((size, sIdx) => {
+          // Center of current row
+          const rowCenterY = currentY + size / 2;
 
-          // Calibration Metadata for rings
-          const basePower = pm.power;
-          const edgePower = Math.max(1, Math.min(100, basePower - edgeRed));
+          for (let i = 0; i < count; i++) {
+            const t = count > 1 ? i / (count - 1) : 0;
+            const edgeRed = erStart + t * (erEnd - erStart);
+            const fadeRed = frStart + t * (frEnd - frStart);
+            
+            const x = startX + i * (maxSize + gap);
+            const y = rowCenterY;
+            const ringLayer = XCS_LAYERS[(i + 1) % XCS_LAYERS.length];
 
-          // 2. Edge Ring (Exactly at diameter)
-          XCSExporter.addCircle(project, {
-            x: x - size / 2, y: y - size / 2, // Corrected to Top-Left
-            width: size, height: size,
-            params: { ...pm, power: edgePower },
-            isFill: false, laserSource, layerColor: ringLayer,
-            extraDisplayData: { hideLabels: true }
-          });
+            // Use specific palette index for this column
+            const colorIdx = cfg.bcPaletteIndices[i] ?? 0;
+            const colEnt = palette.entries[colorIdx] || palette.entries[0];
+            const ringParams = PalMgr.getParams(cfg.paletteId, colorIdx);
 
-          // 3. Inner Rings (Radii < Diameter/2)
-          for (let j = 1; j <= numInner; j++) {
-            const r = (size / 2) - (j * ringSpacing);
-            const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
+            // 1. Filled Core - Exact palette match (color and power)
             XCSExporter.addCircle(project, {
-              x: x - r, y: y - r, // Corrected to Top-Left
-              width: r * 2, height: r * 2,
-              params: { ...pm, power: ringPower },
+              x: x - size / 2, y: y - size / 2,
+              width: size, height: size,
+              params: ringParams, isFill: true, laserSource, layerColor: colEnt.rgb,
+              extraDisplayData: { hideLabels: true, paletteName: palette.name, colorName: colEnt.label }
+            });
+
+            const edgePower = Math.max(1, Math.min(100, ringParams.power - edgeRed));
+
+            // 2. Edge Ring - Using technical layers for blending
+            XCSExporter.addCircle(project, {
+              x: x - size / 2, y: y - size / 2,
+              width: size, height: size,
+              params: { ...ringParams, power: edgePower },
               isFill: false, laserSource, layerColor: ringLayer,
               extraDisplayData: { hideLabels: true }
             });
+
+            // 3. Inner Rings
+            for (let j = 1; j <= numInner; j++) {
+              const r = (size / 2) - (j * ringSpacing);
+              if (r <= 0) break;
+              const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
+              XCSExporter.addCircle(project, {
+                x: x - r, y: y - r,
+                width: r * 2, height: r * 2,
+                params: { ...ringParams, power: ringPower },
+                isFill: false, laserSource, layerColor: ringLayer,
+                extraDisplayData: { hideLabels: true }
+              });
+            }
+
+            // 4. Outer Rings
+            for (let j = 1; j <= numOuter; j++) {
+              const r = (size / 2) + (j * ringSpacing);
+              const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
+              XCSExporter.addCircle(project, {
+                x: x - r, y: y - r,
+                width: r * 2, height: r * 2,
+                params: { ...ringParams, power: ringPower },
+                isFill: false, laserSource, layerColor: ringLayer,
+                extraDisplayData: { hideLabels: true }
+              });
+            }
           }
+          currentY += size + rowGaps;
+        });
+      }
+      else if (cfg.type === 'tiles') {
+        const size = cfg.tileSize || 5;
+        const gap = cfg.tileGap ?? 0.5;
+        const areaW = cfg.tileAreaW || 40;
+        const areaH = cfg.tileAreaH || 40;
+        const shape = cfg.tileShape || 'square';
+        
+        const startX = CX - areaW / 2;
+        const startY = CY - areaH / 2;
 
-          // 4. Outer Rings (Radii > Diameter/2)
-          for (let j = 1; j <= numOuter; j++) {
-            const r = (size / 2) + (j * ringSpacing);
-            const ringPower = Math.max(1, Math.min(100, edgePower - (j * fadeRed)));
-            XCSExporter.addCircle(project, {
-              x: x - r, y: y - r, // Corrected to Top-Left
-              width: r * 2, height: r * 2,
-              params: { ...pm, power: ringPower },
-              isFill: false, laserSource, layerColor: ringLayer,
-              extraDisplayData: { hideLabels: true }
-            });
+        // Vertical steps depend on shape
+        let dy = size + gap;
+        let dx = size + gap;
+        
+        if (shape === 'hexagon') {
+          dy = size * 0.75 + gap;
+          dx = (size * Math.sqrt(3)) / 2 + gap;
+        } else if (shape === 'triangle') {
+          dy = (size * Math.sqrt(3) / 2) + gap;
+          dx = size / 2 + gap / 2;
+        }
+
+        const rows = Math.ceil(areaH / dy);
+        const cols = Math.ceil(areaW / dx);
+
+        let tileIdx = 0;
+        for (let r = 0; r < rows; r++) {
+          const rowY = startY + r * dy;
+          if (rowY > CY + areaH / 2 + size/2) break;
+
+          for (let c = 0; c < cols + 2; c++) {
+            const xOffset = (shape === 'hexagon' && r % 2 === 1) ? dx / 2 : 0;
+            const x = startX + c * dx + xOffset;
+
+            // Stay within area bounds
+            if (x > CX + areaW / 2 + size/2) break;
+            if (x < CX - areaW / 2 - size/2) continue;
+
+            // Color Mode Logic
+            let colorIdxInPattern;
+            if (cfg.tileColorMode === 'stripes') {
+              colorIdxInPattern = (r + c) % 3;
+            } else if (cfg.tileColorMode === 'mosaic') {
+              // True 3-coloring for Hex/Square
+              colorIdxInPattern = (c + 2 * r) % 3;
+            } else {
+              // Linear (tile sequence)
+              colorIdxInPattern = tileIdx % 3;
+            }
+
+            const paletteIdx = cfg.tileColorIndices[colorIdxInPattern] ?? 0;
+            const colEnt = palette.entries[paletteIdx] || palette.entries[0];
+            const tileParams = PalMgr.getParams(cfg.paletteId, paletteIdx);
+
+            if (shape === 'square') {
+              XCSExporter.addRect(project, {
+                x: x - size / 2, y: rowY - size / 2,
+                width: size, height: size,
+                params: tileParams, isFill, laserSource, layerColor: colEnt.rgb,
+                extraDisplayData: { paletteName: palette.name, colorName: colEnt.label }
+              });
+            } else if (shape === 'hexagon') {
+              let dPath = "";
+              const hr = size / 2;
+              for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 180) * (i * 60 - 30);
+                const px = x + hr * Math.cos(angle);
+                const py = rowY + hr * Math.sin(angle);
+                dPath += (i === 0 ? "M " : "L ") + `${px.toFixed(3)} ${py.toFixed(3)}`;
+              }
+              dPath += " Z";
+              XCSExporter.addPath(project, { dPath, x: 0, y: 0, width: size, height: size, params: tileParams, isFill, laserSource, layerColor: colEnt.rgb });
+            } else if (shape === 'triangle') {
+              const isUp = (r + c) % 2 === 0;
+              let dPath = "";
+              const h = (size * Math.sqrt(3)) / 2;
+              if (isUp) {
+                dPath = `M ${x} ${rowY - h/2} L ${x + size/2} ${rowY + h/2} L ${x - size/2} ${rowY + h/2} Z`;
+              } else {
+                dPath = `M ${x} ${rowY + h/2} L ${x + size/2} ${rowY - h/2} L ${x - size/2} ${rowY - h/2} Z`;
+              }
+              XCSExporter.addPath(project, { dPath, x: 0, y: 0, width: size, height: size, params: tileParams, isFill, laserSource, layerColor: colEnt.rgb });
+            }
+            tileIdx++;
           }
         }
       }
@@ -1366,13 +1484,15 @@ export const MathTab = {
     const palette = PalMgr.get(cfg.paletteId) || PalMgr.list()[0];
     if (!palette) return;
 
-    const fillableTypes = ['penrose-p3', 'chladni', 'phyllotaxis', 'cellular-automata', 'kerf-test', 'thermal-wall', 'game-of-life', 'worley-noise', 'inscribed-circles', 'dla', 'reaction-diffusion', 'superformula', 'slime-mold', 'membrane', 'truchet-squares', 'stippling', 'density-test', 'test-scale', 'halftone-test'];
+    const fillableTypes = ['penrose-p3', 'chladni', 'phyllotaxis', 'cellular-automata', 'kerf-test', 'thermal-wall', 'game-of-life', 'worley-noise', 'inscribed-circles', 'dla', 'reaction-diffusion', 'superformula', 'slime-mold', 'membrane', 'truchet-squares', 'stippling', 'density-test', 'test-scale', 'halftone-test', 'tiles'];
     const supportsFill = fillableTypes.includes(cfg.type);
-    const supportsColorRange = cfg.type !== 'density-test';
+    const supportsColorRange = cfg.type !== 'density-test' && cfg.type !== 'blend-circles' && cfg.type !== 'tiles';
+    const supportsGlobalColor = cfg.type !== 'tiles';
 
     scroll.appendChild(UI.makeGeneralSettingsSection(cfg, set, rebuild, App.palettes, palette, {
       supportPath: true,
       supportFill: supportsFill,
+      supportColor: supportsGlobalColor,
       supportColorRange: supportsColorRange,
       supportBorder: true,
       minSize: 10,
@@ -1562,17 +1682,25 @@ export const MathTab = {
         UI.makeRow('Points', UI.makeStepCounter(cfg.worleyPoints, 1, 50, v => set('worleyPoints', v))),
         UI.makeRow('Seed', UI.makeRange(1, 100000, 1, cfg.worleySeed, v => set('worleySeed', +v)))
       ]));
-    } else if (cfg.type === 'halftone-test') {
-      scroll.appendChild(UI.makeSection('Halftone Settings', [
-        UI.makeRow('LPCM', UI.makeRange(1, 1000, 1, cfg.hlLPCM, v => set('hlLPCM', +v))),
-        UI.makeRow('Power', UI.makeRange(1, 100, 1, cfg.hlPower, v => set('hlPower', +v), '%'))
-      ]));
     } else if (cfg.type === 'blend-circles') {
       scroll.appendChild(UI.makeSection('Blend Circle Settings', [
-        UI.makeRow('Count', UI.makeStepCounter(cfg.bcCount, 1, 20, v => set('bcCount', v)), 'Total number of circles in the row.'),
-        UI.makeRow('Diameter', UI.makeRange(1, 50, 0.1, cfg.bcSize, v => set('bcSize', +v), 'mm'), 'Diameter of each central circle.'),
-        UI.makeRow('Gap', UI.makeRange(0, 20, 0.5, cfg.bcGap, v => set('bcGap', +v), 'mm'), 'Spacing between the center points of the circles.')
+        UI.makeRow('Color Count', UI.makeStepCounter(cfg.bcCount, 1, 20, v => { cfg.bcCount = v; rebuild(); update(); }), 'Number of columns (individual colors).'),
+        UI.makeRow('Gap', UI.makeRange(0, 20, 0.5, cfg.bcGap, v => set('bcGap', +v), 'mm'), 'Spacing between the center points of the circles.'),
+        UI.makeRow('Sizes-mm', UI.makeTextInput(cfg.bcSizes, v => set('bcSizes', v), 'e.g. 5, 4, 3...'), 'Comma-separated list of diameters for each row.')
       ]));
+
+      // Individual Color Pickers for each column
+      const colorRows = [];
+      for (let i = 0; i < cfg.bcCount; i++) {
+        const curIdx = cfg.bcPaletteIndices[i] ?? 0;
+        colorRows.push(UI.makeRow(`Color ${i + 1}`, UI.makePalettePicker(palette.entries, curIdx, v => {
+          cfg.bcPaletteIndices[i] = v;
+          update();
+          Persistence.save();
+        })));
+      }
+      scroll.appendChild(UI.makeSection('Column Colors', colorRows));
+
       scroll.appendChild(UI.makeSection('Ring Settings (0.001mm Step)', [
         UI.makeRow('Num Inner', UI.makeStepCounter(cfg.bcNumInner, 0, 100, v => set('bcNumInner', v)), 'Number of concentric rings shrinking inward from the diameter.'),
         UI.makeRow('Num Outer', UI.makeStepCounter(cfg.bcNumOuter, 0, 100, v => set('bcNumOuter', v)), 'Number of concentric rings growing outward from the diameter.'),
@@ -1586,6 +1714,26 @@ export const MathTab = {
         UI.makeRow('Start', UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionStart, v => set('bcFadeReductionStart', +v), '%'), 'Cumulative power reduction per ring for the first circle.'),
         UI.makeRow('End',   UI.makeRange(0, 5, 0.01, cfg.bcFadeReductionEnd, v => set('bcFadeReductionEnd', +v), '%'), 'Cumulative power reduction per ring for the last circle.')
       ], false, null, '<b>Power Blending Logic</b><br><br>1. <b>Ring Power Fade</b>: The initial drop from core power to the edge ring.<br>2. <b>Ring Size Step</b>: The amount subtracted cumulatively from each concentric ring moving away from the edge.<br><br><i>Linear interpolation is applied to all values from the first circle to the last in the row.</i>'));
+
+    } else if (cfg.type === 'tiles') {
+      scroll.appendChild(UI.makeSection('Tiles Pattern Settings', [
+        UI.makeRow('Shape', UI.makeToggles(['square', 'hexagon', 'triangle'], cfg.tileShape, v => set('tileShape', v), { square: 'Square', hexagon: 'Hex', triangle: 'Tri' })),
+        UI.makeRow('Size', UI.makeRange(1, 50, 0.1, cfg.tileSize, v => set('tileSize', +v), 'mm')),
+        UI.makeRow('Gap/Overlap', UI.makeRange(-5, 10, 0.1, cfg.tileGap, v => set('tileGap', +v), 'mm')),
+        UI.makeRow('Area Width', UI.makeRange(10, 100, 1, cfg.tileAreaW, v => set('tileAreaW', +v), 'mm')),
+        UI.makeRow('Area Height', UI.makeRange(10, 100, 1, cfg.tileAreaH, v => set('tileAreaH', +v), 'mm')),
+        UI.makeRow('Color Mode', UI.makeToggles(['linear', 'stripes', 'mosaic'], cfg.tileColorMode, v => set('tileColorMode', v), { linear: 'Linear', stripes: 'Stripes', mosaic: 'Mosaic' }))
+      ]));
+
+      const colorPickers = [];
+      for (let i = 0; i < 3; i++) {
+        colorPickers.push(UI.makeRow(`Color ${i + 1}`, UI.makePalettePicker(palette.entries, cfg.tileColorIndices[i] ?? 0, v => {
+          cfg.tileColorIndices[i] = v;
+          update();
+          Persistence.save();
+        })));
+      }
+      scroll.appendChild(UI.makeSection('Tile Colors (Alternating)', colorPickers));
     }
   }
 };

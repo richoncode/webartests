@@ -170,6 +170,23 @@ export const UI = {
     return sel;
   },
 
+  makeTextInput(val, onChange, placeholder = '') {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = val;
+    inp.placeholder = placeholder;
+    inp.style.background = '#0d0d0d';
+    inp.style.border = '1px solid #333';
+    inp.style.color = '#5b9bd5';
+    inp.style.fontSize = '11px';
+    inp.style.borderRadius = '4px';
+    inp.style.padding = '2px 6px';
+    inp.style.width = '100%';
+    inp.style.outline = 'none';
+    inp.onchange = (e) => onChange(e.target.value);
+    return inp;
+  },
+
   makeRange(min, max, step, val, onChange, unit='') {
     const wrap = document.createElement('div');
     wrap.className = 'ctrl-val-wrap';
@@ -285,7 +302,7 @@ export const UI = {
     
     const pathBtn = document.createElement('button');
     pathBtn.className = 'hbtn sm' + (current === 'path' ? ' primary' : '');
-    pathBtn.textContent = 'Path';
+    pathBtn.textContent = 'Outline';
     pathBtn.disabled = !supported.path;
     pathBtn.onclick = () => {
       if (current !== 'path') onPath();
@@ -308,6 +325,7 @@ export const UI = {
     const opts = {
       supportPath: true,
       supportFill: true,
+      supportColor: true,
       supportColorRange: true,
       supportBorder: true,
       minSize: 10,
@@ -336,17 +354,19 @@ export const UI = {
     }
 
     // 3. Color (Single or Range)
-    if (opts.supportColorRange && currentPaletteObj && currentPaletteObj.entries) {
-      rows.push(this.makeRow('Color', palletUI.makeColorRangeControl(
-        cfg, setFn, rebuildFn, currentPaletteObj.entries, { title: "Color" }
-      )));
-    } else if (currentPaletteObj && currentPaletteObj.entries) {
-      // Just single start color if range not supported
-      rows.push(this.makeRow('Start Color', this.makePalettePicker(
-        currentPaletteObj.entries, 
-        cfg.paletteOffset || 0, 
-        v => setFn('paletteOffset', v)
-      )));
+    if (opts.supportColor) {
+      if (opts.supportColorRange && currentPaletteObj && currentPaletteObj.entries) {
+        rows.push(this.makeRow('Color', palletUI.makeColorRangeControl(
+          cfg, setFn, rebuildFn, currentPaletteObj.entries, { title: "Color" }
+        )));
+      } else if (currentPaletteObj && currentPaletteObj.entries) {
+        // Just single start color if range not supported
+        rows.push(this.makeRow('Start Color', this.makePalettePicker(
+          currentPaletteObj.entries, 
+          cfg.paletteOffset || 0, 
+          v => setFn('paletteOffset', v)
+        )));
+      }
     }
 
     // 4. Mode (Fill/Path)
