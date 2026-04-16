@@ -12,11 +12,14 @@ import {
   PanelDocument,
   UIKitDocument,
   UIKit,
+  XRPlane,
   eq,
   BoxGeometry,
   CylinderGeometry,
+  PlaneGeometry,
   Mesh,
   MeshStandardMaterial,
+  MeshBasicMaterial,
   Vector3,
   Quaternion,
   Object3D,
@@ -34,8 +37,9 @@ const TIE_W         = GAUGE + 0.018;  // sleeper width
 const TIE_D         = 0.014;  // sleeper depth (along track)
 const TIE_H         = 0.007;  // sleeper height
 const TIE_COUNT     = 5;
-const SNAP_RADIUS   = 0.12;   // distance at which endpoints snap (m)
-const TRAIN_SPEED   = 0.30;   // m/s along track
+const SNAP_RADIUS        = 0.12;   // distance at which track endpoints snap (m)
+const SURFACE_SNAP_DIST  = 0.18;   // max distance from a detected AR plane to trigger surface snap (m)
+const TRAIN_SPEED        = 0.30;   // m/s along track
 
 const RAIL_MAT    = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.7 });
 const TIE_MAT     = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
@@ -99,6 +103,15 @@ function makeTrackMesh(): Object3D {
 function makeSnapIndicator(): Mesh {
   const geo = new CylinderGeometry(0.022, 0.022, 0.04, 8);
   return new Mesh(geo, SNAP_MAT.clone());
+}
+
+// Thin plane shown while holding a track piece to preview where it will surface-snap
+function makeSurfacePreview(): Mesh {
+  const mat = new MeshBasicMaterial({
+    color: 0x00ccff, transparent: true, opacity: 0.22,
+    depthWrite: false,
+  });
+  return new Mesh(new PlaneGeometry(SEG_LEN, GAUGE + 0.06), mat);
 }
 
 function makeTrainMesh(): Object3D {
@@ -185,6 +198,7 @@ export class RailroadSystem extends createSystem({
   panel:         { required: [PanelUI, PanelDocument], where: [eq(PanelUI, "config", PANEL_CONFIG)] },
   rrBtnHovered:  { required: [RailroadButtonZone, Hovered] },
   rrBtnPressed:  { required: [RailroadButtonZone, Pressed] },
+  arPlanes:      { required: [XRPlane] },
 }) {
   private active        = false;
   private nextSegId     = 1;
@@ -194,6 +208,9 @@ export class RailroadSystem extends createSystem({
   // Snap indicator dots (one per held segment endpoint)
   private snapDotA: Mesh | null = null;
   private snapDotB: Mesh | null = null;
+
+  // Ghost plane shown while holding a track to preview surface snap target
+  private surfacePreview: Mesh | null = null;
 
   // Railroad-screen button zones (4 buttons)
   private rrBtnZoneEntities:  Entity[] = [];
@@ -206,10 +223,13 @@ export class RailroadSystem extends createSystem({
   } | null = null;
 
   // Scratch
-  private _va  = new Vector3();
-  private _vb  = new Vector3();
-  private _dir = new Vector3();
-  private _q   = new Quaternion();
+  private _va     = new Vector3();
+  private _vb     = new Vector3();
+  private _vc     = new Vector3(); // extra scratch for surface snap
+  private _dir    = new Vector3();
+  private _normal = new Vector3();
+  private _q      = new Quaternion();
+  private _q2     = new Quaternion();
 
   init() {
     // Wire panel when it qualifies
@@ -290,6 +310,11 @@ export class RailroadSystem extends createSystem({
     this.snapDotB.visible = false;
     this.world.createTransformEntity(this.snapDotA);
     this.world.createTransformEntity(this.snapDotB);
+
+    // Surface preview ghost — shown while holding a track piece
+    this.surfacePreview = makeSurfacePreview();
+    this.surfacePreview.visible = false;
+    this.world.createTransformEntity(this.surfacePreview);
   }
 
   // ── Public ─────────────────────────────────────────────────────────────
@@ -414,6 +439,91 @@ export class RailroadSystem extends createSystem({
     this.refreshCountUI();
   }
 
+  // ── Surface snap (AR plane detection) ────────────────────────────────
+  // Find the closest detected AR plane to `worldPos` and, if within
+  // SURFACE_SNAP_DIST, project the track onto that plane surface and orient
+  // it to lie flat.  The track's current azimuth (direction along the surface)
+  // is preserved so the user chooses where it points.
+  private snapToSurface(obj: Object3D): void {
+    let bestDist = SURFACE_SNAP_DIST;
+    let bestNormal: Vector3 | null = null;
+    let bestPlanePos: Vector3 | null = null;
+
+    for (const planeEnt of this.queries.arPlanes.entities) {
+      const planeObj = planeEnt.object3D;
+      if (!planeObj) continue;
+
+      // Plane normal = local Y of the plane entity (WebXR convention)
+      this._normal.set(0, 1, 0).applyQuaternion(planeObj.quaternion);
+
+      // Signed distance from track centre to this plane
+      this._vc.subVectors(obj.position, planeObj.position);
+      const signedDist = this._vc.dot(this._normal);
+
+      // Only snap from the "above" side (positive) and within threshold
+      if (signedDist >= -0.02 && signedDist < bestDist) {
+        bestDist     = signedDist;
+        bestNormal   = this._normal.clone();
+        bestPlanePos = planeObj.position.clone();
+      }
+    }
+
+    if (!bestNormal || !bestPlanePos) return;
+
+    // ── 1. Move track onto the plane surface ─────────────────────────
+    // Offset the centre up by (RAIL_H + TIE_H) so the bottom of the sleepers
+    // sits flush against the detected surface rather than the centre.
+    const surfaceOffset = TIE_H + RAIL_H * 0.5;
+    this._vc.subVectors(obj.position, bestPlanePos);
+    const dist = this._vc.dot(bestNormal);
+    obj.position.addScaledVector(bestNormal, -dist + surfaceOffset);
+
+    // ── 2. Reorient: local Y → planeNormal, local Z preserved on surface ──
+    // Step A: rotate so world-Y maps to bestNormal
+    this._q.setFromUnitVectors(Y_AXIS, bestNormal);
+
+    // Step B: figure out where local Z ended up after step A
+    this._dir.copy(Z_AXIS).applyQuaternion(this._q);
+
+    // Project current track direction onto the plane to preserve azimuth
+    const curTrackDir = Z_AXIS.clone().applyQuaternion(obj.quaternion);
+    const dot = curTrackDir.dot(bestNormal);
+    curTrackDir.addScaledVector(bestNormal, -dot).normalize();
+
+    if (curTrackDir.lengthSq() < 0.01) {
+      // Track was perpendicular to surface — keep default direction from step A
+      obj.quaternion.copy(this._q);
+    } else {
+      // Step B: rotate _dir → curTrackDir (both ⊥ normal) to restore azimuth
+      this._q2.setFromUnitVectors(this._dir, curTrackDir);
+      obj.quaternion.multiplyQuaternions(this._q2, this._q);
+    }
+  }
+
+  // Return the closest surface snap target (position + normal) for the preview,
+  // or null if nothing is close enough.
+  private findSurfaceSnapTarget(pos: Vector3): { pos: Vector3; normal: Vector3 } | null {
+    let bestDist = SURFACE_SNAP_DIST;
+    let result: { pos: Vector3; normal: Vector3 } | null = null;
+
+    for (const planeEnt of this.queries.arPlanes.entities) {
+      const planeObj = planeEnt.object3D;
+      if (!planeObj) continue;
+
+      const normal = new Vector3(0, 1, 0).applyQuaternion(planeObj.quaternion);
+      const toPos  = pos.clone().sub(planeObj.position);
+      const signedDist = toPos.dot(normal);
+
+      if (signedDist >= -0.02 && signedDist < bestDist) {
+        bestDist = signedDist;
+        // Snap point: project pos onto plane then lift by surface offset
+        const snapPos = pos.clone().addScaledVector(normal, -signedDist + TIE_H + RAIL_H * 0.5);
+        result = { pos: snapPos, normal };
+      }
+    }
+    return result;
+  }
+
   // ── Snap logic ────────────────────────────────────────────────────────
   private doSnap(newEnt: Entity) {
     const newId = newEnt.getValue(TrackSegment, "segId") as number;
@@ -461,9 +571,13 @@ export class RailroadSystem extends createSystem({
       }
     }
 
-    if (!bestCase) return;
+    if (!bestCase) {
+      // No endpoint snap — try to place flat on the nearest AR surface
+      this.snapToSurface(newObj);
+      return;
+    }
 
-    // Snap position/orientation
+    // Snap position/orientation to the neighbouring endpoint
     snapAlign(newObj, bestCase.newEnd, bestCase.targetPos, bestCase.existObj, bestCase.existEnd);
 
     // Record connections
@@ -543,6 +657,22 @@ export class RailroadSystem extends createSystem({
     if (this.snapDotB) this.snapDotB.visible = false;
   }
 
+  private updateSurfacePreview(heldEnt: Entity) {
+    if (!this.surfacePreview) return;
+    const obj = heldEnt.object3D!;
+    const target = this.findSurfaceSnapTarget(obj.position);
+
+    if (!target) {
+      this.surfacePreview.visible = false;
+      return;
+    }
+
+    this.surfacePreview.visible = true;
+    this.surfacePreview.position.copy(target.pos);
+    // PlaneGeometry normal is +Z; rotate so it faces along the surface normal
+    this.surfacePreview.quaternion.setFromUnitVectors(Z_AXIS, target.normal);
+  }
+
   // ── Spawn train ───────────────────────────────────────────────────────
   private spawnTrain() {
     // Find any placed segment to put the train on
@@ -577,11 +707,15 @@ export class RailroadSystem extends createSystem({
     if (!this.active) return;
 
     // Show snap indicators while holding a track piece
+    let hasHeld = false;
     for (const ent of this.queries.heldTrack.entities) {
+      hasHeld = true;
       this.updateSnapIndicators(ent);
+      this.updateSurfacePreview(ent);
     }
-    if (this.queries.heldTrack.entities.size === 0) {
+    if (!hasHeld) {
       this.hideSnapIndicators();
+      if (this.surfacePreview) this.surfacePreview.visible = false;
     }
 
     // Move trains
