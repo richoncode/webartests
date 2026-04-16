@@ -38,7 +38,7 @@ const TIE_D         = 0.014;  // sleeper depth (along track)
 const TIE_H         = 0.007;  // sleeper height
 const TIE_COUNT     = 5;
 const SNAP_RADIUS        = 0.12;   // distance at which track endpoints snap (m)
-const SURFACE_SNAP_DIST  = 0.18;   // max distance from a detected AR plane to trigger surface snap (m)
+const SURFACE_SNAP_DIST  = 0.30;   // max distance from a detected AR plane to trigger surface snap (m)
 const TRAIN_SPEED        = 0.30;   // m/s along track
 
 const RAIL_MAT    = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.7 });
@@ -218,9 +218,14 @@ export class RailroadSystem extends createSystem({
 
   // UI refs
   private rrUI: {
-    screen:     UIKit.Text;
-    count:      UIKit.Text;
+    screen:    UIKit.Text;
+    count:     UIKit.Text;
+    debugBtn:  UIKit.Text;
   } | null = null;
+
+  // Scene-understanding debug visualisation
+  private debugMode       = false;
+  private planeDebugMeshes = new Map<number, Mesh>(); // entity.index → debug overlay mesh
 
   // Scratch
   private _va     = new Vector3();
@@ -240,8 +245,9 @@ export class RailroadSystem extends createSystem({
       if (!doc) return;
 
       this.rrUI = {
-        screen: doc.getElementById("railroad-screen") as UIKit.Text,
-        count:  doc.getElementById("rr-track-count") as UIKit.Text,
+        screen:   doc.getElementById("railroad-screen") as UIKit.Text,
+        count:    doc.getElementById("rr-track-count") as UIKit.Text,
+        debugBtn: doc.getElementById("rr-debug-btn")   as UIKit.Text,
       };
 
       // HTML click events as belt-and-suspenders backup
@@ -253,10 +259,26 @@ export class RailroadSystem extends createSystem({
         ?.addEventListener("click", () => { if (this.active) this.clearAll(); });
       (doc.getElementById("rr-menu-btn") as UIKit.Text)
         ?.addEventListener("click", () => { if (this.active) this.endGame(); });
+      (doc.getElementById("rr-debug-btn") as UIKit.Text)
+        ?.addEventListener("click", () => { if (this.active) this.toggleDebug(); });
 
       // Build 3D button zones parented to panel (created without Interactable; enabled on startGame)
       this.buildButtonZones(entity);
     });
+
+    // Track AR plane detection — create/remove debug overlays on the fly
+    this.cleanupFuncs.push(
+      this.queries.arPlanes.subscribe("qualify", (entity) => {
+        if (this.debugMode) this.createPlaneDebugMesh(entity);
+      }),
+      this.queries.arPlanes.subscribe("disqualify", (entity) => {
+        const mesh = this.planeDebugMeshes.get(entity.index);
+        if (mesh) {
+          mesh.removeFromParent();
+          this.planeDebugMeshes.delete(entity.index);
+        }
+      }),
+    );
 
     // Button hover glow
     this.queries.rrBtnHovered.subscribe("qualify", (entity) => {
@@ -337,11 +359,15 @@ export class RailroadSystem extends createSystem({
     this.active = false;
     this.clearAll();
     this.hideSnapIndicators();
+    if (this.surfacePreview) this.surfacePreview.visible = false;
     this.hideScreen();
     for (const e of this.rrBtnZoneEntities) {
       if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
     }
-
+    // Remove all debug overlays and reset debug state
+    for (const mesh of this.planeDebugMeshes.values()) mesh.removeFromParent();
+    this.planeDebugMeshes.clear();
+    this.debugMode = false;
   }
 
   private showScreen() {
@@ -363,7 +389,9 @@ export class RailroadSystem extends createSystem({
     if (!this.rrUI) return;
     const segs   = this.segMap.size;
     const trains = this.queries.allTrains.entities.size;
-    this.rrUI.count.setProperties({ text: `${segs} piece${segs !== 1 ? "s" : ""} · ${trains} train${trains !== 1 ? "s" : ""}` });
+    const planes = this.queries.arPlanes.entities.size;
+    const planeInfo = this.debugMode ? ` · ${planes} plane${planes !== 1 ? "s" : ""}` : "";
+    this.rrUI.count.setProperties({ text: `${segs} piece${segs !== 1 ? "s" : ""} · ${trains} train${trains !== 1 ? "s" : ""}${planeInfo}` });
   }
 
   // ── Railroad-screen button zones ──────────────────────────────────────
@@ -460,9 +488,13 @@ export class RailroadSystem extends createSystem({
       this._vc.subVectors(obj.position, planeObj.position);
       const signedDist = this._vc.dot(this._normal);
 
-      // Only snap from the "above" side (positive) and within threshold
-      if (signedDist >= -0.02 && signedDist < bestDist) {
-        bestDist     = signedDist;
+      // Snap from either side — Math.abs lets wall/ceiling tracks work regardless
+      // of which way the detected plane's normal faces.
+      const absDist = Math.abs(signedDist);
+      if (absDist < bestDist) {
+        bestDist     = absDist;
+        // Ensure normal points toward the track (so the offset pushes it out)
+        if (signedDist < 0) this._normal.negate();
         bestNormal   = this._normal.clone();
         bestPlanePos = planeObj.position.clone();
       }
@@ -514,11 +546,12 @@ export class RailroadSystem extends createSystem({
       const toPos  = pos.clone().sub(planeObj.position);
       const signedDist = toPos.dot(normal);
 
-      if (signedDist >= -0.02 && signedDist < bestDist) {
-        bestDist = signedDist;
-        // Snap point: project pos onto plane then lift by surface offset
-        const snapPos = pos.clone().addScaledVector(normal, -signedDist + TIE_H + RAIL_H * 0.5);
-        result = { pos: snapPos, normal };
+      const absDist = Math.abs(signedDist);
+      if (absDist < bestDist) {
+        bestDist = absDist;
+        const facingNormal = signedDist >= 0 ? normal : normal.clone().negate();
+        const snapPos = pos.clone().addScaledVector(facingNormal, -absDist + TIE_H + RAIL_H * 0.5);
+        result = { pos: snapPos, normal: facingNormal };
       }
     }
     return result;
@@ -657,6 +690,67 @@ export class RailroadSystem extends createSystem({
     if (this.snapDotB) this.snapDotB.visible = false;
   }
 
+  // ── Scene-understanding debug ─────────────────────────────────────────
+  private toggleDebug() {
+    this.debugMode = !this.debugMode;
+
+    if (this.debugMode) {
+      // Materialise overlays for all planes already detected
+      for (const ent of this.queries.arPlanes.entities) {
+        this.createPlaneDebugMesh(ent);
+      }
+    } else {
+      for (const mesh of this.planeDebugMeshes.values()) mesh.removeFromParent();
+      this.planeDebugMeshes.clear();
+    }
+
+    // Update button appearance
+    this.rrUI?.debugBtn.setProperties({
+      text:            this.debugMode ? "Debug: On" : "Debug: Off",
+      backgroundColor: this.debugMode ? "#1a2a1a"  : "#18181b",
+      color:           this.debugMode ? "#86efac"  : "#52525b",
+      borderColor:     this.debugMode ? "#16a34a"  : "#3f3f46",
+    });
+    this.refreshCountUI();
+  }
+
+  // Create a coloured wireframe overlay parented to the XRPlane's Object3D.
+  // Floor/ceiling planes → green; wall planes → blue.
+  private createPlaneDebugMesh(entity: Entity) {
+    if (this.planeDebugMeshes.has(entity.index)) return;
+    const planeObj = entity.object3D;
+    if (!planeObj) return;
+
+    const xrPlane = entity.getValue(XRPlane, "_plane") as { orientation?: string } | undefined;
+    const isHorizontal = xrPlane?.orientation === "horizontal";
+
+    // Fill layer — translucent, double-sided
+    const fillMat = new MeshBasicMaterial({
+      color:       isHorizontal ? 0x00ff44 : 0x4488ff,
+      transparent: true,
+      opacity:     0.25,
+      side:        2,   // DoubleSide
+      depthWrite:  false,
+    });
+    const wireMat = new MeshBasicMaterial({
+      color:     isHorizontal ? 0x00ff44 : 0x4488ff,
+      wireframe: true,
+    });
+    const geo = new PlaneGeometry(2, 2);
+    const fill = new Mesh(geo, fillMat);
+    const wire = new Mesh(geo, wireMat);
+    // PlaneGeometry lies in XY (normal = +Z).  In the XRPlane entity's local
+    // space the surface is the XZ plane (normal = +Y), so rotate -90° around X.
+    fill.rotation.x = wire.rotation.x = -Math.PI / 2;
+
+    // Parent both to the plane entity's Object3D so they auto-follow updates
+    planeObj.add(fill);
+    planeObj.add(wire);
+
+    // Store the fill mesh as the representative (wire follows same parent)
+    this.planeDebugMeshes.set(entity.index, fill);
+  }
+
   private updateSurfacePreview(heldEnt: Entity) {
     if (!this.surfacePreview) return;
     const obj = heldEnt.object3D!;
@@ -705,6 +799,9 @@ export class RailroadSystem extends createSystem({
   // ── Update: move trains along track ───────────────────────────────────
   update(delta: number) {
     if (!this.active) return;
+
+    // Keep plane count live in debug mode
+    if (this.debugMode) this.refreshCountUI();
 
     // Show snap indicators while holding a track piece
     let hasHeld = false;
