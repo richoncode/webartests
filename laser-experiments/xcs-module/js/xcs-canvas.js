@@ -249,7 +249,7 @@ export class XCSCanvas {
         <span>POS:</span>  <span>${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>
         <span>SIZE:</span> <span>${p.w.toFixed(1)}×${p.h.toFixed(1)}</span>
         <span>LAYER:</span><span style="color:${p.layerColor}">${p.layerColor}</span>
-        <span>PWR:</span>  <span>${p.power}%</span>
+        <span>POWER:</span>  <span>${p.power}% ${p.laser === 'ir' ? 'IR' : 'Blue'}</span>
         <span>SPD:</span>  <span>${p.speed} mm/s</span>
         <span>LPCM:</span> <span>${p.density}</span>
       </div>
