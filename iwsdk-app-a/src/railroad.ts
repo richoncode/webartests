@@ -41,7 +41,9 @@ const RAIL_MAT    = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, 
 const TIE_MAT     = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
 const SNAP_MAT    = new MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.8, transparent: true, opacity: 0.55 });
 
-const Z_AXIS = new Vector3(0, 0, 1);
+const Z_AXIS  = new Vector3(0, 0, 1);
+const Y_AXIS  = new Vector3(0, 1, 0);
+const RAIL_OVERLAP = 0.006; // extend rail geometry past endpoints to close visual seam at junctions
 
 // ── Components ─────────────────────────────────────────────────────────────
 export const TrackSegment = createComponent("TrackSegment", {
@@ -73,8 +75,9 @@ interface SegData {
 function makeTrackMesh(): Object3D {
   const root = new Object3D();
 
-  // Two rails
-  const railGeo = new BoxGeometry(RAIL_W, RAIL_H, SEG_LEN);
+  // Two rails — slightly longer than SEG_LEN so adjacent segments overlap at
+  // the joint and don't show a seam gap.
+  const railGeo = new BoxGeometry(RAIL_W, RAIL_H, SEG_LEN + RAIL_OVERLAP * 2);
   for (const side of [-1, 1]) {
     const rail = new Mesh(railGeo, RAIL_MAT);
     rail.position.set(side * GAUGE / 2, TIE_H + RAIL_H / 2, 0);
@@ -143,32 +146,34 @@ function getEndpoints(obj: Object3D): { a: Vector3; b: Vector3; dir: Vector3 } {
 }
 
 // Position + orient `obj` so that its `newEnd` endpoint sits at `targetPos`,
-// continuing in the correct direction from `existDir` / `existEnd`.
+// continuing in the correct direction from `existObj` / `existEnd`.
+// Works for floor, wall, and ceiling tracks by preserving the full quaternion
+// of the existing segment rather than projecting to the XZ plane.
 function snapAlign(
   obj:        Object3D,
   newEnd:     "A" | "B",
   targetPos:  Vector3,
-  existDir:   Vector3,
-  existEnd:   "B" | "A",
+  existObj:   Object3D,
+  existEnd:   "A" | "B",
 ): void {
-  // Natural continuation (A→B or B→A): same orientation.
-  // Back-to-back (A→A or B→B): reversed orientation.
   const sameSide  = newEnd === existEnd;
+  const existDir  = Z_AXIS.clone().applyQuaternion(existObj.quaternion);
 
-  // Project existDir onto the XZ plane so snapped tracks stay horizontal and
-  // lay flush with each other regardless of any Y-tilt from how the user held
-  // the existing segment.  Without this, each snap inherits the existing
-  // segment's tilt and successive segments drift apart vertically.
-  const flatLen = Math.sqrt(existDir.x * existDir.x + existDir.z * existDir.z);
-  const flatDir = flatLen > 1e-6
-    ? new Vector3(existDir.x / flatLen, 0, existDir.z / flatLen)
-    : new Vector3(0, 0, 1); // fallback for near-vertical track
+  if (!sameSide) {
+    // Straight continuation: new segment has exactly the same orientation as
+    // the existing one — this preserves wall/ceiling alignment automatically.
+    obj.quaternion.copy(existObj.quaternion);
+  } else {
+    // Back-to-back (A→A or B→B): rotate 180° around the existing segment's
+    // local-up axis so the new segment reverses direction while staying on the
+    // same surface (floor, wall, ceiling).
+    const localUp = Y_AXIS.clone().applyQuaternion(existObj.quaternion);
+    const flipQ   = new Quaternion().setFromAxisAngle(localUp, Math.PI);
+    obj.quaternion.multiplyQuaternions(flipQ, existObj.quaternion);
+  }
 
-  const newDir    = sameSide ? flatDir.clone().negate() : flatDir.clone();
+  const newDir    = sameSide ? existDir.clone().negate() : existDir;
   const endOffset = newEnd === "A" ? -HALF_SEG : HALF_SEG;
-
-  obj.quaternion.setFromUnitVectors(Z_AXIS, newDir);
-  // Ensure newEnd is at targetPos (flatDir.y=0, so Y is inherited from targetPos)
   obj.position.copy(targetPos).addScaledVector(newDir, -endOffset);
 }
 
@@ -423,7 +428,7 @@ export class RailroadSystem extends createSystem({
       existId: number;
       existEnd: "A" | "B";
       targetPos: Vector3;
-      existDir: Vector3;
+      existObj: Object3D;
     } | null = null;
 
     for (const [existId, existData] of this.segMap) {
@@ -451,7 +456,7 @@ export class RailroadSystem extends createSystem({
         const d = c.newEndPos.distanceTo(c.existEndPos);
         if (d < bestDist) {
           bestDist  = d;
-          bestCase  = { newEnd: c.newEnd, existId, existEnd: c.existEnd, targetPos: c.existEndPos.clone(), existDir: existDir.clone() };
+          bestCase  = { newEnd: c.newEnd, existId, existEnd: c.existEnd, targetPos: c.existEndPos.clone(), existObj };
         }
       }
     }
@@ -459,7 +464,7 @@ export class RailroadSystem extends createSystem({
     if (!bestCase) return;
 
     // Snap position/orientation
-    snapAlign(newObj, bestCase.newEnd, bestCase.targetPos, bestCase.existDir, bestCase.existEnd);
+    snapAlign(newObj, bestCase.newEnd, bestCase.targetPos, bestCase.existObj, bestCase.existEnd);
 
     // Record connections
     const existData = this.segMap.get(bestCase.existId)!;
@@ -592,20 +597,24 @@ export class RailroadSystem extends createSystem({
       const travelDist = TRAIN_SPEED * delta;
       t += (dir * travelDist) / SEG_LEN;
 
-      // Handle segment transitions
+      // Handle segment transitions.
+      // Re-fetch currentData each iteration so we always follow the correct
+      // segment's connectivity (segData captured above is stale after segId changes).
       let iterations = 0;
       while ((t > 1 || t < 0) && iterations < 8) {
         iterations++;
+        const currentData = this.segMap.get(segId);
+        if (!currentData) break;
+
         if (t > 1) {
           // Reached B end — try to continue to connected segment
-          const nextId  = segData.connBId;
-          const nextEnd = segData.connBEnd;
+          const nextId  = currentData.connBId;
+          const nextEnd = currentData.connBEnd;
           if (nextId !== -1) {
             const nextData = this.segMap.get(nextId);
             if (nextData) {
               const overshoot = (t - 1) * SEG_LEN;
               segId   = nextId;
-              // If we entered via B end of next segment, we travel A→B direction (reversed)
               if (nextEnd === "B") {
                 dir = -1;
                 t   = 1 - overshoot / SEG_LEN;
@@ -621,8 +630,8 @@ export class RailroadSystem extends createSystem({
           t   = 2 - t;
         } else if (t < 0) {
           // Reached A end — try to continue to connected segment
-          const nextId  = segData.connAId;
-          const nextEnd = segData.connAEnd;
+          const nextId  = currentData.connAId;
+          const nextEnd = currentData.connAEnd;
           if (nextId !== -1) {
             const nextData = this.segMap.get(nextId);
             if (nextData) {
@@ -652,12 +661,14 @@ export class RailroadSystem extends createSystem({
       this._va.lerpVectors(a, b, t);
       trainEnt.object3D!.position.copy(this._va);
 
-      // Orient train (face travel direction).
-      // Use atan2 in the XZ plane so the train always stays Y-up regardless of
-      // the track's tilt — setFromUnitVectors can produce unexpected roll on
-      // reversal when trackDir is nearly antiparallel to Z_AXIS.
+      // Orient train to face travel direction.
+      // Use setFromAxisAngle around Y so we always get a clean Y-only rotation
+      // with no roll — setFromUnitVectors can produce unexpected roll when
+      // trackDir is antiparallel to Z_AXIS.
       const faceDir = dir > 0 ? trackDir : this._dir.copy(trackDir).negate();
-      trainEnt.object3D!.rotation.set(0, Math.atan2(faceDir.x, faceDir.z), 0);
+      const angle   = Math.atan2(faceDir.x, faceDir.z);
+      this._q.setFromAxisAngle(Y_AXIS, angle);
+      trainEnt.object3D!.quaternion.copy(this._q);
 
       // Write back
       trainEnt.setValue(TrackTrain, "segId",     segId);
