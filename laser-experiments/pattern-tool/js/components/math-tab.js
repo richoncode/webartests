@@ -1722,7 +1722,7 @@ export const MathTab = {
         UI.makeRow('Gap/Overlap', UI.makeRange(-5, 10, 0.1, cfg.tileGap, v => set('tileGap', +v), 'mm')),
         UI.makeRow('Area Width', UI.makeRange(10, 100, 1, cfg.tileAreaW, v => set('tileAreaW', +v), 'mm')),
         UI.makeRow('Area Height', UI.makeRange(10, 100, 1, cfg.tileAreaH, v => set('tileAreaH', +v), 'mm')),
-        UI.makeRow('Color Mode', UI.makeToggles(['linear', 'stripes', 'mosaic'], cfg.tileColorMode, v => set('tileColorMode', v), { linear: 'Linear', stripes: 'Stripes', mosaic: 'Mosaic' }))
+        UI.makeRow('Color Layout', UI.makeToggles(['linear', 'stripes', 'mosaic'], cfg.tileColorMode, v => set('tileColorMode', v), { linear: 'Linear', stripes: 'Stripes', mosaic: 'Mosaic' }))
       ]));
 
       const colorPickers = [];

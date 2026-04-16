@@ -137,12 +137,15 @@ export class XCSItem {
 
   static createLaserNode(id, type, options, laserSource, processingType) {
     const isFill = type === 'BITMAP' || processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
-    const planType = laserSource === 'red' ? 'red' : 'blue';
+    
+    // Priority: 1. params.processingLightSource, 2. the explicit laserSource parameter
+    const actualSource = options.params?.processingLightSource || laserSource;
+    const planType = actualSource === 'red' ? 'red' : 'blue';
     
     // Core parameters from palette or defaults
     const pm = { 
       power: 20, speed: 100, density: 1000, repeat: 1,
-      processingLightSource: laserSource, bitmapScanMode: "oneWay", needGapNumDensity: true,
+      processingLightSource: actualSource, bitmapScanMode: "oneWay", needGapNumDensity: true,
       dotDuration: 100, dpi: 500, enableKerf: false, kerfDistance: 0,
       ...(options.params || {})
     };
@@ -150,25 +153,25 @@ export class XCSItem {
     const laserNode = {
       isFill, type, processingType, processIgnore: false, isWhiteModel: type === 'BITMAP' ? true : !isFill,
       data: {
-        VECTOR_CUTTING: this.createOpNode("VECTOR_CUTTING", planType, laserSource, pm),
+        VECTOR_CUTTING: this.createOpNode("VECTOR_CUTTING", planType, actualSource, pm),
         VECTOR_ENGRAVING: (type === 'BITMAP' || isFill) ? {
           materialType: "customize",
           planType: planType,
           parameter: {
             customize: { ...pm, power: pm.power || 1, speed: pm.speed || 20 },
-            official: { power: 90, speed: 500, repeat: 1, processingLightSource: laserSource, enableKerf: false, kerfDistance: 0 }
+            official: { power: 90, speed: 500, repeat: 1, processingLightSource: actualSource, enableKerf: false, kerfDistance: 0 }
           }
-        } : this.createOpNode("VECTOR_ENGRAVING", planType, laserSource, pm),
+        } : this.createOpNode("VECTOR_ENGRAVING", planType, actualSource, pm),
         FILL_VECTOR_ENGRAVING: { materialType: "customize", planType: planType, parameter: { customize: pm } },
         COLOR_FILL_ENGRAVE: { materialType: "customize", planType: planType, parameter: { customize: pm } },
-        INTAGLIO: this.createOpNode("INTAGLIO", planType, laserSource, pm)
+        INTAGLIO: this.createOpNode("INTAGLIO", planType, actualSource, pm)
       }
     };
 
     if (type === 'BITMAP') {
-      laserNode.data.BITMAP_ENGRAVING = this.createOpNode("BITMAP_ENGRAVING", planType, laserSource, pm);
-      laserNode.data.RELIEF = this.createOpNode("RELIEF", planType, laserSource, pm);
-      laserNode.data.COLOR_ENGRAVE = this.createOpNode("COLOR_ENGRAVE", planType, laserSource, pm);
+      laserNode.data.BITMAP_ENGRAVING = this.createOpNode("BITMAP_ENGRAVING", planType, actualSource, pm);
+      laserNode.data.RELIEF = this.createOpNode("RELIEF", planType, actualSource, pm);
+      laserNode.data.COLOR_ENGRAVE = this.createOpNode("COLOR_ENGRAVE", planType, actualSource, pm);
     }
 
     return laserNode;

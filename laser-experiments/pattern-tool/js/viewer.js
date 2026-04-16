@@ -354,7 +354,7 @@ export const XCSViewer = {
         <div class="shape-dot" style="background:${s.layerColor}"></div>
         <div class="shape-info">
           <div class="shape-row-title">${layerTag} ${s.type} ${s.w.toFixed(3)}×${s.h.toFixed(3)}mm</div>
-          <div class="shape-row-sub">${s.power}% / ${s.speed} / ${s.density}</div>
+          <div class="shape-row-sub">${s.power}% ${s.laser === 'ir' ? 'IR' : 'Blue'} / ${s.speed} / ${s.density}</div>
         </div>
       `;
       row.onmouseenter = ev => this.onHover(v, state, s.idx, ev);
@@ -491,7 +491,7 @@ export const XCSViewer = {
     const svgEl = v.querySelector(`[data-svg-idx="${idx}"]`);
     if (svgEl) svgEl.classList.add('hover');
 
-    const laserLabel = (s.laser === 'red' || s.laser === 'ir') ? 'IR' : 'Blue';
+    const laserLabel = s.laser === 'ir' ? 'IR' : 'Blue';
     const procMode = s.processingType 
       ? s.processingType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
       : (s.isFill ? 'Fill' : 'Score');
@@ -499,7 +499,7 @@ export const XCSViewer = {
     const html = `
       <div class="popup-title">${s.paletteName || 'Shape'} - ${s.typeOverride || s.colorName || s.type}</div>
       <div class="popup-row"><span class="popup-key">Mode</span><span class="popup-val hi">${procMode}</span></div>
-      <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}% (${laserLabel})</span></div>
+      <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}% ${laserLabel}</span></div>
       <div class="popup-row"><span class="popup-key">Pos (X,Y)</span><span class="popup-val">${s.x.toFixed(2)}, ${s.y.toFixed(2)} mm</span></div>
       <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
       <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>
