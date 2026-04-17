@@ -419,52 +419,56 @@ export class RailroadSystem extends createSystem({
       { action: 4, id: "rr-debug-btn",  w: 66 * approxScale, h: 6 * approxScale, color: 0x334455 },
     ];
 
-    for (const { action, id, color } of defs) {
+    for (const { action, id, w, h, color } of defs) {
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
         transparent: true, opacity: 0.0, depthWrite: false,
       });
       this.rrBtnZoneMaterials[action] = mat;
 
-      // Tiny placeholder — size + position are set via the UIKit signal below.
-      const mesh = new Mesh(new BoxGeometry(0.01, 0.01, zoneD), mat);
+      // Start with a usable geometry so the BVH is hittable even if globalMatrix
+      // fires after addComponent(Interactable) in startGame().
+      const mesh = new Mesh(new BoxGeometry(w, h, zoneD), mat);
       mesh.position.z = localZ;
-      // Pre-parent before addComponent(Interactable) so InputSystem BVH includes it.
+      // Pre-parent before createTransformEntity so mesh is in the scene graph
+      // when InputSystem processes Interactable qualification.
       panelEntity.object3D!.add(mesh);
 
+      const zoneEntity = this.world.createTransformEntity(mesh, panelEntity)
+        .addComponent(RailroadButtonZone, { actionType: action });
       // No Interactable yet — added in startGame(), removed in cleanup()
-      this.rrBtnZoneEntities.push(
-        this.world.createTransformEntity(mesh, panelEntity)
-          .addComponent(RailroadButtonZone, { actionType: action }),
-      );
+      this.rrBtnZoneEntities.push(zoneEntity);
 
-      // Subscribe to the UIKit element's world transform.  When the layout
-      // engine has placed the button, globalMatrix fires with its world-space
-      // Matrix4.  We convert to panel-entity local space and centre the mesh.
       const el = doc.getElementById(id);
       if (!el) continue;
 
-      let geoSet = false; // only build geometry once (before Interactable changes BVH)
+      // globalMatrix fires (non-null) once UIKit layout has run after display
+      // changes to "flex". Use it to sync position and exact geometry.
+      // After any update, force a BVH rebuild if Interactable is already on.
       this.cleanupFuncs.push(
         (el as any).globalMatrix.subscribe((m: any) => {
           if (!m) return;
 
-          // Element centre in world space (UIKit places matrix at element centre)
+          // Element centre in world space
           const worldPos = new Vector3(m.elements[12], m.elements[13], m.elements[14]);
-
-          // Convert to panel-entity local space
           panelEntity.object3D!.updateWorldMatrix(true, false);
           panelEntity.object3D!.worldToLocal(worldPos);
           mesh.position.set(worldPos.x, worldPos.y, localZ);
 
-          // Build geometry once from the element's actual size
-          if (!geoSet && el.size.value) {
-            const [wU, hU] = el.size.value;
-            const ps = doc.targetSize.width / (doc.computedSize?.width ?? 72);
+          // Replace geometry with UIKit's exact measured dimensions
+          if ((el as any).size?.value) {
+            const [wU, hU] = (el as any).size.value as [number, number];
+            const computedW = (doc as any).computedSize?.width ?? 72;
+            const ps = doc.targetSize.width / computedW;
             mesh.geometry.dispose();
-            // 1.5× on each axis gives a generous hit margin
-            mesh.geometry = new BoxGeometry(wU * ps * 1.5, hU * ps * 1.5, zoneD);
-            geoSet = true;
+            mesh.geometry = new BoxGeometry(wU * ps, hU * ps, zoneD);
+          }
+
+          // Interactable already added (game active) — remove and re-add so
+          // InputSystem rebuilds the BVH at the corrected position + geometry.
+          if (this.active && zoneEntity.hasComponent(Interactable)) {
+            zoneEntity.removeComponent(Interactable);
+            zoneEntity.addComponent(Interactable);
           }
         }),
       );
