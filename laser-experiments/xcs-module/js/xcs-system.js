@@ -56,6 +56,7 @@ export class XCSItem {
       layerColor: d.layerColor || '#5b9bd5',
       zOrder: d.zOrder || 0,
       isFill: !!d.isFill,
+      fillRule: d.fillRule || null,
       processingType: pt,
       power: pm.power ?? null,
       speed: pm.speed ?? null,
@@ -152,7 +153,10 @@ export class XCSItem {
       ...options.extraDisplayData
     };
 
-    if (type === 'PATH') node.dPath = options.dPath;
+    if (type === 'PATH') {
+      node.dPath = options.dPath;
+      node.fillRule = options.extraDisplayData?.fillRule || "nonzero";
+    }
     if (type === 'TEXT') {
       XCSText.bake(node, options, layerColor);
     }

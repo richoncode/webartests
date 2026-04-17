@@ -97,6 +97,7 @@ export class XCSCanvas {
     // Shared: apply stroke/fill for non-TEXT, non-BITMAP primitives
     if (p.type !== 'TEXT' && p.type !== 'BITMAP') {
       el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
+      if (p.isFill && p.fillRule) el.setAttribute('fill-rule', p.fillRule);
       el.setAttribute('stroke', p.layerColor);
       el.setAttribute('stroke-width', '0.05');
       el.style.pointerEvents = 'auto';

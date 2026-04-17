@@ -93,7 +93,8 @@ export const MathTab = {
       bcPaletteIndices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
       // Tiles
       tileShape: 'square', tileSize: 5.0, tileGap: 0.5, tileAreaW: 40, tileAreaH: 40,
-      tileColorIndices: [0, 1, 2], tileColorMode: 'linear'
+      tileColorIndices: [0, 1, 2], tileColorMode: 'linear',
+      tileBoundaryThickness: 0.0, tileSeparatorThickness: 0.0, tileBoundaryOffset: 0.0
     };
     const cfg = initialCfg ? { ...defaults, ...initialCfg } : defaults;
 
@@ -262,13 +263,38 @@ export const MathTab = {
       else if (shape === 'triangle') { dy = (s*Math.sqrt(3)/2)+g; dx = s/2+g/2; }
       else if (shape === 'compound') { dy = s + g; dx = s + g; }
       const rows = Math.ceil(aH/dy), cols = Math.ceil(aW/dx);
+      
+      const techSubPaths = [];
+      const tSep = cfg.tileSeparatorThickness || 0;
+      const tBound = cfg.tileBoundaryThickness || 0;
+      const bOff = cfg.tileBoundaryOffset || 0;
+
+      // Track actual bounds for precise boundary and separator placement
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const hSepPos = new Set();
+      const vSepPos = new Set();
+
       let tileIdx = 0;
       for (let r = 0; r < rows; r++) {
         const rowY = startY + r*dy; if (rowY > CY+aH/2+s/2) break;
+        
+        // Track unique horizontal separator positions
+        if (tSep > 0 && r < rows - 1) hSepPos.add(rowY + dy/2);
+
         for (let c = 0; c < cols+2; c++) {
           await yieldIfBusy(Math.round((r*(cols+2)+c)/(rows*(cols+2))*100));
           const xOff = (shape === 'hexagon' && r%2===1) ? dx/2 : 0, x = startX + c*dx + xOff;
           if (x > CX+aW/2+s/2 || x < CX-aW/2-s/2) continue;
+
+          // Update actual bounds based on tile edges
+          const tW = (shape === 'hexagon') ? dx : s;
+          const tH = (shape === 'triangle') ? (s*Math.sqrt(3)/2) : s;
+          minX = Math.min(minX, x - tW/2); maxX = Math.max(maxX, x + tW/2);
+          minY = Math.min(minY, rowY - tH/2); maxY = Math.max(maxY, rowY + tH/2);
+
+          // Track unique vertical separator positions (simplified for square/rect grid)
+          if (tSep > 0 && c < cols && shape === 'square') vSepPos.add(x + dx/2);
+
           let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
           const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
           
@@ -298,6 +324,50 @@ export const MathTab = {
           }
           tileIdx++;
         }
+      }
+
+      /* 
+      // 1. Add Separators across the full pattern extent
+      if (tSep > 0) {
+        const relMinX = minX - CX, relMaxX = maxX - CX;
+        const relMinY = minY - CY, relMaxY = maxY - CY;
+
+        hSepPos.forEach(y => {
+          const relY = y - CY;
+          techSubPaths.push({ dPath: `M ${relMinX} ${relY - tSep/2} L ${relMaxX} ${relY - tSep/2} L ${relMaxX} ${relY + tSep/2} L ${relMinX} ${relY + tSep/2} Z` });
+        });
+        vSepPos.forEach(x => {
+          const relX = x - CX;
+          techSubPaths.push({ dPath: `M ${relX - tSep/2} ${relMinY} L ${relX + tSep/2} ${relMinY} L ${relX + tSep/2} ${relMaxY} L ${relX - tSep/2} ${relMaxY} Z` });
+        });
+      }
+      */
+
+      // 2. Add Boundary Frame (Strict formula: edge + offset +/- 0.5 * thickness)
+      if (tBound > 0) {
+        // Calculate relative edges based on actual tile bounds
+        const relL = minX - CX, relR = maxX - CX;
+        const relT = minY - CY, relB = maxY - CY;
+
+        const outL = relL - bOff - tBound/2, outR = relR + bOff + tBound/2;
+        const outT = relT - bOff - tBound/2, outB = relB + bOff + tBound/2;
+        
+        const innL = relL - bOff + tBound/2, innR = relR + bOff - tBound/2;
+        const innT = relT - bOff + tBound/2, innB = relB + bOff - tBound/2;
+        
+        const outerPath = `M ${outL.toFixed(3)} ${outT.toFixed(3)} L ${outR.toFixed(3)} ${outT.toFixed(3)} L ${outR.toFixed(3)} ${outB.toFixed(3)} L ${outL.toFixed(3)} ${outB.toFixed(3)} Z`;
+        const innerPath = `M ${innL.toFixed(3)} ${innT.toFixed(3)} L ${innR.toFixed(3)} ${innT.toFixed(3)} L ${innR.toFixed(3)} ${innB.toFixed(3)} L ${innL.toFixed(3)} ${innB.toFixed(3)} Z`;
+        techSubPaths.push({ dPath: outerPath }, { dPath: innerPath });
+      }
+
+      if (techSubPaths.length > 0) {
+        await XCSExporter.addCompoundPath(project, {
+          x: CX, y: CY, width: aW + bOff*2 + tBound, height: aH + bOff*2 + tBound,
+          isFill: true, layerColor: "#000000",
+          params: { power: 100, speed: 20 },
+          subPaths: techSubPaths,
+          extraDisplayData: { hideLabels: true }
+        });
       }
     }
 
@@ -387,6 +457,11 @@ export const MathTab = {
         colorPickers.push(UI.makeRow(`Color ${i + 1}`, UI.makePalettePicker(palette.entries, cfg.tileColorIndices[i] ?? 0, v => { cfg.tileColorIndices[i] = v; update(); Persistence.save(); })));
       }
       scroll.appendChild(UI.makeSection('Tile Colors (Alternating)', colorPickers));
+      scroll.appendChild(UI.makeSection('Technical Lines (Black Layer)', [
+        UI.makeRow('Separator Thk', UI.makeRange(0, 1, 0.01, cfg.tileSeparatorThickness, v => set('tileSeparatorThickness', +v), 'mm')),
+        UI.makeRow('Boundary Thk', UI.makeRange(0, 1, 0.01, cfg.tileBoundaryThickness, v => set('tileBoundaryThickness', +v), 'mm')),
+        UI.makeRow('Boundary Offset', UI.makeRange(-1, 1, 0.05, cfg.tileBoundaryOffset, v => set('tileBoundaryOffset', +v), 'mm'))
+      ], false, null, 'These lines are generated as a compound vector on the black layer (#000000) for mechanical alignment or decorative borders. Thickness values determine the width of the filled lines.'));
     }
   },
 

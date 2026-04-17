@@ -690,7 +690,7 @@
                 // score is at 28.75, 51.7. 
                 // scoreVerify (3x3) should be at x: 28.75 + (10/2) - (3/2) = 32.25
                 // y: 51.7 - 2 (gap) - 3 (size) = 46.7
-                const scoreX = 28.75, scoreY = 51.7, scoreSize = 10;
+                const scoreX = 28.75, scoreY = 65.0, scoreSize = 10;
                 const vSize = 3, vGap = 2;
                 
                 const scoreVerify = await project.addItem('RECT', { 
@@ -706,11 +706,11 @@
                 log("RECT / SCORE", score.type === 'RECT' && score.laser.processingType === "VECTOR_ENGRAVING", "VECTOR_ENGRAVING", "Score mode must map to RECT + VECTOR_ENGRAVING.", "SCORE", "Tests standard geometry with Score (Vector Engraving) processing logic for line-based machine paths.", "core");
 
                 // Offset other items to maintain visual row alignment (using top-left)
-                const engrave = await project.addItem('CIRCLE', { x: 51.5, y: 50.7, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
+                const engrave = await project.addItem('CIRCLE', { x: 51.5, y: 64.0, width: 12, height: 12, processingType: "COLOR_FILL_ENGRAVE", layerColor: "#10b981", params: { power: 30, speed: 120 } });
                 engrave.display.testId = "ENGRAVE";
                 log("CIRCLE / ENGRAVE", engrave.display.isFill === true, "isFill: true", "Engrave mode requires path closing and fill property enabled.", "ENGRAVE", "Validates Circle geometry with Fill Engrave logic, ensuring the 'isFill' mandate is correctly handled.", "core");
 
-                const path = await project.addItem('PATH', { x: 80.25, y: 50.7, width: 12, height: 12, dPath: "M 0 0 L 12 0 L 6 12 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
+                const path = await project.addItem('PATH', { x: 80.25, y: 64.0, width: 12, height: 12, dPath: "M 0 0 L 12 0 L 6 12 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
                 path.display.testId = "CLOSED_PATH";
                 log("Closed Filled Path", !!path.display.dPath, "dPath exists", "Hardware Exporter requires baked 'dPath' string for PATH objects.", "CLOSED_PATH", "Ensures that complex closed vector geometries contain the raw SVG path data required for machine interpretation.", "core");
 
@@ -721,12 +721,12 @@
                     const a = i * 0.8;
                     spiralD += `L ${r * Math.cos(a)} ${r * Math.sin(a)} `;
                 }
-                const spiral = await project.addItem('PATH', { x: 21.25, y: 78.7, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
+                const spiral = await project.addItem('PATH', { x: 21.25, y: 92.0, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
                 spiral.display.testId = "SPIRAL";
                 log("OPEN PATH (Spiral)", spiral.display.isFill === false, "isFill: false", "Open paths must not have fill properties enabled for vector scoring.", "SPIRAL", "Validates non-closed path geometries, confirming they remain unfilled for physical scoring on the hardware plate.", "core");
 
                 const bitmap = await project.addItem('BITMAP', { 
-                    x: 50.0, y: 78.7, width: 15, height: 15, 
+                    x: 50.0, y: 92.0, width: 15, height: 15, 
                     processingType: "COLOR_ENGRAVE", 
                     layerColor: "#ec4899",
                     params: { power: 60, speed: 200, density: 300 },
@@ -736,7 +736,7 @@
                 bitmap.display.testId = "BITMAP";
                 log("BITMAP / COLOR", !!bitmap.display.base64 && bitmap.laser.processingType === "COLOR_ENGRAVE", "64x64 RAMP", "Color Engrave mode requires persistent 'base64' source data.", "BITMAP", "Verifies the integration of high-resolution raster assets with grayscale (Color Engrave) machine instructions.", "core");
 
-                const img = await project.addItem('IMAGE', { x: 80.25, y: 80.2, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
+                const img = await project.addItem('IMAGE', { x: 80.25, y: 93.5, width: 12, height: 12, layerColor: "#6366f1", params: { power: 70, speed: 50 } });
                 img.display.testId = "IMAGE";
                 log("IMAGE Passthrough", img.type === 'RECT', "mapped to RECT", "Unsupported 'IMAGE' type should fallback to generic RECT container.", "IMAGE", "Tests the logic bridge that fallbacks generic Image types into standard Rect containers for hardware safety.", "internal");
 
@@ -745,7 +745,7 @@
                 const s = 15;
                 const h = (s*0.3*Math.sqrt(3))/2;
                 const compound = await project.addCompoundPath({
-                    x: 10.0, y: 10.0, width: s, height: s,
+                    x: 10.0, y: 35.0, width: s, height: s,
                     isFill: true, layerColor: "#5b9bd5",
                     params: { power: 40, speed: 80 },
                     subPaths: [
@@ -756,6 +756,39 @@
                 });
                 compound.display.testId = "COMPOUND";
                 log("Compound Vectors", compound.display.isCompoundPath === true && compound.display.fillRule === "evenodd", "isCompoundPath: true", "Compound vectors must use 'evenodd' fill rule for nested knockouts.", "COMPOUND", "Verifies the nested knockout engine (Square-Circle-Triangle) using the Even-Odd fill rule for 1:1 hardware parity.", "core");
+
+                // --- NEW: COMPOUND VECTORS (REVERSED WINDINGS) ---
+                // Square (CCW) + Circle (CCW) + Triangle (CCW, Downwards)
+                const compoundRev = await project.addCompoundPath({
+                    x: 35.0, y: 35.0, width: s, height: s,
+                    isFill: true, layerColor: "#8b5cf6",
+                    params: { power: 40, speed: 80 },
+                    subPaths: [
+                        { dPath: `M 0 0 L 0 ${s} L ${s} ${s} L ${s} 0 Z` }, // Square (CCW)
+                        { dPath: `M ${s/2} ${s/2 + s/3} A ${s/3} ${s/3} 0 1 1 ${s/2} ${s/2 - s/3} A ${s/3} ${s/3} 0 1 1 ${s/2} ${s/2 + s/3} Z` }, // Circle (CCW)
+                        { dPath: `M ${s/2} ${s/2 + h/2} L ${s/2 - s/6} ${s/2 - h/2} L ${s/2 + s/6} ${s/2 - h/2} Z` } // Triangle (CCW, Pointing Down)
+                    ]
+                });
+                compoundRev.display.testId = "COMPOUND_REV";
+                log("Compound (Reversed)", compoundRev.display.fillRule === "evenodd", "evenodd", "Verifies CCW windings and inverted triangle geometry.", "COMPOUND_REV", "Ensures that Even-Odd knockout logic remains robust even when path directions (windings) are reversed.", "core");
+
+                // --- NEW: BOUNDARY FRAME (CENTERED) ---
+                // Mimics Pattern Tool: Outer (Edge+Offset+Thk/2) + Inner (Edge+Offset-Thk/2)
+                const bW = 20, bH = 20, bThk = 1.0;
+                const outerW = bW + bThk, outerH = bH + bThk;
+                const innerW = bW - bThk, innerH = bH - bThk;
+                
+                const frame = await project.addCompoundPath({
+                    x: 80.0, y: 35.0, width: outerW, height: outerH,
+                    isFill: true, layerColor: "#ffffff", // Use white for high contrast
+                    params: { power: 100, speed: 10 },
+                    subPaths: [
+                        { dPath: `M ${-outerW/2} ${-outerH/2} L ${outerW/2} ${-outerH/2} L ${outerW/2} ${outerH/2} L ${-outerW/2} ${outerH/2} Z` },
+                        { dPath: `M ${-innerW/2} ${-innerH/2} L ${innerW/2} ${-innerH/2} L ${innerW/2} ${innerH/2} L ${-innerW/2} ${innerH/2} Z` }
+                    ]
+                });
+                frame.display.testId = "FRAME";
+                log("Boundary Frame", frame.display.fillRule === "evenodd", "evenodd", "Verifies centered compound geometry (Outer/Inner rectangles) for hollow technical frames.", "FRAME", "Strict validation of the 'Even-Odd' frame logic used in the Pattern Tool's technical boundary system.", "core");
 
                 currentProject = project;
                 render(project);
