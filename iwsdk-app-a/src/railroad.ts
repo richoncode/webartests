@@ -716,8 +716,12 @@ export class RailroadSystem extends createSystem({
         this.createPlaneDebugMesh(ent);
       }
     } else {
-      for (const mesh of this.planeDebugMeshes.values()) mesh.removeFromParent();
+      // Remove fill children and hide the plane Object3Ds again
+      for (const fill of this.planeDebugMeshes.values()) fill.removeFromParent();
       this.planeDebugMeshes.clear();
+      for (const ent of this.queries.arPlanes.entities) {
+        if (ent.object3D) ent.object3D.visible = false;
+      }
     }
 
     // Update button appearance
@@ -730,8 +734,15 @@ export class RailroadSystem extends createSystem({
     this.refreshCountUI();
   }
 
-  // Create a coloured wireframe overlay parented to the XRPlane's Object3D.
+  // Create a coloured fill overlay parented to the XRPlane's Object3D.
   // Floor/ceiling planes → green; wall planes → blue.
+  //
+  // Root cause of invisible overlays: SceneUnderstandingSystem creates each
+  // plane mesh with visible=false by default (showWireFrame config = false).
+  // Three.js propagates visible=false to ALL descendants, so children we add
+  // are hidden too.  Fix: set planeObj.visible = true here; the parent's own
+  // white wireframe (wireframe:true, opacity:0.3) also becomes visible, which
+  // is a useful bonus.  Cleanup resets visible=false when debug turns off.
   private createPlaneDebugMesh(entity: Entity) {
     if (this.planeDebugMeshes.has(entity.index)) return;
     const planeObj = entity.object3D;
@@ -740,33 +751,30 @@ export class RailroadSystem extends createSystem({
     const xrPlane = entity.getValue(XRPlane, "_plane") as { orientation?: string } | undefined;
     const isHorizontal = xrPlane?.orientation === "horizontal";
 
-    // Fill layer — translucent, double-sided
+    // Use the actual plane bounding-box dimensions (set by SceneUnderstandingSystem
+    // from the XRPlane polygon) so the fill covers the real detected surface.
+    const boxGeo = (planeObj as any).geometry as BoxGeometry | undefined;
+    const planeW = boxGeo?.parameters?.width ?? 2;
+    const planeD = boxGeo?.parameters?.depth ?? 2;
+
     const fillMat = new MeshBasicMaterial({
       color:       isHorizontal ? 0x00ff44 : 0x4488ff,
       transparent: true,
-      opacity:     0.25,
+      opacity:     0.30,
       side:        2,   // DoubleSide
       depthWrite:  false,
     });
-    const wireMat = new MeshBasicMaterial({
-      color:     isHorizontal ? 0x00ff44 : 0x4488ff,
-      wireframe: true,
-    });
-    const geo = new PlaneGeometry(2, 2);
-    const fill = new Mesh(geo, fillMat);
-    const wire = new Mesh(geo, wireMat);
-    // PlaneGeometry lies in XY (normal = +Z).  In the XRPlane entity's local
-    // space the surface is the XZ plane (normal = +Y), so rotate -90° around X.
-    fill.rotation.x = wire.rotation.x = -Math.PI / 2;
-
-    // Parent both to the plane entity's Object3D so they auto-follow updates
+    // PlaneGeometry lies in XY (normal = +Z). Rotate -90° around X so it
+    // lies in the entity's XZ plane (normal = +Y = surface normal).
+    const fill = new Mesh(new PlaneGeometry(planeW, planeD), fillMat);
+    fill.rotation.x = -Math.PI / 2;
     planeObj.add(fill);
-    planeObj.add(wire);
 
-    // Store the fill mesh as the representative (wire follows same parent)
+    // Un-hide parent so our fill child (and the existing white wireframe) shows.
+    planeObj.visible = true;
+
     this.planeDebugMeshes.set(entity.index, fill);
   }
-
   private updateSurfacePreview(heldEnt: Entity) {
     if (!this.surfacePreview) return;
     const obj = heldEnt.object3D!;
