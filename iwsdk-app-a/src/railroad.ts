@@ -395,83 +395,64 @@ export class RailroadSystem extends createSystem({
     this.rrUI.count.setProperties({ text: `${segs} piece${segs !== 1 ? "s" : ""} · ${trains} train${trains !== 1 ? "s" : ""}${planeInfo}` });
   }
 
-  // ── Railroad-screen button zones ──────────────────────────────────────
-  // Subscribe to each UIKit button's globalMatrix signal for position sync.
-  // We seed geometry with CSS-derived estimates so zones are hittable even
-  // before layout fires, then replace geometry with exact UIKit measurements
-  // when globalMatrix fires.  If the game is already active at that point we
-  // remove+re-add Interactable to force InputSystem to rebuild the BVH at
-  // the corrected position — the root cause of "all UI unhittable".
+  // ── Railroad-screen button zones ────────────────────────────────────
+  // Positions are computed from CSS layout constants rather than UIKit's
+  // globalMatrix signal.  The signal approach fired in UIKit's reactive render
+  // context (outside the ECS update loop) making worldToLocal unreliable.
+  // The hardcoded approach is what all other working button zones use.
+  //
+  // Railroad-screen layout (UIKit units, root padding=3, root width=72):
+  //   Panel height H = 48.42   half = 24.21
+  //   Y = (H/2 - yFromTop) * scale   [positive = up from panel centre]
+  //
+  //   Element                yFromTop   cenY    cenX    w    h
+  //   rr-track-btn           25.02     −0.81   −17    32   7.6
+  //   rr-train-btn           25.02     −0.81   +17    32   7.6
+  //   rr-clear-btn           34.12     −9.91   −17    32   7.6
+  //   rr-menu-btn            34.12     −9.91   +17    32   7.6
+  //   rr-debug-btn           42.42    −18.21     0    66   6.0
+  //
+  // If rows are added update PANEL_H below and recalculate cenY values.
   private buildButtonZones(panelEntity: Entity, doc: UIKitDocument) {
-    // Approximate: panel CSS width = 72 UIKit units, rendered ~0.76 m.
-    const approxScale = 0.76 / 72;
+    const PANEL_H = 48.42;
+    const halfH   = PANEL_H / 2;
+
+    // Metres per UIKit unit.  Prefer the live ratio from the document; fall
+    // back to 0.76 / 72 (panel ≈76 cm wide over 72 UIKit units) if not ready.
+    const computedW = (doc as any).computedSize?.width ?? 72;
+    const scale     = (doc.targetSize?.width ?? 0) > 0
+      ? doc.targetSize.width / computedW
+      : 0.76 / 72;
+
     const zoneD  = 0.04;
     const localZ = 0.06;
 
-    // Initial w/h from CSS:
-    //   rr-track/train/clear/menu: width:32, padding:2, font:3  => ~8 units tall
-    //   rr-debug-btn:              width:~66, padding:1.5        => ~6 units tall
+    // { action, x, y, w, h } all in UIKit units (centred on element)
     const defs = [
-      { action: 0, id: "rr-track-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0x22bb88 },
-      { action: 1, id: "rr-train-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0xffcc22 },
-      { action: 2, id: "rr-clear-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0x888888 },
-      { action: 3, id: "rr-menu-btn",   w: 32 * approxScale, h: 8 * approxScale, color: 0x888888 },
-      { action: 4, id: "rr-debug-btn",  w: 66 * approxScale, h: 6 * approxScale, color: 0x334455 },
+      { action: 0, id: "rr-track-btn",  x: -17, y: halfH - 25.02, w: 32, h: 7.6, color: 0x22bb88 },
+      { action: 1, id: "rr-train-btn",  x:  17, y: halfH - 25.02, w: 32, h: 7.6, color: 0xffcc22 },
+      { action: 2, id: "rr-clear-btn",  x: -17, y: halfH - 34.12, w: 32, h: 7.6, color: 0x888888 },
+      { action: 3, id: "rr-menu-btn",   x:  17, y: halfH - 34.12, w: 32, h: 7.6, color: 0x888888 },
+      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 42.42, w: 66, h: 6.0, color: 0x334455 },
     ];
 
-    for (const { action, id, w, h, color } of defs) {
+    for (const { action, id, x, y, w, h, color } of defs) {
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
         transparent: true, opacity: 0.0, depthWrite: false,
       });
       this.rrBtnZoneMaterials[action] = mat;
 
-      // Start with a usable geometry so the BVH is hittable even if globalMatrix
-      // fires after addComponent(Interactable) in startGame().
-      const mesh = new Mesh(new BoxGeometry(w, h, zoneD), mat);
-      mesh.position.z = localZ;
-      // Pre-parent before createTransformEntity so mesh is in the scene graph
-      // when InputSystem processes Interactable qualification.
+      const mesh = new Mesh(new BoxGeometry(w * scale, h * scale, zoneD), mat);
+      mesh.position.set(x * scale, y * scale, localZ);
+      // Pre-parent before addComponent(Interactable) so InputSystem BVH
+      // includes the mesh with the correct world transform.
       panelEntity.object3D!.add(mesh);
 
       const zoneEntity = this.world.createTransformEntity(mesh, panelEntity)
         .addComponent(RailroadButtonZone, { actionType: action });
-      // No Interactable yet — added in startGame(), removed in cleanup()
+      // Interactable added in startGame(), removed in cleanup()
       this.rrBtnZoneEntities.push(zoneEntity);
-
-      const el = doc.getElementById(id);
-      if (!el) continue;
-
-      // globalMatrix fires (non-null) once UIKit layout has run after display
-      // changes to "flex". Use it to sync position and exact geometry.
-      // After any update, force a BVH rebuild if Interactable is already on.
-      this.cleanupFuncs.push(
-        (el as any).globalMatrix.subscribe((m: any) => {
-          if (!m) return;
-
-          // Element centre in world space
-          const worldPos = new Vector3(m.elements[12], m.elements[13], m.elements[14]);
-          panelEntity.object3D!.updateWorldMatrix(true, false);
-          panelEntity.object3D!.worldToLocal(worldPos);
-          mesh.position.set(worldPos.x, worldPos.y, localZ);
-
-          // Replace geometry with UIKit's exact measured dimensions
-          if ((el as any).size?.value) {
-            const [wU, hU] = (el as any).size.value as [number, number];
-            const computedW = (doc as any).computedSize?.width ?? 72;
-            const ps = doc.targetSize.width / computedW;
-            mesh.geometry.dispose();
-            mesh.geometry = new BoxGeometry(wU * ps, hU * ps, zoneD);
-          }
-
-          // Interactable already added (game active) — remove and re-add so
-          // InputSystem rebuilds the BVH at the corrected position + geometry.
-          if (this.active && zoneEntity.hasComponent(Interactable)) {
-            zoneEntity.removeComponent(Interactable);
-            zoneEntity.addComponent(Interactable);
-          }
-        }),
-      );
     }
   }
 
