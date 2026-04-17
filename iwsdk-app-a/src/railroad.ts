@@ -205,6 +205,10 @@ export class RailroadSystem extends createSystem({
   private segMap        = new Map<number, SegData>();
   private panelEntity:  Entity | null = null;
 
+  // initiateRoomCapture can only be called once per XR session (WebXR spec).
+  // Track whether we've already triggered it so retries don't throw.
+  private roomCaptureAttempted = false;
+
   // Snap indicator dots (one per held segment endpoint)
   private snapDotA: Mesh | null = null;
   private snapDotB: Mesh | null = null;
@@ -714,6 +718,19 @@ export class RailroadSystem extends createSystem({
       // Materialise overlays for all planes already detected
       for (const ent of this.queries.arPlanes.entities) {
         this.createPlaneDebugMesh(ent);
+      }
+      // If no planes exist, trigger Meta's room-capture flow.
+      // initiateRoomCapture() opens the Space Setup UI from inside the XR
+      // session — it's the proper way to ask the user to scan their room.
+      // It can only be called once per session (WebXR spec), so guard the call.
+      if (this.queries.arPlanes.entities.size === 0 && !this.roomCaptureAttempted) {
+        this.roomCaptureAttempted = true;
+        const session = this.xrManager.getSession() as any;
+        if (typeof session?.initiateRoomCapture === "function") {
+          session.initiateRoomCapture().catch((e: unknown) => {
+            console.warn("[Railroad] initiateRoomCapture failed:", e);
+          });
+        }
       }
     } else {
       // Remove fill children and hide the plane Object3Ds again
