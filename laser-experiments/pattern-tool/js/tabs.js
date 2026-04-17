@@ -32,25 +32,10 @@ export const TabMgr = {
   createTab(patternId, initialCfg, label) {
     if (patternId === 'xcs') return this.openXcs();
 
-    // Alias mapping for backward compatibility with old persistence data
-    const aliases = {
-      'geometry': 'fol',
-      'fractal': 'fractal-gasket',
-      'path': 'path-hilbert',
-      'attractor': 'attr-lorenz',
-      'voronoi': 'org-voronoi',
-      'palette-test': 'test-palette',
-      'palette-grid': 'test-palette-grid',
-      'gradient': 'test-gradient',
-      'bitmap-line': 'test-bitmap',
-      'test': 'test-xcs'
-    };
-
-    const targetId = aliases[patternId] || patternId;
-    const pattern = App.patterns.find(p => p.id === targetId);
+    const pattern = App.patterns.find(p => p.id === patternId);
     
     if (!pattern) {
-      console.warn(`Pattern ID "${targetId}" not found in registry.`);
+      console.warn(`Pattern ID "${patternId}" not found in registry.`);
       return null;
     }
 

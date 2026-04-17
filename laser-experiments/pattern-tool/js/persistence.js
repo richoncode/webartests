@@ -77,7 +77,8 @@ export const Persistence = {
     }
     const tab = App.tabs.find(t => t.id === App.activeTabId);
     const defaultName = (tab ? tab.label : (inst.type==='mandala'?'dot-mandala':inst.type)) + '.rnr';
-    const data = { type: inst.type, cfg: inst.cfg, version: '1.0' };
+    // Use tab.type (Registry ID) for RNR file format compatibility
+    const data = { type: tab?.type || inst.type, cfg: inst.cfg, version: '1.0' };
     const name = prompt('Save settings as:', defaultName);
     if (!name) return;
     const filename = name.endsWith('.rnr') ? name : name + '.rnr';

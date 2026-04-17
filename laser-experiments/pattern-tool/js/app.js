@@ -22,6 +22,9 @@ export const App = {
     const pane = Component.create(id, initialCfg);
     document.getElementById('tabContent').appendChild(pane);
     
+    // Ensure the instance type matches the registry ID for RNR synchronization
+    if (this.instances[id]) this.instances[id].type = type;
+
     this.TabMgr.activate(id);
     return id;
   },
