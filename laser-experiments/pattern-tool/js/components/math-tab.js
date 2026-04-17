@@ -264,23 +264,19 @@ export const MathTab = {
       else if (shape === 'compound') { dy = s + g; dx = s + g; }
       const rows = Math.ceil(aH/dy), cols = Math.ceil(aW/dx);
       
+      // --- NEW UNIFIED TECHNICAL GRID (NEGATIVE SPACE) ---
       const techSubPaths = [];
       const tSep = cfg.tileSeparatorThickness || 0;
       const tBound = cfg.tileBoundaryThickness || 0;
       const bOff = cfg.tileBoundaryOffset || 0;
 
-      // Track actual bounds for precise boundary and separator placement
+      // Track actual bounds for the outer plate
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      const hSepPos = new Set();
-      const vSepPos = new Set();
 
       let tileIdx = 0;
       for (let r = 0; r < rows; r++) {
         const rowY = startY + r*dy; if (rowY > CY+aH/2+s/2) break;
         
-        // Track unique horizontal separator positions
-        if (tSep > 0 && r < rows - 1) hSepPos.add(rowY + dy/2);
-
         for (let c = 0; c < cols+2; c++) {
           await yieldIfBusy(Math.round((r*(cols+2)+c)/(rows*(cols+2))*100));
           const xOff = (shape === 'hexagon' && r%2===1) ? dx/2 : 0, x = startX + c*dx + xOff;
@@ -292,9 +288,30 @@ export const MathTab = {
           minX = Math.min(minX, x - tW/2); maxX = Math.max(maxX, x + tW/2);
           minY = Math.min(minY, rowY - tH/2); maxY = Math.max(maxY, rowY + tH/2);
 
-          // Track unique vertical separator positions (simplified for square/rect grid)
-          if (tSep > 0 && c < cols && shape === 'square') vSepPos.add(x + dx/2);
+          const relX = x - CX, relY = rowY - CY;
 
+          // Technical "Knockout" Path for the grid layer
+          const ks = Math.max(0.1, s - tSep); 
+          let kPath = "";
+          if (shape === 'square' || shape === 'compound') {
+            kPath = `M ${relX - ks/2} ${relY - ks/2} L ${relX + ks/2} ${relY - ks/2} L ${relX + ks/2} ${relY + ks/2} L ${relX - ks/2} ${relY + ks/2} Z`;
+          } else if (shape === 'hexagon') {
+            const hr = ks/2;
+            for (let i = 0; i < 6; i++) { 
+              const ang = (Math.PI/180)*(i*60-30); 
+              kPath += (i===0?"M ":"L ")+`${(relX + hr*Math.cos(ang)).toFixed(3)} ${(relY + hr*Math.sin(ang)).toFixed(3)}`; 
+            }
+            kPath += " Z";
+          } else if (shape === 'triangle') {
+            const isUp = (r+c)%2===0, kh = (ks*Math.sqrt(3))/2;
+            kPath = isUp ? 
+              `M ${relX} ${relY - kh/2} L ${relX + ks/2} ${relY + kh/2} L ${relX - ks/2} ${relY + kh/2} Z` : 
+              `M ${relX} ${relY + kh/2} L ${relX + ks/2} ${relY - kh/2} L ${relX - ks/2} ${relY - kh/2} Z`;
+          }
+          // Only add to technical grid if separators are enabled
+          if (tSep > 0 && kPath) techSubPaths.push({ dPath: kPath });
+
+          // Colored Path for the pattern layer
           let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
           const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
           
@@ -311,7 +328,6 @@ export const MathTab = {
             const dP = isUp ? `M 0 ${(-h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(h/2).toFixed(3)} Z` : `M 0 ${(h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(-h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(-h/2).toFixed(3)} Z`;
             await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
           } else if (shape === 'compound') {
-            // A Square with a Triangle "punched out"
             const h = (s*0.5*Math.sqrt(3))/2;
             const outerPath = `M ${-s/2} ${-s/2} L ${s/2} ${-s/2} L ${s/2} ${s/2} L ${-s/2} ${s/2} Z`;
             const innerPath = `M 0 ${(-h/2).toFixed(3)} L ${(s/4).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/4).toFixed(3)} ${(h/2).toFixed(3)} Z`;
@@ -326,43 +342,27 @@ export const MathTab = {
         }
       }
 
-      /* 
-      // 1. Add Separators across the full pattern extent
-      if (tSep > 0) {
-        const relMinX = minX - CX, relMaxX = maxX - CX;
-        const relMinY = minY - CY, relMaxY = maxY - CY;
-
-        hSepPos.forEach(y => {
-          const relY = y - CY;
-          techSubPaths.push({ dPath: `M ${relMinX} ${relY - tSep/2} L ${relMaxX} ${relY - tSep/2} L ${relMaxX} ${relY + tSep/2} L ${relMinX} ${relY + tSep/2} Z` });
-        });
-        vSepPos.forEach(x => {
-          const relX = x - CX;
-          techSubPaths.push({ dPath: `M ${relX - tSep/2} ${relMinY} L ${relX + tSep/2} ${relMinY} L ${relX + tSep/2} ${relMaxY} L ${relX - tSep/2} ${relMaxY} Z` });
-        });
-      }
-      */
-
-      // 2. Add Boundary Frame (Strict formula: edge + offset +/- 0.5 * thickness)
-      if (tBound > 0) {
-        // Calculate relative edges based on actual tile bounds
-        const relL = minX - CX, relR = maxX - CX;
-        const relT = minY - CY, relB = maxY - CY;
-
-        const outL = relL - bOff - tBound/2, outR = relR + bOff + tBound/2;
-        const outT = relT - bOff - tBound/2, outB = relB + bOff + tBound/2;
+      // Finalize Technical Grid
+      if (tBound > 0 && minX !== Infinity) {
+        const outW = (maxX - minX) + bOff*2 + tBound;
+        const outH = (maxY - minY) + bOff*2 + tBound;
+        const relCX = (minX + maxX)/2 - CX;
+        const relCY = (minY + maxY)/2 - CY;
+        const platePath = `M ${relCX - outW/2} ${relCY - outH/2} L ${relCX + outW/2} ${relCY - outH/2} L ${relCX + outW/2} ${relCY + outH/2} L ${relCX - outW/2} ${relCY + outH/2} Z`;
         
-        const innL = relL - bOff + tBound/2, innR = relR + bOff - tBound/2;
-        const innT = relT - bOff + tBound/2, innB = relB + bOff - tBound/2;
-        
-        const outerPath = `M ${outL.toFixed(3)} ${outT.toFixed(3)} L ${outR.toFixed(3)} ${outT.toFixed(3)} L ${outR.toFixed(3)} ${outB.toFixed(3)} L ${outL.toFixed(3)} ${outB.toFixed(3)} Z`;
-        const innerPath = `M ${innL.toFixed(3)} ${innT.toFixed(3)} L ${innR.toFixed(3)} ${innT.toFixed(3)} L ${innR.toFixed(3)} ${innB.toFixed(3)} L ${innL.toFixed(3)} ${innB.toFixed(3)} Z`;
-        techSubPaths.push({ dPath: outerPath }, { dPath: innerPath });
-      }
+        // Plate is first sub-path
+        techSubPaths.unshift({ dPath: platePath });
 
-      if (techSubPaths.length > 0) {
+        // If separators are zero, we use one large inner vector to create the "hollow" frame effect
+        if (tSep <= 0) {
+          const innW = (maxX - minX) + bOff*2 - tBound;
+          const innH = (maxY - minY) + bOff*2 - tBound;
+          const innerPlatePath = `M ${relCX - innW/2} ${relCY - innH/2} L ${relCX + innW/2} ${relCY - innH/2} L ${relCX + innW/2} ${relCY + innH/2} L ${relCX - innW/2} ${relCY + innH/2} Z`;
+          techSubPaths.push({ dPath: innerPlatePath });
+        }
+
         await XCSExporter.addCompoundPath(project, {
-          x: CX, y: CY, width: aW + bOff*2 + tBound, height: aH + bOff*2 + tBound,
+          x: CX, y: CY, width: outW, height: outH,
           isFill: true, layerColor: "#000000",
           params: { power: 100, speed: 20 },
           subPaths: techSubPaths,
