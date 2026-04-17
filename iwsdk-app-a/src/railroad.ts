@@ -225,6 +225,7 @@ export class RailroadSystem extends createSystem({
     screen:    UIKit.Text;
     count:     UIKit.Text;
     debugBtn:  UIKit.Text;
+    scanBtn:   UIKit.Text;
   } | null = null;
 
   // Scene-understanding debug visualisation
@@ -252,6 +253,7 @@ export class RailroadSystem extends createSystem({
         screen:   doc.getElementById("railroad-screen") as UIKit.Text,
         count:    doc.getElementById("rr-track-count") as UIKit.Text,
         debugBtn: doc.getElementById("rr-debug-btn")   as UIKit.Text,
+        scanBtn:  doc.getElementById("rr-scan-btn")    as UIKit.Text,
       };
 
       // HTML click events as belt-and-suspenders backup
@@ -263,6 +265,8 @@ export class RailroadSystem extends createSystem({
         ?.addEventListener("click", () => { if (this.active) this.clearAll(); });
       (doc.getElementById("rr-menu-btn") as UIKit.Text)
         ?.addEventListener("click", () => { if (this.active) this.endGame(); });
+      (doc.getElementById("rr-scan-btn") as UIKit.Text)
+        ?.addEventListener("click", () => { if (this.active) this.triggerRoomCapture(); });
       (doc.getElementById("rr-debug-btn") as UIKit.Text)
         ?.addEventListener("click", () => { if (this.active) this.toggleDebug(); });
 
@@ -301,11 +305,12 @@ export class RailroadSystem extends createSystem({
       if (!this.active) return;
       const idx = entity.getValue(RailroadButtonZone, "actionType") as number;
       switch (idx) {
-        case 0: this.spawnTrackPiece(); break;
-        case 1: this.spawnTrain();      break;
-        case 2: this.clearAll();        break;
-        case 3: this.endGame();         break;
-        case 4: this.toggleDebug();     break;
+        case 0: this.spawnTrackPiece();      break;
+        case 1: this.spawnTrain();           break;
+        case 2: this.clearAll();             break;
+        case 3: this.endGame();              break;
+        case 4: this.toggleDebug();          break;
+        case 5: this.triggerRoomCapture();   break;
       }
     });
 
@@ -347,11 +352,14 @@ export class RailroadSystem extends createSystem({
   // ── Public ─────────────────────────────────────────────────────────────
   startGame() {
     this.active = true;
+    this.roomCaptureAttempted = false;
     this.showScreen();
     this.refreshCountUI();
     for (const e of this.rrBtnZoneEntities) {
       if (!e.hasComponent(Interactable)) e.addComponent(Interactable);
     }
+    // Default debug mode to on so planes are visible immediately on entry
+    if (!this.debugMode) this.toggleDebug();
   }
 
   endGame() {
@@ -372,7 +380,13 @@ export class RailroadSystem extends createSystem({
     // Remove all debug overlays and reset debug state
     for (const mesh of this.planeDebugMeshes.values()) mesh.removeFromParent();
     this.planeDebugMeshes.clear();
+    if (this.debugMode) {
+      for (const ent of this.queries.arPlanes.entities) {
+        if (ent.object3D) ent.object3D.visible = false;
+      }
+    }
     this.debugMode = false;
+    this.roomCaptureAttempted = false;
   }
 
   private showScreen() {
@@ -406,19 +420,20 @@ export class RailroadSystem extends createSystem({
   // The hardcoded approach is what all other working button zones use.
   //
   // Railroad-screen layout (UIKit units, root padding=3, root width=72):
-  //   Panel height H = 48.42   half = 24.21
+  //   Panel height H = 56.92   half = 28.46
   //   Y = (H/2 - yFromTop) * scale   [positive = up from panel centre]
   //
-  //   Element                yFromTop   cenY    cenX    w    h
-  //   rr-track-btn           25.02     −0.81   −17    32   7.6
-  //   rr-train-btn           25.02     −0.81   +17    32   7.6
-  //   rr-clear-btn           34.12     −9.91   −17    32   7.6
-  //   rr-menu-btn            34.12     −9.91   +17    32   7.6
-  //   rr-debug-btn           42.42    −18.21     0    66   6.0
+  //   Element       CSS h  yFromTop   zone h (1.3×)   cenX
+  //   rr-track-btn    7.6    25.02       9.9           −17
+  //   rr-train-btn    7.6    25.02       9.9           +17
+  //   rr-clear-btn    7.6    34.12       9.9           −17
+  //   rr-menu-btn     7.6    34.12       9.9           +17
+  //   rr-scan-btn     7.0    42.92       9.1             0
+  //   rr-debug-btn    6.0    50.92       7.8             0
   //
-  // If rows are added update PANEL_H below and recalculate cenY values.
+  // If rows are added update PANEL_H below and recalculate yFromTop values.
   private buildButtonZones(panelEntity: Entity, doc: UIKitDocument) {
-    const PANEL_H = 48.42;
+    const PANEL_H = 56.92;
     const halfH   = PANEL_H / 2;
 
     // Metres per UIKit unit.  Prefer the live ratio from the document; fall
@@ -428,7 +443,9 @@ export class RailroadSystem extends createSystem({
       ? doc.targetSize.width / computedW
       : 0.76 / 72;
 
-    const zoneD  = 0.04;
+    // Very thin zone (2 mm) avoids z-fighting with the UIKit panel surface.
+    // renderOrder=999 ensures zone meshes render on top of the panel background.
+    const zoneD  = 0.002;
     const localZ = 0.06;
 
     // { action, x, y, w, h } all in UIKit units (centred on element).
@@ -438,7 +455,8 @@ export class RailroadSystem extends createSystem({
       { action: 1, id: "rr-train-btn",  x:  17, y: halfH - 25.02, w: 32, h: 9.9, color: 0xffcc22 },
       { action: 2, id: "rr-clear-btn",  x: -17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
       { action: 3, id: "rr-menu-btn",   x:  17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
-      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 42.42, w: 66, h: 7.8, color: 0x334455 },
+      { action: 5, id: "rr-scan-btn",   x:   0, y: halfH - 42.92, w: 66, h: 9.1, color: 0xd97706 },
+      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 50.92, w: 66, h: 7.8, color: 0x334455 },
     ];
 
     for (const { action, id, x, y, w, h, color } of defs) {
@@ -450,6 +468,7 @@ export class RailroadSystem extends createSystem({
 
       const mesh = new Mesh(new BoxGeometry(w * scale, h * scale, zoneD), mat);
       mesh.position.set(x * scale, y * scale, localZ);
+      mesh.renderOrder = 999; // draw on top of panel background — avoids z-fighting flicker
       // Pre-parent before addComponent(Interactable) so InputSystem BVH
       // includes the mesh with the correct world transform.
       panelEntity.object3D!.add(mesh);
@@ -720,19 +739,6 @@ export class RailroadSystem extends createSystem({
       for (const ent of this.queries.arPlanes.entities) {
         this.createPlaneDebugMesh(ent);
       }
-      // If no planes exist, trigger Meta's room-capture flow.
-      // initiateRoomCapture() opens the Space Setup UI from inside the XR
-      // session — it's the proper way to ask the user to scan their room.
-      // It can only be called once per session (WebXR spec), so guard the call.
-      if (this.queries.arPlanes.entities.size === 0 && !this.roomCaptureAttempted) {
-        this.roomCaptureAttempted = true;
-        const session = this.xrManager.getSession() as any;
-        if (typeof session?.initiateRoomCapture === "function") {
-          session.initiateRoomCapture().catch((e: unknown) => {
-            console.warn("[Railroad] initiateRoomCapture failed:", e);
-          });
-        }
-      }
     } else {
       // Remove fill children and hide the plane Object3Ds again
       for (const fill of this.planeDebugMeshes.values()) fill.removeFromParent();
@@ -750,6 +756,27 @@ export class RailroadSystem extends createSystem({
       borderColor:     this.debugMode ? "#16a34a"  : "#3f3f46",
     });
     this.refreshCountUI();
+  }
+
+  // Explicitly trigger Meta's room-capture flow.
+  // Resets the roomCaptureAttempted guard so the user can retry if the first
+  // attempt failed or was dismissed.  Provides feedback via the scan button.
+  private triggerRoomCapture() {
+    const session = this.xrManager.getSession() as any;
+    if (typeof session?.initiateRoomCapture !== "function") {
+      this.rrUI?.scanBtn.setProperties({ text: "Scan: Unsupported" });
+      return;
+    }
+    this.roomCaptureAttempted = true;
+    this.rrUI?.scanBtn.setProperties({ text: "Scanning\u2026" });
+    session.initiateRoomCapture()
+      .then(() => {
+        this.rrUI?.scanBtn.setProperties({ text: "Scan: Done" });
+      })
+      .catch((e: unknown) => {
+        console.warn("[Railroad] initiateRoomCapture failed:", e);
+        this.rrUI?.scanBtn.setProperties({ text: "Scan: Failed" });
+      });
   }
 
   // Create a coloured fill overlay parented to the XRPlane's Object3D.
