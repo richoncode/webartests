@@ -139,8 +139,8 @@ export class XCSItem {
       angle: options.angle || 0,
       scale: options.scale || { x: 1, y: 1 }, 
       skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-      offsetX: type === 'TEXT' ? options.x : (options.x + options.width / 2), 
-      offsetY: type === 'TEXT' ? options.y : (options.y + options.height / 2), 
+      offsetX: type === 'TEXT' ? options.x : (options.width / 2), 
+      offsetY: type === 'TEXT' ? options.y : (options.height / 2), 
       lockRatio: options.lockRatio ?? true, isClosePath: type !== 'BITMAP',
       zOrder, sourceId: id, groupTag: uuid(), layerTag: layerColor,
       layerColor: layerColor, visible: true, originColor: "#000000",
@@ -691,7 +691,7 @@ export class XCSProject {
       paths.sort((a, b) => (a.r || a.scale || 0) - (b.r || b.scale || 0));
     }
 
-    // Map Power (Geometry remains relative to 0,0 for XCS positioning)
+    // Map Power (Geometry remains relative to 0,0 from cache)
     const processedPaths = paths.map(p => {
       const dFromEdge = p.distFromEdge !== undefined ? p.distFromEdge : (width/2 - (p.r || 0));
       let pScale = 1.0;
@@ -706,7 +706,7 @@ export class XCSProject {
       const pParams = { ...params };
       if (currentBatch.pScale < 1.0) pParams.power = Math.max(1, Math.round(pParams.power * currentBatch.pScale));
       
-      // CRITICAL: Use original x,y for item positioning, dPath is relative to 0,0
+      // CRITICAL: Use original x,y for item positioning. dPath is relative to 0,0.
       lastItem = await this.addItem('PATH', {
         ...options, 
         dPath: currentBatch.dPath, 
@@ -722,7 +722,6 @@ export class XCSProject {
         if (renderMode === 'spiral') {
           currentBatch.dPath += ` L ${p.dPath.replace(/^M\s*[\d.-]+\s+[\d.-]+\s*L\s*/, '')}`;
         } else {
-          // Sub-path merging for concentric loops (M...Z M...Z)
           currentBatch.dPath += ` ${p.dPath}`;
         }
       } else {

@@ -186,3 +186,22 @@ To ensure text renders on Galvo-based machines (F2), the exporter must act as a 
 | **Vertical (-90°)** | Top-edge Baseline | Grows Down (+Y) |
 | **Centering (Horiz)** | `targetX - (width/2)` | Centered on targetX |
 | **Centering (Vert)** | `targetY + (width/2)` | Centered on targetY |
+
+---
+
+## 13. Positioning & Coordinate Systems
+
+XCS Studio separates **Object Origin** from **Geometric Data**. Failure to respect this hierarchy results in double-offsetting (shapes ending up at 0,0 or misaligned).
+
+### Relative Geometry Rule (MANDATORY)
+1.  **`dPath` Content**: All coordinates within an SVG path string (`M`, `L`, etc.) MUST be relative to the object's Top-Left corner (`0,0`).
+2.  **Explicit Origin**: The machine-bed position MUST be defined exclusively by the `x` and `y` properties of the parent object.
+3.  **Offsets**: The `offsetX` and `offsetY` properties must represent the distance from the `x,y` anchor to the geometric center of the shape (usually `width/2` and `height/2`).
+
+### Why my "Position 0,0" error happened:
+I was generating `dPath` data using absolute machine coordinates (e.g., `M 50 50`) while simultaneously setting the object's `x` and `y` to those same coordinates. XCS interpreted this as: "Go to 50,50 on the bed, and then draw a line 50mm away from that anchor," resulting in shapes rendering far outside the work area or defaulting to 0,0.
+
+### Implementation Mandate:
+*   **Generate** technical paths (spirals, loops) centered around `(width/2, height/2)`.
+*   **Set** `x` and `y` to the desired Top-Left position in the grid.
+*   **Result**: 1:1 parity between our Viewer and XCS Studio's layout.
