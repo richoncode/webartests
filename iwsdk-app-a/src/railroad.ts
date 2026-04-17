@@ -396,23 +396,27 @@ export class RailroadSystem extends createSystem({
   }
 
   // ── Railroad-screen button zones ──────────────────────────────────────
-  // Instead of manually calculating positions from CSS values (which breaks
-  // every time the layout changes), we subscribe to each UIKit button's
-  // globalMatrix signal.  That signal fires once the UIKit layout engine has
-  // run and gives the element's actual world-space transform.  We convert it
-  // to panel-entity local space with worldToLocal so the hit-zone meshes
-  // stay in sync with the visible buttons automatically — no rrH, no row-Y
-  // constants, no re-calibration when content is added or removed.
+  // Subscribe to each UIKit button's globalMatrix signal for position sync.
+  // We seed geometry with CSS-derived estimates so zones are hittable even
+  // before layout fires, then replace geometry with exact UIKit measurements
+  // when globalMatrix fires.  If the game is already active at that point we
+  // remove+re-add Interactable to force InputSystem to rebuild the BVH at
+  // the corrected position — the root cause of "all UI unhittable".
   private buildButtonZones(panelEntity: Entity, doc: UIKitDocument) {
+    // Approximate: panel CSS width = 72 UIKit units, rendered ~0.76 m.
+    const approxScale = 0.76 / 72;
     const zoneD  = 0.04;
     const localZ = 0.06;
 
+    // Initial w/h from CSS:
+    //   rr-track/train/clear/menu: width:32, padding:2, font:3  => ~8 units tall
+    //   rr-debug-btn:              width:~66, padding:1.5        => ~6 units tall
     const defs = [
-      { action: 0, id: "rr-track-btn",  color: 0x22bb88 },
-      { action: 1, id: "rr-train-btn",  color: 0xffcc22 },
-      { action: 2, id: "rr-clear-btn",  color: 0x888888 },
-      { action: 3, id: "rr-menu-btn",   color: 0x888888 },
-      { action: 4, id: "rr-debug-btn",  color: 0x334455 },
+      { action: 0, id: "rr-track-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0x22bb88 },
+      { action: 1, id: "rr-train-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0xffcc22 },
+      { action: 2, id: "rr-clear-btn",  w: 32 * approxScale, h: 8 * approxScale, color: 0x888888 },
+      { action: 3, id: "rr-menu-btn",   w: 32 * approxScale, h: 8 * approxScale, color: 0x888888 },
+      { action: 4, id: "rr-debug-btn",  w: 66 * approxScale, h: 6 * approxScale, color: 0x334455 },
     ];
 
     for (const { action, id, color } of defs) {

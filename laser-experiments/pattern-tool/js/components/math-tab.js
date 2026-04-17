@@ -273,12 +273,15 @@ export const MathTab = {
           if (shape === 'square') await XCSExporter.addRect(project, { ...drawOpts, x: x-s/2, y: rowY-s/2, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb, extraDisplayData: { paletteName: palette.name, colorName: colEnt.label } });
           else if (shape === 'hexagon') {
             let dP = ""; const hr = s/2;
-            for (let i = 0; i < 6; i++) { const ang = (Math.PI/180)*(i*60-30); dP += (i===0?"M ":"L ")+`${(x+hr*Math.cos(ang)).toFixed(3)} ${(rowY+hr*Math.sin(ang)).toFixed(3)}`; }
-            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP+" Z", x: 0, y: 0, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+            for (let i = 0; i < 6; i++) { 
+              const ang = (Math.PI/180)*(i*60-30); 
+              dP += (i===0?"M ":"L ")+`${(hr*Math.cos(ang)).toFixed(3)} ${(hr*Math.sin(ang)).toFixed(3)}`; 
+            }
+            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP+" Z", x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
           } else if (shape === 'triangle') {
             const isUp = (r+c)%2===0, h = (s*Math.sqrt(3))/2;
-            const dP = isUp ? `M ${x} ${rowY-h/2} L ${x+s/2} ${rowY+h/2} L ${x-s/2} ${rowY+h/2} Z` : `M ${x} ${rowY+h/2} L ${x+s/2} ${rowY-h/2} L ${x-s/2} ${rowY-h/2} Z`;
-            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x: 0, y: 0, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+            const dP = isUp ? `M 0 ${(-h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(h/2).toFixed(3)} Z` : `M 0 ${(h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(-h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(-h/2).toFixed(3)} Z`;
+            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
           }
           tileIdx++;
         }
