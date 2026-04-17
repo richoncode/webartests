@@ -244,14 +244,15 @@ export class XCSCanvas {
     this._pop.style.display = 'block';
     this._pop.innerHTML = `
       <div style="color:var(--primary); font-weight:bold; margin-bottom:4px">${p.type}</div>
-      <div style="display:grid; grid-template-columns: 50px 1fr; gap: 4px;">
-        <span>MODE:</span> <span style="color:var(--warning)">${p.processingType}</span>
-        <span>POS:</span>  <span>${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>
-        <span>SIZE:</span> <span>${p.w.toFixed(1)}×${p.h.toFixed(1)}</span>
-        <span>LAYER:</span><span style="color:${p.layerColor}">${p.layerColor}</span>
-        <span>POWER:</span>  <span>${p.power}% ${p.laser === 'ir' ? 'IR' : 'Blue'}</span>
-        <span>SPD:</span>  <span>${p.speed} mm/s</span>
-        <span>LPCM:</span> <span>${p.density}</span>
+      <div style="display:grid; grid-template-columns: 60px 1fr; gap: 4px; font-size: 11px;">
+        <span>MODE:</span>    <span style="color:var(--warning)">${p.processingType}</span>
+        <span>POS:</span>     <span>${p.x.toFixed(1)}, ${p.y.toFixed(1)}</span>
+        <span>SIZE:</span>    <span>${p.w.toFixed(3)}×${p.h.toFixed(3)}</span>
+        <span>LAYER:</span>   <span style="color:${p.layerColor}">${p.layerColor}</span>
+        <span>POWER:</span>   <span>${p.power}% ${p.laser === 'ir' ? 'IR' : 'Blue'}</span>
+        <span>${p.aggregateLength ? 'TOTAL LEN:' : 'LENGTH:'}</span>  <span style="color:var(--primary)">${(p.aggregateLength || p.totalLength || 0).toFixed(3)} mm</span>
+        <span>SPEED:</span>   <span>${p.speed} mm/s</span>
+        <span>DENSITY:</span> <span>${p.density}</span>
       </div>
     `;
   }

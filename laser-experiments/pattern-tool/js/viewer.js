@@ -51,6 +51,12 @@ export const XCSViewer = {
       <div class="viewer-main">
         <div class="canvas-panel">
           <div class="canvas-label">Laser Area: 100 × 100 mm</div>
+          <div class="canvas-progress" style="display:none">
+            <div class="progress-bar-bg">
+              <div class="progress-bar"></div>
+            </div>
+            <div class="progress-label">Updating Geometry...</div>
+          </div>
           <svg class="svg-canvas" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
             <defs>
               <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
@@ -308,7 +314,16 @@ export const XCSViewer = {
     return v;
   },
 
-  update(v, state) {
+  onItemClick(v, idx) {
+    const row = v.querySelector(`#shape-row-${idx}`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.background = 'rgba(91, 155, 213, 0.3)';
+      setTimeout(() => { row.style.background = ''; }, 1000);
+    }
+  },
+
+  update(v, state, lazy = false) {
     const inst = Object.values(App.instances).find(i => i.pane.contains(v));
     if (!inst || !state.project) return;
 
@@ -317,18 +332,40 @@ export const XCSViewer = {
     // Delegate rendering to the unified XCSCanvas
     inst.xcsCanvas.render(state.project);
 
+    // Wire up click-to-scroll interaction on all rendered SVG elements
+    const svgContent = inst.xcsCanvas._content;
+    Array.from(svgContent.children).forEach((el, i) => {
+      el.style.cursor = 'pointer';
+      el.onclick = (e) => { e.stopPropagation(); this.onItemClick(v, i); };
+    });
+
     this.applyTransform(v, state);
     this.renderStats(v, state);
-    this.renderList(v, state);
-    this.renderPalette(v, state);
-    this.renderProcessTree(v, state);
-    
-    // Performance: Only render JSON if tab is visible
-    if (v.querySelector('.rtab[data-tab="json"]').classList.contains('active')) {
-      this.renderJSON(v, state);
-    } else {
-      v.querySelector('.json-code').innerHTML = ''; // Clear stale heavy DOM
+
+    // Performance optimization for lazy updates
+    if (!lazy) {
+      this.renderList(v, state);
+      this.renderPalette(v, state);
+      this.renderProcessTree(v, state);
+
+      if (v.querySelector('.rtab[data-tab="json"]').classList.contains('active')) {
+        this.renderJSON(v, state);
+      }
     }
+  },
+
+  showProgress(v, percent) {
+    const p = v.querySelector('.canvas-progress');
+    if (p) {
+      p.style.display = 'flex';
+      const bar = p.querySelector('.progress-bar');
+      if (bar) bar.style.width = `${percent}%`;
+    }
+  },
+
+  hideProgress(v) {
+    const p = v.querySelector('.canvas-progress');
+    if (p) p.style.display = 'none';
   },
 
   applyTransform(v, state) {
@@ -500,6 +537,7 @@ export const XCSViewer = {
       <div class="popup-title">${s.paletteName || 'Shape'} - ${s.typeOverride || s.colorName || s.type}</div>
       <div class="popup-row"><span class="popup-key">Mode</span><span class="popup-val hi">${procMode}</span></div>
       <div class="popup-row"><span class="popup-key">Power</span><span class="popup-val hi">${s.power}% ${laserLabel}</span></div>
+      <div class="popup-row"><span class="popup-key">Length</span><span class="popup-val">${s.totalLength ? s.totalLength.toFixed(3) : '0.000'} mm</span></div>
       <div class="popup-row"><span class="popup-key">Pos (X,Y)</span><span class="popup-val">${s.x.toFixed(2)}, ${s.y.toFixed(2)} mm</span></div>
       <div class="popup-row"><span class="popup-key">Speed</span><span class="popup-val">${s.speed}mm/s</span></div>
       <div class="popup-row"><span class="popup-key">Density</span><span class="popup-val">${s.density}</span></div>

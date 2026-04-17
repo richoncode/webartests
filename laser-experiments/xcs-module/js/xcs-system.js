@@ -34,6 +34,14 @@ export class XCSItem {
     const src = pm.processingLightSource || null;
     const laser = (src === 'red' || src === 'ir') ? 'ir' : src;
 
+    // Calculate technical path length (mm)
+    let totalLength = 0;
+    if (d.type === 'RECT') totalLength = 2 * (d.width + d.height);
+    else if (d.type === 'CIRCLE') totalLength = Math.PI * d.width;
+    else if (d.type === 'PATH' && d.dPath) {
+      totalLength = XCSItem.calculatePathLength(d.dPath);
+    }
+
     return {
       idx: this.idx,
       id: d.id,
@@ -42,6 +50,8 @@ export class XCSItem {
       y: d.y,
       w: d.width,
       h: d.height,
+      totalLength,
+      aggregateLength: d.aggregateLength ?? null,
       angle: d.angle || 0,
       layerColor: d.layerColor || '#5b9bd5',
       zOrder: d.zOrder || 0,
@@ -74,6 +84,45 @@ export class XCSItem {
     if (pt && this.laser.data[pt] && this.laser.data[pt].parameter) {
       Object.assign(this.laser.data[pt].parameter.customize, params);
     }
+  }
+
+  /**
+   * Technical Helper: Calculates approximate length of an SVG path (mm).
+   */
+  static calculatePathLength(dPath) {
+    if (!dPath) return 0;
+    let total = 0;
+    let curX = 0, curY = 0, startX = 0, startY = 0;
+    const commands = dPath.split(/(?=[MLQCSTAZHVmlqcstahvz])/);
+
+    commands.forEach(cmd => {
+      const type = cmd[0];
+      const args = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat).filter(v => !isNaN(v));
+
+      const dist = (x1, y1, x2, y2) => Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+
+      if (type === 'M' || type === 'm') {
+        curX = args[0]; curY = args[1];
+        startX = curX; startY = curY;
+      } else if (type === 'L' || type === 'l') {
+        for (let i = 0; i < args.length; i += 2) {
+          total += dist(curX, curY, args[i], args[i + 1]);
+          curX = args[i]; curY = args[i + 1];
+        }
+      } else if (type === 'Q' || type === 'q') {
+        for (let i = 0; i < args.length; i += 4) {
+          // Linear approximation for quadratic (control point mid-split)
+          const midX = (curX + 2 * args[i] + args[i + 2]) / 4;
+          const midY = (curY + 2 * args[i + 1] + args[i + 3]) / 4;
+          total += dist(curX, curY, midX, midY) + dist(midX, midY, args[i + 2], args[i + 3]);
+          curX = args[i + 2]; curY = args[i + 3];
+        }
+      } else if (type === 'Z' || type === 'z') {
+        total += dist(curX, curY, startX, startY);
+        curX = startX; curY = startY;
+      }
+    });
+    return total;
   }
 
   // --- Factory Helpers (MANDATORY for Hardware Compatibility) ---
@@ -491,7 +540,13 @@ export class XCSProject {
   /**
    * Adds an item to the project.
    */
-  addItem(type, options) {
+  async addItem(type, options) {
+    // 1. Check for specialized Draw Modes (Concentric, Spiral)
+    const drawMode = options.renderMode;
+    if (drawMode === 'concentric' || drawMode === 'spiral') {
+      return await this._addSpecializedDrawMode(type, options);
+    }
+
     const id = uuid();
     const layerColor = options.layerColor || (type === 'TEXT' ? XCSProject.DEFAULT_TEXT_COLOR : "#5b9bd5");
     
@@ -530,6 +585,152 @@ export class XCSProject {
     if (type === 'TEXT') return new XCSText(display, laser, zOrder);
     if (type === 'BITMAP') return new XCSBitmap(display, laser, zOrder);
     return new XCSShape(display, laser, zOrder);
+  }
+
+  static _geoCache = new Map();
+
+  /**
+   * Expands a primitive (RECT, CIRCLE) into multiple concentric or spiral paths.
+   * Spacing is defined by options.params.density (LPCM).
+   * Processing order is always Inside-Out.
+   */
+  async _addSpecializedDrawMode(type, options) {
+    const { renderMode, x, y, width, height, params, jitter = 0, edgeFade = 0 } = options;
+    const density = params?.density || 1000;
+    const stepMm = 10 / density; // spacing in mm
+    
+    // Yielding helper to keep UI alive during heavy math
+    let ops = 0;
+    const yieldIfBusy = async () => {
+      ops++;
+      if (ops % 100 === 0) await new Promise(r => requestAnimationFrame(r));
+    };
+
+    // Cache Key: COMPLETELY decoupled from position (x,y)
+    const cacheKey = `${type}|${width.toFixed(3)}|${height.toFixed(3)}|${density}|${jitter}|${renderMode}|${options.dPath || ''}`;
+    let paths = XCSProject._geoCache.get(cacheKey);
+
+    if (!paths) {
+      paths = [];
+      // Local centers for caching (0,0 centered bounding box)
+      const lcx = width/2, lcy = height/2;
+      const getPathPoints = (d) => d.split(/[MLZmlz\s,]+/).filter(v => v !== "").map(parseFloat);
+
+      if (type === 'CIRCLE') {
+        const maxR = width / 2;
+        let r = maxR;
+        if (renderMode === 'concentric') {
+          while (r > 0) {
+            await yieldIfBusy();
+            let dPath = "";
+            for (let i = 0; i <= 64; i++) {
+              const a = (i / 64) * Math.PI * 2;
+              const jx = (Math.random() - 0.5) * jitter, jy = (Math.random() - 0.5) * jitter;
+              const px = lcx + (r + jx) * Math.cos(a), py = lcy + (r + jy) * Math.sin(a);
+              dPath += (i === 0 ? "M " : "L ") + `${px.toFixed(3)} ${py.toFixed(3)}`;
+            }
+            paths.push({ dPath: dPath + " Z", r });
+            r -= stepMm;
+          }
+        } else if (renderMode === 'spiral') {
+          let a = 0; r = 0;
+          let lastPX = lcx, lastPY = lcy;
+          while (r < maxR) {
+            await yieldIfBusy();
+            a += 0.2; r = (a / (Math.PI * 2)) * stepMm;
+            const jx = (Math.random() - 0.5) * jitter, jy = (Math.random() - 0.5) * jitter;
+            const px = lcx + (r + jx) * Math.cos(a), py = lcy + (r + jy) * Math.sin(a);
+            paths.push({ dPath: `M ${lastPX.toFixed(3)} ${lastPY.toFixed(3)} L ${px.toFixed(3)} ${py.toFixed(3)}`, r });
+            lastPX = px; lastPY = py;
+          }
+        }
+      } else if (type === 'RECT' || type === 'PATH') {
+        let pts = [];
+        if (type === 'RECT') {
+          pts = [{x: 0, y: 0}, {x: width, y: 0}, {x: width, y: height}, {x: 0, y: height}];
+        } else {
+          // Normalize custom PATH to 0,0 relative (assumes caller provided relative dPath)
+          const raw = getPathPoints(options.dPath);
+          for (let i = 0; i < raw.length; i += 2) pts.push({ x: raw[i], y: raw[i+1] });
+        }
+        const centroid = pts.reduce((acc, p) => ({ x: acc.x + p.x/pts.length, y: acc.y + p.y/pts.length }), {x:0, y:0});
+        const maxDist = pts.reduce((max, p) => Math.max(max, Math.sqrt((p.x-centroid.x)**2 + (p.y-centroid.y)**2)), 0);
+        const minDistToSide = pts.length === 4 ? Math.min(width, height) / 2 : maxDist * Math.cos(Math.PI / pts.length);
+
+        if (renderMode === 'concentric') {
+          let scale = 1.0;
+          while (scale > 0) {
+            await yieldIfBusy();
+            let dPath = "";
+            pts.forEach((p, i) => {
+              const jx = (Math.random() - 0.5) * jitter, jy = (Math.random() - 0.5) * jitter;
+              const px = centroid.x + (p.x - centroid.x) * scale + jx, py = centroid.y + (p.y - centroid.y) * scale + jy;
+              dPath += (i === 0 ? "M " : "L ") + `${px.toFixed(3)} ${py.toFixed(3)}`;
+            });
+            paths.push({ dPath: dPath + " Z", scale, distFromEdge: minDistToSide * (1 - scale) });
+            scale -= stepMm / minDistToSide;
+          }
+        } else if (renderMode === 'spiral') {
+          let scale = 0, ptIdx = 0, lastP = { x: centroid.x, y: centroid.y };
+          while (scale < 1.0) {
+            await yieldIfBusy();
+            const p = pts[ptIdx % pts.length];
+            const jx = (Math.random() - 0.5) * jitter, jy = (Math.random() - 0.5) * jitter;
+            const px = centroid.x + (p.x - centroid.x) * scale + jx, py = centroid.y + (p.y - centroid.y) * scale + jy;
+            paths.push({ dPath: `M ${lastP.x.toFixed(3)} ${lastP.y.toFixed(3)} L ${px.toFixed(3)} ${py.toFixed(3)}`, scale, distFromEdge: minDistToSide * (1 - scale) });
+            lastP = { x: px, y: py };
+            ptIdx++;
+            scale = (ptIdx * stepMm) / (pts.length * minDistToSide);
+          }
+        }
+      }
+      XCSProject._geoCache.set(cacheKey, paths);
+    }
+
+    if (renderMode === 'concentric' && !XCSProject._geoCache.has(cacheKey)) {
+      paths.sort((a, b) => (a.r || a.scale || 0) - (b.r || b.scale || 0));
+    }
+
+    // Map Power (Geometry remains relative to 0,0 for XCS positioning)
+    const processedPaths = paths.map(p => {
+      const dFromEdge = p.distFromEdge !== undefined ? p.distFromEdge : (width/2 - (p.r || 0));
+      let pScale = 1.0;
+      if (edgeFade > 0 && dFromEdge < edgeFade) pScale = Math.max(0, dFromEdge / edgeFade);
+      return { ...p, pScale };
+    });
+
+    // Batching Optimization: Group consecutive segments with same power
+    let currentBatch = null, lastItem = null;
+    const flushBatch = async () => {
+      if (!currentBatch) return;
+      const pParams = { ...params };
+      if (currentBatch.pScale < 1.0) pParams.power = Math.max(1, Math.round(pParams.power * currentBatch.pScale));
+      
+      // CRITICAL: Use original x,y for item positioning, dPath is relative to 0,0
+      lastItem = await this.addItem('PATH', {
+        ...options, 
+        dPath: currentBatch.dPath, 
+        renderMode: 'path', 
+        params: pParams,
+        extraDisplayData: { ...options.extraDisplayData, hideLabels: true }
+      });
+      currentBatch = null;
+    };
+
+    for (const p of processedPaths) {
+      if (currentBatch && currentBatch.pScale === p.pScale) {
+        if (renderMode === 'spiral') {
+          currentBatch.dPath += ` L ${p.dPath.replace(/^M\s*[\d.-]+\s+[\d.-]+\s*L\s*/, '')}`;
+        } else {
+          // Sub-path merging for concentric loops (M...Z M...Z)
+          currentBatch.dPath += ` ${p.dPath}`;
+        }
+      } else {
+        await flushBatch(); currentBatch = { ...p };
+      }
+    }
+    await flushBatch();
+    return lastItem;
   }
 
   /**

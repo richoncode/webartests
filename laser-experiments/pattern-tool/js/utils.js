@@ -296,28 +296,26 @@ export const UI = {
     return wrap;
   },
 
-  makeModeToggle(current, onPath, onFill, supported = { path: true, fill: true }) {
+  makeModeToggle(current, onSelect, supported = { path: true, fill: true }) {
     const wrap = document.createElement('div');
     wrap.className = 'btn-group';
     
-    const pathBtn = document.createElement('button');
-    pathBtn.className = 'hbtn sm' + (current === 'path' ? ' primary' : '');
-    pathBtn.textContent = 'Outline';
-    pathBtn.disabled = !supported.path;
-    pathBtn.onclick = () => {
-      if (current !== 'path') onPath();
-    };
+    const modes = [
+      { id: 'path', label: 'Outline', sup: supported.path },
+      { id: 'fill', label: 'Fill', sup: supported.fill },
+      { id: 'concentric', label: 'Concentric', sup: true },
+      { id: 'spiral', label: 'Spiral', sup: true }
+    ];
 
-    const fillBtn = document.createElement('button');
-    fillBtn.className = 'hbtn sm' + (current === 'fill' ? ' primary' : '');
-    fillBtn.textContent = 'Fill';
-    fillBtn.disabled = !supported.fill;
-    fillBtn.onclick = () => {
-      if (current !== 'fill') onFill();
-    };
+    modes.forEach(m => {
+      const btn = document.createElement('button');
+      btn.className = 'hbtn sm' + (current === m.id ? ' primary' : '');
+      btn.textContent = m.label;
+      btn.disabled = !m.sup;
+      btn.onclick = () => { if (current !== m.id) onSelect(m.id); };
+      wrap.appendChild(btn);
+    });
 
-    wrap.appendChild(pathBtn);
-    wrap.appendChild(fillBtn);
     return wrap;
   },
 
@@ -369,21 +367,57 @@ export const UI = {
       }
     }
 
-    // 4. Mode (Fill/Path)
-    rows.push(this.makeRow('Mode', this.makeModeToggle(
-      cfg.renderMode || 'fill', 
-      () => { 
-        setFn('renderMode', 'path'); 
-        if (rebuildFn) rebuildFn();
-      }, 
-      () => { 
-        setFn('renderMode', 'fill'); 
-        if (rebuildFn) rebuildFn();
-      },
-      { path: opts.supportPath, fill: opts.supportFill }
-    )));
+    // 4. LPCM Display (read-only from palette)
+    if (currentPaletteObj) {
+      const lpcmVal = currentPaletteObj.lpcm || 1000;
+      const lpcmEl = document.createElement('span');
+      lpcmEl.style.color = '#888';
+      lpcmEl.style.fontSize = '11px';
+      lpcmEl.style.fontFamily = 'monospace';
+      lpcmEl.textContent = `${lpcmVal} LPCM (${(10 / lpcmVal).toFixed(3)}mm step)`;
+      rows.push(this.makeRow('Density', lpcmEl));
+    }
 
-    // 5. Border
+    // 5. Draw Mode Dropdown
+    const drawModes = [
+      { id: 'path', label: 'Outline' },
+      { id: 'fill', label: 'Fill' },
+      { id: 'concentric', label: 'Concentric' },
+      { id: 'spiral', label: 'Spiral' }
+    ];
+    // Filter by support if needed, though Concentric/Spiral are always available now
+    const supportedModes = drawModes.filter(m => {
+      if (m.id === 'path') return opts.supportPath;
+      if (m.id === 'fill') return opts.supportFill;
+      return true;
+    });
+
+    const modeSelector = document.createElement('select');
+    modeSelector.className = 'ui-select';
+    // Match styles from makeSelect
+    Object.assign(modeSelector.style, {
+      background: '#0d0d0d', border: '1px solid #333', color: '#5b9bd5',
+      fontSize: '11px', borderRadius: '4px', padding: '2px 4px', outline: 'none', cursor: 'pointer', width: '100%'
+    });
+    supportedModes.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.label;
+      if (m.id === (cfg.renderMode || 'fill')) opt.selected = true;
+      modeSelector.appendChild(opt);
+    });
+    modeSelector.onchange = (e) => {
+      setFn('renderMode', e.target.value);
+      if (rebuildFn) rebuildFn();
+    };
+    rows.push(this.makeRow('Draw Mode', modeSelector));
+
+    // 6. Technical Overrides (for Concentric/Spiral)
+    if (cfg.renderMode === 'concentric' || cfg.renderMode === 'spiral') {
+      rows.push(this.makeRow('Jitter', this.makeRange(0, 1, 0.05, cfg.jitter || 0, v => setFn('jitter', +v), 'mm'), 'Varies segment lengths randomly.'));
+      rows.push(this.makeRow('Edge Fade', this.makeRange(0, 10, 0.1, cfg.edgeFade || 0, v => setFn('edgeFade', +v), 'mm'), 'Power fades to zero over this distance.'));
+    }
+
+    // 7. Border
     if (opts.supportBorder) {
       rows.push(this.makeToggleRow('Show Border', cfg.border || false, v => setFn('border', v)));
     }

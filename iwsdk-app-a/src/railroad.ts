@@ -263,7 +263,7 @@ export class RailroadSystem extends createSystem({
         ?.addEventListener("click", () => { if (this.active) this.toggleDebug(); });
 
       // Build 3D button zones parented to panel (created without Interactable; enabled on startGame)
-      this.buildButtonZones(entity);
+      this.buildButtonZones(entity, doc);
     });
 
     // Track AR plane detection — create/remove debug overlays on the fly
@@ -396,54 +396,73 @@ export class RailroadSystem extends createSystem({
   }
 
   // ── Railroad-screen button zones ──────────────────────────────────────
-  // Layout mirrors game-screen action buttons (two rows, two columns each).
-  // Railroad-screen content height ≈ 40.9 UIKit units.
-  // Row 1 (+ Track / + Train): center at 25.02 units from panel top.
-  // Row 2 (Clear All / Menu):  center at 34.12 units from panel top.
-  // Buttons are 32 units wide with a 2-unit gap (content 66 units, centered).
-  private buildButtonZones(panelEntity: Entity) {
-    const scale      = 0.76 / 72;         // m per UIKit unit
-    // rrH = total railroad-screen content height in UIKit units.
-    // Adding the debug button row (+7.5 units) to the original 40.9 → 48.5.
-    // All row Y values are measured from the panel top; rrH/2 converts to
-    // panel-local Y (centre = 0, up = positive).
-    const rrH        = 48.5;
-    const row1Y      = (rrH / 2 - 25.02) * scale;   // + Track / + Train row
-    const row2Y      = (rrH / 2 - 34.12) * scale;   // Clear All / Menu row
-    const debugY     = (rrH / 2 - 42.12) * scale;   // Debug toggle (full-width)
-    const leftX      = -17 * scale;
-    const rightX     = +17 * scale;
-    const btnW       = 32  * scale;
-    const fullW      = 66  * scale;        // full content width (72 - 2×padding 3)
-    const btnH       = 7.6 * scale * 1.5; // 1.5× height for easier hit
-    const zoneD      = 0.04;
-    const localZ     = 0.06;
+  // Instead of manually calculating positions from CSS values (which breaks
+  // every time the layout changes), we subscribe to each UIKit button's
+  // globalMatrix signal.  That signal fires once the UIKit layout engine has
+  // run and gives the element's actual world-space transform.  We convert it
+  // to panel-entity local space with worldToLocal so the hit-zone meshes
+  // stay in sync with the visible buttons automatically — no rrH, no row-Y
+  // constants, no re-calibration when content is added or removed.
+  private buildButtonZones(panelEntity: Entity, doc: UIKitDocument) {
+    const zoneD  = 0.04;
+    const localZ = 0.06;
 
-    const defs: Array<{ action: number; x: number; y: number; w: number; color: number }> = [
-      { action: 0, x: leftX,  y: row1Y,  w: btnW,  color: 0x22bb88 },  // + Track
-      { action: 1, x: rightX, y: row1Y,  w: btnW,  color: 0xffcc22 },  // + Train
-      { action: 2, x: leftX,  y: row2Y,  w: btnW,  color: 0x888888 },  // Clear All
-      { action: 3, x: rightX, y: row2Y,  w: btnW,  color: 0x888888 },  // Menu
-      { action: 4, x: 0,      y: debugY, w: fullW, color: 0x334455 },  // Debug
+    const defs = [
+      { action: 0, id: "rr-track-btn",  color: 0x22bb88 },
+      { action: 1, id: "rr-train-btn",  color: 0xffcc22 },
+      { action: 2, id: "rr-clear-btn",  color: 0x888888 },
+      { action: 3, id: "rr-menu-btn",   color: 0x888888 },
+      { action: 4, id: "rr-debug-btn",  color: 0x334455 },
     ];
 
-    for (const { action, x, y, w, color } of defs) {
+    for (const { action, id, color } of defs) {
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
         transparent: true, opacity: 0.0, depthWrite: false,
       });
       this.rrBtnZoneMaterials[action] = mat;
 
-      const mesh = new Mesh(new BoxGeometry(w, btnH, zoneD), mat);
-      mesh.position.set(x, y, localZ);
-      // Pre-parent so mesh.parent != null when addComponent(Interactable) fires
-      // InputSystem.updateDescendantArrays — same fix as board column/cell zones.
+      // Tiny placeholder — size + position are set via the UIKit signal below.
+      const mesh = new Mesh(new BoxGeometry(0.01, 0.01, zoneD), mat);
+      mesh.position.z = localZ;
+      // Pre-parent before addComponent(Interactable) so InputSystem BVH includes it.
       panelEntity.object3D!.add(mesh);
 
       // No Interactable yet — added in startGame(), removed in cleanup()
       this.rrBtnZoneEntities.push(
         this.world.createTransformEntity(mesh, panelEntity)
           .addComponent(RailroadButtonZone, { actionType: action }),
+      );
+
+      // Subscribe to the UIKit element's world transform.  When the layout
+      // engine has placed the button, globalMatrix fires with its world-space
+      // Matrix4.  We convert to panel-entity local space and centre the mesh.
+      const el = doc.getElementById(id);
+      if (!el) continue;
+
+      let geoSet = false; // only build geometry once (before Interactable changes BVH)
+      this.cleanupFuncs.push(
+        (el as any).globalMatrix.subscribe((m: any) => {
+          if (!m) return;
+
+          // Element centre in world space (UIKit places matrix at element centre)
+          const worldPos = new Vector3(m.elements[12], m.elements[13], m.elements[14]);
+
+          // Convert to panel-entity local space
+          panelEntity.object3D!.updateWorldMatrix(true, false);
+          panelEntity.object3D!.worldToLocal(worldPos);
+          mesh.position.set(worldPos.x, worldPos.y, localZ);
+
+          // Build geometry once from the element's actual size
+          if (!geoSet && el.size.value) {
+            const [wU, hU] = el.size.value;
+            const ps = doc.targetSize.width / (doc.computedSize?.width ?? 72);
+            mesh.geometry.dispose();
+            // 1.5× on each axis gives a generous hit margin
+            mesh.geometry = new BoxGeometry(wU * ps * 1.5, hU * ps * 1.5, zoneD);
+            geoSet = true;
+          }
+        }),
       );
     }
   }
