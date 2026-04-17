@@ -431,13 +431,14 @@ export class RailroadSystem extends createSystem({
     const zoneD  = 0.04;
     const localZ = 0.06;
 
-    // { action, x, y, w, h } all in UIKit units (centred on element)
+    // { action, x, y, w, h } all in UIKit units (centred on element).
+    // Heights use 1.3× the CSS-computed value so the ray has a generous target.
     const defs = [
-      { action: 0, id: "rr-track-btn",  x: -17, y: halfH - 25.02, w: 32, h: 7.6, color: 0x22bb88 },
-      { action: 1, id: "rr-train-btn",  x:  17, y: halfH - 25.02, w: 32, h: 7.6, color: 0xffcc22 },
-      { action: 2, id: "rr-clear-btn",  x: -17, y: halfH - 34.12, w: 32, h: 7.6, color: 0x888888 },
-      { action: 3, id: "rr-menu-btn",   x:  17, y: halfH - 34.12, w: 32, h: 7.6, color: 0x888888 },
-      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 42.42, w: 66, h: 6.0, color: 0x334455 },
+      { action: 0, id: "rr-track-btn",  x: -17, y: halfH - 25.02, w: 32, h: 9.9, color: 0x22bb88 },
+      { action: 1, id: "rr-train-btn",  x:  17, y: halfH - 25.02, w: 32, h: 9.9, color: 0xffcc22 },
+      { action: 2, id: "rr-clear-btn",  x: -17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
+      { action: 3, id: "rr-menu-btn",   x:  17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
+      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 42.42, w: 66, h: 7.8, color: 0x334455 },
     ];
 
     for (const { action, id, x, y, w, h, color } of defs) {
@@ -810,14 +811,18 @@ export class RailroadSystem extends createSystem({
 
   // ── Spawn train ───────────────────────────────────────────────────────
   private spawnTrain() {
-    // Find any placed segment to put the train on
+    // Use any track in the scene — prefer placed ones, accept unplaced too.
+    // Only fall back to spawning a track when the map is completely empty.
+    // (Previously required placed=true, which meant tracks that were spawned
+    // but never grabbed-and-released were ignored, confusingly spawning a
+    // second track when the user pressed the train button.)
     let startData: SegData | null = null;
     for (const data of this.segMap.values()) {
-      const placed = data.entity.getValue(TrackSegment, "placed") as boolean;
-      if (placed) { startData = data; break; }
+      if (data.entity.getValue(TrackSegment, "placed")) { startData = data; break; }
+      if (!startData) startData = data; // accept unplaced as fallback
     }
     if (!startData) {
-      // No placed track yet — place a track piece first
+      // No track in the scene at all — spawn one first
       this.spawnTrackPiece();
       return;
     }

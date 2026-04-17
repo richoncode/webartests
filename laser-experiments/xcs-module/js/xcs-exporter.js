@@ -17,13 +17,25 @@ export const XCSExporter = {
     return await project.addItem('CIRCLE', options);
   },
 
-  async addPath(project, options) {
-    return await project.addItem('PATH', options);
+  async addPath(project, options) { return await project.addItem('PATH', options); },
+
+  /**
+   * Adds a compound path (e.g. circle in a square).
+   * @param {XCSProject} project
+   * @param {Object} options - { subPaths: [{dPath}], ... }
+   */
+  async addCompoundPath(project, options) {
+    return await project.addCompoundPath(options);
   },
 
-  async addBitmap(project, options) {
-    return await project.addItem('BITMAP', options);
+  /**
+   * Groups existing items.
+   */
+  group(project, itemIds, groupName) {
+    return project.group(itemIds, groupName);
   },
+
+  async addBitmap(project, options) { return await project.addItem('BITMAP', options); },
 
   async addText(project, options) {
     return await project.addItem('TEXT', options);

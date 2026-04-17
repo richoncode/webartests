@@ -139,8 +139,8 @@ export class XCSItem {
       angle: options.angle || 0,
       scale: options.scale || { x: 1, y: 1 }, 
       skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },
-      offsetX: type === 'TEXT' ? options.x : (options.width / 2), 
-      offsetY: type === 'TEXT' ? options.y : (options.height / 2), 
+      offsetX: options.x, 
+      offsetY: options.y, 
       lockRatio: options.lockRatio ?? true, isClosePath: type !== 'BITMAP',
       zOrder, sourceId: id, groupTag: uuid(), layerTag: layerColor,
       layerColor: layerColor, visible: true, originColor: "#000000",
@@ -585,6 +585,53 @@ export class XCSProject {
     if (type === 'TEXT') return new XCSText(display, laser, zOrder);
     if (type === 'BITMAP') return new XCSBitmap(display, laser, zOrder);
     return new XCSShape(display, laser, zOrder);
+  }
+
+  /**
+   * Adds a compound path (e.g. circle inside a square) to the project.
+   * Concatenates multiple dPaths into a single PATH object with even-odd fill rule.
+   */
+  async addCompoundPath(options) {
+    const { subPaths, ...rest } = options;
+    if (!subPaths || subPaths.length === 0) return null;
+
+    // Concatenate all sub-paths into a single technical string
+    const dPath = subPaths.map(p => p.dPath).join(" ");
+    
+    // Default to 'evenodd' for compound paths to ensure correct knockout behavior
+    const extraDisplayData = {
+      ...rest.extraDisplayData,
+      isCompoundPath: true,
+      fillRule: rest.fillRule || "evenodd"
+    };
+
+    return await this.addItem('PATH', { ...rest, dPath, extraDisplayData });
+  }
+
+  /**
+   * Groups multiple existing display items by ID.
+   * Registers the group in groupData and applies the groupTag to all members.
+   */
+  group(itemIds, groupName = "") {
+    const groupTag = `g-${uuid()}`;
+    const canvas = this.canvas[0];
+    
+    // 1. Register Group in Metadata Tree
+    canvas.groupData[groupTag] = {
+      groupName,
+      groupTag,
+      visible: true,
+      enableTransform: true,
+      zOrder: canvas.displays.length
+    };
+
+    // 2. Apply Group Tag to all member displays
+    itemIds.forEach(id => {
+      const display = canvas.displays.find(d => d.id === id);
+      if (display) display.groupTag = groupTag;
+    });
+
+    return groupTag;
   }
 
   static _geoCache = new Map();

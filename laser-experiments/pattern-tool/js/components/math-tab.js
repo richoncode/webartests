@@ -260,6 +260,7 @@ export const MathTab = {
       let dy = s + g, dx = s + g;
       if (shape === 'hexagon') { dy = s*0.75+g; dx = (s*Math.sqrt(3))/2+g; }
       else if (shape === 'triangle') { dy = (s*Math.sqrt(3)/2)+g; dx = s/2+g/2; }
+      else if (shape === 'compound') { dy = s + g; dx = s + g; }
       const rows = Math.ceil(aH/dy), cols = Math.ceil(aW/dx);
       let tileIdx = 0;
       for (let r = 0; r < rows; r++) {
@@ -270,6 +271,7 @@ export const MathTab = {
           if (x > CX+aW/2+s/2 || x < CX-aW/2-s/2) continue;
           let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
           const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
+          
           if (shape === 'square') await XCSExporter.addRect(project, { ...drawOpts, x: x-s/2, y: rowY-s/2, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb, extraDisplayData: { paletteName: palette.name, colorName: colEnt.label } });
           else if (shape === 'hexagon') {
             let dP = ""; const hr = s/2;
@@ -282,6 +284,17 @@ export const MathTab = {
             const isUp = (r+c)%2===0, h = (s*Math.sqrt(3))/2;
             const dP = isUp ? `M 0 ${(-h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(h/2).toFixed(3)} Z` : `M 0 ${(h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(-h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(-h/2).toFixed(3)} Z`;
             await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+          } else if (shape === 'compound') {
+            // A Square with a Triangle "punched out"
+            const h = (s*0.5*Math.sqrt(3))/2;
+            const outerPath = `M ${-s/2} ${-s/2} L ${s/2} ${-s/2} L ${s/2} ${s/2} L ${-s/2} ${s/2} Z`;
+            const innerPath = `M 0 ${(-h/2).toFixed(3)} L ${(s/4).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/4).toFixed(3)} ${(h/2).toFixed(3)} Z`;
+            await XCSExporter.addCompoundPath(project, { 
+              ...drawOpts, 
+              x, y: rowY, width: s, height: s, 
+              params: tParams, isFill, laserSource, layerColor: colEnt.rgb,
+              subPaths: [{ dPath: outerPath }, { dPath: innerPath }]
+            });
           }
           tileIdx++;
         }
@@ -362,7 +375,7 @@ export const MathTab = {
       ], false, null, '<b>Power Blending Logic</b><br><br>1. <b>Ring Power Fade</b>: The initial drop from core power to the edge ring.<br>2. <b>Ring Size Step</b>: The amount subtracted cumulatively from each concentric ring moving away from the edge.<br><br><i>Linear interpolation is applied to all values from the first circle to the last in the row.</i>'));
     } else if (cfg.type === 'tiles') {
       scroll.appendChild(UI.makeSection('Tiles Pattern Settings', [
-        UI.makeRow('Shape', UI.makeToggles(['square', 'hexagon', 'triangle'], cfg.tileShape, v => set('tileShape', v), { square: 'Square', hexagon: 'Hex', triangle: 'Tri' })),
+        UI.makeRow('Shape', UI.makeToggles(['square', 'hexagon', 'triangle', 'compound'], cfg.tileShape, v => set('tileShape', v), { square: 'Square', hexagon: 'Hex', triangle: 'Tri', compound: 'Comp' })),
         UI.makeRow('Size', UI.makeRange(1, 50, 0.1, cfg.tileSize, v => set('tileSize', +v), 'mm')),
         UI.makeRow('Gap/Overlap', UI.makeRange(-5, 10, 0.1, cfg.tileGap, v => set('tileGap', +v), 'mm')),
         UI.makeRow('Area Width', UI.makeRange(10, 100, 1, cfg.tileAreaW, v => set('tileAreaW', +v), 'mm')),
