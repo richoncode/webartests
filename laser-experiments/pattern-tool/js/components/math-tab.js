@@ -295,20 +295,23 @@ export const MathTab = {
         if (tSep > 0) {
           const ks = Math.max(0.1, s - tSep); 
           let kPath = "";
+          // Relative to center for Compound Placement
+          const locX = relX - CX;
+          const locY = relY - CY;
           if (shape === 'square' || shape === 'compound') {
-            kPath = `M ${relX - ks/2} ${relY - ks/2} L ${relX + ks/2} ${relY - ks/2} L ${relX + ks/2} ${relY + ks/2} L ${relX - ks/2} ${relY + ks/2} Z`;
+            kPath = `M ${locX - ks/2} ${locY - ks/2} L ${locX + ks/2} ${locY - ks/2} L ${locX + ks/2} ${locY + ks/2} L ${locX - ks/2} ${locY + ks/2} Z`;
           } else if (shape === 'hexagon') {
             const hr = ks/2;
             for (let i = 0; i < 6; i++) { 
               const ang = (Math.PI/180)*(i*60-30); 
-              kPath += (i===0?"M ":"L ")+`${(relX + hr*Math.cos(ang)).toFixed(3)} ${(relY + hr*Math.sin(ang)).toFixed(3)}`; 
+              kPath += (i===0?"M ":"L ")+`${(locX + hr*Math.cos(ang)).toFixed(3)} ${(locY + hr*Math.sin(ang)).toFixed(3)}`; 
             }
             kPath += " Z";
           } else if (shape === 'triangle') {
             const kh = (ks*Math.sqrt(3))/2;
             kPath = isUp ? 
-              `M ${relX} ${relY - kh/2} L ${relX + ks/2} ${relY + kh/2} L ${relX - ks/2} ${relY + kh/2} Z` : 
-              `M ${relX} ${relY + kh/2} L ${relX + ks/2} ${relY - kh/2} L ${relX - ks/2} ${relY - kh/2} Z`;
+              `M ${locX} ${locY - kh/2} L ${locX + ks/2} ${locY + kh/2} L ${locX - ks/2} ${locY + kh/2} Z` : 
+              `M ${locX} ${locY + kh/2} L ${locX + ks/2} ${locY - kh/2} L ${locX - ks/2} ${locY - kh/2} Z`;
           }
           if (kPath) techSubPaths.push({ dPath: kPath });
         }
