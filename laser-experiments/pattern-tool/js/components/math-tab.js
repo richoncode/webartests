@@ -285,38 +285,42 @@ export const MathTab = {
         }
       }
 
+      const kPathsRaw = [];
+      const loopsRaw = [];
       // 1. Generate Rendered Tiles & Knockouts
       for (const t of tileData) {
         await yieldIfBusy();
         const { x, y, r, c, isUp } = t;
-        const relX = x, relY = y; 
 
-        // Knockout Path (for the black grout layer)
         if (tSep > 0) {
           const ks = Math.max(0.1, s - tSep); 
-          let kPath = "";
-          // Relative to center for Compound Placement
-          const locX = relX - CX;
-          const locY = relY - CY;
           if (shape === 'square' || shape === 'compound') {
-            kPath = `M ${locX - ks/2} ${locY - ks/2} L ${locX + ks/2} ${locY - ks/2} L ${locX + ks/2} ${locY + ks/2} L ${locX - ks/2} ${locY + ks/2} Z`;
+            kPathsRaw.push([
+              {x: x - ks/2, y: y - ks/2}, {x: x + ks/2, y: y - ks/2},
+              {x: x + ks/2, y: y + ks/2}, {x: x - ks/2, y: y + ks/2}
+            ]);
           } else if (shape === 'hexagon') {
             const hr = ks/2;
+            const pts = [];
             for (let i = 0; i < 6; i++) { 
               const ang = (Math.PI/180)*(i*60-30); 
-              kPath += (i===0?"M ":"L ")+`${(locX + hr*Math.cos(ang)).toFixed(3)} ${(locY + hr*Math.sin(ang)).toFixed(3)}`; 
+              pts.push({ x: x + hr*Math.cos(ang), y: y + hr*Math.sin(ang) });
             }
-            kPath += " Z";
+            kPathsRaw.push(pts);
           } else if (shape === 'triangle') {
             const kh = (ks*Math.sqrt(3))/2;
-            kPath = isUp ? 
-              `M ${locX} ${locY - kh/2} L ${locX + ks/2} ${locY + kh/2} L ${locX - ks/2} ${locY + kh/2} Z` : 
-              `M ${locX} ${locY + kh/2} L ${locX + ks/2} ${locY - kh/2} L ${locX - ks/2} ${locY - kh/2} Z`;
+            if (isUp) {
+              kPathsRaw.push([
+                {x: x, y: y - kh/2}, {x: x + ks/2, y: y + kh/2}, {x: x - ks/2, y: y + kh/2}
+              ]);
+            } else {
+              kPathsRaw.push([
+                {x: x, y: y + kh/2}, {x: x + ks/2, y: y - kh/2}, {x: x - ks/2, y: y - kh/2}
+              ]);
+            }
           }
-          if (kPath) techSubPaths.push({ dPath: kPath });
         }
 
-        // Colored Tile
         let tileIdx = r * (cols+2) + c;
         let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
         const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
@@ -498,35 +502,54 @@ export const MathTab = {
           return offsetPts;
         };
 
-        const formatLoop = (pts) => {
-          if (!pts || pts.length < 3) return "";
+        const loops = getJaggedLoops();
+        for (const loop of loops) {
+          const outerPts = offsetPolygon(loop, bOff + tBound/2);
+          if (outerPts.length > 0) loopsRaw.push(outerPts);
+
+          if (tSep <= 0 && bOff - tBound/2 !== 0) {
+            const innerPts = offsetPolygon(loop, bOff - tBound/2);
+            if (innerPts.length > 0) loopsRaw.push(innerPts);
+          } else if (tSep <= 0) {
+            const innerPts = offsetPolygon(loop, -0.001);
+            if (innerPts.length > 0) loopsRaw.push(innerPts);
+          }
+        }
+
+        // Calculate absolute Bounding Box for Top-Left Anchoring Rule
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const allRawPaths = [...loopsRaw, ...kPathsRaw];
+        
+        for (const path of allRawPaths) {
+          for (const pt of path) {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.y < minY) minY = pt.y;
+            if (pt.x > maxX) maxX = pt.x;
+            if (pt.y > maxY) maxY = pt.y;
+          }
+        }
+
+        const formatTL = (pts) => {
           let dP = "";
           for (let i = 0; i < pts.length; i++) {
-            const relX = pts[i].x - CX;
-            const relY = pts[i].y - CY;
-            dP += (i === 0 ? "M " : "L ") + `${relX.toFixed(3)} ${relY.toFixed(3)}`;
+            dP += (i === 0 ? "M " : "L ") + `${(pts[i].x - minX).toFixed(3)} ${(pts[i].y - minY).toFixed(3)}`;
           }
           return dP + " Z";
         };
 
-        const loops = getJaggedLoops();
-        for (const loop of loops) {
-          const outerPts = offsetPolygon(loop, bOff + tBound/2);
-          if (outerPts.length > 0) techSubPaths.unshift({ dPath: formatLoop(outerPts) });
+        const finalSubPaths = [];
+        // Insert outer boundary / loops first
+        loopsRaw.forEach(pts => finalSubPaths.push({ dPath: formatTL(pts) }));
+        // Add knockout separators
+        kPathsRaw.forEach(pts => finalSubPaths.push({ dPath: formatTL(pts) }));
 
-          if (tSep <= 0 && bOff - tBound/2 !== 0) {
-            const innerPts = offsetPolygon(loop, bOff - tBound/2);
-            if (innerPts.length > 0) techSubPaths.push({ dPath: formatLoop(innerPts) });
-          } else if (tSep <= 0) {
-            const innerPts = offsetPolygon(loop, -0.001);
-            if (innerPts.length > 0) techSubPaths.push({ dPath: formatLoop(innerPts) });
-          }
-        }
-
-        if (techSubPaths.length > 0) {
+        if (finalSubPaths.length > 0) {
+          const compW = maxX - minX;
+          const compH = maxY - minY;
           await XCSExporter.addCompoundPath(project, {
-            x: CX, y: CY, isFill: true, layerColor: "#000000",
-            params: { power: 100, speed: 20 }, subPaths: techSubPaths, extraDisplayData: { hideLabels: true }
+            x: minX, y: minY, width: compW, height: compH, 
+            isFill: true, layerColor: "#000000",
+            params: { power: 100, speed: 20 }, subPaths: finalSubPaths, extraDisplayData: { hideLabels: true }
           });
         }
       }
