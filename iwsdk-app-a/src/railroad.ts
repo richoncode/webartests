@@ -443,9 +443,9 @@ export class RailroadSystem extends createSystem({
       ? doc.targetSize.width / computedW
       : 0.76 / 72;
 
-    // Very thin zone (2 mm) avoids z-fighting with the UIKit panel surface.
-    // renderOrder=999 ensures zone meshes render on top of the panel background.
-    const zoneD  = 0.002;
+    // 4 cm thick so the BVH has a reliable target volume for angled ray casts.
+    // depthTest:false on the material handles visual z-fighting instead.
+    const zoneD  = 0.04;
     const localZ = 0.06;
 
     // { action, x, y, w, h } all in UIKit units (centred on element).
@@ -462,7 +462,7 @@ export class RailroadSystem extends createSystem({
     for (const { action, id, x, y, w, h, color } of defs) {
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
-        transparent: true, opacity: 0.0, depthWrite: false,
+        transparent: true, opacity: 0.0, depthWrite: false, depthTest: false,
       });
       this.rrBtnZoneMaterials[action] = mat;
 

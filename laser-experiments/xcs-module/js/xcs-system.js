@@ -126,6 +126,41 @@ export class XCSItem {
     return total;
   }
 
+  /**
+   * Technical Helper: Calculates bounding box of an SVG path (mm).
+   */
+  static calculatePathBBox(dPath) {
+    if (!dPath) return { x: 0, y: 0, width: 0, height: 0 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const update = (x, y) => {
+      if (isNaN(x) || isNaN(y)) return;
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    };
+    const commands = dPath.split(/(?=[MLQCSTAZHVmlqcstahvz])/);
+    commands.forEach(cmd => {
+      const type = cmd.charAt(0);
+      const args = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat).filter(v => !isNaN(v));
+      if (type.toUpperCase() === 'V') {
+        // Vertical line only has Y
+        args.forEach(y => update(minX === Infinity ? 0 : minX, y));
+      } else if (type.toUpperCase() === 'H') {
+        // Horizontal line only has X
+        args.forEach(x => update(x, minY === Infinity ? 0 : minY));
+      } else {
+        for (let i = 0; i < args.length; i += 2) {
+          if (args[i + 1] !== undefined) update(args[i], args[i + 1]);
+        }
+      }
+    });
+    if (minX === Infinity) return { x: 0, y: 0, width: 0, height: 0 };
+    return {
+      x: minX, y: minY,
+      width: maxX - minX, height: maxY - minY,
+      cx: (minX + maxX) / 2, cy: (minY + maxY) / 2
+    };
+  }
+
   // --- Factory Helpers (MANDATORY for Hardware Compatibility) ---
 
   static createDisplayNode(id, type, options, layerColor, processingType, zOrder) {
@@ -134,9 +169,17 @@ export class XCSItem {
 
     const isFill = type === 'BITMAP' || processingType.includes("FILL") || (processingType.includes("ENGRAVE") && !processingType.includes("VECTOR_ENGRAVING"));
     
+    let width = options.width;
+    let height = options.height;
+    if (type === 'PATH' && options.dPath && (width === undefined || height === undefined)) {
+      const bbox = XCSItem.calculatePathBBox(options.dPath);
+      if (width === undefined) width = bbox.width;
+      if (height === undefined) height = bbox.height;
+    }
+
     const node = {
       id, name: null, type, x: options.x, y: options.y, 
-      width: options.width, height: options.height, 
+      width: width ?? 0, height: height ?? 0, 
       angle: options.angle || 0,
       scale: options.scale || { x: 1, y: 1 }, 
       skew: { x: 0, y: 0 }, pivot: { x: 0, y: 0 }, localSkew: { x: 0, y: 0 },

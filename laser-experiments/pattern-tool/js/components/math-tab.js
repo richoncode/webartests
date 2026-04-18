@@ -264,33 +264,35 @@ export const MathTab = {
       else if (shape === 'compound') { dy = s + g; dx = s + g; }
       const rows = Math.ceil(aH/dy), cols = Math.ceil(aW/dx);
       
-      // --- NEW UNIFIED TECHNICAL GRID (NEGATIVE SPACE) ---
+      // --- UNIFIED TECHNICAL GRID (OPTION 1: EDGE TRACING) ---
       const techSubPaths = [];
       const tSep = cfg.tileSeparatorThickness || 0;
       const tBound = cfg.tileBoundaryThickness || 0;
       const bOff = cfg.tileBoundaryOffset || 0;
 
-      // Track actual bounds for the outer plate
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const occupancy = new Map(); // "r,c" -> {x, y, isUp (for tri)}
+      const tileData = []; // Full list of tiles for rendering and knockout generation
 
-      let tileIdx = 0;
       for (let r = 0; r < rows; r++) {
         const rowY = startY + r*dy; if (rowY > CY+aH/2+s/2) break;
-        
         for (let c = 0; c < cols+2; c++) {
-          await yieldIfBusy(Math.round((r*(cols+2)+c)/(rows*(cols+2))*100));
           const xOff = (shape === 'hexagon' && r%2===1) ? dx/2 : 0, x = startX + c*dx + xOff;
           if (x > CX+aW/2+s/2 || x < CX-aW/2-s/2) continue;
+          
+          const isUp = (r+c)%2===0;
+          occupancy.set(`${r},${c}`, { x, y: rowY, isUp });
+          tileData.push({ r, c, x, y: rowY, isUp });
+        }
+      }
 
-          // Update actual bounds based on tile edges
-          const tW = (shape === 'hexagon') ? dx : s;
-          const tH = (shape === 'triangle') ? (s*Math.sqrt(3)/2) : s;
-          minX = Math.min(minX, x - tW/2); maxX = Math.max(maxX, x + tW/2);
-          minY = Math.min(minY, rowY - tH/2); maxY = Math.max(maxY, rowY + tH/2);
+      // 1. Generate Rendered Tiles & Knockouts
+      for (const t of tileData) {
+        await yieldIfBusy();
+        const { x, y, r, c, isUp } = t;
+        const relX = x, relY = y; 
 
-          const relX = x - CX, relY = rowY - CY;
-
-          // Technical "Knockout" Path for the grid layer
+        // Knockout Path (for the black grout layer)
+        if (tSep > 0) {
           const ks = Math.max(0.1, s - tSep); 
           let kPath = "";
           if (shape === 'square' || shape === 'compound') {
@@ -303,71 +305,173 @@ export const MathTab = {
             }
             kPath += " Z";
           } else if (shape === 'triangle') {
-            const isUp = (r+c)%2===0, kh = (ks*Math.sqrt(3))/2;
+            const kh = (ks*Math.sqrt(3))/2;
             kPath = isUp ? 
               `M ${relX} ${relY - kh/2} L ${relX + ks/2} ${relY + kh/2} L ${relX - ks/2} ${relY + kh/2} Z` : 
               `M ${relX} ${relY + kh/2} L ${relX + ks/2} ${relY - kh/2} L ${relX - ks/2} ${relY - kh/2} Z`;
           }
-          // Only add to technical grid if separators are enabled
-          if (tSep > 0 && kPath) techSubPaths.push({ dPath: kPath });
+          if (kPath) techSubPaths.push({ dPath: kPath });
+        }
 
-          // Colored Path for the pattern layer
-          let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
-          const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
-          
-          if (shape === 'square') await XCSExporter.addRect(project, { ...drawOpts, x: x-s/2, y: rowY-s/2, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb, extraDisplayData: { paletteName: palette.name, colorName: colEnt.label } });
-          else if (shape === 'hexagon') {
-            let dP = ""; const hr = s/2;
-            for (let i = 0; i < 6; i++) { 
-              const ang = (Math.PI/180)*(i*60-30); 
-              dP += (i===0?"M ":"L ")+`${(hr*Math.cos(ang)).toFixed(3)} ${(hr*Math.sin(ang)).toFixed(3)}`; 
-            }
-            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP+" Z", x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
-          } else if (shape === 'triangle') {
-            const isUp = (r+c)%2===0, h = (s*Math.sqrt(3))/2;
-            const dP = isUp ? `M 0 ${(-h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(h/2).toFixed(3)} Z` : `M 0 ${(h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(-h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(-h/2).toFixed(3)} Z`;
-            await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x, y: rowY, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
-          } else if (shape === 'compound') {
-            const h = (s*0.5*Math.sqrt(3))/2;
-            const outerPath = `M ${-s/2} ${-s/2} L ${s/2} ${-s/2} L ${s/2} ${s/2} L ${-s/2} ${s/2} Z`;
-            const innerPath = `M 0 ${(-h/2).toFixed(3)} L ${(s/4).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/4).toFixed(3)} ${(h/2).toFixed(3)} Z`;
-            await XCSExporter.addCompoundPath(project, { 
-              ...drawOpts, 
-              x, y: rowY, width: s, height: s, 
-              params: tParams, isFill, laserSource, layerColor: colEnt.rgb,
-              subPaths: [{ dPath: outerPath }, { dPath: innerPath }]
-            });
-          }
-          tileIdx++;
+        // Colored Tile
+        let tileIdx = r * (cols+2) + c;
+        let cIdxP = (cfg.tileColorMode === 'stripes') ? (r+c)%3 : (cfg.tileColorMode === 'mosaic' ? (c+2*r)%3 : tileIdx%3);
+        const pIdx = cfg.tileColorIndices[cIdxP] ?? 0, colEnt = palette.entries[pIdx] || palette.entries[0], tParams = PalMgr.getParams(cfg.paletteId, pIdx);
+        
+        if (shape === 'square') await XCSExporter.addRect(project, { ...drawOpts, x: x-s/2, y: y-s/2, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+        else if (shape === 'hexagon') {
+          let dP = ""; const hr = s/2;
+          for (let i = 0; i < 6; i++) { const ang = (Math.PI/180)*(i*60-30); dP += (i===0?"M ":"L ")+`${(hr*Math.cos(ang)).toFixed(3)} ${(hr*Math.sin(ang)).toFixed(3)}`; }
+          await XCSExporter.addPath(project, { ...drawOpts, dPath: dP+" Z", x, y, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+        } else if (shape === 'triangle') {
+          const h = (s*Math.sqrt(3))/2;
+          const dP = isUp ? `M 0 ${(-h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(h/2).toFixed(3)} Z` : `M 0 ${(h/2).toFixed(3)} L ${(s/2).toFixed(3)} ${(-h/2).toFixed(3)} L ${(-s/2).toFixed(3)} ${(-h/2).toFixed(3)} Z`;
+          await XCSExporter.addPath(project, { ...drawOpts, dPath: dP, x, y, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb });
+        } else if (shape === 'compound') {
+          const h = (s*0.5*Math.sqrt(3))/2;
+          const outerPath = `M ${-s/2} ${-s/2} L ${s/2} ${-s/2} L ${s/2} ${s/2} L ${-s/2} ${s/2} Z`, innerPath = `M 0 ${(-h/2).toFixed(3)} L ${(s/4).toFixed(3)} ${(h/2).toFixed(3)} L ${(-s/4).toFixed(3)} ${(h/2).toFixed(3)} Z`;
+          await XCSExporter.addCompoundPath(project, { ...drawOpts, x, y, width: s, height: s, params: tParams, isFill, laserSource, layerColor: colEnt.rgb, subPaths: [{ dPath: outerPath }, { dPath: innerPath }] });
         }
       }
 
-      // Finalize Technical Grid
-      if (tBound > 0 && minX !== Infinity) {
-        const outW = (maxX - minX) + bOff*2 + tBound;
-        const outH = (maxY - minY) + bOff*2 + tBound;
-        const relCX = (minX + maxX)/2 - CX;
-        const relCY = (minY + maxY)/2 - CY;
-        const platePath = `M ${relCX - outW/2} ${relCY - outH/2} L ${relCX + outW/2} ${relCY - outH/2} L ${relCX + outW/2} ${relCY + outH/2} L ${relCX - outW/2} ${relCY + outH/2} Z`;
-        
-        // Plate is first sub-path
-        techSubPaths.unshift({ dPath: platePath });
+      // 2. Generate Jagged Perimeter (Option 1: Edge Tracing)
+      if (tBound > 0 && occupancy.size > 0) {
+        let minCx = Infinity, maxCx = -Infinity, minCy = Infinity, maxCy = -Infinity;
+        for (const t of tileData) {
+          minCx = Math.min(minCx, t.x); maxCx = Math.max(maxCx, t.x);
+          minCy = Math.min(minCy, t.y); maxCy = Math.max(maxCy, t.y);
+        }
+        const insetMinX = minCx + dx * 0.25;
+        const insetMaxX = maxCx - dx * 0.25;
+        const insetMinY = minCy + dy * 0.25;
+        const insetMaxY = maxCy - dy * 0.25;
 
-        // If separators are zero, we use one large inner vector to create the "hollow" frame effect
+        const getJaggedContour = (offset) => {
+          const segments = [];
+
+          const getNeighbor = (r, c, i, isUp) => {
+            if (shape === 'hexagon') {
+              const isEven = r%2 === 0;
+              if (i===0) return `${r},${c+1}`;
+              if (i===1) return isEven ? `${r+1},${c}` : `${r+1},${c+1}`;
+              if (i===2) return isEven ? `${r+1},${c-1}` : `${r+1},${c}`;
+              if (i===3) return `${r},${c-1}`;
+              if (i===4) return isEven ? `${r-1},${c-1}` : `${r-1},${c}`;
+              if (i===5) return isEven ? `${r-1},${c}` : `${r-1},${c+1}`;
+            } else if (shape === 'square' || shape === 'compound') {
+              if (i===0) return `${r},${c-1}`;
+              if (i===1) return `${r},${c+1}`;
+              if (i===2) return `${r-1},${c}`;
+              if (i===3) return `${r+1},${c}`;
+            } else if (shape === 'triangle') {
+              if (isUp) {
+                if (i===0) return `${r},${c-1}`;
+                if (i===1) return `${r},${c+1}`;
+                if (i===2) return `${r+1},${c}`;
+              } else {
+                if (i===0) return `${r-1},${c}`;
+                if (i===1) return `${r},${c+1}`;
+                if (i===2) return `${r},${c-1}`;
+              }
+            }
+            return null;
+          };
+
+          for (const t of tileData) {
+            const { x, y, r, c, isUp } = t;
+
+            const addRaw = (p1, p2, i) => {
+              const nKey = getNeighbor(r, c, i, isUp);
+              if (!occupancy.has(nKey)) {
+                segments.push({ p1, p2 });
+              }
+            };
+
+            if (shape === 'hexagon') {
+              const hr = s/2 + offset;
+              for (let i=0; i<6; i++) {
+                const a1 = (Math.PI/180)*(i*60-30), a2 = (Math.PI/180)*((i+1)*60-30);
+                addRaw({ x: x + hr*Math.cos(a1), y: y + hr*Math.sin(a1) }, { x: x + hr*Math.cos(a2), y: y + hr*Math.sin(a2) }, i);
+              }
+            } else if (shape === 'triangle') {
+              const kh = (s + offset * 2) * Math.sqrt(3) / 2;
+              const ks = s + offset * 2;
+              if (isUp) {
+                addRaw({ x: x-ks/2, y: y+kh/2 }, { x: x, y: y-kh/2 }, 0);
+                addRaw({ x: x, y: y-kh/2 }, { x: x+ks/2, y: y+kh/2 }, 1);
+                addRaw({ x: x+ks/2, y: y+kh/2 }, { x: x-ks/2, y: y+kh/2 }, 2);
+              } else {
+                addRaw({ x: x-ks/2, y: y-kh/2 }, { x: x+ks/2, y: y-kh/2 }, 0);
+                addRaw({ x: x+ks/2, y: y-kh/2 }, { x: x, y: y+kh/2 }, 1);
+                addRaw({ x: x, y: y+kh/2 }, { x: x-ks/2, y: y-kh/2 }, 2);
+              }
+            } else if (shape === 'square' || shape === 'compound') {
+              const hr = s/2 + offset;
+              addRaw({ x: x-hr, y: y+hr }, { x: x-hr, y: y-hr }, 0);
+              addRaw({ x: x+hr, y: y-hr }, { x: x+hr, y: y+hr }, 1);
+              addRaw({ x: x-hr, y: y-hr }, { x: x+hr, y: y-hr }, 2);
+              addRaw({ x: x+hr, y: y+hr }, { x: x-hr, y: y+hr }, 3);
+            }
+          }
+
+          if (segments.length === 0) return "";
+          
+          // Resilient Walker: Chain segments end-to-end (Handle multiple loops)
+          let dP = "";
+
+          while (segments.length > 0) {
+            let path = `M ${segments[0].p1.x.toFixed(3)} ${segments[0].p1.y.toFixed(3)}`;
+            let cur = segments[0].p2;
+            path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+            segments.splice(0, 1);
+            let found = true;
+            while (found && segments.length > 0) {
+              found = false;
+              let bestDist = Infinity;
+              let bestIdx = -1;
+              let bestMatchP = 0;
+
+              for (let i = 0; i < segments.length; i++) {
+                const d1 = Math.hypot(segments[i].p1.x - cur.x, segments[i].p1.y - cur.y);
+                const d2 = Math.hypot(segments[i].p2.x - cur.x, segments[i].p2.y - cur.y);
+                if (d1 < bestDist) { bestDist = d1; bestIdx = i; bestMatchP = 1; }
+                if (d2 < bestDist) { bestDist = d2; bestIdx = i; bestMatchP = 2; }
+              }
+
+              const tolerance = Math.max(s * 0.7, Math.abs(g || 0) + Math.abs(offset || 0) * 4 + 1.0);
+              if (bestDist < tolerance && bestIdx !== -1) {
+                if (bestMatchP === 1) {
+                  path += ` L ${segments[bestIdx].p1.x.toFixed(3)} ${segments[bestIdx].p1.y.toFixed(3)}`;
+                  cur = segments[bestIdx].p2;
+                  path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+                } else {
+                  path += ` L ${segments[bestIdx].p2.x.toFixed(3)} ${segments[bestIdx].p2.y.toFixed(3)}`;
+                  cur = segments[bestIdx].p1;
+                  path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+                }
+                segments.splice(bestIdx, 1);
+                found = true;
+              }
+            }
+            dP += path + " Z ";
+          }
+          return dP.trim();
+        };
+
+        const outerPath = getJaggedContour(bOff + tBound/2);
+        if (outerPath) techSubPaths.unshift({ dPath: outerPath });
+
         if (tSep <= 0) {
-          const innW = (maxX - minX) + bOff*2 - tBound;
-          const innH = (maxY - minY) + bOff*2 - tBound;
-          const innerPlatePath = `M ${relCX - innW/2} ${relCY - innH/2} L ${relCX + innW/2} ${relCY - innH/2} L ${relCX + innW/2} ${relCY + innH/2} L ${relCX - innW/2} ${relCY + innH/2} Z`;
-          techSubPaths.push({ dPath: innerPlatePath });
+          const innerPath = getJaggedContour(bOff - tBound/2);
+          if (innerPath) techSubPaths.push({ dPath: innerPath });
         }
 
-        await XCSExporter.addCompoundPath(project, {
-          x: CX, y: CY, width: outW, height: outH,
-          isFill: true, layerColor: "#000000",
-          params: { power: 100, speed: 20 },
-          subPaths: techSubPaths,
-          extraDisplayData: { hideLabels: true }
-        });
+        if (techSubPaths.length > 0) {
+          await XCSExporter.addCompoundPath(project, {
+            x: 0, y: 0, isFill: true, layerColor: "#000000",
+            params: { power: 100, speed: 20 }, subPaths: techSubPaths, extraDisplayData: { hideLabels: true }
+          });
+        }
       }
     }
 
