@@ -341,14 +341,8 @@ export const MathTab = {
           minCx = Math.min(minCx, t.x); maxCx = Math.max(maxCx, t.x);
           minCy = Math.min(minCy, t.y); maxCy = Math.max(maxCy, t.y);
         }
-        const insetMinX = minCx + dx * 0.25;
-        const insetMaxX = maxCx - dx * 0.25;
-        const insetMinY = minCy + dy * 0.25;
-        const insetMaxY = maxCy - dy * 0.25;
-
-        const getJaggedContour = (offset) => {
+        const getJaggedLoops = () => {
           const segments = [];
-
           const getNeighbor = (r, c, i, isUp) => {
             if (shape === 'hexagon') {
               const isEven = r%2 === 0;
@@ -379,23 +373,20 @@ export const MathTab = {
 
           for (const t of tileData) {
             const { x, y, r, c, isUp } = t;
-
             const addRaw = (p1, p2, i) => {
               const nKey = getNeighbor(r, c, i, isUp);
-              if (!occupancy.has(nKey)) {
-                segments.push({ p1, p2 });
-              }
+              if (!occupancy.has(nKey)) segments.push({ p1, p2 });
             };
 
             if (shape === 'hexagon') {
-              const hr = s/2 + offset;
+              const hr = s/2;
               for (let i=0; i<6; i++) {
                 const a1 = (Math.PI/180)*(i*60-30), a2 = (Math.PI/180)*((i+1)*60-30);
                 addRaw({ x: x + hr*Math.cos(a1), y: y + hr*Math.sin(a1) }, { x: x + hr*Math.cos(a2), y: y + hr*Math.sin(a2) }, i);
               }
             } else if (shape === 'triangle') {
-              const kh = (s + offset * 2) * Math.sqrt(3) / 2;
-              const ks = s + offset * 2;
+              const kh = s * Math.sqrt(3) / 2;
+              const ks = s;
               if (isUp) {
                 addRaw({ x: x-ks/2, y: y+kh/2 }, { x: x, y: y-kh/2 }, 0);
                 addRaw({ x: x, y: y-kh/2 }, { x: x+ks/2, y: y+kh/2 }, 1);
@@ -406,7 +397,7 @@ export const MathTab = {
                 addRaw({ x: x, y: y+kh/2 }, { x: x-ks/2, y: y-kh/2 }, 2);
               }
             } else if (shape === 'square' || shape === 'compound') {
-              const hr = s/2 + offset;
+              const hr = s/2;
               addRaw({ x: x-hr, y: y+hr }, { x: x-hr, y: y-hr }, 0);
               addRaw({ x: x+hr, y: y-hr }, { x: x+hr, y: y+hr }, 1);
               addRaw({ x: x-hr, y: y-hr }, { x: x+hr, y: y-hr }, 2);
@@ -414,61 +405,124 @@ export const MathTab = {
             }
           }
 
-          if (segments.length === 0) return "";
-          
-          // Resilient Walker: Chain segments end-to-end (Handle multiple loops)
-          let dP = "";
-
+          const loops = [];
           while (segments.length > 0) {
-            let path = `M ${segments[0].p1.x.toFixed(3)} ${segments[0].p1.y.toFixed(3)}`;
+            const loop = [];
             let cur = segments[0].p2;
-            path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+            loop.push(segments[0].p1);
+            loop.push(cur);
             segments.splice(0, 1);
             let found = true;
             while (found && segments.length > 0) {
               found = false;
-              let bestDist = Infinity;
-              let bestIdx = -1;
-              let bestMatchP = 0;
-
+              let bestDist = Infinity, bestIdx = -1, bestMatchP = 0;
               for (let i = 0; i < segments.length; i++) {
                 const d1 = Math.hypot(segments[i].p1.x - cur.x, segments[i].p1.y - cur.y);
                 const d2 = Math.hypot(segments[i].p2.x - cur.x, segments[i].p2.y - cur.y);
                 if (d1 < bestDist) { bestDist = d1; bestIdx = i; bestMatchP = 1; }
                 if (d2 < bestDist) { bestDist = d2; bestIdx = i; bestMatchP = 2; }
               }
-
-              const tolerance = Math.max(s * 0.7, Math.abs(g || 0) + Math.abs(offset || 0) * 4 + 1.0);
+              const tolerance = Math.max(s * 0.7, Math.abs(g || 0) + 1.0);
               if (bestDist < tolerance && bestIdx !== -1) {
                 if (bestMatchP === 1) {
-                  path += ` L ${segments[bestIdx].p1.x.toFixed(3)} ${segments[bestIdx].p1.y.toFixed(3)}`;
+                  loop.push(segments[bestIdx].p1);
                   cur = segments[bestIdx].p2;
-                  path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+                  loop.push(cur);
                 } else {
-                  path += ` L ${segments[bestIdx].p2.x.toFixed(3)} ${segments[bestIdx].p2.y.toFixed(3)}`;
+                  loop.push(segments[bestIdx].p2);
                   cur = segments[bestIdx].p1;
-                  path += ` L ${cur.x.toFixed(3)} ${cur.y.toFixed(3)}`;
+                  loop.push(cur);
                 }
                 segments.splice(bestIdx, 1);
                 found = true;
               }
             }
-            dP += path + " Z ";
+            loops.push(loop);
           }
-          return dP.trim();
+          return loops;
         };
 
-        const outerPath = getJaggedContour(bOff + tBound/2);
-        if (outerPath) techSubPaths.unshift({ dPath: outerPath });
+        const offsetPolygon = (pts, offset) => {
+          const cleanPts = [];
+          for (let p of pts) {
+            if (cleanPts.length === 0 || Math.hypot(p.x - cleanPts[cleanPts.length-1].x, p.y - cleanPts[cleanPts.length-1].y) > 1e-3) {
+              cleanPts.push(p);
+            }
+          }
+          if (cleanPts.length > 1 && Math.hypot(cleanPts[0].x - cleanPts[cleanPts.length-1].x, cleanPts[0].y - cleanPts[cleanPts.length-1].y) < 1e-3) {
+            cleanPts.pop();
+          }
+          const n = cleanPts.length;
+          if (n < 3) return [];
 
-        if (tSep <= 0) {
-          const innerPath = getJaggedContour(bOff - tBound/2);
-          if (innerPath) techSubPaths.push({ dPath: innerPath });
+          const getEdge = (i) => {
+            const p1 = cleanPts[i], p2 = cleanPts[(i+1)%n];
+            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+            const len = Math.hypot(dx, dy);
+            return { p1, p2, dx, dy, len, nx: -dy/len, ny: dx/len };
+          };
+
+          const edges = [];
+          let area = 0;
+          for (let i=0; i<n; i++) {
+            edges.push(getEdge(i));
+            const p1 = cleanPts[i], p2 = cleanPts[(i+1)%n];
+            area += (p2.x - p1.x) * (p2.y + p1.y);
+          }
+          const isCW = area > 0;
+          const sign = isCW ? 1 : -1;
+
+          const offsetPts = [];
+          for (let i=0; i<n; i++) {
+            const e1 = edges[(i + n - 1) % n];
+            const e2 = edges[i];
+
+            const shiftX1 = e1.nx * offset * sign, shiftY1 = e1.ny * offset * sign;
+            const shiftX2 = e2.nx * offset * sign, shiftY2 = e2.ny * offset * sign;
+
+            const l1_p1 = { x: e1.p1.x + shiftX1, y: e1.p1.y + shiftY1 };
+            const l2_p1 = { x: e2.p1.x + shiftX2, y: e2.p1.y + shiftY2 };
+
+            const det = (e1.dx * e2.dy - e1.dy * e2.dx);
+            if (Math.abs(det) < 1e-6) {
+              offsetPts.push(l2_p1);
+            } else {
+              const dx31 = l2_p1.x - l1_p1.x, dy31 = l2_p1.y - l1_p1.y;
+              const t1 = (dx31 * e2.dy - dy31 * e2.dx) / det;
+              offsetPts.push({ x: l1_p1.x + t1 * e1.dx, y: l1_p1.y + t1 * e1.dy });
+            }
+          }
+          return offsetPts;
+        };
+
+        const formatLoop = (pts) => {
+          if (!pts || pts.length < 3) return "";
+          let dP = "";
+          for (let i = 0; i < pts.length; i++) {
+            const relX = pts[i].x - CX;
+            const relY = pts[i].y - CY;
+            dP += (i === 0 ? "M " : "L ") + `${relX.toFixed(3)} ${relY.toFixed(3)}`;
+          }
+          return dP + " Z";
+        };
+
+        const loops = getJaggedLoops();
+        for (const loop of loops) {
+          const outerPts = offsetPolygon(loop, bOff + tBound/2);
+          if (outerPts.length > 0) techSubPaths.unshift({ dPath: formatLoop(outerPts) });
+
+          if (tSep <= 0 && bOff - tBound/2 !== 0) {
+            const innerPts = offsetPolygon(loop, bOff - tBound/2);
+            if (innerPts.length > 0) techSubPaths.push({ dPath: formatLoop(innerPts) });
+          } else if (tSep <= 0) {
+            const innerPts = offsetPolygon(loop, -0.001);
+            if (innerPts.length > 0) techSubPaths.push({ dPath: formatLoop(innerPts) });
+          }
         }
 
         if (techSubPaths.length > 0) {
           await XCSExporter.addCompoundPath(project, {
-            x: 0, y: 0, isFill: true, layerColor: "#000000",
+            x: CX, y: CY, isFill: true, layerColor: "#000000",
             params: { power: 100, speed: 20 }, subPaths: techSubPaths, extraDisplayData: { hideLabels: true }
           });
         }
