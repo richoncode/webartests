@@ -159,6 +159,7 @@ export class DropTTTSystem extends createSystem({
   private gameZonesActive  = false;
   private cornholeActive   = false;
   private railroadActive   = false;
+  private basketballActive = false;
 
   // ── UIKit element refs ─────────────────────────────────────────────────────
   private ui: {
@@ -208,6 +209,8 @@ export class DropTTTSystem extends createSystem({
         ?.addEventListener("click", () => this.launchCornhole());
       (doc.getElementById("mode-6") as UIKit.Text)
         ?.addEventListener("click", () => this.launchRailroad());
+      (doc.getElementById("mode-7") as UIKit.Text)
+        ?.addEventListener("click", () => this.launchBasketball());
       (doc.getElementById("qr-btn") as UIKit.Text)
         ?.addEventListener("click", () => {
           const w = window as unknown as Record<string, unknown>;
@@ -292,13 +295,15 @@ export class DropTTTSystem extends createSystem({
 
     // Menu mode selection + exit
     this.queries.menuPressed.subscribe("qualify", (entity) => {
-      if (this.gameActive || this.cornholeActive || this.railroadActive) return;
+      if (this.gameActive || this.cornholeActive || this.railroadActive || this.basketballActive) return;
       const idx = entity.getValue(MenuButton, "modeIndex") as number;
-      if (idx === GAME_MODES.length + 2) {
+      if (idx === GAME_MODES.length + 3) {          // Exit
         this.world.exitXR();
-      } else if (idx === GAME_MODES.length + 1) {
+      } else if (idx === GAME_MODES.length + 2) {   // Basketball
+        this.launchBasketball();
+      } else if (idx === GAME_MODES.length + 1) {   // Railroad
         this.launchRailroad();
-      } else if (idx === GAME_MODES.length) {
+      } else if (idx === GAME_MODES.length) {       // Cornhole
         this.launchCornhole();
       } else if (idx >= 0 && idx < GAME_MODES.length) {
         this.startGame(GAME_MODES[idx]);
@@ -310,9 +315,10 @@ export class DropTTTSystem extends createSystem({
     if (activeGame) {
       this.cleanupFuncs.push(
         activeGame.subscribe((game) => {
-          if (game === "menu" && (this.cornholeActive || this.railroadActive)) {
-            this.cornholeActive  = false;
-            this.railroadActive  = false;
+          if (game === "menu" && (this.cornholeActive || this.railroadActive || this.basketballActive)) {
+            this.cornholeActive   = false;
+            this.railroadActive   = false;
+            this.basketballActive = false;
             if (this.gameZonesActive) {
               for (const e of this.gameActionZoneEntities) e.removeComponent(Interactable);
               this.gameZonesActive = false;
@@ -455,6 +461,17 @@ export class DropTTTSystem extends createSystem({
     this.ui.menuScreen.setProperties({ display: "none" });
     const activeGame = this.globals.activeGame as Signal<string> | undefined;
     if (activeGame) activeGame.value = "railroad";
+  }
+
+  private launchBasketball() {
+    if (!this.ui) return;
+    this.basketballActive = true;
+    for (const e of this.menuZoneEntities) {
+      if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+    }
+    this.ui.menuScreen.setProperties({ display: "none" });
+    const activeGame = this.globals.activeGame as Signal<string> | undefined;
+    if (activeGame) activeGame.value = "basketball";
   }
 
   // ── Mode setup ──────────────────────────────────────────────────────────────
@@ -618,22 +635,33 @@ export class DropTTTSystem extends createSystem({
     const localZ = 0.06;       // in front of panel face
 
     // ── Menu mode buttons + Exit button ──
-    const panelContentHeight = 91.1;
-    // offsets = distance from panel top to button center (UIKit units)
-    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 85.3];
-    const zoneW      = 0.68;
-    const zoneH      = 7.6 * scale;  // mode button height
-    const exitZoneH  = 6.0 * scale;  // exit button height
-    const cornholeColor = 0x22cc66;
-    const railroadColor = 0xcc8822;
+    // Layout (UIKit units from panel top → button center):
+    //  idx 0-4  game modes:  15.8, 24.6, 33.4, 42.2, 51.0
+    //  idx 5    Cornhole:    59.8
+    //  idx 6    Railroad:    68.6
+    //  idx 7    Basketball:  77.4  (mode-7, same 8.8-unit pitch)
+    //  idx 8    Exit:        94.4  (mt:2, qr-btn 6u, mt:1, exit-btn center)
+    const panelContentHeight = 99.9;
+    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 77.4, 94.4];
+    const zoneW         = 0.68;
+    const zoneH         = 7.6 * scale;  // mode button height
+    const exitZoneH     = 6.0 * scale;  // exit button height
+    const cornholeColor   = 0x22cc66;
+    const railroadColor   = 0xcc8822;
+    const basketballColor = 0xcc7722;
 
-    for (let i = 0; i <= GAME_MODES.length + 2; i++) {
-      const isExit     = i === GAME_MODES.length + 2;
-      const isRailroad = i === GAME_MODES.length + 1;
-      const isCornhole = i === GAME_MODES.length;
+    for (let i = 0; i <= GAME_MODES.length + 3; i++) {
+      const isExit       = i === GAME_MODES.length + 3;
+      const isBasketball = i === GAME_MODES.length + 2;
+      const isRailroad   = i === GAME_MODES.length + 1;
+      const isCornhole   = i === GAME_MODES.length;
       const localY = (panelContentHeight / 2 - buttonOffsets[i]) * scale;
       const height = isExit ? exitZoneH : zoneH;
-      const color  = isExit ? 0x555555 : isRailroad ? railroadColor : isCornhole ? cornholeColor : 0x22aaff;
+      const color  = isExit       ? 0x555555
+                   : isBasketball ? basketballColor
+                   : isRailroad   ? railroadColor
+                   : isCornhole   ? cornholeColor
+                   : 0x22aaff;
 
       const mat = new MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.0,
