@@ -27,38 +27,38 @@ import {
 import type { Signal } from "@preact/signals-core";
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const PANEL_CONFIG  = "./ui/game-status.json";
-const SEG_LEN       = 0.32;   // total length of one track segment (m)
-const HALF_SEG      = SEG_LEN / 2;
-const GAUGE         = 0.060;  // distance between rail centerlines (m)
-const RAIL_W        = 0.006;  // rail cross-section width (m)
-const RAIL_H        = 0.009;  // rail cross-section height (m)
-const TIE_W         = GAUGE + 0.018;  // sleeper width
-const TIE_D         = 0.014;  // sleeper depth (along track)
-const TIE_H         = 0.007;  // sleeper height
-const TIE_COUNT     = 5;
-const SNAP_RADIUS        = 0.12;   // distance at which track endpoints snap (m)
-const SURFACE_SNAP_DIST  = 0.30;   // max distance from a detected AR plane to trigger surface snap (m)
-const TRAIN_SPEED        = 0.30;   // m/s along track
+const PANEL_CONFIG = "./ui/game-status.json";
+const SEG_LEN = 0.32;   // total length of one track segment (m)
+const HALF_SEG = SEG_LEN / 2;
+const GAUGE = 0.060;  // distance between rail centerlines (m)
+const RAIL_W = 0.006;  // rail cross-section width (m)
+const RAIL_H = 0.009;  // rail cross-section height (m)
+const TIE_W = GAUGE + 0.018;  // sleeper width
+const TIE_D = 0.014;  // sleeper depth (along track)
+const TIE_H = 0.007;  // sleeper height
+const TIE_COUNT = 5;
+const SNAP_RADIUS = 0.12;   // distance at which track endpoints snap (m)
+const SURFACE_SNAP_DIST = 0.30;   // max distance from a detected AR plane to trigger surface snap (m)
+const TRAIN_SPEED = 0.30;   // m/s along track
 
-const RAIL_MAT    = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.7 });
-const TIE_MAT     = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
-const SNAP_MAT    = new MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.8, transparent: true, opacity: 0.55 });
+const RAIL_MAT = new MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.4, metalness: 0.7 });
+const TIE_MAT = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
+const SNAP_MAT = new MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.8, transparent: true, opacity: 0.55 });
 
-const Z_AXIS  = new Vector3(0, 0, 1);
-const Y_AXIS  = new Vector3(0, 1, 0);
+const Z_AXIS = new Vector3(0, 0, 1);
+const Y_AXIS = new Vector3(0, 1, 0);
 const RAIL_OVERLAP = 0.006; // extend rail geometry past endpoints to close visual seam at junctions
 
 // ── Components ─────────────────────────────────────────────────────────────
 export const TrackSegment = createComponent("TrackSegment", {
-  segId:   { type: Types.Int32, default: 0 },
-  placed:  { type: Types.Boolean, default: false }, // false while held, true after drop
+  segId: { type: Types.Int32, default: 0 },
+  placed: { type: Types.Boolean, default: false }, // false while held, true after drop
 });
 
 export const TrackTrain = createComponent("TrackTrain", {
-  segId:     { type: Types.Int32, default: 0 },
-  t:         { type: Types.Float32, default: 0 },
-  direction: { type: Types.Int8,    default: 1 },  // 1 = A→B, -1 = B→A
+  segId: { type: Types.Int32, default: 0 },
+  t: { type: Types.Float32, default: 0 },
+  direction: { type: Types.Int8, default: 1 },  // 1 = A→B, -1 = B→A
 });
 
 // 0=+Track  1=+Train  2=Clear All  3=Menu
@@ -68,11 +68,11 @@ export const RailroadButtonZone = createComponent("RailroadButtonZone", {
 
 // ── Per-segment connectivity (stored in system map, not ECS) ───────────────
 interface SegData {
-  entity:    Entity;
-  connAId:   number;   // segId of segment connected at A end (-1 = free)
-  connAEnd:  "A" | "B";
-  connBId:   number;   // segId of segment connected at B end (-1 = free)
-  connBEnd:  "A" | "B";
+  entity: Entity;
+  connAId: number;   // segId of segment connected at A end (-1 = free)
+  connAEnd: "A" | "B";
+  connBId: number;   // segId of segment connected at B end (-1 = free)
+  connBEnd: "A" | "B";
 }
 
 // ── Geometry helpers ───────────────────────────────────────────────────────
@@ -153,8 +153,8 @@ function makeTrainMesh(): Object3D {
 // World-space endpoints for a placed segment's object3D
 function getEndpoints(obj: Object3D): { a: Vector3; b: Vector3; dir: Vector3 } {
   const dir = Z_AXIS.clone().applyQuaternion(obj.quaternion);
-  const a   = obj.position.clone().addScaledVector(dir, -HALF_SEG);
-  const b   = obj.position.clone().addScaledVector(dir,  HALF_SEG);
+  const a = obj.position.clone().addScaledVector(dir, -HALF_SEG);
+  const b = obj.position.clone().addScaledVector(dir, HALF_SEG);
   return { a, b, dir };
 }
 
@@ -163,14 +163,14 @@ function getEndpoints(obj: Object3D): { a: Vector3; b: Vector3; dir: Vector3 } {
 // Works for floor, wall, and ceiling tracks by preserving the full quaternion
 // of the existing segment rather than projecting to the XZ plane.
 function snapAlign(
-  obj:        Object3D,
-  newEnd:     "A" | "B",
-  targetPos:  Vector3,
-  existObj:   Object3D,
-  existEnd:   "A" | "B",
+  obj: Object3D,
+  newEnd: "A" | "B",
+  targetPos: Vector3,
+  existObj: Object3D,
+  existEnd: "A" | "B",
 ): void {
-  const sameSide  = newEnd === existEnd;
-  const existDir  = Z_AXIS.clone().applyQuaternion(existObj.quaternion);
+  const sameSide = newEnd === existEnd;
+  const existDir = Z_AXIS.clone().applyQuaternion(existObj.quaternion);
 
   if (!sameSide) {
     // Straight continuation: new segment has exactly the same orientation as
@@ -181,29 +181,29 @@ function snapAlign(
     // local-up axis so the new segment reverses direction while staying on the
     // same surface (floor, wall, ceiling).
     const localUp = Y_AXIS.clone().applyQuaternion(existObj.quaternion);
-    const flipQ   = new Quaternion().setFromAxisAngle(localUp, Math.PI);
+    const flipQ = new Quaternion().setFromAxisAngle(localUp, Math.PI);
     obj.quaternion.multiplyQuaternions(flipQ, existObj.quaternion);
   }
 
-  const newDir    = sameSide ? existDir.clone().negate() : existDir;
+  const newDir = sameSide ? existDir.clone().negate() : existDir;
   const endOffset = newEnd === "A" ? -HALF_SEG : HALF_SEG;
   obj.position.copy(targetPos).addScaledVector(newDir, -endOffset);
 }
 
 // ── System ─────────────────────────────────────────────────────────────────
 export class RailroadSystem extends createSystem({
-  heldTrack:     { required: [TrackSegment, Interactable, Pressed] },
-  allTrack:      { required: [TrackSegment] },
-  allTrains:     { required: [TrackTrain] },
-  panel:         { required: [PanelUI, PanelDocument], where: [eq(PanelUI, "config", PANEL_CONFIG)] },
-  rrBtnHovered:  { required: [RailroadButtonZone, Hovered] },
-  rrBtnPressed:  { required: [RailroadButtonZone, Pressed] },
-  arPlanes:      { required: [XRPlane] },
+  heldTrack: { required: [TrackSegment, Interactable, Pressed] },
+  allTrack: { required: [TrackSegment] },
+  allTrains: { required: [TrackTrain] },
+  panel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, "config", PANEL_CONFIG)] },
+  rrBtnHovered: { required: [RailroadButtonZone, Hovered] },
+  rrBtnPressed: { required: [RailroadButtonZone, Pressed] },
+  arPlanes: { required: [XRPlane] },
 }) {
-  private active        = false;
-  private nextSegId     = 1;
-  private segMap        = new Map<number, SegData>();
-  private panelEntity:  Entity | null = null;
+  private active = false;
+  private nextSegId = 1;
+  private segMap = new Map<number, SegData>();
+  private panelEntity: Entity | null = null;
 
   // initiateRoomCapture can only be called once per XR session (WebXR spec).
   // Track whether we've already triggered it so retries don't throw.
@@ -217,29 +217,29 @@ export class RailroadSystem extends createSystem({
   private surfacePreview: Mesh | null = null;
 
   // Railroad-screen button zones (4 buttons)
-  private rrBtnZoneEntities:  Entity[] = [];
+  private rrBtnZoneEntities: Entity[] = [];
   private rrBtnZoneMaterials: MeshStandardMaterial[] = [];
 
   // UI refs
   private rrUI: {
-    screen:    UIKit.Text;
-    count:     UIKit.Text;
-    debugBtn:  UIKit.Text;
-    scanBtn:   UIKit.Text;
+    screen: UIKit.Text;
+    count: UIKit.Text;
+    debugBtn: UIKit.Text;
+    scanBtn: UIKit.Text;
   } | null = null;
 
   // Scene-understanding debug visualisation
-  private debugMode       = false;
+  private debugMode = false;
   private planeDebugMeshes = new Map<number, Mesh>(); // entity.index → debug overlay mesh
 
   // Scratch
-  private _va     = new Vector3();
-  private _vb     = new Vector3();
-  private _vc     = new Vector3(); // extra scratch for surface snap
-  private _dir    = new Vector3();
+  private _va = new Vector3();
+  private _vb = new Vector3();
+  private _vc = new Vector3(); // extra scratch for surface snap
+  private _dir = new Vector3();
   private _normal = new Vector3();
-  private _q      = new Quaternion();
-  private _q2     = new Quaternion();
+  private _q = new Quaternion();
+  private _q2 = new Quaternion();
 
   init() {
     // Wire panel when it qualifies
@@ -250,10 +250,10 @@ export class RailroadSystem extends createSystem({
       if (!doc) return;
 
       this.rrUI = {
-        screen:   doc.getElementById("railroad-screen") as UIKit.Text,
-        count:    doc.getElementById("rr-track-count") as UIKit.Text,
-        debugBtn: doc.getElementById("rr-debug-btn")   as UIKit.Text,
-        scanBtn:  doc.getElementById("rr-scan-btn")    as UIKit.Text,
+        screen: doc.getElementById("railroad-screen") as UIKit.Text,
+        count: doc.getElementById("rr-track-count") as UIKit.Text,
+        debugBtn: doc.getElementById("rr-debug-btn") as UIKit.Text,
+        scanBtn: doc.getElementById("rr-scan-btn") as UIKit.Text,
       };
 
       // HTML click events as belt-and-suspenders backup
@@ -305,12 +305,12 @@ export class RailroadSystem extends createSystem({
       if (!this.active) return;
       const idx = entity.getValue(RailroadButtonZone, "actionType") as number;
       switch (idx) {
-        case 0: this.spawnTrackPiece();      break;
-        case 1: this.spawnTrain();           break;
-        case 2: this.clearAll();             break;
-        case 3: this.endGame();              break;
-        case 4: this.toggleDebug();          break;
-        case 5: this.triggerRoomCapture();   break;
+        case 0: this.spawnTrackPiece(); break;
+        case 1: this.spawnTrain(); break;
+        case 2: this.clearAll(); break;
+        case 3: this.endGame(); break;
+        case 4: this.toggleDebug(); break;
+        case 5: this.triggerRoomCapture(); break;
       }
     });
 
@@ -406,7 +406,7 @@ export class RailroadSystem extends createSystem({
 
   private refreshCountUI() {
     if (!this.rrUI) return;
-    const segs   = this.segMap.size;
+    const segs = this.segMap.size;
     const trains = this.queries.allTrains.entities.size;
     const planes = this.queries.arPlanes.entities.size;
     const planeInfo = this.debugMode ? ` · ${planes} plane${planes !== 1 ? "s" : ""}` : "";
@@ -434,29 +434,29 @@ export class RailroadSystem extends createSystem({
   // If rows are added update PANEL_H below and recalculate yFromTop values.
   private buildButtonZones(panelEntity: Entity, doc: UIKitDocument) {
     const PANEL_H = 56.92;
-    const halfH   = PANEL_H / 2;
+    const halfH = PANEL_H / 2;
 
     // Metres per UIKit unit.  Prefer the live ratio from the document; fall
     // back to 0.76 / 72 (panel ≈76 cm wide over 72 UIKit units) if not ready.
     const computedW = (doc as any).computedSize?.width ?? 72;
-    const scale     = (doc.targetSize?.width ?? 0) > 0
+    const scale = (doc.targetSize?.width ?? 0) > 0
       ? doc.targetSize.width / computedW
       : 0.76 / 72;
 
     // 4 cm thick so the BVH has a reliable target volume for angled ray casts.
     // depthTest:false on the material handles visual z-fighting instead.
-    const zoneD  = 0.04;
+    const zoneD = 0.10;
     const localZ = 0.06;
 
     // { action, x, y, w, h } all in UIKit units (centred on element).
     // Heights use 1.3× the CSS-computed value so the ray has a generous target.
     const defs = [
-      { action: 0, id: "rr-track-btn",  x: -17, y: halfH - 25.02, w: 32, h: 9.9, color: 0x22bb88 },
-      { action: 1, id: "rr-train-btn",  x:  17, y: halfH - 25.02, w: 32, h: 9.9, color: 0xffcc22 },
-      { action: 2, id: "rr-clear-btn",  x: -17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
-      { action: 3, id: "rr-menu-btn",   x:  17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
-      { action: 5, id: "rr-scan-btn",   x:   0, y: halfH - 42.92, w: 66, h: 9.1, color: 0xd97706 },
-      { action: 4, id: "rr-debug-btn",  x:   0, y: halfH - 50.92, w: 66, h: 7.8, color: 0x334455 },
+      { action: 0, id: "rr-track-btn", x: -17, y: halfH - 25.02, w: 32, h: 9.9, color: 0x22bb88 },
+      { action: 1, id: "rr-train-btn", x: 17, y: halfH - 25.02, w: 32, h: 9.9, color: 0xffcc22 },
+      { action: 2, id: "rr-clear-btn", x: -17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
+      { action: 3, id: "rr-menu-btn", x: 17, y: halfH - 34.12, w: 32, h: 9.9, color: 0x888888 },
+      { action: 5, id: "rr-scan-btn", x: 0, y: halfH - 42.92, w: 66, h: 9.1, color: 0xd97706 },
+      { action: 4, id: "rr-debug-btn", x: 0, y: halfH - 50.92, w: 66, h: 7.8, color: 0x334455 },
     ];
 
     for (const { action, id, x, y, w, h, color } of defs) {
@@ -482,7 +482,7 @@ export class RailroadSystem extends createSystem({
 
   // ── Spawn track piece ─────────────────────────────────────────────────
   private spawnTrackPiece() {
-    const id   = this.nextSegId++;
+    const id = this.nextSegId++;
     const mesh = makeTrackMesh();
 
     // Spawn at arm's reach in front-right of player
@@ -532,10 +532,10 @@ export class RailroadSystem extends createSystem({
       // of which way the detected plane's normal faces.
       const absDist = Math.abs(signedDist);
       if (absDist < bestDist) {
-        bestDist     = absDist;
+        bestDist = absDist;
         // Ensure normal points toward the track (so the offset pushes it out)
         if (signedDist < 0) this._normal.negate();
-        bestNormal   = this._normal.clone();
+        bestNormal = this._normal.clone();
         bestPlanePos = planeObj.position.clone();
       }
     }
@@ -583,7 +583,7 @@ export class RailroadSystem extends createSystem({
       if (!planeObj) continue;
 
       const normal = new Vector3(0, 1, 0).applyQuaternion(planeObj.quaternion);
-      const toPos  = pos.clone().sub(planeObj.position);
+      const toPos = pos.clone().sub(planeObj.position);
       const signedDist = toPos.dot(normal);
 
       const absDist = Math.abs(signedDist);
@@ -638,8 +638,8 @@ export class RailroadSystem extends createSystem({
       for (const c of candidates) {
         const d = c.newEndPos.distanceTo(c.existEndPos);
         if (d < bestDist) {
-          bestDist  = d;
-          bestCase  = { newEnd: c.newEnd, existId, existEnd: c.existEnd, targetPos: c.existEndPos.clone(), existObj };
+          bestDist = d;
+          bestCase = { newEnd: c.newEnd, existId, existEnd: c.existEnd, targetPos: c.existEndPos.clone(), existObj };
         }
       }
     }
@@ -656,24 +656,24 @@ export class RailroadSystem extends createSystem({
     // Record connections
     const existData = this.segMap.get(bestCase.existId)!;
     if (bestCase.newEnd === "A") {
-      newData.connAId  = bestCase.existId;
+      newData.connAId = bestCase.existId;
       newData.connAEnd = bestCase.existEnd;
     } else {
-      newData.connBId  = bestCase.existId;
+      newData.connBId = bestCase.existId;
       newData.connBEnd = bestCase.existEnd;
     }
     if (bestCase.existEnd === "A") {
-      existData.connAId  = newId;
+      existData.connAId = newId;
       existData.connAEnd = bestCase.newEnd;
     } else {
-      existData.connBId  = newId;
+      existData.connBId = newId;
       existData.connBEnd = bestCase.newEnd;
     }
   }
 
   // ── Snap indicator update (called in update while holding) ─────────────
   private updateSnapIndicators(heldEnt: Entity) {
-    const newId  = heldEnt.getValue(TrackSegment, "segId") as number;
+    const newId = heldEnt.getValue(TrackSegment, "segId") as number;
     const newObj = heldEnt.object3D!;
     const { a: newA, b: newB } = getEndpoints(newObj);
     const newData = this.segMap.get(newId);
@@ -750,10 +750,10 @@ export class RailroadSystem extends createSystem({
 
     // Update button appearance
     this.rrUI?.debugBtn.setProperties({
-      text:            this.debugMode ? "Debug: On" : "Debug: Off",
-      backgroundColor: this.debugMode ? "#1a2a1a"  : "#18181b",
-      color:           this.debugMode ? "#86efac"  : "#52525b",
-      borderColor:     this.debugMode ? "#16a34a"  : "#3f3f46",
+      text: this.debugMode ? "Debug: On" : "Debug: Off",
+      backgroundColor: this.debugMode ? "#1a2a1a" : "#18181b",
+      color: this.debugMode ? "#86efac" : "#52525b",
+      borderColor: this.debugMode ? "#16a34a" : "#3f3f46",
     });
     this.refreshCountUI();
   }
@@ -803,11 +803,11 @@ export class RailroadSystem extends createSystem({
     const planeD = boxGeo?.parameters?.depth ?? 2;
 
     const fillMat = new MeshBasicMaterial({
-      color:       isHorizontal ? 0x00ff44 : 0x4488ff,
+      color: isHorizontal ? 0x00ff44 : 0x4488ff,
       transparent: true,
-      opacity:     0.30,
-      side:        2,   // DoubleSide
-      depthWrite:  false,
+      opacity: 0.30,
+      side: 2,   // DoubleSide
+      depthWrite: false,
     });
     // PlaneGeometry lies in XY (normal = +Z). Rotate -90° around X so it
     // lies in the entity's XZ plane (normal = +Y = surface normal).
@@ -891,8 +891,8 @@ export class RailroadSystem extends createSystem({
     // Move trains
     for (const trainEnt of this.queries.allTrains.entities) {
       let segId = trainEnt.getValue(TrackTrain, "segId") as number;
-      let t     = trainEnt.getValue(TrackTrain, "t")     as number;
-      let dir   = trainEnt.getValue(TrackTrain, "direction") as number;
+      let t = trainEnt.getValue(TrackTrain, "t") as number;
+      let dir = trainEnt.getValue(TrackTrain, "direction") as number;
 
       const segData = this.segMap.get(segId);
       if (!segData) continue;
@@ -912,48 +912,48 @@ export class RailroadSystem extends createSystem({
 
         if (t > 1) {
           // Reached B end — try to continue to connected segment
-          const nextId  = currentData.connBId;
+          const nextId = currentData.connBId;
           const nextEnd = currentData.connBEnd;
           if (nextId !== -1) {
             const nextData = this.segMap.get(nextId);
             if (nextData) {
               const overshoot = (t - 1) * SEG_LEN;
-              segId   = nextId;
+              segId = nextId;
               if (nextEnd === "B") {
                 dir = -1;
-                t   = 1 - overshoot / SEG_LEN;
+                t = 1 - overshoot / SEG_LEN;
               } else {
                 dir = 1;
-                t   = overshoot / SEG_LEN;
+                t = overshoot / SEG_LEN;
               }
               continue;
             }
           }
           // No connection — reverse
           dir = -1;
-          t   = 2 - t;
+          t = 2 - t;
         } else if (t < 0) {
           // Reached A end — try to continue to connected segment
-          const nextId  = currentData.connAId;
+          const nextId = currentData.connAId;
           const nextEnd = currentData.connAEnd;
           if (nextId !== -1) {
             const nextData = this.segMap.get(nextId);
             if (nextData) {
               const overshoot = Math.abs(t) * SEG_LEN;
-              segId   = nextId;
+              segId = nextId;
               if (nextEnd === "A") {
                 dir = 1;
-                t   = overshoot / SEG_LEN;
+                t = overshoot / SEG_LEN;
               } else {
                 dir = -1;
-                t   = 1 - overshoot / SEG_LEN;
+                t = 1 - overshoot / SEG_LEN;
               }
               continue;
             }
           }
           // No connection — reverse
           dir = 1;
-          t   = -t;
+          t = -t;
         }
         break;
       }
@@ -970,13 +970,13 @@ export class RailroadSystem extends createSystem({
       // with no roll — setFromUnitVectors can produce unexpected roll when
       // trackDir is antiparallel to Z_AXIS.
       const faceDir = dir > 0 ? trackDir : this._dir.copy(trackDir).negate();
-      const angle   = Math.atan2(faceDir.x, faceDir.z);
+      const angle = Math.atan2(faceDir.x, faceDir.z);
       this._q.setFromAxisAngle(Y_AXIS, angle);
       trainEnt.object3D!.quaternion.copy(this._q);
 
       // Write back
-      trainEnt.setValue(TrackTrain, "segId",     segId);
-      trainEnt.setValue(TrackTrain, "t",         t);
+      trainEnt.setValue(TrackTrain, "segId", segId);
+      trainEnt.setValue(TrackTrain, "t", t);
       trainEnt.setValue(TrackTrain, "direction", dir);
     }
   }
