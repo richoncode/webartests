@@ -250,21 +250,19 @@ export class BasketballSystem extends createSystem({
   //   4      0   -16.36      66   7.6  bball-menu-btn
 
   private buildScreenZones(panelEntity: Entity, doc: UIKitDocument) {
-    const computedW = (doc as any).computedSize?.width ?? 72;
-    const scale     = (doc.targetSize?.width ?? 0) > 0
-      ? doc.targetSize.width / computedW
-      : 0.76 / 72;
+    const scale = 0.76 / 72; // hardcoded — same as railroad.ts and drop-ttt.ts
 
     const halfH  = BBALL_PANEL_H / 2; // 23.16
     const zoneD  = 0.10;
     const localZ = 0.06;
 
+    // Heights use 1.3× the CSS-computed value so the ray has a generous target
     const defs = [
-      { action: 0, x: -17, y: halfH - 23.72, w: 32, h: 6,   color: 0x2255aa },
-      { action: 1, x:  17, y: halfH - 23.72, w: 32, h: 6,   color: 0x225577 },
-      { action: 2, x: -17, y: halfH - 30.72, w: 32, h: 6,   color: 0x225577 },
-      { action: 3, x:  17, y: halfH - 30.72, w: 32, h: 6,   color: 0x552277 },
-      { action: 4, x:   0, y: halfH - 39.52, w: 66, h: 7.6, color: 0x888888 },
+      { action: 0, x: -17, y: halfH - 23.72, w: 32, h: 7.8, color: 0x2255aa }, // 6.0 × 1.3
+      { action: 1, x:  17, y: halfH - 23.72, w: 32, h: 7.8, color: 0x225577 }, // 6.0 × 1.3
+      { action: 2, x: -17, y: halfH - 30.72, w: 32, h: 7.8, color: 0x225577 }, // 6.0 × 1.3
+      { action: 3, x:  17, y: halfH - 30.72, w: 32, h: 7.8, color: 0x552277 }, // 6.0 × 1.3
+      { action: 4, x:   0, y: halfH - 39.52, w: 66, h: 9.9, color: 0x888888 }, // 7.6 × 1.3
     ];
 
     for (const { action, x, y, w, h, color } of defs) {
