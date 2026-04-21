@@ -5,6 +5,7 @@ import {
   Interactable,
   Hovered,
   Pressed,
+  PanelUI,
   PanelDocument,
   UIKitDocument,
   UIKit,
@@ -132,7 +133,7 @@ export const BasketballButtonZone = createComponent("BasketballButtonZone", {
 
 // ── System ────────────────────────────────────────────────────────────────
 export class BasketballSystem extends createSystem({
-  panel:           { required: [PanelDocument] },
+  panel:           { required: [PanelUI, PanelDocument] },
   bballBtnHovered: { required: [BasketballButtonZone, Hovered] },
   bballBtnPressed: { required: [BasketballButtonZone, Pressed] },
 }) {
@@ -250,7 +251,14 @@ export class BasketballSystem extends createSystem({
   //   4      0   -16.36      66   7.6  bball-menu-btn
 
   private buildScreenZones(panelEntity: Entity, doc: UIKitDocument) {
-    const scale = 0.76 / 72; // hardcoded — same as railroad.ts and drop-ttt.ts
+    // Use the live ratio once PanelUI is set up (same formula as railroad.ts).
+    // Requiring PanelUI in the panel query ensures this fires after PanelUISystem
+    // has fully initialized the entity — including any world-scale it applies.
+    // The fallback matches the drop-ttt hardcoded value.
+    const computedW = (doc as any).computedSize?.width ?? 72;
+    const scale = (doc.targetSize?.width ?? 0) > 0
+      ? doc.targetSize.width / computedW
+      : 0.76 / 72;
 
     const halfH  = BBALL_PANEL_H / 2; // 23.16
     const zoneD  = 0.10;
