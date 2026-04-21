@@ -13,8 +13,12 @@ import {
   Mesh,
   Group,
   MeshStandardMaterial,
+  ShaderMaterial,
   VideoTexture,
   PlaneGeometry,
+  DataTexture,
+  Texture,
+  TextureLoader,
   SRGBColorSpace,
 } from "@iwsdk/core";
 import type { Signal } from "@preact/signals-core";
@@ -24,6 +28,9 @@ import Hls, { type ErrorData } from "hls.js";
 const STREAM_URL =
   "https://streams.quintar.ai/nba-2025/20250216/newreg/" +
   "Main_Final_8m_hardmasked_nvenc_tb_20Mbps/index.m3u8";
+
+const MASK_URL =
+  "https://nba-stage.configs.quintar.ai/meta/2025/AllStar_MidCourt_Jumbo10.png";
 
 const SCREEN_W = 4.0;               // meters wide
 const SCREEN_H = SCREEN_W * 9 / 16; // 16:9 per-eye aspect ratio (2.25 m)
@@ -39,6 +46,54 @@ const SCREEN_Y =  1.2;              // m up (comfortable eye level)
 //  paddingBottom:3                        → PANEL_H = 32.32
 const BBALL_PANEL_H = 32.32;
 
+// ── Shaders ────────────────────────────────────────────────────────────────
+// The video is top-bottom stereo (TB): top half = left eye, bottom half = right eye.
+// The mask is side-by-side stereo (SBS): left half = left eye, right half = right eye.
+// Each eye gets its own ShaderMaterial instance with distinct UV range uniforms.
+//
+//  Left eye:   uVidYMin=0.5, uVidYMax=1.0   uMskXMin=0.0, uMskXMax=0.5
+//  Right eye:  uVidYMin=0.0, uVidYMax=0.5   uMskXMin=0.5, uMskXMax=1.0
+
+const VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const FRAG = /* glsl */ `
+  uniform sampler2D uVideo;
+  uniform sampler2D uMask;
+
+  // Video UV vertical range — selects top or bottom half of the TB stereo frame
+  uniform float uVidYMin;
+  uniform float uVidYMax;
+
+  // Mask UV horizontal range — selects left or right half of the SBS stereo mask
+  uniform float uMskXMin;
+  uniform float uMskXMax;
+
+  varying vec2 vUv;
+
+  void main() {
+    // Sample mask for this eye from its SBS half
+    vec2 maskUv = vec2(uMskXMin + vUv.x * (uMskXMax - uMskXMin), vUv.y);
+    vec4 m = texture2D(uMask, maskUv);
+
+    // Mask value: use red channel (white=opaque, black=discard).
+    // Works for greyscale B/W masks; also handles RGBA masks where shape is in R.
+    float alpha = m.r;
+    if (alpha < 0.01) discard;
+
+    // Sample video for this eye from its TB half
+    vec2 videoUv = vec2(vUv.x, uVidYMin + vUv.y * (uVidYMax - uVidYMin));
+    vec4 color = texture2D(uVideo, videoUv);
+
+    gl_FragColor = vec4(color.rgb, alpha);
+  }
+`;
+
 // ── ECS Component ─────────────────────────────────────────────────────────
 export const BasketballButtonZone = createComponent("BasketballButtonZone", {
   actionType: { type: Types.Int8, default: 0 },
@@ -46,9 +101,9 @@ export const BasketballButtonZone = createComponent("BasketballButtonZone", {
 
 // ── System ────────────────────────────────────────────────────────────────
 export class BasketballSystem extends createSystem({
-  panel:             { required: [PanelDocument] },
-  bballBtnHovered:   { required: [BasketballButtonZone, Hovered] },
-  bballBtnPressed:   { required: [BasketballButtonZone, Pressed] },
+  panel:           { required: [PanelDocument] },
+  bballBtnHovered: { required: [BasketballButtonZone, Hovered] },
+  bballBtnPressed: { required: [BasketballButtonZone, Pressed] },
 }) {
   private active = false;
 
@@ -60,11 +115,29 @@ export class BasketballSystem extends createSystem({
   private bballBtnZoneEntities:  Entity[] = [];
   private bballBtnZoneMaterials: MeshStandardMaterial[] = [];
 
-  private videoEl:   HTMLVideoElement | null = null;
-  private hlsInst:   Hls | null = null;
-  private screenEnt: Entity | null = null;
+  private videoEl:    HTMLVideoElement | null = null;
+  private hlsInst:    Hls | null = null;
+  private screenEnt:  Entity | null = null;
+  private screenMats: ShaderMaterial[] = []; // kept to apply late mask load
+
+  // Mask texture — starts as 1×1 white (fully opaque) until the PNG loads
+  private maskTex: Texture = makeFallbackMask();
 
   init() {
+    // Begin loading the mask PNG immediately so it's ready (or close) by first play
+    new TextureLoader().load(
+      MASK_URL,
+      (tex) => {
+        this.maskTex = tex;
+        // If the screen is already live, patch existing materials in-place
+        for (const mat of this.screenMats) {
+          mat.uniforms.uMask.value = tex;
+        }
+      },
+      undefined,
+      (err) => console.warn("[Basketball] mask load failed — playing unmasked:", err),
+    );
+
     // Wire UIKit panel elements once the document loads (same pattern as RailroadSystem)
     this.queries.panel.subscribe("qualify", (entity) => {
       if (this.bballUI) return;
@@ -177,9 +250,10 @@ export class BasketballSystem extends createSystem({
 
     this.bballUI?.screen.setProperties({ display: "none" });
 
-    if (this.hlsInst)  { this.hlsInst.destroy();               this.hlsInst  = null; }
-    if (this.videoEl)  { this.videoEl.pause(); this.videoEl.remove(); this.videoEl = null; }
-    if (this.screenEnt){ this.screenEnt.dispose();              this.screenEnt = null; }
+    if (this.hlsInst)  { this.hlsInst.destroy();                    this.hlsInst  = null; }
+    if (this.videoEl)  { this.videoEl.pause(); this.videoEl.remove(); this.videoEl  = null; }
+    if (this.screenEnt){ this.screenEnt.dispose();                   this.screenEnt = null; }
+    this.screenMats = [];
   }
 
   private returnToMenu() {
@@ -188,13 +262,12 @@ export class BasketballSystem extends createSystem({
   }
 
   // ── Stereo video screen ────────────────────────────────────────────────────
-  // The HLS stream is a top-bottom stereo frame:
-  //   top  half → left  eye (V: 0.5–1.0 in UV space after flipY)
-  //   bottom half → right eye (V: 0.0–0.5)
+  // Video is top-bottom (TB) stereo:  top  = left eye,  bottom = right eye
+  // Mask is side-by-side (SBS) stereo: left = left eye,  right  = right eye
   //
-  // We create two identical planes at the same world position, each with UV
-  // coordinates mapped to their respective half of the video texture.
-  // Three.js layers 1/2 route each plane to only the left/right eye camera.
+  // Each eye is a separate PlaneGeometry + ShaderMaterial on its own Three.js
+  // layer (1=left, 2=right).  The shader handles all UV remapping via uniforms
+  // and discards fragments where the mask red channel is near-zero.
 
   private createStereoScreen() {
     const video = document.createElement("video");
@@ -222,7 +295,6 @@ export class BasketballSystem extends createSystem({
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari native HLS
       video.src = STREAM_URL;
       video.addEventListener("loadedmetadata", onReady, { once: true });
     } else {
@@ -230,23 +302,21 @@ export class BasketballSystem extends createSystem({
       return;
     }
 
-    // One VideoTexture shared by both eye planes — Three.js auto-updates it each frame
-    const texture = new VideoTexture(video);
-    texture.colorSpace = SRGBColorSpace;
+    // Shared VideoTexture — Three.js auto-sets needsUpdate each frame
+    const videoTex = new VideoTexture(video);
+    videoTex.colorSpace = SRGBColorSpace;
 
-    // Left eye: show top half of video (UV V = 0.5 → 1.0)
-    const leftMesh = new Mesh(
-      buildHalfPlane(SCREEN_W, SCREEN_H, true),
-      new MeshStandardMaterial({ map: texture, toneMapped: false }),
-    );
-    leftMesh.layers.set(1); // visible to left eye camera only
+    const leftMat  = makeStereoMat(videoTex, this.maskTex, true);
+    const rightMat = makeStereoMat(videoTex, this.maskTex, false);
+    this.screenMats = [leftMat, rightMat];
 
-    // Right eye: show bottom half of video (UV V = 0.0 → 0.5)
-    const rightMesh = new Mesh(
-      buildHalfPlane(SCREEN_W, SCREEN_H, false),
-      new MeshStandardMaterial({ map: texture, toneMapped: false }),
-    );
-    rightMesh.layers.set(2); // visible to right eye camera only
+    const geom = new PlaneGeometry(SCREEN_W, SCREEN_H);
+
+    const leftMesh  = new Mesh(geom, leftMat);
+    leftMesh.layers.set(1);  // left eye only
+
+    const rightMesh = new Mesh(geom, rightMat);
+    rightMesh.layers.set(2); // right eye only
 
     const group = new Group();
     group.add(leftMesh, rightMesh);
@@ -258,21 +328,31 @@ export class BasketballSystem extends createSystem({
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** 1×1 fully-white texture — used as mask fallback while the PNG loads. */
+function makeFallbackMask(): DataTexture {
+  const tex = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /**
- * Returns a PlaneGeometry whose UV V-coordinates are remapped to the top or
- * bottom half of the source texture:
- *   topHalf=true  → V: 0.5–1.0  (left eye content in a top-bottom stereo frame)
- *   topHalf=false → V: 0.0–0.5  (right eye content)
+ * Creates a ShaderMaterial for one eye of the stereo display.
+ *   isLeft=true  → samples video top half (left eye)  + mask left half
+ *   isLeft=false → samples video bottom half (right eye) + mask right half
  */
-function buildHalfPlane(w: number, h: number, topHalf: boolean): PlaneGeometry {
-  const geom   = new PlaneGeometry(w, h);
-  const uvAttr = geom.attributes.uv as { count: number; getY(i: number): number; setY(i: number, v: number): void; needsUpdate: boolean };
-  const vMin   = topHalf ? 0.5 : 0.0;
-  const vMax   = topHalf ? 1.0 : 0.5;
-  for (let i = 0; i < uvAttr.count; i++) {
-    const vOld = uvAttr.getY(i);
-    uvAttr.setY(i, vMin + vOld * (vMax - vMin));
-  }
-  uvAttr.needsUpdate = true;
-  return geom;
+function makeStereoMat(videoTex: VideoTexture, maskTex: Texture, isLeft: boolean): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      uVideo:   { value: videoTex },
+      uMask:    { value: maskTex  },
+      uVidYMin: { value: isLeft ? 0.5 : 0.0 },
+      uVidYMax: { value: isLeft ? 1.0 : 0.5 },
+      uMskXMin: { value: isLeft ? 0.0 : 0.5 },
+      uMskXMax: { value: isLeft ? 0.5 : 1.0 },
+    },
+    vertexShader:   VERT,
+    fragmentShader: FRAG,
+    transparent: true,
+    depthWrite:  false,
+  });
 }
