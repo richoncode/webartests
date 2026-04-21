@@ -24,6 +24,9 @@ import {
   Texture,
   TextureLoader,
   SRGBColorSpace,
+  LinearMipmapLinearFilter,
+  LinearFilter,
+  Vector2,
 } from "@iwsdk/core";
 import type { Signal } from "@preact/signals-core";
 import Hls, { type ErrorData } from "hls.js";
@@ -75,19 +78,36 @@ const FRAG = /* glsl */ `
   uniform float uVidYMax;
   uniform float uMskXMin;
   uniform float uMskXMax;
+  uniform vec2  uTexelSize;
+  uniform float uBlurRadius;
   varying vec2 vUv;
   void main() {
     vec2 maskUv  = vec2(uMskXMin + vUv.x * (uMskXMax - uMskXMin), vUv.y);
     float alpha  = texture2D(uMask, maskUv).r;
     if (alpha < 0.01) discard;
     vec2 videoUv = vec2(vUv.x, uVidYMin + vUv.y * (uVidYMax - uVidYMin));
-    vec4 color   = texture2D(uVideo, videoUv);
+    vec4 color;
+    if (uBlurRadius > 0.0) {
+      vec2 r = uTexelSize * uBlurRadius;
+      color  = texture2D(uVideo, videoUv) * 4.0;
+      color += texture2D(uVideo, videoUv + vec2( r.x,  0.0));
+      color += texture2D(uVideo, videoUv + vec2(-r.x,  0.0));
+      color += texture2D(uVideo, videoUv + vec2( 0.0,  r.y));
+      color += texture2D(uVideo, videoUv + vec2( 0.0, -r.y));
+      color += texture2D(uVideo, videoUv + vec2( r.x,  r.y));
+      color += texture2D(uVideo, videoUv + vec2(-r.x, -r.y));
+      color += texture2D(uVideo, videoUv + vec2( r.x, -r.y));
+      color += texture2D(uVideo, videoUv + vec2(-r.x,  r.y));
+      color /= 12.0;
+    } else {
+      color = texture2D(uVideo, videoUv);
+    }
     gl_FragColor = vec4(color.rgb, alpha);
   }
 `;
 
 // ── Types ─────────────────────────────────────────────────────────────────
-type BballMode = 0 | 1 | 2; // 0=current, 1=A(closer), 2=B(aniso)
+type BballMode = 0 | 1 | 2 | 3; // 0=current, 1=A(closer), 2=B(aniso), 3=C(soft)
 
 // ── ECS Component ─────────────────────────────────────────────────────────
 export const BasketballButtonZone = createComponent("BasketballButtonZone", {
@@ -150,6 +170,7 @@ export class BasketballSystem extends createSystem({
           doc.getElementById("bball-mode-current") as UIKit.Text | null,
           doc.getElementById("bball-mode-a")       as UIKit.Text | null,
           doc.getElementById("bball-mode-b")       as UIKit.Text | null,
+          doc.getElementById("bball-mode-c")       as UIKit.Text | null,
         ],
       };
       (doc.getElementById("bball-menu-btn") as UIKit.Text)
@@ -160,6 +181,8 @@ export class BasketballSystem extends createSystem({
         ?.addEventListener("click", () => this.setMode(1));
       (doc.getElementById("bball-mode-b") as UIKit.Text)
         ?.addEventListener("click", () => this.setMode(2));
+      (doc.getElementById("bball-mode-c") as UIKit.Text)
+        ?.addEventListener("click", () => this.setMode(3));
       this.buildScreenZones(entity, doc);
     });
 
@@ -181,6 +204,7 @@ export class BasketballSystem extends createSystem({
         case 0: this.setMode(0);      break;
         case 1: this.setMode(1);      break;
         case 2: this.setMode(2);      break;
+        case 3: this.setMode(3);      break;
         case 4: this.returnToMenu();  break;
       }
     });
@@ -207,7 +231,7 @@ export class BasketballSystem extends createSystem({
   //   0    -17    -0.56      32   6    bball-mode-current (row-1 left)
   //   1    +17    -0.56      32   6    bball-mode-a       (row-1 right)
   //   2    -17    -7.56      32   6    bball-mode-b       (row-2 left)
-  //   3    +17    -7.56      32   6    bball-mode-d       (row-2 right)
+  //   3    +17    -7.56      32   6    bball-mode-c       (row-2 right)
   //   4      0   -16.36      66   7.6  bball-menu-btn
 
   private buildScreenZones(panelEntity: Entity, doc: UIKitDocument) {
@@ -229,6 +253,7 @@ export class BasketballSystem extends createSystem({
       { action: 0, x: -17, y: halfH - 23.72, w: 32, h: 7.8, color: 0x2255aa }, // 6.0 × 1.3
       { action: 1, x:  17, y: halfH - 23.72, w: 32, h: 7.8, color: 0x225577 }, // 6.0 × 1.3
       { action: 2, x: -17, y: halfH - 30.72, w: 32, h: 7.8, color: 0x225577 }, // 6.0 × 1.3
+      { action: 3, x:  17, y: halfH - 30.72, w: 32, h: 7.8, color: 0x227755 }, // 6.0 × 1.3
       { action: 4, x:   0, y: halfH - 39.52, w: 66, h: 9.9, color: 0x888888 }, // 7.6 × 1.3
     ];
 
@@ -296,6 +321,7 @@ export class BasketballSystem extends createSystem({
       case 0: this.applyModeCurrent(); break;
       case 1: this.applyModeA();       break;
       case 2: this.applyModeB();       break;
+      case 3: this.applyModeC();       break;
     }
   }
 
@@ -306,36 +332,55 @@ export class BasketballSystem extends createSystem({
   }
 
   private applyModeCurrent() {
-    if (this.screenGroup) {
-      this.screenGroup.position.z = SCREEN_Z;
-      this.screenGroup.visible    = true;
-    }
-    if (this.videoTex) { this.videoTex.anisotropy = 1; this.videoTex.needsUpdate = true; }
+    if (this.screenGroup) { this.screenGroup.position.z = SCREEN_Z; this.screenGroup.visible = true; }
+    this.resetVideoTex();
     this.bballUI?.statusEl.setProperties({ text: "Live" });
   }
 
   private applyModeA() {
     // Closer: halves the angular distance → effectively doubles PPD, free of cost
-    if (this.screenGroup) {
-      this.screenGroup.position.z = SCREEN_Z_CLOSE;
-      this.screenGroup.visible    = true;
-    }
-    if (this.videoTex) { this.videoTex.anisotropy = 1; this.videoTex.needsUpdate = true; }
+    if (this.screenGroup) { this.screenGroup.position.z = SCREEN_Z_CLOSE; this.screenGroup.visible = true; }
+    this.resetVideoTex();
     this.bballUI?.statusEl.setProperties({ text: "Live (Closer)" });
   }
 
   private applyModeB() {
-    // Anisotropic filtering: improves texture quality for oblique viewing angles
-    if (this.screenGroup) {
-      this.screenGroup.position.z = SCREEN_Z;
-      this.screenGroup.visible    = true;
-    }
+    // Mipmap + aniso: GPU picks the right LOD based on screen coverage, plus max anisotropy.
+    // Requires generateMipmaps=true so Three.js calls gl.generateMipmap each video frame.
+    if (this.screenGroup) { this.screenGroup.position.z = SCREEN_Z; this.screenGroup.visible = true; }
+    this.setBlurRadius(0.0);
     const renderer = (this.world as any).renderer as { capabilities?: { getMaxAnisotropy?(): number } } | undefined;
-    if (this.videoTex && renderer?.capabilities?.getMaxAnisotropy) {
-      this.videoTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      this.videoTex.needsUpdate = true;
+    const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() ?? 1;
+    if (this.videoTex) {
+      this.videoTex.generateMipmaps = true;
+      this.videoTex.minFilter       = LinearMipmapLinearFilter;
+      this.videoTex.anisotropy      = maxAniso;
+      this.videoTex.needsUpdate     = true;
     }
     this.bballUI?.statusEl.setProperties({ text: "Live (Aniso)" });
+  }
+
+  private applyModeC() {
+    // Soft: 9-tap box-blur in the fragment shader — low-pass filter that directly reduces
+    // the high-frequency patterns responsible for moiré at VR display resolutions.
+    if (this.screenGroup) { this.screenGroup.position.z = SCREEN_Z; this.screenGroup.visible = true; }
+    this.resetVideoTex();
+    this.setBlurRadius(2.0);
+    this.bballUI?.statusEl.setProperties({ text: "Live (Soft)" });
+  }
+
+  // Reset Three.js texture back to plain LinearFilter / no mipmaps / no aniso
+  private resetVideoTex() {
+    if (!this.videoTex) return;
+    this.videoTex.generateMipmaps = false;
+    this.videoTex.minFilter       = LinearFilter;
+    this.videoTex.anisotropy      = 1;
+    this.videoTex.needsUpdate     = true;
+    this.setBlurRadius(0.0);
+  }
+
+  private setBlurRadius(r: number) {
+    for (const mat of this.screenMats) mat.uniforms.uBlurRadius.value = r;
   }
 
   // ── update ────────────────────────────────────────────────────────────────
@@ -393,6 +438,16 @@ export class BasketballSystem extends createSystem({
     videoTex.colorSpace = SRGBColorSpace;
     this.videoTex = videoTex;
 
+    // Update texel-size uniform once actual video dimensions are known
+    video.addEventListener("loadedmetadata", () => {
+      const tw = 1.0 / (video.videoWidth  || 3840);
+      const th = 1.0 / (video.videoHeight || 2160);
+      for (const mat of this.screenMats) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mat.uniforms.uTexelSize.value as any).set(tw, th);
+      }
+    }, { once: true });
+
     const leftMat  = makeStereoMat(videoTex, this.maskTex, true);
     const rightMat = makeStereoMat(videoTex, this.maskTex, false);
     this.screenMats = [leftMat, rightMat];
@@ -435,12 +490,14 @@ function makeFallbackMask(): DataTexture {
 function makeStereoMat(videoTex: VideoTexture, maskTex: Texture, isLeft: boolean): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
-      uVideo:   { value: videoTex },
-      uMask:    { value: maskTex  },
-      uVidYMin: { value: isLeft ? 0.5 : 0.0 },
-      uVidYMax: { value: isLeft ? 1.0 : 0.5 },
-      uMskXMin: { value: isLeft ? 0.0 : 0.5 },
-      uMskXMax: { value: isLeft ? 0.5 : 1.0 },
+      uVideo:      { value: videoTex },
+      uMask:       { value: maskTex  },
+      uVidYMin:    { value: isLeft ? 0.5 : 0.0 },
+      uVidYMax:    { value: isLeft ? 1.0 : 0.5 },
+      uMskXMin:    { value: isLeft ? 0.0 : 0.5 },
+      uMskXMax:    { value: isLeft ? 0.5 : 1.0 },
+      uTexelSize:  { value: new Vector2(1.0 / 3840, 1.0 / 2160) },
+      uBlurRadius: { value: 0.0 },
     },
     vertexShader:   VERT,
     fragmentShader: FRAG,
