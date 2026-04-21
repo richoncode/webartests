@@ -5,6 +5,8 @@ import {
   Interactable,
   Hovered,
   Pressed,
+  DistanceGrabbable,
+  MovementMode,
   PanelUI,
   PanelDocument,
   UIKitDocument,
@@ -13,6 +15,7 @@ import {
   BoxGeometry,
   Mesh,
   Group,
+  Vector3,
   MeshStandardMaterial,
   ShaderMaterial,
   VideoTexture,
@@ -161,6 +164,10 @@ export class BasketballSystem extends createSystem({
 
   // Mode D resources
   private modeD: ModeDResources | null = null;
+
+  // Scratch vectors for billboard — pre-allocated to avoid GC pressure in update()
+  private _headPos = new Vector3();
+  private _screenPos = new Vector3();
 
   init() {
     new TextureLoader().load(
@@ -470,8 +477,20 @@ export class BasketballSystem extends createSystem({
     this.modeD = null;
   }
 
-  // ── update — Mode D per-frame rendering ───────────────────────────────────
+  // ── update ────────────────────────────────────────────────────────────────
   update(_delta: number, _time: number) {
+    // Y-axis billboard — rotate screen around Y to always face the player,
+    // regardless of where it has been moved with the hand/controller grab.
+    if (this.active && this.screenGroup && this.screenGroup.visible) {
+      this.player.head.getWorldPosition(this._headPos);
+      this.screenGroup.getWorldPosition(this._screenPos);
+      this.screenGroup.rotation.y = Math.atan2(
+        this._headPos.x - this._screenPos.x,
+        this._headPos.z - this._screenPos.z,
+      );
+    }
+
+    // Mode D per-frame rendering
     if (this.screenMode !== 3 || !this.modeD || !this.videoTex || !this.videoEl) return;
     if (this.videoEl.readyState < 2) return; // HAVE_CURRENT_DATA
 
@@ -585,12 +604,22 @@ export class BasketballSystem extends createSystem({
     const rightMesh = new Mesh(geom, rightMat);
     rightMesh.layers.set(2); // right eye only
 
+    // Invisible grab proxy on the default layer (0) so the InputSystem's BVH
+    // raycaster can intersect it regardless of eye-layer configuration.
+    // leftMesh/rightMesh are on layers 1/2 (eye-specific); the proxy ensures
+    // hand pinch and controller ray both have a reliable hit surface.
+    const proxyMat = new MeshStandardMaterial({ transparent: true, opacity: 0, depthWrite: false });
+    const proxyMesh = new Mesh(new PlaneGeometry(SCREEN_W, SCREEN_H), proxyMat);
+    // stays on layer 0 (default) — no layers.set() call
+
     const group = new Group();
-    group.add(leftMesh, rightMesh);
+    group.add(leftMesh, rightMesh, proxyMesh);
     group.position.set(0, SCREEN_Y, SCREEN_Z);
 
     this.screenGroup = group;
-    this.screenEnt   = this.world.createTransformEntity(group);
+    this.screenEnt   = this.world.createTransformEntity(group)
+      .addComponent(Interactable)
+      .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget });
   }
 }
 
