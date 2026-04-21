@@ -18,6 +18,7 @@ import {
   Object3D,
   Mesh,
   MeshStandardMaterial,
+  Vector3,
   PhysicsShape,
   PhysicsShapeType,
   PhysicsBody,
@@ -161,6 +162,10 @@ export class DropTTTSystem extends createSystem({
   private railroadActive   = false;
   private basketballActive = false;
   private panelEnt: Entity | null = null;
+
+  // Scratch vectors for panel billboard — pre-allocated to avoid GC in update()
+  private _panelPos  = new Vector3();
+  private _headPos   = new Vector3();
 
   // ── UIKit element refs ─────────────────────────────────────────────────────
   private ui: {
@@ -365,10 +370,19 @@ export class DropTTTSystem extends createSystem({
   }
 
   update(delta: number) {
-    // Keep panel level — prevent X/Z rotation tilt when grabbed and moved
+    // Billboard panel to always face the player in both Y and X (no Z roll).
+    // This ensures zone box faces are perpendicular to the controller ray so
+    // the full zone height is hittable, not just the top edge.
     if (this.panelEnt?.object3D) {
-      this.panelEnt.object3D.rotation.x = 0;
-      this.panelEnt.object3D.rotation.z = 0;
+      const obj = this.panelEnt.object3D;
+      obj.getWorldPosition(this._panelPos);
+      this.player.head.getWorldPosition(this._headPos);
+      const dx = this._headPos.x - this._panelPos.x;
+      const dy = this._headPos.y - this._panelPos.y;
+      const dz = this._headPos.z - this._panelPos.z;
+      obj.rotation.y = Math.atan2(dx, dz);
+      obj.rotation.x = -Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
+      obj.rotation.z = 0;
     }
 
     if (!this.gameActive) return;

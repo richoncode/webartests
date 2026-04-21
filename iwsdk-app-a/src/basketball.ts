@@ -395,8 +395,7 @@ export class BasketballSystem extends createSystem({
         this._headPos.x - this._screenPos.x,
         this._headPos.z - this._screenPos.z,
       );
-      this.screenGroup.rotation.x = 0;
-      this.screenGroup.rotation.z = 0;
+      this.screenGroup.rotation.z = 0; // prevent sideways roll, allow X tilt
     }
   }
 
