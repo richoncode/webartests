@@ -160,6 +160,7 @@ export class DropTTTSystem extends createSystem({
   private cornholeActive   = false;
   private railroadActive   = false;
   private basketballActive = false;
+  private panelEnt: Entity | null = null;
 
   // ── UIKit element refs ─────────────────────────────────────────────────────
   private ui: {
@@ -183,6 +184,7 @@ export class DropTTTSystem extends createSystem({
 
     // Wire UIKit when document loads (guard: only wire once)
     this.queries.panel.subscribe("qualify", (entity) => {
+      this.panelEnt = entity;
       if (this.ui) return; // already wired
       const doc = PanelDocument.data.document[entity.index] as UIKitDocument;
       if (!doc) return;
@@ -363,6 +365,12 @@ export class DropTTTSystem extends createSystem({
   }
 
   update(delta: number) {
+    // Keep panel level — prevent X/Z rotation tilt when grabbed and moved
+    if (this.panelEnt?.object3D) {
+      this.panelEnt.object3D.rotation.x = 0;
+      this.panelEnt.object3D.rotation.z = 0;
+    }
+
     if (!this.gameActive) return;
 
     // In drop mode, wait for player's piece to land. In select mode, start AI timer immediately.
