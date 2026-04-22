@@ -106,6 +106,12 @@ const FRAG = /* glsl */ `
   }
 `;
 
+// ── Logging helper ────────────────────────────────────────────────────────
+function bballLog(tag: string, detail = "") {
+  // eslint-disable-next-line no-console
+  console.log(`[BBall ${performance.now().toFixed(1)}] ${tag}${detail ? " " + detail : ""}`);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────
 type BballMode = 0 | 1 | 2 | 3; // 0=current, 1=A(closer), 2=B(aniso), 3=C(soft)
 
@@ -188,18 +194,21 @@ export class BasketballSystem extends createSystem({
 
     this.queries.bballBtnHovered.subscribe("qualify", (entity) => {
       const idx = entity.getValue(BasketballButtonZone, "actionType") as number;
+      bballLog("HOVER_ENTER", `action=${idx}`);
       const mat = this.bballBtnZoneMaterials[idx];
       if (mat) { mat.opacity = 0.28; mat.emissiveIntensity = 0.55; }
     });
     this.queries.bballBtnHovered.subscribe("disqualify", (entity) => {
       const idx = entity.getValue(BasketballButtonZone, "actionType") as number;
+      bballLog("HOVER_EXIT", `action=${idx}`);
       const mat = this.bballBtnZoneMaterials[idx];
       if (mat) { mat.opacity = 0.0; mat.emissiveIntensity = 0.0; }
     });
 
     this.queries.bballBtnPressed.subscribe("qualify", (entity) => {
-      if (!this.active) return;
       const idx = entity.getValue(BasketballButtonZone, "actionType") as number;
+      bballLog("PRESS", `action=${idx} active=${this.active}`);
+      if (!this.active) return;
       switch (idx) {
         case 0: this.setMode(0);      break;
         case 1: this.setMode(1);      break;
@@ -213,6 +222,7 @@ export class BasketballSystem extends createSystem({
     if (activeGame) {
       this.cleanupFuncs.push(
         activeGame.subscribe((game) => {
+          bballLog("SIGNAL_activeGame", `game=${game} active=${this.active}`);
           if (game === "basketball" && !this.active) {
             this.startBasketball();
           } else if (game !== "basketball" && this.active) {
@@ -276,6 +286,7 @@ export class BasketballSystem extends createSystem({
   }
 
   private startBasketball() {
+    bballLog("START");
     this.active      = true;
     this.screenMode  = 0;
     this.bballUI?.screen.setProperties({ display: "flex" });
@@ -290,6 +301,7 @@ export class BasketballSystem extends createSystem({
   }
 
   private stopBasketball() {
+    bballLog("STOP");
     this.active = false;
 
     for (const e of this.bballBtnZoneEntities) {
@@ -307,6 +319,7 @@ export class BasketballSystem extends createSystem({
   }
 
   private returnToMenu() {
+    bballLog("RETURN_TO_MENU");
     const activeGame = this.globals.activeGame as Signal<string> | undefined;
     if (activeGame) activeGame.value = "menu";
   }
@@ -314,6 +327,7 @@ export class BasketballSystem extends createSystem({
   // ── Mode switching ─────────────────────────────────────────────────────────
 
   private setMode(mode: BballMode) {
+    bballLog("MODE_CHANGE", `${this.screenMode}->${mode}`);
     this.screenMode = mode;
     this.refreshModeBtnStyles();
 
@@ -408,7 +422,9 @@ export class BasketballSystem extends createSystem({
     video.loop  = true;
     this.videoEl = video;
 
+    bballLog("CREATE_SCREEN");
     const onReady = () => {
+      bballLog("STREAM_READY");
       video.play().catch(console.warn);
       this.bballUI?.statusEl.setProperties({ text: "Live" });
     };
