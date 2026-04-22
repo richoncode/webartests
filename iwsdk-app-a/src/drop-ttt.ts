@@ -684,8 +684,11 @@ export class DropTTTSystem extends createSystem({
     const panelContentHeight = 99.9;
     const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 77.4, 94.4];
     const zoneW         = 0.68;
-    const zoneH         = 7.6 * 1.3 * scale;  // mode button height — 1.3× for reliable hover on real hardware
-    const exitZoneH     = 6.0 * 1.3 * scale;  // exit button height — 1.3× for reliable hover on real hardware
+    // zoneH = full pitch (8.8u) so adjacent buttons abut with zero gap AND zero overlap.
+    // Overlap → two zones hit the ray at identical Z, non-deterministic winner, tremor flicker.
+    // Gap    → ray dies between buttons, hover drops and re-enters on tremor.
+    const zoneH         = 8.8 * scale;        // mode buttons — exactly the 8.8u row pitch
+    const exitZoneH     = 6.0 * 1.2 * scale;  // exit button — isolated row, slight pad OK
     const cornholeColor   = 0x22cc66;
     const railroadColor   = 0xcc8822;
     const basketballColor = 0xcc7722;
