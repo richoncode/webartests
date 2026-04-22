@@ -125,10 +125,10 @@ export class BasketballSystem extends createSystem({
   panel:           { required: [PanelUI, PanelDocument] },
   bballBtnHovered: { required: [BasketballButtonZone, Hovered] },
   bballBtnPressed: { required: [BasketballButtonZone, Pressed] },
-  // Diagnose hover competition: log when the screen grab handle gains/loses Hovered.
-  // The grab handle is a narrow strip on the screen's right edge — if its HOVER_ENTER
-  // timestamps correlate with zone HOVER_EXIT, the screen was stealing hover.
-  screenGrabHovered: { required: [DistanceGrabbable, Hovered] },
+  // Diagnose hover competition: fires when the panel entity itself gains Hovered.
+  // If PANEL_HOVER_ENTER timestamps correlate with zone HOVER_EXIT, the panel's
+  // Interactable (for forwardHtmlEvents) is stealing hover from the button zones.
+  panelHovered: { required: [PanelDocument, Hovered] },
 }) {
   private active      = false;
   private screenMode: BballMode = 0;
@@ -223,16 +223,13 @@ export class BasketballSystem extends createSystem({
       }
     });
 
-    // Log when the screen grab handle (right-edge strip) enters/exits hover.
-    // If SCREEN_GRAB_HOVER_ENTER timestamps match zone HOVER_EXIT timestamps,
-    // the old full-screen proxy was stealing hover from the button zones.
-    this.queries.screenGrabHovered.subscribe("qualify", (entity) => {
-      bballLog("SCREEN_GRAB_HOVER_ENTER", `entity=${entity.index}`);
-      if (this.grabHandleMat) { this.grabHandleMat.opacity = 0.45; this.grabHandleMat.emissiveIntensity = 0.8; }
+    // Log when the panel entity itself gains/loses Hovered — if PANEL_HOVER_ENTER
+    // timestamps align with zone HOVER_EXIT, the panel is competing for hover.
+    this.queries.panelHovered.subscribe("qualify", (entity) => {
+      bballLog("PANEL_HOVER_ENTER", `entity=${entity.index}`);
     });
-    this.queries.screenGrabHovered.subscribe("disqualify", (entity) => {
-      bballLog("SCREEN_GRAB_HOVER_EXIT", `entity=${entity.index}`);
-      if (this.grabHandleMat) { this.grabHandleMat.opacity = 0.12; this.grabHandleMat.emissiveIntensity = 0.2; }
+    this.queries.panelHovered.subscribe("disqualify", (entity) => {
+      bballLog("PANEL_HOVER_EXIT", `entity=${entity.index}`);
     });
 
     const activeGame = this.globals.activeGame as Signal<string> | undefined;
@@ -272,7 +269,7 @@ export class BasketballSystem extends createSystem({
       : 0.76 / 72;
 
     const halfH  = BBALL_PANEL_H / 2; // 23.16
-    const zoneD  = 0.10;
+    const zoneD  = 0.04; // match menu zones — back face at z=0.04, clear of panel surface (z=0)
     const localZ = 0.06;
 
     // Heights use 1.3× the CSS-computed value so the ray has a generous target
