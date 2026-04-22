@@ -27,6 +27,7 @@ import {
   LinearMipmapLinearFilter,
   LinearFilter,
   Vector2,
+  Transform,
 } from "@iwsdk/core";
 import type { Signal } from "@preact/signals-core";
 import Hls, { type ErrorData } from "hls.js";
@@ -289,11 +290,11 @@ export class BasketballSystem extends createSystem({
       this.bballBtnZoneMaterials[action] = mat;
 
       const mesh = new Mesh(new BoxGeometry(w * scale, h * scale, zoneD), mat);
-      mesh.position.set(x * scale, y * scale, localZ);
+      mesh.position.set(x * scale, y * scale, -0.5);
       mesh.renderOrder = 999;
-      // Start invisible — raycaster skips invisible objects, so zones won't
-      // compete with menu zones while the basketball screen is hidden.
-      // Toggled visible/invisible in startBasketball()/stopBasketball().
+      // Start behind the panel (z=-0.5) so the raycaster hits them at greater
+      // distance than menu button zones when basketball is inactive.
+      // Moved to localZ (0.06) in startBasketball(), back to -0.5 in stopBasketball().
       mesh.visible = false;
       // Pre-parent before addComponent(Interactable) so InputSystem BVH
       // includes the mesh with the correct world transform.
@@ -315,7 +316,10 @@ export class BasketballSystem extends createSystem({
     this.refreshModeBtnStyles();
 
     for (const e of this.bballBtnZoneEntities) {
-      if (e.object3D) e.object3D.visible = true;
+      if (e.object3D) {
+        e.object3D.visible = true;
+        (e.getVectorView(Transform, 'position') as Float32Array)[2] = 0.06;
+      }
       if (!e.hasComponent(Interactable)) e.addComponent(Interactable);
     }
 
@@ -327,7 +331,10 @@ export class BasketballSystem extends createSystem({
     this.active = false;
 
     for (const e of this.bballBtnZoneEntities) {
-      if (e.object3D) e.object3D.visible = false;
+      if (e.object3D) {
+        e.object3D.visible = false;
+        (e.getVectorView(Transform, 'position') as Float32Array)[2] = -0.5;
+      }
       if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
     }
 

@@ -23,6 +23,7 @@ import {
   Vector3,
   Quaternion,
   Object3D,
+  Transform,
 } from "@iwsdk/core";
 import type { Signal } from "@preact/signals-core";
 
@@ -356,6 +357,10 @@ export class RailroadSystem extends createSystem({
     this.showScreen();
     this.refreshCountUI();
     for (const e of this.rrBtnZoneEntities) {
+      if (e.object3D) {
+        e.object3D.visible = true;
+        (e.getVectorView(Transform, 'position') as Float32Array)[2] = 0.06;
+      }
       if (!e.hasComponent(Interactable)) e.addComponent(Interactable);
     }
     // Default debug mode to on so planes are visible immediately on entry
@@ -376,6 +381,10 @@ export class RailroadSystem extends createSystem({
     this.hideScreen();
     for (const e of this.rrBtnZoneEntities) {
       if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+      if (e.object3D) {
+        e.object3D.visible = false;
+        (e.getVectorView(Transform, 'position') as Float32Array)[2] = -0.5;
+      }
     }
     // Remove all debug overlays and reset debug state
     for (const mesh of this.planeDebugMeshes.values()) mesh.removeFromParent();
@@ -467,8 +476,11 @@ export class RailroadSystem extends createSystem({
       this.rrBtnZoneMaterials[action] = mat;
 
       const mesh = new Mesh(new BoxGeometry(w * scale, h * scale, zoneD), mat);
-      mesh.position.set(x * scale, y * scale, localZ);
+      mesh.position.set(x * scale, y * scale, -0.5);
       mesh.renderOrder = 999; // draw on top of panel background — avoids z-fighting flicker
+      // Start behind panel (z=-0.5) so inactive zones never block menu button raycasts.
+      // Moved to localZ (0.06) in startGame(), back to -0.5 in cleanup().
+      mesh.visible = false;
       // Pre-parent before addComponent(Interactable) so InputSystem BVH
       // includes the mesh with the correct world transform.
       panelEntity.object3D!.add(mesh);

@@ -23,6 +23,7 @@ import {
   PhysicsShapeType,
   PhysicsBody,
   PhysicsState,
+  Transform,
 } from "@iwsdk/core";
 import type { Signal } from "@preact/signals-core";
 
@@ -441,7 +442,13 @@ export class DropTTTSystem extends createSystem({
     // Swap interactive zones: menu off, game action on (guard against double-add)
     if (!this.gameZonesActive) {
       for (const e of this.menuZoneEntities) e.removeComponent(Interactable);
-      for (const e of this.gameActionZoneEntities) e.addComponent(Interactable);
+      for (const e of this.gameActionZoneEntities) {
+        if (e.object3D) {
+          e.object3D.visible = true;
+          (e.getVectorView(Transform, 'position') as Float32Array)[2] = 0.12;
+        }
+        e.addComponent(Interactable);
+      }
       this.gameZonesActive = true;
     }
     this.gameActive      = true;
@@ -461,7 +468,13 @@ export class DropTTTSystem extends createSystem({
     this.teardownBoard();
     // Swap interactive zones: game action off, menu on (guard against double-remove)
     if (this.gameZonesActive) {
-      for (const e of this.gameActionZoneEntities) e.removeComponent(Interactable);
+      for (const e of this.gameActionZoneEntities) {
+        e.removeComponent(Interactable);
+        if (e.object3D) {
+          e.object3D.visible = false;
+          (e.getVectorView(Transform, 'position') as Float32Array)[2] = -0.5;
+        }
+      }
       for (const e of this.menuZoneEntities) e.addComponent(Interactable);
       this.gameZonesActive = false;
     }
@@ -735,7 +748,10 @@ export class DropTTTSystem extends createSystem({
       });
       this.gameActionZoneMaterials[type] = mat;
       const mesh = new Mesh(new BoxGeometry(actionZoneW, actionZoneH, zoneD), mat);
-      mesh.position.set(lx, actionLocalY, 0.12);
+      mesh.position.set(lx, actionLocalY, -0.5);
+      // Start behind panel (z=-0.5) so inactive zones never block menu button raycasts.
+      // Moved to 0.12 in startGame(), back to -0.5 in returnToMenu().
+      mesh.visible = false;
       // Pre-parent so mesh.parent != null when addComponent(Interactable) is
       // later called by startGame() — same fix as menu zones and board zones.
       panelEntity.object3D!.add(mesh);
