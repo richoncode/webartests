@@ -684,8 +684,8 @@ export class DropTTTSystem extends createSystem({
     const panelContentHeight = 99.9;
     const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 77.4, 94.4];
     const zoneW         = 0.68;
-    const zoneH         = 7.6 * scale;  // mode button height
-    const exitZoneH     = 6.0 * scale;  // exit button height
+    const zoneH         = 7.6 * 1.3 * scale;  // mode button height — 1.3× for reliable hover on real hardware
+    const exitZoneH     = 6.0 * 1.3 * scale;  // exit button height — 1.3× for reliable hover on real hardware
     const cornholeColor   = 0x22cc66;
     const railroadColor   = 0xcc8822;
     const basketballColor = 0xcc7722;
