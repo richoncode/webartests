@@ -70,6 +70,24 @@ Import `Transform` from `@iwsdk/core` to use `getVectorView`.
 
 ---
 
+## Zone Height vs Button Pitch (CRITICAL)
+
+When multiple coplanar zones sit side-by-side (same Z, adjacent Y), zone height must **match the button pitch exactly**. Not less, not more.
+
+| Height vs pitch | Effect on real hardware                                                      |
+| --------------- | ---------------------------------------------------------------------------- |
+| `h < pitch`     | Gap between zones. Ray dies in gap → hover drops. Hand tremor re-enters → **flicker**. |
+| `h = pitch`     | Zones abut exactly. One zone always covers the ray. **Stable.**              |
+| `h > pitch`     | Zones overlap. Two zones coplanar at same Z both hit → distance tied → non-deterministic winner. Tremor flips winner → **flicker between adjacent buttons.** |
+
+**Both undershoot and overshoot cause flicker, via different mechanisms.** Intuition says "bigger zones = more forgiving" — it's wrong. Overlap at identical Z is worse than a small gap because the flicker jumps between two legitimate hover targets instead of just dropping out.
+
+If you must have a safety margin, offset the zones in Z (stagger by ≥ zoneD) so the closer zone always wins the raycast. But for a simple row of buttons in a single plane, just set `h = pitch`.
+
+For the isolated Exit button (big gap above), a larger multiplier is fine — there's no neighbour to overlap with.
+
+---
+
 ## Z Position Reference
 
 | Zone type            | Inactive Z | Active Z | Notes                                     |
