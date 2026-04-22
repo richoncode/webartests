@@ -125,6 +125,10 @@ export class BasketballSystem extends createSystem({
   panel:           { required: [PanelUI, PanelDocument] },
   bballBtnHovered: { required: [BasketballButtonZone, Hovered] },
   bballBtnPressed: { required: [BasketballButtonZone, Pressed] },
+  // Diagnose hover competition: log when the screen grab handle gains/loses Hovered.
+  // The grab handle is a narrow strip on the screen's right edge — if its HOVER_ENTER
+  // timestamps correlate with zone HOVER_EXIT, the screen was stealing hover.
+  screenGrabHovered: { required: [DistanceGrabbable, Hovered] },
 }) {
   private active      = false;
   private screenMode: BballMode = 0;
@@ -144,6 +148,7 @@ export class BasketballSystem extends createSystem({
   private screenGroup: Group | null = null;          // for Z-position updates (modes A/D)
   private videoTex:   VideoTexture | null = null;    // for anisotropy (mode B) + mode D
   private screenMats: ShaderMaterial[] = [];
+  private grabHandleMat: MeshStandardMaterial | null = null; // for hover glow on grab strip
 
   // Mask texture — 1×1 white fallback until PNG loads
   private maskTex: Texture = makeFallbackMask();
@@ -216,6 +221,18 @@ export class BasketballSystem extends createSystem({
         case 3: this.setMode(3);      break;
         case 4: this.returnToMenu();  break;
       }
+    });
+
+    // Log when the screen grab handle (right-edge strip) enters/exits hover.
+    // If SCREEN_GRAB_HOVER_ENTER timestamps match zone HOVER_EXIT timestamps,
+    // the old full-screen proxy was stealing hover from the button zones.
+    this.queries.screenGrabHovered.subscribe("qualify", (entity) => {
+      bballLog("SCREEN_GRAB_HOVER_ENTER", `entity=${entity.index}`);
+      if (this.grabHandleMat) { this.grabHandleMat.opacity = 0.45; this.grabHandleMat.emissiveIntensity = 0.8; }
+    });
+    this.queries.screenGrabHovered.subscribe("disqualify", (entity) => {
+      bballLog("SCREEN_GRAB_HOVER_EXIT", `entity=${entity.index}`);
+      if (this.grabHandleMat) { this.grabHandleMat.opacity = 0.12; this.grabHandleMat.emissiveIntensity = 0.2; }
     });
 
     const activeGame = this.globals.activeGame as Signal<string> | undefined;
@@ -313,9 +330,10 @@ export class BasketballSystem extends createSystem({
     if (this.hlsInst)    { this.hlsInst.destroy();                     this.hlsInst    = null; }
     if (this.videoEl)    { this.videoEl.pause(); this.videoEl.remove(); this.videoEl    = null; }
     if (this.screenEnt)  { this.screenEnt.dispose();                   this.screenEnt  = null; }
-    this.screenGroup = null;
-    this.videoTex    = null;
-    this.screenMats  = [];
+    this.screenGroup     = null;
+    this.videoTex        = null;
+    this.screenMats      = [];
+    this.grabHandleMat   = null;
   }
 
   private returnToMenu() {
@@ -475,12 +493,33 @@ export class BasketballSystem extends createSystem({
     const rightMesh = new Mesh(geom, rightMat);
     rightMesh.layers.set(2); // right eye only
 
-    // Invisible grab proxy on the default layer (0) so the InputSystem's BVH
-    // raycaster can intersect it regardless of eye-layer configuration.
-    // leftMesh/rightMesh are on layers 1/2 (eye-specific); the proxy ensures
-    // hand pinch and controller ray both have a reliable hit surface.
-    const proxyMat = new MeshStandardMaterial({ transparent: true, opacity: 0, depthWrite: false });
-    const proxyMesh = new Mesh(new PlaneGeometry(SCREEN_W, SCREEN_H), proxyMat);
+    // Grab handle: a narrow vertical strip on the RIGHT EDGE of the screen (layer 0).
+    //
+    // The old approach used a full 4m×2.25m proxy on layer 0, which meant any ray
+    // pointing at the basketball panel buttons (at z≈-2m) would ALSO hit this proxy
+    // (at z=-3.5m). IWSDK gives Hovered to exactly ONE entity at a time, so the
+    // full-screen proxy stole Hovered from the panel zone boxes every other frame →
+    // the ~22ms hover flicker.
+    //
+    // By shrinking the grab proxy to a 0.35m wide strip at x = +SCREEN_W/2 - 0.175m
+    // (the right edge), any ray to the panel (centered at x≈0) arrives at x≈0 at
+    // z=-3.5m — well clear of x=+1.825m. No competition, stable zone hover.
+    //
+    // Users grab the screen by pointing at the glowing right-edge strip.
+    const grabHandleMat = new MeshStandardMaterial({
+      color: 0x334466,
+      emissive: 0x334466,
+      emissiveIntensity: 0.2,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+    });
+    this.grabHandleMat = grabHandleMat;
+    const proxyMesh = new Mesh(
+      new BoxGeometry(0.35, SCREEN_H, 0.06),
+      grabHandleMat,
+    );
+    proxyMesh.position.set(SCREEN_W / 2 - 0.175, 0, 0);
     // stays on layer 0 (default) — no layers.set() call
 
     const group = new Group();
