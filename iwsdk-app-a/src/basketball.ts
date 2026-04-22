@@ -291,10 +291,20 @@ export class BasketballSystem extends createSystem({
       const mesh = new Mesh(new BoxGeometry(w * scale, h * scale, zoneD), mat);
       mesh.position.set(x * scale, y * scale, localZ);
       mesh.renderOrder = 999;
+      // Start invisible — raycaster skips invisible objects, so zones won't
+      // compete with menu zones while the basketball screen is hidden.
+      // Toggled visible/invisible in startBasketball()/stopBasketball().
+      mesh.visible = false;
       panelEntity.object3D!.add(mesh);
 
+      // Add Interactable IMMEDIATELY (same call chain as createTransformEntity,
+      // before TransformSystem runs) — same pattern as menu zones in drop-ttt.ts.
+      // Deferred Interactable causes updateDescendantArrays to miss the panel
+      // ancestor, so zones register as top-level entities and lose hover priority
+      // to the panel entity's own Interactable (forwardHtmlEvents).
       const zoneEntity = this.world.createTransformEntity(mesh, panelEntity)
-        .addComponent(BasketballButtonZone, { actionType: action });
+        .addComponent(BasketballButtonZone, { actionType: action })
+        .addComponent(Interactable);
       this.bballBtnZoneEntities.push(zoneEntity);
     }
   }
@@ -308,7 +318,7 @@ export class BasketballSystem extends createSystem({
     this.refreshModeBtnStyles();
 
     for (const e of this.bballBtnZoneEntities) {
-      if (!e.hasComponent(Interactable)) e.addComponent(Interactable);
+      if (e.object3D) e.object3D.visible = true;
     }
 
     this.createStereoScreen();
@@ -319,7 +329,7 @@ export class BasketballSystem extends createSystem({
     this.active = false;
 
     for (const e of this.bballBtnZoneEntities) {
-      if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+      if (e.object3D) e.object3D.visible = false;
     }
 
     this.bballUI?.screen.setProperties({ display: "none" });
