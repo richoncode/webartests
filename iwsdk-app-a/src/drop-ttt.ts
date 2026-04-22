@@ -383,6 +383,11 @@ export class DropTTTSystem extends createSystem({
       obj.rotation.y = Math.atan2(dx, dz);
       obj.rotation.x = -Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
       obj.rotation.z = 0;
+      // Force children (zone boxes) to recompute matrixWorld now, before the
+      // InputSystem reads them. Without this, Three.js marks children dirty but
+      // defers the computation → InputSystem reads stale matrixWorld → 1-frame
+      // BVH lag → hover flicker on small zones like the basketball buttons.
+      obj.updateWorldMatrix(false, true);
     }
 
     if (!this.gameActive) return;
