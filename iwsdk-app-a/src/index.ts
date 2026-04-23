@@ -29,6 +29,7 @@ import { DropTTTSystem } from "./drop-ttt.js";
 import { CornholeSystem } from "./cornhole.js";
 import { RailroadSystem } from "./railroad.js";
 import { BasketballSystem } from "./basketball.js";
+import { TablePuttSystem } from "./table-putt-lab.js";
 
 import { signal } from "@preact/signals-core";
 
@@ -132,7 +133,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
   (world.globals as Record<string, unknown>).activeGame = signal<string>("menu");
 
-  world.registerSystem(RobotSystem).registerSystem(DropTTTSystem).registerSystem(CornholeSystem).registerSystem(RailroadSystem).registerSystem(BasketballSystem);
+  world.registerSystem(RobotSystem).registerSystem(DropTTTSystem).registerSystem(CornholeSystem).registerSystem(RailroadSystem).registerSystem(BasketballSystem).registerSystem(TablePuttSystem);
 
   // Auto-enter XR when the IWER emulator is active (desktop/emulated sessions).
   // Skipped on real Quest browsers where IWER is not injected and requestSession

@@ -158,10 +158,11 @@ export class DropTTTSystem extends createSystem({
   private menuZoneMaterials: MeshStandardMaterial[] = [];
   private gameActionZoneEntities: Entity[] = [];
   private gameActionZoneMaterials: MeshStandardMaterial[] = [];
-  private gameZonesActive  = false;
-  private cornholeActive   = false;
-  private railroadActive   = false;
-  private basketballActive = false;
+  private gameZonesActive    = false;
+  private cornholeActive     = false;
+  private railroadActive     = false;
+  private basketballActive   = false;
+  private tablePuttLabActive = false;
   private panelEnt: Entity | null = null;
 
   // Scratch vectors for panel billboard — pre-allocated to avoid GC in update()
@@ -183,7 +184,7 @@ export class DropTTTSystem extends createSystem({
   init() {
     // Panel entity lives for the whole session
     const panelEntity = this.world.createTransformEntity()
-      .addComponent(PanelUI, { config: PANEL_CONFIG, maxWidth: 0.76, maxHeight: 1.1 })
+      .addComponent(PanelUI, { config: PANEL_CONFIG, maxWidth: 0.76, maxHeight: 1.2 })
       .addComponent(Interactable)
       .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget });
     panelEntity.object3D!.position.set(BOARD_X, 1.3, BOARD_Z);
@@ -219,6 +220,8 @@ export class DropTTTSystem extends createSystem({
         ?.addEventListener("click", () => this.launchRailroad());
       (doc.getElementById("mode-7") as UIKit.Text)
         ?.addEventListener("click", () => this.launchBasketball());
+      (doc.getElementById("mode-8") as UIKit.Text)
+        ?.addEventListener("click", () => this.launchTablePuttLab());
       (doc.getElementById("qr-btn") as UIKit.Text)
         ?.addEventListener("click", () => {
           const w = window as unknown as Record<string, unknown>;
@@ -303,10 +306,13 @@ export class DropTTTSystem extends createSystem({
 
     // Menu mode selection + exit
     this.queries.menuPressed.subscribe("qualify", (entity) => {
-      if (this.gameActive || this.cornholeActive || this.railroadActive || this.basketballActive) return;
+      if (this.gameActive || this.cornholeActive || this.railroadActive
+          || this.basketballActive || this.tablePuttLabActive) return;
       const idx = entity.getValue(MenuButton, "modeIndex") as number;
-      if (idx === GAME_MODES.length + 3) {          // Exit
+      if (idx === GAME_MODES.length + 4) {          // Exit
         this.world.exitXR();
+      } else if (idx === GAME_MODES.length + 3) {   // Table Putt Lab
+        this.launchTablePuttLab();
       } else if (idx === GAME_MODES.length + 2) {   // Basketball
         this.launchBasketball();
       } else if (idx === GAME_MODES.length + 1) {   // Railroad
@@ -323,10 +329,12 @@ export class DropTTTSystem extends createSystem({
     if (activeGame) {
       this.cleanupFuncs.push(
         activeGame.subscribe((game) => {
-          if (game === "menu" && (this.cornholeActive || this.railroadActive || this.basketballActive)) {
-            this.cornholeActive   = false;
-            this.railroadActive   = false;
-            this.basketballActive = false;
+          if (game === "menu" && (this.cornholeActive || this.railroadActive
+              || this.basketballActive || this.tablePuttLabActive)) {
+            this.cornholeActive     = false;
+            this.railroadActive     = false;
+            this.basketballActive   = false;
+            this.tablePuttLabActive = false;
             if (this.gameZonesActive) {
               for (const e of this.gameActionZoneEntities) e.removeComponent(Interactable);
               this.gameZonesActive = false;
@@ -514,6 +522,17 @@ export class DropTTTSystem extends createSystem({
     if (activeGame) activeGame.value = "basketball";
   }
 
+  private launchTablePuttLab() {
+    if (!this.ui) return;
+    this.tablePuttLabActive = true;
+    for (const e of this.menuZoneEntities) {
+      if (e.hasComponent(Interactable)) e.removeComponent(Interactable);
+    }
+    this.ui.menuScreen.setProperties({ display: "none" });
+    const activeGame = this.globals.activeGame as Signal<string> | undefined;
+    if (activeGame) activeGame.value = "table-putt-lab";
+  }
+
   // ── Mode setup ──────────────────────────────────────────────────────────────
 
   private setMode(mode: GameMode) {
@@ -676,34 +695,39 @@ export class DropTTTSystem extends createSystem({
 
     // ── Menu mode buttons + Exit button ──
     // Layout (UIKit units from panel top → button center):
-    //  idx 0-4  game modes:  15.8, 24.6, 33.4, 42.2, 51.0
-    //  idx 5    Cornhole:    59.8
-    //  idx 6    Railroad:    68.6
-    //  idx 7    Basketball:  77.4  (mode-7, same 8.8-unit pitch)
-    //  idx 8    Exit:        94.4  (mt:2, qr-btn 6u, mt:1, exit-btn center)
-    const panelContentHeight = 99.9;
-    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 77.4, 94.4];
+    //  idx 0-4  game modes:     15.8, 24.6, 33.4, 42.2, 51.0
+    //  idx 5    Cornhole:       59.8
+    //  idx 6    Railroad:       68.6
+    //  idx 7    Basketball:     77.4
+    //  idx 8    Table Putt Lab: 86.2  (same 8.8-unit pitch as other mode buttons)
+    //  idx 9    Exit:           103.2 (mt:2, qr-btn 6u, mt:1, exit-btn center; shifted +8.8)
+    // panelContentHeight grows by 8.8 (one extra mode-btn row) vs the original 99.9.
+    const panelContentHeight = 108.7;
+    const buttonOffsets = [15.8, 24.6, 33.4, 42.2, 51.0, 59.8, 68.6, 77.4, 86.2, 103.2];
     const zoneW         = 0.68;
     // zoneH = full pitch (8.8u) so adjacent buttons abut with zero gap AND zero overlap.
     // Overlap → two zones hit the ray at identical Z, non-deterministic winner, tremor flicker.
     // Gap    → ray dies between buttons, hover drops and re-enters on tremor.
     const zoneH         = 8.8 * scale;        // mode buttons — exactly the 8.8u row pitch
     const exitZoneH     = 6.0 * 1.2 * scale;  // exit button — isolated row, slight pad OK
-    const cornholeColor   = 0x22cc66;
-    const railroadColor   = 0xcc8822;
-    const basketballColor = 0xcc7722;
+    const cornholeColor      = 0x22cc66;
+    const railroadColor      = 0xcc8822;
+    const basketballColor    = 0xcc7722;
+    const tablePuttLabColor  = 0x4ade80;
 
-    for (let i = 0; i <= GAME_MODES.length + 3; i++) {
-      const isExit       = i === GAME_MODES.length + 3;
-      const isBasketball = i === GAME_MODES.length + 2;
-      const isRailroad   = i === GAME_MODES.length + 1;
-      const isCornhole   = i === GAME_MODES.length;
+    for (let i = 0; i <= GAME_MODES.length + 4; i++) {
+      const isExit          = i === GAME_MODES.length + 4;
+      const isTablePuttLab  = i === GAME_MODES.length + 3;
+      const isBasketball    = i === GAME_MODES.length + 2;
+      const isRailroad      = i === GAME_MODES.length + 1;
+      const isCornhole      = i === GAME_MODES.length;
       const localY = (panelContentHeight / 2 - buttonOffsets[i]) * scale;
       const height = isExit ? exitZoneH : zoneH;
-      const color  = isExit       ? 0x555555
-                   : isBasketball ? basketballColor
-                   : isRailroad   ? railroadColor
-                   : isCornhole   ? cornholeColor
+      const color  = isExit          ? 0x555555
+                   : isTablePuttLab  ? tablePuttLabColor
+                   : isBasketball    ? basketballColor
+                   : isRailroad      ? railroadColor
+                   : isCornhole      ? cornholeColor
                    : 0x22aaff;
 
       const mat = new MeshStandardMaterial({
