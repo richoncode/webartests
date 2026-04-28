@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepScan Voxel Explorer — Subsurface Density Tomography</title>
+  <link rel="stylesheet" href="../shared/css/main.css">
+  <style>
+    body {
+      padding: 0;
+      overflow: hidden;
+      height: 100vh;
+    }
+    #app {
+      position: fixed;
+      inset: 0;
+      display: flex;
+    }
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(ellipse at center, #14181f 0%, #07080b 80%);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .back {
+      position: absolute;
+      top: 16px;
+      left: 20px;
+      z-index: 10;
+      color: #555;
+      font-size: 14px;
+      text-decoration: none;
+      letter-spacing: 0.01em;
+    }
+    .back:hover { color: #aaa; }
+
+    .scene-title {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      color: #aaa;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    .scene-title strong { color: #fff; font-weight: 600; }
+
+    .stats {
+      position: absolute;
+      bottom: 16px;
+      left: 20px;
+      z-index: 10;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #555;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+    }
+    .stats span { color: #888; }
+
+    #sidebar {
+      width: 320px;
+      background: var(--card);
+      border-left: 1px solid var(--border);
+      padding: 32px 24px 80px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    #sidebar h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    #sidebar .tagline {
+      font-size: 12px;
+      color: #777;
+      margin-bottom: 28px;
+      line-height: 1.55;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: 16px 1fr 60px;
+      align-items: center;
+      gap: 8px 10px;
+      margin-bottom: 22px;
+      font-size: 12px;
+      color: #ccc;
+    }
+    .legend .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+    }
+    .legend .range {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: #777;
+      text-align: right;
+      letter-spacing: 0.04em;
+    }
+
+    .control { margin-bottom: 20px; }
+    .control .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .control label {
+      font-size: 11.5px;
+      color: #aaa;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+    .control output {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #5b9bd5;
+      letter-spacing: 0.02em;
+    }
+    .control .hint {
+      font-size: 11px;
+      color: #5a5a5a;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    input[type=range] {
+      width: 100%;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      height: 22px;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 3px;
+      background: #2a2a2a;
+      border-radius: 2px;
+    }
+    input[type=range]::-moz-range-track {
+      height: 3px;
+      background: #2a2a2a;
+      border-radius: 2px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: #5b9bd5;
+      border-radius: 50%;
+      margin-top: -5.5px;
+      border: 2px solid #0d0d0d;
+      box-shadow: 0 0 0 1px #5b9bd5;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: #5b9bd5;
+      border-radius: 50%;
+      border: 2px solid #0d0d0d;
+      box-shadow: 0 0 0 1px #5b9bd5;
+    }
+
+    .clip-grid {
+      display: grid;
+      grid-template-columns: 14px 1fr 1fr;
+      gap: 6px 10px;
+      align-items: center;
+      margin-top: 6px;
+    }
+    .clip-grid .axis {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #888;
+      letter-spacing: 0.04em;
+    }
+
+    .timeline-toggle {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .timeline-toggle button {
+      flex: 1;
+      background: #18181b;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      padding: 8px 10px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      font-family: var(--font-sans);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .timeline-toggle button:hover {
+      border-color: #444;
+      color: #ccc;
+    }
+    .timeline-toggle button.active {
+      background: #1a2a3a;
+      border-color: #5b9bd5;
+      color: #5b9bd5;
+    }
+
+    section.panel {
+      padding: 16px 0;
+      border-top: 1px solid #1a1a1a;
+    }
+    section.panel:first-of-type { border-top: none; padding-top: 0; }
+    section.panel h3 {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      color: #5a5a5a;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      font-weight: 600;
+    }
+
+    .infra-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #aaa;
+      cursor: pointer;
+    }
+    .infra-toggle input { accent-color: #5b9bd5; cursor: pointer; }
+
+    @media (max-width: 720px) {
+      #app { flex-direction: column; }
+      #sidebar { width: 100%; height: 50vh; border-left: none; border-top: 1px solid var(--border); }
+      #canvas-wrap { height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-wrap">
+      <a href="../" class="back">← Back</a>
+      <div class="scene-title"><strong>DeepScan</strong> Voxel Explorer · Volumetric Density Probe</div>
+      <div class="stats">
+        VOLUME <span id="stat-grid">64³</span> ·
+        STEPS <span id="stat-steps">96</span> ·
+        FPS <span id="stat-fps">—</span>
+      </div>
+    </div>
+
+    <aside id="sidebar">
+      <h2>Subsurface Intelligence</h2>
+      <p class="tagline">Real-time GPU raymarching of a synthetic borehole density volume. Adjust thresholds and clipping to isolate anomalies.</p>
+
+      <section class="panel">
+        <h3>Density Legend</h3>
+        <div class="legend">
+          <div class="swatch" style="background:#e5311e"></div>
+          <div>High-density target</div>
+          <div class="range">&gt; 4.0</div>
+
+          <div class="swatch" style="background:#3b73c7"></div>
+          <div>Host rock</div>
+          <div class="range">1.0 – 4.0</div>
+
+          <div class="swatch" style="background:#ddd; opacity:0.35"></div>
+          <div>Void / cavity</div>
+          <div class="range">&lt; 1.0</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Density Filter</h3>
+        <div class="control">
+          <div class="row">
+            <label for="threshold">Anomaly threshold</label>
+            <output id="threshold-out">0.50 g/cm³</output>
+          </div>
+          <input id="threshold" type="range" min="0" max="6" step="0.05" value="0.5">
+          <div class="hint">Voxels below this density are treated as transparent.</div>
+        </div>
+
+        <div class="control">
+          <div class="row">
+            <label for="opacity">Translucency</label>
+            <output id="opacity-out">1.00×</output>
+          </div>
+          <input id="opacity" type="range" min="0.2" max="3.0" step="0.05" value="1.0">
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Volumetric Clipping</h3>
+        <div class="clip-grid">
+          <div class="axis">X</div>
+          <input id="clip-x-min" type="range" min="0" max="1" step="0.01" value="0">
+          <input id="clip-x-max" type="range" min="0" max="1" step="0.01" value="1">
+
+          <div class="axis">Y</div>
+          <input id="clip-y-min" type="range" min="0" max="1" step="0.01" value="0">
+          <input id="clip-y-max" type="range" min="0" max="1" step="0.01" value="1">
+
+          <div class="axis">Z</div>
+          <input id="clip-z-min" type="range" min="0" max="1" step="0.01" value="0">
+          <input id="clip-z-max" type="range" min="0" max="1" step="0.01" value="1">
+        </div>
+        <div class="hint" style="margin-top:8px">Drag any pair to slice through the block.</div>
+      </section>
+
+      <section class="panel">
+        <h3>4D Time-Lapse</h3>
+        <div class="control">
+          <div class="row">
+            <label for="time">Timestep</label>
+            <output id="time-out">t₀ — baseline</output>
+          </div>
+          <input id="time" type="range" min="0" max="1" step="0.01" value="0">
+          <div class="timeline-toggle">
+            <button id="t-zero" class="active">t₀ baseline</button>
+            <button id="t-one">t₁ progression</button>
+          </div>
+          <div class="hint">Cavity migrates upward across the timestep — simulating cave-roof advance.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Acquisition Infrastructure</h3>
+        <label class="infra-toggle">
+          <input id="show-strings" type="checkbox" checked>
+          Data acquisition strings
+        </label>
+        <label class="infra-toggle">
+          <input id="show-sensors" type="checkbox" checked>
+          Subsurface sensors
+        </label>
+        <label class="infra-toggle">
+          <input id="show-trajectories" type="checkbox" checked>
+          Trajectory vectors
+        </label>
+        <label class="infra-toggle">
+          <input id="show-volume" type="checkbox" checked>
+          Volume render
+        </label>
+      </section>
+    </aside>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ── Constants ──────────────────────────────────────────────────────────
+    const GRID = 64;                  // voxels per side
+    const RAYMARCH_STEPS = 96;
+    const VOLUME_SIZE = 4.0;          // world-space side length of the volume cube
+    const HALF = VOLUME_SIZE * 0.5;
+
+    // ── Canvas / renderer ──────────────────────────────────────────────────
+    const wrap = document.getElementById('canvas-wrap');
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x0a0c10, 1);
+    wrap.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.set(6, 4.5, 7.5);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.target.set(0, 0, 0);
+
+    // ── Synthetic density datasets (two timesteps) ─────────────────────────
+    // We build a 64³ float grid representing g/cm³.
+    // Base host rock ≈ 2.5 g/cm³ with low-frequency variation.
+    // High-density target: irregular gaussian "blob" around centre.
+    // Low-density void:    gaussian below the blob; in t₁ it has migrated upward.
+    function buildDensityVolume({ voidCenterY }) {
+      const data = new Float32Array(GRID * GRID * GRID);
+      // Some pseudo-random hash for blob deformation — deterministic across calls.
+      const noise = (x, y, z) =>
+        Math.sin(x * 0.31 + y * 0.17) * 0.5 +
+        Math.cos(y * 0.21 - z * 0.13) * 0.5 +
+        Math.sin((x + z) * 0.09) * 0.5;
+
+      const blobCx = 32, blobCy = 32, blobCz = 32;
+      const blobR  = 11.0;
+
+      const voidCx = 32, voidCy = voidCenterY, voidCz = 32;
+      const voidR  = 9.0;
+
+      for (let z = 0; z < GRID; z++) {
+        for (let y = 0; y < GRID; y++) {
+          for (let x = 0; x < GRID; x++) {
+            const idx = x + y * GRID + z * GRID * GRID;
+            // Host rock with mild noise
+            let densityVolume = 2.5 + 0.35 * noise(x, y, z);
+
+            // ── Irregular high-density target ───────────────────────────
+            // Squash the blob along Y a bit and deform with low-freq noise.
+            const dx = (x - blobCx);
+            const dy = (y - blobCy) * 1.15;
+            const dz = (z - blobCz);
+            const baseR = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            // Irregularity: shrink/grow effective radius by up to ±25%
+            const wobble = 1.0 + 0.25 * Math.sin(dx * 0.5) * Math.cos(dz * 0.4);
+            const r = baseR / (blobR * wobble);
+            if (r < 1.0) {
+              // Soft falloff from peak ~6.2 g/cm³ down to host rock
+              const t = 1.0 - r * r;
+              densityVolume += 4.2 * t * t;
+            }
+
+            // ── Low-density void (cavity) ───────────────────────────────
+            const vx = (x - voidCx) / voidR;
+            const vy = (y - voidCy) / (voidR * 0.7);
+            const vz = (z - voidCz) / voidR;
+            const vr2 = vx*vx + vy*vy + vz*vz;
+            const wobV = 1.0 + 0.15 * Math.sin(vx * 4.0 + vz * 3.0);
+            if (vr2 / (wobV * wobV) < 1.0) {
+              // Soft erosion — densities drop toward zero in the cavity centre.
+              const fall = 1.0 - vr2 / (wobV * wobV);
+              const drop = Math.min(1.0, fall * 1.4);
+              densityVolume *= (1.0 - drop * 0.95);
+            }
+
+            data[idx] = densityVolume;
+          }
+        }
+      }
+      return data;
+    }
+
+    const volumeT0 = buildDensityVolume({ voidCenterY: 14 });   // baseline: void low
+    const volumeT1 = buildDensityVolume({ voidCenterY: 38 });   // progression: void migrated up
+
+    function makeVolumeTexture(data) {
+      const tex = new THREE.Data3DTexture(data, GRID, GRID, GRID);
+      tex.format = THREE.RedFormat;
+      tex.type = THREE.FloatType;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.unpackAlignment = 1;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    const texA = makeVolumeTexture(volumeT0);
+    const texB = makeVolumeTexture(volumeT1);
+
+    // ── Volume rendering material (custom GLSL raymarcher) ─────────────────
+    const volumeUniforms = {
+      uVolumeA:          { value: texA },
+      uVolumeB:          { value: texB },
+      uTimeBlend:        { value: 0.0 },
+      uAnomalyThreshold: { value: 0.5 },
+      uOpacityScale:     { value: 1.0 },
+      uClipMin:          { value: new THREE.Vector3(0, 0, 0) },
+      uClipMax:          { value: new THREE.Vector3(1, 1, 1) },
+      uCameraLocal:      { value: new THREE.Vector3() },
+    };
+
+    const volumeMaterial = new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      uniforms: volumeUniforms,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+      vertexShader: /* glsl */`
+        out vec3 vLocalPos;
+        void main() {
+          vLocalPos = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        precision highp sampler3D;
+
+        in vec3 vLocalPos;
+        out vec4 fragColor;
+
+        uniform sampler3D uVolumeA;
+        uniform sampler3D uVolumeB;
+        uniform float uTimeBlend;
+        uniform float uAnomalyThreshold;
+        uniform float uOpacityScale;
+        uniform vec3  uClipMin;
+        uniform vec3  uClipMax;
+        uniform vec3  uCameraLocal;
+
+        // Slab-based AABB intersection (returns near/far t along ro+rd*t).
+        vec2 intersectAABB(vec3 ro, vec3 rd, vec3 mn, vec3 mx) {
+          vec3 inv = 1.0 / rd;
+          vec3 t1 = (mn - ro) * inv;
+          vec3 t2 = (mx - ro) * inv;
+          vec3 tmin = min(t1, t2);
+          vec3 tmax = max(t1, t2);
+          return vec2(max(max(tmin.x, tmin.y), tmin.z),
+                      min(min(tmax.x, tmax.y), tmax.z));
+        }
+
+        // Density → RGB + per-step alpha contribution.
+        // High-density (>4) maps to opaque red; mid-density to translucent blue;
+        // low-density (<1) to a faint white "ghost".
+        vec4 transferFunction(float d) {
+          if (d > 4.0) {
+            float t = clamp((d - 4.0) / 2.0, 0.0, 1.0);
+            return vec4(0.92, 0.18 + 0.10 * t, 0.10, 0.95);
+          }
+          if (d > 1.0) {
+            float t = (d - 1.0) / 3.0;
+            return vec4(0.20, 0.42 + 0.18 * t, 0.85, 0.18 * (0.4 + 0.6 * t));
+          }
+          // Void / sub-rock — barely visible, "ghost" hint.
+          return vec4(1.0, 1.0, 1.0, 0.025);
+        }
+
+        void main() {
+          vec3 boxMin = vec3(-0.5);
+          vec3 boxMax = vec3( 0.5);
+          vec3 ro = uCameraLocal;
+          vec3 rd = normalize(vLocalPos - ro);
+
+          vec2 hit = intersectAABB(ro, rd, boxMin, boxMax);
+          float tStart = max(hit.x, 0.0);
+          float tEnd   = distance(ro, vLocalPos);
+          if (tStart >= tEnd) discard;
+
+          // Clip box in box-local coordinates: uClip is in [0,1], box in [-0.5, 0.5].
+          vec3 clipMnL = uClipMin - 0.5;
+          vec3 clipMxL = uClipMax - 0.5;
+
+          const int STEPS = ${RAYMARCH_STEPS};
+          float dt = (tEnd - tStart) / float(STEPS);
+          // Per-step alpha needs to scale with step length so the same volume
+          // renders consistently regardless of camera distance through the box.
+          float alphaScale = dt * uOpacityScale * 64.0;
+
+          vec3 colour = vec3(0.0);
+          float alpha = 0.0;
+
+          for (int i = 0; i < STEPS; i++) {
+            if (alpha >= 0.985) break;
+            float ti = tStart + dt * (float(i) + 0.5);
+            vec3 p = ro + rd * ti;
+
+            // User clip
+            if (any(lessThan(p, clipMnL)) || any(greaterThan(p, clipMxL))) continue;
+
+            vec3 uvw = p + 0.5;
+            float dA = texture(uVolumeA, uvw).r;
+            float dB = texture(uVolumeB, uvw).r;
+            float d  = mix(dA, dB, uTimeBlend);
+
+            if (d < uAnomalyThreshold) continue;
+
+            vec4 sampleCol = transferFunction(d);
+            float a = clamp(sampleCol.a * alphaScale, 0.0, 1.0);
+
+            colour += (1.0 - alpha) * sampleCol.rgb * a;
+            alpha  += (1.0 - alpha) * a;
+          }
+
+          if (alpha < 0.01) discard;
+          fragColor = vec4(colour, alpha);
+        }
+      `,
+    });
+
+    // Unit-cube geometry so the fragment shader's [-0.5, 0.5] bounds line up
+    // with vLocalPos. The mesh is scaled to VOLUME_SIZE in world space.
+    const volumeMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      volumeMaterial,
+    );
+    volumeMesh.scale.setScalar(VOLUME_SIZE);
+    scene.add(volumeMesh);
+
+    // Outline wireframe around the volume — gives a sense of the bounding cube.
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color: 0x2a3a4a, transparent: true, opacity: 0.6 }),
+    );
+    outline.scale.setScalar(VOLUME_SIZE);
+    scene.add(outline);
+
+    // ── Boreholes / sensors / trajectory vectors ───────────────────────────
+    // Strings descend through the volume at fixed XZ positions.
+    const boreholeString = new THREE.Group();
+    const sensorGroup    = new THREE.Group();
+    const trajectoryGroup = new THREE.Group();
+    scene.add(boreholeString, sensorGroup, trajectoryGroup);
+
+    const boreholePositions = [
+      [-1.4,  1.4],
+      [ 1.4,  1.4],
+      [-1.4, -1.4],
+      [ 1.4, -1.4],
+      [ 0.0,  0.0],   // central string
+    ];
+
+    // Strings: thin vertical cylinders running just past the volume top/bottom.
+    const stringMat = new THREE.MeshBasicMaterial({ color: 0x556677 });
+    const stringGeom = new THREE.CylinderGeometry(0.018, 0.018, VOLUME_SIZE + 1.2, 8, 1);
+    for (const [sx, sz] of boreholePositions) {
+      const m = new THREE.Mesh(stringGeom, stringMat);
+      m.position.set(sx, 0, sz);
+      boreholeString.add(m);
+    }
+
+    // Sensors: small blue spheres at fixed Y intervals along each string.
+    const sensorMat = new THREE.MeshBasicMaterial({ color: 0x5b9bd5 });
+    const sensorGeom = new THREE.SphereGeometry(0.075, 14, 10);
+    const sensorYLevels = [-1.6, -0.8, 0, 0.8, 1.6];
+    const sensorPoints = []; // for trajectory line construction
+    for (const [sx, sz] of boreholePositions) {
+      for (const sy of sensorYLevels) {
+        const m = new THREE.Mesh(sensorGeom, sensorMat);
+        m.position.set(sx, sy, sz);
+        sensorGroup.add(m);
+        sensorPoints.push(new THREE.Vector3(sx, sy, sz));
+      }
+    }
+
+    // Trajectory vectors: straight-line rays from each sensor pointing upward
+    // and outward — simulating the integration paths used to reconstruct the
+    // density grid (one path per timeStep in a real acquisition pipeline).
+    {
+      const positions = [];
+      const colors = [];
+      const RAYS_PER_SENSOR = 4;
+      const TRAJECTORY_LEN = 5.5;
+      for (const p of sensorPoints) {
+        for (let r = 0; r < RAYS_PER_SENSOR; r++) {
+          // Pseudo-random direction biased upward (cosmic-ray-like).
+          const theta = Math.PI * (r / RAYS_PER_SENSOR) + p.x * 0.7 + p.z * 0.3;
+          const phi   = 0.55 + 0.35 * Math.sin(p.y * 1.3 + r);
+          const dir = new THREE.Vector3(
+            Math.sin(phi) * Math.cos(theta),
+            Math.cos(phi),
+            Math.sin(phi) * Math.sin(theta),
+          );
+          const end = p.clone().addScaledVector(dir, TRAJECTORY_LEN);
+          positions.push(p.x, p.y, p.z, end.x, end.y, end.z);
+          // Faint cyan, dimmer at the far end.
+          colors.push(0.38, 0.65, 0.9, 0.06, 0.10, 0.18);
+        }
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      const mat = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.7,
+      });
+      const lines = new THREE.LineSegments(geom, mat);
+      trajectoryGroup.add(lines);
+    }
+
+    // ── Floor grid (orientation aid) ────────────────────────────────────────
+    const grid = new THREE.GridHelper(10, 20, 0x222222, 0x161616);
+    grid.position.y = -HALF - 0.05;
+    scene.add(grid);
+
+    // ── Lights — used only for sensor spheres / minor highlights. The volume
+    // is a custom shader and ignores scene lights. ──────────────────────────
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+    // ── UI bindings ────────────────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+
+    function bindRange(id, outId, format, onInput) {
+      const el = $(id);
+      const out = $(outId);
+      const update = () => {
+        const v = parseFloat(el.value);
+        if (out) out.textContent = format(v);
+        onInput(v);
+      };
+      el.addEventListener('input', update);
+      update();
+      return el;
+    }
+
+    bindRange('threshold', 'threshold-out', v => v.toFixed(2) + ' g/cm³', v => {
+      volumeUniforms.uAnomalyThreshold.value = v;
+    });
+
+    bindRange('opacity', 'opacity-out', v => v.toFixed(2) + '×', v => {
+      volumeUniforms.uOpacityScale.value = v;
+    });
+
+    function bindClip(axisIdx, idMin, idMax) {
+      const a = $(idMin);
+      const b = $(idMax);
+      const apply = () => {
+        let lo = parseFloat(a.value);
+        let hi = parseFloat(b.value);
+        // Keep min < max with a small gap so the volume never fully degenerates.
+        if (lo > hi - 0.02) {
+          if (a === document.activeElement) lo = hi - 0.02;
+          else hi = lo + 0.02;
+          a.value = String(lo);
+          b.value = String(hi);
+        }
+        volumeUniforms.uClipMin.value.setComponent(axisIdx, lo);
+        volumeUniforms.uClipMax.value.setComponent(axisIdx, hi);
+      };
+      a.addEventListener('input', apply);
+      b.addEventListener('input', apply);
+      apply();
+    }
+    bindClip(0, 'clip-x-min', 'clip-x-max');
+    bindClip(1, 'clip-y-min', 'clip-y-max');
+    bindClip(2, 'clip-z-min', 'clip-z-max');
+
+    const timeSlider = $('time');
+    const timeOut    = $('time-out');
+    const tZeroBtn   = $('t-zero');
+    const tOneBtn    = $('t-one');
+    function timeLabel(v) {
+      if (v < 0.01) return 't₀ — baseline';
+      if (v > 0.99) return 't₁ — progression';
+      return 'transition · ' + (v * 100).toFixed(0) + '%';
+    }
+    function applyTime(v) {
+      volumeUniforms.uTimeBlend.value = v;
+      timeOut.textContent = timeLabel(v);
+      tZeroBtn.classList.toggle('active', v < 0.5);
+      tOneBtn.classList.toggle('active', v >= 0.5);
+    }
+    timeSlider.addEventListener('input', () => applyTime(parseFloat(timeSlider.value)));
+    tZeroBtn.addEventListener('click', () => { timeSlider.value = '0'; applyTime(0); });
+    tOneBtn.addEventListener('click',  () => { timeSlider.value = '1'; applyTime(1); });
+    applyTime(parseFloat(timeSlider.value));
+
+    $('show-strings').addEventListener('change', e =>     boreholeString.visible  = e.target.checked);
+    $('show-sensors').addEventListener('change', e =>     sensorGroup.visible     = e.target.checked);
+    $('show-trajectories').addEventListener('change', e => trajectoryGroup.visible = e.target.checked);
+    $('show-volume').addEventListener('change', e =>      volumeMesh.visible      = e.target.checked);
+
+    // ── Resize ──────────────────────────────────────────────────────────────
+    function resize() {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ── FPS counter ─────────────────────────────────────────────────────────
+    const fpsEl = $('stat-fps');
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+    $('stat-grid').textContent  = `${GRID}³`;
+    $('stat-steps').textContent = String(RAYMARCH_STEPS);
+
+    // ── Render loop ─────────────────────────────────────────────────────────
+    function tick() {
+      controls.update();
+
+      // Volume sits at origin with uniform scale → world→local is just
+      // a scalar divide. Avoids per-frame matrix invert.
+      volumeUniforms.uCameraLocal.value
+        .copy(camera.position)
+        .divideScalar(VOLUME_SIZE);
+
+      renderer.render(scene, camera);
+
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 500) {
+        const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        fpsEl.textContent = String(fps);
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
