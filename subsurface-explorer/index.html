@@ -240,6 +240,106 @@
     }
     .infra-toggle input { accent-color: #5b9bd5; cursor: pointer; }
 
+    /* ── Dataset toggle ───────────────────────────────────────── */
+    .dataset-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .dataset-toggle button {
+      background: #18181b;
+      border: none;
+      border-right: 1px solid #2a2a2a;
+      color: #888;
+      padding: 10px 8px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .dataset-toggle button:last-child { border-right: none; }
+    .dataset-toggle button:hover { color: #ccc; }
+    .dataset-toggle button.active {
+      background: #1a2a3a;
+      color: #5b9bd5;
+    }
+    .dataset-meta {
+      font-size: 10.5px;
+      color: #6a6a6a;
+      line-height: 1.5;
+      margin-top: 4px;
+      letter-spacing: 0.02em;
+    }
+    .dataset-meta .source {
+      font-family: var(--font-mono);
+      color: #888;
+    }
+    .dataset-meta .caveat {
+      color: #c97a2b;
+      margin-top: 6px;
+      font-style: italic;
+    }
+
+    .dataset-badge {
+      position: absolute;
+      top: 14px;
+      right: 24px;
+      z-index: 10;
+      padding: 5px 12px;
+      background: rgba(20, 30, 45, 0.78);
+      border: 1px solid #2a3a4a;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.12em;
+      color: #5b9bd5;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    .dataset-badge.synthetic {
+      color: #777;
+      border-color: #2a2a2a;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      background: rgba(8, 10, 14, 0.78);
+      backdrop-filter: blur(2px);
+      color: #aaa;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .loading-overlay .pulse {
+      width: 32px;
+      height: 32px;
+      border: 2px solid #2a3a4a;
+      border-top-color: #5b9bd5;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    .loading-overlay .step {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #666;
+      letter-spacing: 0.06em;
+      text-transform: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     @media (max-width: 720px) {
       #app { flex-direction: column; }
       #sidebar { width: 100%; height: 50vh; border-left: none; border-top: 1px solid var(--border); }
@@ -252,6 +352,12 @@
     <div id="canvas-wrap">
       <a href="../" class="back">← Back</a>
       <div class="scene-title"><strong>DeepScan</strong> Voxel Explorer · Volumetric Density Probe</div>
+      <div id="dataset-badge" class="dataset-badge synthetic">Synthetic Voxel Field</div>
+      <div id="loading-overlay" class="loading-overlay" hidden>
+        <div class="pulse"></div>
+        <div>Loading Bingham Canyon</div>
+        <div id="loading-step" class="step">fetching elevation tiles…</div>
+      </div>
       <div class="stats">
         VOLUME <span id="stat-grid">64³</span> ·
         STEPS <span id="stat-steps">96</span> ·
@@ -261,7 +367,16 @@
 
     <aside id="sidebar">
       <h2>Subsurface Intelligence</h2>
-      <p class="tagline">Real-time GPU raymarching of a synthetic borehole density volume. Adjust thresholds and clipping to isolate anomalies.</p>
+      <p class="tagline">Real-time GPU raymarching over a borehole density volume. Adjust thresholds and clipping to isolate anomalies.</p>
+
+      <section class="panel">
+        <h3>Dataset</h3>
+        <div class="dataset-toggle">
+          <button data-mode="synthetic" class="active" id="ds-synth">Synthetic</button>
+          <button data-mode="bingham" id="ds-real">Bingham Canyon</button>
+        </div>
+        <div id="dataset-meta" class="dataset-meta"></div>
+      </section>
 
       <section class="panel">
         <h3>Density Legend</h3>
@@ -330,7 +445,7 @@
             <button id="t-zero" class="active">t₀ baseline</button>
             <button id="t-one">t₁ progression</button>
           </div>
-          <div class="hint">Cavity migrates upward across the timestep — simulating cave-roof advance.</div>
+          <div id="time-hint" class="hint">Cavity migrates upward across the timestep — simulating cave-roof advance.</div>
         </div>
       </section>
 
@@ -456,9 +571,6 @@
       return data;
     }
 
-    const volumeT0 = buildDensityVolume({ voidCenterY: 14 });   // baseline: void low
-    const volumeT1 = buildDensityVolume({ voidCenterY: 38 });   // progression: void migrated up
-
     function makeVolumeTexture(data) {
       const tex = new THREE.Data3DTexture(data, GRID, GRID, GRID);
       tex.format = THREE.RedFormat;
@@ -470,8 +582,9 @@
       return tex;
     }
 
-    const texA = makeVolumeTexture(volumeT0);
-    const texB = makeVolumeTexture(volumeT1);
+    // Placeholder textures while the first preset builds. Swapped via setMode.
+    const texA = makeVolumeTexture(buildDensityVolume({ voidCenterY: 14 }));
+    const texB = makeVolumeTexture(buildDensityVolume({ voidCenterY: 38 }));
 
     // ── Volume rendering material (custom GLSL raymarcher) ─────────────────
     const volumeUniforms = {
@@ -610,78 +723,390 @@
     outline.scale.setScalar(VOLUME_SIZE);
     scene.add(outline);
 
-    // ── Boreholes / sensors / trajectory vectors ───────────────────────────
-    // Strings descend through the volume at fixed XZ positions.
-    const boreholeString = new THREE.Group();
-    const sensorGroup    = new THREE.Group();
-    const trajectoryGroup = new THREE.Group();
-    scene.add(boreholeString, sensorGroup, trajectoryGroup);
+    // ── Per-mode infrastructure roots ─────────────────────────────────────
+    // Boreholes/sensors/trajectories live under one root per dataset; the
+    // mode toggle just flips visibility. Volume textures are swapped via the
+    // shader uniforms.
+    const syntheticRoot = new THREE.Group();
+    const binghamRoot   = new THREE.Group();
+    binghamRoot.visible = false;
+    scene.add(syntheticRoot, binghamRoot);
 
-    const boreholePositions = [
-      [-1.4,  1.4],
-      [ 1.4,  1.4],
-      [-1.4, -1.4],
-      [ 1.4, -1.4],
-      [ 0.0,  0.0],   // central string
-    ];
+    // Shared materials & geometry helpers
+    const stringMat   = new THREE.MeshBasicMaterial({ color: 0x556677 });
+    const sensorMat   = new THREE.MeshBasicMaterial({ color: 0x5b9bd5 });
+    const sensorGeom  = new THREE.SphereGeometry(0.075, 14, 10);
+    const trajMat     = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7 });
 
-    // Strings: thin vertical cylinders running just past the volume top/bottom.
-    const stringMat = new THREE.MeshBasicMaterial({ color: 0x556677 });
-    const stringGeom = new THREE.CylinderGeometry(0.018, 0.018, VOLUME_SIZE + 1.2, 8, 1);
-    for (const [sx, sz] of boreholePositions) {
-      const m = new THREE.Mesh(stringGeom, stringMat);
-      m.position.set(sx, 0, sz);
-      boreholeString.add(m);
-    }
-
-    // Sensors: small blue spheres at fixed Y intervals along each string.
-    const sensorMat = new THREE.MeshBasicMaterial({ color: 0x5b9bd5 });
-    const sensorGeom = new THREE.SphereGeometry(0.075, 14, 10);
-    const sensorYLevels = [-1.6, -0.8, 0, 0.8, 1.6];
-    const sensorPoints = []; // for trajectory line construction
-    for (const [sx, sz] of boreholePositions) {
-      for (const sy of sensorYLevels) {
-        const m = new THREE.Mesh(sensorGeom, sensorMat);
-        m.position.set(sx, sy, sz);
-        sensorGroup.add(m);
-        sensorPoints.push(new THREE.Vector3(sx, sy, sz));
+    function buildStrings(positions, length, parent) {
+      const geom = new THREE.CylinderGeometry(0.018, 0.018, length, 8, 1);
+      for (const [sx, sz] of positions) {
+        const m = new THREE.Mesh(geom, stringMat);
+        m.position.set(sx, 0, sz);
+        parent.add(m);
       }
     }
-
-    // Trajectory vectors: straight-line rays from each sensor pointing upward
-    // and outward — simulating the integration paths used to reconstruct the
-    // density grid (one path per timeStep in a real acquisition pipeline).
-    {
+    function buildSensors(positions, yLevels, parent) {
+      const sensorPoints = [];
+      for (const [sx, sz] of positions) {
+        for (const sy of yLevels) {
+          const m = new THREE.Mesh(sensorGeom, sensorMat);
+          m.position.set(sx, sy, sz);
+          parent.add(m);
+          sensorPoints.push(new THREE.Vector3(sx, sy, sz));
+        }
+      }
+      return sensorPoints;
+    }
+    function buildTrajectories(sensorPoints, raysPerSensor, length, parent) {
       const positions = [];
       const colors = [];
-      const RAYS_PER_SENSOR = 4;
-      const TRAJECTORY_LEN = 5.5;
       for (const p of sensorPoints) {
-        for (let r = 0; r < RAYS_PER_SENSOR; r++) {
+        for (let r = 0; r < raysPerSensor; r++) {
           // Pseudo-random direction biased upward (cosmic-ray-like).
-          const theta = Math.PI * (r / RAYS_PER_SENSOR) + p.x * 0.7 + p.z * 0.3;
+          const theta = Math.PI * (r / raysPerSensor) + p.x * 0.7 + p.z * 0.3;
           const phi   = 0.55 + 0.35 * Math.sin(p.y * 1.3 + r);
           const dir = new THREE.Vector3(
             Math.sin(phi) * Math.cos(theta),
             Math.cos(phi),
             Math.sin(phi) * Math.sin(theta),
           );
-          const end = p.clone().addScaledVector(dir, TRAJECTORY_LEN);
+          const end = p.clone().addScaledVector(dir, length);
           positions.push(p.x, p.y, p.z, end.x, end.y, end.z);
-          // Faint cyan, dimmer at the far end.
           colors.push(0.38, 0.65, 0.9, 0.06, 0.10, 0.18);
         }
       }
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      const mat = new THREE.LineBasicMaterial({
-        vertexColors: true,
+      parent.add(new THREE.LineSegments(geom, trajMat));
+    }
+
+    // ── Synthetic preset ──────────────────────────────────────────────────
+    function makeSyntheticPreset(parent) {
+      const strings      = new THREE.Group();
+      const sensors      = new THREE.Group();
+      const trajectories = new THREE.Group();
+      parent.add(strings, sensors, trajectories);
+
+      const positions = [
+        [-1.4,  1.4], [ 1.4,  1.4],
+        [-1.4, -1.4], [ 1.4, -1.4],
+        [ 0.0,  0.0],
+      ];
+      buildStrings(positions, VOLUME_SIZE + 1.2, strings);
+      const sensorPoints = buildSensors(positions, [-1.6, -0.8, 0, 0.8, 1.6], sensors);
+      buildTrajectories(sensorPoints, 4, 5.5, trajectories);
+
+      return {
+        texA: texA,
+        texB: texB,
+        strings, sensors, trajectories,
+        terrain: null,
+        timeLabels: ['t₀ — baseline', 't₁ — progression'],
+        timeHint: 'Cavity migrates upward across the timestep — simulating cave-roof advance.',
+        meta:
+          '<span class="source">Procedural · 64³ float grid</span><br>' +
+          'High-density blob and migrating void synthesised in JS at startup. ' +
+          'Trajectory vectors illustrate the acquisition geometry only.',
+      };
+    }
+
+    const syntheticPreset = makeSyntheticPreset(syntheticRoot);
+
+    // Materials needing front-of-volume placement: ensure they go in the
+    // transparent pass with a higher renderOrder than the volume so the
+    // X-ray composite is terrain → volume → infrastructure.
+    stringMat.transparent = true;
+    sensorMat.transparent = true;
+    [...syntheticRoot.children].forEach(g => g.children.forEach(c => { c.renderOrder = 2; }));
+    volumeMesh.renderOrder = 1;
+    volumeMaterial.depthTest = false;
+
+    // ── Bingham Canyon preset (real terrain + site-informed density) ───────
+    const BINGHAM = {
+      name: 'Bingham Canyon, UT',
+      centerLatLon: [40.523, -112.151],
+      bbox: { south: 40.475, north: 40.572, west: -112.236, east: -112.061 },
+      // Mapzen Terrarium tiles via AWS S3, stitched into a 512x512 heightmap.
+      // Order MUST be NW, NE, SW, SE.
+      tiles: [
+        { z: 12, x: 771, y: 1542 },
+        { z: 12, x: 772, y: 1542 },
+        { z: 12, x: 771, y: 1543 },
+        { z: 12, x: 772, y: 1543 },
+      ],
+      // Volume cube represents the central 6 km × 2 km × 6 km of the bbox area.
+      // 4 world units = 6 km horizontally; 4 world units = 2 km vertically.
+      // Mid-elevation 1900 m, range ±1000 m → covers [900, 2900] m a.s.l.
+      metersPerHorizUnit: 1500,
+      metersPerVertUnit:  500,
+      elevMid:            1900,
+      // bbox is wider than the volume cube — these fractions tell us how much
+      // of each axis the cube covers within the bbox image.
+      horizFracOfBbox: 6.0 / 14.5,
+      vertFracOfBbox:  6.0 / 10.8,
+      // Bingham porphyry copper deposit — depth/extent approximated from
+      // public USGS descriptions, not a tomographic measurement.
+      orebody: { x: -0.30, y: -0.80, z: 0.10, rx: 1.4, ry: 0.9, rz: 1.2, peak: 5.4 },
+      // Fallback historical-shaft positions if Overpass is unavailable.
+      // Loose approximations of district shaft locations, not verified.
+      fallbackShafts: [
+        { lat: 40.515, lon: -112.165 },
+        { lat: 40.522, lon: -112.178 },
+        { lat: 40.532, lon: -112.155 },
+        { lat: 40.526, lon: -112.130 },
+        { lat: 40.510, lon: -112.140 },
+      ],
+    };
+
+    function setLoadingStep(s) {
+      const el = document.getElementById('loading-step');
+      if (el) el.textContent = s;
+    }
+
+    // Fetch + decode 4 Mapzen Terrarium tiles into a stitched 512x512 height grid.
+    async function fetchTerrainHeightmap(tiles) {
+      const TILE = 256;
+      const W = 512, H = 512;
+      const hm = new Float32Array(W * H);
+      let minM = Infinity, maxM = -Infinity;
+
+      await Promise.all(tiles.map((t, i) => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const cv = document.createElement('canvas');
+          cv.width = TILE; cv.height = TILE;
+          const ctx = cv.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const px = ctx.getImageData(0, 0, TILE, TILE).data;
+          const offX = (i % 2) * TILE;
+          const offY = Math.floor(i / 2) * TILE;
+          for (let py = 0; py < TILE; py++) {
+            for (let px_ = 0; px_ < TILE; px_++) {
+              const sIdx = (py * TILE + px_) * 4;
+              const r = px[sIdx], g = px[sIdx + 1], b = px[sIdx + 2];
+              // Mapzen Terrarium decode: meters = (R*256 + G + B/256) - 32768
+              const m = (r * 256 + g + b / 256) - 32768;
+              const dst = (offY + py) * W + (offX + px_);
+              hm[dst] = m;
+              if (m < minM) minM = m;
+              if (m > maxM) maxM = m;
+            }
+          }
+          resolve();
+        };
+        img.onerror = () => reject(new Error('tile load failed: ' + img.src));
+        img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${t.z}/${t.x}/${t.y}.png`;
+      })));
+
+      return { data: hm, w: W, h: H, minM, maxM };
+    }
+
+    // Map a (lat, lon) to volume-local world XZ. Returns x, z in [-2, 2]
+    // (clamped if outside the volume cube).
+    function binghamLatLonToXZ(lat, lon) {
+      const b = BINGHAM.bbox;
+      const u = (lon - b.west)  / (b.east  - b.west);
+      const w = (b.north - lat) / (b.north - b.south);
+      const x = ((u - 0.5) / BINGHAM.horizFracOfBbox) * 2;
+      const z = ((w - 0.5) / BINGHAM.vertFracOfBbox)  * 2;
+      return { x, z };
+    }
+
+    // Bilinear sample of heightmap given world XZ ∈ [-2, 2]. Returns elevation
+    // in meters or NaN if the world XZ falls outside the bbox image.
+    function sampleHeightmap(hm, worldX, worldZ) {
+      const u = 0.5 + (worldX / 2) * BINGHAM.horizFracOfBbox;
+      const w = 0.5 + (worldZ / 2) * BINGHAM.vertFracOfBbox;
+      if (u < 0 || u > 1 || w < 0 || w > 1) return NaN;
+      const px = u * (hm.w - 1);
+      const py = w * (hm.h - 1);
+      const x0 = Math.floor(px), x1 = Math.min(hm.w - 1, x0 + 1);
+      const y0 = Math.floor(py), y1 = Math.min(hm.h - 1, y0 + 1);
+      const fx = px - x0, fy = py - y0;
+      const a = hm.data[y0 * hm.w + x0];
+      const b = hm.data[y0 * hm.w + x1];
+      const c = hm.data[y1 * hm.w + x0];
+      const d = hm.data[y1 * hm.w + x1];
+      return a*(1-fx)*(1-fy) + b*fx*(1-fy) + c*(1-fx)*fy + d*fx*fy;
+    }
+
+    // Build a 64³ density volume that respects the heightmap surface
+    // (above-ground voxels are void) and adds a Bingham-shaped orebody.
+    // `phase` selects 't0' (baseline) or 't1' (mining-progressed).
+    function buildBinghamVolume(hm, phase) {
+      const data = new Float32Array(GRID * GRID * GRID);
+      const ore = BINGHAM.orebody;
+      const isT1 = phase === 't1';
+      const oreScale = isT1 ? 0.85 : 1.0;
+      const orePeak  = isT1 ? ore.peak * 0.78 : ore.peak;
+      const pitDeepening = isT1 ? 60 : 0;
+
+      for (let zi = 0; zi < GRID; zi++) {
+        const zw = ((zi + 0.5) / GRID - 0.5) * 4;
+        for (let xi = 0; xi < GRID; xi++) {
+          const xw = ((xi + 0.5) / GRID - 0.5) * 4;
+          let surfM = sampleHeightmap(hm, xw, zw);
+          if (Number.isNaN(surfM)) surfM = BINGHAM.elevMid;
+          if (isT1 && surfM < 1850) surfM -= pitDeepening;
+
+          for (let yi = 0; yi < GRID; yi++) {
+            const yw = ((yi + 0.5) / GRID - 0.5) * 4;
+            const elev = BINGHAM.elevMid + (yw / 2) * BINGHAM.metersPerVertUnit * 2;
+            const idx = xi + yi * GRID + zi * GRID * GRID;
+
+            if (elev > surfM) { data[idx] = 0; continue; }
+
+            const depthM = surfM - elev;
+            // Host rock with mild noise + slight depth densification
+            let d = 2.65 + 0.00015 * depthM
+                  + 0.18 * Math.sin(xw * 1.7 + zw * 1.3 + yw * 0.5);
+
+            // Orebody: soft ellipsoid
+            const dx = (xw - ore.x) / (ore.rx * oreScale);
+            const dy = (yw - ore.y) / (ore.ry * oreScale);
+            const dz = (zw - ore.z) / (ore.rz * oreScale);
+            const r2 = dx*dx + dy*dy + dz*dz;
+            if (r2 < 1) {
+              const f = 1 - r2;
+              d += orePeak * f * f * 0.7;
+            }
+
+            // t1 only: small extraction cavity above the orebody
+            if (isT1) {
+              const cy = ore.y + ore.ry * 1.2;
+              const cx = (xw - ore.x) / 0.5;
+              const cyw = (yw - cy) / 0.3;
+              const cz = (zw - ore.z) / 0.5;
+              const cr2 = cx*cx + cyw*cyw + cz*cz;
+              if (cr2 < 1) d *= (1 - 0.9 * (1 - cr2));
+            }
+
+            data[idx] = d;
+          }
+        }
+      }
+      return data;
+    }
+
+    function buildBinghamTerrainMesh(hm) {
+      const SEG = 96;
+      const SPAN = 5.5; // slightly larger than volume cube so ridges around the pit are visible
+      const geom = new THREE.PlaneGeometry(SPAN, SPAN, SEG, SEG);
+      geom.rotateX(-Math.PI / 2);
+      const positions = geom.attributes.position;
+      for (let i = 0; i < positions.count; i++) {
+        const xw = positions.getX(i);
+        const zw = positions.getZ(i);
+        let surfM = sampleHeightmap(hm, xw, zw);
+        if (Number.isNaN(surfM)) surfM = BINGHAM.elevMid;
+        // Map elevation to world Y using the same scale as the volume.
+        const yw = (surfM - BINGHAM.elevMid) / BINGHAM.metersPerVertUnit;
+        positions.setY(i, yw);
+      }
+      geom.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x2c3848,
+        roughness: 0.95,
+        metalness: 0,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.55,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
-      const lines = new THREE.LineSegments(geom, mat);
-      trajectoryGroup.add(lines);
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 0;
+      return mesh;
+    }
+
+    async function fetchOSMShafts(bbox, signal) {
+      const query =
+        `[out:json][timeout:8];(` +
+        `node["man_made"="mineshaft"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});` +
+        `node["disused:man_made"="mineshaft"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});` +
+        `node["historic"="mine"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});` +
+        `);out;`;
+      try {
+        const resp = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(query),
+          signal,
+        });
+        if (!resp.ok) throw new Error('overpass status ' + resp.status);
+        const j = await resp.json();
+        return j.elements
+          .filter(e => e.lat != null && e.lon != null)
+          .map(e => ({ lat: e.lat, lon: e.lon }));
+      } catch (err) {
+        console.warn('Overpass query failed; using fallback shafts', err);
+        return null;
+      }
+    }
+
+    async function makeBinghamPreset(parent) {
+      setLoadingStep('fetching elevation tiles…');
+      const hm = await fetchTerrainHeightmap(BINGHAM.tiles);
+
+      setLoadingStep('building volumetric model…');
+      await new Promise(r => setTimeout(r, 0)); // yield to paint loading UI
+      const t0 = makeVolumeTexture(buildBinghamVolume(hm, 't0'));
+      const t1 = makeVolumeTexture(buildBinghamVolume(hm, 't1'));
+
+      setLoadingStep('rendering terrain mesh…');
+      await new Promise(r => setTimeout(r, 0));
+      const terrainMesh = buildBinghamTerrainMesh(hm);
+      parent.add(terrainMesh);
+
+      setLoadingStep('querying mineshaft database…');
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 9000);
+      let shafts = await fetchOSMShafts(BINGHAM.bbox, ctrl.signal);
+      clearTimeout(timeoutId);
+      let shaftSource = 'osm';
+      if (!shafts || shafts.length === 0) {
+        shafts = BINGHAM.fallbackShafts;
+        shaftSource = 'fallback';
+      }
+
+      const strings      = new THREE.Group();
+      const sensors      = new THREE.Group();
+      const trajectories = new THREE.Group();
+      parent.add(strings, sensors, trajectories);
+
+      const shaftXZ = [];
+      for (const s of shafts.slice(0, 12)) {
+        const { x, z } = binghamLatLonToXZ(s.lat, s.lon);
+        if (Math.abs(x) <= 2.4 && Math.abs(z) <= 2.4) shaftXZ.push([x, z]);
+      }
+      if (shaftXZ.length < 3) {
+        for (const s of BINGHAM.fallbackShafts) {
+          const { x, z } = binghamLatLonToXZ(s.lat, s.lon);
+          shaftXZ.push([x, z]);
+        }
+      }
+
+      buildStrings(shaftXZ, VOLUME_SIZE + 1.6, strings);
+      const sensorPoints = buildSensors(shaftXZ, [-1.6, -0.9, -0.2, 0.5, 1.2], sensors);
+      buildTrajectories(sensorPoints, 4, 5.0, trajectories);
+
+      // All borehole/sensor objects render after the volume.
+      [strings, sensors, trajectories].forEach(g =>
+        g.children.forEach(c => { c.renderOrder = 2; }));
+
+      return {
+        texA: t0, texB: t1,
+        strings, sensors, trajectories,
+        terrain: terrainMesh,
+        timeLabels: ['t₀ — pre-extraction', 't₁ — post-extraction'],
+        timeHint: 'Pit floor lowers and a small cavity opens above the orebody at t₁.',
+        meta:
+          `<span class="source">${BINGHAM.name} · z=12 Terrarium tiles</span><br>` +
+          `Surface from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" style="color:#5b9bd5;text-decoration:none">AWS Terrain Tiles</a> (Mapzen Terrarium). ` +
+          `Mineshafts via ${shaftSource === 'osm' ? '<a href="https://overpass-api.de/" target="_blank" style="color:#5b9bd5;text-decoration:none">OSM Overpass</a>' : 'fallback positions'}.<br>` +
+          `<span class="caveat">Density layer is a site-informed model — no public voxel tomography exists for this location.</span>`,
+      };
     }
 
     // ── Floor grid (orientation aid) ────────────────────────────────────────
@@ -741,30 +1166,97 @@
     bindClip(1, 'clip-y-min', 'clip-y-max');
     bindClip(2, 'clip-z-min', 'clip-z-max');
 
+    // ── Mode state machine ─────────────────────────────────────────────────
+    let activeMode   = 'synthetic';
+    let activePreset = syntheticPreset;
+    let binghamPreset = null;
+    let binghamLoading = false;
+
+    function applyInfraVisibility() {
+      if (!activePreset) return;
+      activePreset.strings.visible      = $('show-strings').checked;
+      activePreset.sensors.visible      = $('show-sensors').checked;
+      activePreset.trajectories.visible = $('show-trajectories').checked;
+    }
+
     const timeSlider = $('time');
     const timeOut    = $('time-out');
     const tZeroBtn   = $('t-zero');
     const tOneBtn    = $('t-one');
-    function timeLabel(v) {
-      if (v < 0.01) return 't₀ — baseline';
-      if (v > 0.99) return 't₁ — progression';
-      return 'transition · ' + (v * 100).toFixed(0) + '%';
-    }
+
     function applyTime(v) {
       volumeUniforms.uTimeBlend.value = v;
-      timeOut.textContent = timeLabel(v);
+      const [t0Label, t1Label] = activePreset.timeLabels;
+      let lbl;
+      if (v < 0.01) lbl = t0Label;
+      else if (v > 0.99) lbl = t1Label;
+      else lbl = 'transition · ' + (v * 100).toFixed(0) + '%';
+      timeOut.textContent = lbl;
+      tZeroBtn.textContent = t0Label.split('—')[0].trim();
+      tOneBtn.textContent  = t1Label.split('—')[0].trim();
       tZeroBtn.classList.toggle('active', v < 0.5);
       tOneBtn.classList.toggle('active', v >= 0.5);
     }
     timeSlider.addEventListener('input', () => applyTime(parseFloat(timeSlider.value)));
     tZeroBtn.addEventListener('click', () => { timeSlider.value = '0'; applyTime(0); });
     tOneBtn.addEventListener('click',  () => { timeSlider.value = '1'; applyTime(1); });
-    applyTime(parseFloat(timeSlider.value));
 
-    $('show-strings').addEventListener('change', e =>     boreholeString.visible  = e.target.checked);
-    $('show-sensors').addEventListener('change', e =>     sensorGroup.visible     = e.target.checked);
-    $('show-trajectories').addEventListener('change', e => trajectoryGroup.visible = e.target.checked);
-    $('show-volume').addEventListener('change', e =>      volumeMesh.visible      = e.target.checked);
+    function updateDatasetMeta() {
+      $('dataset-meta').innerHTML = activePreset.meta;
+      const badge = $('dataset-badge');
+      if (activeMode === 'synthetic') {
+        badge.classList.add('synthetic');
+        badge.textContent = 'Synthetic Voxel Field';
+      } else {
+        badge.classList.remove('synthetic');
+        badge.textContent = 'Bingham Canyon · Site-informed';
+      }
+      $('time-hint').textContent = activePreset.timeHint;
+      applyTime(parseFloat(timeSlider.value));
+    }
+
+    async function setMode(mode) {
+      if (mode === activeMode) return;
+      if (mode === 'bingham' && !binghamPreset) {
+        if (binghamLoading) return;
+        binghamLoading = true;
+        $('loading-overlay').hidden = false;
+        try {
+          binghamPreset = await makeBinghamPreset(binghamRoot);
+        } catch (err) {
+          console.error('Bingham preset failed:', err);
+          setLoadingStep('failed — see console');
+          binghamLoading = false;
+          // Auto-hide overlay after a moment so the user can see the error
+          setTimeout(() => { $('loading-overlay').hidden = true; }, 1800);
+          return;
+        }
+        binghamLoading = false;
+        $('loading-overlay').hidden = true;
+      }
+      activeMode = mode;
+      activePreset = mode === 'synthetic' ? syntheticPreset : binghamPreset;
+      syntheticRoot.visible = (mode === 'synthetic');
+      binghamRoot.visible   = (mode === 'bingham');
+      volumeUniforms.uVolumeA.value = activePreset.texA;
+      volumeUniforms.uVolumeB.value = activePreset.texB;
+      applyInfraVisibility();
+      updateDatasetMeta();
+      $('ds-synth').classList.toggle('active', mode === 'synthetic');
+      $('ds-real').classList.toggle('active',  mode === 'bingham');
+    }
+
+    $('ds-synth').addEventListener('click', () => setMode('synthetic'));
+    $('ds-real').addEventListener('click',  () => setMode('bingham'));
+
+    // Visibility checkboxes — operate on the active preset.
+    $('show-strings').addEventListener('change',      applyInfraVisibility);
+    $('show-sensors').addEventListener('change',      applyInfraVisibility);
+    $('show-trajectories').addEventListener('change', applyInfraVisibility);
+    $('show-volume').addEventListener('change', e => volumeMesh.visible = e.target.checked);
+
+    // Initial sidebar / badge state for the synthetic default.
+    updateDatasetMeta();
 
     // ── Resize ──────────────────────────────────────────────────────────────
     function resize() {
