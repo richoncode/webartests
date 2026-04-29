@@ -1,5 +1,13 @@
-import * as tf from '@tensorflow/tfjs';
+// TF.js is heavy (~1.5 MB) and only needed after the user selects an aircraft.
+// Lazy-load it on first call and cache the module across subsequent calls.
+import type * as TFType from '@tensorflow/tfjs';
 import type { FlightHistoryPoint } from '../data/types';
+
+let _tfPromise: Promise<typeof TFType> | null = null;
+function getTf(): Promise<typeof TFType> {
+  if (!_tfPromise) _tfPromise = import('@tensorflow/tfjs');
+  return _tfPromise;
+}
 
 /**
  * Predict the next `horizonSeconds` of (lat, lon, alt) using independent
@@ -11,11 +19,11 @@ import type { FlightHistoryPoint } from '../data/types';
  */
 export interface PredictedPoint { t: number; lat: number; lon: number; altM: number; }
 
-export function predictTrajectory(
+export async function predictTrajectory(
   history: FlightHistoryPoint[],
   horizonSeconds = 300,
   stepSeconds = 15,
-): PredictedPoint[] {
+): Promise<PredictedPoint[]> {
   if (history.length < 2) return [];
 
   // Use only recent history (last 2 minutes) — keeps the regression responsive
@@ -24,15 +32,17 @@ export function predictTrajectory(
   const recent = history.filter((p) => p.t >= cutoff);
   if (recent.length < 2) recent.push(...history.slice(-2));
 
+  const tf = await getTf();
+
   // tf.tidy can only return Tensor / TensorContainer types — extract scalars
   // (.m, .b) inside it, build PredictedPoint[] outside.
   const t0 = recent[0].t;
   const fits = tf.tidy(() => {
     const xs = tf.tensor1d(recent.map((p) => p.t - t0));
     return {
-      lat: linearFit(xs, tf.tensor1d(recent.map((p) => p.lat))),
-      lon: linearFit(xs, tf.tensor1d(recent.map((p) => p.lon))),
-      alt: linearFit(xs, tf.tensor1d(recent.map((p) => p.altM))),
+      lat: linearFit(tf, xs, tf.tensor1d(recent.map((p) => p.lat))),
+      lon: linearFit(tf, xs, tf.tensor1d(recent.map((p) => p.lon))),
+      alt: linearFit(tf, xs, tf.tensor1d(recent.map((p) => p.altM))),
     };
   });
 
@@ -51,7 +61,7 @@ export function predictTrajectory(
 }
 
 /** Closed-form OLS fit y = m·x + b with TF.js. Returns plain JS scalars. */
-function linearFit(xs: tf.Tensor1D, ys: tf.Tensor1D): { m: number; b: number } {
+function linearFit(_tf: typeof TFType, xs: TFType.Tensor1D, ys: TFType.Tensor1D): { m: number; b: number } {
   const xMean = xs.mean();
   const yMean = ys.mean();
   const xCent = xs.sub(xMean);

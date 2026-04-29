@@ -9,14 +9,19 @@ export default defineConfig({
   build: {
     target: 'es2020',
     sourcemap: false,
+    // Lazy chunks (XR emulator environments, TF.js) trip the default 500 kB
+    // warning even though they're code-split and never load for end-users.
+    chunkSizeWarningLimit: 2200,
     rollupOptions: {
       output: {
-        // Split the very heavy deps so initial parse isn't all one chunk.
+        // Split the heavy deps into their own chunks. tfjs is dynamic-imported
+        // from predictTrajectory.ts so its chunk loads only on first prediction;
+        // the others are eager.
         manualChunks: {
           three: ['three'],
-          tfjs: ['@tensorflow/tfjs'],
           tiles: ['3d-tiles-renderer'],
           xr: ['@react-three/xr'],
+          tfjs: ['@tensorflow/tfjs'],
         },
       },
     },

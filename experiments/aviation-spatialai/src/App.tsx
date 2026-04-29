@@ -74,11 +74,16 @@ export default function App() {
   }, []);
 
   // Recompute predicted path for the selected aircraft when its history grows.
+  // predictTrajectory is async because TF.js is lazy-loaded on first call.
   const [predicted, setPredicted] = useState<PredictedPoint[]>([]);
   useEffect(() => {
     if (!selectedId) { setPredicted([]); return; }
+    let cancelled = false;
     const h = historyRef.current[selectedId] || [];
-    setPredicted(predictTrajectory(h, 300, 15));
+    predictTrajectory(h, 300, 15).then((pts) => {
+      if (!cancelled) setPredicted(pts);
+    });
+    return () => { cancelled = true; };
   }, [selectedId, flights]);
 
   const selected = flights.find((f) => f.icao24 === selectedId) ?? null;
