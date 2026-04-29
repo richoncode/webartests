@@ -9,6 +9,7 @@ import type { SceneRef } from './Aircraft';
 
 interface Props {
   cesiumIonToken: string;
+  cesiumIonAssetId: number;
   scene: SceneRef;
 }
 
@@ -21,7 +22,7 @@ interface Props {
  *
  * Three.js applies T·R·S, so:  S = scale, R = R_ecef→enu, T = −scale·R·refEcef.
  */
-export function PhotorealTerrain({ cesiumIonToken, scene }: Props) {
+export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Props) {
   const { camera, gl } = useThree();
   const ref = useRef<Group>(null);
   const tilesRef = useRef<{ update: () => void; dispose: () => void; group: Group } | null>(null);
@@ -56,7 +57,7 @@ export function PhotorealTerrain({ cesiumIonToken, scene }: Props) {
         };
         const tiles = new TilesRenderer();
         tiles.registerPlugin(
-          new CesiumIonAuthPlugin({ apiToken: cesiumIonToken, assetId: 2275207 }) as never,
+          new CesiumIonAuthPlugin({ apiToken: cesiumIonToken, assetId: cesiumIonAssetId }) as never,
         );
         tiles.setCamera(camera);
         tiles.setResolutionFromRenderer(camera, gl);
@@ -73,7 +74,7 @@ export function PhotorealTerrain({ cesiumIonToken, scene }: Props) {
       }
     })();
     return () => { cancelled = true; tilesRef.current?.dispose(); };
-  }, [cesiumIonToken, camera, gl, scene.scale, transform]);
+  }, [cesiumIonToken, cesiumIonAssetId, camera, gl, scene.scale, transform]);
 
   useFrame(() => {
     tilesRef.current?.update();

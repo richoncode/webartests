@@ -12,8 +12,12 @@ import { PredictivePath } from './scene/PredictivePath';
 import { XRControls } from './scene/XRControls';
 import { predictTrajectory, type PredictedPoint } from './ml/predictTrajectory';
 
-const ION_TOKEN: string = (import.meta as unknown as { env: Record<string, string> }).env
-  .VITE_CESIUM_ION_TOKEN || '';
+const ENV = (import.meta as unknown as { env: Record<string, string> }).env;
+const ION_TOKEN: string = ENV.VITE_CESIUM_ION_TOKEN || '';
+// Cesium Ion asset id. Default 2275207 = Google Photorealistic 3D Tiles.
+// If your Ion plan doesn't include that, set VITE_CESIUM_ION_ASSET_ID to
+// e.g. 1 (Cesium World Terrain) at build time.
+const ION_ASSET_ID: number = parseInt(ENV.VITE_CESIUM_ION_ASSET_ID || '2275207', 10);
 
 // Reference centre for the local-ENU scene (SF Bay).
 const CENTRE_LAT = (BBOX.lamin + BBOX.lamax) / 2;
@@ -139,7 +143,7 @@ export default function App() {
           rotation={[Math.PI / 2, 0, 0]}
         />
         <XR store={xrStore}>
-          <PhotorealTerrain cesiumIonToken={ION_TOKEN} scene={scene} />
+          <PhotorealTerrain cesiumIonToken={ION_TOKEN} cesiumIonAssetId={ION_ASSET_ID} scene={scene} />
           {flights.map((f) => (
             <Aircraft
               key={f.icao24}
