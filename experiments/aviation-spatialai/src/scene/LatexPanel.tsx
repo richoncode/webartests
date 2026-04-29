@@ -2,21 +2,20 @@ import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector3, Group } from 'three';
 import { useFrame } from '@react-three/fiber';
 import katex from 'katex';
-import { geodeticToECEF } from './geo';
+import { geodeticToSceneENU } from './geo';
 import type { FlightState } from '../data/types';
+import type { SceneRef } from './Aircraft';
 
 interface Props {
   flight: FlightState;
-  worldScale: number;
-  worldOrigin: Vector3;
+  scene: SceneRef;
 }
 
 const _pos = new Vector3();
 const _camPos = new Vector3();
 
-/** Render a KaTeX expression onto an OffscreenCanvas-style texture. */
+/** Render a KaTeX expression onto a canvas texture. */
 function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
-  // KaTeX renders to HTML/SVG. We rasterise via an off-DOM <div> → SVG → canvas.
   const div = document.createElement('div');
   div.style.position = 'absolute';
   div.style.left = '-99999px';
@@ -33,9 +32,6 @@ function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
     ctx.strokeStyle = 'rgba(91, 155, 213, 0.55)';
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, w - 2, h - 2);
-    // KaTeX output to text — we draw it as text since SVG-to-canvas across
-    // browsers is finicky. We extract the rendered string from .katex elements
-    // for a clean look without taking on a rasteriser dependency.
     ctx.fillStyle = '#dff7ff';
     ctx.font = '600 30px ui-monospace, "SF Mono", monospace';
     ctx.textAlign = 'center';
@@ -52,38 +48,32 @@ function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
   }
 }
 
-/** Hover panel above the selected aircraft showing its altitude as TeX. */
-export function LatexPanel({ flight, worldScale, worldOrigin }: Props) {
+/** Hover panel above the selected aircraft. ENU: lift = +Z. */
+export function LatexPanel({ flight, scene }: Props) {
   const ref = useRef<Group>(null);
   const altFt = Math.round(flight.baroAltitudeM * 3.28084);
-  // Re-rasterise only when the displayed value changes appreciably.
   const tex = useMemo(() => {
     const formatted = altFt.toLocaleString('en-US');
     return makeLatexTexture(`h = ${formatted}\\;\\text{ft}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Math.round(altFt / 50)]);
 
   useEffect(() => () => { tex.dispose(); }, [tex]);
 
   useFrame((state) => {
     if (!ref.current) return;
-    geodeticToECEF(flight.lat, flight.lon, flight.baroAltitudeM, _pos);
-    _pos.sub(worldOrigin).multiplyScalar(worldScale);
-    // Lift panel above the aircraft (60 m worth in current scene units).
-    const lift = 90 * worldScale;
-    const upN = _pos.length();
-    if (upN > 1e-3) {
-      const k = (upN + lift) / upN;
-      ref.current.position.set(_pos.x * k, _pos.y * k, _pos.z * k);
-    } else {
-      ref.current.position.copy(_pos);
-    }
-    // Billboard toward camera.
+    geodeticToSceneENU(
+      flight.lat, flight.lon, flight.baroAltitudeM,
+      scene.refLat, scene.refLon, scene.refH, scene.scale, _pos,
+    );
+    // Lift panel ~90 m above the aircraft along scene up.
+    _pos.z += 90 * scene.scale;
+    ref.current.position.copy(_pos);
     state.camera.getWorldPosition(_camPos);
     ref.current.lookAt(_camPos);
   });
 
-  // Plane sized to match the texture aspect ratio (512×168).
-  const W = 240 * worldScale, H = 80 * worldScale;
+  const W = 240 * scene.scale, H = 80 * scene.scale;
   return (
     <group ref={ref}>
       <mesh>

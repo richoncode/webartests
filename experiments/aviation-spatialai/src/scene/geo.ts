@@ -1,11 +1,11 @@
 import { Vector3, Matrix4, Quaternion } from 'three';
 
 // WGS-84 ellipsoid constants.
-const A = 6378137.0;          // semi-major axis (m)
-const F = 1 / 298.257223563;  // flattening
-const E2 = F * (2 - F);       // first eccentricity²
+export const A = 6378137.0;          // semi-major axis (m)
+const F = 1 / 298.257223563;          // flattening
+const E2 = F * (2 - F);               // first eccentricity²
 
-/** lat/lon (deg) + height (m, MSL ≈ ellipsoidal for our precision) → ECEF (m). */
+/** lat/lon (deg) + height (m, MSL ≈ ellipsoidal) → ECEF (m). */
 export function geodeticToECEF(latDeg: number, lonDeg: number, hM: number, out = new Vector3()) {
   const lat = (latDeg * Math.PI) / 180;
   const lon = (lonDeg * Math.PI) / 180;
@@ -21,53 +21,84 @@ export function geodeticToECEF(latDeg: number, lonDeg: number, hM: number, out =
 }
 
 /**
- * Build a local East-North-Up (ENU) frame at the given geodetic position.
- * Returns rotation matrix that takes ENU coords → ECEF coords.
+ * Build the rotation matrix that takes an ECEF vector and expresses it in the
+ * local ENU frame at (refLat, refLon). Rows are East, North, Up basis vectors
+ * expressed in ECEF coords. Translation column is zero — rotation only.
  */
-export function enuToEcefMatrix(latDeg: number, lonDeg: number, out = new Matrix4()) {
-  const lat = (latDeg * Math.PI) / 180;
-  const lon = (lonDeg * Math.PI) / 180;
+export function ecefToEnuMatrix4(refLatDeg: number, refLonDeg: number, out = new Matrix4()) {
+  const lat = (refLatDeg * Math.PI) / 180;
+  const lon = (refLonDeg * Math.PI) / 180;
   const sLat = Math.sin(lat), cLat = Math.cos(lat);
   const sLon = Math.sin(lon), cLon = Math.cos(lon);
-  // Columns: East, North, Up basis vectors expressed in ECEF.
+  // Three.js Matrix4.set takes ROW-major arguments.
   out.set(
-    -sLon, -sLat * cLon, cLat * cLon, 0,
-     cLon, -sLat * sLon, cLat * sLon, 0,
-        0,         cLat,        sLat, 0,
-        0,            0,           0, 1,
+    -sLon,        cLon,         0,    0,
+    -sLat * cLon, -sLat * sLon, cLat, 0,
+     cLat * cLon,  cLat * sLon, sLat, 0,
+     0,           0,            0,    1,
   );
   return out;
 }
 
-/**
- * Aircraft body orientation from heading/pitch/roll (deg) at a geodetic point,
- * yielding a Three.js quaternion to apply to a model whose forward is +X,
- * up is +Z. (We orient the local ENU first, then yaw/pitch/roll inside it.)
- */
-const _enu = new Matrix4();
-const _q1 = new Quaternion();
-const _q2 = new Quaternion();
-const _axisUp = new Vector3(0, 0, 1);
-const _axisEast = new Vector3(1, 0, 0);
-const _axisNorth = new Vector3(0, 1, 0);
+// Module-scope scratch vectors so per-frame conversions don't allocate.
+const _scratchP = new Vector3();
+const _scratchRef = new Vector3();
+const _scratchM = new Matrix4();
 
-export function aircraftEcefQuaternion(
-  latDeg: number, lonDeg: number,
+/**
+ * Convert a geodetic point to scene-local ENU coordinates relative to the
+ * reference point, scaled by `scale`. +X = east, +Y = north, +Z = up.
+ *
+ * This is the canonical "place this lat/lon/alt in the scene" call.
+ */
+export function geodeticToSceneENU(
+  latDeg: number, lonDeg: number, hM: number,
+  refLatDeg: number, refLonDeg: number, refHM: number,
+  scale: number,
+  out = new Vector3(),
+) {
+  geodeticToECEF(latDeg, lonDeg, hM, _scratchP);
+  geodeticToECEF(refLatDeg, refLonDeg, refHM, _scratchRef);
+  _scratchP.sub(_scratchRef);
+  ecefToEnuMatrix4(refLatDeg, refLonDeg, _scratchM);
+  _scratchP.applyMatrix4(_scratchM);
+  out.copy(_scratchP).multiplyScalar(scale);
+  return out;
+}
+
+// Reusable axis vectors and intermediate quaternions for HPR composition.
+const _zUp     = new Vector3(0, 0, 1);
+const _bodyNegY = new Vector3(0, -1, 0);
+const _bodyX   = new Vector3(1, 0, 0);
+const _qPitch  = new Quaternion();
+const _qRoll   = new Quaternion();
+
+/**
+ * Aircraft body→scene quaternion at heading/pitch/roll (deg).
+ *
+ * Body convention: +X = forward (nose), +Y = LEFT (port wing), +Z = up (fin).
+ * Scene ENU: +X = east, +Y = north, +Z = up.
+ *
+ * - Heading is clockwise from north (0° = north, 90° = east).
+ * - Pitch is nose-up positive.
+ * - Roll is bank-right positive.
+ *
+ * At heading=0: body forward (+X) → scene north (+Y). The base yaw rotation
+ * around scene +Z is therefore (π/2 − heading_rad).
+ */
+export function aircraftSceneQuaternion(
   headingDeg: number, pitchDeg = 0, rollDeg = 0,
   out = new Quaternion(),
-) {
-  // ENU → ECEF rotation (extracted from the matrix above).
-  enuToEcefMatrix(latDeg, lonDeg, _enu);
-  out.setFromRotationMatrix(_enu);
-  // Heading: rotate around local Up (clockwise from north → negate angle for
-  // a y-up-axis aircraft; we use ENU where +Z=Up, so rotate by -heading).
-  _q1.setFromAxisAngle(_axisUp, (-headingDeg * Math.PI) / 180);
-  // Pitch: nose up positive — rotate around local East.
-  _q2.setFromAxisAngle(_axisEast, (pitchDeg * Math.PI) / 180);
-  _q1.multiply(_q2);
-  // Roll: bank — around local North (which after heading is body-forward).
-  _q2.setFromAxisAngle(_axisNorth, (rollDeg * Math.PI) / 180);
-  _q1.multiply(_q2);
-  out.multiply(_q1);
+): Quaternion {
+  const yaw = Math.PI / 2 - (headingDeg * Math.PI) / 180;
+  out.setFromAxisAngle(_zUp, yaw);
+  if (pitchDeg !== 0) {
+    _qPitch.setFromAxisAngle(_bodyNegY, (pitchDeg * Math.PI) / 180);
+    out.multiply(_qPitch);
+  }
+  if (rollDeg !== 0) {
+    _qRoll.setFromAxisAngle(_bodyX, (rollDeg * Math.PI) / 180);
+    out.multiply(_qRoll);
+  }
   return out;
 }

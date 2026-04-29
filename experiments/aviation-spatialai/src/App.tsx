@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { XR, createXRStore } from '@react-three/xr';
 import { Vector3, Quaternion } from 'three';
 import { fetchFlights, BBOX } from './data/opensky';
 import type { FlightState, FlightHistory } from './data/types';
-import { geodeticToECEF } from './scene/geo';
 import { PhotorealTerrain } from './scene/PhotorealTerrain';
-import { Aircraft } from './scene/Aircraft';
+import { Aircraft, type SceneRef } from './scene/Aircraft';
 import { LatexPanel } from './scene/LatexPanel';
 import { PredictivePath } from './scene/PredictivePath';
 import { XRControls } from './scene/XRControls';
@@ -16,18 +15,27 @@ import { predictTrajectory, type PredictedPoint } from './ml/predictTrajectory';
 const ION_TOKEN: string = (import.meta as unknown as { env: Record<string, string> }).env
   .VITE_CESIUM_ION_TOKEN || '';
 
-// Centre point for the demo (SF Bay) — used as the world-frame ECEF origin so
-// our scene coordinates stay near zero (avoids float precision loss at ECEF
-// magnitudes ~6.4M m).
+// Reference centre for the local-ENU scene (SF Bay).
 const CENTRE_LAT = (BBOX.lamin + BBOX.lamax) / 2;
 const CENTRE_LON = (BBOX.lomin + BBOX.lomax) / 2;
 const CENTRE_ALT = 0;
 
-// Scene-unit scale: 1 metre → 0.01 world units. Aircraft (~36 m long) become
-// ~0.36 units; camera distances are tens of units, well inside float32 range.
+// 1 m → 0.01 world units. Aircraft (~36 m long) become ~0.36 units;
+// 10 km altitude → 100 units; bbox extents (~70 km × 100 km) → ~700×1000 units.
 const WORLD_SCALE = 0.01;
 
 const xrStore = createXRStore();
+
+/** Three.js cameras default to Y-up. Our scene is Z-up — fix on mount. */
+function ZUpCamera() {
+  const { camera } = useThree();
+  useEffect(() => {
+    camera.up.set(0, 0, 1);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }, [camera]);
+  return null;
+}
 
 export default function App() {
   const [flights, setFlights] = useState<FlightState[]>([]);
@@ -36,20 +44,22 @@ export default function App() {
   const historyRef = useRef<FlightHistory>({});
   const rigRef = useRef<{ position: Vector3; quaternion: Quaternion } | null>(null);
 
-  // World origin in ECEF, computed once.
-  const worldOrigin = useMemo(() => geodeticToECEF(CENTRE_LAT, CENTRE_LON, CENTRE_ALT, new Vector3()), []);
+  const scene: SceneRef = useMemo(
+    () => ({ refLat: CENTRE_LAT, refLon: CENTRE_LON, refH: CENTRE_ALT, scale: WORLD_SCALE }),
+    [],
+  );
 
-  // Initial camera offset: 4 km east, 4 km north, 2 km up of the centre.
-  const initialCamera = useMemo<[number, number, number]>(() => {
-    return [40, 40, 25];
-  }, []);
+  // Camera at (250 east, 250 south, 350 up) looking at the centre — gives an
+  // oblique top-down view of the bbox (~700×1000 units across) with aircraft
+  // at altitudes 20–100 units of scene height clearly visible. Far plane is
+  // huge so the fallback Earth sphere (radius 63 781) stays in frame on zoom.
+  const initialCamera = useMemo<[number, number, number]>(() => [250, -250, 350], []);
 
   // Poll OpenSky.
   useEffect(() => {
     let cancelled = false;
     let abort: AbortController | null = null;
     let timer: number | null = null;
-
     const tick = async () => {
       abort?.abort();
       abort = new AbortController();
@@ -57,13 +67,11 @@ export default function App() {
       if (cancelled) return;
       setSource(res.source);
       setFlights(res.flights);
-      // Maintain rolling history per icao24 for the regression model.
       const hist = historyRef.current;
       const now = Math.floor(Date.now() / 1000);
       for (const f of res.flights) {
         const arr = hist[f.icao24] || (hist[f.icao24] = []);
         arr.push({ t: now, lat: f.lat, lon: f.lon, altM: f.baroAltitudeM });
-        // Keep last 4 minutes.
         const cutoff = now - 240;
         while (arr.length && arr[0].t < cutoff) arr.shift();
       }
@@ -73,8 +81,7 @@ export default function App() {
     return () => { cancelled = true; abort?.abort(); if (timer) clearTimeout(timer); };
   }, []);
 
-  // Recompute predicted path for the selected aircraft when its history grows.
-  // predictTrajectory is async because TF.js is lazy-loaded on first call.
+  // Trajectory prediction (TF.js lazy-loaded on first call).
   const [predicted, setPredicted] = useState<PredictedPoint[]>([]);
   useEffect(() => {
     if (!selectedId) { setPredicted([]); return; }
@@ -91,38 +98,41 @@ export default function App() {
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
       <Canvas
-        camera={{ position: initialCamera, fov: 55, near: 0.05, far: 5000 }}
+        camera={{ position: initialCamera, fov: 55, near: 0.1, far: 2_000_000 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onPointerMissed={() => setSelectedId(null)}
       >
         <color attach="background" args={["#04080f"]} />
+        <ZUpCamera />
         <ambientLight intensity={0.55} />
-        <directionalLight position={[20, 30, 15]} intensity={1.0} color="#fff5d8" />
+        <directionalLight position={[200, -150, 400]} intensity={1.0} color="#fff5d8" />
         <XR store={xrStore}>
-          <PhotorealTerrain
-            cesiumIonToken={ION_TOKEN}
-            worldOrigin={worldOrigin}
-            worldScale={WORLD_SCALE}
-          />
+          <PhotorealTerrain cesiumIonToken={ION_TOKEN} scene={scene} />
           {flights.map((f) => (
             <Aircraft
               key={f.icao24}
               flight={f}
               selected={f.icao24 === selectedId}
               onClick={() => setSelectedId(f.icao24)}
-              worldScale={WORLD_SCALE}
-              worldOrigin={worldOrigin}
+              scene={scene}
             />
           ))}
           {selected && (
             <>
-              <PredictivePath points={predicted} worldScale={WORLD_SCALE} worldOrigin={worldOrigin} />
-              <LatexPanel flight={selected} worldScale={WORLD_SCALE} worldOrigin={worldOrigin} />
+              <PredictivePath points={predicted} scene={scene} />
+              <LatexPanel flight={selected} scene={scene} />
             </>
           )}
-          <XRControls selected={selected} worldScale={WORLD_SCALE} worldOrigin={worldOrigin} rigRef={rigRef} />
+          <XRControls selected={selected} scene={scene} rigRef={rigRef} />
         </XR>
-        <OrbitControls makeDefault enableDamping dampingFactor={0.08} maxDistance={500} minDistance={1} />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          dampingFactor={0.08}
+          target={[0, 0, 0]}
+          maxDistance={150_000}
+          minDistance={1}
+        />
       </Canvas>
       <HUD
         flights={flights}

@@ -3,39 +3,34 @@ import {
   BufferGeometry, BufferAttribute, Vector3, DoubleSide,
   Line, LineBasicMaterial,
 } from 'three';
-import { geodeticToECEF } from './geo';
+import { geodeticToSceneENU } from './geo';
 import type { PredictedPoint } from '../ml/predictTrajectory';
+import type { SceneRef } from './Aircraft';
 
 interface Props {
   points: PredictedPoint[];
-  worldScale: number;
-  worldOrigin: Vector3;
+  scene: SceneRef;
 }
 
 const _v = new Vector3();
 
 /**
- * Glowing blue "curtain" — a vertical ribbon dropped from the predicted
- * trajectory down to ~500 m below it, plus a centre-line. Reads as a route
- * trail in 3D from any angle.
+ * Glowing blue "curtain" — vertical ribbon dropped from each predicted
+ * trajectory sample down to ~600 m below it (along scene +Z = up), plus a
+ * bright centre line. In ENU "down" is just −Z so the drop is direct.
  */
-export function PredictivePath({ points, worldScale, worldOrigin }: Props) {
+export function PredictivePath({ points, scene }: Props) {
   const geom = useMemo(() => {
     if (points.length < 2) return null;
-    // Build a triangle strip ribbon: top vertex per point + bottom vertex per point.
     const positions: number[] = [];
     const indices: number[] = [];
     const DROP_M = 600;
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      geodeticToECEF(p.lat, p.lon, p.altM, _v);
-      _v.sub(worldOrigin).multiplyScalar(worldScale);
+      geodeticToSceneENU(p.lat, p.lon, p.altM, scene.refLat, scene.refLon, scene.refH, scene.scale, _v);
       positions.push(_v.x, _v.y, _v.z);
-      // Same point but DROP_M below — drop is along ECEF "down" approximation
-      // (radial from origin); for our scale it's sufficient.
-      const dropN = _v.length();
-      const dropScale = dropN > 1e-3 ? Math.max(0, dropN - DROP_M * worldScale) / dropN : 1;
-      positions.push(_v.x * dropScale, _v.y * dropScale, _v.z * dropScale);
+      // Drop straight down in scene ENU (subtract from Z).
+      positions.push(_v.x, _v.y, _v.z - DROP_M * scene.scale);
     }
     for (let i = 0; i < points.length - 1; i++) {
       const a = i * 2;
@@ -46,14 +41,13 @@ export function PredictivePath({ points, worldScale, worldOrigin }: Props) {
     g.setIndex(indices);
     g.computeVertexNormals();
     return g;
-  }, [points, worldScale, worldOrigin]);
+  }, [points, scene]);
 
   const lineObject = useMemo(() => {
     if (points.length < 2) return null;
     const positions: number[] = [];
     for (const p of points) {
-      geodeticToECEF(p.lat, p.lon, p.altM, _v);
-      _v.sub(worldOrigin).multiplyScalar(worldScale);
+      geodeticToSceneENU(p.lat, p.lon, p.altM, scene.refLat, scene.refLon, scene.refH, scene.scale, _v);
       positions.push(_v.x, _v.y, _v.z);
     }
     const g = new BufferGeometry();
@@ -61,7 +55,7 @@ export function PredictivePath({ points, worldScale, worldOrigin }: Props) {
     return new Line(g, new LineBasicMaterial({
       color: 0x9be1ff, transparent: true, opacity: 0.95, depthTest: false,
     }));
-  }, [points, worldScale, worldOrigin]);
+  }, [points, scene]);
 
   if (!geom || !lineObject) return null;
   return (
