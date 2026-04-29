@@ -31,8 +31,11 @@
       }).join('');
       topicsHtml = '<div class="card-topics">' + chips + '</div>';
     }
+    // `panel card-div`: top page's shared CSS styles `.panel` (background,
+    // border, radius, padding); experiments subpage already styles `.card-div`
+    // directly. Including both makes the same markup look right on both.
     return (
-      '<div class="card-div" data-id="' + escHTML(c.id) + '">' +
+      '<div class="panel card-div" data-id="' + escHTML(c.id) + '">' +
         '<div class="card-icon">' + escHTML(c.icon) + '</div>' +
         '<h2><a href="' + escHTML(href) + '">' + escHTML(c.title) + '</a></h2>' +
         '<p>' + escHTML(c.description) + '</p>' +
