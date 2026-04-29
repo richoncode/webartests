@@ -149,15 +149,15 @@ export default function App() {
         <color attach="background" args={["#040912"]} />
         <fog attach="fog" args={["#040912", 1500, 80000]} />
         <ambientLight intensity={0.9} />
+        {/* Grid lives in WORLD coords (not the rotated group). Default
+            GridHelper lies in the XZ plane (Y up) — exactly the floor in
+            world-Y-up. Putting it inside the rotation tips it vertical. */}
+        <gridHelper args={[1000, 40, '#234764', '#13243a']} />
         <XR store={xrStore}>
           <group rotation={SCENE_ROTATION}>
             {/* Direction is in scene-ENU; the parent group rotates the light
                 source into world coords along with the rest of the scene. */}
             <directionalLight position={[200, -150, 400]} intensity={1.6} color="#fff5d8" />
-            {/* Default GridHelper lies in the XZ plane (Y up) — exactly the
-                ground orientation we want once the parent rotation maps
-                scene-Z-up into world-Y-up. */}
-            <gridHelper args={[1000, 40, '#234764', '#13243a']} />
             <PhotorealTerrain cesiumIonToken={ION_TOKEN} cesiumIonAssetId={ION_ASSET_ID} scene={scene} />
             {flights.map((f) => (
               <Aircraft
