@@ -52,7 +52,7 @@ export function Aircraft({ flight, selected, onClick, scene }: Props) {
   // a typical orbit-camera distance. A real 36 m airliner is sub-pixel from
   // 500 m at scene scale; multiplying lets the demo read clearly without
   // needing the camera to dive into the bbox. Position is still 1:1.
-  const VIS = 20;
+  const VIS = 40;
   const s = useMemo(() => scene.scale * VIS, [scene.scale]);
   const FU_LEN = 36 * s, FU_R = 1.6 * s;
   const WING_SPAN = 34 * s, WING_C = 5 * s, WING_T = 0.5 * s;

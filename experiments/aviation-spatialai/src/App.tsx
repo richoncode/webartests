@@ -27,13 +27,12 @@ const WORLD_SCALE = 0.01;
 const xrStore = createXRStore();
 
 /** Three.js cameras default to Y-up. Our scene is Z-up — fix on mount. */
-function ZUpCamera() {
+function ZUpCamera({ target }: { target: [number, number, number] }) {
   const { camera } = useThree();
   useEffect(() => {
     camera.up.set(0, 0, 1);
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
+    camera.lookAt(target[0], target[1], target[2]);
+  }, [camera, target]);
   return null;
 }
 
@@ -49,11 +48,11 @@ export default function App() {
     [],
   );
 
-  // Camera at (60 east, -60 south, 100 up) — close enough that aircraft
-  // (drawn 20× larger than physical scale for visibility) read clearly,
-  // far enough to take in most of the demo cluster. Far plane is huge so
-  // the fallback Earth sphere (radius 63 781) stays in frame on zoom-out.
-  const initialCamera = useMemo<[number, number, number]>(() => [60, -60, 100], []);
+  // Camera looking north-up at the aircraft cluster. Aircraft span roughly
+  // ±45 east-west, ±27 north-south, 25-90 altitude in scene units; this
+  // camera position frames the whole demo flight set.
+  const initialCamera = useMemo<[number, number, number]>(() => [80, -180, 220], []);
+  const orbitTarget   = useMemo<[number, number, number]>(() => [0, 0, 50], []);
 
   // Poll OpenSky on mount. If the first attempt fails (CORS, network,
   // rate-limit), STOP retrying and fall back to a local canned-animation
@@ -130,14 +129,15 @@ export default function App() {
       >
         <color attach="background" args={["#040912"]} />
         <fog attach="fog" args={["#040912", 1500, 80000]} />
-        <ZUpCamera />
+        <ZUpCamera target={orbitTarget} />
         <ambientLight intensity={0.9} />
         <directionalLight position={[200, -150, 400]} intensity={1.6} color="#fff5d8" />
-        {/* Bbox centre reference — small green marker at the SF Bay origin */}
-        <mesh position={[0, 0, 0.5]}>
-          <sphereGeometry args={[0.6, 16, 12]} />
-          <meshBasicMaterial color="#7adfa1" />
-        </mesh>
+        {/* Ground grid at z=0 (sea level) over a ~1000×1000 unit square (≈100 km).
+            GridHelper is XZ-plane by default; rotateX(π/2) lays it in the XY plane. */}
+        <gridHelper
+          args={[1000, 40, '#234764', '#13243a']}
+          rotation={[Math.PI / 2, 0, 0]}
+        />
         <XR store={xrStore}>
           <PhotorealTerrain cesiumIonToken={ION_TOKEN} scene={scene} />
           {flights.map((f) => (
@@ -161,9 +161,9 @@ export default function App() {
           makeDefault
           enableDamping
           dampingFactor={0.08}
-          target={[0, 0, 0]}
-          maxDistance={150_000}
-          minDistance={1}
+          target={orbitTarget}
+          maxDistance={5000}
+          minDistance={5}
         />
       </Canvas>
       <HUD
