@@ -40,33 +40,45 @@ export interface FetchResult {
 
 // CORS-relaxed transports for OpenSky's public endpoint. Browser CORS makes
 // a direct fetch impossible (always logs an error), so we skip that and go
-// straight to relays. allorigins's /get endpoint wraps the proxied response
-// in {contents, status} JSON; that wrapping bypasses some of the dodgy
-// header behaviour that triggers "Ensure CORS response header values are
-// valid" in Chrome. We try several relays; first non-empty result wins.
+// straight to relays. We try several; first non-empty result wins. Each
+// attempt is bounded by a per-transport timeout so a hung relay doesn't
+// drag the chain. (Order chosen by current reliability: allorigins has been
+// dropping the CORS header outright, so it's last.)
 type Transport = {
   name: string;
   fetchJson: (url: string, signal?: AbortSignal) => Promise<unknown>;
 };
 
+const TRANSPORT_TIMEOUT_MS = 8000;
+
+function abortAfter(ms: number, parent?: AbortSignal): AbortSignal {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(new Error('timeout')), ms);
+  if (parent) {
+    if (parent.aborted) ctl.abort(parent.reason);
+    else parent.addEventListener('abort', () => ctl.abort(parent.reason), { once: true });
+  }
+  // Best-effort cleanup if the consumer never resolves.
+  ctl.signal.addEventListener('abort', () => clearTimeout(t), { once: true });
+  return ctl.signal;
+}
+
 const TRANSPORTS: Transport[] = [
-  {
-    name: 'allorigins',
-    fetchJson: async (url, signal) => {
-      const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal });
-      if (!r.ok) throw new Error(`allorigins ${r.status}`);
-      const wrap = await r.json() as { contents?: string };
-      if (typeof wrap.contents !== 'string') throw new Error('allorigins no contents');
-      return JSON.parse(wrap.contents);
-    },
-  },
   {
     name: 'codetabs',
     fetchJson: async (url, signal) => {
       const proxied = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal });
+      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
       if (!r.ok) throw new Error(`codetabs ${r.status}`);
+      return r.json();
+    },
+  },
+  {
+    name: 'thingproxy',
+    fetchJson: async (url, signal) => {
+      const proxied = `https://thingproxy.freeboard.io/fetch/${url}`;
+      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
+      if (!r.ok) throw new Error(`thingproxy ${r.status}`);
       return r.json();
     },
   },
@@ -75,9 +87,20 @@ const TRANSPORTS: Transport[] = [
     fetchJson: async (url, signal) => {
       // Legacy URL form (?<url>) — different code path from the broken ?url= form.
       const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal });
+      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
       if (!r.ok) throw new Error(`corsproxy.io ${r.status}`);
       return r.json();
+    },
+  },
+  {
+    name: 'allorigins',
+    fetchJson: async (url, signal) => {
+      const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
+      if (!r.ok) throw new Error(`allorigins ${r.status}`);
+      const wrap = await r.json() as { contents?: string };
+      if (typeof wrap.contents !== 'string') throw new Error('allorigins no contents');
+      return JSON.parse(wrap.contents);
     },
   },
 ];
