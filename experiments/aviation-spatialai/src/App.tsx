@@ -55,27 +55,53 @@ export default function App() {
   // huge so the fallback Earth sphere (radius 63 781) stays in frame on zoom.
   const initialCamera = useMemo<[number, number, number]>(() => [250, -250, 350], []);
 
-  // Poll OpenSky.
+  // Poll OpenSky on mount. If the first attempt fails (CORS, network,
+  // rate-limit), STOP retrying and fall back to a local canned-animation
+  // tick — otherwise the dev console fills up with CORS errors at ~1.5s
+  // intervals. Reload the page to retry the live feed.
   useEffect(() => {
     let cancelled = false;
     let abort: AbortController | null = null;
     let timer: number | null = null;
+    let liveFailed = false;
+
+    const recordHistory = (flights: FlightState[]) => {
+      const hist = historyRef.current;
+      const now = Math.floor(Date.now() / 1000);
+      for (const f of flights) {
+        const arr = hist[f.icao24] || (hist[f.icao24] = []);
+        arr.push({ t: now, lat: f.lat, lon: f.lon, altM: f.baroAltitudeM });
+        const cutoff = now - 240;
+        while (arr.length && arr[0].t < cutoff) arr.shift();
+      }
+    };
+
     const tick = async () => {
+      if (liveFailed) {
+        // Local canned animation — no network.
+        const { makeCannedFlights } = await import('./data/cannedFlights');
+        const flights = makeCannedFlights(Date.now());
+        if (cancelled) return;
+        setFlights(flights);
+        setSource('canned');
+        recordHistory(flights);
+        timer = window.setTimeout(tick, 1500);
+        return;
+      }
       abort?.abort();
       abort = new AbortController();
       const res = await fetchFlights(abort.signal);
       if (cancelled) return;
       setSource(res.source);
       setFlights(res.flights);
-      const hist = historyRef.current;
-      const now = Math.floor(Date.now() / 1000);
-      for (const f of res.flights) {
-        const arr = hist[f.icao24] || (hist[f.icao24] = []);
-        arr.push({ t: now, lat: f.lat, lon: f.lon, altM: f.baroAltitudeM });
-        const cutoff = now - 240;
-        while (arr.length && arr[0].t < cutoff) arr.shift();
+      recordHistory(res.flights);
+      if (res.source === 'canned') {
+        // OpenSky failed — switch to local canned mode permanently.
+        liveFailed = true;
+        timer = window.setTimeout(tick, 1500);
+      } else {
+        timer = window.setTimeout(tick, 30000);
       }
-      timer = window.setTimeout(tick, res.source === 'canned' ? 1500 : 30000);
     };
     tick();
     return () => { cancelled = true; abort?.abort(); if (timer) clearTimeout(timer); };
