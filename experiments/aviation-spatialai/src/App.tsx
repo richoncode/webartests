@@ -11,6 +11,8 @@ import { Aircraft, type SceneRef } from './scene/Aircraft';
 import { LatexPanel } from './scene/LatexPanel';
 import { PredictivePath } from './scene/PredictivePath';
 import { XRControls } from './scene/XRControls';
+import { HoverDetector } from './scene/HoverDetector';
+import { AircraftLabel } from './scene/AircraftLabel';
 import { predictTrajectory, type PredictedPoint } from './ml/predictTrajectory';
 
 const ENV = (import.meta as unknown as { env: Record<string, string> }).env;
@@ -47,6 +49,7 @@ const SCENE_ROTATION: [number, number, number] = [-Math.PI / 2, 0, 0];
 export default function App() {
   const [flights, setFlights] = useState<FlightState[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [source, setSource] = useState<'live' | 'canned' | 'pending'>('pending');
   const historyRef = useRef<FlightHistory>({});
   const rigRef = useRef<{ position: Vector3; quaternion: Quaternion } | null>(null);
@@ -138,6 +141,7 @@ export default function App() {
   }, [selectedId, flights]);
 
   const selected = flights.find((f) => f.icao24 === selectedId) ?? null;
+  const hovered  = flights.find((f) => f.icao24 === hoveredId)  ?? null;
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
@@ -174,6 +178,13 @@ export default function App() {
                 <LatexPanel flight={selected} scene={scene} />
               </>
             )}
+            {/* Pop a small floating callsign label on whatever the user is
+                looking at / pointing at, as long as it isn't already the
+                selected aircraft (LatexPanel covers that one). */}
+            {hovered && hovered.icao24 !== selectedId && (
+              <AircraftLabel flight={hovered} scene={scene} />
+            )}
+            <HoverDetector flights={flights} scene={scene} onHover={setHoveredId} />
             <XRControls selected={selected} scene={scene} rigRef={rigRef} />
           </group>
         </XR>

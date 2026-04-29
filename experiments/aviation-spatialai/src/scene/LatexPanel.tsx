@@ -3,6 +3,7 @@ import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector3, Group } from 'thr
 import { useFrame } from '@react-three/fiber';
 import katex from 'katex';
 import { geodeticToSceneENU } from './geo';
+import { deadReckon } from '../data/deadReckon';
 import type { FlightState } from '../data/types';
 import type { SceneRef } from './Aircraft';
 
@@ -62,8 +63,9 @@ export function LatexPanel({ flight, scene }: Props) {
 
   useFrame((state) => {
     if (!ref.current) return;
+    const dr = deadReckon(flight, Date.now() / 1000);
     geodeticToSceneENU(
-      flight.lat, flight.lon, flight.baroAltitudeM,
+      dr.lat, dr.lon, dr.altM,
       scene.refLat, scene.refLon, scene.refH, scene.scale, _pos,
     );
     // Lift panel ~90 m above the aircraft along scene up.

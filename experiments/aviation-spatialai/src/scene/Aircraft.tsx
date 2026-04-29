@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Vector3, Quaternion, Group } from 'three';
 import { useFrame } from '@react-three/fiber';
 import { geodeticToSceneENU, aircraftSceneQuaternion } from './geo';
+import { deadReckon } from '../data/deadReckon';
 import type { FlightState } from '../data/types';
 
 export interface SceneRef {
@@ -31,8 +32,11 @@ export function Aircraft({ flight, selected, onClick, scene }: Props) {
 
   useFrame(() => {
     if (!ref.current) return;
+    // Dead-reckon position from last fetch so motion looks smooth between
+    // 30 s polling intervals.
+    const dr = deadReckon(flight, Date.now() / 1000);
     geodeticToSceneENU(
-      flight.lat, flight.lon, flight.baroAltitudeM,
+      dr.lat, dr.lon, dr.altM,
       scene.refLat, scene.refLon, scene.refH, scene.scale, _pos,
     );
     ref.current.position.copy(_pos);
