@@ -13,6 +13,7 @@ import { PredictivePath } from './scene/PredictivePath';
 import { XRControls } from './scene/XRControls';
 import { HoverDetector } from './scene/HoverDetector';
 import { AircraftLabel } from './scene/AircraftLabel';
+import { VRListPanel } from './scene/VRListPanel';
 import { predictTrajectory, type PredictedPoint } from './ml/predictTrajectory';
 
 const ENV = (import.meta as unknown as { env: Record<string, string> }).env;
@@ -184,9 +185,15 @@ export default function App() {
             {hovered && hovered.icao24 !== selectedId && (
               <AircraftLabel flight={hovered} scene={scene} />
             )}
-            <HoverDetector flights={flights} scene={scene} onHover={setHoveredId} />
             <XRControls selected={selected} scene={scene} rigRef={rigRef} />
           </group>
+          {/* Hover/point detector and VR list panel live OUTSIDE the rotated
+              scene group (in world Y-up). Putting the controller XRSpace
+              inside the rotation would compose the two transforms and the
+              ray would drift off-target; the panel needs to anchor to the
+              real headset, not to a rotated-group descendant. */}
+          <HoverDetector flights={flights} scene={scene} onHover={setHoveredId} />
+          <VRListPanel flights={flights} selectedId={selectedId} hoveredId={hoveredId} />
         </XR>
         <OrbitControls
           makeDefault
