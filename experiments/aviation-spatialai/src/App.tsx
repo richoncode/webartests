@@ -44,7 +44,7 @@ function ZUpCamera({ target }: { target: [number, number, number] }) {
 export default function App() {
   const [flights, setFlights] = useState<FlightState[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [source, setSource] = useState<'opensky' | 'canned' | 'pending'>('pending');
+  const [source, setSource] = useState<'live' | 'canned' | 'pending'>('pending');
   const historyRef = useRef<FlightHistory>({});
   const rigRef = useRef<{ position: Vector3; quaternion: Quaternion } | null>(null);
 
@@ -100,7 +100,7 @@ export default function App() {
       const res = await fetchFlights(abort.signal);
       if (cancelled) return;
       setSource(res.source);
-      if (res.source === 'opensky') {
+      if (res.source === 'live') {
         isLive = true;
         setFlights(res.flights);
         recordHistory(res.flights);
@@ -197,7 +197,7 @@ export default function App() {
 interface HUDProps {
   flights: FlightState[];
   selected: FlightState | null;
-  source: 'opensky' | 'canned' | 'pending';
+  source: 'live' | 'canned' | 'pending';
   hasIonToken: boolean;
   onSelect: (id: string | null) => void;
   onEnterVR: () => void;
@@ -210,7 +210,7 @@ function HUD({ flights, selected, source, hasIonToken, onSelect, onEnterVR }: HU
         <div style={titleStyle}>Aviation SpatialAI</div>
         <div style={subStyle}>Live ADS-B over photoreal terrain · 5-min trajectory prediction</div>
         <div style={statusRow}>
-          <Badge ok={source === 'opensky'}>{source === 'opensky' ? 'OPENSKY · LIVE' : source === 'canned' ? 'OPENSKY · FALLBACK' : 'CONNECTING…'}</Badge>
+          <Badge ok={source === 'live'}>{source === 'live' ? 'ADS-B · LIVE' : source === 'canned' ? 'ADS-B · FALLBACK' : 'CONNECTING…'}</Badge>
           <Badge ok={hasIonToken}>{hasIonToken ? 'ION · TILES' : 'ION · MISSING TOKEN'}</Badge>
           <Badge ok>{flights.length} aircraft</Badge>
         </div>

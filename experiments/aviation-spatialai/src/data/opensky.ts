@@ -1,135 +1,88 @@
 import type { FlightState } from './types';
 import { makeCannedFlights } from './cannedFlights';
 
-// SF Bay Area bbox — busy airspace (SFO, OAK, SJC) and good photoreal coverage.
+// File kept named `opensky.ts` for import-path stability, but the live source
+// is now airplanes.live — OpenSky doesn't return CORS headers and every free
+// public CORS relay we tried is currently dead, paywalled, or rate-limited.
+// airplanes.live returns Access-Control-Allow-Origin: *, so a static page can
+// fetch it directly with no relay.
+
+// Bounding region — SF Bay. The HUD still references this for legacy reasons.
 export const BBOX = { lamin: 37.30, lomin: -122.80, lamax: 37.95, lomax: -121.70 };
+const CENTRE_LAT = (BBOX.lamin + BBOX.lamax) / 2;
+const CENTRE_LON = (BBOX.lomin + BBOX.lomax) / 2;
+// airplanes.live uses radial queries; 80 NM ≈ 148 km — covers the bbox plus
+// a little context.
+const RADIUS_NM = 80;
+const URL_BASE = `https://api.airplanes.live/v2/point/${CENTRE_LAT}/${CENTRE_LON}/${RADIUS_NM}`;
 
-const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
+interface AirplanesLiveAircraft {
+  hex: string;
+  flight?: string;
+  r?: string;            // registration
+  t?: string;            // type code (e.g. B738)
+  alt_baro?: number | 'ground';
+  gs?: number;           // ground speed (knots)
+  track?: number;        // true track (deg, CW from north)
+  baro_rate?: number | null; // vertical rate (ft/min)
+  lat?: number;
+  lon?: number;
+}
 
-// OpenSky `states/all` response: 17 fields per state vector.
-// Indexes per https://openskynetwork.github.io/opensky-api/rest.html
-type RawState = (string | number | boolean | null)[];
+interface AirplanesLiveResponse {
+  ac?: AirplanesLiveAircraft[];
+  now?: number;
+  total?: number;
+}
 
-function parseState(raw: RawState): FlightState | null {
-  if (!Array.isArray(raw) || raw.length < 17) return null;
-  const lon = raw[5] as number | null;
-  const lat = raw[6] as number | null;
-  const onGround = raw[8] as boolean;
-  if (lon == null || lat == null || onGround) return null;
+const KT_TO_MPS = 0.514444;
+const FT_TO_M   = 0.3048;
+const FPM_TO_MPS = 0.3048 / 60;
+
+function parseAircraft(a: AirplanesLiveAircraft, now: number): FlightState | null {
+  if (a.lat == null || a.lon == null) return null;
+  const onGround = a.alt_baro === 'ground';
+  const altFt = typeof a.alt_baro === 'number' ? a.alt_baro : 0;
   return {
-    icao24: String(raw[0] ?? '').trim(),
-    callsign: raw[1] ? String(raw[1]).trim() : null,
-    origin: (raw[2] as string | null) ?? null,
-    lon,
-    lat,
-    baroAltitudeM: (raw[7] as number | null) ?? (raw[13] as number | null) ?? 0,
-    velocityMps: (raw[9] as number | null) ?? 0,
-    trueTrackDeg: (raw[10] as number | null) ?? 0,
-    verticalRateMps: (raw[11] as number | null) ?? 0,
+    icao24: a.hex,
+    callsign: ((a.flight || a.r || '').trim()) || null,
+    origin: null,
+    lon: a.lon,
+    lat: a.lat,
+    baroAltitudeM: altFt * FT_TO_M,
+    velocityMps: (typeof a.gs === 'number' ? a.gs : 0) * KT_TO_MPS,
+    trueTrackDeg: typeof a.track === 'number' ? a.track : 0,
+    verticalRateMps: (typeof a.baro_rate === 'number' ? a.baro_rate : 0) * FPM_TO_MPS,
     onGround,
-    lastUpdate: (raw[4] as number | null) ?? Math.floor(Date.now() / 1000),
+    lastUpdate: now,
   };
 }
 
 export interface FetchResult {
   flights: FlightState[];
-  source: 'opensky' | 'canned';
-  via?: string;        // which transport succeeded (or last failed)
+  source: 'live' | 'canned';
+  via?: string;
   error?: string;
 }
 
-// CORS-relaxed transports for OpenSky's public endpoint. Browser CORS makes
-// a direct fetch impossible (always logs an error), so we skip that and go
-// straight to relays. We try several; first non-empty result wins. Each
-// attempt is bounded by a per-transport timeout so a hung relay doesn't
-// drag the chain. (Order chosen by current reliability: allorigins has been
-// dropping the CORS header outright, so it's last.)
-type Transport = {
-  name: string;
-  fetchJson: (url: string, signal?: AbortSignal) => Promise<unknown>;
-};
-
-const TRANSPORT_TIMEOUT_MS = 8000;
-
-function abortAfter(ms: number, parent?: AbortSignal): AbortSignal {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(new Error('timeout')), ms);
-  if (parent) {
-    if (parent.aborted) ctl.abort(parent.reason);
-    else parent.addEventListener('abort', () => ctl.abort(parent.reason), { once: true });
-  }
-  // Best-effort cleanup if the consumer never resolves.
-  ctl.signal.addEventListener('abort', () => clearTimeout(t), { once: true });
-  return ctl.signal;
-}
-
-const TRANSPORTS: Transport[] = [
-  {
-    name: 'codetabs',
-    fetchJson: async (url, signal) => {
-      const proxied = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
-      if (!r.ok) throw new Error(`codetabs ${r.status}`);
-      return r.json();
-    },
-  },
-  {
-    name: 'thingproxy',
-    fetchJson: async (url, signal) => {
-      const proxied = `https://thingproxy.freeboard.io/fetch/${url}`;
-      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
-      if (!r.ok) throw new Error(`thingproxy ${r.status}`);
-      return r.json();
-    },
-  },
-  {
-    name: 'corsproxy.io',
-    fetchJson: async (url, signal) => {
-      // Legacy URL form (?<url>) — different code path from the broken ?url= form.
-      const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
-      if (!r.ok) throw new Error(`corsproxy.io ${r.status}`);
-      return r.json();
-    },
-  },
-  {
-    name: 'allorigins',
-    fetchJson: async (url, signal) => {
-      const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const r = await fetch(proxied, { signal: abortAfter(TRANSPORT_TIMEOUT_MS, signal) });
-      if (!r.ok) throw new Error(`allorigins ${r.status}`);
-      const wrap = await r.json() as { contents?: string };
-      if (typeof wrap.contents !== 'string') throw new Error('allorigins no contents');
-      return JSON.parse(wrap.contents);
-    },
-  },
-];
-
 export async function fetchFlights(signal?: AbortSignal): Promise<FetchResult> {
-  const u = new URL(OPENSKY_URL);
-  u.searchParams.set('lamin', String(BBOX.lamin));
-  u.searchParams.set('lomin', String(BBOX.lomin));
-  u.searchParams.set('lamax', String(BBOX.lamax));
-  u.searchParams.set('lomax', String(BBOX.lomax));
-
-  let lastErr = '';
-  for (const t of TRANSPORTS) {
-    try {
-      const j = await t.fetchJson(u.toString(), signal) as { states?: RawState[] };
-      const states = j?.states ?? [];
-      const flights = states.map(parseState).filter((f): f is FlightState => !!f);
-      if (flights.length === 0) throw new Error(`${t.name} empty`);
-      return { flights, source: 'opensky', via: t.name };
-    } catch (err) {
-      lastErr = err instanceof Error ? err.message : String(err);
-      // Try the next relay.
-    }
+  try {
+    const r = await fetch(URL_BASE, { signal });
+    if (!r.ok) throw new Error('airplanes.live ' + r.status);
+    const j = await r.json() as AirplanesLiveResponse;
+    const list = j?.ac ?? [];
+    const now = j.now ? Math.floor(j.now / 1000) : Math.floor(Date.now() / 1000);
+    const flights = list
+      .map((a) => parseAircraft(a, now))
+      .filter((f): f is FlightState => !!f && !f.onGround);
+    if (flights.length === 0) throw new Error('empty');
+    return { flights, source: 'live', via: 'airplanes.live' };
+  } catch (err) {
+    return {
+      flights: makeCannedFlights(Date.now()),
+      source: 'canned',
+      via: 'fallback',
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
-
-  return {
-    flights: makeCannedFlights(Date.now()),
-    source: 'canned',
-    via: 'fallback',
-    error: lastErr || 'all transports failed',
-  };
 }
