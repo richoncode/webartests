@@ -38,13 +38,48 @@ export interface FetchResult {
   error?: string;
 }
 
-// CORS-relaxed transports for OpenSky's public endpoint. We try them in
-// order; first success wins. All are free public proxies, no signup. They
-// occasionally rate-limit or go down, so the fallback chain matters.
-const TRANSPORTS: Array<{ name: string; build: (u: string) => string }> = [
-  { name: 'direct',         build: (u) => u },
-  { name: 'corsproxy.io',   build: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
-  { name: 'allorigins.win', build: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+// CORS-relaxed transports for OpenSky's public endpoint. Browser CORS makes
+// a direct fetch impossible (always logs an error), so we skip that and go
+// straight to relays. allorigins's /get endpoint wraps the proxied response
+// in {contents, status} JSON; that wrapping bypasses some of the dodgy
+// header behaviour that triggers "Ensure CORS response header values are
+// valid" in Chrome. We try several relays; first non-empty result wins.
+type Transport = {
+  name: string;
+  fetchJson: (url: string, signal?: AbortSignal) => Promise<unknown>;
+};
+
+const TRANSPORTS: Transport[] = [
+  {
+    name: 'allorigins',
+    fetchJson: async (url, signal) => {
+      const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const r = await fetch(proxied, { signal });
+      if (!r.ok) throw new Error(`allorigins ${r.status}`);
+      const wrap = await r.json() as { contents?: string };
+      if (typeof wrap.contents !== 'string') throw new Error('allorigins no contents');
+      return JSON.parse(wrap.contents);
+    },
+  },
+  {
+    name: 'codetabs',
+    fetchJson: async (url, signal) => {
+      const proxied = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
+      const r = await fetch(proxied, { signal });
+      if (!r.ok) throw new Error(`codetabs ${r.status}`);
+      return r.json();
+    },
+  },
+  {
+    name: 'corsproxy.io',
+    fetchJson: async (url, signal) => {
+      // Legacy URL form (?<url>) — different code path from the broken ?url= form.
+      const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      const r = await fetch(proxied, { signal });
+      if (!r.ok) throw new Error(`corsproxy.io ${r.status}`);
+      return r.json();
+    },
+  },
 ];
 
 export async function fetchFlights(signal?: AbortSignal): Promise<FetchResult> {
@@ -57,16 +92,14 @@ export async function fetchFlights(signal?: AbortSignal): Promise<FetchResult> {
   let lastErr = '';
   for (const t of TRANSPORTS) {
     try {
-      const resp = await fetch(t.build(u.toString()), { signal });
-      if (!resp.ok) throw new Error(`${t.name} ${resp.status}`);
-      const j = await resp.json();
-      const states = (j.states || []) as RawState[];
+      const j = await t.fetchJson(u.toString(), signal) as { states?: RawState[] };
+      const states = j?.states ?? [];
       const flights = states.map(parseState).filter((f): f is FlightState => !!f);
       if (flights.length === 0) throw new Error(`${t.name} empty`);
       return { flights, source: 'opensky', via: t.name };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
-      // try the next transport
+      // Try the next relay.
     }
   }
 
