@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { XR, createXRStore } from '@react-three/xr';
 import { Vector3, Quaternion } from 'three';
@@ -31,15 +31,18 @@ const WORLD_SCALE = 0.01;
 
 const xrStore = createXRStore();
 
-/** Three.js cameras default to Y-up. Our scene is Z-up — fix on mount. */
-function ZUpCamera({ target }: { target: [number, number, number] }) {
-  const { camera } = useThree();
-  useEffect(() => {
-    camera.up.set(0, 0, 1);
-    camera.lookAt(target[0], target[1], target[2]);
-  }, [camera, target]);
-  return null;
-}
+// Scene math is built in local-ENU (+X east, +Y north, +Z up). WebXR's
+// reference space is Y-up — so in VR the user's gravity vector is along -Y,
+// not -Z. Without compensation, the ground appears as a wall.
+//
+// Fix: wrap all scene content in a group rotated -90° around X. That
+// composition maps scene-ENU into world-Y-up:
+//   scene +X (east)  → world +X
+//   scene +Z (up)    → world +Y
+//   scene +Y (north) → world -Z
+// The camera and OrbitControls operate in Y-up world coords as Three.js
+// defaults expect, so no camera.up override is needed.
+const SCENE_ROTATION: [number, number, number] = [-Math.PI / 2, 0, 0];
 
 export default function App() {
   const [flights, setFlights] = useState<FlightState[]>([]);
@@ -53,11 +56,11 @@ export default function App() {
     [],
   );
 
-  // Camera looking north-up at the aircraft cluster. Aircraft span roughly
-  // ±45 east-west, ±27 north-south, 25-90 altitude in scene units; this
-  // camera position frames the whole demo flight set.
-  const initialCamera = useMemo<[number, number, number]>(() => [80, -180, 220], []);
-  const orbitTarget   = useMemo<[number, number, number]>(() => [0, 0, 50], []);
+  // Camera in world Y-up coords (after the SCENE_ROTATION, scene-Z up becomes
+  // world-Y up, scene-Y north becomes world -Z forward). Equivalent to the
+  // earlier (80 east, 180 south, 220 up) intent.
+  const initialCamera = useMemo<[number, number, number]>(() => [80, 220, 180], []);
+  const orbitTarget   = useMemo<[number, number, number]>(() => [0, 50, 0], []);
 
   // Two independent timers:
   //   livePoll: attempts OpenSky (via direct → corsproxy → allorigins) every
@@ -145,33 +148,34 @@ export default function App() {
       >
         <color attach="background" args={["#040912"]} />
         <fog attach="fog" args={["#040912", 1500, 80000]} />
-        <ZUpCamera target={orbitTarget} />
         <ambientLight intensity={0.9} />
-        <directionalLight position={[200, -150, 400]} intensity={1.6} color="#fff5d8" />
-        {/* Ground grid at z=0 (sea level) over a ~1000×1000 unit square (≈100 km).
-            GridHelper is XZ-plane by default; rotateX(π/2) lays it in the XY plane. */}
-        <gridHelper
-          args={[1000, 40, '#234764', '#13243a']}
-          rotation={[Math.PI / 2, 0, 0]}
-        />
         <XR store={xrStore}>
-          <PhotorealTerrain cesiumIonToken={ION_TOKEN} cesiumIonAssetId={ION_ASSET_ID} scene={scene} />
-          {flights.map((f) => (
-            <Aircraft
-              key={f.icao24}
-              flight={f}
-              selected={f.icao24 === selectedId}
-              onClick={() => setSelectedId(f.icao24)}
-              scene={scene}
-            />
-          ))}
-          {selected && (
-            <>
-              <PredictivePath points={predicted} scene={scene} />
-              <LatexPanel flight={selected} scene={scene} />
-            </>
-          )}
-          <XRControls selected={selected} scene={scene} rigRef={rigRef} />
+          <group rotation={SCENE_ROTATION}>
+            {/* Direction is in scene-ENU; the parent group rotates the light
+                source into world coords along with the rest of the scene. */}
+            <directionalLight position={[200, -150, 400]} intensity={1.6} color="#fff5d8" />
+            {/* Default GridHelper lies in the XZ plane (Y up) — exactly the
+                ground orientation we want once the parent rotation maps
+                scene-Z-up into world-Y-up. */}
+            <gridHelper args={[1000, 40, '#234764', '#13243a']} />
+            <PhotorealTerrain cesiumIonToken={ION_TOKEN} cesiumIonAssetId={ION_ASSET_ID} scene={scene} />
+            {flights.map((f) => (
+              <Aircraft
+                key={f.icao24}
+                flight={f}
+                selected={f.icao24 === selectedId}
+                onClick={() => setSelectedId(f.icao24)}
+                scene={scene}
+              />
+            ))}
+            {selected && (
+              <>
+                <PredictivePath points={predicted} scene={scene} />
+                <LatexPanel flight={selected} scene={scene} />
+              </>
+            )}
+            <XRControls selected={selected} scene={scene} rigRef={rigRef} />
+          </group>
         </XR>
         <OrbitControls
           makeDefault
