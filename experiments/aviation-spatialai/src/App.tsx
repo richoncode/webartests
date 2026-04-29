@@ -49,11 +49,11 @@ export default function App() {
     [],
   );
 
-  // Camera at (250 east, 250 south, 350 up) looking at the centre — gives an
-  // oblique top-down view of the bbox (~700×1000 units across) with aircraft
-  // at altitudes 20–100 units of scene height clearly visible. Far plane is
-  // huge so the fallback Earth sphere (radius 63 781) stays in frame on zoom.
-  const initialCamera = useMemo<[number, number, number]>(() => [250, -250, 350], []);
+  // Camera at (60 east, -60 south, 100 up) — close enough that aircraft
+  // (drawn 20× larger than physical scale for visibility) read clearly,
+  // far enough to take in most of the demo cluster. Far plane is huge so
+  // the fallback Earth sphere (radius 63 781) stays in frame on zoom-out.
+  const initialCamera = useMemo<[number, number, number]>(() => [60, -60, 100], []);
 
   // Poll OpenSky on mount. If the first attempt fails (CORS, network,
   // rate-limit), STOP retrying and fall back to a local canned-animation
@@ -128,10 +128,16 @@ export default function App() {
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onPointerMissed={() => setSelectedId(null)}
       >
-        <color attach="background" args={["#04080f"]} />
+        <color attach="background" args={["#040912"]} />
+        <fog attach="fog" args={["#040912", 1500, 80000]} />
         <ZUpCamera />
-        <ambientLight intensity={0.55} />
-        <directionalLight position={[200, -150, 400]} intensity={1.0} color="#fff5d8" />
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[200, -150, 400]} intensity={1.6} color="#fff5d8" />
+        {/* Bbox centre reference — small green marker at the SF Bay origin */}
+        <mesh position={[0, 0, 0.5]}>
+          <sphereGeometry args={[0.6, 16, 12]} />
+          <meshBasicMaterial color="#7adfa1" />
+        </mesh>
         <XR store={xrStore}>
           <PhotorealTerrain cesiumIonToken={ION_TOKEN} scene={scene} />
           {flights.map((f) => (

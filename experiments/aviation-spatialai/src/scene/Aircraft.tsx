@@ -48,8 +48,12 @@ export function Aircraft({ flight, selected, onClick, scene }: Props) {
     ref.current.quaternion.copy(_q);
   });
 
-  // Render aircraft 1:1 in metres, scaled by scene.scale just like position.
-  const s = useMemo(() => scene.scale, [scene.scale]);
+  // Aircraft are rendered visually larger than 1:1 so they're legible from
+  // a typical orbit-camera distance. A real 36 m airliner is sub-pixel from
+  // 500 m at scene scale; multiplying lets the demo read clearly without
+  // needing the camera to dive into the bbox. Position is still 1:1.
+  const VIS = 20;
+  const s = useMemo(() => scene.scale * VIS, [scene.scale]);
   const FU_LEN = 36 * s, FU_R = 1.6 * s;
   const WING_SPAN = 34 * s, WING_C = 5 * s, WING_T = 0.5 * s;
   const TAIL_SPAN = 12 * s, TAIL_C = 3 * s;

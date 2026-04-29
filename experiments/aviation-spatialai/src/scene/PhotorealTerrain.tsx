@@ -101,7 +101,14 @@ function FallbackGlobe({ scene }: { scene: SceneRef }) {
 
   return (
     <mesh ref={ref}>
-      <meshStandardMaterial color="#0e3a5f" roughness={0.95} metalness={0} side={DoubleSide} />
+      <meshStandardMaterial
+        color="#1f5b8e"
+        emissive="#0a2a48"
+        emissiveIntensity={0.4}
+        roughness={0.85}
+        metalness={0.05}
+        side={DoubleSide}
+      />
     </mesh>
   );
 }
