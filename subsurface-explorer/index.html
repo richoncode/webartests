@@ -323,6 +323,9 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
+    /* The HTML `hidden` attribute defaults to display:none, but our class
+       sets display:flex which wins specificity. Force it off when hidden. */
+    .loading-overlay[hidden] { display: none; }
     .loading-overlay .pulse {
       width: 32px;
       height: 32px;
@@ -411,7 +414,7 @@
             <label for="opacity">Translucency</label>
             <output id="opacity-out">1.00×</output>
           </div>
-          <input id="opacity" type="range" min="0.2" max="3.0" step="0.05" value="1.0">
+          <input id="opacity" type="range" min="0.1" max="3.0" step="0.05" value="0.3">
         </div>
       </section>
 
@@ -842,10 +845,10 @@
       metersPerHorizUnit: 1500,
       metersPerVertUnit:  500,
       elevMid:            1900,
-      // bbox is wider than the volume cube — these fractions tell us how much
-      // of each axis the cube covers within the bbox image.
-      horizFracOfBbox: 6.0 / 14.5,
-      vertFracOfBbox:  6.0 / 10.8,
+      // Full bbox dimensions in world units. lon span 0.175° × 84.7 km/° = 14.82 km
+      // → 9.88 world units. lat span 0.097° × 111.32 km/° = 10.80 km → 7.20 units.
+      bboxWorldFullWidth:  9.88,
+      bboxWorldFullHeight: 7.20,
       // Bingham porphyry copper deposit — depth/extent approximated from
       // public USGS descriptions, not a tomographic measurement.
       orebody: { x: -0.30, y: -0.80, z: 0.10, rx: 1.4, ry: 0.9, rz: 1.2, peak: 5.4 },
@@ -904,22 +907,23 @@
       return { data: hm, w: W, h: H, minM, maxM };
     }
 
-    // Map a (lat, lon) to volume-local world XZ. Returns x, z in [-2, 2]
-    // (clamped if outside the volume cube).
+    // Map a (lat, lon) to volume-local world XZ. Volume cube spans [-2, 2]³ but
+    // the surrounding terrain mesh extends to the full bbox in world units, so
+    // returned values can be outside the cube for points near the bbox edges.
     function binghamLatLonToXZ(lat, lon) {
       const b = BINGHAM.bbox;
       const u = (lon - b.west)  / (b.east  - b.west);
       const w = (b.north - lat) / (b.north - b.south);
-      const x = ((u - 0.5) / BINGHAM.horizFracOfBbox) * 2;
-      const z = ((w - 0.5) / BINGHAM.vertFracOfBbox)  * 2;
+      const x = (u - 0.5) * BINGHAM.bboxWorldFullWidth;
+      const z = (w - 0.5) * BINGHAM.bboxWorldFullHeight;
       return { x, z };
     }
 
-    // Bilinear sample of heightmap given world XZ ∈ [-2, 2]. Returns elevation
-    // in meters or NaN if the world XZ falls outside the bbox image.
+    // Bilinear sample of heightmap given world XZ. Returns elevation in meters
+    // or NaN if the XZ falls outside the bbox image.
     function sampleHeightmap(hm, worldX, worldZ) {
-      const u = 0.5 + (worldX / 2) * BINGHAM.horizFracOfBbox;
-      const w = 0.5 + (worldZ / 2) * BINGHAM.vertFracOfBbox;
+      const u = 0.5 + worldX / BINGHAM.bboxWorldFullWidth;
+      const w = 0.5 + worldZ / BINGHAM.bboxWorldFullHeight;
       if (u < 0 || u > 1 || w < 0 || w > 1) return NaN;
       const px = u * (hm.w - 1);
       const py = w * (hm.h - 1);
@@ -991,10 +995,13 @@
       return data;
     }
 
-    function buildBinghamTerrainMesh(hm) {
-      const SEG = 96;
-      const SPAN = 5.5; // slightly larger than volume cube so ridges around the pit are visible
-      const geom = new THREE.PlaneGeometry(SPAN, SPAN, SEG, SEG);
+    function buildBinghamTerrainMesh(hm, satTexture) {
+      const SEG = 160;
+      // Terrain mesh spans the full bbox image so the satellite texture maps
+      // 1:1 with PlaneGeometry's default UVs.
+      const SPAN_X = BINGHAM.bboxWorldFullWidth;
+      const SPAN_Z = BINGHAM.bboxWorldFullHeight;
+      const geom = new THREE.PlaneGeometry(SPAN_X, SPAN_Z, SEG, SEG);
       geom.rotateX(-Math.PI / 2);
       const positions = geom.attributes.position;
       for (let i = 0; i < positions.count; i++) {
@@ -1002,23 +1009,128 @@
         const zw = positions.getZ(i);
         let surfM = sampleHeightmap(hm, xw, zw);
         if (Number.isNaN(surfM)) surfM = BINGHAM.elevMid;
-        // Map elevation to world Y using the same scale as the volume.
         const yw = (surfM - BINGHAM.elevMid) / BINGHAM.metersPerVertUnit;
         positions.setY(i, yw);
       }
       geom.computeVertexNormals();
       const mat = new THREE.MeshStandardMaterial({
-        color: 0x2c3848,
-        roughness: 0.95,
+        color: satTexture ? 0xffffff : 0x4a5562,
+        map: satTexture || null,
+        roughness: 0.92,
         metalness: 0,
         transparent: true,
-        opacity: 0.55,
+        opacity: satTexture ? 0.78 : 0.55,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geom, mat);
       mesh.renderOrder = 0;
       return mesh;
+    }
+
+    // Fetch + stitch Sentinel-2 cloud-free satellite tiles from EOX (free,
+    // CORS-clean WMTS). Returns a CanvasTexture or null if any tile fails.
+    async function fetchSatelliteTexture(tiles) {
+      const TILE = 256;
+      const W = 512, H = 512;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+
+      try {
+        await Promise.all(tiles.map((t, i) => new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const offX = (i % 2) * TILE;
+            const offY = Math.floor(i / 2) * TILE;
+            ctx.drawImage(img, offX, offY);
+            resolve();
+          };
+          img.onerror = () => reject(new Error('sat tile ' + img.src));
+          // EOX WMTS uses TileMatrix={z}/TileRow={y}/TileCol={x} order.
+          img.src = `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/${t.z}/${t.y}/${t.x}.jpg`;
+        })));
+      } catch (err) {
+        console.warn('Satellite imagery fetch failed', err);
+        return null;
+      }
+
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    // Pull OSM `landuse=quarry` and `landuse=industrial` polygons inside the
+    // bbox. Returns array of polygons, each as Array<{lat, lon}>.
+    async function fetchOSMQuarryPolygons(bbox, signal) {
+      const query =
+        `[out:json][timeout:8];(` +
+        `way["landuse"="quarry"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});` +
+        `way["landuse"="industrial"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});` +
+        `);out geom;`;
+      try {
+        const resp = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(query),
+          signal,
+        });
+        if (!resp.ok) throw new Error('overpass status ' + resp.status);
+        const j = await resp.json();
+        return j.elements
+          .filter(e => e.type === 'way' && Array.isArray(e.geometry))
+          .map(e => ({
+            tag: (e.tags && (e.tags.landuse || e.tags.man_made)) || 'unknown',
+            ring: e.geometry,
+          }));
+      } catch (err) {
+        console.warn('Quarry polygon query failed', err);
+        return [];
+      }
+    }
+
+    // Build a glowing red LineLoop (or LineSegments) for each pit / industrial
+    // polygon, lifted slightly above the terrain surface so it's visible.
+    function buildPitPolygonsMesh(polygons, hm, parent) {
+      // Group: pit (quarry) gets a brighter red, industrial a fainter amber.
+      const pitMat = new THREE.LineBasicMaterial({
+        color: 0xff3b3b, transparent: true, opacity: 0.95,
+      });
+      const indMat = new THREE.LineBasicMaterial({
+        color: 0xffae3b, transparent: true, opacity: 0.6,
+      });
+      const LIFT = 0.06; // world units above terrain so lines float clear
+      let pitVertexCount = 0;
+      let polygonCount = 0;
+      for (const poly of polygons) {
+        const ring = poly.ring;
+        if (!ring || ring.length < 3) continue;
+        const positions = [];
+        for (let i = 0; i < ring.length; i++) {
+          const next = ring[(i + 1) % ring.length];
+          const cur  = ring[i];
+          const a = binghamLatLonToXZ(cur.lat,  cur.lon);
+          const b = binghamLatLonToXZ(next.lat, next.lon);
+          let aY = sampleHeightmap(hm, a.x, a.z);
+          let bY = sampleHeightmap(hm, b.x, b.z);
+          if (Number.isNaN(aY)) aY = BINGHAM.elevMid;
+          if (Number.isNaN(bY)) bY = BINGHAM.elevMid;
+          aY = (aY - BINGHAM.elevMid) / BINGHAM.metersPerVertUnit + LIFT;
+          bY = (bY - BINGHAM.elevMid) / BINGHAM.metersPerVertUnit + LIFT;
+          positions.push(a.x, aY, a.z, b.x, bY, b.z);
+        }
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const mat = poly.tag === 'quarry' ? pitMat : indMat;
+        const seg = new THREE.LineSegments(geom, mat);
+        seg.renderOrder = 3;
+        parent.add(seg);
+        polygonCount++;
+        if (poly.tag === 'quarry') pitVertexCount += ring.length;
+      }
+      return { polygonCount, pitVertexCount };
     }
 
     async function fetchOSMShafts(bbox, signal) {
@@ -1046,8 +1158,12 @@
     }
 
     async function makeBinghamPreset(parent) {
-      setLoadingStep('fetching elevation tiles…');
-      const hm = await fetchTerrainHeightmap(BINGHAM.tiles);
+      setLoadingStep('fetching elevation + satellite tiles…');
+      // Both tile fetches in parallel — they're independent network requests.
+      const [hm, satTex] = await Promise.all([
+        fetchTerrainHeightmap(BINGHAM.tiles),
+        fetchSatelliteTexture(BINGHAM.tiles),
+      ]);
 
       setLoadingStep('building volumetric model…');
       await new Promise(r => setTimeout(r, 0)); // yield to paint loading UI
@@ -1056,19 +1172,29 @@
 
       setLoadingStep('rendering terrain mesh…');
       await new Promise(r => setTimeout(r, 0));
-      const terrainMesh = buildBinghamTerrainMesh(hm);
+      const terrainMesh = buildBinghamTerrainMesh(hm, satTex);
       parent.add(terrainMesh);
 
-      setLoadingStep('querying mineshaft database…');
+      setLoadingStep('querying OpenStreetMap…');
       const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 9000);
-      let shafts = await fetchOSMShafts(BINGHAM.bbox, ctrl.signal);
+      const timeoutId = setTimeout(() => ctrl.abort(), 12000);
+      // Run shaft + quarry-polygon queries in parallel.
+      const [shaftsRes, polygons] = await Promise.all([
+        fetchOSMShafts(BINGHAM.bbox, ctrl.signal),
+        fetchOSMQuarryPolygons(BINGHAM.bbox, ctrl.signal),
+      ]);
       clearTimeout(timeoutId);
+      let shafts = shaftsRes;
       let shaftSource = 'osm';
       if (!shafts || shafts.length === 0) {
         shafts = BINGHAM.fallbackShafts;
         shaftSource = 'fallback';
       }
+
+      // Pit / industrial polygon overlay (rendered as glowing red lines on the terrain)
+      const pitOverlay = new THREE.Group();
+      parent.add(pitOverlay);
+      const polyStats = buildPitPolygonsMesh(polygons, hm, pitOverlay);
 
       const strings      = new THREE.Group();
       const sensors      = new THREE.Group();
@@ -1078,7 +1204,11 @@
       const shaftXZ = [];
       for (const s of shafts.slice(0, 12)) {
         const { x, z } = binghamLatLonToXZ(s.lat, s.lon);
-        if (Math.abs(x) <= 2.4 && Math.abs(z) <= 2.4) shaftXZ.push([x, z]);
+        // Filter out shafts that fall outside the terrain mesh entirely.
+        if (Math.abs(x) <= BINGHAM.bboxWorldFullWidth / 2 + 0.2
+         && Math.abs(z) <= BINGHAM.bboxWorldFullHeight / 2 + 0.2) {
+          shaftXZ.push([x, z]);
+        }
       }
       if (shaftXZ.length < 3) {
         for (const s of BINGHAM.fallbackShafts) {
@@ -1095,16 +1225,23 @@
       [strings, sensors, trajectories].forEach(g =>
         g.children.forEach(c => { c.renderOrder = 2; }));
 
+      const polyDesc = polyStats.polygonCount > 0
+        ? `${polyStats.polygonCount} OSM polygon${polyStats.polygonCount === 1 ? '' : 's'}`
+        : 'no OSM polygons in bbox';
+
       return {
         texA: t0, texB: t1,
         strings, sensors, trajectories,
         terrain: terrainMesh,
+        pitOverlay,
         timeLabels: ['t₀ — pre-extraction', 't₁ — post-extraction'],
         timeHint: 'Pit floor lowers and a small cavity opens above the orebody at t₁.',
         meta:
-          `<span class="source">${BINGHAM.name} · z=12 Terrarium tiles</span><br>` +
-          `Surface from <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" style="color:#5b9bd5;text-decoration:none">AWS Terrain Tiles</a> (Mapzen Terrarium). ` +
-          `Mineshafts via ${shaftSource === 'osm' ? '<a href="https://overpass-api.de/" target="_blank" style="color:#5b9bd5;text-decoration:none">OSM Overpass</a>' : 'fallback positions'}.<br>` +
+          `<span class="source">${BINGHAM.name} · z=12 Terrarium + S2-cloudless</span><br>` +
+          `Surface elevation: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" style="color:#5b9bd5;text-decoration:none">AWS Terrain Tiles</a>. ` +
+          `Imagery: <a href="https://s2maps.eu/" target="_blank" style="color:#5b9bd5;text-decoration:none">EOX Sentinel-2 Cloudless</a>. ` +
+          `Mineshafts: ${shaftSource === 'osm' ? '<a href="https://overpass-api.de/" target="_blank" style="color:#5b9bd5;text-decoration:none">OSM Overpass</a>' : 'fallback positions'}. ` +
+          `Pit boundary: ${polyDesc}.<br>` +
           `<span class="caveat">Density layer is a site-informed model — no public voxel tomography exists for this location.</span>`,
       };
     }
@@ -1114,9 +1251,17 @@
     grid.position.y = -HALF - 0.05;
     scene.add(grid);
 
-    // ── Lights — used only for sensor spheres / minor highlights. The volume
-    // is a custom shader and ignores scene lights. ──────────────────────────
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    // ── Lights ─────────────────────────────────────────────────────────────
+    // The volume shader ignores scene lights. Synthetic-mode borehole/sensor
+    // meshes use MeshBasicMaterial (also unaffected). The Bingham terrain
+    // uses MeshStandardMaterial — these lights drive its hillshading.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff0d8, 1.4);
+    // Low-elevation sun angle (~SE) → exaggerated relief on the pit terraces
+    sun.position.set(-4, 3.5, 5);
+    sun.target.position.set(0, 0, 0);
+    scene.add(sun);
+    scene.add(sun.target);
 
     // ── UI bindings ────────────────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
