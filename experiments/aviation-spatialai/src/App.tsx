@@ -4,6 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import { XR, createXRStore } from '@react-three/xr';
 import { Vector3, Quaternion } from 'three';
 import { fetchFlights, BBOX } from './data/opensky';
+import { makeCannedFlights } from './data/cannedFlights';
 import type { FlightState, FlightHistory } from './data/types';
 import { PhotorealTerrain } from './scene/PhotorealTerrain';
 import { Aircraft, type SceneRef } from './scene/Aircraft';
@@ -58,15 +59,20 @@ export default function App() {
   const initialCamera = useMemo<[number, number, number]>(() => [80, -180, 220], []);
   const orbitTarget   = useMemo<[number, number, number]>(() => [0, 0, 50], []);
 
-  // Poll OpenSky on mount. If the first attempt fails (CORS, network,
-  // rate-limit), STOP retrying and fall back to a local canned-animation
-  // tick — otherwise the dev console fills up with CORS errors at ~1.5s
-  // intervals. Reload the page to retry the live feed.
+  // Two independent timers:
+  //   livePoll: attempts OpenSky (via direct → corsproxy → allorigins) every
+  //             30 s when live, every 60 s when in canned fallback. Doesn't
+  //             stop forever — proxies can recover.
+  //   cannedAnim: ticks the canned flight animation every 1.5 s ONLY while
+  //               the live feed is unavailable.
+  // The instant any transport succeeds we drop the canned animation and
+  // promote the live data. If live later fails, canned animation resumes.
   useEffect(() => {
     let cancelled = false;
     let abort: AbortController | null = null;
-    let timer: number | null = null;
-    let liveFailed = false;
+    let liveTimer: number | null = null;
+    let cannedTimer: number | null = null;
+    let isLive = false;
 
     const recordHistory = (flights: FlightState[]) => {
       const hist = historyRef.current;
@@ -79,35 +85,41 @@ export default function App() {
       }
     };
 
-    const tick = async () => {
-      if (liveFailed) {
-        // Local canned animation — no network.
-        const { makeCannedFlights } = await import('./data/cannedFlights');
-        const flights = makeCannedFlights(Date.now());
-        if (cancelled) return;
-        setFlights(flights);
-        setSource('canned');
-        recordHistory(flights);
-        timer = window.setTimeout(tick, 1500);
-        return;
-      }
+    const cannedTick = () => {
+      if (cancelled || isLive) return;
+      const flights = makeCannedFlights(Date.now());
+      setFlights(flights);
+      recordHistory(flights);
+      cannedTimer = window.setTimeout(cannedTick, 1500);
+    };
+
+    const livePoll = async () => {
+      if (cancelled) return;
       abort?.abort();
       abort = new AbortController();
       const res = await fetchFlights(abort.signal);
       if (cancelled) return;
       setSource(res.source);
-      setFlights(res.flights);
-      recordHistory(res.flights);
-      if (res.source === 'canned') {
-        // OpenSky failed — switch to local canned mode permanently.
-        liveFailed = true;
-        timer = window.setTimeout(tick, 1500);
+      if (res.source === 'opensky') {
+        isLive = true;
+        setFlights(res.flights);
+        recordHistory(res.flights);
+        // Stop the canned animation if it was running.
+        if (cannedTimer) { clearTimeout(cannedTimer); cannedTimer = null; }
       } else {
-        timer = window.setTimeout(tick, 30000);
+        isLive = false;
+        if (!cannedTimer) cannedTick();
       }
+      liveTimer = window.setTimeout(livePoll, isLive ? 30_000 : 60_000);
     };
-    tick();
-    return () => { cancelled = true; abort?.abort(); if (timer) clearTimeout(timer); };
+
+    livePoll();
+    return () => {
+      cancelled = true;
+      abort?.abort();
+      if (liveTimer) clearTimeout(liveTimer);
+      if (cannedTimer) clearTimeout(cannedTimer);
+    };
   }, []);
 
   // Trajectory prediction (TF.js lazy-loaded on first call).

@@ -34,8 +34,18 @@ function parseState(raw: RawState): FlightState | null {
 export interface FetchResult {
   flights: FlightState[];
   source: 'opensky' | 'canned';
+  via?: string;        // which transport succeeded (or last failed)
   error?: string;
 }
+
+// CORS-relaxed transports for OpenSky's public endpoint. We try them in
+// order; first success wins. All are free public proxies, no signup. They
+// occasionally rate-limit or go down, so the fallback chain matters.
+const TRANSPORTS: Array<{ name: string; build: (u: string) => string }> = [
+  { name: 'direct',         build: (u) => u },
+  { name: 'corsproxy.io',   build: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
+  { name: 'allorigins.win', build: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+];
 
 export async function fetchFlights(signal?: AbortSignal): Promise<FetchResult> {
   const u = new URL(OPENSKY_URL);
@@ -43,19 +53,27 @@ export async function fetchFlights(signal?: AbortSignal): Promise<FetchResult> {
   u.searchParams.set('lomin', String(BBOX.lomin));
   u.searchParams.set('lamax', String(BBOX.lamax));
   u.searchParams.set('lomax', String(BBOX.lomax));
-  try {
-    const resp = await fetch(u.toString(), { signal });
-    if (!resp.ok) throw new Error('opensky ' + resp.status);
-    const j = await resp.json();
-    const states = (j.states || []) as RawState[];
-    const flights = states.map(parseState).filter((f): f is FlightState => !!f);
-    if (flights.length === 0) throw new Error('empty result');
-    return { flights, source: 'opensky' };
-  } catch (err) {
-    return {
-      flights: makeCannedFlights(Date.now()),
-      source: 'canned',
-      error: err instanceof Error ? err.message : String(err),
-    };
+
+  let lastErr = '';
+  for (const t of TRANSPORTS) {
+    try {
+      const resp = await fetch(t.build(u.toString()), { signal });
+      if (!resp.ok) throw new Error(`${t.name} ${resp.status}`);
+      const j = await resp.json();
+      const states = (j.states || []) as RawState[];
+      const flights = states.map(parseState).filter((f): f is FlightState => !!f);
+      if (flights.length === 0) throw new Error(`${t.name} empty`);
+      return { flights, source: 'opensky', via: t.name };
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message : String(err);
+      // try the next transport
+    }
   }
+
+  return {
+    flights: makeCannedFlights(Date.now()),
+    source: 'canned',
+    via: 'fallback',
+    error: lastErr || 'all transports failed',
+  };
 }
