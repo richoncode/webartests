@@ -173,27 +173,21 @@ export default function App() {
                 scene={scene}
               />
             ))}
-            {selected && (
-              <>
-                <PredictivePath points={predicted} scene={scene} />
-                <LatexPanel flight={selected} scene={scene} />
-              </>
-            )}
-            {/* Pop a small floating callsign label on whatever the user is
-                looking at / pointing at, as long as it isn't already the
-                selected aircraft (LatexPanel covers that one). */}
-            {hovered && hovered.icao24 !== selectedId && (
-              <AircraftLabel flight={hovered} scene={scene} />
-            )}
+            {selected && <PredictivePath points={predicted} scene={scene} />}
             <XRControls selected={selected} scene={scene} rigRef={rigRef} />
           </group>
-          {/* Hover/point detector and VR list panel live OUTSIDE the rotated
-              scene group (in world Y-up). Putting the controller XRSpace
-              inside the rotation would compose the two transforms and the
-              ray would drift off-target; the panel needs to anchor to the
-              real headset, not to a rotated-group descendant. */}
+          {/* These all live OUTSIDE the rotated scene group (in world Y-up).
+              - HoverDetector needs world-frame controller XRSpaces.
+              - VRListPanel anchors to the real headset.
+              - LatexPanel + AircraftLabel position themselves on the
+                camera→aircraft ray and use Billboard with lockX so they
+                stay vertical regardless of where the camera looks from. */}
           <HoverDetector flights={flights} scene={scene} onHover={setHoveredId} />
           <VRListPanel flights={flights} selectedId={selectedId} hoveredId={hoveredId} />
+          {selected && <LatexPanel flight={selected} scene={scene} />}
+          {hovered && hovered.icao24 !== selectedId && (
+            <AircraftLabel flight={hovered} scene={scene} />
+          )}
         </XR>
         <OrbitControls
           makeDefault

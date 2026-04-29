@@ -13,8 +13,8 @@ interface Props {
   onHover: (id: string | null) => void;
 }
 
-const FOV_HALF_RAD     = (4.0 * Math.PI) / 180;   // mouse / head-look cone
-const RAY_HALF_RAD     = (2.0 * Math.PI) / 180;   // controller cone
+const FOV_HALF_RAD     = (7.0 * Math.PI) / 180;   // mouse / head-look cone
+const RAY_HALF_RAD     = (3.0 * Math.PI) / 180;   // controller cone
 
 // Inverse of the SCENE_ROTATION applied in App.tsx (-π/2 around X):
 //   scene (x, y, z)  →  world (x, z, -y)

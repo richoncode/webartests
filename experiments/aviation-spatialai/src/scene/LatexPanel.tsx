@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector3, Group } from 'three';
 import { useFrame } from '@react-three/fiber';
+import { Billboard } from '@react-three/drei';
 import katex from 'katex';
 import { geodeticToSceneENU } from './geo';
 import { deadReckon } from '../data/deadReckon';
@@ -12,8 +13,15 @@ interface Props {
   scene: SceneRef;
 }
 
-const _pos = new Vector3();
-const _camPos = new Vector3();
+const _camPos    = new Vector3();
+const _scenePos  = new Vector3();
+const _planePos  = new Vector3();
+const _direction = new Vector3();
+const _labelPos  = new Vector3();
+
+function sceneToWorld(scene: Vector3, world: Vector3) {
+  world.set(scene.x, scene.z, -scene.y);
+}
 
 /** Render a KaTeX expression onto a canvas texture. */
 function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
@@ -28,13 +36,13 @@ function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = 'rgba(8, 16, 28, 0.78)';
+    ctx.fillStyle = 'rgba(8, 16, 28, 0.86)';
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(91, 155, 213, 0.55)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, w - 2, h - 2);
+    ctx.strokeStyle = 'rgba(91, 155, 213, 0.65)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
     ctx.fillStyle = '#dff7ff';
-    ctx.font = '600 30px ui-monospace, "SF Mono", monospace';
+    ctx.font = '600 36px ui-monospace, "SF Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(div.textContent || latex, w / 2, h / 2 + 4);
@@ -49,7 +57,12 @@ function makeLatexTexture(latex: string, w = 512, h = 168): CanvasTexture {
   }
 }
 
-/** Hover panel above the selected aircraft. ENU: lift = +Z. */
+/**
+ * KaTeX altitude panel for the SELECTED aircraft. Positioned on the
+ * camera→aircraft ray, billboarded with the X axis locked so it stays
+ * vertical even when the camera is high above. Lives in WORLD-Y-up coords
+ * (canvas root) — same frame the camera lives in.
+ */
 export function LatexPanel({ flight, scene }: Props) {
   const ref = useRef<Group>(null);
   const altFt = Math.round(flight.baroAltitudeM * 3.28084);
@@ -63,25 +76,35 @@ export function LatexPanel({ flight, scene }: Props) {
 
   useFrame((state) => {
     if (!ref.current) return;
+    state.camera.getWorldPosition(_camPos);
     const dr = deadReckon(flight, Date.now() / 1000);
     geodeticToSceneENU(
       dr.lat, dr.lon, dr.altM,
-      scene.refLat, scene.refLon, scene.refH, scene.scale, _pos,
+      scene.refLat, scene.refLon, scene.refH, scene.scale, _scenePos,
     );
-    // Lift panel ~90 m above the aircraft along scene up.
-    _pos.z += 90 * scene.scale;
-    ref.current.position.copy(_pos);
-    state.camera.getWorldPosition(_camPos);
-    ref.current.lookAt(_camPos);
+    sceneToWorld(_scenePos, _planePos);
+    _direction.copy(_planePos).sub(_camPos);
+    const dist = _direction.length();
+    if (dist < 1e-3) return;
+    _direction.divideScalar(dist);
+    // Position the panel slightly BELOW the AircraftLabel so they don't
+    // overlap. ~55% of the way along the ray, capped at 7 units.
+    const labelDist = Math.min(dist * 0.55, 7);
+    _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
+    ref.current.position.copy(_labelPos);
   });
 
-  const W = 240 * scene.scale, H = 80 * scene.scale;
+  // Panel sized so it reads at ~3-7 units of distance from camera.
+  const W = 0.9, H = 0.3;
   return (
     <group ref={ref}>
-      <mesh>
-        <planeGeometry args={[W, H]} />
-        <meshBasicMaterial map={tex} transparent depthWrite={false} />
-      </mesh>
+      <Billboard lockX>
+        {/* Drop slightly below the AircraftLabel which billboards above */}
+        <mesh position={[0, -0.25, 0]}>
+          <planeGeometry args={[W, H]} />
+          <meshBasicMaterial map={tex} transparent depthWrite={false} />
+        </mesh>
+      </Billboard>
     </group>
   );
 }
