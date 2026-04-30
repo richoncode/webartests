@@ -169,6 +169,7 @@ export default function App() {
                 key={f.icao24}
                 flight={f}
                 selected={f.icao24 === selectedId}
+                hovered={f.icao24 === hoveredId && f.icao24 !== selectedId}
                 onClick={() => setSelectedId(f.icao24)}
                 scene={scene}
               />

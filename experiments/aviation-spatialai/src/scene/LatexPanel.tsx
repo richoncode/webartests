@@ -4,7 +4,6 @@ import { useFrame } from '@react-three/fiber';
 import katex from 'katex';
 import { geodeticToSceneENU } from './geo';
 import { deadReckon } from '../data/deadReckon';
-import { faceCameraWithHeadUp } from './orient';
 import type { FlightState } from '../data/types';
 import type { SceneRef } from './Aircraft';
 
@@ -95,8 +94,10 @@ export function LatexPanel({ flight, scene }: Props) {
     const labelDist = Math.min(dist * 0.55, 7);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
-    faceCameraWithHeadUp(_outQuat, _labelPos, _camPos, _camQuat);
-    ref.current.quaternion.copy(_outQuat);
+    // panel.quaternion = camera.quaternion: panel +Z faces camera (panel sits
+    // between camera and plane), panel +Y matches camera +Y so text rolls
+    // with the user's head and stays level in their gaze frame.
+    ref.current.quaternion.copy(_camQuat);
   });
 
   // Panel sized so it reads at ~3-7 units of distance from camera.

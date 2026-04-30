@@ -4,7 +4,6 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { geodeticToSceneENU } from './geo';
 import { deadReckon } from '../data/deadReckon';
-import { faceCameraWithHeadUp } from './orient';
 import type { FlightState } from '../data/types';
 import type { SceneRef } from './Aircraft';
 
@@ -62,11 +61,11 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
     const labelDist = Math.min(dist * 0.5, 6);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
-    // Face the camera with the panel's "up" matching the camera's local up
-    // — so the label rolls with the user's head and stays level relative to
-    // their gaze instead of opposing their head roll.
-    faceCameraWithHeadUp(_outQuat, _labelPos, _camPos, _camQuat);
-    ref.current.quaternion.copy(_outQuat);
+    // panel.quaternion = camera.quaternion: panel +Z (front, where Text reads)
+    // matches camera +Z (which is "behind the head" in camera-local frame).
+    // Since we've placed the panel BETWEEN camera and plane, panel +Z faces
+    // the camera. Panel +Y matches camera +Y so text rolls with the head.
+    ref.current.quaternion.copy(_camQuat);
   });
 
   const callsign = (flight.callsign?.trim() || flight.icao24).toUpperCase();

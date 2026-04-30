@@ -13,6 +13,7 @@ export interface SceneRef {
 interface Props {
   flight: FlightState;
   selected: boolean;
+  hovered?: boolean;
   onClick: () => void;
   scene: SceneRef;
 }
@@ -25,10 +26,14 @@ const _q = new Quaternion();
  * fetch. Lives in scene-ENU: +X=east, +Y=north, +Z=up. Body convention is
  * +X=forward, +Y=left, +Z=up; orientation handled by aircraftSceneQuaternion.
  */
-export function Aircraft({ flight, selected, onClick, scene }: Props) {
+export function Aircraft({ flight, selected, hovered = false, onClick, scene }: Props) {
   const ref = useRef<Group>(null);
-  const color = selected ? '#ff7a3a' : '#9bdcff';
-  const emissive = selected ? '#ff5500' : '#3b6a90';
+  // Selection state has visual priority over hover.
+  // selected = orange (already had this), hovered = bright yellow,
+  // default = pale cyan. Makes it obvious which plane is being labelled.
+  const color    = selected ? '#ff7a3a' : hovered ? '#ffd24a' : '#9bdcff';
+  const emissive = selected ? '#ff5500' : hovered ? '#a86c00' : '#3b6a90';
+  const intensity = selected ? 0.7 : hovered ? 0.6 : 0.2;
 
   useFrame(() => {
     if (!ref.current) return;
@@ -68,22 +73,22 @@ export function Aircraft({ flight, selected, onClick, scene }: Props) {
       {/* Fuselage along body +X */}
       <mesh rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[FU_R, FU_R * 0.6, FU_LEN, 12]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={selected ? 0.6 : 0.2} />
+        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={intensity} />
       </mesh>
       {/* Wings: span along body Y, thin in Z */}
       <mesh>
         <boxGeometry args={[WING_C, WING_SPAN, WING_T]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={selected ? 0.5 : 0.15} />
+        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={intensity * 0.8} />
       </mesh>
       {/* Horizontal stabiliser (rear) */}
       <mesh position={[-FU_LEN * 0.42, 0, 0]}>
         <boxGeometry args={[TAIL_C, TAIL_SPAN, WING_T]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={selected ? 0.5 : 0.15} />
+        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={intensity * 0.8} />
       </mesh>
       {/* Vertical fin */}
       <mesh position={[-FU_LEN * 0.42, 0, FIN_H * 0.5]}>
         <boxGeometry args={[TAIL_C, WING_T, FIN_H]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={selected ? 0.5 : 0.15} />
+        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={intensity * 0.8} />
       </mesh>
       {selected && (
         <pointLight color="#ff8a48" intensity={1500 * s * s} distance={500 * s} decay={2} />

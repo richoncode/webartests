@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useXR } from '@react-three/xr';
 import {
   Group, Vector3, Mesh, SphereGeometry, MeshStandardMaterial,
   Quaternion, DoubleSide,
@@ -24,6 +25,7 @@ interface Props {
  */
 export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Props) {
   const { camera, gl } = useThree();
+  const xrSession = useXR((s) => s.session);
   const ref = useRef<Group>(null);
   const tilesRef = useRef<{ update: () => void; dispose: () => void; group: Group } | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'fallback'>('idle');
@@ -83,16 +85,32 @@ export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Pr
       setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
     } | null;
     if (!t) return;
-    // Three.js swaps the active camera when an XR session starts (the user
-    // camera becomes a WebXRArrayCamera). Without re-binding here, the tile
-    // LOD calculation keeps using the desktop camera reference that was set
-    // at construction and the tileset never streams in until something else
-    // forces a refresh (e.g. tab focus). Calling these every frame keeps
-    // the renderer aware of the current camera + viewport.
+    // Force the camera matrices to be current BEFORE the tile LOD
+    // calculation reads them. Without this the tiles' first-frame visibility
+    // check uses an empty matrixWorld and skips loading anything; tabbing
+    // away & back forced a refresh, which is the symptom on Quest.
+    camera.updateMatrixWorld(true);
     t.setCamera?.(camera);
     t.setResolutionFromRenderer?.(camera, gl);
     t.update();
   });
+
+  // When an XR session starts/ends, the active camera in Three.js swaps
+  // between the desktop and WebXRArrayCamera. Re-bind the tiles' camera
+  // reference at that moment so the renderer doesn't stay stuck on the
+  // previous one.
+  useEffect(() => {
+    const t = tilesRef.current as unknown as {
+      setCamera?: (c: unknown) => void;
+      setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
+      deleteCamera?: (c: unknown) => void;
+    } | null;
+    if (!t) return;
+    // deleteCamera is a no-op if camera wasn't registered; safe.
+    t.deleteCamera?.(camera);
+    t.setCamera?.(camera);
+    t.setResolutionFromRenderer?.(camera, gl);
+  }, [xrSession, camera, gl]);
 
   return (
     <group ref={ref}>
