@@ -3,6 +3,7 @@ import { Vector3, Quaternion, Group, DoubleSide } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { useXR } from '@react-three/xr';
+import { extractYawQuat } from './orient';
 import type { FlightState } from '../data/types';
 
 interface Props {
@@ -33,15 +34,20 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
 
   const _camPos = new Vector3();
   const _camQuat = new Quaternion();
+  const _yawQuat = new Quaternion();
   const _localOffset = new Vector3();
 
   useFrame(() => {
     if (!inXR || !groupRef.current) return;
     camera.getWorldPosition(_camPos);
     camera.getWorldQuaternion(_camQuat);
-    _localOffset.set(OFFSET_X, OFFSET_Y, OFFSET_Z).applyQuaternion(_camQuat);
+    // Yaw-only: ignore pitch/roll so the panel stays at a stable
+    // body-relative position even if the user entered VR with their head
+    // tilted (e.g. looking down at a desktop monitor).
+    extractYawQuat(_camQuat, _yawQuat);
+    _localOffset.set(OFFSET_X, OFFSET_Y, OFFSET_Z).applyQuaternion(_yawQuat);
     groupRef.current.position.copy(_camPos).add(_localOffset);
-    groupRef.current.quaternion.copy(_camQuat);
+    groupRef.current.quaternion.copy(_yawQuat);
   });
 
   if (!inXR) return null;

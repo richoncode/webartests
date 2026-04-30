@@ -1,9 +1,10 @@
 import { useRef } from 'react';
-import { Vector3, Group } from 'three';
+import { Vector3, Quaternion, Group } from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Billboard, Text } from '@react-three/drei';
+import { Text } from '@react-three/drei';
 import { geodeticToSceneENU } from './geo';
 import { deadReckon } from '../data/deadReckon';
+import { faceCameraWithHeadUp } from './orient';
 import type { FlightState } from '../data/types';
 import type { SceneRef } from './Aircraft';
 
@@ -15,10 +16,12 @@ interface Props {
 }
 
 const _camPos    = new Vector3();
+const _camQuat   = new Quaternion();
 const _scenePos  = new Vector3();
 const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
+const _outQuat   = new Quaternion();
 
 // Inverse of the SCENE_ROTATION applied in App.tsx — for a scene-ENU point
 // (x, y, z), the corresponding world-Y-up coordinate is (x, z, -y).
@@ -43,6 +46,7 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
   useFrame((state) => {
     if (!ref.current) return;
     state.camera.getWorldPosition(_camPos);
+    state.camera.getWorldQuaternion(_camQuat);
     const dr = deadReckon(flight, Date.now() / 1000);
     geodeticToSceneENU(
       dr.lat, dr.lon, dr.altM,
@@ -58,6 +62,11 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
     const labelDist = Math.min(dist * 0.5, 6);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
+    // Face the camera with the panel's "up" matching the camera's local up
+    // — so the label rolls with the user's head and stays level relative to
+    // their gaze instead of opposing their head roll.
+    faceCameraWithHeadUp(_outQuat, _labelPos, _camPos, _camQuat);
+    ref.current.quaternion.copy(_outQuat);
   });
 
   const callsign = (flight.callsign?.trim() || flight.icao24).toUpperCase();
@@ -70,27 +79,25 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
 
   return (
     <group ref={ref}>
-      <Billboard lockX>
-        <Text
-          fontSize={headSize}
-          color={headColor}
-          anchorX="center" anchorY="bottom"
-          outlineWidth={0.006}
-          outlineColor="#04101e"
-        >
-          {callsign}
-        </Text>
-        <Text
-          fontSize={subSize}
-          color={subColor}
-          anchorX="center" anchorY="top"
-          position={[0, -0.02, 0]}
-          outlineWidth={0.004}
-          outlineColor="#04101e"
-        >
-          {`${altFt} ft  ·  ${speedKt} kt`}
-        </Text>
-      </Billboard>
+      <Text
+        fontSize={headSize}
+        color={headColor}
+        anchorX="center" anchorY="bottom"
+        outlineWidth={0.006}
+        outlineColor="#04101e"
+      >
+        {callsign}
+      </Text>
+      <Text
+        fontSize={subSize}
+        color={subColor}
+        anchorX="center" anchorY="top"
+        position={[0, -0.02, 0]}
+        outlineWidth={0.004}
+        outlineColor="#04101e"
+      >
+        {`${altFt} ft  ·  ${speedKt} kt`}
+      </Text>
     </group>
   );
 }

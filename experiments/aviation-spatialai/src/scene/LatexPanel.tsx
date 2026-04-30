@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector3, Group } from 'three';
+import { CanvasTexture, LinearFilter, SRGBColorSpace, Vector3, Quaternion, Group } from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Billboard } from '@react-three/drei';
 import katex from 'katex';
 import { geodeticToSceneENU } from './geo';
 import { deadReckon } from '../data/deadReckon';
+import { faceCameraWithHeadUp } from './orient';
 import type { FlightState } from '../data/types';
 import type { SceneRef } from './Aircraft';
 
@@ -14,10 +14,12 @@ interface Props {
 }
 
 const _camPos    = new Vector3();
+const _camQuat   = new Quaternion();
 const _scenePos  = new Vector3();
 const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
+const _outQuat   = new Quaternion();
 
 function sceneToWorld(scene: Vector3, world: Vector3) {
   world.set(scene.x, scene.z, -scene.y);
@@ -77,6 +79,7 @@ export function LatexPanel({ flight, scene }: Props) {
   useFrame((state) => {
     if (!ref.current) return;
     state.camera.getWorldPosition(_camPos);
+    state.camera.getWorldQuaternion(_camQuat);
     const dr = deadReckon(flight, Date.now() / 1000);
     geodeticToSceneENU(
       dr.lat, dr.lon, dr.altM,
@@ -92,19 +95,19 @@ export function LatexPanel({ flight, scene }: Props) {
     const labelDist = Math.min(dist * 0.55, 7);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
+    faceCameraWithHeadUp(_outQuat, _labelPos, _camPos, _camQuat);
+    ref.current.quaternion.copy(_outQuat);
   });
 
   // Panel sized so it reads at ~3-7 units of distance from camera.
   const W = 0.9, H = 0.3;
   return (
     <group ref={ref}>
-      <Billboard lockX>
-        {/* Drop slightly below the AircraftLabel which billboards above */}
-        <mesh position={[0, -0.25, 0]}>
-          <planeGeometry args={[W, H]} />
-          <meshBasicMaterial map={tex} transparent depthWrite={false} />
-        </mesh>
-      </Billboard>
+      {/* Drop slightly below where the AircraftLabel sits */}
+      <mesh position={[0, -0.25, 0]}>
+        <planeGeometry args={[W, H]} />
+        <meshBasicMaterial map={tex} transparent depthWrite={false} />
+      </mesh>
     </group>
   );
 }

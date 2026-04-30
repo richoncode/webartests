@@ -77,7 +77,21 @@ export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Pr
   }, [cesiumIonToken, cesiumIonAssetId, camera, gl, scene.scale, transform]);
 
   useFrame(() => {
-    tilesRef.current?.update();
+    const t = tilesRef.current as unknown as {
+      update: () => void;
+      setCamera?: (c: unknown) => void;
+      setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
+    } | null;
+    if (!t) return;
+    // Three.js swaps the active camera when an XR session starts (the user
+    // camera becomes a WebXRArrayCamera). Without re-binding here, the tile
+    // LOD calculation keeps using the desktop camera reference that was set
+    // at construction and the tileset never streams in until something else
+    // forces a refresh (e.g. tab focus). Calling these every frame keeps
+    // the renderer aware of the current camera + viewport.
+    t.setCamera?.(camera);
+    t.setResolutionFromRenderer?.(camera, gl);
+    t.update();
   });
 
   return (
