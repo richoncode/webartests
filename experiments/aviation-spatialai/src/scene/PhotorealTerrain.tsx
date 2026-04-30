@@ -82,23 +82,27 @@ export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Pr
     const t = tilesRef.current as unknown as {
       update: () => void;
       setCamera?: (c: unknown) => void;
+      deleteCamera?: (c: unknown) => void;
       setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
+      cameras?: Array<unknown>;
     } | null;
     if (!t) return;
-    // Force the camera matrices to be current BEFORE the tile LOD
-    // calculation reads them. Without this the tiles' first-frame visibility
-    // check uses an empty matrixWorld and skips loading anything; tabbing
-    // away & back forced a refresh, which is the symptom on Quest.
-    camera.updateMatrixWorld(true);
-    t.setCamera?.(camera);
-    t.setResolutionFromRenderer?.(camera, gl);
+    // In XR, Three.js renders through gl.xr.getCamera() (a WebXRArrayCamera).
+    // The user-provided camera's matrices are *also* updated, but bypassing
+    // it directly avoids a one-frame lag while WebXRManager catches up. Use
+    // the XR camera while presenting; fall back to the user camera otherwise.
+    const xr = (gl as unknown as { xr: { isPresenting: boolean; getCamera: () => unknown } }).xr;
+    const liveCam = xr?.isPresenting ? xr.getCamera() as { updateMatrixWorld: (force?: boolean) => void } : camera;
+    liveCam.updateMatrixWorld(true);
+    t.setCamera?.(liveCam);
+    t.setResolutionFromRenderer?.(liveCam, gl);
     t.update();
   });
 
-  // When an XR session starts/ends, the active camera in Three.js swaps
-  // between the desktop and WebXRArrayCamera. Re-bind the tiles' camera
-  // reference at that moment so the renderer doesn't stay stuck on the
-  // previous one.
+  // When an XR session starts/ends, the active camera Three.js renders
+  // through swaps between the user-provided one and the WebXRArrayCamera.
+  // Force the tiles' camera registration to flip on that boundary so the
+  // very first frame of XR isn't computed against the desktop camera.
   useEffect(() => {
     const t = tilesRef.current as unknown as {
       setCamera?: (c: unknown) => void;
@@ -106,10 +110,12 @@ export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Pr
       deleteCamera?: (c: unknown) => void;
     } | null;
     if (!t) return;
-    // deleteCamera is a no-op if camera wasn't registered; safe.
+    const xr = (gl as unknown as { xr: { isPresenting: boolean; getCamera: () => unknown } }).xr;
+    const cam = xr?.isPresenting ? xr.getCamera() : camera;
     t.deleteCamera?.(camera);
-    t.setCamera?.(camera);
-    t.setResolutionFromRenderer?.(camera, gl);
+    t.deleteCamera?.(cam);
+    t.setCamera?.(cam);
+    t.setResolutionFromRenderer?.(cam, gl);
   }, [xrSession, camera, gl]);
 
   return (
