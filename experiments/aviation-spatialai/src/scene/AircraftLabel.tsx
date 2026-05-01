@@ -21,6 +21,7 @@ const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
 const _lookTarget = new Vector3();
+const _upVec      = new Vector3();
 
 // Inverse of the SCENE_ROTATION applied in App.tsx — for a scene-ENU point
 // (x, y, z), the corresponding world-Y-up coordinate is (x, z, -y).
@@ -60,6 +61,13 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
     // camera than ~6 units. (Keeps it readable for nearby planes too.)
     const labelDist = Math.min(dist * 0.5, 6);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
+
+    // Shift the label visually "up" (along the camera's local Y axis) so it
+    // sits above the controller ray and doesn't block the plane. We scale the
+    // shift by distance so the angular offset is consistent.
+    _upVec.set(0, 1, 0).applyQuaternion(_camQuat);
+    _labelPos.addScaledVector(_upVec, labelDist * 0.15);
+
     ref.current.position.copy(_labelPos);
 
     // Simple look at user position, reversed so +Z faces the user

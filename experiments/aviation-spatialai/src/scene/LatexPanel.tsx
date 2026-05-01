@@ -19,6 +19,7 @@ const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
 const _lookTarget = new Vector3();
+const _upVec      = new Vector3();
 
 function sceneToWorld(scene: Vector3, world: Vector3) {
   world.set(scene.x, scene.z, -scene.y);
@@ -91,8 +92,15 @@ export function LatexPanel({ flight, scene }: Props) {
     _direction.divideScalar(dist);
     // Position the panel slightly BELOW the AircraftLabel so they don't
     // overlap. ~55% of the way along the ray, capped at 7 units.
-    const labelDist = Math.min(dist * 0.55, 7);
+    const labelDist = Math.max(3, Math.min(dist * 0.4, 7));
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
+
+    // Shift the label visually "up" (along the camera's local Y axis) so it
+    // sits above the controller ray and doesn't block the plane. We scale the
+    // shift by distance so the angular offset is consistent.
+    _upVec.set(0, 1, 0).applyQuaternion(_camQuat);
+    _labelPos.addScaledVector(_upVec, labelDist * 0.15);
+
     ref.current.position.copy(_labelPos);
 
     // Simple look at user position, reversed so +Z faces the user

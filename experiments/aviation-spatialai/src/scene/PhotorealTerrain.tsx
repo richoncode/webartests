@@ -79,44 +79,33 @@ export function PhotorealTerrain({ cesiumIonToken, cesiumIonAssetId, scene }: Pr
   }, [cesiumIonToken, cesiumIonAssetId, camera, gl, scene.scale, transform]);
 
   useFrame(() => {
-    const t = tilesRef.current as unknown as {
-      update: () => void;
-      setCamera?: (c: unknown) => void;
-      deleteCamera?: (c: unknown) => void;
-      setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
-      cameras?: Array<unknown>;
-    } | null;
+    const t = tilesRef.current as any;
     if (!t) return;
+
     // In XR, Three.js renders through gl.xr.getCamera() (a WebXRArrayCamera).
-    // The user-provided camera's matrices are *also* updated, but bypassing
-    // it directly avoids a one-frame lag while WebXRManager catches up. Use
-    // the XR camera while presenting; fall back to the user camera otherwise.
-    const xr = (gl as unknown as { xr: { isPresenting: boolean; getCamera: () => unknown } }).xr;
-    const liveCam = xr?.isPresenting ? xr.getCamera() as { updateMatrixWorld: (force?: boolean) => void } : camera;
+    // The WebXRArrayCamera projection matrix often breaks 3d-tiles-renderer's
+    // LOD and frustum math, causing tiles to disappear in VR. We extract the
+    // left-eye camera (cameras[0]) to use a standard PerspectiveCamera.
+    const xr = (gl as any).xr;
+    let liveCam = camera;
+    if (xr?.isPresenting) {
+      const xrCam = xr.getCamera();
+      liveCam = (xrCam && xrCam.cameras && xrCam.cameras.length > 0) ? xrCam.cameras[0] : xrCam;
+    }
+    
     liveCam.updateMatrixWorld(true);
-    t.setCamera?.(liveCam);
-    t.setResolutionFromRenderer?.(liveCam, gl);
+
+    // Keep ONLY the live camera registered in the TilesRenderer. This handles
+    // desktop <-> VR transitions seamlessly without needing session event hooks.
+    if (t.cameras) {
+      const staleCams = t.cameras.filter((c: any) => c !== liveCam);
+      staleCams.forEach((c: any) => t.deleteCamera(c));
+    }
+
+    t.setCamera(liveCam);
+    t.setResolutionFromRenderer(liveCam, gl);
     t.update();
   });
-
-  // When an XR session starts/ends, the active camera Three.js renders
-  // through swaps between the user-provided one and the WebXRArrayCamera.
-  // Force the tiles' camera registration to flip on that boundary so the
-  // very first frame of XR isn't computed against the desktop camera.
-  useEffect(() => {
-    const t = tilesRef.current as unknown as {
-      setCamera?: (c: unknown) => void;
-      setResolutionFromRenderer?: (c: unknown, gl: unknown) => void;
-      deleteCamera?: (c: unknown) => void;
-    } | null;
-    if (!t) return;
-    const xr = (gl as unknown as { xr: { isPresenting: boolean; getCamera: () => unknown } }).xr;
-    const cam = xr?.isPresenting ? xr.getCamera() : camera;
-    t.deleteCamera?.(camera);
-    t.deleteCamera?.(cam);
-    t.setCamera?.(cam);
-    t.setResolutionFromRenderer?.(cam, gl);
-  }, [xrSession, camera, gl]);
 
   return (
     <group ref={ref}>
