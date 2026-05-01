@@ -53,15 +53,26 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
       scene.refLat, scene.refLon, scene.refH, scene.scale, _scenePos,
     );
     sceneToWorld(_scenePos, _planePos);
-    // Position at the plane, then moved above the plane
-    _labelPos.copy(_planePos);
-    _labelPos.y += 0.8; // Floating ~80m above the plane
-    ref.current.position.copy(_labelPos);
+    _direction.copy(_planePos).sub(_camPos);
+    const dist = _direction.length();
+    if (dist < 1e-3) return;
+    _direction.divideScalar(dist);
+    
+    // Position the label half-way along the ray, but no further from the
+    // camera than ~6 units. (Keeps it readable for nearby planes too.)
+    const labelDist = Math.min(dist * 0.5, 6);
+    _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
 
-    // Simple robust billboard: lookAt points -Z at camera, rotateY(PI) spins +Z to face camera
-    ref.current.up.set(0, 1, 0);
-    ref.current.lookAt(_camPos);
-    ref.current.rotateY(Math.PI);
+    ref.current.position.copy(_labelPos);
+    ref.current.scale.setScalar(1);
+
+    // Simple look at user position, reversed so +Z faces the user
+    _lookTarget.set(
+      _labelPos.x + (_labelPos.x - _camPos.x),
+      _labelPos.y + (_labelPos.y - _camPos.y),
+      _labelPos.z + (_labelPos.z - _camPos.z)
+    );
+    ref.current.lookAt(_lookTarget);
   });
 
   const callsign = (flight.callsign?.trim() || flight.icao24).toUpperCase();
