@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Vector3, Group, DoubleSide } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
@@ -40,28 +40,79 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
   const { camera } = useThree();
   const groupRef = useRef<Group>(null);
 
+  const [detachedPos, setDetachedPos] = useState<Vector3 | null>(null);
+  const [dragState, setDragState] = useState<{
+    pointerId: number;
+    distance: number;
+    offset: Vector3;
+  } | null>(null);
+
+  const onPointerDown = (e: any) => {
+    e.stopPropagation();
+    e.target.setPointerCapture(e.pointerId);
+    if (!groupRef.current) return;
+    setDragState({
+      pointerId: e.pointerId,
+      distance: e.distance,
+      offset: groupRef.current.position.clone().sub(e.point),
+    });
+    if (!detachedPos) {
+      setDetachedPos(groupRef.current.position.clone());
+    }
+  };
+
+  const onPointerMove = (e: any) => {
+    if (dragState && e.pointerId === dragState.pointerId) {
+      e.stopPropagation();
+      const newPos = e.ray.origin.clone().add(e.ray.direction.clone().multiplyScalar(dragState.distance));
+      newPos.add(dragState.offset);
+      setDetachedPos(newPos);
+    }
+  };
+
+  const onPointerUp = (e: any) => {
+    if (dragState && e.pointerId === dragState.pointerId) {
+      e.stopPropagation();
+      e.target.releasePointerCapture(e.pointerId);
+      setDragState(null);
+    }
+  };
+
   useFrame(() => {
     if (!inXR || !groupRef.current) return;
     camera.getWorldPosition(_camPos);
-    // Compute the user's body-frame axes from the camera's forward direction
-    // projected onto the horizontal plane. (Pitch/roll get dropped, so the
-    // panel never ends up tilted up at the ceiling or rolled sideways.)
-    _camFwdRaw.set(0, 0, -1).applyQuaternion(camera.quaternion);
-    _bodyFwd.set(_camFwdRaw.x, 0, _camFwdRaw.z);
-    if (_bodyFwd.lengthSq() < 1e-6) return;
-    _bodyFwd.normalize();
-    _bodyRight.crossVectors(_bodyFwd, Y_UP).normalize();
-    // Position = camPos + forward·FORWARD + right·(-LEFT) + up·(-DOWN)
-    _labelPos.copy(_camPos)
-      .addScaledVector(_bodyFwd,    FORWARD)
-      .addScaledVector(_bodyRight, -LEFT)
-      .addScaledVector(Y_UP,       -DOWN);
-    groupRef.current.position.copy(_labelPos);
-    // Orient the panel to face the user with a world-up reference. lookAt on
-    // a non-camera Object3D makes its local +Z face the target, which is
-    // exactly the side that <Text> reads from.
+    
+    if (detachedPos) {
+      // User dragged it: stay at detached position
+      groupRef.current.position.copy(detachedPos);
+    } else {
+      // Default: anchor to user peripheral view
+      _camFwdRaw.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      _bodyFwd.set(_camFwdRaw.x, 0, _camFwdRaw.z);
+      if (_bodyFwd.lengthSq() > 1e-6) {
+        _bodyFwd.normalize();
+        _bodyRight.crossVectors(_bodyFwd, Y_UP).normalize();
+        _labelPos.copy(_camPos)
+          .addScaledVector(_bodyFwd,    FORWARD)
+          .addScaledVector(_bodyRight, -LEFT)
+          .addScaledVector(Y_UP,       -DOWN);
+        groupRef.current.position.copy(_labelPos);
+      }
+    }
+    
+    // Always orient the panel to face the user (Y-axis locked)
+    // Three.js lookAt points -Z at target. To point +Z at camera, look AWAY from camera.
+    const px = groupRef.current.position.x;
+    const pz = groupRef.current.position.z;
+    _labelPos.set(
+      px + (px - _camPos.x),
+      groupRef.current.position.y,
+      pz + (pz - _camPos.z)
+    );
+    if (_labelPos.x === px && _labelPos.z === pz) _labelPos.z += 0.001;
+
     groupRef.current.up.set(0, 1, 0);
-    groupRef.current.lookAt(_camPos);
+    groupRef.current.lookAt(_labelPos);
   });
 
   if (!inXR) return null;
@@ -72,7 +123,13 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
     .slice(0, VISIBLE);
 
   return (
-    <group ref={groupRef}>
+    <group 
+      ref={groupRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerOut={onPointerUp}
+    >
       {/* Backdrop */}
       <mesh>
         <planeGeometry args={[PANEL_W, PANEL_H]} />

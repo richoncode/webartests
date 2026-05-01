@@ -62,11 +62,18 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
 
-    // Axis-constrained billboard (Y-axis locked). The panel stands vertical
-    // and pivots horizontally to face the camera. (Text reads from +Z, and
-    // lookAt points +Z at the target for non-camera objects).
-    _lookTarget.copy(_camPos);
-    _lookTarget.y = _labelPos.y;
+    // Axis-constrained billboard (Y-axis locked).
+    // Three.js lookAt points -Z at the target. We want +Z (the text face) to point
+    // at the camera, so we tell it to look at a point projected AWAY from the camera.
+    _lookTarget.set(
+      _labelPos.x + (_labelPos.x - _camPos.x),
+      _labelPos.y,
+      _labelPos.z + (_labelPos.z - _camPos.z)
+    );
+    // Fallback if camera and label are perfectly stacked (prevents NaN)
+    if (_lookTarget.x === _labelPos.x && _lookTarget.z === _labelPos.z) {
+      _lookTarget.z += 0.001; 
+    }
     ref.current.up.set(0, 1, 0);
     ref.current.lookAt(_lookTarget);
   });
