@@ -100,19 +100,9 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
       }
     }
     
-    // Always orient the panel to face the user (Y-axis locked)
-    // Three.js lookAt points -Z at target. To point +Z at camera, look AWAY from camera.
-    const px = groupRef.current.position.x;
-    const pz = groupRef.current.position.z;
-    _labelPos.set(
-      px + (px - _camPos.x),
-      groupRef.current.position.y,
-      pz + (pz - _camPos.z)
-    );
-    if (_labelPos.x === px && _labelPos.z === pz) _labelPos.z += 0.001;
-
+    // Simple look at user position
     groupRef.current.up.set(0, 1, 0);
-    groupRef.current.lookAt(_labelPos);
+    groupRef.current.lookAt(_camPos);
   });
 
   if (!inXR) return null;
