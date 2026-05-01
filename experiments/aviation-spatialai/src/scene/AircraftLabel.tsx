@@ -20,7 +20,7 @@ const _scenePos  = new Vector3();
 const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
-const _outQuat   = new Quaternion();
+const _lookTarget = new Vector3();
 
 // Inverse of the SCENE_ROTATION applied in App.tsx — for a scene-ENU point
 // (x, y, z), the corresponding world-Y-up coordinate is (x, z, -y).
@@ -61,11 +61,14 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
     const labelDist = Math.min(dist * 0.5, 6);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
-    // panel.quaternion = camera.quaternion: panel +Z (front, where Text reads)
-    // matches camera +Z (which is "behind the head" in camera-local frame).
-    // Since we've placed the panel BETWEEN camera and plane, panel +Z faces
-    // the camera. Panel +Y matches camera +Y so text rolls with the head.
-    ref.current.quaternion.copy(_camQuat);
+
+    // Axis-constrained billboard (Y-axis locked). The panel stands vertical
+    // and pivots horizontally to face the camera. (Text reads from +Z, and
+    // lookAt points +Z at the target for non-camera objects).
+    _lookTarget.copy(_camPos);
+    _lookTarget.y = _labelPos.y;
+    ref.current.up.set(0, 1, 0);
+    ref.current.lookAt(_lookTarget);
   });
 
   const callsign = (flight.callsign?.trim() || flight.icao24).toUpperCase();

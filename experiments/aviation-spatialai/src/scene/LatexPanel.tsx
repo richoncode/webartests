@@ -18,7 +18,7 @@ const _scenePos  = new Vector3();
 const _planePos  = new Vector3();
 const _direction = new Vector3();
 const _labelPos  = new Vector3();
-const _outQuat   = new Quaternion();
+const _lookTarget = new Vector3();
 
 function sceneToWorld(scene: Vector3, world: Vector3) {
   world.set(scene.x, scene.z, -scene.y);
@@ -94,10 +94,13 @@ export function LatexPanel({ flight, scene }: Props) {
     const labelDist = Math.min(dist * 0.55, 7);
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
-    // panel.quaternion = camera.quaternion: panel +Z faces camera (panel sits
-    // between camera and plane), panel +Y matches camera +Y so text rolls
-    // with the user's head and stays level in their gaze frame.
-    ref.current.quaternion.copy(_camQuat);
+
+    // Axis-constrained billboard (Y-axis locked). The panel stands vertical
+    // and pivots horizontally to face the camera.
+    _lookTarget.copy(_camPos);
+    _lookTarget.y = _labelPos.y;
+    ref.current.up.set(0, 1, 0);
+    ref.current.lookAt(_lookTarget);
   });
 
   // Panel sized so it reads at ~3-7 units of distance from camera.
