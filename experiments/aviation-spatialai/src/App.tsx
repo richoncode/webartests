@@ -231,6 +231,11 @@ function HUD({ flights, selected, source, hasIonToken, onSelect, onEnterVR }: HU
           <Badge ok={hasIonToken}>{hasIonToken ? 'ION · TILES' : 'ION · MISSING TOKEN'}</Badge>
           <Badge ok>{flights.length} aircraft</Badge>
         </div>
+        <div style={{ fontSize: 10, color: '#5a7a90', marginTop: 10, fontFamily: 'monospace' }}>
+          Build: {typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : 'dev'} 
+          {' '}
+          ({typeof __BUILD_DATE__ !== 'undefined' ? new Date(__BUILD_DATE__).toLocaleTimeString() : 'local'})
+        </div>
         <button style={vrBtn} onClick={onEnterVR}>Enter VR</button>
         {!hasIonToken && (
           <div style={hintStyle}>

@@ -1,9 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { execSync } from 'child_process';
+
+let commitHash = 'unknown';
+try {
+  commitHash = execSync('git rev-parse --short HEAD').toString().trim();
+} catch (e) {}
+
+const buildDate = new Date().toISOString();
 
 // `base: './'` — required so the built `dist/` works when served from the
 // repo at /webartests/experiments/aviation-spatialai/dist/ on GitHub Pages.
 export default defineConfig({
+  define: {
+    __COMMIT_HASH__: JSON.stringify(commitHash),
+    __BUILD_DATE__: JSON.stringify(buildDate),
+  },
   plugins: [react()],
   base: './',
   build: {
