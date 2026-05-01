@@ -184,7 +184,7 @@ export default function App() {
                 camera→aircraft ray and use Billboard with lockX so they
                 stay vertical regardless of where the camera looks from. */}
           <HoverDetector flights={flights} scene={scene} onHover={setHoveredId} />
-          <VRListPanel flights={flights} selectedId={selectedId} hoveredId={hoveredId} />
+          <VRListPanel flights={flights} selectedId={selectedId} hoveredId={hoveredId} onSelect={setSelectedId} />
           {selected && <LatexPanel flight={selected} scene={scene} />}
           {hovered && hovered.icao24 !== selectedId && (
             <AircraftLabel flight={hovered} scene={scene} />

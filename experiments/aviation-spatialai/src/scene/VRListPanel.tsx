@@ -9,6 +9,7 @@ interface Props {
   flights: FlightState[];
   selectedId: string | null;
   hoveredId: string | null;
+  onSelect: (id: string | null) => void;
 }
 
 const VISIBLE = 8;
@@ -35,7 +36,7 @@ const _labelPos   = new Vector3();
  * session is active. Top {VISIBLE} flights by altitude descending. Selected
  * highlighted orange; hovered (look / controller-point) highlighted cyan.
  */
-export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
+export function VRListPanel({ flights, selectedId, hoveredId, onSelect }: Props) {
   const inXR = useXR((s) => !!s.session);
   const { camera } = useThree();
   const groupRef = useRef<Group>(null);
@@ -100,9 +101,17 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
       }
     }
     
-    // Simple look at user position
+    // Simple look at user position, reversed so +Z faces the user
+    const px = groupRef.current.position.x;
+    const py = groupRef.current.position.y;
+    const pz = groupRef.current.position.z;
+    _labelPos.set(
+      px + (px - _camPos.x),
+      py + (py - _camPos.y),
+      pz + (pz - _camPos.z)
+    );
     groupRef.current.up.set(0, 1, 0);
-    groupRef.current.lookAt(_camPos);
+    groupRef.current.lookAt(_labelPos);
   });
 
   if (!inXR) return null;
@@ -113,15 +122,14 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
     .slice(0, VISIBLE);
 
   return (
-    <group 
-      ref={groupRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerOut={onPointerUp}
-    >
+    <group ref={groupRef}>
       {/* Backdrop */}
-      <mesh>
+      <mesh
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerOut={onPointerUp}
+      >
         <planeGeometry args={[PANEL_W, PANEL_H]} />
         <meshBasicMaterial color="#0a121e" transparent opacity={0.86} side={DoubleSide} />
       </mesh>
@@ -149,7 +157,19 @@ export function VRListPanel({ flights, selectedId, hoveredId }: Props) {
         const speedKt = Math.round(f.velocityMps * 1.94384);
         const yTop = PANEL_H/2 - 0.075 - i * 0.055;
         return (
-          <group key={f.icao24} position={[-PANEL_W/2 + 0.02, yTop, 0.001]}>
+          <group 
+            key={f.icao24} 
+            position={[-PANEL_W/2 + 0.02, yTop, 0.001]}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(f.icao24);
+            }}
+          >
+            {/* Invisible interaction hit-box so the whole row is clickable */}
+            <mesh position={[PANEL_W/2 - 0.02, -0.015, 0]}>
+              <planeGeometry args={[PANEL_W - 0.04, 0.05]} />
+              <meshBasicMaterial visible={false} />
+            </mesh>
             <Text fontSize={0.022} color={color} anchorX="left" anchorY="top">
               {callsign}
             </Text>

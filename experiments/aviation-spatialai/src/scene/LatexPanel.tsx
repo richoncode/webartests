@@ -95,8 +95,13 @@ export function LatexPanel({ flight, scene }: Props) {
     _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
     ref.current.position.copy(_labelPos);
 
-    // Simple look at user position
-    ref.current.lookAt(_camPos);
+    // Simple look at user position, reversed so +Z faces the user
+    _lookTarget.set(
+      _labelPos.x + (_labelPos.x - _camPos.x),
+      _labelPos.y + (_labelPos.y - _camPos.y),
+      _labelPos.z + (_labelPos.z - _camPos.z)
+    );
+    ref.current.lookAt(_lookTarget);
   });
 
   // Panel sized so it reads at ~3-7 units of distance from camera.
