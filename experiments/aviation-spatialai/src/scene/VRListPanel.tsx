@@ -101,17 +101,10 @@ export function VRListPanel({ flights, selectedId, hoveredId, onSelect }: Props)
       }
     }
     
-    // Simple look at user position, reversed so +Z faces the user
-    const px = groupRef.current.position.x;
-    const py = groupRef.current.position.y;
-    const pz = groupRef.current.position.z;
-    _labelPos.set(
-      px + (px - _camPos.x),
-      py + (py - _camPos.y),
-      pz + (pz - _camPos.z)
-    );
+    // Simple robust billboard: lookAt points -Z at camera, rotateY(PI) spins +Z to face camera
     groupRef.current.up.set(0, 1, 0);
-    groupRef.current.lookAt(_labelPos);
+    groupRef.current.lookAt(_camPos);
+    groupRef.current.rotateY(Math.PI);
   });
 
   if (!inXR) return null;

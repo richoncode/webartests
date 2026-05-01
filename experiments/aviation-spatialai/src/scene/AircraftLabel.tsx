@@ -53,30 +53,15 @@ export function AircraftLabel({ flight, scene, emphasised = false }: Props) {
       scene.refLat, scene.refLon, scene.refH, scene.scale, _scenePos,
     );
     sceneToWorld(_scenePos, _planePos);
-    _direction.copy(_planePos).sub(_camPos);
-    const dist = _direction.length();
-    if (dist < 1e-3) return;
-    _direction.divideScalar(dist);
-    // Position the label half-way along the ray, but no further from the
-    // camera than ~6 units. (Keeps it readable for nearby planes too.)
-    const labelDist = Math.min(dist * 0.5, 6);
-    _labelPos.copy(_camPos).addScaledVector(_direction, labelDist);
-
-    // Shift the label visually "up" (along the camera's local Y axis) so it
-    // sits above the controller ray and doesn't block the plane. We scale the
-    // shift by distance so the angular offset is consistent.
-    _upVec.set(0, 1, 0).applyQuaternion(_camQuat);
-    _labelPos.addScaledVector(_upVec, labelDist * 0.15);
-
+    // Position at the plane, then moved above the plane
+    _labelPos.copy(_planePos);
+    _labelPos.y += 0.8; // Floating ~80m above the plane
     ref.current.position.copy(_labelPos);
 
-    // Simple look at user position, reversed so +Z faces the user
-    _lookTarget.set(
-      _labelPos.x + (_labelPos.x - _camPos.x),
-      _labelPos.y + (_labelPos.y - _camPos.y),
-      _labelPos.z + (_labelPos.z - _camPos.z)
-    );
-    ref.current.lookAt(_lookTarget);
+    // Simple robust billboard: lookAt points -Z at camera, rotateY(PI) spins +Z to face camera
+    ref.current.up.set(0, 1, 0);
+    ref.current.lookAt(_camPos);
+    ref.current.rotateY(Math.PI);
   });
 
   const callsign = (flight.callsign?.trim() || flight.icao24).toUpperCase();
