@@ -57,8 +57,8 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><path d="M21 12c0 1.2-4.03 6-9 6s-9-4.8-9-6c0-1.2 4.03-6 9-6s9 4.8 9 6Z"/><circle cx="12" cy="12" r="3"/></svg>
                     POV Analytics
                 </h1>
-                <button id="cache-toggle-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors uppercase">
-                    Cache: Off
+                <button id="cache-toggle-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors uppercase">
+                    Cache: On
                 </button>
             </div>
             <button id="toggle-panel" class="p-1 hover:bg-slate-700 rounded-lg transition-colors shrink-0">
@@ -71,6 +71,12 @@
                 <div id="selection-info" class="p-3 bg-slate-800 rounded-lg border border-slate-600 hidden">
                     <div class="text-emerald-400 text-[10px] font-bold uppercase tracking-wider">Active Analysis</div>
                     <div id="section-name" class="text-base font-semibold">---</div>
+                </div>
+
+                <div id="analysis-stats" class="p-3 bg-slate-800/50 rounded-lg border border-slate-700 hidden">
+                    <div id="stat-points" class="text-2xl font-bold text-emerald-400">---</div>
+                    <div id="stat-memory" class="text-[11px] text-slate-400 mt-1 uppercase tracking-tight">---</div>
+                    <div id="stat-manifest" class="mt-2 pt-2 border-t border-slate-700 text-[10px] text-slate-500 leading-tight hidden"></div>
                 </div>
 
                 <div class="flex items-center gap-3">
@@ -100,6 +106,10 @@
         const ctx = canvas.getContext('2d');
         const sectionNameEl = document.getElementById('section-name');
         const selectionInfo = document.getElementById('selection-info');
+        const statPointsEl = document.getElementById('stat-points');
+        const statMemoryEl = document.getElementById('stat-memory');
+        const statManifestEl = document.getElementById('stat-manifest');
+        const analysisStatsContainer = document.getElementById('analysis-stats');
         const resetBtn = document.getElementById('reset-btn');
         const mainPanel = document.getElementById('main-panel');
         const toggleBtn = document.getElementById('toggle-panel');
@@ -116,7 +126,7 @@
         let outerRad, innerRad, fieldW, fieldH;
 
         // Cache State
-        let isCachingEnabled = false;
+        let isCachingEnabled = true;
         let cacheLRU = []; 
         const CACHE_LIMIT_PERCENT = 0.7; 
         const POINT_COUNT = 80;
@@ -373,43 +383,24 @@
                 ctx.fillStyle = grad;
                 ctx.fill();
 
-                ctx.save();
-                const textY = Math.min(centerY + outerRad + 40, height - 160);
-                ctx.translate(centerX, textY);
+                // Update HTML Stats
+                analysisStatsContainer.classList.remove('hidden');
+                statPointsEl.innerText = `${loadedInViewCount} POINTS (${visiblePercentOfModel}%)`;
                 
-                // Line 1: Points Count and Model %
-                ctx.font = 'bold 32px Inter';
-                ctx.fillStyle = '#10b981';
-                ctx.textAlign = 'center';
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = 'rgba(0,0,0,0.6)';
-                ctx.fillText(`${loadedInViewCount} POINTS (${visiblePercentOfModel}%)`, 0, 0);
-
-                // Line 2: Memory Status
                 let currentPointsInCache = points.filter(p => cacheLRU.includes(p.sectionId)).length;
                 let cacheUsagePercent = Math.round((currentPointsInCache / CACHE_CAPACITY) * 100);
-                ctx.font = '500 16px Inter';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.fillText(`CACHE MEMORY: ${currentPointsInCache}/${CACHE_CAPACITY} POINTS (${cacheUsagePercent}%)`, 0, 32);
+                statMemoryEl.innerText = `CACHE MEMORY: ${currentPointsInCache}/${CACHE_CAPACITY} (${cacheUsagePercent}%)`;
 
-                // Line 3+: Loading Manifest (Persistent)
-                if (loadingSections.size > 0 || lastLoadingManifest.length > 0) {
-                    ctx.font = '700 14px Inter';
-                    ctx.fillStyle = loadingSections.size > 0 ? '#f87171' : 'rgba(16, 185, 129, 0.5)';
-                    const labelHeader = loadingSections.size > 0 ? "LOADING: " : "LAST LOAD COMPLETE: ";
-                    
-                    let yOffset = 60;
-                    ctx.fillText(`${labelHeader}(Total ${lastLoadingPointTotal} pts)`, 0, yOffset);
-                    
-                    yOffset += 20;
-                    ctx.font = '400 12px Inter';
-                    lastLoadingManifest.forEach(line => {
-                        ctx.fillText(line, 0, yOffset);
-                        yOffset += 18;
-                    });
+                if (loadingSections.size > 0 || (lastLoadingManifest && lastLoadingManifest.length > 0)) {
+                    statManifestEl.classList.remove('hidden');
+                    const labelHeader = loadingSections.size > 0 ? "LOADING: " : "LOADED: ";
+                    const manifestLines = Array.isArray(lastLoadingManifest) ? lastLoadingManifest.join('<br>') : lastLoadingManifest;
+                    statManifestEl.innerHTML = `<strong>${labelHeader}</strong><br>${manifestLines}`;
+                } else {
+                    statManifestEl.classList.add('hidden');
                 }
-
-                ctx.restore();
+            } else {
+                analysisStatsContainer.classList.add('hidden');
             }
         }
 
@@ -489,6 +480,7 @@
         resetBtn.addEventListener('click', () => {
             selectedSection = null;
             selectionInfo.classList.add('hidden');
+            analysisStatsContainer.classList.add('hidden');
             cacheLRU = [];
             lastLoadingManifest = "";
         });
