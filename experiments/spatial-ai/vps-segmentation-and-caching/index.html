@@ -205,12 +205,15 @@
         }
 
         let lastAnalyzedSecId = null;
+        let lastEvictedManifest = "";
 
         function handleCaching(visibleSectionIds, currentSecId) {
             if (!isCachingEnabled || !visibleSectionIds || visibleSectionIds.length === 0) return;
             
             const isSwitch = currentSecId !== lastAnalyzedSecId;
             lastAnalyzedSecId = currentSecId;
+
+            if (isSwitch) lastEvictedManifest = "";
 
             let loadingOccurred = false;
             visibleSectionIds.forEach(id => {
@@ -253,18 +256,32 @@
             }
 
             let currentPointsCount = points.filter(p => cacheLRU.includes(p.sectionId)).length;
+            const evictedThisTick = new Set();
+
             while (currentPointsCount > CACHE_CAPACITY && cacheLRU.length > 1) {
                 let evicted = false;
                 for (let i = cacheLRU.length - 1; i >= 0; i--) {
                     const idToEvict = cacheLRU[i];
                     if (!visibleSectionIds.includes(idToEvict)) {
+                        evictedThisTick.add(idToEvict);
                         cacheLRU.splice(i, 1);
                         evicted = true;
                         break;
                     }
                 }
-                if (!evicted) cacheLRU.pop();
+                if (!evicted) {
+                    evictedThisTick.add(cacheLRU[cacheLRU.length - 1]);
+                    cacheLRU.pop();
+                }
                 currentPointsCount = points.filter(p => cacheLRU.includes(p.sectionId)).length;
+            }
+
+            if (evictedThisTick.size > 0) {
+                const evictedList = Array.from(evictedThisTick).map(id => {
+                    const pts = points.filter(p => p.sectionId === id).length;
+                    return `${id} (${pts}pts)`;
+                }).join(', ');
+                lastEvictedManifest = evictedList;
             }
         }
 
@@ -408,11 +425,16 @@
                 // Update Contextual Secondary Panel Stats
                 statPointsEl.innerText = `VPS ${loadedInViewCount} POINTS (${visiblePercentOfModel}%)`;
 
-                if (loadingSections.size > 0 || (lastLoadingManifest && lastLoadingManifest.length > 0)) {
+                if (loadingSections.size > 0 || (lastLoadingManifest && lastLoadingManifest.length > 0) || lastEvictedManifest) {
                     statManifestEl.classList.remove('hidden');
                     const labelHeader = loadingSections.size > 0 ? "LOADING: " : "LOADED: ";
                     const manifestLines = Array.isArray(lastLoadingManifest) ? lastLoadingManifest.join('<br>') : lastLoadingManifest;
-                    statManifestEl.innerHTML = `<strong>${labelHeader}</strong><br>${manifestLines}`;
+                    
+                    let manifestHTML = `<strong>${labelHeader}</strong><br>${manifestLines}`;
+                    if (lastEvictedManifest) {
+                        manifestHTML += `<div class="mt-1 pt-1 border-t border-slate-800 text-slate-500 font-medium"><strong>UNLOADED:</strong><br>${lastEvictedManifest}</div>`;
+                    }
+                    statManifestEl.innerHTML = manifestHTML;
                 } else {
                     statManifestEl.classList.add('hidden');
                 }
@@ -502,6 +524,7 @@
             statManifestEl.classList.add('hidden');
             cacheLRU = [];
             lastLoadingManifest = "";
+            lastEvictedManifest = "";
             lastAnalyzedSecId = null;
         });
 
