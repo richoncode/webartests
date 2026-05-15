@@ -204,9 +204,14 @@
             }
         }
 
-        function handleCaching(visibleSectionIds) {
+        let lastAnalyzedSecId = null;
+
+        function handleCaching(visibleSectionIds, currentSecId) {
             if (!isCachingEnabled || !visibleSectionIds || visibleSectionIds.length === 0) return;
             
+            const isSwitch = currentSecId !== lastAnalyzedSecId;
+            lastAnalyzedSecId = currentSecId;
+
             let loadingOccurred = false;
             visibleSectionIds.forEach(id => {
                 if (id === 'OTHER') return;
@@ -242,6 +247,9 @@
                 }
                 lastLoadingManifest = lines;
                 lastLoadingPointTotal = currentPointSum;
+            } else if (isSwitch) {
+                lastLoadingManifest = "NONE - VPS from cache";
+                lastLoadingPointTotal = 0;
             }
 
             let currentPointsCount = points.filter(p => cacheLRU.includes(p.sectionId)).length;
@@ -375,7 +383,7 @@
             });
 
             if (sec) {
-                handleCaching(Array.from(visibleSectionIds));
+                handleCaching(Array.from(visibleSectionIds), sec.id);
             }
 
             // Always Update Memory Status (Persistent in Secondary Panel)
@@ -494,6 +502,7 @@
             statManifestEl.classList.add('hidden');
             cacheLRU = [];
             lastLoadingManifest = "";
+            lastAnalyzedSecId = null;
         });
 
         window.addEventListener('resize', resize);
