@@ -126,12 +126,14 @@
         const IN_TO_PX = 96;
 
         let currentUnits = localStorage.getItem('templates-units') || 'in';
+        let currentFitType = localStorage.getItem('templates-fit-type') || 'normal';
         let currentTemplate = 'sconce';
         
         const templates = {
             sconce: {
                 name: 'Sconce',
                 params: [
+                    { id: 'thickness', label: 'Material Thickness', min: 0.05, max: 0.5, step: 0.01, default: 0.12 },
                     { id: 'width', label: 'Width', min: 1, max: 10, step: 0.1, default: 2.0 },
                     { id: 'back-height', label: 'Back Height', min: 1, max: 12, step: 0.1, default: 4.0 },
                     { id: 'front-height', label: 'Front Height', min: 0.1, max: 3, step: 0.1, default: 0.5 },
@@ -154,22 +156,62 @@
             const container = document.getElementById('parameters-container');
             const template = templates[currentTemplate];
             
-            container.innerHTML = '';
+            container.innerHTML = `
+                <div class="mb-6">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Fit Type</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button data-fit="tight" class="fit-btn py-2 text-[10px] font-bold rounded-lg border border-slate-700 transition-all ${currentFitType === 'tight' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 text-slate-400'}">TIGHT</button>
+                        <button data-fit="normal" class="fit-btn py-2 text-[10px] font-bold rounded-lg border border-slate-700 transition-all ${currentFitType === 'normal' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 text-slate-400'}">NORMAL</button>
+                        <button data-fit="easy" class="fit-btn py-2 text-[10px] font-bold rounded-lg border border-slate-700 transition-all ${currentFitType === 'easy' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 text-slate-400'}">EASY</button>
+                    </div>
+                    <p class="text-[9px] text-slate-500 mt-2 italic" id="fit-description">Normal friction fit: equal to measured thickness</p>
+                </div>
+            `;
+
+            // Fit Type buttons
+            document.querySelectorAll('.fit-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentFitType = btn.dataset.fit;
+                    localStorage.setItem('templates-fit-type', currentFitType);
+                    updateFitUI();
+                    render();
+                });
+            });
+
+            const updateFitUI = () => {
+                const desc = document.getElementById('fit-description');
+                document.querySelectorAll('.fit-btn').forEach(b => {
+                    if (b.dataset.fit === currentFitType) {
+                        b.classList.add('bg-emerald-600', 'border-emerald-500', 'text-white');
+                        b.classList.remove('bg-slate-900', 'text-slate-400');
+                    } else {
+                        b.classList.remove('bg-emerald-600', 'border-emerald-500', 'text-white');
+                        b.classList.add('bg-slate-900', 'text-slate-400');
+                    }
+                });
+                
+                if (currentFitType === 'tight') desc.innerText = "Tight press fit: thickness - 0.05mm";
+                else if (currentFitType === 'normal') desc.innerText = "Normal friction fit: equal to thickness";
+                else desc.innerText = "Easy assembly / glue: thickness + 0.10mm";
+            };
+            updateFitUI();
+            
             template.params.forEach(param => {
                 const value = localStorage.getItem(`templates-${currentTemplate}-${param.id}`) || param.default;
                 config[param.id] = parseFloat(value);
 
                 const div = document.createElement('div');
+                div.className = "mb-4";
                 div.innerHTML = `
                     <div class="flex justify-between mb-1">
                         <label class="text-xs font-medium text-slate-300">${param.label}</label>
                         <span class="text-xs font-mono text-emerald-400" id="val-${param.id}">${value}${currentUnits}</span>
                     </div>
                     <input type="range" id="input-${param.id}" 
-                        min="${currentUnits === 'in' ? param.min : param.min * 25.4}" 
-                        max="${currentUnits === 'in' ? param.max : param.max * 25.4}" 
-                        step="${currentUnits === 'in' ? param.step : 1}" 
-                        value="${currentUnits === 'in' ? config[param.id] : config[param.id] * 25.4}" 
+                        min="${currentUnits === 'in' ? param.min : Math.round(param.min * 25.4 * 10)/10}" 
+                        max="${currentUnits === 'in' ? param.max : Math.round(param.max * 25.4)}" 
+                        step="${currentUnits === 'in' ? param.step : 0.1}" 
+                        value="${currentUnits === 'in' ? config[param.id] : Math.round(config[param.id] * 25.4 * 10)/10}" 
                         class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
                 `;
                 container.appendChild(div);
@@ -218,8 +260,6 @@
 
         function render() {
             const svg = document.getElementById('preview-svg');
-            const scale = currentUnits === 'in' ? IN_TO_PX : MM_TO_PX;
-            const factor = currentUnits === 'in' ? 1 : 25.4;
             
             // Clean slate
             svg.innerHTML = '';
@@ -227,11 +267,18 @@
             let html = '';
             let edgeCounter = 1;
 
+            const thickness = config['thickness'] * IN_TO_PX;
             const w = config['width'] * IN_TO_PX;
             const hBack = config['back-height'] * IN_TO_PX;
             const hFront = config['front-height'] * IN_TO_PX;
-            const dShelf = config['shelf-depth'] * IN_TO_PX;
+            const shelfDepth = config['shelf-depth'] * IN_TO_PX;
             const diaFence = config['fence-diameter'] * IN_TO_PX;
+
+            // Fit Type adjustment (convert mm offset to pixels)
+            let fitOffsetMM = 0;
+            if (currentFitType === 'tight') fitOffsetMM = -0.05;
+            else if (currentFitType === 'easy') fitOffsetMM = 0.10;
+            const slotWidth = thickness + (fitOffsetMM * (IN_TO_PX / 25.4));
 
             const padding = 20;
             let currentX = padding;
@@ -242,34 +289,64 @@
                 html += `<text x="${x + w/2}" y="${y}" class="number-label" text-anchor="middle" dy="${y < currentY + 10 ? -5 : 12}">${edgeCounter++}</text>`;
             };
 
-            // 1. Back Piece
+            // Slot Width for Tabs (usually 50% of total width for stability)
+            const tabWidth = w * 0.6;
+            const tabXOffset = (w - tabWidth) / 2;
+
+            // 1. Back Piece with Slot A and Slot C
+            const slotAY = currentY + hBack - (2 * thickness);
+            const slotCY = slotAY - (0.25 * IN_TO_PX);
+            
             const backPath = `M ${currentX} ${currentY + hBack} 
                              L ${currentX + w} ${currentY + hBack} 
                              L ${currentX + w} ${currentY + w/2} 
                              A ${w/2} ${w/2} 0 0 0 ${currentX} ${currentY + w/2} 
                              Z`;
             html += `<path d="${backPath}" class="template-outline" />`;
+            // Slots A & C
+            html += `<rect x="${currentX + tabXOffset}" y="${slotAY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+            html += `<rect x="${currentX + tabXOffset}" y="${slotCY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+            
             addEdgeNumber(currentX, currentY + hBack);
             html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" fill="#333" font-size="10" text-anchor="middle">BACK</text>`;
 
-            // 2. Shelf
+            // 2. Shelf with Tab A (Back) and Tab B (Front)
             currentX += w + padding;
-            html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${dShelf}" class="template-outline" />`;
-            addEdgeNumber(currentX, currentY); // Top
-            addEdgeNumber(currentX, currentY + dShelf); // Bottom
-            html += `<text x="${currentX + w/2}" y="${currentY + dShelf/2}" fill="#333" font-size="10" text-anchor="middle">SHELF</text>`;
+            // Main body
+            let shelfPath = `M ${currentX} ${currentY} L ${currentX + w} ${currentY} L ${currentX + w} ${currentY + shelfDepth} L ${currentX} ${currentY + shelfDepth} Z`;
+            html += `<path d="${shelfPath}" class="template-outline" />`;
+            // Tab A (Top in flat layout, goes into Back)
+            html += `<rect x="${currentX + tabXOffset}" y="${currentY - thickness}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
+            // Tab B (Bottom in flat layout, goes into Front)
+            html += `<rect x="${currentX + tabXOffset}" y="${currentY + shelfDepth}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
 
-            // 3. Fence
-            currentX += w + padding;
-            html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${dShelf}" class="template-outline" />`;
-            html += `<circle cx="${currentX + w/2}" cy="${currentY + dShelf/2}" r="${diaFence/2}" class="template-outline" />`;
             addEdgeNumber(currentX, currentY); // Top
-            addEdgeNumber(currentX, currentY + dShelf); // Bottom
+            addEdgeNumber(currentX, currentY + shelfDepth); // Bottom
+            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" fill="#333" font-size="10" text-anchor="middle">SHELF</text>`;
+
+            // 3. Fence with Tab C (Back) and Tab D (Front)
+            currentX += w + padding;
+            html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${shelfDepth}" class="template-outline" />`;
+            html += `<circle cx="${currentX + w/2}" cy="${currentY + shelfDepth/2}" r="${diaFence/2}" class="template-outline" />`;
+            // Tab C (Top)
+            html += `<rect x="${currentX + tabXOffset}" y="${currentY - thickness}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
+            // Tab D (Bottom)
+            html += `<rect x="${currentX + tabXOffset}" y="${currentY + shelfDepth}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
+
+            addEdgeNumber(currentX, currentY); // Top
+            addEdgeNumber(currentX, currentY + shelfDepth); // Bottom
             html += `<text x="${currentX + w/2}" y="${currentY + 12}" fill="#333" font-size="8" text-anchor="middle">FENCE</text>`;
 
-            // 4. Front
+            // 4. Front with Slot B and Slot D
             currentX += w + padding;
+            const slotBY = currentY + hFront - (2 * thickness);
+            const slotDY = slotBY - (0.25 * IN_TO_PX);
+
             html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${hFront}" class="template-outline" />`;
+            // Slots B & D
+            html += `<rect x="${currentX + tabXOffset}" y="${slotBY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+            html += `<rect x="${currentX + tabXOffset}" y="${slotDY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+
             addEdgeNumber(currentX, currentY); // Top
             addEdgeNumber(currentX, currentY + hFront); // Bottom
             html += `<text x="${currentX + w/2}" y="${currentY + hFront/2}" fill="#333" font-size="10" text-anchor="middle" dy="3">FRONT</text>`;
@@ -278,7 +355,7 @@
             const oneInch = IN_TO_PX;
             const oneCm = 10 * MM_TO_PX;
             const calibX = currentX + w + padding;
-            const calibY = currentY + Math.max(hBack, dShelf, hFront) - oneInch;
+            const calibY = currentY + Math.max(hBack, shelfDepth, hFront) - oneInch;
             
             html += `<rect x="${calibX}" y="${calibY}" width="${oneInch}" height="${oneInch}" class="calibration-box" />`;
             html += `<rect x="${calibX + (oneInch - oneCm)/2}" y="${calibY + (oneInch - oneCm)/2}" width="${oneCm}" height="${oneCm}" class="calibration-box" />`;
@@ -292,7 +369,7 @@
             
             const displayW = currentUnits === 'in' ? config['width'] : config['width'] * 25.4;
             const displayH = currentUnits === 'in' ? config['back-height'] : config['back-height'] * 25.4;
-            document.getElementById('dimension-summary').innerText = `Primary Width: ${displayW.toFixed(2)}${currentUnits} | Max Height: ${displayH.toFixed(2)}${currentUnits}`;
+            document.getElementById('dimension-summary').innerText = `Primary Width: ${displayW.toFixed(2)}${currentUnits} | Max Height: ${displayH.toFixed(2)}${currentUnits} | Material: ${config['thickness'].toFixed(2)}in`;
         }
 
         function exportSVG() {
