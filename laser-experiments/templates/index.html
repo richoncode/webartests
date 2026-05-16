@@ -37,9 +37,14 @@
             stroke-width: 0.5;
         }
         .template-outline {
+            fill: rgba(16, 185, 129, 0.05);
+            stroke: #10b981;
+            stroke-width: 1.5;
+        }
+        .slot-outline {
             fill: none;
             stroke: #10b981;
-            stroke-width: 1;
+            stroke-width: 1.5;
         }
         .annotation-line {
             stroke: #555;
@@ -125,7 +130,7 @@
         const MM_TO_PX = 3.7795275591; // 96 DPI
         const IN_TO_PX = 96;
 
-        let currentUnits = localStorage.getItem('templates-units') || 'in';
+        let currentUnits = localStorage.getItem('templates-units') || 'mm';
         let currentFitType = localStorage.getItem('templates-fit-type') || 'normal';
         let currentTemplate = 'sconce';
         
@@ -133,10 +138,10 @@
             sconce: {
                 name: 'Sconce',
                 params: [
-                    { id: 'thickness', label: 'Material Thickness', min: 0.05, max: 0.5, step: 0.01, default: 0.12 },
+                    { id: 'thickness', label: 'Material Thickness', min: 0.05, max: 0.5, step: 0.01, default: 0.1181 },
                     { id: 'width', label: 'Width', min: 1, max: 10, step: 0.1, default: 2.0 },
                     { id: 'back-height', label: 'Back Height', min: 1, max: 12, step: 0.1, default: 4.0 },
-                    { id: 'front-height', label: 'Front Height', min: 0.1, max: 3, step: 0.1, default: 0.5 },
+                    { id: 'front-height', label: 'Front Height', min: 0.1, max: 3, step: 0.1, default: 0.5906 },
                     { id: 'shelf-depth', label: 'Shelf Depth', min: 0.5, max: 6, step: 0.1, default: 2.5 },
                     { id: 'fence-diameter', label: 'Fence Diameter', min: 0.1, max: 5, step: 0.1, default: 1.5 }
                 ]
@@ -280,21 +285,21 @@
             else if (currentFitType === 'easy') fitOffsetMM = 0.10;
             const slotWidth = thickness + (fitOffsetMM * (IN_TO_PX / 25.4));
 
-            const padding = 20;
+            const padding = 30;
             let currentX = padding;
-            let currentY = padding; 
+            let currentY = padding + thickness; // Room for top tabs
 
             // Helper to draw horizontal edge number
-            const addEdgeNumber = (x, y) => {
-                html += `<text x="${x + w/2}" y="${y}" class="number-label" text-anchor="middle" dy="${y < currentY + 10 ? -5 : 12}">${edgeCounter++}</text>`;
+            const addEdgeNumber = (x, y, width) => {
+                html += `<text x="${x + width/2}" y="${y}" class="number-label" text-anchor="middle" dy="${y < currentY + 10 ? -5 : 12}">${edgeCounter++}</text>`;
             };
 
-            // Slot Width for Tabs (usually 50% of total width for stability)
+            // Slot Width for Tabs (usually 60% of total width for stability)
             const tabWidth = w * 0.6;
             const tabXOffset = (w - tabWidth) / 2;
 
             // 1. Back Piece with Slot A and Slot C
-            const slotAY = currentY + hBack - (2 * thickness);
+            const slotAY = currentY + hBack - (2 * thickness) - (slotWidth/2);
             const slotCY = slotAY - (0.25 * IN_TO_PX);
             
             const backPath = `M ${currentX} ${currentY + hBack} 
@@ -303,53 +308,68 @@
                              A ${w/2} ${w/2} 0 0 0 ${currentX} ${currentY + w/2} 
                              Z`;
             html += `<path d="${backPath}" class="template-outline" />`;
-            // Slots A & C
-            html += `<rect x="${currentX + tabXOffset}" y="${slotAY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
-            html += `<rect x="${currentX + tabXOffset}" y="${slotCY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+            // Slots A & C (Internal cutouts)
+            html += `<rect x="${currentX + tabXOffset}" y="${slotAY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
+            html += `<rect x="${currentX + tabXOffset}" y="${slotCY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
             
-            addEdgeNumber(currentX, currentY + hBack);
-            html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" fill="#333" font-size="10" text-anchor="middle">BACK</text>`;
+            addEdgeNumber(currentX, currentY + hBack, w);
+            html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">BACK</text>`;
 
             // 2. Shelf with Tab A (Back) and Tab B (Front)
             currentX += w + padding;
-            // Main body
-            let shelfPath = `M ${currentX} ${currentY} L ${currentX + w} ${currentY} L ${currentX + w} ${currentY + shelfDepth} L ${currentX} ${currentY + shelfDepth} Z`;
+            const shelfPath = `M ${currentX} ${currentY} 
+                               L ${currentX + tabXOffset} ${currentY} 
+                               L ${currentX + tabXOffset} ${currentY - thickness} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY - thickness} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY} 
+                               L ${currentX + w} ${currentY} 
+                               L ${currentX + w} ${currentY + shelfDepth} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY + shelfDepth} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY + shelfDepth + thickness} 
+                               L ${currentX + tabXOffset} ${currentY + shelfDepth + thickness} 
+                               L ${currentX + tabXOffset} ${currentY + shelfDepth} 
+                               L ${currentX} ${currentY + shelfDepth} 
+                               Z`;
             html += `<path d="${shelfPath}" class="template-outline" />`;
-            // Tab A (Top in flat layout, goes into Back)
-            html += `<rect x="${currentX + tabXOffset}" y="${currentY - thickness}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
-            // Tab B (Bottom in flat layout, goes into Front)
-            html += `<rect x="${currentX + tabXOffset}" y="${currentY + shelfDepth}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
-
-            addEdgeNumber(currentX, currentY); // Top
-            addEdgeNumber(currentX, currentY + shelfDepth); // Bottom
-            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" fill="#333" font-size="10" text-anchor="middle">SHELF</text>`;
+            addEdgeNumber(currentX, currentY, w); // Top
+            addEdgeNumber(currentX, currentY + shelfDepth, w); // Bottom
+            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">SHELF</text>`;
 
             // 3. Fence with Tab C (Back) and Tab D (Front)
             currentX += w + padding;
-            html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${shelfDepth}" class="template-outline" />`;
-            html += `<circle cx="${currentX + w/2}" cy="${currentY + shelfDepth/2}" r="${diaFence/2}" class="template-outline" />`;
-            // Tab C (Top)
-            html += `<rect x="${currentX + tabXOffset}" y="${currentY - thickness}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
-            // Tab D (Bottom)
-            html += `<rect x="${currentX + tabXOffset}" y="${currentY + shelfDepth}" width="${tabWidth}" height="${thickness}" class="template-outline" />`;
-
-            addEdgeNumber(currentX, currentY); // Top
-            addEdgeNumber(currentX, currentY + shelfDepth); // Bottom
-            html += `<text x="${currentX + w/2}" y="${currentY + 12}" fill="#333" font-size="8" text-anchor="middle">FENCE</text>`;
+            const fencePath = `M ${currentX} ${currentY} 
+                               L ${currentX + tabXOffset} ${currentY} 
+                               L ${currentX + tabXOffset} ${currentY - thickness} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY - thickness} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY} 
+                               L ${currentX + w} ${currentY} 
+                               L ${currentX + w} ${currentY + shelfDepth} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY + shelfDepth} 
+                               L ${currentX + tabXOffset + tabWidth} ${currentY + shelfDepth + thickness} 
+                               L ${currentX + tabXOffset} ${currentY + shelfDepth + thickness} 
+                               L ${currentX + tabXOffset} ${currentY + shelfDepth} 
+                               L ${currentX} ${currentY + shelfDepth} 
+                               Z`;
+            html += `<path d="${fencePath}" class="template-outline" />`;
+            html += `<circle cx="${currentX + w/2}" cy="${currentY + shelfDepth/2}" r="${diaFence/2}" class="slot-outline" />`;
+            addEdgeNumber(currentX, currentY, w); // Top
+            addEdgeNumber(currentX, currentY + shelfDepth, w); // Bottom
+            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth - 10}" fill="rgba(255,255,255,0.2)" font-size="10" font-weight="bold" text-anchor="middle">FENCE</text>`;
 
             // 4. Front with Slot B and Slot D
             currentX += w + padding;
-            const slotBY = currentY + hFront - (2 * thickness);
+            const slotBY = currentY + hFront - (2 * thickness) - (slotWidth/2);
             const slotDY = slotBY - (0.25 * IN_TO_PX);
 
-            html += `<rect x="${currentX}" y="${currentY}" width="${w}" height="${hFront}" class="template-outline" />`;
+            const frontPath = `M ${currentX} ${currentY} L ${currentX + w} ${currentY} L ${currentX + w} ${currentY + hFront} L ${currentX} ${currentY + hFront} Z`;
+            html += `<path d="${frontPath}" class="template-outline" />`;
             // Slots B & D
-            html += `<rect x="${currentX + tabXOffset}" y="${slotBY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
-            html += `<rect x="${currentX + tabXOffset}" y="${slotDY}" width="${tabWidth}" height="${slotWidth}" class="template-outline" />`;
+            html += `<rect x="${currentX + tabXOffset}" y="${slotBY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
+            html += `<rect x="${currentX + tabXOffset}" y="${slotDY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
 
-            addEdgeNumber(currentX, currentY); // Top
-            addEdgeNumber(currentX, currentY + hFront); // Bottom
-            html += `<text x="${currentX + w/2}" y="${currentY + hFront/2}" fill="#333" font-size="10" text-anchor="middle" dy="3">FRONT</text>`;
+            addEdgeNumber(currentX, currentY, w); // Top
+            addEdgeNumber(currentX, currentY + hFront, w); // Bottom
+            html += `<text x="${currentX + w/2}" y="${currentY + hFront/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">FRONT</text>`;
 
             // Calibration Boxes (Bottom Right)
             const oneInch = IN_TO_PX;
@@ -369,7 +389,7 @@
             
             const displayW = currentUnits === 'in' ? config['width'] : config['width'] * 25.4;
             const displayH = currentUnits === 'in' ? config['back-height'] : config['back-height'] * 25.4;
-            document.getElementById('dimension-summary').innerText = `Primary Width: ${displayW.toFixed(2)}${currentUnits} | Max Height: ${displayH.toFixed(2)}${currentUnits} | Material: ${config['thickness'].toFixed(2)}in`;
+            document.getElementById('dimension-summary').innerText = `Width: ${displayW.toFixed(2)}${currentUnits} | Back: ${displayH.toFixed(2)}${currentUnits} | Mat: ${config['thickness'].toFixed(2)}in`;
         }
 
         function exportSVG() {
@@ -377,17 +397,23 @@
             const clone = svg.cloneNode(true);
             
             // Cleanup for export: Remove fill and labels if needed, or keep for assembly
-            // Here we'll keep everything but ensure the stroke is pure black/red for lasers
-            const outlines = clone.querySelectorAll('.template-outline');
+            const outlines = clone.querySelectorAll('.template-outline, .slot-outline');
             outlines.forEach(o => {
                 o.style.stroke = '#000000';
                 o.style.strokeWidth = '0.1mm';
+                o.style.fill = 'none';
             });
             
             const calibs = clone.querySelectorAll('.calibration-box');
             calibs.forEach(c => {
                 c.style.stroke = '#ff0000';
                 c.style.strokeWidth = '0.1mm';
+                c.style.fill = 'none';
+            });
+
+            // Remove numbers and labels for clean cut file
+            clone.querySelectorAll('.number-label, text').forEach(t => {
+                if (!t.classList.contains('calibration-box')) t.remove();
             });
 
             const svgData = new XMLSerializer().serializeToString(clone);
