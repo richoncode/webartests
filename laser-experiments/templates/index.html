@@ -6,6 +6,7 @@
     <title>Laser Templates - Vector Art Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script>
         window.addEventListener('error', function(e) {
             if (e.target.src && e.target.src.includes('three')) {
@@ -173,7 +174,7 @@
         };
 
         const config = {};
-        let scene, camera, renderer, modelGroup;
+        let scene, camera, renderer, modelGroup, controls;
 
         // Initialization
         function init() {
@@ -195,26 +196,44 @@
             // Ensure container has dimensions before init
             requestAnimationFrame(() => {
                 scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x1a1a1a); // Lighter background to confirm view
+                scene.background = new THREE.Color(0x0d0d0d); // Match body background
 
                 camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
-                camera.position.set(250, 250, 400);
+                camera.position.set(120, 100, 200); // Start zoomed in closer
                 camera.lookAt(0, 40, 0);
 
                 renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.shadowMap.enabled = true; // Enable Shadows
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
                 container.appendChild(renderer.domElement);
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 2.0); // Very bright ambient
+                // OrbitControls for Zoom/Rotate
+                if (typeof THREE.OrbitControls !== 'undefined') {
+                    controls = new THREE.OrbitControls(camera, renderer.domElement);
+                    controls.enableDamping = true;
+                    controls.dampingFactor = 0.05;
+                    controls.target.set(0, 40, 0);
+                }
+
+                // Balanced Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Reduced to avoid wash-out
                 scene.add(ambientLight);
 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-                directionalLight.position.set(100, 300, 200);
-                scene.add(directionalLight);
+                const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                mainLight.position.set(100, 200, 150);
+                mainLight.castShadow = true;
+                mainLight.shadow.mapSize.width = 1024;
+                mainLight.shadow.mapSize.height = 1024;
+                scene.add(mainLight);
 
-                // Add grid and origin reference
-                const gridHelper = new THREE.GridHelper(500, 10, 0x444444, 0x222222);
+                const fillLight = new THREE.PointLight(0x5b9bd5, 0.5); // Subtle accent light
+                fillLight.position.set(-100, 50, 100);
+                scene.add(fillLight);
+
+                // Add grid
+                const gridHelper = new THREE.GridHelper(500, 20, 0x222222, 0x1a1a1a);
                 scene.add(gridHelper);
 
                 modelGroup = new THREE.Group();
@@ -235,9 +254,7 @@
 
         function animate3D() {
             requestAnimationFrame(animate3D);
-            if (modelGroup) {
-                modelGroup.rotation.y += 0.005; // Slow spin to confirm life
-            }
+            if (controls) controls.update();
             renderer.render(scene, camera);
         }
 
@@ -250,8 +267,8 @@
             }
 
             const woodMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xcd853f, 
-                roughness: 0.5, 
+                color: 0x8b5a2b, // Richer wood color
+                roughness: 0.7, 
                 metalness: 0.1 
             });
 
@@ -261,7 +278,7 @@
             const hFront = config['front-height'] || 18;
             const dShelf = config['shelf-depth'] || 60;
 
-            // 1. Back Piece (Centered on X, rests on grid at y=0)
+            // 1. Back Piece
             const backShape = new THREE.Shape();
             backShape.moveTo(-w/2, 0);
             backShape.lineTo(w/2, 0);
@@ -272,26 +289,34 @@
             const backGeo = new THREE.ExtrudeGeometry(backShape, { depth: t, bevelEnabled: false });
             const backMesh = new THREE.Mesh(backGeo, woodMaterial);
             backMesh.position.z = -t; 
+            backMesh.castShadow = true;
+            backMesh.receiveShadow = true;
             modelGroup.add(backMesh);
 
-            // 2. Shelf (Interlocks 2t from bottom)
+            // 2. Shelf
             const shelfGeo = new THREE.BoxGeometry(w, t, dShelf);
             const shelfMesh = new THREE.Mesh(shelfGeo, woodMaterial);
             const shelfY = 2 * t;
             shelfMesh.position.set(0, shelfY + t/2, dShelf/2);
+            shelfMesh.castShadow = true;
+            shelfMesh.receiveShadow = true;
             modelGroup.add(shelfMesh);
 
-            // 3. Fence (Interlocks 2t above shelf)
+            // 3. Fence
             const fenceGeo = new THREE.BoxGeometry(w, t, dShelf);
             const fenceMesh = new THREE.Mesh(fenceGeo, woodMaterial);
             const fenceY = shelfY + (2 * t);
             fenceMesh.position.set(0, fenceY + t/2, dShelf/2);
+            fenceMesh.castShadow = true;
+            fenceMesh.receiveShadow = true;
             modelGroup.add(fenceMesh);
 
-            // 4. Front (Interlocks with shelf and fence at front)
+            // 4. Front
             const frontGeo = new THREE.BoxGeometry(w, hFront, t);
             const frontMesh = new THREE.Mesh(frontGeo, woodMaterial);
             frontMesh.position.set(0, hFront/2 + shelfY - t, dShelf + t/2);
+            frontMesh.castShadow = true;
+            frontMesh.receiveShadow = true;
             modelGroup.add(frontMesh);
         }
 
