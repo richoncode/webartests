@@ -266,17 +266,42 @@
                 modelGroup.remove(modelGroup.children[0]); 
             }
 
-            const woodMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x8b5a2b, // Richer wood color
+            const faceMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8b5a2b, 
                 roughness: 0.7, 
                 metalness: 0.1 
             });
+            const edgeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x3d2b1f, // Much darker wood for cut edges
+                roughness: 0.8, 
+                metalness: 0.05 
+            });
+            const materials = [faceMaterial, edgeMaterial];
 
             const t = config['thickness'] || 3;
             const w = config['width'] || 50;
             const hBack = config['back-height'] || 100;
             const hFront = config['front-height'] || 18;
             const dShelf = config['shelf-depth'] || 60;
+            const diaFence = config['fence-diameter'] || 38;
+
+            // Fit Type adjustment for 3D slots (purely visual)
+            let fitOffsetMM = 0;
+            if (currentFitType === 'tight') fitOffsetMM = -0.05;
+            else if (currentFitType === 'easy') fitOffsetMM = 0.10;
+            const slotH = t + fitOffsetMM;
+            const tabW = w * 0.6;
+
+            // Helper for slots
+            const addSlotHole = (shape, yCenter, height) => {
+                const hole = new THREE.Path();
+                hole.moveTo(-tabW/2, yCenter - height/2);
+                hole.lineTo(tabW/2, yCenter - height/2);
+                hole.lineTo(tabW/2, yCenter + height/2);
+                hole.lineTo(-tabW/2, yCenter + height/2);
+                hole.lineTo(-tabW/2, yCenter - height/2);
+                shape.holes.push(hole);
+            };
 
             // 1. Back Piece
             const backShape = new THREE.Shape();
@@ -286,38 +311,79 @@
             backShape.absarc(0, hBack - w/2, w/2, 0, Math.PI, false);
             backShape.lineTo(-w/2, 0);
 
+            // Add Slot Holes A & C
+            const slotAY = 2 * t; // Matching 2D logic
+            const slotCY = slotAY + (2 * t);
+            addSlotHole(backShape, slotAY, slotH);
+            addSlotHole(backShape, slotCY, slotH);
+
             const backGeo = new THREE.ExtrudeGeometry(backShape, { depth: t, bevelEnabled: false });
-            const backMesh = new THREE.Mesh(backGeo, woodMaterial);
+            const backMesh = new THREE.Mesh(backGeo, materials);
             backMesh.position.z = -t; 
             backMesh.castShadow = true;
             backMesh.receiveShadow = true;
             modelGroup.add(backMesh);
 
             // 2. Shelf
-            const shelfGeo = new THREE.BoxGeometry(w, t, dShelf);
-            const shelfMesh = new THREE.Mesh(shelfGeo, woodMaterial);
-            const shelfY = 2 * t;
-            shelfMesh.position.set(0, shelfY + t/2, dShelf/2);
+            const shelfShape = new THREE.Shape();
+            shelfShape.moveTo(-w/2, 0);
+            shelfShape.lineTo(w/2, 0);
+            shelfShape.lineTo(w/2, dShelf);
+            shelfShape.lineTo(-w/2, dShelf);
+            shelfShape.lineTo(-w/2, 0);
+
+            const shelfGeo = new THREE.ExtrudeGeometry(shelfShape, { depth: t, bevelEnabled: false });
+            const shelfMesh = new THREE.Mesh(shelfGeo, materials);
+            shelfMesh.rotation.x = Math.PI / 2;
+            shelfMesh.position.set(0, slotAY + t/2, 0);
             shelfMesh.castShadow = true;
             shelfMesh.receiveShadow = true;
             modelGroup.add(shelfMesh);
 
             // 3. Fence
-            const fenceGeo = new THREE.BoxGeometry(w, t, dShelf);
-            const fenceMesh = new THREE.Mesh(fenceGeo, woodMaterial);
-            const fenceY = shelfY + (2 * t);
-            fenceMesh.position.set(0, fenceY + t/2, dShelf/2);
+            const fenceShape = new THREE.Shape();
+            fenceShape.moveTo(-w/2, 0);
+            fenceShape.lineTo(w/2, 0);
+            fenceShape.lineTo(w/2, dShelf);
+            fenceShape.lineTo(-w/2, dShelf);
+            fenceShape.lineTo(-w/2, 0);
+
+            // Add Circle Hole
+            const hole = new THREE.Path();
+            hole.absarc(0, dShelf/2, diaFence/2, 0, Math.PI * 2, true);
+            fenceShape.holes.push(hole);
+
+            const fenceGeo = new THREE.ExtrudeGeometry(fenceShape, { depth: t, bevelEnabled: false });
+            const fenceMesh = new THREE.Mesh(fenceGeo, materials);
+            fenceMesh.rotation.x = Math.PI / 2;
+            fenceMesh.position.set(0, slotCY + t/2, 0);
             fenceMesh.castShadow = true;
             fenceMesh.receiveShadow = true;
             modelGroup.add(fenceMesh);
 
             // 4. Front
-            const frontGeo = new THREE.BoxGeometry(w, hFront, t);
-            const frontMesh = new THREE.Mesh(frontGeo, woodMaterial);
-            frontMesh.position.set(0, hFront/2 + shelfY - t, dShelf + t/2);
+            const frontShape = new THREE.Shape();
+            frontShape.moveTo(-w/2, 0);
+            frontShape.lineTo(w/2, 0);
+            frontShape.lineTo(w/2, hFront);
+            frontShape.lineTo(-w/2, hFront);
+            frontShape.lineTo(-w/2, 0);
+
+            // Add Slot Holes B & D
+            const slotBY = hFront - (2 * t);
+            const slotDY = slotBY - (2 * t);
+            addSlotHole(frontShape, slotBY, slotH);
+            addSlotHole(frontShape, slotDY, slotH);
+
+            const frontGeo = new THREE.ExtrudeGeometry(frontShape, { depth: t, bevelEnabled: false });
+            const frontMesh = new THREE.Mesh(frontGeo, materials);
+            frontMesh.position.set(0, 2 * t - slotBY, dShelf);
             frontMesh.castShadow = true;
             frontMesh.receiveShadow = true;
             modelGroup.add(frontMesh);
+
+            // Adjust Group Position
+            modelGroup.position.y = -hBack/4;
         }
 
         function setupUI() {
