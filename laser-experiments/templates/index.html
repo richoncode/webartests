@@ -178,47 +178,54 @@
 
         function init3D() {
             const container = document.getElementById('three-container');
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0a);
+            if (!container) return;
 
-            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight || 1.77, 0.1, 5000);
-            camera.position.set(300, 300, 400);
-            camera.lookAt(0, 50, 0);
+            // Ensure container has dimensions before init
+            requestAnimationFrame(() => {
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x1a1a1a); // Lighter background to confirm view
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            const width = container.clientWidth || 600;
-            const height = container.clientHeight || 400;
-            renderer.setSize(width, height);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.appendChild(renderer.domElement);
+                camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+                camera.position.set(250, 250, 400);
+                camera.lookAt(0, 40, 0);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-            scene.add(ambientLight);
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                container.appendChild(renderer.domElement);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            directionalLight.position.set(200, 400, 300);
-            scene.add(directionalLight);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 2.0); // Very bright ambient
+                scene.add(ambientLight);
 
-            const gridHelper = new THREE.GridHelper(1000, 20, 0x333333, 0x222222);
-            scene.add(gridHelper);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                directionalLight.position.set(100, 300, 200);
+                scene.add(directionalLight);
 
-            modelGroup = new THREE.Group();
-            scene.add(modelGroup);
+                // Add grid and origin reference
+                const gridHelper = new THREE.GridHelper(500, 10, 0x444444, 0x222222);
+                scene.add(gridHelper);
 
-            // Handle window/container resizing
-            window.addEventListener('resize', () => {
-                const w = container.clientWidth;
-                const h = container.clientHeight;
-                camera.aspect = w / h;
-                camera.updateProjectionMatrix();
-                renderer.setSize(w, h);
+                modelGroup = new THREE.Group();
+                scene.add(modelGroup);
+
+                window.addEventListener('resize', () => {
+                    const w = container.clientWidth;
+                    const h = container.clientHeight;
+                    camera.aspect = w / h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(w, h);
+                });
+
+                animate3D();
+                update3D(); // Initial build
             });
-
-            animate3D();
         }
 
         function animate3D() {
             requestAnimationFrame(animate3D);
+            if (modelGroup) {
+                modelGroup.rotation.y += 0.005; // Slow spin to confirm life
+            }
             renderer.render(scene, camera);
         }
 
@@ -227,18 +234,18 @@
             modelGroup.clear();
 
             const woodMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xcd853f, // Peru Wood (lighter/brighter)
-                roughness: 0.6, 
+                color: 0xcd853f, 
+                roughness: 0.5, 
                 metalness: 0.1 
             });
 
-            const t = config['thickness'];
-            const w = config['width'];
-            const hBack = config['back-height'];
-            const hFront = config['front-height'];
-            const dShelf = config['shelf-depth'];
+            const t = config['thickness'] || 3;
+            const w = config['width'] || 50;
+            const hBack = config['back-height'] || 100;
+            const hFront = config['front-height'] || 18;
+            const dShelf = config['shelf-depth'] || 60;
 
-            // 1. Back Piece
+            // 1. Back Piece (Centered on X, rests on grid at y=0)
             const backShape = new THREE.Shape();
             backShape.moveTo(-w/2, 0);
             backShape.lineTo(w/2, 0);
@@ -248,31 +255,28 @@
 
             const backGeo = new THREE.ExtrudeGeometry(backShape, { depth: t, bevelEnabled: false });
             const backMesh = new THREE.Mesh(backGeo, woodMaterial);
-            backMesh.position.z = -t; // Flush with z=0
+            backMesh.position.z = -t; 
             modelGroup.add(backMesh);
 
-            // 2. Shelf
+            // 2. Shelf (Interlocks 2t from bottom)
             const shelfGeo = new THREE.BoxGeometry(w, t, dShelf);
             const shelfMesh = new THREE.Mesh(shelfGeo, woodMaterial);
             const shelfY = 2 * t;
             shelfMesh.position.set(0, shelfY + t/2, dShelf/2);
             modelGroup.add(shelfMesh);
 
-            // 3. Fence
+            // 3. Fence (Interlocks 2t above shelf)
             const fenceGeo = new THREE.BoxGeometry(w, t, dShelf);
             const fenceMesh = new THREE.Mesh(fenceGeo, woodMaterial);
             const fenceY = shelfY + (2 * t);
             fenceMesh.position.set(0, fenceY + t/2, dShelf/2);
             modelGroup.add(fenceMesh);
 
-            // 4. Front
+            // 4. Front (Interlocks with shelf and fence at front)
             const frontGeo = new THREE.BoxGeometry(w, hFront, t);
             const frontMesh = new THREE.Mesh(frontGeo, woodMaterial);
-            frontMesh.position.set(0, hFront/2 + shelfY, dShelf + t/2);
+            frontMesh.position.set(0, hFront/2 + shelfY - t, dShelf + t/2);
             modelGroup.add(frontMesh);
-
-            // Center group
-            modelGroup.position.y = -hBack / 4;
         }
 
         function setupUI() {
