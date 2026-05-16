@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laser Templates - Vector Art Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.162.0/three.min.js"></script>
     <style>
         body {
             background-color: #0d0d0d;
@@ -115,15 +116,27 @@
             </div>
 
             <!-- Main: SVG Preview -->
-            <div class="lg:col-span-2">
+            <div class="lg:col-span-2 space-y-6">
                 <div class="svg-container w-full aspect-square md:aspect-video flex items-center justify-center relative p-10">
                     <svg id="preview-svg" width="100%" height="100%" viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
                         <!-- SVG content will be rendered here -->
                     </svg>
                 </div>
+                
+                <div class="card overflow-hidden">
+                    <div class="flex justify-between items-center p-3 border-b border-slate-800 bg-slate-900/50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><path d="m21 8-9-4-9 4V16l9 4 9-4V8z"/><path d="m3 8 9 4 9-4"/><path d="M12 12v8"/></svg>
+                            3D Assembly Preview
+                        </span>
+                        <span class="text-[9px] text-slate-500 font-mono italic">VIEW: FRONT_RIGHT_UP</span>
+                    </div>
+                    <div id="three-container" class="w-full aspect-square md:aspect-video bg-[#0a0a0a]"></div>
+                </div>
+
                 <div class="mt-4 flex justify-between items-center px-2">
                     <span class="text-xs text-slate-600 font-mono">RENDER: FLAT_LAYOUT_V1</span>
-                    <span id="dimension-summary" class="text-xs text-slate-400 font-medium">Width: 2.0in | Height: 4.0in</span>
+                    <span id="dimension-summary" class="text-xs text-slate-400 font-medium">Width: 50.0mm | Height: 100.0mm</span>
                 </div>
             </div>
         </div>
@@ -153,12 +166,99 @@
         };
 
         const config = {};
+        let scene, camera, renderer, modelGroup;
 
         // Initialization
         function init() {
             setupUI();
             loadState();
+            init3D();
             render();
+        }
+
+        function init3D() {
+            const container = document.getElementById('three-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 2000);
+            camera.position.set(200, 200, 300);
+            camera.lookAt(0, 50, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(100, 200, 150);
+            scene.add(directionalLight);
+
+            modelGroup = new THREE.Group();
+            scene.add(modelGroup);
+
+            animate3D();
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            renderer.render(scene, camera);
+        }
+
+        function update3D() {
+            if (!modelGroup) return;
+            modelGroup.clear();
+
+            const woodMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513, 
+                roughness: 0.7, 
+                metalness: 0.1 
+            });
+
+            const t = config['thickness'];
+            const w = config['width'];
+            const hBack = config['back-height'];
+            const hFront = config['front-height'];
+            const dShelf = config['shelf-depth'];
+
+            // 1. Back Piece
+            const backShape = new THREE.Shape();
+            backShape.moveTo(-w/2, 0);
+            backShape.lineTo(w/2, 0);
+            backShape.lineTo(w/2, hBack - w/2);
+            backShape.absarc(0, hBack - w/2, w/2, 0, Math.PI, false);
+            backShape.lineTo(-w/2, 0);
+
+            const backGeo = new THREE.ExtrudeGeometry(backShape, { depth: t, bevelEnabled: false });
+            const backMesh = new THREE.Mesh(backGeo, woodMaterial);
+            backMesh.position.z = -t; // Flush with z=0
+            modelGroup.add(backMesh);
+
+            // 2. Shelf
+            const shelfGeo = new THREE.BoxGeometry(w, t, dShelf);
+            const shelfMesh = new THREE.Mesh(shelfGeo, woodMaterial);
+            const shelfY = 2 * t;
+            shelfMesh.position.set(0, shelfY + t/2, dShelf/2);
+            modelGroup.add(shelfMesh);
+
+            // 3. Fence
+            const fenceGeo = new THREE.BoxGeometry(w, t, dShelf);
+            const fenceMesh = new THREE.Mesh(fenceGeo, woodMaterial);
+            const fenceY = shelfY + (2 * t);
+            fenceMesh.position.set(0, fenceY + t/2, dShelf/2);
+            modelGroup.add(fenceMesh);
+
+            // 4. Front
+            const frontGeo = new THREE.BoxGeometry(w, hFront, t);
+            const frontMesh = new THREE.Mesh(frontGeo, woodMaterial);
+            frontMesh.position.set(0, hFront/2 + shelfY, dShelf + t/2);
+            modelGroup.add(frontMesh);
+
+            // Center group
+            modelGroup.position.y = -hBack / 4;
         }
 
         function setupUI() {
@@ -430,6 +530,8 @@
             const displayMat = currentUnits === 'in' ? (config['thickness'] / 25.4) : config['thickness'];
             
             document.getElementById('dimension-summary').innerText = `Width: ${displayW.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Back: ${displayH.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Mat: ${displayMat.toFixed(currentUnits === 'in' ? 3 : 1)}${currentUnits}`;
+
+            update3D();
         }
 
         function exportSVG() {
