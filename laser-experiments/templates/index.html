@@ -46,6 +46,12 @@
             stroke: #10b981;
             stroke-width: 1.5;
         }
+        .joinery-label {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 10px;
+            fill: #f59e0b;
+            font-weight: bold;
+        }
         .annotation-line {
             stroke: #555;
             stroke-width: 0.5;
@@ -134,16 +140,17 @@
         let currentFitType = localStorage.getItem('templates-fit-type') || 'normal';
         let currentTemplate = 'sconce';
         
+        // Base units are now mm
         const templates = {
             sconce: {
                 name: 'Sconce',
                 params: [
-                    { id: 'thickness', label: 'Material Thickness', min: 0.05, max: 0.5, step: 0.01, default: 0.1181 },
-                    { id: 'width', label: 'Width', min: 1, max: 10, step: 0.1, default: 2.0 },
-                    { id: 'back-height', label: 'Back Height', min: 1, max: 12, step: 0.1, default: 4.0 },
-                    { id: 'front-height', label: 'Front Height', min: 0.1, max: 3, step: 0.1, default: 0.5906 },
-                    { id: 'shelf-depth', label: 'Shelf Depth', min: 0.5, max: 6, step: 0.1, default: 2.5 },
-                    { id: 'fence-diameter', label: 'Fence Diameter', min: 0.1, max: 5, step: 0.1, default: 1.5 }
+                    { id: 'thickness', label: 'Material Thickness', min: 1, max: 12, step: 0.1, default: 3 },
+                    { id: 'width', label: 'Width', min: 25, max: 250, step: 1, default: 50 },
+                    { id: 'back-height', label: 'Back Height', min: 25, max: 300, step: 1, default: 100 },
+                    { id: 'front-height', label: 'Front Height', min: 2.5, max: 75, step: 0.5, default: 15 },
+                    { id: 'shelf-depth', label: 'Shelf Depth', min: 12.5, max: 150, step: 1, default: 60 },
+                    { id: 'fence-diameter', label: 'Fence Diameter', min: 2.5, max: 125, step: 1, default: 38 }
                 ]
             }
         };
@@ -207,26 +214,30 @@
 
                 const div = document.createElement('div');
                 div.className = "mb-4";
+                
+                const displayVal = currentUnits === 'in' ? (config[param.id] / 25.4).toFixed(3) : config[param.id].toFixed(1);
+                
                 div.innerHTML = `
                     <div class="flex justify-between mb-1">
                         <label class="text-xs font-medium text-slate-300">${param.label}</label>
-                        <span class="text-xs font-mono text-emerald-400" id="val-${param.id}">${value}${currentUnits}</span>
+                        <span class="text-xs font-mono text-emerald-400" id="val-${param.id}">${displayVal}${currentUnits}</span>
                     </div>
                     <input type="range" id="input-${param.id}" 
-                        min="${currentUnits === 'in' ? param.min : Math.round(param.min * 25.4 * 10)/10}" 
-                        max="${currentUnits === 'in' ? param.max : Math.round(param.max * 25.4)}" 
-                        step="${currentUnits === 'in' ? param.step : 0.1}" 
-                        value="${currentUnits === 'in' ? config[param.id] : Math.round(config[param.id] * 25.4 * 10)/10}" 
+                        min="${currentUnits === 'in' ? param.min / 25.4 : param.min}" 
+                        max="${currentUnits === 'in' ? param.max / 25.4 : param.max}" 
+                        step="${currentUnits === 'in' ? 0.01 : param.step}" 
+                        value="${currentUnits === 'in' ? config[param.id] / 25.4 : config[param.id]}" 
                         class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
                 `;
                 container.appendChild(div);
 
                 document.getElementById(`input-${param.id}`).addEventListener('input', (e) => {
                     let val = parseFloat(e.target.value);
-                    if (currentUnits === 'mm') val /= 25.4;
+                    if (currentUnits === 'in') val *= 25.4;
                     config[param.id] = val;
                     localStorage.setItem(`templates-${currentTemplate}-${param.id}`, val);
-                    document.getElementById(`val-${param.id}`).innerText = `${(currentUnits === 'in' ? val : val * 25.4).toFixed(2)}${currentUnits}`;
+                    const labelVal = currentUnits === 'in' ? (val / 25.4).toFixed(3) : val.toFixed(1);
+                    document.getElementById(`val-${param.id}`).innerText = `${labelVal}${currentUnits}`;
                     render();
                 });
             });
@@ -252,7 +263,7 @@
                 currentUnits = currentUnits === 'in' ? 'mm' : 'in';
                 localStorage.setItem('templates-units', currentUnits);
                 updateToggleUI();
-                setupUI(); // Re-render sliders with new min/max/step
+                setupUI(); // Re-render sliders with new range/step
                 render();
             });
 
@@ -272,18 +283,19 @@
             let html = '';
             let edgeCounter = 1;
 
-            const thickness = config['thickness'] * IN_TO_PX;
-            const w = config['width'] * IN_TO_PX;
-            const hBack = config['back-height'] * IN_TO_PX;
-            const hFront = config['front-height'] * IN_TO_PX;
-            const shelfDepth = config['shelf-depth'] * IN_TO_PX;
-            const diaFence = config['fence-diameter'] * IN_TO_PX;
+            // All config values are in mm
+            const thickness = config['thickness'] * MM_TO_PX;
+            const w = config['width'] * MM_TO_PX;
+            const hBack = config['back-height'] * MM_TO_PX;
+            const hFront = config['front-height'] * MM_TO_PX;
+            const shelfDepth = config['shelf-depth'] * MM_TO_PX;
+            const diaFence = config['fence-diameter'] * MM_TO_PX;
 
             // Fit Type adjustment (convert mm offset to pixels)
             let fitOffsetMM = 0;
             if (currentFitType === 'tight') fitOffsetMM = -0.05;
             else if (currentFitType === 'easy') fitOffsetMM = 0.10;
-            const slotWidth = thickness + (fitOffsetMM * (IN_TO_PX / 25.4));
+            const slotWidth = thickness + (fitOffsetMM * MM_TO_PX);
 
             const padding = 30;
             let currentX = padding;
@@ -294,13 +306,17 @@
                 html += `<text x="${x + width/2}" y="${y}" class="number-label" text-anchor="middle" dy="${y < currentY + 10 ? -5 : 12}">${edgeCounter++}</text>`;
             };
 
+            const addJoineryLabel = (x, y, label) => {
+                html += `<text x="${x}" y="${y}" class="joinery-label" text-anchor="middle" dy="3">${label}</text>`;
+            };
+
             // Slot Width for Tabs (usually 60% of total width for stability)
             const tabWidth = w * 0.6;
             const tabXOffset = (w - tabWidth) / 2;
 
             // 1. Back Piece with Slot A and Slot C
             const slotAY = currentY + hBack - (2 * thickness) - (slotWidth/2);
-            const slotCY = slotAY - (0.25 * IN_TO_PX);
+            const slotCY = slotAY - (6.35 * MM_TO_PX); // 0.25 inch = 6.35mm
             
             const backPath = `M ${currentX} ${currentY + hBack} 
                              L ${currentX + w} ${currentY + hBack} 
@@ -311,6 +327,8 @@
             // Slots A & C (Internal cutouts)
             html += `<rect x="${currentX + tabXOffset}" y="${slotAY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
             html += `<rect x="${currentX + tabXOffset}" y="${slotCY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
+            addJoineryLabel(currentX + tabXOffset - 10, slotAY + slotWidth/2, 'A');
+            addJoineryLabel(currentX + tabXOffset - 10, slotCY + slotWidth/2, 'C');
             
             addEdgeNumber(currentX, currentY + hBack, w);
             html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">BACK</text>`;
@@ -331,6 +349,10 @@
                                L ${currentX} ${currentY + shelfDepth} 
                                Z`;
             html += `<path d="${shelfPath}" class="template-outline" />`;
+            // Tab A (Top) & B (Bottom) labels
+            addJoineryLabel(currentX + w/2, currentY - thickness - 5, 'A');
+            addJoineryLabel(currentX + w/2, currentY + shelfDepth + thickness + 12, 'B');
+
             addEdgeNumber(currentX, currentY, w); // Top
             addEdgeNumber(currentX, currentY + shelfDepth, w); // Bottom
             html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">SHELF</text>`;
@@ -352,6 +374,10 @@
                                Z`;
             html += `<path d="${fencePath}" class="template-outline" />`;
             html += `<circle cx="${currentX + w/2}" cy="${currentY + shelfDepth/2}" r="${diaFence/2}" class="slot-outline" />`;
+            // Tab C (Top) & D (Bottom) labels
+            addJoineryLabel(currentX + w/2, currentY - thickness - 5, 'C');
+            addJoineryLabel(currentX + w/2, currentY + shelfDepth + thickness + 12, 'D');
+
             addEdgeNumber(currentX, currentY, w); // Top
             addEdgeNumber(currentX, currentY + shelfDepth, w); // Bottom
             html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth - 10}" fill="rgba(255,255,255,0.2)" font-size="10" font-weight="bold" text-anchor="middle">FENCE</text>`;
@@ -359,13 +385,15 @@
             // 4. Front with Slot B and Slot D
             currentX += w + padding;
             const slotBY = currentY + hFront - (2 * thickness) - (slotWidth/2);
-            const slotDY = slotBY - (0.25 * IN_TO_PX);
+            const slotDY = slotBY - (6.35 * MM_TO_PX);
 
             const frontPath = `M ${currentX} ${currentY} L ${currentX + w} ${currentY} L ${currentX + w} ${currentY + hFront} L ${currentX} ${currentY + hFront} Z`;
             html += `<path d="${frontPath}" class="template-outline" />`;
             // Slots B & D
             html += `<rect x="${currentX + tabXOffset}" y="${slotBY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
             html += `<rect x="${currentX + tabXOffset}" y="${slotDY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
+            addJoineryLabel(currentX + tabXOffset - 10, slotBY + slotWidth/2, 'B');
+            addJoineryLabel(currentX + tabXOffset - 10, slotDY + slotWidth/2, 'D');
 
             addEdgeNumber(currentX, currentY, w); // Top
             addEdgeNumber(currentX, currentY + hFront, w); // Bottom
@@ -387,9 +415,11 @@
             const bbox = svg.getBBox();
             svg.setAttribute('viewBox', `${bbox.x - 10} ${bbox.y - 10} ${bbox.width + 20} ${bbox.height + 20}`);
             
-            const displayW = currentUnits === 'in' ? config['width'] : config['width'] * 25.4;
-            const displayH = currentUnits === 'in' ? config['back-height'] : config['back-height'] * 25.4;
-            document.getElementById('dimension-summary').innerText = `Width: ${displayW.toFixed(2)}${currentUnits} | Back: ${displayH.toFixed(2)}${currentUnits} | Mat: ${config['thickness'].toFixed(2)}in`;
+            const displayW = currentUnits === 'in' ? (config['width'] / 25.4) : config['width'];
+            const displayH = currentUnits === 'in' ? (config['back-height'] / 25.4) : config['back-height'];
+            const displayMat = currentUnits === 'in' ? (config['thickness'] / 25.4) : config['thickness'];
+            
+            document.getElementById('dimension-summary').innerText = `Width: ${displayW.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Back: ${displayH.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Mat: ${displayMat.toFixed(currentUnits === 'in' ? 3 : 1)}${currentUnits}`;
         }
 
         function exportSVG() {
@@ -411,8 +441,8 @@
                 c.style.fill = 'none';
             });
 
-            // Remove numbers and labels for clean cut file
-            clone.querySelectorAll('.number-label, text').forEach(t => {
+            // Remove numbers and standard labels for clean cut file
+            clone.querySelectorAll('.number-label, .joinery-label, text').forEach(t => {
                 if (!t.classList.contains('calibration-box')) t.remove();
             });
 
