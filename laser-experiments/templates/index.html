@@ -271,7 +271,7 @@
                 metalness: 0.1 
             });
             const edgeMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x2a1a0f, // Darker for clear cut edges
+                color: 0x2a1a0f, // Darker for cut edges
                 roughness: 0.8, 
                 metalness: 0.05 
             });
@@ -290,19 +290,11 @@
             const slotH = t + fitOffsetMM;
             const tabW = w * 0.6;
 
-            // Positioning Logic
+            // Positioning Constants (World Coordinates)
             const slotAY = 2 * t; 
             const slotCY = slotAY + (2 * t);
-            const frontBottomY = slotAY - (hFront - 2*t - t/2);
-
-            // 1. Back Piece with Holes
-            const backShape = new THREE.Shape();
-            backShape.moveTo(-w/2, 0);
-            backShape.lineTo(w/2, 0);
-            backShape.lineTo(w/2, hBack - w/2);
-            backShape.absarc(0, hBack - w/2, w/2, 0, Math.PI, false);
-            backShape.lineTo(-w/2, 0);
-
+            
+            // Helper for slots
             const addHole = (shape, yCenter, h) => {
                 const hole = new THREE.Path();
                 hole.moveTo(-tabW/2, yCenter - h/2);
@@ -312,6 +304,15 @@
                 hole.lineTo(-tabW/2, yCenter - h/2);
                 shape.holes.push(hole);
             };
+
+            // 1. Back Piece (Z: -t to 0)
+            const backShape = new THREE.Shape();
+            backShape.moveTo(-w/2, 0);
+            backShape.lineTo(w/2, 0);
+            backShape.lineTo(w/2, hBack - w/2);
+            backShape.absarc(0, hBack - w/2, w/2, 0, Math.PI, false);
+            backShape.lineTo(-w/2, 0);
+
             addHole(backShape, slotAY, slotH);
             addHole(backShape, slotCY, slotH);
 
@@ -322,29 +323,19 @@
             backMesh.receiveShadow = true;
             modelGroup.add(backMesh);
 
-            // 2. Shelf with Tabs A & B
+            // 2. Shelf with Tabs (Y: slotAY - t/2 to slotAY + t/2)
             const shelfShape = new THREE.Shape();
+            // Start at back (y=0 in local, z=0 in world)
             shelfShape.moveTo(-w/2, 0);
+            shelfShape.lineTo(-tabW/2, 0); shelfShape.lineTo(-tabW/2, -t); shelfShape.lineTo(tabW/2, -t); shelfShape.lineTo(tabW/2, 0);
             shelfShape.lineTo(w/2, 0);
+            // Go to front (y=dShelf in local, z=dShelf in world)
             shelfShape.lineTo(w/2, dShelf);
+            shelfShape.lineTo(tabW/2, dShelf); shelfShape.lineTo(tabW/2, dShelf + t); shelfShape.lineTo(-tabW/2, dShelf + t); shelfShape.lineTo(-tabW/2, dShelf);
             shelfShape.lineTo(-w/2, dShelf);
-            shelfShape.lineTo(-w/2, 0);
-            // Tab A (Back)
-            const tabA = new THREE.Shape();
-            tabA.moveTo(-tabW/2, 0); tabA.lineTo(tabW/2, 0); tabA.lineTo(tabW/2, -t); tabA.lineTo(-tabW/2, -t); tabA.lineTo(-tabW/2, 0);
-            shelfShape.holes.push(new THREE.Path(tabA.getPoints().reverse())); // Integrated tabs as outer boundary is better, but adding as separate mesh for now to ensure dark edges or using Shape.absarc
-            
-            // Refined Shelf Shape with Tabs
-            const shelfFull = new THREE.Shape();
-            shelfFull.moveTo(-w/2, 0);
-            shelfFull.lineTo(-tabW/2, 0); shelfFull.lineTo(-tabW/2, -t); shelfFull.lineTo(tabW/2, -t); shelfFull.lineTo(tabW/2, 0);
-            shelfFull.lineTo(w/2, 0);
-            shelfFull.lineTo(w/2, dShelf);
-            shelfFull.lineTo(tabW/2, dShelf); shelfFull.lineTo(tabW/2, dShelf + t); shelfFull.lineTo(-tabW/2, dShelf + t); shelfFull.lineTo(-tabW/2, dShelf);
-            shelfFull.lineTo(-w/2, dShelf);
-            shelfFull.closePath();
+            shelfShape.closePath();
 
-            const shelfGeo = new THREE.ExtrudeGeometry(shelfFull, { depth: t, bevelEnabled: false });
+            const shelfGeo = new THREE.ExtrudeGeometry(shelfShape, { depth: t, bevelEnabled: false });
             const shelfMesh = new THREE.Mesh(shelfGeo, materials);
             shelfMesh.rotation.x = Math.PI/2;
             shelfMesh.position.set(0, slotAY + t/2, 0);
@@ -352,21 +343,21 @@
             shelfMesh.receiveShadow = true;
             modelGroup.add(shelfMesh);
 
-            // 3. Fence with Tabs C & D + Circle Hole
-            const fenceFull = new THREE.Shape();
-            fenceFull.moveTo(-w/2, 0);
-            fenceFull.lineTo(-tabW/2, 0); fenceFull.lineTo(-tabW/2, -t); fenceFull.lineTo(tabW/2, -t); fenceFull.lineTo(tabW/2, 0);
-            fenceFull.lineTo(w/2, 0);
-            fenceFull.lineTo(w/2, dShelf);
-            fenceFull.lineTo(tabW/2, dShelf); fenceFull.lineTo(tabW/2, dShelf + t); fenceFull.lineTo(-tabW/2, dShelf + t); fenceFull.lineTo(-tabW/2, dShelf);
-            fenceFull.lineTo(-w/2, dShelf);
-            fenceFull.closePath();
+            // 3. Fence with Tabs (Y: slotCY - t/2 to slotCY + t/2)
+            const fenceShape = new THREE.Shape();
+            fenceShape.moveTo(-w/2, 0);
+            fenceShape.lineTo(-tabW/2, 0); fenceShape.lineTo(-tabW/2, -t); fenceShape.lineTo(tabW/2, -t); fenceShape.lineTo(tabW/2, 0);
+            fenceShape.lineTo(w/2, 0);
+            fenceShape.lineTo(w/2, dShelf);
+            fenceShape.lineTo(tabW/2, dShelf); fenceShape.lineTo(tabW/2, dShelf + t); fenceFull.lineTo(-tabW/2, dShelf + t); fenceShape.lineTo(-tabW/2, dShelf);
+            fenceShape.lineTo(-w/2, dShelf);
+            fenceShape.closePath();
             
             const circleHole = new THREE.Path();
             circleHole.absarc(0, dShelf/2, diaFence/2, 0, Math.PI * 2, true);
-            fenceFull.holes.push(circleHole);
+            fenceShape.holes.push(circleHole);
 
-            const fenceGeo = new THREE.ExtrudeGeometry(fenceFull, { depth: t, bevelEnabled: false });
+            const fenceGeo = new THREE.ExtrudeGeometry(fenceShape, { depth: t, bevelEnabled: false });
             const fenceMesh = new THREE.Mesh(fenceGeo, materials);
             fenceMesh.rotation.x = Math.PI/2;
             fenceMesh.position.set(0, slotCY + t/2, 0);
@@ -374,7 +365,7 @@
             fenceMesh.receiveShadow = true;
             modelGroup.add(fenceMesh);
 
-            // 4. Front Piece with Holes
+            // 4. Front Piece (Z: dShelf to dShelf+t)
             const frontShape = new THREE.Shape();
             frontShape.moveTo(-w/2, 0);
             frontShape.lineTo(w/2, 0);
@@ -382,12 +373,14 @@
             frontShape.lineTo(-w/2, hFront);
             frontShape.lineTo(-w/2, 0);
             
-            addHole(frontShape, hFront - 2*t, slotH); // Slot B
-            addHole(frontShape, hFront - 4*t, slotH); // Slot D
+            // Slots B & D at local Y=2t and 4t
+            addHole(frontShape, 2*t, slotH); 
+            addHole(frontShape, 4*t, slotH); 
 
             const frontGeo = new THREE.ExtrudeGeometry(frontShape, { depth: t, bevelEnabled: false });
             const frontMesh = new THREE.Mesh(frontGeo, materials);
-            frontMesh.position.set(0, frontBottomY, dShelf);
+            // Position Front Piece so its local y=2t aligns with world slotAY
+            frontMesh.position.set(0, slotAY - 2*t, dShelf);
             frontMesh.castShadow = true;
             frontMesh.receiveShadow = true;
             modelGroup.add(frontMesh);
