@@ -55,6 +55,12 @@
             fill: #f59e0b;
             font-weight: bold;
         }
+        .part-label {
+            font-family: -apple-system, system-ui, sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            fill: rgba(255,255,255,0.2);
+        }
         .annotation-line {
             stroke: #555;
             stroke-width: 0.5;
@@ -622,7 +628,7 @@
             addJoineryLabel(currentX + tabXOffset - 10, slotAY + slotWidth/2, 'A');
             addJoineryLabel(currentX + tabXOffset - 10, slotCY + slotWidth/2, 'C');
             
-            html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">BACK</text>`;
+            html += `<text x="${currentX + w/2}" y="${currentY + hBack/2}" class="part-label" text-anchor="middle">BACK</text>`;
 
             // 2. Shelf with Tab A (Back) and Tab B (Front)
             currentX += w + padding;
@@ -644,7 +650,7 @@
             addJoineryLabel(currentX + w/2, currentY - thickness - 5, 'A');
             addJoineryLabel(currentX + w/2, currentY + shelfDepth + thickness + 12, 'B');
 
-            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">SHELF</text>`;
+            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth/2}" class="part-label" text-anchor="middle">SHELF</text>`;
 
             // 3. Fence with Tab C (Back) and Tab D (Front)
             currentX += w + padding;
@@ -667,7 +673,7 @@
             addJoineryLabel(currentX + w/2, currentY - thickness - 5, 'C');
             addJoineryLabel(currentX + w/2, currentY + shelfDepth + thickness + 12, 'D');
 
-            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth - 10}" fill="rgba(255,255,255,0.2)" font-size="10" font-weight="bold" text-anchor="middle">FENCE</text>`;
+            html += `<text x="${currentX + w/2}" y="${currentY + shelfDepth - 10}" class="part-label" style="font-size:10px" text-anchor="middle">FENCE</text>`;
 
             // 4. Front with Slot B and Slot D
             currentX += w + padding;
@@ -682,7 +688,7 @@
             addJoineryLabel(currentX + tabXOffset - 10, slotBY + slotWidth/2, 'B');
             addJoineryLabel(currentX + tabXOffset - 10, slotDY + slotWidth/2, 'D');
 
-            html += `<text x="${currentX + w/2}" y="${currentY + hFront/2}" fill="rgba(255,255,255,0.2)" font-size="12" font-weight="bold" text-anchor="middle">FRONT</text>`;
+            html += `<text x="${currentX + w/2}" y="${currentY + hFront/2}" class="part-label" text-anchor="middle">FRONT</text>`;
 
             // Calibration Boxes (Bottom Right)
             const oneInch = IN_TO_PX;
@@ -732,7 +738,8 @@
                 clone.setAttribute('height', (vbH / MM_TO_PX).toFixed(2) + 'mm');
             }
             
-            // Cleanup for export: Remove fill and labels if needed, or keep for assembly
+            // Cleanup for export: Apply specific colors for layer separation in XCS
+            // 1. Cut Layer (Black)
             const outlines = clone.querySelectorAll('.template-outline, .slot-outline');
             outlines.forEach(o => {
                 o.style.stroke = '#000000';
@@ -740,6 +747,7 @@
                 o.style.fill = 'none';
             });
             
+            // 2. Reference Layer (Red)
             const calibs = clone.querySelectorAll('.calibration-box');
             calibs.forEach(c => {
                 c.style.stroke = '#ff0000';
@@ -747,9 +755,16 @@
                 c.style.fill = 'none';
             });
 
-            // Remove numbers and standard labels for clean cut file
-            clone.querySelectorAll('.joinery-label, text').forEach(t => {
-                if (!t.classList.contains('calibration-box')) t.remove();
+            // 3. Joinery Labels (Amber/Orange -> XCS Layer 3)
+            clone.querySelectorAll('.joinery-label').forEach(t => {
+                t.style.fill = '#f59e0b';
+                t.style.fontSize = '8px';
+            });
+
+            // 4. Part Names (Blue -> XCS Layer 4)
+            clone.querySelectorAll('.part-label').forEach(t => {
+                t.style.fill = '#0000ff';
+                t.style.fontSize = '10px';
             });
 
             const svgData = new XMLSerializer().serializeToString(clone);
