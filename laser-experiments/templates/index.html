@@ -535,20 +535,29 @@
 
         function render() {
             const svg = document.getElementById('preview-svg');
-            
+            if (!svg) return;
+
             // Clean slate
             svg.innerHTML = '';
-            
+
             let html = '';
 
-            // All config values are in mm
-            const thickness = config['thickness'] * MM_TO_PX;
-            const w = config['width'] * MM_TO_PX;
-            const hBack = config['back-height'] * MM_TO_PX;
-            const hFront = config['front-height'] * MM_TO_PX;
-            const dShelf = config['shelf-depth'] * MM_TO_PX;
-            const diaFence = config['fence-diameter'] * MM_TO_PX;
-            const hangerHole = config['hanger-hole'] * MM_TO_PX;
+            // Fallback values for config
+            const t_raw = config['thickness'] || 3;
+            const w_raw = config['width'] || 58;
+            const hBack_raw = config['back-height'] || 100;
+            const hFront_raw = config['front-height'] || 18;
+            const shelfDepth_raw = config['shelf-depth'] || 60;
+            const diaFence_raw = config['fence-diameter'] || 38;
+            const hangerHole_raw = config['hanger-hole'] || 0;
+
+            const thickness = t_raw * MM_TO_PX;
+            const w = w_raw * MM_TO_PX;
+            const hBack = hBack_raw * MM_TO_PX;
+            const hFront = hFront_raw * MM_TO_PX;
+            const shelfDepth = shelfDepth_raw * MM_TO_PX;
+            const diaFence = diaFence_raw * MM_TO_PX;
+            const hangerHole = hangerHole_raw * MM_TO_PX;
 
             // Fit Type adjustment (convert mm offset to pixels)
             let fitOffsetMM = 0;
@@ -665,16 +674,26 @@
             svg.innerHTML = html;
 
             // Adjust viewbox to fit content
-            const bbox = svg.getBBox();
-            svg.setAttribute('viewBox', `${bbox.x - 10} ${bbox.y - 10} ${bbox.width + 20} ${bbox.height + 20}`);
+            try {
+                const bbox = svg.getBBox();
+                if (bbox.width > 0 && bbox.height > 0) {
+                    svg.setAttribute('viewBox', `${bbox.x - 10} ${bbox.y - 10} ${bbox.width + 20} ${bbox.height + 20}`);
+                }
+            } catch (e) {
+                console.warn("SVG getBBox failed:", e);
+            }
             
-            const displayW = currentUnits === 'in' ? (config['width'] / 25.4) : config['width'];
-            const displayH = currentUnits === 'in' ? (config['back-height'] / 25.4) : config['back-height'];
-            const displayMat = currentUnits === 'in' ? (config['thickness'] / 25.4) : config['thickness'];
+            const displayW = currentUnits === 'in' ? (w_raw / 25.4) : w_raw;
+            const displayH = currentUnits === 'in' ? (hBack_raw / 25.4) : hBack_raw;
+            const displayMat = currentUnits === 'in' ? (t_raw / 25.4) : t_raw;
             
             document.getElementById('dimension-summary').innerText = `Width: ${displayW.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Back: ${displayH.toFixed(currentUnits === 'in' ? 2 : 1)}${currentUnits} | Mat: ${displayMat.toFixed(currentUnits === 'in' ? 3 : 1)}${currentUnits}`;
 
-            update3D();
+            try {
+                update3D();
+            } catch (e) {
+                console.error("3D Update Error:", e);
+            }
         }
 
         function exportSVG() {
