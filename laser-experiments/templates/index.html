@@ -179,11 +179,52 @@
 
         // Initialization
         function init() {
+            setupStaticListeners();
             setupUI();
             loadState();
             init3D();
             render();
         }
+
+        function setupStaticListeners() {
+            // Unit Toggle
+            const toggle = document.getElementById('unit-toggle');
+            toggle.addEventListener('click', () => {
+                currentUnits = currentUnits === 'in' ? 'mm' : 'in';
+                localStorage.setItem('templates-units', currentUnits);
+                updateToggleUI();
+                setupUI(); // Re-render sliders with new range/step
+                render();
+            });
+
+            document.getElementById('export-svg').addEventListener('click', exportSVG);
+
+            document.getElementById('reset-params').addEventListener('click', () => {
+                const template = templates[currentTemplate];
+                template.params.forEach(param => {
+                    localStorage.removeItem(`templates-${currentTemplate}-${param.id}`);
+                });
+                localStorage.removeItem('templates-fit-type');
+                currentFitType = 'normal';
+                updateToggleUI();
+                setupUI();
+                render();
+            });
+        }
+
+        const updateToggleUI = () => {
+            const toggle = document.getElementById('unit-toggle');
+            const toggleDot = document.getElementById('unit-toggle-dot');
+            if (currentUnits === 'in') {
+                toggleDot.classList.add('translate-x-6');
+                toggleDot.classList.remove('translate-x-1');
+                toggle.classList.replace('bg-slate-700', 'bg-emerald-600');
+            } else {
+                toggleDot.classList.add('translate-x-1');
+                toggleDot.classList.remove('translate-x-6');
+                toggle.classList.replace('bg-emerald-600', 'bg-slate-700');
+            }
+        };
 
         function init3D() {
             const container = document.getElementById('three-container');
@@ -318,10 +359,10 @@
             addHole(backShape, slotAY, slotH);
             addHole(backShape, slotCY, slotH);
 
-            // Hanger Hole
+            // Hanger Hole: 2x hangerHole down from top
             if (hangerHole > 0) {
                 const hHole = new THREE.Path();
-                hHole.absarc(0, hBack - hangerHole, hangerHole/2, 0, Math.PI * 2, true);
+                hHole.absarc(0, hBack - 2 * hangerHole, hangerHole/2, 0, Math.PI * 2, true);
                 backShape.holes.push(hHole);
             }
 
@@ -440,6 +481,7 @@
                 else desc.innerText = "Easy assembly / glue: thickness + 0.10mm";
             };
             updateFitUI();
+            updateToggleUI();
             
             template.params.forEach(param => {
                 const value = localStorage.getItem(`templates-${currentTemplate}-${param.id}`) || param.default;
@@ -488,44 +530,6 @@
 
                     render();
                 });
-            });
-
-            // Unit Toggle
-            const toggle = document.getElementById('unit-toggle');
-            const toggleDot = document.getElementById('unit-toggle-dot');
-            
-            const updateToggleUI = () => {
-                if (currentUnits === 'in') {
-                    toggleDot.classList.add('translate-x-6');
-                    toggleDot.classList.remove('translate-x-1');
-                    toggle.classList.replace('bg-slate-700', 'bg-emerald-600');
-                } else {
-                    toggleDot.classList.add('translate-x-1');
-                    toggleDot.classList.remove('translate-x-6');
-                    toggle.classList.replace('bg-emerald-600', 'bg-slate-700');
-                }
-            };
-            updateToggleUI();
-
-            toggle.addEventListener('click', () => {
-                currentUnits = currentUnits === 'in' ? 'mm' : 'in';
-                localStorage.setItem('templates-units', currentUnits);
-                updateToggleUI();
-                setupUI(); // Re-render sliders with new range/step
-                render();
-            });
-
-            document.getElementById('export-svg').addEventListener('click', exportSVG);
-
-            document.getElementById('reset-params').addEventListener('click', () => {
-                const template = templates[currentTemplate];
-                template.params.forEach(param => {
-                    localStorage.removeItem(`templates-${currentTemplate}-${param.id}`);
-                });
-                localStorage.removeItem('templates-fit-type');
-                currentFitType = 'normal';
-                setupUI();
-                render();
             });
         }
 
@@ -591,9 +595,9 @@
             html += `<rect x="${currentX + tabXOffset}" y="${slotAY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
             html += `<rect x="${currentX + tabXOffset}" y="${slotCY}" width="${tabWidth}" height="${slotWidth}" class="slot-outline" />`;
             
-            // Hanger Hole
+            // Hanger Hole: 2x hangerHole down from top
             if (hangerHole > 0) {
-                html += `<circle cx="${currentX + w/2}" cy="${currentY + hangerHole}" r="${hangerHole/2}" class="slot-outline" />`;
+                html += `<circle cx="${currentX + w/2}" cy="${currentY + 2 * hangerHole}" r="${hangerHole/2}" class="slot-outline" />`;
             }
 
             addJoineryLabel(currentX + tabXOffset - 10, slotAY + slotWidth/2, 'A');
