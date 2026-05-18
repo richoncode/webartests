@@ -493,9 +493,14 @@
                 const displayVal = currentUnits === 'in' ? (config[param.id] / 25.4).toFixed(3) : config[param.id].toFixed(1);
                 
                 div.innerHTML = `
-                    <div class="flex justify-between mb-1">
+                    <div class="flex justify-between mb-1 items-center">
                         <label for="input-${param.id}" class="text-xs font-medium text-slate-300">${param.label}</label>
-                        <span class="text-xs font-mono text-emerald-400" id="val-${param.id}">${displayVal}${currentUnits}</span>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="val-${param.id}" value="${displayVal}" 
+                                step="${currentUnits === 'in' ? 0.001 : 0.1}"
+                                class="bg-transparent text-right text-xs font-mono text-emerald-400 w-16 focus:outline-none focus:bg-slate-800 rounded px-1 border-b border-transparent focus:border-emerald-500 transition-all">
+                            <span class="text-[10px] text-slate-500 font-mono uppercase">${currentUnits}</span>
+                        </div>
                     </div>
                     <input type="range" id="input-${param.id}" 
                         min="${currentUnits === 'in' ? param.min / 25.4 : param.min}" 
@@ -506,13 +511,19 @@
                 `;
                 container.appendChild(div);
 
-                document.getElementById(`input-${param.id}`).addEventListener('input', (e) => {
-                    let val = parseFloat(e.target.value);
+                const rangeInput = document.getElementById(`input-${param.id}`);
+                const numInput = document.getElementById(`val-${param.id}`);
+
+                const updateParamValue = (newVal, skipNumInput = false) => {
+                    let val = newVal;
                     if (currentUnits === 'in') val *= 25.4;
                     config[param.id] = val;
                     localStorage.setItem(`templates-${currentTemplate}-${param.id}`, val);
-                    const labelVal = currentUnits === 'in' ? (val / 25.4).toFixed(3) : val.toFixed(1);
-                    document.getElementById(`val-${param.id}`).innerText = `${labelVal}${currentUnits}`;
+                    
+                    if (!skipNumInput) {
+                        numInput.value = currentUnits === 'in' ? (val / 25.4).toFixed(3) : val.toFixed(1);
+                    }
+                    rangeInput.value = newVal;
 
                     // Reactive Dependency: Front Height follows Material Thickness (6x)
                     if (param.id === 'thickness') {
@@ -520,15 +531,23 @@
                         config['front-height'] = newFrontHeight;
                         localStorage.setItem(`templates-${currentTemplate}-front-height`, newFrontHeight);
                         
-                        const frontInput = document.getElementById('input-front-height');
-                        if (frontInput) {
-                            frontInput.value = currentUnits === 'in' ? newFrontHeight / 25.4 : newFrontHeight;
-                            const frontLabelVal = currentUnits === 'in' ? (newFrontHeight / 25.4).toFixed(3) : newFrontHeight.toFixed(1);
-                            document.getElementById('val-front-height').innerText = `${frontLabelVal}${currentUnits}`;
+                        const frontRange = document.getElementById('input-front-height');
+                        const frontNum = document.getElementById('val-front-height');
+                        if (frontRange) {
+                            const frontVal = currentUnits === 'in' ? newFrontHeight / 25.4 : newFrontHeight;
+                            frontRange.value = frontVal;
+                            frontNum.value = currentUnits === 'in' ? (newFrontHeight / 25.4).toFixed(3) : newFrontHeight.toFixed(1);
                         }
                     }
-
                     render();
+                };
+
+                rangeInput.addEventListener('input', (e) => updateParamValue(parseFloat(e.target.value)));
+                numInput.addEventListener('input', (e) => updateParamValue(parseFloat(e.target.value), true));
+                numInput.addEventListener('blur', () => {
+                    // Force refresh formatting on blur
+                    const val = config[param.id];
+                    numInput.value = currentUnits === 'in' ? (val / 25.4).toFixed(3) : val.toFixed(1);
                 });
             });
         }
