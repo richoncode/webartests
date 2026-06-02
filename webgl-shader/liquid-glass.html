@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Liquid Glass Studio</title>
+    <!-- Tailwind CSS for high-fidelity styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for premium tech typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js CDN for WebGL rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            background-color: #030303;
+        }
+        .header-title {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        /* Custom styled scrolls for glass controls */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 999px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        /* Custom range sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.08);
+            height: 5px;
+            border-radius: 999px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            transition: transform 0.1s ease, background-color 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+            background: #2dd4bf;
+            box-shadow: 0 0 12px rgba(45, 212, 191, 0.8);
+        }
+        #back-link {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+            z-index: 100;
+            transition: color 0.15s;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        #back-link:hover {
+            color: #aaa;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#115e59',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="relative w-screen h-screen text-white select-none">
+    <a id="back-link" href="../">← Back</a>
+
+    <!-- Interactive WebGL Canvas Backdrop -->
+    <canvas id="webgl-canvas" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+    <!-- Overlay UI Layout with defensive bottom padding to clear chat input interface safely -->
+    <div class="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4 pb-28 sm:p-6 sm:pb-24 md:p-8 md:pb-24 lg:p-8 lg:pb-20">
+        
+        <!-- Header: Title and Live Stats -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 pointer-events-auto mt-12 md:mt-0">
+            <div class="backdrop-blur-md bg-neutral-900/60 border border-neutral-800/80 px-5 py-4 rounded-2xl shadow-2xl flex flex-col gap-1 max-w-sm md:max-w-md">
+                <div class="flex items-center gap-3">
+                    <span class="flex h-3.5 w-3.5 relative">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
+                    </span>
+                    <h1 class="header-title text-lg md:text-xl font-bold tracking-tight bg-gradient-to-r from-teal-200 via-emerald-300 to-cyan-200 bg-clip-text text-transparent">
+                        LIQUID GLASS STUDIO
+                    </h1>
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700/60 text-neutral-400 font-semibold tracking-wider">
+                        GPU ACCELERATED
+                    </span>
+                </div>
+                <p class="text-xs text-neutral-400 font-light mt-1">
+                    State-of-the-art interactive metaball refraction rendering. Click, drag, and fuse molten glass droplets in real-time.
+                </p>
+            </div>
+
+            <!-- Live FPS Tracker -->
+            <div class="flex items-center gap-2 self-start md:self-auto">
+                <div class="backdrop-blur-md bg-neutral-900/60 border border-neutral-800/80 px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-4 text-xs font-mono">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold">Framerate</span>
+                        <span id="fps-counter" class="text-emerald-400 font-bold text-base md:text-lg">60 FPS</span>
+                    </div>
+                    <div class="h-6 w-[1px] bg-neutral-800"></div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold">Active Droplets</span>
+                        <span id="droplet-count" class="text-teal-300 font-bold text-base md:text-lg">6</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Bottom Action Bar / Instructions - Elevated dynamically using pb classes to remain above chat boxes -->
+        <footer class="flex flex-col xl:flex-row items-center justify-between gap-4 pointer-events-auto">
+            <div class="backdrop-blur-md bg-neutral-900/60 border border-neutral-800/80 px-4 py-3 rounded-xl text-xs text-neutral-300 shadow-lg max-w-lg">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-teal-400 text-sm">💡</span>
+                    <span>
+                        <strong class="text-white">Interactions:</strong> Left-click & drag any droplet to pull or fling. Click on empty space to spawn a new one. Double-click/tap a droplet to remove it.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Instant Impulse Controls -->
+            <div class="flex items-center gap-2 flex-wrap justify-center">
+                <button onclick="triggerExplosion()" class="backdrop-blur-md bg-teal-500/20 hover:bg-teal-500/30 border border-teal-500/30 active:scale-95 text-teal-300 text-xs font-semibold px-4 py-3 rounded-xl transition duration-150 shadow-md">
+                    ⚡ Explode Blobs
+                </button>
+                <button onclick="triggerGather()" class="backdrop-blur-md bg-neutral-900/60 hover:bg-neutral-800/80 border border-neutral-800 active:scale-95 text-neutral-300 text-xs font-semibold px-4 py-3 rounded-xl transition duration-150 shadow-md">
+                    🧲 Pull to Center
+                </button>
+                <button id="sidebar-toggle" class="lg:hidden backdrop-blur-md bg-neutral-900/60 border border-neutral-800 text-neutral-300 text-xs font-semibold px-4 py-3 rounded-xl shadow-md flex items-center gap-2">
+                    <span>🎛️ Settings</span>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Right Sidebar: Interactive Controls Panel -->
+    <aside id="controls-sidebar" class="fixed right-0 top-0 bottom-0 w-full sm:w-[400px] bg-neutral-950/85 backdrop-blur-xl border-l border-neutral-800/60 z-20 translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out flex flex-col shadow-2xl">
+        
+        <!-- Sidebar Title Area -->
+        <div class="p-6 border-b border-neutral-800/60 flex items-center justify-between">
+            <div>
+                <h2 class="header-title text-base font-bold text-white tracking-wide">STUDIO CONTROLLER</h2>
+                <p class="text-xs text-neutral-400">Tweak physical and optical parameters</p>
+            </div>
+            <!-- Mobile Close Button -->
+            <button id="sidebar-close" class="lg:hidden text-neutral-400 hover:text-white p-2 hover:bg-neutral-800/40 rounded-lg transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Scrollable settings contents (With bottom spacing to prevent overflow of bottom-most sliders behind input bars) -->
+        <div class="flex-1 overflow-y-auto p-6 pb-28 space-y-6">
+
+            <!-- Quick Preset Gallery -->
+            <section class="space-y-3">
+                <h3 class="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Material Presets</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="loadPreset('mercury')" class="preset-btn px-3 py-2.5 rounded-xl border border-neutral-800 hover:border-teal-500 bg-neutral-900/50 hover:bg-teal-500/10 text-xs text-neutral-300 hover:text-white font-medium text-left transition duration-200 flex flex-col gap-0.5">
+                        <span class="text-teal-400 font-bold text-sm">💧 Mercury</span>
+                        <span class="text-[10px] text-neutral-500">Molten metallic fusion</span>
+                    </button>
+                    <button onclick="loadPreset('frosted')" class="preset-btn px-3 py-2.5 rounded-xl border border-neutral-800 hover:border-teal-500 bg-neutral-900/50 hover:bg-teal-500/10 text-xs text-neutral-300 hover:text-white font-medium text-left transition duration-200 flex flex-col gap-0.5">
+                        <span class="text-cyan-400 font-bold text-sm">❄️ Frosted Ice</span>
+                        <span class="text-[10px] text-neutral-500">Matte surface refract</span>
+                    </button>
+                    <button onclick="loadPreset('prism')" class="preset-btn px-3 py-2.5 rounded-xl border border-neutral-800 hover:border-teal-500 bg-neutral-900/50 hover:bg-teal-500/10 text-xs text-neutral-300 hover:text-white font-medium text-left transition duration-200 flex flex-col gap-0.5">
+                        <span class="text-pink-400 font-bold text-sm">🌈 Neon Prism</span>
+                        <span class="text-[10px] text-neutral-500">Heavy dispersion prism</span>
+                    </button>
+                    <button onclick="loadPreset('lava')" class="preset-btn px-3 py-2.5 rounded-xl border border-neutral-800 hover:border-teal-500 bg-neutral-900/50 hover:bg-teal-500/10 text-xs text-neutral-300 hover:text-white font-medium text-left transition duration-200 flex flex-col gap-0.5">
+                        <span class="text-orange-400 font-bold text-sm">🔥 Lava Lamp</span>
+                        <span class="text-[10px] text-neutral-500">Thermodynamics mode</span>
+                    </button>
+                </div>
+            </section>
+
+            <hr class="border-neutral-800/40">
+
+            <!-- 1. Refraction & Optic Properties -->
+            <section class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Glass Optics</h3>
+                    <span class="text-[10px] bg-teal-500/10 text-teal-400 px-2 py-0.5 rounded font-mono">GLSL Shader</span>
+                </div>
+
+                <!-- Refraction strength -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Refraction Index</span>
+                        <span id="val-refraction" class="font-mono text-neutral-500">0.45</span>
+                    </div>
+                    <input type="range" id="param-refraction" min="0.0" max="1.5" step="0.01" value="0.45" class="w-full">
+                </div>
+
+                <!-- Chromatic aberration -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Chromatic Aberration</span>
+                        <span id="val-aberration" class="font-mono text-neutral-500">0.35</span>
+                    </div>
+                    <input type="range" id="param-aberration" min="0.0" max="1.5" step="0.01" value="0.35" class="w-full">
+                </div>
+
+                <!-- Frost strength -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Frosting Roughness</span>
+                        <span id="val-frost" class="font-mono text-neutral-500">0.00</span>
+                    </div>
+                    <input type="range" id="param-frost" min="0.0" max="1.5" step="0.05" value="0.00" class="w-full">
+                </div>
+
+                <!-- Specular highlights -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Specular Brightness</span>
+                        <span id="val-specular" class="font-mono text-neutral-500">1.20</span>
+                    </div>
+                    <input type="range" id="param-specular" min="0.0" max="3.0" step="0.05" value="1.20" class="w-full">
+                </div>
+
+                <!-- Inner Bezel highlighting -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-neutral-300">Bezel Size</span>
+                            <span id="val-bezel" class="font-mono text-neutral-500">0.03</span>
+                        </div>
+                        <input type="range" id="param-bezel" min="0.005" max="0.1" step="0.002" value="0.03" class="w-full">
+                    </div>
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-neutral-300">Bezel Glow</span>
+                            <span id="val-bezelIntensity" class="font-mono text-neutral-500">1.0</span>
+                        </div>
+                        <input type="range" id="param-bezelIntensity" min="0.0" max="2.0" step="0.1" value="1.0" class="w-full">
+                    </div>
+                </div>
+
+                <!-- Shadow strength -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Depth Cast Shadow</span>
+                        <span id="val-shadow" class="font-mono text-neutral-500">0.60</span>
+                    </div>
+                    <input type="range" id="param-shadow" min="0.0" max="1.0" step="0.05" value="0.60" class="w-full">
+                </div>
+            </section>
+
+            <hr class="border-neutral-800/40">
+
+            <!-- 2. Physics & Fluid Blending -->
+            <section class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Fluid Physics</h3>
+                    <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono">Real-time CPU</span>
+                </div>
+
+                <!-- Liquid Merge Radius -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Droplet Blend Factor (Smin)</span>
+                        <span id="val-blend" class="font-mono text-neutral-500">0.18</span>
+                    </div>
+                    <input type="range" id="param-blend" min="0.02" max="0.3" step="0.01" value="0.18" class="w-full">
+                </div>
+
+                <!-- Average droplet size -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Droplet Size Scalar</span>
+                        <span id="val-size" class="font-mono text-neutral-500">1.0</span>
+                    </div>
+                    <input type="range" id="param-size" min="0.4" max="2.5" step="0.1" value="1.0" class="w-full">
+                </div>
+
+                <!-- Velocity speed -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Float Movement Speed</span>
+                        <span id="val-speed" class="font-mono text-neutral-500">1.0</span>
+                    </div>
+                    <input type="range" id="param-speed" min="0.0" max="3.0" step="0.1" value="1.0" class="w-full">
+                </div>
+
+                <!-- Physics Mode Choice -->
+                <div class="space-y-2 text-xs">
+                    <span class="text-neutral-300 block">Colloid Collisions</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="col-mode-pass" onclick="setCollisionMode(false)" class="px-3 py-2 rounded-xl border border-teal-500 bg-teal-500/10 text-white font-medium transition duration-200">
+                            🌊 Fluid Union
+                        </button>
+                        <button id="col-mode-bounce" onclick="setCollisionMode(true)" class="px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-900/40 text-neutral-400 font-medium transition duration-200">
+                            ⚽ Elastic Bounce
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Magnetic attraction to mouse -->
+                <div class="flex items-center justify-between text-xs py-1">
+                    <span class="text-neutral-300">Attract to Cursor</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="param-attract" class="sr-only peer">
+                        <div class="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500 peer-checked:after:bg-white"></div>
+                    </label>
+                </div>
+
+                <!-- Lava Lamp Auto Thermodynamics mode -->
+                <div class="flex items-center justify-between text-xs py-1">
+                    <span class="text-neutral-300">Lava Lamp Buoyancy</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="param-lavalamp" class="sr-only peer">
+                        <div class="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500 peer-checked:after:bg-white"></div>
+                    </label>
+                </div>
+            </section>
+
+            <hr class="border-neutral-800/40">
+
+            <!-- 3. Glass Color Tint -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Glass Tint</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="setTint(1, 1, 1, 0.08)" class="w-10 h-10 rounded-full border border-neutral-700/60 bg-white/20 active:scale-90 transition shadow"></button>
+                    <button onclick="setTint(0.4, 0.9, 1.0, 0.2)" class="w-10 h-10 rounded-full border border-neutral-700/60 bg-cyan-400/40 active:scale-90 transition shadow"></button>
+                    <button onclick="setTint(0.9, 0.2, 0.5, 0.25)" class="w-10 h-10 rounded-full border border-neutral-700/60 bg-pink-500/40 active:scale-90 transition shadow"></button>
+                    <button onclick="setTint(0.95, 0.5, 0.1, 0.22)" class="w-10 h-10 rounded-full border border-neutral-700/60 bg-orange-500/40 active:scale-90 transition shadow"></button>
+                    <button onclick="setTint(0.3, 0.95, 0.5, 0.2)" class="w-10 h-10 rounded-full border border-neutral-700/60 bg-emerald-400/40 active:scale-90 transition shadow"></button>
+                </div>
+            </section>
+
+            <hr class="border-neutral-800/40">
+
+            <!-- 4. Background Refractive Target -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Background Vector</h3>
+
+                <!-- Background style select -->
+                <div class="space-y-1.5">
+                    <label class="text-xs text-neutral-300">Refractive Base Style</label>
+                    <select id="param-bgStyle" class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500">
+                        <option value="0">🌌 Cosmic Deep Purple</option>
+                        <option value="1">🌅 Burning Sunset Glow</option>
+                        <option value="2">👾 Cyber Grid Matrix</option>
+                        <option value="3">🌊 Ocean Tropical Mint</option>
+                    </select>
+                </div>
+
+                <!-- Background animation speed -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Background Speed</span>
+                        <span id="val-bgSpeed" class="font-mono text-neutral-500">1.0</span>
+                    </div>
+                    <input type="range" id="param-bgSpeed" min="0.0" max="3.0" step="0.1" value="1.0" class="w-full">
+                </div>
+
+                <!-- Reference grid scale -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-300">Grid Scale Overlay</span>
+                        <span id="val-grid" class="font-mono text-neutral-500">15.0</span>
+                    </div>
+                    <input type="range" id="param-grid" min="0.0" max="40.0" step="2.0" value="15.0" class="w-full">
+                </div>
+            </section>
+
+            <hr class="border-neutral-800/40">
+
+            <!-- Performance Benchmark (SVG CPU vs WebGL GPU) -->
+            <section class="space-y-3 bg-neutral-900/40 p-4 rounded-xl border border-neutral-800/50">
+                <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    📈 Performance Benchmark
+                </h4>
+                <p class="text-[11px] text-neutral-400 leading-relaxed">
+                    Unlike standard SVG filters (like <code class="text-teal-300">feGaussianBlur</code>) which run on the single-threaded CPU, WebGL compiles code that executes in parallel across thousands of shader cores.
+                </p>
+                <div class="space-y-2.5 pt-1.5">
+                    <!-- CPU SVG estimation -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-red-400 font-semibold uppercase">Original CPU SVG Filters</span>
+                            <span class="text-neutral-400 font-mono">~12 FPS</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                            <div class="w-[20%] h-full bg-red-500 rounded-full"></div>
+                        </div>
+                    </div>
+                    <!-- GPU WebGL Estimation -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-teal-400 font-bold uppercase">WebGL GPU Pipeline (This App)</span>
+                            <span id="benchmark-webgl-val" class="text-teal-400 font-bold font-mono">120 FPS</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                            <div class="w-full h-full bg-teal-400 rounded-full shadow-[0_0_8px_rgba(20,184,166,0.6)]"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reset All -->
+            <div class="pt-2">
+                <button onclick="resetToDefaults()" class="w-full border border-neutral-800 hover:border-neutral-700 bg-neutral-900 hover:bg-neutral-850 py-3 rounded-xl text-xs font-semibold text-neutral-300 transition active:scale-98">
+                    🔄 Reset Settings
+                </button>
+            </div>
+
+        </div>
+
+    </aside>
+
+    <!-- Custom Toast Alert for events - Elevated to avoid footer/chat overlapping -->
+    <div id="custom-toast" class="fixed bottom-36 left-1/2 -translate-x-1/2 backdrop-blur-md bg-neutral-900/80 border border-neutral-700/60 px-5 py-3 rounded-2xl text-xs font-medium text-white shadow-xl opacity-0 transform translate-y-4 transition duration-300 pointer-events-none z-30">
+        Demo Event triggered!
+    </div>
+
+    <script>
+        // --- WebGL Shader Program Construction ---
+
+        const vertexShader = \`
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        \`;
+
+        const fragmentShader = \`
+            precision highp float;
+            varying vec2 vUv;
+
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform float u_aspect;
+
+            // Arrays for dynamic blob state (Statically sized at 12 to eliminate compilation branching limits)
+            uniform vec2 u_blobPositions[12];
+            uniform float u_blobRadii[12];
+
+            // Material Uniforms
+            uniform float u_blendFactor;
+            uniform float u_refractionStrength;
+            uniform float u_chromaticAberration;
+            uniform float u_frostStrength;
+            uniform vec4 u_glassTint;
+            uniform float u_bezelWidth;
+            uniform float u_bezelIntensity;
+            uniform float u_specularShininess;
+            uniform float u_specularStrength;
+            uniform float u_shadowStrength;
+
+            // Background Uniforms
+            uniform int u_bgStyle;
+            uniform float u_gridScale;
+            uniform float u_bgSpeed;
+
+            // Polynomial smooth minimum (Inigo Quilez)
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Aspect ratio corrected circular distance field
+            float sdCircle(vec2 p, vec2 center, float r) {
+                vec2 diff = p - center;
+                diff.x *= u_aspect; // Align metrics horizontally with vertical aspect
+                return length(diff) - r;
+            }
+
+            // Composite SDF evaluation of all present fluid blobs (Fully unrolled and branchless!)
+            float getSDF(vec2 p) {
+                float d = sdCircle(p, u_blobPositions[0], u_blobRadii[0]);
+                d = smin(d, sdCircle(p, u_blobPositions[1], u_blobRadii[1]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[2], u_blobRadii[2]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[3], u_blobRadii[3]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[4], u_blobRadii[4]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[5], u_blobRadii[5]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[6], u_blobRadii[6]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[7], u_blobRadii[7]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[8], u_blobRadii[8]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[9], u_blobRadii[9]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[10], u_blobRadii[10]), u_blendFactor);
+                d = smin(d, sdCircle(p, u_blobPositions[11], u_blobRadii[11]), u_blendFactor);
+                return d;
+            }
+
+            // Dave Hoskins' Hash without Sine - highly optimized and immune to precision crashes on mobile/GPU
+            float randomNoise(vec2 p) {
+                vec3 p3  = fract(vec3(p.xyx) * .1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return fract((p3.x + p3.y) * p3.z);
+            }
+
+            // Beautiful multivariant procedural gradient background evaluator (Pre-calculated points to avoid dynamic trig overhead!)
+            vec3 evaluateBackground(vec2 uv, vec2 p1, vec2 p2, vec2 p3) {
+                vec3 color = vec3(0.0);
+                
+                if (u_bgStyle == 0) { // Cosmic Purple
+                    float d1 = length(uv - p1);
+                    float d2 = length(uv - p2);
+                    float d3 = length(uv - p3);
+                    
+                    vec3 c1 = vec3(0.48, 0.1, 1.0); // Violet
+                    vec3 c2 = vec3(1.0, 0.0, 0.5); // Neon Pink
+                    vec3 c3 = vec3(0.0, 0.7, 1.0); // Cyan
+                    
+                    color += c1 * (1.0 / (1.0 + d1 * d1 * 25.0));
+                    color += c2 * (1.0 / (1.0 + d2 * d2 * 20.0));
+                    color += c3 * (1.0 / (1.0 + d3 * d3 * 30.0));
+                    color += vec3(0.04, 0.02, 0.08); // Deep ambient fill
+                } 
+                else if (u_bgStyle == 1) { // Sunset Glow
+                    float d1 = length(uv - p1);
+                    float d2 = length(uv - p2);
+                    
+                    vec3 c1 = vec3(1.0, 0.3, 0.0); // Warm Orange
+                    vec3 c2 = vec3(1.0, 0.8, 0.0); // Vibrant Gold
+                    vec3 c3 = vec3(0.7, 0.0, 0.4); // Magenta accent
+                    
+                    color += c1 * (1.0 / (1.0 + d1 * d1 * 15.0));
+                    color += c2 * (1.0 / (1.0 + d2 * d2 * 20.0));
+                    color += c3 * (1.0 - uv.y) * 0.4;
+                    color += vec3(0.1, 0.02, 0.04);
+                } 
+                else if (u_bgStyle == 2) { // Cyber Grid Matrix
+                    float d1 = length(uv - p1);
+                    
+                    vec3 c1 = vec3(0.0, 0.9, 0.55); // Neon Mint
+                    color += c1 * (1.0 / (1.0 + d1 * d1 * 40.0));
+                    
+                    // Horizontal tech scanline wave
+                    color += vec3(0.0, 0.08, 0.15) * (0.5 + 0.5 * sin(uv.y * 50.0 + u_time * u_bgSpeed * 4.0));
+                    color += vec3(0.01, 0.02, 0.03); // Digital matrix backing
+                } 
+                else { // Ocean Tropical Mint (Style 3)
+                    float d1 = length(uv - p1);
+                    float d2 = length(uv - p2);
+                    
+                    vec3 c1 = vec3(0.0, 0.75, 0.6); // Deep Sea Emerald
+                    vec3 c2 = vec3(0.1, 0.45, 0.9); // Electric Azure Blue
+                    
+                    color += c1 * (1.0 / (1.0 + d1 * d1 * 20.0));
+                    color += c2 * (1.0 / (1.0 + d2 * d2 * 25.0));
+                    color += vec3(0.01, 0.06, 0.1);
+                }
+                
+                // Overlay clean spatial grid reference
+                if (u_gridScale > 0.0) {
+                    float gridX = smoothstep(0.02, 0.0, abs(fract(uv.x * u_gridScale - 0.5) - 0.5));
+                    float gridY = smoothstep(0.02, 0.0, abs(fract(uv.y * u_gridScale - 0.5) - 0.5));
+                    float gridVal = max(gridX, gridY);
+                    color = mix(color, color + vec3(0.1), gridVal);
+                }
+                
+                return clamp(color, 0.0, 1.0);
+            }
+
+            void main() {
+                vec2 uv = vUv;
+                
+                // Pre-compute background lighting center-points ONLY ONCE to completely eliminate trig pipeline overhead!
+                float t = u_time * u_bgSpeed;
+                vec2 p1 = vec2(0.0);
+                vec2 p2 = vec2(0.0);
+                vec2 p3 = vec2(0.0);
+
+                if (u_bgStyle == 0) {
+                    p1 = vec2(0.5 + 0.3 * cos(t * 0.5), 0.5 + 0.3 * sin(t * 0.8));
+                    p2 = vec2(0.5 + 0.35 * sin(t * 0.7), 0.5 + 0.25 * cos(t * 0.4));
+                    p3 = vec2(0.3 + 0.25 * cos(t * 0.9), 0.7 + 0.2 * sin(t * 0.6));
+                } else if (u_bgStyle == 1) {
+                    p1 = vec2(0.3 + 0.3 * sin(t * 0.4), 0.4 + 0.2 * cos(t * 0.6));
+                    p2 = vec2(0.7 + 0.2 * cos(t * 0.5), 0.6 + 0.3 * sin(t * 0.8));
+                } else if (u_bgStyle == 2) {
+                    p1 = vec2(0.5 + 0.4 * cos(t * 0.6), 0.5 + 0.2 * sin(t * 0.3));
+                } else { // 3
+                    p1 = vec2(0.2 + 0.3 * cos(t * 0.3), 0.3 + 0.3 * sin(t * 0.5));
+                    p2 = vec2(0.8 + 0.2 * sin(t * 0.4), 0.7 + 0.2 * cos(t * 0.6));
+                }
+
+                // Get general distance field density
+                float d = getSDF(uv);
+                
+                vec3 baseBg = evaluateBackground(uv, p1, p2, p3);
+                vec3 finalColor = baseBg;
+                
+                // Render volumetric separation cast shadow onto background
+                if (d > 0.0) {
+                    float shadowSpread = 0.08;
+                    // Slightly offset light vector down-left
+                    vec2 shadowOffset = vec2(-0.01, -0.01) * shadowSpread;
+                    float d_shadow = getSDF(uv - shadowOffset);
+                    float shadowVal = smoothstep(shadowSpread, 0.0, d_shadow) * u_shadowStrength;
+                    
+                    finalColor = mix(finalColor, finalColor * (1.0 - shadowVal), 0.65);
+                }
+                
+                // Render interior of the molten glass surface
+                if (d <= 0.0) {
+                    // Sobel-like gradient normal approximation
+                    vec2 eps = vec2(0.002, 0.0);
+                    float d_x1 = getSDF(uv + eps.xy);
+                    float d_x2 = getSDF(uv - eps.xy);
+                    float d_y1 = getSDF(uv + eps.yx);
+                    float d_y2 = getSDF(uv - eps.yx);
+                    
+                    vec2 normal2d = vec2(d_x1 - d_x2, d_y1 - d_y2);
+                    float normalLen = length(normal2d);
+                    normal2d = normal2d / (normalLen + 1e-6); // Safe, branchless normalization
+                    
+                    // High frequency micro-grain noise frosting using safe Hoskins' Hash
+                    vec2 frostOffset = vec2(0.0);
+                    if (u_frostStrength > 0.0) {
+                        float n = randomNoise(uv * 450.0 + u_time * 0.05);
+                        frostOffset = vec2(n - 0.5) * u_frostStrength * 0.012;
+                    }
+                    
+                    // Progressive magnification lens refraction
+                    float depthFactor = smoothstep(0.0, 0.15, -d);
+                    vec2 refOffset = normal2d * u_refractionStrength * 0.25 * (0.2 + 0.8 * depthFactor);
+                    
+                    // Sample multi-channel dispersion (Chromatic Aberration)
+                    vec2 refUVR = uv + refOffset + frostOffset - normal2d * u_chromaticAberration * 0.015;
+                    vec2 refUVG = uv + refOffset + frostOffset;
+                    vec2 refUVB = uv + refOffset + frostOffset + normal2d * u_chromaticAberration * 0.015;
+                    
+                    // Clamp coords safely inside grid
+                    refUVR = clamp(refUVR, 0.001, 0.999);
+                    refUVG = clamp(refUVG, 0.001, 0.999);
+                    refUVB = clamp(refUVB, 0.001, 0.999);
+                    
+                    float rChannel = evaluateBackground(refUVR, p1, p2, p3).r;
+                    float gChannel = evaluateBackground(refUVG, p1, p2, p3).g;
+                    float bChannel = evaluateBackground(refUVB, p1, p2, p3).b;
+                    vec3 refractedBg = vec3(rChannel, gChannel, bChannel);
+                    
+                    // Blend custom tint colors
+                    vec3 tintedGlass = mix(refractedBg, u_glassTint.rgb, u_glassTint.a);
+                    
+                    // Blinn-Phong specular highlight modeling
+                    float slope = normalLen * 9.0;
+                    vec3 N = normalize(vec3(normal2d * slope, 1.0));
+                    vec3 L = normalize(vec3(0.6, 0.6, 0.95)); // Light source
+                    vec3 V = vec3(0.0, 0.0, 1.0); // Ortho view vector
+                    vec3 H = normalize(L + V);
+                    
+                    float spec = pow(max(dot(N, H), 0.0), u_specularShininess);
+                    vec3 specularHighlight = vec3(1.0) * spec * u_specularStrength;
+                    
+                    // Premium edge highlight bezel
+                    float bezel = smoothstep(-u_bezelWidth, 0.0, d);
+                    float bezelGlow = bezel * (1.0 - bezel) * 4.0 * u_bezelIntensity;
+                    float bezelLightInfluence = max(dot(normal2d, L.xy), 0.15);
+                    vec3 bezelColor = vec3(1.0) * bezelGlow * (0.2 + 0.8 * bezelLightInfluence);
+                    
+                    finalColor = tintedGlass + specularHighlight + bezelColor;
+                    
+                    // Soft inner perimeter definition shadow
+                    float innerShadow = smoothstep(-0.02, -0.001, d);
+                    finalColor = mix(finalColor, finalColor * 0.78, innerShadow * 0.25);
+                }
+                
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        \`;
+
+
+        // --- Application & Physics Simulation State ---
+
+        let renderer, scene, camera, material, mesh;
+        let aspect = window.innerWidth / window.innerHeight;
+        
+        // Simulation parameters matching the slider values
+        const params = {
+            refraction: 0.45,
+            aberration: 0.35,
+            frost: 0.00,
+            specular: 1.20,
+            bezel: 0.03,
+            bezelIntensity: 1.0,
+            shadow: 0.60,
+            blend: 0.18,
+            size: 1.0,
+            speed: 1.0,
+            attract: false,
+            lavalamp: false,
+            bgStyle: 0,
+            bgSpeed: 1.0,
+            grid: 15.0,
+            bounceCollisions: false,
+            glassTint: [1.0, 1.0, 1.0, 0.08] // rgba default clear
+        };
+
+        // Droplets array structure (Optimized capacity bounds)
+        let blobs = [];
+        const maxBlobs = 12;
+
+        class LiquidBlob {
+            constructor(x, y, r) {
+                this.x = x; // normalized 0 to 1
+                this.y = y; // normalized 0 to 1
+                this.vx = (Math.random() - 0.5) * 0.05;
+                this.vy = (Math.random() - 0.5) * 0.05;
+                this.baseRadius = r;
+                this.radius = r;
+                this.mass = Math.pow(r * 10, 2); // mass scaling relative to area
+                this.temp = Math.random(); // thermodynamics thermometer
+                this.isDragging = false;
+            }
+
+            update(dt) {
+                if (this.isDragging) return;
+
+                // Physics speed scaling
+                const spd = params.speed;
+
+                // Air resistance / Drag slowing things down naturally
+                this.vx *= Math.pow(0.97, dt * 60 * spd);
+                this.vy *= Math.pow(0.97, dt * 60 * spd);
+
+                // Normal roaming forces
+                if (!params.lavalamp) {
+                    // Gentle browser random motion if velocities fall low
+                    if (Math.abs(this.vx) < 0.005 && Math.abs(this.vy) < 0.005) {
+                        this.vx += (Math.random() - 0.5) * 0.04 * spd;
+                        this.vy += (Math.random() - 0.5) * 0.04 * spd;
+                    }
+                } else {
+                    // Thermodynamics engine simulation (Lava Lamp)
+                    // Hot blobs float up, cool down near the top, and fall back down
+                    if (this.y < 0.22) {
+                        this.temp += dt * 0.4 * spd; // heat up near heater elements
+                    } else if (this.y > 0.78) {
+                        this.temp -= dt * 0.5 * spd; // cool down at top grid
+                    }
+                    this.temp = Math.max(0.0, Math.min(1.0, this.temp));
+
+                    // Float forces proportional to temp
+                    const floatForce = (this.temp - 0.48) * 0.22;
+                    this.vy += floatForce * dt * spd;
+                    
+                    // Gentle thermal convection currents (left-right drift)
+                    this.vx += Math.sin(this.y * 8.0 + performance.now() * 0.001) * 0.003 * spd;
+                }
+
+                // Interactive cursor attraction force
+                if (params.attract && mouse.active) {
+                    const dx = mouse.x - this.x;
+                    const dy = mouse.y - this.y;
+                    const adx = dx * aspect;
+                    const ady = dy;
+                    const dist = Math.sqrt(adx * adx + ady * ady);
+                    if (dist > 0.01) {
+                        const force = (0.28 / (dist + 0.15)) * dt * spd;
+                        this.vx += (dx / aspect) * force;
+                        this.vy += dy * force;
+                    }
+                }
+
+                // Apply velocity vector
+                this.x += this.vx * dt * spd;
+                this.y += this.vy * dt * spd;
+
+                // Screen aspect ratio boundary checks with bounce coefficient
+                const bounce = 0.85;
+                const visualRadX = this.radius / aspect;
+                const visualRadY = this.radius;
+
+                if (this.x - visualRadX < 0) {
+                    this.x = visualRadX;
+                    this.vx = -this.vx * bounce;
+                } else if (this.x + visualRadX > 1) {
+                    this.x = 1 - visualRadX;
+                    this.vx = -this.vx * bounce;
+                }
+
+                if (this.y - visualRadY < 0) {
+                    this.y = visualRadY;
+                    this.vy = -this.vy * bounce;
+                } else if (this.y + visualRadY > 1) {
+                    this.y = 1 - visualRadY;
+                    this.vy = -this.vy * bounce;
+                }
+            }
+        }
+
+
+        // --- Mouse & Touch Input Tracking ---
+
+        const mouse = {
+            x: 0.5,
+            y: 0.5,
+            prevX: 0.5,
+            prevY: 0.5,
+            vx: 0,
+            vy: 0,
+            active: false,
+            draggedBlob: null
+        };
+
+        function initInteractions() {
+            const canvas = document.getElementById('webgl-canvas');
+
+            function getCanvasCoordinates(e) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return {
+                    x: (clientX - rect.left) / rect.width,
+                    y: 1.0 - (clientY - rect.top) / rect.height
+                };
+            }
+
+            function handleStart(e) {
+                const coords = getCanvasCoordinates(e);
+                mouse.x = coords.x;
+                mouse.y = coords.y;
+                mouse.prevX = coords.x;
+                mouse.prevY = coords.y;
+                mouse.active = true;
+
+                // Look for the clicked droplet
+                let clickedBlob = null;
+                let minDist = Infinity;
+
+                blobs.forEach(blob => {
+                    const dx = coords.x - blob.x;
+                    const dy = coords.y - blob.y;
+                    const adx = dx * aspect;
+                    const ady = dy;
+                    const dist = Math.sqrt(adx * adx + ady * ady);
+
+                    // If click point falls within aspect radius boundary
+                    if (dist < blob.radius * 1.5) {
+                        if (dist < minDist) {
+                            minDist = dist;
+                            clickedBlob = blob;
+                        }
+                    }
+                });
+
+                if (clickedBlob) {
+                    clickedBlob.isDragging = true;
+                    mouse.draggedBlob = clickedBlob;
+                } else {
+                    // Spawn a droplet on clean click
+                    if (blobs.length < maxBlobs && e.type === 'mousedown') {
+                        const randomSize = 0.04 + Math.random() * 0.08;
+                        const newBlob = new LiquidBlob(coords.x, coords.y, randomSize);
+                        blobs.push(newBlob);
+                        showToast("Spawned glass droplet 💧");
+                        updateCountUI();
+                    }
+                }
+            }
+
+            function handleMove(e) {
+                if (!mouse.active) return;
+                const coords = getCanvasCoordinates(e);
+                mouse.x = coords.x;
+                mouse.y = coords.y;
+
+                if (mouse.draggedBlob) {
+                    // Interpolate position directly for liquid stretching elastic response
+                    mouse.draggedBlob.x = mouse.x;
+                    mouse.draggedBlob.y = mouse.y;
+                    
+                    // Store velocity vectors to toss the droplet when let go
+                    mouse.draggedBlob.vx = (mouse.x - mouse.prevX) * 1.5;
+                    mouse.draggedBlob.vy = (mouse.y - mouse.prevY) * 1.5;
+                }
+
+                mouse.prevX = mouse.x;
+                mouse.prevY = mouse.y;
+            }
+
+            function handleEnd(e) {
+                if (mouse.draggedBlob) {
+                    mouse.draggedBlob.isDragging = false;
+                    mouse.draggedBlob = null;
+                }
+                mouse.active = false;
+            }
+
+            // Bind mouse
+            canvas.addEventListener('mousedown', handleStart);
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+
+            // Bind touch
+            canvas.addEventListener('touchstart', handleStart, { passive: true });
+            window.addEventListener('touchmove', handleMove, { passive: true });
+            window.addEventListener('touchend', handleEnd);
+
+            // Double click to remove blob
+            canvas.addEventListener('dblclick', (e) => {
+                const coords = getCanvasCoordinates(e);
+                let removeIdx = -1;
+                let minDist = 0.12; // Double click reach tolerance
+
+                blobs.forEach((blob, idx) => {
+                    const dx = coords.x - blob.x;
+                    const dy = coords.y - blob.y;
+                    const adx = dx * aspect;
+                    const ady = dy;
+                    const dist = Math.sqrt(adx * adx + ady * ady);
+
+                    if (dist < blob.radius && dist < minDist) {
+                        minDist = dist;
+                        removeIdx = idx;
+                    }
+                });
+
+                if (removeIdx !== -1) {
+                    blobs.splice(removeIdx, 1);
+                    showToast("Removed glass droplet 💨");
+                    updateCountUI();
+                }
+            });
+        }
+
+
+        // --- Three.js Setup & Uniform Binds ---
+
+        function initWebGL() {
+            const canvas = document.getElementById('webgl-canvas');
+            
+            // Build rendering pipeline scene
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            
+            // Request WebGL 2.0 context gracefully, fall back to default context if needed
+            let context;
+            try {
+                context = canvas.getContext('webgl2');
+            } catch(err) {}
+
+            const rendererOptions = { canvas: canvas, antialias: false, powerPreference: "high-performance" };
+            if (context) {
+                renderer = new THREE.WebGLRenderer({ ...rendererOptions, context: context });
+            } else {
+                renderer = new THREE.WebGLRenderer(rendererOptions);
+            }
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            // Flat screen quad geometry
+            const geometry = new THREE.PlaneGeometry(2, 2);
+
+            // Explicitly structured Uniform bindings with exact static matching arrays (Length 12)
+            material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                    u_time: { value: 0.0 },
+                    u_aspect: { value: aspect },
+                    u_blobPositions: { value: Array(12).fill(null).map(() => new THREE.Vector2(0.5, 0.5)) },
+                    u_blobRadii: { value: new Float32Array(12).fill(0.1) },
+                    u_blendFactor: { value: params.blend },
+                    u_refractionStrength: { value: params.refraction },
+                    u_chromaticAberration: { value: params.aberration },
+                    u_frostStrength: { value: params.frost },
+                    u_glassTint: { value: new THREE.Vector4(params.glassTint[0], params.glassTint[1], params.glassTint[2], params.glassTint[3]) },
+                    u_bezelWidth: { value: params.bezel },
+                    u_bezelIntensity: { value: params.bezelIntensity },
+                    u_specularShininess: { value: 120.0 },
+                    u_specularStrength: { value: params.specular },
+                    u_shadowStrength: { value: params.shadow },
+                    u_bgStyle: { value: params.bgStyle },
+                    u_bgSpeed: { value: params.bgSpeed },
+                    u_gridScale: { value: params.grid }
+                }
+            });
+
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            // Init initial random droplets
+            spawnInitialBlobs();
+
+            // Setup listeners
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function spawnInitialBlobs() {
+            blobs = [
+                new LiquidBlob(0.5, 0.5, 0.14),
+                new LiquidBlob(0.35, 0.6, 0.10),
+                new LiquidBlob(0.65, 0.42, 0.11),
+                new LiquidBlob(0.28, 0.35, 0.08),
+                new LiquidBlob(0.72, 0.68, 0.07),
+                new LiquidBlob(0.52, 0.28, 0.05)
+            ];
+            updateCountUI();
+        }
+
+        function onWindowResize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            aspect = w / h;
+            material.uniforms.u_resolution.value.set(w, h);
+            material.uniforms.u_aspect.value = aspect;
+        }
+
+
+        // --- Colloid/Droplet Inter-physics ---
+
+        function resolveBlobCollisions(dt) {
+            if (!params.bounceCollisions) return;
+
+            for (let i = 0; i < blobs.length; i++) {
+                for (let j = i + 1; j < blobs.length; j++) {
+                    const b1 = blobs[i];
+                    const b2 = blobs[j];
+                    if (b1.isDragging || b2.isDragging) continue;
+
+                    const dx = b1.x - b2.x;
+                    const dy = b1.y - b2.y;
+                    
+                    // Measure distance inside aspect ratio frame coordinates
+                    const adx = dx * aspect;
+                    const ady = dy;
+                    const dist = Math.sqrt(adx * adx + ady * ady);
+                    const minDist = b1.radius + b2.radius;
+
+                    if (dist < minDist) {
+                        // Elastic collision overlap penetration resolving
+                        const overlap = minDist - dist;
+                        const nx = adx / (dist || 1);
+                        const ny = ady / (dist || 1);
+
+                        // Push apart in relative normalized coordinate system
+                        const pushX = (nx * overlap * 0.5) / aspect;
+                        const pushY = ny * overlap * 0.5;
+
+                        b1.x += pushX;
+                        b1.y += pushY;
+                        b2.x -= pushX;
+                        b2.y -= pushY;
+
+                        // Calculate visual aspect-corrected velocities
+                        const avx = b1.vx * aspect;
+                        const avy = b1.vy;
+                        const bvx = b2.vx * aspect;
+                        const bvy = b2.vy;
+
+                        const rvx = avx - bvx;
+                        const rvy = avy - bvy;
+
+                        // Project relative velocity along collision plane normal
+                        const velAlongNormal = rvx * nx + rvy * ny;
+
+                        if (velAlongNormal < 0) {
+                            const restitution = 0.85; // highly elastic bouncy bubble response
+                            const impulse = -(1 + restitution) * velAlongNormal / (1 / b1.mass + 1 / b2.mass);
+
+                            const impulseX = (impulse * nx) / aspect;
+                            const impulseY = impulse * ny;
+
+                            b1.vx += impulseX / b1.mass;
+                            b1.vy += impulseY / b1.mass;
+                            b2.vx -= impulseX / b2.mass;
+                            b2.vy -= impulseY / b2.mass;
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // --- High-Performance Animation Main Loop ---
+
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const dt = Math.min(0.1, clock.getDelta()); // clamp dt to prevent physics jumps on lag spikes
+            const elapsed = clock.getElapsedTime();
+
+            // Run collision solver
+            resolveBlobCollisions(dt);
+
+            // Update physics & scale radii uniformly based on controller size
+            blobs.forEach(blob => {
+                blob.radius = blob.baseRadius * params.size;
+                blob.update(dt);
+            });
+
+            // Convert and pack static arrays to GLSL uniforms (No dynamic size changes)
+            const flatPositions = [];
+            const flatRadii = new Float32Array(maxBlobs);
+
+            for (let i = 0; i < maxBlobs; i++) {
+                if (i < blobs.length) {
+                    flatPositions.push(new THREE.Vector2(blobs[i].x, blobs[i].y));
+                    flatRadii[i] = blobs[i].radius;
+                } else {
+                    // Send unused positions far out of bounds (They won't trigger smooth minimum blending!)
+                    flatPositions.push(new THREE.Vector2(99.0, 99.0));
+                    flatRadii[i] = 0.0;
+                }
+            }
+
+            // Sync uniforms to GPU memory
+            material.uniforms.u_blobPositions.value = flatPositions;
+            material.uniforms.u_blobRadii.value = flatRadii;
+            material.uniforms.u_time.value = elapsed;
+
+            // Render single frame
+            renderer.render(scene, camera);
+
+            // FPS stats calculator
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = Math.round((frameCount * 1000) / (now - lastTime));
+                frameCount = 0;
+                lastTime = now;
+                
+                // Update stats HTML
+                document.getElementById('fps-counter').innerText = fps + " FPS";
+                document.getElementById('benchmark-webgl-val').innerText = fps + " FPS";
+            }
+        }
+
+
+        // --- UI Operations & Parameter Hookups ---
+
+        function initControls() {
+            // Slider configuration map
+            const sliders = [
+                { id: 'param-refraction', uniform: 'u_refractionStrength', valId: 'val-refraction', target: 'refraction' },
+                { id: 'param-aberration', uniform: 'u_chromaticAberration', valId: 'val-aberration', target: 'aberration' },
+                { id: 'param-frost', uniform: 'u_frostStrength', valId: 'val-frost', target: 'frost' },
+                { id: 'param-specular', uniform: 'u_specularStrength', valId: 'val-specular', target: 'specular' },
+                { id: 'param-bezel', uniform: 'u_bezelWidth', valId: 'val-bezel', target: 'bezel' },
+                { id: 'param-bezelIntensity', uniform: 'u_bezelIntensity', valId: 'val-bezelIntensity', target: 'bezelIntensity' },
+                { id: 'param-shadow', uniform: 'u_shadowStrength', valId: 'val-shadow', target: 'shadow' },
+                { id: 'param-blend', uniform: 'u_blendFactor', valId: 'val-blend', target: 'blend' },
+                { id: 'param-size', valId: 'val-size', target: 'size' },
+                { id: 'param-speed', valId: 'val-speed', target: 'speed' },
+                { id: 'param-bgSpeed', uniform: 'u_bgSpeed', valId: 'val-bgSpeed', target: 'bgSpeed' },
+                { id: 'param-grid', uniform: 'u_gridScale', valId: 'val-grid', target: 'grid' }
+            ];
+
+            sliders.forEach(s => {
+                const sliderEl = document.getElementById(s.id);
+                const displayEl = document.getElementById(s.valId);
+
+                sliderEl.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    params[s.target] = val;
+                    if (displayEl) displayEl.innerText = val.toFixed(2);
+                    
+                    if (s.uniform) {
+                        material.uniforms[s.uniform].value = val;
+                    }
+                });
+            });
+
+            // Toggle Cursor Attraction
+            document.getElementById('param-attract').addEventListener('change', (e) => {
+                params.attract = e.target.checked;
+                showToast(params.attract ? "Attract mode enabled 🧲" : "Attract mode disabled");
+            });
+
+            // Toggle Thermodynamics Lava lamp mode
+            document.getElementById('param-lavalamp').addEventListener('change', (e) => {
+                params.lavalamp = e.target.checked;
+                showToast(params.lavalamp ? "Lava lamp mode active 🔥" : "Roaming mode active");
+            });
+
+            // Select background vector style
+            document.getElementById('param-bgStyle').addEventListener('change', (e) => {
+                const styleId = parseInt(e.target.value);
+                params.bgStyle = styleId;
+                material.uniforms.u_bgStyle.value = styleId;
+                showToast("Background style updated 🎨");
+            });
+
+            // Toggle side control bar on mobile devices
+            const toggleBtn = document.getElementById('sidebar-toggle');
+            const closeBtn = document.getElementById('sidebar-close');
+            const sidebar = document.getElementById('controls-sidebar');
+
+            toggleBtn.addEventListener('click', () => {
+                sidebar.classList.remove('translate-x-full');
+            });
+            closeBtn.addEventListener('click', () => {
+                sidebar.classList.add('translate-x-full');
+            });
+        }
+
+        // Apply glass coloring tint dynamically
+        function setTint(r, g, b, a) {
+            params.glassTint = [r, g, b, a];
+            material.uniforms.u_glassTint.value.set(r, g, b, a);
+            showToast("Glass tint updated 🎨");
+        }
+
+        // Apply dynamic instant collision solvers
+        function setCollisionMode(bounce) {
+            params.bounceCollisions = bounce;
+            const pBtn = document.getElementById('col-mode-pass');
+            const bBtn = document.getElementById('col-mode-bounce');
+
+            if (bounce) {
+                bBtn.className = "px-3 py-2 rounded-xl border border-teal-500 bg-teal-500/10 text-white font-medium transition duration-200";
+                pBtn.className = "px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-900/40 text-neutral-400 font-medium transition duration-200";
+                showToast("Droplets will bounce off each other! ⚽");
+            } else {
+                pBtn.className = "px-3 py-2 rounded-xl border border-teal-500 bg-teal-500/10 text-white font-medium transition duration-200";
+                bBtn.className = "px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-900/40 text-neutral-400 font-medium transition duration-200";
+                showToast("Droplets will merge and flow organically 🌊");
+            }
+        }
+
+        // Spawn massive explosion force on vectors
+        function triggerExplosion() {
+            blobs.forEach(b => {
+                const angle = Math.random() * Math.PI * 2;
+                const force = 0.25 + Math.random() * 0.45;
+                b.vx += Math.cos(angle) * force;
+                b.vy += Math.sin(angle) * force;
+            });
+            showToast("Impulse shockwave triggered! ⚡");
+        }
+
+        // Gather all elements back to gravity center
+        function triggerGather() {
+            blobs.forEach(b => {
+                const dx = 0.5 - b.x;
+                const dy = 0.5 - b.y;
+                b.vx = dx * 1.5;
+                b.vy = dy * 1.5;
+            });
+            showToast("Droplets gathered to center coordinate 🧲");
+        }
+
+        function updateCountUI() {
+            document.getElementById('droplet-count').innerText = blobs.length;
+        }
+
+        // Elegant custom non-intrusive toast messages
+        let toastTimeout;
+        function showToast(message) {
+            const toast = document.getElementById('custom-toast');
+            toast.innerText = message;
+            toast.classList.remove('opacity-0', 'translate-y-4');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-4');
+            }, 2500);
+        }
+
+        // Presets loading configurations
+        function loadPreset(key) {
+            const presets = {
+                mercury: {
+                    refraction: 0.55, aberration: 0.00, frost: 0.00, specular: 1.80, bezel: 0.02, bezelIntensity: 1.2, shadow: 0.80, blend: 0.22, size: 1.2, speed: 0.8, attract: false, lavalamp: false, bgStyle: 2, bgSpeed: 0.8, grid: 20.0, tint: [1.0, 1.0, 1.0, 0.15], bounce: false
+                },
+                frosted: {
+                    refraction: 0.25, aberration: 0.55, frost: 0.80, specular: 0.50, bezel: 0.04, bezelIntensity: 0.8, shadow: 0.45, blend: 0.12, size: 0.95, speed: 1.0, attract: false, lavalamp: false, bgStyle: 3, bgSpeed: 0.6, grid: 12.0, tint: [0.85, 0.96, 1.0, 0.35], bounce: false
+                },
+                prism: {
+                    refraction: 0.70, aberration: 1.20, frost: 0.00, specular: 1.50, bezel: 0.035, bezelIntensity: 1.4, shadow: 0.65, blend: 0.14, size: 1.1, speed: 1.2, attract: false, lavalamp: false, bgStyle: 0, bgSpeed: 1.5, grid: 18.0, tint: [1.0, 0.3, 0.6, 0.15], bounce: false
+                },
+                lava: {
+                    refraction: 0.35, aberration: 0.25, frost: 0.00, specular: 1.10, bezel: 0.03, bezelIntensity: 1.0, shadow: 0.70, blend: 0.24, size: 1.3, speed: 0.9, attract: false, lavalamp: true, bgStyle: 1, bgSpeed: 1.2, grid: 10.0, tint: [0.95, 0.4, 0.0, 0.25], bounce: false
+                }
+            };
+
+            const p = presets[key];
+            if (!p) return;
+
+            // Update local values
+            params.refraction = p.refraction;
+            params.aberration = p.aberration;
+            params.frost = p.frost;
+            params.specular = p.specular;
+            params.bezel = p.bezel;
+            params.bezelIntensity = p.bezelIntensity;
+            params.shadow = p.shadow;
+            params.blend = p.blend;
+            params.size = p.size;
+            params.speed = p.speed;
+            params.attract = p.attract;
+            params.lavalamp = p.lavalamp;
+            params.bgStyle = p.bgStyle;
+            params.bgSpeed = p.bgSpeed;
+            params.grid = p.grid;
+            params.glassTint = p.tint;
+            params.bounceCollisions = p.bounce;
+
+            // Update slider UI values & dispatch
+            syncFormUI();
+            syncShaderUniforms();
+
+            // Notify User
+            showToast(\`Loaded \${key.toUpperCase()} configuration! ✨\`);
+        }
+
+        function syncFormUI() {
+            document.getElementById('param-refraction').value = params.refraction;
+            document.getElementById('val-refraction').innerText = params.refraction.toFixed(2);
+
+            document.getElementById('param-aberration').value = params.aberration;
+            document.getElementById('val-aberration').innerText = params.aberration.toFixed(2);
+
+            document.getElementById('param-frost').value = params.frost;
+            document.getElementById('val-frost').innerText = params.frost.toFixed(2);
+
+            document.getElementById('param-specular').value = params.specular;
+            document.getElementById('val-specular').innerText = params.specular.toFixed(2);
+
+            document.getElementById('param-bezel').value = params.bezel;
+            document.getElementById('val-bezel').innerText = params.bezel.toFixed(3);
+
+            document.getElementById('param-bezelIntensity').value = params.bezelIntensity;
+            document.getElementById('val-bezelIntensity').innerText = params.bezelIntensity.toFixed(1);
+
+            document.getElementById('param-shadow').value = params.shadow;
+            document.getElementById('val-shadow').innerText = params.shadow.toFixed(2);
+
+            document.getElementById('param-blend').value = params.blend;
+            document.getElementById('val-blend').innerText = params.blend.toFixed(2);
+
+            document.getElementById('param-size').value = params.size;
+            document.getElementById('val-size').innerText = params.size.toFixed(1);
+
+            document.getElementById('param-speed').value = params.speed;
+            document.getElementById('val-speed').innerText = params.speed.toFixed(1);
+
+            document.getElementById('param-attract').checked = params.attract;
+            document.getElementById('param-lavalamp').checked = params.lavalamp;
+
+            document.getElementById('param-bgStyle').value = params.bgStyle;
+
+            document.getElementById('param-bgSpeed').value = params.bgSpeed;
+            document.getElementById('val-bgSpeed').innerText = params.bgSpeed.toFixed(1);
+
+            document.getElementById('param-grid').value = params.grid;
+            document.getElementById('val-grid').innerText = params.grid.toFixed(1);
+
+            setCollisionMode(params.bounceCollisions);
+        }
+
+        function syncShaderUniforms() {
+            material.uniforms.u_refractionStrength.value = params.refraction;
+            material.uniforms.u_chromaticAberration.value = params.aberration;
+            material.uniforms.u_frostStrength.value = params.frost;
+            material.uniforms.u_specularStrength.value = params.specular;
+            material.uniforms.u_bezelWidth.value = params.bezel;
+            material.uniforms.u_bezelIntensity.value = params.bezelIntensity;
+            material.uniforms.u_shadowStrength.value = params.shadow;
+            material.uniforms.u_blendFactor.value = params.blend;
+            material.uniforms.u_bgStyle.value = params.bgStyle;
+            material.uniforms.u_bgSpeed.value = params.bgSpeed;
+            material.uniforms.u_gridScale.value = params.grid;
+            material.uniforms.u_glassTint.value.set(params.glassTint[0], params.glassTint[1], params.glassTint[2], params.glassTint[3]);
+        }
+
+        function resetToDefaults() {
+            params.refraction = 0.45;
+            params.aberration = 0.35;
+            params.frost = 0.00;
+            params.specular = 1.20;
+            params.bezel = 0.03;
+            params.bezelIntensity = 1.0;
+            params.shadow = 0.60;
+            params.blend = 0.18;
+            params.size = 1.0;
+            params.speed = 1.0;
+            params.attract = false;
+            params.lavalamp = false;
+            params.bgStyle = 0;
+            params.bgSpeed = 1.0;
+            params.grid = 15.0;
+            params.glassTint = [1.0, 1.0, 1.0, 0.08];
+            params.bounceCollisions = false;
+
+            syncFormUI();
+            syncShaderUniforms();
+            spawnInitialBlobs();
+            showToast("Reset to factory presets! 🔄");
+        }
+
+
+        // --- Boot Application On Window Load ---
+
+        window.onload = function() {
+            initWebGL();
+            initInteractions();
+            initControls();
+            
+            // Start high-frequency animation loop on render hardware
+            renderLoop();
+        };
+
+    </script>
+</body>
+</html>
