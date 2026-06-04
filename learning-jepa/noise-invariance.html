@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observation Noise Invariance — webartests</title>
+    <style>
+        :root {
+            --bg: #0d0d0d;
+            --card: #1a1a1a;
+            --border: #2a2a2a;
+            --primary: #5b9bd5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --violet: #8b5cf6;
+            --red: #e74c3c;
+            --text-muted: #666;
+            --text-main: #eee;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 40px 24px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #back-link {
+            display: inline-block;
+            margin-bottom: 24px;
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.15s;
+        }
+        #back-link:hover { color: #aaa; }
+
+        header { margin-bottom: 48px; max-width: 800px; }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+        p.description { color: var(--text-muted); line-height: 1.6; font-size: 15px; }
+
+        .demo-container {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .canvas-section {
+            display: flex;
+            gap: 16px;
+            flex: 1;
+            min-width: 600px;
+        }
+
+        .canvas-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .canvas-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            align-self: flex-start;
+        }
+
+        canvas {
+            background: #000;
+            border-radius: 8px;
+            border: 1px solid #222;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1;
+        }
+
+        .controls-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            width: 320px;
+            flex-shrink: 0;
+        }
+
+        .control-group { margin-bottom: 24px; }
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            -webkit-appearance: none;
+            appearance: none;
+            margin-bottom: 8px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .control-group.checkbox {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .control-group.checkbox label { margin-bottom: 0; }
+        .control-group.checkbox input { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
+
+        .stats {
+            margin-top: auto;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .stat-val { color: var(--violet); font-weight: bold; }
+    </style>
+</head>
+<body>
+    <a id="back-link" href="./">← Back</a>
+
+    <header>
+        <h1>Noise & Color Invariance</h1>
+        <p class="description">
+            JEPA architectures learn by predicting in <strong>latent space</strong>. This makes them naturally invariant to pixel-level noise (static, occlusion) and <strong>irrelevant visual properties</strong> (like color shifting) that don't affect the underlying world physics.
+        </p>
+    </header>
+
+    <div class="demo-container">
+        <div class="canvas-section">
+            <div class="canvas-card">
+                <div class="canvas-label">Input Observation (Pixel Space)</div>
+                <canvas id="obsCanvas" width="400" height="400"></canvas>
+            </div>
+            <div class="canvas-card">
+                <div class="canvas-label" style="color: var(--violet);">World Model Prediction (Latent Space)</div>
+                <canvas id="latentCanvas" width="400" height="400"></canvas>
+            </div>
+        </div>
+
+        <aside class="controls-card">
+            <div class="control-group">
+                <label>Static Noise: <span id="val-static">40%</span></label>
+                <input type="range" id="param-static" min="0" max="100" step="1" value="40">
+            </div>
+
+            <div class="control-group">
+                <label>Mask Size: <span id="val-mask">80px</span></label>
+                <input type="range" id="param-mask" min="0" max="200" step="10" value="80">
+            </div>
+
+            <div class="control-group">
+                <label>Agent Speed: <span id="val-speed">1.0x</span></label>
+                <input type="range" id="param-speed" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group checkbox">
+                <label for="param-color-shift">Enable Color Variance</label>
+                <input type="checkbox" id="param-color-shift" checked>
+            </div>
+
+            <div class="stats">
+                <div>Information Compression: <span class="stat-val">32x</span></div>
+                <div>Latent Dimensionality: <span class="stat-val">128</span></div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const obsCanvas = document.getElementById('obsCanvas');
+        const latentCanvas = document.getElementById('latentCanvas');
+        const obsCtx = obsCanvas.getContext('2d');
+        const latentCtx = latentCanvas.getContext('2d');
+
+        const staticInput = document.getElementById('param-static');
+        const maskInput = document.getElementById('param-mask');
+        const speedInput = document.getElementById('param-speed');
+        const colorShiftInput = document.getElementById('param-color-shift');
+
+        const staticVal = document.getElementById('val-static');
+        const maskVal = document.getElementById('val-mask');
+        const speedVal = document.getElementById('val-speed');
+
+        // Color Constants (matching CSS)
+        const COLORS = {
+            primary: '#5b9bd5',
+            violet: '#8b5cf6',
+            success: '#10b981',
+            bg: '#050505'
+        };
+
+        const params = {
+            static: 0.1,
+            mask: 120,
+            speed: 0.7,
+            colorShift: true
+        };
+
+        staticInput.addEventListener('input', (e) => {
+            params.static = e.target.value / 100;
+            staticVal.innerText = e.target.value + '%';
+        });
+        maskInput.addEventListener('input', (e) => {
+            params.mask = parseInt(e.target.value);
+            maskVal.innerText = e.target.value + 'px';
+        });
+        speedInput.addEventListener('input', (e) => {
+            params.speed = parseFloat(e.target.value);
+            speedVal.innerText = e.target.value + 'x';
+        });
+        colorShiftInput.addEventListener('change', (e) => {
+            params.colorShift = e.target.checked;
+        });
+
+        // Initialize UI values
+        staticInput.value = params.static * 100;
+        staticVal.innerText = (params.static * 100) + '%';
+        maskInput.value = params.mask;
+        maskVal.innerText = params.mask + 'px';
+        speedInput.value = params.speed;
+        speedVal.innerText = params.speed + 'x';
+        colorShiftInput.checked = params.colorShift;
+
+        // State: The "True" hidden state
+        let time = 0;
+        const agent = { x: 200, y: 200, color: COLORS.primary };
+
+        function update() {
+            time += 0.02 * params.speed;
+            // Lissajous curve for complex predictable motion
+            agent.x = 200 + 150 * Math.cos(time);
+            agent.y = 200 + 100 * Math.sin(time * 0.7);
+
+            if (params.colorShift) {
+                // Shift hue over time
+                const hue = (time * 100) % 360;
+                agent.color = `hsl(${hue}, 70%, 60%)`;
+            } else {
+                agent.color = COLORS.primary;
+            }
+        }
+
+        function drawNoise(ctx, width, height) {
+            if (params.static <= 0) return;
+            // Draw larger "grains" of noise for better performance and visibility
+            const grainSize = 2;
+            const count = (width * height * params.static) / (grainSize * grainSize);
+            
+            ctx.fillStyle = '#fff';
+            for (let i = 0; i < count; i++) {
+                const rx = Math.random() * width;
+                const ry = Math.random() * height;
+                ctx.fillRect(rx, ry, grainSize, grainSize);
+            }
+        }
+
+        function render() {
+            // --- 1. Render Latent Space (Mind's Eye) ---
+            latentCtx.fillStyle = COLORS.bg;
+            latentCtx.fillRect(0, 0, 400, 400);
+            
+            // Draw grid
+            latentCtx.strokeStyle = '#111';
+            latentCtx.lineWidth = 1;
+            for (let i = 0; i < 400; i += 20) {
+                latentCtx.beginPath(); latentCtx.moveTo(i, 0); latentCtx.lineTo(i, 400); latentCtx.stroke();
+                latentCtx.beginPath(); latentCtx.moveTo(0, i); latentCtx.lineTo(400, i); latentCtx.stroke();
+            }
+
+            // Draw Predicted Agent (STAY VIOLET - Invariant to observed color)
+            latentCtx.shadowBlur = 25;
+            latentCtx.shadowColor = COLORS.violet;
+            latentCtx.fillStyle = COLORS.violet;
+            latentCtx.beginPath();
+            latentCtx.arc(agent.x, agent.y, 14, 0, Math.PI * 2);
+            latentCtx.fill();
+            latentCtx.shadowBlur = 0;
+
+            // --- 2. Render Observation Space (Noisy Sensor) ---
+            obsCtx.fillStyle = COLORS.bg;
+            obsCtx.fillRect(0, 0, 400, 400);
+            
+            // Draw Actual Agent (SHIFTS COLOR)
+            obsCtx.fillStyle = agent.color;
+            obsCtx.shadowBlur = 15;
+            obsCtx.shadowColor = agent.color;
+            obsCtx.beginPath();
+            obsCtx.arc(agent.x, agent.y, 14, 0, Math.PI * 2);
+            obsCtx.fill();
+            obsCtx.shadowBlur = 0;
+
+            // Add Block Mask (Stationary Occlusion)
+            if (params.mask > 0) {
+                obsCtx.fillStyle = '#0a0a0a'; // Slightly lighter than BG to see it
+                const mx = 200 - params.mask/2;
+                const my = 200 - params.mask/2;
+                obsCtx.fillRect(mx, my, params.mask, params.mask);
+                obsCtx.strokeStyle = '#222';
+                obsCtx.lineWidth = 1;
+                obsCtx.strokeRect(mx, my, params.mask, params.mask);
+            }
+
+            // Add Static Noise on top
+            drawNoise(obsCtx, 400, 400);
+
+            requestAnimationFrame(() => {
+                update();
+                render();
+            });
+        }
+
+        render();
+    </script>
+</body>
+</html>
