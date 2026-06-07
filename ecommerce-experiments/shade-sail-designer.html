@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triangle Shade Sail Designer — webartests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #F8FAFC; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .animate-spin-slow { animation: spin 8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        #back-link {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+            z-index: 100;
+            transition: color 0.15s;
+        }
+        #back-link:hover { color: #aaa; }
+        input[type="range"] { accent-color: #0284c7; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Icon component wrapper for Lucide
+        const Icon = ({ name, className, size = 24, strokeWidth = 2 }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current) {
+                    lucide.createIcons({
+                        attrs: {
+                            class: className,
+                            'stroke-width': strokeWidth,
+                            width: size,
+                            height: size
+                        },
+                        nameAttr: 'data-lucide'
+                    });
+                }
+            }, [name, className, size, strokeWidth]);
+            return <i data-lucide={name} ref={iconRef} className={className}></i>;
+        };
+
+        const INVENTORY = [
+            { id: 'eq-8', type: 'Equilateral', label: "8' Equilateral", sides: [8, 8, 8] },
+            { id: 'eq-10', type: 'Equilateral', label: "10' Equilateral", sides: [10, 10, 10] },
+            { id: 'eq-12', type: 'Equilateral', label: "12' Equilateral", sides: [12, 12, 12] },
+            { id: 'eq-13', type: 'Equilateral', label: "13' Equilateral", sides: [13, 13, 13] },
+            { id: 'eq-15', type: 'Equilateral', label: "15' Equilateral", sides: [15, 15, 15] },
+            { id: 'eq-16', type: 'Equilateral', label: "16' Equilateral", sides: [16, 16, 16] },
+            { id: 'eq-18', type: 'Equilateral', label: "18' Equilateral", sides: [18, 18, 18] },
+            { id: 'eq-20', type: 'Equilateral', label: "20' Equilateral", sides: [20, 20, 20] },
+            { id: 'eq-24', type: 'Equilateral', label: "24' Equilateral", sides: [24, 24, 24] },
+            { id: 'ra-10', type: 'Right-Angled', label: "10' × 10' × 14.1' Right-Angled", sides: [10, 10, 14.1] },
+            { id: 'ra-12', type: 'Right-Angled', label: "12' × 12' × 17' Right-Angled", sides: [12, 12, 17] },
+            { id: 'ra-13', type: 'Right-Angled', label: "13' × 13' × 18' Right-Angled", sides: [13, 13, 18] },
+            { id: 'ra-14', type: 'Right-Angled', label: "14' × 14' × 19.8' Right-Angled", sides: [14, 14, 19.8] },
+            { id: 'ra-15', type: 'Right-Angled', label: "15' × 15' × 21.2' Right-Angled", sides: [15, 15, 21.2] },
+            { id: 'ra-16', type: 'Right-Angled', label: "16' × 16' × 22.6' Right-Angled", sides: [16, 16, 22.6] },
+            { id: 'ra-18', type: 'Right-Angled', label: "18' × 18' × 25.5' Right-Angled", sides: [18, 18, 25.5] },
+            { id: 'ra-20', type: 'Right-Angled', label: "20' × 20' × 28.3' Right-Angled", sides: [20, 20, 28.3] },
+            { id: 'iso-13', type: 'Isosceles', label: "13' × 10' × 10' Isosceles", sides: [13, 10, 10] },
+            { id: 'iso-16', type: 'Isosceles', label: "16' × 13' × 13' Isosceles", sides: [16, 13, 13] },
+            { id: 'iso-20', type: 'Isosceles', label: "20' × 16' × 16' Isosceles", sides: [20, 16, 16] }
+        ];
+
+        const COLORS = {
+            'Sand Beige': { hex: '#E6D5B8', border: '#C8B598', rgb: [230, 213, 184], text: 'text-amber-800', bg: 'bg-[#E6D5B8]' },
+            'Slate Gray': { hex: '#708090', border: '#576673', rgb: [112, 128, 144], text: 'text-slate-800', bg: 'bg-[#708090]' },
+            'Autumn Terracotta': { hex: '#C25A3F', border: '#9E442D', rgb: [194, 90, 63], text: 'text-orange-950', bg: 'bg-[#C25A3F]' },
+            'Bahama Ocean Blue': { hex: '#0096C7', border: '#007AA3', rgb: [0, 150, 199], text: 'text-sky-950', bg: 'bg-[#0096C7]' },
+            'Cream White': { hex: '#FFFDD0', border: '#E0DEB3', rgb: [255, 253, 208], text: 'text-yellow-950', bg: 'bg-[#FFFDD0]' }
+        };
+
+        const TEMPLATES = [
+            { id: 'cozy', name: 'Cozy 12\' Patio', desc: 'Perfect for small decks and tight seating areas.', postAB: 16.5, postBC: 16.5, postCA: 16.5, recSail: 'eq-12' },
+            { id: 'medium', name: 'Medium 16\' Asymmetric', desc: 'Ideal for custom backyard landscapes with uneven post spans.', postAB: 19.5, postBC: 17.0, postCA: 21.5, recSail: 'ra-13' },
+            { id: 'large', name: 'Large 20\' Corner Space', desc: 'Maximum coverage template for wide commercial patios.', postAB: 24.0, postBC: 22.0, postCA: 25.0, recSail: 'eq-18' }
+        ];
+
+        function App() {
+            const [selectedTemplate, setSelectedTemplate] = useState('cozy');
+            const [clearanceCheck, setClearanceCheck] = useState(false);
+            const [tensionSpace, setTensionSpace] = useState(1.5);
+            const [turnbuckleSpace, setTurnbuckleSpace] = useState(1.2);
+            const [selectedColor, setSelectedColor] = useState('Bahama Ocean Blue');
+            const [spacingMode, setSpacingMode] = useState('exact');
+            const [postAB, setPostAB] = useState(16.5);
+            const [postBC, setPostBC] = useState(16.5);
+            const [postCA, setPostCA] = useState(16.5);
+            const [fitsOnly, setFitsOnly] = useState(true);
+            const [selectedSailId, setSelectedSailId] = useState('eq-12');
+            const [compassAngle, setCompassAngle] = useState(0);
+            const [sunHour, setSunHour] = useState(13);
+            const [showToast, setShowToast] = useState(false);
+            const [toastMessage, setToastMessage] = useState('');
+
+            const canvasRef = useRef(null);
+            const isDraggingCompass = useRef(false);
+
+            const handleSelectTemplate = (tpl) => {
+                setSelectedTemplate(tpl.id);
+                setPostAB(tpl.postAB);
+                setPostBC(tpl.postBC);
+                setPostCA(tpl.postCA);
+                setSelectedSailId(tpl.recSail);
+            };
+
+            const formatFeetInches = (val) => {
+                const feet = Math.floor(val);
+                const inches = Math.round((val - feet) * 12);
+                return inches === 12 ? `${feet + 1}' 0"` : `${feet}' ${inches}"`;
+            };
+
+            const isTriangleValid = (a, b, c) => (a + b > c) && (b + c > a) && (c + a > b);
+            const isCurrentLayoutValid = isTriangleValid(postAB, postBC, postCA);
+
+            const solveTriangleCoords = (a, b, c) => {
+                if (!isTriangleValid(a, b, c)) return null;
+                const p0 = { x: 0, y: 0 };
+                const p1 = { x: a, y: 0 };
+                const cosAngle = (a * a + c * c - b * b) / (2 * a * c);
+                const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+                const p2 = { x: c * cosAngle, y: c * Math.sin(angle) };
+                return [p0, p1, p2];
+            };
+
+            const getAlignedSailCoordinates = (posts, sailSides) => {
+                const rawSail = solveTriangleCoords(sailSides[0], sailSides[1], sailSides[2]);
+                if (!rawSail || !posts) return null;
+                const centroidPosts = { x: (posts[0].x + posts[1].x + posts[2].x) / 3, y: (posts[0].y + posts[1].y + posts[2].y) / 3 };
+                const centroidSail = { x: (rawSail[0].x + rawSail[1].x + rawSail[2].x) / 3, y: (rawSail[0].y + rawSail[1].y + rawSail[2].y) / 3 };
+                const postsZero = posts.map(p => ({ x: p.x - centroidPosts.x, y: p.y - centroidPosts.y }));
+                const sailZero = rawSail.map(s => ({ x: s.x - centroidSail.x, y: s.y - centroidSail.y }));
+                let num = 0, den = 0;
+                for (let i = 0; i < 3; i++) {
+                    num += (sailZero[i].x * postsZero[i].y - sailZero[i].y * postsZero[i].x);
+                    den += (sailZero[i].x * postsZero[i].x + sailZero[i].y * postsZero[i].y);
+                }
+                const theta = Math.atan2(num, den);
+                return sailZero.map(s => {
+                    const rx = s.x * Math.cos(theta) - s.y * Math.sin(theta);
+                    const ry = s.x * Math.sin(theta) + s.y * Math.cos(theta);
+                    return { x: rx + centroidPosts.x, y: ry + centroidPosts.y };
+                });
+            };
+
+            const getAnalysisMetrics = () => {
+                if (!isCurrentLayoutValid) return null;
+                const posts = solveTriangleCoords(postAB, postBC, postCA);
+                const sail = INVENTORY.find(s => s.id === selectedSailId);
+                if (!posts || !sail) return null;
+                const alignedSail = getAlignedSailCoordinates(posts, sail.sides);
+                if (!alignedSail) return null;
+                const gaps = [], pullDeviations = [], edgeTensions = [];
+                const reqSpace = clearanceCheck ? (tensionSpace + turnbuckleSpace) : 0.5;
+
+                for (let i = 0; i < 3; i++) {
+                    const p = posts[i], s = alignedSail[i];
+                    const gap = Math.sqrt((p.x - s.x) ** 2 + (p.y - s.y) ** 2);
+                    gaps.push(gap);
+                    const prevIdx = (i + 2) % 3, nextIdx = (i + 1) % 3;
+                    const vecPrev = { x: alignedSail[prevIdx].x - s.x, y: alignedSail[prevIdx].y - s.y };
+                    const vecNext = { x: alignedSail[nextIdx].x - s.x, y: alignedSail[nextIdx].y - s.y };
+                    const lenPrev = Math.sqrt(vecPrev.x**2 + vecPrev.y**2), lenNext = Math.sqrt(vecNext.x**2 + vecNext.y**2);
+                    const uPrev = { x: vecPrev.x / lenPrev, y: vecPrev.y / lenPrev }, uNext = { x: vecNext.x / lenNext, y: vecNext.y / lenNext };
+                    const bisectIn = { x: uPrev.x + uNext.x, y: uPrev.y + uNext.y };
+                    const bisectInLen = Math.sqrt(bisectIn.x**2 + bisectIn.y**2);
+                    const uBisectOut = bisectInLen > 0.001 ? { x: -bisectIn.x / bisectInLen, y: -bisectIn.y / bisectInLen } : { x: 0, y: 0 };
+                    const vecChain = { x: p.x - s.x, y: p.y - s.y };
+                    const lenChain = Math.sqrt(vecChain.x**2 + vecChain.y**2);
+                    const uChain = lenChain > 0.001 ? { x: vecChain.x / lenChain, y: vecChain.y / lenChain } : { x: 1, y: 0 };
+                    const degDev = Math.acos(Math.max(-1, Math.min(1, uBisectOut.x * uChain.x + uBisectOut.y * uChain.y))) * (180 / Math.PI);
+                    pullDeviations.push(degDev);
+                }
+
+                [[0, 1], [1, 2], [2, 0]].forEach(([i, j], idx) => {
+                    const gI = gaps[i], gJ = gaps[j];
+                    const factorI = gI < reqSpace ? Math.max(15, (gI / reqSpace) * 100) : Math.min(100, 100 - (gI - reqSpace) * 2);
+                    const factorJ = gJ < reqSpace ? Math.max(15, (gJ / reqSpace) * 100) : Math.min(100, 100 - (gJ - reqSpace) * 2);
+                    const calculatedTension = ((factorI + factorJ) / 2) * Math.max(0.4, (Math.cos(pullDeviations[i] * Math.PI / 180) + Math.cos(pullDeviations[j] * Math.PI / 180)) / 2);
+                    edgeTensions.push(Math.round(Math.max(10, Math.min(100, calculatedTension))));
+                });
+
+                return { posts, alignedSail, gaps, pullDeviations, edgeTensions };
+            };
+
+            const metrics = getAnalysisMetrics();
+            const checkSailFits = (sail) => {
+                if (!isCurrentLayoutValid) return false;
+                const postsCoords = solveTriangleCoords(postAB, postBC, postCA);
+                const aligned = getAlignedSailCoordinates(postsCoords, sail.sides);
+                if (!aligned) return false;
+                const reqSpace = clearanceCheck ? (tensionSpace + turnbuckleSpace) : 0.5;
+                for (let i = 0; i < 3; i++) {
+                    if (Math.sqrt((postsCoords[i].x - aligned[i].x)**2 + (postsCoords[i].y - aligned[i].y)**2) < reqSpace) return false;
+                }
+                return true;
+            };
+
+            const handleCompassInput = (clientX, clientY) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = (clientX - rect.left) * (canvas.width / rect.width), y = (clientY - rect.top) * (canvas.height / rect.height);
+                setCompassAngle(Math.atan2(y - 60, x - (canvas.width - 60)) + Math.PI / 2);
+            };
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas || !metrics) return;
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+                ctx.scale(dpr, dpr);
+                const width = rect.width, height = rect.height;
+                ctx.clearRect(0, 0, width, height);
+
+                ctx.strokeStyle = '#F1F5F9'; ctx.lineWidth = 1;
+                for (let x = 0; x < width; x += 25) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
+                for (let y = 0; y < height; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
+
+                if (!isCurrentLayoutValid) return;
+                const { posts, alignedSail, gaps, pullDeviations, edgeTensions } = metrics;
+                const allX = [...posts.map(p => p.x), ...alignedSail.map(s => s.x)], allY = [...posts.map(p => p.y), ...alignedSail.map(s => s.y)];
+                const minX = Math.min(...allX), maxX = Math.max(...allX), minY = Math.min(...allY), maxY = Math.max(...allY);
+                const scale = 0.70 * Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1));
+                const offsetX = width / 2 - ((minX + maxX) / 2) * scale, offsetY = height / 2 - ((minY + maxY) / 2) * scale;
+                const toCanvas = (p) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY });
+                const cPosts = posts.map(toCanvas), cSail = alignedSail.map(toCanvas);
+
+                const shadowDir = ((sunHour - 12) * 15 * Math.PI / 180) + Math.PI - compassAngle;
+                const shadowS = Math.abs(sunHour - 12) * 3.5 + 8;
+                const sdx = Math.sin(shadowDir) * shadowS, sdy = -Math.cos(shadowDir) * shadowS;
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.12)'; ctx.beginPath(); ctx.moveTo(cSail[0].x + sdx, cSail[0].y + sdy);
+                for (let i = 0; i < 3; i++) {
+                    const next = (i + 1) % 3, cpX = (cSail[i].x + cSail[next].x) / 2 + sdx, cpY = (cSail[i].y + cSail[next].y) / 2 + sdy;
+                    const scX = (cSail[0].x + cSail[1].x + cSail[2].x) / 3 + sdx, scY = (cSail[0].y + cSail[1].y + cSail[2].y) / 3 + sdy;
+                    ctx.quadraticCurveTo(cpX + (scX - cpX) * 0.15, cpY + (scY - cpY) * 0.15, cSail[next].x + sdx, cSail[next].y + sdy);
+                }
+                ctx.closePath(); ctx.fill();
+
+                ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+                ctx.beginPath(); ctx.moveTo(cPosts[0].x, cPosts[0].y); ctx.lineTo(cPosts[1].x, cPosts[1].y); ctx.lineTo(cPosts[2].x, cPosts[2].y); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+
+                const colorObj = COLORS[selectedColor] || COLORS['Bahama Ocean Blue'];
+                ctx.fillStyle = `rgba(${colorObj.rgb[0]}, ${colorObj.rgb[1]}, ${colorObj.rgb[2]}, 0.85)`;
+                ctx.strokeStyle = colorObj.border; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(cSail[0].x, cSail[0].y);
+                const scX = (cSail[0].x + cSail[1].x + cSail[2].x) / 3, scY = (cSail[0].y + cSail[1].y + cSail[2].y) / 3;
+                for (let i = 0; i < 3; i++) {
+                    const next = (i + 1) % 3, midX = (cSail[i].x + cSail[next].x) / 2, midY = (cSail[i].y + cSail[next].y) / 2;
+                    const bf = edgeTensions[i] < 65 ? 0.16 : 0.08;
+                    ctx.quadraticCurveTo(midX + (scX - midX) * bf, midY + (scY - midY) * bf, cSail[next].x, cSail[next].y);
+                }
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.8; ctx.setLineDash([2, 2]);
+                for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(cSail[i].x, cSail[i].y); ctx.lineTo(cPosts[i].x, cPosts[i].y); ctx.stroke(); }
+                ctx.setLineDash([]);
+                
+                cPosts.forEach((post, idx) => {
+                    ctx.fillStyle = '#0F172A'; ctx.beginPath(); ctx.arc(post.x, post.y, 7, 0, 2 * Math.PI); ctx.fill();
+                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(post.x, post.y, 2.5, 0, 2 * Math.PI); ctx.fill();
+                    const dx = post.x - scX, dy = post.y - scY, d = Math.sqrt(dx*dx + dy*dy);
+                    ctx.fillStyle = '#0F172A'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+                    ctx.fillText(String.fromCharCode(65 + idx), post.x + (dx/d) * 16, post.y + (dy/d) * 16 + 4);
+                });
+
+                const cx = width - 60, cy = 60, cr = 35;
+                ctx.strokeStyle = '#475569'; ctx.lineWidth = 2.5; ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.beginPath(); ctx.arc(cx, cy, cr, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+                ctx.save(); ctx.translate(cx, cy); ctx.rotate(compassAngle);
+                ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.moveTo(0, -(cr - 8)); ctx.lineTo(5, -2); ctx.lineTo(-5, -2); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#64748B'; ctx.beginPath(); ctx.moveTo(0, cr - 8); ctx.lineTo(5, 2); ctx.lineTo(-5, 2); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }, [postAB, postBC, postCA, selectedColor, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, compassAngle, sunHour, isCurrentLayoutValid, metrics]);
+
+            const handleMouseDown = (e) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (canvasRef.current.width / rect.width), y = (e.clientY - rect.top) * (canvasRef.current.height / rect.height);
+                if (Math.sqrt((x - (canvasRef.current.width - 60))**2 + (y - 60)**2) <= 55) { isDraggingCompass.current = true; handleCompassInput(e.clientX, e.clientY); }
+            };
+
+            useEffect(() => {
+                const move = (e) => isDraggingCompass.current && handleCompassInput(e.clientX || e.touches[0].clientX, e.clientY || e.touches[0].clientY);
+                const up = () => isDraggingCompass.current = false;
+                window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+                window.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', up);
+                return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
+            }, []);
+
+            const triggerToast = (msg) => { setToastMessage(msg); setShowToast(true); setTimeout(() => setShowToast(false), 3000); };
+            const handleExportBOM = () => {
+                const selectedSail = INVENTORY.find(s => s.id === selectedSailId);
+                let text = `TRIANGLE SHADE SAIL DESIGN REPORT\nSail: ${selectedSail?.label}\nColor: ${selectedColor}\nPosts: A-B:${postAB}', B-C:${postBC}', C-A:${postCA}'`;
+                navigator.clipboard.writeText(text).then(() => triggerToast('📋 Engineering Blueprint copied!'));
+            };
+
+            return (
+                <div className="min-h-screen bg-[#F8FAFC] text-slate-800 pb-20">
+                    <a id="back-link" href="./">← Back</a>
+                    {showToast && <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slide-up"><Icon name="check-square" className="text-emerald-400" /><span>{toastMessage}</span></div>}
+                    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm px-4 lg:px-8 py-4 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-sky-600 p-2.5 rounded-xl text-white shadow-md"><Icon name="compass" className="animate-spin-slow" /></div>
+                            <div><h1 className="text-xl font-bold text-slate-950">Triangle Shade Designer</h1><p className="text-xs text-slate-500">Professional-Grade Layout Optimizer</p></div>
+                        </div>
+                        <a href="https://a.co/d/01QrNOLV" target="_blank" className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-md hover:from-amber-600 transition-all"><Icon name="anchor" size={16} /><span>View On Amazon</span></a>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-4 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        <div className="lg:col-span-5 space-y-6">
+                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                                <h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">1</span>Templates</h2>
+                                <div className="grid gap-2">{TEMPLATES.map(tpl => <button key={tpl.id} onClick={() => handleSelectTemplate(tpl)} className={`text-left p-3 rounded-xl border-2 transition-all ${selectedTemplate === tpl.id ? 'border-sky-500 bg-sky-50' : 'border-slate-100 hover:border-slate-200'}`}><div className="font-semibold text-sm">{tpl.name}</div><div className="text-[11px] text-slate-500">{tpl.desc}</div></button>)}</div>
+                            </section>
+
+                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                                <div className="flex justify-between border-b pb-2"><h2 className="font-bold text-slate-950 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">2</span>Spacing</h2>
+                                <div className="bg-slate-100 p-0.5 rounded-lg flex"><button onClick={() => setSpacingMode('range')} className={`text-[10px] font-bold px-2 py-1 rounded ${spacingMode === 'range' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Range</button><button onClick={() => setSpacingMode('exact')} className={`text-[10px] font-bold px-2 py-1 rounded ${spacingMode === 'exact' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Exact</button></div></div>
+                                {['AB','BC','CA'].map(s => <div key={s} className="space-y-1"><div className="flex justify-between text-[11px] font-bold"><span>Post {s[0]} ↔ {s[1]}</span><span className="text-sky-600">{formatFeetInches(s === 'AB' ? postAB : s === 'BC' ? postBC : postCA)}</span></div><input type="range" min="6" max="35" step={spacingMode === 'exact' ? '0.1' : '1'} value={s === 'AB' ? postAB : s === 'BC' ? postBC : postCA} onChange={e => handleSliderChange(s, parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer" /></div>)}
+                            </section>
+
+                            {metrics && <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4"><h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><Icon name="activity" size={16} className="text-sky-600" />Analysis</h2><div className="space-y-3">{metrics.edgeTensions.map((t, i) => <div key={i} className="space-y-1"><div className="flex justify-between text-[11px] font-semibold"><span>Edge {['AB','BC','CA'][i]} Tension</span><span className={t < 65 ? 'text-red-500' : 'text-emerald-500'}>{t}%</span></div><div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-500 ${t < 65 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${t}%` }} /></div></div>)}</div></section>}
+                        </div>
+
+                        <div className="lg:col-span-7 space-y-6">
+                            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                                <div className="px-5 py-4 border-b bg-slate-50 flex justify-between items-center"><div><h2 className="font-bold text-slate-900 text-sm">Structural Canvas</h2><p className="text-[10px] text-slate-500">Real-time vector alignment and load shadows</p></div><div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border text-[10px] font-bold"><Icon name="sun" size={14} className="text-amber-500" />Sun:<input type="range" min="8" max="16" value={sunHour} onChange={e => setSunHour(parseInt(e.target.value))} className="w-12 h-1" />{sunHour > 12 ? sunHour-12 + 'PM' : sunHour + 'AM'}</div></div>
+                                <div className="bg-slate-50 p-4"><canvas ref={canvasRef} onMouseDown={handleMouseDown} className="w-full bg-white border border-slate-200 rounded-xl shadow-inner aspect-square cursor-crosshair block touch-none" /></div>
+                            </section>
+
+                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                                <h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">3</span>Compatible Inventory</h2>
+                                <div className="overflow-hidden rounded-xl border border-slate-100"><table className="min-w-full text-left text-[11px]"><thead className="bg-slate-50"><tr><th className="px-3 py-2">Size</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Status</th></tr></thead><tbody className="divide-y">{INVENTORY.map(s => { const fits = checkSailFits(s); return <tr key={s.id} onClick={() => fits && setSelectedSailId(s.id)} className={`cursor-pointer transition-colors ${selectedSailId === s.id ? 'bg-sky-50 text-sky-900 font-bold' : fits ? 'hover:bg-slate-50' : 'opacity-30 pointer-events-none'}`}><td className="px-3 py-2">{s.label}</td><td className="px-3 py-2 text-slate-500">{s.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-600">{fits ? 'FITS ✓' : ''}</td></tr> })}</tbody></table></div>
+                                <button onClick={handleExportBOM} className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-lg active:scale-95"><Icon name="copy" size={14} />Export Blueprint</button>
+                            </section>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
