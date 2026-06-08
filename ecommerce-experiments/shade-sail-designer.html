@@ -10,48 +10,44 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { background-color: #F8FAFC; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .animate-spin-slow { animation: spin 8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-slide-up { animation: slideUp 0.3s ease-out; }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        input[type="range"] { accent-color: #3b82f6; }
+        .dark { color-scheme: dark; }
         #back-link {
             position: fixed;
             top: 24px;
             left: 24px;
-            color: #555;
+            color: #888;
             text-decoration: none;
             font-size: 14px;
             z-index: 100;
             transition: color 0.15s;
         }
-        #back-link:hover { color: #aaa; }
-        input[type="range"] { accent-color: #0284c7; }
+        #back-link:hover { color: #fff; }
+        .light #back-link { color: #555; }
+        .light #back-link:hover { color: #000; }
     </style>
 </head>
-<body>
+<body class="transition-colors duration-200 overflow-x-hidden">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        // Icon component wrapper for Lucide
-        const Icon = ({ name, className, size = 24, strokeWidth = 2 }) => {
+        const Icon = ({ name, className = '', size = 24, strokeWidth = 2 }) => {
             const iconRef = useRef(null);
             useEffect(() => {
-                if (iconRef.current) {
-                    lucide.createIcons({
-                        attrs: {
-                            class: className,
-                            'stroke-width': strokeWidth,
-                            width: size,
-                            height: size
-                        },
-                        nameAttr: 'data-lucide'
-                    });
-                }
-            }, [name, className, size, strokeWidth]);
-            return <i data-lucide={name} ref={iconRef} className={className}></i>;
+                if (window.lucide) lucide.createIcons();
+            }, [name]);
+
+            return (
+                <span className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
+                    <i data-lucide={name} style={{ width: size, height: size, strokeWidth }}></i>
+                </span>
+            );
         };
 
         const INVENTORY = [
@@ -86,269 +82,562 @@
         };
 
         const TEMPLATES = [
-            { id: 'cozy', name: 'Cozy 12\' Patio', desc: 'Perfect for small decks and tight seating areas.', postAB: 16.5, postBC: 16.5, postCA: 16.5, recSail: 'eq-12' },
-            { id: 'medium', name: 'Medium 16\' Asymmetric', desc: 'Ideal for custom backyard landscapes with uneven post spans.', postAB: 19.5, postBC: 17.0, postCA: 21.5, recSail: 'ra-13' },
-            { id: 'large', name: 'Large 20\' Corner Space', desc: 'Maximum coverage template for wide commercial patios.', postAB: 24.0, postBC: 22.0, postCA: 25.0, recSail: 'eq-18' }
+            { id: 'cozy', name: 'Cozy 12\' Patio', desc: 'Small decks & areas.', postAB: 16.5, postBC: 16.5, postCA: 16.5, recSail: 'eq-12' },
+            { id: 'medium', name: 'Medium 16\' Asymmetric', desc: 'Custom landscapes.', postAB: 19.5, postBC: 17.0, postCA: 21.5, recSail: 'ra-13' },
+            { id: 'large', name: 'Large 20\' Corner Space', desc: 'Max commercial coverage.', postAB: 24.0, postBC: 22.0, postCA: 25.0, recSail: 'eq-18' }
         ];
 
+        // --- STABLE SHARED COMPONENTS ---
+        
+        const SmartInput = ({ label, value, onChange, min, max, step = 0.1, subLabel }) => {
+            const [active, setActive] = useState(false);
+            const [localValue, setLocalValue] = useState(value.toFixed(1));
+            const containerRef = useRef(null);
+            
+            useEffect(() => { if (!active) setLocalValue(value.toFixed(1)); }, [value, active]);
+
+            const handleInputChange = (e) => {
+                const val = e.target.value; setLocalValue(val);
+                const parsed = parseFloat(val); if (!isNaN(parsed) && parsed >= min && parsed <= max) onChange(parsed);
+            };
+
+            const handleKeyDown = (e) => { if (e.key === 'Enter') e.target.blur(); };
+
+            return (
+                <div 
+                    className="space-y-1 relative" 
+                    ref={containerRef}
+                    onFocus={() => setActive(true)} 
+                    onBlur={(e) => {
+                        if (e.relatedTarget && containerRef.current.contains(e.relatedTarget)) return;
+                        setActive(false); setLocalValue(value.toFixed(1));
+                    }}
+                >
+                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        <span>{label}</span>
+                        {subLabel && <span className="text-sky-500 font-mono">{subLabel}</span>}
+                    </div>
+                    <input 
+                        type="number" step={step} value={localValue} 
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        className="w-full bg-slate-100 dark:bg-[#252525] border border-slate-200 dark:border-[#333] rounded-lg px-3 py-1.5 text-sm font-bold focus:border-sky-500 outline-none"
+                    />
+                    {active && (
+                        <div 
+                            className="absolute left-0 right-0 top-full mt-2 p-3 bg-white dark:bg-[#1a1a1a] border dark:border-[#333] rounded-xl shadow-xl z-50 animate-slide-up"
+                            onPointerDown={e => e.preventDefault()}
+                            tabIndex="-1"
+                        >
+                            <input 
+                                type="range" min={min} max={max} step={step} value={value} 
+                                tabIndex="-1"
+                                onChange={e => {
+                                    const v = parseFloat(e.target.value);
+                                    onChange(v); setLocalValue(v.toFixed(1));
+                                }}
+                                className="w-full cursor-pointer h-4" 
+                                style={{ accentColor: '#3b82f6' }} 
+                            />
+                            <div className="flex justify-between text-[10px] mt-1 text-slate-400 font-mono">
+                                <span>{min}'</span><span>{value.toFixed(1)}'</span><span>{max}'</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         function App() {
-            const [selectedTemplate, setSelectedTemplate] = useState('cozy');
+            const [darkMode, setDarkMode] = useState(true);
+            const [showSaved, setShowSaved] = useState(false);
+            const [showSiteConfig, setShowSiteConfig] = useState(false);
+            const [selectedColor, setSelectedColor] = useState('Bahama Ocean Blue');
+            
+            // --- PERSISTENT SAVED DESIGNS ---
+            const [savedSails, setSavedSails] = useState(() => {
+                const local = localStorage.getItem('shade-sail-designs');
+                return local ? JSON.parse(local) : [
+                    { id: 'initial', name: 'Patio Project', sides: { AB: 13.5, BC: 15.0, CA: 15.0 }, heights: [5, 5, 0], latitude: 37.3, selectedSailId: 'eq-12', compassAngle: 305 * Math.PI / 180 }
+                ];
+            });
+            const [activeId, setActiveId] = useState(savedSails[0].id);
+
+            const activeIndex = useMemo(() => {
+                const idx = savedSails.findIndex(s => s.id === activeId);
+                return idx !== -1 ? idx : 0;
+            }, [savedSails, activeId]);
+
+            const activeDesign = savedSails[activeIndex];
+
+            const updateActiveDesign = (updates) => {
+                setSavedSails(prev => prev.map(s => s.id === activeId ? { ...s, ...updates } : s));
+            };
+
+            const setSides = (newSidesOrFn) => {
+                const nextSides = typeof newSidesOrFn === 'function' ? newSidesOrFn(activeDesign.sides) : newSidesOrFn;
+                updateActiveDesign({ sides: nextSides });
+            };
+
+            const setHeights = (newHeightsOrFn) => {
+                const nextHeights = typeof newHeightsOrFn === 'function' ? newHeightsOrFn(activeDesign.heights) : newHeightsOrFn;
+                updateActiveDesign({ heights: nextHeights });
+            };
+
+            const setLatitude = (lat) => updateActiveDesign({ latitude: lat });
+            const setCompassAngle = (ang) => updateActiveDesign({ compassAngle: ang });
+            const setSelectedSailId = (id) => updateActiveDesign({ selectedSailId: id });
+
+            const handleNewDesign = () => {
+                const newId = 'design-' + Date.now();
+                const newDesign = { id: newId, name: 'Untitled Layout', sides: { AB: 15, BC: 15, CA: 15 }, heights: [0, 0, 0], latitude: activeDesign.latitude, selectedSailId: 'eq-12', compassAngle: activeDesign.compassAngle };
+                setSavedSails(prev => [...prev, newDesign]);
+                setActiveId(newId); setShowSaved(true);
+            };
+
+            const handleDuplicate = (e, design) => {
+                e.stopPropagation();
+                const newId = 'design-' + Date.now();
+                const dupe = { ...design, id: newId, name: `${design.name} (Copy)` };
+                setSavedSails(prev => [...prev, dupe]);
+                setActiveId(newId);
+            };
+
+            const handleRename = (id, newName) => {
+                setSavedSails(prev => prev.map(s => s.id === id ? { ...s, name: newName } : s));
+            };
+
+            const handleDelete = (e, id) => {
+                e.stopPropagation(); if (savedSails.length <= 1) return;
+                const nextSails = savedSails.filter(s => s.id !== id);
+                setSavedSails(nextSails);
+                if (activeId === id) setActiveId(nextSails[0].id);
+            };
+
+            useEffect(() => { localStorage.setItem('shade-sail-designs', JSON.stringify(savedSails)); }, [savedSails]);
+
+            const triggerToast = (msg) => { setToastMessage(msg); setShowToast(true); setTimeout(() => setShowToast(false), 3000); };
+
+            const detectLocation = (e) => {
+                if (e) e.stopPropagation();
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => { setLatitude(parseFloat(pos.coords.latitude.toFixed(1))); triggerToast('📍 Location detected!'); },
+                        () => triggerToast('❌ Unable to detect location')
+                    );
+                }
+            };
+
+            const { sides, heights, latitude, selectedSailId, compassAngle } = activeDesign;
+            const { AB: postAB, BC: postBC, CA: postCA } = sides;
+            
+            const [sunHour, setSunHour] = useState(13);
             const [clearanceCheck, setClearanceCheck] = useState(false);
             const [tensionSpace, setTensionSpace] = useState(1.5);
             const [turnbuckleSpace, setTurnbuckleSpace] = useState(1.2);
-            const [selectedColor, setSelectedColor] = useState('Bahama Ocean Blue');
-            const [spacingMode, setSpacingMode] = useState('exact');
-            const [postAB, setPostAB] = useState(16.5);
-            const [postBC, setPostBC] = useState(16.5);
-            const [postCA, setPostCA] = useState(16.5);
             const [fitsOnly, setFitsOnly] = useState(true);
-            const [selectedSailId, setSelectedSailId] = useState('eq-12');
-            const [compassAngle, setCompassAngle] = useState(0);
-            const [sunHour, setSunHour] = useState(13);
             const [showToast, setShowToast] = useState(false);
             const [toastMessage, setToastMessage] = useState('');
 
             const canvasRef = useRef(null);
-            const isDraggingCompass = useRef(false);
+            const draggingCornerIdx = useRef(null);
+            const viewportRef = useRef({ scale: 1, offsetX: 0, offsetY: 0, cPosts: [] });
+            
+            useEffect(() => {
+                document.documentElement.className = darkMode ? 'dark' : 'light';
+                document.body.className = darkMode ? 'bg-[#0d0d0d] text-[#eee]' : 'bg-[#F8FAFC] text-slate-800';
+            }, [darkMode]);
 
-            const handleSelectTemplate = (tpl) => {
-                setSelectedTemplate(tpl.id);
-                setPostAB(tpl.postAB);
-                setPostBC(tpl.postBC);
-                setPostCA(tpl.postCA);
-                setSelectedSailId(tpl.recSail);
-            };
-
-            const formatFeetInches = (val) => {
-                const feet = Math.floor(val);
-                const inches = Math.round((val - feet) * 12);
-                return inches === 12 ? `${feet + 1}' 0"` : `${feet}' ${inches}"`;
-            };
+            const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+            useEffect(() => {
+                const canvas = canvasRef.current; if (!canvas) return;
+                const observer = new ResizeObserver(entries => {
+                    if (entries[0]) {
+                        const { width, height } = entries[0].contentRect;
+                        if (width > 0 && height > 0) setCanvasSize({ width, height });
+                    }
+                });
+                observer.observe(canvas); return () => observer.disconnect();
+            }, []);
 
             const isTriangleValid = (a, b, c) => (a + b > c) && (b + c > a) && (c + a > b);
             const isCurrentLayoutValid = isTriangleValid(postAB, postBC, postCA);
 
-            const solveTriangleCoords = (a, b, c) => {
-                if (!isTriangleValid(a, b, c)) return null;
-                const p0 = { x: 0, y: 0 };
-                const p1 = { x: a, y: 0 };
-                const cosAngle = (a * a + c * c - b * b) / (2 * a * c);
-                const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
-                const p2 = { x: c * cosAngle, y: c * Math.sin(angle) };
-                return [p0, p1, p2];
+            const posts = useMemo(() => {
+                const a = postAB, b = postBC, c = postCA;
+                if (!isTriangleValid(a, b, c)) return [{x:0,y:0}, {x:a,y:0}, {x:a/2, y:a}];
+                const cosA = (a*a + c*c - b*b) / (2*a*c);
+                const sinA = Math.sqrt(Math.max(0, 1 - cosA*cosA));
+                return [{ x: 0, y: 0 }, { x: a, y: 0 }, { x: c * cosA, y: c * sinA }];
+            }, [sides]);
+
+            const trueAB = useMemo(() => Math.sqrt(postAB**2 + Math.pow(heights[1]-heights[0], 2)), [postAB, heights]);
+            const trueBC = useMemo(() => Math.sqrt(postBC**2 + Math.pow(heights[2]-heights[1], 2)), [postBC, heights]);
+            const trueCA = useMemo(() => Math.sqrt(postCA**2 + Math.pow(heights[0]-heights[2], 2)), [postCA, heights]);
+
+            const getAlignedSailCoordinates = (postCoords, sailSides) => {
+                const a = sailSides[0], b = sailSides[1], c = sailSides[2];
+                const cosA = (a*a + c*c - b*b) / (2*a*c);
+                const sinA = Math.sqrt(Math.max(0, 1 - cosA*cosA));
+                const rawSail = [{x:0,y:0}, {x:a,y:0}, {x:c*cosA,y:c*sinA}];
+                const cp = { x: (postCoords[0].x+postCoords[1].x+postCoords[2].x)/3, y: (postCoords[0].y+postCoords[1].y+postCoords[2].y)/3 };
+                const cs = { x: (rawSail[0].x+rawSail[1].x+rawSail[2].x)/3, y: (rawSail[0].y+rawSail[1].y+rawSail[2].y)/3 };
+                const pZ = postCoords.map(p => ({x:p.x-cp.x, y:p.y-cp.y})), sZ = rawSail.map(s => ({x:s.x-cs.x, y:s.y-cs.y}));
+                let n=0, d=0;
+                for(let i=0;i<3;i++) { n += (sZ[i].x*pZ[i].y - sZ[i].y*pZ[i].x); d += (sZ[i].x*pZ[i].x + sZ[i].y*pZ[i].y); }
+                const t = Math.atan2(n, d);
+                return sZ.map(s => ({ x: (s.x*Math.cos(t) - s.y*Math.sin(t)) + cp.x, y: (s.x*Math.sin(t) + s.y*Math.cos(t)) + cp.y }));
             };
 
-            const getAlignedSailCoordinates = (posts, sailSides) => {
-                const rawSail = solveTriangleCoords(sailSides[0], sailSides[1], sailSides[2]);
-                if (!rawSail || !posts) return null;
-                const centroidPosts = { x: (posts[0].x + posts[1].x + posts[2].x) / 3, y: (posts[0].y + posts[1].y + posts[2].y) / 3 };
-                const centroidSail = { x: (rawSail[0].x + rawSail[1].x + rawSail[2].x) / 3, y: (rawSail[0].y + rawSail[1].y + rawSail[2].y) / 3 };
-                const postsZero = posts.map(p => ({ x: p.x - centroidPosts.x, y: p.y - centroidPosts.y }));
-                const sailZero = rawSail.map(s => ({ x: s.x - centroidSail.x, y: s.y - centroidSail.y }));
-                let num = 0, den = 0;
-                for (let i = 0; i < 3; i++) {
-                    num += (sailZero[i].x * postsZero[i].y - sailZero[i].y * postsZero[i].x);
-                    den += (sailZero[i].x * postsZero[i].x + sailZero[i].y * postsZero[i].y);
-                }
-                const theta = Math.atan2(num, den);
-                return sailZero.map(s => {
-                    const rx = s.x * Math.cos(theta) - s.y * Math.sin(theta);
-                    const ry = s.x * Math.sin(theta) + s.y * Math.cos(theta);
-                    return { x: rx + centroidPosts.x, y: ry + centroidPosts.y };
-                });
-            };
-
-            const getAnalysisMetrics = () => {
+            const metrics = useMemo(() => {
                 if (!isCurrentLayoutValid) return null;
-                const posts = solveTriangleCoords(postAB, postBC, postCA);
                 const sail = INVENTORY.find(s => s.id === selectedSailId);
-                if (!posts || !sail) return null;
+                if (!sail) return null;
                 const alignedSail = getAlignedSailCoordinates(posts, sail.sides);
                 if (!alignedSail) return null;
-                const gaps = [], pullDeviations = [], edgeTensions = [];
+                const gaps = [], edgeTensions = [], pullDeviations = [];
                 const reqSpace = clearanceCheck ? (tensionSpace + turnbuckleSpace) : 0.5;
-
                 for (let i = 0; i < 3; i++) {
                     const p = posts[i], s = alignedSail[i];
-                    const gap = Math.sqrt((p.x - s.x) ** 2 + (p.y - s.y) ** 2);
-                    gaps.push(gap);
-                    const prevIdx = (i + 2) % 3, nextIdx = (i + 1) % 3;
-                    const vecPrev = { x: alignedSail[prevIdx].x - s.x, y: alignedSail[prevIdx].y - s.y };
-                    const vecNext = { x: alignedSail[nextIdx].x - s.x, y: alignedSail[nextIdx].y - s.y };
-                    const lenPrev = Math.sqrt(vecPrev.x**2 + vecPrev.y**2), lenNext = Math.sqrt(vecNext.x**2 + vecNext.y**2);
-                    const uPrev = { x: vecPrev.x / lenPrev, y: vecPrev.y / lenPrev }, uNext = { x: vecNext.x / lenNext, y: vecNext.y / lenNext };
-                    const bisectIn = { x: uPrev.x + uNext.x, y: uPrev.y + uNext.y };
-                    const bisectInLen = Math.sqrt(bisectIn.x**2 + bisectIn.y**2);
-                    const uBisectOut = bisectInLen > 0.001 ? { x: -bisectIn.x / bisectInLen, y: -bisectIn.y / bisectInLen } : { x: 0, y: 0 };
-                    const vecChain = { x: p.x - s.x, y: p.y - s.y };
-                    const lenChain = Math.sqrt(vecChain.x**2 + vecChain.y**2);
-                    const uChain = lenChain > 0.001 ? { x: vecChain.x / lenChain, y: vecChain.y / lenChain } : { x: 1, y: 0 };
-                    const degDev = Math.acos(Math.max(-1, Math.min(1, uBisectOut.x * uChain.x + uBisectOut.y * uChain.y))) * (180 / Math.PI);
-                    pullDeviations.push(degDev);
+                    gaps.push(Math.sqrt((p.x-s.x)**2 + (p.y-s.y)**2));
+                    const prev = (i+2)%3, next = (i+1)%3;
+                    const v1 = { x: alignedSail[prev].x-s.x, y: alignedSail[prev].y-s.y };
+                    const v2 = { x: alignedSail[next].x-s.x, y: alignedSail[next].y-s.y };
+                    const m1 = Math.sqrt(v1.x**2+v1.y**2)||1, m2 = Math.sqrt(v2.x**2+v2.y**2)||1;
+                    const bisectIn = { x: v1.x/m1 + v2.x/m2, y: v1.y/m1 + v2.y/m2 };
+                    const mB = Math.sqrt(bisectIn.x**2+bisectIn.y**2)||1;
+                    const uBisectOut = { x: -bisectIn.x/mB, y: -bisectIn.y/mB };
+                    const chainVec = { x: p.x-s.x, y: p.y-s.y };
+                    const mC = Math.sqrt(chainVec.x**2+chainVec.y**2)||1;
+                    const dot = uBisectOut.x*(chainVec.x/mC) + uBisectOut.y*(chainVec.y/mC);
+                    pullDeviations.push(Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI);
                 }
-
-                [[0, 1], [1, 2], [2, 0]].forEach(([i, j], idx) => {
-                    const gI = gaps[i], gJ = gaps[j];
-                    const factorI = gI < reqSpace ? Math.max(15, (gI / reqSpace) * 100) : Math.min(100, 100 - (gI - reqSpace) * 2);
-                    const factorJ = gJ < reqSpace ? Math.max(15, (gJ / reqSpace) * 100) : Math.min(100, 100 - (gJ - reqSpace) * 2);
-                    const calculatedTension = ((factorI + factorJ) / 2) * Math.max(0.4, (Math.cos(pullDeviations[i] * Math.PI / 180) + Math.cos(pullDeviations[j] * Math.PI / 180)) / 2);
-                    edgeTensions.push(Math.round(Math.max(10, Math.min(100, calculatedTension))));
+                [[0,1],[1,2],[2,0]].forEach(([i,j]) => {
+                    const fI = gaps[i]<reqSpace ? Math.max(15,(gaps[i]/reqSpace)*100) : Math.min(100,100-(gaps[i]-reqSpace)*2);
+                    const fJ = gaps[j]<reqSpace ? Math.max(15,(gaps[j]/reqSpace)*100) : Math.min(100,100-(gaps[j]-reqSpace)*2);
+                    edgeTensions.push(Math.round((fI+fJ)/2));
                 });
+                return { alignedSail, gaps, edgeTensions, pullDeviations };
+            }, [posts, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, isCurrentLayoutValid]);
 
-                return { posts, alignedSail, gaps, pullDeviations, edgeTensions };
-            };
-
-            const metrics = getAnalysisMetrics();
-            const checkSailFits = (sail) => {
-                if (!isCurrentLayoutValid) return false;
-                const postsCoords = solveTriangleCoords(postAB, postBC, postCA);
-                const aligned = getAlignedSailCoordinates(postsCoords, sail.sides);
-                if (!aligned) return false;
-                const reqSpace = clearanceCheck ? (tensionSpace + turnbuckleSpace) : 0.5;
-                for (let i = 0; i < 3; i++) {
-                    if (Math.sqrt((postsCoords[i].x - aligned[i].x)**2 + (postsCoords[i].y - aligned[i].y)**2) < reqSpace) return false;
+            const handleInteraction = (clientX, clientY) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = clientX - rect.left, y = clientY - rect.top;
+                const cx = canvasSize.width - 55, cy = 55;
+                if (Math.sqrt((x-cx)**2+(y-cy)**2) <= 45) {
+                    const move = (e) => {
+                        const r = canvasRef.current.getBoundingClientRect();
+                        const cX = e.clientX || (e.touches && e.touches[0].clientX);
+                        const cY = e.clientY || (e.touches && e.touches[0].clientY);
+                        setCompassAngle(Math.atan2(cY - r.top - cy, cX - r.left - cx) + Math.PI/2);
+                    };
+                    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
+                    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+                    window.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', up);
+                    return;
                 }
-                return true;
+                const v = viewportRef.current;
+                for (let i = 0; i < 3; i++) {
+                    if (v.cPosts[i] && Math.sqrt((x-v.cPosts[i].x)**2 + (y-v.cPosts[i].y)**2) < 25) {
+                        draggingCornerIdx.current = i;
+                        const move = (e) => {
+                            if (draggingCornerIdx.current === null) return;
+                            const r = canvasRef.current.getBoundingClientRect();
+                            const cX = e.clientX || (e.touches && e.touches[0].clientX);
+                            const cY = e.clientY || (e.touches && e.touches[0].clientY);
+                            const nx = (cX - r.left - v.offsetX)/v.scale, ny = (cY - r.top - v.offsetY)/v.scale;
+                            setSides(prev => {
+                                const p = posts; const next = { ...prev };
+                                if (draggingCornerIdx.current === 0) { next.AB = Math.sqrt((nx-p[1].x)**2+(ny-p[1].y)**2); next.CA = Math.sqrt((nx-p[2].x)**2+(ny-p[2].y)**2); }
+                                else if (draggingCornerIdx.current === 1) { next.AB = Math.sqrt((nx-p[0].x)**2+(ny-p[0].y)**2); next.BC = Math.sqrt((nx-p[2].x)**2+(ny-p[2].y)**2); }
+                                else if (draggingCornerIdx.current === 2) { next.BC = Math.sqrt((nx-p[1].x)**2+(ny-p[1].y)**2); next.CA = Math.sqrt((nx-p[0].x)**2+(ny-p[0].y)**2); }
+                                return next;
+                            });
+                        };
+                        const up = () => { draggingCornerIdx.current = null; window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
+                        window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+                        window.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', up);
+                        return;
+                    }
+                }
             };
 
-            const handleCompassInput = (clientX, clientY) => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-                const rect = canvas.getBoundingClientRect();
-                const x = (clientX - rect.left) * (canvas.width / rect.width), y = (clientY - rect.top) * (canvas.height / rect.height);
-                setCompassAngle(Math.atan2(y - 60, x - (canvas.width - 60)) + Math.PI / 2);
-            };
+            const sortedInventory = useMemo(() => {
+                if (!isCurrentLayoutValid) return INVENTORY;
+                return [...INVENTORY].map(sail => {
+                    const aligned = getAlignedSailCoordinates(posts, sail.sides);
+                    let fits = true, totalGap = 0;
+                    const reqSpace = clearanceCheck ? (tensionSpace + turnbuckleSpace) : 0.5;
+                    for (let i = 0; i < 3; i++) {
+                        const dist = Math.sqrt((posts[i].x - aligned[i].x)**2 + (posts[i].y - aligned[i].y)**2);
+                        if (dist < reqSpace) fits = false; totalGap += dist;
+                    }
+                    return { ...sail, fits, totalGap };
+                }).sort((a, b) => { if (a.fits !== b.fits) return a.fits ? -1 : 1; return a.totalGap - b.totalGap; });
+            }, [posts, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, isCurrentLayoutValid]);
+
+            const filteredInventory = fitsOnly ? sortedInventory.filter(sail => sail.fits) : sortedInventory;
 
             useEffect(() => {
-                const canvas = canvasRef.current;
-                if (!canvas || !metrics) return;
-                const ctx = canvas.getContext('2d');
-                const dpr = window.devicePixelRatio || 1;
-                const rect = canvas.getBoundingClientRect();
-                canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
-                ctx.scale(dpr, dpr);
-                const width = rect.width, height = rect.height;
-                ctx.clearRect(0, 0, width, height);
+                const canvas = canvasRef.current; if (!canvas || canvasSize.width === 0) return;
+                const ctx = canvas.getContext('2d'), dpr = window.devicePixelRatio || 1;
+                canvas.width = canvasSize.width * dpr; canvas.height = canvasSize.height * dpr;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                const width = canvasSize.width, height = canvasSize.height;
+                const theme = { bg: '#5c647a', grid: '#6a728a', postSpan: '#f87171', sailEdge: '#fbbf24', chain: '#38bdf8', post: '#fbbf24' };
 
-                ctx.strokeStyle = '#F1F5F9'; ctx.lineWidth = 1;
-                for (let x = 0; x < width; x += 25) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
-                for (let y = 0; y < height; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
+                const drawSimpleLabel = (text, x, y, color, size = 9, align = 'center') => {
+                    ctx.save(); ctx.font = `bold ${size}px monospace`; ctx.textAlign = align;
+                    ctx.shadowColor = 'rgba(0,0,0,1)'; ctx.shadowBlur = 3; ctx.fillStyle = color;
+                    ctx.fillText(text, x, y); ctx.restore();
+                };
 
-                if (!isCurrentLayoutValid) return;
-                const { posts, alignedSail, gaps, pullDeviations, edgeTensions } = metrics;
-                const allX = [...posts.map(p => p.x), ...alignedSail.map(s => s.x)], allY = [...posts.map(p => p.y), ...alignedSail.map(s => s.y)];
-                const minX = Math.min(...allX), maxX = Math.max(...allX), minY = Math.min(...allY), maxY = Math.max(...allY);
-                const scale = 0.70 * Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1));
-                const offsetX = width / 2 - ((minX + maxX) / 2) * scale, offsetY = height / 2 - ((minY + maxY) / 2) * scale;
-                const toCanvas = (p) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY });
-                const cPosts = posts.map(toCanvas), cSail = alignedSail.map(toCanvas);
+                ctx.fillStyle = theme.bg; ctx.fillRect(0, 0, width, height);
+                ctx.strokeStyle = theme.grid; ctx.lineWidth = 1;
+                for (let x = 0; x <= width; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
+                for (let y = 0; y <= height; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
 
-                const shadowDir = ((sunHour - 12) * 15 * Math.PI / 180) + Math.PI - compassAngle;
-                const shadowS = Math.abs(sunHour - 12) * 3.5 + 8;
-                const sdx = Math.sin(shadowDir) * shadowS, sdy = -Math.cos(shadowDir) * shadowS;
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.12)'; ctx.beginPath(); ctx.moveTo(cSail[0].x + sdx, cSail[0].y + sdy);
-                for (let i = 0; i < 3; i++) {
-                    const next = (i + 1) % 3, cpX = (cSail[i].x + cSail[next].x) / 2 + sdx, cpY = (cSail[i].y + cSail[next].y) / 2 + sdy;
-                    const scX = (cSail[0].x + cSail[1].x + cSail[2].x) / 3 + sdx, scY = (cSail[0].y + cSail[1].y + cSail[2].y) / 3 + sdy;
-                    ctx.quadraticCurveTo(cpX + (scX - cpX) * 0.15, cpY + (scY - cpY) * 0.15, cSail[next].x + sdx, cSail[next].y + sdy);
+                const minX = Math.min(...posts.map(p => p.x)), maxX = Math.max(...posts.map(p => p.x));
+                const minY = Math.min(...posts.map(p => p.y)), maxY = Math.max(...posts.map(p => p.y));
+                const scale = 0.65 * Math.min(width / (maxX - minX || 1), height / (maxY - minY || 1));
+                const offsetX = width/2 - ((minX + maxX)/2)*scale, offsetY = height/2 - ((minY+maxY)/2)*scale;
+                const toCanvas = (p) => ({ x: p.x*scale + offsetX, y: p.y*scale + offsetY });
+                const cPosts = posts.map(toCanvas);
+                viewportRef.current = { scale, offsetX, offsetY, cPosts };
+
+                if (!isCurrentLayoutValid || !metrics) {
+                    cPosts.forEach((post, idx) => {
+                        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(post.x, post.y, 8, 0, 2*Math.PI); ctx.fill();
+                        drawSimpleLabel(`Post ${String.fromCharCode(65 + idx)}`, post.x, post.y - 12, '#fff', 10);
+                    });
+                    return;
                 }
-                ctx.closePath(); ctx.fill();
+                const { alignedSail, gaps, edgeTensions } = metrics;
+                const cSail = alignedSail.map(toCanvas), scX = (cSail[0].x+cSail[1].x+cSail[2].x)/3, scY = (cSail[0].y+cSail[1].y+cSail[2].y)/3;
 
-                ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+                const drawRotatedLabel = (text, p1, p2, color, size = 8, baseOffset = 16, outward = true) => {
+                    const mx = (p1.x+p2.x)/2, my = (p1.y+p2.y)/2;
+                    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                    let nx = -(p2.y - p1.y), ny = p2.x - p1.x;
+                    const len = Math.sqrt(nx*nx + ny*ny) || 1; nx /= len; ny /= len;
+                    const dx = scX - mx, dy = scY - my; const dot = dx*nx + dy*ny;
+                    const dir = outward ? (dot > 0 ? -1 : 1) : (dot > 0 ? 1 : -1);
+                    const finalX = mx + nx * dir * baseOffset, finalY = my + ny * dir * baseOffset;
+                    ctx.save(); ctx.translate(finalX, finalY); ctx.rotate(angle + (Math.abs(angle) > Math.PI/2 ? Math.PI : 0));
+                    ctx.font = `bold ${size}px monospace`; ctx.textAlign = 'center';
+                    ctx.shadowColor = 'rgba(0,0,0,1)'; ctx.shadowBlur = 3; ctx.fillStyle = color;
+                    ctx.fillText(text, 0, 4); ctx.restore();
+                };
+
+                const hRad = (sunHour - 12) * 15 * (Math.PI / 180);
+                const shadowAngle = hRad + compassAngle;
+                const sdx = Math.sin(shadowAngle) * 50, sdy = -Math.cos(shadowAngle) * 50;
+                ctx.save(); ctx.shadowBlur = 15; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.fillStyle = 'rgba(0,0,0,0.3)'; 
+                ctx.beginPath(); ctx.moveTo(cSail[0].x + sdx, cSail[0].y + sdy);
+                for(let i=0;i<3;i++) {
+                    const n = (i+1)%3, cpX = (cSail[i].x+cSail[n].x)/2+sdx, cpY = (cSail[i].y+cSail[n].y)/2+sdy;
+                    ctx.quadraticCurveTo(cpX+(scX+sdx-cpX)*0.15, cpY+(scY+sdy-cpY)*0.15, cSail[n].x+sdx, cSail[n].y+sdy);
+                }
+                ctx.fill(); ctx.restore();
+
+                ctx.strokeStyle = 'rgba(248, 113, 113, 0.2)'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
                 ctx.beginPath(); ctx.moveTo(cPosts[0].x, cPosts[0].y); ctx.lineTo(cPosts[1].x, cPosts[1].y); ctx.lineTo(cPosts[2].x, cPosts[2].y); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+                
+                [[postAB, trueAB, 0, 1], [postBC, trueBC, 1, 2], [postCA, trueCA, 2, 0]].forEach(([floor, trueL, i, j]) => {
+                    const text = Math.abs(trueL - floor) > 0.1 ? `${trueL.toFixed(1)}' (${floor.toFixed(1)}' Floor)` : `${floor.toFixed(1)} ft`;
+                    drawRotatedLabel(text, cPosts[i], cPosts[j], theme.postSpan, 9, 20, true);
+                });
 
                 const colorObj = COLORS[selectedColor] || COLORS['Bahama Ocean Blue'];
                 ctx.fillStyle = `rgba(${colorObj.rgb[0]}, ${colorObj.rgb[1]}, ${colorObj.rgb[2]}, 0.85)`;
-                ctx.strokeStyle = colorObj.border; ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.moveTo(cSail[0].x, cSail[0].y);
-                const scX = (cSail[0].x + cSail[1].x + cSail[2].x) / 3, scY = (cSail[0].y + cSail[1].y + cSail[2].y) / 3;
-                for (let i = 0; i < 3; i++) {
-                    const next = (i + 1) % 3, midX = (cSail[i].x + cSail[next].x) / 2, midY = (cSail[i].y + cSail[next].y) / 2;
-                    const bf = edgeTensions[i] < 65 ? 0.16 : 0.08;
-                    ctx.quadraticCurveTo(midX + (scX - midX) * bf, midY + (scY - midY) * bf, cSail[next].x, cSail[next].y);
+                ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cSail[0].x, cSail[0].y);
+                for(let i=0;i<3;i++) {
+                    const n = (i+1)%3, midX = (cSail[i].x+cSail[n].x)/2, midY = (cSail[i].y+cSail[n].y)/2;
+                    ctx.quadraticCurveTo(midX+(scX-midX)*(edgeTensions[i]<65?0.16:0.08), midY+(scY-midY)*(edgeTensions[i]<65?0.16:0.08), cSail[n].x, cSail[n].y);
                 }
-                ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.fill(); ctx.stroke();
+                const sail = INVENTORY.find(s => s.id === selectedSailId);
+                if (sail) {
+                    drawRotatedLabel(`${sail.sides[0].toFixed(1)} ft`, cSail[0], cSail[1], theme.sailEdge, 8, 14, false);
+                    drawRotatedLabel(`${sail.sides[1].toFixed(1)} ft`, cSail[1], cSail[2], theme.sailEdge, 8, 14, false);
+                    drawRotatedLabel(`${sail.sides[2].toFixed(1)} ft`, cSail[2], cSail[0], theme.sailEdge, 8, 14, false);
+                }
 
-                ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.8; ctx.setLineDash([2, 2]);
-                for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(cSail[i].x, cSail[i].y); ctx.lineTo(cPosts[i].x, cPosts[i].y); ctx.stroke(); }
+                for(let i=0;i<3;i++) { 
+                    const isBadAngle = metrics.pullDeviations[i] > 45;
+                    ctx.strokeStyle = isBadAngle ? '#ef4444' : 'rgba(255,255,255,0.3)'; 
+                    ctx.lineWidth = isBadAngle ? 2.5 : 1.5; ctx.setLineDash(isBadAngle ? [] : [2, 2]);
+                    ctx.beginPath(); ctx.moveTo(cSail[i].x, cSail[i].y); ctx.lineTo(cPosts[i].x, cPosts[i].y); ctx.stroke(); 
+                    drawRotatedLabel(`${gaps[i].toFixed(1)}'`, cSail[i], cPosts[i], isBadAngle ? '#f87171' : theme.chain, 8, 8, true);
+                    if (isBadAngle) {
+                        ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(cPosts[i].x, cPosts[i].y, 12, 0, 2*Math.PI); 
+                        ctx.globalAlpha = 0.2; ctx.fill(); ctx.globalAlpha = 1.0;
+                    }
+                }
                 ctx.setLineDash([]);
-                
+
                 cPosts.forEach((post, idx) => {
-                    ctx.fillStyle = '#0F172A'; ctx.beginPath(); ctx.arc(post.x, post.y, 7, 0, 2 * Math.PI); ctx.fill();
-                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(post.x, post.y, 2.5, 0, 2 * Math.PI); ctx.fill();
-                    const dx = post.x - scX, dy = post.y - scY, d = Math.sqrt(dx*dx + dy*dy);
-                    ctx.fillStyle = '#0F172A'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
-                    ctx.fillText(String.fromCharCode(65 + idx), post.x + (dx/d) * 16, post.y + (dy/d) * 16 + 4);
+                    ctx.save(); ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(255,255,255,0.3)';
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(post.x, post.y, 8, 0, 2*Math.PI); ctx.fill();
+                    ctx.fillStyle = theme.post; ctx.beginPath(); ctx.arc(post.x, post.y, 5.5, 0, 2*Math.PI); ctx.fill();
+                    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(post.x, post.y, 2, 0, 2*Math.PI); ctx.fill();
+                    ctx.restore(); 
+                    drawSimpleLabel(`Post ${String.fromCharCode(65 + idx)}`, post.x, post.y - 20, '#fff', 10);
+                    drawSimpleLabel(`H: ${heights[idx].toFixed(1)}'`, post.x, post.y - 10, '#38bdf8', 8);
                 });
 
-                const cx = width - 60, cy = 60, cr = 35;
-                ctx.strokeStyle = '#475569'; ctx.lineWidth = 2.5; ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                const cx = width - 55, cy = 55, cr = 30;
+                ctx.save(); ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(30,41,59,0.85)';
                 ctx.beginPath(); ctx.arc(cx, cy, cr, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-                ctx.save(); ctx.translate(cx, cy); ctx.rotate(compassAngle);
-                ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.moveTo(0, -(cr - 8)); ctx.lineTo(5, -2); ctx.lineTo(-5, -2); ctx.closePath(); ctx.fill();
-                ctx.fillStyle = '#64748B'; ctx.beginPath(); ctx.moveTo(0, cr - 8); ctx.lineTo(5, 2); ctx.lineTo(-5, 2); ctx.closePath(); ctx.fill();
-                ctx.restore();
-            }, [postAB, postBC, postCA, selectedColor, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, compassAngle, sunHour, isCurrentLayoutValid, metrics]);
+                ctx.translate(cx, cy); ctx.rotate(compassAngle);
+                ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(0, -(cr-6)); ctx.lineTo(5, 0); ctx.lineTo(-5, 0); ctx.fill();
+                ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(0, cr-6); ctx.lineTo(5, 0); ctx.lineTo(-5, 0); ctx.fill();
+                ctx.restore(); 
+                drawSimpleLabel('N', cx, cy - cr + 10, '#fff', 9);
+                const deg = Math.round(((compassAngle * 180 / Math.PI) % 360 + 360) % 360);
+                drawSimpleLabel(`${deg}°`, cx, cy + cr + 12, '#94a3b8', 10);
 
-            const handleMouseDown = (e) => {
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = (e.clientX - rect.left) * (canvasRef.current.width / rect.width), y = (e.clientY - rect.top) * (canvasRef.current.height / rect.height);
-                if (Math.sqrt((x - (canvasRef.current.width - 60))**2 + (y - 60)**2) <= 55) { isDraggingCompass.current = true; handleCompassInput(e.clientX, e.clientY); }
+                // --- CANVAS METADATA (For PNG Export) ---
+                const timeStr = sunHour > 12 ? (sunHour-12) + 'PM' : (sunHour === 12 ? '12PM' : sunHour + 'AM');
+                drawSimpleLabel(`SOLAR TIME: ${timeStr}`, 15, height - 15, '#94a3b8', 9, 'left');
+            }, [darkMode, activeId, savedSails, selectedColor, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, compassAngle, sunHour, isCurrentLayoutValid, metrics, postAB, postBC, postCA, canvasSize, latitude]);
+
+            const handleSavePNG = () => {
+                const canvas = canvasRef.current; if (!canvas) return;
+                const link = document.createElement('a');
+                link.download = `shade-sail-${activeDesign.name.replace(/\s+/g, '-').toLowerCase()}-${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL('image/png'); link.click();
+                triggerToast('🖼️ Snapshot saved!');
             };
 
-            useEffect(() => {
-                const move = (e) => isDraggingCompass.current && handleCompassInput(e.clientX || e.touches[0].clientX, e.clientY || e.touches[0].clientY);
-                const up = () => isDraggingCompass.current = false;
-                window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
-                window.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', up);
-                return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('touchmove', move); window.removeEventListener('touchend', up); };
-            }, []);
-
-            const triggerToast = (msg) => { setToastMessage(msg); setShowToast(true); setTimeout(() => setShowToast(false), 3000); };
             const handleExportBOM = () => {
                 const selectedSail = INVENTORY.find(s => s.id === selectedSailId);
-                let text = `TRIANGLE SHADE SAIL DESIGN REPORT\nSail: ${selectedSail?.label}\nColor: ${selectedColor}\nPosts: A-B:${postAB}', B-C:${postBC}', C-A:${postCA}'`;
-                navigator.clipboard.writeText(text).then(() => triggerToast('📋 Engineering Blueprint copied!'));
+                let text = `DESIGN: ${activeDesign.name}\nSail: ${selectedSail?.label}\nColor: ${selectedColor}\nPosts: A-B:${postAB.toFixed(1)}', B-C:${postBC.toFixed(1)}', C-A:${postCA.toFixed(1)}'`;
+                navigator.clipboard.writeText(text).then(() => triggerToast('📋 Specs copied!'));
             };
 
             return (
-                <div className="min-h-screen bg-[#F8FAFC] text-slate-800 pb-20">
+                <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
                     <a id="back-link" href="./">← Back</a>
                     {showToast && <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slide-up"><Icon name="check-square" className="text-emerald-400" /><span>{toastMessage}</span></div>}
-                    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm px-4 lg:px-8 py-4 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-sky-600 p-2.5 rounded-xl text-white shadow-md"><Icon name="compass" className="animate-spin-slow" /></div>
-                            <div><h1 className="text-xl font-bold text-slate-950">Triangle Shade Designer</h1><p className="text-xs text-slate-500">Professional-Grade Layout Optimizer</p></div>
-                        </div>
-                        <a href="https://a.co/d/01QrNOLV" target="_blank" className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-md hover:from-amber-600 transition-all"><Icon name="anchor" size={16} /><span>View On Amazon</span></a>
+                    <header className="sticky top-0 z-40 bg-white dark:bg-[#1a1a1a] border-b border-slate-200 dark:border-[#2a2a2a] shadow-sm px-4 lg:px-8 py-4 flex justify-between items-center">
+                        <div className="flex items-center gap-3"><div className="bg-sky-600 p-2.5 rounded-xl text-white shadow-md"><Icon name="compass" className="animate-spin-slow" /></div><div><h1 className="text-xl font-bold text-slate-950 dark:text-white">Triangle Shade Designer</h1><p className="text-xs text-slate-500 dark:text-slate-400">Professional-Grade Layout Optimizer</p></div></div>
+                        <div className="flex items-center gap-3"><button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-lg bg-slate-100 dark:bg-[#2a2a2a] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#333] transition-all"><Icon name={darkMode ? 'sun' : 'moon'} size={18} /></button><a href="https://a.co/d/01QrNOLV" target="_blank" className="hidden sm:flex bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl items-center gap-2 shadow-md hover:from-amber-600 transition-all"><Icon name="anchor" size={16} /><span>View On Amazon</span></a></div>
                     </header>
 
                     <main className="max-w-7xl mx-auto px-4 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
                         <div className="lg:col-span-5 space-y-6">
-                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                                <h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">1</span>Templates</h2>
-                                <div className="grid gap-2">{TEMPLATES.map(tpl => <button key={tpl.id} onClick={() => handleSelectTemplate(tpl)} className={`text-left p-3 rounded-xl border-2 transition-all ${selectedTemplate === tpl.id ? 'border-sky-500 bg-sky-50' : 'border-slate-100 hover:border-slate-200'}`}><div className="font-semibold text-sm">{tpl.name}</div><div className="text-[11px] text-slate-500">{tpl.desc}</div></button>)}</div>
+                            <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] overflow-hidden shadow-sm">
+                                <button onClick={() => setShowSaved(!showSaved)} className="w-full px-5 py-4 flex justify-between items-center bg-slate-50 dark:bg-[#222] hover:bg-slate-100 dark:hover:bg-[#282828] transition-colors">
+                                    <div className="flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">1</span><h2 className="font-bold text-slate-950 dark:text-white text-sm uppercase tracking-tight">Saved Designs</h2></div>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={(e) => { e.stopPropagation(); handleNewDesign(); }} className="text-[10px] font-bold text-sky-600 hover:text-sky-500 flex items-center gap-1 transition-colors"><Icon name="plus" size={12} /> New Project</button>
+                                        <Icon name={showSaved ? 'chevron-up' : 'chevron-down'} size={16} className="text-slate-400" />
+                                    </div>
+                                </button>
+                                {showSaved && (
+                                    <div className="p-5 space-y-3 animate-slide-up border-t dark:border-[#333]">
+                                        {savedSails.map(s => (
+                                            <div key={s.id} onClick={() => setActiveId(s.id)} className={`group p-3 rounded-xl border-2 transition-all cursor-pointer ${activeId === s.id ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-slate-100 dark:border-[#333] hover:border-slate-200 dark:hover:border-[#444]'}`}>
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <input className="bg-transparent font-semibold text-sm outline-none w-full" value={s.name} onClick={e => e.stopPropagation()} onChange={e => handleRename(s.id, e.target.value)} />
+                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={e => handleDuplicate(e, s)} title="Duplicate" className="p-1 hover:text-sky-500"><Icon name="copy" size={14}/></button>
+                                                        <button onClick={e => handleDelete(e, s.id)} title="Delete" className="p-1 hover:text-red-500"><Icon name="trash" size={14}/></button>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 dark:text-slate-400">AB: {s.sides.AB.toFixed(1)}' · BC: {s.sides.BC.toFixed(1)}' · CA: {s.sides.CA.toFixed(1)}'</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </section>
 
-                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                                <div className="flex justify-between border-b pb-2"><h2 className="font-bold text-slate-950 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">2</span>Spacing</h2>
-                                <div className="bg-slate-100 p-0.5 rounded-lg flex"><button onClick={() => setSpacingMode('range')} className={`text-[10px] font-bold px-2 py-1 rounded ${spacingMode === 'range' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Range</button><button onClick={() => setSpacingMode('exact')} className={`text-[10px] font-bold px-2 py-1 rounded ${spacingMode === 'exact' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Exact</button></div></div>
-                                {['AB','BC','CA'].map(s => <div key={s} className="space-y-1"><div className="flex justify-between text-[11px] font-bold"><span>Post {s[0]} ↔ {s[1]}</span><span className="text-sky-600">{formatFeetInches(s === 'AB' ? postAB : s === 'BC' ? postBC : postCA)}</span></div><input type="range" min="6" max="35" step={spacingMode === 'exact' ? '0.1' : '1'} value={s === 'AB' ? postAB : s === 'BC' ? postBC : postCA} onChange={e => handleSliderChange(s, parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer" /></div>)}
+                            <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] overflow-hidden shadow-sm">
+                                <button onClick={() => setShowSiteConfig(!showSiteConfig)} className="w-full px-5 py-4 flex justify-between items-center bg-slate-50 dark:bg-[#222] hover:bg-slate-100 dark:hover:bg-[#282828] transition-colors">
+                                    <div className="flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">2</span><h2 className="font-bold text-slate-950 dark:text-white text-sm uppercase tracking-tight">Site & Solar</h2></div>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={detectLocation} className="text-[10px] font-bold text-sky-600 hover:text-sky-500 flex items-center gap-1 transition-colors"><Icon name="navigation" size={10} /> Use My Location</button>
+                                        <Icon name={showSiteConfig ? 'chevron-up' : 'chevron-down'} size={16} className="text-slate-400" />
+                                    </div>
+                                </button>
+                                {showSiteConfig && (
+                                    <div className="p-5 space-y-4 animate-slide-up border-t dark:border-[#333]">
+                                        <div className="flex flex-wrap gap-2">
+                                            {[{ name: 'Miami', lat: 25.8 }, { name: 'San Jose', lat: 37.3 }, { name: 'New York', lat: 40.7 }, { name: 'London', lat: 51.5 }, { name: 'Sydney', lat: -33.9 }].map(city => (
+                                                <button key={city.name} onClick={() => setLatitude(city.lat)} className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold transition-all ${Math.abs(latitude - city.lat) < 0.5 ? 'bg-sky-500 border-sky-500 text-white' : 'border-slate-200 dark:border-[#333] text-slate-500 hover:border-sky-500'}`}>{city.name}</button>
+                                            ))}
+                                        </div>
+                                        <SmartInput label="Project Latitude" value={latitude} onChange={setLatitude} min={-90} max={90} subLabel={latitude > 0 ? `${latitude}° N` : `${Math.abs(latitude)}° S`} />
+                                        <div className="flex items-center gap-2 text-[10px] text-slate-500 italic"><Icon name="info" size={12} /><span>Latitude affects sun path and shadow depth.</span></div>
+                                    </div>
+                                )}
                             </section>
 
-                            {metrics && <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4"><h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><Icon name="activity" size={16} className="text-sky-600" />Analysis</h2><div className="space-y-3">{metrics.edgeTensions.map((t, i) => <div key={i} className="space-y-1"><div className="flex justify-between text-[11px] font-semibold"><span>Edge {['AB','BC','CA'][i]} Tension</span><span className={t < 65 ? 'text-red-500' : 'text-emerald-500'}>{t}%</span></div><div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-500 ${t < 65 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${t}%` }} /></div></div>)}</div></section>}
+                            <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] p-5 shadow-sm space-y-5">
+                                <h2 className="font-bold text-slate-950 dark:text-white border-b dark:border-[#2a2a2a] pb-2 flex items-center gap-2 uppercase text-sm tracking-tight"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">3</span>Sides & Elevations</h2>
+                                <div className="space-y-4">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-[#222] px-2 py-1 rounded inline-block">Post Elevations (Height)</div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {['A','B','C'].map((p, idx) => (
+                                            <div key={p} className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-slate-500 block">Height {p}</label>
+                                                <input type="number" step="0.5" value={heights[idx]} onChange={e => { const nh = [...heights]; nh[idx] = parseFloat(e.target.value) || 0; setHeights(nh); }} className="w-full bg-slate-100 dark:bg-[#252525] border dark:border-[#333] rounded-lg px-2 py-1.5 text-xs font-bold focus:border-sky-500 outline-none" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="pt-2 border-t dark:border-[#333] space-y-4">
+                                        <div className="flex justify-between items-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-[#222] px-2 py-1 rounded">Floor Distances (Plan View)</div><span className="text-[9px] text-sky-600 font-bold italic">Auto-calculates True 3D Edge</span></div>
+                                        {['AB','BC','CA'].map(s => {
+                                            const floor = s === 'AB' ? postAB : s === 'BC' ? postBC : postCA;
+                                            const trueL = s === 'AB' ? trueAB : s === 'BC' ? trueBC : trueCA;
+                                            return <div key={s} className="space-y-2"><SmartInput label={`Side ${s[0]} ↔ ${s[1]}`} value={floor} onChange={val => setSides(prev => ({...prev, [s]: val}))} min={6} max={35} subLabel={Math.abs(trueL-floor)>0.1 ? `3D True: ${trueL.toFixed(1)}'` : null} /></div>;
+                                        })}
+                                    </div>
+                                </div>
+                            </section>
+
+                            {metrics && <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] p-5 shadow-sm space-y-4">
+                                <h2 className="font-bold text-slate-950 dark:text-white border-b dark:border-[#2a2a2a] pb-2 flex items-center gap-2 uppercase text-sm tracking-tight"><Icon name="activity" size={16} className="text-sky-600" />Structural Analysis</h2>
+                                {metrics.pullDeviations.some(d => d > 45) && (
+                                    <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-xl flex gap-3 items-start animate-pulse">
+                                        <Icon name="alert-triangle" className="text-red-500 shrink-0" size={18} />
+                                        <div><div className="text-[10px] font-bold text-red-500 uppercase tracking-tight">Impossible Tension Angle</div><p className="text-[9px] text-red-400/80 leading-tight mt-1">Posts must pull away from sail corners. A corner is pulling too sharply, preventing tension.</p></div>
+                                    </div>
+                                )}
+                                <div className="space-y-3">{metrics.edgeTensions.map((t, i) => <div key={i} className="space-y-1"><div className="flex justify-between text-[11px] font-semibold"><span>Edge {['AB','BC','CA'][i]} Tension</span><span className={t < 65 ? 'text-red-500' : 'text-emerald-500'}>{t}%</span></div><div className="w-full bg-slate-100 dark:bg-[#333] h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-500 ${t < 65 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${t}%` }} /></div></div>)}</div>
+                            </section>}
                         </div>
 
                         <div className="lg:col-span-7 space-y-6">
-                            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                                <div className="px-5 py-4 border-b bg-slate-50 flex justify-between items-center"><div><h2 className="font-bold text-slate-900 text-sm">Structural Canvas</h2><p className="text-[10px] text-slate-500">Real-time vector alignment and load shadows</p></div><div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border text-[10px] font-bold"><Icon name="sun" size={14} className="text-amber-500" />Sun:<input type="range" min="8" max="16" value={sunHour} onChange={e => setSunHour(parseInt(e.target.value))} className="w-12 h-1" />{sunHour > 12 ? sunHour-12 + 'PM' : sunHour + 'AM'}</div></div>
-                                <div className="bg-slate-50 p-4"><canvas ref={canvasRef} onMouseDown={handleMouseDown} className="w-full bg-white border border-slate-200 rounded-xl shadow-inner aspect-square cursor-crosshair block touch-none" /></div>
+                            <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] shadow-sm overflow-hidden flex flex-col">
+                                <div className="px-5 py-4 border-b dark:border-[#2a2a2a] bg-slate-50 dark:bg-[#252525] flex justify-between items-center gap-4 flex-wrap">
+                                    <div><h2 className="font-bold text-slate-900 dark:text-white text-sm">Interactive Structural View</h2><p className="text-[10px] text-slate-500 dark:text-slate-400">Drag posts to adjust footprint · Shadow casts AWAY from sun</p></div>
+                                    <div className="flex flex-col gap-2 min-w-[180px]">
+                                        <div className="flex items-center gap-2 bg-white dark:bg-[#1a1a1a] px-2 py-1.5 rounded-lg border dark:border-[#333] text-[10px] font-bold">
+                                            <Icon name="sun" size={14} className="text-amber-500" />
+                                            <input type="range" min="8" max="20" value={sunHour} onChange={e => setSunHour(parseInt(e.target.value))} className="flex-grow h-1" />
+                                            <span className="w-10 text-right">{sunHour > 12 ? (sunHour-12) + 'PM' : (sunHour === 12 ? '12PM' : sunHour + 'AM')}</span>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            {[10, 12, 14, 16, 18].map(h => (
+                                                <button key={h} onClick={() => setSunHour(h)} className={`flex-1 py-1 rounded text-[8px] font-bold transition-all border ${sunHour === h ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white dark:bg-[#1a1a1a] border-slate-200 dark:border-[#333] text-slate-500 hover:border-amber-500'}`}>{h > 12 ? (h-12)+'P' : (h === 12 ? '12P' : h+'A')}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 dark:bg-[#252525] p-4 space-y-4">
+                                    <canvas ref={canvasRef} onMouseDown={e => handleInteraction(e.nativeEvent.clientX, e.nativeEvent.clientY)} onTouchStart={e => handleInteraction(e.touches[0].clientX, e.touches[0].clientY)} className="w-full bg-white dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded-xl shadow-inner aspect-square cursor-default block touch-none" />
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={handleExportBOM} className="bg-slate-900 dark:bg-sky-600 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-sky-500 transition-all shadow-lg active:scale-95"><Icon name="copy" size={14} />Copy Specs</button>
+                                        <button onClick={handleSavePNG} className="bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all shadow-lg active:scale-95"><Icon name="camera" size={14} />Save Snapshot</button>
+                                    </div>
+                                </div>
                             </section>
-
-                            <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                                <h2 className="font-bold text-slate-950 border-b pb-2 flex items-center gap-2"><span className="w-5 h-5 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center text-[10px]">3</span>Compatible Inventory</h2>
-                                <div className="overflow-hidden rounded-xl border border-slate-100"><table className="min-w-full text-left text-[11px]"><thead className="bg-slate-50"><tr><th className="px-3 py-2">Size</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Status</th></tr></thead><tbody className="divide-y">{INVENTORY.map(s => { const fits = checkSailFits(s); return <tr key={s.id} onClick={() => fits && setSelectedSailId(s.id)} className={`cursor-pointer transition-colors ${selectedSailId === s.id ? 'bg-sky-50 text-sky-900 font-bold' : fits ? 'hover:bg-slate-50' : 'opacity-30 pointer-events-none'}`}><td className="px-3 py-2">{s.label}</td><td className="px-3 py-2 text-slate-500">{s.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-600">{fits ? 'FITS ✓' : ''}</td></tr> })}</tbody></table></div>
-                                <button onClick={handleExportBOM} className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-lg active:scale-95"><Icon name="copy" size={14} />Export Blueprint</button>
+                            <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] p-5 shadow-sm space-y-4">
+                                <h2 className="font-bold text-slate-950 dark:text-white border-b dark:border-[#2a2a2a] pb-2 flex items-center gap-2 uppercase text-sm tracking-tight"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">4</span>Compatible Inventory</h2>
+                                <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-[#333]"><table className="min-w-full text-left text-[11px]"><thead className="bg-slate-50 dark:bg-[#252525]"><tr className="dark:text-white"><th className="px-3 py-2">Size</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Status</th></tr></thead><tbody className="divide-y dark:divide-[#333]">{filteredInventory.map(s => { return <tr key={s.id} onClick={() => s.fits && setSelectedSailId(s.id)} className={`cursor-pointer transition-colors ${selectedSailId === s.id ? 'bg-sky-50 dark:bg-sky-900/40 text-sky-900 dark:text-sky-100 font-bold' : s.fits ? 'hover:bg-slate-50 dark:hover:bg-[#333]' : 'opacity-30 pointer-events-none'}`}><td className="px-3 py-2">{s.label}</td><td className="px-3 py-2 text-slate-500 dark:text-slate-400">{s.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-600">{s.fits ? 'FITS ✓' : ''}</td></tr> })}</tbody></table></div>
                             </section>
                         </div>
                     </main>

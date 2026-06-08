@@ -73,3 +73,4 @@ A dedicated renderer for thermal simulation data.
 - **AR Testing:** Requires HTTPS (use `npx localtunnel` or `Cloudflare Tunnel`) for camera access on real devices.
 - **Modifications:** Always perform "surgical" updates to single-file HTML pages. Ensure CSS and JS remain inline unless a shared utility is explicitly requested.
 - **Validation:** When fixing bugs in simulations (e.g., coordinate mapping in `engraving-modes/`), prioritize empirical verification of the rendering logic and coordinate math.
+- **High-DPI Canvas Rendering:** All interactive canvas components (like the Shade Sail Designer) MUST use a `ResizeObserver` to manage buffer sizing. NEVER rely on direct `getBoundingClientRect()` calls in `useEffect` for initial render, as this causes a persistent "First Render Bug" (blur/distortion) before user interaction. This logic is mandatory.
