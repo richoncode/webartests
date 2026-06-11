@@ -163,34 +163,53 @@ $('#btn-center').addEventListener('click', () => {
   if (engine.pos) map.setView([engine.pos.lat, engine.pos.lng], Math.max(map.getZoom(), 15));
 });
 
-// ---------- compass (rotate map with device heading) ----------
-let compassOn = false;
+// ---------- compass ----------
+// Two modes: 'follow' (default — map rotates with device heading) and
+// 'north' (north locked to the top). The button's needle always points
+// to map north, whatever the current bearing.
+let compassMode = 'north';
 const compassBtn = $('#btn-compass');
-compassBtn.addEventListener('click', async () => {
-  if (compassOn) {
+const compassNeedle = $('#compass-needle');
+
+function updateNeedle() {
+  compassNeedle.style.transform = `rotate(${map.getBearing()}deg)`;
+}
+map.on('rotate', updateNeedle);
+
+async function setCompassMode(mode, { silent = false } = {}) {
+  if (mode === 'follow') {
+    if (!window.DeviceOrientationEvent || !map.compassBearing) {
+      if (!silent) ui.toast('🧭 No compass on this device — north locked');
+      mode = 'north';
+    } else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+: must be called from a user gesture.
+      try {
+        if ((await DeviceOrientationEvent.requestPermission()) !== 'granted') {
+          if (!silent) ui.toast('🧭 Compass permission denied — north locked');
+          mode = 'north';
+        }
+      } catch (e) {
+        mode = 'north';
+      }
+    }
+  }
+  compassMode = mode;
+  if (mode === 'follow') {
+    map.compassBearing.enable();
+    compassBtn.classList.add('follow');
+    follow = true;
+    if (!silent) ui.toast('🧭 Map follows your heading');
+  } else {
     if (map.compassBearing) map.compassBearing.disable();
     map.setBearing(0);
-    compassOn = false;
-    compassBtn.style.color = '';
-    return;
+    compassBtn.classList.remove('follow');
+    if (!silent) ui.toast('🧭 North locked to top');
   }
-  if (!window.DeviceOrientationEvent || !map.compassBearing) {
-    return ui.toast('🧭 No compass on this device');
-  }
-  try {
-    // iOS 13+ requires an explicit permission prompt from a user gesture.
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const perm = await DeviceOrientationEvent.requestPermission();
-      if (perm !== 'granted') return ui.toast('🧭 Compass permission denied');
-    }
-    map.compassBearing.enable();
-    compassOn = true;
-    compassBtn.style.color = 'var(--accent)';
-    follow = true;
-    ui.toast('🧭 Map now follows your heading');
-  } catch (e) {
-    ui.toast('🧭 Compass not available');
-  }
+  updateNeedle();
+}
+
+compassBtn.addEventListener('click', () => {
+  setCompassMode(compassMode === 'follow' ? 'north' : 'follow');
 });
 
 function onFix(fix) {
@@ -364,6 +383,10 @@ const boot = $('#boot');
 
 async function begin(useMock) {
   $('#boot-start').disabled = true;
+  // Compass is on by default. Request the sensor permission first,
+  // while we're still inside the boot tap's user-gesture window
+  // (the GPS prompt below would otherwise consume it on iOS).
+  await setCompassMode('follow', { silent: true });
   let ok = false;
   if (!useMock) {
     $('#boot-start').textContent = '🛰️ Finding you…';
