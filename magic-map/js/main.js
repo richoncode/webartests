@@ -81,6 +81,10 @@ function frontierFor(pos) {
 }
 
 function onSpawnTap(spawn) {
+  if (spawn.state === 'mystery') {
+    ui.toast('✨ Something glimmers there… walk over to find out!');
+    return;
+  }
   if (spawn.state === 'rustle') {
     ui.toast('🍂 Something is rustling… get closer!');
     return;

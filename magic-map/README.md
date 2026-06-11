@@ -16,8 +16,11 @@ map core later.
 | Explore | Fog of war lifts permanently in ~50 m cells; uncovered area feeds the Fogbreaker achievement |
 | Collect | 20 species across 6 rarity tiers; Flying Squirrel is night-only; Ratatoskr is a 0.1% mythic |
 
-Squirrels are invisible until you're inside your **detection radius** (a rustling 🍂 hint),
-and reveal for catching inside ~28 m. Achievements and levels grant wider detection, a bigger
+The fog is translucent — the street grid ghosts through so you can always pick a direction;
+explored areas render in full colour. Distant squirrels show as faint 🐾 mystery glimmers
+(rare+ species add a rarity-coloured beacon column visible across the map), become a rustling
+🍂 hint inside your **detection radius**, and reveal for catching inside ~28 m.
+Achievements and levels grant wider detection, a bigger
 fog torch, 🌰 acorn bait (10-minute spawn surge), a 📡 radar ping, map themes, and trail colours.
 
 ## Safe spawn placement

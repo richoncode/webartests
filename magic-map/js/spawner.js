@@ -2,7 +2,8 @@
 // Spawner — manages the live population of squirrels on the
 // map. Each spawn moves through three visibility states based
 // on the player's distance:
-//   hidden  → no marker at all
+//   mystery → beyond detect radius: a faint 🐾 glimmer through
+//             the fog (rare+ species add a coloured beacon)
 //   rustle  → within detect radius: a shaking 🍂 hint
 //   revealed→ within catch radius: the squirrel itself, tappable
 // ============================================================
@@ -91,7 +92,7 @@ export class Spawner {
     const detect = this.state.detectRadius;
     for (const s of this.spawns) {
       const d = haversine(playerPos, s);
-      let st = 'hidden';
+      let st = 'mystery';
       if (d <= CONFIG.CATCH_RADIUS) st = 'revealed';
       else if (d <= detect) st = 'rustle';
       if (st !== s.state) {
@@ -132,7 +133,20 @@ export class Spawner {
     if (spawn.state === 'hidden') return;
 
     let icon;
-    if (spawn.state === 'rustle') {
+    if (spawn.state === 'mystery') {
+      const species = SPECIES_BY_ID[spawn.speciesId];
+      const rarity = RARITIES[species.rarity];
+      const beacon = rarity.xp >= 90; // rare and above broadcast a glow column
+      icon = L.divIcon({
+        className: '',
+        html: `<div class="mystery-marker">
+                 ${beacon ? `<div class="beacon" style="--bc:${rarity.color}"></div>` : ''}
+                 <span class="myst-paw">🐾</span>
+               </div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+    } else if (spawn.state === 'rustle') {
       icon = L.divIcon({
         className: '',
         html: '<div class="rustle-marker">🍂</div>',

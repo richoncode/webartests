@@ -103,8 +103,10 @@ export class FogLayer {
     ctx.clearRect(0, 0, size.x, size.y);
     if (!this.enabled) return;
 
-    // The fog blanket.
-    ctx.fillStyle = 'rgba(6, 9, 18, 0.93)';
+    // The fog blanket — translucent so the street grid ghosts
+    // through and players can pick a direction; explored areas
+    // are punched through to full colour below.
+    ctx.fillStyle = 'rgba(6, 9, 18, 0.76)';
     ctx.fillRect(0, 0, size.x, size.y);
 
     // Pixels-per-metre at the current view.
