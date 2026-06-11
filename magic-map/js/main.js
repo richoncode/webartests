@@ -164,17 +164,11 @@ $('#btn-center').addEventListener('click', () => {
 });
 
 // ---------- compass ----------
-// Two modes: 'follow' (default — map rotates with device heading) and
-// 'north' (north locked to the top). The button's needle always points
-// to map north, whatever the current bearing.
+// Default is north-up. Tapping 🧭 activates heading-follow (the map
+// rotates so the direction you face points up); tapping again locks
+// north back to the top.
 let compassMode = 'north';
 const compassBtn = $('#btn-compass');
-const compassNeedle = $('#compass-needle');
-
-function updateNeedle() {
-  compassNeedle.style.transform = `rotate(${map.getBearing()}deg)`;
-}
-map.on('rotate', updateNeedle);
 
 async function setCompassMode(mode, { silent = false } = {}) {
   if (mode === 'follow') {
@@ -205,7 +199,6 @@ async function setCompassMode(mode, { silent = false } = {}) {
     compassBtn.classList.remove('follow');
     if (!silent) ui.toast('🧭 North locked to top');
   }
-  updateNeedle();
 }
 
 compassBtn.addEventListener('click', () => {
@@ -383,10 +376,6 @@ const boot = $('#boot');
 
 async function begin(useMock) {
   $('#boot-start').disabled = true;
-  // Compass is on by default. Request the sensor permission first,
-  // while we're still inside the boot tap's user-gesture window
-  // (the GPS prompt below would otherwise consume it on iOS).
-  await setCompassMode('follow', { silent: true });
   let ok = false;
   if (!useMock) {
     $('#boot-start').textContent = '🛰️ Finding you…';
