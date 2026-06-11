@@ -164,9 +164,9 @@ $('#btn-center').addEventListener('click', () => {
 });
 
 // ---------- compass ----------
-// Default is north-up. Tapping 🧭 activates heading-follow (the map
-// rotates so the direction you face points up); tapping again locks
-// north back to the top.
+// Heading-follow is on by default (the map rotates so the direction
+// you face points up). Tapping 🧭 locks north to the top; tapping
+// again resumes following your heading.
 let compassMode = 'north';
 const compassBtn = $('#btn-compass');
 
@@ -376,6 +376,10 @@ const boot = $('#boot');
 
 async function begin(useMock) {
   $('#boot-start').disabled = true;
+  // Compass-follow is the default. Request the sensor permission now,
+  // inside the boot tap's user-gesture window, before the GPS prompt
+  // consumes it on iOS.
+  await setCompassMode('follow', { silent: true });
   let ok = false;
   if (!useMock) {
     $('#boot-start').textContent = '🛰️ Finding you…';
