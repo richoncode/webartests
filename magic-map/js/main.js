@@ -25,11 +25,13 @@ const map = L.map('map', {
   attributionControl: true,
   maxZoom: 19,
   minZoom: 3,
+  rotate: true,            // leaflet-rotate
+  rotateControl: false,
+  touchRotate: false,
+  compassBearing: false,   // enabled via the 🧭 button
 });
-map.setView(
-  state.data.lastPos || CONFIG.MOCK_DEFAULT,
-  17
-);
+// Zoom 16 keeps the whole 90–430 m spawn ring on a phone screen.
+map.setView(state.data.lastPos || CONFIG.MOCK_DEFAULT, 16);
 
 let tileLayer = null;
 function applyTheme(id) {
@@ -158,7 +160,37 @@ let follow = true;
 map.on('dragstart', () => { follow = false; });
 $('#btn-center').addEventListener('click', () => {
   follow = true;
-  if (engine.pos) map.setView([engine.pos.lat, engine.pos.lng], Math.max(map.getZoom(), 16));
+  if (engine.pos) map.setView([engine.pos.lat, engine.pos.lng], Math.max(map.getZoom(), 15));
+});
+
+// ---------- compass (rotate map with device heading) ----------
+let compassOn = false;
+const compassBtn = $('#btn-compass');
+compassBtn.addEventListener('click', async () => {
+  if (compassOn) {
+    if (map.compassBearing) map.compassBearing.disable();
+    map.setBearing(0);
+    compassOn = false;
+    compassBtn.style.color = '';
+    return;
+  }
+  if (!window.DeviceOrientationEvent || !map.compassBearing) {
+    return ui.toast('🧭 No compass on this device');
+  }
+  try {
+    // iOS 13+ requires an explicit permission prompt from a user gesture.
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm !== 'granted') return ui.toast('🧭 Compass permission denied');
+    }
+    map.compassBearing.enable();
+    compassOn = true;
+    compassBtn.style.color = 'var(--accent)';
+    follow = true;
+    ui.toast('🧭 Map now follows your heading');
+  } catch (e) {
+    ui.toast('🧭 Compass not available');
+  }
 });
 
 function onFix(fix) {
@@ -175,7 +207,7 @@ function onFix(fix) {
     playerMarker = L.marker([pos.lat, pos.lng], { icon: playerIcon, keyboard: false, interactive: false }).addTo(map);
     trailLine = L.polyline([], { weight: 4, opacity: 0.55, color: '#5b9bd5' }).addTo(map);
     setTrailColor();
-    map.setView([pos.lat, pos.lng], 17);
+    map.setView([pos.lat, pos.lng], 16);
   } else {
     playerMarker.setLatLng([pos.lat, pos.lng]);
     if (follow) map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.4 });

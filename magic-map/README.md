@@ -61,6 +61,9 @@ No build step. Leaflet 1.9 from CDN; CARTO basemap tiles restyled with CSS filte
 
 ## Testing without walking
 
+The 🧭 button rotates the map to follow your device heading (leaflet-rotate +
+DeviceOrientation; iOS asks for permission on first tap). Tap again for north-up.
+
 - Tap **"No GPS here? Explore in demo mode"** on the boot screen (or toggle Demo mode in
   Settings). Auto-enabled when geolocation is denied/unavailable — e.g. Meta Quest browser.
 - **D-pad** (or WASD/arrow keys on desktop) walks at 1.5 m/s; the **1×/4×/15×** button

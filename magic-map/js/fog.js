@@ -53,7 +53,10 @@ export class FogLayer {
     this.explored = exploredSet;
     this.enabled = true;
 
-    map.createPane('fog');
+    // With leaflet-rotate the canvas lives in the norotatePane so it
+    // stays screen-aligned; we draw with latLngToContainerPoint, which
+    // the plugin patches to account for the current bearing.
+    map.createPane('fog', map._norotatePane || undefined);
     map.getPane('fog').style.zIndex = 350; // above tiles, below markers
     map.getPane('fog').style.pointerEvents = 'none';
 
@@ -64,7 +67,7 @@ export class FogLayer {
 
     this._scheduled = false;
     const redraw = () => this.requestDraw();
-    map.on('move zoom viewreset resize zoomend', redraw);
+    map.on('move zoom rotate viewreset resize zoomend', redraw);
     this.requestDraw();
   }
 
@@ -88,9 +91,11 @@ export class FogLayer {
     const size = map.getSize();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
 
-    // Keep the canvas pinned to the current viewport within the layer pane.
-    const topLeft = map.containerPointToLayerPoint([0, 0]);
-    L.DomUtil.setPosition(this.canvas, topLeft);
+    // Keep the canvas pinned to the container's top-left by cancelling
+    // the map pane's pan translation (the norotate pane has no
+    // transform of its own).
+    const panePos = L.DomUtil.getPosition(map.getPane('mapPane')) || L.point(0, 0);
+    L.DomUtil.setPosition(this.canvas, panePos.multiplyBy(-1));
     if (this.canvas.width !== size.x * dpr || this.canvas.height !== size.y * dpr) {
       this.canvas.width = size.x * dpr;
       this.canvas.height = size.y * dpr;

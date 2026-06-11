@@ -33,15 +33,23 @@ export class RoadNetwork {
   constructor() {
     this.roads = [];          // { cls, pts: [{lat,lng}...] }
     this.fetchCenter = null;
-    this.fetching = false;
+    this._inflight = null;    // pending fetch promise
     this.failed = false;      // last attempt failed → fallback spawning
   }
 
   // Refetch when the player strays far from the cached area.
-  async ensure(pos) {
-    if (this.fetching) return;
-    if (this.fetchCenter && haversine(this.fetchCenter, pos) < CONFIG.ROAD_REFETCH_DIST) return;
-    this.fetching = true;
+  // Callers awaiting ensure() share the in-flight fetch, so e.g. the
+  // initial spawn burst genuinely waits for road data instead of racing it.
+  ensure(pos) {
+    if (this._inflight) return this._inflight;
+    if (this.fetchCenter && haversine(this.fetchCenter, pos) < CONFIG.ROAD_REFETCH_DIST) {
+      return Promise.resolve();
+    }
+    this._inflight = this._fetch(pos).finally(() => { this._inflight = null; });
+    return this._inflight;
+  }
+
+  async _fetch(pos) {
     const query = `[out:json][timeout:12];way["highway"~"^(${HIGHWAY_REGEX})$"](around:${CONFIG.ROAD_FETCH_RADIUS},${pos.lat.toFixed(6)},${pos.lng.toFixed(6)});out geom;`;
 
     for (const endpoint of CONFIG.OVERPASS_ENDPOINTS) {
@@ -61,14 +69,12 @@ export class RoadNetwork {
           }));
         this.fetchCenter = { lat: pos.lat, lng: pos.lng };
         this.failed = false;
-        this.fetching = false;
         return;
       } catch (e) {
         // try next mirror
       }
     }
     this.failed = true;
-    this.fetching = false;
   }
 
   get ready() {

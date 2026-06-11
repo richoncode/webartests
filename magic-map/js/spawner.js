@@ -44,9 +44,11 @@ export class Spawner {
       if (far || old) this._remove(s);
     }
 
-    // Top up.
+    // Top up. Below a baseline of 6 there is always something to chase,
+    // so spawn deterministically; above it, spawn by chance.
     const deficit = CONFIG.MAX_ACTIVE - this.spawns.length;
     if (deficit <= 0) return;
+    if (this.spawns.length < 6) this.spawnOne(playerPos);
     let chance = CONFIG.SPAWN_CHANCE;
     if (this.baitActive) chance = Math.min(1, chance * CONFIG.BAIT_SPAWN_MULT);
     // Bigger deficits fill faster (fresh areas populate quickly).
