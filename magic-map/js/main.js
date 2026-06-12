@@ -12,6 +12,8 @@ import { GameState } from './state.js';
 import { LocationEngine } from './geo.js';
 import { FogLayer, cellsWithinRadius } from './fog.js';
 import { RoadNetwork } from './roads.js';
+import { ParcelService } from './parcels.js';
+import { CountryMode, makeCountryDemo } from './country.js';
 import { Spawner } from './spawner.js';
 import { SPECIES_BY_ID, RARITIES } from './squirrels.js';
 import { checkAchievements } from './achievements.js';
@@ -53,6 +55,9 @@ applyTheme(state.data.settings.theme);
 // ---------- core services ----------
 const fog = new FogLayer(map, state.exploredSet);
 const roads = new RoadNetwork();
+const parcels = new ParcelService();
+const country = new CountryMode(roads, parcels);
+let parcelOutline = null;   // Leaflet polygon drawn around your land in country mode
 
 // ---------- player marker + trail ----------
 const playerIcon = L.divIcon({
@@ -72,6 +77,36 @@ function setTrailColor() {
 
 // ---------- spawner + catch flow ----------
 const spawner = new Spawner(map, roads, state, { onTap: onSpawnTap });
+
+// ---------- country mode ----------
+// Re-evaluate after road data is in hand; on a flip, repopulate the world
+// with the new placement strategy and surface it to the player.
+async function maybeUpdateCountry(pos) {
+  if (!pos) return;
+  const info = await country.evaluate(pos);
+  spawner.setCountry(info);
+  drawParcelOutline(info.active ? info.parcel : null);
+  ui.setCountryChip(info);
+  if (info.changed) {
+    if (info.active) {
+      ui.toast(`🌾 Country mode — squirrels placed across your land (${info.reason})`, 'green');
+    } else {
+      ui.toast('🏘️ Walkable streets — roadside spawns resumed');
+    }
+    spawner.maintain(pos);
+    spawner.updateProximity(pos);
+  }
+  return info;
+}
+
+function drawParcelOutline(parcel) {
+  if (parcelOutline) { map.removeLayer(parcelOutline); parcelOutline = null; }
+  if (!parcel) return;
+  parcelOutline = L.polygon(parcel.ring.map((p) => [p.lat, p.lng]), {
+    color: '#7ce0c3', weight: 2, opacity: 0.8, dashArray: '6 6',
+    fillColor: '#7ce0c3', fillOpacity: 0.07, interactive: false,
+  }).addTo(map);
+}
 
 function frontierFor(pos) {
   if (!state.data.home) return null;
@@ -145,6 +180,7 @@ const ui = new UI(state, {
     setTrailColor();
   },
   setMock: (on) => setMockMode(on),
+  tryCountryDemo: () => startCountryDemo(),
   resetGame: () => {
     state.reset();
     location.reload();
@@ -255,7 +291,7 @@ function onFix(fix) {
   if (state.addCells(newCells) > 0) fog.requestDraw();
 
   // --- world upkeep ---
-  roads.ensure(pos);
+  roads.ensure(pos).then(() => maybeUpdateCountry(pos));
   spawner.updateProximity(pos);
   announceAchievements();
   ui.refreshHud();
@@ -328,6 +364,25 @@ function setMockMode(on) {
   }
 }
 
+// Country-mode demo: pin a synthetic 55 mph highway + ~1.3-acre lot and
+// drop the player onto it, so the on-your-land placement is testable
+// anywhere (mock mode required to teleport).
+function startCountryDemo() {
+  if (!engine.mock) setMockMode(true);
+  const center = CONFIG.COUNTRY.DEMO_CENTER;
+  const demo = makeCountryDemo(center);
+  roads.useDemo([demo.road], center);
+  parcels.mockParcel = demo.parcel;
+  country.invalidate();
+  spawner.clearAll();
+  engine.teleport(center);
+  follow = true;
+  map.setView([center.lat, center.lng], 18);
+  maybeUpdateCountry(center).then(() => initialBurst());
+  ui.closePanel();
+  ui.toast('🌾 Country demo: 55 mph road + 1.3-acre lot — walk your land!', 'green');
+}
+
 // D-pad (hold to walk)
 document.querySelectorAll('#dpad button').forEach((btn) => {
   const dir = btn.dataset.dir;
@@ -366,8 +421,13 @@ map.on('click', (e) => {
     skipNextStep = true;
     engine.teleport(e.latlng);
     spawner.clearAll();
-    roads.fetchCenter = null; // force refetch at the new location
-    roads.ensure(e.latlng).then(() => initialBurst());
+    // Leaving any pinned demo; force a fresh road + parcel evaluation here.
+    roads.clearDemo();
+    parcels.mockParcel = null;
+    country.invalidate();
+    roads.ensure(e.latlng)
+      .then(() => maybeUpdateCountry(e.latlng))
+      .then(() => initialBurst());
   }
 });
 
@@ -399,7 +459,9 @@ async function begin(useMock) {
 
   // Initial population once roads arrive (or fail → fallback spawns).
   const pos = engine.pos || CONFIG.MOCK_DEFAULT;
-  roads.ensure(pos).then(() => initialBurst());
+  roads.ensure(pos)
+    .then(() => maybeUpdateCountry(pos))
+    .then(() => initialBurst());
 
   announceAchievements();
   ui.refreshHud();
@@ -416,4 +478,4 @@ $('#boot-start').addEventListener('click', () => begin(false));
 $('#boot-demo').addEventListener('click', () => begin(true));
 
 // Debug handle (also handy on-device via the console).
-window.__mm = { state, spawner, engine, roads, fog, map };
+window.__mm = { state, spawner, engine, roads, parcels, country, fog, map };

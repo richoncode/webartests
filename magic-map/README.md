@@ -36,6 +36,26 @@ Spawn points are generated from live OpenStreetMap data (Overpass API):
 
 If Overpass is unreachable, spawning falls back to open scatter so the game stays playable.
 
+## Country mode
+
+Out in the country you might live along a highway that is genuinely unsafe to walk along —
+but you probably own enough land to play on. Country mode detects this and places squirrels
+**across your own property** instead of the roadside:
+
+1. **Trigger** — both conditions must hold near your GPS fix:
+   - a motor road within ~70 m posts (or, untagged, is assumed) **faster than 35 mph**, and
+   - you stand on a **parcel of ≥ 0.5 acre**.
+2. **Property lines** come from local records — a county/state ArcGIS parcel layer
+   (`CONFIG.PARCEL_ENDPOINTS`) — falling back to the smallest enclosing OpenStreetMap
+   landuse/building lot. No record of your lot → mode stays off and roadside spawning applies.
+3. **Placement** spreads squirrels **evenly** over the parcel using best-candidate
+   (blue-noise) sampling: each spawn is the farthest of several candidates from the existing
+   ones, kept ≥ 16 m apart, inset from the property line, and ≥ 14 m back from the highway
+   centreline. Population scales with acreage (≈ 5 per acre, capped).
+
+A dashed outline marks your land and a 🌾 badge shows while it's active. Try it without
+moving via **Settings → Testing → 🌾 Try demo** (pins a synthetic 55 mph road + ~1.3-acre lot).
+
 ## Architecture
 
 ```
@@ -48,7 +68,9 @@ magic-map/
     state.js          GameState — persistence (localStorage), XP/levels, streaks
     geo.js            LocationEngine — real GPS or mock (D-pad / teleport / speed)
     fog.js            Fog-of-war canvas layer + exploration grid
-    roads.js          Overpass road fetch + safe spawn-point sampling
+    roads.js          Overpass road fetch + safe spawn-point sampling (+ road speeds, parcel sampler)
+    parcels.js        ParcelService — find your property lot (local records → OSM fallback)
+    country.js        CountryMode — fast-road + acreage test; on-your-land spawn switch
     spawner.js        Live squirrel population, hidden→rustle→revealed states
     squirrels.js      Species compendium (CSS-filter-recoloured 🐿️, no assets)
     achievements.js   Tiered achievements + reward application
@@ -70,6 +92,8 @@ DeviceOrientation; iOS asks for permission on first tap). Tap again for north-up
   speeds it up. Mock walking counts toward distance/streaks so the whole reward loop is testable.
 - **Teleport: ON** then tap anywhere on the map to jump (teleports don't count as distance;
   spawns and roads regenerate at the destination).
+- **🌾 Try demo** (Settings → Testing) pins a synthetic 55 mph highway + ~1.3-acre lot and
+  drops you on it, so country-mode placement is testable anywhere.
 - **Reset all progress** lives in Settings → Danger zone.
 
 Real-GPS anti-cheat: fixes faster than 6 m/s or jumping >150 m are ignored for distance.

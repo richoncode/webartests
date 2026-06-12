@@ -84,6 +84,74 @@ export function distPointToSegXY(p, a, b) {
   return Math.hypot(p.x - cx, p.y - cy);
 }
 
+// Square metres in one acre.
+export const ACRE_M2 = 4046.8564224;
+
+// Parse an OSM `maxspeed` tag to mph. Handles "35 mph", "50" (km/h by OSM
+// convention), "50 km/h", knots, and implicit zones (returns null so the
+// caller can fall back to a per-class default).
+export function parseMaxspeedMph(v) {
+  if (v == null) return null;
+  const s = String(v).toLowerCase();
+  const m = s.match(/(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (s.includes('mph')) return n;
+  if (s.includes('knot')) return n * 1.150779;
+  return n / 1.609344; // bare number or "km/h"
+}
+
+// Ray-casting point-in-polygon. ring is [{lat,lng}, …] (lng→x, lat→y).
+// Fine for the sub-km parcels we deal with.
+export function pointInPolygon(pt, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].lng, yi = ring[i].lat;
+    const xj = ring[j].lng, yj = ring[j].lat;
+    const denom = (yj - yi) || 1e-12;
+    const intersect =
+      (yi > pt.lat) !== (yj > pt.lat) &&
+      pt.lng < ((xj - xi) * (pt.lat - yi)) / denom + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Polygon area in m² via shoelace on a local flat projection.
+export function polygonAreaM2(ring) {
+  if (!ring || ring.length < 3) return 0;
+  const proj = makeProjector(ring[0]);
+  const p = ring.map((r) => proj.toXY(r));
+  let a = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    a += (p[j].x + p[i].x) * (p[j].y - p[i].y);
+  }
+  return Math.abs(a / 2);
+}
+
+export function ringBBox(ring) {
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const r of ring) {
+    if (r.lat < minLat) minLat = r.lat;
+    if (r.lat > maxLat) maxLat = r.lat;
+    if (r.lng < minLng) minLng = r.lng;
+    if (r.lng > maxLng) maxLng = r.lng;
+  }
+  return { minLat, maxLat, minLng, maxLng };
+}
+
+// Distance (m) from a point to the nearest edge of a polygon ring.
+export function distPointToRingM(pt, ring) {
+  const proj = makeProjector(pt);
+  const p = proj.toXY(pt);
+  let best = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const d = distPointToSegXY(p, proj.toXY(ring[j]), proj.toXY(ring[i]));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 export function fmtDist(m) {
   if (m >= 10000) return (m / 1000).toFixed(1) + ' km';
   if (m >= 1000) return (m / 1000).toFixed(2) + ' km';

@@ -28,6 +28,7 @@ export class UI {
       catchCard: $('#catch-card'),
       baitChip: $('#bait-chip'),
       baitTimer: $('#bait-timer'),
+      countryChip: $('#country-chip'),
       radarArrow: $('#radar-arrow'),
       radarPointer: $('#radar-pointer'),
       radarDist: $('#radar-dist'),
@@ -66,6 +67,15 @@ export class UI {
       const s = Math.floor((remainingMs % 60000) / 1000);
       this.els.baitTimer.textContent = `${m}:${String(s).padStart(2, '0')}`;
     }
+  }
+
+  // Country-mode badge: shown only while spawns are on the player's land.
+  setCountryChip(info) {
+    if (!this.els.countryChip) return;
+    const on = !!(info && info.active);
+    this.els.countryChip.classList.toggle('hidden', !on);
+    this._countryInfo = info;
+    if (on) this.els.countryChip.textContent = `🌾 On your land · ${info.parcel.acres.toFixed(2)} ac`;
   }
 
   // ---------- Radar ----------
@@ -180,6 +190,11 @@ export class UI {
     const d = this.state.data;
     this.els.panelTitle.textContent = '⚙️ Settings';
 
+    const ci = this._countryInfo;
+    const countryStatus = ci
+      ? (ci.active ? `Active — ${escapeHtml(ci.reason)}` : `Off — ${escapeHtml(ci.reason)}`)
+      : 'Spawns shift onto your property near fast roads';
+
     const themeChips = Object.entries(THEMES).map(([id, t]) => {
       const unlocked = d.themesUnlocked.includes(id);
       const sel = d.settings.theme === id;
@@ -208,6 +223,10 @@ export class UI {
         <div class="set-row">
           <div>Demo mode (no GPS)<small>D-pad walking, teleport, speed boost</small></div>
           <div class="toggle${d.settings.mock ? ' on' : ''}" id="set-mock"></div>
+        </div>
+        <div class="set-row">
+          <div>Country mode<small>${countryStatus}</small></div>
+          <button class="btn-secondary" id="set-country-demo">🌾 Try demo</button>
         </div>
       </div>
       <div class="set-group">
@@ -241,6 +260,9 @@ export class UI {
       const on = !d.settings.mock;
       e.currentTarget.classList.toggle('on', on);
       this.hooks.setMock(on);
+    });
+    this.els.panelBody.querySelector('#set-country-demo').addEventListener('click', () => {
+      this.hooks.tryCountryDemo();
     });
     this.els.panelBody.querySelector('#set-reset').addEventListener('click', () => {
       if (confirm('Erase all squirrels, fog, streaks and achievements?')) {
