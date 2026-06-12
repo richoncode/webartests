@@ -6,7 +6,7 @@
 // ============================================================
 
 import { CONFIG } from './config.js';
-import { destPoint, toDeg, clamp } from './util.js';
+import { destPoint, toDeg, clamp, haversine } from './util.js';
 
 export class LocationEngine {
   constructor(onFix) {
@@ -33,24 +33,81 @@ export class LocationEngine {
 
       this.watchId = navigator.geolocation.watchPosition(
         (p) => {
-          const fix = {
+          const emitted = this.ingestReal({
             lat: p.coords.latitude,
             lng: p.coords.longitude,
-            accuracy: p.coords.accuracy,
+            accuracy: p.coords.accuracy || 30,
             ts: p.timestamp || Date.now(),
-            mock: false,
-          };
-          // Skip wildly inaccurate fixes once we have something.
-          if (this.pos && fix.accuracy > 80) return;
-          this.pos = fix;
-          this.onFix(fix);
-          if (!settled) { settled = true; clearTimeout(timeout); resolve(true); }
+          });
+          if (emitted && !settled) { settled = true; clearTimeout(timeout); resolve(true); }
         },
         () => { clearTimeout(timeout); fail(); },
         { enableHighAccuracy: true, maximumAge: 3000, timeout: 11000 }
       );
       void startCenter;
     });
+  }
+
+  // Jitter filter for raw GPS fixes. Some phones bounce 15–30 m while
+  // standing still; a single-fix gate can't catch that (bounces can
+  // exceed any threshold and even mimic walking), so the game position
+  // is the component-wise rolling median of recent fixes. Standing
+  // still, the median pins to the noise centroid; walking or driving,
+  // it tracks with a few seconds' lag. Returns true if a fix was
+  // emitted to the game.
+  ingestReal(raw) {
+    const C = CONFIG;
+    // First fix: accept anything so the game can start.
+    if (!this.pos) {
+      this.pos = { ...raw, mock: false };
+      this._buf = [raw];
+      this._lastEmitTs = raw.ts;
+      this._lastFixTs = raw.ts;
+      this.onFix(this.pos);
+      return true;
+    }
+
+    // Accuracy gate (relaxed if we've been deaf for a while).
+    const stale = raw.ts - (this._lastFixTs || 0) > C.GPS_STALE_MS;
+    if (raw.accuracy > (stale ? C.GPS_ACC_SKIP_STALE : C.GPS_ACC_SKIP)) return false;
+    this._lastFixTs = raw.ts;
+
+    this._buf = (this._buf || []).filter((f) => raw.ts - f.ts < C.GPS_WINDOW_MS);
+    this._buf.push(raw);
+    if (this._buf.length > C.GPS_MEDIAN_WINDOW) this._buf.shift();
+
+    const mid = (arr) => {
+      const s = [...arr].sort((a, b) => a - b);
+      const m = s.length >> 1;
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+    const med = {
+      lat: mid(this._buf.map((f) => f.lat)),
+      lng: mid(this._buf.map((f) => f.lng)),
+    };
+
+    // Gate on the buffer's own scatter: stationary bounce produces a
+    // wide cloud (large spread → hold position); steady walking is a
+    // tight trail whose median keeps displacing (small spread → track).
+    const spread = this._buf.reduce((s, f) => s + haversine(f, med), 0) / this._buf.length;
+    const gate = Math.max(C.GPS_GATE_MIN, spread * C.GPS_GATE_K);
+    if (haversine(this.pos, med) < gate) {
+      // Holding still — re-emit the held position occasionally so
+      // proximity checks and the HUD stay fresh.
+      if (raw.ts - this._lastEmitTs > 5000) {
+        this._lastEmitTs = raw.ts;
+        this.pos = { ...this.pos, ts: raw.ts };
+        this.onFix(this.pos);
+        return true;
+      }
+      return false;
+    }
+
+    // Real movement.
+    this.pos = { lat: med.lat, lng: med.lng, accuracy: raw.accuracy, ts: raw.ts, mock: false };
+    this._lastEmitTs = raw.ts;
+    this.onFix(this.pos);
+    return true;
   }
 
   stopReal() {

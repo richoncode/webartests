@@ -32,6 +32,27 @@ export class Spawner {
     return Date.now() < this.baitUntil;
   }
 
+  // ---------- persistence (squirrels survive a browser reset) ----------
+  _persist() {
+    this.state.data.activeSpawns = this.spawns.map((s) => ({
+      speciesId: s.speciesId,
+      lat: s.lat,
+      lng: s.lng,
+      bornAt: s.bornAt,
+      ttl: s.ttl,
+    }));
+    this.state.save();
+  }
+
+  restore(saved) {
+    const now = Date.now();
+    for (const r of saved || []) {
+      if (!r || now - r.bornAt > r.ttl) continue; // expired while away
+      this.spawns.push({ id: nextId++, ...r, state: 'hidden', marker: null });
+    }
+    this._persist();
+  }
+
   // Called every TICK_MS and after big player moves.
   maintain(playerPos) {
     if (!playerPos) return;
@@ -76,6 +97,7 @@ export class Spawner {
       marker: null,
     };
     this.spawns.push(spawn);
+    this._persist();
     return spawn;
   }
 
@@ -88,14 +110,29 @@ export class Spawner {
     this.updateProximity(playerPos);
   }
 
+  // Effective catch radius: when the player stands near a street, it
+  // stretches to cover the far sidewalk so squirrels across the road
+  // are befriendable without stepping into traffic.
+  catchRadius(playerPos) {
+    let r = CONFIG.CATCH_RADIUS;
+    if (this.roads && this.roads.ready) {
+      const dRoad = this.roads.minMotorDistance(playerPos);
+      if (isFinite(dRoad) && dRoad < CONFIG.CATCH_ROAD_NEAR) {
+        r = Math.min(CONFIG.CATCH_REACH_CAP, Math.max(r, dRoad + CONFIG.CATCH_REACH_PAD));
+      }
+    }
+    return r;
+  }
+
   // Re-evaluate marker states from the player's position.
   updateProximity(playerPos) {
     if (!playerPos) return;
     const detect = this.state.detectRadius;
+    const catchR = this.catchRadius(playerPos);
     for (const s of this.spawns) {
       const d = haversine(playerPos, s);
       let st = 'mystery';
-      if (d <= CONFIG.CATCH_RADIUS) st = 'revealed';
+      if (d <= catchR) st = 'revealed';
       else if (d <= detect) st = 'rustle';
       if (st !== s.state) {
         s.state = st;
@@ -125,6 +162,7 @@ export class Spawner {
   _remove(spawn) {
     if (spawn.marker) this.map.removeLayer(spawn.marker);
     this.spawns = this.spawns.filter((s) => s !== spawn);
+    this._persist();
   }
 
   _renderMarker(spawn) {

@@ -11,6 +11,7 @@ map core later.
 
 | Loop | Mechanic |
 |---|---|
+| Show up daily | A 🌅 daily gift of acorns lands on first open each day (+1 per 7-day streak) |
 | Walk daily | 250 m/day keeps the 🔥 streak alive; streaks boost rare-spawn luck up to +60% |
 | Walk further | Catches ≥1 km / 2 km / 5 km from home earn ×1.25 / ×1.5 / ×2 "Frontier" XP |
 | Explore | Fog of war lifts permanently in ~50 m cells; uncovered area feeds the Fogbreaker achievement |
@@ -35,6 +36,13 @@ Spawn points are generated from live OpenStreetMap data (Overpass API):
    90–430 m spawn ring, or within 30 m of another spawn.
 
 If Overpass is unreachable, spawning falls back to open scatter so the game stays playable.
+
+Other world rules: live squirrels persist across reloads/browser restarts (they expire on
+their own TTL); at night (20:00–06:00) the map darkens and flying squirrels emerge; standing
+near a street stretches the befriend radius (`distance-to-centreline + 25 m`, capped at 55 m)
+so squirrels on the far sidewalk are catchable without stepping into the road; and real GPS
+positions are the rolling median of recent fixes, gated by the buffer's own scatter, so
+phones that bounce 15–30 m while standing still register ~zero phantom walking distance.
 
 ## Architecture
 

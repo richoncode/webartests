@@ -28,6 +28,8 @@ const FRESH = () => ({
   caught: {},                 // speciesId -> count
   totalCaught: 0,
   nightCatches: 0,
+  activeSpawns: [],           // live squirrels, restored after a reload
+  lastGiftDay: null,          // daily check-in gift tracker
 
   achievements: {},           // achievementId -> highest tier index unlocked (0-based)
   bonusDetect: 0,

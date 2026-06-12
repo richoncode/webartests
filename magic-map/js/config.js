@@ -15,6 +15,12 @@ export const CONFIG = {
   DETECT_BASE: 60,         // "rustle" hint becomes visible
   DETECT_CAP: 160,
   CATCH_RADIUS: 28,        // squirrel reveals + becomes tappable
+  // When standing near a street, the catch radius stretches so it
+  // always reaches squirrels on the far sidewalk — nobody should be
+  // tempted to step into the road for a catch.
+  CATCH_ROAD_NEAR: 30,     // player within this of a motor road → stretch
+  CATCH_REACH_PAD: 25,     // far-sidewalk allowance added to that distance
+  CATCH_REACH_CAP: 55,
 
   // --- Spawning ---
   MAX_ACTIVE: 14,
@@ -37,6 +43,24 @@ export const CONFIG = {
   MAX_SPEED_MPS: 6,        // ignore faster-than-running fixes (driving)
   MAX_JUMP_M: 150,         // ignore single-fix teleports (real GPS only)
   DAY_GOAL_M: 250,         // distance that makes a day count for the streak
+
+  // --- GPS jitter filtering (real fixes only) ---
+  // Position = rolling median of recent fixes; while standing still the
+  // median sits at the noise centroid, so 15-30m bounces cancel out.
+  GPS_ACC_SKIP: 50,        // discard fixes less accurate than this…
+  GPS_ACC_SKIP_STALE: 100, // …unless we've heard nothing for GPS_STALE_MS
+  GPS_STALE_MS: 20000,
+  GPS_MEDIAN_WINDOW: 7,    // fixes in the median buffer
+  GPS_WINDOW_MS: 15000,    // …no older than this
+  GPS_GATE_MIN: 3,         // median must move at least this to emit…
+  GPS_GATE_K: 2.0,         // …or K× the buffer's own scatter, if larger
+
+  // --- Daily gift (per calendar day the game is opened) ---
+  GIFT_BASE_ACORNS: 1,
+  GIFT_STREAK_DIV: 7,      // +1 acorn per 7 days of streak
+
+  // --- Night (20:00–06:00): extra map darkening, flying squirrels ---
+  NIGHT_TILE_FILTER: ' brightness(0.78) saturate(0.85)',
 
   // --- XP ---
   XP_PER_250M: 15,

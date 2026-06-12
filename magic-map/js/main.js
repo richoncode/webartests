@@ -7,7 +7,7 @@
 // ============================================================
 
 import { CONFIG, THEMES, TRAILS, TILE_URLS, TILE_ATTRIB } from './config.js';
-import { $, haversine, bearingTo, fmtDist, isNightTime } from './util.js';
+import { $, haversine, bearingTo, fmtDist, isNightTime, dayKey } from './util.js';
 import { GameState } from './state.js';
 import { LocationEngine } from './geo.js';
 import { FogLayer, cellsWithinRadius } from './fog.js';
@@ -44,11 +44,14 @@ function applyTheme(id) {
     tileLayer._mmUrl = url;
     tileLayer.addTo(map);
   }
-  document.documentElement.style.setProperty('--tile-filter', theme.filter);
+  // Night (20:00–06:00) darkens whatever theme is active.
+  const filter = theme.filter + (isNightTime() ? CONFIG.NIGHT_TILE_FILTER : '');
+  document.documentElement.style.setProperty('--tile-filter', filter);
   document.documentElement.style.setProperty('--accent', theme.accent);
   state.save();
 }
 applyTheme(state.data.settings.theme);
+let nightNow = isNightTime();
 
 // ---------- core services ----------
 const fog = new FogLayer(map, state.exploredSet);
@@ -262,9 +265,29 @@ function onFix(fix) {
   state.save();
 }
 
+// ---------- daily gift ----------
+function checkDailyGift() {
+  const today = dayKey();
+  if (state.data.lastGiftDay === today) return;
+  state.data.lastGiftDay = today;
+  const n = CONFIG.GIFT_BASE_ACORNS + Math.floor(state.data.streak / CONFIG.GIFT_STREAK_DIV);
+  state.data.acorns += n;
+  state.save();
+  ui.toast(`🌅 Daily gift: +${n} acorn${n > 1 ? 's' : ''}`, 'green');
+  ui.refreshHud();
+}
+
 // ---------- game tick ----------
 setInterval(() => {
   state.rolloverDay();
+  checkDailyGift(); // also fires if the app stays open past midnight
+  if (isNightTime() !== nightNow) {
+    nightNow = isNightTime();
+    applyTheme(state.data.settings.theme);
+    ui.toast(nightNow
+      ? '🌙 Night falls — flying squirrels emerge…'
+      : '☀️ A new day dawns on the Magic Map');
+  }
   if (engine.pos) {
     spawner.maintain(engine.pos);
     spawner.updateProximity(engine.pos);
@@ -397,10 +420,15 @@ async function begin(useMock) {
     state.save();
   }
 
+  // Bring back squirrels that were alive before the browser closed.
+  spawner.restore(state.data.activeSpawns);
+  if (engine.pos) spawner.updateProximity(engine.pos);
+
   // Initial population once roads arrive (or fail → fallback spawns).
   const pos = engine.pos || CONFIG.MOCK_DEFAULT;
   roads.ensure(pos).then(() => initialBurst());
 
+  checkDailyGift();
   announceAchievements();
   ui.refreshHud();
 }
