@@ -10,7 +10,7 @@
 
 import { CONFIG } from './config.js';
 import { SPECIES_BY_ID, RARITIES, pickSpecies } from './squirrels.js';
-import { haversine, rand } from './util.js';
+import { haversine, rand, pointInPolygon } from './util.js';
 
 let nextId = 1;
 
@@ -22,6 +22,27 @@ export class Spawner {
     this.onTap = onTap;        // (spawn) => void
     this.spawns = [];          // { id, speciesId, lat, lng, bornAt, ttl, state, marker }
     this.baitUntil = 0;
+    // Country mode: when active, squirrels populate the player's parcel
+    // (evenly spread) instead of the roadside ring.
+    this.country = { active: false, parcel: null, cap: CONFIG.MAX_ACTIVE };
+  }
+
+  // Switch placement strategy when CountryMode flips. Scales the live
+  // population to the size of the property and drops any spawns that no
+  // longer belong (roadside spawns once we move onto the land, or spawns
+  // left outside the parcel after a mode/parcel change).
+  setCountry(info) {
+    this.country.active = !!info.active;
+    this.country.parcel = info.parcel || null;
+    if (info.active && info.parcel) {
+      const C = CONFIG.COUNTRY;
+      this.country.cap = Math.max(3, Math.min(C.MAX_ON_PARCEL, Math.round(info.parcel.acres * C.SQUIRRELS_PER_ACRE)));
+      for (const s of [...this.spawns]) {
+        if (!pointInPolygon(s, info.parcel.ring)) this._remove(s);
+      }
+    } else {
+      this.country.cap = CONFIG.MAX_ACTIVE;
+    }
   }
 
   get activePoints() {
@@ -65,11 +86,14 @@ export class Spawner {
       if (far || old) this._remove(s);
     }
 
-    // Top up. Below a baseline of 6 there is always something to chase,
-    // so spawn deterministically; above it, spawn by chance.
-    const deficit = CONFIG.MAX_ACTIVE - this.spawns.length;
+    // Top up toward the cap (smaller on a country parcel). Below a baseline
+    // there is always something to chase, so spawn deterministically; above
+    // it, spawn by chance.
+    const maxActive = this.country.active ? this.country.cap : CONFIG.MAX_ACTIVE;
+    const baseline = Math.min(6, maxActive);
+    const deficit = maxActive - this.spawns.length;
     if (deficit <= 0) return;
-    if (this.spawns.length < 6) this.spawnOne(playerPos);
+    if (this.spawns.length < baseline) this.spawnOne(playerPos);
     let chance = CONFIG.SPAWN_CHANCE;
     if (this.baitActive) chance = Math.min(1, chance * CONFIG.BAIT_SPAWN_MULT);
     // Bigger deficits fill faster (fresh areas populate quickly).
@@ -80,9 +104,15 @@ export class Spawner {
   }
 
   spawnOne(playerPos, { nearby = false } = {}) {
-    const pt = nearby
-      ? this.roads.sampleNearbyPoint(playerPos, this.activePoints)
-      : this.roads.sampleSpawnPoint(playerPos, this.activePoints);
+    let pt;
+    if (this.country.active && this.country.parcel) {
+      // On the player's own land — even spread, no roadside ring.
+      pt = this.roads.sampleParcelPoint(this.country.parcel, this.activePoints);
+    } else if (nearby) {
+      pt = this.roads.sampleNearbyPoint(playerPos, this.activePoints);
+    } else {
+      pt = this.roads.sampleSpawnPoint(playerPos, this.activePoints);
+    }
     if (!pt) return null;
 
     const species = pickSpecies({ luck: this.state.luck });

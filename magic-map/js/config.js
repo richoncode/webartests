@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.7 · 2026-06-12';
+export const APP_VERSION = 'v0.8 · 2026-06-12 · country mode';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -81,6 +81,30 @@ export const CONFIG = {
     { dist: 2000, mult: 1.5, label: 'Frontier ×1.5 XP' },
     { dist: 1000, mult: 1.25, label: 'Wanderer ×1.25 XP' },
   ],
+
+  // --- Country mode ---
+  // When you live along a fast road that is unsafe to walk, but own enough
+  // land, squirrels are placed across your *own property* instead of along
+  // the roadside. Triggered only when both conditions hold.
+  COUNTRY: {
+    SPEED_MPH_THRESHOLD: 35,   // a nearby road faster than this is unsafe to walk
+    ROAD_PROBE_RADIUS: 70,     // how far to look for "the highway you live along"
+    MIN_ACRES: 0.5,            // need at least this much land to host spawns
+    ROAD_SETBACK: 14,          // keep spawns this far back from any motor-road centreline
+    PARCEL_INSET: 4,           // keep spawns inside the property line by this much
+    MIN_GAP: 16,               // minimum spacing between spawns on a parcel (even spread)
+    SQUIRRELS_PER_ACRE: 5,     // population target scales with property size
+    MAX_ON_PARCEL: 14,
+    CANDIDATES: 24,            // best-candidate samples per spawn (blue-noise spread)
+    REEVAL_DIST: 40,           // re-evaluate country mode after moving this far
+    PARCEL_FETCH_RADIUS: 130,  // OSM fallback: search radius for an enclosing lot
+    DEMO_CENTER: { lat: 38.0297, lng: -78.6569 }, // rural lot for the in-app demo
+  },
+
+  // Local parcel record services (ArcGIS FeatureServer layer URLs, no trailing
+  // /query). Empty by default — set per deployment region. Each must accept an
+  // esriGeometryPoint "intersects" query and can return GeoJSON.
+  PARCEL_ENDPOINTS: [],
 
   // --- Mock mode ---
   MOCK_WALK_MPS: 1.5,
