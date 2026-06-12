@@ -3,6 +3,10 @@
 // All distances in metres unless noted.
 // ============================================================
 
+// Bump on every deploy — shown on the boot screen and in Settings so
+// phone testers can confirm which build they're running.
+export const APP_VERSION = 'v0.7 · 2026-06-12';
+
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
 

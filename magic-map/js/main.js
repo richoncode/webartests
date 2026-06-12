@@ -6,7 +6,7 @@
 // more games can join the Magic Map later.
 // ============================================================
 
-import { CONFIG, THEMES, TRAILS, TILE_URLS, TILE_ATTRIB } from './config.js';
+import { CONFIG, THEMES, TRAILS, TILE_URLS, TILE_ATTRIB, APP_VERSION } from './config.js';
 import { $, haversine, bearingTo, fmtDist, isNightTime, dayKey } from './util.js';
 import { GameState } from './state.js';
 import { LocationEngine } from './geo.js';
@@ -396,6 +396,7 @@ map.on('click', (e) => {
 
 // ---------- boot ----------
 const boot = $('#boot');
+$('#boot-version').textContent = APP_VERSION;
 
 async function begin(useMock) {
   $('#boot-start').disabled = true;

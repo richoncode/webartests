@@ -3,7 +3,7 @@
 // the catch modal, toasts, radar arrow. Pure DOM, no game logic.
 // ============================================================
 
-import { CONFIG, THEMES, TRAILS, xpForLevel } from './config.js';
+import { CONFIG, THEMES, TRAILS, xpForLevel, APP_VERSION } from './config.js';
 import { SPECIES, RARITIES } from './squirrels.js';
 import { ACHIEVEMENTS } from './achievements.js';
 import { $, fmtDist, fmtArea, escapeHtml } from './util.js';
@@ -215,8 +215,8 @@ export class UI {
         <button class="btn-danger" id="set-reset">Reset all progress</button>
       </div>
       <p style="color:#555;font-size:11px;text-align:center">
-        Magic Map · Squirrel Scouts · data stays in your browser<br>
-        Map © OpenStreetMap & CARTO · roads via Overpass API
+        Magic Map · Squirrel Scouts · ${APP_VERSION}<br>
+        Data stays in your browser · Map © OpenStreetMap & CARTO · roads via Overpass API
       </p>`;
 
     this.els.panelBody.querySelectorAll('[data-theme]').forEach((b) =>
