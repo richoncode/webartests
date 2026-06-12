@@ -230,6 +230,13 @@ export class UI {
         </div>
       </div>
       <div class="set-group">
+        <div class="set-label">Roadmap</div>
+        <div class="set-row">
+          <div>Feature ideas<small>100 future collectables &amp; play modes, simplest first</small></div>
+          <button class="btn-secondary" id="set-features">💡 View</button>
+        </div>
+      </div>
+      <div class="set-group">
         <div class="set-label">Danger zone</div>
         <button class="btn-danger" id="set-reset">Reset all progress</button>
       </div>
@@ -264,11 +271,100 @@ export class UI {
     this.els.panelBody.querySelector('#set-country-demo').addEventListener('click', () => {
       this.hooks.tryCountryDemo();
     });
+    this.els.panelBody.querySelector('#set-features').addEventListener('click', () => {
+      this.renderFeatures();
+    });
     this.els.panelBody.querySelector('#set-reset').addEventListener('click', () => {
       if (confirm('Erase all squirrels, fog, streaks and achievements?')) {
         this.hooks.resetGame();
       }
     });
+  }
+
+  // ---------- Feature ideas (roadmap browser) ----------
+  // Renders features.xml. Each feature's <arch> element is an AI
+  // implementation prompt and is intentionally never shown here.
+  async renderFeatures(filter = 'all') {
+    this.els.panelTitle.textContent = '💡 Feature Ideas';
+    if (!this._featuresDoc) {
+      this.els.panelBody.innerHTML = '<p class="den-summary">Loading roadmap…</p>';
+      try {
+        const res = await fetch('features.xml');
+        if (!res.ok) throw new Error(res.status);
+        const doc = new DOMParser().parseFromString(await res.text(), 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error('parse');
+        this._featuresDoc = doc;
+      } catch (e) {
+        this.els.panelBody.innerHTML = '<p class="den-summary">Could not load features.xml</p>';
+        return;
+      }
+    }
+    const doc = this._featuresDoc;
+    const attr = (el, k) => el.getAttribute(k) || '';
+    const text = (el, sel) => (el.querySelector(sel)?.textContent || '').trim();
+
+    const types = {};
+    doc.querySelectorAll('playerTypes > type').forEach((t) => {
+      types[attr(t, 'id')] = { icon: attr(t, 'icon'), name: attr(t, 'name'), desc: t.textContent.trim() };
+    });
+    const genres = {};
+    doc.querySelectorAll('genres > genre').forEach((g) => {
+      genres[attr(g, 'id')] = { icon: attr(g, 'icon'), name: attr(g, 'name') };
+    });
+    const feats = [...doc.querySelectorAll('features > feature')].map((f) => ({
+      genre: attr(f, 'genre'),
+      types: attr(f, 'types').split(/\s+/).filter(Boolean),
+      complexity: +attr(f, 'complexity') || 3,
+      title: text(f, 'title'),
+      blurb: text(f, 'blurb'),
+    }));
+
+    const shown = feats
+      .filter((f) => filter === 'all' || f.genre === filter)
+      .sort((a, b) => a.complexity - b.complexity);
+
+    const dotColor = (c) => (c <= 2 ? 'var(--green)' : c === 3 ? 'var(--orange)' : 'var(--red)');
+    const chips = [
+      `<button class="chip${filter === 'all' ? ' sel' : ''}" data-fgenre="all">All (${feats.length})</button>`,
+      ...Object.entries(genres).map(([id, g]) => {
+        const n = feats.filter((f) => f.genre === id).length;
+        return `<button class="chip${filter === id ? ' sel' : ''}" data-fgenre="${id}">${g.icon} ${escapeHtml(g.name)} (${n})</button>`;
+      }),
+    ].join('');
+
+    const legend = Object.values(types)
+      .map((t) => `<div class="ach-desc" style="margin-top:4px">${t.icon} <b style="color:#ccc">${escapeHtml(t.name)}</b> — ${escapeHtml(t.desc)}</div>`)
+      .join('');
+
+    const items = shown.map((f) => {
+      const g = genres[f.genre] || { icon: '❓', name: f.genre };
+      const dots = '●'.repeat(f.complexity) + '○'.repeat(5 - f.complexity);
+      const typeIcons = f.types.map((id) => types[id]?.icon || '').join(' ');
+      return `<div class="ach-item">
+        <div class="ach-top">
+          <span class="ach-name">${escapeHtml(f.title)}</span>
+          <span class="ach-stars" style="color:${dotColor(f.complexity)}" title="gameplay complexity ${f.complexity}/5">${dots}</span>
+        </div>
+        <div class="ach-desc">${escapeHtml(f.blurb)}</div>
+        <div class="ach-next">${g.icon} ${escapeHtml(g.name)} · for ${typeIcons}</div>
+      </div>`;
+    }).join('');
+
+    this.els.panelBody.innerHTML = `
+      <button class="chip" id="feat-back">← Settings</button>
+      <p class="den-summary" style="margin-top:12px">
+        <b>${shown.length}</b> idea${shown.length === 1 ? '' : 's'} · sorted simplest-first —
+        low-complexity loops pair best with walking. Dots = gameplay complexity (1–5).
+      </p>
+      <details style="margin-bottom:14px"><summary style="color:#888;font-size:12px;cursor:pointer">Player types we design for</summary>${legend}</details>
+      <div class="chips" style="margin-bottom:14px">${chips}</div>
+      ${items}`;
+
+    this.els.panelBody.scrollTop = 0;
+    this.els.panelBody.querySelector('#feat-back').addEventListener('click', () => this.renderSettings());
+    this.els.panelBody.querySelectorAll('[data-fgenre]').forEach((b) =>
+      b.addEventListener('click', () => this.renderFeatures(b.dataset.fgenre))
+    );
   }
 
   // ---------- Catch modal ----------

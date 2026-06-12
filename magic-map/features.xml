@@ -1,0 +1,679 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Magic Map — future feature roadmap.
+  Browsable in-game via Settings → Feature ideas. The <arch> element of each
+  feature is intentionally NOT shown in the UX: it is an implementation prompt
+  to hand to an Opus-class AI model together with <archContext> below.
+  complexity = gameplay complexity for the player, 1 (walk and it happens)
+  to 5 (a game inside the game). Lower complexity is higher priority: simple
+  loops align best with the core goal — walking more.
+-->
+<features version="1">
+
+  <archContext>
+    You are implementing one feature in Magic Map (magic-map/ in the webartests repo), a
+    location-based walking game: vanilla JS ES modules, no build step, Leaflet 1.9 with
+    leaflet-rotate, CARTO tiles restyled by CSS filters, deployed on GitHub Pages (static
+    hosting only). Key modules: state.js (GameState persisted to localStorage, XP/levels/
+    streak/collection), spawner.js (squirrel population, mystery/rustle/revealed states),
+    roads.js (Overpass road data, safe spawn sampling, country-mode parcel sampler),
+    parcels.js + country.js (on-your-own-land mode), fog.js (50m exploration grid + canvas
+    overlay), geo.js (GPS median filter + mock mode), achievements.js (tiered rewards),
+    ui.js (HUD/panels/toasts, pure DOM), main.js (wiring + game loop), config.js (all
+    tuning constants + APP_VERSION). Conventions: dark theme (#0d0d0d bg, #1a1a1a cards,
+    #5b9bd5 accent), emoji-based art recoloured with CSS filters (no image assets),
+    everything must degrade gracefully offline and in mock/demo mode, all persistence in
+    localStorage via GameState, external data only from keyless public APIs (Overpass,
+    Open-Meteo, ArcGIS parcel layers). Features marked as needing a backend should
+    propose the smallest viable one (e.g. Cloudflare Worker + KV) behind a feature flag,
+    with a stub client-only fallback so the static deploy keeps working. Always add
+    config knobs to config.js, test with the in-app demo/mock mode, and bump APP_VERSION.
+  </archContext>
+
+  <playerTypes>
+    <type id="collector" icon="🧺" name="Collector">Joy of complete sets — every species, every variant, every page of the compendium filled.</type>
+    <type id="achiever" icon="🏅" name="Achiever">Milestones, badges, tiers, 100% bars. Wants the game to notice every accomplishment.</type>
+    <type id="explorer" icon="🧭" name="Explorer">New streets, map edges, secret places. The fog itself is the opponent.</type>
+    <type id="builder" icon="🛠️" name="Builder">Wants to make persistent things — dens, gardens, trails — that grow with effort.</type>
+    <type id="puzzler" icon="🧩" name="Puzzler">Riddles, ciphers, deduction. Walking is the way clues get collected.</type>
+    <type id="socializer" icon="💬" name="Socializer">Plays for people — gifting, trading, shared goals, showing off the den.</type>
+    <type id="competitor" icon="🏆" name="Competitor">Ladders, races, rivals. Will walk 5 more km to pass one name on a list.</type>
+    <type id="nurturer" icon="🌱" name="Nurturer">Care loops — companions, gardens, rescues. Comes back daily because something needs them.</type>
+    <type id="storyseeker" icon="📜" name="Story-seeker">Lore, chapters, meaning. Wants the walk to be part of a tale.</type>
+    <type id="wellness" icon="🧘" name="Wellness walker">Health and habit first. Wants gentle goals, calm modes, and credit for rest.</type>
+  </playerTypes>
+
+  <genres>
+    <genre id="collecting" icon="🐿️" name="Pure Collecting">More kinds of things to find on every walk — variants, ephemera, regional exclusives.</genre>
+    <genre id="badges" icon="🏅" name="Badges &amp; Achievements">Recognition systems that turn ordinary walks into trophies.</genre>
+    <genre id="exploration" icon="🗺️" name="Exploration">Mechanics that pull players down streets they have never seen.</genre>
+    <genre id="puzzles" icon="🧩" name="Puzzles &amp; Mysteries">Clues scattered in the real world; legs are the puzzle input.</genre>
+    <genre id="builders" icon="🏗️" name="Builders">Persistent constructions funded by walking.</genre>
+    <genre id="nurture" icon="🌱" name="Nurture &amp; Care">Companions and gardens that need regular visits.</genre>
+    <genre id="social" icon="🤝" name="Social &amp; Co-op">Friends, gifts, trades and shared neighbourhood goals.</genre>
+    <genre id="competitive" icon="🏆" name="Competitive">Leagues, duels and territory for players motivated by rivalry.</genre>
+    <genre id="story" icon="📜" name="Story &amp; Lore">Narrative that unlocks by distance, place and time.</genre>
+    <genre id="wellness" icon="🧘" name="Wellness">Fitness-first features that respect rest and build habits.</genre>
+  </genres>
+
+  <!-- ================= Pure Collecting ================= -->
+
+  <feature id="f001" genre="collecting" types="collector" complexity="1">
+    <title>Shiny Variants</title>
+    <blurb>Any squirrel has a 1-in-200 chance of spawning as a sparkling “shiny” — a second den page to complete.</blurb>
+    <arch>Add a boolean shiny roll in spawner.spawnOne (CONFIG.SHINY_ODDS), persisted on the spawn and through state.registerCatch into a parallel caught-shiny map in GameState. Render shinies with a CSS sparkle animation layered on the existing emoji filter (no assets), add a den toggle to view the shiny page, and a Shiny Hunter achievement row in achievements.js.</arch>
+  </feature>
+
+  <feature id="f002" genre="collecting" types="collector explorer" complexity="1">
+    <title>Seasonal Coats</title>
+    <blurb>Species wear winter, spring, summer and fall looks — four coats to collect per squirrel.</blurb>
+    <arch>Derive season from the date in a util helper; store caught coats as caught[speciesId].coats bitmask in GameState. Seasonal look = extra CSS filter fragment appended per season in squirrels.js (e.g. winter adds brightness/desaturation). Den cards show four mini-dots for collected coats. No spawn-rate changes; the same catch records the current season's coat.</arch>
+  </feature>
+
+  <feature id="f003" genre="collecting" types="collector wellness" complexity="1">
+    <title>Trailside Acorn Pickups</title>
+    <blurb>Small acorn caches dot sidewalks every few hundred metres — tap to grab as you pass.</blurb>
+    <arch>Add a second lightweight spawn class in spawner.js (kind: 'pickup') using roads.sampleSpawnPoint with a tighter ring and short TTL, capped at ~5 active. Pickups skip the rustle/reveal ladder: visible at all ranges as a small 🌰 marker, tappable within the catch radius, granting +1 acorn and tiny XP. Persist in activeSpawns alongside squirrels with a kind field (default 'squirrel' on restore for backward compatibility).</arch>
+  </feature>
+
+  <feature id="f004" genre="collecting" types="collector" complexity="1">
+    <title>Leaf &amp; Feather Ephemera</title>
+    <blurb>Every walk sheds a few one-tap micro-collectibles — 30 leaf and feather types for an ephemera album.</blurb>
+    <arch>Reuse the pickup spawn class from Trailside Acorns with an EPHEMERA table (id, emoji 🍁🪶🌸, rarity weights, season/night gating like squirrels.js). New album panel section in ui.js mirroring the den grid. Keep per-item logic data-driven so adding types is a table edit; store counts in GameState.ephemera.</arch>
+  </feature>
+
+  <feature id="f005" genre="collecting" types="collector achiever" complexity="1">
+    <title>Runt &amp; Giant Sizes</title>
+    <blurb>Rare size morphs — record the smallest and biggest specimen of each species like a fishing log.</blurb>
+    <arch>Roll a size factor (normal distribution around 1.0, clamp 0.6–1.6) in spawner.spawnOne, scale the marker emoji, and persist per-species min/max records in GameState on catch. Den detail view gains a “record book” line (smallest/biggest caught). Achievements for first runt, first giant, and 10 records broken.</arch>
+  </feature>
+
+  <feature id="f006" genre="collecting" types="collector explorer" complexity="2">
+    <title>Habitat Exclusives</title>
+    <blurb>Some species only live near water, in parks, or downtown — collecting them means visiting every habitat.</blurb>
+    <arch>Extend roads.js Overpass query (or a second cached query) to tag the player's surroundings: park (leisure=park), water (natural=water within 150m), urban (building density). Give species an optional habitat field in squirrels.js and filter pickSpecies by current habitat context passed from main.js. Show habitat hints on unknown den cards (“found near water”). Cache habitat lookups with the road fetch to avoid extra API load.</arch>
+  </feature>
+
+  <feature id="f007" genre="collecting" types="collector" complexity="2">
+    <title>Migration Weeks</title>
+    <blurb>A visiting species arrives for one week then leaves — miss it and wait for next migration.</blurb>
+    <arch>Add a MIGRANTS table with 8–10 extra species and a deterministic schedule derived from ISO week number (hash week → migrant id), so all players see the same visitor without a backend. pickSpecies appends the current migrant with a modest weight. Den shows migrants in a separate “Visitors” section with next-arrival hints. Ensure week boundaries use local time and the den records permanently.</arch>
+  </feature>
+
+  <feature id="f008" genre="collecting" types="collector nurturer" complexity="2">
+    <title>Personality Traits</title>
+    <blurb>Each catch rolls a personality — Brave, Sleepy, Greedy… — adding a trait-collection layer per species.</blurb>
+    <arch>Roll one of ~12 traits at catch time in main.js onCatch path; store per-species trait sets in GameState. Traits show on the catch card and den detail. Keep traits cosmetic for now but reserve a hook (trait modifiers object) so later features (companions, duels) can read them. Add a “Full Personality” achievement for collecting 6 traits on one species.</arch>
+  </feature>
+
+  <feature id="f009" genre="collecting" types="collector explorer" complexity="2">
+    <title>Relic Digs</title>
+    <blurb>Long-unvisited fog cells hide buried relics — return to old ground to dig up museum pieces.</blurb>
+    <arch>Track lastVisited timestamp per explored cell (upgrade explored Set to a Map in state.js with migration from the array format). Cells idle &gt;14 days get a chance to host a dig marker when revisited; tapping plays a short tap-N-times dig interaction in a modal and awards one of ~20 relic items to a museum album. Cap concurrent digs and reuse the pickup marker pipeline.</arch>
+  </feature>
+
+  <feature id="f010" genre="collecting" types="collector builder" complexity="3">
+    <title>Living Den Diorama</title>
+    <blurb>Your den becomes a scene: collected squirrels wander a little yard that grows with your collection.</blurb>
+    <arch>New den-scene view in ui.js: an absolutely-positioned div stage where caught species (emoji with their filters) idle-walk via CSS keyframe randomisation seeded by species id. Scene tiers (yard → grove → forest) unlock by unique-species count. Pure cosmetic, no game-loop coupling; keep DOM under ~40 animated nodes and pause animations when the panel is closed.</arch>
+  </feature>
+
+  <!-- ================= Badges & Achievements ================= -->
+
+  <feature id="f011" genre="badges" types="achiever wellness" complexity="1">
+    <title>Time-of-Day Badge Set</title>
+    <blurb>Dawn Patrol, Lunch Looper, Twilight Scout, Night Owl — earn badges for walking every hour band.</blurb>
+    <arch>Record distance per 4-hour band in GameState (small array, rolled up daily). Add a badges section to achievements.js with per-band distance tiers and a “Round the Clock” meta-badge for all bands. Journal renders the badge grid using existing ach-item styles. No new UI primitives needed.</arch>
+  </feature>
+
+  <feature id="f012" genre="badges" types="achiever explorer" complexity="1">
+    <title>Weather Walker Badges</title>
+    <blurb>Rain, frost, heat, wind — get credit for walking when others stay home.</blurb>
+    <arch>Fetch current conditions from Open-Meteo (keyless, free) at most every 20 min while moving; classify into rain/cold/hot/wind buckets in a new weather.js. Accrue per-bucket distance in GameState and add tiered badges. Degrade silently when offline or in mock mode (no weather = no accrual). Add CONFIG.WEATHER with thresholds.</arch>
+  </feature>
+
+  <feature id="f013" genre="badges" types="achiever puzzler" complexity="1">
+    <title>Street-Name Alphabet</title>
+    <blurb>Collect the alphabet: walk a street starting with each letter, A to Z.</blurb>
+    <arch>Roads are already fetched with tags — extend the Overpass query to include the name tag (out tags geom). When the player is within ~20m of a named way's centreline (reuse minMotorDistance-style segment math), mark its first letter collected in GameState.alphabet. Journal shows a 26-slot tray; achievement at 13 and 26. Cache name checks per fetch to stay O(1) per fix.</arch>
+  </feature>
+
+  <feature id="f014" genre="badges" types="achiever socializer" complexity="1">
+    <title>Mile-Marker Medal Cards</title>
+    <blurb>Every distance milestone mints a shareable medal card you can save or send.</blurb>
+    <arch>On distance-tier unlocks, render a medal card (canvas: dark card, big number, date, squirrel emoji) and offer navigator.share with canvas.toBlob fallback to download. Implement in a new share.js used by ui.js; no network needed. Keep card layout data-driven so other features (badges, records) can mint cards too.</arch>
+  </feature>
+
+  <feature id="f015" genre="badges" types="achiever competitor" complexity="1">
+    <title>Personal Records Board</title>
+    <blurb>Longest day, biggest catch haul, furthest from home — your own record book, always beatable.</blurb>
+    <arch>Add a records object in GameState updated from existing event paths (addDistance, registerCatch, frontier calc): longestDay, mostCatchesDay, maxHomeDistance, longestStreak, fastestKm (from fix timing). Journal gets a Records section; breaking a record fires a gold toast. Pure bookkeeping — no new loops.</arch>
+  </feature>
+
+  <feature id="f016" genre="badges" types="achiever explorer" complexity="2">
+    <title>Park Ranger Badges</title>
+    <blurb>Each distinct park you visit is a stamp in your ranger book; tiers for 5, 15, 40 parks.</blurb>
+    <arch>Query Overpass for leisure=park polygons near the player (piggyback the road fetch cadence, separate small query). Identify parks by OSM way id; when the player's fix falls inside a park ring (pointInPolygon from util.js), stamp it with name and date in GameState.parks. Journal lists stamps; tiers in achievements.js. Cache aggressively — parks rarely change.</arch>
+  </feature>
+
+  <feature id="f017" genre="badges" types="achiever explorer" complexity="2">
+    <title>Compass Rose Badge</title>
+    <blurb>Catch a squirrel over 1 km north, south, east AND west of home to complete the rose.</blurb>
+    <arch>On each catch, compute bearing and distance from GameState.home (bearingTo in util.js); bucket into N/E/S/W quadrants when distance ≥ 1 km and store flags. Journal renders a four-point rose filling in; completing it unlocks a “Cartographer's Rose” trail colour via the existing reward pipeline.</arch>
+  </feature>
+
+  <feature id="f018" genre="badges" types="achiever storyseeker" complexity="1">
+    <title>Era Anniversary Badges</title>
+    <blurb>30, 100, 365 days since your first walk — the game remembers and celebrates your eras.</blurb>
+    <arch>GameState already stores createdAt; add anniversary checks to the daily rollover path with badges and a celebratory toast plus a free bait bundle. Include a “Day One” journal line showing the original date and first-day stats snapshot (capture distanceTotal at each anniversary into an eras array for the Memory Lane feature to reuse).</arch>
+  </feature>
+
+  <feature id="f019" genre="badges" types="achiever socializer" complexity="2">
+    <title>Badge Showcase</title>
+    <blurb>Pin your three proudest badges to a little profile strip on the map HUD.</blurb>
+    <arch>Add GameState.showcase (array of up to 3 achievement ids) editable from the Journal via long-press or a pin button per ach-item. Render a compact HUD strip (icons only) under the top bar, hidden when empty. Keep it read-only display — tapping opens the Journal.</arch>
+  </feature>
+
+  <feature id="f020" genre="badges" types="achiever" complexity="2">
+    <title>Meta-Badge Tiers</title>
+    <blurb>Badges about badges: Bronze/Silver/Gold Scout ranks for total stars earned across everything.</blurb>
+    <arch>Compute total earned tier stars across achievements.js in a selector function; add a rank table (Scout → Ranger → Warden → Legend) with thresholds in config.js. Rank shows beside the level badge in the HUD and gates nothing (pure prestige). Recompute lazily on journal open and after any unlock toast.</arch>
+  </feature>
+
+  <!-- ================= Exploration ================= -->
+
+  <feature id="f021" genre="exploration" types="explorer storyseeker" complexity="1">
+    <title>Named Territories</title>
+    <blurb>When you clear a contiguous patch of fog it gets a generated name — “Oakshade Quarter” — on your map.</blurb>
+    <arch>Cluster explored cells via flood-fill (run lazily, throttled) into territories ≥ 30 cells; name them with a seeded generator (adjective+nature+suffix tables, seed = cluster centroid) so names are stable. Render names as Leaflet tooltips/divIcons at cluster centroids, visible at low zoom. Persist names in GameState so they never change once granted.</arch>
+  </feature>
+
+  <feature id="f022" genre="exploration" types="explorer collector" complexity="2">
+    <title>Landmark Beacons</title>
+    <blurb>Fountains, statues and viewpoints from the real map appear as glowing beacons worth visiting once each.</blurb>
+    <arch>Overpass query for amenity=fountain, tourism=artwork/viewpoint, historic=* near the player (cache per area like roads). Render undiscovered landmarks as tall beacon markers (reuse .beacon CSS); first visit within 25m awards XP and a stamp in a Landmarks album. Cap visible beacons to nearest 10 to avoid clutter.</arch>
+  </feature>
+
+  <feature id="f023" genre="exploration" types="explorer achiever" complexity="1">
+    <title>District Completion %</title>
+    <blurb>See your home square-kilometre fill toward 100% explored, with a reward at completion.</blurb>
+    <arch>Define the home district as the 20×20-cell square centred on GameState.home; compute explored percentage from the cell grid and show a progress card in the Journal plus a subtle outline on the map when &gt;50%. At 100%, grant a unique theme variant and start the next ring (3×3 districts) automatically. All client-side math over the existing exploredSet.</arch>
+  </feature>
+
+  <feature id="f024" genre="exploration" types="explorer" complexity="1">
+    <title>Trailblazer Bonus</title>
+    <blurb>First time down any street pays a small XP bonus — the game literally rewards new ground.</blurb>
+    <arch>Detect “new street” as new fog cells revealed while within 20m of a named way (reuse Street-Name Alphabet's proximity check); pay +5 XP per new-street event with a quiet toast batched per minute. Track per-way ids in a capped LRU set in GameState to avoid unbounded growth (keep last 2,000 way ids).</arch>
+  </feature>
+
+  <feature id="f025" genre="exploration" types="explorer puzzler" complexity="2">
+    <title>Vista Telescopes</title>
+    <blurb>High ground grants a telescope: reveal a distant circle of fog from a viewpoint without walking it.</blurb>
+    <arch>Use OSM viewpoint nodes (from Landmark Beacons data) or peak/hill tags as vista spots. Standing at one offers a “use telescope” button: the player picks a direction and a 100m fog circle 300–500m away is revealed (cellsWithinRadius + addCells). Limit one use per vista per week (timestamp map). Frame it as scouting — revealed-but-unwalked cells could render slightly dimmer via a second cell set.</arch>
+  </feature>
+
+  <feature id="f026" genre="exploration" types="explorer" complexity="1">
+    <title>Daily Mystery Tile</title>
+    <blurb>One distant cell glows on your map each day — go see what's there for a guaranteed rare-ish find.</blurb>
+    <arch>Each day (dayKey seed) pick an unexplored cell 400–900m from the player's last position, deterministically from the seed so reload doesn't reroll. Mark it with a pulsing tile overlay; arriving spawns one guaranteed rare+ squirrel via spawner.spawnOne with a forced species pool and clears the tile. Persist today's tile in GameState to survive reloads.</arch>
+  </feature>
+
+  <feature id="f027" genre="exploration" types="explorer achiever" complexity="2">
+    <title>Frontier Expeditions</title>
+    <blurb>A weekly expedition ring appears 2–3 km out; reach it for a big haul and a postcard-worthy stamp.</blurb>
+    <arch>Weekly seed (ISO week) generates a target ring segment 2–3km from home, biased along walkable road density (sample candidate points via roads data when available, fallback to plain ring). Show as a map region marker with countdown; arrival triggers a 3-spawn burst, bonus XP scaled by distance, and an Expedition stamp album entry. Keep state in GameState.expedition {weekKey, target, done}.</arch>
+  </feature>
+
+  <feature id="f028" genre="exploration" types="explorer builder storyseeker" complexity="2">
+    <title>Cartographer Mode</title>
+    <blurb>Name your own places — label the corner where you caught your first legendary on your personal map.</blurb>
+    <arch>Long-press on an explored area opens a small naming dialog (20-char limit, emoji allowed); store pins {lat,lng,label,ts} in GameState (cap 50) and render as subtle labels in a dedicated pane above fog. Include edit/delete in a pin popup. Sanitise with the existing escapeHtml; everything stays local and private.</arch>
+  </feature>
+
+  <feature id="f029" genre="exploration" types="explorer collector" complexity="1">
+    <title>Cul-de-sac Caches</title>
+    <blurb>Dead ends hide caches — the streets nobody walks become the best loot spots.</blurb>
+    <arch>Detect dead-ends from the cached road graph: way endpoints with no other way endpoint within 15m (build a tiny endpoint index per fetch in roads.js). Spawn pickup-class caches at a sample of dead-ends with slightly boosted loot (2–3 acorns or ephemera). Tag markers with a 🧭 hint icon. Pure derivation from data already fetched.</arch>
+  </feature>
+
+  <feature id="f030" genre="exploration" types="explorer wellness" complexity="2">
+    <title>Unbroken Chains</title>
+    <blurb>Chain bonus for continuous on-foot exploration — every extra 10 minutes of new ground multiplies finds.</blurb>
+    <arch>Track a chain timer in main.js: active while fixes keep arriving at walking speed AND new cells appear at least every 4 minutes; driving speed or idle breaks it. Each chain stage (+10 min) raises spawn chance via a multiplier the spawner reads, capped ×2. Show a small chain chip near the bait chip. Reset gracefully on app background.</arch>
+  </feature>
+
+  <!-- ================= Puzzles & Mysteries ================= -->
+
+  <feature id="f031" genre="puzzles" types="puzzler collector" complexity="2">
+    <title>Riddle Squirrels</title>
+    <blurb>Some squirrels pose a riddle before they'll be befriended — answer from three choices.</blurb>
+    <arch>Add a RIDDLES table (~60 entries: text, 3 options, answer index) in a new riddles.js; 1-in-6 spawns get isRiddler. The catch modal inserts the riddle step before the Befriend button; correct = bonus XP, wrong = squirrel flees (spawn removed, gentle toast). Track riddle stats for a Riddlemaster badge. Keep riddles family-friendly and rotate by seeded shuffle.</arch>
+  </feature>
+
+  <feature id="f032" genre="puzzles" types="puzzler explorer" complexity="2">
+    <title>Pawprint Trails</title>
+    <blurb>Follow a chain of pawprints — each one reveals the next 100m away — to a hidden cache.</blurb>
+    <arch>On trigger (random walk event, max 1 active), generate 3–5 waypoint chain along walkable points (roads.sampleSpawnPoint with custom rings from each prior point). Only the next pawprint is visible; arriving within 20m reveals the next, the last yields a cache (bait + rare spawn). Persist chain progress in GameState. Reuse pickup markers with a 🐾 icon and a faint connecting polyline to the last-found print only.</arch>
+  </feature>
+
+  <feature id="f033" genre="puzzles" types="puzzler achiever" complexity="3">
+    <title>Constellation Walks</title>
+    <blurb>Walk a path shaped like a constellation — the app traces your route and matches the star pattern.</blurb>
+    <arch>Define 8 constellations as normalised point sequences. Record the day's trail (decimated), and on demand run a shape match: normalise scale/rotation via Procrustes against each template, score by mean point distance. A match ≥ threshold summons a unique “Starfall” squirrel. Add a Constellation page in the Journal showing templates and best scores. Heavy math stays in a worker-free throttled function; trails already exist in main.js.</arch>
+  </feature>
+
+  <feature id="f034" genre="puzzles" types="puzzler collector" complexity="2">
+    <title>Letter Acorn Ciphers</title>
+    <blurb>Acorns stamped with letters drop on walks; spell this week's word to crack the cipher chest.</blurb>
+    <arch>Weekly seeded target word (6–8 letters, word list in cipher.js). Letter acorns spawn via the pickup class, weighted toward letters the player still needs. A Cipher panel shows collected letters and slots; completing the word opens a chest (theme shard / bait / relic). Persist per-week progress and archive solved words for an album.</arch>
+  </feature>
+
+  <feature id="f035" genre="puzzles" types="puzzler explorer" complexity="3">
+    <title>Street Crossword</title>
+    <blurb>A tiny daily crossword whose answers are street names within a kilometre of you.</blurb>
+    <arch>From cached named ways, pick 4–6 names; generate a crossing grid greedily (place longest first, intersect on shared letters; retry with subsets). Clues are auto-formed (“7 letters, runs N–S, two blocks east”) using way geometry relative to the player. Render a touch crossword in a panel. All offline-capable once roads are cached; fall back to “not enough named streets” gracefully.</arch>
+  </feature>
+
+  <feature id="f036" genre="puzzles" types="puzzler explorer" complexity="3">
+    <title>Treasure Triangulation</title>
+    <blurb>Three landmarks each whisper a distance; walk to where the circles cross to dig the treasure.</blurb>
+    <arch>Pick a hidden point via roads sampling 300–700m away; choose 3 known references (landmarks if available, else named-street intersections) and show their distances to the treasure. Render optional faint range rings on demand. Arriving within 15m triggers the dig interaction (reuse Relic Digs modal) with premium loot. One active hunt, persisted; regenerate weekly if unsolved.</arch>
+  </feature>
+
+  <feature id="f037" genre="puzzles" types="puzzler" complexity="2">
+    <title>Echo Hot-and-Cold</title>
+    <blurb>A hidden chirper plays warmer/colder pings as you move — find it by ear and instinct.</blurb>
+    <arch>Hide a virtual chirper 100–250m away (roads-sampled). Every few seconds while the hunt is active, play a WebAudio chirp whose tempo/pitch scales with closing distance (and a haptic via navigator.vibrate where supported); a visual pulse ring serves silent mode. Found within 12m = catch a unique “Echo” squirrel. Audio context must initialise from a user gesture; add a mute toggle.</arch>
+  </feature>
+
+  <feature id="f038" genre="puzzles" types="puzzler explorer" complexity="3">
+    <title>Observation Lockboxes</title>
+    <blurb>A lockbox asks questions only someone standing there can answer — count the benches, read the plaque's year.</blurb>
+    <arch>Generate lockboxes at landmark beacons with auto-checkable questions derived from OSM tags where possible (e.g. “what colour is tagged for this artwork?” when tags exist) plus honor-system numeric questions otherwise (accept ±1). Three tries then a 1-day lock. Loot mirrors cipher chests. Clearly label honor-system ones; never require unsafe positions (reuse ROAD_MIN_SAFE checks for placement).</arch>
+  </feature>
+
+  <feature id="f039" genre="puzzles" types="puzzler collector" complexity="2">
+    <title>Order of the Day</title>
+    <blurb>Catch today's species in the posted order — common, then uncommon, then any rare — for a combo chest.</blurb>
+    <arch>Daily seeded pattern of 3 rarity slots shown as a small card in the Journal and a HUD mini-tracker. Validate order in the registerCatch path (out-of-order just resets progress, no punishment). Completion grants a combo chest and a streak counter for consecutive days of patterns completed. Tiny state object, no spawn changes.</arch>
+  </feature>
+
+  <feature id="f040" genre="puzzles" types="puzzler builder" complexity="4">
+    <title>Park Maze Overlay</title>
+    <blurb>A virtual hedge maze appears over a big park — walk the true path without touching the hedges.</blurb>
+    <arch>For parks ≥ 2 ha (polygon from Park Ranger data), generate a maze: grid the polygon at 10m, carve with recursive backtracker, render hedge cells as translucent overlay polygons. GPS entering hedge cells dims the run-score; reaching the centre awards a Maze Master stamp and a topiary squirrel. Require park context to keep players off roads; regenerate monthly per park from a seeded hash. This is a mini-game module (maze.js) loaded on demand.</arch>
+  </feature>
+
+  <!-- ================= Builders ================= -->
+
+  <feature id="f041" genre="builders" types="builder collector" complexity="2">
+    <title>Den Decoration</title>
+    <blurb>Furnish your den with twigs, moss and treasures found on walks — your collection gets a home.</blurb>
+    <arch>Materials drop via the pickup class (twig/moss/pebble/ribbon). A Den “decorate” tab offers a small grid stage where furniture crafted from materials (recipes table) is placed via tap-to-place; persist layout in GameState.den. Render with emoji + CSS, drag optional (tap-slot placement is enough). Crafting costs sink the material economy; add 2 achievements.</arch>
+  </feature>
+
+  <feature id="f042" genre="builders" types="builder wellness nurturer" complexity="1">
+    <title>Walk-a-Tree</title>
+    <blurb>Every 5 km plants a virtual sapling somewhere you walked; watch your forest grow over months.</blurb>
+    <arch>On each 5km distanceTotal threshold, drop a sapling pin at a random recent trail point; trees advance growth stages (sprout→sapling→oak) by real elapsed weeks. Render as small emoji markers in a forest pane with a Journal counter (“your forest: 14 trees, oldest 2 months”). Pure state + markers; cap rendered trees to viewport.</arch>
+  </feature>
+
+  <feature id="f043" genre="builders" types="builder explorer" complexity="3">
+    <title>Squirrel Highways</title>
+    <blurb>String rope-bridges between your territories; squirrels visibly commute along them, boosting both ends.</blurb>
+    <arch>Let players connect two named territories (from f021) whose centroids are &lt;1.5km apart by spending acorns scaled by distance. Render as a dashed arc polyline with animated 🐿️ dots (CSS offset-path or interval marker movement). Connected territories get +10% spawn quality (luck bonus read by pickSpecies). Persist links; limit 5. Validate both territories are yours (always true locally) — design the data shape to survive future multi-player sync.</arch>
+  </feature>
+
+  <feature id="f044" genre="builders" types="builder nurturer" complexity="2">
+    <title>Feeder Stations</title>
+    <blurb>Place a feeder on your route and keep it stocked — it attracts extra squirrels while full.</blurb>
+    <arch>Allow placing up to 2 feeders at the player's location (roads-safe check), each holding 5 acorn charges draining 1/day. While stocked, spawner biases one extra spawn within 80m of the feeder (extra sampler ring). Feeder markers show fill level; restocking requires standing at it. State in GameState.feeders; decay handled in the daily rollover.</arch>
+  </feature>
+
+  <feature id="f045" genre="builders" types="builder explorer" complexity="1">
+    <title>Trail Markers</title>
+    <blurb>Plant waypoint flags on your map — favourite benches, best coffee, top squirrel spots.</blurb>
+    <arch>Lightweight subset of Cartographer Mode shippable first: a “drop flag here” button placing up to 20 emoji flags (picker of 8 icons) at the current position, listed in a panel with distance + tap-to-pan. Persist in GameState.flags. If f028 ships later, migrate flags into its pin store.</arch>
+  </feature>
+
+  <feature id="f046" genre="builders" types="builder achiever" complexity="2">
+    <title>Park Patronage</title>
+    <blurb>Invest acorns in your favourite park — tiered upgrades make its spawns permanently better for you.</blurb>
+    <arch>Parks (from f016) gain a patronage level (0–3) bought with acorns; each level adds +rarity luck inside the park polygon and a cosmetic ring colour. Store in GameState.parkPatronage keyed by OSM id. Apply the buff in pickSpecies via a context flag main.js computes (inside-patronised-park). One park cap at first; a Patron badge series.</arch>
+  </feature>
+
+  <feature id="f047" genre="builders" types="builder explorer" complexity="3">
+    <title>Burrow Network</title>
+    <blurb>Dig burrow entrances in distant explored areas — fast-travel your bait effects between them.</blurb>
+    <arch>Players place burrow entrances (max 4) in explored cells ≥500m apart. Burrows don't move the player (GPS is real) — instead they network effects: using bait at one burrow triggers a half-strength bait pulse at all others, encouraging multi-anchor route loops. Render as 🕳️ markers; state in GameState.burrows. Make the effect propagation a small pub-sub in spawner.useBait.</arch>
+  </feature>
+
+  <feature id="f048" genre="builders" types="builder collector achiever" complexity="2">
+    <title>Statue Garden</title>
+    <blurb>Legendary catches earn statues — arrange a marble menagerie on your den grounds.</blurb>
+    <arch>Each legendary/mythic first-catch mints a statue item (species emoji with a stone CSS filter: grayscale+contrast+drop-shadow). Statues place on the den stage (depends on f041's stage, or ship a simple 3-slot pedestal row standalone). Pure prestige cosmetics; persist placements; share-card integration with f014 if present.</arch>
+  </feature>
+
+  <feature id="f049" genre="builders" types="builder storyseeker" complexity="3">
+    <title>Village of the Oaks</title>
+    <blurb>Unlock and upgrade a tiny squirrel village — each building tied to a different walking stat.</blurb>
+    <arch>A village panel with 6 buildings (Bakery←distance, Library←species, Watchtower←exploration, Bank←acorns spent, Inn←streak, Workshop←materials); building levels derive from the linked stat with milestone thresholds — no separate spend loop at v1, it's a visualisation layer that makes stats feel like construction. Render as a stacked emoji scene. Later versions can add spendable upgrades; keep the derivation pure so it back-fills for veterans.</arch>
+  </feature>
+
+  <feature id="f050" genre="builders" types="builder nurturer" complexity="2">
+    <title>Nest Weaving Season</title>
+    <blurb>Each spring, gather weaving materials to build the year's nest — bigger nests, better spring bonuses.</blurb>
+    <arch>Season-gated (March–May): weaving materials join the pickup tables; a Nest panel shows the year's nest assembling through 5 visual stages as materials accumulate. Completed nests grant a springtime luck buff and persist as dated trophies (“Nest of 2027”). Reuse pickup + den-stage infrastructure; all date logic via dayKey utilities.</arch>
+  </feature>
+
+  <!-- ================= Nurture & Care ================= -->
+
+  <feature id="f051" genre="nurture" types="nurturer collector" complexity="2">
+    <title>Pocket Companion</title>
+    <blurb>Choose one caught squirrel to walk beside you on the map — it levels up with shared kilometres.</blurb>
+    <arch>Add GameState.companion {speciesId, xp, level, name}; selectable from den cards. Render a small companion marker trailing the player marker (lerp toward a position 8m behind, updated per fix). Companion levels by shared distance and grants tiny perks at milestones (+1m detect per 3 levels, capped). Nameable with escapeHtml-sanitised input. Companion presence feeds future features (tricks, moods).</arch>
+  </feature>
+
+  <feature id="f052" genre="nurture" types="nurturer" complexity="2">
+    <title>Feed &amp; Groom Loop</title>
+    <blurb>Your companion gets hungry and scruffy; berries and grooming found on walks keep it glowing.</blurb>
+    <arch>Companion gains hunger/groom meters decaying daily (rollover path); berries and brushes drop via pickups. A care sheet in the den detail lets you feed/groom with a small heart burst. Well-cared (both meters &gt;70%) doubles companion XP gain. Meters never punish below baseline — neglect just pauses bonuses (wellness-friendly design).</arch>
+  </feature>
+
+  <feature id="f053" genre="nurture" types="nurturer collector" complexity="2">
+    <title>Acorn Eggs</title>
+    <blurb>Rarely you find a mysterious acorn egg — incubate it by walking 2–5 km to hatch a baby squirrel.</blurb>
+    <arch>Egg items drop rarely (pickup class); one incubates at a time, hatching at a distance threshold by rarity (2/3.5/5 km) — mirror the Pokémon Go loop. Hatchlings are baby variants (smaller scale, pastel filter) of normal species recorded separately in the den. Show an egg progress bar in the HUD while incubating. State: GameState.egg {speciesRoll, target, progress}.</arch>
+  </feature>
+
+  <feature id="f054" genre="nurture" types="nurturer wellness" complexity="1">
+    <title>Companion Moods</title>
+    <blurb>Your companion's face shows how the walking week is going — keep it beaming.</blurb>
+    <arch>Compute mood from the 7-day distance window (rolling array in GameState): thriving/content/sleepy/lonely. Mood shows as a small emoji bubble over the companion marker and on its den card, with one gentle suggestion line (“a short stroll would cheer Hazel up”). Read-only derivation, no penalties — pure ambient motivation.</arch>
+  </feature>
+
+  <feature id="f055" genre="nurture" types="nurturer builder" complexity="2">
+    <title>Garden Plots</title>
+    <blurb>Plant seeds at spots you pass daily; each real-day visit waters them toward harvest.</blurb>
+    <arch>Up to 3 plots placed at player position (roads-safe). Seeds (pickup drops) take 4–7 distinct-day visits within 40m to mature; harvest yields acorns/berries/rare seeds. Plot markers show growth stage emoji 🌱🌿🌻. Visits register in onFix with a 1/day per-plot guard. Decay is gentle: missing days pauses growth, never kills (wellness principle).</arch>
+  </feature>
+
+  <feature id="f056" genre="nurture" types="nurturer storyseeker" complexity="2">
+    <title>Rescue Rehab</title>
+    <blurb>An injured squirrel needs you: visit its spot daily for four days to nurse it back — it never forgets.</blurb>
+    <arch>Rare event spawn (max 1 active, weekly cooldown): an injured squirrel fixed in place with a bandage look (CSS). Each day's visit within 30m advances care 1/4 with a small scene toast; completion adds it to the den with a unique “Rescued” trait and a loyalty aura. Abandoning (7 idle days) quietly despawns with no penalty. Persist in GameState.rescue.</arch>
+  </feature>
+
+  <feature id="f057" genre="nurture" types="nurturer puzzler" complexity="3">
+    <title>Route Tricks</title>
+    <blurb>Teach your companion tricks by repeating route shapes — three triangle walks teaches the Spin.</blurb>
+    <arch>Detect coarse route shapes per walk (loop, out-and-back, triangle, figure-8) from the day's decimated trail using turning-angle histograms; repeating a shape 3 times within a week unlocks the mapped trick, shown as a companion marker animation on demand. Keep detection forgiving (threshold liberally) and surface progress (“triangle 2/3”) in the companion sheet.</arch>
+  </feature>
+
+  <feature id="f058" genre="nurture" types="nurturer achiever" complexity="2">
+    <title>Retirement Meadow</title>
+    <blurb>Companions you've walked far with retire to a meadow as elders, each granting a small permanent blessing.</blurb>
+    <arch>Companions reaching level 20 may retire (one-way choice): they move to a Meadow panel (idle scene like the den stage) and grant a permanent stacking +0.5% luck each (cap 5 elders). Encourages cycling companions rather than one forever. Track elders array in GameState; render with a calm pastel filter.</arch>
+  </feature>
+
+  <feature id="f059" genre="nurture" types="nurturer collector" complexity="1">
+    <title>Species Friendship</title>
+    <blurb>Every species has a friendship heart that fills as you befriend more of them — full hearts glow in the den.</blurb>
+    <arch>Friendship level = thresholds over caught[speciesId] count (1/5/15/40). Den cards show heart pips; max-friendship species get a glowing card border and +5 XP on future catches of that species. Zero new loops — a progression skin over existing counts that back-fills instantly for veterans.</arch>
+  </feature>
+
+  <feature id="f060" genre="nurture" types="nurturer builder" complexity="3">
+    <title>Walking the Pack</title>
+    <blurb>Unlock walking two, then three companions at once — your own little parade through the fog.</blurb>
+    <arch>Extends f051: pack slots unlock at total companion-levels 30/80. Render up to 3 trailing markers with staggered follow offsets and personality-based jitter (read traits from f008 if present). Shared distance XP splits among pack members. Watch marker count perf on low-end phones — reuse one pane and skip updates when off-screen.</arch>
+  </feature>
+
+  <!-- ================= Social & Co-op ================= -->
+
+  <feature id="f061" genre="social" types="socializer collector" complexity="2">
+    <title>Friend Codes &amp; Den Visits</title>
+    <blurb>Share a code; friends can stroll your den and leave a paw-five on their favourite catch.</blurb>
+    <arch>Needs the minimal backend: a Cloudflare Worker + KV storing published den snapshots (JSON of collection + showcase, no location data) keyed by a generated friend code. Client publishes on demand (explicit button, privacy note), fetches friends' snapshots read-only, and queues paw-fives which the owner sees on next sync. Feature-flag in config (SOCIAL_API base URL, empty = hidden). Design the snapshot schema versioned from day one.</arch>
+  </feature>
+
+  <feature id="f062" genre="social" types="socializer collector" complexity="3">
+    <title>Trading Post</title>
+    <blurb>Swap duplicate squirrels with friends — your third Albino for their spare Frostbyte.</blurb>
+    <arch>Backend (same Worker): trade offers reference den-snapshot entries (speciesId + count proof); accepting decrements/increments counts on both sides at next client sync with idempotent trade ids. Only duplicates tradeable; mythics excluded; daily trade cap 3 to protect the collection loop. UI: an offers inbox in a Friends panel. Anti-cheat is soft (this is a friends game) but validate counts server-side against the latest snapshot.</arch>
+  </feature>
+
+  <feature id="f063" genre="social" types="socializer explorer" complexity="2">
+    <title>Gift Drops</title>
+    <blurb>Hide a wrapped gift at a real spot; send the pin to a friend — they walk there to open it.</blurb>
+    <arch>Backend KV: gift {code, latlng, payload (acorns/ephemera/note ≤100 chars), expiry 7d}. Creator pays the contents from their inventory; recipient with the link sees a 🎁 marker and must arrive within 25m to open. Share via navigator.share URL containing the gift code; the app reads ?gift= on load. Sanitise notes, cap 3 active gifts per sender.</arch>
+  </feature>
+
+  <feature id="f064" genre="social" types="socializer wellness" complexity="3">
+    <title>Walk Together Bonus</title>
+    <blurb>Walking near a friend doubles both your discovery rates — the game notices companionship.</blurb>
+    <arch>Privacy-first proximity: both players opt into a shared session code; clients publish coarse (50m-rounded) positions to the Worker only during the session, TTL 2 min. When mutual distance &lt;60m, both get a ×2 spawn/luck flag and a 🤝 chip. No background tracking, sessions auto-expire after 3h. Fall back gracefully when offline mid-session.</arch>
+  </feature>
+
+  <feature id="f065" genre="social" types="socializer competitor builder" complexity="3">
+    <title>Neighbourhood Guilds</title>
+    <blurb>Join a local guild; everyone's walks feed shared weekly goals that unlock guild-wide buffs.</blurb>
+    <arch>Backend: guilds keyed by invite code, members push weekly aggregates only (km, catches — never routes). A guild panel shows the shared goal bar (e.g. 200 guild-km) and the unlocked weekly buff (+10% XP). Keep aggregates coarse and pseudonymous; cap guild size 30. Weekly reset by ISO week on the server clock to avoid client drift.</arch>
+  </feature>
+
+  <feature id="f066" genre="social" types="socializer storyseeker" complexity="1">
+    <title>Catch Postcards</title>
+    <blurb>Turn any catch into a pretty postcard — species art, place name, date — and send it anywhere.</blurb>
+    <arch>Client-only: reuse the medal-card canvas renderer (f014) with a postcard layout (species emoji large, territory/park name if known, date, optional 80-char note). Output via navigator.share/download. Add a small “send postcard” button on den detail and the catch modal afterglow. No backend, no account — it's just an image.</arch>
+  </feature>
+
+  <feature id="f067" genre="social" types="socializer achiever" complexity="3">
+    <title>Community Census</title>
+    <blurb>A global live counter: every player's catches feed the worldwide squirrel census with weekly species spotlights.</blurb>
+    <arch>Backend: a single Worker counter endpoint accepting batched anonymous increments {speciesId, count} with basic rate limiting; a public stats endpoint returns totals + the weekly spotlight species (server-chosen) which earns 2× census points. Journal gains a Census card with global numbers. Design for write-cheap/read-cached (KV with periodic aggregation).</arch>
+  </feature>
+
+  <feature id="f068" genre="social" types="socializer nurturer" complexity="3">
+    <title>Mentor &amp; Sprout</title>
+    <blurb>Pair a veteran with a newcomer; the sprout levels faster, the mentor earns exclusive elder rewards.</blurb>
+    <arch>Backend pairing by code; mentor link grants the sprout +25% XP for 30 days and mirrors milestone toasts to the mentor (“your sprout hit 10 species!”), who earns a Mentor badge track. Only aggregate milestones cross the wire. Auto-dissolve after 30 days with a commemorative card for both. One active pairing per side.</arch>
+  </feature>
+
+  <feature id="f069" genre="social" types="socializer collector" complexity="3">
+    <title>Friends Photo Wall</title>
+    <blurb>An opt-in wall of friends' best catch cards — cheer their finds, copy their walking ideas.</blurb>
+    <arch>Backend: friends (from f061 codes) can publish up to 1 card/day (the rendered postcard PNG, stored in R2 or as base64-capped KV). The wall fetches friends' latest cards; reactions are a single emoji counter. Strict: no free-text comments (keeps moderation surface near zero), images are app-generated only. Hide the feature entirely without SOCIAL_API.</arch>
+  </feature>
+
+  <feature id="f070" genre="social" types="socializer competitor explorer" complexity="3">
+    <title>Baton Relays</title>
+    <blurb>A virtual baton passes friend-to-friend: each carries it 2 km then hands off — how far can your circle take it?</blurb>
+    <arch>Backend: baton object {id, totalKm, holder, history}; the holder's client accrues its walked km to the baton, and a handoff sends a claim link to the next friend. A relay map shows per-leg contributions as a chain card (no routes, just totals + names). Batons expire after 14 idle days; finishers all get the relay medal. Reuses gift-link plumbing from f063.</arch>
+  </feature>
+
+  <!-- ================= Competitive ================= -->
+
+  <feature id="f071" genre="competitive" types="competitor achiever" complexity="2">
+    <title>Weekly Distance Leagues</title>
+    <blurb>Bronze to Legend leagues of 20 walkers — top five promote each week, pure kilometres decide.</blurb>
+    <arch>Backend: weekly cohorts of ≤20 pseudonymous players bucketed by league tier; clients push daily km aggregates. League panel shows the live table with promotion/demotion zones; rewards are cosmetic (league-tinted trail). Server assigns cohorts at week start; client caches the table for offline viewing. Anti-cheat: cap creditable daily km (40) and reuse the GPS filter's vehicle rejection.</arch>
+  </feature>
+
+  <feature id="f072" genre="competitive" types="competitor explorer" complexity="3">
+    <title>Territory Tags</title>
+    <blurb>Most-active walker of each neighbourhood cell gets their tag on it — defend your block.</blurb>
+    <arch>Backend: per-超cell (200m grid) weekly activity totals by pseudonym; the leader's tag (emoji+initials) renders on participating cells via a vector overlay fetched per viewport. Only opted-in cells near the player are contested to bound data. Decay weekly. Show “you lead 7 cells” in the Journal. Significant server design — gate behind the social flag and ship after leagues.</arch>
+  </feature>
+
+  <feature id="f073" genre="competitive" types="competitor" complexity="2">
+    <title>Speed Trail Segments</title>
+    <blurb>Marked point-to-point segments time your brisk walk — beat your ghost, then the local record.</blurb>
+    <arch>Client-first version: define segments locally between two flags (player-created, 200–800m along roads); time crossings via fix timestamps with the median filter's lag compensated (start/stop pads of 10m). Store personal bests and render a ghost dot replay on re-attempts. Local records only until the backend exists; design the segment schema (polyline hash) to be shareable later. Cap credited pace at running speed to discourage cycling.</arch>
+  </feature>
+
+  <feature id="f074" genre="competitive" types="competitor collector" complexity="2">
+    <title>Weekly Mythic Race</title>
+    <blurb>One mythic variant per week worldwide-seeded — the den records who in your circle found it first.</blurb>
+    <arch>Deterministic weekly mythic variant (seeded recolour + name of an existing species) spawnable after 5km walked that week — client-side fair gate, no backend needed for v1. With the social backend, post first-catch timestamps among friends for the “first to find” crown on the weekly card. Implement the variant system as a generic seeded-skin layer in squirrels.js (reusable for events).</arch>
+  </feature>
+
+  <feature id="f075" genre="competitive" types="competitor builder" complexity="3">
+    <title>Landmark Keeper</title>
+    <blurb>Hold a landmark by being its most frequent visitor this month — keepers get a crown on the map.</blurb>
+    <arch>Backend: visit counts per landmark id per pseudonym (a visit = arrival within 25m, max 2/day creditable). Monthly leader becomes Keeper, rendered as a small crown on the beacon for everyone nearby. Reuse the landmark dataset from f022; keep counters coarse and reset monthly. Local-only “personal keeper” mode (your own most-visited) works without the backend.</arch>
+  </feature>
+
+  <feature id="f076" genre="competitive" types="competitor socializer" complexity="2">
+    <title>Async Distance Duels</title>
+    <blurb>Challenge a friend: most kilometres in 48 hours wins bragging rights and a duel trophy.</blurb>
+    <arch>Backend: duel object {a, b, startTs, km_a, km_b}; both clients push aggregates during the window and the panel shows a live tug-of-war bar. Winner's trophy case (a Journal subsection) records duel history. Make rematch one tap. Reuse the friend-code identity; rate-limit to 3 concurrent duels.</arch>
+  </feature>
+
+  <feature id="f077" genre="competitive" types="competitor achiever" complexity="1">
+    <title>Catch-Streak Ladder</title>
+    <blurb>Days-in-a-row with at least one catch — a second streak for hunters beside the distance streak.</blurb>
+    <arch>Mirror the existing streak logic in state.js with a catchStreak counter updated in registerCatch + daily rollover. HUD shows it inside the den nav badge (small superscript); achievements at 3/7/30. Trivial bookkeeping reusing tested patterns — a quick win for competitor-achievers.</arch>
+  </feature>
+
+  <feature id="f078" genre="competitive" types="competitor" complexity="2">
+    <title>Season Reset &amp; Placement</title>
+    <blurb>Three-month seasons end with placement rewards and a fresh ladder — veterans start slightly ahead.</blurb>
+    <arch>Define seasons by quarter (dayKey math). Seasonal stats (km, catches, cells) accrue in a season sub-object reset at boundaries, with end-of-season cards minted (canvas renderer) and a permanent seasons archive in the Journal. Lifetime stats remain untouched — the season layer is additive. Placement = starting league tier next season (when leagues exist); standalone it's the archive + rewards.</arch>
+  </feature>
+
+  <feature id="f079" genre="competitive" types="competitor socializer" complexity="2">
+    <title>Home Turf Leaderboard</title>
+    <blurb>A board for just your neighbourhood — compare weekly cells, catches and km with locals who opt in.</blurb>
+    <arch>Backend: boards keyed by a coarse geohash (≈2km) the player opts into as “home turf”; weekly aggregates only, pseudonyms, top-20 shown. The tight geographic scoping makes ranks attainable (the motivation research: local beats global). Client renders three tabs (km/catches/cells). Strict opt-in with a privacy explainer; leaving a board purges your rows.</arch>
+  </feature>
+
+  <feature id="f080" genre="competitive" types="competitor achiever collector" complexity="3">
+    <title>Tournament Weekends</title>
+    <blurb>Themed weekend events — Night Hunt, Frontier Dash, Rare Rush — with bracket badges for top finishers.</blurb>
+    <arch>Server-scheduled event definitions (JSON from the Worker: theme, scoring rule id, window); clients score locally per rule (night catches count double, etc.) and submit a final total. Results page with percentile badges (no live bracket needed — percentile against all entrants is simpler and kinder). Event definitions cacheable; without the backend, run solo “personal tournaments” against your own past weekend scores.</arch>
+  </feature>
+
+  <!-- ================= Story & Lore ================= -->
+
+  <feature id="f081" genre="story" types="storyseeker achiever" complexity="2">
+    <title>The Ratatoskr Arc</title>
+    <blurb>The mythic messenger has lost the World Tree's words — recover them chapter by chapter as you walk.</blurb>
+    <arch>A quests.js engine: chapters defined as data (trigger: stat thresholds or place-type visits; payoff: lore text + reward). Eight chapters culminating in a guaranteed Ratatoskr encounter. Story moments render as a styled full-screen letter modal. Persist chapter progress; design the quest schema generically — every later story feature reuses it.</arch>
+  </feature>
+
+  <feature id="f082" genre="story" types="storyseeker collector" complexity="1">
+    <title>Species Lore Pages</title>
+    <blurb>Each species hides three lore fragments — catch more of them to unlock their full tale.</blurb>
+    <arch>Write 3 short lore paragraphs per species (60 species-paragraph table in lore.js); fragments unlock at catch counts 1/5/15 (align with friendship pips from f059). Den detail shows the lore page with locked lines as silhouette text. Pure content + thresholds; zero new mechanics, big collector-storyseeker payoff.</arch>
+  </feature>
+
+  <feature id="f083" genre="story" types="storyseeker nurturer" complexity="2">
+    <title>Daily Squirrel Gossip</title>
+    <blurb>A chatty NPC squirrel at your den shares one line of neighbourhood gossip a day — sometimes it's a real tip.</blurb>
+    <arch>A gossip generator mixing flavour lines with genuine tips derived from game state (“heard there's something rare near your unexplored north”, pointing at the daily mystery tile or nearest beacon). One line per day, shown in the den header with a speech bubble. 100-line flavour table + 6 tip templates wired to live data. Seeded by dayKey for determinism.</arch>
+  </feature>
+
+  <feature id="f084" genre="story" types="storyseeker puzzler" complexity="3">
+    <title>The Vanishing Acorns</title>
+    <blurb>A serialized mystery: clues appear weekly at real spots; by episode six you can name the culprit.</blurb>
+    <arch>Six weekly episodes (quest engine from f081): each places an investigation marker via roads sampling, awarding a clue card (suspect/place/motive fragments). A casebook panel tracks deductions; the finale is a multiple-choice accusation with a graded reward. Write 3 mystery seasons so the feature replays. Everything deterministic from a season seed — no backend.</arch>
+  </feature>
+
+  <feature id="f085" genre="story" types="storyseeker wellness" complexity="1">
+    <title>Memory Lane</title>
+    <blurb>The app retells your own history — “a year ago this week you found your first Albino right here.”</blurb>
+    <arch>Mine GameState for dated firsts (first catch per species, records, era snapshots from f018) into a memories index. Surface one relevant memory as a gentle toast/journal card when near the original location or on anniversaries. Backfill from existing data where timestamps exist; start recording catch locations (coarse, 100m-rounded) going forward to enrich it.</arch>
+  </feature>
+
+  <feature id="f086" genre="story" types="storyseeker explorer" complexity="2">
+    <title>Whispering Landmarks</title>
+    <blurb>Statues and fountains have voices — each tells its short tale the first time you visit.</blurb>
+    <arch>Attach 40 generic landmark tales (keyed by landmark type: fountain/statue/viewpoint/historic) plus name-interpolation to the beacon visit event from f022. First visit shows a parchment card; tales collect into a Tales album. Optional Web Speech API narration behind a toggle. Content table + one modal — low machinery, high charm.</arch>
+  </feature>
+
+  <feature id="f087" genre="story" types="storyseeker collector builder" complexity="2">
+    <title>Festival Seasons</title>
+    <blurb>Solstice Lanterns, Harvest Hoard, Frost Festival — month-long themed events with story, skins and decor.</blurb>
+    <arch>An events.js calendar (date-ranged definitions): each festival activates a seeded skin set (reuse f074's variant layer), themed pickups, one quest-engine storylet, and a den decoration drop. Define 4 festivals covering the year. All client-side by calendar date; archive participation as dated badges. Build it as configuration over existing systems — the test of how reusable the previous layers are.</arch>
+  </feature>
+
+  <feature id="f088" genre="story" types="storyseeker achiever builder" complexity="2">
+    <title>The Great Tree</title>
+    <blurb>A world-tree visualisation grows from everything you do — every stat is a branch you can watch thicken.</blurb>
+    <arch>An SVG tree in its own panel: trunk = total km, main branches = the 6 achievement categories, leaves = species count, blossoms = badges. Map stats to path lengths/counts with gentle scaling so growth stays visible for years. Animate growth diffs since last view (“+2 leaves since Tuesday”). Pure visualisation over GameState — and the natural home screen for the story features to reference.</arch>
+  </feature>
+
+  <feature id="f089" genre="story" types="storyseeker puzzler explorer" complexity="3">
+    <title>Crossroads Quests</title>
+    <blurb>Story quests where the route is the choice — turn left for the river tale, right for the market tale.</blurb>
+    <arch>Quest-engine extension: branch nodes specify two real bearings/areas (e.g. “within 60° of north for 400m”); the walked branch (detected from trail bearing) selects the storyline. Branches reconverge after 2–3 nodes so content cost stays linear-ish. Two branching quests at launch. Requires careful trail-intent detection — reuse the chain/shape machinery from f030/f057, be forgiving.</arch>
+  </feature>
+
+  <feature id="f090" genre="story" types="storyseeker wellness" complexity="2">
+    <title>Audio Walk Tales</title>
+    <blurb>Narrated mini-chapters unlock per kilometre — a podcast that only plays while you're moving.</blurb>
+    <arch>Use Web Speech API synthesis over written chapters (no audio assets, keeps the static deploy) with play gating: narration pauses when speed drops below walking for &gt;1 min (“the storyteller waits for you”). Chapter list panel with per-km unlock thresholds. Respect silent-mode: full transcripts always readable. 12 chapters of ~300 words to start, sharing the quest content pipeline.</arch>
+  </feature>
+
+  <!-- ================= Wellness ================= -->
+
+  <feature id="f091" genre="wellness" types="wellness achiever" complexity="1">
+    <title>Gentle Goals Mode</title>
+    <blurb>Daily targets that adapt to you — ambitious on your good weeks, kind on your hard ones.</blurb>
+    <arch>Compute a rolling 14-day median daily distance; set tomorrow's goal = clamp(median × 1.1, 250m, median + 1km) updated in the rollover path. Replace the fixed DAY_GOAL_M for streak qualification when the mode is on (Settings toggle, default off to preserve current behaviour). Show the adaptive goal on the HUD distance pill. Document the formula in the Journal so it feels fair, not mysterious.</arch>
+  </feature>
+
+  <feature id="f092" genre="wellness" types="wellness nurturer" complexity="1">
+    <title>Squirrel Stretch Breaks</title>
+    <blurb>On long walks, your companion demonstrates a stretch — 30 gentle seconds, then back to the hunt.</blurb>
+    <arch>After 40 continuous active minutes (chain timer from f030 or its own), offer a dismissible stretch card: companion emoji in 4 poses with a 30s ring timer and one-line instructions (8 stretches, rotating). Completing grants a small calm-token (currency for f099). Never interrupts twice in one walk; fully optional in Settings.</arch>
+  </feature>
+
+  <feature id="f093" genre="wellness" types="wellness explorer" complexity="1">
+    <title>Golden Hour Bonus</title>
+    <blurb>The hour after sunrise and before sunset glows on the map — walks then earn warm bonuses.</blurb>
+    <arch>Compute sunrise/sunset locally (NOAA solar formula in util.js — no API) from the GPS position. During golden hours, tint the tile filter warmer (append a gentle sepia/hue fragment like the night filter), show a ☀️ chip, and apply +25% XP on distance. Encourages daylight walking and is a pure client calc.</arch>
+  </feature>
+
+  <feature id="f094" genre="wellness" types="wellness storyseeker" complexity="1">
+    <title>Zen Walks</title>
+    <blurb>A no-HUD mode: just the map, soft colours and your trail — catches wait, calm counts.</blurb>
+    <arch>A Zen toggle hides all HUD chrome except a minimal exit button, mutes toasts, pauses spawn interactions (squirrels still spawn but don't demand attention), and applies a softened theme filter. Distance/fog still accrue, plus calm-tokens per 10 zen-minutes. Implement as a UI state machine flag respected by ui.toast and the marker tap handler — a good forcing function to centralise “interruption” calls.</arch>
+  </feature>
+
+  <feature id="f095" genre="wellness" types="wellness achiever" complexity="2">
+    <title>Habit Anchors</title>
+    <blurb>Tie walks to your routine — “after morning coffee” — and the game greets you at your chosen moment.</blurb>
+    <arch>User picks anchor windows (morning/lunch/evening + custom time) in Settings; while the app is open during a window, the HUD shows a warm anchor banner, and completing 250m inside it stamps the anchor habit calendar (its own streak view). Optionally schedule a local notification via the Notifications API where permitted (degrade silently on iOS Safari limitations). Habit-formation framing per BJ Fogg: anchor → tiny behaviour → celebration.</arch>
+  </feature>
+
+  <feature id="f096" genre="wellness" types="wellness achiever" complexity="1">
+    <title>Weekly Report Card</title>
+    <blurb>Sunday evening: a friendly one-pager of your week — km, new ground, finds, and one kind suggestion.</blurb>
+    <arch>On first open after Sunday 18:00 (or Monday), compile the week from daily aggregates (start storing a 7-day daily-stats ring buffer in GameState) into a report modal: totals, deltas vs prior week shown without judgement, best moment (biggest find), and one suggestion template. Mint a shareable card via the canvas renderer. Add the ring buffer now — several features want per-day history.</arch>
+  </feature>
+
+  <feature id="f097" genre="wellness" types="wellness" complexity="2">
+    <title>Health App Sync</title>
+    <blurb>Count your other steps too — import daily totals so gym treadmills and phone-pocket walks aren't lost.</blurb>
+    <arch>No HealthKit on the web: integrate what's possible — a manual “add steps” entry with honor-system daily cap, plus Web Bluetooth pedometer support where available, plus a documented shortcut: an iOS Shortcuts automation that opens the app with ?steps=N daily (validated, capped, once/day). Imported distance counts toward streak/goals at 50% weight (walking the map stays primary). Be transparent about weighting in the UI.</arch>
+  </feature>
+
+  <feature id="f098" genre="wellness" types="wellness nurturer" complexity="1">
+    <title>Water Break Buddy</title>
+    <blurb>On hot-day walks past 30 minutes, your companion pauses for a drink — a nudge to join it.</blurb>
+    <arch>Combine the weather bucket (f012's Open-Meteo, ≥27°C) with the active-walk timer: at 30-minute marks show a companion-drinking card with a hydrate nudge (dismiss or “done” → tiny calm-token). Hard cap two nudges per walk, off-switch in Settings, and skip entirely when weather data is unavailable. Pure composition of existing signals.</arch>
+  </feature>
+
+  <feature id="f099" genre="wellness" types="wellness storyseeker" complexity="1">
+    <title>Mindful Minutes</title>
+    <blurb>Stop at a vista, breathe with a 60-second ring, and bank calm tokens for serene cosmetics.</blurb>
+    <arch>At landmarks/vistas (or anywhere via a long-press), offer a breathing exercise: an expanding/contracting circle at 6 breaths/min for 60s; finishing while the GPS stays still banks a calm token. Calm tokens buy a serene shop tab: muted themes, soft trail colours, the Zen den skin. Tokens also drop from f092/f094/f098 — one quiet currency across the wellness suite.</arch>
+  </feature>
+
+  <feature id="f100" genre="wellness" types="wellness achiever" complexity="1">
+    <title>Rest Day Shields</title>
+    <blurb>Earn a shield every 6 active days — rest without your streak burning down. Recovery is part of training.</blurb>
+    <arch>Accrue streak shields (max 2 banked) per 6 qualifying days; on rollover, a missed day consumes a shield instead of resetting streak, with a supportive toast (“rest day shielded — see you tomorrow”). Show shields beside the 🔥 in the HUD. Touches only the streak block in state.js rollover plus HUD markup — small, kind, and high retention value.</arch>
+  </feature>
+
+</features>
