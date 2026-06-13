@@ -111,7 +111,8 @@ export class FogLayer {
     // The fog blanket — translucent so the street grid ghosts
     // through and players can pick a direction; explored areas
     // are punched through to full colour below.
-    ctx.fillStyle = 'rgba(6, 9, 18, 0.76)';
+    const isLight = document.documentElement.classList.contains('light-theme');
+    ctx.fillStyle = isLight ? 'rgba(235, 235, 240, 0.78)' : 'rgba(6, 9, 18, 0.76)';
     ctx.fillRect(0, 0, size.x, size.y);
 
     // Pixels-per-metre at the current view.

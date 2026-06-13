@@ -38,7 +38,7 @@ const FRESH = () => ({
   themesUnlocked: ['twilight'],
   trailsUnlocked: ['scout'],
 
-  settings: { theme: 'twilight', trail: 'scout', mock: false },
+  settings: { theme: 'twilight', trail: 'scout', mock: false, lightMode: false },
   lastPos: null,
 });
 

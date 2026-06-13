@@ -37,19 +37,40 @@ map.setView(state.data.lastPos || CONFIG.MOCK_DEFAULT, 16);
 
 let tileLayer = null;
 function applyTheme(id) {
-  const theme = THEMES[id] || THEMES.twilight;
+  const isLight = state.data.settings.lightMode;
+  let theme = THEMES[id] || THEMES.twilight;
   state.data.settings.theme = id;
-  const url = TILE_URLS[theme.tiles];
+
+  let url;
+  let filter;
+  let accent;
+
+  if (isLight) {
+    url = TILE_URLS.voyagerLabels;
+    filter = 'contrast(1.35) saturate(1.2) brightness(1.05)';
+    accent = '#004fb3'; // AAA contrast dark blue in the sun
+    document.documentElement.classList.add('light-theme');
+  } else {
+    url = TILE_URLS[theme.tiles];
+    filter = theme.filter + (isNightTime() ? CONFIG.NIGHT_TILE_FILTER : '');
+    accent = theme.accent;
+    document.documentElement.classList.remove('light-theme');
+  }
+
   if (!tileLayer || tileLayer._mmUrl !== url) {
     if (tileLayer) map.removeLayer(tileLayer);
     tileLayer = L.tileLayer(url, { attribution: TILE_ATTRIB, maxZoom: 19, subdomains: 'abcd' });
     tileLayer._mmUrl = url;
     tileLayer.addTo(map);
   }
-  // Night (20:00–06:00) darkens whatever theme is active.
-  const filter = theme.filter + (isNightTime() ? CONFIG.NIGHT_TILE_FILTER : '');
+
   document.documentElement.style.setProperty('--tile-filter', filter);
-  document.documentElement.style.setProperty('--accent', theme.accent);
+  document.documentElement.style.setProperty('--accent', accent);
+  
+  if (typeof fog !== 'undefined' && fog) {
+    fog.requestDraw();
+  }
+
   state.save();
 }
 applyTheme(state.data.settings.theme);
@@ -177,6 +198,12 @@ function announceAchievements() {
 // ---------- UI ----------
 const ui = new UI(state, {
   setTheme: (id) => applyTheme(id),
+  setLightMode: (on) => {
+    state.data.settings.lightMode = on;
+    state.save();
+    applyTheme(state.data.settings.theme);
+    updateThemeToggleBtn();
+  },
   setTrail: (id) => {
     state.data.settings.trail = id;
     state.save();
@@ -189,6 +216,23 @@ const ui = new UI(state, {
     location.reload();
   },
 });
+
+// ---------- theme toggle ----------
+const themeToggleBtn = $('#btn-theme-toggle');
+themeToggleBtn.addEventListener('click', () => {
+  const isLight = !state.data.settings.lightMode;
+  state.data.settings.lightMode = isLight;
+  state.save();
+  applyTheme(state.data.settings.theme);
+  updateThemeToggleBtn();
+});
+
+function updateThemeToggleBtn() {
+  const isLight = state.data.settings.lightMode;
+  themeToggleBtn.textContent = isLight ? '🌙' : '☀️';
+  themeToggleBtn.title = isLight ? 'Switch to Dark Mode' : 'Switch to High-Contrast Bright Mode';
+}
+updateThemeToggleBtn();
 
 // ---------- location handling ----------
 const engine = new LocationEngine(onFix);

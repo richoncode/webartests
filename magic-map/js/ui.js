@@ -219,6 +219,13 @@ export class UI {
         <div class="chips">${trailChips}</div>
       </div>
       <div class="set-group">
+        <div class="set-label">Display Mode</div>
+        <div class="set-row">
+          <div>High-contrast Light Mode<small>Very high contrast for outdoor/sun visibility</small></div>
+          <div class="toggle${d.settings.lightMode ? ' on' : ''}" id="set-light-mode"></div>
+        </div>
+      </div>
+      <div class="set-group">
         <div class="set-label">Testing</div>
         <div class="set-row">
           <div>Demo mode (no GPS)<small>D-pad walking, teleport, speed boost</small></div>
@@ -263,6 +270,11 @@ export class UI {
         this.renderSettings();
       })
     );
+    this.els.panelBody.querySelector('#set-light-mode').addEventListener('click', (e) => {
+      const on = !d.settings.lightMode;
+      e.currentTarget.classList.toggle('on', on);
+      this.hooks.setLightMode(on);
+    });
     this.els.panelBody.querySelector('#set-mock').addEventListener('click', (e) => {
       const on = !d.settings.mock;
       e.currentTarget.classList.toggle('on', on);
