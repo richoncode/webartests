@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map Theme Design Review & Styling Playground</title>
+  <meta name="description" content="Interactive metrology and styling tool to design high-contrast tile filters for outdoor daylight visibility.">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0d0d0d;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* Sidebar controls */
+    .sidebar {
+      width: 420px;
+      background: #111111;
+      border-right: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      flex-shrink: 0;
+      z-index: 10;
+      box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar-header {
+      padding: 24px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .sidebar-header h1 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-header p {
+      font-size: 12px;
+      color: #888888;
+    }
+
+    .sidebar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #5b9bd5;
+      margin-bottom: 12px;
+      margin-top: 10px;
+    }
+
+    .control-group {
+      margin-bottom: 24px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #dddddd;
+      font-size: 13px;
+    }
+
+    select, button {
+      width: 100%;
+      background: #111111;
+      border: 1px solid #333333;
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    select:focus, button:hover {
+      border-color: #5b9bd5;
+      background: #16202e;
+    }
+
+    /* Sliders */
+    .slider-row {
+      margin-bottom: 16px;
+    }
+
+    .slider-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .slider-label {
+      font-size: 12px;
+      color: #aaaaaa;
+      font-weight: 500;
+    }
+
+    .slider-value {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #5b9bd5;
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      background: #2a2a2a;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #5b9bd5;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(91, 155, 213, 0.5);
+      transition: transform 0.1s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    /* Preset Grids */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .preset-btn {
+      background: #111111;
+      border: 1px solid #333333;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      line-height: 1.3;
+    }
+
+    .preset-btn:hover {
+      border-color: #5b9bd5;
+      background: #16202e;
+    }
+
+    .preset-btn span {
+      display: block;
+      font-size: 9px;
+      color: #666666;
+      margin-top: 2px;
+      font-weight: 400;
+    }
+
+    /* Code Block */
+    .code-box {
+      position: relative;
+      background: #000000;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px 36px 12px 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #10b981;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+
+    .copy-btn {
+      position: absolute;
+      right: 6px;
+      top: 6px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111111;
+      border: 1px solid #333333;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #888888;
+      font-size: 12px;
+    }
+
+    .copy-btn:hover {
+      color: #ffffff;
+      border-color: #5b9bd5;
+      background: #16202e;
+    }
+
+    /* Map container */
+    .map-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #0a0c14;
+    }
+
+    /* Back link */
+    .back-btn-wrap {
+      padding: 16px 24px;
+      border-top: 1px solid #2a2a2a;
+      background: #111111;
+    }
+
+    .back-btn-wrap a {
+      color: #888888;
+      text-decoration: none;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.15s;
+    }
+
+    .back-btn-wrap a:hover {
+      color: #ffffff;
+    }
+
+    /* Filter Target element rules */
+    .leaflet-tile-pane {
+      filter: var(--tile-filter, none);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>🎨 Theme & Contrast Review</h1>
+      <p>Configure and test high-contrast map filters for direct sunlight legibility.</p>
+    </div>
+
+    <div class="sidebar-scroll">
+      
+      <div class="section-title">Map Coordinates</div>
+      <div class="control-group">
+        <label for="location-select">Select Location Preview</label>
+        <select id="location-select">
+          <option value="sfo">San Francisco (Golden Gate Park)</option>
+          <option value="cho">Charlottesville (Downtown)</option>
+          <option value="ldn">London (Hyde Park)</option>
+          <option value="tok">Tokyo (Shibuya)</option>
+        </select>
+      </div>
+
+      <div class="section-title">Tile Source</div>
+      <div class="control-group">
+        <label for="tile-select">Select Tile Server</label>
+        <select id="tile-select">
+          <option value="osm">Standard OpenStreetMap (Mapnik)</option>
+          <option value="positron">CARTO Positron (Light Base)</option>
+          <option value="voyagerLabels">CARTO Voyager (Colored Base)</option>
+          <option value="dark">CARTO Dark (Dark Base)</option>
+        </select>
+      </div>
+
+      <div class="section-title">Filter Sliders</div>
+      <div class="control-group">
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Grayscale</span>
+            <span class="slider-value" id="val-grayscale">0.0</span>
+          </div>
+          <input type="range" id="slide-grayscale" min="0" max="1" step="0.05" value="0">
+        </div>
+        
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Invert</span>
+            <span class="slider-value" id="val-invert">0.0</span>
+          </div>
+          <input type="range" id="slide-invert" min="0" max="1" step="0.05" value="0">
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Contrast</span>
+            <span class="slider-value" id="val-contrast">1.0</span>
+          </div>
+          <input type="range" id="slide-contrast" min="0" max="10" step="0.1" value="1">
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Brightness</span>
+            <span class="slider-value" id="val-brightness">1.0</span>
+          </div>
+          <input type="range" id="slide-brightness" min="0.1" max="40" step="0.1" value="1">
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Saturation</span>
+            <span class="slider-value" id="val-saturate">1.0</span>
+          </div>
+          <input type="range" id="slide-saturate" min="0" max="5" step="0.1" value="1">
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Hue-rotate</span>
+            <span class="slider-value" id="val-hue">0°</span>
+          </div>
+          <input type="range" id="slide-hue" min="0" max="360" step="5" value="0">
+        </div>
+      </div>
+
+      <div class="section-title">Light Mode Tuning (High Contrast)</div>
+      <div class="control-group">
+        <div class="preset-grid">
+          <button class="preset-btn" id="pre-light-a">
+            Stark Ink (OSM)
+            <span>White land, black edges</span>
+          </button>
+          <button class="preset-btn" id="pre-light-b">
+            Blueprint (Positron)
+            <span>Black roads, grey land</span>
+          </button>
+          <button class="preset-btn" id="pre-light-c">
+            Pencil Sketch (Positron)
+            <span>High contrast greyscale</span>
+          </button>
+          <button class="preset-btn" id="pre-light-d">
+            Default Light (Positron)
+            <span>Standard grayscaling</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="section-title">Dark Mode Tuning</div>
+      <div class="control-group">
+        <div class="preset-grid">
+          <button class="preset-btn" id="pre-dark-a">
+            Positron Inverted
+            <span>A: Classic Twilight base</span>
+          </button>
+          <button class="preset-btn" id="pre-dark-b">
+            Voyager Inverted
+            <span>B: Rich contrast dark</span>
+          </button>
+          <button class="preset-btn" id="pre-dark-c">
+            OSM Inverted
+            <span>C: Standard inverted map</span>
+          </button>
+          <button class="preset-btn" id="pre-dark-d">
+            CARTO Dark Enhanced
+            <span>D: Dark base with contrast</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="section-title">Generated CSS Filter</div>
+      <div class="code-box">
+        <span id="filter-code">none</span>
+        <button class="copy-btn" id="btn-copy" title="Copy to clipboard">📋</button>
+      </div>
+
+    </div>
+
+    <div class="back-btn-wrap">
+      <a href="index.html">← Back to Magic Map</a>
+    </div>
+  </div>
+
+  <div class="map-container">
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <script>
+    // --- Configuration ---
+    const TILE_URLS = {
+      osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      positron: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      voyagerLabels: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    };
+
+    const TILE_ATTRIB = '&copy; OSM &copy; CARTO';
+
+    const LOCATIONS = {
+      sfo: { center: [37.7694, -122.4862], zoom: 16 }, // Golden Gate Park
+      cho: { center: [38.0297, -78.6569], zoom: 16 },  // Charlottesville Downtown
+      ldn: { center: [51.5072, -0.1657], zoom: 15 },   // London Hyde Park
+      tok: { center: [35.6580, 139.7016], zoom: 16 },  // Shibuya Crossing
+    };
+
+    // --- State & DOM cache ---
+    let currentTileKey = 'osm';
+    let activeTileLayer = null;
+
+    const map = L.map('map', {
+      zoomControl: false,
+    });
+    
+    // Set initial view to Charlottesville (Downtown preview)
+    const initLoc = LOCATIONS.cho;
+    map.setView(initLoc.center, initLoc.zoom);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // DOM Elements
+    const elements = {
+      tileSelect: document.getElementById('tile-select'),
+      locSelect: document.getElementById('location-select'),
+      filterCode: document.getElementById('filter-code'),
+      copyBtn: document.getElementById('btn-copy'),
+      sliders: {
+        grayscale: document.getElementById('slide-grayscale'),
+        invert: document.getElementById('slide-invert'),
+        contrast: document.getElementById('slide-contrast'),
+        brightness: document.getElementById('slide-brightness'),
+        saturate: document.getElementById('slide-saturate'),
+        hue: document.getElementById('slide-hue'),
+      },
+      readouts: {
+        grayscale: document.getElementById('val-grayscale'),
+        invert: document.getElementById('val-invert'),
+        contrast: document.getElementById('val-contrast'),
+        brightness: document.getElementById('val-brightness'),
+        saturate: document.getElementById('val-saturate'),
+        hue: document.getElementById('val-hue'),
+      }
+    };
+
+    // --- Helpers ---
+    function setTileLayer(key) {
+      if (activeTileLayer) {
+        map.removeLayer(activeTileLayer);
+      }
+      currentTileKey = key;
+      elements.tileSelect.value = key;
+      
+      activeTileLayer = L.tileLayer(TILE_URLS[key], {
+        attribution: TILE_ATTRIB,
+        maxZoom: 19,
+        subdomains: 'abcd'
+      });
+      activeTileLayer.addTo(map);
+    }
+
+    function getFilterString() {
+      const parts = [];
+      const g = parseFloat(elements.sliders.grayscale.value);
+      const i = parseFloat(elements.sliders.invert.value);
+      const c = parseFloat(elements.sliders.contrast.value);
+      const b = parseFloat(elements.sliders.brightness.value);
+      const s = parseFloat(elements.sliders.saturate.value);
+      const h = parseInt(elements.sliders.hue.value);
+
+      if (g !== 0) parts.push(`grayscale(${g})`);
+      if (i !== 0) parts.push(`invert(${i})`);
+      if (c !== 1) parts.push(`contrast(${c})`);
+      if (b !== 1) parts.push(`brightness(${b})`);
+      if (s !== 1) parts.push(`saturate(${s})`);
+      if (h !== 0) parts.push(`hue-rotate(${h}deg)`);
+
+      return parts.length ? parts.join(' ') : 'none';
+    }
+
+    function updateFilters() {
+      // Update readouts
+      elements.readouts.grayscale.textContent = elements.sliders.grayscale.value;
+      elements.readouts.invert.textContent = elements.sliders.invert.value;
+      elements.readouts.contrast.textContent = elements.sliders.contrast.value;
+      elements.readouts.brightness.textContent = elements.sliders.brightness.value;
+      elements.readouts.saturate.textContent = elements.sliders.saturate.value;
+      elements.readouts.hue.textContent = `${elements.sliders.hue.value}°`;
+
+      // Apply CSS variable to map pane
+      const filterStr = getFilterString();
+      document.documentElement.style.setProperty('--tile-filter', filterStr);
+      elements.filterCode.textContent = filterStr;
+    }
+
+    function applyPreset(tileKey, values) {
+      setTileLayer(tileKey);
+      
+      elements.sliders.grayscale.value = values.grayscale ?? 0;
+      elements.sliders.invert.value = values.invert ?? 0;
+      elements.sliders.contrast.value = values.contrast ?? 1;
+      elements.sliders.brightness.value = values.brightness ?? 1;
+      elements.sliders.saturate.value = values.saturate ?? 1;
+      elements.sliders.hue.value = values.hue ?? 0;
+
+      updateFilters();
+    }
+
+    // --- Presets Data ---
+    const PRESETS = {
+      lightA: {
+        tile: 'osm',
+        values: { grayscale: 1, invert: 0, contrast: 5, brightness: 0.65, saturate: 1, hue: 0 }
+      },
+      lightB: {
+        tile: 'positron',
+        values: { grayscale: 1, invert: 1, contrast: 0.8, brightness: 15, saturate: 1, hue: 0 }
+      },
+      lightC: {
+        tile: 'positron',
+        values: { grayscale: 1, invert: 0, contrast: 3, brightness: 1.1, saturate: 1, hue: 0 }
+      },
+      lightD: {
+        tile: 'positron',
+        values: { grayscale: 1, invert: 0, contrast: 1.75, brightness: 0.92, saturate: 1, hue: 0 }
+      },
+      darkA: {
+        tile: 'positron',
+        values: { grayscale: 1, invert: 1, contrast: 0.95, brightness: 0.9, saturate: 1, hue: 0 }
+      },
+      darkB: {
+        tile: 'voyagerLabels',
+        values: { grayscale: 0.2, invert: 0.9, contrast: 1.2, brightness: 1.1, saturate: 1.3, hue: 180 }
+      },
+      darkC: {
+        tile: 'osm',
+        values: { grayscale: 0.8, invert: 0.9, contrast: 1.1, brightness: 0.95, saturate: 1.1, hue: 180 }
+      },
+      darkD: {
+        tile: 'dark',
+        values: { grayscale: 0, invert: 0, contrast: 1.2, brightness: 1.05, saturate: 1.3, hue: 0 }
+      }
+    };
+
+    // --- Wire Event Listeners ---
+    elements.tileSelect.addEventListener('change', (e) => {
+      setTileLayer(e.target.value);
+    });
+
+    elements.locSelect.addEventListener('change', (e) => {
+      const loc = LOCATIONS[e.target.value];
+      if (loc) {
+        map.setView(loc.center, loc.zoom);
+      }
+    });
+
+    Object.values(elements.sliders).forEach(slider => {
+      slider.addEventListener('input', updateFilters);
+    });
+
+    // Copy to clipboard
+    elements.copyBtn.addEventListener('click', () => {
+      const txt = elements.filterCode.textContent;
+      navigator.clipboard.writeText(txt).then(() => {
+        elements.copyBtn.textContent = '✅';
+        setTimeout(() => {
+          elements.copyBtn.textContent = '📋';
+        }, 1500);
+      });
+    });
+
+    // Bind Presets
+    document.getElementById('pre-light-a').addEventListener('click', () => applyPreset(PRESETS.lightA.tile, PRESETS.lightA.values));
+    document.getElementById('pre-light-b').addEventListener('click', () => applyPreset(PRESETS.lightB.tile, PRESETS.lightB.values));
+    document.getElementById('pre-light-c').addEventListener('click', () => applyPreset(PRESETS.lightC.tile, PRESETS.lightC.values));
+    document.getElementById('pre-light-d').addEventListener('click', () => applyPreset(PRESETS.lightD.tile, PRESETS.lightD.values));
+    
+    document.getElementById('pre-dark-a').addEventListener('click', () => applyPreset(PRESETS.darkA.tile, PRESETS.darkA.values));
+    document.getElementById('pre-dark-b').addEventListener('click', () => applyPreset(PRESETS.darkB.tile, PRESETS.darkB.values));
+    document.getElementById('pre-dark-c').addEventListener('click', () => applyPreset(PRESETS.darkC.tile, PRESETS.darkC.values));
+    document.getElementById('pre-dark-d').addEventListener('click', () => applyPreset(PRESETS.darkD.tile, PRESETS.darkD.values));
+
+    // --- Initialise ---
+    // Start with OpenStreetMap standard Mapnik tiles
+    setTileLayer('osm');
+    updateFilters();
+  </script>
+</body>
+</html>

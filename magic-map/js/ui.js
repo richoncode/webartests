@@ -224,6 +224,10 @@ export class UI {
           <div>High-contrast Light Mode<small>Very high contrast for outdoor/sun visibility</small></div>
           <div class="toggle${d.settings.lightMode ? ' on' : ''}" id="set-light-mode"></div>
         </div>
+        <div class="set-row">
+          <div>Style Playground<small>Open interactive tool to design high contrast filters</small></div>
+          <button class="btn-secondary" onclick="window.open('design-review.html', '_blank')" style="width:auto; padding:6px 12px; font-size:12px;">🎨 Design Review</button>
+        </div>
       </div>
       <div class="set-group">
         <div class="set-label">Testing</div>

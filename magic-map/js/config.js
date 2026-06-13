@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.11 · 2026-06-12 · high-contrast light mode';
+export const APP_VERSION = 'v0.12 · 2026-06-12 · map styling playground & osm';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -127,6 +127,7 @@ export const TILE_URLS = {
   voyagerLabels: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   positron: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 };
 
 export const TILE_ATTRIB =
