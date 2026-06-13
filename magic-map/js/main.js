@@ -60,7 +60,8 @@ function applyTheme(id) {
 
   if (!tileLayer || tileLayer._mmUrl !== url) {
     if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer(url, { attribution: TILE_ATTRIB, maxZoom: 19, subdomains: 'abcd' });
+    const subdomains = url.includes('openstreetmap.org') ? 'abc' : 'abcd';
+    tileLayer = L.tileLayer(url, { attribution: TILE_ATTRIB, maxZoom: 19, subdomains: subdomains });
     tileLayer._mmUrl = url;
     tileLayer.addTo(map);
   }

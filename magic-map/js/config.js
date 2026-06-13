@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.12 · 2026-06-12 · map styling playground & osm';
+export const APP_VERSION = 'v0.13 · 2026-06-12 · fix osm checkerboard & subdomain config';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
