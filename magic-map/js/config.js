@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.10 · 2026-06-12 · subjects catalogue';
+export const APP_VERSION = 'v0.11 · 2026-06-12 · high-contrast light mode';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
