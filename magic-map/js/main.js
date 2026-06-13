@@ -47,8 +47,8 @@ function applyTheme(id) {
   let accent;
 
   if (isLight) {
-    url = TILE_URLS.voyagerLabels;
-    filter = 'contrast(1.65) saturate(1.4) brightness(0.95)';
+    url = TILE_URLS.positron;
+    filter = 'grayscale(1) contrast(1.75) brightness(0.92)';
     accent = '#002288'; // Deep navy blue
     document.documentElement.classList.add('light-theme');
   } else {
