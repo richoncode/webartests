@@ -36,6 +36,7 @@ const map = L.map('map', {
 map.setView(state.data.lastPos || CONFIG.MOCK_DEFAULT, 16);
 
 let tileLayer = null;
+let fogInitialized = false;
 function applyTheme(id) {
   const isLight = state.data.settings.lightMode;
   let theme = THEMES[id] || THEMES.twilight;
@@ -67,7 +68,7 @@ function applyTheme(id) {
   document.documentElement.style.setProperty('--tile-filter', filter);
   document.documentElement.style.setProperty('--accent', accent);
   
-  if (typeof fog !== 'undefined' && fog) {
+  if (fogInitialized && fog) {
     fog.requestDraw();
   }
 
@@ -78,6 +79,7 @@ let nightNow = isNightTime();
 
 // ---------- core services ----------
 const fog = new FogLayer(map, state.exploredSet);
+fogInitialized = true;
 const roads = new RoadNetwork();
 const parcels = new ParcelService();
 const country = new CountryMode(roads, parcels);
