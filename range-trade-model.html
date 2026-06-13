@@ -1,4 +1,3 @@
-```react
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -13,1297 +12,1263 @@ let db = null;
 let auth = null;
 
 if (firebaseConfigStr) {
-  try {
-    const firebaseConfig = JSON.parse(firebaseConfigStr);
-    const app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.error("Firebase initialization failed:", e);
-  }
+try {
+const firebaseConfig = JSON.parse(firebaseConfigStr);
+const app = initializeApp(firebaseConfig);
+auth = getAuth(app);
+db = getFirestore(app);
+} catch (e) {
+console.error("Firebase initialization failed:", e);
+}
 }
 
 // Pre-defined presets rich in technical cycling data
 const PRESET_STOCKS = {
-  GOOG: {
-    symbol: 'GOOG',
-    name: 'Alphabet Inc.',
-    lastPrice: 358.16,
-    change: -8.41,
-    changePeriod: 'Past Month',
-    exchange: 'NASDAQ',
-    open: 361.10,
-    high: 364.77,
-    low: 353.34,
-    volume: '17.10M',
-    avgVolume: '20.50M',
-    pe: 27.30,
-    mktCap: '4.368T',
-    high52w: 404.00,
-    low52w: 163.00,
-    atrPct: 2.3,           
-    cycleCount: 3,         
-    swing3mPct: 15.2,      
-    channelLow: 345.00,
-    channelHigh: 395.00,
-    cyclerClass: 'Moderate Cycler',
-    cycleDescription: 'Consistent liquid giant with predictable institutional support corridors.',
-    chartPoints: [
-      { day: 1, val: 395 }, { day: 3, val: 401 }, { day: 5, val: 398 },
-      { day: 7, val: 390 }, { day: 9, val: 399 }, { day: 11, val: 378 },
-      { day: 13, val: 382 }, { day: 15, val: 374 }, { day: 17, val: 386 },
-      { day: 19, val: 388 }, { day: 21, val: 371 }, { day: 23, val: 358 },
-      { day: 25, val: 368 }, { day: 27, val: 364 }, { day: 29, val: 348 },
-      { day: 30, val: 358.16 }
-    ],
-    defaultSetup: {
-      entry: 358.16,
-      stopLoss: 345.00,
-      target: 390.00
-    },
-    // Real-structured 3-month range cycles
-    historicalTrades: [
-      { id: 1, date: "April 08", buy: 346.20, sell: 391.50, duration: "14 days", notes: "Bounce off 100-day SMA corridor" },
-      { id: 2, date: "May 03", buy: 348.50, sell: 388.00, duration: "11 days", notes: "Double bottom range structural hold" },
-      { id: 3, date: "June 02", buy: 345.00, sell: 381.20, duration: "8 days", notes: "FIB 0.618 golden pocket rejection bounce" }
-    ]
-  },
-  TSLA: {
-    symbol: 'TSLA',
-    name: 'Tesla, Inc.',
-    lastPrice: 194.50,
-    change: +5.80,
-    changePeriod: 'Past Month',
-    exchange: 'NASDAQ',
-    open: 189.20,
-    high: 198.80,
-    low: 187.50,
-    volume: '88.40M',
-    avgVolume: '94.10M',
-    pe: 56.20,
-    mktCap: '620.5B',
-    high52w: 265.00,
-    low52w: 138.00,
-    atrPct: 4.8,           
-    cycleCount: 6,         
-    swing3mPct: 34.6,
-    channelLow: 170.00,
-    channelHigh: 225.00,
-    cyclerClass: 'High-Frequency Oscillator',
-    cycleDescription: 'Heavy retail & option volume creates rapid, clean support-to-resistance swings every 2-3 weeks.',
-    chartPoints: [
-      { day: 1, val: 215 }, { day: 3, val: 175 }, { day: 7, val: 198 },
-      { day: 10, val: 171 }, { day: 14, val: 210 }, { day: 17, val: 182 },
-      { day: 21, val: 220 }, { day: 25, val: 174 }, { day: 28, val: 185 },
-      { day: 30, val: 194.50 }
-    ],
-    defaultSetup: {
-      entry: 194.50,
-      stopLoss: 168.00,
-      target: 220.00
-    },
-    historicalTrades: [
-      { id: 1, date: "March 18", buy: 171.20, sell: 210.50, duration: "9 days", notes: "Retail capitulation oversold squeeze" },
-      { id: 2, date: "April 02", buy: 173.00, sell: 202.40, duration: "7 days", notes: "Psychological round number $170 hold" },
-      { id: 3, date: "April 19", buy: 170.50, sell: 215.00, duration: "12 days", notes: "Pre-earnings volatility expansion cycle" },
-      { id: 4, date: "May 08", buy: 174.10, sell: 209.80, duration: "10 days", notes: "EMA 20 crossover reversion trade" },
-      { id: 5, date: "May 25", buy: 176.50, sell: 218.00, duration: "8 days", notes: "Macro index-induced range sweep" },
-      { id: 6, date: "June 05", buy: 181.00, sell: 214.50, duration: "6 days", notes: "Channel floor sweep and reversal candle" }
-    ]
-  },
-  SOXL: {
-    symbol: 'SOXL',
-    name: 'Direxion Semiconductor 3x',
-    lastPrice: 42.10,
-    change: -14.20,
-    changePeriod: 'Past Month',
-    exchange: 'NYSE Arca',
-    open: 43.50,
-    high: 45.20,
-    low: 40.80,
-    volume: '54.10M',
-    avgVolume: '61.50M',
-    pe: 0, 
-    mktCap: '9.8B',
-    high52w: 68.50,
-    low52w: 12.40,
-    atrPct: 8.6,           
-    cycleCount: 9,         
-    swing3mPct: 68.2,
-    channelLow: 32.00,
-    channelHigh: 58.00,
-    cyclerClass: 'Ultra-Leveraged Coruscator',
-    cycleDescription: '300% leverage amplifying daily semiconductor index moves. Perfect for brief, risk-controlled oversold bounces.',
-    chartPoints: [
-      { day: 1, val: 56 }, { day: 4, val: 34 }, { day: 8, val: 49 },
-      { day: 12, val: 31 }, { day: 15, val: 52 }, { day: 18, val: 35 },
-      { day: 22, val: 54 }, { day: 26, val: 30 }, { day: 29, val: 38 },
-      { day: 30, val: 42.10 }
-    ],
-    defaultSetup: {
-      entry: 42.10,
-      stopLoss: 31.00,
-      target: 55.00
-    },
-    historicalTrades: [
-      { id: 1, date: "March 15", buy: 32.50, sell: 49.00, duration: "6 days", notes: "Index support sector rotation sweep" },
-      { id: 2, date: "March 27", buy: 33.10, sell: 46.50, duration: "5 days", notes: "RSI hourly oversold climax snapback" },
-      { id: 3, date: "April 09", buy: 31.80, sell: 51.20, duration: "7 days", notes: "GPU supply chain guidance premium boost" },
-      { id: 4, date: "April 21", buy: 32.00, sell: 48.00, duration: "9 days", notes: "Channel support structure demand trigger" },
-      { id: 5, date: "May 02", buy: 33.50, sell: 52.40, duration: "6 days", notes: "Semi equipment sector guidance rally" },
-      { id: 6, date: "May 14", buy: 31.90, sell: 49.50, duration: "8 days", notes: "Key dynamic cloud baseline support" },
-      { id: 7, date: "May 24", buy: 32.40, sell: 45.80, duration: "5 days", notes: "Short-term options hedging squeeze" },
-      { id: 8, date: "June 01", buy: 33.00, sell: 53.00, duration: "6 days", notes: "AI data center expansion catalyst momentum" },
-      { id: 9, date: "June 08", buy: 34.20, sell: 48.50, duration: "4 days", notes: "Institutional block order absorption block" }
-    ]
-  },
-  COIN: {
-    symbol: 'COIN',
-    name: 'Coinbase Global, Inc.',
-    lastPrice: 218.40,
-    change: +18.90,
-    changePeriod: 'Past Month',
-    exchange: 'NASDAQ',
-    open: 210.10,
-    high: 224.50,
-    low: 206.00,
-    volume: '11.80M',
-    avgVolume: '14.20M',
-    pe: 34.80,
-    mktCap: '52.4B',
-    high52w: 283.00,
-    low52w: 68.00,
-    atrPct: 6.4,
-    cycleCount: 7,
-    swing3mPct: 48.5,
-    channelLow: 180.00,
-    channelHigh: 260.00,
-    cyclerClass: 'Proxy-Volatility Cycler',
-    cycleDescription: 'Strong correlation to underlying crypto waves creates dramatic, highly predictable range extensions.',
-    chartPoints: [
-      { day: 1, val: 245 }, { day: 4, val: 190 }, { day: 8, val: 235 },
-      { day: 12, val: 182 }, { day: 16, val: 250 }, { day: 20, val: 192 },
-      { day: 24, val: 258 }, { day: 27, val: 198 }, { day: 29, val: 210 },
-      { day: 30, val: 218.40 }
-    ],
-    defaultSetup: {
-      entry: 218.40,
-      stopLoss: 185.00,
-      target: 255.00
-    },
-    historicalTrades: [
-      { id: 1, date: "March 19", buy: 181.50, sell: 238.00, duration: "8 days", notes: "Bitcoin support corridor baseline retest" },
-      { id: 2, date: "April 02", buy: 186.00, sell: 242.50, duration: "7 days", notes: "Trading volume expansion support pivot" },
-      { id: 3, date: "April 17", buy: 180.20, sell: 233.00, duration: "10 days", notes: "Short squeeze mechanics near baseline" },
-      { id: 4, date: "April 29", buy: 191.00, sell: 252.00, duration: "11 days", notes: "Halving event cyclical demand expansion" },
-      { id: 5, date: "May 13", buy: 187.40, sell: 246.00, duration: "9 days", notes: "Crypto liquidity inflows channel squeeze" },
-      { id: 6, date: "May 27", buy: 193.00, sell: 258.50, duration: "7 days", notes: "Regulatory sentiment momentum bounce" },
-      { id: 7, date: "June 07", buy: 199.00, sell: 251.00, duration: "5 days", notes: "Institutional spot purchase backlog build" }
-    ]
-  }
+GOOG: {
+symbol: 'GOOG',
+name: 'Alphabet Inc.',
+lastPrice: 358.16,
+change: -8.41,
+changePeriod: 'Past Month',
+exchange: 'NASDAQ',
+open: 361.10,
+high: 364.77,
+low: 353.34,
+volume: '17.10M',
+avgVolume: '20.50M',
+pe: 27.30,
+mktCap: '4.368T',
+high52w: 404.00,
+low52w: 163.00,
+atrPct: 2.3,
+cycleCount: 3,
+swing3mPct: 15.2,
+channelLow: 345.00,
+channelHigh: 395.00,
+cyclerClass: 'Moderate Cycler',
+cycleDescription: 'Consistent liquid giant with predictable institutional support corridors.',
+chartPoints: [
+{ day: 1, val: 395 }, { day: 3, val: 401 }, { day: 5, val: 398 },
+{ day: 7, val: 390 }, { day: 9, val: 399 }, { day: 11, val: 378 },
+{ day: 13, val: 382 }, { day: 15, val: 374 }, { day: 17, val: 386 },
+{ day: 19, val: 388 }, { day: 21, val: 371 }, { day: 23, val: 358 },
+{ day: 25, val: 368 }, { day: 27, val: 364 }, { day: 29, val: 348 },
+{ day: 30, val: 358.16 }
+],
+defaultSetup: {
+entry: 358.16,
+stopLoss: 345.00,
+target: 390.00
+},
+// Real-structured 3-month range cycles
+historicalTrades: [
+{ id: 1, date: "April 08", buy: 346.20, sell: 391.50, duration: "14 days", notes: "Bounce off 100-day SMA corridor" },
+{ id: 2, date: "May 03", buy: 348.50, sell: 388.00, duration: "11 days", notes: "Double bottom range structural hold" },
+{ id: 3, date: "June 02", buy: 345.00, sell: 381.20, duration: "8 days", notes: "FIB 0.618 golden pocket rejection bounce" }
+]
+},
+TSLA: {
+symbol: 'TSLA',
+name: 'Tesla, Inc.',
+lastPrice: 194.50,
+change: +5.80,
+changePeriod: 'Past Month',
+exchange: 'NASDAQ',
+open: 189.20,
+high: 198.80,
+low: 187.50,
+volume: '88.40M',
+avgVolume: '94.10M',
+pe: 56.20,
+mktCap: '620.5B',
+high52w: 265.00,
+low52w: 138.00,
+atrPct: 4.8,
+cycleCount: 6,
+swing3mPct: 34.6,
+channelLow: 170.00,
+channelHigh: 225.00,
+cyclerClass: 'High-Frequency Oscillator',
+cycleDescription: 'Heavy retail & option volume creates rapid, clean support-to-resistance swings every 2-3 weeks.',
+chartPoints: [
+{ day: 1, val: 215 }, { day: 3, val: 175 }, { day: 7, val: 198 },
+{ day: 10, val: 171 }, { day: 14, val: 210 }, { day: 17, val: 182 },
+{ day: 21, val: 220 }, { day: 25, val: 174 }, { day: 28, val: 185 },
+{ day: 30, val: 194.50 }
+],
+defaultSetup: {
+entry: 194.50,
+stopLoss: 168.00,
+target: 220.00
+},
+historicalTrades: [
+{ id: 1, date: "March 18", buy: 171.20, sell: 210.50, duration: "9 days", notes: "Retail capitulation oversold squeeze"
+},
+{ id: 2, date: "April 02", buy: 173.00, sell: 202.40, duration: "7 days", notes: "Psychological round number $170 hold"
+},
+{ id: 3, date: "April 19", buy: 170.50, sell: 215.00, duration: "12 days", notes: "Pre-earnings volatility expansion cycle" },
+{ id: 4, date: "May 08", buy: 174.10, sell: 209.80, duration: "10 days", notes: "EMA 20 crossover reversion trade" },
+{ id: 5, date: "May 25", buy: 176.50, sell: 218.00, duration: "8 days", notes: "Macro index-induced range sweep" },
+{ id: 6, date: "June 05", buy: 181.00, sell: 214.50, duration: "6 days", notes: "Channel floor sweep and reversal candle" }
+]
+},
+SOXL: {
+symbol: 'SOXL',
+name: 'Direxion Semiconductor 3x',
+lastPrice: 42.10,
+change: -14.20,
+changePeriod: 'Past Month',
+exchange: 'NYSE Arca',
+open: 43.50,
+high: 45.20,
+low: 40.80,
+volume: '54.10M',
+avgVolume: '61.50M',
+pe: 0,
+mktCap: '9.8B',
+high52w: 68.50,
+low52w: 12.40,
+atrPct: 8.6,
+cycleCount: 9,
+swing3mPct: 68.2,
+channelLow: 32.00,
+channelHigh: 58.00,
+cyclerClass: 'Ultra-Leveraged Coruscator',
+cycleDescription: '300% leverage amplifying daily semiconductor index moves. Perfect for brief, risk-controlled oversold bounces.',
+chartPoints: [
+{ day: 1, val: 56 }, { day: 4, val: 34 }, { day: 8, val: 49 },
+{ day: 12, val: 31 }, { day: 15, val: 52 }, { day: 18, val: 35 },
+{ day: 22, val: 54 }, { day: 26, val: 30 }, { day: 29, val: 38 },
+{ day: 30, val: 42.10 }
+],
+defaultSetup: {
+entry: 42.10,
+stopLoss: 31.00,
+target: 55.00
+},
+historicalTrades: [
+{ id: 1, date: "March 15", buy: 32.50, sell: 49.00, duration: "6 days", notes: "Index support sector rotation sweep" },
+{ id: 2, date: "March 27", buy: 33.10, sell: 46.50, duration: "5 days", notes: "RSI hourly oversold climax snapback" },
+{ id: 3, date: "April 09", buy: 31.80, sell: 51.20, duration: "7 days", notes: "GPU supply chain guidance premium boost"
+},
+{ id: 4, date: "April 21", buy: 32.00, sell: 48.00, duration: "9 days", notes: "Channel support structure demand trigger" },
+{ id: 5, date: "May 02", buy: 33.50, sell: 52.40, duration: "6 days", notes: "Semi equipment sector guidance rally" },
+{ id: 6, date: "May 14", buy: 31.90, sell: 49.50, duration: "8 days", notes: "Key dynamic cloud baseline support" },
+{ id: 7, date: "May 24", buy: 32.40, sell: 45.80, duration: "5 days", notes: "Short-term options hedging squeeze" },
+{ id: 8, date: "June 01", buy: 33.00, sell: 53.00, duration: "6 days", notes: "AI data center expansion catalyst momentum" },
+{ id: 9, date: "June 08", buy: 34.20, sell: 48.50, duration: "4 days", notes: "Institutional block order absorption block" }
+]
+},
+COIN: {
+symbol: 'COIN',
+name: 'Coinbase Global, Inc.',
+lastPrice: 218.40,
+change: +18.90,
+changePeriod: 'Past Month',
+exchange: 'NASDAQ',
+open: 210.10,
+high: 224.50,
+low: 206.00,
+volume: '11.80M',
+avgVolume: '14.20M',
+pe: 34.80,
+mktCap: '52.4B',
+high52w: 283.00,
+low52w: 68.00,
+atrPct: 6.4,
+cycleCount: 7,
+swing3mPct: 48.5,
+channelLow: 180.00,
+channelHigh: 260.00,
+cyclerClass: 'Proxy-Volatility Cycler',
+cycleDescription: 'Strong correlation to underlying crypto waves creates dramatic, highly predictable range extensions.',
+chartPoints: [
+{ day: 1, val: 245 }, { day: 4, val: 190 }, { day: 8, val: 235 },
+{ day: 12, val: 182 }, { day: 16, val: 250 }, { day: 20, val: 192 },
+{ day: 24, val: 258 }, { day: 27, val: 198 }, { day: 29, val: 210 },
+{ day: 30, val: 218.40 }
+],
+defaultSetup: {
+entry: 218.40,
+stopLoss: 185.00,
+target: 255.00
+},
+historicalTrades: [
+{ id: 1, date: "March 19", buy: 181.50, sell: 238.00, duration: "8 days", notes: "Bitcoin support corridor baseline retest" },
+{ id: 2, date: "April 02", buy: 186.00, sell: 242.50, duration: "7 days", notes: "Trading volume expansion support pivot" },
+{ id: 3, date: "April 17", buy: 180.20, sell: 233.00, duration: "10 days", notes: "Short squeeze mechanics near baseline" },
+{ id: 4, date: "April 29", buy: 191.00, sell: 252.00, duration: "11 days", notes: "Halving event cyclical demand expansion" },
+{ id: 5, date: "May 13", buy: 187.40, sell: 246.00, duration: "9 days", notes: "Crypto liquidity inflows channel squeeze" },
+{ id: 6, date: "May 27", buy: 193.00, sell: 258.50, duration: "7 days", notes: "Regulatory sentiment momentum bounce" },
+{ id: 7, date: "June 07", buy: 199.00, sell: 251.00, duration: "5 days", notes: "Institutional spot purchase backlog build" }
+]
+}
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [selectedPreset, setSelectedPreset] = useState('TSLA'); 
-  const [stockData, setStockData] = useState(PRESET_STOCKS.TSLA);
+const [user, setUser] = useState(null);
+const [selectedPreset, setSelectedPreset] = useState('TSLA');
+const [stockData, setStockData] = useState(PRESET_STOCKS.TSLA);
 
-  // User Interactive Setup States
-  const [entryPrice, setEntryPrice] = useState(194.50);
-  const [stopLoss, setStopLoss] = useState(168.00);
-  const [targetPrice, setTargetPrice] = useState(220.00);
+// User Interactive Setup States
+const [entryPrice, setEntryPrice] = useState(194.50);
+const [stopLoss, setStopLoss] = useState(168.00);
+const [targetPrice, setTargetPrice] = useState(220.00);
 
-  // Toggle channel view vs standard clean view on the chart
-  const [showChannelBoundaries, setShowChannelBoundaries] = useState(true);
+// Toggle channel view vs standard clean view on the chart
+const [showChannelBoundaries, setShowChannelBoundaries] = useState(true);
 
-  // Position Sizing Calculator & Interactive Backtest variables
-  const [capital, setCapital] = useState(10000); 
-  const [riskPct, setRiskPct] = useState(2.0); 
+// Position Sizing Calculator & Interactive Backtest variables
+const [capital, setCapital] = useState(10000);
+const [riskPct, setRiskPct] = useState(2.0);
 
-  // Selected test period to display detailed ledger below: '3m_3m', '3m_1m', '3m_top'
-  const [activeLedgerPeriod, setActiveLedgerPeriod] = useState('3m_3m');
-  const [allocationPct, setAllocationPct] = useState(100); 
-  const [compoundingEnabled, setCompoundingEnabled] = useState(true); 
+// Selected test period to display detailed ledger below: '3m_3m', '3m_1m', '3m_top'
+const [activeLedgerPeriod, setActiveLedgerPeriod] = useState('3m_3m');
+const [allocationPct, setAllocationPct] = useState(100);
+const [compoundingEnabled, setCompoundingEnabled] = useState(true);
 
-  // Mean Reversion Checklist
-  const [checklist, setChecklist] = useState({
-    bottomChannelTouch: true,  
-    rsiOversold: true,         
-    volumeSpike: false,         
-    midLineClearance: true,    
-    macroTailwinds: false,     
-  });
+// Mean Reversion Checklist
+const [checklist, setChecklist] = useState({
+bottomChannelTouch: true,
+rsiOversold: true,
+volumeSpike: false,
+midLineClearance: true,
+macroTailwinds: false,
+});
 
-  // AI Live Insights
-  const [aiAnalysis, setAiAnalysis] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSources, setAiSources] = useState([]);
-  const [aiError, setAiError] = useState('');
+// AI Live Insights
+const [aiAnalysis, setAiAnalysis] = useState('');
+const [aiLoading, setAiLoading] = useState(false);
+const [aiSources, setAiSources] = useState([]);
+const [aiError, setAiError] = useState('');
 
-  // Sync state with selected stock preset
-  useEffect(() => {
-    const data = PRESET_STOCKS[selectedPreset];
-    if (data) {
-      setStockData(data);
-      setEntryPrice(data.defaultSetup.entry);
-      setStopLoss(data.defaultSetup.stopLoss);
-      setTargetPrice(data.defaultSetup.target);
-    }
-  }, [selectedPreset]);
+// Sync state with selected stock preset
+useEffect(() => {
+const data = PRESET_STOCKS[selectedPreset];
+if (data) {
+setStockData(data);
+setEntryPrice(data.defaultSetup.entry);
+setStopLoss(data.defaultSetup.stopLoss);
+setTargetPrice(data.defaultSetup.target);
+}
+}, [selectedPreset]);
 
-  // Sync auth state if Firebase is enabled
-  useEffect(() => {
-    if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (initialAuthToken) {
-          await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth sign-in error:", err);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
+// Sync auth state if Firebase is enabled
+useEffect(() => {
+if (!auth) return;
+const initAuth = async () => {
+try {
+if (initialAuthToken) {
+await signInWithCustomToken(auth, initialAuthToken);
+} else {
+await signInAnonymously(auth);
+}
+} catch (err) {
+console.error("Auth sign-in error:", err);
+}
+};
+initAuth();
+const unsubscribe = onAuthStateChanged(auth, setUser);
+return () => unsubscribe();
+}, []);
 
-  // Listen to cloud updates for saving trading setups if logged in
-  useEffect(() => {
-    if (!db || !user) return;
-    const unsub = onSnapshot(
-      doc(db, 'artifacts', appId, 'users', user.uid, 'setups', selectedPreset),
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.entryPrice) setEntryPrice(data.entryPrice);
-          if (data.stopLoss) setStopLoss(data.stopLoss);
-          if (data.targetPrice) setTargetPrice(data.targetPrice);
-          if (data.checklist) setChecklist(data.checklist);
-        }
-      },
-      (err) => console.error("Firestore loading error:", err)
-    );
-    return () => unsub();
-  }, [user, selectedPreset]);
+// Listen to cloud updates for saving trading setups if logged in
+useEffect(() => {
+if (!db || !user) return;
+const unsub = onSnapshot(
+doc(db, 'artifacts', appId, 'users', user.uid, 'setups', selectedPreset),
+(docSnap) => {
+if (docSnap.exists()) {
+const data = docSnap.data();
+if (data.entryPrice) setEntryPrice(data.entryPrice);
+if (data.stopLoss) setStopLoss(data.stopLoss);
+if (data.targetPrice) setTargetPrice(data.targetPrice);
+if (data.checklist) setChecklist(data.checklist);
+}
+},
+(err) => console.error("Firestore loading error:", err)
+);
+return () => unsub();
+}, [user, selectedPreset]);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
-  
-  const saveSetup = async () => {
-    setIsSaving(true);
-    setSaveStatus('Saving Setup...');
-    if (db && user) {
-      try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'setups', stockData.symbol), {
-          symbol: stockData.symbol,
-          entryPrice,
-          stopLoss,
-          targetPrice,
-          checklist,
-          updatedAt: new Date().toISOString()
-        });
-        setSaveStatus('Saved to Cloud!');
-      } catch (err) {
-        console.error("Error saving setup:", err);
-        setSaveStatus('Error saving setup.');
-      }
-    } else {
-      localStorage.setItem(`setup_${stockData.symbol}`, JSON.stringify({
-        entryPrice, stopLoss, targetPrice, checklist
-      }));
-      setSaveStatus('Saved locally!');
-    }
-    setTimeout(() => setSaveStatus(''), 3000);
-    setIsSaving(false);
-  };
+const [isSaving, setIsSaving] = useState(false);
+const [saveStatus, setSaveStatus] = useState('');
 
-  // Run AI Analysis focused on cyclical oscillation and range boundaries
-  const runAiAnalysis = async () => {
-    setAiLoading(true);
-    setAiError('');
-    setAiAnalysis('');
-    setAiSources([]);
+const saveSetup = async () => {
+setIsSaving(true);
+setSaveStatus('Saving Setup...');
+if (db && user) {
+try {
+await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'setups', stockData.symbol), {
+symbol: stockData.symbol,
+entryPrice,
+stopLoss,
+targetPrice,
+checklist,
+updatedAt: new Date().toISOString()
+});
+setSaveStatus('Saved to Cloud!');
+} catch (err) {
+console.error("Error saving setup:", err);
+setSaveStatus('Error saving setup.');
+}
+} else {
+localStorage.setItem(`setup_${stockData.symbol}`, JSON.stringify({
+entryPrice, stopLoss, targetPrice, checklist
+}));
+setSaveStatus('Saved locally!');
+}
+setTimeout(() => setSaveStatus(''), 3000);
+setIsSaving(false);
+};
 
-    const prompt = `Analyze ticker ${stockData.symbol} (${stockData.name}) for rapid 3-month cycle/range trading viability.
-    Perform Google Search updates to find its current price and high/low levels as of mid-2026. 
-    Focus on:
-    1. RANGE CYCLING INDEX: How frequently does it ping between support/resistance levels in a 90-day window?
-    2. VOLATILITY/ATR: Is the daily volatility sufficient to swing profitably?
-    3. TARGET OSCILLATION CHANNEL: Define the clear lower accumulation band and upper take-profit band.
-    4. SYSTEM VERDICT: Is it a High, Moderate, or Low viability range play? Include exact entry/stop points.`;
+// Run AI Analysis focused on cyclical oscillation and range boundaries
+const runAiAnalysis = async () => {
+setAiLoading(true);
+setAiError('');
+setAiAnalysis('');
+setAiSources([]);
 
-    const systemPrompt = `You are a professional quantitative trader specializing in mean-reversion and high-frequency channels. 
-    Analyze the asset on structural oscillation boundaries. Avoid talking about long-term investing; focus strictly on short-term high-degree swings. Keep format structured and legible.`;
+const prompt = `Analyze ticker ${stockData.symbol} (${stockData.name}) for rapid 3-month cycle/range trading viability.
+Perform Google Search updates to find its current price and high/low levels as of mid-2026.
+Focus on:
+1. RANGE CYCLING INDEX: How frequently does it ping between support/resistance levels in a 90-day window?
+2. VOLATILITY/ATR: Is the daily volatility sufficient to swing profitably?
+3. TARGET OSCILLATION CHANNEL: Define the clear lower accumulation band and upper take-profit band.
+4. SYSTEM VERDICT: Is it a High, Moderate, or Low viability range play? Include exact entry/stop points.`;
 
-    const payload = {
-      contents: [{ parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      tools: [{ "google_search": {} }]
-    };
+const systemPrompt = `You are a professional quantitative trader specializing in mean-reversion and high-frequency
+channels.
+Analyze the asset on structural oscillation boundaries. Avoid talking about long-term investing; focus strictly on
+short-term high-degree swings. Keep format structured and legible.`;
 
-    let retries = 5;
-    let delay = 1000;
-    const runFetch = async () => {
-      const apiKey = "";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+const payload = {
+contents: [{ parts: [{ text: prompt }] }],
+systemInstruction: { parts: [{ text: systemPrompt }] },
+tools: [{ "google_search": {} }]
+};
 
-      if (!response.ok) {
-        throw new Error(`HTTP Error Status: ${response.status}`);
-      }
-      return response.json();
-    };
+let retries = 5;
+let delay = 1000;
+const runFetch = async () => {
+const apiKey = "";
+const url =
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
-    const tryFetchWithBackoff = async () => {
-      try {
-        const result = await runFetch();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        const sources = result.candidates?.[0]?.groundingMetadata?.groundingAttributions?.map(a => ({
-          uri: a.web?.uri,
-          title: a.web?.title
-        })) || [];
+const response = await fetch(url, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(payload)
+});
 
-        if (text) {
-          setAiAnalysis(text);
-          setAiSources(sources);
-        } else {
-          throw new Error("No response from AI engine.");
-        }
-      } catch (err) {
-        if (retries > 0) {
-          retries--;
-          setTimeout(tryFetchWithBackoff, delay);
-          delay *= 2;
-        } else {
-          setAiError("Failed to fetch live trading insights. Verify internet connection.");
-          console.error("AI fetch failed:", err);
-        }
-      } finally {
-        if (retries === 0 || aiAnalysis) {
-          setAiLoading(false);
-        }
-      }
-    };
+if (!response.ok) {
+throw new Error(`HTTP Error Status: ${response.status}`);
+}
+return response.json();
+};
 
-    tryFetchWithBackoff();
-  };
+const tryFetchWithBackoff = async () => {
+try {
+const result = await runFetch();
+const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+const sources = result.candidates?.[0]?.groundingMetadata?.groundingAttributions?.map(a => ({
+uri: a.web?.uri,
+title: a.web?.title
+})) || [];
 
-  // Sizing and general setup math
-  const priceRange = stockData.high52w - stockData.low52w;
-  const currentRangePercent = ((stockData.lastPrice - stockData.low52w) / (priceRange || 1)) * 100;
+if (text) {
+setAiAnalysis(text);
+setAiSources(sources);
+} else {
+throw new Error("No response from AI engine.");
+}
+} catch (err) {
+if (retries > 0) {
+retries--;
+setTimeout(tryFetchWithBackoff, delay);
+delay *= 2;
+} else {
+setAiError("Failed to fetch live trading insights. Verify internet connection.");
+console.error("AI fetch failed:", err);
+}
+} finally {
+if (retries === 0 || aiAnalysis) {
+setAiLoading(false);
+}
+}
+};
 
-  const riskAmount = (capital * (riskPct / 100)).toFixed(2);
-  const perShareRisk = entryPrice - stopLoss;
-  const isSetupValid = perShareRisk > 0 && targetPrice > entryPrice;
-  
-  const sharesToBuy = isSetupValid ? Math.floor(riskAmount / perShareRisk) : 0;
-  const positionSize = (sharesToBuy * entryPrice).toFixed(2);
-  const positionPctOfCapital = ((positionSize / capital) * 100).toFixed(1);
-  const targetProfitAmount = isSetupValid ? (sharesToBuy * (targetPrice - entryPrice)).toFixed(2) : 0;
-  const riskToReward = perShareRisk > 0 ? ((targetPrice - entryPrice) / perShareRisk).toFixed(2) : 0;
+tryFetchWithBackoff();
+};
 
-  // Viability Score
-  const scoreCheckedCount = Object.values(checklist).filter(Boolean).length;
-  const totalScoreItems = Object.keys(checklist).length;
-  const setupViabilityScore = Math.round((scoreCheckedCount / totalScoreItems) * 100);
+// Sizing and general setup math
+const priceRange = stockData.high52w - stockData.low52w;
+const currentRangePercent = ((stockData.lastPrice - stockData.low52w) / (priceRange || 1)) * 100;
 
-  // Math for dynamic 3-Month / 1-Month Backtest Ledger based on period
-  const runBacktestEngine = (period) => {
-    let currentBalance = capital;
-    const ledger = [];
-    let trades = stockData.historicalTrades || [];
+const riskAmount = (capital * (riskPct / 100)).toFixed(2);
+const perShareRisk = entryPrice - stopLoss;
+const isSetupValid = perShareRisk > 0 && targetPrice > entryPrice;
 
-    // Filter trades based on toggled analysis period
-    if (period === '3m_1m') {
-      const count = Math.max(1, Math.round(trades.length / 3));
-      trades = trades.slice(-count);
-    }
+const sharesToBuy = isSetupValid ? Math.floor(riskAmount / perShareRisk) : 0;
+const positionSize = (sharesToBuy * entryPrice).toFixed(2);
+const positionPctOfCapital = ((positionSize / capital) * 100).toFixed(1);
+const targetProfitAmount = isSetupValid ? (sharesToBuy * (targetPrice - entryPrice)).toFixed(2) : 0;
+const riskToReward = perShareRisk > 0 ? ((targetPrice - entryPrice) / perShareRisk).toFixed(2) : 0;
 
-    // Size multiplier: 3M Test on top of 3M analyzed represents applying leveraged overlay sizing (2.0x target overlay)
-    const sizeMultiplier = period === '3m_top' ? 2.0 : 1.0;
+// Viability Score
+const scoreCheckedCount = Object.values(checklist).filter(Boolean).length;
+const totalScoreItems = Object.keys(checklist).length;
+const setupViabilityScore = Math.round((scoreCheckedCount / totalScoreItems) * 100);
 
-    trades.forEach((trade) => {
-      // FIX: sizingBase correctly checks if compounding is enabled, dynamically using the rolling balance or starting capital
-      const sizingBase = compoundingEnabled ? currentBalance : capital;
-      const allocation = sizingBase * (allocationPct / 100) * sizeMultiplier;
-      
-      const shares = Math.floor(allocation / trade.buy);
-      const cost = shares * trade.buy;
-      const profitPerShare = trade.sell - trade.buy;
-      const tradeProfit = shares * profitPerShare;
-      const pctReturn = (profitPerShare / trade.buy) * 100;
+// Math for dynamic 3-Month / 1-Month Backtest Ledger based on period
+const runBacktestEngine = (period) => {
+let currentBalance = capital;
+const ledger = [];
+let trades = stockData.historicalTrades || [];
 
-      const balanceBefore = currentBalance;
-      currentBalance = balanceBefore + tradeProfit;
+// Filter trades based on toggled analysis period
+if (period === '3m_1m') {
+const count = Math.max(1, Math.round(trades.length / 3));
+trades = trades.slice(-count);
+}
 
-      ledger.push({
-        ...trade,
-        shares,
-        cost: cost.toFixed(2),
-        gainPercent: pctReturn.toFixed(1),
-        profit: tradeProfit.toFixed(2),
-        endingBal: currentBalance.toFixed(2)
-      });
-    });
+// Size multiplier: 3M Test on top of 3M analyzed represents applying leveraged overlay sizing (2.0x target overlay)
+const sizeMultiplier = period === '3m_top' ? 2.0 : 1.0;
 
-    const overallProfit = currentBalance - capital;
-    const overallReturnPct = (overallProfit / capital) * 100;
+trades.forEach((trade) => {
+// FIX: sizingBase correctly checks if compounding is enabled, dynamically using the rolling balance or starting capital
+const sizingBase = compoundingEnabled ? currentBalance : capital;
+const allocation = sizingBase * (allocationPct / 100) * sizeMultiplier;
 
-    return { ledger, finalBalance: currentBalance, overallProfit, overallReturnPct, sizeMultiplier };
-  };
+const shares = Math.floor(allocation / trade.buy);
+const cost = shares * trade.buy;
+const profitPerShare = trade.sell - trade.buy;
+const tradeProfit = shares * profitPerShare;
+const pctReturn = (profitPerShare / trade.buy) * 100;
 
-  // Run backtests for ALL THREE modes simultaneously
-  const results3m3m = runBacktestEngine('3m_3m');
-  const results3m1m = runBacktestEngine('3m_1m');
-  const results3mTop = runBacktestEngine('3m_top');
+const balanceBefore = currentBalance;
+currentBalance = balanceBefore + tradeProfit;
 
-  // Select active results based on which card is selected
-  const activeResults = activeLedgerPeriod === '3m_3m' ? results3m3m 
-                      : activeLedgerPeriod === '3m_1m' ? results3m1m 
-                      : results3mTop;
+ledger.push({
+...trade,
+shares,
+cost: cost.toFixed(2),
+gainPercent: pctReturn.toFixed(1),
+profit: tradeProfit.toFixed(2),
+endingBal: currentBalance.toFixed(2)
+});
+});
 
-  // SVG Chart Dimensions & Calculations
-  const chartWidth = 600;
-  const chartHeight = 220;
-  const padding = 25;
+const overallProfit = currentBalance - capital;
+const overallReturnPct = (overallProfit / capital) * 100;
 
-  const getX = (index, total) => {
-    return padding + (index / (total - 1)) * (chartWidth - 2 * padding);
-  };
+return { ledger, finalBalance: currentBalance, overallProfit, overallReturnPct, sizeMultiplier };
+};
 
-  const getY = (val) => {
-    const prices = stockData.chartPoints.map(p => p.val);
-    const minVal = Math.min(...prices, stopLoss, stockData.channelLow) * 0.95;
-    const maxVal = Math.max(...prices, targetPrice, stockData.channelHigh) * 1.05;
-    return chartHeight - padding - ((val - minVal) / (maxVal - minVal)) * (chartHeight - 2 * padding);
-  };
+// Run backtests for ALL THREE modes simultaneously
+const results3m3m = runBacktestEngine('3m_3m');
+const results3m1m = runBacktestEngine('3m_1m');
+const results3mTop = runBacktestEngine('3m_top');
 
-  const channelMidpoint = (stockData.channelLow + stockData.channelHigh) / 2;
+// Select active results based on which card is selected
+const activeResults = activeLedgerPeriod === '3m_3m' ? results3m3m
+: activeLedgerPeriod === '3m_1m' ? results3m1m
+: results3mTop;
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
-      
-      {/* Top Banner & Header */}
-      <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-md sticky top-0 z-50 px-4 py-3 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-tr from-cyan-500 to-emerald-400 rounded-lg text-slate-950 shadow-lg shadow-cyan-500/20">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 12l3-3 3 3 4-4M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-            </div>
+// SVG Chart Dimensions & Calculations
+const chartWidth = 600;
+const chartHeight = 220;
+const padding = 25;
+
+const getX = (index, total) => {
+return padding + (index / (total - 1)) * (chartWidth - 2 * padding);
+};
+
+const getY = (val) => {
+const prices = stockData.chartPoints.map(p => p.val);
+const minVal = Math.min(...prices, stopLoss, stockData.channelLow) * 0.95;
+const maxVal = Math.max(...prices, targetPrice, stockData.channelHigh) * 1.05;
+return chartHeight - padding - ((val - minVal) / (maxVal - minVal)) * (chartHeight - 2 * padding);
+};
+
+const channelMidpoint = (stockData.channelLow + stockData.channelHigh) / 2;
+
+return (
+<div
+  className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
+
+  {/* Top Banner & Header */}
+  <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-md sticky top-0 z-50 px-4 py-3 sm:px-6">
+    <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <div
+          className="p-2 bg-gradient-to-tr from-cyan-500 to-emerald-400 rounded-lg text-slate-950 shadow-lg shadow-cyan-500/20">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"
+              d="M7 12l3-3 3 3 4-4M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <div>
+          <h1
+            className="text-xl font-bold tracking-tight bg-gradient-to-r from-teal-400 via-cyan-200 to-indigo-300 bg-clip-text text-transparent">
+            Cycle & Channel Frequency Analyzer
+          </h1>
+          <p className="text-xs text-slate-400 font-medium">Identify, monitor, and stress-test high-frequency swing
+            channels with real historical metrics.</p>
+        </div>
+      </div>
+
+      {/* Preset Selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Select Volatile Asset:</span>
+        <div className="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+          {Object.keys(PRESET_STOCKS).map((preset) => (
+          <button key={preset} onClick={()=> setSelectedPreset(preset)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+            selectedPreset === preset
+            ? 'bg-slate-800 text-teal-400 shadow font-bold'
+            : 'text-slate-400 hover:text-slate-200'
+            }`}
+            >
+            {preset}
+          </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    {/* Core Layout Grid */}
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      {/* Left Column: Ticker Profile, Volatility Cycle Profiler, & Backtest Ledger */}
+      <div className="lg:col-span-4 space-y-6">
+
+        {/* Ticker Snapshot Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 blur-3xl rounded-full"></div>
+
+          <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-teal-400 via-cyan-200 to-indigo-300 bg-clip-text text-transparent">
-                Cycle & Channel Frequency Analyzer
-              </h1>
-              <p className="text-xs text-slate-400 font-medium">Identify, monitor, and stress-test high-frequency swing channels with real historical metrics.</p>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black tracking-tight text-white">{stockData.symbol}</span>
+                <span
+                  className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono border border-slate-700">{stockData.exchange}</span>
+              </div>
+              <h2 className="text-sm text-slate-400 font-medium mt-1">{stockData.name}</h2>
+            </div>
+
+            <div className="text-right">
+              <div className="text-2xl font-bold text-white font-mono">{stockData.lastPrice.toFixed(2)}</div>
+              <span className={`text-xs font-bold flex items-center justify-end gap-1 ${stockData.change < 0
+                ? 'text-rose-400' : 'text-emerald-400' }`}>
+                {stockData.change < 0 ? '↓' : '↑' } {stockData.change> 0 ? `+${stockData.change}` : stockData.change}%
+                  <span className="text-slate-500 font-normal">({stockData.changePeriod})</span>
+              </span>
             </div>
           </div>
 
-          {/* Preset Selector */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Select Volatile Asset:</span>
-            <div className="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800">
-              {Object.keys(PRESET_STOCKS).map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => setSelectedPreset(preset)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                    selectedPreset === preset
-                      ? 'bg-slate-800 text-teal-400 shadow font-bold'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+          {/* Ticker Snapshot parameters */}
+          <div
+            className="mt-4 p-4 bg-slate-950 rounded-lg border border-slate-800/80 space-y-3 font-mono text-xs font-semibold">
+            <div className="grid grid-cols-2 gap-y-2.5">
+              <div className="flex justify-between pr-4 border-r border-slate-800">
+                <span className="text-slate-500">Open</span>
+                <span className="text-slate-200">{stockData.open.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between pl-4">
+                <span className="text-slate-500">Volume</span>
+                <span className="text-slate-200">{stockData.volume}</span>
+              </div>
+              <div className="flex justify-between pr-4 border-r border-slate-800">
+                <span className="text-slate-500">Daily High</span>
+                <span className="text-rose-400">{stockData.high.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between pl-4">
+                <span className="text-slate-500">Avg Vol</span>
+                <span className="text-slate-200">{stockData.avgVolume}</span>
+              </div>
+              <div className="flex justify-between pr-4 border-r border-slate-800">
+                <span className="text-slate-500">Daily Low</span>
+                <span className="text-emerald-400">{stockData.low.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between pl-4">
+                <span className="text-slate-500">Mkt Cap</span>
+                <span className="text-slate-200">{stockData.mktCap}</span>
+              </div>
+            </div>
+
+            {/* 52 Week Slider */}
+            <div className="pt-2 border-t border-slate-800">
+              <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                <span>52W L: ${stockData.low52w}</span>
+                <span>52W H: ${stockData.high52w}</span>
+              </div>
+              <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-teal-500 to-cyan-500 h-full rounded-full" style={{ width:
+                  `${currentRangePercent}%` }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* VOLATILITY & CYCLE ASSESSMENT CARD */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+            </svg>
+            3-Month Cycle Profiler
+          </h3>
+
+          <div className="space-y-4">
+
+            {/* Cycler Classification */}
+            <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+              <span
+                className="text-[10px] text-cyan-400 uppercase tracking-widest font-extrabold block">Classification</span>
+              <span className="text-sm font-bold text-white block mt-0.5">{stockData.cyclerClass}</span>
+              <p className="text-[11px] text-slate-400 mt-1 leading-normal">{stockData.cycleDescription}</p>
+            </div>
+
+            {/* Metrics Breakdown Grid */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
+                <span className="text-[9px] text-slate-500 block uppercase font-bold">Daily Vol (ATR %)</span>
+                <span
+                  className="text-base font-extrabold text-cyan-400 font-mono mt-0.5 block">{stockData.atrPct}%</span>
+                <span className="text-[9px] text-slate-400 block font-medium">Daily Range</span>
+              </div>
+              <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
+                <span className="text-[9px] text-slate-500 block uppercase font-bold">3M Cycles</span>
+                <span
+                  className="text-base font-extrabold text-teal-400 font-mono mt-0.5 block">{stockData.cycleCount}</span>
+                <span className="text-[9px] text-slate-400 block font-medium">Waves</span>
+              </div>
+              <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
+                <span className="text-[9px] text-slate-500 block uppercase font-bold">90D Spread</span>
+                <span
+                  className="text-base font-extrabold text-violet-400 font-mono mt-0.5 block">{stockData.swing3mPct}%</span>
+                <span className="text-[9px] text-slate-400 block font-medium">High to Low</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* DYNAMIC BACKTEST LEDGER (RELOCATED TO LEFT COLUMN JUST BELOW PROFILER) */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="space-y-1.5">
+            <h3 className="font-bold text-white text-sm">
+              $10,000 Range Backtester
+            </h3>
+            <p className="text-[11px] text-slate-400 leading-tight">Simulate the returns of executing purchase sweeps at
+              support/resistance levels.</p>
+          </div>
+
+          {/* ALLOCATION AND METHOD REPOSITIONED TO THE TOP */}
+          <div className="grid grid-cols-2 gap-2 pb-3 border-b border-slate-800/80">
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] uppercase font-bold text-slate-500">Allocation %</span>
+              <div
+                className="bg-slate-950 p-1 rounded border border-slate-850 flex text-[10px] font-mono justify-around">
+                <button onClick={()=> setAllocationPct(100)} className={`px-2 py-0.5 rounded transition ${allocationPct
+                  === 100 ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>100%</button>
+                <button onClick={()=> setAllocationPct(50)} className={`px-2 py-0.5 rounded transition ${allocationPct
+                  === 50 ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>50%</button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] uppercase font-bold text-slate-500">Method</span>
+              <div
+                className="bg-slate-950 p-1 rounded border border-slate-850 flex text-[10px] font-mono justify-around">
+                <button onClick={()=> setCompoundingEnabled(true)} className={`px-2.5 rounded transition
+                  ${compoundingEnabled ? 'bg-teal-500 text-slate-950 font-bold' : 'text-slate-400'}`}>Compound</button>
+                <button onClick={()=> setCompoundingEnabled(false)} className={`px-2.5 rounded transition
+                  ${!compoundingEnabled ? 'bg-teal-500 text-slate-950 font-bold' : 'text-slate-400'}`}>Flat</button>
+              </div>
+            </div>
+          </div>
+
+          {/* SIMULTANEOUS ALL-3-MODES DISPLAY CARD SECTION */}
+          <div className="space-y-2">
+            <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Simulated Scenarios (Select
+              to View Ledger)</span>
+
+            <div className="space-y-2">
+              {/* Mode 1 Card: 3M/3M */}
+              <button onClick={()=> setActiveLedgerPeriod('3m_3m')}
+                className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
+                activeLedgerPeriod === '3m_3m'
+                ? 'bg-cyan-950/20 border-cyan-500 shadow-md shadow-cyan-500/5'
+                : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
+                }`}
                 >
-                  {preset}
-                </button>
+                <div className="flex justify-between items-center w-full">
+                  <span className="text-xs font-bold text-slate-200">3M Analyze / 3M Test</span>
+                  <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-mono">Full
+                    Run</span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Ending Balance</span>
+                  <span className="font-mono text-xs font-bold text-teal-400">
+                    ${parseFloat(results3m3m.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2,
+                    maximumFractionDigits: 2})}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Cumulative Yield</span>
+                  <span className="font-mono text-xs font-extrabold text-emerald-400">
+                    +{results3m3m.overallReturnPct.toFixed(1)}%
+                  </span>
+                </div>
+              </button>
+
+              {/* Mode 2 Card: 3M/1M */}
+              <button onClick={()=> setActiveLedgerPeriod('3m_1m')}
+                className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
+                activeLedgerPeriod === '3m_1m'
+                ? 'bg-emerald-950/20 border-emerald-500 shadow-md shadow-emerald-500/5'
+                : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
+                }`}
+                >
+                <div className="flex justify-between items-center w-full">
+                  <span className="text-xs font-bold text-slate-200">3M Analyze / 1M Test</span>
+                  <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded font-mono">Recent
+                    30D</span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Ending Balance</span>
+                  <span className="font-mono text-xs font-bold text-teal-400">
+                    ${parseFloat(results3m1m.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2,
+                    maximumFractionDigits: 2})}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Cumulative Yield</span>
+                  <span className="font-mono text-xs font-extrabold text-emerald-400">
+                    +{results3m1m.overallReturnPct.toFixed(1)}%
+                  </span>
+                </div>
+              </button>
+
+              {/* Mode 3 Card: 3M Stacked (2.0x size) */}
+              <button onClick={()=> setActiveLedgerPeriod('3m_top')}
+                className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
+                activeLedgerPeriod === '3m_top'
+                ? 'bg-indigo-950/30 border-indigo-500 shadow-md shadow-indigo-500/5'
+                : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
+                }`}
+                >
+                <div className="flex justify-between items-center w-full">
+                  <span className="text-xs font-bold text-slate-200">3M Test on Top (2x Sizing)</span>
+                  <span className="text-[9px] bg-indigo-500/10 text-indigo-300 px-1.5 py-0.5 rounded font-mono">Overlay
+                    Size</span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Ending Balance</span>
+                  <span className="font-mono text-xs font-bold text-teal-400">
+                    ${parseFloat(results3mTop.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2,
+                    maximumFractionDigits: 2})}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline w-full">
+                  <span className="text-[10px] text-slate-500">Cumulative Yield</span>
+                  <span className="font-mono text-xs font-extrabold text-emerald-400">
+                    +{results3mTop.overallReturnPct.toFixed(1)}%
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Selected Sidebar Trade Ledger Timeline */}
+          <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 pt-2 border-t border-slate-800">
+            <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">
+              Active Scenario Ledger ({activeLedgerPeriod === '3m_3m' ? '3M/3M' : activeLedgerPeriod === '3m_1m' ?
+              '3M/1M' : '2x Overlay'})
+            </span>
+            <div className="space-y-2">
+              {activeResults.ledger.map((trade) => (
+              <div key={trade.id}
+                className="p-2 bg-slate-950/40 hover:bg-slate-950 border border-slate-850/60 rounded flex flex-col gap-1 font-mono text-[10px] transition font-semibold">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-300">Wave #{trade.id} • {trade.date}</span>
+                  <span className="text-emerald-400 font-extrabold">+{trade.gainPercent}%</span>
+                </div>
+                <div className="flex justify-between text-[9px] text-slate-500">
+                  <span>Buy: ${trade.buy.toFixed(2)} | Sell: ${trade.sell.toFixed(2)}</span>
+                  <span className="text-emerald-500 font-bold">+${parseFloat(trade.profit).toFixed(2)}</span>
+                </div>
+                <span className="text-[8px] text-slate-500 italic truncate font-normal">{trade.notes}</span>
+              </div>
               ))}
             </div>
           </div>
         </div>
-      </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        
-        {/* Core Layout Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Ticker Profile, Volatility Cycle Profiler, & Backtest Ledger */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Ticker Snapshot Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 blur-3xl rounded-full"></div>
-              
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-black tracking-tight text-white">{stockData.symbol}</span>
-                    <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono border border-slate-700">{stockData.exchange}</span>
-                  </div>
-                  <h2 className="text-sm text-slate-400 font-medium mt-1">{stockData.name}</h2>
-                </div>
-                
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-white font-mono">{stockData.lastPrice.toFixed(2)}</div>
-                  <span className={`text-xs font-bold flex items-center justify-end gap-1 ${stockData.change < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {stockData.change < 0 ? '↓' : '↑'} {stockData.change > 0 ? `+${stockData.change}` : stockData.change}%
-                    <span className="text-slate-500 font-normal">({stockData.changePeriod})</span>
-                  </span>
+        {/* Checklist Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Oscillation Checklist
+            </h3>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ setupViabilityScore>= 80 ? 'bg-emerald-500/10 text-emerald-400' :
+              setupViabilityScore >= 60 ? 'bg-amber-500/10 text-amber-400' : 'bg-rose-500/10 text-rose-400'
+              }`}>
+              Viability: {setupViabilityScore}%
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            <label
+              className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
+              <input type="checkbox" checked={checklist.bottomChannelTouch} onChange={(e)=> setChecklist({ ...checklist,
+              bottomChannelTouch: e.target.checked })}
+              className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">Channel Bottom Anchor</span>
+                <span className="text-[10px] text-slate-400">Price is hovering closely within the historical 3-month
+                  support line.</span>
+              </div>
+            </label>
+
+            <label
+              className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
+              <input type="checkbox" checked={checklist.rsiOversold} onChange={(e)=> setChecklist({ ...checklist,
+              rsiOversold: e.target.checked })}
+              className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">Oversold Conditions (RSI &lt; 35)</span>
+                <span className="text-[10px] text-slate-400">Short-term indicator displays heavy exhaust of
+                  sellers.</span>
+              </div>
+            </label>
+
+            <label
+              className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
+              <input type="checkbox" checked={checklist.volumeSpike} onChange={(e)=> setChecklist({ ...checklist,
+              volumeSpike: e.target.checked })}
+              className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">Capitulation / Climax Volume</span>
+                <span className="text-[10px] text-slate-400">A high-volume down day followed by low-volume baseline
+                  stabilizes the range.</span>
+              </div>
+            </label>
+
+            <label
+              className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
+              <input type="checkbox" checked={checklist.midLineClearance} onChange={(e)=> setChecklist({ ...checklist,
+              midLineClearance: e.target.checked })}
+              className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">Mean Reversion Target Corridor</span>
+                <span className="text-[10px] text-slate-400">Target price resides well within range bounds without
+                  structural resistance.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Column: Graphic Chart, Calculators, and AI Integration */}
+      <div className="lg:col-span-8 space-y-6">
+
+        {/* Live Chart Canvas Panel */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-white text-base">Channel Oscillation Visualizer</h3>
+              <p className="text-xs text-slate-400">Examine short-term peak-and-trough frequency inside the 90-day price
+                corridor.</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label
+                className="flex items-center gap-1.5 cursor-pointer bg-slate-950 p-2 rounded border border-slate-800">
+                <input type="checkbox" checked={showChannelBoundaries} onChange={(e)=>
+                setShowChannelBoundaries(e.target.checked)}
+                className="rounded bg-slate-900 border-slate-800 text-cyan-500 focus:ring-0"
+                />
+                <span className="text-[10px] uppercase font-bold text-slate-300">Show Channel Bands</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Interactive SVG Chart */}
+          <div className="relative bg-slate-950 rounded-lg overflow-hidden border border-slate-800/80 p-1">
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto">
+
+              {/* Grid Lines */}
+              {[0.25, 0.5, 0.75].map((ratio, i) => (
+              <line key={i} x1="0" y1={chartHeight * ratio} x2={chartWidth} y2={chartHeight * ratio} stroke="#111827"
+                strokeWidth="1" />
+              ))}
+
+              {/* Channel Boundaries (Shaded Overlay) */}
+              {showChannelBoundaries && (
+              <>
+                {/* Upper Band Shading */}
+                <rect x={padding} y={getY(stockData.channelHigh)} width={chartWidth - 2 * padding} height={1.5}
+                  fill="#06b6d4" opacity="0.6" />
+                <text x={chartWidth - padding - 85} y={getY(stockData.channelHigh) - 6} fill="#06b6d4"
+                  className="font-mono text-[9px] font-bold">
+                  CHANNEL HIGH: ${stockData.channelHigh}
+                </text>
+
+                {/* Mean Midline Pivot */}
+                <line x1={padding} y1={getY(channelMidpoint)} x2={chartWidth - padding} y2={getY(channelMidpoint)}
+                  stroke="#8b5cf6" strokeDasharray="4 4" strokeWidth="1.5" opacity="0.5" />
+                <text x={padding + 10} y={getY(channelMidpoint) - 6} fill="#8b5cf6"
+                  className="font-mono text-[9px] font-bold">
+                  PIVOT MIDLINE: ${channelMidpoint}
+                </text>
+
+                {/* Lower Band Shading */}
+                <rect x={padding} y={getY(stockData.channelLow)} width={chartWidth - 2 * padding} height={1.5}
+                  fill="#10b981" opacity="0.6" />
+                <text x={chartWidth - padding - 80} y={getY(stockData.channelLow) + 12} fill="#10b981"
+                  className="font-mono text-[9px] font-bold">
+                  CHANNEL LOW: ${stockData.channelLow}
+                </text>
+              </>
+              )}
+
+              {/* Profit range zone behind chart */}
+              {targetPrice > entryPrice && (
+              <rect x={padding} y={getY(targetPrice)} width={chartWidth - 2 * padding} height={Math.max(0,
+                getY(entryPrice) - getY(targetPrice))} fill="url(#greenGrad)" opacity="0.1" />
+              )}
+
+              {/* SVG Definitions */}
+              <defs>
+                <linearGradient id="chartLineGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22d3ee" />
+                  <stop offset="100%" stopColor="#312e81" />
+                </linearGradient>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0891b2" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#0891b2" stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              {/* Stock historical/Simulated Line displaying oscillation frequency */}
+              <path d={stockData.chartPoints.reduce((path, p, i)=> {
+                const x = getX(i, stockData.chartPoints.length);
+                const y = getY(p.val);
+                return path + `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                }, '')}
+                fill="none"
+                stroke="url(#chartLineGrad)"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                />
+
+                {/* Area fill under historical Line */}
+                <path d={stockData.chartPoints.reduce((path, p, i)=> {
+                  const x = getX(i, stockData.chartPoints.length);
+                  const y = getY(p.val);
+                  return path + `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                  }, '') + ` L ${getX(stockData.chartPoints.length - 1, stockData.chartPoints.length)} ${chartHeight -
+                  padding} L ${getX(0, stockData.chartPoints.length)} ${chartHeight - padding} Z`}
+                  fill="url(#areaGrad)"
+                  />
+
+                  {/* Target Price Line */}
+                  <line x1={padding} y1={getY(targetPrice)} x2={chartWidth - padding} y2={getY(targetPrice)}
+                    stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 2" />
+
+                  {/* Entry Price Line */}
+                  <line x1={padding} y1={getY(entryPrice)} x2={chartWidth - padding} y2={getY(entryPrice)}
+                    stroke="#ffffff" strokeWidth="1.5" />
+
+                  {/* Stop Loss Line */}
+                  <line x1={padding} y1={getY(stopLoss)} x2={chartWidth - padding} y2={getY(stopLoss)} stroke="#ef4444"
+                    strokeWidth="1.5" strokeDasharray="4 2" />
+
+                  {/* Highlights on channel bouncing points */}
+                  {stockData.chartPoints.map((p, i) => (
+                  <circle key={i} cx={getX(i, stockData.chartPoints.length)} cy={getY(p.val)} r="4.5" fill={p.val
+                    <=stockData.channelLow * 1.05 ? '#10b981' : p.val>= stockData.channelHigh * 0.95 ? '#06b6d4' :
+                    '#334155'}
+                    stroke="#020617"
+                    strokeWidth="1.5"
+                    />
+                    ))}
+            </svg>
+
+            {/* Legend */}
+            <div
+              className="absolute top-2 left-2 flex gap-3 text-[9px] font-bold text-slate-500 bg-slate-900/90 py-1 px-2 rounded border border-slate-800">
+              <span className="flex items-center gap-1"><span
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Oversold Anchor</span>
+              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                Overbought Apex</span>
+            </div>
+          </div>
+
+          {/* Dynamic Interactive Setup Adjustments */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-xs font-bold text-emerald-400">Profit Target ($)</span>
+                <span className="text-xs font-mono font-bold text-white">{targetPrice}</span>
+              </div>
+              <input type="range" min={Math.floor(stockData.lastPrice)} max={Math.floor(stockData.high52w * 1.1)}
+                step="0.1" value={targetPrice} onChange={(e)=> setTargetPrice(parseFloat(e.target.value))}
+              className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+              />
+              <span className="text-[10px] text-slate-500 block">Aimed near upper boundary:
+                ${stockData.channelHigh}</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-xs font-bold text-slate-300">Set Entry Trigger ($)</span>
+                <span className="text-xs font-mono font-bold text-white">{entryPrice}</span>
+              </div>
+              <input type="range" min={Math.floor(stockData.lastPrice * 0.8)} max={Math.floor(stockData.lastPrice *
+                1.2)} step="0.1" value={entryPrice} onChange={(e)=> setEntryPrice(parseFloat(e.target.value))}
+              className="w-full accent-slate-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+              />
+              <span className="text-[10px] text-slate-500 block">Buy spot or dynamic entry.</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-xs font-bold text-rose-400">Stop-Loss Margin ($)</span>
+                <span className="text-xs font-mono font-bold text-white">{stopLoss}</span>
+              </div>
+              <input type="range" min={Math.floor(stockData.low52w * 0.9)} max={Math.floor(stockData.lastPrice)}
+                step="0.1" value={stopLoss} onChange={(e)=> setStopLoss(parseFloat(e.target.value))}
+              className="w-full accent-rose-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+              />
+              <span className="text-[10px] text-slate-500 block">Keep below channel floor:
+                ${stockData.channelLow}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sizing & Risk Profiles */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+
+          <div className="md:col-span-8 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Setup Capital Sizer
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Starting
+                  Capital</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-500 font-mono text-xs">$</span>
+                  <input type="number" value={capital} onChange={(e)=> setCapital(Math.max(100, parseInt(e.target.value)
+                  || 0))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 pl-7 pr-3 text-xs font-mono
+                  font-semibold focus:outline-none focus:border-teal-500 text-white"
+                  />
                 </div>
               </div>
-
-              {/* Ticker Snapshot parameters */}
-              <div className="mt-4 p-4 bg-slate-950 rounded-lg border border-slate-800/80 space-y-3 font-mono text-xs font-semibold">
-                <div className="grid grid-cols-2 gap-y-2.5">
-                  <div className="flex justify-between pr-4 border-r border-slate-800">
-                    <span className="text-slate-500">Open</span>
-                    <span className="text-slate-200">{stockData.open.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-slate-500">Volume</span>
-                    <span className="text-slate-200">{stockData.volume}</span>
-                  </div>
-                  <div className="flex justify-between pr-4 border-r border-slate-800">
-                    <span className="text-slate-500">Daily High</span>
-                    <span className="text-rose-400">{stockData.high.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-slate-500">Avg Vol</span>
-                    <span className="text-slate-200">{stockData.avgVolume}</span>
-                  </div>
-                  <div className="flex justify-between pr-4 border-r border-slate-800">
-                    <span className="text-slate-500">Daily Low</span>
-                    <span className="text-emerald-400">{stockData.low.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-slate-500">Mkt Cap</span>
-                    <span className="text-slate-200">{stockData.mktCap}</span>
-                  </div>
-                </div>
-
-                {/* 52 Week Slider */}
-                <div className="pt-2 border-t border-slate-800">
-                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                    <span>52W L: ${stockData.low52w}</span>
-                    <span>52W H: ${stockData.high52w}</span>
-                  </div>
-                  <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-teal-500 to-cyan-500 h-full rounded-full" 
-                      style={{ width: `${currentRangePercent}%` }}
-                    ></div>
-                  </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Max Risk per
+                  Swing</label>
+                <div className="relative">
+                  <input type="number" step="0.1" value={riskPct} onChange={(e)=> setRiskPct(Math.max(0.1,
+                  parseFloat(e.target.value) || 0.1))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-3 text-xs font-mono
+                  font-semibold focus:outline-none focus:border-teal-500 text-white"
+                  />
+                  <span className="absolute right-3 top-2 text-slate-500 font-mono text-xs">%</span>
                 </div>
               </div>
             </div>
 
-            {/* VOLATILITY & CYCLE ASSESSMENT CARD */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
-                </svg>
-                3-Month Cycle Profiler
-              </h3>
-
-              <div className="space-y-4">
-                
-                {/* Cycler Classification */}
-                <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
-                  <span className="text-[10px] text-cyan-400 uppercase tracking-widest font-extrabold block">Classification</span>
-                  <span className="text-sm font-bold text-white block mt-0.5">{stockData.cyclerClass}</span>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-normal">{stockData.cycleDescription}</p>
-                </div>
-
-                {/* Metrics Breakdown Grid */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
-                    <span className="text-[9px] text-slate-500 block uppercase font-bold">Daily Vol (ATR %)</span>
-                    <span className="text-base font-extrabold text-cyan-400 font-mono mt-0.5 block">{stockData.atrPct}%</span>
-                    <span className="text-[9px] text-slate-400 block font-medium">Daily Range</span>
-                  </div>
-                  <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
-                    <span className="text-[9px] text-slate-500 block uppercase font-bold">3M Cycles</span>
-                    <span className="text-base font-extrabold text-teal-400 font-mono mt-0.5 block">{stockData.cycleCount}</span>
-                    <span className="text-[9px] text-slate-400 block font-medium">Waves</span>
-                  </div>
-                  <div className="bg-slate-950 p-2 rounded-lg border border-slate-800/80">
-                    <span className="text-[9px] text-slate-500 block uppercase font-bold">90D Spread</span>
-                    <span className="text-base font-extrabold text-violet-400 font-mono mt-0.5 block">{stockData.swing3mPct}%</span>
-                    <span className="text-[9px] text-slate-400 block font-medium">High to Low</span>
-                  </div>
-                </div>
+            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
+                <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Cash Risk limit</span>
+                <span className="text-sm font-bold text-rose-400 font-mono">${riskAmount}</span>
               </div>
-            </div>
-
-            {/* DYNAMIC BACKTEST LEDGER (RELOCATED TO LEFT COLUMN JUST BELOW PROFILER) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-              <div className="space-y-1.5">
-                <h3 className="font-bold text-white text-sm">
-                  $10,000 Range Backtester
-                </h3>
-                <p className="text-[11px] text-slate-400 leading-tight">Simulate the returns of executing purchase sweeps at support/resistance levels.</p>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
+                <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Shares Target</span>
+                <span className="text-sm font-bold text-white font-mono">{sharesToBuy}</span>
               </div>
-
-              {/* ALLOCATION AND METHOD REPOSITIONED TO THE TOP */}
-              <div className="grid grid-cols-2 gap-2 pb-3 border-b border-slate-800/80">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[9px] uppercase font-bold text-slate-500">Allocation %</span>
-                  <div className="bg-slate-950 p-1 rounded border border-slate-850 flex text-[10px] font-mono justify-around">
-                    <button onClick={() => setAllocationPct(100)} className={`px-2 py-0.5 rounded transition ${allocationPct === 100 ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>100%</button>
-                    <button onClick={() => setAllocationPct(50)} className={`px-2 py-0.5 rounded transition ${allocationPct === 50 ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>50%</button>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[9px] uppercase font-bold text-slate-500">Method</span>
-                  <div className="bg-slate-950 p-1 rounded border border-slate-850 flex text-[10px] font-mono justify-around">
-                    <button onClick={() => setCompoundingEnabled(true)} className={`px-2.5 rounded transition ${compoundingEnabled ? 'bg-teal-500 text-slate-950 font-bold' : 'text-slate-400'}`}>Compound</button>
-                    <button onClick={() => setCompoundingEnabled(false)} className={`px-2.5 rounded transition ${!compoundingEnabled ? 'bg-teal-500 text-slate-950 font-bold' : 'text-slate-400'}`}>Flat</button>
-                  </div>
-                </div>
-              </div>
-
-              {/* SIMULTANEOUS ALL-3-MODES DISPLAY CARD SECTION */}
-              <div className="space-y-2">
-                <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Simulated Scenarios (Select to View Ledger)</span>
-                
-                <div className="space-y-2">
-                  {/* Mode 1 Card: 3M/3M */}
-                  <button
-                    onClick={() => setActiveLedgerPeriod('3m_3m')}
-                    className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
-                      activeLedgerPeriod === '3m_3m'
-                        ? 'bg-cyan-950/20 border-cyan-500 shadow-md shadow-cyan-500/5'
-                        : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-xs font-bold text-slate-200">3M Analyze / 3M Test</span>
-                      <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-mono">Full Run</span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Ending Balance</span>
-                      <span className="font-mono text-xs font-bold text-teal-400">
-                        ${parseFloat(results3m3m.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Cumulative Yield</span>
-                      <span className="font-mono text-xs font-extrabold text-emerald-400">
-                        +{results3m3m.overallReturnPct.toFixed(1)}%
-                      </span>
-                    </div>
-                  </button>
-
-                  {/* Mode 2 Card: 3M/1M */}
-                  <button
-                    onClick={() => setActiveLedgerPeriod('3m_1m')}
-                    className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
-                      activeLedgerPeriod === '3m_1m'
-                        ? 'bg-emerald-950/20 border-emerald-500 shadow-md shadow-emerald-500/5'
-                        : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-xs font-bold text-slate-200">3M Analyze / 1M Test</span>
-                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded font-mono">Recent 30D</span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Ending Balance</span>
-                      <span className="font-mono text-xs font-bold text-teal-400">
-                        ${parseFloat(results3m1m.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Cumulative Yield</span>
-                      <span className="font-mono text-xs font-extrabold text-emerald-400">
-                        +{results3m1m.overallReturnPct.toFixed(1)}%
-                      </span>
-                    </div>
-                  </button>
-
-                  {/* Mode 3 Card: 3M Stacked (2.0x size) */}
-                  <button
-                    onClick={() => setActiveLedgerPeriod('3m_top')}
-                    className={`w-full p-3 rounded-lg border text-left flex flex-col gap-1.5 transition ${
-                      activeLedgerPeriod === '3m_top'
-                        ? 'bg-indigo-950/30 border-indigo-500 shadow-md shadow-indigo-500/5'
-                        : 'bg-slate-950/80 border-slate-850 hover:bg-slate-900/60'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="text-xs font-bold text-slate-200">3M Test on Top (2x Sizing)</span>
-                      <span className="text-[9px] bg-indigo-500/10 text-indigo-300 px-1.5 py-0.5 rounded font-mono">Overlay Size</span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Ending Balance</span>
-                      <span className="font-mono text-xs font-bold text-teal-400">
-                        ${parseFloat(results3mTop.finalBalance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline w-full">
-                      <span className="text-[10px] text-slate-500">Cumulative Yield</span>
-                      <span className="font-mono text-xs font-extrabold text-emerald-400">
-                        +{results3mTop.overallReturnPct.toFixed(1)}%
-                      </span>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Selected Sidebar Trade Ledger Timeline */}
-              <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 pt-2 border-t border-slate-800">
-                <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">
-                  Active Scenario Ledger ({activeLedgerPeriod === '3m_3m' ? '3M/3M' : activeLedgerPeriod === '3m_1m' ? '3M/1M' : '2x Overlay'})
-                </span>
-                <div className="space-y-2">
-                  {activeResults.ledger.map((trade) => (
-                    <div key={trade.id} className="p-2 bg-slate-950/40 hover:bg-slate-950 border border-slate-850/60 rounded flex flex-col gap-1 font-mono text-[10px] transition font-semibold">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-slate-300">Wave #{trade.id} • {trade.date}</span>
-                        <span className="text-emerald-400 font-extrabold">+{trade.gainPercent}%</span>
-                      </div>
-                      <div className="flex justify-between text-[9px] text-slate-500">
-                        <span>Buy: ${trade.buy.toFixed(2)} | Sell: ${trade.sell.toFixed(2)}</span>
-                        <span className="text-emerald-500 font-bold">+${parseFloat(trade.profit).toFixed(2)}</span>
-                      </div>
-                      <span className="text-[8px] text-slate-500 italic truncate font-normal">{trade.notes}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Checklist Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Oscillation Checklist
-                </h3>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  setupViabilityScore >= 80 ? 'bg-emerald-500/10 text-emerald-400' :
-                  setupViabilityScore >= 60 ? 'bg-amber-500/10 text-amber-400' : 'bg-rose-500/10 text-rose-400'
-                }`}>
-                  Viability: {setupViabilityScore}%
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={checklist.bottomChannelTouch}
-                    onChange={(e) => setChecklist({ ...checklist, bottomChannelTouch: e.target.checked })}
-                    className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Channel Bottom Anchor</span>
-                    <span className="text-[10px] text-slate-400">Price is hovering closely within the historical 3-month support line.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={checklist.rsiOversold}
-                    onChange={(e) => setChecklist({ ...checklist, rsiOversold: e.target.checked })}
-                    className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Oversold Conditions (RSI &lt; 35)</span>
-                    <span className="text-[10px] text-slate-400">Short-term indicator displays heavy exhaust of sellers.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={checklist.volumeSpike}
-                    onChange={(e) => setChecklist({ ...checklist, volumeSpike: e.target.checked })}
-                    className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Capitulation / Climax Volume</span>
-                    <span className="text-[10px] text-slate-400">A high-volume down day followed by low-volume baseline stabilizes the range.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-2 rounded bg-slate-950/50 hover:bg-slate-950 border border-slate-800/40 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={checklist.midLineClearance}
-                    onChange={(e) => setChecklist({ ...checklist, midLineClearance: e.target.checked })}
-                    className="mt-0.5 rounded bg-slate-900 border-slate-800 text-teal-500 focus:ring-0"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Mean Reversion Target Corridor</span>
-                    <span className="text-[10px] text-slate-400">Target price resides well within range bounds without structural resistance.</span>
-                  </div>
-                </label>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
+                <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Capital Used</span>
+                <span className="text-sm font-bold text-teal-400 font-mono">${positionSize}</span>
+                <span className="text-[9px] text-slate-500 font-medium block">({positionPctOfCapital}%)</span>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Graphic Chart, Calculators, and AI Integration */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            {/* Live Chart Canvas Panel */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-white text-base">Channel Oscillation Visualizer</h3>
-                  <p className="text-xs text-slate-400">Examine short-term peak-and-trough frequency inside the 90-day price corridor.</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 p-2 rounded border border-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={showChannelBoundaries}
-                      onChange={(e) => setShowChannelBoundaries(e.target.checked)}
-                      className="rounded bg-slate-900 border-slate-800 text-cyan-500 focus:ring-0"
-                    />
-                    <span className="text-[10px] uppercase font-bold text-slate-300">Show Channel Bands</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Interactive SVG Chart */}
-              <div className="relative bg-slate-950 rounded-lg overflow-hidden border border-slate-800/80 p-1">
-                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto">
-                  
-                  {/* Grid Lines */}
-                  {[0.25, 0.5, 0.75].map((ratio, i) => (
-                    <line
-                      key={i}
-                      x1="0"
-                      y1={chartHeight * ratio}
-                      x2={chartWidth}
-                      y2={chartHeight * ratio}
-                      stroke="#111827"
-                      strokeWidth="1"
-                    />
-                  ))}
-
-                  {/* Channel Boundaries (Shaded Overlay) */}
-                  {showChannelBoundaries && (
-                    <>
-                      {/* Upper Band Shading */}
-                      <rect
-                        x={padding}
-                        y={getY(stockData.channelHigh)}
-                        width={chartWidth - 2 * padding}
-                        height={1.5}
-                        fill="#06b6d4"
-                        opacity="0.6"
-                      />
-                      <text x={chartWidth - padding - 85} y={getY(stockData.channelHigh) - 6} fill="#06b6d4" className="font-mono text-[9px] font-bold">
-                        CHANNEL HIGH: ${stockData.channelHigh}
-                      </text>
-
-                      {/* Mean Midline Pivot */}
-                      <line
-                        x1={padding}
-                        y1={getY(channelMidpoint)}
-                        x2={chartWidth - padding}
-                        y2={getY(channelMidpoint)}
-                        stroke="#8b5cf6"
-                        strokeDasharray="4 4"
-                        strokeWidth="1.5"
-                        opacity="0.5"
-                      />
-                      <text x={padding + 10} y={getY(channelMidpoint) - 6} fill="#8b5cf6" className="font-mono text-[9px] font-bold">
-                        PIVOT MIDLINE: ${channelMidpoint}
-                      </text>
-
-                      {/* Lower Band Shading */}
-                      <rect
-                        x={padding}
-                        y={getY(stockData.channelLow)}
-                        width={chartWidth - 2 * padding}
-                        height={1.5}
-                        fill="#10b981"
-                        opacity="0.6"
-                      />
-                      <text x={chartWidth - padding - 80} y={getY(stockData.channelLow) + 12} fill="#10b981" className="font-mono text-[9px] font-bold">
-                        CHANNEL LOW: ${stockData.channelLow}
-                      </text>
-                    </>
-                  )}
-
-                  {/* Profit range zone behind chart */}
-                  {targetPrice > entryPrice && (
-                    <rect
-                      x={padding}
-                      y={getY(targetPrice)}
-                      width={chartWidth - 2 * padding}
-                      height={Math.max(0, getY(entryPrice) - getY(targetPrice))}
-                      fill="url(#greenGrad)"
-                      opacity="0.1"
-                    />
-                  )}
-
-                  {/* SVG Definitions */}
-                  <defs>
-                    <linearGradient id="chartLineGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22d3ee" />
-                      <stop offset="100%" stopColor="#312e81" />
-                    </linearGradient>
-                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0891b2" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#0891b2" stopOpacity="0" />
-                    </linearGradient>
-                    <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Stock historical/Simulated Line displaying oscillation frequency */}
-                  <path
-                    d={stockData.chartPoints.reduce((path, p, i) => {
-                      const x = getX(i, stockData.chartPoints.length);
-                      const y = getY(p.val);
-                      return path + `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                    }, '')}
-                    fill="none"
-                    stroke="url(#chartLineGrad)"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-
-                  {/* Area fill under historical Line */}
-                  <path
-                    d={stockData.chartPoints.reduce((path, p, i) => {
-                      const x = getX(i, stockData.chartPoints.length);
-                      const y = getY(p.val);
-                      return path + `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                    }, '') + ` L ${getX(stockData.chartPoints.length - 1, stockData.chartPoints.length)} ${chartHeight - padding} L ${getX(0, stockData.chartPoints.length)} ${chartHeight - padding} Z`}
-                    fill="url(#areaGrad)"
-                  />
-
-                  {/* Target Price Line */}
-                  <line
-                    x1={padding}
-                    y1={getY(targetPrice)}
-                    x2={chartWidth - padding}
-                    y2={getY(targetPrice)}
-                    stroke="#10b981"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 2"
-                  />
-
-                  {/* Entry Price Line */}
-                  <line
-                    x1={padding}
-                    y1={getY(entryPrice)}
-                    x2={chartWidth - padding}
-                    y2={getY(entryPrice)}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                  />
-
-                  {/* Stop Loss Line */}
-                  <line
-                    x1={padding}
-                    y1={getY(stopLoss)}
-                    x2={chartWidth - padding}
-                    y2={getY(stopLoss)}
-                    stroke="#ef4444"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 2"
-                  />
-
-                  {/* Highlights on channel bouncing points */}
-                  {stockData.chartPoints.map((p, i) => (
-                    <circle
-                      key={i}
-                      cx={getX(i, stockData.chartPoints.length)}
-                      cy={getY(p.val)}
-                      r="4.5"
-                      fill={p.val <= stockData.channelLow * 1.05 ? '#10b981' : p.val >= stockData.channelHigh * 0.95 ? '#06b6d4' : '#334155'}
-                      stroke="#020617"
-                      strokeWidth="1.5"
-                    />
-                  ))}
+          {/* R:R Dashboard Card */}
+          <div
+            className="md:col-span-4 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
+            <div>
+              <h3 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
+                Risk-Reward Metric
+              </h3>
 
-                {/* Legend */}
-                <div className="absolute top-2 left-2 flex gap-3 text-[9px] font-bold text-slate-500 bg-slate-900/90 py-1 px-2 rounded border border-slate-800">
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Oversold Anchor</span>
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span> Overbought Apex</span>
-                </div>
-              </div>
-
-              {/* Dynamic Interactive Setup Adjustments */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-xs font-bold text-emerald-400">Profit Target ($)</span>
-                    <span className="text-xs font-mono font-bold text-white">{targetPrice}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={Math.floor(stockData.lastPrice)}
-                    max={Math.floor(stockData.high52w * 1.1)}
-                    step="0.1"
-                    value={targetPrice}
-                    onChange={(e) => setTargetPrice(parseFloat(e.target.value))}
-                    className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
-                  />
-                  <span className="text-[10px] text-slate-500 block">Aimed near upper boundary: ${stockData.channelHigh}</span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-xs font-bold text-slate-300">Set Entry Trigger ($)</span>
-                    <span className="text-xs font-mono font-bold text-white">{entryPrice}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={Math.floor(stockData.lastPrice * 0.8)}
-                    max={Math.floor(stockData.lastPrice * 1.2)}
-                    step="0.1"
-                    value={entryPrice}
-                    onChange={(e) => setEntryPrice(parseFloat(e.target.value))}
-                    className="w-full accent-slate-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
-                  />
-                  <span className="text-[10px] text-slate-500 block">Buy spot or dynamic entry.</span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-xs font-bold text-rose-400">Stop-Loss Margin ($)</span>
-                    <span className="text-xs font-mono font-bold text-white">{stopLoss}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={Math.floor(stockData.low52w * 0.9)}
-                    max={Math.floor(stockData.lastPrice)}
-                    step="0.1"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(parseFloat(e.target.value))}
-                    className="w-full accent-rose-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
-                  />
-                  <span className="text-[10px] text-slate-500 block">Keep below channel floor: ${stockData.channelLow}</span>
-                </div>
+              <div className="text-center py-4 bg-slate-950 rounded-xl border border-slate-800/80">
+                <div className="text-3xl font-extrabold text-white font-mono">{riskToReward}:1</div>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${ parseFloat(riskToReward)>= 2 ?
+                  'text-emerald-400 bg-emerald-500/10' :
+                  parseFloat(riskToReward) >= 1.2 ? 'text-cyan-400 bg-cyan-500/10' : 'text-rose-400 bg-rose-500/10'
+                  }`}>
+                  {parseFloat(riskToReward) >= 2 ? 'Excellent Corridor' :
+                  parseFloat(riskToReward) >= 1.2 ? 'Viable Range' : 'Poor Corridor Ratio'}
+                </span>
               </div>
             </div>
 
-            {/* Sizing & Risk Profiles */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              
-              <div className="md:col-span-8 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Setup Capital Sizer
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Starting Capital</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2 text-slate-500 font-mono text-xs">$</span>
-                      <input
-                        type="number"
-                        value={capital}
-                        onChange={(e) => setCapital(Math.max(100, parseInt(e.target.value) || 0))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 pl-7 pr-3 text-xs font-mono font-semibold focus:outline-none focus:border-teal-500 text-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Max Risk per Swing</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={riskPct}
-                        onChange={(e) => setRiskPct(Math.max(0.1, parseFloat(e.target.value) || 0.1))}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-3 text-xs font-mono font-semibold focus:outline-none focus:border-teal-500 text-white"
-                      />
-                      <span className="absolute right-3 top-2 text-slate-500 font-mono text-xs">%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-800">
-                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
-                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Cash Risk limit</span>
-                    <span className="text-sm font-bold text-rose-400 font-mono">${riskAmount}</span>
-                  </div>
-                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
-                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Shares Target</span>
-                    <span className="text-sm font-bold text-white font-mono">{sharesToBuy}</span>
-                  </div>
-                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/60 text-center">
-                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Capital Used</span>
-                    <span className="text-sm font-bold text-teal-400 font-mono">${positionSize}</span>
-                    <span className="text-[9px] text-slate-500 font-medium block">({positionPctOfCapital}%)</span>
-                  </div>
-                </div>
+            <div className="space-y-2 pt-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Potential Return</span>
+                <span className="text-emerald-400 font-bold font-mono">+${targetProfitAmount}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Max Protected Loss</span>
+                <span className="text-rose-400 font-bold font-mono">-${riskAmount}</span>
               </div>
 
-              {/* R:R Dashboard Card */}
-              <div className="md:col-span-4 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
-                <div>
-                  <h3 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Risk-Reward Metric
-                  </h3>
-
-                  <div className="text-center py-4 bg-slate-950 rounded-xl border border-slate-800/80">
-                    <div className="text-3xl font-extrabold text-white font-mono">{riskToReward}:1</div>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                      parseFloat(riskToReward) >= 2 ? 'text-emerald-400 bg-emerald-500/10' :
-                      parseFloat(riskToReward) >= 1.2 ? 'text-cyan-400 bg-cyan-500/10' : 'text-rose-400 bg-rose-500/10'
-                    }`}>
-                      {parseFloat(riskToReward) >= 2 ? 'Excellent Corridor' :
-                       parseFloat(riskToReward) >= 1.2 ? 'Viable Range' : 'Poor Corridor Ratio'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-3">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Potential Return</span>
-                    <span className="text-emerald-400 font-bold font-mono">+${targetProfitAmount}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Max Protected Loss</span>
-                    <span className="text-rose-400 font-bold font-mono">-${riskAmount}</span>
-                  </div>
-
-                  <button
-                    onClick={saveSetup}
-                    disabled={isSaving}
-                    className="w-full mt-2 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition border border-slate-700/50"
-                  >
-                    <span>{saveStatus || 'Save Setup Corridor'}</span>
-                  </button>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Live AI Trading Agent Integration */}
-            <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 border border-indigo-500/20 rounded-xl p-5 shadow-2xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400 border border-indigo-500/20">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-white text-base">Gemini Mean Reversion Insights</h3>
-                    <p className="text-xs text-indigo-300">Run a real-time web-searched assessment on {stockData.symbol}'s recent 3-month cycle thresholds.</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={runAiAnalysis}
-                  disabled={aiLoading}
-                  className="px-4 py-2 bg-gradient-to-r from-teal-500 to-indigo-500 hover:from-teal-400 hover:to-indigo-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md shadow-indigo-500/10 flex items-center justify-center gap-2 self-start"
-                >
-                  {aiLoading ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4 text-slate-950" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Analyzing Channels...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      Assess Cycle Viability
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* AI Report Block */}
-              {aiAnalysis && (
-                <div className="bg-slate-950 rounded-xl p-5 border border-indigo-500/10 space-y-4 shadow-inner max-h-[400px] overflow-y-auto">
-                  <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
-                    <span>LIVE OSCILLATOR CORRIDOR REPORT</span>
-                    <span className="text-[10px] bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-300">Updated June 2026</span>
-                  </div>
-                  
-                  <div className="text-slate-300 text-xs leading-relaxed space-y-3 font-sans">
-                    {aiAnalysis.split('\n').map((line, i) => {
-                      if (line.startsWith('#') || line.startsWith('**') || line.startsWith('1.') || line.startsWith('2.') || line.startsWith('3.') || line.startsWith('4.')) {
-                        return <h4 key={i} className="text-white font-bold text-sm mt-4 border-b border-slate-900 pb-1">{line.replace(/[*#]/g, '')}</h4>;
-                      }
-                      return <p key={i} className="pl-1 text-slate-300">{line}</p>;
-                    })}
-                  </div>
-
-                  {/* Web Sources Used */}
-                  {aiSources.length > 0 && (
-                    <div className="pt-4 border-t border-slate-900 space-y-2">
-                      <span className="text-[10px] font-bold text-slate-500 block uppercase">Citations:</span>
-                      <div className="flex flex-wrap gap-2">
-                        {aiSources.slice(0, 3).map((src, i) => (
-                          <a
-                            key={i}
-                            href={src.uri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 rounded text-[10px] text-slate-300 font-medium transition"
-                          >
-                            <span>{src.title || 'Source'}</span>
-                            <svg className="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {aiError && (
-                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-xs flex items-center gap-2">
-                  <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{aiError}</span>
-                </div>
-              )}
+              <button onClick={saveSetup} disabled={isSaving}
+                className="w-full mt-2 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition border border-slate-700/50">
+                <span>{saveStatus || 'Save Setup Corridor'}</span>
+              </button>
             </div>
           </div>
 
         </div>
-      </main>
 
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 px-4 text-center text-xs text-slate-500 space-y-1">
-        <p>© 2026 Cycle & Range Frequency Canvas. Engineered for rapid technical mean reversion.</p>
-        <p className="text-[10px]">Disclaimer: High volatility stocks & leveraged instruments carry excessive breakdown risk. Never commit capital without clear protective limits.</p>
-      </footer>
+        {/* Live AI Trading Agent Integration */}
+        <div
+          className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 border border-indigo-500/20 rounded-xl p-5 shadow-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400 border border-indigo-500/20">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">Gemini Mean Reversion Insights</h3>
+                <p className="text-xs text-indigo-300">Run a real-time web-searched assessment on {stockData.symbol}'s
+                  recent 3-month cycle thresholds.</p>
+              </div>
+            </div>
+
+            <button onClick={runAiAnalysis} disabled={aiLoading}
+              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-indigo-500 hover:from-teal-400 hover:to-indigo-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md shadow-indigo-500/10 flex items-center justify-center gap-2 self-start">
+              {aiLoading ? (
+              <>
+                <svg className="animate-spin h-4 w-4 text-slate-950" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                  </path>
+                </svg>
+                Analyzing Channels...
+              </>
+              ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Assess Cycle Viability
+              </>
+              )}
+            </button>
+          </div>
+
+          {/* AI Report Block */}
+          {aiAnalysis && (
+          <div
+            className="bg-slate-950 rounded-xl p-5 border border-indigo-500/10 space-y-4 shadow-inner max-h-[400px] overflow-y-auto">
+            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
+              <span>LIVE OSCILLATOR CORRIDOR REPORT</span>
+              <span className="text-[10px] bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-300">Updated June
+                2026</span>
+            </div>
+
+            <div className="text-slate-300 text-xs leading-relaxed space-y-3 font-sans">
+              {aiAnalysis.split('\n').map((line, i) => {
+              if (line.startsWith('#') || line.startsWith('**') || line.startsWith('1.') || line.startsWith('2.') ||
+              line.startsWith('3.') || line.startsWith('4.')) {
+              return <h4 key={i} className="text-white font-bold text-sm mt-4 border-b border-slate-900 pb-1">
+                {line.replace(/[*#]/g, '')}</h4>;
+              }
+              return <p key={i} className="pl-1 text-slate-300">{line}</p>;
+              })}
+            </div>
+
+            {/* Web Sources Used */}
+            {aiSources.length > 0 && (
+            <div className="pt-4 border-t border-slate-900 space-y-2">
+              <span className="text-[10px] font-bold text-slate-500 block uppercase">Citations:</span>
+              <div className="flex flex-wrap gap-2">
+                {aiSources.slice(0, 3).map((src, i) => (
+                <a key={i} href={src.uri} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 rounded text-[10px] text-slate-300 font-medium transition">
+                  <span>{src.title || 'Source'}</span>
+                  <svg className="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                ))}
+              </div>
+            </div>
+            )}
+          </div>
+          )}
+
+          {aiError && (
+          <div
+            className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-xs flex items-center gap-2">
+            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{aiError}</span>
+          </div>
+          )}
+        </div>
+      </div>
+
     </div>
-  );
-}
+  </main>
 
-```
+  <footer className="border-t border-slate-900 bg-slate-950 py-6 px-4 text-center text-xs text-slate-500 space-y-1">
+    <p>© 2026 Cycle & Range Frequency Canvas. Engineered for rapid technical mean reversion.</p>
+    <p className="text-[10px]">Disclaimer: High volatility stocks & leveraged instruments carry excessive breakdown
+      risk. Never commit capital without clear protective limits.</p>
+  </footer>
+</div>
+);
+}
