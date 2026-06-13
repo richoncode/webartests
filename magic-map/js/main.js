@@ -48,8 +48,8 @@ function applyTheme(id) {
 
   if (isLight) {
     url = TILE_URLS.voyagerLabels;
-    filter = 'contrast(1.35) saturate(1.2) brightness(1.05)';
-    accent = '#004fb3'; // AAA contrast dark blue in the sun
+    filter = 'contrast(1.65) saturate(1.4) brightness(0.95)';
+    accent = '#002288'; // Deep navy blue
     document.documentElement.classList.add('light-theme');
   } else {
     url = TILE_URLS[theme.tiles];
