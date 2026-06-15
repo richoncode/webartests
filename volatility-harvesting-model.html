@@ -1,0 +1,2892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volatility Harvesting Model - webartests</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --panel: #1a1a1a;
+      --panel-2: #111;
+      --panel-3: #151515;
+      --border: #2a2a2a;
+      --border-hover: #444;
+      --text: #fff;
+      --muted: #888;
+      --dim: #555;
+      --blue: #5b9bd5;
+      --green: #4caf50;
+      --orange: #f0a040;
+      --red: #e74c3c;
+      --violet: #9b7bea;
+      --mono: 'SF Mono', 'Fira Code', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+      padding: 60px 24px 80px;
+    }
+
+    a.back {
+      display: inline-block;
+      margin-bottom: 40px;
+      color: var(--dim);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    a.back:hover { color: #aaa; }
+
+    .page {
+      width: 100%;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .hero {
+      margin-bottom: 18px;
+      border-bottom: 1px solid #1a1a1a;
+      padding-bottom: 28px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 680px;
+    }
+
+    .preset-control {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 28px;
+    }
+
+    .mode-control {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .mode-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .control-label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--dim);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .label-with-tip,
+    .control-label.label-with-tip,
+    .field label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .field label { justify-content: space-between; }
+
+    .label-text {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      border: 1px solid #333;
+      border-radius: 50%;
+      background: #111;
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      cursor: help;
+      outline: none;
+    }
+
+    .tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      z-index: 20;
+      width: min(260px, 78vw);
+      transform: translateX(-50%) translateY(4px);
+      padding: 10px 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #050505;
+      color: #ddd;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0;
+      line-height: 1.45;
+      text-transform: none;
+      text-align: left;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s, transform 0.12s;
+    }
+
+    .tip::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 4px);
+      z-index: 21;
+      width: 8px;
+      height: 8px;
+      transform: translateX(-50%) rotate(45deg);
+      background: #050505;
+      border-right: 1px solid #333;
+      border-bottom: 1px solid #333;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s;
+    }
+
+    .tip:hover,
+    .tip:focus-visible {
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .tip:hover::before,
+    .tip:hover::after,
+    .tip:focus-visible::before,
+    .tip:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .tip:hover::before,
+    .tip:focus-visible::before {
+      transform: translateX(-50%) rotate(45deg);
+    }
+
+    .value-tip {
+      position: relative;
+      display: inline-flex;
+      border-bottom: 1px dotted #555;
+      cursor: help;
+      outline: none;
+    }
+
+    .value-tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 10px);
+      z-index: 30;
+      width: min(430px, 82vw);
+      transform: translateY(4px);
+      padding: 10px 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #050505;
+      color: #ddd;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.5;
+      text-align: left;
+      white-space: pre-line;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s, transform 0.12s;
+    }
+
+    .value-tip:hover::after,
+    .value-tip:focus-visible::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .ticker-grid {
+      grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+      max-height: 220px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    button {
+      background: var(--panel);
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+      font-family: inherit;
+    }
+
+    button:hover { background: #222; border-color: #555; color: #fff; }
+    button.active, button.primary { background: #1e2d40; border-color: var(--blue); color: var(--blue); }
+    button.green.active { background: #102214; border-color: var(--green); color: var(--green); }
+    button.orange.active { background: #261a08; border-color: var(--orange); color: var(--orange); }
+    button:disabled { opacity: 0.3; cursor: default; }
+
+    .ticker-grid button {
+      position: relative;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 7px 8px;
+    }
+
+    .ticker-grid button.has-activity::after {
+      content: "";
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 2px #111;
+    }
+
+    .ticker-grid button.has-snapshot {
+      border-color: #31557a;
+      color: #d8ecff;
+    }
+
+    .ticker-grid button.has-snapshot::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 2px #111;
+    }
+
+    .ticker-grid button.harvest-winner {
+      border-color: #8f6f22;
+      color: #ffe2a3;
+    }
+
+    .ticker-grid button.harvest-winner .harvest-flag {
+      position: absolute;
+      right: 4px;
+      bottom: 3px;
+      color: var(--orange);
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.7fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .stack { display: grid; gap: 18px; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      overflow: visible;
+    }
+
+    .card.tight { padding: 20px; }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h2, h3 {
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h2 { font-size: 22px; }
+    h3 { font-size: 16px; }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .tiny { color: var(--dim); font-size: 11px; line-height: 1.45; }
+    .mono { font-family: var(--mono); }
+
+    .ticker-price {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .price {
+      display: block;
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .change { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    .badge {
+      display: inline-block;
+      border: 1px solid #333;
+      border-radius: 20px;
+      background: #222;
+      color: #aaa;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid #222;
+      border-radius: 10px;
+      background: var(--panel-2);
+      overflow: hidden;
+      margin-top: 16px;
+    }
+
+    .metric {
+      padding: 12px 14px;
+      border-right: 1px solid #222;
+      border-bottom: 1px solid #222;
+      min-width: 0;
+    }
+
+    .metric:nth-child(2n) { border-right: none; }
+    .metric:nth-last-child(-n+2) { border-bottom: none; }
+    .metric span { display: block; color: var(--dim); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .metric strong { display: block; color: #ddd; font-family: var(--mono); font-size: 13px; margin-top: 3px; }
+
+    .range-track {
+      height: 8px;
+      border-radius: 999px;
+      background: #090909;
+      border: 1px solid #222;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .range-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      border-radius: inherit;
+    }
+
+    .tri-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--dim);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1.3;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 6px;
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .stat.green strong { color: var(--green); }
+    .stat.orange strong { color: var(--orange); }
+
+    .scenario-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .scenario {
+      width: 100%;
+      text-align: left;
+      display: grid;
+      gap: 5px;
+      padding: 12px;
+      background: var(--panel-2);
+      border-color: #222;
+    }
+
+    .scenario-row, .ledger-row, .split-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .scenario-row > span:first-child,
+    .scenario-date {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .scenario-row {
+      flex-wrap: wrap;
+    }
+
+    .scenario-row strong {
+      min-width: 0;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .scenario-date {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .ledger {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .ledger-item {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .ledger-caption {
+      background: transparent;
+      border-color: #2a2a2a;
+      color: var(--muted);
+    }
+
+    .trade-lines {
+      display: grid;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .trade-line {
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .trade-label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .check {
+      display: flex;
+      gap: 10px;
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      accent-color: var(--blue);
+      flex: 0 0 auto;
+    }
+
+    .chart-wrap {
+      position: relative;
+      background: #090909;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 8px;
+      overflow: visible;
+    }
+
+    svg { display: block; width: 100%; height: auto; }
+
+    .trade-hover {
+      cursor: help;
+      outline: none;
+    }
+
+    .trade-hover .entry-marker,
+    .trade-hover .exit-marker {
+      transition: opacity 0.12s, filter 0.12s;
+    }
+
+    .trade-hover .entry-marker {
+      pointer-events: none;
+    }
+
+    .trade-hover .exit-ring,
+    .trade-hover .related-entry,
+    .trade-hover .trade-popup {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s;
+    }
+
+    .trade-hover:hover .entry-marker,
+    .trade-hover:focus .entry-marker {
+      filter: drop-shadow(0 0 6px rgba(76, 175, 80, 0.9));
+    }
+
+    .trade-hover:hover .exit-marker,
+    .trade-hover:focus .exit-marker {
+      filter: drop-shadow(0 0 6px rgba(240, 160, 64, 0.9));
+    }
+
+    .trade-hover:hover .exit-ring,
+    .trade-hover:hover .related-entry,
+    .trade-hover:hover .trade-popup,
+    .trade-hover:focus .exit-ring,
+    .trade-hover:focus .related-entry,
+    .trade-hover:focus .trade-popup {
+      opacity: 1;
+    }
+
+    .pivot-hover {
+      cursor: help;
+      outline: none;
+    }
+
+    .pivot-hover .pivot-marker {
+      transition: filter 0.12s, opacity 0.12s;
+    }
+
+    .pivot-hover .pivot-ring,
+    .pivot-hover .related-confirm,
+    .pivot-hover .pivot-popup {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s;
+    }
+
+    .pivot-hover:hover .pivot-marker,
+    .pivot-hover:focus .pivot-marker {
+      filter: drop-shadow(0 0 6px rgba(155, 123, 234, 0.95));
+    }
+
+    .pivot-hover:hover .pivot-ring,
+    .pivot-hover:hover .related-confirm,
+    .pivot-hover:hover .pivot-popup,
+    .pivot-hover:focus .pivot-ring,
+    .pivot-hover:focus .related-confirm,
+    .pivot-hover:focus .pivot-popup {
+      opacity: 1;
+    }
+
+    .legend {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      max-width: calc(100% - 28px);
+      background: rgba(13, 13, 13, 0.9);
+      border: 1px solid #222;
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: #aaa;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .legend-key {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: normal;
+      min-width: 0;
+    }
+
+    .legend-key .tip,
+    .scenario-row .tip,
+    .scenario-date .tip {
+      width: 14px;
+      height: 14px;
+      font-size: 9px;
+    }
+
+    .swatch {
+      display: inline-block;
+      width: 16px;
+      height: 8px;
+      border-radius: 3px;
+      border: 1px solid #333;
+      background: #555;
+    }
+
+    .swatch.line {
+      width: 18px;
+      height: 0;
+      border: 0;
+      border-top: 2px solid #fff;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .swatch.line.dashed { border-top-style: dashed; }
+    .swatch.price { border-top-color: var(--orange); }
+    .swatch.analyze { background: rgba(91, 155, 213, 0.25); border-color: rgba(91, 155, 213, 0.6); }
+    .swatch.test { background: rgba(76, 175, 80, 0.22); border-color: rgba(76, 175, 80, 0.6); }
+    .swatch.high { border-top-color: var(--blue); }
+    .swatch.mid { border-top-color: var(--violet); }
+    .swatch.low { border-top-color: var(--green); }
+    .swatch.buyhold { border-top-color: #ddd; }
+    .swatch.target { border-top-color: var(--green); }
+    .swatch.entry { border-top-color: #fff; }
+    .swatch.stop { border-top-color: var(--red); }
+
+    .phase-note {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .phase-pill {
+      border: 1px solid #222;
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 9px 10px;
+      color: #aaa;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .phase-pill strong {
+      display: block;
+      color: #ddd;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 2px;
+    }
+
+    .phase-pill.analyze strong { color: var(--blue); }
+    .phase-pill.test strong { color: var(--green); }
+
+    .quote-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .quote-cell {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .quote-cell span {
+      display: block;
+      color: var(--dim);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 3px;
+    }
+
+    .quote-cell strong {
+      display: block;
+      color: #ddd;
+      font-family: var(--mono);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .data-status {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--dim);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    .data-status.real { color: var(--green); }
+    .data-status.loading { color: var(--orange); }
+    .data-status.fallback { color: var(--red); }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      background: var(--blue);
+    }
+
+    .dot.green { background: var(--green); }
+    .dot.red { background: var(--red); }
+    .dot.violet { background: var(--violet); }
+
+    .mark {
+      display: inline-block;
+      width: 0;
+      height: 0;
+      margin-right: 5px;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+    }
+
+    .mark.buy { border-bottom: 9px solid var(--green); }
+    .mark.sell { border-top: 9px solid var(--orange); }
+
+    .sliders {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .field { display: grid; gap: 8px; min-width: 0; }
+    .field label, .input-label { color: #bbb; font-size: 12px; font-weight: 700; }
+    .field output { color: #fff; font-family: var(--mono); float: right; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    input[type="number"]:focus { border-color: var(--blue); }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr;
+      gap: 18px;
+    }
+
+    .under-chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding-top: 16px;
+      border-top: 1px solid #222;
+    }
+
+    .callout {
+      border-left: 3px solid var(--blue);
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.7;
+      background: #0d1620;
+    }
+
+    .callout.green { background: #0a1a0a; border-color: var(--green); }
+    .callout.orange { background: #1a1200; border-color: var(--orange); }
+    .callout.red { background: #1a0a0a; border-color: var(--red); }
+
+    .report {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 14px;
+      color: #bbb;
+      font-size: 13px;
+    }
+
+    footer {
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid #1a1a1a;
+      color: var(--dim);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 960px) {
+      .grid, .two-col, .under-chart-grid { grid-template-columns: 1fr; display: grid; }
+      .sliders, .result-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 36px 16px 60px; }
+      h1 { font-size: 26px; }
+      .card { padding: 18px; border-radius: 14px; }
+      .segmented, .tri-metrics, .metric-grid, .input-grid { grid-template-columns: 1fr; }
+      .metric { border-right: none; }
+      .metric:nth-last-child(-n+2) { border-bottom: 1px solid #222; }
+      .metric:last-child { border-bottom: none; }
+      .legend { position: static; margin-top: 8px; }
+      .card-header { flex-direction: column; }
+      .ticker-price { text-align: left; }
+      .phase-note { grid-template-columns: 1fr; }
+      .quote-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="./">← Back</a>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Mean Reversion Lab</p>
+        <h1>Volatility Harvesting Model</h1>
+        <p class="subtitle">Train a reversal trigger on recent swings, freeze that learned number, then test whether it harvests later volatility profitably.</p>
+      </div>
+    </header>
+
+    <section class="mode-control" aria-label="Strategy mode selector">
+      <span class="control-label label-with-tip">Harvest Mode <span class="tip" tabindex="0" data-tip="Choose how the learned reversal trigger is traded. Long buys rebounds, Long + Short also fades peaks, and Cash Guard skips weak walk-forward setups.">?</span></span>
+      <div class="segmented mode-grid" id="modeButtons">
+        <button type="button" data-mode="long">Long</button>
+        <button type="button" data-mode="both">Long + Short</button>
+        <button type="button" data-mode="cash_guard">Cash Guard</button>
+      </div>
+    </section>
+
+    <section class="preset-control" aria-label="Ticker selector">
+      <span class="control-label label-with-tip">Select Volatile Asset <span class="tip" tabindex="0" data-tip="Choose the example ticker whose price swings, chart, and backtest trades you want to study.">?</span></span>
+      <div class="segmented ticker-grid" id="presetButtons"></div>
+    </section>
+
+    <main class="grid">
+      <section class="stack">
+        <article class="card tight">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Volatility Harvesting</p>
+              <h3>$10,000 Train/Test Engine</h3>
+            </div>
+          </div>
+
+          <div class="input-grid">
+            <div>
+              <span class="control-label label-with-tip">Allocation <span class="tip" tabindex="0" data-tip="How much of the available account balance the backtest puts into each modeled trade. 50% is more conservative than 100%.">?</span></span>
+              <div class="segmented" style="grid-template-columns: repeat(2, 1fr);">
+                <button id="alloc100" type="button">100%</button>
+                <button id="alloc50" type="button">50%</button>
+              </div>
+            </div>
+            <div>
+              <span class="control-label label-with-tip">Method <span class="tip" tabindex="0" data-tip="Compound sizes each next trade from the updated balance. Flat sizes each trade from the original starting capital.">?</span></span>
+              <div class="segmented" style="grid-template-columns: repeat(2, 1fr);">
+                <button id="compoundOn" type="button">Compound</button>
+                <button id="compoundOff" type="button">Flat</button>
+              </div>
+            </div>
+          </div>
+
+          <span class="control-label label-with-tip">Simulated Scenarios <span class="tip" tabindex="0" data-tip="Each scenario learns the best reversal percent from its analysis window, freezes that number, then applies it to the test window.">?</span></span>
+          <div class="scenario-row tiny" id="buyHoldBaseline"></div>
+          <div class="scenario-grid" id="scenarioButtons"></div>
+
+          <div class="ledger" id="ledger"></div>
+        </article>
+
+      </section>
+
+      <section class="stack">
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Volatility Harvest Visualizer</p>
+              <h2 id="chartTitle"></h2>
+              <p class="small">See the learned reversal trigger, detected pivots, and test trades across the active train/test window.</p>
+              <span class="data-status loading" id="dataStatus">Loading historical data...</span>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <svg id="chart" viewBox="0 0 600 230" role="img" aria-label="Volatility harvesting train and test chart"></svg>
+            <div class="legend">
+              <span class="legend-key"><i class="swatch line price"></i>Price path <span class="tip" data-tip="Daily closing-price path for the selected ticker and scenario window.">?</span></span>
+              <span class="legend-key"><i class="swatch analyze"></i>Analysis <span class="tip" data-tip="The training window used to choose the best reversal percent. The learned trigger is frozen after this window.">?</span></span>
+              <span class="legend-key"><i class="swatch test"></i>Test <span class="tip" data-tip="The out-of-sample window where the learned reversal percent is applied without changing it.">?</span></span>
+              <span class="legend-key"><i class="dot violet"></i>Learned pivot <span class="tip" data-tip="A swing high or low confirmed by the learned reversal trigger.">?</span></span>
+              <span class="legend-key"><i class="mark buy"></i>Entry <span class="tip" data-tip="A long buy or short entry created by the selected harvest mode.">?</span></span>
+              <span class="legend-key"><i class="mark sell"></i>Exit <span class="tip" data-tip="A long sell, short cover, or test-window close for an unfinished harvest.">?</span></span>
+              <span class="legend-key"><i class="swatch line dashed buyhold"></i>Buy & hold <span class="tip" data-tip="Dashed comparison from the first test close to the last test close. It shows what happened if you bought at test start and held.">?</span></span>
+            </div>
+          </div>
+          <div class="quote-strip" id="quoteStrip"></div>
+          <div class="phase-note" id="chartPhaseNote"></div>
+        </article>
+
+        <div class="under-chart-grid">
+          <article class="card tight">
+            <div class="card-header">
+              <div>
+                <p class="eyebrow">Harvest Profiler</p>
+                <h3 id="cyclerClass"></h3>
+              </div>
+              <span class="badge" id="cycleBadge"></span>
+            </div>
+            <p class="small" id="cycleDescription"></p>
+            <div class="tri-metrics">
+              <div class="stat"><span class="label-with-tip">Daily Vol ATR <span class="tip" tabindex="0" data-tip="Average True Range as a percent. Higher ATR means the asset tends to move more each day, creating more swing opportunity and more risk.">?</span></span><strong id="atrPct"></strong></div>
+              <div class="stat green"><span class="label-with-tip">Trade Count <span class="tip" tabindex="0" data-tip="Completed harvest trades in the selected scenario's analysis window. Trades matter more than raw turns because they represent executable entry/exit pairs.">?</span></span><strong id="cycleCount"></strong></div>
+              <div class="stat orange"><span class="label-with-tip">90D Spread <span class="tip" tabindex="0" data-tip="The approximate percent distance between major highs and lows over the sample. It provides context for how wide recent volatility has been.">?</span></span><strong id="swing3mPct"></strong></div>
+            </div>
+          </article>
+
+          <article class="card" id="snapshotCard"></article>
+        </div>
+
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Harvest Insight</p>
+              <h3 id="insightTitle"></h3>
+            </div>
+          </div>
+          <div class="callout" id="insightCallout"></div>
+          <div class="report" id="insightReport"></div>
+        </article>
+
+        <article class="card tight">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Insight Checklist</p>
+              <h3 class="label-with-tip">Setup Viability <span class="tip" tabindex="0" data-tip="Qualitative checklist only. These boxes change the viability badge and Harvest Insight verdict, but they do not change the learned trigger, trade dates, returns, APR, or buy-and-hold baseline.">?</span></h3>
+            </div>
+            <span class="badge" id="viabilityBadge"></span>
+          </div>
+          <div class="checklist" id="checklist"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <p>Uses real historical daily candles when the public data source is available; otherwise the page explicitly labels fallback model data. High-volatility stocks and leveraged instruments carry substantial loss risk.</p>
+    </footer>
+  </div>
+
+  <script>
+    const PRESET_STOCKS = {
+      GOOG: {
+        symbol: 'GOOG',
+        name: 'Alphabet Inc.',
+        lastPrice: 358.16,
+        change: -8.41,
+        changePeriod: 'Past Month',
+        exchange: 'NASDAQ',
+        open: 361.10,
+        high: 364.77,
+        low: 353.34,
+        volume: '17.10M',
+        avgVolume: '20.50M',
+        pe: 27.30,
+        mktCap: '4.368T',
+        high52w: 404.00,
+        low52w: 163.00,
+        atrPct: 2.3,
+        cycleCount: 3,
+        swing3mPct: 15.2,
+        channelLow: 345.00,
+        channelHigh: 395.00,
+        cyclerClass: 'Moderate Cycler',
+        cycleDescription: 'Consistent liquid mega-cap with more measured institutional support corridors.',
+        chartPoints: [
+          { day: 1, val: 395 }, { day: 3, val: 401 }, { day: 5, val: 398 }, { day: 7, val: 390 },
+          { day: 9, val: 399 }, { day: 11, val: 378 }, { day: 13, val: 382 }, { day: 15, val: 374 },
+          { day: 17, val: 386 }, { day: 19, val: 388 }, { day: 21, val: 371 }, { day: 23, val: 358 },
+          { day: 25, val: 368 }, { day: 27, val: 364 }, { day: 29, val: 348 }, { day: 30, val: 358.16 }
+        ],
+        defaultSetup: { entry: 358.16, stopLoss: 345.00, target: 390.00 },
+        historicalTrades: [
+          { id: 1, date: 'April 08', buy: 346.20, sell: 391.50, duration: '14 days', notes: 'Bounce off 100-day SMA corridor' },
+          { id: 2, date: 'May 03', buy: 348.50, sell: 388.00, duration: '11 days', notes: 'Double bottom range structural hold' },
+          { id: 3, date: 'June 02', buy: 345.00, sell: 381.20, duration: '8 days', notes: 'Golden pocket rejection bounce' }
+        ]
+      },
+      TSLA: {
+        symbol: 'TSLA',
+        name: 'Tesla, Inc.',
+        lastPrice: 194.50,
+        change: 5.80,
+        changePeriod: 'Past Month',
+        exchange: 'NASDAQ',
+        open: 189.20,
+        high: 198.80,
+        low: 187.50,
+        volume: '88.40M',
+        avgVolume: '94.10M',
+        pe: 56.20,
+        mktCap: '620.5B',
+        high52w: 265.00,
+        low52w: 138.00,
+        atrPct: 4.8,
+        cycleCount: 6,
+        swing3mPct: 34.6,
+        channelLow: 170.00,
+        channelHigh: 225.00,
+        cyclerClass: 'High-Frequency Oscillator',
+        cycleDescription: 'Heavy retail and options volume creates rapid, clean support-to-resistance swings every 2-3 weeks.',
+        chartPoints: [
+          { day: 1, val: 215 }, { day: 3, val: 175 }, { day: 7, val: 198 }, { day: 10, val: 171 },
+          { day: 14, val: 210 }, { day: 17, val: 182 }, { day: 21, val: 220 }, { day: 25, val: 174 },
+          { day: 28, val: 185 }, { day: 30, val: 194.50 }
+        ],
+        defaultSetup: { entry: 194.50, stopLoss: 168.00, target: 220.00 },
+        historicalTrades: [
+          { id: 1, date: 'March 18', buy: 171.20, sell: 210.50, duration: '9 days', notes: 'Retail capitulation oversold squeeze' },
+          { id: 2, date: 'April 02', buy: 173.00, sell: 202.40, duration: '7 days', notes: 'Psychological round number hold' },
+          { id: 3, date: 'April 19', buy: 170.50, sell: 215.00, duration: '12 days', notes: 'Pre-earnings volatility expansion cycle' },
+          { id: 4, date: 'May 08', buy: 174.10, sell: 209.80, duration: '10 days', notes: 'EMA crossover reversion trade' },
+          { id: 5, date: 'May 25', buy: 176.50, sell: 218.00, duration: '8 days', notes: 'Macro index-induced range sweep' },
+          { id: 6, date: 'June 05', buy: 181.00, sell: 214.50, duration: '6 days', notes: 'Channel floor sweep and reversal candle' }
+        ]
+      },
+      SOXL: {
+        symbol: 'SOXL',
+        name: 'Direxion Semiconductor 3x',
+        lastPrice: 42.10,
+        change: -14.20,
+        changePeriod: 'Past Month',
+        exchange: 'NYSE Arca',
+        open: 43.50,
+        high: 45.20,
+        low: 40.80,
+        volume: '54.10M',
+        avgVolume: '61.50M',
+        pe: 0,
+        mktCap: '9.8B',
+        high52w: 68.50,
+        low52w: 12.40,
+        atrPct: 8.6,
+        cycleCount: 9,
+        swing3mPct: 68.2,
+        channelLow: 32.00,
+        channelHigh: 58.00,
+        cyclerClass: 'Extreme Leveraged Cycler',
+        cycleDescription: 'Daily semiconductor leverage magnifies index moves, making this suitable only for brief, tightly controlled bounce tests.',
+        chartPoints: [
+          { day: 1, val: 56 }, { day: 4, val: 34 }, { day: 8, val: 49 }, { day: 12, val: 31 },
+          { day: 15, val: 52 }, { day: 18, val: 35 }, { day: 22, val: 54 }, { day: 26, val: 30 },
+          { day: 29, val: 38 }, { day: 30, val: 42.10 }
+        ],
+        defaultSetup: { entry: 42.10, stopLoss: 31.00, target: 55.00 },
+        historicalTrades: [
+          { id: 1, date: 'March 15', buy: 32.50, sell: 49.00, duration: '6 days', notes: 'Index support sector rotation sweep' },
+          { id: 2, date: 'March 27', buy: 33.10, sell: 46.50, duration: '5 days', notes: 'Hourly oversold climax snapback' },
+          { id: 3, date: 'April 09', buy: 31.80, sell: 51.20, duration: '7 days', notes: 'GPU supply chain guidance premium boost' },
+          { id: 4, date: 'April 21', buy: 32.00, sell: 48.00, duration: '9 days', notes: 'Channel support structure demand trigger' },
+          { id: 5, date: 'May 02', buy: 33.50, sell: 52.40, duration: '6 days', notes: 'Semi equipment sector guidance rally' },
+          { id: 6, date: 'May 14', buy: 31.90, sell: 49.50, duration: '8 days', notes: 'Key dynamic cloud baseline support' },
+          { id: 7, date: 'May 24', buy: 32.40, sell: 45.80, duration: '5 days', notes: 'Short-term options hedging squeeze' },
+          { id: 8, date: 'June 01', buy: 33.00, sell: 53.00, duration: '6 days', notes: 'AI data center expansion catalyst momentum' },
+          { id: 9, date: 'June 08', buy: 34.20, sell: 48.50, duration: '4 days', notes: 'Institutional block order absorption' }
+        ]
+      },
+      COIN: {
+        symbol: 'COIN',
+        name: 'Coinbase Global, Inc.',
+        lastPrice: 218.40,
+        change: 18.90,
+        changePeriod: 'Past Month',
+        exchange: 'NASDAQ',
+        open: 210.10,
+        high: 224.50,
+        low: 206.00,
+        volume: '11.80M',
+        avgVolume: '14.20M',
+        pe: 34.80,
+        mktCap: '52.4B',
+        high52w: 283.00,
+        low52w: 68.00,
+        atrPct: 6.4,
+        cycleCount: 7,
+        swing3mPct: 48.5,
+        channelLow: 180.00,
+        channelHigh: 260.00,
+        cyclerClass: 'Crypto-Correlated Cycler',
+        cycleDescription: 'Correlation to underlying crypto liquidity waves creates dramatic range extensions and fast reversals.',
+        chartPoints: [
+          { day: 1, val: 245 }, { day: 4, val: 190 }, { day: 8, val: 235 }, { day: 12, val: 182 },
+          { day: 16, val: 250 }, { day: 20, val: 192 }, { day: 24, val: 258 }, { day: 27, val: 198 },
+          { day: 29, val: 210 }, { day: 30, val: 218.40 }
+        ],
+        defaultSetup: { entry: 218.40, stopLoss: 185.00, target: 255.00 },
+        historicalTrades: [
+          { id: 1, date: 'March 19', buy: 181.50, sell: 238.00, duration: '8 days', notes: 'Bitcoin support corridor baseline retest' },
+          { id: 2, date: 'April 02', buy: 186.00, sell: 242.50, duration: '7 days', notes: 'Trading volume expansion support pivot' },
+          { id: 3, date: 'April 17', buy: 180.20, sell: 233.00, duration: '10 days', notes: 'Short squeeze mechanics near baseline' },
+          { id: 4, date: 'April 29', buy: 191.00, sell: 252.00, duration: '11 days', notes: 'Cyclical demand expansion' },
+          { id: 5, date: 'May 13', buy: 187.40, sell: 246.00, duration: '9 days', notes: 'Crypto liquidity inflows channel squeeze' },
+          { id: 6, date: 'May 27', buy: 193.00, sell: 258.50, duration: '7 days', notes: 'Regulatory sentiment momentum bounce' },
+          { id: 7, date: 'June 07', buy: 199.00, sell: 251.00, duration: '5 days', notes: 'Institutional spot purchase backlog build' }
+        ]
+      }
+    };
+
+    const STOCK_UNIVERSE = [
+      ['AAOI', 'Applied Optoelectronics Inc', 'NASDAQ', 'Optical Networking', 3.6],
+      ['AAPL', 'Apple Inc', 'NASDAQ', 'Mega-Cap Technology', 1.9],
+      ['AMD', 'Advanced Micro Devices Inc', 'NASDAQ', 'Semiconductors', 3.8, true],
+      ['AMZN', 'Amazon.com Inc', 'NASDAQ', 'Mega-Cap Technology', 2.4],
+      ['ASML', 'ASML Holding NV EUR0.09 NY Registry Shs 2012', 'NASDAQ', 'Semiconductor Equipment', 2.6],
+      ['AVGO', 'Broadcom Inc Com', 'NASDAQ', 'Semiconductors', 2.8],
+      ['BWXT', 'BWX Technologies Inc Com', 'NYSE', 'Nuclear / Defense', 2.1],
+      ['CBRS', 'Cerebras Systems Inc Com Cl A', 'NASDAQ', 'AI Infrastructure', 5.8],
+      ['CIFR', 'Cipher Digital Inc. Common Stock', 'NASDAQ', 'Crypto Infrastructure', 7.2],
+      ['CRWV', 'CoreWeave Inc Com Cl A', 'NASDAQ', 'AI Infrastructure', 6.1],
+      ['DVN', 'Devon Energy Corp New', 'NYSE', 'Energy', 2.8],
+      ['GFS', 'GlobalFoundries Inc Com USD0.02', 'NASDAQ', 'Semiconductors', 3.1],
+      ['GLW', 'Corning Inc', 'NYSE', 'Materials / Components', 2.0],
+      ['GOOG', 'Alphabet Inc Cap Stk Cl C', 'NASDAQ', 'Mega-Cap Technology', 2.3],
+      ['INOD', 'Innodata Inc', 'NASDAQ', 'AI Data Services', 6.5],
+      ['KXIAY', 'Kioxia Holdings Corporation Unspon ADR Each Rep 0.1 Com', 'OTC', 'Memory / Storage', 4.1],
+      ['LMT', 'Lockheed Martin Corp Com USD1.00', 'NYSE', 'Defense', 1.7],
+      ['MAGS', 'Listed FD Tr Roundhill Magnif', 'NASDAQ', 'Thematic ETF', 2.7],
+      ['META', 'Meta Platforms Inc Class A Common Stock', 'NASDAQ', 'Mega-Cap Technology', 2.7],
+      ['MRVL', 'Marvell Technology Inc Com', 'NASDAQ', 'Semiconductors', 4.0],
+      ['MSFT', 'Microsoft Corp', 'NASDAQ', 'Mega-Cap Technology', 1.8],
+      ['MU', 'Micron Technology Inc', 'NASDAQ', 'Memory / Storage', 4.4],
+      ['MXL', 'MaxLinear Inc Com', 'NASDAQ', 'Semiconductors', 5.0],
+      ['NOK', 'Nokia Oyj ADR Each Repr 1 Ord NPV', 'NYSE', 'Networking', 2.9],
+      ['NVDA', 'NVIDIA Corporation Com', 'NASDAQ', 'AI Semiconductors', 3.7],
+      ['ORCL', 'Oracle Corp', 'NYSE', 'Cloud Software', 2.6],
+      ['PBF', 'PBF Energy Inc Com USD0.001', 'NYSE', 'Energy Refining', 4.0],
+      ['QBTS', 'D-Wave Quantum Inc Com', 'NYSE', 'Quantum Computing', 8.2, true],
+      ['QCOM', 'Qualcomm Inc', 'NASDAQ', 'Semiconductors', 2.8],
+      ['QQQM', 'Invesco Exch Traded Fd Tr II Nasdaq 100 ETF', 'NASDAQ', 'Index ETF', 1.6],
+      ['REPX', 'Riley Exploration Permian Inc Com', 'NYSE', 'Energy E&P', 3.5],
+      ['RTX', 'RTX Corporation Com USD1.00', 'NYSE', 'Defense', 1.9],
+      ['SM', 'SM Energy Co', 'NYSE', 'Energy E&P', 3.9],
+      ['SMH', 'VanEck ETF Trust Semiconductr ETF', 'NASDAQ', 'Semiconductor ETF', 2.6],
+      ['SNAP', 'Snap Inc Cl A', 'NYSE', 'Social Media', 5.5, true],
+      ['SNDK', 'SanDisk Corp Com', 'NASDAQ', 'Memory / Storage', 4.6],
+      ['SPCX', 'Space Expl Technologies Corp Cl A', 'Private', 'Space / Aerospace', 4.8],
+      ['TSLA', 'Tesla Inc Com', 'NASDAQ', 'EV / Autonomy', 4.8],
+      ['VLO', 'Valero Energy Corp Com', 'NYSE', 'Energy Refining', 2.7],
+      ['WDC', 'Western Digital Corp. Com', 'NASDAQ', 'Memory / Storage', 4.2, true],
+      ['ZS', 'Zscaler Inc Com', 'NASDAQ', 'Cybersecurity', 4.3]
+    ];
+
+    function symbolSeed(symbol) {
+      return symbol.split('').reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 3), 0);
+    }
+
+    function modeledPrice(symbol) {
+      const seed = symbolSeed(symbol);
+      return Number((18 + (seed % 185) + ((seed % 17) / 10)).toFixed(2));
+    }
+
+    function makeModeledPreset([symbol, name, exchange, theme, atrPct, activityToday]) {
+      const seed = symbolSeed(symbol);
+      const lastPrice = modeledPrice(symbol);
+      const swingPct = Number(Math.min(82, Math.max(12, atrPct * (7.2 + ((seed % 5) * 0.65)))).toFixed(1));
+      const channelLow = Number((lastPrice * (1 - swingPct / 220)).toFixed(2));
+      const channelHigh = Number((lastPrice * (1 + swingPct / 175)).toFixed(2));
+      const stopLoss = Number((channelLow * (0.96 - (atrPct > 5 ? 0.02 : 0))).toFixed(2));
+      const target = Number((channelHigh * 0.985).toFixed(2));
+      const cycles = Math.max(3, Math.min(10, Math.round(atrPct * 1.25 + (seed % 3))));
+      const change = Number((((seed % 29) - 14) * (atrPct / 18)).toFixed(2));
+      const low52w = Number((lastPrice * (0.56 - Math.min(0.18, atrPct / 80))).toFixed(2));
+      const high52w = Number((lastPrice * (1.34 + Math.min(0.45, atrPct / 22))).toFixed(2));
+      const waveValues = [0.92, 0.36, 0.70, 0.42, 0.86, 0.48, 0.95, 0.54, 0.64, 0.58];
+      const chartPoints = waveValues.map((ratio, index) => ({
+        day: index === 0 ? 1 : Math.min(30, 1 + index * 3),
+        val: Number((channelLow + ((channelHigh - channelLow) * ratio) + (((seed + index) % 5) - 2) * lastPrice * 0.006).toFixed(2))
+      }));
+      chartPoints[chartPoints.length - 1].val = lastPrice;
+
+      const dates = ['March 18', 'April 02', 'April 17', 'May 03', 'May 18', 'June 04'];
+      const historicalTrades = Array.from({ length: Math.min(cycles, 6) }, (_, index) => {
+        const buy = Number((channelLow * (1 + ((index % 3) * 0.012))).toFixed(2));
+        const sell = Number((channelHigh * (0.90 + ((index % 4) * 0.018))).toFixed(2));
+        return {
+          id: index + 1,
+          date: dates[index],
+          buy,
+          sell,
+          duration: `${5 + ((seed + index) % 8)} days`,
+          notes: `${theme} range bounce from modeled support`
+        };
+      });
+
+      return {
+        symbol,
+        name,
+        activityToday: Boolean(activityToday),
+        lastPrice,
+        change,
+        changePeriod: activityToday ? 'Has Activity Today' : 'Past Month',
+        exchange,
+        open: Number((lastPrice * (1 - change / 900)).toFixed(2)),
+        high: Number((lastPrice * (1 + atrPct / 180)).toFixed(2)),
+        low: Number((lastPrice * (1 - atrPct / 190)).toFixed(2)),
+        volume: `${(1.5 + (seed % 95) / 5).toFixed(2)}M`,
+        avgVolume: `${(2.5 + (seed % 110) / 4).toFixed(2)}M`,
+        pe: Number((10 + (seed % 70) + atrPct).toFixed(1)),
+        mktCap: seed % 4 === 0 ? `${(20 + seed % 900).toFixed(1)}B` : `${(1 + seed % 90).toFixed(1)}B`,
+        high52w,
+        low52w,
+        atrPct,
+        cycleCount: cycles,
+        swing3mPct: swingPct,
+        channelLow,
+        channelHigh,
+        cyclerClass: atrPct >= 5.5 ? 'High-Volatility Cycler' : atrPct >= 3.2 ? 'Active Swing Candidate' : 'Measured Range Candidate',
+        cycleDescription: `${theme} watchlist model with generated range bands for fast comparison across the picker.`,
+        chartPoints,
+        defaultSetup: { entry: lastPrice, stopLoss, target },
+        historicalTrades
+      };
+    }
+
+    STOCK_UNIVERSE.forEach((item) => {
+      const [symbol] = item;
+      if (!PRESET_STOCKS[symbol]) {
+        PRESET_STOCKS[symbol] = makeModeledPreset(item);
+      } else {
+        PRESET_STOCKS[symbol].name = item[1];
+        PRESET_STOCKS[symbol].activityToday = Boolean(item[5]);
+      }
+    });
+
+    const PICKER_SYMBOLS = [
+      ...STOCK_UNIVERSE.map(([symbol]) => symbol),
+      ...Object.keys(PRESET_STOCKS).filter((symbol) => !STOCK_UNIVERSE.some(([listedSymbol]) => listedSymbol === symbol))
+    ];
+
+    const SCENARIOS = {
+      '3m_3m': {
+        label: '3M Analyze / 3M Test',
+        tag: '6 Months',
+        dateRange: 'Analyze Dec 15, 2025-Mar 14, 2026 | Test Mar 15-Jun 15, 2026',
+        analyzeLabel: 'Analyze: Dec 15, 2025-Mar 14, 2026',
+        testLabel: 'Test: Mar 15-Jun 15, 2026',
+        analyzeMonths: 3,
+        testMonths: 3,
+        mode: 'consecutive'
+      },
+      '3m_1m': {
+        label: '3M Analyze / 1M Test',
+        tag: '4 Months',
+        dateRange: 'Analyze Feb 15-May 15, 2026 | Test May 16-Jun 15, 2026',
+        analyzeLabel: 'Analyze: Feb 15-May 15, 2026',
+        testLabel: 'Test: May 16-Jun 15, 2026',
+        analyzeMonths: 3,
+        testMonths: 1,
+        mode: 'consecutive'
+      },
+      '3m_top': {
+        label: '3M Test on Top',
+        tag: 'Parallel 3M',
+        dateRange: 'Analyze + overlay test Mar 15-Jun 15, 2026',
+        analyzeLabel: 'Analyze: Mar 15-Jun 15, 2026',
+        testLabel: 'Overlay test: Mar 15-Jun 15, 2026',
+        analyzeMonths: 3,
+        testMonths: 3,
+        mode: 'parallel'
+      },
+      '1m_roll_3m': {
+        label: '1M Rolling Train / 3M Test',
+        tag: 'Rolling',
+        dateRange: 'Train prior ~1M each day | Test Mar 15-Jun 15, 2026',
+        analyzeLabel: 'Rolling train: prior ~1M before each test day',
+        testLabel: 'Test: Mar 15-Jun 15, 2026',
+        analyzeMonths: 1,
+        testMonths: 3,
+        mode: 'rolling'
+      }
+    };
+
+    const VISIBLE_SCENARIOS = ['1m_roll_3m', '3m_1m', '3m_3m'];
+
+    const CHECKS = [
+      ['bottomChannelTouch', 'Channel Bottom Anchor', 'Price is hovering close to the historical support line.', 'Manual context check: whether the current price is near a support area. It only changes the qualitative viability score.'],
+      ['rsiOversold', 'Oversold Conditions', 'Short-term indicators imply heavy seller exhaustion.', 'Manual context check: whether the move looks stretched enough for a rebound attempt. It does not feed the trigger-learning algorithm.'],
+      ['volumeSpike', 'Capitulation Volume', 'A high-volume down day is followed by stabilizing volume.', 'Manual context check: whether volume suggests panic or forced selling may be fading. It does not alter simulated trades.'],
+      ['midLineClearance', 'Harvest Path Clearance', 'The expected rebound has enough room to overcome noise and trading friction.', 'Manual context check: whether the possible move is large enough to matter after slippage, spread, or noise.'],
+      ['macroTailwinds', 'Macro / Sector Tailwind', 'Broad market or sector conditions support a reversal attempt.', 'Manual context check: whether the broader market or sector backdrop supports the trade idea. It only affects the Harvest Insight tone.']
+    ];
+
+    const state = {
+      selected: 'CRWV',
+      entryPrice: 18.10,
+      stopLoss: 13.62,
+      targetPrice: 22.30,
+      capital: 10000,
+      riskPct: 2,
+      allocationPct: 100,
+      compoundingEnabled: true,
+      activeLedgerPeriod: '1m_roll_3m',
+      strategyMode: 'long',
+      snapshotGeneratedAt: '',
+      loadingData: false,
+      dataError: '',
+      checklist: {
+        bottomChannelTouch: true,
+        rsiOversold: true,
+        volumeSpike: false,
+        midLineClearance: true,
+        macroTailwinds: false
+      }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const money = (value) => Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const plain = (value) => Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const signedPct = (value) => `${value >= 0 ? '+' : ''}${Number(value).toFixed(1)}%`;
+    const toneClass = (value) => value >= 0 ? 'positive' : 'negative';
+    const countText = (value) => Number.isInteger(Number(value)) ? String(Number(value)) : Number(value).toFixed(1);
+    const attrSafe = (value) => String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const current = () => PRESET_STOCKS[state.selected];
+    const TURN_THRESHOLD_PCT = 5;
+    const HARVEST_THRESHOLDS = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10];
+
+    function parseDate(date) {
+      return new Date(date + 'T00:00:00Z');
+    }
+
+    function toUnix(date) {
+      return Math.floor(parseDate(date).getTime() / 1000);
+    }
+
+    function yahooSymbol(symbol, exchange) {
+      if (exchange === 'Private') return null;
+      if (exchange === 'OTC' && !symbol.includes('.')) return symbol;
+      return symbol;
+    }
+
+    async function loadHistoricalData(symbol) {
+      const response = await fetch('./range-trade-data.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Historical data request failed (${response.status}).`);
+      const payload = await response.json();
+      const rows = normalizeHistoricalRows(payload[symbol]);
+
+      if (rows.length < 20) throw new Error(`No checked-in real historical candles found for ${symbol}.`);
+      applyHistoricalData(symbol, rows);
+    }
+
+    function normalizeHistoricalRows(rows) {
+      if (!Array.isArray(rows)) return [];
+      return (rows || []).map((row) => ({
+        date: row.date,
+        close: Number(row.close),
+        open: Number(row.open),
+        high: Number(row.high),
+        low: Number(row.low),
+        volume: Number(row.volume)
+      })).filter((row) => row.date && Number.isFinite(row.close));
+    }
+
+    async function preloadHarvestScores() {
+      try {
+        const response = await fetch('./range-trade-data.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Historical data request failed (${response.status}).`);
+        const payload = await response.json();
+        Object.entries(payload).forEach(([symbol, rows]) => {
+          const data = PRESET_STOCKS[symbol];
+          const normalizedRows = normalizeHistoricalRows(rows);
+          if (!data || normalizedRows.length < 20) return;
+          data.harvestScoresRolling = {
+            long: rollingScoreForRows(normalizedRows, 'long'),
+            both: rollingScoreForRows(normalizedRows, 'both'),
+            cash_guard: rollingScoreForRows(normalizedRows, 'cash_guard')
+          };
+          data.hasHistoricalCandles = true;
+        });
+        renderPresetButtons();
+      } catch (error) {
+        console.warn('Harvest score preload unavailable:', error);
+      }
+    }
+
+    function nearestRows(rows, startDate, endDate) {
+      return rows.filter((row) => row.date >= startDate && row.date <= endDate);
+    }
+
+    function rowsForScenario(rows, period) {
+      if (period === '3m_3m') {
+        return {
+          analyzeRows: nearestRows(rows, '2025-12-15', '2026-03-14'),
+          testRows: nearestRows(rows, '2026-03-15', '2026-06-15')
+        };
+      }
+      if (period === '3m_1m') {
+        return {
+          analyzeRows: nearestRows(rows, '2026-02-15', '2026-05-15'),
+          testRows: nearestRows(rows, '2026-05-16', '2026-06-15')
+        };
+      }
+      if (period === '1m_roll_3m') {
+        return {
+          analyzeRows: nearestRows(rows, '2026-02-15', '2026-03-14'),
+          testRows: nearestRows(rows, '2026-03-15', '2026-06-15')
+        };
+      }
+
+      const parallelRows = nearestRows(rows, '2026-03-15', '2026-06-15');
+      return { analyzeRows: parallelRows, testRows: parallelRows };
+    }
+
+    function countRangeCycles(rows, channelLow, channelHigh) {
+      let lastBoundary = '';
+      let cycles = 0;
+      rows.forEach((row) => {
+        const boundary = row.close <= channelLow * 1.05 ? 'support'
+          : row.close >= channelHigh * 0.95 ? 'resistance'
+            : '';
+        if (!boundary || boundary === lastBoundary) return;
+        if (lastBoundary) cycles++;
+        lastBoundary = boundary;
+      });
+      return cycles;
+    }
+
+    function buyHoldBaseline(period) {
+      const data = current();
+      if (!data.historicalRows?.length) return null;
+      return buyHoldBaselineForRows(data.historicalRows, period);
+    }
+
+    function buyHoldBaselineForRows(rows, period) {
+      const { testRows } = rowsForScenario(rows, period);
+      if (testRows.length < 2) return null;
+      const first = testRows[0];
+      const last = testRows[testRows.length - 1];
+      const testMonths = SCENARIOS[period]?.testMonths || 3;
+      const returnPct = percentChange(first.close, last.close);
+      return {
+        startDate: first.date,
+        endDate: last.date,
+        startPrice: first.close,
+        endPrice: last.close,
+        returnPct,
+        testMonths,
+        apr: returnPct * (12 / testMonths)
+      };
+    }
+
+    function countDirectionChanges(rows, thresholdPct = TURN_THRESHOLD_PCT) {
+      return detectHarvestTurns(rows, thresholdPct).length;
+    }
+
+    function detectHarvestTurns(rows, thresholdPct = TURN_THRESHOLD_PCT) {
+      const cleanRows = rows.filter((row) => Number.isFinite(row.close));
+      if (cleanRows.length < 2) return [];
+
+      const threshold = thresholdPct / 100;
+      let anchor = cleanRows[0];
+      let direction = '';
+      let extreme = anchor;
+      const turns = [];
+
+      cleanRows.slice(1).forEach((row) => {
+        const close = row.close;
+        if (!direction) {
+          if (close >= anchor.close * (1 + threshold)) {
+            direction = 'up';
+            extreme = row;
+          } else if (close <= anchor.close * (1 - threshold)) {
+            direction = 'down';
+            extreme = row;
+          }
+          return;
+        }
+
+        if (direction === 'up') {
+          if (close > extreme.close) {
+            extreme = row;
+          } else if ((extreme.close - close) / extreme.close >= threshold) {
+            turns.push({
+              type: 'peak',
+              pivot: extreme,
+              confirm: row,
+              movePct: percentChange(extreme.close, close),
+              triggerPct: thresholdPct
+            });
+            direction = 'down';
+            extreme = row;
+          }
+          return;
+        }
+
+        if (close < extreme.close) {
+          extreme = row;
+        } else if ((close - extreme.close) / extreme.close >= threshold) {
+          turns.push({
+            type: 'trough',
+            pivot: extreme,
+            confirm: row,
+            movePct: percentChange(extreme.close, close),
+            triggerPct: thresholdPct
+          });
+          direction = 'up';
+          extreme = row;
+        }
+      });
+
+      return turns;
+    }
+
+    function simulateHarvestTrades(rows, thresholdPct, mode = state.strategyMode) {
+      const turns = detectHarvestTurns(rows, thresholdPct);
+      const trades = [];
+      const allowLong = mode === 'long' || mode === 'both' || mode === 'cash_guard';
+      const allowShort = mode === 'both';
+      let position = null;
+
+      turns.forEach((turn) => {
+        if (turn.type === 'trough' && !position && allowLong) {
+          position = {
+            side: 'long',
+            entryTurn: turn,
+            entryDate: turn.confirm.date,
+            entry: turn.confirm.close,
+            pivotLow: turn.pivot.close
+          };
+          return;
+        }
+
+        if (turn.type === 'peak' && !position && allowShort) {
+          position = {
+            side: 'short',
+            entryTurn: turn,
+            entryDate: turn.confirm.date,
+            entry: turn.confirm.close,
+            pivotHigh: turn.pivot.close
+          };
+          return;
+        }
+
+        if (turn.type === 'peak' && position?.side === 'long') {
+          trades.push({
+            id: trades.length + 1,
+            date: turn.confirm.date.slice(5).replace('-', '/'),
+            side: 'long',
+            buyDate: position.entryDate,
+            sellDate: turn.confirm.date,
+            buy: Number(position.entry.toFixed(2)),
+            sell: Number(turn.confirm.close.toFixed(2)),
+            triggerPct: thresholdPct,
+            pivotLow: Number(position.pivotLow.toFixed(2)),
+            pivotHigh: Number(turn.pivot.close.toFixed(2)),
+            duration: `${Math.max(1, Math.round((parseDate(turn.confirm.date) - parseDate(position.entryDate)) / 86400000))} days`,
+            notes: `Harvest exit after ${thresholdPct}% reversal from swing high`
+          });
+          position = null;
+          return;
+        }
+
+        if (turn.type === 'trough' && position?.side === 'short') {
+          trades.push({
+            id: trades.length + 1,
+            date: turn.confirm.date.slice(5).replace('-', '/'),
+            side: 'short',
+            buyDate: position.entryDate,
+            sellDate: turn.confirm.date,
+            buy: Number(position.entry.toFixed(2)),
+            sell: Number(turn.confirm.close.toFixed(2)),
+            triggerPct: thresholdPct,
+            pivotLow: Number(turn.pivot.close.toFixed(2)),
+            pivotHigh: Number(position.pivotHigh.toFixed(2)),
+            duration: `${Math.max(1, Math.round((parseDate(turn.confirm.date) - parseDate(position.entryDate)) / 86400000))} days`,
+            notes: `Short harvest cover after ${thresholdPct}% rebound from swing low`
+          });
+          position = null;
+        }
+      });
+
+      if (position && rows.length) {
+        const last = rows[rows.length - 1];
+        trades.push({
+          id: trades.length + 1,
+          date: last.date.slice(5).replace('-', '/'),
+          side: position.side,
+          buyDate: position.entryDate,
+          sellDate: last.date,
+          buy: Number(position.entry.toFixed(2)),
+          sell: Number(last.close.toFixed(2)),
+          triggerPct: thresholdPct,
+          pivotLow: Number((position.pivotLow || last.close).toFixed(2)),
+          pivotHigh: Number(last.close.toFixed(2)),
+          duration: `${Math.max(1, Math.round((parseDate(last.date) - parseDate(position.entryDate)) / 86400000))} days`,
+          notes: `Open harvest closed at test-window end`
+        });
+      }
+
+      return { turns, trades };
+    }
+
+    function tradeReturnPct(trade) {
+      return trade.side === 'short'
+        ? percentChange(trade.sell, trade.buy)
+        : percentChange(trade.buy, trade.sell);
+    }
+
+    function harvestStats(rows, thresholdPct, mode = state.strategyMode) {
+      const { turns, trades } = simulateHarvestTrades(rows, thresholdPct, mode);
+      const returns = trades.map(tradeReturnPct);
+      const wins = returns.filter((value) => value > 0).length;
+      let equity = 10000;
+      let peak = equity;
+      let maxDrawdown = 0;
+
+      returns.forEach((value) => {
+        equity *= 1 + (value / 100);
+        peak = Math.max(peak, equity);
+        maxDrawdown = Math.max(maxDrawdown, peak ? ((peak - equity) / peak) * 100 : 0);
+      });
+
+      const totalReturnPct = percentChange(10000, equity);
+      const avgHarvestPct = avg(returns);
+      const winRate = trades.length ? (wins / trades.length) * 100 : 0;
+      const sparsePenalty = Math.max(0, 3 - trades.length) * 10;
+      const overtradePenalty = Math.max(0, trades.length - 12) * 0.5;
+      const lossPenalty = Math.max(0, -avgHarvestPct) * 2;
+      const oneTradePenalty = trades.length <= 1 ? 10 : 0;
+      const score = (totalReturnPct * 0.9) + (winRate * 0.08) + (trades.length * 0.8) - (maxDrawdown * 0.35) - sparsePenalty - overtradePenalty - lossPenalty - oneTradePenalty;
+
+      return {
+        thresholdPct,
+        turns: turns.length,
+        trades: trades.length,
+        winRate,
+        avgHarvestPct,
+        totalReturnPct,
+        maxDrawdown,
+        score,
+        events: turns,
+        tradesList: trades
+      };
+    }
+
+    function learnHarvestTrigger(rows, mode = state.strategyMode) {
+      if (!rows.length) return null;
+      const candidates = HARVEST_THRESHOLDS.map((threshold) => harvestStats(rows, threshold, mode));
+      const viable = candidates.filter((candidate) => candidate.trades >= 3);
+      const pool = viable.length ? viable : candidates;
+      const best = pool.reduce((leader, candidate) => candidate.score > leader.score ? candidate : leader, pool[0]);
+      return { ...best, candidates };
+    }
+
+    function harvestScoreForRows(rows, period = '3m_1m', mode = state.strategyMode) {
+      if (!rows?.length) return null;
+      const { analyzeRows, testRows } = rowsForScenario(rows, period);
+      const learned = learnHarvestTrigger(analyzeRows, mode);
+      if (!learned) return null;
+      const harvest = harvestStats(testRows, learned.thresholdPct, mode);
+      const walk = walkForwardHarvest(rows, mode);
+      return {
+        triggerPct: learned.thresholdPct,
+        analysisTurns: learned.turns,
+        testTurns: harvest.turns,
+        testTrades: harvest.trades,
+        testReturnPct: harvest.totalReturnPct,
+        winRate: harvest.winRate,
+        avgHarvestPct: harvest.avgHarvestPct,
+        walkReturnPct: walk.avgReturnPct,
+        walkPasses: walk.passes,
+        walkWindows: walk.windows.length,
+        walkGood: walk.good,
+        good: harvest.totalReturnPct >= 5 && harvest.trades >= 1 && harvest.winRate >= 50 && (mode !== 'cash_guard' || walk.good)
+      };
+    }
+
+    function rollingScoreForRows(rows, mode = state.strategyMode) {
+      if (!rows?.length) return null;
+      const effectiveMode = mode === 'cash_guard' ? 'long' : mode;
+      const walk = walkForwardHarvest(rows, effectiveMode);
+      const replay = mode === 'cash_guard' && !walk.good
+        ? { trades: [], avgTriggerPct: 0, avgAnalysisTrades: 0 }
+        : rollingHarvestReplay(rows, effectiveMode);
+      const returns = replay.trades.map(tradeReturnPct);
+      const equity = returns.reduce((value, pct) => value * (1 + pct / 100), 10000);
+      const totalReturnPct = percentChange(10000, equity);
+      const baseline = buyHoldBaselineForRows(rows, '1m_roll_3m');
+      const winRate = replay.trades.length ? (returns.filter((value) => value > 0).length / replay.trades.length) * 100 : 0;
+      return {
+        triggerPct: replay.avgTriggerPct || 0,
+        analysisTrades: replay.avgAnalysisTrades || 0,
+        testTrades: replay.trades.length,
+        testReturnPct: totalReturnPct,
+        baselineReturnPct: baseline?.returnPct ?? 0,
+        excessReturnPct: totalReturnPct - (baseline?.returnPct ?? 0),
+        winRate,
+        avgHarvestPct: avg(returns),
+        walkPasses: walk.passes,
+        walkWindows: walk.windows.length,
+        walkGood: walk.good,
+        good: totalReturnPct > (baseline?.returnPct ?? 0)
+      };
+    }
+
+    function triggerAuditText(learned) {
+      if (!learned?.candidates?.length) return 'No candidate audit available yet.';
+      const rows = learned.candidates.map((candidate) => {
+        const marker = candidate.thresholdPct === learned.thresholdPct ? 'BEST ' : '     ';
+        return `${marker}${candidate.thresholdPct.toFixed(1)}% | trades ${candidate.trades} | return ${signedPct(candidate.totalReturnPct)} | win ${candidate.winRate.toFixed(0)}% | score ${candidate.score.toFixed(1)}`;
+      });
+      return `Analysis-window trigger search\n${rows.join('\n')}`;
+    }
+
+    function walkForwardHarvest(rows, mode = state.strategyMode) {
+      const windows = [
+        ['2025-12-15', '2026-03-14', '2026-03-15', '2026-04-14'],
+        ['2026-01-15', '2026-04-14', '2026-04-15', '2026-05-15'],
+        ['2026-02-15', '2026-05-15', '2026-05-16', '2026-06-15']
+      ].map(([trainStart, trainEnd, testStart, testEnd]) => {
+        const trainRows = nearestRows(rows, trainStart, trainEnd);
+        const testRows = nearestRows(rows, testStart, testEnd);
+        const learned = learnHarvestTrigger(trainRows, mode === 'cash_guard' ? 'long' : mode);
+        const test = learned ? harvestStats(testRows, learned.thresholdPct, mode === 'cash_guard' ? 'long' : mode) : null;
+        return {
+          trainStart,
+          trainEnd,
+          testStart,
+          testEnd,
+          triggerPct: learned?.thresholdPct || 0,
+          returnPct: test?.totalReturnPct || 0,
+          trades: test?.trades || 0,
+          winRate: test?.winRate || 0,
+          pass: Boolean(test && test.totalReturnPct > 0 && test.trades >= 1)
+        };
+      });
+      const usable = windows.filter((window) => window.triggerPct);
+      const passes = usable.filter((window) => window.pass).length;
+      const avgReturnPct = avg(usable.map((window) => window.returnPct));
+      return {
+        windows: usable,
+        passes,
+        avgReturnPct,
+        good: usable.length >= 2 && passes >= 2 && avgReturnPct > 0
+      };
+    }
+
+    function rollingHarvestReplay(rows, mode = state.strategyMode) {
+      const effectiveMode = mode === 'cash_guard' ? 'long' : mode;
+      const testRows = nearestRows(rows, '2026-03-15', '2026-06-15');
+      const rowIndex = new Map(rows.map((row, index) => [row.date, index]));
+      const training = testRows.map((row) => {
+        const index = rowIndex.get(row.date) || 0;
+        const trainRows = rows.slice(Math.max(0, index - 30), index);
+        const learned = learnHarvestTrigger(trainRows, effectiveMode);
+        return { row, learned };
+      }).filter((item) => item.learned);
+
+      if (training.length < 2) {
+        return { turns: [], trades: [], training, avgTriggerPct: 0, avgAnalysisTrades: 0 };
+      }
+
+      let anchor = training[0].row;
+      let direction = '';
+      let extreme = anchor;
+      const turns = [];
+
+      training.slice(1).forEach(({ row, learned }) => {
+        const threshold = learned.thresholdPct / 100;
+        const close = row.close;
+        if (!direction) {
+          if (close >= anchor.close * (1 + threshold)) {
+            direction = 'up';
+            extreme = row;
+          } else if (close <= anchor.close * (1 - threshold)) {
+            direction = 'down';
+            extreme = row;
+          }
+          return;
+        }
+
+        if (direction === 'up') {
+          if (close > extreme.close) {
+            extreme = row;
+          } else if ((extreme.close - close) / extreme.close >= threshold) {
+            turns.push({ type: 'peak', pivot: extreme, confirm: row, triggerPct: learned.thresholdPct });
+            direction = 'down';
+            extreme = row;
+          }
+          return;
+        }
+
+        if (close < extreme.close) {
+          extreme = row;
+        } else if ((close - extreme.close) / extreme.close >= threshold) {
+          turns.push({ type: 'trough', pivot: extreme, confirm: row, triggerPct: learned.thresholdPct });
+          direction = 'up';
+          extreme = row;
+        }
+      });
+
+      const trades = buildTradesFromTurns(turns, testRows, effectiveMode);
+      return {
+        turns,
+        trades,
+        training,
+        avgTriggerPct: avg(training.map((item) => item.learned.thresholdPct)),
+        avgAnalysisTrades: avg(training.map((item) => item.learned.trades))
+      };
+    }
+
+    function buildTradesFromTurns(turns, rows, mode = state.strategyMode) {
+      const allowLong = mode === 'long' || mode === 'both' || mode === 'cash_guard';
+      const allowShort = mode === 'both';
+      const trades = [];
+      let position = null;
+
+      turns.forEach((turn) => {
+        if (turn.type === 'trough' && !position && allowLong) {
+          position = { side: 'long', entryDate: turn.confirm.date, entry: turn.confirm.close, pivotLow: turn.pivot.close, triggerPct: turn.triggerPct };
+          return;
+        }
+        if (turn.type === 'peak' && !position && allowShort) {
+          position = { side: 'short', entryDate: turn.confirm.date, entry: turn.confirm.close, pivotHigh: turn.pivot.close, triggerPct: turn.triggerPct };
+          return;
+        }
+        if (turn.type === 'peak' && position?.side === 'long') {
+          trades.push({
+            id: trades.length + 1,
+            date: turn.confirm.date.slice(5).replace('-', '/'),
+            side: 'long',
+            buyDate: position.entryDate,
+            sellDate: turn.confirm.date,
+            buy: Number(position.entry.toFixed(2)),
+            sell: Number(turn.confirm.close.toFixed(2)),
+            triggerPct: position.triggerPct,
+            pivotLow: Number(position.pivotLow.toFixed(2)),
+            pivotHigh: Number(turn.pivot.close.toFixed(2)),
+            duration: `${Math.max(1, Math.round((parseDate(turn.confirm.date) - parseDate(position.entryDate)) / 86400000))} days`,
+            notes: `Rolling harvest exit after ${position.triggerPct.toFixed(1)}% trigger`
+          });
+          position = null;
+          return;
+        }
+        if (turn.type === 'trough' && position?.side === 'short') {
+          trades.push({
+            id: trades.length + 1,
+            date: turn.confirm.date.slice(5).replace('-', '/'),
+            side: 'short',
+            buyDate: position.entryDate,
+            sellDate: turn.confirm.date,
+            buy: Number(position.entry.toFixed(2)),
+            sell: Number(turn.confirm.close.toFixed(2)),
+            triggerPct: position.triggerPct,
+            pivotLow: Number(turn.pivot.close.toFixed(2)),
+            pivotHigh: Number(position.pivotHigh.toFixed(2)),
+            duration: `${Math.max(1, Math.round((parseDate(turn.confirm.date) - parseDate(position.entryDate)) / 86400000))} days`,
+            notes: `Rolling short cover after ${position.triggerPct.toFixed(1)}% trigger`
+          });
+          position = null;
+        }
+      });
+
+      if (position && rows.length) {
+        const last = rows[rows.length - 1];
+        trades.push({
+          id: trades.length + 1,
+          date: last.date.slice(5).replace('-', '/'),
+          side: position.side,
+          buyDate: position.entryDate,
+          sellDate: last.date,
+          buy: Number(position.entry.toFixed(2)),
+          sell: Number(last.close.toFixed(2)),
+          triggerPct: position.triggerPct,
+          pivotLow: Number((position.pivotLow || last.close).toFixed(2)),
+          pivotHigh: Number((position.pivotHigh || last.close).toFixed(2)),
+          duration: `${Math.max(1, Math.round((parseDate(last.date) - parseDate(position.entryDate)) / 86400000))} days`,
+          notes: 'Open rolling harvest closed at test-window end'
+        });
+      }
+
+      return trades;
+    }
+
+    function cycleSummaryForScenario(period) {
+      const data = current();
+      if (!data.historicalRows?.length) return null;
+      const { analyzeRows, testRows } = rowsForScenario(data.historicalRows, period);
+      const { channelLow, channelHigh } = channelForScenario(period);
+      const effectiveMode = state.strategyMode === 'cash_guard' ? 'long' : state.strategyMode;
+      if (period === '1m_roll_3m') {
+        const rolling = rollingHarvestReplay(data.historicalRows, effectiveMode);
+        const returns = rolling.trades.map(tradeReturnPct);
+        return {
+          analyzeCycles: 0,
+          testCycles: 0,
+          analyzeTurns: Math.round(rolling.avgAnalysisTrades),
+          testTurns: rolling.trades.length,
+          analysisTrades: rolling.avgAnalysisTrades,
+          testTrades: rolling.trades.length,
+          turnThresholdPct: rolling.avgTriggerPct || TURN_THRESHOLD_PCT,
+          triggerLabel: rolling.avgTriggerPct ? `avg ${rolling.avgTriggerPct.toFixed(1)}%` : '--',
+          learned: null,
+          testHarvest: {
+            trades: rolling.trades.length,
+            totalReturnPct: percentChange(10000, returns.reduce((equity, value) => equity * (1 + value / 100), 10000)),
+            winRate: rolling.trades.length ? (returns.filter((value) => value > 0).length / rolling.trades.length) * 100 : 0,
+            avgHarvestPct: avg(returns)
+          },
+          walk: walkForwardHarvest(data.historicalRows, effectiveMode),
+          persistencePct: 0,
+          channelLow,
+          channelHigh
+        };
+      }
+      const learned = learnHarvestTrigger(analyzeRows, effectiveMode);
+      const testHarvest = learned ? harvestStats(testRows, learned.thresholdPct, effectiveMode) : null;
+      const walk = walkForwardHarvest(data.historicalRows, effectiveMode);
+      const expectedTurns = learned && SCENARIOS[period]?.analyzeMonths
+        ? learned.trades * ((SCENARIOS[period]?.testMonths || 1) / SCENARIOS[period].analyzeMonths)
+        : 0;
+      const persistencePct = expectedTurns ? (testHarvest.trades / expectedTurns) * 100 : 0;
+      return {
+        analyzeCycles: countRangeCycles(analyzeRows, channelLow, channelHigh),
+        testCycles: countRangeCycles(testRows, channelLow, channelHigh),
+        analyzeTurns: learned?.trades || 0,
+        testTurns: testHarvest?.trades || 0,
+        analysisTrades: learned?.trades || 0,
+        testTrades: testHarvest?.trades || 0,
+        turnThresholdPct: learned?.thresholdPct || TURN_THRESHOLD_PCT,
+        triggerLabel: learned ? `${learned.thresholdPct.toFixed(1)}%` : '--',
+        learned,
+        testHarvest,
+        walk,
+        persistencePct,
+        channelLow,
+        channelHigh
+      };
+    }
+
+    function channelForScenario(period) {
+      const data = current();
+      if (!data.historicalRows?.length) {
+        return { channelLow: data.channelLow, channelHigh: data.channelHigh };
+      }
+
+      const { analyzeRows } = rowsForScenario(data.historicalRows, period);
+      const channelBase = analyzeRows.length ? analyzeRows : data.historicalRows;
+      return {
+        channelLow: Math.min(...channelBase.map((row) => row.low || row.close)),
+        channelHigh: Math.max(...channelBase.map((row) => row.high || row.close))
+      };
+    }
+
+    function percentChange(from, to) {
+      return from ? ((to - from) / from) * 100 : 0;
+    }
+
+    function avg(values) {
+      const usable = values.filter(Number.isFinite);
+      return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : 0;
+    }
+
+    function applyHistoricalData(symbol, rows) {
+      const data = PRESET_STOCKS[symbol];
+      const closes = rows.map((row) => row.close);
+      const highs = rows.map((row) => Number.isFinite(row.high) ? row.high : row.close);
+      const lows = rows.map((row) => Number.isFinite(row.low) ? row.low : row.close);
+      const last = rows[rows.length - 1];
+      const first = rows[0];
+      const { analyzeRows, testRows } = rowsForScenario(rows, '3m_3m');
+      const recentMonthRows = nearestRows(rows, '2026-05-16', '2026-06-15');
+      const analysisBase = analyzeRows.length ? analyzeRows : rows.slice(0, Math.ceil(rows.length / 2));
+      const testBase = testRows.length ? testRows : rows.slice(Math.floor(rows.length / 2));
+      const channelLow = Math.min(...analysisBase.map((row) => row.low || row.close));
+      const channelHigh = Math.max(...analysisBase.map((row) => row.high || row.close));
+      const atrPct = avg(rows.slice(1).map((row, index) => {
+        const prior = rows[index].close;
+        const high = Number.isFinite(row.high) ? row.high : row.close;
+        const low = Number.isFinite(row.low) ? row.low : row.close;
+        return prior ? ((high - low) / prior) * 100 : 0;
+      }));
+      const cycles = countRangeCycles(testBase, channelLow, channelHigh);
+      const low52w = Math.min(...lows);
+      const high52w = Math.max(...highs);
+      const defaultTarget = Number((channelHigh * 0.985).toFixed(2));
+      const defaultStop = Number((channelLow * 0.97).toFixed(2));
+
+      Object.assign(data, {
+        realDataLoaded: true,
+        dataSource: `Nasdaq historical daily candles (${first.date} to ${last.date})`,
+        historicalRows: rows,
+        harvestScoresRolling: {
+          long: rollingScoreForRows(rows, 'long'),
+          both: rollingScoreForRows(rows, 'both'),
+          cash_guard: rollingScoreForRows(rows, 'cash_guard')
+        },
+        lastPrice: Number(last.close.toFixed(2)),
+        change: Number(percentChange(rows[Math.max(0, rows.length - 22)]?.close || first.close, last.close).toFixed(2)),
+        changePeriod: 'Last ~1M',
+        open: Number((last.open || last.close).toFixed(2)),
+        high: Number((last.high || last.close).toFixed(2)),
+        low: Number((last.low || last.close).toFixed(2)),
+        volume: last.volume ? `${(last.volume / 1000000).toFixed(2)}M` : 'n/a',
+        avgVolume: `${(avg(rows.map((row) => row.volume || 0)) / 1000000).toFixed(2)}M`,
+        high52w: Number(high52w.toFixed(2)),
+        low52w: Number(low52w.toFixed(2)),
+        atrPct: Number(atrPct.toFixed(2)),
+        cycleCount: cycles,
+        swing3mPct: Number(percentChange(channelLow, channelHigh).toFixed(1)),
+        channelLow: Number(channelLow.toFixed(2)),
+        channelHigh: Number(channelHigh.toFixed(2)),
+        cyclerClass: atrPct >= 5.5 ? 'High-Volatility Harvest Candidate' : atrPct >= 3.2 ? 'Active Harvest Candidate' : 'Measured Harvest Candidate',
+        cycleDescription: `Real daily closes loaded for ${symbol}. The scenario engine learns a reversal percent from the analysis window, then freezes it for the test replay.`,
+        chartPoints: rows.map((row, index) => ({ date: row.date, day: index + 1, val: Number(row.close.toFixed(2)) })),
+        defaultSetup: { entry: Number(last.close.toFixed(2)), stopLoss: defaultStop, target: defaultTarget },
+        historicalTrades: buildTradesFromRows(testBase, channelLow, channelHigh),
+        recentMonthTrades: buildTradesFromRows(recentMonthRows.length ? recentMonthRows : testBase.slice(-Math.max(4, Math.ceil(testBase.length / 3))), channelLow, channelHigh)
+      });
+
+      state.entryPrice = data.defaultSetup.entry;
+      state.stopLoss = data.defaultSetup.stopLoss;
+      state.targetPrice = data.defaultSetup.target;
+    }
+
+    function buildTradesFromRows(rows, channelLow, channelHigh) {
+      const trades = [];
+      let entry = null;
+      rows.forEach((row) => {
+        if (!entry && row.close <= channelLow * 1.06) {
+          entry = row;
+          return;
+        }
+        if (entry && (row.close >= channelHigh * 0.94 || trades.length >= 5)) {
+          trades.push({
+            id: trades.length + 1,
+            date: row.date.slice(5).replace('-', '/'),
+            buy: Number(entry.close.toFixed(2)),
+            sell: Number(row.close.toFixed(2)),
+            duration: `${Math.max(1, Math.round((parseDate(row.date) - parseDate(entry.date)) / 86400000))} days`,
+            notes: 'Real close-to-close support/resistance replay'
+          });
+          entry = null;
+        }
+      });
+
+      if (!trades.length && rows.length >= 2) {
+        const lowRow = rows.reduce((best, row) => row.close < best.close ? row : best, rows[0]);
+        const afterLow = rows.filter((row) => row.date > lowRow.date);
+        const highRow = afterLow.length ? afterLow.reduce((best, row) => row.close > best.close ? row : best, afterLow[0]) : rows[rows.length - 1];
+        trades.push({
+          id: 1,
+          date: highRow.date.slice(5).replace('-', '/'),
+          buy: Number(lowRow.close.toFixed(2)),
+          sell: Number(highRow.close.toFixed(2)),
+          duration: `${Math.max(1, Math.round((parseDate(highRow.date) - parseDate(lowRow.date)) / 86400000))} days`,
+          notes: 'Real low-to-subsequent-high replay'
+        });
+      }
+
+      return trades;
+    }
+
+    async function hydrateRealData(symbol) {
+      const data = PRESET_STOCKS[symbol];
+      if (data.realDataLoaded || state.loadingData) return;
+      state.loadingData = true;
+      state.dataError = '';
+      renderStatus();
+      try {
+        await loadHistoricalData(symbol);
+      } catch (error) {
+        state.dataError = error.message;
+        data.realDataLoaded = false;
+        data.dataSource = `Real data missing: ${error.message}`;
+      } finally {
+        state.loadingData = false;
+        render();
+      }
+    }
+
+    async function loadQuoteSnapshots() {
+      try {
+        const response = await fetch('./range-trade-snapshot.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Snapshot request failed (${response.status}).`);
+        const payload = await response.json();
+        state.snapshotGeneratedAt = payload.generatedAt || '';
+        Object.entries(payload.quotes || {}).forEach(([symbol, quote]) => {
+          const data = PRESET_STOCKS[symbol];
+          if (!data || quote.error || !Number.isFinite(quote.lastPrice)) return;
+          const priorPrice = data.lastPrice;
+          Object.assign(data, {
+            quoteSnapshot: quote,
+            hasRealSnapshot: true,
+            name: quote.companyName || data.name,
+            exchange: quote.exchange || data.exchange,
+            lastPrice: Number(quote.lastPrice.toFixed(2)),
+            change: Number((quote.percentChange ?? quote.netChange ?? 0).toFixed(2)),
+            changePeriod: quote.lastTradeTimestamp || 'Quote snapshot',
+            open: Number((quote.bidPrice || quote.lastPrice).toFixed(2)),
+            high: Number((quote.dayHigh || quote.lastPrice).toFixed(2)),
+            low: Number((quote.dayLow || quote.lastPrice).toFixed(2)),
+            volume: quote.volume ? `${(quote.volume / 1000000).toFixed(2)}M` : data.volume,
+            high52w: quote.high52w || data.high52w,
+            low52w: quote.low52w || data.low52w
+          });
+
+          if (state.selected === symbol && !data.realDataLoaded && priorPrice === state.entryPrice) {
+            state.entryPrice = data.lastPrice;
+            state.targetPrice = quote.dayHigh ? Number(quote.dayHigh.toFixed(2)) : data.defaultSetup.target;
+            state.stopLoss = quote.dayLow ? Number(quote.dayLow.toFixed(2)) : data.defaultSetup.stopLoss;
+          }
+        });
+        render();
+      } catch (error) {
+        state.snapshotGeneratedAt = '';
+        console.warn('Quote snapshot unavailable:', error);
+      }
+    }
+
+    function setPreset(symbol) {
+      const data = PRESET_STOCKS[symbol];
+      state.selected = symbol;
+      const saved = JSON.parse(localStorage.getItem('setup_' + symbol) || 'null');
+      state.entryPrice = saved?.entryPrice ?? data.defaultSetup.entry;
+      state.stopLoss = saved?.stopLoss ?? data.defaultSetup.stopLoss;
+      state.targetPrice = saved?.targetPrice ?? data.defaultSetup.target;
+      state.checklist = saved?.checklist ?? state.checklist;
+      render();
+      hydrateRealData(symbol);
+    }
+
+    function renderStatus() {
+      const data = current();
+      const status = $('dataStatus');
+      if (!status) return;
+      status.className = 'data-status';
+      if (state.loadingData) {
+        status.classList.add('loading');
+        status.textContent = `Loading real daily candles for ${state.selected}...`;
+      } else if (data.realDataLoaded) {
+        status.classList.add('real');
+        status.textContent = data.dataSource;
+      } else if (data.hasRealSnapshot) {
+        status.classList.add('real');
+        status.textContent = `Real quote snapshot loaded: ${data.quoteSnapshot.lastTradeTimestamp}${state.snapshotGeneratedAt ? ` (file generated ${new Date(state.snapshotGeneratedAt).toLocaleString()})` : ''}. Historical candles still needed for plots/backtests.`;
+      } else {
+        status.classList.add('fallback');
+        status.textContent = data.dataSource || 'Real historical candles are required before plotting/backtesting.';
+      }
+    }
+
+    function renderQuoteStrip() {
+      const data = current();
+      const strip = $('quoteStrip');
+      if (!strip) return;
+      if (!data.hasRealSnapshot) {
+        strip.innerHTML = `
+          <div class="quote-cell"><span>Quote Snapshot</span><strong>No real quote</strong></div>
+          <div class="quote-cell"><span>Next Step</span><strong>Add snapshot</strong></div>
+          <div class="quote-cell"><span>Historical</span><strong>No candles</strong></div>
+          <div class="quote-cell"><span>Backtest</span><strong>Disabled</strong></div>
+        `;
+        return;
+      }
+
+      const quote = data.quoteSnapshot;
+      strip.innerHTML = `
+        <div class="quote-cell"><span>Last Price</span><strong>$${money(quote.lastPrice)}</strong></div>
+        <div class="quote-cell"><span>Today</span><strong>${quote.percentChange >= 0 ? '+' : ''}${quote.percentChange?.toFixed(2) || '0.00'}%</strong></div>
+        <div class="quote-cell"><span>Day Range</span><strong>$${money(quote.dayLow)} - $${money(quote.dayHigh)}</strong></div>
+        <div class="quote-cell"><span>Volume</span><strong>${quote.volume ? (quote.volume / 1000000).toFixed(2) + 'M' : 'n/a'}</strong></div>
+        <div class="quote-cell"><span>52W Range</span><strong>$${money(quote.low52w)} - $${money(quote.high52w)}</strong></div>
+        <div class="quote-cell"><span>Market</span><strong>${quote.marketStatus || 'n/a'}</strong></div>
+        <div class="quote-cell"><span>Timestamp</span><strong>${quote.lastTradeTimestamp}</strong></div>
+        <div class="quote-cell"><span>Historical</span><strong>${data.realDataLoaded ? 'Candles loaded' : 'Candles needed'}</strong></div>
+      `;
+    }
+
+    function runBacktestEngine(period) {
+      const data = current();
+      let currentBalance = state.capital;
+      if (!data.realDataLoaded) {
+        return { ledger: [], finalBalance: state.capital, overallProfit: 0, overallReturnPct: 0, apr: 0, testMonths: SCENARIOS[period]?.testMonths || 3, sizeMultiplier: period === '3m_top' ? 2.0 : 1.0, unavailable: true };
+      }
+      const { analyzeRows, testRows } = rowsForScenario(data.historicalRows, period);
+      const effectiveMode = state.strategyMode === 'cash_guard' ? 'long' : state.strategyMode;
+      const walk = walkForwardHarvest(data.historicalRows, effectiveMode);
+      const rolling = period === '1m_roll_3m' ? rollingHarvestReplay(data.historicalRows, effectiveMode) : null;
+      const learned = period === '1m_roll_3m' ? null : learnHarvestTrigger(analyzeRows, effectiveMode);
+      const blockedByCashGuard = state.strategyMode === 'cash_guard' && !walk.good;
+      const harvest = blockedByCashGuard
+        ? { turns: [], trades: [] }
+        : period === '1m_roll_3m'
+          ? { turns: rolling.turns, trades: rolling.trades }
+          : learned ? simulateHarvestTrades(testRows, learned.thresholdPct, effectiveMode) : { turns: [], trades: [] };
+      const trades = harvest.trades;
+      const ledger = [];
+
+      const sizeMultiplier = period === '3m_top' ? 2.0 : 1.0;
+
+      trades.forEach((trade) => {
+        const sizingBase = state.compoundingEnabled ? currentBalance : state.capital;
+        const allocation = sizingBase * (state.allocationPct / 100) * sizeMultiplier;
+        const shares = Math.floor(allocation / trade.buy);
+        const cost = shares * trade.buy;
+        const profitPerShare = trade.side === 'short' ? trade.buy - trade.sell : trade.sell - trade.buy;
+        const tradeProfit = shares * profitPerShare;
+        const gainPercent = tradeReturnPct(trade);
+        currentBalance += tradeProfit;
+
+        ledger.push({
+          ...trade,
+          shares,
+          cost,
+          gainPercent,
+          profit: tradeProfit,
+          endingBal: currentBalance,
+          triggerPct: trade.triggerPct,
+          buyDate: trade.buyDate,
+          sellDate: trade.sellDate
+        });
+      });
+
+      const overallProfit = currentBalance - state.capital;
+      const overallReturnPct = (overallProfit / state.capital) * 100;
+      const testMonths = SCENARIOS[period]?.testMonths || 3;
+      const apr = overallReturnPct * (12 / testMonths);
+      return {
+        ledger,
+        finalBalance: currentBalance,
+        overallProfit,
+        overallReturnPct,
+        apr,
+        testMonths,
+        sizeMultiplier,
+        learned,
+        rolling,
+        walk,
+        blockedByCashGuard,
+        testTurns: harvest.turns.length,
+        testTrades: trades.length,
+        testWinRate: trades.length ? (trades.filter((trade) => tradeReturnPct(trade) > 0).length / trades.length) * 100 : 0,
+        avgHarvestPct: avg(trades.map(tradeReturnPct))
+      };
+    }
+
+    function renderPresetButtons() {
+      $('presetButtons').innerHTML = PICKER_SYMBOLS.map((symbol) => {
+        const data = PRESET_STOCKS[symbol];
+        const score = data.harvestScoresRolling?.[state.strategyMode];
+        const titleParts = [
+          data.name,
+          data.hasRealSnapshot ? 'Real quote snapshot loaded' : '',
+          data.hasHistoricalCandles || data.realDataLoaded ? 'Historical candles loaded' : '',
+          data.activityToday ? 'Has Activity Today' : '',
+          score ? `Rolling ${state.strategyMode.replace('_', ' ')} harvest: return ${signedPct(score.testReturnPct)} vs buy-hold ${signedPct(score.baselineReturnPct)} (${signedPct(score.excessReturnPct)} excess), ${score.testTrades} trades, win ${score.winRate.toFixed(0)}%, walk ${score.walkPasses}/${score.walkWindows}` : ''
+        ].filter(Boolean);
+        return `<button type="button" class="${state.selected === symbol ? 'active' : ''} ${data.activityToday ? 'has-activity' : ''} ${data.hasRealSnapshot ? 'has-snapshot' : ''} ${score?.good ? 'harvest-winner' : ''}" data-preset="${symbol}" title="${titleParts.join(' - ')}">${symbol}${score?.good ? '<span class="harvest-flag">★</span>' : ''}</button>`;
+      }).join('');
+
+      document.querySelectorAll('[data-preset]').forEach((button) => {
+        button.addEventListener('click', () => setPreset(button.dataset.preset));
+      });
+    }
+
+    function renderModeButtons() {
+      document.querySelectorAll('[data-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.mode === state.strategyMode);
+      });
+    }
+
+    function renderSnapshot() {
+      const data = current();
+      const priceRange = data.high52w - data.low52w;
+      const currentRangePercent = ((data.lastPrice - data.low52w) / (priceRange || 1)) * 100;
+      const changeClass = data.change < 0 ? 'negative' : 'positive';
+      const arrow = data.change < 0 ? '↓' : '↑';
+      const signedChange = data.change > 0 ? '+' + data.change.toFixed(2) : data.change.toFixed(2);
+
+      $('snapshotCard').innerHTML = `
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">Ticker Snapshot</p>
+            <h2>${data.symbol} <span class="badge">${data.exchange}</span></h2>
+            <p class="small">${data.name}</p>
+            ${data.hasRealSnapshot ? `<p class="tiny">Real quote snapshot: ${data.quoteSnapshot.lastTradeTimestamp}</p>` : `<p class="tiny">No real quote snapshot loaded.</p>`}
+          </div>
+          <div class="ticker-price">
+            <span class="price">$${money(data.lastPrice)}</span>
+            <span class="change ${changeClass}">${arrow} ${signedChange}% <span class="tiny">(${data.changePeriod})</span></span>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span>Open</span><strong>$${money(data.open)}</strong></div>
+          <div class="metric"><span>Volume</span><strong>${data.volume}</strong></div>
+          <div class="metric"><span>Daily High</span><strong class="negative">$${money(data.high)}</strong></div>
+          <div class="metric"><span>Avg Vol</span><strong>${data.avgVolume}</strong></div>
+          <div class="metric"><span>Daily Low</span><strong class="positive">$${money(data.low)}</strong></div>
+          <div class="metric"><span>Mkt Cap</span><strong>${data.mktCap}</strong></div>
+        </div>
+        <div style="margin-top: 16px;">
+          <div class="split-row tiny"><span>52W Low: $${money(data.low52w)}</span><span>52W High: $${money(data.high52w)}</span></div>
+          <div class="range-track"><div class="range-fill" style="width: ${Math.max(0, Math.min(100, currentRangePercent))}%"></div></div>
+        </div>
+      `;
+    }
+
+    function renderProfiler() {
+      const data = current();
+      const summary = cycleSummaryForScenario(state.activeLedgerPeriod);
+      $('cyclerClass').textContent = data.realDataLoaded ? data.cyclerClass : data.hasRealSnapshot ? 'Real Snapshot Loaded' : 'Awaiting Real Data';
+      $('cycleBadge').textContent = data.symbol;
+      $('cycleDescription').textContent = data.realDataLoaded
+        ? data.cycleDescription
+        : data.hasRealSnapshot
+          ? `Today quote is real as of ${data.quoteSnapshot.lastTradeTimestamp}. Add historical OHLCV rows for ${data.symbol} to train real volatility-harvesting triggers.`
+          : `Add daily OHLCV rows for ${data.symbol} to train reversal triggers and test volatility harvesting.`;
+      $('atrPct').textContent = data.realDataLoaded ? data.atrPct + '%' : '--';
+      $('cycleCount').textContent = summary ? summary.analyzeTurns : '--';
+      $('swing3mPct').textContent = data.realDataLoaded ? data.swing3mPct + '%' : '--';
+    }
+
+    function renderBacktester() {
+      if (!VISIBLE_SCENARIOS.includes(state.activeLedgerPeriod)) {
+        state.activeLedgerPeriod = '3m_3m';
+      }
+      $('alloc100').classList.toggle('active', state.allocationPct === 100);
+      $('alloc50').classList.toggle('active', state.allocationPct === 50);
+      $('compoundOn').classList.toggle('active', state.compoundingEnabled);
+      $('compoundOff').classList.toggle('active', !state.compoundingEnabled);
+      const baseline = buyHoldBaseline(state.activeLedgerPeriod);
+      $('buyHoldBaseline').innerHTML = baseline ? `
+        <span>Buy & hold baseline <span class="tip" tabindex="0" data-tip="Bought ${current().symbol} at the first close of this scenario's test window ($${money(baseline.startPrice)} on ${baseline.startDate}) and held through the last close ($${money(baseline.endPrice)} on ${baseline.endDate}). Normalized converts that test-window result to an annualized APR for comparison.">?</span></span>
+        <strong class="${toneClass(baseline.returnPct)} mono">${baseline.testMonths}mo ${signedPct(baseline.returnPct)} | ${signedPct(baseline.apr)} APR</strong>
+      ` : `
+        <span>Buy & hold baseline <span class="tip" tabindex="0" data-tip="Historical candles are needed to calculate the test-window buy-and-hold return.">?</span></span>
+        <strong class="mono">--</strong>
+      `;
+
+      const scenarios = VISIBLE_SCENARIOS.map((key) => [key, SCENARIOS[key], runBacktestEngine(key), cycleSummaryForScenario(key)]);
+
+      $('scenarioButtons').innerHTML = scenarios.map(([key, meta, result, cycles]) => `
+        <button type="button" class="scenario ${state.activeLedgerPeriod === key ? 'active' : ''}" data-scenario="${key}">
+          <span class="scenario-row"><strong>${meta.label}</strong><span class="badge">${meta.tag}</span></span>
+          <span class="tiny scenario-date">${meta.dateRange} <span class="tip" data-tip="The first dates are the analysis window. The later dates are the out-of-sample test window, except the parallel scenario where analysis and overlay test use the same dates.">?</span></span>
+          <span class="scenario-row tiny"><span>Learned trigger <span class="tip" data-tip="The reversal percent selected from the analysis window. Rolling mode relearns from the prior month before each test day.">?</span></span><strong class="mono value-tip" tabindex="0" data-tip="${attrSafe(cycles?.learned ? triggerAuditText(cycles.learned) : 'Rolling mode relearns the trigger from the prior ~1 month before each test day.')}">${cycles ? cycles.triggerLabel : '--'}</strong></span>
+          <span class="scenario-row tiny"><span>Harvest trades <span class="tip" data-tip="Completed simulated trades, not raw turns. Analysis shows training-window trades; test shows out-of-sample harvest trades.">?</span></span><strong class="mono">Analysis ${cycles ? countText(cycles.analysisTrades) : '--'} | Test ${cycles ? cycles.testTrades : '--'}</strong></span>
+          <span class="scenario-row tiny"><span>Trade persistence <span class="tip" data-tip="Test trades compared with the rate implied by training trades. Near 100% means the trade opportunity rate repeated.">?</span></span><strong class="mono">${cycles ? cycles.persistencePct ? cycles.persistencePct.toFixed(0) + '%' : 'rolling' : '--'}</strong></span>
+          <span class="scenario-row tiny"><span>Walk-forward <span class="tip" data-tip="Rolling train/test validation over three windows. Cash Guard requires repeated positive windows before taking trades.">?</span></span><strong class="mono">${cycles?.walk ? `${cycles.walk.passes}/${cycles.walk.windows.length} ${signedPct(cycles.walk.avgReturnPct)}` : '--'}</strong></span>
+          ${result.unavailable ? `
+            <span class="scenario-row tiny"><span>Status <span class="tip" data-tip="The scenario needs daily OHLCV candles for this ticker before chart and backtest metrics can be computed.">?</span></span><strong class="negative mono">No real candles</strong></span>
+            <span class="tiny">Backtest disabled until local historical data is present.</span>
+          ` : `
+            <span class="scenario-row tiny"><span>Win / avg harvest <span class="tip" data-tip="Percent of completed test trades that were profitable, plus average percent captured per trade.">?</span></span><strong class="${toneClass(result.avgHarvestPct)} mono">${result.testWinRate.toFixed(0)}% / ${signedPct(result.avgHarvestPct)}</strong></span>
+            <span class="scenario-row tiny"><span>Ending Balance <span class="tip" data-tip="Starting capital plus the simulated profit or loss from trades found in the test window.">?</span></span><strong class="${toneClass(result.overallProfit)} mono">$${money(result.finalBalance)}</strong></span>
+            <span class="scenario-row tiny"><span>Test / normalized <span class="tip" data-tip="First value is the actual test-window return. APR is the same return annualized so 1-month and 3-month tests can be compared on the same scale.">?</span></span><strong class="${toneClass(result.overallReturnPct)} mono">${result.testMonths}mo ${signedPct(result.overallReturnPct)} | ${signedPct(result.apr)} APR</strong></span>
+          `}
+        </button>
+      `).join('');
+
+      document.querySelectorAll('[data-scenario]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.activeLedgerPeriod = button.dataset.scenario;
+          renderBacktester();
+          renderProfiler();
+          renderChart();
+          renderInsight();
+        });
+      });
+
+      const active = runBacktestEngine(state.activeLedgerPeriod);
+      const activeScenario = SCENARIOS[state.activeLedgerPeriod];
+      const ledgerCaption = `
+        <div class="ledger-item ledger-caption">
+          <div class="ledger-row"><strong>Trade log</strong><span>${activeScenario.label}</span></div>
+          <div class="tiny">${activeScenario.dateRange} · ${state.strategyMode.replace('_', ' ')} mode</div>
+        </div>
+      `;
+      $('ledger').innerHTML = ledgerCaption + (active.unavailable ? `
+        <div class="ledger-item">
+          <div class="ledger-row"><strong>Real data required</strong></div>
+          <div class="tiny">Add daily candles for ${state.selected} to range-trade-data.json to enable real backtests.</div>
+        </div>
+      ` : active.blockedByCashGuard ? `
+        <div class="ledger-item">
+          <div class="ledger-row"><strong>Cash Guard active</strong><span class="negative">No trade</span></div>
+          <div class="tiny">Rolling walk-forward check did not pass: ${active.walk.passes}/${active.walk.windows.length} positive windows, ${signedPct(active.walk.avgReturnPct)} average return.</div>
+        </div>
+      ` : active.ledger.length ? active.ledger.map((trade) => `
+        <div class="ledger-item">
+          <div class="ledger-row"><strong>Harvest #${trade.id} · ${trade.side === 'short' ? 'Short' : 'Long'} · ${trade.triggerPct.toFixed(1)}% trigger</strong><span class="${toneClass(trade.gainPercent)}">${signedPct(trade.gainPercent)}</span></div>
+          <div class="trade-lines tiny">
+            <div class="trade-line"><span class="trade-label">${trade.side === 'short' ? 'Short' : 'Buy'}</span><span>${trade.buyDate}</span><strong>$${money(trade.buy)}</strong></div>
+            <div class="trade-line"><span class="trade-label">${trade.side === 'short' ? 'Cover' : 'Sell'}</span><span>${trade.sellDate}</span><strong>$${money(trade.sell)}</strong></div>
+          </div>
+          <div class="ledger-row tiny"><span>${trade.shares} shares</span><span class="${trade.profit >= 0 ? 'positive' : 'negative'}">${trade.profit >= 0 ? '+' : '-'}$${money(Math.abs(trade.profit))}</span></div>
+          <div class="tiny">${trade.duration} · ${trade.notes} · Balance $${money(trade.endingBal)}</div>
+        </div>
+      `).join('') : `
+        <div class="ledger-item">
+          <div class="ledger-row"><strong>No completed harvest trades</strong></div>
+          <div class="tiny">The learned trigger found turns, but no completed trade pair in this test window.</div>
+        </div>
+      `);
+    }
+
+    function renderChecklist() {
+      const checkedCount = Object.values(state.checklist).filter(Boolean).length;
+      const score = Math.round((checkedCount / CHECKS.length) * 100);
+      $('viabilityBadge').textContent = 'Viability: ' + score + '%';
+      $('viabilityBadge').style.color = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--orange)' : 'var(--red)';
+
+      $('checklist').innerHTML = CHECKS.map(([key, label, desc, tip]) => `
+        <label class="check">
+          <input type="checkbox" data-check="${key}" ${state.checklist[key] ? 'checked' : ''}>
+          <span><strong class="small label-with-tip" style="display:block;color:#ddd;">${label} <span class="tip" tabindex="0" data-tip="${attrSafe(tip)}">?</span></strong><span class="tiny">${desc}</span></span>
+        </label>
+      `).join('');
+
+      document.querySelectorAll('[data-check]').forEach((input) => {
+        input.addEventListener('change', () => {
+          state.checklist[input.dataset.check] = input.checked;
+          renderChecklist();
+          renderInsight();
+        });
+      });
+    }
+
+    function renderChart() {
+      const data = current();
+      const scenario = SCENARIOS[state.activeLedgerPeriod];
+      const chartWidth = 600;
+      const chartHeight = 230;
+      const padding = 28;
+      if (!data.historicalRows?.length) {
+        const lineOne = data.hasRealSnapshot ? `Real quote loaded for ${data.symbol}` : `No real quote or candles loaded for ${data.symbol}`;
+        const lineTwo = data.hasRealSnapshot ? 'Historical candles are needed for the oscillation plot/backtest' : `Add ${data.symbol} rows to range-trade-data.json`;
+        $('chart').innerHTML = `
+          <rect width="${chartWidth}" height="${chartHeight}" fill="#090909"/>
+          <text x="${chartWidth / 2}" y="${chartHeight / 2 - 8}" fill="#888" font-family="monospace" font-size="13" text-anchor="middle">${lineOne}</text>
+          <text x="${chartWidth / 2}" y="${chartHeight / 2 + 14}" fill="#555" font-family="monospace" font-size="10" text-anchor="middle">${lineTwo}</text>
+        `;
+        $('chartPhaseNote').innerHTML = `
+          <div class="phase-pill analyze"><strong>Analysis phase <span class="tip" tabindex="0" data-tip="This window searches candidate reversal percentages and chooses the best learned trigger.">?</span></strong>${scenario.analyzeLabel}</div>
+          <div class="phase-pill test"><strong>${scenario.mode === 'parallel' ? 'Parallel test phase' : 'Test phase'} <span class="tip" tabindex="0" data-tip="This window applies the learned trigger without changing it and records the resulting harvest trades.">?</span></strong>${scenario.testLabel}</div>
+        `;
+        return;
+      }
+      const rowsToPoints = (rows, phase) => rows.map((row) => ({
+        date: row.date,
+        day: row.date,
+        val: Number(row.close.toFixed(2)),
+        phase
+      }));
+      const fallbackPoints = data.chartPoints.map((point) => ({ ...point, phase: 'test' }));
+      let analyzePoints = [];
+      let testPoints = [];
+      let chartPoints = fallbackPoints;
+      let chartAnalyzeRows = [];
+      let chartTestRows = [];
+
+      if (data.historicalRows?.length) {
+        if (state.activeLedgerPeriod === '3m_3m') {
+          chartAnalyzeRows = nearestRows(data.historicalRows, '2025-12-15', '2026-03-14');
+          chartTestRows = nearestRows(data.historicalRows, '2026-03-15', '2026-06-15');
+          analyzePoints = rowsToPoints(chartAnalyzeRows, 'analyze');
+          testPoints = rowsToPoints(chartTestRows, 'test');
+          chartPoints = [...analyzePoints, ...testPoints];
+        } else if (state.activeLedgerPeriod === '3m_1m') {
+          chartAnalyzeRows = nearestRows(data.historicalRows, '2026-02-15', '2026-05-15');
+          chartTestRows = nearestRows(data.historicalRows, '2026-05-16', '2026-06-15');
+          analyzePoints = rowsToPoints(chartAnalyzeRows, 'analyze');
+          testPoints = rowsToPoints(chartTestRows, 'test');
+          chartPoints = [...analyzePoints, ...testPoints];
+        } else if (state.activeLedgerPeriod === '1m_roll_3m') {
+          chartAnalyzeRows = nearestRows(data.historicalRows, '2026-02-15', '2026-03-14');
+          chartTestRows = nearestRows(data.historicalRows, '2026-03-15', '2026-06-15');
+          analyzePoints = rowsToPoints(chartAnalyzeRows, 'analyze');
+          testPoints = rowsToPoints(chartTestRows, 'test');
+          chartPoints = [...analyzePoints, ...testPoints];
+        } else {
+          chartAnalyzeRows = nearestRows(data.historicalRows, '2026-03-15', '2026-06-15');
+          chartTestRows = chartAnalyzeRows;
+          chartPoints = rowsToPoints(chartAnalyzeRows, 'parallel');
+          analyzePoints = chartPoints;
+          testPoints = chartPoints;
+        }
+      } else if (scenario.mode !== 'parallel') {
+        const split = scenario.testMonths === 1 ? Math.max(1, fallbackPoints.length - Math.ceil(fallbackPoints.length / 3)) : Math.ceil(fallbackPoints.length / 2);
+        analyzePoints = fallbackPoints.slice(0, split).map((point) => ({ ...point, phase: 'analyze' }));
+        testPoints = fallbackPoints.slice(split).map((point) => ({ ...point, phase: 'test' }));
+        chartPoints = [...analyzePoints, ...testPoints];
+      }
+
+      if (chartPoints.length < 2) chartPoints = fallbackPoints;
+      const testStartIndex = scenario.mode === 'parallel' ? 0 : analyzePoints.length;
+      const testEndIndex = chartPoints.length - 1;
+      const totalPoints = chartPoints.length;
+      const prices = chartPoints.map((p) => p.val);
+      const minVal = Math.min(...prices) * 0.95;
+      const maxVal = Math.max(...prices) * 1.05;
+      const getX = (index, total) => padding + (index / (total - 1)) * (chartWidth - 2 * padding);
+      const getY = (val) => chartHeight - padding - ((val - minVal) / (maxVal - minVal)) * (chartHeight - 2 * padding);
+      const effectiveMode = state.strategyMode === 'cash_guard' ? 'long' : state.strategyMode;
+      const rollingReplay = state.activeLedgerPeriod === '1m_roll_3m' ? rollingHarvestReplay(data.historicalRows, effectiveMode) : null;
+      const learned = rollingReplay ? null : learnHarvestTrigger(chartAnalyzeRows, effectiveMode);
+      const learnedEvents = rollingReplay ? [] : learned ? detectHarvestTurns(chartAnalyzeRows, learned.thresholdPct) : [];
+      const walk = walkForwardHarvest(data.historicalRows, effectiveMode);
+      const testReplay = state.strategyMode === 'cash_guard' && !walk.good
+        ? { turns: [], trades: [] }
+        : rollingReplay || (learned ? simulateHarvestTrades(chartTestRows, learned.thresholdPct, effectiveMode) : { turns: [], trades: [] });
+      const pointIndexByDate = new Map(chartPoints.map((point, index) => [point.date, index]));
+
+      const linePath = chartPoints.reduce((path, p, i) => `${path}${i === 0 ? 'M' : 'L'} ${getX(i, totalPoints).toFixed(2)} ${getY(p.val).toFixed(2)} `, '');
+      const areaPath = `${linePath} L ${getX(chartPoints.length - 1, totalPoints)} ${chartHeight - padding} L ${getX(0, totalPoints)} ${chartHeight - padding} Z`;
+      const testStartX = getX(testStartIndex, totalPoints);
+      const analyzeEndX = scenario.mode === 'parallel' ? chartWidth - padding : getX(Math.max(0, testStartIndex - 1), totalPoints);
+      const testWidth = Math.max(0, getX(testEndIndex, totalPoints) - testStartX);
+      const analyzeWidth = Math.max(0, analyzeEndX - padding);
+      const phaseBackground = scenario.mode === 'parallel' ? `
+        <rect x="${padding}" y="0" width="${chartWidth - 2 * padding}" height="${chartHeight}" fill="#5b9bd5" opacity="0.08"/>
+        <rect x="${padding}" y="8" width="${chartWidth - 2 * padding}" height="${chartHeight - 16}" fill="none" stroke="#4caf50" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.75"/>
+        <text x="${padding + 10}" y="20" fill="#5b9bd5" font-family="monospace" font-size="10" font-weight="700">ANALYZE + OVERLAY TEST</text>
+      ` : `
+        <rect x="${padding}" y="0" width="${analyzeWidth}" height="${chartHeight}" fill="#5b9bd5" opacity="0.08"/>
+        <rect x="${testStartX}" y="0" width="${testWidth}" height="${chartHeight}" fill="#4caf50" opacity="0.08"/>
+        <line x1="${testStartX}" y1="0" x2="${testStartX}" y2="${chartHeight}" stroke="#333" stroke-width="1.5" stroke-dasharray="5 5"/>
+        <text x="${padding + 10}" y="20" fill="#5b9bd5" font-family="monospace" font-size="10" font-weight="700">ANALYZE ${scenario.analyzeMonths}M</text>
+        <text x="${testStartX + 10}" y="20" fill="#4caf50" font-family="monospace" font-size="10" font-weight="700">TEST ${scenario.testMonths}M</text>
+      `;
+      const popupPlacement = (anchorX, anchorY, width, height) => {
+        const x = Math.max(padding, Math.min(chartWidth - padding - width, anchorX - width / 2));
+        const hasRoomAbove = anchorY - height - 18 >= 24;
+        const y = hasRoomAbove
+          ? anchorY - height - 18
+          : Math.min(chartHeight - padding - height, anchorY + 18);
+        const pointer = hasRoomAbove
+          ? `M ${anchorX - 5} ${y + height} L ${anchorX} ${y + height + 6} L ${anchorX + 5} ${y + height} Z`
+          : `M ${anchorX - 5} ${y} L ${anchorX} ${y - 6} L ${anchorX + 5} ${y} Z`;
+        return { x, y, pointer };
+      };
+
+      const activeResult = runBacktestEngine(state.activeLedgerPeriod);
+      const baseline = buyHoldBaseline(state.activeLedgerPeriod);
+      const buyHoldLine = baseline && testEndIndex > testStartIndex ? `
+        <line x1="${getX(testStartIndex, totalPoints)}" y1="${getY(chartPoints[testStartIndex].val)}" x2="${getX(testEndIndex, totalPoints)}" y2="${getY(chartPoints[testEndIndex].val)}" stroke="#ddd" stroke-width="2" stroke-dasharray="6 4" opacity="0.75"/>
+        <text x="${Math.max(padding + 10, getX(testEndIndex, totalPoints) - 100)}" y="${Math.max(32, getY(chartPoints[testEndIndex].val) - 8)}" fill="#ddd" font-family="monospace" font-size="10" font-weight="700">B&H ${signedPct(baseline.returnPct)}</text>
+      ` : '';
+      const summaryLabel = !activeResult.unavailable && baseline ? `
+        <rect x="${padding + 8}" y="${chartHeight - 31}" width="244" height="21" rx="4" fill="#090909" opacity="0.86" stroke="#2a2a2a"/>
+        <text x="${padding + 18}" y="${chartHeight - 16}" fill="${activeResult.overallReturnPct >= baseline.returnPct ? '#4caf50' : '#f0a040'}" font-family="monospace" font-size="10" font-weight="700">HARVEST ${signedPct(activeResult.overallReturnPct)} vs B&H ${signedPct(baseline.returnPct)}</text>
+      ` : '';
+
+      const learnedMarkers = (learned || rollingReplay) ? [...learnedEvents, ...testReplay.turns].map((turn) => {
+        const index = pointIndexByDate.get(turn.pivot.date);
+        if (index === undefined) return '';
+        const pivotX = getX(index, totalPoints);
+        const pivotY = getY(turn.pivot.close);
+        const confirmIndex = pointIndexByDate.get(turn.confirm.date);
+        const confirmX = confirmIndex === undefined ? null : getX(confirmIndex, totalPoints);
+        const confirmY = confirmIndex === undefined ? null : getY(turn.confirm.close);
+        const popupWidth = 180;
+        const popupHeight = 54;
+        const popup = popupPlacement(pivotX, pivotY, popupWidth, popupHeight);
+        const pivotLabel = turn.type === 'peak' ? 'Swing high' : 'Swing low';
+        const confirmLabel = turn.type === 'peak' ? 'Down reversal' : 'Up reversal';
+        return `
+          <g class="pivot-hover" tabindex="0" aria-label="${pivotLabel} on ${turn.pivot.date} at $${money(turn.pivot.close)}, confirmed ${turn.confirm.date} by ${signedPct(turn.movePct || percentChange(turn.pivot.close, turn.confirm.close))}">
+            ${confirmIndex === undefined ? '' : `<line x1="${pivotX}" y1="${pivotY}" x2="${confirmX}" y2="${confirmY}" stroke="#9b7bea" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.45"/>`}
+            <circle class="pivot-ring" cx="${pivotX}" cy="${pivotY}" r="12" fill="none" stroke="#9b7bea" stroke-width="2.5"/>
+            <circle class="pivot-marker" cx="${pivotX}" cy="${pivotY}" r="6" fill="#9b7bea" opacity="0.9" stroke="#0d0d0d" stroke-width="2"/>
+            ${confirmIndex === undefined ? '' : `
+              <g class="related-confirm">
+                <line x1="${confirmX - 7}" y1="${confirmY}" x2="${confirmX + 7}" y2="${confirmY}" stroke="#9b7bea" stroke-width="2"/>
+                <line x1="${confirmX}" y1="${confirmY - 7}" x2="${confirmX}" y2="${confirmY + 7}" stroke="#9b7bea" stroke-width="2"/>
+              </g>
+            `}
+            <g class="pivot-popup">
+              <rect x="${popup.x}" y="${popup.y}" width="${popupWidth}" height="${popupHeight}" rx="5" fill="#050505" stroke="#333"/>
+              <path d="${popup.pointer}" fill="#050505" stroke="#333"/>
+              <text x="${popup.x + 9}" y="${popup.y + 15}" fill="#fff" font-family="monospace" font-size="10" font-weight="700">${pivotLabel} $${money(turn.pivot.close)}</text>
+              <text x="${popup.x + 9}" y="${popup.y + 30}" fill="#aaa" font-family="monospace" font-size="9">Pivot ${turn.pivot.date}</text>
+              <text x="${popup.x + 9}" y="${popup.y + 43}" fill="#aaa" font-family="monospace" font-size="9">${confirmLabel} ${turn.confirm.date}</text>
+              <text x="${popup.x + 9}" y="${popup.y + 53}" fill="#777" font-family="monospace" font-size="8">${signedPct(turn.movePct || percentChange(turn.pivot.close, turn.confirm.close))} move · ${turn.triggerPct.toFixed(1)}% trigger</text>
+            </g>
+          </g>
+        `;
+      }).join('') : '';
+
+      const tradeMarkers = testReplay.trades.map((trade) => {
+        const buyIndex = pointIndexByDate.get(trade.buyDate);
+        const sellIndex = pointIndexByDate.get(trade.sellDate);
+        if (buyIndex === undefined && sellIndex === undefined) return '';
+        const entryX = buyIndex === undefined ? null : getX(buyIndex, totalPoints);
+        const entryY = buyIndex === undefined ? null : getY(trade.buy);
+        const exitX = sellIndex === undefined ? entryX : getX(sellIndex, totalPoints);
+        const exitY = sellIndex === undefined ? entryY : getY(trade.sell);
+        const popupWidth = 186;
+        const popupHeight = 58;
+        const popup = popupPlacement(exitX, exitY, popupWidth, popupHeight);
+        const allocation = state.capital * (state.allocationPct / 100);
+        const shares = Math.floor(allocation / trade.buy);
+        const profitPerShare = trade.side === 'short' ? trade.buy - trade.sell : trade.sell - trade.buy;
+        const profit = shares * profitPerShare;
+        const profitText = `${profit >= 0 ? '+' : '-'}$${money(Math.abs(profit))}`;
+        const returnPct = tradeReturnPct(trade);
+        const entryLabel = trade.side === 'short' ? 'Short' : 'Buy';
+        const exitLabel = trade.side === 'short' ? 'Cover' : 'Sell';
+        return `
+          <g class="trade-hover" tabindex="0" aria-label="Trade ${trade.id}: ${entryLabel} ${trade.buyDate} at $${money(trade.buy)}, ${exitLabel} ${trade.sellDate} at $${money(trade.sell)}, ${signedPct(returnPct)}">
+            ${buyIndex === undefined ? '' : `
+              <g class="related-entry">
+                <line x1="${entryX - 9}" y1="${entryY - 9}" x2="${entryX - 3}" y2="${entryY - 9}" stroke="#4caf50" stroke-width="2"/>
+                <line x1="${entryX - 9}" y1="${entryY - 9}" x2="${entryX - 9}" y2="${entryY - 3}" stroke="#4caf50" stroke-width="2"/>
+                <line x1="${entryX + 9}" y1="${entryY + 9}" x2="${entryX + 3}" y2="${entryY + 9}" stroke="#4caf50" stroke-width="2"/>
+                <line x1="${entryX + 9}" y1="${entryY + 9}" x2="${entryX + 9}" y2="${entryY + 3}" stroke="#4caf50" stroke-width="2"/>
+              </g>
+              <path class="entry-marker" d="M ${entryX} ${entryY - 8} l -6 10 h 12 Z" fill="#4caf50" stroke="#0d0d0d" stroke-width="1.5"/>
+            `}
+            ${sellIndex === undefined ? '' : `
+              <circle class="exit-ring" cx="${exitX}" cy="${exitY}" r="12" fill="none" stroke="#f0a040" stroke-width="2.5"/>
+              <path class="exit-marker" d="M ${exitX} ${exitY + 8} l -6 -10 h 12 Z" fill="#f0a040" stroke="#0d0d0d" stroke-width="1.5"/>
+              <g class="trade-popup">
+                <rect x="${popup.x}" y="${popup.y}" width="${popupWidth}" height="${popupHeight}" rx="5" fill="#050505" stroke="#333"/>
+                <path d="${popup.pointer}" fill="#050505" stroke="#333"/>
+                <text x="${popup.x + 9}" y="${popup.y + 15}" fill="#fff" font-family="monospace" font-size="10" font-weight="700">Harvest #${trade.id} ${signedPct(returnPct)} ${profitText}</text>
+                <path d="M ${popup.x + 13} ${popup.y + 22} l -5 8 h 10 Z" fill="#4caf50" stroke="#0d0d0d" stroke-width="1"/>
+                <text x="${popup.x + 25}" y="${popup.y + 31}" fill="#aaa" font-family="monospace" font-size="9">${entryLabel} ${trade.buyDate} $${money(trade.buy)}</text>
+                <path d="M ${popup.x + 13} ${popup.y + 48} l -5 -8 h 10 Z" fill="#f0a040" stroke="#0d0d0d" stroke-width="1"/>
+                <text x="${popup.x + 25}" y="${popup.y + 44}" fill="#aaa" font-family="monospace" font-size="9">${exitLabel} ${trade.sellDate} $${money(trade.sell)}</text>
+                <text x="${popup.x + 9}" y="${popup.y + 55}" fill="#777" font-family="monospace" font-size="8">${trade.duration} · ${shares} shares · ${trade.triggerPct.toFixed(1)}% trigger</text>
+              </g>
+            `}
+          </g>
+        `;
+      }).join('');
+
+      const learnedLabel = learned || rollingReplay ? `
+        <text x="${chartWidth - padding - 190}" y="${chartHeight - 12}" fill="#9b7bea" font-family="monospace" font-size="10" font-weight="700">${rollingReplay ? `ROLLING AVG TRIGGER ${rollingReplay.avgTriggerPct.toFixed(1)}%` : `LEARNED TRIGGER ${learned.thresholdPct.toFixed(1)}%`}</text>
+      ` : '';
+
+      $('chart').innerHTML = `
+        <defs>
+          <linearGradient id="chartLineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#4caf50"/>
+            <stop offset="52%" stop-color="#5b9bd5"/>
+            <stop offset="100%" stop-color="#f0a040"/>
+          </linearGradient>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5b9bd5" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="#5b9bd5" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4caf50" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#4caf50" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <rect width="${chartWidth}" height="${chartHeight}" fill="#090909"/>
+        ${phaseBackground}
+        ${[0.25, 0.5, 0.75].map((ratio) => `<line x1="0" y1="${chartHeight * ratio}" x2="${chartWidth}" y2="${chartHeight * ratio}" stroke="#1a1a1a"/>`).join('')}
+        <path d="${areaPath}" fill="url(#areaGrad)"/>
+        <path d="${linePath}" fill="none" stroke="url(#chartLineGrad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        ${buyHoldLine}
+        ${chartPoints.map((p, i) => {
+          const color = p.phase === 'analyze' ? '#5b9bd5' : p.phase === 'test' ? '#4caf50' : '#777';
+          return `<circle cx="${getX(i, totalPoints)}" cy="${getY(p.val)}" r="4.5" fill="${color}" stroke="#0d0d0d" stroke-width="1.5"/>`;
+        }).join('')}
+        ${learnedMarkers}
+        ${tradeMarkers}
+        ${learnedLabel}
+        ${summaryLabel}
+      `;
+
+      $('chartPhaseNote').innerHTML = `
+        <div class="phase-pill analyze"><strong>Analysis phase <span class="tip" tabindex="0" data-tip="This window searches candidate reversal percentages and chooses the best learned trigger.">?</span></strong>${scenario.analyzeLabel}${rollingReplay ? `<br>Rolling avg trigger: ${rollingReplay.avgTriggerPct.toFixed(1)}%` : learned ? `<br>Learned trigger: ${learned.thresholdPct.toFixed(1)}% from ${learned.trades} trades` : ''}</div>
+        <div class="phase-pill test"><strong>${scenario.mode === 'parallel' ? 'Parallel test phase' : 'Test phase'} <span class="tip" tabindex="0" data-tip="This window applies the learned trigger without changing it and records the resulting harvest trades.">?</span></strong>${scenario.testLabel}${rollingReplay ? `<br>Relearned from prior ~1M each day` : learned ? `<br>Applied trigger: ${learned.thresholdPct.toFixed(1)}%` : ''}</div>
+      `;
+    }
+
+    function renderControls() {
+      const data = current();
+      $('chartTitle').textContent = data.symbol + ' Harvest Replay';
+    }
+
+    function renderInsight() {
+      const data = current();
+      const scenarioSummary = cycleSummaryForScenario(state.activeLedgerPeriod);
+      const activeResult = runBacktestEngine(state.activeLedgerPeriod);
+      const checkedCount = Object.values(state.checklist).filter(Boolean).length;
+      const score = Math.round((checkedCount / CHECKS.length) * 100);
+      let tone = 'red';
+      let verdict = 'Low viability';
+      if (score >= 80) {
+        tone = 'green';
+        verdict = 'High viability';
+      } else if (score >= 60) {
+        tone = 'orange';
+        verdict = 'Moderate viability';
+      }
+
+      $('insightTitle').textContent = data.symbol + ' Harvest Read';
+      $('insightCallout').className = 'callout ' + tone;
+      $('insightCallout').innerHTML = scenarioSummary
+        ? `<strong>${verdict}:</strong> ${data.symbol} used ${scenarioSummary.triggerLabel} reversal training and produced ${scenarioSummary.testTrades} test harvest trades.`
+        : `<strong>${verdict}:</strong> Add historical candles for ${data.symbol} to train and test a volatility-harvesting trigger.`;
+      $('insightReport').innerHTML = `
+        <p><strong>Training:</strong> ${scenarioSummary ? scenarioSummary.triggerLabel + ' reversal' : 'Waiting for historical candles'}. ${state.activeLedgerPeriod === '1m_roll_3m' ? 'Rolling mode relearns from the prior month before each test day.' : 'The test replay applies that exact percent without adapting it.'}</p>
+        <p style="margin-top:10px;"><strong>Test result:</strong> ${activeResult.unavailable ? 'No real candle backtest yet.' : `${activeResult.testTrades} harvest trades, ${activeResult.testWinRate.toFixed(0)}% win rate, ${signedPct(activeResult.avgHarvestPct)} average harvest, ${signedPct(activeResult.overallReturnPct)} test return.`}</p>
+        <p style="margin-top:10px;"><strong>Checklist effect:</strong> ${checkedCount}/${CHECKS.length} checks selected. This only changes the qualitative viability badge and this verdict color; it does not change the backtest.</p>
+        <p style="margin-top:10px;"><strong>Discipline note:</strong> This is an illustrative local model. It does not fetch live market data or provide financial advice.</p>
+      `;
+    }
+
+    function render() {
+      renderModeButtons();
+      renderPresetButtons();
+      renderSnapshot();
+      renderProfiler();
+      renderBacktester();
+      renderChecklist();
+      renderControls();
+      renderChart();
+      renderQuoteStrip();
+      renderInsight();
+      renderStatus();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('[data-mode]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.strategyMode = button.dataset.mode;
+          render();
+        });
+      });
+      $('alloc100').addEventListener('click', () => { state.allocationPct = 100; renderBacktester(); });
+      $('alloc50').addEventListener('click', () => { state.allocationPct = 50; renderBacktester(); });
+      $('compoundOn').addEventListener('click', () => { state.compoundingEnabled = true; renderBacktester(); });
+      $('compoundOff').addEventListener('click', () => { state.compoundingEnabled = false; renderBacktester(); });
+    }
+
+    bindEvents();
+    render();
+    preloadHarvestScores();
+    loadQuoteSnapshots().then(() => hydrateRealData(state.selected));
+  </script>
+</body>
+</html>
