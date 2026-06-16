@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SS304 Speed / Focus / Power Colour Model</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --panel: #1a1a1a;
+      --panel-2: #111;
+      --border: #2a2a2a;
+      --border-hover: #444;
+      --text: #fff;
+      --body: #bbb;
+      --muted: #888;
+      --dim: #555;
+      --blue: #5b9bd5;
+      --green: #4caf50;
+      --orange: #f0a040;
+      --red: #e74c3c;
+      --mono: 'SF Mono', 'Fira Code', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.65;
+      padding: 60px 24px 80px;
+    }
+
+    .page { max-width: 1180px; margin: 0 auto; }
+    a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+    a.back:hover { color: #aaa; }
+
+    header { margin-bottom: 28px; max-width: 880px; }
+    .eyebrow { color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
+    h1 { font-size: 32px; font-weight: 800; line-height: 1.15; margin-bottom: 10px; }
+    .subtitle { color: var(--muted); max-width: 780px; }
+
+    .grid { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
+    .stack { display: grid; gap: 18px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      min-width: 0;
+    }
+    .card.tight { padding: 20px; }
+    .card h2 { font-size: 18px; margin-bottom: 10px; }
+    .card h3 { font-size: 15px; margin-bottom: 10px; }
+    .small { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .tiny { color: var(--dim); font-size: 11px; line-height: 1.45; }
+    .mono { font-family: var(--mono); }
+
+    .control { margin-bottom: 16px; }
+    .card-title-row {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .machine-title-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .machine-title-line h2 { margin-bottom: 0; }
+    .machine-power-wrap {
+      width: 100%;
+      text-align: left;
+    }
+    .machine-name {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .machine-power-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .machine-power-row:last-child { margin-bottom: 0; }
+    .machine-power-row strong,
+    .machine-power-row output {
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+      white-space: nowrap;
+    }
+    .machine-power-row strong.green { color: var(--green); }
+    .machine-power-row strong.red { color: var(--red); }
+    .machine-power-row strong.blue { color: var(--blue); }
+    .machine-power-control {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .machine-power-control label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .machine-power-control .control-header { margin-bottom: 3px; }
+    .unit-input {
+      position: relative;
+    }
+    .unit-input input[type="number"] {
+      padding-right: 22px;
+      text-align: right;
+    }
+    .unit-input[data-unit="lpcm"] input { padding-right: 52px; }
+    .unit-input[data-unit="mm"] input { padding-right: 32px; }
+    .unit-input.has-sign input { padding-left: 20px; }
+    .sign-prefix {
+      position: absolute;
+      left: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #ddd;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+    .unit-input::after {
+      content: attr(data-unit);
+      position: absolute;
+      right: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 7px;
+    }
+    label, .label { color: #bbb; font-size: 12px; font-weight: 700; }
+    output { color: #fff; font-family: var(--mono); font-size: 12px; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+    input[type="range"].heat-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      height: 26px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].heat-slider::-webkit-slider-runnable-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--red) 0%, var(--orange) 38%, #747474 58%, var(--blue) 100%);
+    }
+    input[type="range"].heat-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      margin-top: -6px;
+      border: 2px solid #d7ebff;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 3px rgba(91, 155, 213, 0.18);
+    }
+    input[type="range"].heat-slider::-moz-range-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--red) 0%, var(--orange) 38%, #747474 58%, var(--blue) 100%);
+    }
+    input[type="range"].heat-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d7ebff;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 3px rgba(91, 155, 213, 0.18);
+    }
+    input[type="range"].density-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      height: 26px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].density-slider::-webkit-slider-runnable-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 45%, var(--orange) 72%, var(--red) 100%);
+    }
+    input[type="range"].density-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      margin-top: -6px;
+      border: 2px solid #fff0e8;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(240, 160, 64, 0.18);
+    }
+    input[type="range"].density-slider::-moz-range-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 45%, var(--orange) 72%, var(--red) 100%);
+    }
+    input[type="range"].density-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #fff0e8;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(240, 160, 64, 0.18);
+    }
+    input[type="range"].deviation-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      height: 26px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].deviation-slider::-webkit-slider-runnable-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 32%, #747474 36%, var(--orange) 68%, var(--red) 100%);
+    }
+    input[type="range"].deviation-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      margin-top: -6px;
+      border: 2px solid #fff0e8;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(240, 160, 64, 0.18);
+    }
+    input[type="range"].deviation-slider::-moz-range-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 32%, #747474 36%, var(--orange) 68%, var(--red) 100%);
+    }
+    input[type="range"].deviation-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #fff0e8;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(240, 160, 64, 0.18);
+    }
+    input[type="number"] {
+      width: 100%;
+      background: #090909;
+      color: var(--text);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+      outline: none;
+    }
+    input[type="number"]:focus { border-color: var(--blue); }
+
+    .two-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .density-control { grid-column: 1 / -1; }
+    .slider-scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1;
+      margin-top: 2px;
+    }
+    .focus-editor {
+      display: grid;
+      gap: 10px;
+    }
+    .focus-slider-card {
+      width: 100%;
+    }
+    .focus-readouts {
+      display: grid;
+      gap: 5px;
+    }
+    .readout-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+    input[type="range"].focus-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      height: 26px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].focus-slider::-webkit-slider-runnable-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 28%, var(--red) 50%, #747474 72%, var(--blue) 100%);
+    }
+    input[type="range"].focus-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      margin-top: -6px;
+      border: 2px solid #ffd7d7;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.18);
+    }
+    input[type="range"].focus-slider::-moz-range-track {
+      height: 8px;
+      border: 1px solid #333;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue) 0%, #747474 28%, var(--red) 50%, #747474 72%, var(--blue) 100%);
+    }
+    input[type="range"].focus-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffd7d7;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.18);
+    }
+    .focus-slider-scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1;
+      margin-top: 2px;
+    }
+    .readout-line span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--dim);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .readout-line strong {
+      display: block;
+      color: #ddd;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.2;
+      text-align: right;
+      white-space: nowrap;
+    }
+    button {
+      background: #111;
+      color: #ccc;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 0.12s, background 0.12s, color 0.12s;
+    }
+    button:hover { background: #181818; border-color: #555; color: #fff; }
+
+    .tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      margin-left: 4px;
+      border: 1px solid #333;
+      border-radius: 50%;
+      color: var(--blue);
+      font-size: 10px;
+      line-height: 1;
+      cursor: help;
+      vertical-align: middle;
+    }
+    .tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      z-index: 30;
+      width: min(310px, 78vw);
+      transform: translateX(-50%) translateY(4px);
+      opacity: 0;
+      pointer-events: none;
+      background: #050505;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #ddd;
+      box-shadow: 0 14px 36px rgba(0,0,0,0.45);
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.45;
+      text-transform: none;
+      letter-spacing: 0;
+      white-space: pre-line;
+      transition: opacity 0.12s, transform 0.12s;
+    }
+    .tip:hover::after, .tip:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .pattern-card { overflow: visible; }
+    .pattern-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
+    .badge {
+      display: inline-block;
+      color: var(--green);
+      background: #101f10;
+      border: 1px solid #284528;
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .proof-title {
+      color: #ccc;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .swatch-grid {
+      --cols: 15;
+      display: grid;
+      grid-template-columns: repeat(var(--cols), minmax(28px, 1fr));
+      gap: 5px;
+      padding: 10px;
+      background: #090909;
+      border: 1px solid #222;
+      border-radius: 12px;
+      overflow: visible;
+    }
+    .swatch {
+      position: relative;
+      min-height: 50px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 3px;
+      background: #777;
+      cursor: help;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -14px 24px rgba(0,0,0,0.16);
+    }
+    .swatch::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.16), transparent 18%, rgba(0,0,0,0.12) 72%, rgba(255,255,255,0.08)),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 4px);
+      mix-blend-mode: overlay;
+      opacity: var(--texture, 0.45);
+      border-radius: inherit;
+      pointer-events: none;
+    }
+    .swatch:hover { outline: 2px solid var(--blue); outline-offset: 2px; z-index: 10; }
+    .swatch .popup {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      z-index: 40;
+      width: 230px;
+      transform: translateX(-50%) translateY(4px);
+      opacity: 0;
+      pointer-events: none;
+      background: #050505;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-shadow: 0 16px 44px rgba(0,0,0,0.5);
+      color: #ddd;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .swatch .popup::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -12px;
+      height: 12px;
+    }
+    .swatch:hover .popup,
+    .swatch .popup:hover {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+    .popup strong { display: block; color: #fff; margin-bottom: 5px; }
+    .popup .row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #171717; padding-top: 4px; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: #aaa; }
+    .popup .explainable {
+      position: relative;
+      cursor: help;
+      color: #ccc;
+      border-bottom: 1px dotted #555;
+    }
+    .popup .explainable::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 8px);
+      z-index: 60;
+      width: 220px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      background: #050505;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 9px 10px;
+      color: #ddd;
+      box-shadow: 0 14px 36px rgba(0,0,0,0.5);
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      white-space: normal;
+      transition: opacity 0.12s, transform 0.12s;
+    }
+    .popup .explainable:hover::after,
+    .popup .explainable:focus-visible::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .axis { display: flex; justify-content: space-between; margin: 7px 11px 0; color: var(--dim); font-family: var(--mono); font-size: 10px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(92px, 112px)) minmax(180px, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 12px;
+      min-width: 0;
+    }
+    .metric span { display: block; color: var(--dim); font-size: 10px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 4px; }
+    .metric strong { display: block; color: #ddd; font-family: var(--mono); font-size: 17px; overflow-wrap: anywhere; }
+    .metric.wide strong { white-space: nowrap; }
+    .metric.green strong { color: var(--green); }
+    .metric.orange strong { color: var(--orange); }
+    .metric.blue strong { color: var(--blue); }
+    .metric.red strong { color: var(--red); }
+
+    .beam-panel {
+      grid-column: 1 / -1;
+      margin: 2px 0 16px;
+    }
+    .beam-panel svg { width: 100%; height: auto; margin-top: 8px; }
+    .beam-numbers {
+      display: grid;
+      gap: 5px;
+      grid-column: 1 / -1;
+      margin: -10px 0 12px;
+    }
+    .beam-numbers .readout-line span {
+      color: var(--dim);
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .beam-numbers .readout-line strong {
+      color: #ddd;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .reference-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+      grid-template-areas:
+        "proof-600 proof-50"
+        "proof-700 empty"
+        "proof-500 empty";
+      gap: 12px;
+      align-items: start;
+    }
+    .mini-proof[data-proof="600"] { grid-area: proof-600; }
+    .mini-proof[data-proof="700"] { grid-area: proof-700; }
+    .mini-proof[data-proof="500"] { grid-area: proof-500; }
+    .mini-proof[data-proof="50"] { grid-area: proof-50; }
+    .mini-proof {
+      background: var(--panel-2);
+      border: 1px solid #222;
+      border-radius: 12px;
+      cursor: pointer;
+      padding: 12px;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .mini-proof:hover,
+    .mini-proof:focus-visible {
+      border-color: #555;
+      outline: none;
+    }
+    .mini-proof.active { border-color: var(--blue); background: #111820; }
+    .mini-proof h3 { font-size: 12px; margin-bottom: 0; }
+    .mini-proof p { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .mini-grid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px; }
+    .mini-swatch { height: 16px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.12); }
+    .subtle-tag {
+      color: var(--dim);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .simulation-label {
+      display: block;
+      margin: 0 0 5px;
+    }
+    .mini-proof-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .photo-peek {
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .camera-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 7px;
+      border-radius: 8px;
+      color: #ccc;
+    }
+    .camera-button svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+    }
+    .camera-button .subtle-tag {
+      font-size: 9px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    .photo-preview {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 50;
+      width: min(420px, 76vw);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 0.12s, transform 0.12s;
+      background: #050505;
+      border: 1px solid #333;
+      border-radius: 10px;
+      box-shadow: 0 18px 48px rgba(0,0,0,0.55);
+      padding: 8px;
+    }
+    .photo-preview img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+    }
+    .photo-preview span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+    .photo-peek:hover .photo-preview,
+    .photo-peek:focus-within .photo-preview {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .explain-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .explain { background: var(--panel-2); border: 1px solid #222; border-radius: 10px; padding: 13px; }
+    .explain h3 { color: #ddd; font-size: 13px; margin-bottom: 6px; }
+    .explain p { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .oxide-reference {
+      margin-top: 18px;
+    }
+    .oxide-scale {
+      margin-top: 14px;
+      position: relative;
+    }
+    .oxide-gradient {
+      height: 42px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.24), inset 0 -18px 30px rgba(0,0,0,0.2);
+    }
+    .finish-scale {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr 1fr 0.9fr;
+      gap: 4px;
+      margin-top: 10px;
+    }
+    .finish-zone {
+      min-height: 32px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: rgba(255,255,255,0.78);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .finish-zone:nth-child(1) { background: linear-gradient(180deg, #3a382f, #151515); }
+    .finish-zone:nth-child(2) { background: linear-gradient(180deg, #2c3a45, #151515); }
+    .finish-zone:nth-child(3) { background: linear-gradient(180deg, #434036, #151515); }
+    .finish-zone:nth-child(4) { background: linear-gradient(180deg, #3a312f, #121212); }
+    .finish-zone:nth-child(5) { background: linear-gradient(180deg, #2a2926, #080808); color: rgba(231,76,60,0.95); }
+    .oxide-ticks {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 7px;
+    }
+    .oxide-ticks span {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .oxide-hover {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      bottom: calc(100% + 10px);
+      min-width: 180px;
+      transform: translateX(-50%);
+      opacity: 0;
+      pointer-events: none;
+      background: #050505;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 9px 10px;
+      box-shadow: 0 14px 36px rgba(0,0,0,0.5);
+      color: #ddd;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .oxide-hover.visible { opacity: 1; }
+    .oxide-hover strong {
+      display: block;
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    code { font-family: var(--mono); color: var(--orange); background: #080808; border: 1px solid #222; border-radius: 4px; padding: 1px 4px; }
+
+    @media (max-width: 980px) {
+      .grid, .reference-grid, .explain-grid { grid-template-columns: 1fr; }
+      .reference-grid {
+        grid-template-areas:
+          "proof-600"
+          "proof-700"
+          "proof-500"
+          "proof-50";
+      }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      body { padding: 36px 16px 60px; }
+      h1 { font-size: 26px; }
+      .card { padding: 18px; border-radius: 14px; }
+      .pattern-head { display: block; }
+      .badge { margin-top: 8px; }
+      .swatch-grid { grid-template-columns: repeat(5, minmax(34px, 1fr)); }
+      .metrics, .two-inputs { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="index.html">← Back to Laser Experiments</a>
+
+    <header>
+      <p class="eyebrow">AISI 304 BA · xTool F2 IR</p>
+      <h1>SS304 Speed / Focus / Power Colour Model</h1>
+      <p class="subtitle">Explore how scan speed, focus offset, power, and line density may change sustained heat, accumulated oxide thickness, and the resulting stainless colour family. The reference profiles are tuned around the attached 15-59% power proofs at 500, 600, 700, and 50 mm/s.</p>
+    </header>
+
+    <main class="grid">
+      <section class="stack">
+        <article class="card tight">
+          <p class="eyebrow">Controls</p>
+          <div class="card-title-row">
+            <div class="machine-title-line">
+              <h2>Machine Setup</h2>
+              <div class="machine-name">xTool F2 IR</div>
+            </div>
+            <div class="machine-power-wrap">
+              <div class="machine-power-row"><span>Nominal max power</span><strong>5.0 W</strong></div>
+              <div class="machine-power-control">
+                <div class="control-header">
+                  <label for="powerAdjust">Power deviation <span class="tip" tabindex="0" data-tip="Use this to test a laser that behaves over- or under-powered versus the nominal 5 W F2 IR module. Negative values are cooler/blue; positive values are hotter/red. +10% means the simulation uses 5.5 W as the max source power; -10% uses 4.5 W.">?</span></label>
+                  <output id="powerAdjustOut"></output>
+                </div>
+                <input id="powerAdjust" class="deviation-slider" type="range" min="-95" max="200" step="5" value="0">
+                <div class="slider-scale" aria-hidden="true"><span>-95 cooler</span><span>0 normal</span><span>+200 hotter</span></div>
+              </div>
+              <div class="machine-power-row"><span>Effective max power</span><strong id="effectivePower"></strong></div>
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="control-header">
+              <label for="speed">Speed <span class="tip" tabindex="0" data-tip="Higher speed lowers dwell time and heat per spot. In the reference proofs, 500-700 mm/s with precise focus stays mostly straw/bronze/grey, while 50 mm/s with defocus creates strong blue, purple, and teal zones.">?</span></label>
+              <output id="speedOut"></output>
+            </div>
+            <input id="speed" class="heat-slider" type="range" min="40" max="800" step="10" value="200">
+            <div class="readout-line">
+              <span>Dwell time <span id="dwellTimeTip" class="tip" tabindex="0" data-tip="Dwell time math appears here after the model renders.">?</span></span>
+              <strong id="dwellTimeOut"></strong>
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="focus-editor">
+              <div class="focus-slider-card">
+                <div class="control-header">
+                  <label for="focus">Focus <span class="tip" tabindex="0" data-tip="0 is perfect focus and highest concentrated heat.&#10;Offset spreads the beam out and reduces peak heat.">?</span></label>
+                  <output id="focusOut"></output>
+                </div>
+                <input id="focus" class="focus-slider" type="range" min="-10" max="10" step="0.5" value="7">
+                <div class="focus-slider-scale" aria-hidden="true"><span>-10</span><span>0 hot</span><span>+10</span></div>
+              </div>
+              <div class="focus-readouts">
+                <div class="readout-line">
+                  <span>Beam width <span id="beamWidthTip" class="tip" tabindex="0" data-tip="Beam width math appears here after the model renders.">?</span></span>
+                  <strong id="focusBeamWidthOut"></strong>
+                </div>
+                <div class="readout-line">
+                  <span>Peak density <span id="powerDensityTip" class="tip" tabindex="0" data-tip="Peak density math appears here after the model renders.">?</span></span>
+                  <strong id="powerDensityOut"></strong>
+                </div>
+                <div class="readout-line">
+                  <span>Dwell energy <span id="dwellEnergyTip" class="tip" tabindex="0" data-tip="Dwell energy math appears here after the model renders.">?</span></span>
+                  <strong id="dwellEnergyOut"></strong>
+                </div>
+                <div class="readout-line">
+                  <span>Perfect line density <span id="matchedLpcmTip" class="tip" tabindex="0" data-tip="Perfect line density is a computed LPCM suggestion, not the active setting. It uses LPCM = 10 / beam width in mm.">?</span></span>
+                  <strong id="matchedLpcmOut"></strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="two-inputs">
+            <div class="control density-control">
+              <div class="control-header">
+                <label for="lpcm">Line density <span class="tip" tabindex="0" data-tip="This is the actual LPCM used by the simulation. Low density spaces scan lines farther apart, so it runs cooler. Higher density tightens hatch spacing, stacks reheating, and runs hotter. Hatch pitch = 10 / LPCM mm.">?</span></label>
+                <output id="lpcmOut"></output>
+              </div>
+              <input id="lpcm" class="density-slider" type="range" min="100" max="1600" step="50" value="1000">
+              <div class="slider-scale" aria-hidden="true"><span>100 cooler</span><span>1000 ref</span><span>1600 hotter</span></div>
+            </div>
+            <div class="beam-numbers">
+              <div class="readout-line"><span>Hatch pitch <span id="hatchPitchTip" class="tip" tabindex="0" data-tip="Hatch pitch math appears here after the model renders.">?</span></span><strong id="hatchPitchOut"></strong></div>
+              <div class="readout-line"><span>Over/under <span id="scanDeltaTip" class="tip" tabindex="0" data-tip="Over/under math appears here after the model renders.">?</span></span><strong id="scanDeltaOut"></strong></div>
+            </div>
+            <div class="beam-panel">
+              <div class="control-header">
+                <span class="label">Focus cross-section <span class="tip" tabindex="0" data-tip="The blue curve is the estimated beam footprint at the material. The dashed hatch lines are adjacent 1000 LPCM scan lines. Wider than pitch means overscan/overlap; narrower means underscan/gaps.">?</span></span>
+                <output id="scanModeOut"></output>
+              </div>
+              <svg id="beamSvg" viewBox="0 0 320 96" role="img" aria-label="Beam width and scan pitch cross-section"></svg>
+            </div>
+            <div class="beam-numbers">
+              <div class="readout-line"><span>Scan heat density <span id="scanHeatDensityTip" class="tip" tabindex="0" data-tip="Scan heat density math appears here after the model renders.">?</span></span><strong id="scanHeatDensityOut"></strong></div>
+              <div class="readout-line"><span>Oxide thickness <span id="oxideThicknessTip" class="tip" tabindex="0" data-tip="Oxide thickness math appears here after the model renders.">?</span></span><strong id="oxideThicknessOut"></strong></div>
+            </div>
+            <div class="control">
+              <div class="control-header">
+                <label for="passes">Cross passes <span class="tip" tabindex="0" data-tip="UI kept for context, but pass contribution is currently disabled in the simulation because the earlier cross-pass heat model was incorrect. Changing this value will not affect the colours yet.">?</span></label>
+              </div>
+              <input id="passes" type="number" min="1" max="4" step="1" value="2">
+            </div>
+          </div>
+
+          <div class="two-inputs">
+            <div class="control">
+              <div class="control-header">
+                <label for="minPower">Min power</label>
+              </div>
+              <input id="minPower" type="number" min="1" max="95" step="1" value="15">
+            </div>
+            <div class="control">
+              <div class="control-header">
+                <label for="maxPower">Max power</label>
+              </div>
+              <input id="maxPower" type="number" min="2" max="100" step="1" value="59">
+            </div>
+          </div>
+
+        </article>
+
+        <article class="card tight">
+          <p class="eyebrow">Read Me</p>
+          <h2>What This Model Is Doing</h2>
+          <p class="small">The grid estimates <strong>scan heat density</strong>, converts that into an approximate oxide-film thickness, then maps the thickness into an interference colour family. It intentionally exaggerates the difference between precise focus and +7 defocus because that is the most important visual difference in the reference proof.</p>
+          <p class="tiny" style="margin-top:10px;">Treat this as a palette intuition builder. Real colour depends on cleaning, alloy batch, polish, humidity, scan path, actual optical power, and camera white balance.</p>
+        </article>
+      </section>
+
+      <section class="stack">
+        <article class="card pattern-card">
+          <div class="pattern-head">
+            <div>
+              <p class="eyebrow">Live Test Pattern</p>
+              <h2 id="patternName"></h2>
+              <p class="small">Hover any swatch for the modeled heat, oxide thickness, and colour state.</p>
+            </div>
+            <span class="badge" id="zoneBadge"></span>
+          </div>
+          <div class="proof-title" id="proofTitle"></div>
+          <div class="swatch-grid" id="swatchGrid"></div>
+          <div class="axis"><span id="axisMin"></span><span>Power sweep</span><span id="axisMax"></span></div>
+
+          <div class="metrics">
+            <div class="metric blue"><span>Center Power</span><strong id="centerPower"></strong></div>
+            <div class="metric orange"><span>Scan Heat</span><strong id="heatIndex"></strong></div>
+            <div class="metric green"><span>Oxide Estimate</span><strong id="oxideNm"></strong></div>
+            <div class="metric wide"><span>Colour Family</span><strong id="colorFamily"></strong></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <p class="eyebrow">Reference From The Photo</p>
+          <h2>Four Proof Profiles</h2>
+          <p class="small" style="margin-bottom:12px;">The mini grids below are simulated from the current model. Hover the camera icon to compare against the actual cropped proof area from the photo.</p>
+          <div class="reference-grid" id="referenceGrid"></div>
+        </article>
+
+        <article class="card">
+          <p class="eyebrow">Intuition</p>
+          <h2>How Speed And Focus Move Colour</h2>
+          <div class="explain-grid">
+            <div class="explain">
+              <h3>Sustained Heat <span class="tip" tabindex="0" data-tip="This is not peak temperature. It is a normalized index for how long nearby hatch lines keep the surface hot enough to grow oxide.">?</span></h3>
+              <p>Slow speed and dense 1000 LPCM hatching keep reheating the same neighbourhood. That lets oxide grow after the first bright flash has passed.</p>
+            </div>
+            <div class="explain">
+              <h3>Defocus <span class="tip" tabindex="0" data-tip="Defocus spreads the spot. On a hot machine, that can reduce harsh burning while keeping a wider area above oxidation temperature.">?</span></h3>
+              <p>At precise focus the same nominal power can be too sharp: high local peak, less stable colour. A +7 offset can broaden the useful colour window.</p>
+            </div>
+            <div class="explain">
+              <h3>Oxide Refraction <span class="tip" tabindex="0" data-tip="SS304 colours are structural/interference colours from thin oxide films. Small thickness changes shift the reflected colour.">?</span></h3>
+              <p>Thin films start straw/gold, move through bronze and violet, then blue/teal/green. Too much heat dulls the film toward grey or ablation.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <article class="card oxide-reference">
+      <p class="eyebrow">Reference</p>
+      <h2>SS304 Oxide Colour Scale</h2>
+      <p class="small">Approximate thin-film oxide colours used by this simulator, with a parallel surface-finish guide from shiny to matte to slag risk. Real stainless colour shifts with polish, cleaning, alloy batch, viewing angle, and camera white balance.</p>
+      <div class="oxide-scale" id="oxideScale"></div>
+    </article>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const fmt = (value, digits = 1) => Number(value).toFixed(digits);
+    const signText = (value) => value >= 0 ? '+' : '';
+
+    const presets = {
+      600: { speed: 600, focus: 0, label: 'IR - 15%..59% - 600 mm/s - 1000 LPCM - Cross - Defocus 0', photo: 'assets/ss304-proof-600.png' },
+      700: { speed: 700, focus: 0, label: 'IR - 15%..59% - 700 mm/s - 1000 LPCM - Cross - Defocus 0', photo: 'assets/ss304-proof-700.png' },
+      500: { speed: 500, focus: 0, label: 'IR - 15%..59% - 500 mm/s - 1000 LPCM - Cross - Defocus 0', photo: 'assets/ss304-proof-500.png' },
+      50: { speed: 50, focus: 7, label: 'IR - 15%..59% - 50 mm/s - 1000 LPCM - Cross - Defocus 7', photo: 'assets/ss304-proof-50.png' }
+    };
+
+    const state = {
+      speed: 200,
+      focus: 7,
+      lpcm: 1000,
+      passes: 2,
+      minPower: 15,
+      maxPower: 59,
+      nominalMaxPower: 5,
+      powerAdjustPct: 0,
+      activePreset: ''
+    };
+
+    function effectiveMaxPower(settings = state) {
+      return settings.nominalMaxPower * (1 + settings.powerAdjustPct / 100);
+    }
+
+    const PERFECT_FOCUS_BEAM_WIDTH_MM = 0.03;
+    const FOCUS_RAYLEIGH_MM = 3.3;
+
+    function focusSpread(settings = state) {
+      return Math.sqrt(1 + Math.pow(settings.focus / FOCUS_RAYLEIGH_MM, 2));
+    }
+
+    function beamWidth(settings = state) {
+      return PERFECT_FOCUS_BEAM_WIDTH_MM * focusSpread(settings);
+    }
+
+    function hatchPitch(settings = state) {
+      return 10 / settings.lpcm;
+    }
+
+    function scanFit(settings = state) {
+      const width = beamWidth(settings);
+      const pitch = hatchPitch(settings);
+      const delta = width - pitch;
+      const ratio = width / pitch;
+      const mode = Math.abs(delta) < 0.0005 ? 'nominal' : delta > 0 ? 'overscan' : 'underscan';
+      return { width, pitch, delta, ratio, mode };
+    }
+
+    function matchedLpcm(settings = state) {
+      return Math.round(10 / beamWidth(settings));
+    }
+
+    function beamAreaMm2(settings = state) {
+      const diameter = beamWidth(settings);
+      return Math.PI * Math.pow(diameter / 2, 2);
+    }
+
+    function powerDensityWPerMm2(settings = state) {
+      return effectiveMaxPower(settings) / beamAreaMm2(settings);
+    }
+
+    function dwellEnergyMjPerMm2(settings = state) {
+      const dwellMs = (beamWidth(settings) / settings.speed) * 1000;
+      return powerDensityWPerMm2(settings) * dwellMs;
+    }
+
+    function scanHeatDensityMjPerMm2(settings = state) {
+      const width = beamWidth(settings);
+      const dwellMs = (width / settings.speed) * 1000;
+      const overlap = width / hatchPitch(settings);
+      return dwellEnergyMjPerMm2(settings) * Math.sqrt(overlap);
+    }
+
+    function oxideFromScanHeat(scanHeatDensity, peakRisk, settings = state) {
+      const oxideBase = 8 + Math.pow(scanHeatDensity / 65, 0.82) * 18;
+      const sharpPeakPenalty = Math.max(0, peakRisk - 1.05) * 32;
+      return clamp(oxideBase - sharpPeakPenalty, 3, 360);
+    }
+
+    const colorStops = [
+      { nm: 6, color: '#d9ccb0', name: 'pale straw' },
+      { nm: 18, color: '#c7a460', name: 'straw gold' },
+      { nm: 32, color: '#9a7245', name: 'bronze' },
+      { nm: 48, color: '#705c52', name: 'smoke brown' },
+      { nm: 56, color: '#604956', name: 'brown violet' },
+      { nm: 64, color: '#51446e', name: 'violet' },
+      { nm: 72, color: '#3d4676', name: 'indigo' },
+      { nm: 82, color: '#2d4968', name: 'deep blue' },
+      { nm: 92, color: '#2f6386', name: 'blue' },
+      { nm: 104, color: '#2f7890', name: 'blue teal' },
+      { nm: 116, color: '#57948d', name: 'teal green' },
+      { nm: 128, color: '#7c9b80', name: 'green gold' },
+      { nm: 140, color: '#a59d74', name: 'olive gold' },
+      { nm: 152, color: '#b79566', name: 'warm gold' },
+      { nm: 164, color: '#b07b65', name: 'rose bronze' },
+      { nm: 176, color: '#9d626f', name: 'mauve bronze' },
+      { nm: 188, color: '#875676', name: 'magenta violet' },
+      { nm: 202, color: '#61547f', name: 'second violet' },
+      { nm: 216, color: '#3e5b83', name: 'second blue' },
+      { nm: 230, color: '#3e7688', name: 'second teal' },
+      { nm: 246, color: '#4d8a83', name: 'teal green' },
+      { nm: 275, color: '#8a8269', name: 'muted grey gold' },
+      { nm: 330, color: '#5d5a52', name: 'overheated grey' }
+    ];
+
+    function hexToRgb(hex) {
+      const clean = hex.replace('#', '');
+      return [0, 2, 4].map((start) => parseInt(clean.slice(start, start + 2), 16));
+    }
+
+    function rgbToHex(rgb) {
+      return '#' + rgb.map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0')).join('');
+    }
+
+    function mix(a, b, t) {
+      const ar = hexToRgb(a);
+      const br = hexToRgb(b);
+      return rgbToHex(ar.map((value, index) => value + (br[index] - value) * t));
+    }
+
+    function colorForOxide(nm) {
+      let previous = colorStops[0];
+      for (const stop of colorStops) {
+        if (nm <= stop.nm) {
+          const span = stop.nm - previous.nm || 1;
+          const t = clamp((nm - previous.nm) / span, 0, 1);
+          return { color: mix(previous.color, stop.color, t), name: stop.name };
+        }
+        previous = stop;
+      }
+      return { color: '#4b4943', name: 'thick grey oxide' };
+    }
+
+    function finishForOxide(nm) {
+      if (nm < 50) return 'shiny / clean';
+      if (nm < 130) return 'bright colour';
+      if (nm < 200) return 'satin / matte';
+      if (nm < 275) return 'dull oxide';
+      return 'slag risk';
+    }
+
+    function modelCell(power, settings = state) {
+      const effectivePower = effectiveMaxPower(settings);
+      const relativePower = effectivePower / settings.nominalMaxPower;
+      const spread = focusSpread(settings);
+      const width = beamWidth(settings);
+      const pitch = hatchPitch(settings);
+      const watts = effectivePower * (power / 100);
+      const peakConcentration = 1 / Math.pow(spread, 1.25);
+      const dwellMs = (width / settings.speed) * 1000;
+      const overlap = clamp(width / pitch, 0.35, 10);
+      const area = Math.PI * Math.pow(width / 2, 2);
+      const peakDensity = watts / area;
+      const dwellEnergy = peakDensity * dwellMs;
+      const scanHeatDensity = dwellEnergy * Math.sqrt(overlap);
+      const peakRisk = clamp((power / 59) * Math.pow(120 / settings.speed, 0.44) * peakConcentration * relativePower, 0, 1.8);
+      const oxideNm = oxideFromScanHeat(scanHeatDensity, peakRisk, settings);
+      const color = colorForOxide(oxideNm);
+      const texture = clamp(0.28 + peakRisk * 0.25 - Math.max(0, settings.focus - 5) * 0.018, 0.18, 0.72);
+      const stateName = peakRisk > 1.22 && settings.focus < 3 ? 'sharp peak / unstable' : oxideNm >= 300 ? 'too hot / dulling' : oxideNm >= 48 ? 'colour window' : 'low oxide';
+      return { watts, area, peakDensity, dwellMs, dwellEnergy, scanHeatDensity, hatchPitch: pitch, beamWidth: width, overlap, peakRisk, oxideNm, color: color.color, colorName: color.name, texture, stateName };
+    }
+
+    function powerAt(index, totalSteps = 15) {
+      const min = Math.min(state.minPower, state.maxPower - 1);
+      const max = Math.max(state.maxPower, min + 1);
+      return min + ((max - min) * index / Math.max(1, totalSteps - 1));
+    }
+
+    function renderBeamProfile() {
+      const fit = scanFit();
+      const maxWidth = Math.max(fit.width * 1.2, fit.pitch * 5);
+      const centerX = 160;
+      const scale = 220 / maxWidth;
+      const beamPx = clamp(fit.width * scale, 16, 260);
+      const pitchPx = clamp(fit.pitch * scale, 5, 90);
+      const left = centerX - beamPx / 2;
+      const right = centerX + beamPx / 2;
+      const pitchLeft = centerX - pitchPx / 2;
+      const pitchRight = centerX + pitchPx / 2;
+      const deltaText = `${fit.delta >= 0 ? '+' : ''}${fmt(fit.delta, 3)} mm`;
+      const tone = fit.mode === 'nominal' ? '#4caf50' : fit.mode === 'overscan' ? '#e74c3c' : '#5b9bd5';
+
+      $('beamSvg').innerHTML = `
+        <defs>
+          <linearGradient id="beamGlow" x1="0" x2="1">
+            <stop offset="0%" stop-color="#5b9bd5" stop-opacity="0.08"/>
+            <stop offset="16%" stop-color="#5b9bd5" stop-opacity="0.42"/>
+            <stop offset="34%" stop-color="#f0a040" stop-opacity="0.68"/>
+            <stop offset="50%" stop-color="#e74c3c" stop-opacity="0.95"/>
+            <stop offset="66%" stop-color="#f0a040" stop-opacity="0.68"/>
+            <stop offset="84%" stop-color="#5b9bd5" stop-opacity="0.42"/>
+            <stop offset="100%" stop-color="#5b9bd5" stop-opacity="0.08"/>
+          </linearGradient>
+          <radialGradient id="beamHotCore" cx="50%" cy="48%" r="52%">
+            <stop offset="0%" stop-color="#fff4d6" stop-opacity="0.72"/>
+            <stop offset="34%" stop-color="#f0a040" stop-opacity="0.34"/>
+            <stop offset="72%" stop-color="#e74c3c" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#5b9bd5" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="320" height="96" fill="#080808" rx="8"/>
+        <line x1="${pitchLeft}" y1="14" x2="${pitchLeft}" y2="76" stroke="#777" stroke-width="1" stroke-dasharray="4 4"/>
+        <line x1="${centerX}" y1="14" x2="${centerX}" y2="76" stroke="#999" stroke-width="1" stroke-dasharray="4 4"/>
+        <line x1="${pitchRight}" y1="14" x2="${pitchRight}" y2="76" stroke="#777" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="${left}" y="32" width="${beamPx}" height="28" rx="14" fill="url(#beamGlow)" stroke="${tone}" stroke-width="1.5"/>
+        <ellipse cx="${centerX}" cy="46" rx="${Math.max(5, beamPx * 0.18)}" ry="11" fill="url(#beamHotCore)"/>
+        <line x1="${left}" y1="66" x2="${right}" y2="66" stroke="${tone}" stroke-width="2"/>
+        <line x1="${left}" y1="62" x2="${left}" y2="70" stroke="${tone}" stroke-width="2"/>
+        <line x1="${right}" y1="62" x2="${right}" y2="70" stroke="${tone}" stroke-width="2"/>
+        <line x1="${pitchLeft}" y1="84" x2="${pitchRight}" y2="84" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="${pitchLeft}" y1="80" x2="${pitchLeft}" y2="88" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="${pitchRight}" y1="80" x2="${pitchRight}" y2="88" stroke="#aaa" stroke-width="1.5"/>
+        <text x="10" y="18" fill="#888" font-family="monospace" font-size="10">Beam footprint at material</text>
+        <text x="${centerX + 8}" y="28" fill="#aaa" font-family="monospace" font-size="9">scan line</text>
+        <text x="10" y="90" fill="#aaa" font-family="monospace" font-size="9">pitch ${fmt(fit.pitch, 3)} mm</text>
+        <text x="${Math.max(170, right - 72)}" y="78" fill="${tone}" font-family="monospace" font-size="9">${fit.mode} ${deltaText}</text>
+      `;
+
+      $('focusBeamWidthOut').textContent = `${fmt(fit.width, 3)} mm`;
+      const area = beamAreaMm2();
+      const density = powerDensityWPerMm2();
+      const dwellMs = (fit.width / state.speed) * 1000;
+      const dwellEnergy = dwellEnergyMjPerMm2();
+      const scanHeatDensity = scanHeatDensityMjPerMm2();
+      const midpointPower = (state.minPower + state.maxPower) / 2;
+      const midpoint = modelCell(midpointPower);
+      $('dwellTimeOut').textContent = `${fmt(dwellMs, 3)} ms`;
+      $('dwellTimeTip').dataset.tip = `Dwell time estimates how long the moving beam covers one beam-width distance.\nDwell = beam width / speed x 1000.\nDwell = ${fmt(fit.width, 3)} mm / ${state.speed} mm/s x 1000 = ${fmt(dwellMs, 3)} ms.`;
+      $('dwellEnergyOut').textContent = `${fmt(dwellEnergy, 1)} mJ/mm^2`;
+      $('dwellEnergyTip').dataset.tip = `Dwell energy adds time to peak density, before hatch-line overlap.\nDwell energy = peak density x dwell time.\nDwell energy = ${fmt(density, 0)} W/mm^2 x ${fmt(dwellMs, 3)} ms = ${fmt(dwellEnergy, 1)} mJ/mm^2.`;
+      $('beamWidthTip').dataset.tip = `Beam width uses a symmetric focus model.\nSpread = sqrt(1 + (${fmt(state.focus, 1)} / ${fmt(FOCUS_RAYLEIGH_MM, 1)})^2) = ${fmt(focusSpread(), 2)}.\nBeam width = ${fmt(PERFECT_FOCUS_BEAM_WIDTH_MM, 3)} mm x ${fmt(focusSpread(), 2)} = ${fmt(fit.width, 3)} mm.`;
+      $('powerDensityOut').textContent = `${fmt(density, 0)} W/mm^2`;
+      $('powerDensityTip').dataset.tip = `Peak density uses effective max power over the modeled circular beam area.\nArea = pi x (${fmt(fit.width, 3)} / 2)^2 = ${fmt(area, 6)} mm^2.\nPeak density = ${fmt(effectiveMaxPower(), 2)} W / ${fmt(area, 6)} mm^2 = ${fmt(density, 0)} W/mm^2.`;
+      $('scanHeatDensityOut').textContent = `${fmt(scanHeatDensity, 1)} mJ/mm^2`;
+      $('scanHeatDensityTip').dataset.tip = `Scan heat density estimates accumulated energy from fast overlapping hatch lines.\nOverlap = ${fmt(fit.width, 3)} mm / ${fmt(fit.pitch, 3)} mm = ${fmt(fit.ratio, 2)}x.\nIntuition: a wider/defocused beam touches more hatch lines, but its peak energy is spread out. Full overlap would cancel that spreading and make focus barely matter.\nSo the model uses sqrt(overlap): adjacent lines contribute reheating, but less than a full extra pass.\nScan heat = ${fmt(dwellEnergy, 1)} mJ/mm^2 x sqrt(${fmt(fit.ratio, 2)}) = ${fmt(scanHeatDensity, 1)} mJ/mm^2.`;
+      $('oxideThicknessOut').textContent = `${fmt(midpoint.oxideNm, 0)} nm`;
+      $('oxideThicknessTip').dataset.tip = `Oxide thickness is estimated directly from scan heat at the midpoint swatch power (${fmt(midpointPower, 0)}%).\nScan heat = ${fmt(midpoint.scanHeatDensity, 1)} mJ/mm^2.\nOxide = 8 + (scan heat / 65)^0.82 x 18 - sharp-peak penalty.\nOxide = ${fmt(midpoint.oxideNm, 0)} nm.`;
+      $('matchedLpcmOut').textContent = `${matchedLpcm()} LPCM`;
+      $('matchedLpcmTip').dataset.tip = `Perfect line density is computed from the current modeled beam width.\nCurrent: 10 / ${fmt(fit.width, 3)} mm = ${matchedLpcm()} LPCM.\nPerfect focus: 10 / 0.030 mm = 333 LPCM.`;
+      $('hatchPitchOut').textContent = `${fmt(fit.pitch, 3)} mm`;
+      $('hatchPitchTip').dataset.tip = `Hatch pitch is the spacing between adjacent scan lines.\nPitch = 10 / LPCM.\nPitch = 10 / ${state.lpcm} = ${fmt(fit.pitch, 3)} mm.`;
+      $('scanDeltaOut').textContent = `${fit.delta >= 0 ? '+' : ''}${fmt(fit.delta, 3)} mm`;
+      $('scanDeltaTip').dataset.tip = `Over/under compares beam width to hatch pitch.\nDelta = beam width - hatch pitch.\nDelta = ${fmt(fit.width, 3)} mm - ${fmt(fit.pitch, 3)} mm = ${fit.delta >= 0 ? '+' : ''}${fmt(fit.delta, 3)} mm.\nBlue means gaps/underscan, green means matched, red means overlap/overscan.`;
+      $('scanDeltaOut').style.color = tone;
+      $('scanModeOut').textContent = `${fit.mode} · ${fmt(fit.ratio, 2)}x`;
+      $('scanModeOut').style.color = tone;
+    }
+
+    function popupRow(label, value, tip) {
+      return `<div class="row"><span class="explainable" tabindex="0" data-tip="${tip}">${label}</span><span>${value}</span></div>`;
+    }
+
+    function renderPattern() {
+      $('speedOut').textContent = state.speed + ' mm/s';
+      $('lpcmOut').textContent = state.lpcm + ' LPCM';
+      $('axisMin').textContent = fmt(state.minPower, 0) + '%';
+      $('axisMax').textContent = fmt(state.maxPower, 0) + '%';
+      $('proofTitle').textContent = `IR - ${fmt(state.minPower, 0)}%..${fmt(state.maxPower, 0)}% - ${state.speed} mm/s - ${state.lpcm} LPCM - Cross - Defocus ${signText(state.focus)}${fmt(state.focus, 1)}`;
+      $('patternName').textContent = `Speed ${state.speed} / focus ${signText(state.focus)}${fmt(state.focus, 1)}`;
+      renderBeamProfile();
+
+      const cells = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let column = 0; column < 15; column += 1) {
+          const cellIndex = row * 15 + column;
+          const power = powerAt(cellIndex, 45);
+          const result = modelCell(power);
+          cells.push(`
+            <div class="swatch" style="background:${result.color}; --texture:${result.texture}" aria-label="${fmt(power, 0)} percent ${result.colorName}">
+              <div class="popup">
+                <strong>${fmt(power, 0)}% power · row ${row + 1}</strong>
+                <div>${result.colorName} · ${result.stateName}</div>
+                ${popupRow('Applied', `${fmt(result.watts, 2)} W`, `Applied watts = effective max power x swatch power percent. Here: ${fmt(effectiveMaxPower(), 2)} W x ${fmt(power, 0)}%.`)}
+                ${popupRow('Peak', `${fmt(result.peakDensity, 0)} W/mm^2`, `Peak density = applied watts / circular beam area. Area = pi x (${fmt(result.beamWidth, 3)} / 2)^2 = ${fmt(result.area, 6)} mm^2, so ${fmt(result.watts, 2)} W / ${fmt(result.area, 6)} mm^2.`)}
+                ${popupRow('Dwell', `${fmt(result.dwellMs, 3)} ms`, `Dwell time = beam width / speed x 1000. Here: ${fmt(result.beamWidth, 3)} mm / ${state.speed} mm/s x 1000.`)}
+                ${popupRow('Dwell energy', `${fmt(result.dwellEnergy, 1)} mJ/mm^2`, `Dwell energy = peak density x dwell time. Here: ${fmt(result.peakDensity, 0)} W/mm^2 x ${fmt(result.dwellMs, 3)} ms.`)}
+                ${popupRow('Overlap', `${fmt(result.overlap, 2)}x`, `Overlap = beam width / hatch pitch. Here: ${fmt(result.beamWidth, 3)} mm / ${fmt(result.hatchPitch, 3)} mm.`)}
+                ${popupRow('Scan heat', `${fmt(result.scanHeatDensity, 1)} mJ/mm^2`, `Scan heat density = dwell energy x sqrt(overlap). Full overlap would over-count a wide beam; sqrt(overlap) gives partial credit for nearby hatch reheating. Here: ${fmt(result.dwellEnergy, 1)} mJ/mm^2 x sqrt(${fmt(result.overlap, 2)}).`)}
+                ${popupRow('Oxide', `${fmt(result.oxideNm, 0)} nm`, `Oxide thickness now comes directly from scan heat. Oxide = 8 + (scan heat / 65)^0.82 x 18 - sharp-peak penalty.`)}
+              </div>
+            </div>
+          `);
+        }
+      }
+      $('swatchGrid').innerHTML = cells.join('');
+
+      const center = modelCell((state.minPower + state.maxPower) / 2);
+      $('centerPower').textContent = fmt((state.minPower + state.maxPower) / 2, 0) + '%';
+      $('heatIndex').textContent = `${fmt(center.scanHeatDensity, 1)} mJ/mm^2`;
+      $('oxideNm').textContent = fmt(center.oxideNm, 0) + ' nm';
+      $('colorFamily').textContent = center.colorName;
+      $('zoneBadge').textContent = center.stateName;
+      const effective = effectiveMaxPower();
+      const effectivePowerTone = state.powerAdjustPct > 5 ? 'red' : state.powerAdjustPct < -5 ? 'blue' : 'green';
+      $('effectivePower').textContent = `${fmt(effective, 2)} W`;
+      $('effectivePower').className = effectivePowerTone;
+      $('focusOut').textContent = `${signText(state.focus)}${fmt(state.focus, 1)} mm`;
+      $('powerAdjustOut').textContent = `${signText(state.powerAdjustPct)}${fmt(state.powerAdjustPct, 0)}%`;
+    }
+
+    function miniProof(settings) {
+      const old = { ...state };
+      Object.assign(state, settings);
+      const cells = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let column = 0; column < 15; column += 1) {
+          const result = modelCell(powerAt(row * 15 + column, 45));
+          cells.push(`<div class="mini-swatch" style="background:${result.color}"></div>`);
+        }
+      }
+      Object.assign(state, old);
+      return cells.join('');
+    }
+
+    function renderReferences() {
+      $('referenceGrid').innerHTML = Object.entries(presets).map(([key, preset]) => `
+        <div class="mini-proof ${state.activePreset === key ? 'active' : ''}" data-proof="${key}" role="button" tabindex="0" aria-pressed="${state.activePreset === key ? 'true' : 'false'}">
+          <div class="mini-proof-head">
+            <h3>${key === '50' ? 'Test 4' : key === '500' ? 'Test 3' : key === '700' ? 'Test 2' : 'Proof 1'}</h3>
+            <div class="photo-peek">
+              <button class="camera-button" type="button" aria-label="Show photo sample for ${preset.speed} mm/s proof">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 7h2l1.2-2h3.6L15 7h2a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3Z"></path>
+                  <circle cx="12" cy="13" r="3.2"></circle>
+                </svg>
+                <span class="subtle-tag">(actual)</span>
+              </button>
+              <div class="photo-preview">
+                <img src="${preset.photo}" alt="Photo crop of ${preset.label}">
+                <span>Actual photo crop used as visual reference; simulated cells are shown in the card below.</span>
+              </div>
+            </div>
+          </div>
+          <p>${preset.speed} mm/s · 1000 LPCM · defocus ${preset.focus}</p>
+          <span class="subtle-tag simulation-label">(simulated)</span>
+          <div class="mini-grid">${miniProof({ ...state, speed: preset.speed, focus: preset.focus, lpcm: 1000, passes: 2 })}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderOxideScale() {
+      const min = colorStops[0].nm;
+      const max = colorStops[colorStops.length - 1].nm;
+      const gradient = colorStops.map((stop) => {
+        const pct = ((stop.nm - min) / (max - min)) * 100;
+        return `${stop.color} ${fmt(pct, 1)}%`;
+      }).join(', ');
+      $('oxideScale').innerHTML = `
+        <div class="oxide-hover" id="oxideHover"></div>
+        <div class="oxide-gradient" style="background: linear-gradient(90deg, ${gradient})" aria-label="Continuous SS304 oxide colour spectrum"></div>
+        <div class="finish-scale" aria-label="Qualitative surface finish reference">
+          <div class="finish-zone">Shiny / clean</div>
+          <div class="finish-zone">Bright colour</div>
+          <div class="finish-zone">Satin / matte</div>
+          <div class="finish-zone">Dull oxide</div>
+          <div class="finish-zone">Slag risk</div>
+        </div>
+        <div class="oxide-ticks" aria-hidden="true">
+          <span>${min} nm</span>
+          <span>50</span>
+          <span>100</span>
+          <span>150</span>
+          <span>200</span>
+          <span>230</span>
+          <span>${max} nm</span>
+        </div>
+      `;
+      const scale = $('oxideScale');
+      const hover = $('oxideHover');
+      const updateHover = (event) => {
+        const rect = scale.getBoundingClientRect();
+        const x = clamp(event.clientX - rect.left, 0, rect.width);
+        const pct = rect.width ? x / rect.width : 0;
+        const nm = min + (max - min) * pct;
+        const oxideColor = colorForOxide(nm);
+        hover.style.left = `${x}px`;
+        hover.classList.add('visible');
+        hover.innerHTML = `<strong>${fmt(nm, 0)} nm</strong><div>${oxideColor.name}</div><div>${finishForOxide(nm)}</div>`;
+      };
+      scale.addEventListener('pointermove', updateHover);
+      scale.addEventListener('pointerleave', () => hover.classList.remove('visible'));
+    }
+
+    function syncFromControls() {
+      state.speed = Number($('speed').value);
+      state.focus = clamp(Number($('focus').value) || 0, -10, 10);
+      state.lpcm = clamp(Number($('lpcm').value) || 1000, 100, 1600);
+      state.passes = clamp(Math.round(Number($('passes').value) || 2), 1, 4);
+      state.minPower = clamp(Number($('minPower').value) || 15, 1, 95);
+      state.maxPower = clamp(Number($('maxPower').value) || 59, state.minPower + 1, 100);
+      state.powerAdjustPct = clamp(Number($('powerAdjust').value) || 0, -95, 200);
+      $('focus').value = state.focus;
+      $('focusOut').textContent = `${signText(state.focus)}${fmt(state.focus, 1)} mm`;
+      $('powerAdjust').value = state.powerAdjustPct;
+      $('powerAdjustOut').textContent = `${signText(state.powerAdjustPct)}${fmt(state.powerAdjustPct, 0)}%`;
+      renderPattern();
+      renderReferences();
+    }
+
+    function applyPreset(key) {
+      const preset = presets[key];
+      state.activePreset = key;
+      state.speed = preset.speed;
+      state.focus = preset.focus;
+      state.lpcm = 1000;
+      state.passes = 2;
+      $('speed').value = state.speed;
+      $('focus').value = state.focus;
+      $('focusOut').textContent = `${signText(state.focus)}${fmt(state.focus, 1)} mm`;
+      $('lpcm').value = state.lpcm;
+      $('passes').value = state.passes;
+      renderPattern();
+      renderReferences();
+    }
+
+    ['speed', 'focus', 'lpcm', 'passes', 'minPower', 'maxPower', 'powerAdjust'].forEach((id) => {
+      $(id).addEventListener('input', () => {
+        syncFromControls();
+      });
+    });
+
+    $('referenceGrid').addEventListener('click', (event) => {
+      if (event.target.closest('.photo-peek')) return;
+      const proof = event.target.closest('[data-proof]');
+      if (proof) applyPreset(proof.dataset.proof);
+    });
+
+    $('referenceGrid').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const proof = event.target.closest('[data-proof]');
+      if (!proof) return;
+      event.preventDefault();
+      applyPreset(proof.dataset.proof);
+    });
+
+    applyPreset('600');
+    renderOxideScale();
+  </script>
+</body>
+</html>
