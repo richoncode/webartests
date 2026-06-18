@@ -494,7 +494,63 @@ function playSquirrelCall() {
 }
 
 const callBtn = $('#btn-call');
-callBtn.addEventListener('click', async () => {
+
+let callHoldTimer = null;
+let callHoldFired = false;
+
+function cancelCallHold() {
+  if (callHoldTimer) {
+    clearTimeout(callHoldTimer);
+    callHoldTimer = null;
+  }
+  callBtn.classList.remove('holding');
+}
+
+async function repopulateFromSquirrelCall() {
+  if (!engine.pos || callBtn.disabled) return;
+  callHoldFired = true;
+  playSquirrelCall();
+  callBtn.disabled = true;
+  callBtn.classList.remove('holding');
+  callBtn.classList.add('calling');
+  try {
+    const pos = { lat: engine.pos.lat, lng: engine.pos.lng };
+    await roads.ensure(pos);
+    await maybeUpdateCountry(pos);
+    spawner.clearAll();
+    initialBurst();
+    spawner.updateProximity(pos);
+    ui.toast(`📯 Fresh squirrels answered — ${spawner.spawns.length} nearby`, 'green');
+  } finally {
+    setTimeout(() => {
+      callBtn.disabled = false;
+      callBtn.classList.remove('calling');
+    }, 900);
+  }
+}
+
+callBtn.addEventListener('pointerdown', (e) => {
+  if (!engine.pos || callBtn.disabled) return;
+  callHoldFired = false;
+  cancelCallHold();
+  callBtn.classList.add('holding');
+  callHoldTimer = setTimeout(() => {
+    callHoldTimer = null;
+    repopulateFromSquirrelCall();
+  }, CONFIG.SQUIRREL_CALL_RESET_HOLD_MS);
+  try { callBtn.setPointerCapture(e.pointerId); } catch (err) { /* optional */ }
+});
+
+['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach((eventName) => {
+  callBtn.addEventListener(eventName, cancelCallHold);
+});
+
+callBtn.addEventListener('click', async (e) => {
+  if (callHoldFired) {
+    e.preventDefault();
+    callHoldFired = false;
+    return;
+  }
   if (!engine.pos || callBtn.disabled) return;
   playSquirrelCall();
   callBtn.disabled = true;
