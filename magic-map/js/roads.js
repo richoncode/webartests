@@ -35,10 +35,22 @@ const ROAD_CLASSES = {
 
 const HIGHWAY_REGEX = Object.keys(ROAD_CLASSES).join('|');
 
-const PRIVATE_ACCESS = new Set(['private', 'no']);
+const PRIVATE_ACCESS = new Set(['private', 'no', 'destination', 'customers']);
 
 function isPrivateDriveway(tags = {}) {
   return tags.service === 'driveway' || PRIVATE_ACCESS.has(tags.access);
+}
+
+function isSpawnableRoad(road) {
+  const spec = ROAD_CLASSES[road.cls];
+  if (!spec || spec.weight <= 0) return false;
+  const tags = road.tags || {};
+  if (PRIVATE_ACCESS.has(tags.access)) return false;
+  // OSM driveways on private property are usually highway=service. Some are
+  // explicitly service=driveway; many are just bare service ways. Treat service
+  // roads as property/parking infrastructure unless explicitly tagged alley.
+  if (road.cls === 'service') return tags.service === 'alley';
+  return true;
 }
 
 function coordKey(p) {
@@ -118,6 +130,7 @@ export class RoadNetwork {
               : pts.map(coordKey);
             return {
               cls,
+              tags: e.tags || {},
               pts,
               nodeKeys,
               mph: tagged != null ? tagged : ROAD_CLASSES[cls].mph,
@@ -230,6 +243,7 @@ export class RoadNetwork {
         const pts = r.pts || [];
         return {
           ...r,
+          tags: r.tags || {},
           pts,
           nodeKeys: r.nodeKeys?.length === pts.length ? r.nodeKeys : pts.map(coordKey),
           mph: r.mph ?? ROAD_CLASSES[r.cls]?.mph ?? 0,
@@ -264,6 +278,7 @@ export class RoadNetwork {
   _nodeIndex() {
     const index = new Map();
     this.roads.forEach((road, roadIdx) => {
+      if (!isSpawnableRoad(road)) return;
       const keys = ensureRoadNodeKeys(road);
       keys.forEach((key, nodeIdx) => {
         if (!index.has(key)) index.set(key, []);
@@ -279,7 +294,7 @@ export class RoadNetwork {
     let best = null;
     for (let roadIdx = 0; roadIdx < this.roads.length; roadIdx++) {
       const road = this.roads[roadIdx];
-      if (!ROAD_CLASSES[road.cls] || ROAD_CLASSES[road.cls].weight <= 0) continue;
+      if (!isSpawnableRoad(road)) continue;
       for (let segIdx = 0; segIdx < road.pts.length - 1; segIdx++) {
         const a = road.pts[segIdx];
         const b = road.pts[segIdx + 1];
@@ -436,8 +451,10 @@ export class RoadNetwork {
   }
 
   _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax) {
+    const spawnable = this.roads.filter(isSpawnableRoad);
+    if (!spawnable.length) return null;
     for (let attempt = 0; attempt < 40; attempt++) {
-      const road = weightedChoice(this.roads, (r) => ROAD_CLASSES[r.cls].weight);
+      const road = weightedChoice(spawnable, (r) => ROAD_CLASSES[r.cls].weight);
       const spec = ROAD_CLASSES[road.cls];
       const segs = [];
       for (let i = 0; i < road.pts.length - 1; i++) {
@@ -474,7 +491,7 @@ export class RoadNetwork {
   sampleNearbyPoint(playerPos, existingPoints) {
     const ring = { min: 40, max: 140 };
     return this.sampleSpawnPoint(playerPos, existingPoints, ring) ||
-           this._fallbackPoint(playerPos, existingPoints, ring.min, ring.max);
+           (this.failed ? this._fallbackPoint(playerPos, existingPoints, ring.min, ring.max) : null);
   }
 }
 

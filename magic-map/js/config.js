@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.17 · 2026-06-18 · street-trace spawns';
+export const APP_VERSION = 'v0.18 · 2026-06-18 · no driveway spawns';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
