@@ -241,12 +241,63 @@ updateThemeToggleBtn();
 const engine = new LocationEngine(onFix);
 let prevFix = null;
 let skipNextStep = false;   // set on teleports so they don't count as walking
-let follow = true;
+let autoPan = true;
+let autoPanPausedByUser = false;
+let autoPanResumeWalked = 0;
+let programmaticMapChange = 0;
 
-map.on('dragstart', () => { follow = false; });
+function withProgrammaticMapChange(fn) {
+  programmaticMapChange++;
+  try {
+    return fn();
+  } finally {
+    setTimeout(() => {
+      programmaticMapChange = Math.max(0, programmaticMapChange - 1);
+    }, 0);
+  }
+}
+
+function setAutoPan(on, { center = false, silent = false } = {}) {
+  autoPan = on;
+  autoPanPausedByUser = !on;
+  autoPanResumeWalked = 0;
+  if (center && engine.pos) {
+    withProgrammaticMapChange(() => {
+      map.setView([engine.pos.lat, engine.pos.lng], Math.max(map.getZoom(), 15));
+    });
+  }
+  if (!silent) {
+    ui.toast(on
+      ? '🎯 Map follow resumed'
+      : `🖐️ Map follow paused — walk ${CONFIG.AUTO_PAN_RESUME_M}m or tap 🎯`);
+  }
+}
+
+function pauseAutoPanByUser() {
+  if (programmaticMapChange || !autoPan) return;
+  setAutoPan(false);
+}
+
+function maybeAutoPanTo(pos) {
+  if (!autoPan) return;
+  const pt = map.latLngToContainerPoint([pos.lat, pos.lng]);
+  const size = map.getSize();
+  const band = CONFIG.AUTO_PAN_CENTER_FRACTION;
+  const minX = size.x * (1 - band) / 2;
+  const maxX = size.x * (1 + band) / 2;
+  const minY = size.y * (1 - band) / 2;
+  const maxY = size.y * (1 + band) / 2;
+  if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) {
+    withProgrammaticMapChange(() => {
+      map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.4 });
+    });
+  }
+}
+
+map.on('dragstart', pauseAutoPanByUser);
+map.on('zoomstart', pauseAutoPanByUser);
 $('#btn-center').addEventListener('click', () => {
-  follow = true;
-  if (engine.pos) map.setView([engine.pos.lat, engine.pos.lng], Math.max(map.getZoom(), 15));
+  setAutoPan(true, { center: true });
 });
 
 // ---------- compass ----------
@@ -277,7 +328,6 @@ async function setCompassMode(mode, { silent = false } = {}) {
   if (mode === 'follow') {
     map.compassBearing.enable();
     compassBtn.classList.add('follow');
-    follow = true;
     if (!silent) ui.toast('🧭 Map follows your heading');
   } else {
     if (map.compassBearing) map.compassBearing.disable();
@@ -305,10 +355,10 @@ function onFix(fix) {
     playerMarker = L.marker([pos.lat, pos.lng], { icon: playerIcon, keyboard: false, interactive: false }).addTo(map);
     trailLine = L.polyline([], { weight: 4, opacity: 0.55, color: '#5b9bd5' }).addTo(map);
     setTrailColor();
-    map.setView([pos.lat, pos.lng], 16);
+    withProgrammaticMapChange(() => map.setView([pos.lat, pos.lng], 16));
   } else {
     playerMarker.setLatLng([pos.lat, pos.lng]);
-    if (follow) map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.4 });
+    maybeAutoPanTo(pos);
   }
   trailPts.push([pos.lat, pos.lng]);
   if (trailPts.length > 300) trailPts.shift();
@@ -327,6 +377,12 @@ function onFix(fix) {
       const speedOk = fix.mock || speed <= CONFIG.MAX_SPEED_MPS;
       const jumpOk = fix.mock || d <= CONFIG.MAX_JUMP_M;
       if (speedOk && jumpOk) {
+        if (autoPanPausedByUser) {
+          autoPanResumeWalked += d;
+          if (autoPanResumeWalked >= CONFIG.AUTO_PAN_RESUME_M) {
+            setAutoPan(true, { center: true });
+          }
+        }
         const { xpGained, leveled, dayQualified } = state.addDistance(d);
         if (dayQualified) ui.toast(`🔥 Day complete! Streak: ${state.data.streak}`, 'green');
         if (xpGained) announceLevels(leveled);
@@ -447,8 +503,8 @@ function startCountryDemo() {
   spawner.clearAll();
   skipNextStep = true; // the jump to the demo lot must not count as walking
   engine.teleport(center);
-  follow = true;
-  map.setView([center.lat, center.lng], 18);
+  setAutoPan(true, { silent: true });
+  withProgrammaticMapChange(() => map.setView([center.lat, center.lng], 18));
   maybeUpdateCountry(center).then(() => initialBurst());
   ui.closePanel();
   ui.toast('🌾 Country demo: 55 mph road + 1.3-acre lot — walk your land!', 'green');

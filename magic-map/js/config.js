@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.13 · 2026-06-12 · fix osm checkerboard & subdomain config';
+export const APP_VERSION = 'v0.14 · 2026-06-18 · center-band map follow';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -47,6 +47,13 @@ export const CONFIG = {
   MAX_SPEED_MPS: 6,        // ignore faster-than-running fixes (driving)
   MAX_JUMP_M: 150,         // ignore single-fix teleports (real GPS only)
   DAY_GOAL_M: 250,         // distance that makes a day count for the streak
+
+  // --- Map follow ---
+  // While moving, keep the player inside the central band rather than
+  // constantly hard-centering every GPS fix. Manual map exploration pauses
+  // auto-panning until the player has genuinely walked a new 80 m.
+  AUTO_PAN_CENTER_FRACTION: 0.30,
+  AUTO_PAN_RESUME_M: 80,
 
   // --- GPS jitter filtering (real fixes only) ---
   // Position = rolling median of recent fixes; while standing still the
