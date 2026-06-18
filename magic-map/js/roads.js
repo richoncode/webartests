@@ -8,7 +8,7 @@
 
 import { CONFIG } from './config.js';
 import {
-  haversine, destPoint, bearingTo, makeProjector, distPointToSegXY, rand, weightedChoice,
+  haversine, destPoint, bearingTo, makeProjector, distPointToSegXY, rand, weightedChoice, clamp,
   parseMaxspeedMph, pointInPolygon, distPointToRingM, ringBBox,
 } from './util.js';
 
@@ -34,6 +34,43 @@ const ROAD_CLASSES = {
 };
 
 const HIGHWAY_REGEX = Object.keys(ROAD_CLASSES).join('|');
+
+const PRIVATE_ACCESS = new Set(['private', 'no']);
+
+function isPrivateDriveway(tags = {}) {
+  return tags.service === 'driveway' || PRIVATE_ACCESS.has(tags.access);
+}
+
+function coordKey(p) {
+  return `${p.lat.toFixed(7)},${p.lng.toFixed(7)}`;
+}
+
+function ensureRoadNodeKeys(road) {
+  if (road.nodeKeys && road.nodeKeys.length === road.pts.length) return road.nodeKeys;
+  road.nodeKeys = road.pts.map(coordKey);
+  return road.nodeKeys;
+}
+
+function pointAlong(a, b, t) {
+  return {
+    lat: a.lat + (b.lat - a.lat) * t,
+    lng: a.lng + (b.lng - a.lng) * t,
+  };
+}
+
+function segmentProjectionT(pt, a, b) {
+  const proj = makeProjector(pt);
+  const p = proj.toXY(pt);
+  const ax = proj.toXY(a).x;
+  const ay = proj.toXY(a).y;
+  const bx = proj.toXY(b).x;
+  const by = proj.toXY(b).y;
+  const abx = bx - ax;
+  const aby = by - ay;
+  const len2 = abx * abx + aby * aby;
+  if (!len2) return 0;
+  return clamp(((p.x - ax) * abx + (p.y - ay) * aby) / len2, 0, 1);
+}
 
 export class RoadNetwork {
   constructor() {
@@ -71,12 +108,18 @@ export class RoadNetwork {
         const json = await res.json();
         this.roads = (json.elements || [])
           .filter((e) => e.type === 'way' && e.geometry && e.geometry.length > 1)
+          .filter((e) => !isPrivateDriveway(e.tags))
           .map((e) => {
             const cls = ROAD_CLASSES[e.tags?.highway] ? e.tags.highway : 'path';
             const tagged = parseMaxspeedMph(e.tags?.maxspeed);
+            const pts = e.geometry.map((g) => ({ lat: g.lat, lng: g.lon }));
+            const nodeKeys = Array.isArray(e.nodes) && e.nodes.length === pts.length
+              ? e.nodes.map((id) => `n:${id}`)
+              : pts.map(coordKey);
             return {
               cls,
-              pts: e.geometry.map((g) => ({ lat: g.lat, lng: g.lon })),
+              pts,
+              nodeKeys,
               mph: tagged != null ? tagged : ROAD_CLASSES[cls].mph,
             };
           });
@@ -181,7 +224,17 @@ export class RoadNetwork {
   // Pin a synthetic road network (used by the in-app country demo) and stop
   // refetching so the scenario stays put.
   useDemo(roads, center) {
-    this.roads = roads.map((r) => ({ ...r, mph: r.mph ?? ROAD_CLASSES[r.cls]?.mph ?? 0 }));
+    this.roads = roads
+      .filter((r) => !isPrivateDriveway(r.tags))
+      .map((r) => {
+        const pts = r.pts || [];
+        return {
+          ...r,
+          pts,
+          nodeKeys: r.nodeKeys?.length === pts.length ? r.nodeKeys : pts.map(coordKey),
+          mph: r.mph ?? ROAD_CLASSES[r.cls]?.mph ?? 0,
+        };
+      });
     this.fetchCenter = { lat: center.lat, lng: center.lng };
     this.failed = false;
     this.demo = true;
@@ -204,11 +257,188 @@ export class RoadNetwork {
       return this.failed ? this._fallbackPoint(playerPos, existingPoints, ringMin, ringMax) : null;
     }
 
+    return this._sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax) ||
+           this._sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax);
+  }
+
+  _nodeIndex() {
+    const index = new Map();
+    this.roads.forEach((road, roadIdx) => {
+      const keys = ensureRoadNodeKeys(road);
+      keys.forEach((key, nodeIdx) => {
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push({ roadIdx, nodeIdx });
+      });
+    });
+    return index;
+  }
+
+  _nearestSegment(playerPos) {
+    const proj = makeProjector(playerPos);
+    const p = proj.toXY(playerPos);
+    let best = null;
+    for (let roadIdx = 0; roadIdx < this.roads.length; roadIdx++) {
+      const road = this.roads[roadIdx];
+      if (!ROAD_CLASSES[road.cls] || ROAD_CLASSES[road.cls].weight <= 0) continue;
+      for (let segIdx = 0; segIdx < road.pts.length - 1; segIdx++) {
+        const a = road.pts[segIdx];
+        const b = road.pts[segIdx + 1];
+        const d = distPointToSegXY(p, proj.toXY(a), proj.toXY(b));
+        if (!best || d < best.dist) {
+          const t = segmentProjectionT(playerPos, a, b);
+          best = { roadIdx, segIdx, t, point: pointAlong(a, b, t), dist: d };
+        }
+      }
+    }
+    return best;
+  }
+
+  _sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax) {
+    const start = this._nearestSegment(playerPos);
+    if (!start) return null;
+
+    const nodeIndex = this._nodeIndex();
+    const candidates = [];
+    const bestSeen = new Map();
+    const queue = [];
+
+    const pushSegment = (state) => {
+      if (state.travelled > ringMax) return;
+      if (state.toIdx < 0 || state.toIdx >= this.roads[state.roadIdx].pts.length) return;
+      const key = `${state.roadIdx}:${state.toIdx}:${state.dir}:${state.turns}`;
+      const prev = bestSeen.get(key);
+      if (prev != null && prev <= state.travelled) return;
+      bestSeen.set(key, state.travelled);
+      queue.push(state);
+    };
+
+    const seedFromNode = (roadIdx, nodeIdx) => {
+      const road = this.roads[roadIdx];
+      const nodeKey = ensureRoadNodeKeys(road)[nodeIdx];
+      for (const ref of nodeIndex.get(nodeKey) || []) {
+        const r = this.roads[ref.roadIdx];
+        for (const dir of [-1, 1]) {
+          const toIdx = ref.nodeIdx + dir;
+          if (toIdx < 0 || toIdx >= r.pts.length) continue;
+          pushSegment({
+            roadIdx: ref.roadIdx,
+            from: r.pts[ref.nodeIdx],
+            toIdx,
+            dir,
+            travelled: 0,
+            turns: 0,
+          });
+        }
+      }
+    };
+
+    // Start from the closest point on the closest public street/path, then
+    // walk outward in both directions. From there, each changed way consumes
+    // one "turn", up to CONFIG.SPAWN_TRACE_TURNS.
+    if (start.t <= 0.01) {
+      seedFromNode(start.roadIdx, start.segIdx);
+    } else {
+      pushSegment({
+        roadIdx: start.roadIdx,
+        from: start.point,
+        toIdx: start.segIdx,
+        dir: -1,
+        travelled: 0,
+        turns: 0,
+      });
+    }
+
+    if (start.t >= 0.99) {
+      seedFromNode(start.roadIdx, start.segIdx + 1);
+    } else {
+      pushSegment({
+        roadIdx: start.roadIdx,
+        from: start.point,
+        toIdx: start.segIdx + 1,
+        dir: 1,
+        travelled: 0,
+        turns: 0,
+      });
+    }
+
+    while (queue.length) {
+      const st = queue.shift();
+      const road = this.roads[st.roadIdx];
+      const spec = ROAD_CLASSES[road.cls];
+      const to = road.pts[st.toIdx];
+      const segLen = haversine(st.from, to);
+      if (segLen < 0.5) continue;
+
+      const endTravel = st.travelled + segLen;
+      const overlapStart = Math.max(ringMin, st.travelled);
+      const overlapEnd = Math.min(ringMax, endTravel);
+      if (overlapEnd > overlapStart) {
+        const sampleTravel = rand(overlapStart, overlapEnd);
+        const t = clamp((sampleTravel - st.travelled) / segLen, 0, 1);
+        const onRoad = pointAlong(st.from, to, t);
+        const segBearing = bearingTo(st.from, to);
+        const side = Math.random() < 0.5 ? 90 : -90;
+        const off = rand(spec.offset[0], spec.offset[1]);
+        const pt = destPoint(onRoad, segBearing + side, off);
+        const dPlayer = haversine(playerPos, pt);
+        if (
+          dPlayer >= ringMin &&
+          dPlayer <= ringMax &&
+          !existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP) &&
+          this.minMotorDistance(pt) >= CONFIG.ROAD_MIN_SAFE
+        ) {
+          candidates.push({ pt, weight: Math.max(1, overlapEnd - overlapStart) * spec.weight });
+        }
+      }
+
+      if (endTravel >= ringMax) continue;
+
+      const nextIdx = st.toIdx + st.dir;
+      if (nextIdx >= 0 && nextIdx < road.pts.length) {
+        pushSegment({
+          roadIdx: st.roadIdx,
+          from: to,
+          toIdx: nextIdx,
+          dir: st.dir,
+          travelled: endTravel,
+          turns: st.turns,
+        });
+      }
+
+      if (st.turns >= CONFIG.SPAWN_TRACE_TURNS) continue;
+      const nodeKey = ensureRoadNodeKeys(road)[st.toIdx];
+      const incomingBearing = bearingTo(st.from, to);
+      for (const ref of nodeIndex.get(nodeKey) || []) {
+        if (ref.roadIdx === st.roadIdx) continue;
+        const other = this.roads[ref.roadIdx];
+        for (const dir of [-1, 1]) {
+          const toIdx = ref.nodeIdx + dir;
+          if (toIdx < 0 || toIdx >= other.pts.length) continue;
+          const outgoingBearing = bearingTo(other.pts[ref.nodeIdx], other.pts[toIdx]);
+          const delta = Math.abs(((outgoingBearing - incomingBearing + 540) % 360) - 180);
+          const turnCost = delta > 35 ? 1 : 0;
+          const turns = st.turns + turnCost;
+          if (turns > CONFIG.SPAWN_TRACE_TURNS) continue;
+          pushSegment({
+            roadIdx: ref.roadIdx,
+            from: other.pts[ref.nodeIdx],
+            toIdx,
+            dir,
+            travelled: endTravel,
+            turns,
+          });
+        }
+      }
+    }
+
+    if (!candidates.length) return null;
+    return weightedChoice(candidates, (c) => c.weight).pt;
+  }
+
+  _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax) {
     for (let attempt = 0; attempt < 40; attempt++) {
       const road = weightedChoice(this.roads, (r) => ROAD_CLASSES[r.cls].weight);
       const spec = ROAD_CLASSES[road.cls];
-
-      // Random segment, weighted by length.
       const segs = [];
       for (let i = 0; i < road.pts.length - 1; i++) {
         segs.push({ i, len: haversine(road.pts[i], road.pts[i + 1]) });
@@ -216,22 +446,15 @@ export class RoadNetwork {
       const seg = weightedChoice(segs, (s) => Math.max(0.5, s.len));
       const a = road.pts[seg.i];
       const b = road.pts[seg.i + 1];
-      const t = Math.random();
-      const onRoad = { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
-
-      // Offset perpendicular to the segment, random side.
+      const onRoad = pointAlong(a, b, Math.random());
       const segBearing = bearingTo(a, b);
       const side = Math.random() < 0.5 ? 90 : -90;
       const off = rand(spec.offset[0], spec.offset[1]);
       const pt = destPoint(onRoad, segBearing + side, off);
-
-      // Constraints: spawn ring around player, gap to other spawns,
-      // and a hard minimum distance to every motor-road centreline.
       const dPlayer = haversine(playerPos, pt);
       if (dPlayer < ringMin || dPlayer > ringMax) continue;
       if (existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP)) continue;
       if (this.minMotorDistance(pt) < CONFIG.ROAD_MIN_SAFE) continue;
-
       return pt;
     }
     return null;
