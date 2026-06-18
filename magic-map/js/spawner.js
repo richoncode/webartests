@@ -75,13 +75,14 @@ export class Spawner {
   }
 
   // Called every TICK_MS and after big player moves.
-  maintain(playerPos) {
+  maintain(playerPos, { travelBearing = null } = {}) {
     if (!playerPos) return;
     const now = Date.now();
 
     // Cull: too far, or expired.
+    const farLimit = this.country.active ? CONFIG.DESPAWN_DIST : CONFIG.STREET_DESPAWN_DIST;
     for (const s of [...this.spawns]) {
-      const far = haversine(playerPos, s) > CONFIG.DESPAWN_DIST;
+      const far = haversine(playerPos, s) > farLimit;
       const old = now - s.bornAt > s.ttl;
       if (far || old) this._remove(s);
     }
@@ -93,17 +94,20 @@ export class Spawner {
     const baseline = Math.min(6, maxActive);
     const deficit = maxActive - this.spawns.length;
     if (deficit <= 0) return;
-    if (this.spawns.length < baseline) this.spawnOne(playerPos);
+    const placement = travelBearing == null
+      ? { mode: 'balanced' }
+      : { preferredBearing: travelBearing };
+    if (this.spawns.length < baseline) this.spawnOne(playerPos, { placement });
     let chance = CONFIG.SPAWN_CHANCE;
     if (this.baitActive) chance = Math.min(1, chance * CONFIG.BAIT_SPAWN_MULT);
     // Bigger deficits fill faster (fresh areas populate quickly).
     const tries = deficit > 8 ? 3 : 1;
     for (let i = 0; i < tries; i++) {
-      if (Math.random() < chance) this.spawnOne(playerPos);
+      if (Math.random() < chance) this.spawnOne(playerPos, { placement });
     }
   }
 
-  spawnOne(playerPos, { nearby = false, ring = null } = {}) {
+  spawnOne(playerPos, { nearby = false, ring = null, placement = null } = {}) {
     let pt;
     if (this.country.active && this.country.parcel) {
       // On the player's own land — even spread, no roadside ring.
@@ -111,7 +115,7 @@ export class Spawner {
     } else if (nearby) {
       pt = this.roads.sampleNearbyPoint(playerPos, this.activePoints);
     } else {
-      pt = this.roads.sampleSpawnPoint(playerPos, this.activePoints, ring);
+      pt = this.roads.sampleSpawnPoint(playerPos, this.activePoints, ring, placement || {});
     }
     if (!pt) return null;
 

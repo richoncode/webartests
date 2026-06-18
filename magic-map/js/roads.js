@@ -84,6 +84,14 @@ function segmentProjectionT(pt, a, b) {
   return clamp(((p.x - ax) * abx + (p.y - ay) * aby) / len2, 0, 1);
 }
 
+function bearingDelta(a, b) {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function bearingSector(bearing, sectors = 4) {
+  return Math.floor((((bearing % 360) + 360) % 360) / (360 / sectors));
+}
+
 export class RoadNetwork {
   constructor() {
     this.roads = [];          // { cls, pts: [{lat,lng}...], mph }
@@ -261,7 +269,7 @@ export class RoadNetwork {
 
   // Generate one safe, walk-accessible spawn point near the player.
   // Returns {lat, lng} or null after exhausting attempts.
-  sampleSpawnPoint(playerPos, existingPoints, ring = null) {
+  sampleSpawnPoint(playerPos, existingPoints, ring = null, opts = {}) {
     const ringMin = ring?.min ?? CONFIG.SPAWN_RING_MIN;
     const ringMax = ring?.max ?? CONFIG.SPAWN_RING_MAX;
     if (!this.ready) {
@@ -271,8 +279,8 @@ export class RoadNetwork {
       return this.failed ? this._fallbackPoint(playerPos, existingPoints, ringMin, ringMax) : null;
     }
 
-    return this._sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax) ||
-           this._sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax);
+    return this._sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax, opts) ||
+           this._sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax, opts);
   }
 
   _nodeIndex() {
@@ -308,7 +316,7 @@ export class RoadNetwork {
     return best;
   }
 
-  _sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax) {
+  _sampleStreetTracePoint(playerPos, existingPoints, ringMin, ringMax, opts = {}) {
     const start = this._nearestSegment(playerPos);
     if (!start) return null;
 
@@ -447,10 +455,10 @@ export class RoadNetwork {
       }
     }
 
-    return this._pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax);
+    return this._pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax, opts);
   }
 
-  _pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax) {
+  _pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax, opts = {}) {
     if (!spans.length) return null;
     const bandM = CONFIG.SPAWN_TRACE_BAND_M;
     const bands = new Map();
@@ -473,6 +481,7 @@ export class RoadNetwork {
       // Try enough samples to let a crowded near band prove it is saturated
       // before moving farther out.
       const tries = Math.max(18, bandSpans.length * 6);
+      const valid = [];
       for (let i = 0; i < tries; i++) {
         const span = weightedChoice(bandSpans, (s) => Math.max(1, s.overlapEnd - s.overlapStart) * s.spec.weight);
         const pt = this._pointFromTraceSpan(span);
@@ -484,11 +493,43 @@ export class RoadNetwork {
           !existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP) &&
           this.minMotorDistance(pt) >= CONFIG.ROAD_MIN_SAFE
         ) {
-          return pt;
+          const bearing = bearingTo(playerPos, pt);
+          valid.push({
+            pt,
+            bearing,
+            sector: bearingSector(bearing),
+            weight: Math.max(1, span.overlapEnd - span.overlapStart) * span.spec.weight,
+          });
         }
       }
+      const picked = this._chooseTraceCandidate(valid, playerPos, existingPoints, opts);
+      if (picked) return picked;
     }
     return null;
+  }
+
+  _chooseTraceCandidate(candidates, playerPos, existingPoints, opts = {}) {
+    if (!candidates.length) return null;
+
+    if (opts.preferredBearing != null) {
+      const cone = opts.forwardConeDeg ?? CONFIG.SPAWN_FORWARD_BIAS_DEG;
+      const forward = candidates.filter((c) => bearingDelta(c.bearing, opts.preferredBearing) <= cone);
+      if (forward.length) {
+        return weightedChoice(forward, (c) => c.weight * (1 + (cone - bearingDelta(c.bearing, opts.preferredBearing)) / cone)).pt;
+      }
+    }
+
+    if (opts.mode === 'balanced') {
+      const sectorCounts = [0, 0, 0, 0];
+      for (const p of existingPoints) {
+        sectorCounts[bearingSector(bearingTo(playerPos, p))]++;
+      }
+      const minCount = Math.min(...candidates.map((c) => sectorCounts[c.sector] ?? 0));
+      const underfilled = candidates.filter((c) => (sectorCounts[c.sector] ?? 0) === minCount);
+      return weightedChoice(underfilled, (c) => c.weight).pt;
+    }
+
+    return weightedChoice(candidates, (c) => c.weight).pt;
   }
 
   _pointFromTraceSpan(span) {
@@ -501,9 +542,10 @@ export class RoadNetwork {
     return destPoint(onRoad, segBearing + side, off);
   }
 
-  _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax) {
+  _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax, opts = {}) {
     const spawnable = this.roads.filter(isSpawnableRoad);
     if (!spawnable.length) return null;
+    const valid = [];
     for (let attempt = 0; attempt < 40; attempt++) {
       const road = weightedChoice(spawnable, (r) => ROAD_CLASSES[r.cls].weight);
       const spec = ROAD_CLASSES[road.cls];
@@ -523,9 +565,10 @@ export class RoadNetwork {
       if (dPlayer < ringMin || dPlayer > ringMax) continue;
       if (existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP)) continue;
       if (this.minMotorDistance(pt) < CONFIG.ROAD_MIN_SAFE) continue;
-      return pt;
+      const bearing = bearingTo(playerPos, pt);
+      valid.push({ pt, bearing, sector: bearingSector(bearing), weight: spec.weight });
     }
-    return null;
+    return this._chooseTraceCandidate(valid, playerPos, existingPoints, opts);
   }
 
   // No road data (Overpass down / remote area): scatter in the ring.

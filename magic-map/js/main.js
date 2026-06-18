@@ -241,6 +241,8 @@ updateThemeToggleBtn();
 const engine = new LocationEngine(onFix);
 let prevFix = null;
 let skipNextStep = false;   // set on teleports so they don't count as walking
+let travelBearing = null;
+let forwardSpawnAnchor = null;
 let autoPan = true;
 let autoPanPausedByUser = false;
 let autoPanResumeWalked = 0;
@@ -369,6 +371,8 @@ function onFix(fix) {
   // fixes (GPS jitter, 60fps mock steps) accumulate instead of vanishing.
   if (!prevFix || skipNextStep) {
     prevFix = { ...pos, ts: fix.ts };
+    travelBearing = null;
+    forwardSpawnAnchor = pos;
   } else {
     const d = haversine(prevFix, pos);
     if (d >= CONFIG.MIN_STEP_M) {
@@ -377,6 +381,7 @@ function onFix(fix) {
       const speedOk = fix.mock || speed <= CONFIG.MAX_SPEED_MPS;
       const jumpOk = fix.mock || d <= CONFIG.MAX_JUMP_M;
       if (speedOk && jumpOk) {
+        travelBearing = bearingTo(prevFix, pos);
         if (autoPanPausedByUser) {
           autoPanResumeWalked += d;
           if (autoPanResumeWalked >= CONFIG.AUTO_PAN_RESUME_M) {
@@ -386,6 +391,11 @@ function onFix(fix) {
         const { xpGained, leveled, dayQualified } = state.addDistance(d);
         if (dayQualified) ui.toast(`🔥 Day complete! Streak: ${state.data.streak}`, 'green');
         if (xpGained) announceLevels(leveled);
+        if (!forwardSpawnAnchor) forwardSpawnAnchor = prevFix;
+        if (haversine(forwardSpawnAnchor, pos) >= CONFIG.SPAWN_FORWARD_STEP_M) {
+          spawner.maintain(pos, { travelBearing });
+          forwardSpawnAnchor = pos;
+        }
       }
       prevFix = { ...pos, ts: fix.ts };
     }
@@ -428,7 +438,7 @@ setInterval(() => {
       : '☀️ A new day dawns on the Magic Map');
   }
   if (engine.pos) {
-    spawner.maintain(engine.pos);
+    spawner.maintain(engine.pos, { travelBearing });
     spawner.updateProximity(engine.pos);
   }
   ui.setBaitChip(spawner.baitUntil - Date.now());
@@ -731,7 +741,7 @@ async function begin(useMock) {
 function initialBurst() {
   if (!engine.pos) return;
   const want = Math.max(0, 6 - spawner.spawns.length);
-  for (let i = 0; i < want; i++) spawner.spawnOne(engine.pos);
+  for (let i = 0; i < want; i++) spawner.spawnOne(engine.pos, { placement: { mode: 'balanced' } });
   spawner.updateProximity(engine.pos);
 }
 

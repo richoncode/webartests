@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.19 · 2026-06-18 · breadth-first street spawns';
+export const APP_VERSION = 'v0.20 · 2026-06-18 · close forward spawns';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -28,10 +28,11 @@ export const CONFIG = {
 
   // --- Spawning ---
   MAX_ACTIVE: 14,
-  SPAWN_RING_MIN: 90,      // spawn no closer than this to player
-  SPAWN_RING_MAX: 430,
+  SPAWN_RING_MIN: 45,      // spawn no closer than this to player
+  SPAWN_RING_MAX: 150,     // never place fresh street spawns farther than this
   SPAWN_MIN_GAP: 30,       // min distance between two spawns
   DESPAWN_DIST: 800,
+  STREET_DESPAWN_DIST: 240, // local bubble; old behind-you street spawns free room for forward ones
   TTL_MIN_MS: 12 * 60 * 1000,
   TTL_MAX_MS: 25 * 60 * 1000,
   TICK_MS: 5000,
@@ -49,7 +50,9 @@ export const CONFIG = {
   ROAD_REFETCH_DIST: 350,  // refetch roads after moving this far
   ROAD_MIN_SAFE: 7,        // never closer than this to a motor-road centreline
   SPAWN_TRACE_TURNS: 3,     // by-street spawns follow the street graph this many turns
-  SPAWN_TRACE_BAND_M: 70,    // fill closer travelled-distance bands before farther ones
+  SPAWN_TRACE_BAND_M: 35,    // fill closer travelled-distance bands before farther ones
+  SPAWN_FORWARD_BIAS_DEG: 75, // moving spawns prefer this cone ahead of travel
+  SPAWN_FORWARD_STEP_M: 35, // check for new forward breadcrumbs after walking this far
 
   // --- Movement / distance accounting ---
   MIN_STEP_M: 2,           // ignore GPS jitter below this
