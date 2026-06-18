@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.18 · 2026-06-18 · no driveway spawns';
+export const APP_VERSION = 'v0.19 · 2026-06-18 · breadth-first street spawns';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -49,6 +49,7 @@ export const CONFIG = {
   ROAD_REFETCH_DIST: 350,  // refetch roads after moving this far
   ROAD_MIN_SAFE: 7,        // never closer than this to a motor-road centreline
   SPAWN_TRACE_TURNS: 3,     // by-street spawns follow the street graph this many turns
+  SPAWN_TRACE_BAND_M: 70,    // fill closer travelled-distance bands before farther ones
 
   // --- Movement / distance accounting ---
   MIN_STEP_M: 2,           // ignore GPS jitter below this

@@ -313,7 +313,7 @@ export class RoadNetwork {
     if (!start) return null;
 
     const nodeIndex = this._nodeIndex();
-    const candidates = [];
+    const spans = [];
     const bestSeen = new Map();
     const queue = [];
 
@@ -325,6 +325,14 @@ export class RoadNetwork {
       if (prev != null && prev <= state.travelled) return;
       bestSeen.set(key, state.travelled);
       queue.push(state);
+    };
+
+    const popNearest = () => {
+      let bestIdx = 0;
+      for (let i = 1; i < queue.length; i++) {
+        if (queue[i].travelled < queue[bestIdx].travelled) bestIdx = i;
+      }
+      return queue.splice(bestIdx, 1)[0];
     };
 
     const seedFromNode = (roadIdx, nodeIdx) => {
@@ -377,7 +385,7 @@ export class RoadNetwork {
     }
 
     while (queue.length) {
-      const st = queue.shift();
+      const st = popNearest();
       const road = this.roads[st.roadIdx];
       const spec = ROAD_CLASSES[road.cls];
       const to = road.pts[st.toIdx];
@@ -388,22 +396,15 @@ export class RoadNetwork {
       const overlapStart = Math.max(ringMin, st.travelled);
       const overlapEnd = Math.min(ringMax, endTravel);
       if (overlapEnd > overlapStart) {
-        const sampleTravel = rand(overlapStart, overlapEnd);
-        const t = clamp((sampleTravel - st.travelled) / segLen, 0, 1);
-        const onRoad = pointAlong(st.from, to, t);
-        const segBearing = bearingTo(st.from, to);
-        const side = Math.random() < 0.5 ? 90 : -90;
-        const off = rand(spec.offset[0], spec.offset[1]);
-        const pt = destPoint(onRoad, segBearing + side, off);
-        const dPlayer = haversine(playerPos, pt);
-        if (
-          dPlayer >= ringMin &&
-          dPlayer <= ringMax &&
-          !existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP) &&
-          this.minMotorDistance(pt) >= CONFIG.ROAD_MIN_SAFE
-        ) {
-          candidates.push({ pt, weight: Math.max(1, overlapEnd - overlapStart) * spec.weight });
-        }
+        spans.push({
+          from: st.from,
+          to,
+          startTravel: st.travelled,
+          overlapStart,
+          overlapEnd,
+          segLen,
+          spec,
+        });
       }
 
       if (endTravel >= ringMax) continue;
@@ -446,8 +447,58 @@ export class RoadNetwork {
       }
     }
 
-    if (!candidates.length) return null;
-    return weightedChoice(candidates, (c) => c.weight).pt;
+    return this._pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax);
+  }
+
+  _pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax) {
+    if (!spans.length) return null;
+    const bandM = CONFIG.SPAWN_TRACE_BAND_M;
+    const bands = new Map();
+    for (const span of spans) {
+      const firstBand = Math.floor((span.overlapStart - ringMin) / bandM);
+      const lastBand = Math.floor(Math.max(0, span.overlapEnd - ringMin - 0.001) / bandM);
+      for (let band = firstBand; band <= lastBand; band++) {
+        const bandStart = ringMin + band * bandM;
+        const bandEnd = Math.min(ringMax, bandStart + bandM);
+        const start = Math.max(span.overlapStart, bandStart);
+        const end = Math.min(span.overlapEnd, bandEnd);
+        if (end <= start) continue;
+        if (!bands.has(band)) bands.set(band, []);
+        bands.get(band).push({ ...span, overlapStart: start, overlapEnd: end });
+      }
+    }
+
+    for (const band of [...bands.keys()].sort((a, b) => a - b)) {
+      const bandSpans = bands.get(band);
+      // Try enough samples to let a crowded near band prove it is saturated
+      // before moving farther out.
+      const tries = Math.max(18, bandSpans.length * 6);
+      for (let i = 0; i < tries; i++) {
+        const span = weightedChoice(bandSpans, (s) => Math.max(1, s.overlapEnd - s.overlapStart) * s.spec.weight);
+        const pt = this._pointFromTraceSpan(span);
+        if (!pt) continue;
+        const dPlayer = haversine(playerPos, pt);
+        if (
+          dPlayer >= ringMin &&
+          dPlayer <= ringMax &&
+          !existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP) &&
+          this.minMotorDistance(pt) >= CONFIG.ROAD_MIN_SAFE
+        ) {
+          return pt;
+        }
+      }
+    }
+    return null;
+  }
+
+  _pointFromTraceSpan(span) {
+    const sampleTravel = rand(span.overlapStart, span.overlapEnd);
+    const t = clamp((sampleTravel - span.startTravel) / span.segLen, 0, 1);
+    const onRoad = pointAlong(span.from, span.to, t);
+    const segBearing = bearingTo(span.from, span.to);
+    const side = Math.random() < 0.5 ? 90 : -90;
+    const off = rand(span.spec.offset[0], span.spec.offset[1]);
+    return destPoint(onRoad, segBearing + side, off);
   }
 
   _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax) {
