@@ -103,15 +103,15 @@ export class Spawner {
     }
   }
 
-  spawnOne(playerPos, { nearby = false } = {}) {
+  spawnOne(playerPos, { nearby = false, ring = null } = {}) {
     let pt;
     if (this.country.active && this.country.parcel) {
       // On the player's own land — even spread, no roadside ring.
-      pt = this.roads.sampleParcelPoint(this.country.parcel, this.activePoints);
+      pt = this.roads.sampleParcelPoint(this.country.parcel, this.activePoints, ring ? playerPos : null, ring);
     } else if (nearby) {
       pt = this.roads.sampleNearbyPoint(playerPos, this.activePoints);
     } else {
-      pt = this.roads.sampleSpawnPoint(playerPos, this.activePoints);
+      pt = this.roads.sampleSpawnPoint(playerPos, this.activePoints, ring);
     }
     if (!pt) return null;
 
@@ -129,6 +129,16 @@ export class Spawner {
     this.spawns.push(spawn);
     this._persist();
     return spawn;
+  }
+
+  callSquirrel(playerPos) {
+    const maxActive = this.country.active ? this.country.cap : CONFIG.MAX_ACTIVE;
+    if (this.spawns.length >= maxActive) return { spawn: null, reason: 'full' };
+    const ring = { min: CONFIG.SQUIRREL_CALL_RING_MIN, max: CONFIG.SQUIRREL_CALL_RADIUS };
+    const spawn = this.spawnOne(playerPos, { ring });
+    if (!spawn) return { spawn: null, reason: 'no-safe-spot' };
+    this.updateProximity(playerPos);
+    return { spawn, reason: 'ok' };
   }
 
   // Use one acorn: burst of close spawns + boosted rate for a while.

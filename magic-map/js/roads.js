@@ -142,11 +142,13 @@ export class RoadNetwork {
   // calls fill the property with blue-noise even spacing rather than
   // clustering. Stays inset from the property line and well back from any
   // motor-road centreline (the unsafe frontage road).
-  sampleParcelPoint(parcel, existingPoints) {
-    const ring = parcel?.ring;
-    if (!ring || ring.length < 3) return null;
+  sampleParcelPoint(parcel, existingPoints, center = null, distanceRing = null) {
+    const parcelRing = parcel?.ring;
+    if (!parcelRing || parcelRing.length < 3) return null;
+    const ringMin = distanceRing?.min ?? 0;
+    const ringMax = distanceRing?.max ?? Infinity;
     const C = CONFIG.COUNTRY;
-    const bb = ringBBox(ring);
+    const bb = ringBBox(parcelRing);
 
     // Two passes: first respect the property inset; if the lot is too small
     // to satisfy it, relax the inset so we still place something on-parcel.
@@ -154,8 +156,12 @@ export class RoadNetwork {
       let best = null, bestScore = -1;
       for (let i = 0; i < C.CANDIDATES; i++) {
         const cand = { lat: rand(bb.minLat, bb.maxLat), lng: rand(bb.minLng, bb.maxLng) };
-        if (!pointInPolygon(cand, ring)) continue;
-        if (inset > 0 && distPointToRingM(cand, ring) < inset) continue;
+        if (!pointInPolygon(cand, parcelRing)) continue;
+        if (center) {
+          const dCenter = haversine(center, cand);
+          if (dCenter < ringMin || dCenter > ringMax) continue;
+        }
+        if (inset > 0 && distPointToRingM(cand, parcelRing) < inset) continue;
         if (this.ready && this.minMotorDistance(cand) < C.ROAD_SETBACK) continue;
         let dNear = Infinity;
         for (const e of existingPoints) {

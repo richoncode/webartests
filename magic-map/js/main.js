@@ -448,6 +448,78 @@ $('#hud-acorns').addEventListener('click', () => {
   ui.toast('🌰 Acorn bait scattered! Squirrels incoming…', 'green');
 });
 
+// ---------- squirrel call ----------
+let audioCtx = null;
+function playSquirrelCall() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const out = audioCtx.createGain();
+    const main = audioCtx.createOscillator();
+    const chirp = audioCtx.createOscillator();
+    const trem = audioCtx.createGain();
+
+    main.type = 'triangle';
+    chirp.type = 'sine';
+    main.frequency.setValueAtTime(760, now);
+    main.frequency.exponentialRampToValueAtTime(1320, now + 0.13);
+    main.frequency.exponentialRampToValueAtTime(920, now + 0.27);
+    chirp.frequency.setValueAtTime(1850, now + 0.07);
+    chirp.frequency.exponentialRampToValueAtTime(2400, now + 0.18);
+
+    out.gain.setValueAtTime(0.0001, now);
+    out.gain.exponentialRampToValueAtTime(0.12, now + 0.025);
+    out.gain.exponentialRampToValueAtTime(0.035, now + 0.2);
+    out.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+    trem.gain.setValueAtTime(0.35, now);
+
+    main.connect(out);
+    chirp.connect(trem);
+    trem.connect(out);
+    out.connect(audioCtx.destination);
+    main.start(now);
+    chirp.start(now + 0.06);
+    main.stop(now + 0.38);
+    chirp.stop(now + 0.24);
+    main.onended = () => {
+      main.disconnect();
+      chirp.disconnect();
+      trem.disconnect();
+      out.disconnect();
+    };
+  } catch (e) {
+    // Audio is a flourish; spawning still works if the browser blocks it.
+  }
+}
+
+const callBtn = $('#btn-call');
+callBtn.addEventListener('click', async () => {
+  if (!engine.pos || callBtn.disabled) return;
+  playSquirrelCall();
+  callBtn.disabled = true;
+  callBtn.classList.add('calling');
+  try {
+    const pos = { lat: engine.pos.lat, lng: engine.pos.lng };
+    await roads.ensure(pos);
+    await maybeUpdateCountry(pos);
+    const result = spawner.callSquirrel(pos);
+    if (result.reason === 'full') {
+      ui.toast('📯 The area is already lively — befriend a squirrel first');
+    } else if (!result.spawn) {
+      ui.toast(`📯 No safe spot within ${CONFIG.SQUIRREL_CALL_RADIUS}m — try a path or sidewalk`);
+    } else {
+      const d = Math.round(haversine(pos, result.spawn));
+      ui.toast(`📯 A squirrel answers ${d}m away!`, 'green');
+    }
+  } finally {
+    setTimeout(() => {
+      callBtn.disabled = false;
+      callBtn.classList.remove('calling');
+    }, 900);
+  }
+});
+
 // ---------- radar ----------
 let radarTimer = null;
 $('#btn-radar').addEventListener('click', () => {

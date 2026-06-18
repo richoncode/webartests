@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.14 · 2026-06-18 · center-band map follow';
+export const APP_VERSION = 'v0.15 · 2026-06-18 · squirrel call';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -36,6 +36,12 @@ export const CONFIG = {
   TTL_MAX_MS: 25 * 60 * 1000,
   TICK_MS: 5000,
   SPAWN_CHANCE: 0.55,      // per tick, when below MAX_ACTIVE
+
+  // --- Squirrel call ---
+  // A manual call makes a short sound and asks the normal safe-pathing
+  // sampler for one new squirrel close enough to walk toward right now.
+  SQUIRREL_CALL_RING_MIN: 25,
+  SQUIRREL_CALL_RADIUS: 80,
 
   // --- Safe pathing (road-aware spawns) ---
   ROAD_FETCH_RADIUS: 600,
