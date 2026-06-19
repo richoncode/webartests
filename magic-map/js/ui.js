@@ -151,15 +151,32 @@ export class UI {
     const s = this.state;
     const d = s.data;
     this.els.panelTitle.textContent = '📔 Journal';
+    const fmtSteps = (n) => Math.round(n).toLocaleString();
+    const recentSteps = s.recentStepDays
+      .map((day) => `<div class="ach-desc" style="display:flex;justify-content:space-between;gap:12px;margin-top:4px">
+        <span>${escapeHtml(day.date)}</span>
+        <span><b>${fmtSteps(day.steps)}</b> steps · ${fmtDist(day.metres)}</span>
+      </div>`)
+      .join('');
 
     const stats = `
       <div class="stat-grid">
         <div class="stat-box"><div class="v">${(d.distanceTotal / 1000).toFixed(2)} km</div><div class="k">Total distance</div></div>
         <div class="stat-box"><div class="v">${fmtDist(d.distanceToday)}</div><div class="k">Today (goal ${CONFIG.DAY_GOAL_M} m)</div></div>
+        <div class="stat-box"><div class="v">${fmtSteps(s.stepsToday)}</div><div class="k">Estimated steps today</div></div>
+        <div class="stat-box"><div class="v">${fmtSteps(s.stepsTotal)}</div><div class="k">Estimated total steps</div></div>
         <div class="stat-box"><div class="v">${fmtArea(s.exploredSet.size, CONFIG.CELL_M)}</div><div class="k">Map uncovered</div></div>
         <div class="stat-box"><div class="v">🔥 ${d.streak} <span style="font-size:12px;color:#888">(best ${d.bestStreak})</span></div><div class="k">Daily streak</div></div>
         <div class="stat-box"><div class="v">${Math.round(s.detectRadius)} m</div><div class="k">Detection radius</div></div>
         <div class="stat-box"><div class="v">${Math.round(s.revealRadius)} m</div><div class="k">Fog torch radius</div></div>
+      </div>
+      <div class="ach-item">
+        <div class="ach-top">
+          <span class="ach-name">👟 Recent estimated steps</span>
+          <span class="ach-stars">0.75 m stride</span>
+        </div>
+        <div class="ach-desc">Browser-safe estimate from filtered walking distance, not Apple Health or Google Fit.</div>
+        ${recentSteps || '<div class="ach-desc" style="margin-top:4px">No walking distance logged yet today.</div>'}
       </div>`;
 
     const achs = ACHIEVEMENTS.map((a) => {

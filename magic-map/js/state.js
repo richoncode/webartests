@@ -20,6 +20,7 @@ const FRESH = () => ({
   explored: [],               // fog cell keys
   distanceTotal: 0,
   distanceToday: 0,
+  dailyDistance: {},          // local date -> filtered walking metres
   todayKey: dayKey(),
   streak: 0,
   bestStreak: 0,
@@ -67,6 +68,12 @@ export class GameState {
       console.warn('State load failed, starting fresh', e);
     }
     this.exploredSet = new Set(this.data.explored);
+    if (!this.data.dailyDistance || typeof this.data.dailyDistance !== 'object') {
+      this.data.dailyDistance = {};
+    }
+    if (this.data.distanceToday && !this.data.dailyDistance[this.data.todayKey]) {
+      this.data.dailyDistance[this.data.todayKey] = this.data.distanceToday;
+    }
     this.rolloverDay();
   }
 
@@ -99,6 +106,25 @@ export class GameState {
   get luck() {
     return 1 + Math.min(0.6, this.data.streak * 0.05);
   }
+  get stepsToday() {
+    return this.stepsForMetres(this.data.distanceToday);
+  }
+  get stepsTotal() {
+    return this.stepsForMetres(this.data.distanceTotal);
+  }
+  stepsForMetres(metres) {
+    return Math.max(0, Math.round((metres || 0) / CONFIG.STEP_STRIDE_M));
+  }
+  get recentStepDays() {
+    const entries = Object.entries(this.data.dailyDistance || {})
+      .sort(([a], [b]) => b.localeCompare(a))
+      .slice(0, 7);
+    return entries.map(([date, metres]) => ({
+      date,
+      metres,
+      steps: this.stepsForMetres(metres),
+    }));
+  }
 
   // ---------- day / streak ----------
   rolloverDay() {
@@ -124,6 +150,7 @@ export class GameState {
     const beforeQualified = d.distanceToday >= CONFIG.DAY_GOAL_M;
     d.distanceTotal += metres;
     d.distanceToday += metres;
+    d.dailyDistance[dayKey()] = (d.dailyDistance[dayKey()] || 0) + metres;
     this.meterBank += metres;
 
     let xpGained = 0;
