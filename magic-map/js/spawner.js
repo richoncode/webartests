@@ -96,7 +96,7 @@ export class Spawner {
     if (deficit <= 0) return;
     const placement = travelBearing == null
       ? { mode: 'balanced' }
-      : { preferredBearing: travelBearing };
+      : { preferredBearing: travelBearing, forwardOnly: true };
     if (this.spawns.length < baseline) this.spawnOne(playerPos, { placement });
     let chance = CONFIG.SPAWN_CHANCE;
     if (this.baitActive) chance = Math.min(1, chance * CONFIG.BAIT_SPAWN_MULT);

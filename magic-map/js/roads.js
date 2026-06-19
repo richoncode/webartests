@@ -461,6 +461,7 @@ export class RoadNetwork {
   _pickBreadthFirstSpanPoint(spans, playerPos, existingPoints, ringMin, ringMax, opts = {}) {
     if (!spans.length) return null;
     const bandM = CONFIG.SPAWN_TRACE_BAND_M;
+    const minGap = opts.minGap ?? CONFIG.STREET_SPAWN_MIN_GAP;
     const bands = new Map();
     for (const span of spans) {
       const firstBand = Math.floor((span.overlapStart - ringMin) / bandM);
@@ -490,7 +491,7 @@ export class RoadNetwork {
         if (
           dPlayer >= ringMin &&
           dPlayer <= ringMax &&
-          !existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP) &&
+          !existingPoints.some((e) => haversine(e, pt) < minGap) &&
           this.minMotorDistance(pt) >= CONFIG.ROAD_MIN_SAFE
         ) {
           const bearing = bearingTo(playerPos, pt);
@@ -517,6 +518,7 @@ export class RoadNetwork {
       if (forward.length) {
         return weightedChoice(forward, (c) => c.weight * (1 + (cone - bearingDelta(c.bearing, opts.preferredBearing)) / cone)).pt;
       }
+      if (opts.forwardOnly) return null;
     }
 
     if (opts.mode === 'balanced') {
@@ -545,6 +547,7 @@ export class RoadNetwork {
   _sampleRandomPublicRoadPoint(playerPos, existingPoints, ringMin, ringMax, opts = {}) {
     const spawnable = this.roads.filter(isSpawnableRoad);
     if (!spawnable.length) return null;
+    const minGap = opts.minGap ?? CONFIG.STREET_SPAWN_MIN_GAP;
     const valid = [];
     for (let attempt = 0; attempt < 40; attempt++) {
       const road = weightedChoice(spawnable, (r) => ROAD_CLASSES[r.cls].weight);
@@ -563,7 +566,7 @@ export class RoadNetwork {
       const pt = destPoint(onRoad, segBearing + side, off);
       const dPlayer = haversine(playerPos, pt);
       if (dPlayer < ringMin || dPlayer > ringMax) continue;
-      if (existingPoints.some((e) => haversine(e, pt) < CONFIG.SPAWN_MIN_GAP)) continue;
+      if (existingPoints.some((e) => haversine(e, pt) < minGap)) continue;
       if (this.minMotorDistance(pt) < CONFIG.ROAD_MIN_SAFE) continue;
       const bearing = bearingTo(playerPos, pt);
       valid.push({ pt, bearing, sector: bearingSector(bearing), weight: spec.weight });

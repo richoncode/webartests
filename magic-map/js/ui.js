@@ -246,6 +246,10 @@ export class UI {
           <div>Feature ideas<small>100 future collectables &amp; play modes, simplest first</small></div>
           <button class="btn-secondary" id="set-features">💡 View</button>
         </div>
+        <div class="set-row">
+          <div>Spawning rules<small>Walking modes, distance bands, and street safety rules</small></div>
+          <button class="btn-secondary" id="set-spawning-rules">🧭 View</button>
+        </div>
       </div>
       <div class="set-group">
         <div class="set-label">Danger zone</div>
@@ -289,6 +293,9 @@ export class UI {
     });
     this.els.panelBody.querySelector('#set-features').addEventListener('click', () => {
       this.renderFeatures();
+    });
+    this.els.panelBody.querySelector('#set-spawning-rules').addEventListener('click', () => {
+      window.open('spawning.html', '_blank');
     });
     this.els.panelBody.querySelector('#set-reset').addEventListener('click', () => {
       if (confirm('Erase all squirrels, fog, streaks and achievements?')) {

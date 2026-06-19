@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.20 · 2026-06-18 · close forward spawns';
+export const APP_VERSION = 'v0.21 · 2026-06-18 · forward-only spawn rules';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -28,9 +28,10 @@ export const CONFIG = {
 
   // --- Spawning ---
   MAX_ACTIVE: 14,
-  SPAWN_RING_MIN: 45,      // spawn no closer than this to player
-  SPAWN_RING_MAX: 150,     // never place fresh street spawns farther than this
-  SPAWN_MIN_GAP: 30,       // min distance between two spawns
+  SPAWN_RING_MIN: 40,      // walking street spawns start just outside catch range
+  SPAWN_RING_MAX: 120,     // walking street spawns stay close enough to choose a direction
+  SPAWN_MIN_GAP: 30,       // fallback/open-scatter minimum distance between spawns
+  STREET_SPAWN_MIN_GAP: 80, // street mode keeps a full block-ish gap between squirrels
   DESPAWN_DIST: 800,
   STREET_DESPAWN_DIST: 240, // local bubble; old behind-you street spawns free room for forward ones
   TTL_MIN_MS: 12 * 60 * 1000,
