@@ -5,7 +5,7 @@
 
 // Bump on every deploy — shown on the boot screen and in Settings so
 // phone testers can confirm which build they're running.
-export const APP_VERSION = 'v0.22 · 2026-06-18 · daily step estimates';
+export const APP_VERSION = 'v0.23 · 2026-06-24 · country cheeseburgers';
 
 export const CONFIG = {
   STORAGE_KEY: 'magic-map-squirrels-v1',
@@ -114,6 +114,7 @@ export const CONFIG = {
     ROAD_SETBACK: 14,          // keep spawns this far back from any motor-road centreline
     PARCEL_INSET: 4,           // keep spawns inside the property line by this much
     MIN_GAP: 16,               // minimum spacing between spawns on a parcel (even spread)
+    CHEESEBURGER_RATE: 0.3,    // Easter egg: 30% of country-mode spawns are fake Five Guys orders
     SQUIRRELS_PER_ACRE: 5,     // population target scales with property size
     MAX_ON_PARCEL: 14,
     CANDIDATES: 24,            // best-candidate samples per spawn (blue-noise spread)

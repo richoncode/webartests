@@ -481,13 +481,45 @@ export class UI {
     });
   }
 
+  showBurgerModal(info) {
+    const orderId = `MM-${Math.floor(100000 + Math.random() * 900000)}`;
+    this.els.catchCard.innerHTML = `
+      <span class="catch-new burger-badge">COUNTRY MODE EASTER EGG</span>
+      <div class="catch-aura burger-aura" style="--aura:rgba(240,160,64,0.34)">
+        <span class="sq-emoji" style="font-size:68px">🍔</span>
+      </div>
+      <h3>DoorDash Order Placed</h3>
+      <span class="rarity-chip burger-chip">Five Guys · Little Cheeseburger</span>
+      <div class="burger-receipt">
+        <div><span>Order</span><b>${orderId}</b></div>
+        <div><span>Restaurant</span><b>Five Guys</b></div>
+        <div><span>Items</span><b>1 cheeseburger · cajun fries · tiny map magic</b></div>
+        <div><span>Status</span><b>Dasher assigned: Squirrel Scout</b></div>
+      </div>
+      <p class="catch-flavor">A suspiciously official receipt flutters out of the grass. The app insists your burger is on the way.</p>
+      <p class="fake-order-note">Simulation only. No DoorDash order was placed, no payment happened, and Five Guys remains peacefully unaware.</p>
+      <div class="catch-btns">
+        <button class="btn-secondary" id="catch-later">Leave it</button>
+        <button class="btn-primary" id="catch-go">🍔 Mark delivered</button>
+      </div>`;
+    this.els.catchModal.classList.remove('hidden');
+
+    this.els.catchCard.querySelector('#catch-later').addEventListener('click', () => this.hideCatchModal());
+    this.els.catchCard.querySelector('#catch-go').addEventListener('click', () => {
+      this._burst(['🍔', '🍟', '🥤', '🧾', '✨', '🍔']);
+      setTimeout(() => {
+        this.hideCatchModal();
+        info.onClaim();
+      }, 450);
+    });
+  }
+
   hideCatchModal() {
     this.els.catchModal.classList.add('hidden');
     this.els.catchCard.innerHTML = '';
   }
 
-  _burst() {
-    const bits = ['🌰', '✨', '🍂', '⭐', '🌰', '✨'];
+  _burst(bits = ['🌰', '✨', '🍂', '⭐', '🌰', '✨']) {
     bits.forEach((b, i) => {
       const el = document.createElement('span');
       el.className = 'burst-bit';

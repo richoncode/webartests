@@ -155,6 +155,17 @@ function onSpawnTap(spawn) {
   }
   if (spawn.state !== 'revealed') return;
 
+  if (spawn.kind === 'cheeseburger') {
+    ui.showBurgerModal({
+      onClaim: () => {
+        spawner.collect(spawn);
+        ui.toast('🍔 Fake Five Guys delivery completed. No real order placed.', 'gold');
+        ui.refreshHud();
+      },
+    });
+    return;
+  }
+
   const species = SPECIES_BY_ID[spawn.speciesId];
   const rarity = RARITIES[species.rarity];
   const frontier = frontierFor(spawn);
@@ -576,7 +587,8 @@ callBtn.addEventListener('click', async (e) => {
       ui.toast(`📯 No safe spot within ${CONFIG.SQUIRREL_CALL_RADIUS}m — try a path or sidewalk`);
     } else {
       const d = Math.round(haversine(pos, result.spawn));
-      ui.toast(`📯 A squirrel answers ${d}m away!`, 'green');
+      const label = result.spawn.kind === 'cheeseburger' ? 'cheeseburger' : 'squirrel';
+      ui.toast(`📯 A ${label} answers ${d}m away!`, 'green');
     }
   } finally {
     setTimeout(() => {
@@ -591,8 +603,9 @@ let radarTimer = null;
 $('#btn-radar').addEventListener('click', () => {
   if (!engine.pos) return;
   const hit = spawner.nearest(engine.pos);
-  if (!hit) return ui.toast('📡 No squirrels in range… keep walking!');
+  if (!hit) return ui.toast('📡 No signals in range… keep walking!');
   clearTimeout(radarTimer);
+  const label = hit.spawn.kind === 'cheeseburger' ? 'cheeseburger' : 'squirrel';
   const update = () => {
     if (!engine.pos) return;
     const d = haversine(engine.pos, hit.spawn);
@@ -604,7 +617,7 @@ $('#btn-radar').addEventListener('click', () => {
     clearInterval(iv);
     ui.hideRadar();
   }, 8000);
-  ui.toast(`📡 Ping! Nearest squirrel ${fmtDist(hit.dist)} away`);
+  ui.toast(`📡 Ping! Nearest ${label} ${fmtDist(hit.dist)} away`);
 });
 
 // ---------- mock mode ----------

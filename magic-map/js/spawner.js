@@ -14,13 +14,17 @@ import { haversine, rand, pointInPolygon } from './util.js';
 
 let nextId = 1;
 
+function isCheeseburger(spawn) {
+  return spawn.kind === 'cheeseburger';
+}
+
 export class Spawner {
   constructor(map, roads, state, { onTap }) {
     this.map = map;
     this.roads = roads;
     this.state = state;
     this.onTap = onTap;        // (spawn) => void
-    this.spawns = [];          // { id, speciesId, lat, lng, bornAt, ttl, state, marker }
+    this.spawns = [];          // { id, kind, speciesId, lat, lng, bornAt, ttl, state, marker }
     this.baitUntil = 0;
     // Country mode: when active, squirrels populate the player's parcel
     // (evenly spread) instead of the roadside ring.
@@ -42,6 +46,9 @@ export class Spawner {
       }
     } else {
       this.country.cap = CONFIG.MAX_ACTIVE;
+      for (const s of [...this.spawns]) {
+        if (isCheeseburger(s)) this._remove(s);
+      }
     }
   }
 
@@ -56,6 +63,7 @@ export class Spawner {
   // ---------- persistence (squirrels survive a browser reset) ----------
   _persist() {
     this.state.data.activeSpawns = this.spawns.map((s) => ({
+      kind: s.kind || 'squirrel',
       speciesId: s.speciesId,
       lat: s.lat,
       lng: s.lng,
@@ -69,7 +77,7 @@ export class Spawner {
     const now = Date.now();
     for (const r of saved || []) {
       if (!r || now - r.bornAt > r.ttl) continue; // expired while away
-      this.spawns.push({ id: nextId++, ...r, state: 'hidden', marker: null });
+      this.spawns.push({ id: nextId++, ...r, kind: r.kind || 'squirrel', state: 'hidden', marker: null });
     }
     this._persist();
   }
@@ -119,10 +127,14 @@ export class Spawner {
     }
     if (!pt) return null;
 
-    const species = pickSpecies({ luck: this.state.luck });
+    const kind = this.country.active && this.country.parcel && Math.random() < CONFIG.COUNTRY.CHEESEBURGER_RATE
+      ? 'cheeseburger'
+      : 'squirrel';
+    const species = kind === 'squirrel' ? pickSpecies({ luck: this.state.luck }) : null;
     const spawn = {
       id: nextId++,
-      speciesId: species.id,
+      kind,
+      speciesId: species?.id || null,
       lat: pt.lat,
       lng: pt.lng,
       bornAt: Date.now(),
@@ -217,7 +229,33 @@ export class Spawner {
     if (spawn.state === 'hidden') return;
 
     let icon;
-    if (spawn.state === 'mystery') {
+    if (isCheeseburger(spawn)) {
+      if (spawn.state === 'mystery') {
+        icon = L.divIcon({
+          className: '',
+          html: '<div class="mystery-marker burger-mystery"><span class="myst-paw">🛍️</span></div>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+      } else if (spawn.state === 'rustle') {
+        icon = L.divIcon({
+          className: '',
+          html: '<div class="rustle-marker burger-rustle">🍟</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+      } else {
+        icon = L.divIcon({
+          className: '',
+          html: `<div class="sq-marker burger-marker revealed">
+                   <div class="sq-glow burger-glow"></div>
+                   <span class="sq-emoji">🍔</span>
+                 </div>`,
+          iconSize: [44, 44],
+          iconAnchor: [22, 30],
+        });
+      }
+    } else if (spawn.state === 'mystery') {
       const species = SPECIES_BY_ID[spawn.speciesId];
       const rarity = RARITIES[species.rarity];
       const beacon = rarity.xp >= 90; // rare and above broadcast a glow column
