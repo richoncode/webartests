@@ -1,0 +1,2479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spatial Survey App Architecture — Interactive Learning Wizard</title>
+  <style>
+    /* Reset & CSS variables */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --bg: #0d0d0d;
+      --surface: #111;
+      --card: #1a1a1a;
+      --card-hover: #222;
+      --border: #2a2a2a;
+      --text: #ddd;
+      --text-muted: #666;
+      --text-highlight: #fff;
+      
+      /* Accent colors */
+      --blue: #5b9bd5;
+      --blue-bg: #1e2d40;
+      --green: #10b981;
+      --green-bg: #102e24;
+      --amber: #f59e0b;
+      --amber-bg: #2d1f05;
+      --violet: #8b5cf6;
+      --violet-bg: #22143b;
+      --red: #e74c3c;
+      --red-bg: #2d1010;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Layout structure */
+    header {
+      padding: 24px 40px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13, 13, 13, 0.8);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    header p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    a.back {
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+
+    a.back:hover {
+      color: #aaa;
+    }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      min-height: calc(100vh - 80px);
+    }
+
+    /* Left Sidebar Stepper */
+    .sidebar {
+      width: 320px;
+      border-right: 1px solid var(--border);
+      background: #111;
+      padding: 32px 16px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .stepper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .stepper::before {
+      content: '';
+      position: absolute;
+      left: 27px;
+      top: 16px;
+      bottom: 16px;
+      width: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+      position: relative;
+      z-index: 1;
+      user-select: none;
+    }
+
+    .step-item:hover:not(.locked) {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .step-item.active {
+      background: var(--blue-bg);
+      border-color: rgba(91, 155, 213, 0.3);
+    }
+
+    .step-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #222;
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+
+    .step-item.completed .step-circle {
+      background: var(--green-bg);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .step-item.active .step-circle {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .step-item.locked .step-circle {
+      background: #111;
+      border-color: #222;
+    }
+
+    .step-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .step-item.locked .step-title {
+      color: #555;
+    }
+
+    .step-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      padding: 40px 60px;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+
+    .step-content {
+      max-width: 900px;
+      display: none;
+    }
+
+    .step-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Stepper Header Details */
+    .module-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+
+    .badge-blue { color: var(--blue); background: var(--blue-bg); border: 1px solid rgba(91, 155, 213, 0.2); }
+    .badge-violet { color: var(--violet); background: var(--violet-bg); border: 1px solid rgba(139, 92, 246, 0.2); }
+
+    .module-title {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .module-intro {
+      font-size: 16px;
+      color: #aaa;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    /* Section Cards */
+    .section-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    .section-card h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-highlight);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-card p {
+      font-size: 14px;
+      color: #aaa;
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    .section-card p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Grid layout inside card */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .grid-item {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .grid-item-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .grid-item-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: #eee;
+    }
+
+    /* Bullet items */
+    .bullet-list {
+      list-style-type: none;
+      padding-left: 0;
+    }
+
+    .bullet-list li {
+      position: relative;
+      padding-left: 20px;
+      font-size: 14px;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+
+    .bullet-list li::before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      color: var(--blue);
+      font-weight: bold;
+    }
+
+    /* Interactive Sandboxes */
+    .sandbox-container {
+      background: #080808;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sandbox-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 12px;
+    }
+
+    .sandbox-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--blue);
+    }
+
+    .sandbox-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 180px;
+      flex: 1;
+    }
+
+    .control-label {
+      font-size: 12px;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .control-val {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--text-highlight);
+      font-weight: 600;
+    }
+
+    /* Slider input styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: #222;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--blue);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    /* Toggle switch styling */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .switch input { 
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #333;
+      transition: .2s;
+      border-radius: 24px;
+    }
+
+    .slider::before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: #fff;
+      transition: .2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--blue);
+    }
+
+    input:checked + .slider::before {
+      transform: translateX(20px);
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Canvas visualizer */
+    .visualizer-canvas {
+      width: 100%;
+      height: 280px;
+      background: #040404;
+      border: 1px solid #1a1a1a;
+      border-radius: 8px;
+      display: block;
+    }
+
+    /* Code block inside technical specs */
+    pre {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      margin-top: 12px;
+    }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    /* Math formula highlight */
+    .math-block {
+      text-align: center;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 3px solid var(--violet);
+      margin: 16px 0;
+      font-size: 16px;
+      font-family: 'Times New Roman', Times, serif;
+      font-style: italic;
+      color: #eee;
+    }
+
+    /* Knowledge Check Panel */
+    .quiz-card {
+      border-left: 4px solid var(--amber);
+      background: rgba(245, 158, 11, 0.02);
+    }
+
+    .quiz-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .option-btn {
+      background: #151515;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      color: #aaa;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      font-size: 13px;
+    }
+
+    .option-btn:hover {
+      background: #1e1e1e;
+      border-color: #444;
+      color: #fff;
+    }
+
+    .option-btn.selected {
+      border-color: var(--blue);
+      background: rgba(91, 155, 213, 0.08);
+      color: #fff;
+    }
+
+    .option-btn.correct {
+      border-color: var(--green);
+      background: rgba(16, 185, 129, 0.08);
+      color: #fff;
+    }
+
+    .option-btn.wrong {
+      border-color: var(--red);
+      background: rgba(231, 76, 60, 0.08);
+      color: #fff;
+    }
+
+    .quiz-feedback {
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 16px;
+      display: none;
+      line-height: 1.6;
+    }
+
+    .feedback-correct {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .feedback-wrong {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid rgba(231, 76, 60, 0.3);
+    }
+
+    .quiz-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* General site buttons */
+    button.btn {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 10px 22px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+
+    button.btn:hover {
+      background: #222;
+      border-color: #555;
+      color: #fff;
+    }
+
+    button.btn.primary {
+      background: var(--blue-bg);
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    button.btn.primary:hover {
+      background: #243550;
+      color: #fff;
+    }
+
+    button.btn.success {
+      background: var(--green-bg);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    button.btn.success:hover {
+      background: #163c2f;
+      color: #fff;
+    }
+
+    button.btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Navigation bottom bar */
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Json Config Box for Step 7 */
+    .json-exporter {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .json-codebox {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: #030303;
+      color: var(--green);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green);
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 1000;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Custom metrics dashboard style for step calculations */
+    .metric-panel {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .metric-val {
+      font-size: 18px;
+      font-weight: 700;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+
+    /* Confetti Canvas overlay */
+    #confetti-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 999;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <p>CURRICULUM 04</p>
+      <h1>Spatial Survey App Architecture</h1>
+    </div>
+    <a class="back" href="../">← Back to Curriculum</a>
+  </header>
+
+  <div class="main-container">
+    <!-- Left Navigation Sidebar -->
+    <div class="sidebar">
+      <div class="stepper" id="sidebar-stepper">
+        <!-- Generated Dynamically by JS -->
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="content-area">
+      <!-- Step 1 Content -->
+      <div class="step-content" id="step-content-1">
+        <span class="module-badge badge-blue">Module 1</span>
+        <h2 class="module-title">Background & The Core Spatial Problem</h2>
+        <p class="module-intro">
+          Learn why standard, consumer-focused photo and video pipelines completely corrupt high-precision 3D reconstruction and Visual Positioning datasets.
+        </p>
+
+        <div class="section-card">
+          <h3>Structure-from-Motion (SfM) vs. Video Capture</h3>
+          <p>
+            Traditional video capture is designed for human eyes, operating on the principle of local aesthetic appeal. It dynamically adjusts focal distance, exposure duration, and sensor sensitivity (ISO) as frames progress. However, photogrammetry algorithms—such as <strong>COLMAP's Structure-from-Motion (SfM)</strong> pipeline—rely on extracting consistent mathematical invariants.
+          </p>
+          <p>
+            When matching keypoints (using algorithms like SIFT) across adjacent image sequences, the pipeline assumes a <strong>static world and photometric consistency</strong>. If pixel values change because the camera auto-adjusts its parameters, feature matches degrade, rendering reconstruction metrics highly inaccurate.
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>The iOS Platform Constraints</h3>
+          <p>
+            To deploy spatial mapping apps onto mobile hardware like iPhones, engineers must navigate extreme resource constraints. Under high disk I/O demands, saving raw, uncompressed files will quickly saturate write speeds, cause frame drops, and deplete local memory. We must lock AVFoundation hardware controls completely.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Feature Match Distortion</h3>
+          <p>
+            Toggle the camera lock switches. Observe how dynamic camera changes break feature matches and tear the reconstructed 3D geometry mesh, while fixed camera bounds preserve clean geometry alignment.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">Reconstruction Simulation Sandbox</span>
+              <div class="toggle-container">
+                <span class="control-label" style="margin-bottom:0;">Auto-Exposure & Focus Jitter:</span>
+                <label class="switch">
+                  <input type="checkbox" id="step1-toggle-jitter" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            
+            <canvas class="visualizer-canvas" id="step1-canvas"></canvas>
+            
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step1-metric-features" style="color:var(--red);">12 / 100</div>
+                <div class="metric-label">Stable Feature Matches</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step1-metric-reproj" style="color:var(--red);">8.42px</div>
+                <div class="metric-label">Reprojection Error (MACE)</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step1-metric-status" style="color:var(--red);">TORN MESH</div>
+                <div class="metric-label">3D Geometry State</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>Why do auto-exposure and auto-focus corrupt photogrammetry and SfM datasets?</p>
+          <div class="quiz-options" id="step1-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step1-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <div></div>
+          <button class="btn primary" id="step1-next-btn" disabled>Proceed to Module 2</button>
+        </div>
+      </div>
+
+      <!-- Step 2 Content -->
+      <div class="step-content" id="step-content-2">
+        <span class="module-badge badge-blue">Module 2</span>
+        <h2 class="module-title">The Rig Geometry Dilemma — Fixed Rig vs. Independent</h2>
+        <p class="module-intro">
+          Quantify the mathematical speedups and accuracy gains made possible by constraining camera layouts in physically rigid mounts.
+        </p>
+
+        <div class="section-card">
+          <h3>Degrees of Freedom in Bundle Adjustment</h3>
+          <p>
+            When processing multiple image paths to construct a sparse point cloud, optimization solvers must calculate the 3D position of each feature point alongside the 6-DoF pose (3 rotation, 3 translation variables) of each camera viewpoint.
+          </p>
+          <p>
+            In <strong>Independent Mode</strong>, every camera viewpoint moves independently. For a collection of $F$ frames and $N$ cameras, the solver must optimize $6 \times F \times N$ camera variables.
+          </p>
+          <p>
+            In <strong>Fixed Rig Mode</strong>, cameras are locked together on a rigid bracket. The relative transform between cameras (extrinsics) is constant. This reduces variables to $(6 \times F) + 6 \times (N - 1)$. 
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>Solver Optimizations & Trajectory Precision</h3>
+          <p>
+            Reducing variables directly reduces the size of the Jacobian matrix within Ceres bundle adjustment solvers, yielding a <strong>50% to 70% decrease in global solve times</strong>.
+          </p>
+          <p>
+            Additionally, locking the spatial baseline prevents scale drift, increasing structural mapping precision by up to <strong>29.38% against ground-truth LiDAR</strong> reference systems.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Variable Calculator</h3>
+          <p>
+            Adjust the slider constraints for frame count and camera counts. Compare the parameter count scaling and estimated cloud processing times between rig topologies.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">Bundle Adjustment Variable Calculator</span>
+            </div>
+            
+            <div class="sandbox-controls">
+              <div class="control-group">
+                <span class="control-label">Capture Duration (Frames): <span class="control-val" id="step2-lbl-frames">1000</span></span>
+                <input type="range" id="step2-slider-frames" min="100" max="5000" step="100" value="1000">
+              </div>
+              <div class="control-group">
+                <span class="control-label">Rig Cameras: <span class="control-val" id="step2-lbl-cameras">3</span></span>
+                <input type="range" id="step2-slider-cameras" min="1" max="4" step="1" value="3">
+              </div>
+            </div>
+
+            <canvas class="visualizer-canvas" id="step2-canvas"></canvas>
+
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step2-metric-ind-vars" style="color:var(--text);">18,000</div>
+                <div class="metric-label">Independent Variables</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step2-metric-rig-vars" style="color:var(--blue);">6,012</div>
+                <div class="metric-label">Fixed Rig Variables</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step2-metric-savings" style="color:var(--green);">-66.6%</div>
+                <div class="metric-label">Pose Computation Savings</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>If a 3-camera rig records a 1,000-frame survey in Fixed Rig Mode, how many total pose variables must the global bundle adjuster optimize?</p>
+          <div class="quiz-options" id="step2-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step2-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn primary" id="step2-next-btn" disabled>Proceed to Module 3</button>
+        </div>
+      </div>
+
+      <!-- Step 3 Content -->
+      <div class="step-content" id="step-content-3">
+        <span class="module-badge badge-blue">Module 3</span>
+        <h2 class="module-title">Infrastructure-Free P2P Networking & Control Sync</h2>
+        <p class="module-intro">
+          Coordinate settings and commands across multiple mapping devices in remote locations, tunnels, or fields with zero cellular or router connectivity.
+        </p>
+
+        <div class="section-card">
+          <h3>Master-Satellite Topology</h3>
+          <p>
+            To achieve synchronized recording, the hardware fleet behaves as a unified capture array. One node is designated as the <strong>Master device</strong>, hosting the interactive controls. The other nodes act as <strong>Satellite devices</strong>, running a headless process that accepts JSON state packages over ad-hoc peer networks.
+          </p>
+          <p>
+            When the master modifies exposure values or hits record, settings are instantaneously pushed to all node nodes to execute uniform photometric capture rules.
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>Wi-Fi Aware & Ad-hoc NAN Networking</h3>
+          <p>
+            Standard local networks rely on a central wireless router to pass packets. In off-grid settings, we utilize the <strong>Wi-Fi Aware (NAN)</strong> protocol, enabling direct device-to-device wireless routing natively on the device chipsets.
+          </p>
+          <p>
+            In the office, the devices use a dedicated <strong>DeviceDiscoveryUI</strong> to handshake and store trusted cryptographic keypairs, allowing automatic connection in the field without cellular access.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Network Connectivity</h3>
+          <p>
+            Simulate a cellular drop. Watch how standard server-routing methods go offline immediately, while the ad-hoc local Wi-Fi Aware direct links remain fully connected.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">P2P Network Topology Simulator</span>
+              <button class="btn primary" id="step3-btn-toggle">Disconnect Infrastructure</button>
+            </div>
+            
+            <canvas class="visualizer-canvas" id="step3-canvas"></canvas>
+            
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step3-metric-cloud" style="color:var(--green);">CONNECTED</div>
+                <div class="metric-label">Cloud/Tower Link</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step3-metric-p2p" style="color:var(--green);">ACTIVE (0ms)</div>
+                <div class="metric-label">Direct Wi-Fi Aware Mesh</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step3-metric-sync" style="color:var(--green);">SYNCHRONIZED</div>
+                <div class="metric-label">Fleet Settings State</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>True or False: The Wi-Fi Aware framework requires a cell tower or local routing hardware to sync settings between a Master and Satellite phone.</p>
+          <div class="quiz-options" id="step3-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step3-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn primary" id="step3-next-btn" disabled>Proceed to Module 4</button>
+        </div>
+      </div>
+
+      <!-- Step 4 Content -->
+      <div class="step-content" id="step-content-4">
+        <span class="module-badge badge-blue">Module 4</span>
+        <h2 class="module-title">Microsecond Clock Sync & Frame-Dropping Protocol</h2>
+        <p class="module-intro">
+          Align multiple camera captures down to the exact microsecond despite variable latency over local wireless networks.
+        </p>
+
+        <div class="section-card">
+          <h3>The Variable Latency Problem</h3>
+          <p>
+            D2D messages suffer from network transport jitter, taking between 10ms and 50ms to arrive. Triggering cameras with a direct "record now" command creates significant temporal offsets. At normal walking speeds, a 40ms offset shifts camera views by several centimeters, breaking rig extrinsics.
+          </p>
+          <p>
+            To resolve this, the system establishes clock parity using a network round-trip-time (RTT) calibration loop:
+          </p>
+          <div class="math-block">
+            &theta; = &frac12; * [ (T<sub>1</sub> - T<sub>0</sub>) + (T<sub>2</sub> - T<sub>3</sub>) ]
+          </div>
+          <p>
+            Where &theta; calculates clock drift relative to local system uptime clocks.
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>AVFoundation Frame-Dropping Pipeline</h3>
+          <p>
+            When a recording session starts, the Master schedules a future timestamp (e.g. <code>Master Time + 2.0s</code>). The Satellite nodes receive this offset, spin up their <code>AVCaptureMultiCamSession</code> immediately, and route frames to background-threaded delegates.
+          </p>
+          <p>
+            These delegates discard every incoming <code>CMSampleBuffer</code> until the frame matches the target timestamp to the precise microsecond.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Clock Sync Timeline</h3>
+          <p>
+            Adjust network latency jitter. See how the frame-dropping pipeline discards out-of-sync frames (represented in red) until the streams align perfectly at the scheduled timeline coordinate.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">Clock Sync & Buffer Alignment</span>
+              <div class="control-group" style="max-width: 260px;">
+                <span class="control-label">Network Jitter: <span class="control-val" id="step4-lbl-jitter">25ms</span></span>
+                <input type="range" id="step4-slider-jitter" min="5" max="100" step="5" value="25">
+              </div>
+            </div>
+            
+            <canvas class="visualizer-canvas" id="step4-canvas"></canvas>
+            
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step4-metric-rtt" style="color:var(--text);">25ms</div>
+                <div class="metric-label">RTT Latency</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step4-metric-dropped" style="color:var(--amber);">0 frames</div>
+                <div class="metric-label">Dropped Buffers</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step4-metric-status" style="color:var(--green);">LOCKED</div>
+                <div class="metric-label">Sync Alignment</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>How do Satellite nodes ensure they capture a frame at the exact same physical moment as the Master node despite a 40ms network transmission delay?</p>
+          <div class="quiz-options" id="step4-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step4-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn primary" id="step4-next-btn" disabled>Proceed to Module 5</button>
+        </div>
+      </div>
+
+      <!-- Step 5 Content -->
+      <div class="step-content" id="step-content-5">
+        <span class="module-badge badge-blue">Module 5</span>
+        <h2 class="module-title">High-Frequency Sensor Fusion & Spatial Priors</h2>
+        <p class="module-intro">
+          Accelerate point cloud reconstruction and register datasets in absolute coordinates using fused sensors.
+        </p>
+
+        <div class="section-card">
+          <h3>Addressing Sensor Frequency Mismatches</h3>
+          <p>
+            During capture, telemetry sensors write data at different rates: video at 30/60Hz, GPS coordinates update slowly at 1Hz, and inertial sensors (IMU) sample motion at 100Hz+.
+          </p>
+          <p>
+            To associate GPS values and rotation rates with specific video frames, the system maps discrete hardware signals into a unified timeline using the high-resolution reference clock <code>mach_absolute_time()</code>.
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>CoreLocation and CoreMotion APIs</h3>
+          <p>
+            <strong>CoreLocation</strong> provides coordinates (Latitude, Longitude, Altitude) to frame reconstruction bounding boxes.
+          </p>
+          <p>
+            <strong>CoreMotion</strong> uses the <code>.xTrueNorthZVertical</code> coordinate frame, fusing hardware sensor data to calculate 3-DoF rotation vectors (Quaternions) relative to true north and gravity. By interpolating orientation between 1Hz GPS steps, we produce high-fidelity 6-DoF spatial priors for every image.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Timeline Interpolation</h3>
+          <p>
+            Slide the timeline tracker to see how high-frequency 100Hz IMU rotation data fills the gaps between sparse 1Hz GPS signals to compute exact spatial frames.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">Telemetry Sensor Interpolation</span>
+              <div class="control-group" style="max-width: 260px;">
+                <span class="control-label">Timeline Seek: <span class="control-val" id="step5-lbl-seek">0.50s</span></span>
+                <input type="range" id="step5-slider-seek" min="0" max="1" step="0.01" value="0.5">
+              </div>
+            </div>
+            
+            <canvas class="visualizer-canvas" id="step5-canvas"></canvas>
+            
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step5-metric-gps" style="color:var(--text);">[GPS Fused]</div>
+                <div class="metric-label">Fused Location</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step5-metric-imu" style="color:var(--violet);">[IMU Quaternion]</div>
+                <div class="metric-label">IMU Orientation</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step5-metric-state" style="color:var(--green);">Interpolating</div>
+                <div class="metric-label">Solver Path State</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>Why shouldn't you inject raw 1Hz GPS coordinates directly into every video frame's metadata?</p>
+          <div class="quiz-options" id="step5-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step5-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn primary" id="step5-next-btn" disabled>Proceed to Module 6</button>
+        </div>
+      </div>
+
+      <!-- Step 6 Content -->
+      <div class="step-content" id="step-content-6">
+        <span class="module-badge badge-blue">Module 6</span>
+        <h2 class="module-title">Real-Time Motion Blur Rejection</h2>
+        <p class="module-intro">
+          Implement a hardware-driven quality filter inside camera delegates to discard blurry frames prior to storage and processing.
+        </p>
+
+        <div class="section-card">
+          <h3>Rotational Velocity & Shutter Exposure Physics</h3>
+          <p>
+            Motion blur smears high-frequency image details, corrupting feature point extraction. Rotational motions (Pitch, Roll, Yaw) cause significantly more feature smearing than linear accelerations.
+          </p>
+          <p>
+            Vulnerability to blur is linked directly to sensor exposure duration. In bright environments, short exposure windows (e.g. 1/2000s) freeze motion. In low-light environments, the shutter remains open longer, making the image highly susceptible to motion blur.
+          </p>
+        </div>
+
+        <div class="section-card">
+          <h3>The Mathematical Gatekeeper Formula</h3>
+          <p>
+            The callback reads <code>CMDeviceMotion</code> rates directly. It applies a dynamic mathematical threshold test:
+          </p>
+          <div class="math-block">
+            Threshold = Baseline Tolerance * [ 1 / (Exposure Duration * 60) ]
+          </div>
+          <p>
+            If the device's instantaneous rotational speed exceeds this threshold, the frame is excluded from serialization queues to save disk I/O and optimize points datasets.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Blur Rejection Gate</h3>
+          <p>
+            Modify environmental light levels (Lux) and physical camera speed. Observe how the system automatically calculates exposure and evaluates whether to drop or keep the frame.
+          </p>
+
+          <div class="sandbox-container">
+            <div class="sandbox-header">
+              <span class="sandbox-title">Motion Blur Gatekeeper Sandbox</span>
+            </div>
+            
+            <div class="sandbox-controls">
+              <div class="control-group">
+                <span class="control-label">Ambient Lighting: <span class="control-val" id="step6-lbl-lux">500 Lux</span></span>
+                <input type="range" id="step6-slider-lux" min="10" max="2000" step="50" value="500">
+              </div>
+              <div class="control-group">
+                <span class="control-label">Camera Jitter Speed: <span class="control-val" id="step6-lbl-speed">2.0 rad/s</span></span>
+                <input type="range" id="step6-slider-speed" min="0.1" max="10.0" step="0.1" value="2.0">
+              </div>
+            </div>
+
+            <canvas class="visualizer-canvas" id="step6-canvas"></canvas>
+
+            <div class="metric-panel">
+              <div class="metric-card">
+                <div class="metric-val" id="step6-metric-exposure" style="color:var(--text);">1/120s</div>
+                <div class="metric-label">Calculated Exposure</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step6-metric-threshold" style="color:var(--violet);">3.5 rad/s</div>
+                <div class="metric-label">Max Speed Threshold</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-val" id="step6-metric-gate" style="color:var(--green);">KEEP FRAME</div>
+                <div class="metric-label">Gate Outcome</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>Why must the motion blur rejection threshold scale dynamically based on camera exposure duration?</p>
+          <div class="quiz-options" id="step6-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step6-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn primary" id="step6-next-btn" disabled>Proceed to Module 7</button>
+        </div>
+      </div>
+
+      <!-- Step 7 Content -->
+      <div class="step-content" id="step-content-7">
+        <span class="module-badge badge-violet">Module 7: Synthesis</span>
+        <h2 class="module-title">Architecture Synthesis & Survey Session Export</h2>
+        <p class="module-intro">
+          Consolidate your spatial architectural parameters into a production-ready capture configuration schema.
+        </p>
+
+        <div class="section-card">
+          <h3>Building the Pipeline Configuration</h3>
+          <p>
+            A production-ready spatial tracking application requires an explicit, structured configuration schema shared across all devices. This file defines camera modes, synchronization timing tolerances, sensory fusion flags, and quality control gates.
+          </p>
+          <p>
+            By consolidating the values optimized throughout this wizard, you create a unified deployment manifest. This file coordinates the capturing nodes to establish microsecond clocks, photo consistency, and path tracking.
+          </p>
+        </div>
+
+        <!-- Interactive Sandbox -->
+        <div class="section-card">
+          <h3>Interactive Sandbox: Schema Builder & Manifest Exporter</h3>
+          <p>
+            Select configuration parameters below. The system will synthesize the architecture and output a valid JSON capture specification for your spatial mapping arrays.
+          </p>
+
+          <div class="sandbox-container" style="flex-direction:row; flex-wrap:wrap;">
+            <!-- Configuration inputs -->
+            <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:16px;">
+              <div class="control-group">
+                <span class="control-label" style="font-weight:600;">Rig Geometry Mode</span>
+                <div class="quiz-options" style="margin:0; gap:8px;">
+                  <button class="option-btn selected" id="step7-rig-fixed" onclick="updateStep7Config('rigMode', 'FIXED_RIG')">Fixed Rig (Constrained)</button>
+                  <button class="option-btn" id="step7-rig-ind" onclick="updateStep7Config('rigMode', 'INDEPENDENT')">Independent Devices</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <span class="control-label" style="font-weight:600;">Ad-hoc Peer-to-Peer Link</span>
+                <div class="quiz-options" style="margin:0; gap:8px;">
+                  <button class="option-btn selected" id="step7-p2p-aware" onclick="updateStep7Config('p2pModel', 'WIFI_AWARE')">Wi-Fi Aware (NAN Direct)</button>
+                  <button class="option-btn" id="step7-p2p-infra" onclick="updateStep7Config('p2pModel', 'ROUTER_INFRASTRUCTURE')">Local Router Sync</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <span class="control-label" style="font-weight:600;">Blur Reject Tolerance (Baseline)</span>
+                <input type="range" id="step7-slider-blur" min="0.5" max="3.0" step="0.1" value="1.5" oninput="updateStep7Config('blurTolerance', parseFloat(this.value))">
+              </div>
+            </div>
+
+            <!-- Live JSON Codebox -->
+            <div class="json-exporter">
+              <span class="sandbox-title">Target Capture Config Schema</span>
+              <div class="json-codebox" id="step7-json-output"></div>
+              <button class="btn success" style="width:100%;" onclick="exportConfigJson()">Download Configuration</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge Check -->
+        <div class="section-card quiz-card">
+          <h3>Knowledge Check</h3>
+          <p>What is the primary architectural benefit of deploying a unified survey config schema to your spatial computing devices?</p>
+          <div class="quiz-options" id="step7-quiz-options">
+            <!-- Render options -->
+          </div>
+          <div class="quiz-feedback" id="step7-quiz-feedback"></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="nav-bar">
+          <button class="btn" onclick="prevStep()">Back</button>
+          <button class="btn success" id="step7-finish-btn" disabled onclick="finishWizard()">Complete Curriculum</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast-notify">Progress Saved successfully!</div>
+  
+  <canvas id="confetti-canvas"></canvas>
+
+  <script>
+    // State definition
+    const STATE_KEY = 'vps_spatial_wizard_progress_v2';
+    let appState = {
+      currentStep: 1,
+      unlockedSteps: [1],
+      completedSteps: [],
+      answers: {},
+      step7Config: {
+        rigMode: 'FIXED_RIG',
+        p2pModel: 'WIFI_AWARE',
+        blurTolerance: 1.5
+      }
+    };
+
+    // Stepper configuration details
+    const stepperData = [
+      { id: 1, title: 'Spatial Problem', sub: 'Module 1' },
+      { id: 2, title: 'Rig Geometry', sub: 'Module 2' },
+      { id: 3, title: 'Ad-Hoc Sync', sub: 'Module 3' },
+      { id: 4, title: 'Clock Sync', sub: 'Module 4' },
+      { id: 5, title: 'Sensor Fusion', sub: 'Module 5' },
+      { id: 6, title: 'Blur Rejection', sub: 'Module 6' },
+      { id: 7, title: 'Export Configuration', sub: 'Synthesis' }
+    ];
+
+    // Quiz Questions Data
+    const quizData = {
+      1: {
+        question: "Why do auto-exposure and auto-focus corrupt photogrammetry and SfM datasets?",
+        options: [
+          { text: "They increase the CPU thermal overhead during writing, leading to camera kernel panics.", isCorrect: false },
+          { text: "They change pixel intensity gradients and feature definition mid-stream, breaking invariant feature matching across overlapping frames.", isCorrect: true },
+          { text: "They require continuous cellular connections to sync lighting levels with cloud-computing servers.", isCorrect: false }
+        ],
+        hint: "Photogrammetry relies on matching pixels containing consistent gradients. Auto-exposure dynamically modifies pixel intensity, altering visual invariants."
+      },
+      2: {
+        question: "If a 3-camera rig records a 1,000-frame survey in Fixed Rig Mode, how many total pose variables must the global bundle adjuster optimize?",
+        options: [
+          { text: "18,000 pose variables.", isCorrect: false },
+          { text: "6,012 variables (compared to 18,000 variables in Independent Mode).", isCorrect: true },
+          { text: "3,006 pose variables.", isCorrect: false }
+        ],
+        hint: "For Fixed Rig Mode, pose variables = 6F + 6(N-1). For F = 1000 and N = 3, this is 6*(1000) + 6*(2) = 6,000 + 12 = 6,012 variables."
+      },
+      3: {
+        question: "True or False: The Wi-Fi Aware framework requires a cell tower or local routing hardware to sync settings between a Master and Satellite phone.",
+        options: [
+          { text: "True. Wi-Fi Aware still requires an internet gateway to manage cryptographic handshakes.", isCorrect: false },
+          { text: "False. It leverages peer-to-peer hardware direct links built natively into the Wi-Fi chips.", isCorrect: true }
+        ],
+        hint: "Wi-Fi Aware (NAN) is a fully decentralized peer-to-peer wireless networking protocol that operates direct-device links on chip."
+      },
+      4: {
+        question: "How do Satellite nodes ensure they capture a frame at the exact same physical moment as the Master node despite a 40ms network transmission delay?",
+        options: [
+          { text: "They calculate clock drift relative to system uptime, schedule a future timestamp, start the camera pipeline early, and drop all frames until that precise microsecond is reached.", isCorrect: true },
+          { text: "They stream raw video feeds to the cloud to perform frame interpolation alignment during post-processing.", isCorrect: false },
+          { text: "They utilize high-frequency cellular towers to broadcast frame capture trigger codes.", isCorrect: false }
+        ],
+        hint: "Scheduling future offsets combined with clock drift compensation allows devices to pre-capture and filter buffered frames accurately."
+      },
+      5: {
+        question: "Why shouldn't you inject raw 1Hz GPS coordinates directly into every video frame's metadata?",
+        options: [
+          { text: "It creates stair-stepped spatial artifacts where dozens of frames share identical coordinates while in motion, which corrupts trajectory tracking loops.", isCorrect: true },
+          { text: "Standard GPS modules consume 80% of iPhone processing power, leading to immediate camera frame drops.", isCorrect: false },
+          { text: "Modern photogrammetry algorithms completely ignore GPS metadata unless it is formatted as coordinates relative to true north.", isCorrect: false }
+        ],
+        hint: "Discrete 1Hz steps result in overlapping identical positions while in motion. Fusing 100Hz IMU curves interpolates continuous frames cleanly."
+      },
+      6: {
+        question: "Why must the motion blur rejection threshold scale dynamically based on camera exposure duration?",
+        options: [
+          { text: "Shorter exposure times freeze motion natively, meaning the system can tolerate much higher rotational speeds without generating visual blur.", isCorrect: true },
+          { text: "Longer exposure duration requires faster IMU sampling to calculate rotational vectors accurately.", isCorrect: false }
+        ],
+        hint: "Exposure length dictates how long the shutter remains open. Fast shutters capture sharp edges regardless of camera movement."
+      },
+      7: {
+        question: "What is the primary architectural benefit of deploying a unified survey config schema to your spatial computing devices?",
+        options: [
+          { text: "It forces Satellite nodes to upload video files to central servers via commercial LTE networks.", isCorrect: false },
+          { text: "A unified spatial configuration ensures all capturing nodes execute identical rules, establish microsecond clock parity, and tag sensor feeds under a common reference timeline.", isCorrect: true }
+        ],
+        hint: "Deploying standard settings configurations ensures homogeneous sensor baselines, synchronization targets, and consistent quality thresholds."
+      }
+    };
+
+    // Load state
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STATE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          appState = { ...appState, ...parsed };
+        }
+      } catch (e) {
+        console.error("Could not load local storage progress state", e);
+      }
+    }
+
+    // Save state
+    function saveState() {
+      try {
+        localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+        showToast("Progress Saved successfully!");
+      } catch (e) {
+        console.error("Could not save progress state", e);
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById("toast-notify");
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2000);
+    }
+
+    // Step navigation controller
+    function goToStep(stepId) {
+      if (!appState.unlockedSteps.includes(stepId)) {
+        return; // Locked
+      }
+      
+      // Update UI active state classes
+      document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
+      document.getElementById(`step-content-${stepId}`).classList.add('active');
+      
+      appState.currentStep = stepId;
+      renderStepper();
+      
+      // Initialize module specific sandboxes
+      initSandbox(stepId);
+    }
+
+    function nextStep() {
+      const nextId = appState.currentStep + 1;
+      if (appState.unlockedSteps.includes(nextId)) {
+        goToStep(nextId);
+      }
+    }
+
+    function prevStep() {
+      const prevId = appState.currentStep - 1;
+      if (prevId >= 1) {
+        goToStep(prevId);
+      }
+    }
+
+    // Dynamic Stepper Sidebar builder
+    function renderStepper() {
+      const stepper = document.getElementById('sidebar-stepper');
+      stepper.innerHTML = '';
+      
+      stepperData.forEach(step => {
+        const isUnlocked = appState.unlockedSteps.includes(step.id);
+        const isCompleted = appState.completedSteps.includes(step.id);
+        const isActive = appState.currentStep === step.id;
+        
+        const item = document.createElement('div');
+        item.className = `step-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${!isUnlocked ? 'locked' : ''}`;
+        
+        const circle = document.createElement('div');
+        circle.className = 'step-circle';
+        
+        if (isCompleted) {
+          circle.innerHTML = '✓';
+        } else if (!isUnlocked) {
+          circle.innerHTML = '🔒';
+        } else {
+          circle.innerHTML = step.id;
+        }
+        
+        const info = document.createElement('div');
+        info.className = 'step-info';
+        
+        const title = document.createElement('span');
+        title.className = 'step-title';
+        title.innerText = step.title;
+        
+        const subtitle = document.createElement('span');
+        subtitle.className = 'step-subtitle';
+        subtitle.innerText = step.sub;
+        
+        info.appendChild(title);
+        info.appendChild(subtitle);
+        
+        item.appendChild(circle);
+        item.appendChild(info);
+        
+        if (isUnlocked) {
+          item.addEventListener('click', () => goToStep(step.id));
+        }
+        
+        stepper.appendChild(item);
+      });
+    }
+
+    // Quiz generator
+    function initQuiz(stepId) {
+      const data = quizData[stepId];
+      const optionsContainer = document.getElementById(`step${stepId}-quiz-options`);
+      const nextBtn = document.getElementById(`step${stepId}-next-btn`);
+      const feedback = document.getElementById(`step${stepId}-quiz-feedback`);
+      if (nextBtn) {
+        nextBtn.onclick = nextStep;
+      }
+      
+      if (!optionsContainer) return;
+      
+      optionsContainer.innerHTML = '';
+      feedback.style.display = 'none';
+      
+      const savedAns = appState.answers[stepId];
+      const isStepCompleted = appState.completedSteps.includes(stepId);
+      
+      data.options.forEach((opt, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.innerText = opt.text;
+        
+        if (isStepCompleted && opt.isCorrect) {
+          btn.classList.add('correct');
+        } else if (savedAns !== undefined && savedAns === idx) {
+          btn.classList.add(opt.isCorrect ? 'correct' : 'wrong');
+        }
+        
+        if (isStepCompleted) {
+          btn.disabled = true;
+        }
+        
+        btn.addEventListener('click', () => {
+          if (appState.completedSteps.includes(stepId)) return;
+          
+          // Clear selections
+          document.querySelectorAll(`#step${stepId}-quiz-options .option-btn`).forEach(el => {
+            el.className = 'option-btn';
+          });
+          
+          btn.classList.add('selected');
+          
+          // Verify
+          if (opt.isCorrect) {
+            btn.className = 'option-btn correct';
+            feedback.className = 'quiz-feedback feedback-correct';
+            feedback.innerHTML = `<strong>Correct!</strong> ${data.hint}`;
+            feedback.style.display = 'block';
+            
+            // Save state
+            appState.answers[stepId] = idx;
+            if (!appState.completedSteps.includes(stepId)) {
+              appState.completedSteps.push(stepId);
+            }
+            
+            const nextId = stepId + 1;
+            if (stepperData.find(s => s.id === nextId) && !appState.unlockedSteps.includes(nextId)) {
+              appState.unlockedSteps.push(nextId);
+            }
+            
+            if (nextBtn) nextBtn.disabled = false;
+            saveState();
+            renderStepper();
+          } else {
+            btn.className = 'option-btn wrong';
+            feedback.className = 'quiz-feedback feedback-wrong';
+            feedback.innerHTML = `<strong>Incorrect.</strong> Hint: ${data.hint}`;
+            feedback.style.display = 'block';
+            
+            appState.answers[stepId] = idx;
+            saveState();
+          }
+        });
+        
+        optionsContainer.appendChild(btn);
+      });
+      
+      if (isStepCompleted && nextBtn) {
+        nextBtn.disabled = false;
+      }
+    }
+
+    // Global simulation loop triggers
+    let canvasAnimFrames = {};
+    
+    function initSandbox(stepId) {
+      // Cancel previous loops
+      Object.keys(canvasAnimFrames).forEach(k => {
+        cancelAnimationFrame(canvasAnimFrames[k]);
+        delete canvasAnimFrames[k];
+      });
+
+      if (stepId === 1) {
+        runStep1Sandbox();
+      } else if (stepId === 2) {
+        runStep2Sandbox();
+      } else if (stepId === 3) {
+        runStep3Sandbox();
+      } else if (stepId === 4) {
+        runStep4Sandbox();
+      } else if (stepId === 5) {
+        runStep5Sandbox();
+      } else if (stepId === 6) {
+        runStep6Sandbox();
+      } else if (stepId === 7) {
+        runStep7Sandbox();
+      }
+    }
+
+    // Step 1: Exposure/Focus Jitter Simulation
+    function runStep1Sandbox() {
+      const canvas = document.getElementById('step1-canvas');
+      const toggle = document.getElementById('step1-toggle-jitter');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+        }
+      });
+      observer.observe(canvas);
+      
+      let angle = 0;
+      
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        // Draw grid baseline
+        ctx.strokeStyle = '#151515';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < cssW; x += 40) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cssH); ctx.stroke();
+        }
+        for (let y = 0; y < cssH; y += 40) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cssW, y); ctx.stroke();
+        }
+
+        const isJitter = toggle.checked;
+        const noise = isJitter ? Math.sin(Date.now() * 0.01) * 6 : 0;
+        
+        // Output metrics
+        const mFeatures = document.getElementById('step1-metric-features');
+        const mReproj = document.getElementById('step1-metric-reproj');
+        const mStatus = document.getElementById('step1-metric-status');
+        
+        if (isJitter) {
+          mFeatures.innerText = "14 / 100";
+          mFeatures.style.color = "var(--red)";
+          mReproj.innerText = (8.24 + Math.abs(noise)*0.1).toFixed(2) + "px";
+          mReproj.style.color = "var(--red)";
+          mStatus.innerText = "TORN MESH";
+          mStatus.style.color = "var(--red)";
+        } else {
+          mFeatures.innerText = "98 / 100";
+          mFeatures.style.color = "var(--green)";
+          mReproj.innerText = "0.32px";
+          mReproj.style.color = "var(--green)";
+          mStatus.innerText = "ALIGNED MACE";
+          mStatus.style.color = "var(--green)";
+        }
+        
+        // Draw 3D Box Wireframe Projection
+        ctx.save();
+        ctx.translate(cssW / 2, cssH / 2);
+        
+        angle += 0.005;
+        const radius = 60;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        
+        // Define vertices of 3D bounding cube
+        const size = 50;
+        let vertices = [
+          {x: -size, y: -size, z: -size},
+          {x: size, y: -size, z: -size},
+          {x: size, y: size, z: -size},
+          {x: -size, y: size, z: -size},
+          {x: -size, y: -size, z: size},
+          {x: size, y: -size, z: size},
+          {x: size, y: size, z: size},
+          {x: -size, y: size, z: size}
+        ];
+        
+        // Project vertices with rotation
+        let proj = vertices.map((v, idx) => {
+          // Y rotation
+          let x1 = v.x * cos - v.z * sin;
+          let z1 = v.x * sin + v.z * cos;
+          
+          // X rotation
+          let y2 = v.y * Math.cos(0.4) - z1 * Math.sin(0.4);
+          let z2 = v.y * Math.sin(0.4) + z1 * Math.cos(0.4);
+          
+          // Perspective scale
+          const dist = 240;
+          const sz = dist / (dist + z2);
+          
+          // Add noise to individual vertices if jitter is active
+          let finalX = x1 * sz;
+          let finalY = y2 * sz;
+          
+          if (isJitter && idx % 2 === 0) {
+            finalX += noise * (idx % 3 - 1) * 1.5;
+            finalY += noise * (idx % 2 - 1.5) * 1.5;
+          }
+          
+          return { x: finalX, y: finalY };
+        });
+        
+        // Draw Edges
+        const edges = [
+          [0,1], [1,2], [2,3], [3,0], // back
+          [4,5], [5,6], [6,7], [7,4], // front
+          [0,4], [1,5], [2,6], [3,7]  // links
+        ];
+        
+        ctx.lineWidth = 2;
+        edges.forEach(([u, v]) => {
+          ctx.beginPath();
+          ctx.moveTo(proj[u].x, proj[u].y);
+          ctx.lineTo(proj[v].x, proj[v].y);
+          
+          if (isJitter) {
+            ctx.strokeStyle = `rgba(231, 76, 60, ${0.4 + Math.random()*0.4})`;
+          } else {
+            ctx.strokeStyle = '#5b9bd5';
+          }
+          ctx.stroke();
+        });
+
+        // Draw tracked nodes
+        proj.forEach((p, idx) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, isJitter ? 4 : 5, 0, Math.PI * 2);
+          if (isJitter) {
+            ctx.fillStyle = idx % 2 === 0 ? 'var(--red)' : '#bbb';
+          } else {
+            ctx.fillStyle = 'var(--green)';
+          }
+          ctx.fill();
+        });
+        
+        ctx.restore();
+        
+        canvasAnimFrames['step1'] = requestAnimationFrame(render);
+      }
+      
+      render();
+    }
+
+    // Step 2: Rig Calculator & Parameter Complexity Simulator
+    function runStep2Sandbox() {
+      const canvas = document.getElementById('step2-canvas');
+      const sf = document.getElementById('step2-slider-frames');
+      const sc = document.getElementById('step2-slider-cameras');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+          drawChart();
+        }
+      });
+      observer.observe(canvas);
+      
+      function updateCalculator() {
+        const F = parseInt(sf.value);
+        const N = parseInt(sc.value);
+        
+        document.getElementById('step2-lbl-frames').innerText = F;
+        document.getElementById('step2-lbl-cameras').innerText = N;
+        
+        const independentVars = 6 * F * N;
+        const fixedRigVars = (6 * F) + 6 * (N - 1);
+        const percentSavings = N === 1 ? 0 : ((1 - (fixedRigVars / independentVars)) * 100);
+        
+        document.getElementById('step2-metric-ind-vars').innerText = independentVars.toLocaleString();
+        document.getElementById('step2-metric-rig-vars').innerText = fixedRigVars.toLocaleString();
+        document.getElementById('step2-metric-savings').innerText = `-${percentSavings.toFixed(1)}%`;
+        
+        drawChart(F, N, independentVars, fixedRigVars);
+      }
+      
+      sf.addEventListener('input', updateCalculator);
+      sc.addEventListener('input', updateCalculator);
+      
+      function drawChart(F = 1000, N = 3, ind = 18000, rig = 6012) {
+        const w = canvas.width;
+        const h = canvas.height;
+        if (w === 0 || h === 0) return;
+        
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        // Draw visual side-by-side comparison bars
+        const barW = 100;
+        const maxH = cssH - 80;
+        const scaleVal = Math.max(ind, 1);
+        
+        const hInd = (ind / scaleVal) * maxH;
+        const hRig = (rig / scaleVal) * maxH;
+        
+        // Independent Bar
+        ctx.fillStyle = '#222';
+        ctx.fillRect(cssW / 4 - barW/2, cssH - 40 - hInd, barW, hInd);
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cssW / 4 - barW/2, cssH - 40 - hInd, barW, hInd);
+        
+        // Rig Bar
+        ctx.fillStyle = 'var(--blue-bg)';
+        ctx.fillRect(3 * cssW / 4 - barW/2, cssH - 40 - hRig, barW, hRig);
+        ctx.strokeStyle = 'var(--blue)';
+        ctx.strokeRect(3 * cssW / 4 - barW/2, cssH - 40 - hRig, barW, hRig);
+        
+        // Add text labels
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("Independent", cssW / 4, cssH - 20);
+        ctx.fillText("Fixed Rig", 3 * cssW / 4, cssH - 20);
+        
+        ctx.fillStyle = '#888';
+        ctx.font = '11px monospace';
+        ctx.fillText(`${ind.toLocaleString()} variables`, cssW / 4, cssH - 40 - hInd - 8);
+        ctx.fillStyle = 'var(--blue)';
+        ctx.fillText(`${rig.toLocaleString()} variables`, 3 * cssW / 4, cssH - 40 - hRig - 8);
+        
+        // Draw connecting math details line
+        if (N > 1) {
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+          ctx.setLineDash([4, 4]);
+          ctx.moveTo(cssW / 4 + barW/2, cssH - 40 - hRig);
+          ctx.lineTo(3 * cssW / 4 - barW/2, cssH - 40 - hRig);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      
+      updateCalculator();
+    }
+
+    // Step 3: Wi-Fi Aware Node Sync & Cell Droppage Simulator
+    function runStep3Sandbox() {
+      const canvas = document.getElementById('step3-canvas');
+      const toggle = document.getElementById('step3-btn-toggle');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+        }
+      });
+      observer.observe(canvas);
+      
+      let isCellActive = true;
+      let pulseAngle = 0;
+      
+      toggle.addEventListener('click', () => {
+        isCellActive = !isCellActive;
+        toggle.innerText = isCellActive ? "Disconnect Infrastructure" : "Reconnect Infrastructure";
+        
+        const mCloud = document.getElementById('step3-metric-cloud');
+        const mP2p = document.getElementById('step3-metric-p2p');
+        const mSync = document.getElementById('step3-metric-sync');
+        
+        if (isCellActive) {
+          mCloud.innerText = "CONNECTED";
+          mCloud.style.color = "var(--green)";
+          mP2p.innerText = "ACTIVE (0ms)";
+          mSync.innerText = "SYNCHRONIZED";
+          mSync.style.color = "var(--green)";
+        } else {
+          mCloud.innerText = "DISCONNECTED";
+          mCloud.style.color = "var(--red)";
+          mP2p.innerText = "NAN P2P MESH ACTIVE";
+          mSync.innerText = "SYNCHRONIZED (OFFGRID)";
+          mSync.style.color = "var(--green)";
+        }
+      });
+      
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        // Define coordinates
+        const tower = { x: cssW / 2, y: 50 };
+        const master = { x: cssW / 2 - 80, y: 180 };
+        const satellite1 = { x: cssW / 2 + 80, y: 180 };
+        const satellite2 = { x: cssW / 2, y: 230 };
+        
+        pulseAngle += 0.1;
+        const pulseRadius = 10 + (Math.sin(pulseAngle) * 4);
+        
+        // Draw lines
+        // Cloud Server Links
+        ctx.lineWidth = 2;
+        if (isCellActive) {
+          ctx.strokeStyle = '#4caf50';
+          ctx.beginPath(); ctx.moveTo(master.x, master.y); ctx.lineTo(tower.x, tower.y); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(satellite1.x, satellite1.y); ctx.lineTo(tower.x, tower.y); ctx.stroke();
+        } else {
+          ctx.strokeStyle = 'var(--red)';
+          ctx.beginPath(); ctx.setLineDash([4, 4]);
+          ctx.moveTo(master.x, master.y); ctx.lineTo(tower.x, tower.y);
+          ctx.moveTo(satellite1.x, satellite1.y); ctx.lineTo(tower.x, tower.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        
+        // Ad-hoc local mesh links
+        ctx.strokeStyle = 'var(--blue)';
+        ctx.beginPath();
+        ctx.moveTo(master.x, master.y); ctx.lineTo(satellite1.x, satellite1.y);
+        ctx.moveTo(master.x, master.y); ctx.lineTo(satellite2.x, satellite2.y);
+        ctx.moveTo(satellite1.x, satellite1.y); ctx.lineTo(satellite2.x, satellite2.y);
+        ctx.stroke();
+        
+        // Pulse ring on Wi-Fi aware connection
+        ctx.strokeStyle = 'rgba(91, 155, 213, 0.2)';
+        ctx.beginPath();
+        ctx.arc((master.x + satellite1.x)/2, (master.y + satellite1.y)/2, pulseRadius, 0, Math.PI*2);
+        ctx.stroke();
+        
+        // Draw Nodes
+        // Tower
+        ctx.fillStyle = isCellActive ? '#4caf50' : 'var(--red)';
+        ctx.beginPath(); ctx.arc(tower.x, tower.y, 8, 0, Math.PI*2); ctx.fill();
+        
+        // Phones
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(master.x, master.y, 6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(satellite1.x, satellite1.y, 6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(satellite2.x, satellite2.y, 6, 0, Math.PI*2); ctx.fill();
+        
+        // Node labels
+        ctx.fillStyle = '#aaa';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(isCellActive ? "CELL TOWER" : "OUT OF RANGE", tower.x, tower.y - 12);
+        ctx.fillText("MASTER", master.x, master.y + 18);
+        ctx.fillText("SATELLITE 1", satellite1.x, satellite1.y + 18);
+        ctx.fillText("SATELLITE 2", satellite2.x, satellite2.y + 18);
+        
+        canvasAnimFrames['step3'] = requestAnimationFrame(render);
+      }
+      
+      render();
+    }
+
+    // Step 4: Temporal Jitter Synchronization Simulator
+    function runStep4Sandbox() {
+      const canvas = document.getElementById('step4-canvas');
+      const slider = document.getElementById('step4-slider-jitter');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+        }
+      });
+      observer.observe(canvas);
+      
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        const jitter = parseInt(slider.value);
+        document.getElementById('step4-lbl-jitter').innerText = jitter + "ms";
+        document.getElementById('step4-metric-rtt').innerText = jitter + "ms";
+        
+        // Draw Timelines
+        const startX = 40;
+        const lineW = cssW - 80;
+        const timelineY1 = 80;
+        const timelineY2 = 160;
+        
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(startX, timelineY1); ctx.lineTo(startX + lineW, timelineY1);
+        ctx.moveTo(startX, timelineY2); ctx.lineTo(startX + lineW, timelineY2);
+        ctx.stroke();
+        
+        // Labels
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText("Master Camera Pipeline (30fps)", startX, timelineY1 - 15);
+        ctx.fillText("Satellite Delegate (Buffer filter)", startX, timelineY2 - 15);
+        
+        // Draw target match boundary
+        const targetX = startX + lineW * 0.6;
+        ctx.strokeStyle = 'var(--blue)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.setLineDash([2, 4]);
+        ctx.moveTo(targetX, timelineY1 - 25);
+        ctx.lineTo(targetX, timelineY2 + 25);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = 'var(--blue)';
+        ctx.font = '10px monospace';
+        ctx.fillText("SYNC TRIGGER POINT", targetX - 50, timelineY1 - 28);
+        
+        // Render Master frames
+        const frameInterval = 40; // mock space
+        let frameIndex = 0;
+        let droppedCount = 0;
+        
+        for (let x = startX + 20; x < startX + lineW; x += frameInterval) {
+          ctx.fillStyle = 'var(--green)';
+          ctx.beginPath(); ctx.arc(x, timelineY1, 5, 0, Math.PI*2); ctx.fill();
+          
+          // Draw Satellite frames offset by variable jitter latency
+          const isAfterTrigger = x >= targetX;
+          const satX = x + (jitter * 0.4);
+          
+          if (satX < startX + lineW) {
+            if (isAfterTrigger) {
+              ctx.fillStyle = 'var(--green)';
+              ctx.beginPath(); ctx.arc(satX, timelineY2, 5, 0, Math.PI*2); ctx.fill();
+            } else {
+              // Dropped frames before trigger target is reached
+              ctx.fillStyle = 'var(--red)';
+              ctx.beginPath(); ctx.arc(satX, timelineY2, 4, 0, Math.PI*2); ctx.fill();
+              ctx.strokeStyle = 'var(--red)';
+              ctx.beginPath();
+              ctx.moveTo(satX - 6, timelineY2 - 6); ctx.lineTo(satX + 6, timelineY2 + 6);
+              ctx.moveTo(satX + 6, timelineY2 - 6); ctx.lineTo(satX - 6, timelineY2 + 6);
+              ctx.stroke();
+              droppedCount++;
+            }
+          }
+        }
+        
+        const mDropped = document.getElementById('step4-metric-dropped');
+        mDropped.innerText = `${droppedCount} frames`;
+        mDropped.style.color = droppedCount > 0 ? "var(--amber)" : "var(--green)";
+        
+        const mStatus = document.getElementById('step4-metric-status');
+        if (jitter > 60) {
+          mStatus.innerText = "HIGH JITTER CALIB";
+          mStatus.style.color = "var(--amber)";
+        } else {
+          mStatus.innerText = "LOCKED";
+          mStatus.style.color = "var(--green)";
+        }
+        
+        canvasAnimFrames['step4'] = requestAnimationFrame(render);
+      }
+      
+      render();
+    }
+
+    // Step 5: High-Frequency Sensor Fusion Pathfinder
+    function runStep5Sandbox() {
+      const canvas = document.getElementById('step5-canvas');
+      const slider = document.getElementById('step5-slider-seek');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+        }
+      });
+      observer.observe(canvas);
+      
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        const seek = parseFloat(slider.value);
+        document.getElementById('step5-lbl-seek').innerText = seek.toFixed(2) + "s";
+        
+        // Define path coordinates
+        const startX = 60;
+        const endX = cssW - 60;
+        const pathY = cssH / 2;
+        
+        // Draw track
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(startX, pathY); ctx.lineTo(endX, pathY);
+        ctx.stroke();
+        
+        // 1Hz GPS keyframe circles
+        const gps1 = { x: startX, y: pathY };
+        const gps2 = { x: endX, y: pathY };
+        
+        ctx.fillStyle = 'var(--blue)';
+        ctx.beginPath(); ctx.arc(gps1.x, gps1.y, 8, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(gps2.x, gps2.y, 8, 0, Math.PI*2); ctx.fill();
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText("GPS 0s", gps1.x, gps1.y - 14);
+        ctx.fillText("GPS 1s", gps2.x, gps2.y - 14);
+        
+        // High-Frequency 100Hz IMU vectors
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        const imuCount = 40;
+        const currentSeekX = startX + seek * (endX - startX);
+        
+        for (let i = 0; i <= imuCount; i++) {
+          const t = i / imuCount;
+          const imuX = startX + t * (endX - startX);
+          
+          // Render IMU orientation vectors
+          const ang = Math.sin(t * Math.PI * 2) * 0.5;
+          const vecL = 12;
+          
+          ctx.beginPath();
+          ctx.moveTo(imuX, pathY);
+          ctx.lineTo(imuX + Math.sin(ang)*vecL, pathY - Math.cos(ang)*vecL);
+          ctx.strokeStyle = imuX <= currentSeekX ? 'var(--violet)' : '#333';
+          ctx.stroke();
+        }
+        
+        // Fused Camera tracker
+        ctx.fillStyle = 'var(--green)';
+        ctx.beginPath();
+        ctx.arc(currentSeekX, pathY, 6, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Outputs metrics details
+        const lat = 37.7749 + (seek * 0.0001);
+        const lon = -122.4194 + (seek * 0.0001);
+        document.getElementById('step5-metric-gps').innerText = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        
+        const qw = Math.cos(seek * Math.PI * 0.5).toFixed(3);
+        const qz = Math.sin(seek * Math.PI * 0.5).toFixed(3);
+        document.getElementById('step5-metric-imu').innerText = `[${qw}, 0.000, 0.000, ${qz}]`;
+        
+        canvasAnimFrames['step5'] = requestAnimationFrame(render);
+      }
+      
+      render();
+    }
+
+    // Step 6: Rotational Motion Blur rejection gate
+    function runStep6Sandbox() {
+      const canvas = document.getElementById('step6-canvas');
+      const slux = document.getElementById('step6-slider-lux');
+      const sspeed = document.getElementById('step6-slider-speed');
+      
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          const w = entry.contentRect.width;
+          const h = entry.contentRect.height;
+          canvas.width = w * window.devicePixelRatio;
+          canvas.height = h * window.devicePixelRatio;
+        }
+      });
+      observer.observe(canvas);
+      
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, w, h);
+        
+        const cssW = w / window.devicePixelRatio;
+        const cssH = h / window.devicePixelRatio;
+        
+        const lux = parseInt(slux.value);
+        const speed = parseFloat(sspeed.value);
+        
+        document.getElementById('step6-lbl-lux').innerText = lux + " Lux";
+        document.getElementById('step6-lbl-speed').innerText = speed.toFixed(1) + " rad/s";
+        
+        // Physics Calculations
+        // Lower lux -> longer exposure time (wider shutter)
+        const exposureTime = 1 / (lux * 1.5); 
+        const exposureLabel = exposureTime >= 0.01 ? `1/${Math.round(1/exposureTime)}s` : `1/${Math.round(1/exposureTime)}s`;
+        
+        // Threshold formula: baseline * (1 / (exposure * 60))
+        const baseline = 0.5;
+        const threshold = baseline * (1 / (exposureTime * 60));
+        
+        const isKept = speed <= threshold;
+        
+        document.getElementById('step6-metric-exposure').innerText = exposureLabel;
+        document.getElementById('step6-metric-threshold').innerText = threshold.toFixed(2) + " rad/s";
+        
+        const mGate = document.getElementById('step6-metric-gate');
+        if (isKept) {
+          mGate.innerText = "KEEP FRAME";
+          mGate.style.color = "var(--green)";
+        } else {
+          mGate.innerText = "DROP FRAME";
+          mGate.style.color = "var(--red)";
+        }
+        
+        // Visual Dial
+        const cx = cssW / 2;
+        const cy = cssH / 2;
+        const radius = 60;
+        
+        // Draw dial track
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0.8*Math.PI, 2.2*Math.PI);
+        ctx.stroke();
+        
+        // Draw Threshold marker
+        const thresholdAngle = 0.8*Math.PI + (Math.min(threshold, 10) / 10) * 1.4*Math.PI;
+        ctx.strokeStyle = 'var(--violet)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0.8*Math.PI, thresholdAngle);
+        ctx.stroke();
+        
+        // Draw current physical speed needle pointer
+        const currentAngle = 0.8*Math.PI + (Math.min(speed, 10) / 10) * 1.4*Math.PI;
+        
+        ctx.strokeStyle = isKept ? 'var(--green)' : 'var(--red)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(currentAngle)*radius, cy + Math.sin(currentAngle)*radius);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2); ctx.fill();
+        
+        ctx.fillStyle = '#888';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("Rotational Speed (IMU)", cx, cy + radius + 24);
+        
+        canvasAnimFrames['step6'] = requestAnimationFrame(render);
+      }
+      
+      render();
+    }
+
+    // Step 7: Architecture Config Synthesis & Download JSON
+    function runStep7Sandbox() {
+      updateJsonOutput();
+    }
+
+    function updateStep7Config(key, value) {
+      appState.step7Config[key] = value;
+      
+      // Update interactive options classes
+      if (key === 'rigMode') {
+        document.getElementById('step7-rig-fixed').className = value === 'FIXED_RIG' ? 'option-btn selected' : 'option-btn';
+        document.getElementById('step7-rig-ind').className = value === 'INDEPENDENT' ? 'option-btn selected' : 'option-btn';
+      } else if (key === 'p2pModel') {
+        document.getElementById('step7-p2p-aware').className = value === 'WIFI_AWARE' ? 'option-btn selected' : 'option-btn';
+        document.getElementById('step7-p2p-infra').className = value === 'ROUTER_INFRASTRUCTURE' ? 'option-btn selected' : 'option-btn';
+      }
+      
+      updateJsonOutput();
+    }
+
+    function updateJsonOutput() {
+      const slider = document.getElementById('step7-slider-blur');
+      if (slider) {
+        document.getElementById('step7-slider-blur').value = appState.step7Config.blurTolerance;
+      }
+      
+      const config = {
+        schema_version: "2.1.0",
+        survey_metadata: {
+          session_id: "survey-" + Math.random().toString(36).substring(2, 10).toUpperCase(),
+          timestamp_utc: new Date().toISOString()
+        },
+        rig_configuration: {
+          mode: appState.step7Config.rigMode,
+          extrinsic_matrices_invariant: appState.step7Config.rigMode === 'FIXED_RIG',
+          camera_nodes_count: appState.step7Config.rigMode === 'FIXED_RIG' ? 3 : 1
+        },
+        networking: {
+          topology: appState.step7Config.p2pModel === 'WIFI_AWARE' ? "MASTER_SATELLITE" : "ROUTER_MESH",
+          protocol: appState.step7Config.p2pModel,
+          device_discovery_encryption: "AES_256_GCM",
+          clock_calibration_interval_ms: 500
+        },
+        telemetry_capture: {
+          time_sync_reference: "mach_absolute_time",
+          imu_frequency_hz: 100,
+          gps_frequency_hz: 1,
+          sensor_alignment: "xTrueNorthZVertical"
+        },
+        quality_gates: {
+          blur_rejection: {
+            enabled: true,
+            rotational_threshold_tolerance: appState.step7Config.blurTolerance,
+            exposure_formula: "Threshold = Tolerance * (1 / (Exposure * 60))"
+          }
+        }
+      };
+      
+      document.getElementById('step7-json-output').innerText = JSON.stringify(config, null, 2);
+    }
+
+    function exportConfigJson() {
+      const text = document.getElementById('step7-json-output').innerText;
+      const blob = new Blob([text], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "spatial-survey-config.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showToast("Config JSON exported successfully!");
+    }
+
+    // Step 7 Synthesis finish
+    function finishWizard() {
+      triggerConfetti();
+      showToast("Curriculum Completed! Architectural Blueprint Unlocked!");
+    }
+
+    // Particle Confetti logic
+    function triggerConfetti() {
+      const canvas = document.getElementById('confetti-canvas');
+      canvas.style.display = 'block';
+      const ctx = canvas.getContext('2d');
+      
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      
+      const colors = ['#5b9bd5', '#10b981', '#f59e0b', '#8b5cf6'];
+      const particles = [];
+      
+      for (let i = 0; i < 150; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height - canvas.height,
+          r: Math.random() * 6 + 2,
+          d: Math.random() * canvas.height,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          tilt: Math.random() * 10 - 5,
+          tiltAngleIncremental: Math.random() * 0.07 + 0.02,
+          tiltAngle: 0
+        });
+      }
+      
+      let animationId;
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        let remaining = false;
+        particles.forEach(p => {
+          p.tiltAngle += p.tiltAngleIncremental;
+          p.y += (Math.cos(p.tiltAngle) + 3 + p.r / 2) / 2;
+          p.x += Math.sin(p.tiltAngle);
+          p.tilt = Math.sin(p.tiltAngle - p.r/2) * 15;
+          
+          if (p.y < canvas.height) {
+            remaining = true;
+          }
+          
+          ctx.beginPath();
+          ctx.lineWidth = p.r;
+          ctx.strokeStyle = p.color;
+          ctx.moveTo(p.x + p.tilt + p.r/2, p.y);
+          ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r/2);
+          ctx.stroke();
+        });
+        
+        if (remaining) {
+          animationId = requestAnimationFrame(draw);
+        } else {
+          canvas.style.display = 'none';
+          cancelAnimationFrame(animationId);
+        }
+      }
+      
+      draw();
+    }
+
+    // Initialize triggers
+    window.addEventListener('load', () => {
+      loadState();
+      
+      // Setup initial navigation
+      goToStep(appState.currentStep);
+      
+      // Initialize quizzes
+      for (let i = 1; i <= 7; i++) {
+        initQuiz(i);
+      }
+      
+      renderStepper();
+    });
+  </script>
+</body>
+</html>
