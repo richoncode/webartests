@@ -55,8 +55,10 @@
             { id: 'eq-10', type: 'Equilateral', label: "10' Equilateral", sides: [10, 10, 10] },
             { id: 'eq-12', type: 'Equilateral', label: "12' Equilateral", sides: [12, 12, 12] },
             { id: 'eq-13', type: 'Equilateral', label: "13' Equilateral", sides: [13, 13, 13] },
+            { id: 'eq-14', type: 'Equilateral', label: "14' Equilateral", sides: [14, 14, 14] },
             { id: 'eq-15', type: 'Equilateral', label: "15' Equilateral", sides: [15, 15, 15] },
             { id: 'eq-16', type: 'Equilateral', label: "16' Equilateral", sides: [16, 16, 16] },
+            { id: 'eq-17', type: 'Equilateral', label: "17' Equilateral", sides: [17, 17, 17] },
             { id: 'eq-18', type: 'Equilateral', label: "18' Equilateral", sides: [18, 18, 18] },
             { id: 'eq-20', type: 'Equilateral', label: "20' Equilateral", sides: [20, 20, 20] },
             { id: 'eq-24', type: 'Equilateral', label: "24' Equilateral", sides: [24, 24, 24] },
@@ -68,9 +70,7 @@
             { id: 'ra-16', type: 'Right-Angled', label: "16' × 16' × 22.6' Right-Angled", sides: [16, 16, 22.6] },
             { id: 'ra-18', type: 'Right-Angled', label: "18' × 18' × 25.5' Right-Angled", sides: [18, 18, 25.5] },
             { id: 'ra-20', type: 'Right-Angled', label: "20' × 20' × 28.3' Right-Angled", sides: [20, 20, 28.3] },
-            { id: 'iso-13', type: 'Isosceles', label: "13' × 10' × 10' Isosceles", sides: [13, 10, 10] },
-            { id: 'iso-16', type: 'Isosceles', label: "16' × 13' × 13' Isosceles", sides: [16, 13, 13] },
-            { id: 'iso-20', type: 'Isosceles', label: "20' × 16' × 16' Isosceles", sides: [20, 16, 16] }
+            { id: 'ra-24', type: 'Right-Angled', label: "24' × 24' × 33.9' Right-Angled", sides: [24, 24, 33.9] }
         ];
 
         const COLORS = {
@@ -157,9 +157,13 @@
             // --- PERSISTENT SAVED DESIGNS ---
             const [savedSails, setSavedSails] = useState(() => {
                 const local = localStorage.getItem('shade-sail-designs');
-                return local ? JSON.parse(local) : [
-                    { id: 'initial', name: 'Patio Project', sides: { AB: 13.5, BC: 15.0, CA: 15.0 }, heights: [5, 5, 0], latitude: 37.3, selectedSailId: 'eq-12', compassAngle: 305 * Math.PI / 180 }
+                const designs = local ? JSON.parse(local) : [
+                    { id: 'initial', name: 'Patio Project', sides: { AB: 13.5, BC: 15.0, CA: 15.0 }, heights: [5, 5, 0], latitude: 37.3, selectedSailId: 'eq-12', customSailSides: [15, 15, 15], compassAngle: 305 * Math.PI / 180 }
                 ];
+                return designs.map(d => ({
+                    ...d,
+                    customSailSides: d.customSailSides || [15, 15, 15]
+                }));
             });
             const [activeId, setActiveId] = useState(savedSails[0].id);
 
@@ -190,7 +194,7 @@
 
             const handleNewDesign = () => {
                 const newId = 'design-' + Date.now();
-                const newDesign = { id: newId, name: 'Untitled Layout', sides: { AB: 15, BC: 15, CA: 15 }, heights: [0, 0, 0], latitude: activeDesign.latitude, selectedSailId: 'eq-12', compassAngle: activeDesign.compassAngle };
+                const newDesign = { id: newId, name: 'Untitled Layout', sides: { AB: 15, BC: 15, CA: 15 }, heights: [0, 0, 0], latitude: activeDesign.latitude, selectedSailId: 'eq-12', customSailSides: [15, 15, 15], compassAngle: activeDesign.compassAngle };
                 setSavedSails(prev => [...prev, newDesign]);
                 setActiveId(newId); setShowSaved(true);
             };
@@ -289,9 +293,34 @@
                 return sZ.map(s => ({ x: (s.x*Math.cos(t) - s.y*Math.sin(t)) + cp.x, y: (s.x*Math.sin(t) + s.y*Math.cos(t)) + cp.y }));
             };
 
+            const isCustomTriangleValid = useMemo(() => {
+                const s = activeDesign.customSailSides || [15, 15, 15];
+                return (s[0] + s[1] > s[2]) && (s[1] + s[2] > s[0]) && (s[2] + s[0] > s[1]);
+            }, [activeDesign.customSailSides]);
+
+            const handleTabChange = (mode) => {
+                if (mode === 'standard') {
+                    const firstFit = sortedInventory.find(s => s.fits);
+                    setSelectedSailId(firstFit ? firstFit.id : 'eq-12');
+                } else {
+                    setSelectedSailId('custom');
+                }
+            };
+
             const metrics = useMemo(() => {
                 if (!isCurrentLayoutValid) return null;
-                const sail = INVENTORY.find(s => s.id === selectedSailId);
+                let sail = INVENTORY.find(s => s.id === selectedSailId);
+                if (!sail && selectedSailId === 'custom') {
+                    const s = activeDesign.customSailSides || [15, 15, 15];
+                    const isValid = (s[0] + s[1] > s[2]) && (s[1] + s[2] > s[0]) && (s[2] + s[0] > s[1]);
+                    if (!isValid) return null;
+                    sail = {
+                        id: 'custom',
+                        type: 'Custom',
+                        label: `Custom Freestyle (${s[0].toFixed(1)}' × ${s[1].toFixed(1)}' × ${s[2].toFixed(1)}')`,
+                        sides: s
+                    };
+                }
                 if (!sail) return null;
                 const alignedSail = getAlignedSailCoordinates(posts, sail.sides);
                 if (!alignedSail) return null;
@@ -318,7 +347,7 @@
                     edgeTensions.push(Math.round((fI+fJ)/2));
                 });
                 return { alignedSail, gaps, edgeTensions, pullDeviations };
-            }, [posts, selectedSailId, clearanceCheck, tensionSpace, turnbuckleSpace, isCurrentLayoutValid]);
+            }, [posts, selectedSailId, activeDesign.customSailSides, clearanceCheck, tensionSpace, turnbuckleSpace, isCurrentLayoutValid]);
 
             const handleInteraction = (clientX, clientY) => {
                 const rect = canvasRef.current.getBoundingClientRect();
@@ -456,7 +485,11 @@
                     ctx.quadraticCurveTo(midX+(scX-midX)*(edgeTensions[i]<65?0.16:0.08), midY+(scY-midY)*(edgeTensions[i]<65?0.16:0.08), cSail[n].x, cSail[n].y);
                 }
                 ctx.fill(); ctx.stroke();
-                const sail = INVENTORY.find(s => s.id === selectedSailId);
+                let sail = INVENTORY.find(s => s.id === selectedSailId);
+                if (!sail && selectedSailId === 'custom') {
+                    const s = activeDesign.customSailSides || [15, 15, 15];
+                    sail = { id: 'custom', sides: s };
+                }
                 if (sail) {
                     drawRotatedLabel(`${sail.sides[0].toFixed(1)} ft`, cSail[0], cSail[1], theme.sailEdge, 8, 14, false);
                     drawRotatedLabel(`${sail.sides[1].toFixed(1)} ft`, cSail[1], cSail[2], theme.sailEdge, 8, 14, false);
@@ -511,8 +544,15 @@
             };
 
             const handleExportBOM = () => {
-                const selectedSail = INVENTORY.find(s => s.id === selectedSailId);
-                let text = `DESIGN: ${activeDesign.name}\nSail: ${selectedSail?.label}\nColor: ${selectedColor}\nPosts: A-B:${postAB.toFixed(1)}', B-C:${postBC.toFixed(1)}', C-A:${postCA.toFixed(1)}'`;
+                let sailLabel = '';
+                if (selectedSailId === 'custom') {
+                    const s = activeDesign.customSailSides || [15, 15, 15];
+                    sailLabel = `Custom Freestyle Sail (${s[0].toFixed(1)}' × ${s[1].toFixed(1)}' × ${s[2].toFixed(1)}')`;
+                } else {
+                    const selectedSail = INVENTORY.find(s => s.id === selectedSailId);
+                    sailLabel = selectedSail ? selectedSail.label : 'None';
+                }
+                let text = `DESIGN: ${activeDesign.name}\nSail: ${sailLabel}\nColor: ${selectedColor}\nPosts: A-B:${postAB.toFixed(1)}', B-C:${postBC.toFixed(1)}', C-A:${postCA.toFixed(1)}'`;
                 navigator.clipboard.writeText(text).then(() => triggerToast('📋 Specs copied!'));
             };
 
@@ -636,8 +676,34 @@
                                 </div>
                             </section>
                             <section className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-[#2a2a2a] p-5 shadow-sm space-y-4">
-                                <h2 className="font-bold text-slate-950 dark:text-white border-b dark:border-[#2a2a2a] pb-2 flex items-center gap-2 uppercase text-sm tracking-tight"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">4</span>Compatible Inventory</h2>
-                                <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-[#333]"><table className="min-w-full text-left text-[11px]"><thead className="bg-slate-50 dark:bg-[#252525]"><tr className="dark:text-white"><th className="px-3 py-2">Size</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Status</th></tr></thead><tbody className="divide-y dark:divide-[#333]">{filteredInventory.map(s => { return <tr key={s.id} onClick={() => s.fits && setSelectedSailId(s.id)} className={`cursor-pointer transition-colors ${selectedSailId === s.id ? 'bg-sky-50 dark:bg-sky-900/40 text-sky-900 dark:text-sky-100 font-bold' : s.fits ? 'hover:bg-slate-50 dark:hover:bg-[#333]' : 'opacity-30 pointer-events-none'}`}><td className="px-3 py-2">{s.label}</td><td className="px-3 py-2 text-slate-500 dark:text-slate-400">{s.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-600">{s.fits ? 'FITS ✓' : ''}</td></tr> })}</tbody></table></div>
+                                <h2 className="font-bold text-slate-950 dark:text-white border-b dark:border-[#2a2a2a] pb-2 flex items-center gap-2 uppercase text-sm tracking-tight"><span className="w-5 h-5 bg-sky-50 dark:bg-sky-900 text-sky-600 dark:text-sky-300 rounded-full flex items-center justify-center text-[10px]">4</span>Compatible Inventory & Custom Design</h2>
+                                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-[#252525] rounded-xl border dark:border-[#333]">
+                                    <button onClick={() => handleTabChange('standard')} className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${selectedSailId !== 'custom' ? 'bg-white dark:bg-sky-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Standard Amazon Stock</button>
+                                    <button onClick={() => handleTabChange('custom')} className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${selectedSailId === 'custom' ? 'bg-white dark:bg-sky-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>Freestyle Custom Design</button>
+                                </div>
+                                {selectedSailId !== 'custom' ? (
+                                    <div className="space-y-4 animate-slide-up">
+                                        <div className="flex items-center gap-2">
+                                            <input id="fitsOnlyCheckbox" type="checkbox" checked={fitsOnly} onChange={e => setFitsOnly(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-sky-600 focus:ring-sky-500 w-4 h-4 cursor-pointer" />
+                                            <label htmlFor="fitsOnlyCheckbox" className="text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">Show compatible sizes only</label>
+                                        </div>
+                                        <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-[#333]"><table className="min-w-full text-left text-[11px]"><thead className="bg-slate-50 dark:bg-[#252525]"><tr className="dark:text-white"><th className="px-3 py-2">Size</th><th className="px-3 py-2">Type</th><th className="px-3 py-2 text-right">Status</th></tr></thead><tbody className="divide-y dark:divide-[#333]">{filteredInventory.map(s => { return <tr key={s.id} onClick={() => s.fits && setSelectedSailId(s.id)} className={`cursor-pointer transition-colors ${selectedSailId === s.id ? 'bg-sky-50 dark:bg-sky-900/40 text-sky-900 dark:text-sky-100 font-bold' : s.fits ? 'hover:bg-slate-50 dark:hover:bg-[#333]' : 'opacity-30 pointer-events-none'}`}><td className="px-3 py-2">{s.label}</td><td className="px-3 py-2 text-slate-500 dark:text-slate-400">{s.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-600">{s.fits ? 'FITS ✓' : ''}</td></tr> })}</tbody></table></div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 animate-slide-up p-4 bg-slate-50 dark:bg-[#222] rounded-xl border dark:border-[#333]">
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Custom Sail Side Lengths</div>
+                                        <div className="space-y-3">
+                                            <SmartInput label="Side A Length (ft)" value={activeDesign.customSailSides[0]} onChange={(val) => { const nextSides = [...activeDesign.customSailSides]; nextSides[0] = val; updateActiveDesign({ customSailSides: nextSides }); }} min={6} max={35} step={0.5} />
+                                            <SmartInput label="Side B Length (ft)" value={activeDesign.customSailSides[1]} onChange={(val) => { const nextSides = [...activeDesign.customSailSides]; nextSides[1] = val; updateActiveDesign({ customSailSides: nextSides }); }} min={6} max={35} step={0.5} />
+                                            <SmartInput label="Side C Length (ft)" value={activeDesign.customSailSides[2]} onChange={(val) => { const nextSides = [...activeDesign.customSailSides]; nextSides[2] = val; updateActiveDesign({ customSailSides: nextSides }); }} min={6} max={35} step={0.5} />
+                                        </div>
+                                        {!isCustomTriangleValid ? (
+                                            <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-xl flex gap-2 items-start text-xs text-red-500 font-semibold"><Icon name="alert-triangle" className="shrink-0 animate-bounce" size={14} /><span>Invalid triangle! The sum of any two sides must be greater than the third side.</span></div>
+                                        ) : (
+                                            <div className="p-3 bg-emerald-500/10 border border-emerald-500/50 rounded-xl flex gap-2 items-start text-xs text-emerald-500 font-semibold"><Icon name="check-square" className="shrink-0" size={14} /><span>Valid custom geometry. Structural calculations are active.</span></div>
+                                        )}
+                                    </div>
+                                )}
                             </section>
                         </div>
                     </main>

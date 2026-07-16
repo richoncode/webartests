@@ -42,6 +42,14 @@
     <h1>Web Tests</h1>
     <p class="subtitle">High-fidelity educational modules and laser experiments.</p>
 
+    <div class="search-container">
+      <input type="text" id="search-input" class="search-input-field" placeholder="Search experiments, concepts, platforms..." autocomplete="off">
+      <div id="search-semantic-status" class="search-semantic-status" data-state="">
+        <span class="search-spark">✦</span>
+        <span class="status-label">vector search</span>
+      </div>
+    </div>
+
     <nav class="toc">
       <a href="#experiments">Experiments</a>
       <a href="#games">Games</a>
@@ -287,17 +295,237 @@
       mountSelector: '#experiments-grid',
       basePrefix: '',
       filter: c => c.showOnTopLevel === true,
+    }).then(function () {
+      initSearch();
+      attachClicks();
     });
-  </script>
-<script>
-  document.querySelectorAll('.card-div').forEach(card => {
-    const titleLink = card.querySelector('h2 a');
-    if (!titleLink) return;
-    card.addEventListener('click', e => {
-      if (e.target.closest('a')) return; // let topic chips and title link navigate natively
-      location.href = titleLink.href;
-    });
-  });
+
+    function attachClicks() {
+      document.querySelectorAll('.card-div').forEach(card => {
+        const titleLink = card.querySelector('h2 a');
+        if (!titleLink) return;
+        card.addEventListener('click', e => {
+          if (e.target.closest('a')) return; // let topic chips and title link navigate natively
+          location.href = titleLink.href;
+        });
+      });
+    }
+
+    // ─── Semantic Search Engine ───
+    let searchItems = [];
+    let searchPipeline = null;
+    let searchVectorsMeta = null;
+    let searchVectorsBin = null;
+    let isSearchLoadingStarted = false;
+    let searchQuery = '';
+    let searchScores = null;
+
+    function initSearch() {
+      const searchInput = document.getElementById('search-input');
+      if (!searchInput) return;
+
+      let staticCount = 0;
+      document.querySelectorAll('.panel.card-div').forEach((el) => {
+        let searchId;
+        const dataId = el.dataset.id;
+        if (dataId) {
+          searchId = 'exp-' + dataId;
+        } else {
+          searchId = 'static-card-' + (staticCount++);
+        }
+        el.dataset.searchId = searchId;
+        
+        searchItems.push({
+          id: searchId,
+          element: el
+        });
+      });
+
+      searchInput.addEventListener('focus', startLoadingSearchEngine);
+      searchInput.addEventListener('click', startLoadingSearchEngine);
+      searchInput.addEventListener('keydown', startLoadingSearchEngine);
+      
+      let debounceTimeout = null;
+      searchInput.addEventListener('input', e => {
+        searchQuery = e.target.value.trim();
+        
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        
+        if (searchPipeline && searchQuery) {
+          debounceTimeout = setTimeout(() => {
+            runHybridSearch();
+          }, 250);
+        } else {
+          if (!searchQuery) {
+            searchScores = null;
+          }
+          filterLayout();
+        }
+      });
+    }
+
+    function setSemanticStatus(dataState) {
+      const pill = document.getElementById('search-semantic-status');
+      if (!pill) return;
+      pill.dataset.state = dataState;
+      if (dataState) {
+        pill.style.display = 'inline-flex';
+      } else {
+        pill.style.display = 'none';
+      }
+      
+      const label = pill.querySelector('.status-label');
+      if (label) {
+        if (dataState === 'loading') label.textContent = 'loading model...';
+        else if (dataState === 'thinking') label.textContent = 'thinking...';
+        else if (dataState === 'ready') label.textContent = 'vector search';
+      }
+    }
+
+    async function startLoadingSearchEngine() {
+      if (isSearchLoadingStarted) return;
+      isSearchLoadingStarted = true;
+      
+      setSemanticStatus('loading');
+      try {
+        const [metaResp, binResp, transformersModule] = await Promise.all([
+          fetch('./search-vectors-meta.json'),
+          fetch('./search-vectors.bin'),
+          import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3')
+        ]);
+
+        if (!metaResp.ok || !binResp.ok) {
+          throw new Error('Failed to load search indexes.');
+        }
+
+        searchVectorsMeta = await metaResp.json();
+        const binBuffer = await binResp.arrayBuffer();
+        searchVectorsBin = new Float32Array(binBuffer);
+        
+        const { pipeline, env } = transformersModule;
+        env.allowLocalModels = false;
+        env.backends.onnx.wasm.numThreads = 1;
+        env.backends.onnx.wasm.proxy = false;
+        
+        searchPipeline = await pipeline('feature-extraction', searchVectorsMeta.model);
+        
+        setSemanticStatus('ready');
+        if (searchQuery) {
+          runHybridSearch();
+        }
+      } catch (err) {
+        console.error('Failed to initialize search engine:', err);
+        setSemanticStatus('');
+      }
+    }
+
+    let currentQueryId = 0;
+    async function runHybridSearch() {
+      if (!searchPipeline || !searchVectorsBin) return;
+      
+      const query = searchQuery;
+      if (!query) {
+        searchScores = null;
+        filterLayout();
+        return;
+      }
+      
+      const queryId = ++currentQueryId;
+      setSemanticStatus('thinking');
+      
+      try {
+        const out = await searchPipeline(['query: ' + query], { pooling: 'mean', normalize: true });
+        
+        if (queryId !== currentQueryId) return;
+        
+        const queryVector = out.data;
+        
+        searchScores = {};
+        searchVectorsMeta.items.forEach(item => {
+          const start = item.index * 384;
+          const docVector = searchVectorsBin.subarray(start, start + 384);
+          
+          let dot = 0;
+          for (let i = 0; i < 384; i++) {
+            dot += queryVector[i] * docVector[i];
+          }
+          searchScores[item.id] = dot;
+        });
+        
+        setSemanticStatus('ready');
+        filterLayout();
+      } catch (err) {
+        console.error('Failed executing vector search:', err);
+        setSemanticStatus('ready');
+      }
+    }
+
+    function filterLayout() {
+      const query = searchQuery.toLowerCase();
+      
+      if (!query) {
+        document.querySelectorAll('.panel.card-div').forEach(el => {
+          el.style.display = '';
+          const badge = el.querySelector('.badge--match');
+          if (badge) badge.remove();
+        });
+        
+        document.querySelectorAll('.section-header, .section-label, .card-grid').forEach(el => {
+          el.style.display = '';
+        });
+        return;
+      }
+      
+      document.querySelectorAll('.panel.card-div').forEach(el => {
+        const searchId = el.dataset.searchId;
+        const score = searchScores ? searchScores[searchId] : null;
+        let matches = false;
+        
+        if (score !== null) {
+          let badge = el.querySelector('.badge--match');
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'badge--match';
+            el.querySelector('h2').appendChild(badge);
+          }
+          badge.textContent = `✦ ${Math.round(score * 100)}% match`;
+          matches = score >= 0.70;
+        } else {
+          // Substring fallback
+          const text = el.textContent.toLowerCase();
+          matches = text.includes(query);
+        }
+        
+        if (matches) {
+          el.style.display = '';
+        } else {
+          el.style.display = 'none';
+        }
+      });
+      
+      // Hide empty section grids & headers
+      document.querySelectorAll('.card-grid').forEach(grid => {
+        const cards = Array.from(grid.querySelectorAll('.panel.card-div'));
+        const visibleCards = cards.filter(c => c.style.display !== 'none');
+        
+        let prev = grid.previousElementSibling;
+        const headerElements = [];
+        while (prev && !prev.classList.contains('card-grid')) {
+          if (prev.classList.contains('section-header') || prev.classList.contains('section-label')) {
+            headerElements.push(prev);
+          }
+          prev = prev.previousElementSibling;
+        }
+        
+        if (visibleCards.length === 0 && cards.length > 0) {
+          grid.style.display = 'none';
+          headerElements.forEach(h => h.style.display = 'none');
+        } else {
+          grid.style.display = '';
+          headerElements.forEach(h => h.style.display = '');
+        }
+      });
+    }
 </script>
 </body>
 </html>

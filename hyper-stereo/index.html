@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hyper-Stereo Vision — webartests</title>
+  <link rel="stylesheet" href="../shared/css/main.css">
+  
+  <!-- KaTeX for LaTeX Math Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {
+            delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false},
+              {left: '\\(', right: '\\)', display: false},
+              {left: '\\[', right: '\\[', display: true}
+            ],
+            throwOnError: false
+          });"></script>
+  <style>
+    /* Layout styling */
+    .intro-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 32px;
+      margin-bottom: 48px;
+    }
+    @media (max-width: 768px) {
+      .intro-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    /* Simulator Panel */
+    .sim-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 48px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+    
+    .sim-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 768px) {
+      .sim-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Sliders and presets */
+    .control-column {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .slider-group {
+      margin-bottom: 24px;
+    }
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .slider-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .slider-value {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent-blue);
+      font-weight: bold;
+    }
+    .slider-input {
+      width: 100%;
+      height: 6px;
+      background: #222;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+      transition: background 0.15s;
+    }
+    .slider-input:focus {
+      background: #333;
+    }
+    .slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      transition: transform 0.1s, background 0.1s;
+    }
+    .slider-input::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      background: #7db4e0;
+    }
+
+    /* Preset buttons */
+    .preset-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .preset-chip {
+      background: #111;
+      border: 1px solid var(--border);
+      color: #888;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .preset-chip:hover {
+      border-color: var(--border-hover);
+      color: #fff;
+    }
+    .preset-chip.active {
+      background: #1e2d40;
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+    
+    .preset-desc {
+      font-size: 13px;
+      color: #888;
+      background: #131313;
+      border-left: 2px solid var(--accent-blue);
+      padding: 10px 14px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      margin-bottom: 24px;
+      min-height: 56px;
+    }
+
+    /* Visualizer Column */
+    .viz-column {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .view-mode-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .mode-btn {
+      background: #111;
+      border: 1px solid var(--border);
+      color: #888;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .mode-btn:hover {
+      border-color: var(--border-hover);
+      color: #fff;
+    }
+    .mode-btn.active {
+      background: #1c1c1c;
+      border-color: #555;
+      color: #fff;
+    }
+
+    /* Canvas displays */
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    
+    .dual-canvas-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .single-canvas-container {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    .viewport-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000;
+    }
+    
+    .canvas-label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    /* Stats list */
+    .stats-container {
+      margin-top: 16px;
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .stat-item {
+      font-size: 12px;
+      color: #888;
+    }
+    .stat-item b {
+      color: #fff;
+      font-family: var(--font-mono);
+    }
+    
+    /* Math section */
+    .math-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      margin-bottom: 48px;
+    }
+    .formula-row {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin: 20px 0;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .formula-box {
+      background: #161616;
+      border: 1px solid #222;
+      border-radius: var(--radius-sm);
+      padding: 16px 24px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--accent-blue);
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
+    }
+    .formula-explanation {
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    /* Resources Grid */
+    .resources-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 24px;
+    }
+    @media (max-width: 600px) {
+      .resources-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .resource-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .resource-card:hover {
+      background: var(--card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+    .resource-card h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent-blue);
+      margin-bottom: 8px;
+    }
+    .resource-card p {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .resource-link {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #555;
+      letter-spacing: 0.5px;
+      align-self: flex-start;
+      transition: color 0.15s;
+    }
+    .resource-card:hover .resource-link {
+      color: var(--accent-blue);
+    }
+    
+    /* Sub Navigation Bar styling */
+    .sub-nav {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-item {
+      color: #888;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .nav-item:hover {
+      border-color: var(--border-hover);
+      color: #fff;
+    }
+    .nav-item.active {
+      background: #1e2d40;
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 16px;">
+      <a class="back-link" href="../" style="margin-bottom: 0;">← Back to Hub</a>
+      <nav class="sub-nav">
+        <a class="nav-item active" href="index.html">Introduction</a>
+        <a class="nav-item" href="hyperstereo_camera_rail_design.html">Camera Rig</a>
+        <a class="nav-item" href="../hyper-stereo-sim/dist/index.html">VR Planner</a>
+      </nav>
+    </div>
+    
+    <h1>Hyper-Stereo Vision</h1>
+    <p class="subtitle">Exploring depth resolution scaling, extended camera baselines, and alignment constraints for long-range 3D perception.</p>
+
+    <!-- Introductory Concepts -->
+    <div class="intro-grid">
+      <div>
+        <h2>What is Hyper-Stereo?</h2>
+        <p>
+          Stereopsis (3D depth perception) relies on the horizontal separation of two optical sensors. For humans, this separation—known as the <strong>Interpupillary Distance (IPD)</strong>—averages about <strong>6.5 cm</strong>. 
+        </p>
+        <p>
+          While a 6.5 cm baseline is optimal for manipulating objects within arm's reach, our ability to resolve depth drops drastically beyond 10 meters. For distant landscapes, cities, cloud structures, or celestial bodies, both eyes receive virtually identical parallel images, resulting in a flat 2D projection.
+        </p>
+        <p>
+          <strong>Hyper-stereo</strong> (or hyperstereoscopy) resolves this limitation by artificially increasing the camera separation (baseline) to meters, kilometers, or even astronomical scales. By scaling the baseline, we expand the stereoscopic zone, letting us resolve three-dimensional structure at distances previously perceived as flat.
+        </p>
+      </div>
+      
+      <div>
+        <div class="callout blue" style="height: 100%; display: flex; flex-direction: column; justify-content: center; margin-bottom: 0;">
+          <p style="margin-bottom: 10px; font-size: 13px; color: #ccc;"><strong>Key Applications:</strong></p>
+          <ul style="padding-left: 20px; font-size: 13px; color: #aaa; line-height: 1.7;">
+            <li><strong>Aerial Photogrammetry:</strong> Constructing 3D elevation maps from airplanes or drones.</li>
+            <li><strong>Astrophotography:</strong> Capturing 3D topography of the Moon or planets by taking photos hours apart as the Earth moves.</li>
+            <li><strong>Meteorology:</strong> Measuring cloud altitude and velocity profiles.</li>
+            <li><strong>Military & Reconnaissance:</strong> Target rangefinding and spatial surveying.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Simulator -->
+    <h2>Interactive Baseline Simulator</h2>
+    <p>Adjust the camera baseline, zoom (focal length), and target convergence plane. Observe how the disparity wiggles or shifts, and look at the depth resolution calculations below.</p>
+    
+    <div class="sim-card">
+      <div class="sim-layout">
+        
+        <!-- Controls Column -->
+        <div class="control-column">
+          <div>
+            <span class="slider-label" style="display: block; margin-bottom: 8px;">Sensor Presets</span>
+            <div class="preset-container">
+              <button class="preset-chip active" data-preset="human">Human IPD</button>
+              <button class="preset-chip" data-preset="rig">Stereo Rig</button>
+              <button class="preset-chip" data-preset="drone">Drone Survey</button>
+              <button class="preset-chip" data-preset="helicopter">Aerial Map</button>
+              <button class="preset-chip" data-preset="satellite">Orbital Stereo</button>
+            </div>
+            
+            <div class="preset-desc" id="preset-description">
+              Standard human vision. Excellent depth for close subjects (like the tree at 25m), but distant mountains look completely flat.
+            </div>
+          </div>
+          
+          <div>
+            <!-- Baseline Slider -->
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Baseline (B)</span>
+                <span class="slider-value" id="val-baseline">0.065 m</span>
+              </div>
+              <input type="range" class="slider-input" id="slide-baseline" min="-1.2" max="3.3" step="0.01" value="-1.187">
+              <span style="font-size: 10px; color: #555; display: block; margin-top: 4px;">Logarithmic scale: 6.5 cm to 2,000 meters</span>
+            </div>
+
+            <!-- Focal Length Slider -->
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Focal Length (f)</span>
+                <span class="slider-value" id="val-focal">50 mm</span>
+              </div>
+              <input type="range" class="slider-input" id="slide-focal" min="18" max="200" value="50">
+            </div>
+
+            <!-- Convergence Distance Slider -->
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Convergence Distance (Z_target)</span>
+                <span class="slider-value" id="val-target">30 m</span>
+              </div>
+              <input type="range" class="slider-input" id="slide-target" min="10" max="3000" value="30">
+              <span style="font-size: 10px; color: #555; display: block; margin-top: 4px;">Distance at which left and right eye images overlap perfectly</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Visualizer Column -->
+        <div class="viz-column">
+          <div class="view-mode-bar">
+            <button class="mode-btn active" data-mode="side-by-side">Side-by-Side</button>
+            <button class="mode-btn" data-mode="wiggle">Wiggle 3D</button>
+            <button class="mode-btn" data-mode="anaglyph">Red/Cyan Anaglyph</button>
+          </div>
+          
+          <div class="canvas-wrapper">
+            <!-- Labels -->
+            <div class="canvas-label" id="viewport-lbl-left" style="display: block;">Left Eye</div>
+            <div class="canvas-label" id="viewport-lbl-right" style="display: block; left: calc(50% + 10px);">Right Eye</div>
+            
+            <!-- Side by Side canvases -->
+            <div class="dual-canvas-container" id="container-dual">
+              <canvas id="canvas-left" class="viewport-canvas"></canvas>
+              <canvas id="canvas-right" class="viewport-canvas"></canvas>
+            </div>
+            
+            <!-- Single merged canvas (Wiggle & Anaglyph) -->
+            <div class="single-canvas-container" id="container-single">
+              <canvas id="canvas-single" class="viewport-canvas"></canvas>
+            </div>
+          </div>
+          
+          <!-- Live Math Stats -->
+          <div class="stats-container">
+            <div class="stats-grid">
+              <div class="stat-item">Disparity range at 25m: <br><b id="stat-disp-near">0.00 px</b></div>
+              <div class="stat-item">Disparity range at 2km: <br><b id="stat-disp-far">0.00 px</b></div>
+              <div class="stat-item">Depth uncertainty at 25m: <br><b id="stat-res-near">0.00 m</b></div>
+              <div class="stat-item">Depth uncertainty at 2km: <br><b id="stat-res-far">0.00 m</b></div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+
+    <!-- Mathematics of Stereopsis -->
+    <div class="math-block">
+      <h2>The Mathematics of Hyper-Stereo</h2>
+      <p>
+        Stereoscopic depth calculation is governed by triangle geometry. For two parallel cameras aligned to a horizontal baseline $B$ and sharing a focal length $f$, the relationship between an object's distance $Z$ and its pixel disparity $d$ (on-sensor shift) is:
+      </p>
+      
+      <div class="formula-row">
+        <div class="formula-box">
+          $$d = \frac{f \cdot B}{Z}$$
+        </div>
+        <div class="formula-box">
+          $$\Delta Z \approx \frac{Z^2}{f \cdot B} \cdot \Delta d$$
+        </div>
+      </div>
+      
+      <p class="formula-explanation">
+        Where $\Delta d$ is the minimum disparity change resolvable by the sensor (typically bounded by pixel size, e.g. $5\ \mu\text{m}$ or sub-pixel correlation limits), and $\Delta Z$ is the resulting <strong>depth uncertainty</strong>.
+      </p>
+      
+      <div class="callout orange" style="margin-top: 16px;">
+        <p style="margin-bottom: 0;">
+          <strong>The 1-in-30 Stereo Window Rule:</strong> In stereoscopy, if the foreground objects have too much disparity, the human brain cannot fuse them, leading to double vision (diplopia). To prevent eye strain, a standard rule of thumb is that the baseline should not exceed 1/30th of the distance to the closest object in the scene: 
+          <strong>$B \le Z_{near} / 30$</strong>. For a baseline of $100\text{ m}$, any foreground object closer than $3\text{ km}$ will be extremely distorted or split, which is why hyper-stereo cameras crop out close foreground elements.
+        </p>
+      </div>
+    </div>
+
+    <!-- Reputable Resources -->
+    <h2>Reputable Resources & Reading</h2>
+    <p>Expand your knowledge of photogrammetry, stereoscopic alignment, and satellite imaging with these external resources:</p>
+    
+    <div class="resources-grid">
+      <a class="resource-card" href="https://stereo.gsfc.nasa.gov/" target="_blank" rel="noopener">
+        <div>
+          <h3>NASA's STEREO Mission</h3>
+          <p>The Solar TErrestrial RElations Observatory utilizes two identical spacecraft orbiting the Sun—one ahead of Earth and one behind—providing the first-ever 3D stereo imagery of the Sun's atmosphere and coronal mass ejections.</p>
+        </div>
+        <div class="resource-link">stereo.gsfc.nasa.gov →</div>
+      </a>
+      
+      <a class="resource-card" href="https://www.usgs.gov/educational-resources/aerial-photography" target="_blank" rel="noopener">
+        <div>
+          <h3>USGS Aerial Photography Guide</h3>
+          <p>The United States Geological Survey explains how overlapping aerial photographs taken along flight paths create high-precision 3D topographic models using extended photogrammetric baselines.</p>
+        </div>
+        <div class="resource-link">usgs.gov →</div>
+      </a>
+
+      <a class="resource-card" href="https://www.londonstereo.com/" target="_blank" rel="noopener">
+        <div>
+          <h3>London Stereoscopic Company</h3>
+          <p>An educational archive of historical and modern 3D photography, curated by stereoscopy expert Dr. Brian May, detailing the transition from Victorian stereo cards to landscape hyper-stereo views.</p>
+        </div>
+        <div class="resource-link">londonstereo.com →</div>
+      </a>
+
+      <a class="resource-card" href="https://en.wikipedia.org/wiki/Stereoscopy#Hyperstereo" target="_blank" rel="noopener">
+        <div>
+          <h3>Wikipedia: Hyperstereo</h3>
+          <p>Detailed technical documentation of hyperstereo photography setups, focal convergence constraints, and comparisons with hypostereo (microscopic 3D imaging).</p>
+        </div>
+        <div class="resource-link">wikipedia.org →</div>
+      </a>
+    </div>
+
+  </div>
+
+  <script>
+    // Presets database
+    const presets = {
+      human: {
+        name: "Human IPD",
+        baseline: 0.065,
+        targetZ: 30,
+        desc: "Standard human vision. Excellent depth for close subjects (like the tree at 25m), but distant mountains look completely flat."
+      },
+      rig: {
+        name: "Stereo Rig",
+        baseline: 0.5,
+        targetZ: 100,
+        desc: "Medium baseline rig. Good for capturing buildings or mid-range subjects. Near tree begins to split."
+      },
+      drone: {
+        name: "Drone Survey",
+        baseline: 10,
+        targetZ: 400,
+        desc: "Extended baseline for mapping. Ideal for structures at 400m. Near objects are too split to fuse."
+      },
+      helicopter: {
+        name: "Aerial Mapping",
+        baseline: 100,
+        targetZ: 2000,
+        desc: "Very wide baseline. Ideal for topography at 2km. Features at 400m split widely, and near features are out of frame."
+      },
+      satellite: {
+        name: "Orbital Stereo",
+        baseline: 1500,
+        targetZ: 5000,
+        desc: "Extreme baseline. Used by orbiters to map cloud elevations, planetary terrain, or craters on the Moon."
+      }
+    };
+
+    // DOM Elements
+    const slideBaseline = document.getElementById('slide-baseline');
+    const slideFocal = document.getElementById('slide-focal');
+    const slideTarget = document.getElementById('slide-target');
+    
+    const valBaseline = document.getElementById('val-baseline');
+    const valFocal = document.getElementById('val-focal');
+    const valTarget = document.getElementById('val-target');
+    
+    const presetDesc = document.getElementById('preset-description');
+    
+    const canvasLeft = document.getElementById('canvas-left');
+    const canvasRight = document.getElementById('canvas-right');
+    const canvasSingle = document.getElementById('canvas-single');
+    
+    const ctxLeft = canvasLeft.getContext('2d');
+    const ctxRight = canvasRight.getContext('2d');
+    const ctxSingle = canvasSingle.getContext('2d');
+    
+    const containerDual = document.getElementById('container-dual');
+    const containerSingle = document.getElementById('container-single');
+    
+    const lblLeft = document.getElementById('viewport-lbl-left');
+    const lblRight = document.getElementById('viewport-lbl-right');
+    
+    const statDispNear = document.getElementById('stat-disp-near');
+    const statDispFar = document.getElementById('stat-disp-far');
+    const statResNear = document.getElementById('stat-res-near');
+    const statResFar = document.getElementById('stat-res-far');
+
+    // State Variables
+    let currentMode = 'side-by-side'; // side-by-side, wiggle, anaglyph
+    let baseline = 0.065; // meters
+    let focalLength = 50; // mm
+    let targetZ = 30; // meters
+    let wiggleFrame = 0; // 0 = left, 1 = right
+    let wiggleInterval = null;
+
+    // Fixed Stars Array
+    const stars = [];
+    for (let i = 0; i < 80; i++) {
+      stars.push({
+        x: Math.random(),
+        y: Math.random() * 0.65,
+        r: Math.random() * 1.2 + 0.3
+      });
+    }
+
+    // Convert Log Slider value to Baseline Meters
+    // Slide range: -1.2 to 3.3. 10^slider gives ~0.063 to 2000
+    function sliderToBaseline(val) {
+      return Math.pow(10, val);
+    }
+    
+    function baselineToSlider(b) {
+      return Math.log10(b);
+    }
+
+    // Set Up Event Listeners
+    document.querySelectorAll('.preset-chip').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        
+        const presetKey = btn.dataset.preset;
+        const p = presets[presetKey];
+        
+        baseline = p.baseline;
+        targetZ = p.targetZ;
+        
+        slideBaseline.value = baselineToSlider(baseline);
+        slideTarget.value = targetZ;
+        
+        presetDesc.textContent = p.desc;
+        
+        updateUI();
+      });
+    });
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        currentMode = btn.dataset.mode;
+        
+        if (currentMode === 'side-by-side') {
+          containerDual.style.display = 'grid';
+          containerSingle.style.display = 'none';
+          lblLeft.style.display = 'block';
+          lblLeft.textContent = "Left Eye";
+          lblRight.style.display = 'block';
+          stopWiggle();
+        } else if (currentMode === 'wiggle') {
+          containerDual.style.display = 'none';
+          containerSingle.style.display = 'block';
+          lblLeft.style.display = 'block';
+          lblLeft.textContent = "Wiggle 3D";
+          lblRight.style.display = 'none';
+          startWiggle();
+        } else if (currentMode === 'anaglyph') {
+          containerDual.style.display = 'none';
+          containerSingle.style.display = 'block';
+          lblLeft.style.display = 'block';
+          lblLeft.textContent = "Red/Cyan Anaglyph";
+          lblRight.style.display = 'none';
+          stopWiggle();
+        }
+        
+        resizeCanvases();
+        render();
+      });
+    });
+
+    slideBaseline.addEventListener('input', (e) => {
+      baseline = sliderToBaseline(parseFloat(e.target.value));
+      document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+      presetDesc.textContent = "Custom baseline configured manually.";
+      updateUI();
+    });
+
+    slideFocal.addEventListener('input', (e) => {
+      focalLength = parseFloat(e.target.value);
+      updateUI();
+    });
+
+    slideTarget.addEventListener('input', (e) => {
+      targetZ = parseFloat(e.target.value);
+      document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+      presetDesc.textContent = "Custom target distance configured manually.";
+      updateUI();
+    });
+
+    function updateUI() {
+      // Format baseline string
+      if (baseline < 1) {
+        valBaseline.textContent = (baseline * 100).toFixed(1) + " cm";
+      } else {
+        valBaseline.textContent = baseline.toFixed(2) + " m";
+      }
+      
+      valFocal.textContent = focalLength + " mm";
+      valTarget.textContent = targetZ + " m";
+      
+      calculateStats();
+      render();
+    }
+
+    // Calculations
+    const PIXEL_PITCH = 0.005; // 5um
+    
+    function calculateStats() {
+      // Calculate disparity range relative to target convergence
+      // Disparity (px) = (f * B / Z_target - f * B / Z) / pixel_pitch
+      function getDisp(z) {
+        const disparityMM = focalLength * baseline * (1 / targetZ - 1 / z);
+        return disparityMM / PIXEL_PITCH;
+      }
+      
+      // Depth resolution / uncertainty ΔZ = Z^2 * pixel_pitch / (f * B)
+      function getDepthUncertainty(z) {
+        return (z * z * PIXEL_PITCH) / (focalLength * baseline);
+      }
+      
+      const dispNear = getDisp(25);
+      const dispFar = getDisp(2000);
+      
+      const resNear = getDepthUncertainty(25);
+      const resFar = getDepthUncertainty(2000);
+      
+      statDispNear.innerHTML = Math.abs(dispNear).toFixed(1) + " px " + (dispNear < 0 ? "(crossed)" : "(uncrossed)");
+      statDispFar.innerHTML = Math.abs(dispFar).toFixed(1) + " px " + (dispFar < 0 ? "(crossed)" : "(uncrossed)");
+      
+      statResNear.textContent = resNear < 0.01 ? (resNear * 100).toFixed(2) + " cm" : (resNear > 1000 ? "Infinite" : resNear.toFixed(2) + " m");
+      statResFar.textContent = resFar > 1000 ? "Infinite" : resFar.toFixed(1) + " m";
+    }
+
+    // Wiggle Interval Control
+    function startWiggle() {
+      if (wiggleInterval) clearInterval(wiggleInterval);
+      wiggleInterval = setInterval(() => {
+        wiggleFrame = 1 - wiggleFrame;
+        render();
+      }, 180);
+    }
+    
+    function stopWiggle() {
+      if (wiggleInterval) {
+        clearInterval(wiggleInterval);
+        wiggleInterval = null;
+      }
+    }
+
+    // Rendering Logic
+    function render() {
+      const w = canvasLeft.width;
+      const h = canvasLeft.height;
+      
+      if (currentMode === 'side-by-side') {
+        drawScene(ctxLeft, 'left', w, h);
+        drawScene(ctxRight, 'right', w, h);
+      } else if (currentMode === 'wiggle') {
+        drawScene(ctxSingle, wiggleFrame === 0 ? 'left' : 'right', canvasSingle.width, canvasSingle.height);
+      } else if (currentMode === 'anaglyph') {
+        drawAnaglyph(ctxSingle, canvasSingle.width, canvasSingle.height);
+      }
+    }
+
+    // Draw the scene with offset relative to convergence target
+    function drawScene(ctx, eye, width, height) {
+      // Clear
+      ctx.fillStyle = '#050512';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw Stars (at Z = Infinity)
+      drawStars(ctx, eye, width, height);
+      
+      // Save for zoom transform
+      ctx.save();
+      
+      // Focal length zoom: let 50mm be 1x scale
+      const zoom = focalLength / 50;
+      ctx.translate(width / 2, height / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-width / 2, -height / 2);
+      
+      // Draw Mountains (Z = 2000m)
+      drawMountainRange(ctx, eye, '#161922', '#232836', 2000, width, height);
+      
+      // Draw Hill and Castle (Z = 400m)
+      drawCastleHill(ctx, eye, '#0c1b0c', '#152e15', 400, width, height);
+      
+      // Draw Tree (Z = 25m)
+      drawForegroundTree(ctx, eye, '#0a210a', '#184718', 25, width, height);
+      
+      ctx.restore();
+      
+      // Draw crosshair reticle (remains constant size and centered)
+      drawReticle(ctx, width, height);
+    }
+
+    // Offscreen canvases for correct anaglyph occlusion blending
+    const offscreenLeft = document.createElement('canvas');
+    const offscreenRight = document.createElement('canvas');
+    const offctxLeft = offscreenLeft.getContext('2d');
+    const offctxRight = offscreenRight.getContext('2d');
+
+    // Anaglyph rendering: blend left in red and right in cyan using offscreen canvases
+    // to preserve correct occlusion Z-ordering.
+    function drawAnaglyph(ctx, width, height) {
+      const zoom = focalLength / 50;
+
+      // 1. Draw entire Left Eye scene on offscreenLeft in red
+      offctxLeft.fillStyle = '#000000';
+      offctxLeft.fillRect(0, 0, width, height);
+      drawStars(offctxLeft, 'left', width, height, '#ff0000');
+      
+      offctxLeft.save();
+      offctxLeft.translate(width / 2, height / 2);
+      offctxLeft.scale(zoom, zoom);
+      offctxLeft.translate(-width / 2, -height / 2);
+      drawMountainRange(offctxLeft, 'left', '#ff0000', '#ff0000', 2000, width, height);
+      drawCastleHill(offctxLeft, 'left', '#ff0000', '#ff0000', 400, width, height);
+      drawForegroundTree(offctxLeft, 'left', '#ff0000', '#ff0000', 25, width, height);
+      offctxLeft.restore();
+
+      // 2. Draw entire Right Eye scene on offscreenRight in cyan
+      offctxRight.fillStyle = '#000000';
+      offctxRight.fillRect(0, 0, width, height);
+      drawStars(offctxRight, 'right', width, height, '#00ffff');
+      
+      offctxRight.save();
+      offctxRight.translate(width / 2, height / 2);
+      offctxRight.scale(zoom, zoom);
+      offctxRight.translate(-width / 2, -height / 2);
+      drawMountainRange(offctxRight, 'right', '#00ffff', '#00ffff', 2000, width, height);
+      drawCastleHill(offctxRight, 'right', '#00ffff', '#00ffff', 400, width, height);
+      drawForegroundTree(offctxRight, 'right', '#00ffff', '#00ffff', 25, width, height);
+      offctxRight.restore();
+
+      // 3. Blend them together on the main canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
+      
+      ctx.drawImage(offscreenLeft, 0, 0);
+      
+      ctx.globalCompositeOperation = 'screen';
+      ctx.drawImage(offscreenRight, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      
+      // White reticle on top
+      drawReticle(ctx, width, height, '#ffffff');
+    }
+
+    // Disparity Offset Math
+    // Visual offset scaling factor
+    const DISPLAY_SCALE = 160;
+
+    function getOffset(eye, z, width) {
+      if (eye === 'center') return 0;
+      
+      let disparity;
+      if (z === Infinity) {
+        // Disparity relative to target convergence at infinity (1/z = 0)
+        disparity = DISPLAY_SCALE * baseline * (1 / targetZ);
+      } else {
+        disparity = DISPLAY_SCALE * baseline * (1 / targetZ - 1 / z);
+      }
+      
+      // In Side-by-Side we have half size canvases, scale disparity proportionally
+      const scaleMultiplier = currentMode === 'side-by-side' ? 0.5 : 1.0;
+      const shift = (disparity * scaleMultiplier);
+      
+      return eye === 'left' ? -shift : shift;
+    }
+
+    // Draw Helpers
+    function drawStars(ctx, eye, width, height, customColor) {
+      ctx.fillStyle = customColor || '#ffffff';
+      const offset = getOffset(eye, Infinity, width);
+      
+      stars.forEach(star => {
+        let sx = (star.x * width + offset) % width;
+        if (sx < 0) sx += width;
+        ctx.beginPath();
+        ctx.arc(sx, star.y * height, star.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawMountainRange(ctx, eye, fillStyle, strokeStyle, z, width, height) {
+      const offset = getOffset(eye, z, width);
+      ctx.fillStyle = fillStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 1;
+      
+      // Mountain 1 (Left)
+      ctx.beginPath();
+      ctx.moveTo(-60 + offset, height);
+      ctx.lineTo(width * 0.35 + offset, height * 0.45);
+      ctx.lineTo(width * 0.7 + offset, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Mountain 2 (Right)
+      ctx.beginPath();
+      ctx.moveTo(width * 0.3 + offset, height);
+      ctx.lineTo(width * 0.75 + offset, height * 0.35);
+      ctx.lineTo(width + 60 + offset, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Mountain 3 (Center)
+      ctx.beginPath();
+      ctx.moveTo(width * 0.15 + offset, height);
+      ctx.lineTo(width * 0.5 + offset, height * 0.5);
+      ctx.lineTo(width * 0.85 + offset, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function drawCastleHill(ctx, eye, fillStyle, strokeStyle, z, width, height) {
+      const offset = getOffset(eye, z, width);
+      ctx.fillStyle = fillStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 1;
+
+      // Draw hill
+      ctx.beginPath();
+      ctx.moveTo(-50 + offset, height);
+      ctx.quadraticCurveTo(width * 0.28 + offset, height * 0.65, width * 0.65 + offset, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Castle tower base
+      const cx = width * 0.28 + offset;
+      const cy = height * 0.72;
+      
+      ctx.beginPath();
+      ctx.rect(cx - 12, cy - 15, 24, 15);
+      ctx.rect(cx - 12, cy - 22, 6, 7);
+      ctx.rect(cx + 6, cy - 22, 6, 7);
+      ctx.rect(cx - 2, cy - 18, 4, 4);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function drawForegroundTree(ctx, eye, fillStyle, strokeStyle, z, width, height) {
+      const offset = getOffset(eye, z, width);
+      
+      // If the offset pushes the tree too far out of bounds, clip/skip to model reality
+      if (Math.abs(offset) > width * 0.8) return;
+
+      const tx = width * 0.76 + offset;
+      const ty = height;
+
+      // Trunk
+      ctx.fillStyle = fillStyle === '#ff0000' || fillStyle === '#00ffff' ? fillStyle : '#4a2f13';
+      ctx.beginPath();
+      ctx.moveTo(tx - 4, ty);
+      ctx.lineTo(tx - 2, ty - 45);
+      ctx.lineTo(tx + 2, ty - 45);
+      ctx.lineTo(tx + 4, ty);
+      ctx.closePath();
+      ctx.fill();
+
+      // Foliage
+      ctx.fillStyle = fillStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 1.5;
+      
+      const circles = [
+        { x: tx, y: ty - 48, r: 18 },
+        { x: tx - 10, y: ty - 40, r: 12 },
+        { x: tx + 10, y: ty - 40, r: 12 },
+        { x: tx, y: ty - 62, r: 14 }
+      ];
+      
+      circles.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+
+    function drawReticle(ctx, width, height, customColor) {
+      ctx.strokeStyle = customColor || 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      
+      const cx = width / 2;
+      const cy = height / 2;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.moveTo(cx - 20, cy);
+      ctx.lineTo(cx + 20, cy);
+      ctx.moveTo(cx, cy - 20);
+      ctx.lineTo(cx, cy + 20);
+      ctx.stroke();
+      
+      ctx.setLineDash([]); // reset
+    }
+
+    // Responsive Canvas Resizing
+    function resizeCanvases() {
+      const container = document.querySelector('.canvas-wrapper');
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      
+      // High-DPI support
+      const dpr = window.devicePixelRatio || 1;
+      
+      if (currentMode === 'side-by-side') {
+        canvasLeft.width = (w / 2) * dpr;
+        canvasLeft.height = h * dpr;
+        canvasRight.width = (w / 2) * dpr;
+        canvasRight.height = h * dpr;
+      } else {
+        canvasSingle.width = w * dpr;
+        canvasSingle.height = h * dpr;
+        
+        // Resize offscreen canvases
+        offscreenLeft.width = w * dpr;
+        offscreenLeft.height = h * dpr;
+        offscreenRight.width = w * dpr;
+        offscreenRight.height = h * dpr;
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvases();
+      render();
+    });
+
+    // Start Up
+    window.onload = () => {
+      // Set baseline slider position for human preset
+      slideBaseline.value = baselineToSlider(baseline);
+      presetDesc.textContent = presets.human.desc;
+      
+      resizeCanvases();
+      updateUI();
+    };
+  </script>
+</body>
+</html>
