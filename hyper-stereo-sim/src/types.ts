@@ -25,6 +25,7 @@ export interface CameraRigConfiguration {
   pitch: number; // degrees
   roll: number; // degrees
   fov: number; // vertical FoV in degrees
+  cameraProfileId?: string;
   aspect: number;
   near: number;
   far: number;
@@ -43,7 +44,7 @@ export interface CameraRigConfiguration {
 }
 
 export interface StereoConfiguration {
-  displayMode: '3d-planning' | 'side-by-side' | 'stereo-plane';
+  displayMode: '3d-planning' | 'side-by-side' | 'wiggle-3d' | 'stereo-plane';
   eyeOrder: 'left-right' | 'right-left';
   virtualScreenDistance: number;
   virtualScreenSize: number;

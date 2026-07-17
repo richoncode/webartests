@@ -11,6 +11,55 @@ interface SidebarLeftProps {
   unit: 'feet' | 'meters';
 }
 
+interface CameraProfile {
+  id: string;
+  name: string;
+  focalLengthMm: number;
+  sensorWidthMm: number;
+  sensorHeightMm: number;
+  notes: string;
+  builtIn?: boolean;
+}
+
+const fovToSensorSize = (fovDeg: number, focalLengthMm: number) =>
+  2 * focalLengthMm * Math.tan((fovDeg * Math.PI) / 360);
+
+const computeFov = (sensorSizeMm: number, focalLengthMm: number) =>
+  (2 * Math.atan(sensorSizeMm / (2 * focalLengthMm)) * 180) / Math.PI;
+
+const baseSuper35Width = fovToSensorSize(96.4, 11);
+const baseSuper35Height = fovToSensorSize(64.2, 11);
+
+const builtinCameraProfiles: CameraProfile[] = [
+  {
+    id: 'full-frame-11mm',
+    name: '11mm Full Frame',
+    focalLengthMm: 11,
+    sensorWidthMm: fovToSensorSize(120, 11),
+    sensorHeightMm: fovToSensorSize(84.8, 11),
+    notes: 'Normal full-frame 11mm reference from provided FoV: 120.0° H / 84.8° V.',
+    builtIn: true
+  },
+  {
+    id: 'super35-11mm',
+    name: '11mm Super 35 Crop',
+    focalLengthMm: 11,
+    sensorWidthMm: baseSuper35Width,
+    sensorHeightMm: baseSuper35Height,
+    notes: 'Approximate 60 fps crop reference: 96.4° H / 64.2° V.',
+    builtIn: true
+  },
+  {
+    id: 's35-plus-5-11mm',
+    name: '11mm 60fps Crop +5%',
+    focalLengthMm: 11,
+    sensorWidthMm: baseSuper35Width * 1.05,
+    sensorHeightMm: baseSuper35Height * 1.05,
+    notes: 'Working estimate: roughly 5% wider than Super 35 based on field comparison.',
+    builtIn: true
+  }
+];
+
 export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   rig,
   setRig,
@@ -22,6 +71,17 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const [isAlignmentOpen, setIsAlignmentOpen] = React.useState(false);
   const [isVergenceOpen, setIsVergenceOpen] = React.useState(false);
   const [isTargetDetailsOpen, setIsTargetDetailsOpen] = React.useState(false);
+  const [customCameraProfiles, setCustomCameraProfiles] = React.useState<CameraProfile[]>(() => {
+    try {
+      const saved = localStorage.getItem('hyperstereo-camera-profiles');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [cameraModalOpen, setCameraModalOpen] = React.useState(false);
+  const [cameraModalMode, setCameraModalMode] = React.useState<'add' | 'edit'>('add');
+  const [draftCamera, setDraftCamera] = React.useState<CameraProfile | null>(null);
 
   const METERS_TO_FEET = 3.28084;
   const toDisp = (val: number) => (unit === 'feet' ? val * METERS_TO_FEET : val);
@@ -31,11 +91,33 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const baselinePresets = [
     { label: 'Human', meters: 0.065 },
     { label: "1'", meters: 1 / METERS_TO_FEET },
+    { label: "2'", meters: 2 / METERS_TO_FEET },
+    { label: "3'", meters: 3 / METERS_TO_FEET },
     { label: "4'", meters: 4 / METERS_TO_FEET },
     { label: "8'", meters: 8 / METERS_TO_FEET },
     { label: "12'", meters: 12 / METERS_TO_FEET },
     { label: "16'", meters: 16 / METERS_TO_FEET }
   ];
+  const cameraProfiles = [...builtinCameraProfiles, ...customCameraProfiles];
+  const customCameraProfile: CameraProfile = {
+    id: 'custom',
+    name: 'Custom FoV',
+    focalLengthMm: 11,
+    sensorHeightMm: fovToSensorSize(rig.fov, 11),
+    sensorWidthMm: fovToSensorSize(rig.fov, 11) * rig.aspect,
+    notes: 'Manual FoV override from the Camera FoV slider.'
+  };
+  const selectedCameraProfile =
+    rig.cameraProfileId === 'custom' ? customCameraProfile :
+    cameraProfiles.find(profile => profile.id === rig.cameraProfileId) ||
+    cameraProfiles.find(profile => Math.abs(computeFov(profile.sensorHeightMm, profile.focalLengthMm) - rig.fov) < 0.05) ||
+    cameraProfiles[0];
+  const selectedHorizontalFov = computeFov(selectedCameraProfile.sensorWidthMm, selectedCameraProfile.focalLengthMm);
+  const selectedVerticalFov = computeFov(selectedCameraProfile.sensorHeightMm, selectedCameraProfile.focalLengthMm);
+
+  React.useEffect(() => {
+    localStorage.setItem('hyperstereo-camera-profiles', JSON.stringify(customCameraProfiles));
+  }, [customCameraProfiles]);
 
   const targetPresetPoints = coordinateAnchors.filter(p => p.id.startsWith('target-'));
   const lookAtOptions = targetPresetPoints.length > 0
@@ -278,6 +360,84 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     onCommitState(updated);
   };
 
+  const applyCameraProfile = (profile: CameraProfile) => {
+    if (profile.id === 'custom') {
+      const updated = { ...rig, cameraProfileId: 'custom' };
+      setRig(updated);
+      onCommitState(updated);
+      return;
+    }
+
+    const updated = {
+      ...rig,
+      cameraProfileId: profile.id,
+      fov: Math.round(computeFov(profile.sensorHeightMm, profile.focalLengthMm) * 10) / 10
+    };
+    setRig(updated);
+    onCommitState(updated);
+  };
+
+  const openCameraModal = (mode: 'add' | 'edit') => {
+    setCameraModalMode(mode);
+    if (mode === 'edit') {
+      setDraftCamera({ ...selectedCameraProfile });
+    } else {
+      setDraftCamera({
+        id: `camera-${Date.now()}`,
+        name: 'New Camera',
+        focalLengthMm: selectedCameraProfile.focalLengthMm,
+        sensorWidthMm: selectedCameraProfile.sensorWidthMm,
+        sensorHeightMm: selectedCameraProfile.sensorHeightMm,
+        notes: ''
+      });
+    }
+    setCameraModalOpen(true);
+  };
+
+  const saveCameraProfile = () => {
+    if (!draftCamera) return;
+    const profileId = draftCamera.builtIn ? `camera-${Date.now()}` : draftCamera.id;
+    const cleanProfile = {
+      ...draftCamera,
+      id: profileId,
+      name: draftCamera.name.trim() || 'Custom Camera',
+      focalLengthMm: Math.max(0.1, draftCamera.focalLengthMm),
+      sensorWidthMm: Math.max(0.1, draftCamera.sensorWidthMm),
+      sensorHeightMm: Math.max(0.1, draftCamera.sensorHeightMm),
+      builtIn: false
+    };
+    const profileToSave = { ...cleanProfile };
+    setCustomCameraProfiles(prev => {
+      const withoutExisting = prev.filter(profile => profile.id !== profileToSave.id);
+      return [...withoutExisting, profileToSave];
+    });
+    applyCameraProfile(profileToSave);
+    setCameraModalOpen(false);
+  };
+
+  const exportCameraProfile = async () => {
+    if (!draftCamera) return;
+    const payload = {
+      ...draftCamera,
+      computedHorizontalFovDeg: Math.round(computeFov(draftCamera.sensorWidthMm, draftCamera.focalLengthMm) * 10) / 10,
+      computedVerticalFovDeg: Math.round(computeFov(draftCamera.sensorHeightMm, draftCamera.focalLengthMm) * 10) / 10
+    };
+    const text = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      console.log(text);
+    }
+  };
+
+  const setManualFov = (fov: number) => {
+    setRig({
+      ...rig,
+      cameraProfileId: 'custom',
+      fov
+    });
+  };
+
   const setTargetPoint = (point: VenueCoordinateAnchor) => {
     const updated = {
       ...rig,
@@ -312,15 +472,70 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
       overflowY: 'auto',
       padding: '20px'
     }}>
-      {/* 1. Camera Field of View (FoV) - Moved to top of parameters */}
-      <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #222' }}>
+      {/* 1. Camera Profile */}
+      <div style={{ marginBottom: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+          <span style={{ fontWeight: 600, color: '#aaa', textTransform: 'uppercase', fontSize: '11px' }}>Camera</span>
+          <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontWeight: 600 }}>
+            {selectedHorizontalFov.toFixed(1)}° H / {selectedVerticalFov.toFixed(1)}° V
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '6px' }}>
+          <select
+            value={selectedCameraProfile.id}
+            onChange={(e) => {
+              const profile = e.target.value === 'custom'
+                ? customCameraProfile
+                : cameraProfiles.find(item => item.id === e.target.value);
+              if (profile) applyCameraProfile(profile);
+            }}
+            style={{
+              minWidth: 0,
+              background: '#222',
+              color: '#fff',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '6px',
+              fontSize: '11px'
+            }}
+            title="Select camera/lens crop profile. The computed vertical FoV drives the 3D camera."
+          >
+            <option value="custom">Custom FoV</option>
+            {cameraProfiles.map(profile => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => openCameraModal('add')}
+            title="Add camera profile"
+            style={{ background: '#222', color: '#fff', border: '1px solid #333', padding: '6px 9px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            Add
+          </button>
+          <button
+            onClick={() => openCameraModal('edit')}
+            title="Edit selected camera profile"
+            style={{ background: '#222', color: '#fff', border: '1px solid #333', padding: '6px 9px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            Edit
+          </button>
+        </div>
+        <div style={{ color: '#777', fontSize: '10px', lineHeight: 1.35, marginTop: '7px' }}>
+          Computed from focal length and effective crop. Built-ins include full-frame 11mm, Super 35 11mm, and Super 35 plus 5%.
+        </div>
+      </div>
+
+      {/* 2. Camera Field of View (FoV) */}
+      <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
           <span style={{ fontWeight: 600, color: '#aaa', textTransform: 'uppercase', fontSize: '11px' }}>Camera FoV</span>
           <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontWeight: 600 }}>{rig.fov}°</span>
         </div>
         <input 
           type="range" min="15" max="110" step="1" value={rig.fov}
-          onChange={(e) => updateRigValue('fov', parseInt(e.target.value))}
+          onChange={(e) => setManualFov(parseInt(e.target.value))}
           onMouseUp={handleSliderCommit}
           onTouchEnd={handleSliderCommit}
           style={{ width: '100%' }}
@@ -886,6 +1101,132 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           </div>
         )}
       </div>
+      {cameraModalOpen && draftCamera && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Camera profile editor"
+          onClick={() => setCameraModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.74)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(520px, 92vw)',
+              background: '#161616',
+              border: '1px solid #333',
+              borderRadius: '8px',
+              padding: '18px',
+              color: '#ddd',
+              boxShadow: '0 18px 80px rgba(0,0,0,0.6)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', color: '#fff' }}>
+                  {cameraModalMode === 'add' ? 'Add Camera' : 'Edit Camera'}
+                </h3>
+                <p style={{ margin: '4px 0 0', color: '#999', fontSize: '12px', lineHeight: 1.4 }}>
+                  FoV is computed from focal length and effective crop dimensions.
+                </p>
+              </div>
+              <button
+                onClick={() => setCameraModalOpen(false)}
+                style={{ background: '#222', color: '#fff', border: '1px solid #444', borderRadius: '4px', padding: '5px 9px', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <label style={{ gridColumn: '1 / -1', fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Name
+                <input
+                  value={draftCamera.name}
+                  onChange={(e) => setDraftCamera({ ...draftCamera, name: e.target.value })}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                />
+              </label>
+              {[
+                { key: 'focalLengthMm', label: 'Focal Length', suffix: 'mm', step: 0.1 },
+                { key: 'sensorWidthMm', label: 'Effective Width', suffix: 'mm', step: 0.01 },
+                { key: 'sensorHeightMm', label: 'Effective Height', suffix: 'mm', step: 0.01 }
+              ].map(field => {
+                const key = field.key as 'focalLengthMm' | 'sensorWidthMm' | 'sensorHeightMm';
+                return (
+                  <label key={key} style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    {field.label} ({field.suffix})
+                    <input
+                      type="number"
+                      min="0.1"
+                      step={field.step}
+                      value={draftCamera[key]}
+                      onChange={(e) => setDraftCamera({ ...draftCamera, [key]: parseFloat(e.target.value) || 0.1 })}
+                      style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                    />
+                  </label>
+                );
+              })}
+              <div style={{ background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '6px', padding: '10px' }}>
+                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Computed H FoV</div>
+                <div style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '18px', fontWeight: 750 }}>
+                  {computeFov(draftCamera.sensorWidthMm, draftCamera.focalLengthMm).toFixed(1)}°
+                </div>
+              </div>
+              <div style={{ background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '6px', padding: '10px' }}>
+                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Computed V FoV</div>
+                <div style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '18px', fontWeight: 750 }}>
+                  {computeFov(draftCamera.sensorHeightMm, draftCamera.focalLengthMm).toFixed(1)}°
+                </div>
+              </div>
+              <label style={{ gridColumn: '1 / -1', fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Notes
+                <textarea
+                  value={draftCamera.notes}
+                  onChange={(e) => setDraftCamera({ ...draftCamera, notes: e.target.value })}
+                  rows={3}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px', resize: 'vertical' }}
+                />
+              </label>
+            </div>
+
+            <div style={{ color: '#888', fontSize: '11px', lineHeight: 1.45, marginTop: '12px' }}>
+              Formula: FoV = 2 * atan(sensor size / (2 * focal length)). The app uses computed vertical FoV for the camera frustum.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '16px' }}>
+              <button
+                onClick={exportCameraProfile}
+                style={{ background: '#222', color: '#5b9bd5', border: '1px solid #333', borderRadius: '4px', padding: '8px 10px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Copy Export
+              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setCameraModalOpen(false)}
+                  style={{ background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px', padding: '8px 10px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveCameraProfile}
+                  style={{ background: '#1e2d40', color: '#5b9bd5', border: '1px solid #5b9bd5', borderRadius: '4px', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Save Camera
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

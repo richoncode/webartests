@@ -149,10 +149,47 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     rendererInstanceRef.current.setVRScaleMode(vrScaleMode);
   }, [vrScaleMode]);
 
+  const updateBehindRigView = (renderer: StereoRenderer) => {
+    const rigPos = new THREE.Vector3(rig.x, rig.y, rig.z);
+    const targetPos = rig.lookAtTargetEnabled
+      ? new THREE.Vector3(rig.lookAtTarget.x, rig.lookAtTarget.y, rig.lookAtTarget.z)
+      : new THREE.Vector3(rig.convergenceTarget.x, rig.convergenceTarget.y, rig.convergenceTarget.z);
+
+    const dir = new THREE.Vector3().subVectors(targetPos, rigPos);
+    if (dir.lengthSq() < 0.01) {
+      dir.set(1, 0, 0);
+    } else {
+      dir.normalize();
+    }
+
+    const behindDistance = 6 / METERS_TO_FEET;
+    const aboveLineDistance = 1 / METERS_TO_FEET;
+    const lookAheadDistance = 10 / METERS_TO_FEET;
+    const camPos = rigPos
+      .clone()
+      .addScaledVector(dir, -behindDistance)
+      .add(new THREE.Vector3(0, 0, aboveLineDistance));
+    const viewTarget = rigPos.clone().addScaledVector(dir, lookAheadDistance);
+
+    isJumpingRef.current = true;
+    renderer.planningCamera.position.copy(camPos);
+    renderer.planningCamera.up.set(0, 0, 1);
+    renderer.controls.target.copy(viewTarget);
+    renderer.controls.update();
+    setViewDistanceMeters(calculateViewDistance(renderer));
+    setTimeout(() => {
+      isJumpingRef.current = false;
+    }, 50);
+  };
+
   // 5. Render frame loop updates on config edits
   useEffect(() => {
     if (!rendererInstanceRef.current) return;
-    rendererInstanceRef.current.renderFrame(rig, stereo, visConfig.showFrustums, visConfig.comfortWarningThresholds.maxBaselineRatio);
+    const renderer = rendererInstanceRef.current;
+    renderer.renderFrame(rig, stereo, visConfig.showFrustums, visConfig.comfortWarningThresholds.maxBaselineRatio);
+    if (activeJump === 'behind-rig') {
+      updateBehindRigView(renderer);
+    }
   }, [rig, stereo, visConfig]);
 
   const jumpView = (type: 'overhead' | 'sideline' | 'behind-rig') => {
@@ -176,32 +213,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
       renderer.controls.update();
       setViewDistanceMeters(calculateViewDistance(renderer));
     } else if (type === 'behind-rig') {
-      const rigPos = new THREE.Vector3(rig.x, rig.y, rig.z);
-      const targetPos = rig.lookAtTargetEnabled
-        ? new THREE.Vector3(rig.lookAtTarget.x, rig.lookAtTarget.y, rig.lookAtTarget.z)
-        : new THREE.Vector3(rig.convergenceTarget.x, rig.convergenceTarget.y, rig.convergenceTarget.z);
-      
-      const dir = new THREE.Vector3().subVectors(targetPos, rigPos);
-      dir.z = 0; // XY plane project
-      if (dir.lengthSq() < 0.01) {
-        dir.set(1, 0, 0);
-      } else {
-        dir.normalize();
-      }
-
-      const behindDistance = 4 / METERS_TO_FEET;
-      const aboveDistance = 2 / METERS_TO_FEET;
-      const lookAheadDistance = 10 / METERS_TO_FEET;
-      const camPos = rigPos.clone().addScaledVector(dir, -behindDistance);
-      camPos.z = rig.z + aboveDistance;
-      const viewTarget = rigPos.clone().addScaledVector(dir, lookAheadDistance);
-      viewTarget.z = rig.z;
-
-      renderer.planningCamera.position.copy(camPos);
-      renderer.planningCamera.up.set(0, 0, 1);
-      renderer.controls.target.copy(viewTarget);
-      renderer.controls.update();
-      setViewDistanceMeters(calculateViewDistance(renderer));
+      updateBehindRigView(renderer);
     }
 
     setTimeout(() => {
@@ -339,7 +351,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
             transition: 'all 0.15s ease'
           }}
         >
-          Behind Rig -4ft +2ft
+          Follow Rig
         </button>
       </div>
       <div style={{
@@ -388,6 +400,20 @@ export const Visualizer: React.FC<VisualizerProps> = ({
           </div>
           <div style={{ background: 'rgba(0,0,0,0.8)', color: '#ff00ff', fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '4px', textTransform: 'uppercase', border: '1px solid rgba(255,0,255,0.3)' }}>
             {stereo.eyeOrder === 'left-right' ? 'Right Eye View' : 'Left Eye View'}
+          </div>
+        </div>
+      )}
+
+      {stereo.displayMode === 'wiggle-3d' && (
+        <div style={{
+          position: 'absolute',
+          top: '12px',
+          left: '12px',
+          pointerEvents: 'none',
+          zIndex: 10
+        }}>
+          <div style={{ background: 'rgba(0,0,0,0.8)', color: '#5b9bd5', fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '4px', textTransform: 'uppercase', border: '1px solid rgba(91,155,213,0.35)' }}>
+            Wiggle 3D Preview
           </div>
         </div>
       )}

@@ -277,6 +277,17 @@ export class StereoRenderer {
 
       this.renderer.setScissorTest(false);
       this.rig.group.visible = true; // Restore planning visual helpers
+
+    } else if (stereoConfig.displayMode === 'wiggle-3d') {
+      this.renderer.setViewport(0, 0, w, h);
+      this.renderer.setScissorTest(false);
+      this.rig.group.visible = false;
+      this.transformControls.visible = false;
+
+      const wigglePhase = Math.floor(Date.now() / 90) % 2;
+      this.renderer.render(this.scene, wigglePhase === 0 ? this.rig.leftCamera : this.rig.rightCamera);
+
+      this.rig.group.visible = true;
       
     } else if (stereoConfig.displayMode === 'stereo-plane') {
       // Render composite stereoscopic viewports

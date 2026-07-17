@@ -163,9 +163,18 @@ export class TennisCourt extends BaseVenue {
   }
 
   getCoordinateAnchors(): VenueCoordinateAnchor[] {
-    const cameraDistance = 22 / 3.28084;
-    const cameraHeight = 15 / 3.28084;
-    const cornerOffset = cameraDistance / Math.sqrt(2);
+    const trussDistance = 56 / 3.28084;
+    const highTrussHorizontalDistance = Math.sqrt(66 ** 2 - 29 ** 2) / 3.28084;
+    const lowHeight = 15 / 3.28084;
+    const highHeight = 29 / 3.28084;
+    const pointFromCenter = (distance: number, azimuthDeg: number, height: number) => {
+      const azimuthRad = (azimuthDeg * Math.PI) / 180;
+      return new THREE.Vector3(
+        distance * Math.cos(azimuthRad),
+        distance * Math.sin(azimuthRad),
+        height
+      );
+    };
 
     return [
       { id: 'origin', name: 'Venue Origin (Center Court)', position: new THREE.Vector3(0, 0, 0) },
@@ -173,9 +182,10 @@ export class TennisCourt extends BaseVenue {
       { id: 'near-baseline', name: 'Near Baseline Center', position: new THREE.Vector3(-11.89, 0, 0) },
       { id: 'far-baseline', name: 'Far Baseline Center', position: new THREE.Vector3(11.89, 0, 0) },
       { id: 'net-center', name: 'Net Center', position: new THREE.Vector3(0, 0, 0) },
-      { id: 'camera-end', name: 'End Camera', position: new THREE.Vector3(-11.89 - cameraDistance, 0, cameraHeight) },
-      { id: 'camera-corner', name: 'Corner Camera', position: new THREE.Vector3(-11.89 - cornerOffset, -5.485 - cornerOffset, cameraHeight) },
-      { id: 'camera-sideline', name: 'Sideline Camera', position: new THREE.Vector3(0, -5.485 - cameraDistance, cameraHeight) },
+      { id: 'camera-low-truss', name: 'Low Truss', position: pointFromCenter(trussDistance, 180, lowHeight) },
+      { id: 'camera-high-truss', name: 'High Truss', position: pointFromCenter(highTrussHorizontalDistance, 180, highHeight) },
+      { id: 'camera-low-slash', name: 'Low Slash', position: pointFromCenter(trussDistance, 210, lowHeight) },
+      { id: 'camera-high-slash', name: 'High Slash', position: pointFromCenter(trussDistance, 210, highHeight) },
       { id: 'target-near', name: 'Near Target', position: new THREE.Vector3(-8.5, 0, 0) },
       { id: 'target-mid', name: 'Mid Target', position: new THREE.Vector3(0, 0, 0) },
       { id: 'target-far', name: 'Far Target', position: new THREE.Vector3(8.5, 0, 0) }
