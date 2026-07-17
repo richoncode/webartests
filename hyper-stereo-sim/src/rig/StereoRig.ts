@@ -15,6 +15,7 @@ export class StereoRig {
   private rightCamMesh!: THREE.Mesh;
   private leftLookAtMarker!: THREE.Mesh;
   private rightLookAtMarker!: THREE.Mesh;
+  private convergenceTargetMarker!: THREE.Sprite;
   private lookAtDotGeometry!: THREE.SphereGeometry;
   private lookAtToeInGeometry!: THREE.CircleGeometry;
   private baselineLine!: THREE.Line;
@@ -59,10 +60,32 @@ export class StereoRig {
     this.lookAtToeInGeometry = new THREE.CircleGeometry(0.16, 3);
     this.leftLookAtMarker = new THREE.Mesh(this.lookAtDotGeometry, new THREE.MeshBasicMaterial({ color: 0x00ffff }));
     this.rightLookAtMarker = new THREE.Mesh(this.lookAtDotGeometry, new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+    const convergenceTargetCanvas = document.createElement('canvas');
+    convergenceTargetCanvas.width = 64;
+    convergenceTargetCanvas.height = 64;
+    const convergenceTargetCtx = convergenceTargetCanvas.getContext('2d');
+    if (convergenceTargetCtx) {
+      convergenceTargetCtx.fillStyle = '#ffd166';
+      convergenceTargetCtx.strokeStyle = '#241400';
+      convergenceTargetCtx.lineWidth = 5;
+      convergenceTargetCtx.beginPath();
+      convergenceTargetCtx.arc(32, 32, 19, 0, Math.PI * 2);
+      convergenceTargetCtx.fill();
+      convergenceTargetCtx.stroke();
+    }
+    this.convergenceTargetMarker = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(convergenceTargetCanvas),
+      depthTest: false,
+      depthWrite: false,
+      sizeAttenuation: false
+    }));
+    this.convergenceTargetMarker.scale.set(0.035, 0.035, 1);
     this.leftLookAtMarker.renderOrder = 6;
     this.rightLookAtMarker.renderOrder = 6;
+    this.convergenceTargetMarker.renderOrder = 7;
     this.group.add(this.leftLookAtMarker);
     this.group.add(this.rightLookAtMarker);
+    this.group.add(this.convergenceTargetMarker);
 
     // 3. Baseline Connection Line
     const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -128,7 +151,7 @@ export class StereoRig {
       config.convergenceTarget.y,
       config.convergenceTarget.z
     );
-    const opticalTargetPos = config.parallel ? rigTargetPos : convergenceTargetPos;
+    let opticalTargetPos = convergenceTargetPos;
     
     // Euler angles for Rig orientation (converted to Radians)
     const yawRad = (config.yaw * Math.PI) / 180;
@@ -162,6 +185,11 @@ export class StereoRig {
 
     // Rig look direction (negative Z is forward in standard Three.js)
     const forwardDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(rigQuaternion);
+    const signedVergenceAngleDeg = actualCameras ? 0 : (config.vergenceAngleDeg ?? 0);
+    if (Math.abs(signedVergenceAngleDeg) > 0.001) {
+      const distance = (config.baselineMeters / 2) / Math.tan(THREE.MathUtils.degToRad(signedVergenceAngleDeg));
+      opticalTargetPos = center.clone().addScaledVector(forwardDirection, distance);
+    }
 
     // Baseline Direction (rotated with yaw, pitch, roll of the rig)
     const baselineDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rigQuaternion);
@@ -217,10 +245,22 @@ export class StereoRig {
 
     if (actualCameras) {
       // Measured actual cameras already carry their own world-space orientation.
-    } else if (config.parallel) {
+    } else if (Math.abs(signedVergenceAngleDeg) < 0.001 || config.parallel) {
       // Symmetrical parallel cameras share the exact rig orientation
       this.leftCamera.quaternion.copy(rigQuaternion);
       this.rightCamera.quaternion.copy(rigQuaternion);
+    } else if (config.vergenceAngleDeg !== undefined) {
+      const imageUp = new THREE.Vector3(0, 1, 0).applyQuaternion(rigQuaternion).normalize();
+      const leftVergence = new THREE.Quaternion().setFromAxisAngle(
+        imageUp,
+        -THREE.MathUtils.degToRad(signedVergenceAngleDeg)
+      );
+      const rightVergence = new THREE.Quaternion().setFromAxisAngle(
+        imageUp,
+        THREE.MathUtils.degToRad(signedVergenceAngleDeg)
+      );
+      this.leftCamera.quaternion.copy(leftVergence.multiply(rigQuaternion));
+      this.rightCamera.quaternion.copy(rightVergence.multiply(rigQuaternion));
     } else {
       // Symmetrical vergence: each looks at the target point independently
       this.leftCamera.quaternion.copy(calculateVergenceQuaternion(this.leftCamera.position, convergenceTargetPos, rigQuaternion));
@@ -262,7 +302,7 @@ export class StereoRig {
       rightEnd.sub(center)
     ]);
     this.rightOpticalAxis.computeLineDistances();
-    this.updateCameraLookAtMarkers(center, opticalTargetPos);
+    this.updateCameraLookAtMarkers(center, opticalTargetPos, !actualCameras);
 
     // Zero-Parallax Target Plane
     const distanceToTarget = center.distanceTo(opticalTargetPos);
@@ -283,14 +323,14 @@ export class StereoRig {
     }
   }
 
-  private updateCameraLookAtMarkers(rigCenter: THREE.Vector3, fallbackTarget: THREE.Vector3) {
+  private updateCameraLookAtMarkers(rigCenter: THREE.Vector3, fallbackTarget: THREE.Vector3, showConvergenceTarget: boolean) {
     const leftForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.leftCamera.quaternion).normalize();
     const rightForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.rightCamera.quaternion).normalize();
     const isToeIn = leftForward.angleTo(rightForward) > THREE.MathUtils.degToRad(0.05);
     this.leftLookAtMarker.geometry = isToeIn ? this.lookAtToeInGeometry : this.lookAtDotGeometry;
     this.rightLookAtMarker.geometry = isToeIn ? this.lookAtToeInGeometry : this.lookAtDotGeometry;
 
-    const updateMarker = (camera: THREE.PerspectiveCamera, marker: THREE.Mesh) => {
+    const updateMarker = (camera: THREE.PerspectiveCamera, marker: THREE.Mesh, side: 'left' | 'right') => {
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
       let point: THREE.Vector3;
       if (Math.abs(forward.z) > 0.0001) {
@@ -306,14 +346,20 @@ export class StereoRig {
       marker.position.copy(point.sub(rigCenter));
       marker.position.z += 0.04;
       if (isToeIn) {
-        marker.rotation.set(0, 0, Math.atan2(forward.y, forward.x) - Math.PI / 2);
+        marker.rotation.set(0, 0, side === 'left' ? Math.PI / 2 : -Math.PI / 2);
       } else {
         marker.rotation.set(0, 0, 0);
       }
     };
 
-    updateMarker(this.leftCamera, this.leftLookAtMarker);
-    updateMarker(this.rightCamera, this.rightLookAtMarker);
+    updateMarker(this.leftCamera, this.leftLookAtMarker, 'left');
+    updateMarker(this.rightCamera, this.rightLookAtMarker, 'right');
+
+    this.convergenceTargetMarker.visible = showConvergenceTarget;
+    if (showConvergenceTarget) {
+      this.convergenceTargetMarker.position.copy(fallbackTarget).sub(rigCenter);
+      this.convergenceTargetMarker.position.z += 0.08;
+    }
   }
 
   private updateFrustumGeometry(config: CameraRigConfiguration, rigCenter: THREE.Vector3) {

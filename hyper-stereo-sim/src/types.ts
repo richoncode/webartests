@@ -36,6 +36,7 @@ export interface CameraRigConfiguration {
   fov: number; // vertical FoV in degrees
   cameraProfileId?: string;
   actualCameras?: ActualCameraRig;
+  vergenceAngleDeg?: number;
   aspect: number;
   near: number;
   far: number;

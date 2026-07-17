@@ -280,7 +280,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
     if (type === 'overhead') {
       renderer.planningCamera.position.set(0, 0, 25);
-      renderer.planningCamera.up.set(0, 1, 0); // Avoid singularity looking straight down
+      renderer.planningCamera.up.set(0, -1, 0); // Rotate top-down view 180° while avoiding singularity.
       renderer.controls.target.set(0, 0, 0);
       renderer.controls.update();
       setViewDistanceMeters(calculateViewDistance(renderer));
@@ -823,7 +823,6 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         border: '1px solid #333',
         pointerEvents: 'auto'
       }}>
-        <span style={{ fontSize: '11px', color: '#888', fontWeight: 600, alignSelf: 'center', textTransform: 'uppercase', marginRight: '4px' }}>View Jumps:</span>
         <button
           onClick={() => jumpView('overhead')}
           style={{

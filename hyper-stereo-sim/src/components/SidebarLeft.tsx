@@ -194,18 +194,35 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     rig.convergenceTarget.y,
     rig.convergenceTarget.z
   );
+  const rigLookTargetPosition = rig.lookAtTargetEnabled
+    ? new THREE.Vector3(rig.lookAtTarget.x, rig.lookAtTarget.y, rig.lookAtTarget.z)
+    : convergenceTargetPosition.clone();
+  const rigLookDirection = rigLookTargetPosition.clone().sub(rigPosition);
+  if (rigLookDirection.lengthSq() < 0.000001) {
+    rigLookDirection.set(1, 0, 0);
+  } else {
+    rigLookDirection.normalize();
+  }
   const convergenceDistance = Math.max(0.001, rigPosition.distanceTo(convergenceTargetPosition));
-  const perEyeToeInDeg = rig.parallel || rig.actualCameras
+  const inferredToeInDeg = rig.parallel || rig.actualCameras
     ? 0
     : (Math.atan2(rig.baselineMeters / 2, convergenceDistance) * 180) / Math.PI;
+  const vergenceAngleDeg = rig.actualCameras ? 0 : (rig.vergenceAngleDeg ?? inferredToeInDeg);
+  const vergenceAngleLabel = `${vergenceAngleDeg > 0 ? '+' : ''}${vergenceAngleDeg.toFixed(2)}°`;
+  const isVergenceParallel = Math.abs(vergenceAngleDeg) < 0.001;
+  const perEyeToeInDeg = rig.actualCameras
+    ? 0
+    : vergenceAngleDeg;
   const includedToeInDeg = perEyeToeInDeg * 2;
   const convergenceModeLabel = rig.actualCameras
     ? 'Actual Parallel'
-    : rig.parallel
+    : Math.abs(vergenceAngleDeg) < 0.001
       ? 'Parallel'
-      : 'Toe-In';
-  const convergenceIcon = rig.parallel || rig.actualCameras ? '||' : '∠';
-  const convergenceStatusTooltip = `${convergenceModeLabel}: ${perEyeToeInDeg.toFixed(2)}° toe-in per eye, ${includedToeInDeg.toFixed(2)}° included. Toe-in is the inward rotation used when cameras converge on a target; parallel cameras have 0° toe-in.`;
+      : vergenceAngleDeg > 0
+        ? 'Toe-In'
+        : 'Toe-Out';
+  const convergenceIcon = Math.abs(vergenceAngleDeg) < 0.001 || rig.actualCameras ? '||' : (vergenceAngleDeg > 0 ? '∠' : '∨');
+  const convergenceStatusTooltip = `${convergenceModeLabel}: ${perEyeToeInDeg.toFixed(2)}° per eye, ${includedToeInDeg.toFixed(2)}° included. Positive is toe-in/convergence; negative is toe-out/divergence; 0° is parallel.`;
   const matchingRigPlacement = rigPlacementPoints.find((p) => {
     const targetZ = p.position.z === 0 ? defaultRigHeightMeters : p.position.z;
     return Math.abs(p.position.x - rig.x) < 0.01 &&
@@ -347,6 +364,28 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     syncSphericalFromPosition(updated);
     syncLookAtOrientation(updated);
     setRig(updated);
+  };
+
+  const setVergenceAngle = (angleDeg: number) => {
+    const adjustedAngleDeg = Math.abs(angleDeg) < 0.1 ? 0 : angleDeg;
+    const angleRad = (adjustedAngleDeg * Math.PI) / 180;
+    const target = Math.abs(adjustedAngleDeg) < 0.001
+      ? rigLookTargetPosition.clone()
+      : rigPosition.clone().addScaledVector(
+          rigLookDirection,
+          (rig.baselineMeters / 2) / Math.tan(angleRad)
+        );
+    setRig({
+      ...rig,
+      actualCameras: undefined,
+      parallel: Math.abs(adjustedAngleDeg) < 0.001,
+      vergenceAngleDeg: adjustedAngleDeg,
+      convergenceTarget: {
+        x: target.x,
+        y: target.y,
+        z: target.z
+      }
+    });
   };
 
   const handleSliderCommit = () => {
@@ -1194,11 +1233,21 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
             {/* Parallel vs Converged switch */}
             <div style={{ display: 'flex', background: '#0a0a0a', padding: '3px', borderRadius: '6px', marginBottom: '12px' }}>
               <button
-                onClick={() => { updateRigValue('parallel', true); onCommitState({ ...rig, parallel: true }); }}
+                onClick={() => {
+                  const updated = {
+                    ...rig,
+                    actualCameras: undefined,
+                    parallel: true,
+                    vergenceAngleDeg: 0,
+                    convergenceTarget: rig.lookAtTargetEnabled ? rig.lookAtTarget : rig.convergenceTarget
+                  };
+                  setRig(updated);
+                  onCommitState(updated);
+                }}
                 style={{
                   flex: 1,
-                  background: rig.parallel ? '#222' : 'transparent',
-                  color: rig.parallel ? '#fff' : '#888',
+                  background: isVergenceParallel ? '#222' : 'transparent',
+                  color: isVergenceParallel ? '#fff' : '#888',
                   border: 'none',
                   padding: '6px',
                   borderRadius: '4px',
@@ -1211,15 +1260,32 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               </button>
               <button
                 onClick={() => {
-                  const convergenceTarget = rig.lookAtTargetEnabled ? rig.lookAtTarget : rig.convergenceTarget;
-                  const updated = { ...rig, parallel: false, convergenceTarget };
+                  const nextAngle = Math.abs(vergenceAngleDeg) < 0.1
+                    ? Math.max(0.5, inferredToeInDeg || 2)
+                    : Math.abs(vergenceAngleDeg);
+                  const angleRad = (nextAngle * Math.PI) / 180;
+                  const convergenceTarget = rigPosition.clone().addScaledVector(
+                    rigLookDirection,
+                    (rig.baselineMeters / 2) / Math.tan(angleRad)
+                  );
+                  const updated = {
+                    ...rig,
+                    actualCameras: undefined,
+                    parallel: false,
+                    vergenceAngleDeg: nextAngle,
+                    convergenceTarget: {
+                      x: convergenceTarget.x,
+                      y: convergenceTarget.y,
+                      z: convergenceTarget.z
+                    }
+                  };
                   setRig(updated);
                   onCommitState(updated);
                 }}
                 style={{
                   flex: 1,
-                  background: !rig.parallel ? '#222' : 'transparent',
-                  color: !rig.parallel ? '#fff' : '#888',
+                  background: !isVergenceParallel ? '#222' : 'transparent',
+                  color: !isVergenceParallel ? '#fff' : '#888',
                   border: 'none',
                   padding: '6px',
                   borderRadius: '4px',
@@ -1233,8 +1299,33 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
             </div>
 
             {/* ZP Alignment distance / target */}
-            {!rig.parallel && (
+            {(
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '11px', marginBottom: '4px' }}>
+                    <span style={{ color: '#888' }}>Vergence Offset</span>
+                    <span style={{ color: '#5b9bd5', fontFamily: 'monospace' }}>
+                      {vergenceAngleLabel}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    step="0.05"
+                    value={vergenceAngleDeg}
+                    onChange={(e) => setVergenceAngle(parseFloat(e.target.value))}
+                    onMouseUp={handleSliderCommit}
+                    onTouchEnd={handleSliderCommit}
+                    title="Set per-eye vergence angle. Negative is toe-out/divergence, 0° is parallel, positive is toe-in/convergence."
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '10px', marginTop: '2px' }}>
+                    <span>Toe-Out</span>
+                    <span>Parallel</span>
+                    <span>Toe-In</span>
+                  </div>
+                </div>
                 <label style={{ fontSize: '11px', color: '#888' }}>Convergence Target Coordinate ({dispUnit})</label>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input
@@ -1260,8 +1351,9 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 <button
                   onClick={() => {
                     const convergenceTarget = rig.lookAtTargetEnabled ? rig.lookAtTarget : rig.convergenceTarget;
-                    updateRigValue('convergenceTarget', convergenceTarget);
-                    onCommitState({ ...rig, convergenceTarget });
+                    const updated = { ...rig, parallel: true, vergenceAngleDeg: 0, convergenceTarget };
+                    setRig(updated);
+                    onCommitState(updated);
                   }}
                   style={{
                     background: '#222',
@@ -1273,7 +1365,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  Converge at Rig Target
+                  Set Offset to 0
                 </button>
               </div>
             )}
