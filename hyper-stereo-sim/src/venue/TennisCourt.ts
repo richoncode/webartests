@@ -121,6 +121,41 @@ export class TennisCourt extends BaseVenue {
     tapeMesh.rotation.y = Math.PI / 2;
     group.add(tapeMesh);
 
+    const createLimb = (from: THREE.Vector3, to: THREE.Vector3, radius: number, color: number) => {
+      const length = from.distanceTo(to);
+      const limb = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, length, 10),
+        new THREE.MeshBasicMaterial({ color })
+      );
+      const mid = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
+      const dir = new THREE.Vector3().subVectors(to, from).normalize();
+      limb.position.copy(mid);
+      limb.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      group.add(limb);
+    };
+
+    const addPlayer = (x: number, y: number, facing: 1 | -1) => {
+      const skin = 0xf2c8a5;
+      const kit = facing === 1 ? 0xffffff : 0xf0a040;
+      const line = 0x111111;
+      const footZ = 0.02;
+      const hip = new THREE.Vector3(x, y, 0.92);
+      const chest = new THREE.Vector3(x, y, 1.42);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 14), new THREE.MeshBasicMaterial({ color: skin }));
+      head.position.set(x, y, 1.68);
+      group.add(head);
+
+      createLimb(hip, chest, 0.045, kit);
+      createLimb(new THREE.Vector3(x, y - 0.22, footZ), hip, 0.032, line);
+      createLimb(new THREE.Vector3(x, y + 0.22, footZ), hip, 0.032, line);
+      createLimb(chest, new THREE.Vector3(x + facing * 0.36, y - 0.24, 1.16), 0.026, skin);
+      createLimb(chest, new THREE.Vector3(x + facing * 0.32, y + 0.26, 1.2), 0.026, skin);
+      createLimb(new THREE.Vector3(x + facing * 0.32, y + 0.26, 1.2), new THREE.Vector3(x + facing * 0.56, y + 0.36, 1.12), 0.018, line);
+    };
+
+    addPlayer(-8.5, 0.65, 1);
+    addPlayer(8.5, -0.65, -1);
+
     // Orient whole group so Z is vertical (standard Three.js plane defaults to XY flat, so we rotate it)
     // Actually, since we draw flat planes on Z = 0 and posts standing in Z, the whole group is already constructed with Z vertical!
     // No rotation needed because we explicitly positioned lines and net using Z coordinates.
@@ -128,12 +163,22 @@ export class TennisCourt extends BaseVenue {
   }
 
   getCoordinateAnchors(): VenueCoordinateAnchor[] {
+    const cameraDistance = 22 / 3.28084;
+    const cameraHeight = 15 / 3.28084;
+    const cornerOffset = cameraDistance / Math.sqrt(2);
+
     return [
       { id: 'origin', name: 'Venue Origin (Center Court)', position: new THREE.Vector3(0, 0, 0) },
       { id: 'center-court', name: 'Center Court', position: new THREE.Vector3(0, 0, 0) },
       { id: 'near-baseline', name: 'Near Baseline Center', position: new THREE.Vector3(-11.89, 0, 0) },
       { id: 'far-baseline', name: 'Far Baseline Center', position: new THREE.Vector3(11.89, 0, 0) },
-      { id: 'net-center', name: 'Net Center', position: new THREE.Vector3(0, 0, 0) }
+      { id: 'net-center', name: 'Net Center', position: new THREE.Vector3(0, 0, 0) },
+      { id: 'camera-end', name: 'End Camera', position: new THREE.Vector3(-11.89 - cameraDistance, 0, cameraHeight) },
+      { id: 'camera-corner', name: 'Corner Camera', position: new THREE.Vector3(-11.89 - cornerOffset, -5.485 - cornerOffset, cameraHeight) },
+      { id: 'camera-sideline', name: 'Sideline Camera', position: new THREE.Vector3(0, -5.485 - cameraDistance, cameraHeight) },
+      { id: 'target-near', name: 'Near Target', position: new THREE.Vector3(-8.5, 0, 0) },
+      { id: 'target-mid', name: 'Mid Target', position: new THREE.Vector3(0, 0, 0) },
+      { id: 'target-far', name: 'Far Target', position: new THREE.Vector3(8.5, 0, 0) }
     ];
   }
 }

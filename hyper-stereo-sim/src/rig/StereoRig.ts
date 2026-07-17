@@ -101,6 +101,14 @@ export class StereoRig {
    */
   update(config: CameraRigConfiguration, options: { showFrustums: boolean, showZPPlane: boolean, zpOpacity: number }) {
     const center = new THREE.Vector3(config.x, config.y, config.z);
+
+    // Determine target point for rig look-at / convergence.
+    const targetPos = new THREE.Vector3();
+    if (config.lookAtTargetEnabled) {
+      targetPos.set(config.lookAtTarget.x, config.lookAtTarget.y, config.lookAtTarget.z);
+    } else {
+      targetPos.set(config.convergenceTarget.x, config.convergenceTarget.y, config.convergenceTarget.z);
+    }
     
     // Euler angles for Rig orientation (converted to Radians)
     const yawRad = (config.yaw * Math.PI) / 180;
@@ -109,7 +117,14 @@ export class StereoRig {
     
     // Order YXZ represents yaw (Z), pitch (X), roll (Y) in Z-up coordinate space
     const rigRotation = new THREE.Euler(pitchRad, rollRad, yawRad, 'YXZ');
-    const rigQuaternion = new THREE.Quaternion().setFromEuler(rigRotation);
+    const rigQuaternion = new THREE.Quaternion();
+    if (config.lookAtTargetEnabled) {
+      const lookMatrix = new THREE.Matrix4();
+      lookMatrix.lookAt(center, targetPos, new THREE.Vector3(0, 0, 1));
+      rigQuaternion.setFromRotationMatrix(lookMatrix);
+    } else {
+      rigQuaternion.setFromEuler(rigRotation);
+    }
 
     // Rig look direction (negative Z is forward in standard Three.js)
     const forwardDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(rigQuaternion);
@@ -135,15 +150,6 @@ export class StereoRig {
     this.rightCamera.far = config.far;
     this.rightCamera.updateProjectionMatrix();
 
-    // Determine target point for convergence
-    let targetPos = new THREE.Vector3();
-    if (config.lookAtTargetEnabled) {
-      targetPos.set(config.lookAtTarget.x, config.lookAtTarget.y, config.lookAtTarget.z);
-    } else {
-      // Parallel view direction extends out to infinity, or we converge on zeroParallax plane
-      targetPos.set(config.convergenceTarget.x, config.convergenceTarget.y, config.convergenceTarget.z);
-    }
-
     if (config.parallel) {
       // Symmetrical parallel cameras share the exact rig orientation
       this.leftCamera.quaternion.copy(rigQuaternion);
@@ -155,14 +161,20 @@ export class StereoRig {
     }
 
     // ── Update Helper Meshes Positions ──
-    this.centerMesh.position.copy(center);
-    this.leftCamMesh.position.copy(this.leftCamera.position);
+    this.centerMesh.position.set(0, 0, 0);
+    this.leftCamMesh.position.copy(this.leftCamera.position).sub(center);
     this.leftCamMesh.quaternion.copy(this.leftCamera.quaternion);
-    this.rightCamMesh.position.copy(this.rightCamera.position);
+    this.rightCamMesh.position.copy(this.rightCamera.position).sub(center);
     this.rightCamMesh.quaternion.copy(this.rightCamera.quaternion);
 
+    this.leftCamera.updateMatrixWorld(true);
+    this.rightCamera.updateMatrixWorld(true);
+
     // Baseline track line
-    const baselinePts = [this.leftCamera.position, this.rightCamera.position];
+    const baselinePts = [
+      this.leftCamera.position.clone().sub(center),
+      this.rightCamera.position.clone().sub(center)
+    ];
     this.baselineLine.geometry.setFromPoints(baselinePts);
 
     // Optical Axis projecting forward from each camera lens
@@ -170,17 +182,23 @@ export class StereoRig {
     
     const leftForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.leftCamera.quaternion);
     const leftEnd = this.leftCamera.position.clone().addScaledVector(leftForward, axisLen);
-    this.leftOpticalAxis.geometry.setFromPoints([this.leftCamera.position, leftEnd]);
+    this.leftOpticalAxis.geometry.setFromPoints([
+      this.leftCamera.position.clone().sub(center),
+      leftEnd.sub(center)
+    ]);
     this.leftOpticalAxis.computeLineDistances(); // Required for dashed line styling
 
     const rightForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.rightCamera.quaternion);
     const rightEnd = this.rightCamera.position.clone().addScaledVector(rightForward, axisLen);
-    this.rightOpticalAxis.geometry.setFromPoints([this.rightCamera.position, rightEnd]);
+    this.rightOpticalAxis.geometry.setFromPoints([
+      this.rightCamera.position.clone().sub(center),
+      rightEnd.sub(center)
+    ]);
     this.rightOpticalAxis.computeLineDistances();
 
     // Zero-Parallax Target Plane
     const distanceToTarget = center.distanceTo(targetPos);
-    this.zeroParallaxPlane.position.copy(center).addScaledVector(forwardDirection, distanceToTarget);
+    this.zeroParallaxPlane.position.copy(forwardDirection).multiplyScalar(distanceToTarget);
     this.zeroParallaxPlane.quaternion.copy(rigQuaternion);
     this.zeroParallaxPlane.visible = options.showZPPlane;
     (this.zeroParallaxPlane.material as THREE.MeshBasicMaterial).opacity = options.zpOpacity;
@@ -193,11 +211,11 @@ export class StereoRig {
     // Camera Frustums Outline
     this.frustumLines.visible = options.showFrustums;
     if (options.showFrustums) {
-      this.updateFrustumGeometry(config);
+      this.updateFrustumGeometry(config, center);
     }
   }
 
-  private updateFrustumGeometry(config: CameraRigConfiguration) {
+  private updateFrustumGeometry(config: CameraRigConfiguration, rigCenter: THREE.Vector3) {
     const fovRad = (config.fov * Math.PI) / 180;
     const halfHeightFar = config.far * Math.tan(fovRad / 2);
     const halfWidthFar = halfHeightFar * config.aspect;
@@ -223,8 +241,8 @@ export class StereoRig {
     // Transform points to world space and add to line vertices
     const points: THREE.Vector3[] = [];
     const pushBox = (cornersNear: THREE.Vector3[], cornersFar: THREE.Vector3[], cam: THREE.PerspectiveCamera) => {
-      const n = cornersNear.map(p => p.clone().applyMatrix4(cam.matrixWorld));
-      const f = cornersFar.map(p => p.clone().applyMatrix4(cam.matrixWorld));
+      const n = cornersNear.map(p => p.clone().applyMatrix4(cam.matrixWorld).sub(rigCenter));
+      const f = cornersFar.map(p => p.clone().applyMatrix4(cam.matrixWorld).sub(rigCenter));
       
       // Near loop
       points.push(n[0], n[1], n[1], n[2], n[2], n[3], n[3], n[0]);

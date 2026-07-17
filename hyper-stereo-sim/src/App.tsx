@@ -10,10 +10,10 @@ import { EmptyVenue } from './venue/EmptyVenue';
 import { StereoRenderer } from './renderer/StereoRenderer';
 
 const defaultRigConfig: CameraRigConfiguration = {
-  x: -12.0,
+  x: -Math.sqrt((58 / 3.28084) ** 2 - (15 / 3.28084) ** 2),
   y: 0.0,
-  z: 1.5,
-  baselineMeters: 0.065,
+  z: 15 / 3.28084,
+  baselineMeters: 4 / 3.28084,
   yaw: 0,
   pitch: -7.1,
   roll: 0,
@@ -22,14 +22,16 @@ const defaultRigConfig: CameraRigConfiguration = {
   near: 0.1,
   far: 100,
   parallel: true,
-  convergenceTarget: { x: 0, y: 0, z: 0.914 },
+  convergenceTarget: { x: 0, y: 0, z: 0 },
   lookAtTargetEnabled: true,
   lookAtTarget: { x: 0, y: 0, z: 0.0 },
-  sphericalMode: false,
-  sphericalAnchorId: 'origin',
+  sphericalMode: true,
+  sphericalAnchorId: 'center-court',
   sphericalAzimuth: 180,
-  sphericalDistance: 12.0,
-  sphericalElevation: 1.5
+  sphericalDistance: Math.sqrt((58 / 3.28084) ** 2 - (15 / 3.28084) ** 2),
+  sphericalDistanceMode: 'direct',
+  sphericalMeasureTarget: 'center-court',
+  sphericalElevation: 15 / 3.28084
 };
 
 const defaultStereoConfig: StereoConfiguration = {
@@ -41,6 +43,8 @@ const defaultStereoConfig: StereoConfiguration = {
   horizontalImageOffset: 0.0,
   disparityExaggeration: 1.0,
   fallbackMode: 'anaglyph',
+  anaglyphBlackWhite: true,
+  showQualityOverlay: true,
   showZeroParallaxPlane: false,
   zeroParallaxOpacity: 0.25,
   zeroParallaxDistance: 10.0
@@ -63,7 +67,8 @@ export const App: React.FC = () => {
   const [stereo, setStereo] = useState<StereoConfiguration>(defaultStereoConfig);
   const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(defaultVisConfig);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
-  const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('tabletop');
+  const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
+  const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -111,7 +116,7 @@ export const App: React.FC = () => {
         name: 'Elevated End-Court Rig',
         venueId: 'tennis-court',
         venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: -16.0, y: 0.0, z: 6.0, baselineMeters: 0.5, yaw: 0, pitch: -15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0.914 } },
+        rig: { ...defaultRigConfig, x: -16.0, y: 0.0, z: 6.0, baselineMeters: 0.5, yaw: 0, pitch: -15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
         stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
         visualization: defaultVisConfig,
         createdAt: new Date().toISOString(),
@@ -122,7 +127,7 @@ export const App: React.FC = () => {
         name: 'Wide Sideline Hyperstereo Rig',
         venueId: 'tennis-court',
         venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 0.0, y: -8.0, z: 3.0, baselineMeters: 2.5, yaw: 90, pitch: -20, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0.914 } },
+        rig: { ...defaultRigConfig, x: 0.0, y: -8.0, z: 3.0, baselineMeters: 2.5, yaw: 90, pitch: -20, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
         stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
         visualization: defaultVisConfig,
         createdAt: new Date().toISOString(),
@@ -144,7 +149,7 @@ export const App: React.FC = () => {
         name: 'Converged Net Zero-Parallax Rig',
         venueId: 'tennis-court',
         venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: -10.0, y: -3.0, z: 2.0, baselineMeters: 1.0, yaw: 15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0.914 } },
+        rig: { ...defaultRigConfig, x: -10.0, y: -3.0, z: 2.0, baselineMeters: 1.0, yaw: 15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
         stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
         visualization: defaultVisConfig,
         createdAt: new Date().toISOString(),
@@ -292,14 +297,17 @@ export const App: React.FC = () => {
         vrScaleMode={vrScaleMode}
         setVrScaleMode={setVrScaleMode}
         triggerXR={triggerXR}
+        unit={unit}
+        setUnit={setUnit}
       />
       
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <SidebarLeft
           rig={rig}
           setRig={setRig}
           coordinateAnchors={coordinateAnchors}
           onCommitState={handleCommitState}
+          unit={unit}
         />
         
         <Visualizer
@@ -310,6 +318,7 @@ export const App: React.FC = () => {
           activeVenue={activeVenue}
           vrScaleMode={vrScaleMode}
           setRendererRef={setRendererRef}
+          unit={unit}
         />
         
         <SidebarRight
@@ -325,6 +334,7 @@ export const App: React.FC = () => {
           onLoadPreset={loadPreset}
           onDeletePreset={deletePreset}
           onDuplicatePreset={duplicatePreset}
+          unit={unit}
         />
       </div>
     </div>

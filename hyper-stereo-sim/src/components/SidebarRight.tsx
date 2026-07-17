@@ -15,6 +15,7 @@ interface SidebarRightProps {
   onLoadPreset: (preset: VenuePreset) => void;
   onDeletePreset: (name: string) => void;
   onDuplicatePreset: (preset: VenuePreset) => void;
+  unit: 'feet' | 'meters';
 }
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({
@@ -29,9 +30,14 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
-  onDuplicatePreset
+  onDuplicatePreset,
+  unit
 }) => {
   const [newPresetName, setNewPresetName] = useState('');
+  
+  const METERS_TO_FEET = 3.28084;
+  const toDisp = (val: number) => (unit === 'feet' ? val * METERS_TO_FEET : val);
+  const dispUnit = unit === 'feet' ? 'ft' : 'm';
   
   // Real-time mathematics calculations
   const leftCamX = rig.x - (rig.baselineMeters / 2) * Math.cos((rig.yaw * Math.PI) / 180);
@@ -54,6 +60,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
 
   // Baseline to target ratio (1-in-30 rule threshold is ~0.033)
   const baselineRatio = rig.baselineMeters / Math.max(0.1, convergenceDistance);
+  const comfortThresholdTitle = `100% means baseline / point distance equals this max comfort ratio. At 0.033, the ratio is the 1-in-30 rule: baseline can be about 1/30 of distance. Percent = (baseline / point distance) / ${visConfig.comfortWarningThresholds.maxBaselineRatio.toFixed(3)} * 100.`;
 
   // Warnings diagnostic engine
   const warnings: string[] = [];
@@ -94,7 +101,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       display: 'flex',
       flexDirection: 'column',
       color: '#ddd',
-      height: 'calc(100vh - 57px)',
+      height: '100%',
+      minHeight: 0,
       overflowY: 'auto',
       padding: '20px'
     }}>
@@ -104,21 +112,21 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         <div style={{ background: '#0a0a0a', padding: '12px', borderRadius: '6px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Rig Center (XYZ)</span>
-            <span style={{ color: '#fff', fontFamily: 'monospace' }}>({rig.x.toFixed(1)}, {rig.y.toFixed(1)}, {rig.z.toFixed(1)}) m</span>
+            <span style={{ color: '#fff', fontFamily: 'monospace' }}>({toDisp(rig.x).toFixed(1)}, {toDisp(rig.y).toFixed(1)}, {toDisp(rig.z).toFixed(1)}) {dispUnit}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Left Cam Pos</span>
-            <span style={{ color: '#aaa', fontFamily: 'monospace' }}>({leftCamX.toFixed(1)}, {leftCamY.toFixed(1)}, {rig.z.toFixed(1)}) m</span>
+            <span style={{ color: '#aaa', fontFamily: 'monospace' }}>({toDisp(leftCamX).toFixed(1)}, {toDisp(leftCamY).toFixed(1)}, {toDisp(rig.z).toFixed(1)}) {dispUnit}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Right Cam Pos</span>
-            <span style={{ color: '#aaa', fontFamily: 'monospace' }}>({rightCamX.toFixed(1)}, {rightCamY.toFixed(1)}, {rig.z.toFixed(1)}) m</span>
+            <span style={{ color: '#aaa', fontFamily: 'monospace' }}>({toDisp(rightCamX).toFixed(1)}, {toDisp(rightCamY).toFixed(1)}, {toDisp(rig.z).toFixed(1)}) {dispUnit}</span>
           </div>
           <div style={{ borderTop: '1px solid #222', margin: '4px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Convergence Target</span>
             <span style={{ color: '#fff', fontFamily: 'monospace' }}>
-              {rig.parallel ? 'Parallel (Infinity)' : `${convergenceDistance.toFixed(2)} m`}
+              {rig.parallel ? 'Parallel (Infinity)' : `${toDisp(convergenceDistance).toFixed(2)} ${dispUnit}`}
             </span>
           </div>
           {!rig.parallel && (
@@ -152,11 +160,12 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-              <span>Max Comfort Ratio (1/d)</span>
+              <span title={comfortThresholdTitle}>Max Comfort Ratio (1/d)</span>
               <span style={{ fontFamily: 'monospace' }}>{visConfig.comfortWarningThresholds.maxBaselineRatio.toFixed(3)}</span>
             </div>
             <input
               type="range" min="0.01" max="0.10" step="0.005"
+              title={comfortThresholdTitle}
               value={visConfig.comfortWarningThresholds.maxBaselineRatio}
               onChange={(e) => setVisConfig(prev => ({
                 ...prev,

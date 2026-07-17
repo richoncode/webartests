@@ -37,6 +37,8 @@ export interface CameraRigConfiguration {
   sphericalAnchorId: string;
   sphericalAzimuth: number; // degrees
   sphericalDistance: number; // meters
+  sphericalDistanceMode?: 'horizontal' | 'direct' | 'target';
+  sphericalMeasureTarget?: 'near-edge' | 'target' | 'center-court';
   sphericalElevation: number; // meters
 }
 
@@ -49,6 +51,8 @@ export interface StereoConfiguration {
   horizontalImageOffset: number;
   disparityExaggeration: number;
   fallbackMode: 'anaglyph' | 'cross-eye' | 'side-by-side';
+  anaglyphBlackWhite: boolean;
+  showQualityOverlay: boolean;
   showZeroParallaxPlane: boolean;
   zeroParallaxOpacity: number;
   zeroParallaxDistance: number;
