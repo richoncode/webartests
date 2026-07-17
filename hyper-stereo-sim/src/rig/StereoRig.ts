@@ -116,13 +116,19 @@ export class StereoRig {
     const center = new THREE.Vector3(config.x, config.y, config.z);
     const actualCameras = config.actualCameras;
 
-    // Determine target point for rig look-at / convergence.
-    const targetPos = new THREE.Vector3();
+    // Keep rig aim and per-camera vergence as separate concepts.
+    const rigTargetPos = new THREE.Vector3();
     if (config.lookAtTargetEnabled) {
-      targetPos.set(config.lookAtTarget.x, config.lookAtTarget.y, config.lookAtTarget.z);
+      rigTargetPos.set(config.lookAtTarget.x, config.lookAtTarget.y, config.lookAtTarget.z);
     } else {
-      targetPos.set(config.convergenceTarget.x, config.convergenceTarget.y, config.convergenceTarget.z);
+      rigTargetPos.set(config.convergenceTarget.x, config.convergenceTarget.y, config.convergenceTarget.z);
     }
+    const convergenceTargetPos = new THREE.Vector3(
+      config.convergenceTarget.x,
+      config.convergenceTarget.y,
+      config.convergenceTarget.z
+    );
+    const opticalTargetPos = config.parallel ? rigTargetPos : convergenceTargetPos;
     
     // Euler angles for Rig orientation (converted to Radians)
     const yawRad = (config.yaw * Math.PI) / 180;
@@ -148,7 +154,7 @@ export class StereoRig {
       rigQuaternion.setFromRotationMatrix(lookMatrix);
     } else if (config.lookAtTargetEnabled) {
       const lookMatrix = new THREE.Matrix4();
-      lookMatrix.lookAt(center, targetPos, new THREE.Vector3(0, 0, 1));
+      lookMatrix.lookAt(center, rigTargetPos, new THREE.Vector3(0, 0, 1));
       rigQuaternion.setFromRotationMatrix(lookMatrix);
     } else {
       rigQuaternion.setFromEuler(rigRotation);
@@ -217,8 +223,8 @@ export class StereoRig {
       this.rightCamera.quaternion.copy(rigQuaternion);
     } else {
       // Symmetrical vergence: each looks at the target point independently
-      this.leftCamera.quaternion.copy(calculateVergenceQuaternion(this.leftCamera.position, targetPos, rigQuaternion));
-      this.rightCamera.quaternion.copy(calculateVergenceQuaternion(this.rightCamera.position, targetPos, rigQuaternion));
+      this.leftCamera.quaternion.copy(calculateVergenceQuaternion(this.leftCamera.position, convergenceTargetPos, rigQuaternion));
+      this.rightCamera.quaternion.copy(calculateVergenceQuaternion(this.rightCamera.position, convergenceTargetPos, rigQuaternion));
     }
 
     // ── Update Helper Meshes Positions ──
@@ -239,7 +245,7 @@ export class StereoRig {
     this.baselineLine.geometry.setFromPoints(baselinePts);
 
     // Optical Axis projecting forward from each camera lens
-    const axisLen = Math.max(10, center.distanceTo(targetPos) * 1.5);
+    const axisLen = Math.max(10, center.distanceTo(opticalTargetPos) * 1.5);
     
     const leftForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.leftCamera.quaternion);
     const leftEnd = this.leftCamera.position.clone().addScaledVector(leftForward, axisLen);
@@ -256,10 +262,10 @@ export class StereoRig {
       rightEnd.sub(center)
     ]);
     this.rightOpticalAxis.computeLineDistances();
-    this.updateCameraLookAtMarkers(center, targetPos);
+    this.updateCameraLookAtMarkers(center, opticalTargetPos);
 
     // Zero-Parallax Target Plane
-    const distanceToTarget = center.distanceTo(targetPos);
+    const distanceToTarget = center.distanceTo(opticalTargetPos);
     this.zeroParallaxPlane.position.copy(forwardDirection).multiplyScalar(distanceToTarget);
     this.zeroParallaxPlane.quaternion.copy(rigQuaternion);
     this.zeroParallaxPlane.visible = options.showZPPlane;

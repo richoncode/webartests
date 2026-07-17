@@ -91,6 +91,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const [isAlignmentOpen, setIsAlignmentOpen] = React.useState(false);
   const [isVergenceOpen, setIsVergenceOpen] = React.useState(false);
   const [isTargetDetailsOpen, setIsTargetDetailsOpen] = React.useState(false);
+  const [cameraHelpOpen, setCameraHelpOpen] = React.useState(false);
   const [customCameraProfiles, setCustomCameraProfiles] = React.useState<CameraProfile[]>(() => {
     try {
       const saved = localStorage.getItem('hyperstereo-camera-profiles');
@@ -102,7 +103,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const [cameraModalOpen, setCameraModalOpen] = React.useState(false);
   const [cameraModalMode, setCameraModalMode] = React.useState<'add' | 'edit'>('add');
   const [draftCamera, setDraftCamera] = React.useState<CameraProfile | null>(null);
-  const [draftBaseCameraId, setDraftBaseCameraId] = React.useState('s35-plus-5-11mm');
+  const [draftBaseCameraId, setDraftBaseCameraId] = React.useState('actual-s35-plus-9-6-11mm');
   const [draftCropScalePercent, setDraftCropScalePercent] = React.useState(100);
 
   const METERS_TO_FEET = 3.28084;
@@ -594,7 +595,42 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
       {/* 1. Camera Profile */}
       <div style={{ marginBottom: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
-          <span style={{ fontWeight: 600, color: '#aaa', textTransform: 'uppercase', fontSize: '11px' }}>Camera</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#aaa', textTransform: 'uppercase', fontSize: '11px' }}>
+            Camera
+            <span
+              onMouseEnter={() => setCameraHelpOpen(true)}
+              onMouseLeave={() => setCameraHelpOpen(false)}
+              onFocus={() => setCameraHelpOpen(true)}
+              onBlur={() => setCameraHelpOpen(false)}
+              tabIndex={0}
+              style={{ position: 'relative', display: 'inline-grid', placeItems: 'center', width: '15px', height: '15px', borderRadius: '50%', background: '#0a0a0a', border: '1px solid #333', color: '#5b9bd5', fontSize: '10px', cursor: 'help', outline: 'none' }}
+            >
+              i
+              {cameraHelpOpen && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '20px',
+                    zIndex: 12,
+                    width: '230px',
+                    background: '#090909',
+                    border: '1px solid #5b9bd5',
+                    borderRadius: '6px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.55)',
+                    padding: '9px 10px',
+                    color: '#d8d8d8',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    lineHeight: 1.35,
+                    textTransform: 'none'
+                  }}
+                >
+                  Computed from focal length and effective crop. Built-ins include full-frame 11mm, Super 35 11mm, and Super 35 plus 5%.
+                </span>
+              )}
+            </span>
+          </span>
           <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontWeight: 600 }}>
             {selectedHorizontalFov.toFixed(1)}° H / {selectedVerticalFov.toFixed(1)}° V
           </span>
@@ -640,9 +676,6 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           >
             Edit
           </button>
-        </div>
-        <div style={{ color: '#777', fontSize: '10px', lineHeight: 1.35, marginTop: '7px' }}>
-          Computed from focal length and effective crop. Built-ins include full-frame 11mm, Super 35 11mm, and Super 35 plus 5%.
         </div>
       </div>
 
@@ -970,7 +1003,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     <span style={{ color: '#5b9bd5', fontFamily: 'monospace' }}>{rig.sphericalAzimuth.toFixed(1)}°</span>
                   </div>
                   <input 
-                    type="range" min="0" max="360" step="0.5" value={rig.sphericalAzimuth}
+                    type="range" min="-180" max="180" step="0.5" value={rig.sphericalAzimuth}
                     onChange={(e) => updateRigValue('sphericalAzimuth', parseFloat(e.target.value))}
                     onMouseUp={handleSliderCommit}
                     onTouchEnd={handleSliderCommit}
@@ -1177,7 +1210,12 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 Parallel
               </button>
               <button
-                onClick={() => { updateRigValue('parallel', false); onCommitState({ ...rig, parallel: false }); }}
+                onClick={() => {
+                  const convergenceTarget = rig.lookAtTargetEnabled ? rig.lookAtTarget : rig.convergenceTarget;
+                  const updated = { ...rig, parallel: false, convergenceTarget };
+                  setRig(updated);
+                  onCommitState(updated);
+                }}
                 style={{
                   flex: 1,
                   background: !rig.parallel ? '#222' : 'transparent',
@@ -1221,8 +1259,9 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 
                 <button
                   onClick={() => {
-                    updateRigValue('convergenceTarget', { x: 0, y: 0, z: 0 });
-                    onCommitState({ ...rig, convergenceTarget: { x: 0, y: 0, z: 0 } });
+                    const convergenceTarget = rig.lookAtTargetEnabled ? rig.lookAtTarget : rig.convergenceTarget;
+                    updateRigValue('convergenceTarget', convergenceTarget);
+                    onCommitState({ ...rig, convergenceTarget });
                   }}
                   style={{
                     background: '#222',
@@ -1234,7 +1273,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  Converge at Court Center
+                  Converge at Rig Target
                 </button>
               </div>
             )}

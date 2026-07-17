@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Trash2, Copy, Save, AlertTriangle } from 'lucide-react';
 import { CameraRigConfiguration, StereoConfiguration, VisualizationConfiguration, VenuePreset } from '../types';
 
@@ -14,6 +14,7 @@ interface SidebarRightProps {
   onSavePreset: (name: string) => void;
   onLoadPreset: (preset: VenuePreset) => void;
   onDeletePreset: (name: string) => void;
+  onDeleteAllLocalPresets: () => void;
   onDuplicatePreset: (preset: VenuePreset) => void;
   unit: 'feet' | 'meters';
 }
@@ -30,10 +31,12 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
-  onDuplicatePreset,
+  onDeleteAllLocalPresets,
   unit
 }) => {
   const [newPresetName, setNewPresetName] = useState('');
+  const [copiedPresetName, setCopiedPresetName] = useState<string | null>(null);
+  const [diagnosticsHelpOpen, setDiagnosticsHelpOpen] = useState(false);
   
   const METERS_TO_FEET = 3.28084;
   const toDisp = (val: number) => (unit === 'feet' ? val * METERS_TO_FEET : val);
@@ -91,6 +94,39 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
     if (!newPresetName.trim()) return;
     onSavePreset(newPresetName.trim());
     setNewPresetName('');
+  };
+
+  const toCodeIdentifier = (name: string) => {
+    const words = name
+      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (words.length === 0) return 'venuePreset';
+    const pascal = words.map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+    return `preset${pascal.replace(/^[0-9]+/, '') || 'Venue'}`;
+  };
+
+  const copyPresetToClipboard = async (preset: VenuePreset) => {
+    const code = `const ${toCodeIdentifier(preset.name)}: VenuePreset = ${JSON.stringify(preset, null, 2)};`;
+
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+
+    setCopiedPresetName(preset.name);
+    setTimeout(() => {
+      setCopiedPresetName(current => current === preset.name ? null : current);
+    }, 1400);
   };
 
   return (
@@ -178,11 +214,61 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
 
         {/* Real-time Warnings list */}
         {warnings.length > 0 && (
-          <div style={{ marginTop: '14px', background: '#2c1010', border: '1px solid #e74c3c', borderRadius: '6px', padding: '12px' }}>
+          <div
+            onMouseEnter={() => setDiagnosticsHelpOpen(true)}
+            onMouseLeave={() => setDiagnosticsHelpOpen(false)}
+            onFocus={() => setDiagnosticsHelpOpen(true)}
+            onBlur={() => setDiagnosticsHelpOpen(false)}
+            tabIndex={0}
+            style={{
+              position: 'relative',
+              marginTop: '14px',
+              background: '#2c1010',
+              border: '1px solid #e74c3c',
+              borderRadius: '6px',
+              padding: '12px',
+              outline: 'none'
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e74c3c', fontWeight: 700, fontSize: '12px', marginBottom: '8px' }}>
               <AlertTriangle size={14} />
               <span>Stereo Diagnostics ({warnings.length})</span>
             </div>
+            {diagnosticsHelpOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '34px',
+                  zIndex: 8,
+                  width: '260px',
+                  background: '#090909',
+                  border: '1px solid #5b9bd5',
+                  borderRadius: '6px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.55)',
+                  padding: '11px 12px',
+                  color: '#d8d8d8',
+                  fontSize: '11px',
+                  lineHeight: 1.45
+                }}
+              >
+                <div style={{ color: '#5b9bd5', fontWeight: 800, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                  Read the background
+                </div>
+                <div>
+                  The best Wikipedia jumping-off point is{' '}
+                  <a
+                    href="https://en.wikipedia.org/wiki/Stereoscopy"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: '#8fc5ff', fontWeight: 800 }}
+                  >
+                    Stereoscopy
+                  </a>
+                  . It covers stereo imaging, binocular depth from disparity, and the history of the stereoscope. This warning is about when the camera baseline gets large enough that nearby points may be hard to fuse, creating diplopia.
+                </div>
+              </div>
+            )}
             <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '11px', color: '#ffb5b5', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {warnings.map((w, idx) => (
                 <li key={idx}>{w}</li>
@@ -218,7 +304,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             <Save size={14} />
           </button>
         </form>
-
         {/* Scrollable Presets list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
           {presets.map((preset) => (
@@ -242,9 +327,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               </span>
               <div style={{ display: 'flex', gap: '4px' }}>
                 <button 
-                  onClick={() => onDuplicatePreset(preset)}
-                  title="Duplicate Preset"
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: '#888' }}
+                  onClick={() => copyPresetToClipboard(preset)}
+                  title="Copy code needed to recreate this preset"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: copiedPresetName === preset.name ? '#5b9bd5' : '#888' }}
                 >
                   <Copy size={12} />
                 </button>
@@ -259,6 +344,26 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={onDeleteAllLocalPresets}
+          title="Delete all locally saved presets and restore code defaults"
+          style={{
+            width: '100%',
+            marginTop: '12px',
+            background: '#241414',
+            color: '#ffb5b5',
+            border: '1px solid #5a2525',
+            borderRadius: '4px',
+            padding: '7px 10px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            textTransform: 'uppercase'
+          }}
+        >
+          Delete All Local Presets
+        </button>
       </div>
     </div>
   );

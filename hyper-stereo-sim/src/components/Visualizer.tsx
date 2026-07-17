@@ -13,6 +13,8 @@ interface VisualizerProps {
   vrScaleMode: 'tabletop' | 'full-scale';
   setRendererRef: (renderer: StereoRenderer | null) => void;
   unit: 'feet' | 'meters';
+  presetOverlayUrl?: string | null;
+  presetOverlayOpacity?: number;
 }
 
 export const Visualizer: React.FC<VisualizerProps> = ({
@@ -23,7 +25,9 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   activeVenue,
   vrScaleMode,
   setRendererRef,
-  unit
+  unit,
+  presetOverlayUrl,
+  presetOverlayOpacity = 0.42
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -169,10 +173,21 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   }, []);
 
   useEffect(() => () => {
-    if (comparisonImageUrl) {
+    if (comparisonImageUrl?.startsWith('blob:')) {
       URL.revokeObjectURL(comparisonImageUrl);
     }
   }, [comparisonImageUrl]);
+
+  useEffect(() => {
+    setComparisonImageUrl((previousUrl) => {
+      if (previousUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(previousUrl);
+      }
+      return presetOverlayUrl || null;
+    });
+    setComparisonOpacity(presetOverlayOpacity);
+    resetComparisonTransform();
+  }, [presetOverlayUrl, presetOverlayOpacity]);
 
   useEffect(() => {
     const gestureLayer = gestureLayerRef.current;
@@ -354,12 +369,20 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
     const nextUrl = URL.createObjectURL(file);
     setComparisonImageUrl((previousUrl) => {
-      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      if (previousUrl?.startsWith('blob:')) URL.revokeObjectURL(previousUrl);
       return nextUrl;
     });
     setComparisonScale(1);
     setComparisonOffset({ x: 0, y: 0 });
     event.target.value = '';
+  };
+
+  const removeComparisonImage = () => {
+    setComparisonImageUrl((previousUrl) => {
+      if (previousUrl?.startsWith('blob:')) URL.revokeObjectURL(previousUrl);
+      return null;
+    });
+    resetComparisonTransform();
   };
 
   const pointerDistance = () => {
@@ -717,6 +740,22 @@ export const Visualizer: React.FC<VisualizerProps> = ({
             }}
           >
             Reset
+          </button>
+          <button
+            onClick={removeComparisonImage}
+            title="Remove the current overlay image"
+            style={{
+              background: '#241414',
+              color: '#ffb5b5',
+              border: '1px solid #5a2525',
+              borderRadius: '4px',
+              padding: '4px 7px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Remove
           </button>
         </div>
       )}

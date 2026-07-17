@@ -17,8 +17,8 @@ const defaultRigConfig: CameraRigConfiguration = {
   yaw: 0,
   pitch: -7.1,
   roll: 0,
-  fov: 66.9,
-  cameraProfileId: 's35-plus-5-11mm',
+  fov: 69.0,
+  cameraProfileId: 'actual-s35-plus-9-6-11mm',
   aspect: 16 / 9,
   near: 0.1,
   far: 100,
@@ -62,12 +62,65 @@ const defaultVisConfig: VisualizationConfiguration = {
   }
 };
 
+const lowTrussActualOverlayUrl = `${import.meta.env.BASE_URL}overlays/tennis3-LR-rectified.jpg`;
+
+const createLowTrussActualOverlayPreset = (): VenuePreset => ({
+  schemaVersion: 1,
+  name: 'Low Truss Actual w/ overlay',
+  venueId: 'tennis-court',
+  venueDimensions: { width: 18.29, length: 36.58, height: 10 },
+  rig: {
+    x: 17.807731960521643,
+    y: 0.4019140293983944,
+    z: 4.436988804600805,
+    baselineMeters: 1.3627716815013946,
+    yaw: 64,
+    pitch: -2,
+    roll: 91,
+    fov: 69,
+    cameraProfileId: 'actual-s35-plus-9-6-11mm',
+    aspect: 1.7777777777777777,
+    near: 0.1,
+    far: 100,
+    parallel: true,
+    convergenceTarget: { x: 8.836947364979077, y: 0.02065225918597241, z: 0 },
+    lookAtTargetEnabled: true,
+    lookAtTarget: { x: 8.836947364979077, y: 0.02065225918597241, z: 0 },
+    sphericalMode: true,
+    sphericalAnchorId: 'center-court',
+    sphericalAzimuth: 1.3,
+    sphericalDistance: 17.81,
+    sphericalDistanceMode: 'direct',
+    sphericalMeasureTarget: 'center-court',
+    sphericalElevation: 4.44,
+    actualCameras: {
+      label: 'Low Truss Actual',
+      leftPosition: { x: 17.851313599915066, y: -0.27783597120598497, z: 4.455078618355028 },
+      rightPosition: { x: 17.76415032112822, y: 1.0816640300027738, z: 4.418898990846583 },
+      viewDirection: { x: -0.8957036848509264, y: -0.038067748571483706, z: -0.44301891095434126 },
+      upDirection: { x: -0.44261934352932497, y: -0.018811491084971713, z: 0.8965122668077831 }
+    }
+  },
+  stereo: {
+    ...defaultStereoConfig,
+    displayMode: 'side-by-side',
+    showQualityOverlay: false
+  },
+  visualization: defaultVisConfig,
+  overlayImageUrl: lowTrussActualOverlayUrl,
+  overlayOpacity: 0.42,
+  createdAt: '2026-07-17T21:42:58.883Z',
+  modifiedAt: '2026-07-17T21:42:58.883Z'
+});
+
 export const App: React.FC = () => {
   const [venueId, setVenueId] = useState('tennis-court');
   const [rig, setRig] = useState<CameraRigConfiguration>(defaultRigConfig);
   const [stereo, setStereo] = useState<StereoConfiguration>(defaultStereoConfig);
   const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(defaultVisConfig);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
+  const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(null);
+  const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(0.42);
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   
@@ -89,7 +142,8 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem('hyperstereo-presets');
     if (saved) {
       try {
-        setPresets(JSON.parse(saved));
+        JSON.parse(saved);
+        loadDefaultPresets();
       } catch (err) {
         console.error('Failed to parse presets', err);
         loadDefaultPresets();
@@ -101,61 +155,7 @@ export const App: React.FC = () => {
 
   const loadDefaultPresets = () => {
     const defaultList: VenuePreset[] = [
-      {
-        schemaVersion: 1,
-        name: 'Tennis Baseline-Centered Rig',
-        venueId: 'tennis-court',
-        venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 11.89, y: 0.0, z: 1.5, baselineMeters: 0.065, yaw: 0, parallel: true },
-        stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
-        visualization: defaultVisConfig,
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        schemaVersion: 1,
-        name: 'Elevated End-Court Rig',
-        venueId: 'tennis-court',
-        venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 16.0, y: 0.0, z: 6.0, baselineMeters: 0.5, yaw: 0, pitch: -15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
-        stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
-        visualization: defaultVisConfig,
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        schemaVersion: 1,
-        name: 'Wide Sideline Hyperstereo Rig',
-        venueId: 'tennis-court',
-        venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 0.0, y: 8.0, z: 3.0, baselineMeters: 2.5, yaw: 90, pitch: -20, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
-        stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
-        visualization: defaultVisConfig,
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        schemaVersion: 1,
-        name: 'Parallel-Camera Rig',
-        venueId: 'tennis-court',
-        venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 14.0, y: -2.0, z: 1.8, baselineMeters: 0.12, yaw: -5, parallel: true },
-        stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
-        visualization: defaultVisConfig,
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        schemaVersion: 1,
-        name: 'Converged Net Zero-Parallax Rig',
-        venueId: 'tennis-court',
-        venueDimensions: { width: 18.29, length: 36.58 },
-        rig: { ...defaultRigConfig, x: 10.0, y: 3.0, z: 2.0, baselineMeters: 1.0, yaw: 15, parallel: false, convergenceTarget: { x: 0, y: 0, z: 0 } },
-        stereo: { ...defaultStereoConfig, displayMode: '3d-planning' },
-        visualization: defaultVisConfig,
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      }
+      createLowTrussActualOverlayPreset()
     ];
     setPresets(defaultList);
     localStorage.setItem('hyperstereo-presets', JSON.stringify(defaultList));
@@ -211,12 +211,21 @@ export const App: React.FC = () => {
     setRig(preset.rig);
     setStereo(preset.stereo);
     setVisConfig(preset.visualization);
+    setPresetOverlayUrl(preset.overlayImageUrl || null);
+    setPresetOverlayOpacity(preset.overlayOpacity ?? 0.42);
   };
 
   const deletePreset = (name: string) => {
     const updated = presets.filter(p => p.name !== name);
     setPresets(updated);
     localStorage.setItem('hyperstereo-presets', JSON.stringify(updated));
+  };
+
+  const deleteAllLocalPresets = () => {
+    const confirmed = window.confirm('Delete all locally saved venue presets and restore the code defaults?');
+    if (!confirmed) return;
+    localStorage.removeItem('hyperstereo-presets');
+    loadDefaultPresets();
   };
 
   const duplicatePreset = (preset: VenuePreset) => {
@@ -320,6 +329,8 @@ export const App: React.FC = () => {
           vrScaleMode={vrScaleMode}
           setRendererRef={setRendererRef}
           unit={unit}
+          presetOverlayUrl={presetOverlayUrl}
+          presetOverlayOpacity={presetOverlayOpacity}
         />
         
         <SidebarRight
@@ -334,6 +345,7 @@ export const App: React.FC = () => {
           onSavePreset={savePreset}
           onLoadPreset={loadPreset}
           onDeletePreset={deletePreset}
+          onDeleteAllLocalPresets={deleteAllLocalPresets}
           onDuplicatePreset={duplicatePreset}
           unit={unit}
         />

@@ -88,6 +88,8 @@ export interface VenuePreset {
   rig: CameraRigConfiguration;
   stereo: StereoConfiguration;
   visualization: VisualizationConfiguration;
+  overlayImageUrl?: string;
+  overlayOpacity?: number;
   createdAt: string;
   modifiedAt: string;
 }

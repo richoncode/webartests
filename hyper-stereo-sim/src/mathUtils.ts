@@ -51,8 +51,9 @@ export function calculateVergenceQuaternion(
   rigOrientation: THREE.Quaternion
 ): THREE.Quaternion {
   const lookMatrix = new THREE.Matrix4();
-  // Get the rig's local up direction to keep camera oriented relative to the rig
-  const up = new THREE.Vector3(0, 0, 1).applyQuaternion(rigOrientation);
+  // Preserve the rig's image-up axis. In Three.js camera space, local Y is
+  // the frame's vertical direction; local Z is the optical axis.
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(rigOrientation);
   lookMatrix.lookAt(cameraPos, targetPos, up);
   
   const q = new THREE.Quaternion();
