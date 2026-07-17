@@ -4,6 +4,15 @@ export interface VenueCoordinateAnchor {
   id: string;
   name: string;
   position: THREE.Vector3;
+  actualCameras?: ActualCameraRig;
+}
+
+export interface ActualCameraRig {
+  label: string;
+  leftPosition: { x: number; y: number; z: number };
+  rightPosition: { x: number; y: number; z: number };
+  viewDirection: { x: number; y: number; z: number };
+  upDirection: { x: number; y: number; z: number };
 }
 
 export interface VenueDefinition {
@@ -26,6 +35,7 @@ export interface CameraRigConfiguration {
   roll: number; // degrees
   fov: number; // vertical FoV in degrees
   cameraProfileId?: string;
+  actualCameras?: ActualCameraRig;
   aspect: number;
   near: number;
   far: number;

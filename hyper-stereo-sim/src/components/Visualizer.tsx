@@ -26,11 +26,26 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   unit
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const gestureLayerRef = useRef<HTMLDivElement>(null);
+  const overlayInputRef = useRef<HTMLInputElement>(null);
   const rendererInstanceRef = useRef<StereoRenderer | null>(null);
-  const [activeJump, setActiveJump] = React.useState<'overhead' | 'sideline' | 'behind-rig' | null>(null);
+  const [activeJump, setActiveJump] = React.useState<'overhead' | 'sideline' | 'behind-rig' | null>('behind-rig');
   const [viewDistanceMeters, setViewDistanceMeters] = React.useState(0);
+  const [viewSize, setViewSize] = React.useState({ width: 0, height: 0 });
+  const [comparisonImageUrl, setComparisonImageUrl] = React.useState<string | null>(null);
+  const [comparisonOpacity, setComparisonOpacity] = React.useState(0.42);
+  const [comparisonScale, setComparisonScale] = React.useState(1);
+  const [comparisonOffset, setComparisonOffset] = React.useState({ x: 0, y: 0 });
+  const comparisonDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const comparisonPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const comparisonPinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const comparisonScaleRef = useRef(1);
+  const comparisonOffsetRef = useRef({ x: 0, y: 0 });
   const isJumpingRef = useRef(false);
   const METERS_TO_FEET = 3.28084;
+  const MIN_COMPARISON_ZOOM = 0.25;
+  const MAX_COMPARISON_ZOOM = 6;
   const getCenterCourt = () => {
     const origin = activeVenue.getDefaultOrigin();
     return new THREE.Vector3(origin.x || 0, origin.y || 0, origin.z || 0);
@@ -71,12 +86,29 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   const viewDistanceToCenter = unit === 'feet' ? viewDistanceMeters * METERS_TO_FEET : viewDistanceMeters;
   const rigDistanceToCenter = unit === 'feet' ? rigDistanceMeters * METERS_TO_FEET : rigDistanceMeters;
   const distanceUnit = unit === 'feet' ? 'ft' : 'm';
+  const isComparisonHome = (
+    Math.abs(comparisonScale - 1) < 0.001 &&
+    Math.abs(comparisonOffset.x) < 0.5 &&
+    Math.abs(comparisonOffset.y) < 0.5
+  );
+
+  useEffect(() => {
+    comparisonScaleRef.current = comparisonScale;
+  }, [comparisonScale]);
+
+  useEffect(() => {
+    comparisonOffsetRef.current = comparisonOffset;
+  }, [comparisonOffset]);
 
   // 1. Initialize StereoRenderer on Mount
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !contentRef.current) return;
 
-    const renderer = new StereoRenderer(containerRef.current);
+    const renderer = new StereoRenderer(contentRef.current);
+    setViewSize({
+      width: containerRef.current.clientWidth,
+      height: containerRef.current.clientHeight
+    });
     rendererInstanceRef.current = renderer;
     renderer.setVenue(activeVenue);
     setRendererRef(renderer);
@@ -121,6 +153,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries || entries.length === 0) return;
       const { width, height } = entries[0].contentRect;
+      setViewSize({ width, height });
       renderer.resize(width, height);
       renderer.renderFrame(rig, stereo, visConfig.showFrustums, visConfig.comfortWarningThresholds.maxBaselineRatio);
       setViewDistanceMeters(calculateViewDistance(renderer));
@@ -134,6 +167,31 @@ export const Visualizer: React.FC<VisualizerProps> = ({
       setRendererRef(null);
     };
   }, []);
+
+  useEffect(() => () => {
+    if (comparisonImageUrl) {
+      URL.revokeObjectURL(comparisonImageUrl);
+    }
+  }, [comparisonImageUrl]);
+
+  useEffect(() => {
+    const gestureLayer = gestureLayerRef.current;
+    if (!gestureLayer || stereo.displayMode !== 'side-by-side') return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      const zoomFactor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
+      zoomComparisonAtPoint(event.clientX, event.clientY, zoomFactor);
+    };
+
+    gestureLayer.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      gestureLayer.removeEventListener('wheel', handleWheel);
+    };
+  }, [stereo.displayMode]);
 
   // 3. Update active Venue geometry
   useEffect(() => {
@@ -155,7 +213,13 @@ export const Visualizer: React.FC<VisualizerProps> = ({
       ? new THREE.Vector3(rig.lookAtTarget.x, rig.lookAtTarget.y, rig.lookAtTarget.z)
       : new THREE.Vector3(rig.convergenceTarget.x, rig.convergenceTarget.y, rig.convergenceTarget.z);
 
-    const dir = new THREE.Vector3().subVectors(targetPos, rigPos);
+    const dir = rig.actualCameras
+      ? new THREE.Vector3(
+          rig.actualCameras.viewDirection.x,
+          rig.actualCameras.viewDirection.y,
+          rig.actualCameras.viewDirection.z
+        )
+      : new THREE.Vector3().subVectors(targetPos, rigPos);
     if (dir.lengthSq() < 0.01) {
       dir.set(1, 0, 0);
     } else {
@@ -207,7 +271,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
       setViewDistanceMeters(calculateViewDistance(renderer));
     } else if (type === 'sideline') {
       const distMeters = 30 / METERS_TO_FEET;
-      renderer.planningCamera.position.set(0, -distMeters, 4);
+      renderer.planningCamera.position.set(0, distMeters, 4);
       renderer.planningCamera.up.set(0, 0, 1);
       renderer.controls.target.set(0, 0, 0);
       renderer.controls.update();
@@ -221,6 +285,203 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     }, 50);
   };
 
+  const loadImageElement = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+
+  const compositeComparisonOverlay = async (baseDataUrl: string) => {
+    if (stereo.displayMode !== 'side-by-side' || !comparisonImageUrl || !comparisonOverlayRect) {
+      return baseDataUrl;
+    }
+
+    const [baseImage, overlayImage] = await Promise.all([
+      loadImageElement(baseDataUrl),
+      loadImageElement(comparisonImageUrl)
+    ]);
+    const canvas = document.createElement('canvas');
+    canvas.width = baseImage.naturalWidth;
+    canvas.height = baseImage.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return baseDataUrl;
+
+    const content = document.createElement('canvas');
+    content.width = canvas.width;
+    content.height = canvas.height;
+    const contentCtx = content.getContext('2d');
+    if (!contentCtx) return baseDataUrl;
+
+    contentCtx.drawImage(baseImage, 0, 0);
+    contentCtx.save();
+    contentCtx.globalAlpha = comparisonOpacity;
+    contentCtx.globalCompositeOperation = 'screen';
+    contentCtx.drawImage(overlayImage, 0, 0, content.width, content.height);
+    contentCtx.restore();
+
+    const scaleToExport = canvas.width / comparisonOverlayRect.width;
+    ctx.save();
+    ctx.translate(
+      canvas.width / 2 + comparisonOffset.x * scaleToExport,
+      canvas.height / 2 + comparisonOffset.y * scaleToExport
+    );
+    ctx.scale(comparisonScale, comparisonScale);
+    ctx.drawImage(content, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+    ctx.restore();
+
+    return canvas.toDataURL('image/png');
+  };
+
+  const savePNG = async () => {
+    const renderer = rendererInstanceRef.current;
+    if (!renderer) return;
+    const dataUrl = await compositeComparisonOverlay(renderer.exportPNG(rig, stereo));
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.href = dataUrl;
+    link.download = `hyper-stereo-${stereo.displayMode}-${stamp}.png`;
+    link.click();
+  };
+
+  const openComparisonImagePicker = () => {
+    overlayInputRef.current?.click();
+  };
+
+  const loadComparisonImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const nextUrl = URL.createObjectURL(file);
+    setComparisonImageUrl((previousUrl) => {
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      return nextUrl;
+    });
+    setComparisonScale(1);
+    setComparisonOffset({ x: 0, y: 0 });
+    event.target.value = '';
+  };
+
+  const pointerDistance = () => {
+    const points = Array.from(comparisonPointersRef.current.values());
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+
+  const pointerCenter = () => {
+    const points = Array.from(comparisonPointersRef.current.values());
+    if (points.length < 2) return null;
+    return {
+      x: (points[0].x + points[1].x) / 2,
+      y: (points[0].y + points[1].y) / 2
+    };
+  };
+
+  const zoomComparisonAtPoint = (clientX: number, clientY: number, zoomFactor: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const currentScale = comparisonScaleRef.current;
+    const nextScale = Math.max(MIN_COMPARISON_ZOOM, Math.min(MAX_COMPARISON_ZOOM, currentScale * zoomFactor));
+    if (nextScale === currentScale) return;
+
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + rect.height / 2;
+    const pointFromOriginX = clientX - originX;
+    const pointFromOriginY = clientY - originY;
+    const currentOffset = comparisonOffsetRef.current;
+    const scaleRatio = nextScale / currentScale;
+    const nextOffset = {
+      x: pointFromOriginX - (pointFromOriginX - currentOffset.x) * scaleRatio,
+      y: pointFromOriginY - (pointFromOriginY - currentOffset.y) * scaleRatio
+    };
+
+    comparisonScaleRef.current = nextScale;
+    comparisonOffsetRef.current = nextOffset;
+    setComparisonScale(nextScale);
+    setComparisonOffset(nextOffset);
+  };
+
+  const panOrPinchComparisonImage = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    comparisonPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const pinch = comparisonPinchRef.current;
+    if (comparisonPointersRef.current.size >= 2 && pinch) {
+      const distance = pointerDistance();
+      if (distance > 0) {
+        const center = pointerCenter();
+        const nextScale = Math.max(MIN_COMPARISON_ZOOM, Math.min(MAX_COMPARISON_ZOOM, pinch.scale * (distance / pinch.distance)));
+        if (center) {
+          zoomComparisonAtPoint(center.x, center.y, nextScale / comparisonScaleRef.current);
+        } else {
+          comparisonScaleRef.current = nextScale;
+          setComparisonScale(nextScale);
+        }
+      }
+      return;
+    }
+
+    const drag = comparisonDragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    setComparisonOffset({
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY
+    });
+  };
+
+  const resetComparisonTransform = () => {
+    comparisonScaleRef.current = 1;
+    comparisonOffsetRef.current = { x: 0, y: 0 };
+    setComparisonScale(1);
+    setComparisonOffset({ x: 0, y: 0 });
+  };
+
+  const releaseComparisonPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    comparisonPointersRef.current.delete(event.pointerId);
+    comparisonPinchRef.current = null;
+    comparisonDragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture can already be released by the browser on cancellation.
+    }
+  };
+
+  const getSideBySideOverlayRect = () => {
+    const width = viewSize.width;
+    const height = viewSize.height;
+    if (!width || !height) return null;
+
+    const halfW = width / 2;
+    const aspect = rig.aspect || (16 / 9);
+    let frameW = halfW;
+    let frameH = frameW / aspect;
+    if (frameH > height) {
+      frameH = height;
+      frameW = frameH * aspect;
+    }
+
+    const leftX = (halfW - frameW) / 2;
+    const rightX = halfW + (halfW - frameW) / 2;
+    const top = (height - frameH) / 2;
+    const left = Math.min(leftX, rightX);
+    const right = Math.max(leftX + frameW, rightX + frameW);
+
+    return {
+      left,
+      top,
+      width: right - left,
+      height: frameH
+    };
+  };
+
+  const comparisonOverlayRect = getSideBySideOverlayRect();
+
   return (
     <div 
       ref={containerRef} 
@@ -232,9 +493,92 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         height: '100%',
         minHeight: 0,
         outline: 'none',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        overscrollBehavior: 'none'
       }}
     >
+      <div
+        ref={contentRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 1,
+          transform: stereo.displayMode === 'side-by-side'
+            ? `translate(${comparisonOffset.x}px, ${comparisonOffset.y}px) scale(${comparisonScale})`
+            : 'none',
+          transformOrigin: '50% 50%',
+          pointerEvents: 'auto',
+          overscrollBehavior: 'none'
+        }}
+      >
+        {stereo.displayMode === 'side-by-side' && comparisonImageUrl && comparisonOverlayRect && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${comparisonOverlayRect.left}px`,
+              top: `${comparisonOverlayRect.top}px`,
+              width: `${comparisonOverlayRect.width}px`,
+              height: `${comparisonOverlayRect.height}px`,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+              zIndex: 2,
+              touchAction: 'none'
+            }}
+          >
+            <img
+              src={comparisonImageUrl}
+              alt=""
+              draggable={false}
+              style={{
+                width: '100%',
+                height: '100%',
+                opacity: comparisonOpacity,
+                objectFit: 'fill',
+                pointerEvents: 'none',
+                mixBlendMode: 'screen',
+                userSelect: 'none'
+              }}
+            />
+          </div>
+        )}
+      </div>
+      {stereo.displayMode === 'side-by-side' && (
+        <div
+          ref={gestureLayerRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 8,
+            cursor: comparisonDragRef.current ? 'grabbing' : 'grab',
+            touchAction: 'none',
+            pointerEvents: 'auto',
+            overscrollBehavior: 'none'
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            comparisonPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            comparisonDragRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: comparisonOffset.x,
+              originY: comparisonOffset.y
+            };
+            if (comparisonPointersRef.current.size >= 2) {
+              comparisonPinchRef.current = {
+                distance: pointerDistance(),
+                scale: comparisonScale
+              };
+            }
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={panOrPinchComparisonImage}
+          onPointerUp={releaseComparisonPointer}
+          onPointerCancel={releaseComparisonPointer}
+          title="Drag to pan the content view. Pinch or scroll to zoom."
+        />
+      )}
       {stereo.showQualityOverlay && stereo.displayMode !== 'stereo-plane' && (
         <div style={{
           position: 'absolute',
@@ -289,6 +633,142 @@ export const Visualizer: React.FC<VisualizerProps> = ({
           ))}
         </div>
       )}
+      <input
+        ref={overlayInputRef}
+        type="file"
+        accept="image/*"
+        onChange={loadComparisonImage}
+        style={{ display: 'none' }}
+      />
+      {stereo.displayMode === 'side-by-side' && !isComparisonHome && (
+        <button
+          onClick={resetComparisonTransform}
+          title="Reset Side By Side pan and zoom"
+          style={{
+            position: 'absolute',
+            right: '12px',
+            top: '128px',
+            zIndex: 24,
+            width: '34px',
+            height: '34px',
+            display: 'grid',
+            placeItems: 'center',
+            background: '#242424',
+            color: '#d8d8d8',
+            border: '1px solid #555',
+            borderRadius: '4px',
+            padding: 0,
+            fontSize: '16px',
+            fontWeight: 800,
+            lineHeight: 1,
+            cursor: 'pointer',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.35)'
+          }}
+        >
+          ⌂
+        </button>
+      )}
+      {comparisonImageUrl && (
+        <div style={{
+          position: 'absolute',
+          left: '12px',
+          bottom: '44px',
+          zIndex: 24,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          background: 'rgba(0,0,0,0.86)',
+          border: '1px solid #333',
+          borderRadius: '6px',
+          padding: '7px 10px',
+          pointerEvents: 'auto'
+        }}>
+          <span style={{ color: '#aaa', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            Overlay Alpha
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={comparisonOpacity}
+            onChange={(event) => setComparisonOpacity(parseFloat(event.target.value))}
+            style={{ width: '160px' }}
+            title="Adjust selected capture overlay opacity"
+          />
+          <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '11px', minWidth: '34px', textAlign: 'right' }}>
+            {Math.round(comparisonOpacity * 100)}%
+          </span>
+          <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '11px', minWidth: '42px', textAlign: 'right' }}>
+            {comparisonScale.toFixed(2)}x
+          </span>
+          <button
+            onClick={resetComparisonTransform}
+            title="Reset overlay pan and zoom"
+            style={{
+              background: '#222',
+              color: '#ddd',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              padding: '4px 7px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      )}
+      <div
+        style={{
+          position: 'absolute',
+          right: '12px',
+          bottom: stereo.showQualityOverlay && stereo.displayMode !== 'stereo-plane' ? '128px' : '12px',
+          zIndex: 24,
+          pointerEvents: 'auto',
+          display: 'flex',
+          gap: '6px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.35)'
+        }}
+      >
+        <button
+          onClick={savePNG}
+          title={stereo.displayMode === 'side-by-side'
+            ? 'Save PNG of the two camera frames without grey padding'
+            : 'Save PNG of the current rendered view'}
+          style={{
+            background: '#242424',
+            color: '#d8d8d8',
+            border: '1px solid #555',
+            borderRadius: '4px',
+            padding: '7px 10px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: 'pointer'
+          }}
+        >
+          Save PNG
+        </button>
+        <button
+          onClick={openComparisonImagePicker}
+          title="Select an actual capture image to overlay on the Side By Side camera frames"
+          style={{
+            width: '30px',
+            background: comparisonImageUrl ? '#2e4057' : '#242424',
+            color: comparisonImageUrl ? '#5b9bd5' : '#d8d8d8',
+            border: comparisonImageUrl ? '1px solid #5b9bd5' : '1px solid #555',
+            borderRadius: '4px',
+            padding: '7px 0',
+            fontSize: '13px',
+            fontWeight: 800,
+            lineHeight: 1,
+            cursor: 'pointer'
+          }}
+        >
+          +
+        </button>
+      </div>
       {/* View Presets Jumps Bar */}
       <div style={{
         position: 'absolute',

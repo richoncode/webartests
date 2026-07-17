@@ -167,6 +167,18 @@ export class TennisCourt extends BaseVenue {
     const highTrussHorizontalDistance = Math.sqrt(66 ** 2 - 29 ** 2) / 3.28084;
     const lowHeight = 15 / 3.28084;
     const highHeight = 29 / 3.28084;
+    const ft = 1 / 3.28084;
+    const actualLowTrussLeft = new THREE.Vector3(
+      58.56730371114535 * ft,
+      -0.9115353677714437 * ft,
+      14.616400134243909 * ft
+    );
+    const actualLowTrussRight = new THREE.Vector3(
+      58.28133493957031 * ft,
+      3.5487666161943006 * ft,
+      14.497700565129103 * ft
+    );
+    const actualLowTrussCenter = actualLowTrussLeft.clone().add(actualLowTrussRight).multiplyScalar(0.5);
     const pointFromCenter = (distance: number, azimuthDeg: number, height: number) => {
       const azimuthRad = (azimuthDeg * Math.PI) / 180;
       return new THREE.Vector3(
@@ -182,13 +194,33 @@ export class TennisCourt extends BaseVenue {
       { id: 'near-baseline', name: 'Near Baseline Center', position: new THREE.Vector3(-11.89, 0, 0) },
       { id: 'far-baseline', name: 'Far Baseline Center', position: new THREE.Vector3(11.89, 0, 0) },
       { id: 'net-center', name: 'Net Center', position: new THREE.Vector3(0, 0, 0) },
-      { id: 'camera-low-truss', name: 'Low Truss', position: pointFromCenter(trussDistance, 180, lowHeight) },
-      { id: 'camera-high-truss', name: 'High Truss', position: pointFromCenter(highTrussHorizontalDistance, 180, highHeight) },
-      { id: 'camera-low-slash', name: 'Low Slash', position: pointFromCenter(trussDistance, 210, lowHeight) },
-      { id: 'camera-high-slash', name: 'High Slash', position: pointFromCenter(trussDistance, 210, highHeight) },
-      { id: 'target-near', name: 'Near Target', position: new THREE.Vector3(-8.5, 0, 0) },
+      { id: 'camera-low-truss', name: 'Low Truss', position: pointFromCenter(trussDistance, 0, lowHeight) },
+      {
+        id: 'camera-low-truss-actual',
+        name: 'Low Truss Actual',
+        position: actualLowTrussCenter,
+        actualCameras: {
+          label: 'Low Truss Actual',
+          leftPosition: { x: actualLowTrussLeft.x, y: actualLowTrussLeft.y, z: actualLowTrussLeft.z },
+          rightPosition: { x: actualLowTrussRight.x, y: actualLowTrussRight.y, z: actualLowTrussRight.z },
+          viewDirection: {
+            x: -0.8957036848509264,
+            y: -0.038067748571483706,
+            z: -0.44301891095434126
+          },
+          upDirection: {
+            x: -0.44261934352932497,
+            y: -0.018811491084971713,
+            z: 0.8965122668077831
+          }
+        }
+      },
+      { id: 'camera-high-truss', name: 'High Truss', position: pointFromCenter(highTrussHorizontalDistance, 0, highHeight) },
+      { id: 'camera-low-slash', name: 'Low Slash', position: pointFromCenter(trussDistance, 30, lowHeight) },
+      { id: 'camera-high-slash', name: 'High Slash', position: pointFromCenter(trussDistance, 30, highHeight) },
+      { id: 'target-near', name: 'Near Target', position: new THREE.Vector3(8.5, 0, 0) },
       { id: 'target-mid', name: 'Mid Target', position: new THREE.Vector3(0, 0, 0) },
-      { id: 'target-far', name: 'Far Target', position: new THREE.Vector3(8.5, 0, 0) }
+      { id: 'target-far', name: 'Far Target', position: new THREE.Vector3(-8.5, 0, 0) }
     ];
   }
 }

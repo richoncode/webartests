@@ -13,6 +13,10 @@ export class StereoRig {
   private centerMesh!: THREE.Mesh;
   private leftCamMesh!: THREE.Mesh;
   private rightCamMesh!: THREE.Mesh;
+  private leftLookAtMarker!: THREE.Mesh;
+  private rightLookAtMarker!: THREE.Mesh;
+  private lookAtDotGeometry!: THREE.SphereGeometry;
+  private lookAtToeInGeometry!: THREE.CircleGeometry;
   private baselineLine!: THREE.Line;
   private leftOpticalAxis!: THREE.Line;
   private rightOpticalAxis!: THREE.Line;
@@ -50,6 +54,15 @@ export class StereoRig {
     this.rightCamMesh = new THREE.Mesh(camGeo, rightMat);
     this.group.add(this.leftCamMesh);
     this.group.add(this.rightCamMesh);
+
+    this.lookAtDotGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+    this.lookAtToeInGeometry = new THREE.CircleGeometry(0.16, 3);
+    this.leftLookAtMarker = new THREE.Mesh(this.lookAtDotGeometry, new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+    this.rightLookAtMarker = new THREE.Mesh(this.lookAtDotGeometry, new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+    this.leftLookAtMarker.renderOrder = 6;
+    this.rightLookAtMarker.renderOrder = 6;
+    this.group.add(this.leftLookAtMarker);
+    this.group.add(this.rightLookAtMarker);
 
     // 3. Baseline Connection Line
     const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -101,6 +114,7 @@ export class StereoRig {
    */
   update(config: CameraRigConfiguration, options: { showFrustums: boolean, showZPPlane: boolean, zpOpacity: number }) {
     const center = new THREE.Vector3(config.x, config.y, config.z);
+    const actualCameras = config.actualCameras;
 
     // Determine target point for rig look-at / convergence.
     const targetPos = new THREE.Vector3();
@@ -118,7 +132,21 @@ export class StereoRig {
     // Order YXZ represents yaw (Z), pitch (X), roll (Y) in Z-up coordinate space
     const rigRotation = new THREE.Euler(pitchRad, rollRad, yawRad, 'YXZ');
     const rigQuaternion = new THREE.Quaternion();
-    if (config.lookAtTargetEnabled) {
+    if (actualCameras) {
+      const viewDirection = new THREE.Vector3(
+        actualCameras.viewDirection.x,
+        actualCameras.viewDirection.y,
+        actualCameras.viewDirection.z
+      ).normalize();
+      const upDirection = new THREE.Vector3(
+        actualCameras.upDirection.x,
+        actualCameras.upDirection.y,
+        actualCameras.upDirection.z
+      ).normalize();
+      const lookMatrix = new THREE.Matrix4();
+      lookMatrix.lookAt(center, center.clone().add(viewDirection), upDirection);
+      rigQuaternion.setFromRotationMatrix(lookMatrix);
+    } else if (config.lookAtTargetEnabled) {
       const lookMatrix = new THREE.Matrix4();
       lookMatrix.lookAt(center, targetPos, new THREE.Vector3(0, 0, 1));
       rigQuaternion.setFromRotationMatrix(lookMatrix);
@@ -132,10 +160,41 @@ export class StereoRig {
     // Baseline Direction (rotated with yaw, pitch, roll of the rig)
     const baselineDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rigQuaternion);
 
-    // Left and Right camera placements
-    const halfB = config.baselineMeters / 2;
-    this.leftCamera.position.copy(center).addScaledVector(baselineDir, -halfB);
-    this.rightCamera.position.copy(center).addScaledVector(baselineDir, halfB);
+    if (actualCameras) {
+      const viewDirection = new THREE.Vector3(
+        actualCameras.viewDirection.x,
+        actualCameras.viewDirection.y,
+        actualCameras.viewDirection.z
+      ).normalize();
+      const upDirection = new THREE.Vector3(
+        actualCameras.upDirection.x,
+        actualCameras.upDirection.y,
+        actualCameras.upDirection.z
+      ).normalize();
+      this.leftCamera.position.set(
+        actualCameras.leftPosition.x,
+        actualCameras.leftPosition.y,
+        actualCameras.leftPosition.z
+      );
+      this.rightCamera.position.set(
+        actualCameras.rightPosition.x,
+        actualCameras.rightPosition.y,
+        actualCameras.rightPosition.z
+      );
+
+      const leftLookMatrix = new THREE.Matrix4();
+      leftLookMatrix.lookAt(this.leftCamera.position, this.leftCamera.position.clone().add(viewDirection), upDirection);
+      this.leftCamera.quaternion.setFromRotationMatrix(leftLookMatrix);
+
+      const rightLookMatrix = new THREE.Matrix4();
+      rightLookMatrix.lookAt(this.rightCamera.position, this.rightCamera.position.clone().add(viewDirection), upDirection);
+      this.rightCamera.quaternion.setFromRotationMatrix(rightLookMatrix);
+    } else {
+      // Left and Right camera placements
+      const halfB = config.baselineMeters / 2;
+      this.leftCamera.position.copy(center).addScaledVector(baselineDir, -halfB);
+      this.rightCamera.position.copy(center).addScaledVector(baselineDir, halfB);
+    }
 
     // Update projections
     this.leftCamera.fov = config.fov;
@@ -150,7 +209,9 @@ export class StereoRig {
     this.rightCamera.far = config.far;
     this.rightCamera.updateProjectionMatrix();
 
-    if (config.parallel) {
+    if (actualCameras) {
+      // Measured actual cameras already carry their own world-space orientation.
+    } else if (config.parallel) {
       // Symmetrical parallel cameras share the exact rig orientation
       this.leftCamera.quaternion.copy(rigQuaternion);
       this.rightCamera.quaternion.copy(rigQuaternion);
@@ -195,6 +256,7 @@ export class StereoRig {
       rightEnd.sub(center)
     ]);
     this.rightOpticalAxis.computeLineDistances();
+    this.updateCameraLookAtMarkers(center, targetPos);
 
     // Zero-Parallax Target Plane
     const distanceToTarget = center.distanceTo(targetPos);
@@ -213,6 +275,39 @@ export class StereoRig {
     if (options.showFrustums) {
       this.updateFrustumGeometry(config, center);
     }
+  }
+
+  private updateCameraLookAtMarkers(rigCenter: THREE.Vector3, fallbackTarget: THREE.Vector3) {
+    const leftForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.leftCamera.quaternion).normalize();
+    const rightForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.rightCamera.quaternion).normalize();
+    const isToeIn = leftForward.angleTo(rightForward) > THREE.MathUtils.degToRad(0.05);
+    this.leftLookAtMarker.geometry = isToeIn ? this.lookAtToeInGeometry : this.lookAtDotGeometry;
+    this.rightLookAtMarker.geometry = isToeIn ? this.lookAtToeInGeometry : this.lookAtDotGeometry;
+
+    const updateMarker = (camera: THREE.PerspectiveCamera, marker: THREE.Mesh) => {
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+      let point: THREE.Vector3;
+      if (Math.abs(forward.z) > 0.0001) {
+        const t = -camera.position.z / forward.z;
+        point = t > 0
+          ? camera.position.clone().addScaledVector(forward, t)
+          : fallbackTarget.clone();
+      } else {
+        point = fallbackTarget.clone();
+      }
+
+      marker.visible = true;
+      marker.position.copy(point.sub(rigCenter));
+      marker.position.z += 0.04;
+      if (isToeIn) {
+        marker.rotation.set(0, 0, Math.atan2(forward.y, forward.x) - Math.PI / 2);
+      } else {
+        marker.rotation.set(0, 0, 0);
+      }
+    };
+
+    updateMarker(this.leftCamera, this.leftLookAtMarker);
+    updateMarker(this.rightCamera, this.rightLookAtMarker);
   }
 
   private updateFrustumGeometry(config: CameraRigConfiguration, rigCenter: THREE.Vector3) {

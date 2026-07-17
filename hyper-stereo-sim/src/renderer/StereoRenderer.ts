@@ -40,7 +40,7 @@ export class StereoRenderer {
     this.container = container;
 
     // 1. Initialize WebGL Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = true;
@@ -68,7 +68,7 @@ export class StereoRenderer {
     // 3. Initialize Planning Camera (Orbit View)
     // Z is vertical: initialize camera elevated along Y/Z looking towards center
     this.planningCamera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 200);
-    this.planningCamera.position.set(-20, -25, 15);
+    this.planningCamera.position.set(20, 25, 15);
     this.planningCamera.up.set(0, 0, 1); // Z is UP
 
     // 4. Initialize Controls
@@ -254,28 +254,47 @@ export class StereoRenderer {
       this.renderer.render(this.scene, this.planningCamera);
       
     } else if (stereoConfig.displayMode === 'side-by-side') {
-      // Render split-screen left / right viewports
+      // Render split-screen left / right viewports with preserved camera frame aspect.
       this.renderer.setScissorTest(true);
       
-      const halfW = w / 2;
-      const leftRect = stereoConfig.eyeOrder === 'left-right' ? [0, 0, halfW, h] : [halfW, 0, halfW, h];
-      const rightRect = stereoConfig.eyeOrder === 'left-right' ? [halfW, 0, halfW, h] : [0, 0, halfW, h];
+      const { leftFrame, rightFrame, leftHalf, rightHalf } = this.getSideBySideFrameRects(w, h, rigConfig.aspect || (16 / 9), stereoConfig.eyeOrder);
+      const frameGrey = new THREE.Color(0x666666);
+      const sceneBg = this.scene.background instanceof THREE.Color
+        ? this.scene.background
+        : new THREE.Color(0x0a0a0a);
+      const renderFramedEye = (frameRect: number[], camera: THREE.PerspectiveCamera) => {
+        const [frameX, frameY, frameW, frameH] = frameRect;
+        this.renderer.setViewport(frameX, frameY, frameW, frameH);
+        this.renderer.setScissor(frameX, frameY, frameW, frameH);
+        this.renderer.render(this.scene, camera);
+      };
 
       // Hide rig visual helpers inside live camera viewports
       this.rig.group.visible = false;
       this.transformControls.visible = false;
 
+      [leftHalf, rightHalf].forEach(([x, y, width, height]) => {
+        this.renderer.setViewport(x, y, width, height);
+        this.renderer.setScissor(x, y, width, height);
+        this.renderer.setClearColor(frameGrey, 1);
+        this.renderer.clear(true, true, true);
+      });
+
+      [leftFrame, rightFrame].forEach(([x, y, width, height]) => {
+        this.renderer.setViewport(x, y, width, height);
+        this.renderer.setScissor(x, y, width, height);
+        this.renderer.setClearColor(sceneBg, 1);
+        this.renderer.clear(true, true, true);
+      });
+
       // Left eye pass
-      this.renderer.setViewport(leftRect[0], leftRect[1], leftRect[2], leftRect[3]);
-      this.renderer.setScissor(leftRect[0], leftRect[1], leftRect[2], leftRect[3]);
-      this.renderer.render(this.scene, this.rig.leftCamera);
+      renderFramedEye(leftFrame, this.rig.leftCamera);
 
       // Right eye pass
-      this.renderer.setViewport(rightRect[0], rightRect[1], rightRect[2], rightRect[3]);
-      this.renderer.setScissor(rightRect[0], rightRect[1], rightRect[2], rightRect[3]);
-      this.renderer.render(this.scene, this.rig.rightCamera);
+      renderFramedEye(rightFrame, this.rig.rightCamera);
 
       this.renderer.setScissorTest(false);
+      this.renderer.setClearColor(sceneBg, 1);
       this.rig.group.visible = true; // Restore planning visual helpers
 
     } else if (stereoConfig.displayMode === 'wiggle-3d') {
@@ -332,6 +351,93 @@ export class StereoRenderer {
         this.rig.group.visible = true;
       }
     }
+  }
+
+  exportPNG(rigConfig: CameraRigConfiguration, stereoConfig: StereoConfiguration) {
+    this.renderFrame(rigConfig, stereoConfig, this.lastShowFrustums ?? true, this.lastQualityThreshold);
+    const canvas = this.renderer.domElement;
+
+    if (stereoConfig.displayMode !== 'side-by-side') {
+      return canvas.toDataURL('image/png');
+    }
+
+    const { leftFrame, rightFrame } = this.getSideBySideFrameRects(
+      canvas.width,
+      canvas.height,
+      rigConfig.aspect || (16 / 9),
+      stereoConfig.eyeOrder
+    );
+    const frameWidth = Math.round(leftFrame[2]);
+    const frameHeight = Math.round(leftFrame[3]);
+    const output = document.createElement('canvas');
+    output.width = frameWidth * 2;
+    output.height = frameHeight;
+    const ctx = output.getContext('2d');
+    if (!ctx) {
+      return canvas.toDataURL('image/png');
+    }
+
+    const drawFrame = (sourceFrame: number[], destX: number) => {
+      const [x, y, width, height] = sourceFrame.map(Math.round);
+      ctx.drawImage(
+        canvas,
+        x,
+        canvas.height - y - height,
+        width,
+        height,
+        destX,
+        0,
+        frameWidth,
+        frameHeight
+      );
+    };
+
+    const displayFrames = [leftFrame, rightFrame].sort((a, b) => a[0] - b[0]);
+    drawFrame(displayFrames[0], 0);
+    drawFrame(displayFrames[1], frameWidth);
+    return output.toDataURL('image/png');
+  }
+
+  private getSideBySideFrameRects(width: number, height: number, aspect: number, eyeOrder: StereoConfiguration['eyeOrder']) {
+    const halfW = width / 2;
+    const leftHalf = eyeOrder === 'left-right'
+      ? [0, 0, halfW, height]
+      : [halfW, 0, halfW, height];
+    const rightHalf = eyeOrder === 'left-right'
+      ? [halfW, 0, halfW, height]
+      : [0, 0, halfW, height];
+    const frameForHalf = (rect: number[]) => {
+      const [x, y, rectW, rectH] = rect;
+      let frameW = rectW;
+      let frameH = frameW / aspect;
+      if (frameH > rectH) {
+        frameH = rectH;
+        frameW = frameH * aspect;
+      }
+
+      return [
+        x + (rectW - frameW) / 2,
+        y + (rectH - frameH) / 2,
+        frameW,
+        frameH
+      ];
+    };
+
+    return {
+      leftHalf,
+      rightHalf,
+      leftFrame: frameForHalf(leftHalf),
+      rightFrame: frameForHalf(rightHalf),
+      combinedFrame: (() => {
+        const leftFrame = frameForHalf(leftHalf);
+        const rightFrame = frameForHalf(rightHalf);
+        const minX = Math.min(leftFrame[0], rightFrame[0]);
+        const minY = Math.min(leftFrame[1], rightFrame[1]);
+        const maxX = Math.max(leftFrame[0] + leftFrame[2], rightFrame[0] + rightFrame[2]);
+        const maxY = Math.max(leftFrame[1] + leftFrame[3], rightFrame[1] + rightFrame[3]);
+        return [minX, minY, maxX - minX, maxY - minY];
+      })()
+    };
   }
 
   dispose() {

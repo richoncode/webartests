@@ -29,6 +29,8 @@ const computeFov = (sensorSizeMm: number, focalLengthMm: number) =>
 
 const baseSuper35Width = fovToSensorSize(96.4, 11);
 const baseSuper35Height = fovToSensorSize(64.2, 11);
+const actualFocalDistance = 1577.403;
+const defaultCropScale = actualFocalDistance / 11;
 
 const builtinCameraProfiles: CameraProfile[] = [
   {
@@ -57,6 +59,24 @@ const builtinCameraProfiles: CameraProfile[] = [
     sensorHeightMm: baseSuper35Height * 1.05,
     notes: 'Working estimate: roughly 5% wider than Super 35 based on field comparison.',
     builtIn: true
+  },
+  {
+    id: 'actual-s35-plus-9-6-11mm',
+    name: 'Actual: 11mm 60fps Crop +9.6%',
+    focalLengthMm: 11,
+    sensorWidthMm: 26.97272556282721,
+    sensorHeightMm: 15.128189201125458,
+    notes: 'Actual working estimate from field alignment: 104.4% of the 11mm 60fps Crop +5% profile, or about 9.6% wider than Super 35.',
+    builtIn: true
+  },
+  {
+    id: 'actual-focal-1577',
+    name: 'Actual',
+    focalLengthMm: actualFocalDistance,
+    sensorWidthMm: baseSuper35Width * 1.05 * defaultCropScale,
+    sensorHeightMm: baseSuper35Height * 1.05 * defaultCropScale,
+    notes: 'Actual camera profile seeded from the default 60fps crop estimate with focal distance 1577.403 in matching calibration units.',
+    builtIn: true
   }
 ];
 
@@ -82,6 +102,8 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const [cameraModalOpen, setCameraModalOpen] = React.useState(false);
   const [cameraModalMode, setCameraModalMode] = React.useState<'add' | 'edit'>('add');
   const [draftCamera, setDraftCamera] = React.useState<CameraProfile | null>(null);
+  const [draftBaseCameraId, setDraftBaseCameraId] = React.useState('s35-plus-5-11mm');
+  const [draftCropScalePercent, setDraftCropScalePercent] = React.useState(100);
 
   const METERS_TO_FEET = 3.28084;
   const toDisp = (val: number) => (unit === 'feet' ? val * METERS_TO_FEET : val);
@@ -166,6 +188,23 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const horizontalMeasureDistance = Math.hypot(rig.x - measurePoint.x, rig.y - measurePoint.y);
   const directMeasureDistance = rigPosition.distanceTo(measurePoint);
   const activeDistance = distanceMode === 'direct' ? directMeasureDistance : horizontalMeasureDistance;
+  const convergenceTargetPosition = new THREE.Vector3(
+    rig.convergenceTarget.x,
+    rig.convergenceTarget.y,
+    rig.convergenceTarget.z
+  );
+  const convergenceDistance = Math.max(0.001, rigPosition.distanceTo(convergenceTargetPosition));
+  const perEyeToeInDeg = rig.parallel || rig.actualCameras
+    ? 0
+    : (Math.atan2(rig.baselineMeters / 2, convergenceDistance) * 180) / Math.PI;
+  const includedToeInDeg = perEyeToeInDeg * 2;
+  const convergenceModeLabel = rig.actualCameras
+    ? 'Actual Parallel'
+    : rig.parallel
+      ? 'Parallel'
+      : 'Toe-In';
+  const convergenceIcon = rig.parallel || rig.actualCameras ? '||' : '∠';
+  const convergenceStatusTooltip = `${convergenceModeLabel}: ${perEyeToeInDeg.toFixed(2)}° toe-in per eye, ${includedToeInDeg.toFixed(2)}° included. Toe-in is the inward rotation used when cameras converge on a target; parallel cameras have 0° toe-in.`;
   const matchingRigPlacement = rigPlacementPoints.find((p) => {
     const targetZ = p.position.z === 0 ? defaultRigHeightMeters : p.position.z;
     return Math.abs(p.position.x - rig.x) < 0.01 &&
@@ -204,6 +243,21 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
   const updateRigValue = (key: keyof CameraRigConfiguration, value: any) => {
     const updated = { ...rig, [key]: value };
+    if ([
+      'x',
+      'y',
+      'z',
+      'baselineMeters',
+      'yaw',
+      'pitch',
+      'roll',
+      'lookAtTarget',
+      'sphericalAzimuth',
+      'sphericalDistance',
+      'sphericalElevation'
+    ].includes(key)) {
+      updated.actualCameras = undefined;
+    }
 
     // Sync Cartesian and Spherical coordinates when editing
     if (rig.sphericalMode) {
@@ -261,6 +315,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     const position = origin.add(direction.multiplyScalar(Math.max(0.05, distanceMeters)));
     const updated = {
       ...rig,
+      actualCameras: undefined,
       x: position.x,
       y: position.y,
       z: position.z
@@ -283,6 +338,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     direction.normalize();
     const updated = {
       ...rig,
+      actualCameras: undefined,
       x: origin.x + direction.x * Math.max(0.05, distanceMeters),
       y: origin.y + direction.y * Math.max(0.05, distanceMeters)
     };
@@ -318,11 +374,45 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
   // Snaps the rig center to specific coordinate anchors on the court
   const snapToPoint = (point: VenueCoordinateAnchor) => {
+    const actualBaseline = point.actualCameras
+      ? new THREE.Vector3(
+          point.actualCameras.leftPosition.x,
+          point.actualCameras.leftPosition.y,
+          point.actualCameras.leftPosition.z
+        ).distanceTo(new THREE.Vector3(
+          point.actualCameras.rightPosition.x,
+          point.actualCameras.rightPosition.y,
+          point.actualCameras.rightPosition.z
+        ))
+      : rig.baselineMeters;
+    const actualAimTarget = point.actualCameras
+      ? (() => {
+          const viewDirection = new THREE.Vector3(
+            point.actualCameras.viewDirection.x,
+            point.actualCameras.viewDirection.y,
+            point.actualCameras.viewDirection.z
+          ).normalize();
+          const t = Math.abs(viewDirection.z) > 0.0001
+            ? -point.position.z / viewDirection.z
+            : 10;
+          return point.position.clone().addScaledVector(viewDirection, Math.max(0, t));
+        })()
+      : null;
     const updated = {
       ...rig,
+      actualCameras: point.actualCameras,
+      parallel: point.actualCameras ? true : rig.parallel,
       x: point.position.x,
       y: point.position.y,
-      z: point.position.z === 0 ? defaultRigHeightMeters : point.position.z
+      z: point.position.z === 0 ? defaultRigHeightMeters : point.position.z,
+      baselineMeters: actualBaseline,
+      lookAtTargetEnabled: true,
+      lookAtTarget: actualAimTarget
+        ? { x: actualAimTarget.x, y: actualAimTarget.y, z: actualAimTarget.z }
+        : rig.lookAtTarget,
+      convergenceTarget: actualAimTarget
+        ? { x: actualAimTarget.x, y: actualAimTarget.y, z: actualAimTarget.z }
+        : rig.convergenceTarget
     };
 
     // Keep spherical values synchronized
@@ -353,6 +443,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const setCameraBaseline = (baselineMeters: number) => {
     const updated = {
       ...rig,
+      actualCameras: undefined,
       baselineMeters
     };
 
@@ -377,22 +468,49 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     onCommitState(updated);
   };
 
+  const getCameraProfileById = (id: string) => (
+    id === 'custom'
+      ? customCameraProfile
+      : cameraProfiles.find(profile => profile.id === id)
+  );
+
+  const setDraftFromBaseProfile = (profile: CameraProfile, mode: 'add' | 'edit' = cameraModalMode) => {
+    setDraftBaseCameraId(profile.id);
+    setDraftCropScalePercent(100);
+    setDraftCamera(mode === 'add'
+      ? createCameraDraftFromProfile(profile)
+      : { ...profile }
+    );
+  };
+
+  const setDraftCropScale = (percent: number) => {
+    const baseProfile = getCameraProfileById(draftBaseCameraId);
+    if (!draftCamera || !baseProfile) return;
+
+    const scale = percent / 100;
+    setDraftCropScalePercent(percent);
+    setDraftCamera({
+      ...draftCamera,
+      focalLengthMm: baseProfile.focalLengthMm,
+      sensorWidthMm: baseProfile.sensorWidthMm * scale,
+      sensorHeightMm: baseProfile.sensorHeightMm * scale
+    });
+  };
+
   const openCameraModal = (mode: 'add' | 'edit') => {
     setCameraModalMode(mode);
-    if (mode === 'edit') {
-      setDraftCamera({ ...selectedCameraProfile });
-    } else {
-      setDraftCamera({
-        id: `camera-${Date.now()}`,
-        name: 'New Camera',
-        focalLengthMm: selectedCameraProfile.focalLengthMm,
-        sensorWidthMm: selectedCameraProfile.sensorWidthMm,
-        sensorHeightMm: selectedCameraProfile.sensorHeightMm,
-        notes: ''
-      });
-    }
+    setDraftFromBaseProfile(selectedCameraProfile, mode);
     setCameraModalOpen(true);
   };
+
+  const createCameraDraftFromProfile = (profile: CameraProfile): CameraProfile => ({
+    id: `camera-${Date.now()}`,
+    name: `New ${profile.name}`,
+    focalLengthMm: profile.focalLengthMm,
+    sensorWidthMm: profile.sensorWidthMm,
+    sensorHeightMm: profile.sensorHeightMm,
+    notes: profile.notes ? `Started from ${profile.name}. ${profile.notes}` : `Started from ${profile.name}.`
+  });
 
   const saveCameraProfile = () => {
     if (!draftCamera) return;
@@ -441,6 +559,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const setTargetPoint = (point: VenueCoordinateAnchor) => {
     const updated = {
       ...rig,
+      actualCameras: undefined,
       lookAtTargetEnabled: true,
       lookAtTarget: { x: point.position.x, y: point.position.y, z: point.position.z }
     };
@@ -510,9 +629,9 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           <button
             onClick={() => openCameraModal('add')}
             title="Add camera profile"
-            style={{ background: '#222', color: '#fff', border: '1px solid #333', padding: '6px 9px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+            style={{ width: '30px', background: '#222', color: '#fff', border: '1px solid #333', padding: '6px 0', borderRadius: '4px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}
           >
-            Add
+            +
           </button>
           <button
             onClick={() => openCameraModal('edit')}
@@ -534,7 +653,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontWeight: 600 }}>{rig.fov}°</span>
         </div>
         <input 
-          type="range" min="15" max="110" step="1" value={rig.fov}
+          type="range" min="15" max="130" step="1" value={rig.fov}
           onChange={(e) => setManualFov(parseInt(e.target.value))}
           onMouseUp={handleSliderCommit}
           onTouchEnd={handleSliderCommit}
@@ -1013,7 +1132,28 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           }}
         >
           <h2 style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', margin: 0 }}>Camera Vergence</h2>
-          <span style={{ fontSize: '10px', color: '#666' }}>{isVergenceOpen ? '▼' : '▶'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              title={convergenceStatusTooltip}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: rig.parallel || rig.actualCameras ? '#5b9bd5' : '#f0a040',
+                background: '#0a0a0a',
+                border: `1px solid ${rig.parallel || rig.actualCameras ? '#244766' : '#5c4422'}`,
+                borderRadius: '4px',
+                padding: '2px 6px',
+                fontSize: '10px',
+                fontWeight: 700,
+                lineHeight: 1.2
+              }}
+            >
+              <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{convergenceIcon}</span>
+              <span style={{ fontFamily: 'monospace' }}>{perEyeToeInDeg.toFixed(2)}°</span>
+            </span>
+            <span style={{ fontSize: '10px', color: '#666' }}>{isVergenceOpen ? '▼' : '▶'}</span>
+          </div>
         </div>
 
         {isVergenceOpen && (
@@ -1149,6 +1289,41 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <label style={{ gridColumn: '1 / -1', fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Start From
+                <select
+                  value={draftBaseCameraId}
+                  onChange={(e) => {
+                    const source = getCameraProfileById(e.target.value);
+                    if (!source || !draftCamera) return;
+                    setDraftBaseCameraId(source.id);
+                    setDraftCropScalePercent(100);
+                    setDraftCamera({
+                      ...draftCamera,
+                      name: cameraModalMode === 'add' ? `New ${source.name}` : draftCamera.name,
+                      focalLengthMm: source.focalLengthMm,
+                      sensorWidthMm: source.sensorWidthMm,
+                      sensorHeightMm: source.sensorHeightMm,
+                      notes: cameraModalMode === 'add'
+                        ? (source.notes ? `Started from ${source.name}. ${source.notes}` : `Started from ${source.name}.`)
+                        : draftCamera.notes
+                    });
+                  }}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                >
+                  <option value="custom">Custom FoV</option>
+                  {cameraProfiles.map(profile => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ marginTop: '5px', color: '#777', fontSize: '10px', lineHeight: 1.35, textTransform: 'none', fontWeight: 600 }}>
+                  Started from {getCameraProfileById(draftBaseCameraId)?.name || 'selected camera'}.
+                  {' '}
+                  {getCameraProfileById(draftBaseCameraId)?.notes}
+                </div>
+              </label>
+              <label style={{ gridColumn: '1 / -1', fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
                 Name
                 <input
                   value={draftCamera.name}
@@ -1156,34 +1331,64 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                   style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
                 />
               </label>
-              {[
-                { key: 'focalLengthMm', label: 'Focal Length', suffix: 'mm', step: 0.1 },
-                { key: 'sensorWidthMm', label: 'Effective Width', suffix: 'mm', step: 0.01 },
-                { key: 'sensorHeightMm', label: 'Effective Height', suffix: 'mm', step: 0.01 }
-              ].map(field => {
-                const key = field.key as 'focalLengthMm' | 'sensorWidthMm' | 'sensorHeightMm';
-                return (
-                  <label key={key} style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
-                    {field.label} ({field.suffix})
-                    <input
-                      type="number"
-                      min="0.1"
-                      step={field.step}
-                      value={draftCamera[key]}
-                      onChange={(e) => setDraftCamera({ ...draftCamera, [key]: parseFloat(e.target.value) || 0.1 })}
-                      style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
-                    />
-                  </label>
-                );
-              })}
+              <label style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Focal Distance
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={draftCamera.focalLengthMm}
+                  onChange={(e) => setDraftCamera({ ...draftCamera, focalLengthMm: parseFloat(e.target.value) || 0.1 })}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                />
+              </label>
+              <label style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Crop Scale
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                  <input
+                    type="range"
+                    min="50"
+                    max="150"
+                    step="0.1"
+                    value={draftCropScalePercent}
+                    onChange={(e) => setDraftCropScale(parseFloat(e.target.value))}
+                    title="Scale effective width and height together from the selected starting profile."
+                  />
+                  <span style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '11px', textAlign: 'right' }}>
+                    {draftCropScalePercent.toFixed(1)}%
+                  </span>
+                </div>
+              </label>
+              <label style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Effective Width
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.01"
+                  value={draftCamera.sensorWidthMm}
+                  onChange={(e) => setDraftCamera({ ...draftCamera, sensorWidthMm: parseFloat(e.target.value) || 0.1 })}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                />
+              </label>
+              <label style={{ fontSize: '11px', color: '#aaa', fontWeight: 700, textTransform: 'uppercase' }}>
+                Effective Height
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.01"
+                  value={draftCamera.sensorHeightMm}
+                  onChange={(e) => setDraftCamera({ ...draftCamera, sensorHeightMm: parseFloat(e.target.value) || 0.1 })}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '4px' }}
+                />
+              </label>
               <div style={{ background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Computed H FoV</div>
+                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Horizontal FoV</div>
                 <div style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '18px', fontWeight: 750 }}>
                   {computeFov(draftCamera.sensorWidthMm, draftCamera.focalLengthMm).toFixed(1)}°
                 </div>
               </div>
               <div style={{ background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Computed V FoV</div>
+                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Vertical FoV</div>
                 <div style={{ color: '#5b9bd5', fontFamily: 'monospace', fontSize: '18px', fontWeight: 750 }}>
                   {computeFov(draftCamera.sensorHeightMm, draftCamera.focalLengthMm).toFixed(1)}°
                 </div>
