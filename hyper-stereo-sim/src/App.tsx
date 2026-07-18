@@ -9,6 +9,7 @@ import { BaseVenue } from './venue/Venue';
 import { TennisCourt } from './venue/TennisCourt';
 import { EmptyVenue } from './venue/EmptyVenue';
 import { StereoRenderer } from './renderer/StereoRenderer';
+import type { ActionRecorderSnapshot } from './actionRecorder';
 
 const defaultStereoConfig: StereoConfiguration = {
   displayMode: '3d-planning',
@@ -247,6 +248,12 @@ export const App: React.FC = () => {
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
   const [hmdRenderMode, setHmdRenderMode] = useState<'stereo' | 'sbs'>('stereo');
+  const [recorderSnapshot, setRecorderSnapshot] = useState<ActionRecorderSnapshot>({
+    recording: false,
+    hasRecording: false,
+    elapsedMs: 0,
+    eventCount: 0
+  });
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -260,6 +267,12 @@ export const App: React.FC = () => {
 
   const activeVenue: BaseVenue = venueId === 'tennis-court' ? tennisCourt.current : emptyVenue.current;
   const coordinateAnchors = activeVenue.getCoordinateAnchors();
+
+  useEffect(() => {
+    const recorder = window.__hyperStereoActionRecorder;
+    if (!recorder) return;
+    return recorder.subscribe(setRecorderSnapshot);
+  }, []);
 
   // Load Saved Presets on Mount
   useEffect(() => {
@@ -352,6 +365,7 @@ export const App: React.FC = () => {
   };
 
   const handleXRPresentingChange = (isPresenting: boolean) => {
+    window.__hyperStereoActionRecorder?.markTransition(isPresenting ? 'webxr-enter' : 'webxr-exit');
     setHmdMode(isPresenting);
     if (isPresenting) {
       rendererRef?.setQualityOverlayEnabled(false);
@@ -372,6 +386,10 @@ export const App: React.FC = () => {
     onExitHmd: () => {
       void rendererRef?.endXRSession();
     },
+    recorderSnapshot,
+    onRecorderStart: () => window.__hyperStereoActionRecorder?.start(),
+    onRecorderStop: () => window.__hyperStereoActionRecorder?.stop(),
+    onRecorderSave: () => window.__hyperStereoActionRecorder?.save(),
     onCommitState: handleCommitState,
     unit
   });

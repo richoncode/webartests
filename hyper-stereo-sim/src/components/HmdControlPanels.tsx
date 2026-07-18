@@ -37,6 +37,7 @@ interface HmdButtonRowControl extends HmdControlBase {
     id: string;
     label: string;
     active?: boolean;
+    disabled?: boolean;
     onClick: () => void;
   }>;
 }
@@ -64,6 +65,15 @@ export interface HmdControlContext {
   onLoadValuePreset: (preset: VenuePreset) => void;
   onSavePreset: (name: string) => void;
   onExitHmd?: () => void;
+  recorderSnapshot?: {
+    recording: boolean;
+    hasRecording: boolean;
+    elapsedMs: number;
+    eventCount: number;
+  };
+  onRecorderStart?: () => void;
+  onRecorderStop?: () => void;
+  onRecorderSave?: () => void;
   onCommitState: () => void;
   unit: 'feet' | 'meters';
 }
@@ -77,6 +87,13 @@ const METERS_TO_FEET = 3.28084;
 const toDisplay = (meters: number, unit: 'feet' | 'meters') => unit === 'feet' ? meters * METERS_TO_FEET : meters;
 const fromDisplay = (value: number, unit: 'feet' | 'meters') => unit === 'feet' ? value / METERS_TO_FEET : value;
 const unitLabel = (unit: 'feet' | 'meters') => unit === 'feet' ? 'ft' : 'm';
+
+const formatRecorderTime = (ms: number) => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+};
 
 const directDistanceMeters = (rig: CameraRigConfiguration) => {
   const x = Number.isFinite(rig.x) ? rig.x : 0;
@@ -148,10 +165,26 @@ const setRigFromElevation = (rig: CameraRigConfiguration, elevationMeters: numbe
 };
 
 export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinition[] => {
-  const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onSavePreset, onExitHmd, onCommitState, unit } = ctx;
+  const {
+    rig,
+    setRig,
+    stereo,
+    setStereo,
+    presets,
+    onLoadValuePreset,
+    onSavePreset,
+    onExitHmd,
+    recorderSnapshot,
+    onRecorderStart,
+    onRecorderStop,
+    onRecorderSave,
+    onCommitState,
+    unit
+  } = ctx;
   const displayUnit = unitLabel(unit);
   const directDistance = directDistanceMeters(rig);
   const vergenceAngle = rig.vergenceAngleDeg ?? 0;
+  const recorder = recorderSnapshot || { recording: false, hasRecording: false, elapsedMs: 0, eventCount: 0 };
   const baselinePresets = [
     { label: 'Human', meters: 0.065 },
     { label: "1'", meters: 1 / METERS_TO_FEET },
@@ -349,6 +382,33 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       formattedValue: `${(stereo.disparityPixelOffset ?? 0) > 0 ? '+' : ''}${stereo.disparityPixelOffset ?? 0}px`,
       onChange: value => setStereo(prev => ({ ...prev, disparityPixelOffset: value })),
       onCommit: onCommitState
+    },
+    {
+      id: 'recorder.controls',
+      panel: 'right',
+      section: 'Recorder',
+      kind: 'button-row',
+      label: `${recorder.recording ? 'Recording' : 'Recorder'} ${formatRecorderTime(recorder.elapsedMs)} · ${recorder.eventCount} event${recorder.eventCount === 1 ? '' : 's'}`,
+      buttons: [
+        {
+          id: 'start',
+          label: 'Start',
+          disabled: recorder.recording,
+          onClick: () => onRecorderStart?.()
+        },
+        {
+          id: 'stop',
+          label: 'Stop',
+          disabled: !recorder.recording,
+          onClick: () => onRecorderStop?.()
+        },
+        {
+          id: 'save',
+          label: 'Save',
+          disabled: recorder.recording || !recorder.hasRecording,
+          onClick: () => onRecorderSave?.()
+        }
+      ]
     }
   ];
 };
@@ -430,15 +490,17 @@ const HmdControl = ({ control }: { control: HmdControlDefinition }) => {
           <button
             key={button.id}
             onClick={button.onClick}
+            disabled={button.disabled}
             style={{
               background: button.active ? '#2e4057' : '#222',
-              color: button.active ? '#5b9bd5' : '#fff',
+              color: button.disabled ? '#777' : button.active ? '#5b9bd5' : '#fff',
               border: button.active ? '1px solid #5b9bd5' : '1px solid #333',
               padding: '4px 8px',
               borderRadius: '4px',
               fontSize: '11px',
               fontWeight: 700,
-              cursor: 'pointer'
+              cursor: button.disabled ? 'default' : 'pointer',
+              opacity: button.disabled ? 0.45 : 1
             }}
           >
             {button.label}
@@ -475,8 +537,9 @@ const HmdControl = ({ control }: { control: HmdControlDefinition }) => {
 };
 
 const HmdPanel = ({ side, controls }: { side: HmdPanelId; controls: HmdControlDefinition[] }) => {
-  const flowControls = controls.filter(control => control.id !== 'hmd.exit');
-  const footerControls = controls.filter(control => control.id === 'hmd.exit');
+  const footerIds = new Set(['hmd.exit', 'recorder.controls']);
+  const flowControls = controls.filter(control => !footerIds.has(control.id));
+  const footerControls = controls.filter(control => footerIds.has(control.id));
   const sections = Array.from(new Set(flowControls.map(control => control.section)));
 
   return (

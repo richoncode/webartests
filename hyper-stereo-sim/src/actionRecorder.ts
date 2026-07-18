@@ -39,9 +39,26 @@ interface RecorderState {
   hasRecording: boolean;
 }
 
+export interface ActionRecorderSnapshot {
+  recording: boolean;
+  hasRecording: boolean;
+  elapsedMs: number;
+  eventCount: number;
+}
+
+export interface ActionRecorderApi {
+  start: () => void;
+  stop: () => void;
+  save: () => void;
+  markTransition: (label: string) => void;
+  getSnapshot: () => ActionRecorderSnapshot;
+  subscribe: (listener: (snapshot: ActionRecorderSnapshot) => void) => () => void;
+}
+
 declare global {
   interface Window {
     __hyperStereoActionRecorderInstalled?: boolean;
+    __hyperStereoActionRecorder?: ActionRecorderApi;
   }
 }
 
@@ -244,6 +261,7 @@ export const installActionRecorder = () => {
   let timerId = 0;
   let lastScrollCapture = 0;
   let lastUrl = window.location.href;
+  const subscribers = new Set<(snapshot: ActionRecorderSnapshot) => void>();
 
   const host = document.createElement('div');
   host.id = WIDGET_HOST_ID;
@@ -342,6 +360,8 @@ export const installActionRecorder = () => {
     startButton.disabled = state.recording;
     stopButton.disabled = !state.recording;
     saveButton.disabled = state.recording || !state.hasRecording;
+    const snapshot = getSnapshot();
+    subscribers.forEach(listener => listener(snapshot));
   };
 
   const record = (event: Omit<RecorderEvent, 't' | 'url'>) => {
@@ -360,7 +380,15 @@ export const installActionRecorder = () => {
     record({ type: 'navigation' });
   };
 
+  const getSnapshot = (): ActionRecorderSnapshot => ({
+    recording: state.recording,
+    hasRecording: state.hasRecording,
+    elapsedMs: elapsed(),
+    eventCount: state.events.length
+  });
+
   const startRecording = () => {
+    if (state.recording) return;
     state.recording = true;
     state.startedAtMs = performance.now();
     state.startedAtIso = new Date().toISOString();
@@ -385,6 +413,7 @@ export const installActionRecorder = () => {
   };
 
   const downloadRecording = () => {
+    if (!state.hasRecording) return;
     const meta: RecorderMeta = {
       startUrl: state.startUrl,
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -402,6 +431,23 @@ export const installActionRecorder = () => {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const markTransition = (label: string) => {
+    record({ type: 'navigation', value: label });
+  };
+
+  window.__hyperStereoActionRecorder = {
+    start: startRecording,
+    stop: stopRecording,
+    save: downloadRecording,
+    markTransition,
+    getSnapshot,
+    subscribe: (listener) => {
+      subscribers.add(listener);
+      listener(getSnapshot());
+      return () => subscribers.delete(listener);
+    }
   };
 
   startButton.addEventListener('click', startRecording);
