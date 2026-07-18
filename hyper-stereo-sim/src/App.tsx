@@ -91,6 +91,75 @@ const createLowTrussActualOverlayPreset = (): VenuePreset => ({
   modifiedAt: '2026-07-17T21:42:58.883Z'
 });
 
+const createLowTrussActualPlanningPreset = (): VenuePreset => ({
+  schemaVersion: 1,
+  name: 'Low Truss Actual Planning',
+  venueId: 'tennis-court',
+  venueDimensions: { width: 18.29, length: 36.58, height: 10 },
+  rig: {
+    x: 17.807731960521643,
+    y: 0.4019140293983944,
+    z: 4.436988804600805,
+    baselineMeters: 1.3627716815013946,
+    yaw: 64,
+    pitch: -2,
+    roll: 91,
+    fov: 69,
+    cameraProfileId: 'actual-s35-plus-9-6-11mm',
+    aspect: 1.7777777777777777,
+    near: 0.1,
+    far: 100,
+    parallel: true,
+    convergenceTarget: { x: 8.836947364979077, y: 0.02065225918597241, z: 0 },
+    lookAtTargetEnabled: true,
+    lookAtTarget: { x: 8.836947364979077, y: 0.02065225918597241, z: 0 },
+    sphericalMode: true,
+    sphericalAnchorId: 'center-court',
+    sphericalAzimuth: 1.3,
+    sphericalDistance: 17.81,
+    sphericalDistanceMode: 'direct',
+    sphericalMeasureTarget: 'center-court',
+    sphericalElevation: 4.44,
+    actualCameras: {
+      label: 'Low Truss Actual',
+      leftPosition: { x: 17.851313599915066, y: -0.27783597120598497, z: 4.455078618355028 },
+      rightPosition: { x: 17.76415032112822, y: 1.0816640300027738, z: 4.418898990846583 },
+      viewDirection: { x: -0.8957036848509264, y: -0.038067748571483706, z: -0.44301891095434126 },
+      upDirection: { x: -0.44261934352932497, y: -0.018811491084971713, z: 0.8965122668077831 }
+    }
+  },
+  stereo: {
+    displayMode: '3d-planning',
+    eyeOrder: 'left-right',
+    virtualScreenDistance: 5,
+    virtualScreenSize: 2,
+    imageScale: 1,
+    horizontalImageOffset: 0,
+    disparityPixelOffset: 0,
+    disparityExaggeration: 1,
+    fallbackMode: 'anaglyph',
+    anaglyphBlackWhite: true,
+    anaglyphRedIntensity: 0.5,
+    anaglyphBlueIntensity: 1,
+    showQualityOverlay: true,
+    showZeroParallaxPlane: false,
+    zeroParallaxOpacity: 0.25,
+    zeroParallaxDistance: 10
+  },
+  visualization: {
+    showFrustums: true,
+    showAxes: true,
+    showGrid: true,
+    showOverlay: true,
+    comfortWarningThresholds: {
+      maxDisparityPx: 25,
+      maxBaselineRatio: 0.033
+    }
+  },
+  createdAt: '2026-07-18T07:37:36.700Z',
+  modifiedAt: '2026-07-18T07:37:36.702Z'
+});
+
 const createLowTrussActualDisp50Preset = (): VenuePreset => ({
   schemaVersion: 1,
   name: 'Low Truss Actual Disp +50',
@@ -166,13 +235,10 @@ const createLowTrussActualDisp50Preset = (): VenuePreset => ({
 });
 
 export const App: React.FC = () => {
-  const startupPreset = createLowTrussActualDisp50Preset();
+  const startupPreset = createLowTrussActualPlanningPreset();
   const [venueId, setVenueId] = useState(startupPreset.venueId);
   const [rig, setRig] = useState<CameraRigConfiguration>(startupPreset.rig);
-  const [stereo, setStereo] = useState<StereoConfiguration>({
-    ...startupPreset.stereo,
-    disparityPixelOffset: 0
-  });
+  const [stereo, setStereo] = useState<StereoConfiguration>(startupPreset.stereo);
   const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(startupPreset.visualization);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
   const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(null);
@@ -213,6 +279,7 @@ export const App: React.FC = () => {
 
   const loadDefaultPresets = () => {
     const defaultList: VenuePreset[] = [
+      createLowTrussActualPlanningPreset(),
       createLowTrussActualOverlayPreset(),
       createLowTrussActualDisp50Preset()
     ];
