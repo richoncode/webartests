@@ -166,10 +166,13 @@ const createLowTrussActualDisp50Preset = (): VenuePreset => ({
 });
 
 export const App: React.FC = () => {
-  const startupPreset = createLowTrussActualOverlayPreset();
+  const startupPreset = createLowTrussActualDisp50Preset();
   const [venueId, setVenueId] = useState(startupPreset.venueId);
   const [rig, setRig] = useState<CameraRigConfiguration>(startupPreset.rig);
-  const [stereo, setStereo] = useState<StereoConfiguration>(startupPreset.stereo);
+  const [stereo, setStereo] = useState<StereoConfiguration>({
+    ...startupPreset.stereo,
+    disparityPixelOffset: 0
+  });
   const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(startupPreset.visualization);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
   const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(startupPreset.overlayImageUrl || null);
