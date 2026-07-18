@@ -309,6 +309,7 @@ export const App: React.FC = () => {
   const handleXRPresentingChange = (isPresenting: boolean) => {
     setHmdMode(isPresenting);
     if (isPresenting) {
+      rendererRef?.setQualityOverlayEnabled(false);
       setStereo(prev => prev.showQualityOverlay ? { ...prev, showQualityOverlay: false } : prev);
     }
   };
@@ -398,6 +399,7 @@ export const App: React.FC = () => {
 
   // Binds the WebXR Enter session button when renderer is ready
   const triggerXR = async () => {
+    rendererRef?.setQualityOverlayEnabled(false);
     setStereo(prev => prev.showQualityOverlay ? { ...prev, showQualityOverlay: false } : prev);
     if (!rendererRef) {
       setHmdMode(true);

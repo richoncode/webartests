@@ -265,6 +265,25 @@ export class StereoRenderer {
     this.updateXrStereoPanelMode();
   }
 
+  setQualityOverlayEnabled(enabled: boolean) {
+    if (this.lastStereoConfig) {
+      this.lastStereoConfig = {
+        ...this.lastStereoConfig,
+        showQualityOverlay: enabled
+      };
+    }
+
+    if (this.lastRigConfig) {
+      this.updateQualityHeatmap(
+        this.lastRigConfig,
+        this.lastQualityThreshold,
+        enabled && this.lastStereoConfig?.displayMode !== 'stereo-plane'
+      );
+    } else if (!enabled && this.qualityHeatmap) {
+      this.qualityHeatmap.visible = false;
+    }
+  }
+
   private applyXRScale(isPresenting: boolean) {
     const shouldUseTabletopScale = isPresenting && this.vrScaleMode === 'tabletop';
     if (shouldUseTabletopScale && !this.xrScaleApplied) {
@@ -291,6 +310,8 @@ export class StereoRenderer {
   async startPassthroughARSession() {
     const xr = navigator.xr;
     if (!xr) return false;
+
+    this.setQualityOverlayEnabled(false);
 
     const session = await xr.requestSession('immersive-ar', {
       optionalFeatures: ['local-floor', 'dom-overlay'],
