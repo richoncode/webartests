@@ -884,7 +884,9 @@ export class StereoRenderer {
       rigConfig.aspect || (16 / 9),
       stereoConfig.eyeOrder
     );
+    const previousAutoClear = this.renderer.autoClear;
 
+    this.renderer.autoClear = false;
     this.renderer.setScissorTest(true);
 
     [leftHalf, rightHalf].forEach(([x, y, rectWidth, rectHeight]) => {
@@ -901,11 +903,12 @@ export class StereoRenderer {
       this.renderer.clear(true, true, true);
     });
 
-    this.renderCameraInRect(this.rig.leftCamera, leftFrame, leftViewShiftPx);
-    this.renderCameraInRect(this.rig.rightCamera, rightFrame, rightViewShiftPx);
+    this.renderCameraInRect(this.rig.leftCamera, leftFrame, leftViewShiftPx, width, height);
+    this.renderCameraInRect(this.rig.rightCamera, rightFrame, rightViewShiftPx, width, height);
 
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(sceneBg, 1);
+    this.renderer.autoClear = previousAutoClear;
   }
 
   private createXrUiPanels() {
@@ -1449,10 +1452,18 @@ export class StereoRenderer {
     });
   }
 
-  private renderCameraInRect(camera: THREE.Camera, rect: number[], viewShiftPx = 0) {
+  private renderCameraInRect(camera: THREE.Camera, rect: number[], viewShiftPx = 0, fullWidth?: number, fullHeight?: number) {
     const [x, y, width, height] = rect;
     this.renderer.setViewport(x + viewShiftPx, y, width, height);
     this.renderer.setScissor(x, y, width, height);
+    if (camera instanceof THREE.PerspectiveCamera && fullWidth && fullHeight) {
+      camera.setViewOffset(fullWidth, fullHeight, x - viewShiftPx, y, width, height);
+      camera.updateProjectionMatrix();
+      this.renderer.render(this.scene, camera);
+      camera.clearViewOffset();
+      camera.updateProjectionMatrix();
+      return;
+    }
     this.renderer.render(this.scene, camera);
   }
 
