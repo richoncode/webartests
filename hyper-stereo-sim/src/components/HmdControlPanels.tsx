@@ -63,6 +63,7 @@ export interface HmdControlContext {
   presets: VenuePreset[];
   onLoadValuePreset: (preset: VenuePreset) => void;
   onSavePreset: (name: string) => void;
+  onExitHmd?: () => void;
   onCommitState: () => void;
   unit: 'feet' | 'meters';
 }
@@ -147,7 +148,7 @@ const setRigFromElevation = (rig: CameraRigConfiguration, elevationMeters: numbe
 };
 
 export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinition[] => {
-  const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onSavePreset, onCommitState, unit } = ctx;
+  const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onSavePreset, onExitHmd, onCommitState, unit } = ctx;
   const displayUnit = unitLabel(unit);
   const directDistance = directDistanceMeters(rig);
   const vergenceAngle = rig.vergenceAngleDeg ?? 0;
@@ -262,6 +263,18 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       formattedValue: `${vergenceAngle > 0 ? '+' : ''}${vergenceAngle.toFixed(2)} deg`,
       onChange: value => setRig(prev => ({ ...prev, actualCameras: undefined, vergenceAngleDeg: Math.abs(value) < 0.025 ? 0 : value })),
       onCommit: onCommitState
+    },
+    {
+      id: 'hmd.exit',
+      panel: 'left',
+      section: 'VR Session',
+      kind: 'button-row',
+      label: 'Session',
+      buttons: [{
+        id: 'exit',
+        label: 'Exit VR',
+        onClick: () => onExitHmd?.()
+      }]
     },
     {
       id: 'hmd.renderMode',
@@ -462,7 +475,9 @@ const HmdControl = ({ control }: { control: HmdControlDefinition }) => {
 };
 
 const HmdPanel = ({ side, controls }: { side: HmdPanelId; controls: HmdControlDefinition[] }) => {
-  const sections = Array.from(new Set(controls.map(control => control.section)));
+  const flowControls = controls.filter(control => control.id !== 'hmd.exit');
+  const footerControls = controls.filter(control => control.id === 'hmd.exit');
+  const sections = Array.from(new Set(flowControls.map(control => control.section)));
 
   return (
     <div className="sidebar" style={panelStyle(side)}>
@@ -476,7 +491,7 @@ const HmdPanel = ({ side, controls }: { side: HmdPanelId; controls: HmdControlDe
           }}
         >
           <h2 style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>{section}</h2>
-          {controls.filter(control => control.section === section).map(control => (
+          {flowControls.filter(control => control.section === section).map(control => (
             <HmdControl key={control.id} control={control} />
           ))}
           {side === 'right' && section === 'Value Presets' && (
@@ -486,6 +501,13 @@ const HmdPanel = ({ side, controls }: { side: HmdPanelId; controls: HmdControlDe
           )}
         </div>
       ))}
+      {footerControls.length > 0 && (
+        <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+          {footerControls.map(control => (
+            <HmdControl key={control.id} control={control} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

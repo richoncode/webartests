@@ -306,6 +306,13 @@ export const App: React.FC = () => {
     }));
   };
 
+  const handleXRPresentingChange = (isPresenting: boolean) => {
+    setHmdMode(isPresenting);
+    if (isPresenting) {
+      setStereo(prev => prev.showQualityOverlay ? { ...prev, showQualityOverlay: false } : prev);
+    }
+  };
+
   const hmdControls = buildHmdControlSchema({
     rig,
     setRig,
@@ -316,6 +323,9 @@ export const App: React.FC = () => {
     presets,
     onLoadValuePreset: loadPresetValuesOnly,
     onSavePreset: savePreset,
+    onExitHmd: () => {
+      void rendererRef?.endXRSession();
+    },
     onCommitState: handleCommitState,
     unit
   });
@@ -388,6 +398,7 @@ export const App: React.FC = () => {
 
   // Binds the WebXR Enter session button when renderer is ready
   const triggerXR = async () => {
+    setStereo(prev => prev.showQualityOverlay ? { ...prev, showQualityOverlay: false } : prev);
     if (!rendererRef) {
       setHmdMode(true);
       return;
@@ -444,7 +455,7 @@ export const App: React.FC = () => {
           activeVenue={activeVenue}
           vrScaleMode={vrScaleMode}
           setRendererRef={setRendererRef}
-          onXRPresentingChange={setHmdMode}
+          onXRPresentingChange={handleXRPresentingChange}
           unit={unit}
           presetOverlayUrl={presetOverlayUrl}
           presetOverlayOpacity={presetOverlayOpacity}

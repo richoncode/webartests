@@ -115,6 +115,11 @@ export class StereoRenderer {
     dirLight.shadow.mapSize.height = 2048;
     this.scene.add(dirLight);
 
+    const courtFillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+    courtFillLight.name = 'Court Overhead Fill';
+    courtFillLight.position.set(0, 0, 25);
+    this.scene.add(courtFillLight);
+
     // 3. Initialize Planning Camera (Orbit View)
     // Z is vertical: initialize camera elevated along Y/Z looking towards center
     this.planningCamera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 200);
@@ -293,6 +298,13 @@ export class StereoRenderer {
     });
     this.renderer.xr.setReferenceSpaceType('local');
     await this.renderer.xr.setSession(session);
+    return true;
+  }
+
+  async endXRSession() {
+    const session = this.renderer.xr.getSession();
+    if (!session) return false;
+    await session.end();
     return true;
   }
 
@@ -1046,6 +1058,8 @@ export class StereoRenderer {
   private drawXrUiPanel(panel: XrUiPanel) {
     const { ctx, canvas } = panel;
     const controls = this.hmdControls.filter(control => control.panel === panel.side);
+    const footerControls = controls.filter(control => control.id === 'hmd.exit');
+    const flowControls = controls.filter(control => control.id !== 'hmd.exit');
     panel.regions = [];
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1055,7 +1069,7 @@ export class StereoRenderer {
     ctx.fillText(panel.side === 'left' ? 'Rig Controls' : 'Inspection', 34, 54);
 
     let y = 94;
-    const sections = Array.from(new Set(controls.map(control => control.section)));
+    const sections = Array.from(new Set(flowControls.map(control => control.section)));
     sections.forEach((section, sectionIndex) => {
       if (sectionIndex > 0) {
         ctx.strokeStyle = '#2a2a2a';
@@ -1070,7 +1084,7 @@ export class StereoRenderer {
       ctx.fillText(section.toUpperCase(), 34, y);
       y += 34;
 
-      controls.filter(control => control.section === section).forEach((control) => {
+      flowControls.filter(control => control.section === section).forEach((control) => {
         if (control.kind === 'number') {
           y = this.drawXrSlider(panel, control, y);
         } else if (control.kind === 'toggle') {
@@ -1084,6 +1098,23 @@ export class StereoRenderer {
 
       y += 14;
     });
+
+    if (panel.side === 'left') {
+      const exitControl = footerControls.find(control => control.kind === 'button-row');
+      if (exitControl?.kind === 'button-row' && exitControl.buttons.length > 0) {
+        this.drawXrButton(
+          panel,
+          `${exitControl.id}.${exitControl.buttons[0].id}`,
+          exitControl,
+          0,
+          exitControl.buttons[0].label,
+          false,
+          canvas.height - 88,
+          34,
+          190
+        );
+      }
+    }
 
     if (panel.side === 'right') {
       ctx.fillStyle = '#777';
