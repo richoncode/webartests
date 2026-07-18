@@ -432,47 +432,55 @@ export const App: React.FC = () => {
           <>
             <div style={{
               position: 'absolute',
-              left: '16px',
-              top: '16px',
-              bottom: '16px',
+              inset: '16px 24px',
               zIndex: 40,
-              pointerEvents: 'auto'
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '28px'
             }}>
-              <SidebarLeft
-                rig={rig}
-                setRig={setRig}
-                coordinateAnchors={coordinateAnchors}
-                onCommitState={handleCommitState}
-                unit={unit}
-                floating
-              />
-            </div>
+              <div style={{ pointerEvents: 'auto' }}>
+                <SidebarLeft
+                  rig={rig}
+                  setRig={setRig}
+                  coordinateAnchors={coordinateAnchors}
+                  onCommitState={handleCommitState}
+                  unit={unit}
+                  floating
+                />
+              </div>
 
-            <div style={{
-              position: 'absolute',
-              right: '16px',
-              top: '16px',
-              zIndex: 40,
-              pointerEvents: 'auto'
-            }}>
-              <SidebarRight
-                rig={rig}
-                setRig={setRig}
-                stereo={stereo}
-                setStereo={setStereo}
-                visConfig={visConfig}
-                setVisConfig={setVisConfig}
-                presets={presets}
-                setPresets={setPresets}
-                onSavePreset={savePreset}
-                onLoadPreset={loadPreset}
-                onLoadValuePreset={loadPresetValuesOnly}
-                onDeletePreset={deletePreset}
-                onDeleteAllLocalPresets={deleteAllLocalPresets}
-                onDuplicatePreset={duplicatePreset}
-                unit={unit}
-                compactMode
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 'clamp(360px, 34vw, 560px)',
+                  minWidth: 'clamp(360px, 34vw, 560px)',
+                  height: '1px',
+                  pointerEvents: 'none'
+                }}
               />
+
+              <div style={{ pointerEvents: 'auto' }}>
+                <SidebarRight
+                  rig={rig}
+                  setRig={setRig}
+                  stereo={stereo}
+                  setStereo={setStereo}
+                  visConfig={visConfig}
+                  setVisConfig={setVisConfig}
+                  presets={presets}
+                  setPresets={setPresets}
+                  onSavePreset={savePreset}
+                  onLoadPreset={loadPreset}
+                  onLoadValuePreset={loadPresetValuesOnly}
+                  onDeletePreset={deletePreset}
+                  onDeleteAllLocalPresets={deleteAllLocalPresets}
+                  onDuplicatePreset={duplicatePreset}
+                  unit={unit}
+                  compactMode
+                />
+              </div>
             </div>
 
             <button
