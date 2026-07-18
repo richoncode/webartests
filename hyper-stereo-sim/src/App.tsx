@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { SidebarLeft } from './components/SidebarLeft';
 import { SidebarRight } from './components/SidebarRight';
+import { HmdControlPanels } from './components/HmdControlPanels';
 import { Visualizer } from './components/Visualizer';
 import { CameraRigConfiguration, StereoConfiguration, VisualizationConfiguration, VenuePreset } from './types';
 import { BaseVenue } from './venue/Venue';
@@ -312,6 +313,10 @@ export const App: React.FC = () => {
   const loadPresetValuesOnly = (preset: VenuePreset) => {
     handleCommitState();
     setRig(preset.rig);
+    setStereo(prev => ({
+      ...preset.stereo,
+      displayMode: prev.displayMode
+    }));
   };
 
   const deletePreset = (name: string) => {
@@ -457,59 +462,16 @@ export const App: React.FC = () => {
               justifyContent: 'center',
               gap: '28px'
             }}>
-              <div
-                onPointerDown={(event) => event.stopPropagation()}
-                onPointerMove={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                style={{ pointerEvents: 'auto' }}
-              >
-                <SidebarLeft
-                  rig={rig}
-                  setRig={setRig}
-                  coordinateAnchors={coordinateAnchors}
-                  onCommitState={handleCommitState}
-                  unit={unit}
-                  floating
-                />
-              </div>
-
-              <div
-                aria-hidden="true"
-                style={{
-                  width: 'clamp(360px, 34vw, 560px)',
-                  minWidth: 'clamp(360px, 34vw, 560px)',
-                  height: '1px',
-                  pointerEvents: 'none'
-                }}
+              <HmdControlPanels
+                rig={rig}
+                setRig={setRig}
+                stereo={stereo}
+                setStereo={setStereo}
+                presets={presets}
+                onLoadValuePreset={loadPresetValuesOnly}
+                onCommitState={handleCommitState}
+                unit={unit}
               />
-
-              <div
-                onPointerDown={(event) => event.stopPropagation()}
-                onPointerMove={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                style={{ pointerEvents: 'auto' }}
-              >
-                <SidebarRight
-                  rig={rig}
-                  setRig={setRig}
-                  stereo={stereo}
-                  setStereo={setStereo}
-                  visConfig={visConfig}
-                  setVisConfig={setVisConfig}
-                  presets={presets}
-                  setPresets={setPresets}
-                  onSavePreset={savePreset}
-                  onLoadPreset={loadPreset}
-                  onLoadValuePreset={loadPresetValuesOnly}
-                  onDeletePreset={deletePreset}
-                  onDeleteAllLocalPresets={deleteAllLocalPresets}
-                  onDuplicatePreset={duplicatePreset}
-                  unit={unit}
-                  compactMode
-                />
-              </div>
             </div>
 
             <button
