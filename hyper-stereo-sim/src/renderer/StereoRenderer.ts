@@ -732,11 +732,16 @@ export class StereoRenderer {
         toneMapped: false
       });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthMeters, heightMeters), material);
+      mesh.position.x = side === 'left' ? -widthMeters / 2 : widthMeters / 2;
       mesh.renderOrder = 30;
       mesh.userData.xrUiSide = side;
 
       const group = new THREE.Group();
-      group.position.set(side === 'left' ? -1.05 : 1.05, 0, -0.02);
+      const screenHalfWidth = this.xrPanelWidthMeters / 2;
+      const hingeGap = 0.08;
+      const toeInAngle = THREE.MathUtils.degToRad(24);
+      group.position.set(side === 'left' ? -(screenHalfWidth + hingeGap) : screenHalfWidth + hingeGap, 0, 0.02);
+      group.rotation.y = side === 'left' ? toeInAngle : -toeInAngle;
       group.add(mesh);
       this.xrUiGroup.add(group);
 

@@ -40,6 +40,7 @@ VR mode is for putting on an HMD, standing in passthrough, and evaluating camera
    - Place the left floating panel to the left of the stereo screen.
    - Place the right floating panel to the right of the stereo screen.
    - These panels must be room-locked with the stereo screen, not head-locked.
+   - Side panels should rotate inward toward the user around their inside vertical edges, like hinged wings beside the stereo screen.
    - Pointer/controller interactions must work in XR.
 
 6. **XR pointer interaction guidelines**
@@ -71,6 +72,7 @@ The right panel contains:
 
 - Stereo Quality toggle
 - Value Preset loader
+- Disparity slider at the bottom of the panel
 
 When loading a value preset in VR mode:
 

@@ -279,6 +279,20 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       label: 'Value Presets',
       presets,
       onLoad: onLoadValuePreset
+    },
+    {
+      id: 'stereo.disparity',
+      panel: 'right',
+      section: 'Stereo Adjustment',
+      kind: 'number',
+      label: 'Disparity',
+      value: stereo.disparityPixelOffset ?? 0,
+      min: -120,
+      max: 120,
+      step: 1,
+      formattedValue: `${(stereo.disparityPixelOffset ?? 0) > 0 ? '+' : ''}${stereo.disparityPixelOffset ?? 0}px`,
+      onChange: value => setStereo(prev => ({ ...prev, disparityPixelOffset: value })),
+      onCommit: onCommitState
     }
   ];
 };
