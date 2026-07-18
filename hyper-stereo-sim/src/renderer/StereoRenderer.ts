@@ -667,6 +667,10 @@ export class StereoRenderer {
     const panelHeight = this.xrPanelWidthMeters / aspect;
     this.leftEyePanel.scale.set(1, panelHeight / (this.xrPanelWidthMeters / (16 / 9)), 1);
     this.rightEyePanel.scale.copy(this.leftEyePanel.scale);
+    const metersPerPixel = this.xrPanelWidthMeters / this.leftEyeTarget.width;
+    const disparityMeters = ((this.lastStereoConfig?.disparityPixelOffset ?? 0) * metersPerPixel) / 2;
+    this.leftEyePanel.position.x = -disparityMeters;
+    this.rightEyePanel.position.x = disparityMeters;
   }
 
   private renderXRStereoPanelTextures() {
@@ -682,9 +686,6 @@ export class StereoRenderer {
     this.renderer.getClearColor(previousClearColor);
     const previousClearAlpha = this.renderer.getClearAlpha();
     const previousScissorTest = this.renderer.getScissorTest();
-    const viewDisparityPx = this.lastStereoConfig.disparityPixelOffset ?? 0;
-    const leftViewShiftPx = -viewDisparityPx / 2;
-    const rightViewShiftPx = viewDisparityPx / 2;
 
     this.stereoPanelGroup.visible = false;
     this.xrUiGroup.visible = false;
@@ -694,18 +695,17 @@ export class StereoRenderer {
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
-    const renderEyeTexture = (target: THREE.WebGLRenderTarget, camera: THREE.PerspectiveCamera, viewShiftPx: number) => {
+    const renderEyeTexture = (target: THREE.WebGLRenderTarget, camera: THREE.PerspectiveCamera) => {
       this.renderer.setRenderTarget(target);
       this.renderer.setViewport(0, 0, target.width, target.height);
       this.renderer.setScissor(0, 0, target.width, target.height);
       this.renderer.setScissorTest(true);
       this.renderer.clear(true, true, true);
-      this.renderer.setViewport(viewShiftPx, 0, target.width, target.height);
       this.renderer.render(this.scene, camera);
     };
 
-    renderEyeTexture(this.leftEyeTarget, this.rig.leftCamera, leftViewShiftPx);
-    renderEyeTexture(this.rightEyeTarget, this.rig.rightCamera, rightViewShiftPx);
+    renderEyeTexture(this.leftEyeTarget, this.rig.leftCamera);
+    renderEyeTexture(this.rightEyeTarget, this.rig.rightCamera);
 
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.xr.enabled = previousXR;
