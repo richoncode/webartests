@@ -23,6 +23,7 @@ export class StereoRenderer {
   venueGeometry: THREE.Object3D | null = null;
   qualityHeatmap: THREE.Mesh | null = null;
   targetMarker: THREE.Mesh | null = null;
+  stereoPanelGroup: THREE.Group;
 
   // React callbacks for direct manipulation sync
   onRigMoveCallback?: (x: number, y: number, z: number) => void;
@@ -37,6 +38,12 @@ export class StereoRenderer {
   private xrScaleApplied = false;
   private desktopBackground: THREE.Color | null = null;
   private originalVenueMaterialColors = new WeakMap<THREE.Material, THREE.Color>();
+  private leftEyeTarget: THREE.WebGLRenderTarget;
+  private rightEyeTarget: THREE.WebGLRenderTarget;
+  private leftEyePanel: THREE.Mesh;
+  private rightEyePanel: THREE.Mesh;
+  private xrPanelDistanceMeters = 3 / 3.28084;
+  private xrPanelWidthMeters = 1.25;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
@@ -89,6 +96,13 @@ export class StereoRenderer {
     this.xrGroup.add(this.rig.group);
     this.targetMarker = this.createTargetMarker();
     this.xrGroup.add(this.targetMarker);
+    const stereoPanel = this.createStereoPanel();
+    this.stereoPanelGroup = stereoPanel.group;
+    this.leftEyeTarget = stereoPanel.leftTarget;
+    this.rightEyeTarget = stereoPanel.rightTarget;
+    this.leftEyePanel = stereoPanel.leftPanel;
+    this.rightEyePanel = stereoPanel.rightPanel;
+    this.scene.add(this.stereoPanelGroup);
 
     // 6. Direct manipulation controls (TransformControls)
     this.transformControls = new TransformControls(this.planningCamera, this.renderer.domElement);
@@ -117,11 +131,13 @@ export class StereoRenderer {
     this.renderer.xr.addEventListener('sessionstart', () => {
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
+      this.stereoPanelGroup.visible = true;
       this.onXRPresentingChange?.(true);
     });
     this.renderer.xr.addEventListener('sessionend', () => {
       this.scene.background = this.desktopBackground;
       this.renderer.setClearAlpha(1);
+      this.stereoPanelGroup.visible = false;
       this.onXRPresentingChange?.(false);
     });
   }
@@ -219,7 +235,10 @@ export class StereoRenderer {
     this.applyXRScale(isPresenting);
     this.onViewerMoveCallback?.();
     if (isPresenting) {
-      // Under WebXR mode, the device handles eye projection and updates viewports automatically
+      this.updateXRStereoPanel();
+      this.renderXRStereoPanelTextures();
+      this.configureXREyeLayers();
+      // Under WebXR mode, the device handles eye projection and updates viewports automatically.
       this.renderer.render(this.scene, this.planningCamera);
     } else {
       if (this.lastRigConfig && this.lastStereoConfig) {
@@ -499,10 +518,121 @@ export class StereoRenderer {
     };
   }
 
+  private createStereoPanel() {
+    const targetWidth = 1024;
+    const targetHeight = 576;
+    const leftTarget = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat
+    });
+    const rightTarget = leftTarget.clone();
+    leftTarget.texture.colorSpace = THREE.SRGBColorSpace;
+    rightTarget.texture.colorSpace = THREE.SRGBColorSpace;
+
+    const aspect = 16 / 9;
+    const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
+    const leftMaterial = new THREE.MeshBasicMaterial({
+      map: leftTarget.texture,
+      side: THREE.DoubleSide,
+      toneMapped: false
+    });
+    const rightMaterial = new THREE.MeshBasicMaterial({
+      map: rightTarget.texture,
+      side: THREE.DoubleSide,
+      toneMapped: false
+    });
+
+    const group = new THREE.Group();
+    group.visible = false;
+    const leftPanel = new THREE.Mesh(geometry, leftMaterial);
+    const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
+    leftPanel.layers.set(1);
+    rightPanel.layers.set(2);
+    leftPanel.renderOrder = 20;
+    rightPanel.renderOrder = 20;
+    group.add(leftPanel, rightPanel);
+
+    return { group, leftTarget, rightTarget, leftPanel, rightPanel };
+  }
+
+  private configureXREyeLayers() {
+    const xrCamera = this.renderer.xr.getCamera() as THREE.ArrayCamera & { cameras?: THREE.Camera[] };
+    const cameras = xrCamera.cameras || [];
+    if (cameras.length < 2) return;
+
+    cameras[0].layers.enable(0);
+    cameras[0].layers.enable(1);
+    cameras[0].layers.disable(2);
+    cameras[1].layers.enable(0);
+    cameras[1].layers.disable(1);
+    cameras[1].layers.enable(2);
+  }
+
+  private updateXRStereoPanel() {
+    const xrCamera = this.renderer.xr.getCamera();
+    xrCamera.updateMatrixWorld(true);
+
+    const headPosition = new THREE.Vector3();
+    const headQuaternion = new THREE.Quaternion();
+    xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuaternion);
+    this.stereoPanelGroup.position.copy(headPosition).addScaledVector(forward, this.xrPanelDistanceMeters);
+    this.stereoPanelGroup.quaternion.copy(headQuaternion);
+
+    const rigPitch = this.lastRigConfig?.pitch ?? 0;
+    this.stereoPanelGroup.rotateX(THREE.MathUtils.degToRad(rigPitch));
+
+    const aspect = this.lastRigConfig?.aspect || (16 / 9);
+    const panelHeight = this.xrPanelWidthMeters / aspect;
+    this.leftEyePanel.scale.set(1, panelHeight / (this.xrPanelWidthMeters / (16 / 9)), 1);
+    this.rightEyePanel.scale.copy(this.leftEyePanel.scale);
+  }
+
+  private renderXRStereoPanelTextures() {
+    if (!this.lastRigConfig || !this.lastStereoConfig) return;
+
+    const previousTarget = this.renderer.getRenderTarget();
+    const previousXR = this.renderer.xr.enabled;
+    const previousPanelVisible = this.stereoPanelGroup.visible;
+    const previousRigVisible = this.rig.group.visible;
+    const previousTransformVisible = this.transformControls.visible;
+    const previousClearColor = new THREE.Color();
+    this.renderer.getClearColor(previousClearColor);
+    const previousClearAlpha = this.renderer.getClearAlpha();
+
+    this.stereoPanelGroup.visible = false;
+    this.rig.group.visible = false;
+    this.transformControls.visible = false;
+    this.renderer.xr.enabled = false;
+    this.renderer.setScissorTest(false);
+    this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
+
+    const renderEyeTexture = (target: THREE.WebGLRenderTarget, camera: THREE.PerspectiveCamera) => {
+      this.renderer.setRenderTarget(target);
+      this.renderer.setViewport(0, 0, target.width, target.height);
+      this.renderer.clear(true, true, true);
+      this.renderer.render(this.scene, camera);
+    };
+
+    renderEyeTexture(this.leftEyeTarget, this.rig.leftCamera);
+    renderEyeTexture(this.rightEyeTarget, this.rig.rightCamera);
+
+    this.renderer.setRenderTarget(previousTarget);
+    this.renderer.xr.enabled = previousXR;
+    this.renderer.setClearColor(previousClearColor, previousClearAlpha);
+    this.stereoPanelGroup.visible = previousPanelVisible;
+    this.rig.group.visible = previousRigVisible;
+    this.transformControls.visible = previousTransformVisible;
+  }
+
   dispose() {
     this.renderer.setAnimationLoop(null);
     this.transformControls.dispose();
     this.controls.dispose();
+    this.leftEyeTarget.dispose();
+    this.rightEyeTarget.dispose();
     if (this.qualityHeatmap) {
       this.disposeObject(this.qualityHeatmap);
       this.qualityHeatmap = null;
@@ -511,6 +641,7 @@ export class StereoRenderer {
       this.disposeObject(this.targetMarker);
       this.targetMarker = null;
     }
+    this.disposeObject(this.stereoPanelGroup);
     if (this.container.contains(this.renderer.domElement)) {
       this.container.removeChild(this.renderer.domElement);
     }
