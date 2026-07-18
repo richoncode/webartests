@@ -74,6 +74,8 @@ export class StereoRenderer {
   private hmdControls: HmdControlDefinition[] = [];
   private xrRaycaster = new THREE.Raycaster();
   private xrControllerDrag: { controller: THREE.Group; panel: XrUiPanel; region: XrUiHitRegion } | null = null;
+  private xrControllers: THREE.Group[] = [];
+  private xrHoveredRegionId: string | null = null;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
@@ -279,6 +281,7 @@ export class StereoRenderer {
     this.onViewerMoveCallback?.();
     if (isPresenting) {
       this.updateXRStereoPanel(frame);
+      this.updateXrHoverState();
       this.updateXrControllerDrag();
       this.renderXRStereoPanelTextures();
       this.configureXREyeLayers();
@@ -644,9 +647,10 @@ export class StereoRenderer {
         xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
       }
 
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuaternion);
+      const leveledHeadQuaternion = this.getLeveledHeadQuaternion(headQuaternion);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(leveledHeadQuaternion);
       this.stereoPanelGroup.position.copy(headPosition).addScaledVector(forward, this.xrPanelDistanceMeters);
-      this.xrPanelBaseQuaternion.copy(headQuaternion);
+      this.xrPanelBaseQuaternion.copy(leveledHeadQuaternion);
       this.xrPanelPlaced = true;
       this.stereoPanelGroup.visible = true;
     }
@@ -756,6 +760,7 @@ export class StereoRenderer {
   private setupXrControllers() {
     [0, 1].forEach((index) => {
       const controller = this.renderer.xr.getController(index);
+      this.xrControllers.push(controller);
       controller.addEventListener('selectstart', () => this.handleXrSelectStart(controller));
       controller.addEventListener('selectend', () => this.handleXrSelectEnd());
 
@@ -832,6 +837,7 @@ export class StereoRenderer {
     const { ctx, canvas } = panel;
     const x = 34;
     const width = canvas.width - 68;
+    const hovered = this.xrHoveredRegionId === control.id;
     ctx.fillStyle = '#ddd';
     ctx.font = '24px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
     ctx.fillText(control.label, x, y);
@@ -842,8 +848,8 @@ export class StereoRenderer {
     ctx.textAlign = 'left';
 
     const trackY = y + 34;
-    ctx.strokeStyle = '#3a3a3a';
-    ctx.lineWidth = 10;
+    ctx.strokeStyle = hovered ? '#6a5a28' : '#3a3a3a';
+    ctx.lineWidth = hovered ? 14 : 10;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(x, trackY);
@@ -856,10 +862,15 @@ export class StereoRenderer {
     ctx.moveTo(x, trackY);
     ctx.lineTo(x + width * ratio, trackY);
     ctx.stroke();
-    ctx.fillStyle = '#8fc5ff';
+    ctx.fillStyle = hovered ? '#ffd166' : '#8fc5ff';
     ctx.beginPath();
-    ctx.arc(x + width * ratio, trackY, 18, 0, Math.PI * 2);
+    ctx.arc(x + width * ratio, trackY, hovered ? 22 : 18, 0, Math.PI * 2);
     ctx.fill();
+    if (hovered) {
+      ctx.strokeStyle = '#fff2a8';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
 
     panel.regions.push({
       id: control.id,
@@ -886,8 +897,18 @@ export class StereoRenderer {
     width = panel.canvas.width - 68
   ) {
     const { ctx } = panel;
-    this.roundRect(ctx, x, y, width, 54, 10, active ? '#2e4057' : '#222', active ? '#5b9bd5' : '#3a3a3a');
-    ctx.fillStyle = active ? '#8fc5ff' : '#f0f0f0';
+    const hovered = this.xrHoveredRegionId === id;
+    this.roundRect(
+      ctx,
+      x,
+      y,
+      width,
+      54,
+      10,
+      active ? '#2e4057' : hovered ? '#333023' : '#222',
+      hovered ? '#ffd166' : active ? '#5b9bd5' : '#3a3a3a'
+    );
+    ctx.fillStyle = hovered ? '#ffd166' : active ? '#8fc5ff' : '#f0f0f0';
     ctx.font = '800 22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(label, x + width / 2, y + 35);
@@ -1007,6 +1028,17 @@ export class StereoRenderer {
     }
   }
 
+  private updateXrHoverState() {
+    if (this.xrControllerDrag) return;
+    const hit = this.xrControllers
+      .map(controller => this.getXrUiHit(controller))
+      .find(Boolean);
+    const nextHoverId = hit?.region.id ?? null;
+    if (nextHoverId === this.xrHoveredRegionId) return;
+    this.xrHoveredRegionId = nextHoverId;
+    this.drawXrUiPanels();
+  }
+
   private updateXrControllerDrag() {
     const drag = this.xrControllerDrag;
     if (!drag) return;
@@ -1060,6 +1092,12 @@ export class StereoRenderer {
     }
     this.drawXrUiPanels();
     panel.texture.needsUpdate = true;
+  }
+
+  private getLeveledHeadQuaternion(headQuaternion: THREE.Quaternion) {
+    const euler = new THREE.Euler().setFromQuaternion(headQuaternion, 'YXZ');
+    euler.z = 0;
+    return new THREE.Quaternion().setFromEuler(euler);
   }
 
   dispose() {

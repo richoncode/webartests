@@ -24,6 +24,7 @@ VR mode is for putting on an HMD, standing in passthrough, and evaluating camera
    - The stereo screen must remain fixed in room space after placement.
    - It must not be head-locked.
    - It should use the user/session pose only for initial placement, not for continuous head-following.
+   - Initial placement should ignore headset roll so the screen and panels stay level. Looking with the head can set heading and pitch, but side-to-side head tilt must not roll the UI.
 
 3. **Render stereo camera images onto the screen**
    - The left camera render must be visible to the left eye.
@@ -40,6 +41,13 @@ VR mode is for putting on an HMD, standing in passthrough, and evaluating camera
    - Place the right floating panel to the right of the stereo screen.
    - These panels must be room-locked with the stereo screen, not head-locked.
    - Pointer/controller interactions must work in XR.
+
+6. **XR pointer interaction guidelines**
+   - Every interactive control must have a visible hover/focus state before activation.
+   - Hover feedback should be strong enough to confirm pointer contact in the headset before the user clicks/selects.
+   - Sliders should support press-and-drag after initial contact.
+   - Buttons should use large hit regions with clear active and hover states.
+   - Controls should not require precise pixel-perfect targeting.
 
 ## Floating Panel Contents
 
@@ -94,4 +102,6 @@ The current code has a shared schema and a DOM renderer for the HMD floating pan
 - The planning 3D scene is not visible as independent VR geometry.
 - The left and right panels appear beside the stereo screen.
 - XR pointer/controller input can operate the floating panel controls.
+- XR pointer/controller hover visibly highlights controls before select.
+- Head roll does not tilt the stereo screen or floating panels side-to-side.
 - The left and right panels are generated from the same shared control schema as any DOM/debug representation.
