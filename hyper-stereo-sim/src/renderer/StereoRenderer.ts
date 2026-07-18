@@ -783,7 +783,6 @@ export class StereoRenderer {
     if (!this.lastRigConfig || !this.lastStereoConfig) return;
 
     const previousTarget = this.renderer.getRenderTarget();
-    const previousXR = this.renderer.xr.enabled;
     const previousPanelVisible = this.stereoPanelGroup.visible;
     const previousUiVisible = this.xrUiGroup.visible;
     const previousRigVisible = this.rig.group.visible;
@@ -797,7 +796,6 @@ export class StereoRenderer {
     this.xrUiGroup.visible = false;
     this.rig.group.visible = false;
     this.transformControls.visible = false;
-    this.renderer.xr.enabled = false;
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
@@ -807,7 +805,6 @@ export class StereoRenderer {
       eyeOrder: 'left-right'
     });
 
-    this.renderer.xr.enabled = previousXR;
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.setScissorTest(previousScissorTest);
     this.renderer.setClearColor(previousClearColor, previousClearAlpha);
@@ -830,10 +827,15 @@ export class StereoRenderer {
     const previousClearColor = new THREE.Color();
     this.renderer.getClearColor(previousClearColor);
     const previousClearAlpha = this.renderer.getClearAlpha();
+    const previousXR = this.renderer.xr.enabled;
 
+    this.renderer.xr.enabled = false;
     this.renderer.setRenderTarget(target);
+    this.renderer.setViewport(0, 0, target.width, target.height);
+    this.renderer.setScissor(0, 0, target.width, target.height);
     this.renderSideBySideFrame(target.width, target.height, rigConfig, stereoConfig);
 
+    this.renderer.xr.enabled = previousXR;
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.setViewport(previousViewport);
     this.renderer.setScissor(previousScissor);
@@ -903,8 +905,8 @@ export class StereoRenderer {
       this.renderer.clear(true, true, true);
     });
 
-    this.renderCameraInRect(this.rig.leftCamera, leftFrame, leftViewShiftPx, width, height);
-    this.renderCameraInRect(this.rig.rightCamera, rightFrame, rightViewShiftPx, width, height);
+    this.renderCameraInRect(this.rig.leftCamera, leftFrame, leftViewShiftPx);
+    this.renderCameraInRect(this.rig.rightCamera, rightFrame, rightViewShiftPx);
 
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(sceneBg, 1);
@@ -1452,18 +1454,10 @@ export class StereoRenderer {
     });
   }
 
-  private renderCameraInRect(camera: THREE.Camera, rect: number[], viewShiftPx = 0, fullWidth?: number, fullHeight?: number) {
+  private renderCameraInRect(camera: THREE.Camera, rect: number[], viewShiftPx = 0) {
     const [x, y, width, height] = rect;
     this.renderer.setViewport(x + viewShiftPx, y, width, height);
     this.renderer.setScissor(x, y, width, height);
-    if (camera instanceof THREE.PerspectiveCamera && fullWidth && fullHeight) {
-      camera.setViewOffset(fullWidth, fullHeight, x - viewShiftPx, y, width, height);
-      camera.updateProjectionMatrix();
-      this.renderer.render(this.scene, camera);
-      camera.clearViewOffset();
-      camera.updateProjectionMatrix();
-      return;
-    }
     this.renderer.render(this.scene, camera);
   }
 
