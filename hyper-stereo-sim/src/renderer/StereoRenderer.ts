@@ -546,25 +546,14 @@ export class StereoRenderer {
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
     const aspect = 16 / 9;
-    const leftGeometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
-    const rightGeometry = leftGeometry.clone();
-    this.setGeometryUvRange(leftGeometry, 0, 0.5);
-    this.setGeometryUvRange(rightGeometry, 0.5, 1);
-    const leftMaterial = new THREE.MeshBasicMaterial({
-      map: target.texture,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
-    const rightMaterial = new THREE.MeshBasicMaterial({
-      map: target.texture,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
+    const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
+    const leftMaterial = this.createSbsEyeMaterial(target.texture, 0, 0.5);
+    const rightMaterial = this.createSbsEyeMaterial(target.texture, 0.5, 1);
 
     const group = new THREE.Group();
     group.visible = false;
-    const leftPanel = new THREE.Mesh(leftGeometry, leftMaterial);
-    const rightPanel = new THREE.Mesh(rightGeometry, rightMaterial);
+    const leftPanel = new THREE.Mesh(geometry, leftMaterial);
+    const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
     leftPanel.layers.set(1);
     rightPanel.layers.set(2);
     leftPanel.renderOrder = 20;
@@ -579,13 +568,32 @@ export class StereoRenderer {
     };
   }
 
-  private setGeometryUvRange(geometry: THREE.BufferGeometry, minU: number, maxU: number) {
-    const uvs = geometry.getAttribute('uv') as THREE.BufferAttribute;
-    const span = maxU - minU;
-    for (let i = 0; i < uvs.count; i++) {
-      uvs.setX(i, minU + uvs.getX(i) * span);
-    }
-    uvs.needsUpdate = true;
+  private createSbsEyeMaterial(texture: THREE.Texture, minU: number, maxU: number) {
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        mapTex: { value: texture },
+        uvRange: { value: new THREE.Vector2(minU, maxU) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D mapTex;
+        uniform vec2 uvRange;
+        varying vec2 vUv;
+        void main() {
+          vec2 sbsUv = vec2(mix(uvRange.x, uvRange.y, vUv.x), vUv.y);
+          gl_FragColor = texture2D(mapTex, sbsUv);
+        }
+      `,
+      side: THREE.DoubleSide
+    });
+    material.toneMapped = false;
+    return material;
   }
 
   private configureXREyeLayers() {
