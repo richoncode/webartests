@@ -548,6 +548,28 @@ export class StereoRenderer {
     });
   }
 
+  private assertSbsTextureSize(target: THREE.WebGLRenderTarget, rigConfig: CameraRigConfiguration) {
+    const textureImage = target.texture.image as { width?: number; height?: number } | undefined;
+    const expectedHalfAspect = rigConfig.aspect || (16 / 9);
+    const actualHalfAspect = (target.width / 2) / target.height;
+    const aspectError = Math.abs(actualHalfAspect - expectedHalfAspect);
+    const imageMatchesTarget = !textureImage ||
+      (textureImage.width === target.width && textureImage.height === target.height);
+
+    if (target.width <= 0 || target.height <= 0 || aspectError > 0.001 || !imageMatchesTarget) {
+      throw new Error(
+        [
+          'Invalid sbsTexture size for VR stereo panel.',
+          `target=${target.width}x${target.height}`,
+          `texture=${textureImage?.width ?? 'unknown'}x${textureImage?.height ?? 'unknown'}`,
+          `expected double-wide half aspect=${expectedHalfAspect.toFixed(4)}`,
+          `actual half aspect=${actualHalfAspect.toFixed(4)}`,
+          `aspect error=${aspectError.toFixed(6)}`
+        ].join(' ')
+      );
+    }
+  }
+
   private createStereoPanel(sbsTexture: THREE.Texture) {
     const aspect = 16 / 9;
     const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
@@ -678,6 +700,7 @@ export class StereoRenderer {
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
     const target = this.sbsRenderTarget;
+    this.assertSbsTextureSize(target, this.lastRigConfig);
     this.renderer.setRenderTarget(target);
     // Fill the live sbsTexture used by the VR eye panels: left camera in U 0..0.5, right in U 0.5..1.
     this.renderSideBySideFrame(target.width, target.height, this.lastRigConfig, {
