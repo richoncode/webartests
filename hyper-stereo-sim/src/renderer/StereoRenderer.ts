@@ -45,6 +45,7 @@ export class StereoRenderer {
   private xrPanelDistanceMeters = 4 / 3.28084;
   private xrPanelWidthMeters = 1.25;
   private xrPanelPlaced = false;
+  private xrPanelPlacementFrames = 0;
   private xrPanelBaseQuaternion = new THREE.Quaternion();
 
   constructor(container: HTMLDivElement) {
@@ -129,12 +130,13 @@ export class StereoRenderer {
     });
 
     // Start rendering frame loop
-    this.renderer.setAnimationLoop(() => this.animate());
+    this.renderer.setAnimationLoop((_time, frame) => this.animate(frame));
     this.renderer.xr.addEventListener('sessionstart', () => {
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
-      this.stereoPanelGroup.visible = true;
+      this.stereoPanelGroup.visible = false;
       this.xrPanelPlaced = false;
+      this.xrPanelPlacementFrames = 0;
       this.onXRPresentingChange?.(true);
     });
     this.renderer.xr.addEventListener('sessionend', () => {
@@ -142,6 +144,7 @@ export class StereoRenderer {
       this.renderer.setClearAlpha(1);
       this.stereoPanelGroup.visible = false;
       this.xrPanelPlaced = false;
+      this.xrPanelPlacementFrames = 0;
       this.onXRPresentingChange?.(false);
     });
   }
@@ -211,7 +214,7 @@ export class StereoRenderer {
   // Attach WebXR AR session button for HMD passthrough.
   getXRButtonElement(): HTMLElement {
     return ARButton.createButton(this.renderer, {
-      optionalFeatures: ['dom-overlay'],
+      optionalFeatures: ['dom-overlay', 'local-floor'],
       domOverlay: { root: document.body }
     });
   }
@@ -224,22 +227,22 @@ export class StereoRenderer {
     if (!supported) return false;
 
     const session = await xr.requestSession('immersive-ar', {
-      optionalFeatures: ['dom-overlay'],
+      optionalFeatures: ['dom-overlay', 'local-floor'],
       domOverlay: { root: document.body }
     });
-    this.renderer.xr.setReferenceSpaceType('local');
+    this.renderer.xr.setReferenceSpaceType('local-floor');
     await this.renderer.xr.setSession(session);
     return true;
   }
 
-  private animate() {
+  private animate(frame?: XRFrame) {
     this.controls.update();
 
     const isPresenting = this.renderer.xr.isPresenting;
     this.applyXRScale(isPresenting);
     this.onViewerMoveCallback?.();
     if (isPresenting) {
-      this.updateXRStereoPanel();
+      this.updateXRStereoPanel(frame);
       this.renderXRStereoPanelTextures();
       this.configureXREyeLayers();
       // Under WebXR mode, the device handles eye projection and updates viewports automatically.
@@ -573,19 +576,30 @@ export class StereoRenderer {
     cameras[1].layers.enable(2);
   }
 
-  private updateXRStereoPanel() {
-    const xrCamera = this.renderer.xr.getCamera();
-    xrCamera.updateMatrixWorld(true);
-
+  private updateXRStereoPanel(frame?: XRFrame) {
     if (!this.xrPanelPlaced) {
       const headPosition = new THREE.Vector3();
       const headQuaternion = new THREE.Quaternion();
-      xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
+      const referenceSpace = this.renderer.xr.getReferenceSpace();
+      const viewerPose = frame && referenceSpace ? frame.getViewerPose(referenceSpace) : undefined;
+
+      if (viewerPose) {
+        this.xrPanelPlacementFrames += 1;
+        if (this.xrPanelPlacementFrames < 3) return;
+
+        const viewerMatrix = new THREE.Matrix4().fromArray(viewerPose.transform.matrix);
+        viewerMatrix.decompose(headPosition, headQuaternion, new THREE.Vector3());
+      } else {
+        const xrCamera = this.renderer.xr.getCamera();
+        xrCamera.updateMatrixWorld(true);
+        xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
+      }
 
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuaternion);
       this.stereoPanelGroup.position.copy(headPosition).addScaledVector(forward, this.xrPanelDistanceMeters);
       this.xrPanelBaseQuaternion.copy(headQuaternion);
       this.xrPanelPlaced = true;
+      this.stereoPanelGroup.visible = true;
     }
 
     this.stereoPanelGroup.quaternion.copy(this.xrPanelBaseQuaternion);
