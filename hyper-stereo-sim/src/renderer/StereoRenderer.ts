@@ -676,7 +676,10 @@ export class StereoRenderer {
 
     const target = this.stereoPanelTarget;
     this.renderer.setRenderTarget(target);
-    this.renderSideBySideFrame(target.width, target.height, this.lastRigConfig, this.lastStereoConfig);
+    this.renderSideBySideFrame(target.width, target.height, this.lastRigConfig, {
+      ...this.lastStereoConfig,
+      eyeOrder: 'left-right'
+    });
 
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.xr.enabled = previousXR;
