@@ -578,27 +578,32 @@ export class StereoRenderer {
       format: THREE.RGBAFormat
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
+    const leftTexture = target.texture.clone();
+    const rightTexture = target.texture.clone();
+    leftTexture.colorSpace = THREE.SRGBColorSpace;
+    rightTexture.colorSpace = THREE.SRGBColorSpace;
+    leftTexture.repeat.set(0.5, 1);
+    leftTexture.offset.set(0, 0);
+    rightTexture.repeat.set(0.5, 1);
+    rightTexture.offset.set(0.5, 0);
 
     const aspect = 16 / 9;
-    const leftGeometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
-    const rightGeometry = leftGeometry.clone();
-    this.setGeometryUvRange(leftGeometry, 0, 0.5);
-    this.setGeometryUvRange(rightGeometry, 0.5, 1);
+    const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
     const leftMaterial = new THREE.MeshBasicMaterial({
-      map: target.texture,
+      map: leftTexture,
       side: THREE.DoubleSide,
       toneMapped: false
     });
     const rightMaterial = new THREE.MeshBasicMaterial({
-      map: target.texture,
+      map: rightTexture,
       side: THREE.DoubleSide,
       toneMapped: false
     });
 
     const group = new THREE.Group();
     group.visible = false;
-    const leftPanel = new THREE.Mesh(leftGeometry, leftMaterial);
-    const rightPanel = new THREE.Mesh(rightGeometry, rightMaterial);
+    const leftPanel = new THREE.Mesh(geometry, leftMaterial);
+    const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
     leftPanel.layers.set(1);
     rightPanel.layers.set(2);
     leftPanel.renderOrder = 20;
@@ -611,15 +616,6 @@ export class StereoRenderer {
       leftPanel,
       rightPanel
     };
-  }
-
-  private setGeometryUvRange(geometry: THREE.BufferGeometry, minU: number, maxU: number) {
-    const uvs = geometry.getAttribute('uv') as THREE.BufferAttribute;
-    const span = maxU - minU;
-    for (let i = 0; i < uvs.count; i++) {
-      uvs.setX(i, minU + uvs.getX(i) * span);
-    }
-    uvs.needsUpdate = true;
   }
 
   private configureXREyeLayers() {
