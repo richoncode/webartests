@@ -200,6 +200,7 @@ export const App: React.FC = () => {
   const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(0.42);
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
+  const [hmdMode, setHmdMode] = useState(false);
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -293,6 +294,11 @@ export const App: React.FC = () => {
     setPresetOverlayOpacity(preset.overlayOpacity ?? 0.42);
   };
 
+  const loadPresetValuesOnly = (preset: VenuePreset) => {
+    handleCommitState();
+    setRig(preset.rig);
+  };
+
   const deletePreset = (name: string) => {
     const updated = presets.filter(p => p.name !== name);
     setPresets(updated);
@@ -361,6 +367,7 @@ export const App: React.FC = () => {
 
   // Binds the WebXR Enter session button when renderer is ready
   const triggerXR = () => {
+    setHmdMode(true);
     if (!rendererRef) return;
     const button = rendererRef.getXRButtonElement();
     if (button) {
@@ -381,7 +388,7 @@ export const App: React.FC = () => {
         canRedo={redoStack.length > 0}
         onExport={exportPresets}
         onImport={importPresets}
-        xrActive={false}
+        xrActive={hmdMode}
         vrScaleMode={vrScaleMode}
         setVrScaleMode={setVrScaleMode}
         triggerXR={triggerXR}
@@ -389,14 +396,16 @@ export const App: React.FC = () => {
         setUnit={setUnit}
       />
       
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <SidebarLeft
-          rig={rig}
-          setRig={setRig}
-          coordinateAnchors={coordinateAnchors}
-          onCommitState={handleCommitState}
-          unit={unit}
-        />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+        {!hmdMode && (
+          <SidebarLeft
+            rig={rig}
+            setRig={setRig}
+            coordinateAnchors={coordinateAnchors}
+            onCommitState={handleCommitState}
+            unit={unit}
+          />
+        )}
         
         <Visualizer
           rig={rig}
@@ -407,27 +416,104 @@ export const App: React.FC = () => {
           activeVenue={activeVenue}
           vrScaleMode={vrScaleMode}
           setRendererRef={setRendererRef}
+          onXRPresentingChange={setHmdMode}
           unit={unit}
           presetOverlayUrl={presetOverlayUrl}
           presetOverlayOpacity={presetOverlayOpacity}
         />
+
+        {hmdMode && (
+          <>
+            <div style={{
+              position: 'absolute',
+              left: '16px',
+              top: '16px',
+              bottom: '16px',
+              zIndex: 40,
+              pointerEvents: 'auto'
+            }}>
+              <SidebarLeft
+                rig={rig}
+                setRig={setRig}
+                coordinateAnchors={coordinateAnchors}
+                onCommitState={handleCommitState}
+                unit={unit}
+                floating
+              />
+            </div>
+
+            <div style={{
+              position: 'absolute',
+              right: '16px',
+              top: '16px',
+              zIndex: 40,
+              pointerEvents: 'auto'
+            }}>
+              <SidebarRight
+                rig={rig}
+                setRig={setRig}
+                stereo={stereo}
+                setStereo={setStereo}
+                visConfig={visConfig}
+                setVisConfig={setVisConfig}
+                presets={presets}
+                setPresets={setPresets}
+                onSavePreset={savePreset}
+                onLoadPreset={loadPreset}
+                onLoadValuePreset={loadPresetValuesOnly}
+                onDeletePreset={deletePreset}
+                onDeleteAllLocalPresets={deleteAllLocalPresets}
+                onDuplicatePreset={duplicatePreset}
+                unit={unit}
+                compactMode
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setHmdMode(false)}
+              title="Exit floating HMD layout"
+              style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: '14px',
+                transform: 'translateX(-50%)',
+                zIndex: 42,
+                background: 'rgba(0,0,0,0.86)',
+                color: '#ddd',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                padding: '7px 12px',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 8px 28px rgba(0,0,0,0.45)'
+              }}
+            >
+              Exit HMD Layout
+            </button>
+          </>
+        )}
         
-        <SidebarRight
-          rig={rig}
-          setRig={setRig}
-          stereo={stereo}
-          setStereo={setStereo}
-          visConfig={visConfig}
-          setVisConfig={setVisConfig}
-          presets={presets}
-          setPresets={setPresets}
-          onSavePreset={savePreset}
-          onLoadPreset={loadPreset}
-          onDeletePreset={deletePreset}
-          onDeleteAllLocalPresets={deleteAllLocalPresets}
-          onDuplicatePreset={duplicatePreset}
-          unit={unit}
-        />
+        {!hmdMode && (
+          <SidebarRight
+            rig={rig}
+            setRig={setRig}
+            stereo={stereo}
+            setStereo={setStereo}
+            visConfig={visConfig}
+            setVisConfig={setVisConfig}
+            presets={presets}
+            setPresets={setPresets}
+            onSavePreset={savePreset}
+            onLoadPreset={loadPreset}
+            onLoadValuePreset={loadPresetValuesOnly}
+            onDeletePreset={deletePreset}
+            onDeleteAllLocalPresets={deleteAllLocalPresets}
+            onDuplicatePreset={duplicatePreset}
+            unit={unit}
+          />
+        )}
       </div>
     </div>
   );

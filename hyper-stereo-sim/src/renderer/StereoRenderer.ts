@@ -27,6 +27,7 @@ export class StereoRenderer {
   // React callbacks for direct manipulation sync
   onRigMoveCallback?: (x: number, y: number, z: number) => void;
   onViewerMoveCallback?: () => void;
+  onXRPresentingChange?: (isPresenting: boolean) => void;
 
   private lastRigConfig?: CameraRigConfiguration;
   private lastStereoConfig?: StereoConfiguration;
@@ -111,6 +112,12 @@ export class StereoRenderer {
 
     // Start rendering frame loop
     this.renderer.setAnimationLoop(() => this.animate());
+    this.renderer.xr.addEventListener('sessionstart', () => {
+      this.onXRPresentingChange?.(true);
+    });
+    this.renderer.xr.addEventListener('sessionend', () => {
+      this.onXRPresentingChange?.(false);
+    });
   }
 
   setVenue(venue: BaseVenue) {

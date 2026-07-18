@@ -13,10 +13,12 @@ interface SidebarRightProps {
   setPresets: React.Dispatch<React.SetStateAction<VenuePreset[]>>;
   onSavePreset: (name: string) => void;
   onLoadPreset: (preset: VenuePreset) => void;
+  onLoadValuePreset?: (preset: VenuePreset) => void;
   onDeletePreset: (name: string) => void;
   onDeleteAllLocalPresets: () => void;
   onDuplicatePreset: (preset: VenuePreset) => void;
   unit: 'feet' | 'meters';
+  compactMode?: boolean;
 }
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({
@@ -30,9 +32,11 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   setPresets,
   onSavePreset,
   onLoadPreset,
+  onLoadValuePreset,
   onDeletePreset,
   onDeleteAllLocalPresets,
-  unit
+  unit,
+  compactMode = false
 }) => {
   const [newPresetName, setNewPresetName] = useState('');
   const [copiedPresetName, setCopiedPresetName] = useState<string | null>(null);
@@ -128,6 +132,108 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       setCopiedPresetName(current => current === preset.name ? null : current);
     }, 1400);
   };
+
+  const loadPresetForMode = (preset: VenuePreset) => {
+    if (compactMode && onLoadValuePreset) {
+      onLoadValuePreset(preset);
+      return;
+    }
+    onLoadPreset(preset);
+  };
+
+  const renderPresetList = (maxHeight = '200px') => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight, overflowY: 'auto' }}>
+      {presets.map((preset) => (
+        <div
+          key={preset.name}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#1a1a1a',
+            padding: '6px 10px',
+            borderRadius: '4px',
+            fontSize: '12px'
+          }}
+        >
+          <span
+            onClick={() => loadPresetForMode(preset)}
+            title={compactMode ? 'Load this preset rig/settings without changing the current view mode' : 'Load full venue preset'}
+            style={{ cursor: 'pointer', fontWeight: 500, color: '#5b9bd5' }}
+          >
+            {preset.name}
+          </span>
+          {!compactMode && (
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                onClick={() => copyPresetToClipboard(preset)}
+                title="Copy code needed to recreate this preset"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: copiedPresetName === preset.name ? '#5b9bd5' : '#888' }}
+              >
+                <Copy size={12} />
+              </button>
+              <button
+                onClick={() => onDeletePreset(preset.name)}
+                title="Delete Preset"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: '#888' }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  if (compactMode) {
+    return (
+      <div className="sidebar" style={{
+        width: 'min(280px, 26vw)',
+        background: 'rgba(18,18,18,0.9)',
+        border: '1px solid rgba(91,155,213,0.35)',
+        borderRadius: '8px',
+        display: 'flex',
+        flexDirection: 'column',
+        color: '#ddd',
+        maxHeight: 'calc(100% - 32px)',
+        minHeight: 0,
+        overflowY: 'auto',
+        padding: '14px',
+        boxShadow: '0 12px 48px rgba(0,0,0,0.45)',
+        backdropFilter: 'blur(10px)'
+      }}>
+        <div style={{ marginBottom: '14px' }}>
+          <h2 style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>Stereo Quality</h2>
+          <button
+            onClick={() => setStereo(prev => ({ ...prev, showQualityOverlay: !prev.showQualityOverlay }))}
+            title="Toggle stereo quality heatmap overlay"
+            style={{
+              width: '100%',
+              background: stereo.showQualityOverlay ? '#3a2a16' : '#222',
+              color: stereo.showQualityOverlay ? '#f0a040' : '#aaa',
+              border: stereo.showQualityOverlay ? '1px solid #f0a040' : '1px solid #333',
+              padding: '8px 10px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
+          >
+            {stereo.showQualityOverlay ? 'Quality On' : 'Quality Off'}
+          </button>
+        </div>
+
+        <div style={{ borderTop: '1px solid #222', paddingTop: '14px' }}>
+          <h2 style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>Value Presets</h2>
+          {renderPresetList('min(50vh, 360px)')}
+          <div style={{ color: '#777', fontSize: '10px', lineHeight: 1.35, marginTop: '9px' }}>
+            Loads rig values only. The current view mode stays active.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="sidebar" style={{
@@ -305,45 +411,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           </button>
         </form>
         {/* Scrollable Presets list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-          {presets.map((preset) => (
-            <div
-              key={preset.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: '#1a1a1a',
-                padding: '6px 10px',
-                borderRadius: '4px',
-                fontSize: '12px'
-              }}
-            >
-              <span 
-                onClick={() => onLoadPreset(preset)}
-                style={{ cursor: 'pointer', fontWeight: 500, color: '#5b9bd5' }}
-              >
-                {preset.name}
-              </span>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button 
-                  onClick={() => copyPresetToClipboard(preset)}
-                  title="Copy code needed to recreate this preset"
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: copiedPresetName === preset.name ? '#5b9bd5' : '#888' }}
-                >
-                  <Copy size={12} />
-                </button>
-                <button 
-                  onClick={() => onDeletePreset(preset.name)}
-                  title="Delete Preset"
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px', color: '#888' }}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        {renderPresetList()}
         <button
           type="button"
           onClick={onDeleteAllLocalPresets}

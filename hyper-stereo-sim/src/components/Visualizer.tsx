@@ -13,6 +13,7 @@ interface VisualizerProps {
   activeVenue: BaseVenue;
   vrScaleMode: 'tabletop' | 'full-scale';
   setRendererRef: (renderer: StereoRenderer | null) => void;
+  onXRPresentingChange?: (isPresenting: boolean) => void;
   unit: 'feet' | 'meters';
   presetOverlayUrl?: string | null;
   presetOverlayOpacity?: number;
@@ -27,6 +28,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   activeVenue,
   vrScaleMode,
   setRendererRef,
+  onXRPresentingChange,
   unit,
   presetOverlayUrl,
   presetOverlayOpacity = 0.42
@@ -123,6 +125,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     rendererInstanceRef.current = renderer;
     renderer.setVenue(activeVenue);
     setRendererRef(renderer);
+    renderer.onXRPresentingChange = onXRPresentingChange;
     setViewDistanceMeters(calculateViewDistance(renderer));
     renderer.onViewerMoveCallback = () => {
       setViewDistanceMeters(calculateViewDistance(renderer));

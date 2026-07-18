@@ -32,7 +32,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   canRedo,
   onExport,
   onImport,
-  xrActive: _xrActive,
+  xrActive,
   vrScaleMode,
   setVrScaleMode,
   triggerXR,
@@ -275,7 +275,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <button
               onClick={triggerXR}
               className="primary"
-              title="Enter VR inspection mode"
+              title={xrActive ? 'HMD floating layout is active' : 'Enter VR inspection mode and switch to HMD floating layout'}
               style={{
                 fontSize: '12px',
                 fontWeight: 700,
@@ -283,11 +283,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 padding: '0 16px',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '6px',
+                background: xrActive ? '#2e4057' : undefined,
+                color: xrActive ? '#8fc5ff' : undefined,
+                borderColor: xrActive ? '#8fc5ff' : undefined
               }}
             >
               <Box size={14} />
-              VR Mode
+              {xrActive ? 'HMD Layout' : 'VR Mode'}
             </button>
           </div>
         </div>

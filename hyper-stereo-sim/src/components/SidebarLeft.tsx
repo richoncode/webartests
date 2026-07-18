@@ -9,6 +9,7 @@ interface SidebarLeftProps {
   coordinateAnchors: VenueCoordinateAnchor[];
   onCommitState: (newRig: CameraRigConfiguration) => void;
   unit: 'feet' | 'meters';
+  floating?: boolean;
 }
 
 interface CameraProfile {
@@ -85,7 +86,8 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   setRig,
   coordinateAnchors,
   onCommitState,
-  unit
+  unit,
+  floating = false
 }) => {
   const [isPositionOpen, setIsPositionOpen] = React.useState(true);
   const [isAlignmentOpen, setIsAlignmentOpen] = React.useState(false);
@@ -620,16 +622,21 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
   return (
     <div className="sidebar" style={{
-      width: '320px',
-      background: '#161616',
-      borderRight: '1px solid #222',
+      width: floating ? 'min(360px, 34vw)' : '320px',
+      background: floating ? 'rgba(18,18,18,0.9)' : '#161616',
+      borderRight: floating ? '1px solid rgba(91,155,213,0.35)' : '1px solid #222',
+      border: floating ? '1px solid rgba(91,155,213,0.35)' : undefined,
+      borderRadius: floating ? '8px' : undefined,
       display: 'flex',
       flexDirection: 'column',
       color: '#ddd',
-      height: '100%',
+      height: floating ? 'auto' : '100%',
+      maxHeight: floating ? 'calc(100% - 32px)' : undefined,
       minHeight: 0,
       overflowY: 'auto',
-      padding: '20px'
+      padding: floating ? '16px' : '20px',
+      boxShadow: floating ? '0 12px 48px rgba(0,0,0,0.45)' : undefined,
+      backdropFilter: floating ? 'blur(10px)' : undefined
     }}>
       {/* 1. Camera Profile */}
       <div style={{ marginBottom: '10px' }}>
