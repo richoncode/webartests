@@ -366,35 +366,41 @@ export const App: React.FC = () => {
   };
 
   // Binds the WebXR Enter session button when renderer is ready
-  const triggerXR = () => {
+  const triggerXR = async () => {
     setHmdMode(true);
     if (!rendererRef) return;
-    const button = rendererRef.getXRButtonElement();
-    if (button) {
-      button.click();
+    try {
+      const started = await rendererRef.startPassthroughARSession();
+      if (started) return;
+    } catch (err) {
+      console.warn('Direct immersive-ar session failed, falling back to AR button', err);
     }
+    const button = rendererRef.getXRButtonElement();
+    button.click();
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d0d0d', fontFamily: 'sans-serif' }}>
-      <Toolbar
-        venueId={venueId}
-        setVenueId={setVenueId}
-        stereo={stereo}
-        setStereo={setStereo}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
-        onExport={exportPresets}
-        onImport={importPresets}
-        xrActive={hmdMode}
-        vrScaleMode={vrScaleMode}
-        setVrScaleMode={setVrScaleMode}
-        triggerXR={triggerXR}
-        unit={unit}
-        setUnit={setUnit}
-      />
+      {!hmdMode && (
+        <Toolbar
+          venueId={venueId}
+          setVenueId={setVenueId}
+          stereo={stereo}
+          setStereo={setStereo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+          onExport={exportPresets}
+          onImport={importPresets}
+          xrActive={hmdMode}
+          vrScaleMode={vrScaleMode}
+          setVrScaleMode={setVrScaleMode}
+          triggerXR={triggerXR}
+          unit={unit}
+          setUnit={setUnit}
+        />
+      )}
       
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         {!hmdMode && (

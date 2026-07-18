@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
+import { ARButton } from 'three/examples/jsm/webxr/ARButton.js';
 import { CameraRigConfiguration, StereoConfiguration } from '../types';
 import { StereoRig } from '../rig/StereoRig';
 import { BaseVenue } from '../venue/Venue';
@@ -35,13 +35,14 @@ export class StereoRenderer {
   private lastQualityThreshold = 0.033;
   private vrScaleMode: 'tabletop' | 'full-scale' = 'tabletop';
   private xrScaleApplied = false;
+  private desktopBackground: THREE.Color | null = null;
   private originalVenueMaterialColors = new WeakMap<THREE.Material, THREE.Color>();
 
   constructor(container: HTMLDivElement) {
     this.container = container;
 
     // 1. Initialize WebGL Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = true;
@@ -50,7 +51,8 @@ export class StereoRenderer {
 
     // 2. Initialize Scene & Lighting
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0a0a);
+    this.desktopBackground = new THREE.Color(0x0a0a0a);
+    this.scene.background = this.desktopBackground;
 
     // VR scale offset container
     this.xrGroup = new THREE.Group();
@@ -113,9 +115,13 @@ export class StereoRenderer {
     // Start rendering frame loop
     this.renderer.setAnimationLoop(() => this.animate());
     this.renderer.xr.addEventListener('sessionstart', () => {
+      this.scene.background = null;
+      this.renderer.setClearAlpha(0);
       this.onXRPresentingChange?.(true);
     });
     this.renderer.xr.addEventListener('sessionend', () => {
+      this.scene.background = this.desktopBackground;
+      this.renderer.setClearAlpha(1);
       this.onXRPresentingChange?.(false);
     });
   }
@@ -182,9 +188,28 @@ export class StereoRenderer {
     }
   }
 
-  // Attach WebXR session button to container
+  // Attach WebXR AR session button for HMD passthrough.
   getXRButtonElement(): HTMLElement {
-    return VRButton.createButton(this.renderer);
+    return ARButton.createButton(this.renderer, {
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
+    });
+  }
+
+  async startPassthroughARSession() {
+    const xr = navigator.xr;
+    if (!xr) return false;
+
+    const supported = await xr.isSessionSupported('immersive-ar');
+    if (!supported) return false;
+
+    const session = await xr.requestSession('immersive-ar', {
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
+    });
+    this.renderer.xr.setReferenceSpaceType('local');
+    await this.renderer.xr.setSession(session);
+    return true;
   }
 
   private animate() {
@@ -271,7 +296,7 @@ export class StereoRenderer {
       const frameGrey = new THREE.Color(0x666666);
       const sceneBg = this.scene.background instanceof THREE.Color
         ? this.scene.background
-        : new THREE.Color(0x0a0a0a);
+        : (this.desktopBackground ?? new THREE.Color(0x0a0a0a));
       const renderFramedEye = (frameRect: number[], camera: THREE.PerspectiveCamera, viewShiftPx: number) => {
         this.renderCameraInRect(camera, frameRect, viewShiftPx);
       };
@@ -350,7 +375,7 @@ export class StereoRenderer {
         this.renderer.setViewport(0, 0, w, h);
         this.renderer.setScissorTest(true);
         this.renderer.setScissor(0, 0, w, h);
-        this.renderer.setClearColor(this.scene.background as THREE.Color, 1);
+        this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
         this.renderer.clear(true, true, true);
 
         const gl = this.renderer.getContext();
