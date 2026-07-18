@@ -60,7 +60,8 @@ export class StereoRenderer {
   private xrScaleApplied = false;
   private desktopBackground: THREE.Color | null = null;
   private originalVenueMaterialColors = new WeakMap<THREE.Material, THREE.Color>();
-  private stereoPanelTarget: THREE.WebGLRenderTarget;
+  private sbsRenderTarget: THREE.WebGLRenderTarget;
+  private sbsTexture: THREE.Texture;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
   private xrPanelDistanceMeters = 4 / 3.28084;
@@ -127,9 +128,12 @@ export class StereoRenderer {
     this.xrGroup.add(this.rig.group);
     this.targetMarker = this.createTargetMarker();
     this.xrGroup.add(this.targetMarker);
-    const stereoPanel = this.createStereoPanel();
+    this.sbsRenderTarget = this.createSbsRenderTarget();
+    this.sbsTexture = this.sbsRenderTarget.texture;
+    this.sbsTexture.name = 'sbsTexture';
+    this.sbsTexture.colorSpace = THREE.SRGBColorSpace;
+    const stereoPanel = this.createStereoPanel(this.sbsTexture);
     this.stereoPanelGroup = stereoPanel.group;
-    this.stereoPanelTarget = stereoPanel.target;
     this.leftEyePanel = stereoPanel.leftPanel;
     this.rightEyePanel = stereoPanel.rightPanel;
     this.scene.add(this.stereoPanelGroup);
@@ -362,6 +366,7 @@ export class StereoRenderer {
       // Hide rig visual helpers inside live camera viewports.
       this.rig.group.visible = false;
       this.transformControls.visible = false;
+      // Desktop SBS and immersive VR both render through this shared SBS frame path.
       this.renderSideBySideFrame(w, h, rigConfig, stereoConfig);
       this.rig.group.visible = true;
 
@@ -535,20 +540,19 @@ export class StereoRenderer {
     };
   }
 
-  private createStereoPanel() {
-    const targetWidth = 2048;
-    const targetHeight = 576;
-    const target = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+  private createSbsRenderTarget() {
+    return new THREE.WebGLRenderTarget(2048, 576, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat
     });
-    target.texture.colorSpace = THREE.SRGBColorSpace;
+  }
 
+  private createStereoPanel(sbsTexture: THREE.Texture) {
     const aspect = 16 / 9;
     const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
-    const leftMaterial = this.createSbsEyeMaterial(target.texture, 0, 0.5);
-    const rightMaterial = this.createSbsEyeMaterial(target.texture, 0.5, 1);
+    const leftMaterial = this.createSbsEyeMaterial(sbsTexture, 0, 0.5);
+    const rightMaterial = this.createSbsEyeMaterial(sbsTexture, 0.5, 1);
 
     const group = new THREE.Group();
     group.visible = false;
@@ -562,7 +566,6 @@ export class StereoRenderer {
 
     return {
       group,
-      target,
       leftPanel,
       rightPanel
     };
@@ -674,8 +677,9 @@ export class StereoRenderer {
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
-    const target = this.stereoPanelTarget;
+    const target = this.sbsRenderTarget;
     this.renderer.setRenderTarget(target);
+    // Fill the live sbsTexture used by the VR eye panels: left camera in U 0..0.5, right in U 0.5..1.
     this.renderSideBySideFrame(target.width, target.height, this.lastRigConfig, {
       ...this.lastStereoConfig,
       eyeOrder: 'left-right'
@@ -1135,7 +1139,7 @@ export class StereoRenderer {
     this.renderer.setAnimationLoop(null);
     this.transformControls.dispose();
     this.controls.dispose();
-    this.stereoPanelTarget.dispose();
+    this.sbsRenderTarget.dispose();
     if (this.qualityHeatmap) {
       this.disposeObject(this.qualityHeatmap);
       this.qualityHeatmap = null;
