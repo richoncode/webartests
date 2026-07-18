@@ -62,6 +62,8 @@ export class StereoRenderer {
   private originalVenueMaterialColors = new WeakMap<THREE.Material, THREE.Color>();
   private sbsRenderTarget: THREE.WebGLRenderTarget;
   private sbsTexture: THREE.Texture;
+  private sbsCopyScene: THREE.Scene;
+  private sbsCopyCamera: THREE.OrthographicCamera;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
   private sbsPreviewPanel: THREE.Mesh;
@@ -138,6 +140,9 @@ export class StereoRenderer {
     this.sbsTexture = this.sbsRenderTarget.texture;
     this.sbsTexture.name = 'sbsTexture';
     this.sbsTexture.colorSpace = THREE.SRGBColorSpace;
+    const sbsCopy = this.createSbsCopyPass(this.sbsTexture);
+    this.sbsCopyScene = sbsCopy.scene;
+    this.sbsCopyCamera = sbsCopy.camera;
     const stereoPanel = this.createStereoPanel(this.sbsTexture);
     this.stereoPanelGroup = stereoPanel.group;
     this.leftEyePanel = stereoPanel.leftPanel;
@@ -382,8 +387,9 @@ export class StereoRenderer {
       // Hide rig visual helpers inside live camera viewports.
       this.rig.group.visible = false;
       this.transformControls.visible = false;
-      // Desktop SBS and immersive VR both render through this shared SBS frame path.
-      this.renderSideBySideFrame(w, h, rigConfig, stereoConfig);
+      // Desktop SBS and immersive VR both render the same shared sbsTexture first.
+      this.renderSbsTexture(rigConfig, stereoConfig);
+      this.presentSbsTextureToFramebuffer(w, h);
       this.rig.group.visible = true;
 
     } else if (stereoConfig.displayMode === 'wiggle-3d') {
@@ -562,6 +568,18 @@ export class StereoRenderer {
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat
     });
+  }
+
+  private createSbsCopyPass(sbsTexture: THREE.Texture) {
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const material = new THREE.MeshBasicMaterial({
+      map: sbsTexture,
+      toneMapped: false
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    scene.add(mesh);
+    return { scene, camera };
   }
 
   private assertSbsTextureSize(target: THREE.WebGLRenderTarget, rigConfig: CameraRigConfiguration) {
@@ -783,23 +801,68 @@ export class StereoRenderer {
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
-    const target = this.sbsRenderTarget;
-    this.assertSbsTextureSize(target, this.lastRigConfig);
-    this.renderer.setRenderTarget(target);
     // Fill the live sbsTexture used by the VR eye panels: left camera in U 0..0.5, right in U 0.5..1.
-    this.renderSideBySideFrame(target.width, target.height, this.lastRigConfig, {
+    this.renderSbsTexture(this.lastRigConfig, {
       ...this.lastStereoConfig,
       eyeOrder: 'left-right'
     });
 
-    this.renderer.setRenderTarget(previousTarget);
     this.renderer.xr.enabled = previousXR;
+    this.renderer.setRenderTarget(previousTarget);
     this.renderer.setScissorTest(previousScissorTest);
     this.renderer.setClearColor(previousClearColor, previousClearAlpha);
     this.stereoPanelGroup.visible = previousPanelVisible;
     this.xrUiGroup.visible = previousUiVisible;
     this.rig.group.visible = previousRigVisible;
     this.transformControls.visible = previousTransformVisible;
+  }
+
+  private renderSbsTexture(rigConfig: CameraRigConfiguration, stereoConfig: StereoConfiguration) {
+    const target = this.sbsRenderTarget;
+    this.assertSbsTextureSize(target, rigConfig);
+
+    const previousTarget = this.renderer.getRenderTarget();
+    const previousViewport = new THREE.Vector4();
+    const previousScissor = new THREE.Vector4();
+    this.renderer.getViewport(previousViewport);
+    this.renderer.getScissor(previousScissor);
+    const previousScissorTest = this.renderer.getScissorTest();
+    const previousClearColor = new THREE.Color();
+    this.renderer.getClearColor(previousClearColor);
+    const previousClearAlpha = this.renderer.getClearAlpha();
+
+    this.renderer.setRenderTarget(target);
+    this.renderSideBySideFrame(target.width, target.height, rigConfig, stereoConfig);
+
+    this.renderer.setRenderTarget(previousTarget);
+    this.renderer.setViewport(previousViewport);
+    this.renderer.setScissor(previousScissor);
+    this.renderer.setScissorTest(previousScissorTest);
+    this.renderer.setClearColor(previousClearColor, previousClearAlpha);
+  }
+
+  private presentSbsTextureToFramebuffer(width: number, height: number) {
+    const textureAspect = this.sbsRenderTarget.width / this.sbsRenderTarget.height;
+    let frameWidth = width;
+    let frameHeight = frameWidth / textureAspect;
+    if (frameHeight > height) {
+      frameHeight = height;
+      frameWidth = frameHeight * textureAspect;
+    }
+    const frameX = (width - frameWidth) / 2;
+    const frameY = (height - frameHeight) / 2;
+
+    this.renderer.setRenderTarget(null);
+    this.renderer.setViewport(0, 0, width, height);
+    this.renderer.setScissor(0, 0, width, height);
+    this.renderer.setScissorTest(true);
+    this.renderer.setClearColor(0x666666, 1);
+    this.renderer.clear(true, true, true);
+
+    this.renderer.setViewport(frameX, frameY, frameWidth, frameHeight);
+    this.renderer.setScissor(frameX, frameY, frameWidth, frameHeight);
+    this.renderer.render(this.sbsCopyScene, this.sbsCopyCamera);
+    this.renderer.setScissorTest(false);
   }
 
   private renderSideBySideFrame(
