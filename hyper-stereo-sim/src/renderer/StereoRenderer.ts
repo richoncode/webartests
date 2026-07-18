@@ -72,6 +72,7 @@ export class StereoRenderer {
   private sbsResolutionCanvas: HTMLCanvasElement;
   private sbsResolutionCtx: CanvasRenderingContext2D;
   private hmdRenderMode: 'stereo' | 'sbs' = 'stereo';
+  private xrQualityOverlayEnabled = false;
   private xrPanelDistanceMeters = 4 / 3.28084;
   private xrPanelWidthMeters = 1.25;
   private xrPanelPlaced = false;
@@ -189,6 +190,7 @@ export class StereoRenderer {
     // Start rendering frame loop
     this.renderer.setAnimationLoop((_time, frame) => this.animate(frame));
     this.renderer.xr.addEventListener('sessionstart', () => {
+      this.xrQualityOverlayEnabled = false;
       this.setQualityOverlayEnabled(false);
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
@@ -258,6 +260,10 @@ export class StereoRenderer {
 
   setHmdControlDefinitions(controls: HmdControlDefinition[]) {
     this.hmdControls = controls;
+    const qualityControl = controls.find(control => control.id === 'stereo.quality');
+    if (this.renderer.xr.isPresenting && qualityControl?.kind === 'toggle') {
+      this.setQualityOverlayEnabled(qualityControl.active);
+    }
     this.drawXrUiPanels();
   }
 
@@ -267,6 +273,10 @@ export class StereoRenderer {
   }
 
   setQualityOverlayEnabled(enabled: boolean) {
+    if (this.renderer.xr.isPresenting) {
+      this.xrQualityOverlayEnabled = enabled;
+    }
+
     if (this.lastStereoConfig) {
       this.lastStereoConfig = {
         ...this.lastStereoConfig,
@@ -316,6 +326,7 @@ export class StereoRenderer {
     const xr = navigator.xr;
     if (!xr) return false;
 
+    this.xrQualityOverlayEnabled = false;
     this.setQualityOverlayEnabled(false);
 
     const session = await xr.requestSession('immersive-ar', {
@@ -388,6 +399,9 @@ export class StereoRenderer {
     const useAnaglyphBlackWhite = stereoConfig.displayMode === 'stereo-plane' &&
       stereoConfig.fallbackMode === 'anaglyph' &&
       stereoConfig.anaglyphBlackWhite;
+    const qualityOverlayVisible = this.renderer.xr.isPresenting
+      ? this.xrQualityOverlayEnabled
+      : stereoConfig.showQualityOverlay;
     const viewDisparityPx = stereoConfig.disparityPixelOffset ?? 0;
     const leftViewShiftPx = -viewDisparityPx / 2;
     const rightViewShiftPx = viewDisparityPx / 2;
@@ -395,7 +409,7 @@ export class StereoRenderer {
     this.updateQualityHeatmap(
       rigConfig,
       qualityThreshold,
-      stereoConfig.showQualityOverlay && stereoConfig.displayMode !== 'stereo-plane'
+      qualityOverlayVisible && stereoConfig.displayMode !== 'stereo-plane'
     );
     this.applyAnaglyphBlackWhite(useAnaglyphBlackWhite);
 
@@ -821,6 +835,7 @@ export class StereoRenderer {
     if (!this.lastRigConfig || !this.lastStereoConfig) return;
     const stereoConfig: StereoConfiguration = {
       ...this.lastStereoConfig,
+      showQualityOverlay: this.xrQualityOverlayEnabled,
       eyeOrder: 'left-right'
     };
 
@@ -1497,7 +1512,9 @@ export class StereoRenderer {
   private updateQualityHeatmap(rigConfig: CameraRigConfiguration, qualityThreshold: number, visible: boolean) {
     if (!visible) {
       if (this.qualityHeatmap) {
-        this.qualityHeatmap.visible = false;
+        this.xrGroup.remove(this.qualityHeatmap);
+        this.disposeObject(this.qualityHeatmap);
+        this.qualityHeatmap = null;
       }
       return;
     }
