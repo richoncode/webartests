@@ -387,16 +387,17 @@ export const App: React.FC = () => {
 
   // Binds the WebXR Enter session button when renderer is ready
   const triggerXR = async () => {
-    setHmdMode(true);
-    if (!rendererRef) return;
+    if (!rendererRef) {
+      setHmdMode(true);
+      return;
+    }
     try {
       const started = await rendererRef.startPassthroughARSession();
       if (started) return;
     } catch (err) {
-      console.warn('Direct immersive-ar session failed, falling back to AR button', err);
+      console.warn('Direct immersive-ar session failed', err);
     }
-    const button = rendererRef.getXRButtonElement();
-    button.click();
+    window.alert('Could not enter immersive AR. Make sure this page is opened over HTTPS in the Quest Browser and WebXR immersive AR is allowed.');
   };
 
   return (

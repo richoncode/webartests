@@ -214,8 +214,7 @@ export class StereoRenderer {
   // Attach WebXR AR session button for HMD passthrough.
   getXRButtonElement(): HTMLElement {
     return ARButton.createButton(this.renderer, {
-      requiredFeatures: ['dom-overlay'],
-      optionalFeatures: ['local-floor'],
+      optionalFeatures: ['local-floor', 'dom-overlay'],
       domOverlay: { root: document.body }
     });
   }
@@ -224,15 +223,11 @@ export class StereoRenderer {
     const xr = navigator.xr;
     if (!xr) return false;
 
-    const supported = await xr.isSessionSupported('immersive-ar');
-    if (!supported) return false;
-
     const session = await xr.requestSession('immersive-ar', {
-      requiredFeatures: ['dom-overlay'],
-      optionalFeatures: ['local-floor'],
+      optionalFeatures: ['local-floor', 'dom-overlay'],
       domOverlay: { root: document.body }
     });
-    this.renderer.xr.setReferenceSpaceType('local-floor');
+    this.renderer.xr.setReferenceSpaceType('local');
     await this.renderer.xr.setSession(session);
     return true;
   }
