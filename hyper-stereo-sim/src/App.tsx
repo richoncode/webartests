@@ -10,32 +10,6 @@ import { TennisCourt } from './venue/TennisCourt';
 import { EmptyVenue } from './venue/EmptyVenue';
 import { StereoRenderer } from './renderer/StereoRenderer';
 
-const defaultRigConfig: CameraRigConfiguration = {
-  x: Math.sqrt((58 / 3.28084) ** 2 - (15 / 3.28084) ** 2),
-  y: 0.0,
-  z: 15 / 3.28084,
-  baselineMeters: 4 / 3.28084,
-  yaw: 0,
-  pitch: -7.1,
-  roll: 0,
-  fov: 69.0,
-  cameraProfileId: 'actual-s35-plus-9-6-11mm',
-  aspect: 16 / 9,
-  near: 0.1,
-  far: 100,
-  parallel: true,
-  convergenceTarget: { x: 0, y: 0, z: 0 },
-  lookAtTargetEnabled: true,
-  lookAtTarget: { x: 0, y: 0, z: 0.0 },
-  sphericalMode: true,
-  sphericalAnchorId: 'center-court',
-  sphericalAzimuth: 0,
-  sphericalDistance: Math.sqrt((58 / 3.28084) ** 2 - (15 / 3.28084) ** 2),
-  sphericalDistanceMode: 'direct',
-  sphericalMeasureTarget: 'center-court',
-  sphericalElevation: 15 / 3.28084
-};
-
 const defaultStereoConfig: StereoConfiguration = {
   displayMode: '3d-planning',
   eyeOrder: 'left-right',
@@ -192,13 +166,14 @@ const createLowTrussActualDisp50Preset = (): VenuePreset => ({
 });
 
 export const App: React.FC = () => {
-  const [venueId, setVenueId] = useState('tennis-court');
-  const [rig, setRig] = useState<CameraRigConfiguration>(defaultRigConfig);
-  const [stereo, setStereo] = useState<StereoConfiguration>(defaultStereoConfig);
-  const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(defaultVisConfig);
+  const startupPreset = createLowTrussActualOverlayPreset();
+  const [venueId, setVenueId] = useState(startupPreset.venueId);
+  const [rig, setRig] = useState<CameraRigConfiguration>(startupPreset.rig);
+  const [stereo, setStereo] = useState<StereoConfiguration>(startupPreset.stereo);
+  const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(startupPreset.visualization);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
-  const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(null);
-  const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(0.42);
+  const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(startupPreset.overlayImageUrl || null);
+  const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(startupPreset.overlayOpacity ?? 0.42);
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
