@@ -250,9 +250,13 @@ export const App: React.FC = () => {
   const [hmdRenderMode, setHmdRenderMode] = useState<'stereo' | 'sbs'>('stereo');
   const [recorderSnapshot, setRecorderSnapshot] = useState<ActionRecorderSnapshot>({
     recording: false,
+    replaying: false,
+    micActive: false,
     hasRecording: false,
+    hasReplay: false,
     elapsedMs: 0,
-    eventCount: 0
+    eventCount: 0,
+    commentaryCount: 0
   });
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
@@ -390,6 +394,9 @@ export const App: React.FC = () => {
     onRecorderStart: () => window.__hyperStereoActionRecorder?.start(),
     onRecorderStop: () => window.__hyperStereoActionRecorder?.stop(),
     onRecorderSave: () => window.__hyperStereoActionRecorder?.save(),
+    onRecorderReplay: () => window.__hyperStereoActionRecorder?.replay(),
+    onRecorderLoadReplay: () => window.__hyperStereoActionRecorder?.openReplayPicker(),
+    onRecorderToggleMic: () => void window.__hyperStereoActionRecorder?.toggleMic(),
     onCommitState: handleCommitState,
     unit
   });

@@ -67,13 +67,20 @@ export interface HmdControlContext {
   onExitHmd?: () => void;
   recorderSnapshot?: {
     recording: boolean;
+    replaying: boolean;
+    micActive: boolean;
     hasRecording: boolean;
+    hasReplay: boolean;
     elapsedMs: number;
     eventCount: number;
+    commentaryCount: number;
   };
   onRecorderStart?: () => void;
   onRecorderStop?: () => void;
   onRecorderSave?: () => void;
+  onRecorderReplay?: () => void;
+  onRecorderLoadReplay?: () => void;
+  onRecorderToggleMic?: () => void;
   onCommitState: () => void;
   unit: 'feet' | 'meters';
 }
@@ -178,13 +185,25 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
     onRecorderStart,
     onRecorderStop,
     onRecorderSave,
+    onRecorderReplay,
+    onRecorderLoadReplay,
+    onRecorderToggleMic,
     onCommitState,
     unit
   } = ctx;
   const displayUnit = unitLabel(unit);
   const directDistance = directDistanceMeters(rig);
   const vergenceAngle = rig.vergenceAngleDeg ?? 0;
-  const recorder = recorderSnapshot || { recording: false, hasRecording: false, elapsedMs: 0, eventCount: 0 };
+  const recorder = recorderSnapshot || {
+    recording: false,
+    replaying: false,
+    micActive: false,
+    hasRecording: false,
+    hasReplay: false,
+    elapsedMs: 0,
+    eventCount: 0,
+    commentaryCount: 0
+  };
   const baselinePresets = [
     { label: 'Human', meters: 0.065 },
     { label: "1'", meters: 1 / METERS_TO_FEET },
@@ -388,12 +407,12 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       panel: 'right',
       section: 'Recorder',
       kind: 'button-row',
-      label: `${recorder.recording ? 'Recording' : 'Recorder'} ${formatRecorderTime(recorder.elapsedMs)} · ${recorder.eventCount} event${recorder.eventCount === 1 ? '' : 's'}`,
+      label: `${recorder.recording ? 'Recording' : recorder.replaying ? 'Replaying' : 'Recorder'} ${formatRecorderTime(recorder.elapsedMs)} · ${recorder.eventCount} event${recorder.eventCount === 1 ? '' : 's'}`,
       buttons: [
         {
           id: 'start',
           label: 'Start',
-          disabled: recorder.recording,
+          disabled: recorder.recording || recorder.replaying,
           onClick: () => onRecorderStart?.()
         },
         {
@@ -405,8 +424,28 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
         {
           id: 'save',
           label: 'Save',
-          disabled: recorder.recording || !recorder.hasRecording,
+          disabled: recorder.recording || recorder.replaying || !recorder.hasRecording,
           onClick: () => onRecorderSave?.()
+        },
+        {
+          id: 'mic',
+          label: recorder.micActive ? 'Mic Off' : 'Mic',
+          active: recorder.micActive,
+          disabled: !recorder.recording || recorder.replaying,
+          onClick: () => onRecorderToggleMic?.()
+        },
+        {
+          id: 'load',
+          label: 'Load',
+          disabled: recorder.recording || recorder.replaying,
+          onClick: () => onRecorderLoadReplay?.()
+        },
+        {
+          id: 'replay',
+          label: recorder.replaying ? 'Playing' : 'Replay',
+          active: recorder.replaying,
+          disabled: recorder.recording || recorder.replaying || !recorder.hasReplay,
+          onClick: () => onRecorderReplay?.()
         }
       ]
     }

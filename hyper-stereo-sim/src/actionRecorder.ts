@@ -21,35 +21,60 @@ interface RecorderEvent {
   scroll?: { x: number; y: number };
 }
 
+interface RecorderCommentary {
+  t: number;
+  text: string;
+  final: boolean;
+}
+
 interface RecorderMeta {
   startUrl: string;
   viewport: { width: number; height: number };
   userAgent: string;
   startedAt: string;
   durationMs: number;
+  commentaryMode?: 'speech-recognition' | 'manual-note';
+}
+
+interface RecordingPayload {
+  meta: RecorderMeta;
+  events: RecorderEvent[];
+  commentary?: RecorderCommentary[];
 }
 
 interface RecorderState {
   recording: boolean;
+  replaying: boolean;
+  micActive: boolean;
   startedAtMs: number;
   startedAtIso: string;
   startUrl: string;
   events: RecorderEvent[];
+  commentary: RecorderCommentary[];
   durationMs: number;
   hasRecording: boolean;
+  loadedReplay?: RecordingPayload;
 }
 
 export interface ActionRecorderSnapshot {
   recording: boolean;
+  replaying: boolean;
+  micActive: boolean;
   hasRecording: boolean;
+  hasReplay: boolean;
   elapsedMs: number;
   eventCount: number;
+  commentaryCount: number;
 }
 
 export interface ActionRecorderApi {
   start: () => void;
   stop: () => void;
   save: () => void;
+  replay: () => void;
+  openReplayPicker: () => void;
+  loadReplayFile: (file: File) => Promise<void>;
+  toggleMic: () => Promise<void>;
   markTransition: (label: string) => void;
   getSnapshot: () => ActionRecorderSnapshot;
   subscribe: (listener: (snapshot: ActionRecorderSnapshot) => void) => () => void;
@@ -244,23 +269,55 @@ const isTextEntryElement = (element: Element) => {
 const shouldIgnoreEvent = (event: Event, host: HTMLElement) =>
   event.composedPath().some(item => item === host);
 
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+const getSpeechRecognition = (): SpeechRecognitionConstructor | undefined => {
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+};
+
 export const installActionRecorder = () => {
   if (window.__hyperStereoActionRecorderInstalled) return;
   window.__hyperStereoActionRecorderInstalled = true;
 
   const state: RecorderState = {
     recording: false,
+    replaying: false,
+    micActive: false,
     startedAtMs: 0,
     startedAtIso: '',
     startUrl: '',
     events: [],
+    commentary: [],
     durationMs: 0,
-    hasRecording: false
+    hasRecording: false,
+    loadedReplay: undefined
   };
 
   let timerId = 0;
   let lastScrollCapture = 0;
   let lastUrl = window.location.href;
+  let recognition: SpeechRecognition | undefined;
+  let replayAbort = false;
   const subscribers = new Set<(snapshot: ActionRecorderSnapshot) => void>();
 
   const host = document.createElement('div');
@@ -277,7 +334,7 @@ export const installActionRecorder = () => {
       :host { all: initial; }
       .hsar-widget {
         box-sizing: border-box;
-        min-width: 220px;
+        width: 340px;
         padding: 10px;
         border: 1px solid rgba(255,255,255,0.22);
         border-radius: 8px;
@@ -305,7 +362,8 @@ export const installActionRecorder = () => {
         box-shadow: 0 0 0 4px rgba(255,56,56,0.16);
       }
       .hsar-controls {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
       }
       .hsar-button {
@@ -326,14 +384,47 @@ export const installActionRecorder = () => {
         border-color: #5b9bd5;
         color: #8fc5ff;
       }
+      .hsar-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .hsar-file {
+        display: none;
+      }
+      .hsar-commentary {
+        margin-top: 8px;
+        padding: 7px;
+        border: 1px solid #2d2d2d;
+        border-radius: 5px;
+        background: rgba(255,255,255,0.04);
+        color: #aaa;
+        line-height: 1.35;
+      }
+      .hsar-commentary strong {
+        color: #f2f2f2;
+      }
+      .hsar-widget[data-mic="true"] .hsar-mic {
+        border-color: #ff3838;
+        color: #ffb3b3;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay {
+        border-color: #f0a040;
+        color: #ffd166;
+      }
     </style>
-    <div class="hsar-widget" data-recording="false">
-      <div class="hsar-status"><span class="hsar-dot"></span><span class="hsar-time">00:00</span><span class="hsar-count">0 events</span></div>
+    <div class="hsar-widget" data-recording="false" data-replaying="false" data-mic="false">
+      <div class="hsar-status"><span class="hsar-dot"></span><span class="hsar-time">00:00</span><span class="hsar-count">0 events</span><span class="hsar-loaded"></span></div>
       <div class="hsar-controls">
         <button class="hsar-button hsar-start" type="button">Start</button>
         <button class="hsar-button hsar-stop" type="button" disabled>Stop</button>
         <button class="hsar-button hsar-save" type="button" disabled>Save/Download</button>
+        <button class="hsar-button hsar-mic" type="button">Mic Notes</button>
+        <button class="hsar-button hsar-load" type="button">Load Replay</button>
+        <button class="hsar-button hsar-replay" type="button" disabled>Replay</button>
       </div>
+      <input class="hsar-file" type="file" accept="application/json,.json" />
+      <div class="hsar-commentary"><strong>Commentary:</strong> mic notes are exported as timestamped text for AI narration/context.</div>
     </div>
   `;
 
@@ -341,8 +432,13 @@ export const installActionRecorder = () => {
   const startButton = shadow.querySelector('.hsar-start') as HTMLButtonElement;
   const stopButton = shadow.querySelector('.hsar-stop') as HTMLButtonElement;
   const saveButton = shadow.querySelector('.hsar-save') as HTMLButtonElement;
+  const micButton = shadow.querySelector('.hsar-mic') as HTMLButtonElement;
+  const loadButton = shadow.querySelector('.hsar-load') as HTMLButtonElement;
+  const replayButton = shadow.querySelector('.hsar-replay') as HTMLButtonElement;
+  const fileInput = shadow.querySelector('.hsar-file') as HTMLInputElement;
   const timeLabel = shadow.querySelector('.hsar-time') as HTMLElement;
   const countLabel = shadow.querySelector('.hsar-count') as HTMLElement;
+  const loadedLabel = shadow.querySelector('.hsar-loaded') as HTMLElement;
 
   const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
 
@@ -353,13 +449,129 @@ export const installActionRecorder = () => {
     return `${minutes}:${seconds}`;
   };
 
+  const resolveByXpath = (xpath: string) => {
+    try {
+      const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      return result.singleNodeValue instanceof Element ? result.singleNodeValue : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const elementTextMatches = (element: Element, text: string) =>
+    normalizeText(element.textContent || element.getAttribute('aria-label')).includes(text);
+
+  const resolveSelector = (selectors?: SelectorCandidates) => {
+    if (!selectors) return undefined;
+
+    const candidates: (Element | undefined | null)[] = [];
+    if (selectors.testId) {
+      candidates.push(document.querySelector(`[data-testid="${cssEscape(selectors.testId)}"]`));
+      candidates.push(document.querySelector(`[data-test="${cssEscape(selectors.testId)}"]`));
+    }
+    if (selectors.id) candidates.push(document.getElementById(selectors.id));
+    if (selectors.css) {
+      try {
+        const matches = Array.from(document.querySelectorAll(selectors.css));
+        candidates.push(typeof selectors.nth === 'number' ? matches[selectors.nth] : matches[0]);
+      } catch {
+        // Keep walking lower-priority selectors.
+      }
+    }
+    if (selectors.role && selectors.name) {
+      candidates.push(
+        Array.from(document.querySelectorAll('*')).find(element =>
+          getExplicitRole(element) === selectors.role && getAccessibleName(element) === selectors.name
+        )
+      );
+    }
+    if (selectors.text) {
+      candidates.push(
+        Array.from(document.querySelectorAll('button,a,[role="button"],[role="menuitem"],[role="tab"],summary')).find(element =>
+          elementTextMatches(element, selectors.text || '')
+        )
+      );
+    }
+    if (selectors.xpath) candidates.push(resolveByXpath(selectors.xpath));
+
+    return candidates.find((candidate): candidate is Element => Boolean(candidate));
+  };
+
+  const setElementValue = (element: Element, value = '') => {
+    if (element instanceof HTMLInputElement) {
+      if (element.type === 'checkbox' || element.type === 'radio') {
+        element.checked = value === 'true';
+      } else {
+        element.value = value;
+      }
+      return;
+    }
+    if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+      element.value = value;
+      return;
+    }
+    if (element instanceof HTMLElement && element.isContentEditable) {
+      element.innerText = value;
+    }
+  };
+
+  const dispatchInputEvents = (element: Element, type: 'input' | 'change') => {
+    element.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+  };
+
+  const replayEvent = (event: RecorderEvent) => {
+    if (event.type === 'navigation') {
+      if (event.url && event.url !== window.location.href && event.url !== state.loadedReplay?.meta.startUrl) {
+        history.pushState(null, '', event.url);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+
+    if (event.type === 'scroll') {
+      const target = resolveSelector(event.selectors);
+      if (target instanceof HTMLElement && event.scroll) {
+        target.scrollTo(event.scroll.x, event.scroll.y);
+      } else if (event.scroll) {
+        window.scrollTo(event.scroll.x, event.scroll.y);
+      }
+      return;
+    }
+
+    const target = resolveSelector(event.selectors);
+    if (!target) return;
+
+    if (event.type === 'click') {
+      (target as HTMLElement).click();
+      return;
+    }
+
+    if (event.type === 'input' || event.type === 'change') {
+      setElementValue(target, event.value);
+      dispatchInputEvents(target, event.type);
+      return;
+    }
+
+    if (event.type === 'keypress') {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true, cancelable: true }));
+    }
+  };
+
   const updateUi = () => {
     widget.dataset.recording = String(state.recording);
+    widget.dataset.replaying = String(state.replaying);
+    widget.dataset.mic = String(state.micActive);
     timeLabel.textContent = formatMs(elapsed());
     countLabel.textContent = `${state.events.length} event${state.events.length === 1 ? '' : 's'}`;
+    loadedLabel.textContent = state.loadedReplay ? 'Replay loaded' : '';
     startButton.disabled = state.recording;
     stopButton.disabled = !state.recording;
     saveButton.disabled = state.recording || !state.hasRecording;
+    micButton.disabled = !state.recording || state.replaying;
+    loadButton.disabled = state.recording || state.replaying;
+    replayButton.disabled = state.recording || state.replaying || !state.loadedReplay;
+    micButton.textContent = state.micActive ? 'Stop Mic' : 'Mic Notes';
+    replayButton.textContent = state.replaying ? 'Replaying' : 'Replay';
     const snapshot = getSnapshot();
     subscribers.forEach(listener => listener(snapshot));
   };
@@ -382,10 +594,67 @@ export const installActionRecorder = () => {
 
   const getSnapshot = (): ActionRecorderSnapshot => ({
     recording: state.recording,
+    replaying: state.replaying,
+    micActive: state.micActive,
     hasRecording: state.hasRecording,
+    hasReplay: Boolean(state.loadedReplay),
     elapsedMs: elapsed(),
-    eventCount: state.events.length
+    eventCount: state.events.length,
+    commentaryCount: state.commentary.length
   });
+
+  const stopMic = () => {
+    if (!state.micActive) return;
+    state.micActive = false;
+    recognition?.stop();
+    recognition = undefined;
+    updateUi();
+  };
+
+  const addCommentary = (text: string, final: boolean) => {
+    const normalized = normalizeText(text);
+    if (!normalized || !state.recording) return;
+    state.commentary.push({ t: elapsed(), text: normalized, final });
+    updateUi();
+  };
+
+  const toggleMic = async () => {
+    if (!state.recording) return;
+    if (state.micActive) {
+      stopMic();
+      return;
+    }
+
+    const SpeechRecognitionApi = getSpeechRecognition();
+    if (!SpeechRecognitionApi) {
+      const note = window.prompt('Speech recognition is not available here. Add a manual commentary note?');
+      if (note) addCommentary(note, true);
+      return;
+    }
+
+    const instance = new SpeechRecognitionApi();
+    instance.continuous = true;
+    instance.interimResults = true;
+    instance.lang = navigator.language || 'en-US';
+    instance.onresult = (event) => {
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        addCommentary(result[0]?.transcript || '', result.isFinal);
+      }
+    };
+    instance.onerror = () => {
+      state.micActive = false;
+      updateUi();
+    };
+    instance.onend = () => {
+      state.micActive = false;
+      updateUi();
+    };
+    recognition = instance;
+    state.micActive = true;
+    instance.start();
+    updateUi();
+  };
 
   const startRecording = () => {
     if (state.recording) return;
@@ -394,6 +663,7 @@ export const installActionRecorder = () => {
     state.startedAtIso = new Date().toISOString();
     state.startUrl = window.location.href;
     state.events = [];
+    state.commentary = [];
     state.durationMs = 0;
     state.hasRecording = false;
     lastUrl = window.location.href;
@@ -405,6 +675,7 @@ export const installActionRecorder = () => {
 
   const stopRecording = () => {
     if (!state.recording) return;
+    stopMic();
     state.durationMs = elapsed();
     state.recording = false;
     state.hasRecording = true;
@@ -419,9 +690,10 @@ export const installActionRecorder = () => {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       userAgent: navigator.userAgent,
       startedAt: state.startedAtIso,
-      durationMs: state.durationMs
+      durationMs: state.durationMs,
+      commentaryMode: state.commentary.length ? 'speech-recognition' : undefined
     };
-    const payload = { meta, events: state.events };
+    const payload: RecordingPayload = { meta, events: state.events, commentary: state.commentary };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -437,10 +709,50 @@ export const installActionRecorder = () => {
     record({ type: 'navigation', value: label });
   };
 
+  const loadReplayFile = async (file: File) => {
+    const payload = JSON.parse(await file.text()) as RecordingPayload;
+    if (!payload?.meta?.startUrl || !Array.isArray(payload.events)) {
+      throw new Error('Invalid recording file');
+    }
+    state.loadedReplay = payload;
+    updateUi();
+  };
+
+  const openReplayPicker = () => {
+    if (state.recording || state.replaying) return;
+    fileInput.click();
+  };
+
+  const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+  const replay = async () => {
+    if (!state.loadedReplay || state.replaying || state.recording) return;
+    replayAbort = false;
+    state.replaying = true;
+    updateUi();
+
+    const events = state.loadedReplay.events;
+    let previousTime = 0;
+    for (const event of events) {
+      if (replayAbort) break;
+      const delay = Math.max(0, event.t - previousTime);
+      previousTime = event.t;
+      await sleep(delay);
+      replayEvent(event);
+    }
+
+    state.replaying = false;
+    updateUi();
+  };
+
   window.__hyperStereoActionRecorder = {
     start: startRecording,
     stop: stopRecording,
     save: downloadRecording,
+    replay,
+    openReplayPicker,
+    loadReplayFile,
+    toggleMic,
     markTransition,
     getSnapshot,
     subscribe: (listener) => {
@@ -453,6 +765,17 @@ export const installActionRecorder = () => {
   startButton.addEventListener('click', startRecording);
   stopButton.addEventListener('click', stopRecording);
   saveButton.addEventListener('click', downloadRecording);
+  micButton.addEventListener('click', () => void toggleMic());
+  loadButton.addEventListener('click', openReplayPicker);
+  replayButton.addEventListener('click', () => void replay());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    void loadReplayFile(file).catch(error => {
+      window.alert(error instanceof Error ? error.message : 'Unable to load recording');
+    });
+    fileInput.value = '';
+  });
 
   document.addEventListener('click', (event) => {
     if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
