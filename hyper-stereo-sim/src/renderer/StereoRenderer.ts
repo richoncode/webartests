@@ -73,7 +73,7 @@ export class StereoRenderer {
   private xrUiPanels: XrUiPanel[] = [];
   private hmdControls: HmdControlDefinition[] = [];
   private xrRaycaster = new THREE.Raycaster();
-  private xrControllerDrag: { controller: THREE.Group; panel: XrUiPanel; region: XrUiHitRegion } | null = null;
+  private xrControllerDrag: { controller: THREE.Group; panelSide: 'left' | 'right'; regionId: string } | null = null;
   private xrControllers: THREE.Group[] = [];
   private xrHoveredRegionId: string | null = null;
 
@@ -1020,14 +1020,15 @@ export class StereoRenderer {
     if (!hit) return;
     this.activateXrUiRegion(hit.panel, hit.region, hit.uv.x);
     if (hit.region.kind === 'slider') {
-      this.xrControllerDrag = { controller, panel: hit.panel, region: hit.region };
+      this.xrControllerDrag = { controller, panelSide: hit.panel.side, regionId: hit.region.id };
     }
   }
 
   private handleXrSelectEnd() {
     const drag = this.xrControllerDrag;
     this.xrControllerDrag = null;
-    const control = drag?.region.control;
+    const panel = drag ? this.xrUiPanels.find(candidate => candidate.side === drag.panelSide) : null;
+    const control = panel?.regions.find(region => region.id === drag?.regionId)?.control;
     if (control?.kind === 'number') {
       control.onCommit?.();
     }
@@ -1048,8 +1049,8 @@ export class StereoRenderer {
     const drag = this.xrControllerDrag;
     if (!drag) return;
     const hit = this.getXrUiHit(drag.controller);
-    if (!hit || hit.panel !== drag.panel || hit.region !== drag.region) return;
-    this.activateXrUiRegion(drag.panel, drag.region, hit.uv.x);
+    if (!hit || hit.panel.side !== drag.panelSide || hit.region.id !== drag.regionId) return;
+    this.activateXrUiRegion(hit.panel, hit.region, hit.uv.x);
   }
 
   private getXrUiHit(controller: THREE.Group) {
