@@ -58,6 +58,8 @@ export interface HmdControlContext {
   setRig: React.Dispatch<React.SetStateAction<CameraRigConfiguration>>;
   stereo: StereoConfiguration;
   setStereo: React.Dispatch<React.SetStateAction<StereoConfiguration>>;
+  hmdRenderMode?: 'stereo' | 'sbs';
+  setHmdRenderMode?: React.Dispatch<React.SetStateAction<'stereo' | 'sbs'>>;
   presets: VenuePreset[];
   onLoadValuePreset: (preset: VenuePreset) => void;
   onSavePreset: (name: string) => void;
@@ -260,6 +262,27 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       formattedValue: `${vergenceAngle > 0 ? '+' : ''}${vergenceAngle.toFixed(2)} deg`,
       onChange: value => setRig(prev => ({ ...prev, actualCameras: undefined, vergenceAngleDeg: Math.abs(value) < 0.025 ? 0 : value })),
       onCommit: onCommitState
+    },
+    {
+      id: 'hmd.renderMode',
+      panel: 'right',
+      section: 'Render Mode',
+      kind: 'button-row',
+      label: 'VR Screen',
+      buttons: [
+        {
+          id: 'stereo',
+          label: 'Stereo',
+          active: (ctx.hmdRenderMode ?? 'stereo') === 'stereo',
+          onClick: () => ctx.setHmdRenderMode?.('stereo')
+        },
+        {
+          id: 'sbs',
+          label: 'SBS',
+          active: ctx.hmdRenderMode === 'sbs',
+          onClick: () => ctx.setHmdRenderMode?.('sbs')
+        }
+      ]
     },
     {
       id: 'stereo.quality',

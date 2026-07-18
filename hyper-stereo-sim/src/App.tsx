@@ -202,6 +202,7 @@ export const App: React.FC = () => {
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
+  const [hmdRenderMode, setHmdRenderMode] = useState<'stereo' | 'sbs'>('stereo');
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -310,6 +311,8 @@ export const App: React.FC = () => {
     setRig,
     stereo,
     setStereo,
+    hmdRenderMode,
+    setHmdRenderMode,
     presets,
     onLoadValuePreset: loadPresetValuesOnly,
     onSavePreset: savePreset,
@@ -446,6 +449,7 @@ export const App: React.FC = () => {
           presetOverlayUrl={presetOverlayUrl}
           presetOverlayOpacity={presetOverlayOpacity}
           hmdControls={hmdControls}
+          hmdRenderMode={hmdRenderMode}
         />
 
         {!hmdMode && (

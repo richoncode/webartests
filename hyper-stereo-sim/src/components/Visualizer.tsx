@@ -19,6 +19,7 @@ interface VisualizerProps {
   presetOverlayUrl?: string | null;
   presetOverlayOpacity?: number;
   hmdControls: HmdControlDefinition[];
+  hmdRenderMode: 'stereo' | 'sbs';
 }
 
 export const Visualizer: React.FC<VisualizerProps> = ({
@@ -34,7 +35,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   unit,
   presetOverlayUrl,
   presetOverlayOpacity = 0.42,
-  hmdControls
+  hmdControls,
+  hmdRenderMode
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -239,6 +241,11 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     if (!rendererInstanceRef.current) return;
     rendererInstanceRef.current.setHmdControlDefinitions(hmdControls);
   }, [hmdControls]);
+
+  useEffect(() => {
+    if (!rendererInstanceRef.current) return;
+    rendererInstanceRef.current.setHmdRenderMode(hmdRenderMode);
+  }, [hmdRenderMode]);
 
   const updateBehindRigView = (renderer: StereoRenderer) => {
     const rigPos = new THREE.Vector3(rig.x, rig.y, rig.z);

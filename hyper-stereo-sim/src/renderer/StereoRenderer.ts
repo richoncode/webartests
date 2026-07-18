@@ -64,6 +64,12 @@ export class StereoRenderer {
   private sbsTexture: THREE.Texture;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
+  private sbsPreviewPanel: THREE.Mesh;
+  private sbsResolutionLabel: THREE.Mesh;
+  private sbsResolutionTexture: THREE.CanvasTexture;
+  private sbsResolutionCanvas: HTMLCanvasElement;
+  private sbsResolutionCtx: CanvasRenderingContext2D;
+  private hmdRenderMode: 'stereo' | 'sbs' = 'stereo';
   private xrPanelDistanceMeters = 4 / 3.28084;
   private xrPanelWidthMeters = 1.25;
   private xrPanelPlaced = false;
@@ -136,6 +142,11 @@ export class StereoRenderer {
     this.stereoPanelGroup = stereoPanel.group;
     this.leftEyePanel = stereoPanel.leftPanel;
     this.rightEyePanel = stereoPanel.rightPanel;
+    this.sbsPreviewPanel = stereoPanel.sbsPreviewPanel;
+    this.sbsResolutionLabel = stereoPanel.sbsResolutionLabel;
+    this.sbsResolutionTexture = stereoPanel.sbsResolutionTexture;
+    this.sbsResolutionCanvas = stereoPanel.sbsResolutionCanvas;
+    this.sbsResolutionCtx = stereoPanel.sbsResolutionCtx;
     this.scene.add(this.stereoPanelGroup);
     this.xrUiGroup = new THREE.Group();
     this.xrUiGroup.visible = false;
@@ -237,6 +248,11 @@ export class StereoRenderer {
   setHmdControlDefinitions(controls: HmdControlDefinition[]) {
     this.hmdControls = controls;
     this.drawXrUiPanels();
+  }
+
+  setHmdRenderMode(mode: 'stereo' | 'sbs') {
+    this.hmdRenderMode = mode;
+    this.updateXrStereoPanelMode();
   }
 
   private applyXRScale(isPresenting: boolean) {
@@ -572,9 +588,38 @@ export class StereoRenderer {
 
   private createStereoPanel(sbsTexture: THREE.Texture) {
     const aspect = 16 / 9;
+    const sbsAspect = 32 / 9;
     const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
     const leftMaterial = this.createSbsEyeMaterial(sbsTexture, 0, 0.5);
     const rightMaterial = this.createSbsEyeMaterial(sbsTexture, 0.5, 1);
+    const sbsPreviewPanel = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / sbsAspect),
+      new THREE.MeshBasicMaterial({
+        map: sbsTexture,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      })
+    );
+    const sbsResolutionCanvas = document.createElement('canvas');
+    sbsResolutionCanvas.width = 768;
+    sbsResolutionCanvas.height = 96;
+    const sbsResolutionCtx = sbsResolutionCanvas.getContext('2d');
+    if (!sbsResolutionCtx) {
+      throw new Error('Could not create SBS resolution label canvas');
+    }
+    const sbsResolutionTexture = new THREE.CanvasTexture(sbsResolutionCanvas);
+    sbsResolutionTexture.colorSpace = THREE.SRGBColorSpace;
+    sbsResolutionTexture.minFilter = THREE.LinearFilter;
+    sbsResolutionTexture.magFilter = THREE.LinearFilter;
+    const sbsResolutionLabel = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / 8),
+      new THREE.MeshBasicMaterial({
+        map: sbsResolutionTexture,
+        transparent: true,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      })
+    );
 
     const group = new THREE.Group();
     group.visible = false;
@@ -582,15 +627,54 @@ export class StereoRenderer {
     const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
     leftPanel.layers.set(1);
     rightPanel.layers.set(2);
+    sbsPreviewPanel.layers.set(0);
+    sbsResolutionLabel.layers.set(0);
     leftPanel.renderOrder = 20;
     rightPanel.renderOrder = 20;
-    group.add(leftPanel, rightPanel);
+    sbsPreviewPanel.renderOrder = 20;
+    sbsResolutionLabel.renderOrder = 22;
+    sbsResolutionLabel.position.set(0, -(this.xrPanelWidthMeters / sbsAspect) / 2 - 0.08, 0.01);
+    sbsPreviewPanel.visible = false;
+    sbsResolutionLabel.visible = false;
+    group.add(leftPanel, rightPanel, sbsPreviewPanel, sbsResolutionLabel);
 
     return {
       group,
       leftPanel,
-      rightPanel
+      rightPanel,
+      sbsPreviewPanel,
+      sbsResolutionLabel,
+      sbsResolutionTexture,
+      sbsResolutionCanvas,
+      sbsResolutionCtx
     };
+  }
+
+  private updateSbsResolutionLabel() {
+    const ctx = this.sbsResolutionCtx;
+    const canvas = this.sbsResolutionCanvas;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.roundRect(ctx, 8, 8, canvas.width - 16, canvas.height - 16, 14, 'rgba(0,0,0,0.86)', 'rgba(91,155,213,0.85)');
+    ctx.fillStyle = '#8fc5ff';
+    ctx.font = '800 30px SF Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`sbsTexture ${this.sbsRenderTarget.width} x ${this.sbsRenderTarget.height}`, canvas.width / 2, 42);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '700 18px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.fillText('full source texture, not split by eye', canvas.width / 2, 70);
+    ctx.textAlign = 'left';
+    this.sbsResolutionTexture.needsUpdate = true;
+  }
+
+  private updateXrStereoPanelMode() {
+    const showSbsPreview = this.hmdRenderMode === 'sbs';
+    this.leftEyePanel.visible = !showSbsPreview;
+    this.rightEyePanel.visible = !showSbsPreview;
+    this.sbsPreviewPanel.visible = showSbsPreview;
+    this.sbsResolutionLabel.visible = showSbsPreview;
+    if (showSbsPreview) {
+      this.updateSbsResolutionLabel();
+    }
   }
 
   private createSbsEyeMaterial(texture: THREE.Texture, minU: number, maxU: number) {
