@@ -60,8 +60,7 @@ export class StereoRenderer {
   private xrScaleApplied = false;
   private desktopBackground: THREE.Color | null = null;
   private originalVenueMaterialColors = new WeakMap<THREE.Material, THREE.Color>();
-  private leftEyeTarget: THREE.WebGLRenderTarget;
-  private rightEyeTarget: THREE.WebGLRenderTarget;
+  private stereoPanelTarget: THREE.WebGLRenderTarget;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
   private xrPanelDistanceMeters = 4 / 3.28084;
@@ -130,8 +129,7 @@ export class StereoRenderer {
     this.xrGroup.add(this.targetMarker);
     const stereoPanel = this.createStereoPanel();
     this.stereoPanelGroup = stereoPanel.group;
-    this.leftEyeTarget = stereoPanel.leftTarget;
-    this.rightEyeTarget = stereoPanel.rightTarget;
+    this.stereoPanelTarget = stereoPanel.target;
     this.leftEyePanel = stereoPanel.leftPanel;
     this.rightEyePanel = stereoPanel.rightPanel;
     this.scene.add(this.stereoPanelGroup);
@@ -572,34 +570,35 @@ export class StereoRenderer {
   }
 
   private createStereoPanel() {
-    const targetWidth = 1024;
+    const targetWidth = 2048;
     const targetHeight = 576;
-    const leftTarget = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+    const target = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat
     });
-    const rightTarget = leftTarget.clone();
-    leftTarget.texture.colorSpace = THREE.SRGBColorSpace;
-    rightTarget.texture.colorSpace = THREE.SRGBColorSpace;
+    target.texture.colorSpace = THREE.SRGBColorSpace;
 
     const aspect = 16 / 9;
-    const geometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
+    const leftGeometry = new THREE.PlaneGeometry(this.xrPanelWidthMeters, this.xrPanelWidthMeters / aspect);
+    const rightGeometry = leftGeometry.clone();
+    this.setGeometryUvRange(leftGeometry, 0, 0.5);
+    this.setGeometryUvRange(rightGeometry, 0.5, 1);
     const leftMaterial = new THREE.MeshBasicMaterial({
-      map: leftTarget.texture,
+      map: target.texture,
       side: THREE.DoubleSide,
       toneMapped: false
     });
     const rightMaterial = new THREE.MeshBasicMaterial({
-      map: rightTarget.texture,
+      map: target.texture,
       side: THREE.DoubleSide,
       toneMapped: false
     });
 
     const group = new THREE.Group();
     group.visible = false;
-    const leftPanel = new THREE.Mesh(geometry, leftMaterial);
-    const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
+    const leftPanel = new THREE.Mesh(leftGeometry, leftMaterial);
+    const rightPanel = new THREE.Mesh(rightGeometry, rightMaterial);
     leftPanel.layers.set(1);
     rightPanel.layers.set(2);
     leftPanel.renderOrder = 20;
@@ -608,11 +607,19 @@ export class StereoRenderer {
 
     return {
       group,
-      leftTarget,
-      rightTarget,
+      target,
       leftPanel,
       rightPanel
     };
+  }
+
+  private setGeometryUvRange(geometry: THREE.BufferGeometry, minU: number, maxU: number) {
+    const uvs = geometry.getAttribute('uv') as THREE.BufferAttribute;
+    const span = maxU - minU;
+    for (let i = 0; i < uvs.count; i++) {
+      uvs.setX(i, minU + uvs.getX(i) * span);
+    }
+    uvs.needsUpdate = true;
   }
 
   private configureXREyeLayers() {
@@ -667,10 +674,8 @@ export class StereoRenderer {
     const panelHeight = this.xrPanelWidthMeters / aspect;
     this.leftEyePanel.scale.set(1, panelHeight / (this.xrPanelWidthMeters / (16 / 9)), 1);
     this.rightEyePanel.scale.copy(this.leftEyePanel.scale);
-    const metersPerPixel = this.xrPanelWidthMeters / this.leftEyeTarget.width;
-    const disparityMeters = ((this.lastStereoConfig?.disparityPixelOffset ?? 0) * metersPerPixel) / 2;
-    this.leftEyePanel.position.x = -disparityMeters;
-    this.rightEyePanel.position.x = disparityMeters;
+    this.leftEyePanel.position.x = 0;
+    this.rightEyePanel.position.x = 0;
   }
 
   private renderXRStereoPanelTextures() {
@@ -695,17 +700,40 @@ export class StereoRenderer {
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
 
-    const renderEyeTexture = (target: THREE.WebGLRenderTarget, camera: THREE.PerspectiveCamera) => {
-      this.renderer.setRenderTarget(target);
-      this.renderer.setViewport(0, 0, target.width, target.height);
-      this.renderer.setScissor(0, 0, target.width, target.height);
-      this.renderer.setScissorTest(true);
-      this.renderer.clear(true, true, true);
-      this.renderer.render(this.scene, camera);
-    };
+    const target = this.stereoPanelTarget;
+    const viewDisparityPx = this.lastStereoConfig.disparityPixelOffset ?? 0;
+    const leftViewShiftPx = -viewDisparityPx / 2;
+    const rightViewShiftPx = viewDisparityPx / 2;
+    const frameGrey = new THREE.Color(0x666666);
+    const sceneBg = this.scene.background instanceof THREE.Color
+      ? this.scene.background
+      : (this.desktopBackground ?? new THREE.Color(0x0a0a0a));
+    const { leftFrame, rightFrame, leftHalf, rightHalf } = this.getSideBySideFrameRects(
+      target.width,
+      target.height,
+      this.lastRigConfig.aspect || (16 / 9),
+      this.lastStereoConfig.eyeOrder
+    );
 
-    renderEyeTexture(this.leftEyeTarget, this.rig.leftCamera);
-    renderEyeTexture(this.rightEyeTarget, this.rig.rightCamera);
+    this.renderer.setRenderTarget(target);
+    this.renderer.setScissorTest(true);
+
+    [leftHalf, rightHalf].forEach(([x, y, width, height]) => {
+      this.renderer.setViewport(x, y, width, height);
+      this.renderer.setScissor(x, y, width, height);
+      this.renderer.setClearColor(frameGrey, 1);
+      this.renderer.clear(true, true, true);
+    });
+
+    [leftFrame, rightFrame].forEach(([x, y, width, height]) => {
+      this.renderer.setViewport(x, y, width, height);
+      this.renderer.setScissor(x, y, width, height);
+      this.renderer.setClearColor(sceneBg, 1);
+      this.renderer.clear(true, true, true);
+    });
+
+    this.renderCameraInRect(this.rig.leftCamera, leftFrame, leftViewShiftPx);
+    this.renderCameraInRect(this.rig.rightCamera, rightFrame, rightViewShiftPx);
 
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.xr.enabled = previousXR;
@@ -1118,8 +1146,7 @@ export class StereoRenderer {
     this.renderer.setAnimationLoop(null);
     this.transformControls.dispose();
     this.controls.dispose();
-    this.leftEyeTarget.dispose();
-    this.rightEyeTarget.dispose();
+    this.stereoPanelTarget.dispose();
     if (this.qualityHeatmap) {
       this.disposeObject(this.qualityHeatmap);
       this.qualityHeatmap = null;
