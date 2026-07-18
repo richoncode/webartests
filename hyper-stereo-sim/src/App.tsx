@@ -300,7 +300,8 @@ export const App: React.FC = () => {
     setRig(preset.rig);
     setStereo(prev => ({
       ...preset.stereo,
-      displayMode: prev.displayMode
+      displayMode: prev.displayMode,
+      showQualityOverlay: prev.showQualityOverlay
     }));
   };
 
@@ -311,6 +312,7 @@ export const App: React.FC = () => {
     setStereo,
     presets,
     onLoadValuePreset: loadPresetValuesOnly,
+    onSavePreset: savePreset,
     onCommitState: handleCommitState,
     unit
   });

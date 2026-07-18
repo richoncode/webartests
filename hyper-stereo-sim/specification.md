@@ -72,12 +72,14 @@ The right panel contains:
 
 - Stereo Quality toggle
 - Value Preset loader
+- Preset creation control for saving the current immersive setup
 - Disparity slider at the bottom of the panel
 
 When loading a value preset in VR mode:
 
 - Apply the preset rig/settings values needed for inspection.
 - Preserve the current view mode.
+- Preserve the current Stereo Quality toggle state.
 - Do not force the user out of the current HMD stereo viewing mode.
 
 ## UI Architecture Requirement

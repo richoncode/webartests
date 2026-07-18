@@ -60,6 +60,7 @@ export interface HmdControlContext {
   setStereo: React.Dispatch<React.SetStateAction<StereoConfiguration>>;
   presets: VenuePreset[];
   onLoadValuePreset: (preset: VenuePreset) => void;
+  onSavePreset: (name: string) => void;
   onCommitState: () => void;
   unit: 'feet' | 'meters';
 }
@@ -144,7 +145,7 @@ const setRigFromElevation = (rig: CameraRigConfiguration, elevationMeters: numbe
 };
 
 export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinition[] => {
-  const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onCommitState, unit } = ctx;
+  const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onSavePreset, onCommitState, unit } = ctx;
   const displayUnit = unitLabel(unit);
   const directDistance = directDistanceMeters(rig);
   const vergenceAngle = rig.vergenceAngleDeg ?? 0;
@@ -279,6 +280,25 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       label: 'Value Presets',
       presets,
       onLoad: onLoadValuePreset
+    },
+    {
+      id: 'presets.create',
+      panel: 'right',
+      section: 'Create Preset',
+      kind: 'button-row',
+      label: 'Save Current Setup',
+      buttons: [{
+        id: 'save-current',
+        label: 'Save Current',
+        onClick: () => {
+          const stamp = new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+          onSavePreset(`VR Preset ${stamp}`);
+        }
+      }]
     },
     {
       id: 'stereo.disparity',
