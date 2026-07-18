@@ -42,8 +42,10 @@ export class StereoRenderer {
   private rightEyeTarget: THREE.WebGLRenderTarget;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
-  private xrPanelDistanceMeters = 3 / 3.28084;
+  private xrPanelDistanceMeters = 4 / 3.28084;
   private xrPanelWidthMeters = 1.25;
+  private xrPanelPlaced = false;
+  private xrPanelBaseQuaternion = new THREE.Quaternion();
 
   constructor(container: HTMLDivElement) {
     this.container = container;
@@ -132,12 +134,14 @@ export class StereoRenderer {
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
       this.stereoPanelGroup.visible = true;
+      this.xrPanelPlaced = false;
       this.onXRPresentingChange?.(true);
     });
     this.renderer.xr.addEventListener('sessionend', () => {
       this.scene.background = this.desktopBackground;
       this.renderer.setClearAlpha(1);
       this.stereoPanelGroup.visible = false;
+      this.xrPanelPlaced = false;
       this.onXRPresentingChange?.(false);
     });
   }
@@ -573,13 +577,18 @@ export class StereoRenderer {
     const xrCamera = this.renderer.xr.getCamera();
     xrCamera.updateMatrixWorld(true);
 
-    const headPosition = new THREE.Vector3();
-    const headQuaternion = new THREE.Quaternion();
-    xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
+    if (!this.xrPanelPlaced) {
+      const headPosition = new THREE.Vector3();
+      const headQuaternion = new THREE.Quaternion();
+      xrCamera.matrixWorld.decompose(headPosition, headQuaternion, new THREE.Vector3());
 
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuaternion);
-    this.stereoPanelGroup.position.copy(headPosition).addScaledVector(forward, this.xrPanelDistanceMeters);
-    this.stereoPanelGroup.quaternion.copy(headQuaternion);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuaternion);
+      this.stereoPanelGroup.position.copy(headPosition).addScaledVector(forward, this.xrPanelDistanceMeters);
+      this.xrPanelBaseQuaternion.copy(headQuaternion);
+      this.xrPanelPlaced = true;
+    }
+
+    this.stereoPanelGroup.quaternion.copy(this.xrPanelBaseQuaternion);
 
     const rigPitch = this.lastRigConfig?.pitch ?? 0;
     this.stereoPanelGroup.rotateX(THREE.MathUtils.degToRad(rigPitch));
