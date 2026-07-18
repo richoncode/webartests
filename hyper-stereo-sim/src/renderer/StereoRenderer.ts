@@ -5,6 +5,28 @@ import { ARButton } from 'three/examples/jsm/webxr/ARButton.js';
 import { CameraRigConfiguration, StereoConfiguration } from '../types';
 import { StereoRig } from '../rig/StereoRig';
 import { BaseVenue } from '../venue/Venue';
+import { HmdControlDefinition } from '../components/HmdControlPanels';
+
+type XrUiHitRegion = {
+  id: string;
+  kind: 'button' | 'slider';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  control: HmdControlDefinition;
+  buttonIndex?: number;
+};
+
+type XrUiPanel = {
+  side: 'left' | 'right';
+  group: THREE.Group;
+  mesh: THREE.Mesh;
+  texture: THREE.CanvasTexture;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  regions: XrUiHitRegion[];
+};
 
 export class StereoRenderer {
   container: HTMLDivElement;
@@ -47,6 +69,11 @@ export class StereoRenderer {
   private xrPanelPlaced = false;
   private xrPanelPlacementFrames = 0;
   private xrPanelBaseQuaternion = new THREE.Quaternion();
+  private xrUiGroup: THREE.Group;
+  private xrUiPanels: XrUiPanel[] = [];
+  private hmdControls: HmdControlDefinition[] = [];
+  private xrRaycaster = new THREE.Raycaster();
+  private xrControllerDrag: { controller: THREE.Group; panel: XrUiPanel; region: XrUiHitRegion } | null = null;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
@@ -106,6 +133,11 @@ export class StereoRenderer {
     this.leftEyePanel = stereoPanel.leftPanel;
     this.rightEyePanel = stereoPanel.rightPanel;
     this.scene.add(this.stereoPanelGroup);
+    this.xrUiGroup = new THREE.Group();
+    this.xrUiGroup.visible = false;
+    this.scene.add(this.xrUiGroup);
+    this.createXrUiPanels();
+    this.setupXrControllers();
 
     // 6. Direct manipulation controls (TransformControls)
     this.transformControls = new TransformControls(this.planningCamera, this.renderer.domElement);
@@ -135,6 +167,7 @@ export class StereoRenderer {
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
       this.stereoPanelGroup.visible = false;
+      this.xrUiGroup.visible = false;
       this.xrPanelPlaced = false;
       this.xrPanelPlacementFrames = 0;
       this.onXRPresentingChange?.(true);
@@ -143,6 +176,7 @@ export class StereoRenderer {
       this.scene.background = this.desktopBackground;
       this.renderer.setClearAlpha(1);
       this.stereoPanelGroup.visible = false;
+      this.xrUiGroup.visible = false;
       this.xrPanelPlaced = false;
       this.xrPanelPlacementFrames = 0;
       this.onXRPresentingChange?.(false);
@@ -196,6 +230,11 @@ export class StereoRenderer {
     this.applyXRScale(this.renderer.xr.isPresenting);
   }
 
+  setHmdControlDefinitions(controls: HmdControlDefinition[]) {
+    this.hmdControls = controls;
+    this.drawXrUiPanels();
+  }
+
   private applyXRScale(isPresenting: boolean) {
     const shouldUseTabletopScale = isPresenting && this.vrScaleMode === 'tabletop';
     if (shouldUseTabletopScale && !this.xrScaleApplied) {
@@ -240,6 +279,7 @@ export class StereoRenderer {
     this.onViewerMoveCallback?.();
     if (isPresenting) {
       this.updateXRStereoPanel(frame);
+      this.updateXrControllerDrag();
       this.renderXRStereoPanelTextures();
       this.configureXREyeLayers();
       // Render only the room-space stereo screen and flanking UI in AR.
@@ -615,6 +655,9 @@ export class StereoRenderer {
 
     const rigPitch = this.lastRigConfig?.pitch ?? 0;
     this.stereoPanelGroup.rotateX(THREE.MathUtils.degToRad(rigPitch));
+    this.xrUiGroup.position.copy(this.stereoPanelGroup.position);
+    this.xrUiGroup.quaternion.copy(this.xrPanelBaseQuaternion);
+    this.xrUiGroup.visible = true;
 
     const aspect = this.lastRigConfig?.aspect || (16 / 9);
     const panelHeight = this.xrPanelWidthMeters / aspect;
@@ -628,6 +671,7 @@ export class StereoRenderer {
     const previousTarget = this.renderer.getRenderTarget();
     const previousXR = this.renderer.xr.enabled;
     const previousPanelVisible = this.stereoPanelGroup.visible;
+    const previousUiVisible = this.xrUiGroup.visible;
     const previousRigVisible = this.rig.group.visible;
     const previousTransformVisible = this.transformControls.visible;
     const previousClearColor = new THREE.Color();
@@ -635,6 +679,7 @@ export class StereoRenderer {
     const previousClearAlpha = this.renderer.getClearAlpha();
 
     this.stereoPanelGroup.visible = false;
+    this.xrUiGroup.visible = false;
     this.rig.group.visible = false;
     this.transformControls.visible = false;
     this.renderer.xr.enabled = false;
@@ -655,8 +700,366 @@ export class StereoRenderer {
     this.renderer.xr.enabled = previousXR;
     this.renderer.setClearColor(previousClearColor, previousClearAlpha);
     this.stereoPanelGroup.visible = previousPanelVisible;
+    this.xrUiGroup.visible = previousUiVisible;
     this.rig.group.visible = previousRigVisible;
     this.transformControls.visible = previousTransformVisible;
+  }
+
+  private createXrUiPanels() {
+    const makePanel = (side: 'left' | 'right') => {
+      const canvas = document.createElement('canvas');
+      canvas.width = side === 'left' ? 768 : 640;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not create XR UI canvas context');
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      const widthMeters = side === 'left' ? 0.58 : 0.46;
+      const heightMeters = 0.78;
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthMeters, heightMeters), material);
+      mesh.renderOrder = 30;
+      mesh.userData.xrUiSide = side;
+
+      const group = new THREE.Group();
+      group.position.set(side === 'left' ? -1.05 : 1.05, 0, -0.02);
+      group.add(mesh);
+      this.xrUiGroup.add(group);
+
+      const panel: XrUiPanel = {
+        side,
+        group,
+        mesh,
+        texture,
+        canvas,
+        ctx,
+        regions: []
+      };
+      this.xrUiPanels.push(panel);
+    };
+
+    makePanel('left');
+    makePanel('right');
+    this.drawXrUiPanels();
+  }
+
+  private setupXrControllers() {
+    [0, 1].forEach((index) => {
+      const controller = this.renderer.xr.getController(index);
+      controller.addEventListener('selectstart', () => this.handleXrSelectStart(controller));
+      controller.addEventListener('selectend', () => this.handleXrSelectEnd());
+
+      const pointerGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1.2)
+      ]);
+      const pointer = new THREE.Line(
+        pointerGeometry,
+        new THREE.LineBasicMaterial({ color: 0x8fc5ff, transparent: true, opacity: 0.65 })
+      );
+      pointer.name = 'XR UI Pointer';
+      controller.add(pointer);
+      this.scene.add(controller);
+    });
+  }
+
+  private drawXrUiPanels() {
+    this.xrUiPanels.forEach(panel => this.drawXrUiPanel(panel));
+  }
+
+  private drawXrUiPanel(panel: XrUiPanel) {
+    const { ctx, canvas } = panel;
+    const controls = this.hmdControls.filter(control => control.panel === panel.side);
+    panel.regions = [];
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.roundRect(ctx, 0, 0, canvas.width, canvas.height, 24, 'rgba(18,18,18,0.92)', 'rgba(91,155,213,0.45)');
+    ctx.fillStyle = '#f4f4f4';
+    ctx.font = '700 30px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.fillText(panel.side === 'left' ? 'Rig Controls' : 'Inspection', 34, 54);
+
+    let y = 94;
+    const sections = Array.from(new Set(controls.map(control => control.section)));
+    sections.forEach((section, sectionIndex) => {
+      if (sectionIndex > 0) {
+        ctx.strokeStyle = '#2a2a2a';
+        ctx.beginPath();
+        ctx.moveTo(30, y - 14);
+        ctx.lineTo(canvas.width - 30, y - 14);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#888';
+      ctx.font = '800 22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+      ctx.fillText(section.toUpperCase(), 34, y);
+      y += 34;
+
+      controls.filter(control => control.section === section).forEach((control) => {
+        if (control.kind === 'number') {
+          y = this.drawXrSlider(panel, control, y);
+        } else if (control.kind === 'toggle') {
+          y = this.drawXrButton(panel, control.id, control, 0, control.active ? control.activeLabel : control.inactiveLabel, control.active, y);
+        } else if (control.kind === 'button-row') {
+          y = this.drawXrButtonRow(panel, control, y);
+        } else {
+          y = this.drawXrPresetList(panel, control, y);
+        }
+      });
+
+      y += 14;
+    });
+
+    if (panel.side === 'right') {
+      ctx.fillStyle = '#777';
+      ctx.font = '18px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+      this.wrapXrText(ctx, 'Preset buttons load values only; current VR view stays active.', 34, canvas.height - 64, canvas.width - 68, 24);
+    }
+
+    panel.texture.needsUpdate = true;
+  }
+
+  private drawXrSlider(panel: XrUiPanel, control: HmdControlDefinition & { kind: 'number' }, y: number) {
+    const { ctx, canvas } = panel;
+    const x = 34;
+    const width = canvas.width - 68;
+    ctx.fillStyle = '#ddd';
+    ctx.font = '24px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.fillText(control.label, x, y);
+    ctx.fillStyle = '#5b9bd5';
+    ctx.font = '700 24px SF Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(control.formattedValue, x + width, y);
+    ctx.textAlign = 'left';
+
+    const trackY = y + 34;
+    ctx.strokeStyle = '#3a3a3a';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, trackY);
+    ctx.lineTo(x + width, trackY);
+    ctx.stroke();
+
+    const ratio = THREE.MathUtils.clamp((control.value - control.min) / Math.max(0.000001, control.max - control.min), 0, 1);
+    ctx.strokeStyle = '#5b9bd5';
+    ctx.beginPath();
+    ctx.moveTo(x, trackY);
+    ctx.lineTo(x + width * ratio, trackY);
+    ctx.stroke();
+    ctx.fillStyle = '#8fc5ff';
+    ctx.beginPath();
+    ctx.arc(x + width * ratio, trackY, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    panel.regions.push({
+      id: control.id,
+      kind: 'slider',
+      x,
+      y: trackY - 34,
+      width,
+      height: 74,
+      control
+    });
+
+    return y + 74;
+  }
+
+  private drawXrButton(
+    panel: XrUiPanel,
+    id: string,
+    control: HmdControlDefinition,
+    buttonIndex: number,
+    label: string,
+    active: boolean,
+    y: number,
+    x = 34,
+    width = panel.canvas.width - 68
+  ) {
+    const { ctx } = panel;
+    this.roundRect(ctx, x, y, width, 54, 10, active ? '#2e4057' : '#222', active ? '#5b9bd5' : '#3a3a3a');
+    ctx.fillStyle = active ? '#8fc5ff' : '#f0f0f0';
+    ctx.font = '800 22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + width / 2, y + 35);
+    ctx.textAlign = 'left';
+    panel.regions.push({
+      id,
+      kind: 'button',
+      x,
+      y,
+      width,
+      height: 54,
+      control,
+      buttonIndex
+    });
+    return y + 66;
+  }
+
+  private drawXrButtonRow(panel: XrUiPanel, control: HmdControlDefinition & { kind: 'button-row' }, y: number) {
+    const { ctx, canvas } = panel;
+    ctx.fillStyle = '#ddd';
+    ctx.font = '22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.fillText(control.label, 34, y);
+    y += 18;
+
+    const gap = 10;
+    const cols = panel.side === 'left' ? 4 : 2;
+    const buttonWidth = (canvas.width - 68 - gap * (cols - 1)) / cols;
+    control.buttons.forEach((button, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      this.drawXrButton(
+        panel,
+        `${control.id}.${button.id}`,
+        control,
+        index,
+        button.label,
+        Boolean(button.active),
+        y + row * 64,
+        34 + col * (buttonWidth + gap),
+        buttonWidth
+      );
+    });
+
+    return y + Math.ceil(control.buttons.length / cols) * 64 + 8;
+  }
+
+  private drawXrPresetList(panel: XrUiPanel, control: HmdControlDefinition & { kind: 'preset-list' }, y: number) {
+    const maxPresets = Math.min(control.presets.length, 8);
+    for (let index = 0; index < maxPresets; index++) {
+      const preset = control.presets[index];
+      y = this.drawXrButton(panel, `${control.id}.${preset.name}`, control, index, preset.name, false, y);
+    }
+    return y;
+  }
+
+  private roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+    fill: string,
+    stroke?: string
+  ) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  private wrapXrText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+    const words = text.split(' ');
+    let line = '';
+    words.forEach((word) => {
+      const testLine = line ? `${line} ${word}` : word;
+      if (ctx.measureText(testLine).width > maxWidth && line) {
+        ctx.fillText(line, x, y);
+        y += lineHeight;
+        line = word;
+      } else {
+        line = testLine;
+      }
+    });
+    if (line) ctx.fillText(line, x, y);
+  }
+
+  private handleXrSelectStart(controller: THREE.Group) {
+    const hit = this.getXrUiHit(controller);
+    if (!hit) return;
+    this.activateXrUiRegion(hit.panel, hit.region, hit.uv.x);
+    if (hit.region.kind === 'slider') {
+      this.xrControllerDrag = { controller, panel: hit.panel, region: hit.region };
+    }
+  }
+
+  private handleXrSelectEnd() {
+    const drag = this.xrControllerDrag;
+    this.xrControllerDrag = null;
+    const control = drag?.region.control;
+    if (control?.kind === 'number') {
+      control.onCommit?.();
+    }
+  }
+
+  private updateXrControllerDrag() {
+    const drag = this.xrControllerDrag;
+    if (!drag) return;
+    const hit = this.getXrUiHit(drag.controller);
+    if (!hit || hit.panel !== drag.panel || hit.region !== drag.region) return;
+    this.activateXrUiRegion(drag.panel, drag.region, hit.uv.x);
+  }
+
+  private getXrUiHit(controller: THREE.Group) {
+    const tempMatrix = new THREE.Matrix4();
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    this.xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    this.xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+    const intersections = this.xrRaycaster.intersectObjects(this.xrUiPanels.map(panel => panel.mesh), false);
+    const intersection = intersections[0];
+    if (!intersection || !intersection.uv) return null;
+
+    const panel = this.xrUiPanels.find(candidate => candidate.mesh === intersection.object);
+    if (!panel) return null;
+    const x = intersection.uv.x * panel.canvas.width;
+    const y = (1 - intersection.uv.y) * panel.canvas.height;
+    const region = panel.regions.find(candidate =>
+      x >= candidate.x &&
+      x <= candidate.x + candidate.width &&
+      y >= candidate.y &&
+      y <= candidate.y + candidate.height
+    );
+    if (!region) return null;
+    return { panel, region, uv: { x, y } };
+  }
+
+  private activateXrUiRegion(panel: XrUiPanel, region: XrUiHitRegion, hitX: number) {
+    const control = region.control;
+    if (region.kind === 'slider' && control.kind === 'number') {
+      const ratio = THREE.MathUtils.clamp((hitX - region.x) / Math.max(1, region.width), 0, 1);
+      const rawValue = control.min + ratio * (control.max - control.min);
+      const stepped = Math.round(rawValue / control.step) * control.step;
+      control.onChange(Number(stepped.toFixed(4)));
+      return;
+    }
+
+    if (region.kind !== 'button') return;
+    if (control.kind === 'toggle') {
+      control.onToggle();
+    } else if (control.kind === 'button-row' && region.buttonIndex !== undefined) {
+      control.buttons[region.buttonIndex]?.onClick();
+    } else if (control.kind === 'preset-list' && region.buttonIndex !== undefined) {
+      const preset = control.presets[region.buttonIndex];
+      if (preset) control.onLoad(preset);
+    }
+    this.drawXrUiPanels();
+    panel.texture.needsUpdate = true;
   }
 
   dispose() {

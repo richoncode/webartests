@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CameraRigConfiguration, StereoConfiguration, VisualizationConfiguration } from '../types';
 import { StereoRenderer } from '../renderer/StereoRenderer';
 import { BaseVenue } from '../venue/Venue';
+import { HmdControlDefinition } from './HmdControlPanels';
 
 interface VisualizerProps {
   rig: CameraRigConfiguration;
@@ -17,6 +18,7 @@ interface VisualizerProps {
   unit: 'feet' | 'meters';
   presetOverlayUrl?: string | null;
   presetOverlayOpacity?: number;
+  hmdControls: HmdControlDefinition[];
 }
 
 export const Visualizer: React.FC<VisualizerProps> = ({
@@ -31,7 +33,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   onXRPresentingChange,
   unit,
   presetOverlayUrl,
-  presetOverlayOpacity = 0.42
+  presetOverlayOpacity = 0.42,
+  hmdControls
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -231,6 +234,11 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     if (!rendererInstanceRef.current) return;
     rendererInstanceRef.current.setVRScaleMode(vrScaleMode);
   }, [vrScaleMode]);
+
+  useEffect(() => {
+    if (!rendererInstanceRef.current) return;
+    rendererInstanceRef.current.setHmdControlDefinitions(hmdControls);
+  }, [hmdControls]);
 
   const updateBehindRigView = (renderer: StereoRenderer) => {
     const rigPos = new THREE.Vector3(rig.x, rig.y, rig.z);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { SidebarLeft } from './components/SidebarLeft';
 import { SidebarRight } from './components/SidebarRight';
-import { HmdControlPanels } from './components/HmdControlPanels';
+import { buildHmdControlSchema } from './components/HmdControlPanels';
 import { Visualizer } from './components/Visualizer';
 import { CameraRigConfiguration, StereoConfiguration, VisualizationConfiguration, VenuePreset } from './types';
 import { BaseVenue } from './venue/Venue';
@@ -202,7 +202,6 @@ export const App: React.FC = () => {
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
-  const hmdOverlayRef = useRef<HTMLDivElement | null>(null);
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -216,20 +215,6 @@ export const App: React.FC = () => {
 
   const activeVenue: BaseVenue = venueId === 'tennis-court' ? tennisCourt.current : emptyVenue.current;
   const coordinateAnchors = activeVenue.getCoordinateAnchors();
-
-  useEffect(() => {
-    const overlay = hmdOverlayRef.current;
-    if (!overlay || !hmdMode) return;
-
-    const keepOverlayInteractive = (event: Event) => {
-      event.preventDefault();
-    };
-
-    overlay.addEventListener('beforexrselect', keepOverlayInteractive);
-    return () => {
-      overlay.removeEventListener('beforexrselect', keepOverlayInteractive);
-    };
-  }, [hmdMode]);
 
   // Load Saved Presets on Mount
   useEffect(() => {
@@ -318,6 +303,17 @@ export const App: React.FC = () => {
       displayMode: prev.displayMode
     }));
   };
+
+  const hmdControls = buildHmdControlSchema({
+    rig,
+    setRig,
+    stereo,
+    setStereo,
+    presets,
+    onLoadValuePreset: loadPresetValuesOnly,
+    onCommitState: handleCommitState,
+    unit
+  });
 
   const deletePreset = (name: string) => {
     const updated = presets.filter(p => p.name !== name);
@@ -447,60 +443,9 @@ export const App: React.FC = () => {
           unit={unit}
           presetOverlayUrl={presetOverlayUrl}
           presetOverlayOpacity={presetOverlayOpacity}
+          hmdControls={hmdControls}
         />
 
-        {hmdMode && (
-          <>
-            <div
-              ref={hmdOverlayRef}
-              style={{
-              position: 'absolute',
-              inset: '16px 24px',
-              zIndex: 40,
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '28px'
-            }}>
-              <HmdControlPanels
-                rig={rig}
-                setRig={setRig}
-                stereo={stereo}
-                setStereo={setStereo}
-                presets={presets}
-                onLoadValuePreset={loadPresetValuesOnly}
-                onCommitState={handleCommitState}
-                unit={unit}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setHmdMode(false)}
-              title="Exit floating HMD layout"
-              style={{
-                position: 'absolute',
-                left: '50%',
-                bottom: '14px',
-                transform: 'translateX(-50%)',
-                zIndex: 42,
-                background: 'rgba(0,0,0,0.86)',
-                color: '#ddd',
-                border: '1px solid #444',
-                borderRadius: '4px',
-                padding: '7px 12px',
-                fontSize: '11px',
-                fontWeight: 800,
-                cursor: 'pointer',
-                boxShadow: '0 8px 28px rgba(0,0,0,0.45)'
-              }}
-            >
-              Exit HMD Layout
-            </button>
-          </>
-        )}
-        
         {!hmdMode && (
           <SidebarRight
             rig={rig}

@@ -47,13 +47,13 @@ interface HmdPresetListControl extends HmdControlBase {
   onLoad: (preset: VenuePreset) => void;
 }
 
-type HmdControlDefinition =
+export type HmdControlDefinition =
   | HmdNumberControl
   | HmdToggleControl
   | HmdButtonRowControl
   | HmdPresetListControl;
 
-interface HmdControlContext {
+export interface HmdControlContext {
   rig: CameraRigConfiguration;
   setRig: React.Dispatch<React.SetStateAction<CameraRigConfiguration>>;
   stereo: StereoConfiguration;
@@ -65,6 +65,7 @@ interface HmdControlContext {
 }
 
 interface HmdControlPanelsProps extends HmdControlContext {
+  controls?: HmdControlDefinition[];
   onPointerEvent?: (event: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -142,7 +143,7 @@ const setRigFromElevation = (rig: CameraRigConfiguration, elevationMeters: numbe
   };
 };
 
-const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinition[] => {
+export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinition[] => {
   const { rig, setRig, stereo, setStereo, presets, onLoadValuePreset, onCommitState, unit } = ctx;
   const displayUnit = unitLabel(unit);
   const directDistance = directDistanceMeters(rig);
@@ -433,7 +434,7 @@ const HmdPanel = ({ side, controls }: { side: HmdPanelId; controls: HmdControlDe
 };
 
 export const HmdControlPanels: React.FC<HmdControlPanelsProps> = (props) => {
-  const controls = buildHmdControlSchema(props);
+  const controls = props.controls || buildHmdControlSchema(props);
   const leftControls = controls.filter(control => control.panel === 'left');
   const rightControls = controls.filter(control => control.panel === 'right');
 
