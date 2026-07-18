@@ -830,10 +830,7 @@ export class StereoRenderer {
     const previousXR = this.renderer.xr.enabled;
 
     this.renderer.xr.enabled = false;
-    this.renderer.setRenderTarget(target);
-    this.renderer.setViewport(0, 0, target.width, target.height);
-    this.renderer.setScissor(0, 0, target.width, target.height);
-    this.renderSideBySideFrame(target.width, target.height, rigConfig, stereoConfig);
+    this.renderSideBySideRenderTarget(target, rigConfig, stereoConfig);
 
     this.renderer.xr.enabled = previousXR;
     this.renderer.setRenderTarget(previousTarget);
@@ -841,6 +838,61 @@ export class StereoRenderer {
     this.renderer.setScissor(previousScissor);
     this.renderer.setScissorTest(previousScissorTest);
     this.renderer.setClearColor(previousClearColor, previousClearAlpha);
+  }
+
+  private setSbsRenderTargetRect(target: THREE.WebGLRenderTarget, rect: number[]) {
+    const [x, y, width, height] = rect;
+    target.viewport.set(x, y, width, height);
+    target.scissor.set(x, y, width, height);
+    target.scissorTest = true;
+    this.renderer.setRenderTarget(target);
+  }
+
+  private renderSideBySideRenderTarget(
+    target: THREE.WebGLRenderTarget,
+    rigConfig: CameraRigConfiguration,
+    stereoConfig: StereoConfiguration
+  ) {
+    const viewDisparityPx = stereoConfig.disparityPixelOffset ?? 0;
+    const leftViewShiftPx = -viewDisparityPx / 2;
+    const rightViewShiftPx = viewDisparityPx / 2;
+    const frameGrey = new THREE.Color(0x666666);
+    const sceneBg = this.scene.background instanceof THREE.Color
+      ? this.scene.background
+      : (this.desktopBackground ?? new THREE.Color(0x0a0a0a));
+    const { leftFrame, rightFrame, leftHalf, rightHalf } = this.getSideBySideFrameRects(
+      target.width,
+      target.height,
+      rigConfig.aspect || (16 / 9),
+      stereoConfig.eyeOrder
+    );
+    const previousAutoClear = this.renderer.autoClear;
+
+    this.renderer.autoClear = false;
+
+    [leftHalf, rightHalf].forEach((rect) => {
+      this.setSbsRenderTargetRect(target, rect);
+      this.renderer.setClearColor(frameGrey, 1);
+      this.renderer.clear(true, true, true);
+    });
+
+    [leftFrame, rightFrame].forEach((rect) => {
+      this.setSbsRenderTargetRect(target, rect);
+      this.renderer.setClearColor(sceneBg, 1);
+      this.renderer.clear(true, true, true);
+    });
+
+    this.setSbsRenderTargetRect(target, [leftFrame[0] + leftViewShiftPx, leftFrame[1], leftFrame[2], leftFrame[3]]);
+    this.renderer.render(this.scene, this.rig.leftCamera);
+
+    this.setSbsRenderTargetRect(target, [rightFrame[0] + rightViewShiftPx, rightFrame[1], rightFrame[2], rightFrame[3]]);
+    this.renderer.render(this.scene, this.rig.rightCamera);
+
+    target.viewport.set(0, 0, target.width, target.height);
+    target.scissor.set(0, 0, target.width, target.height);
+    target.scissorTest = false;
+    this.renderer.autoClear = previousAutoClear;
+    this.renderer.setClearColor(sceneBg, 1);
   }
 
   private presentSbsTextureToFramebuffer(width: number, height: number) {
