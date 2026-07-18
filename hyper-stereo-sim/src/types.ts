@@ -55,15 +55,18 @@ export interface CameraRigConfiguration {
 }
 
 export interface StereoConfiguration {
-  displayMode: '3d-planning' | 'side-by-side' | 'wiggle-3d' | 'stereo-plane';
+  displayMode: '3d-planning' | 'side-by-side' | 'wiggle-3d' | 'left-eye' | 'right-eye' | 'stereo-plane';
   eyeOrder: 'left-right' | 'right-left';
   virtualScreenDistance: number;
   virtualScreenSize: number;
   imageScale: number;
   horizontalImageOffset: number;
+  disparityPixelOffset?: number;
   disparityExaggeration: number;
   fallbackMode: 'anaglyph' | 'cross-eye' | 'side-by-side';
   anaglyphBlackWhite: boolean;
+  anaglyphRedIntensity?: number;
+  anaglyphBlueIntensity?: number;
   showQualityOverlay: boolean;
   showZeroParallaxPlane: boolean;
   zeroParallaxOpacity: number;

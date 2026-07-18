@@ -42,9 +42,12 @@ const defaultStereoConfig: StereoConfiguration = {
   virtualScreenSize: 2.0,
   imageScale: 1.0,
   horizontalImageOffset: 0.0,
+  disparityPixelOffset: 0,
   disparityExaggeration: 1.0,
   fallbackMode: 'anaglyph',
   anaglyphBlackWhite: true,
+  anaglyphRedIntensity: 0.32,
+  anaglyphBlueIntensity: 0.72,
   showQualityOverlay: true,
   showZeroParallaxPlane: false,
   zeroParallaxOpacity: 0.25,
@@ -113,6 +116,80 @@ const createLowTrussActualOverlayPreset = (): VenuePreset => ({
   modifiedAt: '2026-07-17T21:42:58.883Z'
 });
 
+const createLowTrussActualDisp50Preset = (): VenuePreset => ({
+  schemaVersion: 1,
+  name: 'Low Truss Actual Disp +50',
+  venueId: 'tennis-court',
+  venueDimensions: {
+    width: 18.29,
+    length: 36.58,
+    height: 10
+  },
+  rig: {
+    x: 17.076961787629315,
+    y: 0,
+    z: 4.5719998536960045,
+    baselineMeters: 1.2191999609856012,
+    yaw: 0,
+    pitch: -7.1,
+    roll: 0,
+    fov: 69,
+    cameraProfileId: 'actual-s35-plus-9-6-11mm',
+    aspect: 1.7777777777777777,
+    near: 0.1,
+    far: 100,
+    parallel: true,
+    convergenceTarget: {
+      x: 0,
+      y: 0,
+      z: 0
+    },
+    lookAtTargetEnabled: true,
+    lookAtTarget: {
+      x: 0,
+      y: 0,
+      z: 0
+    },
+    sphericalMode: true,
+    sphericalAnchorId: 'center-court',
+    sphericalAzimuth: 0,
+    sphericalDistance: 17.076961787629315,
+    sphericalDistanceMode: 'direct',
+    sphericalMeasureTarget: 'center-court',
+    sphericalElevation: 4.5719998536960045
+  },
+  stereo: {
+    displayMode: 'stereo-plane',
+    eyeOrder: 'left-right',
+    virtualScreenDistance: 5,
+    virtualScreenSize: 2,
+    imageScale: 1,
+    horizontalImageOffset: 0,
+    disparityPixelOffset: 50,
+    disparityExaggeration: 1,
+    fallbackMode: 'anaglyph',
+    anaglyphBlackWhite: true,
+    anaglyphRedIntensity: 0.5,
+    anaglyphBlueIntensity: 1,
+    showQualityOverlay: true,
+    showZeroParallaxPlane: false,
+    zeroParallaxOpacity: 0.25,
+    zeroParallaxDistance: 10
+  },
+  visualization: {
+    showFrustums: true,
+    showAxes: true,
+    showGrid: true,
+    showOverlay: true,
+    comfortWarningThresholds: {
+      maxDisparityPx: 25,
+      maxBaselineRatio: 0.033
+    }
+  },
+  createdAt: '2026-07-18T00:20:13.409Z',
+  modifiedAt: '2026-07-18T00:20:13.409Z'
+});
+
 export const App: React.FC = () => {
   const [venueId, setVenueId] = useState('tennis-court');
   const [rig, setRig] = useState<CameraRigConfiguration>(defaultRigConfig);
@@ -155,7 +232,8 @@ export const App: React.FC = () => {
 
   const loadDefaultPresets = () => {
     const defaultList: VenuePreset[] = [
-      createLowTrussActualOverlayPreset()
+      createLowTrussActualOverlayPreset(),
+      createLowTrussActualDisp50Preset()
     ];
     setPresets(defaultList);
     localStorage.setItem('hyperstereo-presets', JSON.stringify(defaultList));
@@ -324,6 +402,7 @@ export const App: React.FC = () => {
           rig={rig}
           setRig={setRig}
           stereo={stereo}
+          setStereo={setStereo}
           visConfig={visConfig}
           activeVenue={activeVenue}
           vrScaleMode={vrScaleMode}

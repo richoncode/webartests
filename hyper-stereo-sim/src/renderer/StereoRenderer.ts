@@ -223,6 +223,9 @@ export class StereoRenderer {
     const useAnaglyphBlackWhite = stereoConfig.displayMode === 'stereo-plane' &&
       stereoConfig.fallbackMode === 'anaglyph' &&
       stereoConfig.anaglyphBlackWhite;
+    const viewDisparityPx = stereoConfig.disparityPixelOffset ?? 0;
+    const leftViewShiftPx = -viewDisparityPx / 2;
+    const rightViewShiftPx = viewDisparityPx / 2;
     this.updateTargetMarker(rigConfig);
     this.updateQualityHeatmap(
       rigConfig,
@@ -262,11 +265,8 @@ export class StereoRenderer {
       const sceneBg = this.scene.background instanceof THREE.Color
         ? this.scene.background
         : new THREE.Color(0x0a0a0a);
-      const renderFramedEye = (frameRect: number[], camera: THREE.PerspectiveCamera) => {
-        const [frameX, frameY, frameW, frameH] = frameRect;
-        this.renderer.setViewport(frameX, frameY, frameW, frameH);
-        this.renderer.setScissor(frameX, frameY, frameW, frameH);
-        this.renderer.render(this.scene, camera);
+      const renderFramedEye = (frameRect: number[], camera: THREE.PerspectiveCamera, viewShiftPx: number) => {
+        this.renderCameraInRect(camera, frameRect, viewShiftPx);
       };
 
       // Hide rig visual helpers inside live camera viewports
@@ -288,10 +288,10 @@ export class StereoRenderer {
       });
 
       // Left eye pass
-      renderFramedEye(leftFrame, this.rig.leftCamera);
+      renderFramedEye(leftFrame, this.rig.leftCamera, leftViewShiftPx);
 
       // Right eye pass
-      renderFramedEye(rightFrame, this.rig.rightCamera);
+      renderFramedEye(rightFrame, this.rig.rightCamera, rightViewShiftPx);
 
       this.renderer.setScissorTest(false);
       this.renderer.setClearColor(sceneBg, 1);
@@ -302,10 +302,36 @@ export class StereoRenderer {
       this.renderer.setScissorTest(false);
       this.rig.group.visible = false;
       this.transformControls.visible = false;
+      this.renderer.clear(true, true, true);
 
       const wigglePhase = Math.floor(Date.now() / 90) % 2;
-      this.renderer.render(this.scene, wigglePhase === 0 ? this.rig.leftCamera : this.rig.rightCamera);
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(0, 0, w, h);
+      if (wigglePhase === 0) {
+        this.renderCameraInRect(this.rig.leftCamera, [0, 0, w, h], leftViewShiftPx);
+      } else {
+        this.renderCameraInRect(this.rig.rightCamera, [0, 0, w, h], rightViewShiftPx);
+      }
+      this.renderer.setScissorTest(false);
 
+      this.rig.group.visible = true;
+
+    } else if (stereoConfig.displayMode === 'left-eye' || stereoConfig.displayMode === 'right-eye') {
+      this.renderer.setViewport(0, 0, w, h);
+      this.renderer.setScissorTest(false);
+      this.rig.group.visible = false;
+      this.transformControls.visible = false;
+      this.renderer.clear(true, true, true);
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(0, 0, w, h);
+
+      if (stereoConfig.displayMode === 'left-eye') {
+        this.renderCameraInRect(this.rig.leftCamera, [0, 0, w, h], leftViewShiftPx);
+      } else {
+        this.renderCameraInRect(this.rig.rightCamera, [0, 0, w, h], rightViewShiftPx);
+      }
+
+      this.renderer.setScissorTest(false);
       this.rig.group.visible = true;
       
     } else if (stereoConfig.displayMode === 'stereo-plane') {
@@ -315,19 +341,25 @@ export class StereoRenderer {
         this.transformControls.visible = false;
 
         this.renderer.setViewport(0, 0, w, h);
-        this.renderer.setScissorTest(false);
+        this.renderer.setScissorTest(true);
+        this.renderer.setScissor(0, 0, w, h);
         this.renderer.setClearColor(this.scene.background as THREE.Color, 1);
         this.renderer.clear(true, true, true);
 
         const gl = this.renderer.getContext();
+        const redGain = stereoConfig.anaglyphRedIntensity ?? 0.32;
+        const blueGain = stereoConfig.anaglyphBlueIntensity ?? 0.72;
         gl.colorMask(true, false, false, true);
-        this.renderer.render(this.scene, this.rig.leftCamera);
+        this.renderer.setViewport(leftViewShiftPx, 0, w, h);
+        this.renderWithMaterialColorScale(this.rig.leftCamera, redGain);
 
         this.renderer.clearDepth();
         gl.colorMask(false, false, true, true);
-        this.renderer.render(this.scene, this.rig.rightCamera);
+        this.renderer.setViewport(rightViewShiftPx, 0, w, h);
+        this.renderWithMaterialColorScale(this.rig.rightCamera, blueGain);
 
         gl.colorMask(true, true, true, true);
+        this.renderer.setScissorTest(false);
         this.rig.group.visible = true;
       } else {
         // Handle side-by-side or cross-eye fallback similarly by drawing viewports
@@ -339,13 +371,8 @@ export class StereoRenderer {
         this.rig.group.visible = false;
         this.transformControls.visible = false;
 
-        this.renderer.setViewport(leftRect[0], leftRect[1], leftRect[2], leftRect[3]);
-        this.renderer.setScissor(leftRect[0], leftRect[1], leftRect[2], leftRect[3]);
-        this.renderer.render(this.scene, this.rig.leftCamera);
-
-        this.renderer.setViewport(rightRect[0], rightRect[1], rightRect[2], rightRect[3]);
-        this.renderer.setScissor(rightRect[0], rightRect[1], rightRect[2], rightRect[3]);
-        this.renderer.render(this.scene, this.rig.rightCamera);
+        this.renderCameraInRect(this.rig.leftCamera, leftRect, leftViewShiftPx);
+        this.renderCameraInRect(this.rig.rightCamera, rightRect, rightViewShiftPx);
 
         this.renderer.setScissorTest(false);
         this.rig.group.visible = true;
@@ -566,6 +593,10 @@ export class StereoRenderer {
           }
           const original = this.originalVenueMaterialColors.get(material);
           if (!original) return;
+          if (child.userData.anaglyphBwRole === 'player-stroke') {
+            colorMaterial.color.setRGB(1, 1, 1);
+            return;
+          }
           const luminance = original.r * 0.2126 + original.g * 0.7152 + original.b * 0.0722;
           colorMaterial.color.setRGB(luminance, luminance, luminance);
         } else {
@@ -575,6 +606,39 @@ export class StereoRenderer {
           }
         }
       });
+    });
+  }
+
+  private renderCameraInRect(camera: THREE.Camera, rect: number[], viewShiftPx = 0) {
+    const [x, y, width, height] = rect;
+    this.renderer.setViewport(x + viewShiftPx, y, width, height);
+    this.renderer.setScissor(x, y, width, height);
+    this.renderer.render(this.scene, camera);
+  }
+
+  private renderWithMaterialColorScale(camera: THREE.Camera, colorScale: number) {
+    const touched: Array<{ material: THREE.Material & { color: THREE.Color }; color: THREE.Color }> = [];
+    const seen = new Set<THREE.Material>();
+
+    this.scene.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.material) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+      materials.forEach((material) => {
+        if (seen.has(material)) return;
+        const colorMaterial = material as THREE.Material & { color?: THREE.Color };
+        if (!colorMaterial.color) return;
+        seen.add(material);
+        touched.push({ material: colorMaterial as THREE.Material & { color: THREE.Color }, color: colorMaterial.color.clone() });
+        colorMaterial.color.multiplyScalar(colorScale);
+      });
+    });
+
+    this.renderer.render(this.scene, camera);
+
+    touched.forEach(({ material, color }) => {
+      material.color.copy(color);
     });
   }
 

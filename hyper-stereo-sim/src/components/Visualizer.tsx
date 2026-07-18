@@ -8,6 +8,7 @@ interface VisualizerProps {
   rig: CameraRigConfiguration;
   setRig: React.Dispatch<React.SetStateAction<CameraRigConfiguration>>;
   stereo: StereoConfiguration;
+  setStereo: React.Dispatch<React.SetStateAction<StereoConfiguration>>;
   visConfig: VisualizationConfiguration;
   activeVenue: BaseVenue;
   vrScaleMode: 'tabletop' | 'full-scale';
@@ -21,6 +22,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   rig,
   setRig,
   stereo,
+  setStereo,
   visConfig,
   activeVenue,
   vrScaleMode,
@@ -41,6 +43,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   const [comparisonOpacity, setComparisonOpacity] = React.useState(0.42);
   const [comparisonScale, setComparisonScale] = React.useState(1);
   const [comparisonOffset, setComparisonOffset] = React.useState({ x: 0, y: 0 });
+  const [showAnaglyphAdjust, setShowAnaglyphAdjust] = React.useState(false);
   const comparisonDragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const comparisonPointersRef = useRef(new Map<number, { x: number; y: number }>());
   const comparisonPinchRef = useRef<{ distance: number; scale: number } | null>(null);
@@ -50,6 +53,10 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   const METERS_TO_FEET = 3.28084;
   const MIN_COMPARISON_ZOOM = 0.25;
   const MAX_COMPARISON_ZOOM = 6;
+  const isStereoMode = stereo.displayMode !== '3d-planning';
+  const disparityPixelOffset = stereo.disparityPixelOffset ?? 0;
+  const anaglyphRedIntensity = stereo.anaglyphRedIntensity ?? 0.32;
+  const anaglyphBlueIntensity = stereo.anaglyphBlueIntensity ?? 0.72;
   const getCenterCourt = () => {
     const origin = activeVenue.getDefaultOrigin();
     return new THREE.Vector3(origin.x || 0, origin.y || 0, origin.z || 0);
@@ -794,9 +801,9 @@ export const Visualizer: React.FC<VisualizerProps> = ({
           title="Select an actual capture image to overlay on the Side By Side camera frames"
           style={{
             width: '30px',
-            background: comparisonImageUrl ? '#2e4057' : '#242424',
-            color: comparisonImageUrl ? '#5b9bd5' : '#d8d8d8',
-            border: comparisonImageUrl ? '1px solid #5b9bd5' : '1px solid #555',
+            background: '#666',
+            color: '#fff',
+            border: '1px solid #888',
             borderRadius: '4px',
             padding: '7px 0',
             fontSize: '13px',
@@ -816,61 +823,135 @@ export const Visualizer: React.FC<VisualizerProps> = ({
         transform: 'translateX(-50%)',
         zIndex: 20,
         display: 'flex',
-        gap: '8px',
-        background: 'rgba(0,0,0,0.85)',
-        padding: '6px 12px',
-        borderRadius: '8px',
-        border: '1px solid #333',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '6px',
         pointerEvents: 'auto'
       }}>
-        <button
-          onClick={() => jumpView('overhead')}
+        <div
           style={{
-            background: activeJump === 'overhead' ? '#2e4057' : '#222',
-            color: activeJump === 'overhead' ? '#5b9bd5' : '#fff',
-            border: activeJump === 'overhead' ? '1px solid #5b9bd5' : '1px solid #444',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease'
+            display: 'flex',
+            gap: '8px',
+            background: 'rgba(0,0,0,0.85)',
+            padding: '6px 12px',
+            borderRadius: '8px',
+            border: '1px solid #333'
           }}
         >
-          Overhead Down
-        </button>
-        <button
-          onClick={() => jumpView('sideline')}
-          style={{
-            background: activeJump === 'sideline' ? '#2e4057' : '#222',
-            color: activeJump === 'sideline' ? '#5b9bd5' : '#fff',
-            border: activeJump === 'sideline' ? '1px solid #5b9bd5' : '1px solid #444',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          Sideline 30ft
-        </button>
-        <button
-          onClick={() => jumpView('behind-rig')}
-          style={{
-            background: activeJump === 'behind-rig' ? '#2e4057' : '#222',
-            color: activeJump === 'behind-rig' ? '#5b9bd5' : '#fff',
-            border: activeJump === 'behind-rig' ? '1px solid #5b9bd5' : '1px solid #444',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          Follow Rig
-        </button>
+          <button
+            onClick={() => jumpView('overhead')}
+            style={{
+              background: activeJump === 'overhead' ? '#2e4057' : '#222',
+              color: activeJump === 'overhead' ? '#5b9bd5' : '#fff',
+              border: activeJump === 'overhead' ? '1px solid #5b9bd5' : '1px solid #444',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Overhead Down
+          </button>
+          <button
+            onClick={() => jumpView('sideline')}
+            style={{
+              background: activeJump === 'sideline' ? '#2e4057' : '#222',
+              color: activeJump === 'sideline' ? '#5b9bd5' : '#fff',
+              border: activeJump === 'sideline' ? '1px solid #5b9bd5' : '1px solid #444',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Sideline 30ft
+          </button>
+          <button
+            onClick={() => jumpView('behind-rig')}
+            style={{
+              background: activeJump === 'behind-rig' ? '#2e4057' : '#222',
+              color: activeJump === 'behind-rig' ? '#5b9bd5' : '#fff',
+              border: activeJump === 'behind-rig' ? '1px solid #5b9bd5' : '1px solid #444',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Follow Rig
+          </button>
+        </div>
+        {isStereoMode && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(0,0,0,0.85)',
+            border: '1px solid #333',
+            borderRadius: '8px',
+            padding: '6px 10px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.25)'
+          }}>
+            <span
+              title="View-only pixel shift. Positive values move the left eye left and right eye right by half the amount."
+              style={{
+                color: '#aaa',
+                fontSize: '10px',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Disparity
+            </span>
+            <input
+              type="range"
+              min="-120"
+              max="120"
+              step="1"
+              value={disparityPixelOffset}
+              onChange={(event) => setStereo(prev => ({
+                ...prev,
+                disparityPixelOffset: Number(event.target.value)
+              }))}
+              title="Shift eye views horizontally in pixels without moving the rig or changing convergence"
+              style={{ width: '220px' }}
+            />
+            <span style={{
+              color: '#5b9bd5',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              fontWeight: 700,
+              minWidth: '54px',
+              textAlign: 'right'
+            }}>
+              {disparityPixelOffset > 0 ? '+' : ''}{disparityPixelOffset}px
+            </span>
+            <button
+              onClick={() => setStereo(prev => ({ ...prev, disparityPixelOffset: 0 }))}
+              title="Reset disparity offset"
+              style={{
+                background: '#222',
+                color: '#ddd',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                padding: '4px 7px',
+                fontSize: '10px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        )}
       </div>
       <div style={{
         position: 'absolute',
@@ -948,6 +1029,108 @@ export const Visualizer: React.FC<VisualizerProps> = ({
             Stereo Anaglyph Preview{stereo.anaglyphBlackWhite ? ' · B/W' : ''}
           </div>
         </div>
+      )}
+      {stereo.displayMode === 'stereo-plane' && stereo.fallbackMode === 'anaglyph' && (
+        <>
+          <button
+            onClick={() => setShowAnaglyphAdjust(prev => !prev)}
+            title="Adjust anaglyph red and blue channel intensity"
+            style={{
+              position: 'absolute',
+              right: '12px',
+              bottom: '58px',
+              zIndex: 25,
+              width: '34px',
+              height: '34px',
+              borderRadius: '4px',
+              border: showAnaglyphAdjust ? '1px solid #5b9bd5' : '1px solid #555',
+              background: showAnaglyphAdjust ? '#1e2d40' : '#242424',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center',
+              padding: 0,
+              boxShadow: '0 2px 10px rgba(0,0,0,0.35)'
+            }}
+          >
+            <span style={{ position: 'relative', width: '22px', height: '18px', display: 'block' }}>
+              <span style={{
+                position: 'absolute',
+                left: '2px',
+                top: '3px',
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: `rgba(255,0,0,${0.28 + anaglyphRedIntensity * 0.72})`,
+                border: '1px solid rgba(255,120,120,0.75)'
+              }} />
+              <span style={{
+                position: 'absolute',
+                right: '2px',
+                top: '3px',
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: `rgba(0,80,255,${0.28 + anaglyphBlueIntensity * 0.72})`,
+                border: '1px solid rgba(120,180,255,0.75)',
+                mixBlendMode: 'screen'
+              }} />
+            </span>
+          </button>
+          {showAnaglyphAdjust && (
+            <div
+              title="View-only anaglyph channel gain. Lower red if it burns through the blue lens; lower blue if the right eye dominates."
+              style={{
+                position: 'absolute',
+                right: '12px',
+                bottom: '100px',
+                zIndex: 25,
+                width: '252px',
+                background: 'rgba(0,0,0,0.9)',
+                border: '1px solid #333',
+                borderRadius: '8px',
+                padding: '9px 10px',
+                pointerEvents: 'auto',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.45)'
+              }}
+            >
+              <div style={{
+                color: '#aaa',
+                fontSize: '10px',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                marginBottom: '8px'
+              }}>
+                Anaglyph Adjust
+              </div>
+              {[
+                { key: 'anaglyphRedIntensity' as const, label: 'Red', color: '#ff5555', value: anaglyphRedIntensity },
+                { key: 'anaglyphBlueIntensity' as const, label: 'Blue', color: '#5b9bd5', value: anaglyphBlueIntensity }
+              ].map((channel) => (
+                <div key={channel.key} style={{ display: 'grid', gridTemplateColumns: '38px 1fr 42px', gap: '8px', alignItems: 'center', marginTop: '7px' }}>
+                  <span style={{ color: channel.color, fontSize: '11px', fontWeight: 800 }}>
+                    {channel.label}
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={channel.value}
+                    onChange={(event) => setStereo(prev => ({
+                      ...prev,
+                      [channel.key]: Number(event.target.value)
+                    }))}
+                    title={`Set ${channel.label.toLowerCase()} channel intensity`}
+                  />
+                  <span style={{ color: '#ddd', fontFamily: 'monospace', fontSize: '10px', textAlign: 'right' }}>
+                    {Math.round(channel.value * 100)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
       {/* Help text for camera navigation */}
       <div style={{

@@ -71,6 +71,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     if (mode === '3d-planning') return '3d planning';
     if (mode === 'side-by-side') return 'side by-side';
     if (mode === 'wiggle-3d') return 'wiggle 3d';
+    if (mode === 'left-eye') return 'L';
+    if (mode === 'right-eye') return 'R';
     return 'stereo anaglyph';
   };
 
@@ -317,7 +319,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         {/* Display Mode Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#1c1c1c', borderRadius: '6px', padding: '2px' }}>
-          {(['3d-planning', 'side-by-side', 'wiggle-3d', 'stereo-plane'] as const).map((mode) => (
+          {(['3d-planning', 'side-by-side', 'wiggle-3d', 'left-eye', 'right-eye', 'stereo-plane'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setStereo(prev => ({ ...prev, displayMode: mode }))}
@@ -328,7 +330,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     ? 'Show left and right camera views side by side'
                     : mode === 'wiggle-3d'
                       ? 'Alternate left and right camera views to test stereo depth without glasses'
-                      : 'Show the red/blue anaglyph stereo preview'
+                      : mode === 'left-eye'
+                        ? 'Show only the left camera view'
+                        : mode === 'right-eye'
+                          ? 'Show only the right camera view'
+                          : 'Show the red/blue anaglyph stereo preview'
               }
               style={{
                 background: stereo.displayMode === mode ? '#2e4057' : 'transparent',
