@@ -189,6 +189,7 @@ export class StereoRenderer {
     // Start rendering frame loop
     this.renderer.setAnimationLoop((_time, frame) => this.animate(frame));
     this.renderer.xr.addEventListener('sessionstart', () => {
+      this.setQualityOverlayEnabled(false);
       this.scene.background = null;
       this.renderer.setClearAlpha(0);
       this.stereoPanelGroup.visible = false;
@@ -814,6 +815,10 @@ export class StereoRenderer {
 
   private renderXRStereoPanelTextures() {
     if (!this.lastRigConfig || !this.lastStereoConfig) return;
+    const stereoConfig: StereoConfiguration = {
+      ...this.lastStereoConfig,
+      eyeOrder: 'left-right'
+    };
 
     const previousTarget = this.renderer.getRenderTarget();
     const previousPanelVisible = this.stereoPanelGroup.visible;
@@ -831,12 +836,14 @@ export class StereoRenderer {
     this.transformControls.visible = false;
     this.renderer.setScissorTest(false);
     this.renderer.setClearColor(this.desktopBackground ?? new THREE.Color(0x0a0a0a), 1);
+    this.updateQualityHeatmap(
+      this.lastRigConfig,
+      this.lastQualityThreshold,
+      stereoConfig.showQualityOverlay && stereoConfig.displayMode !== 'stereo-plane'
+    );
 
     // Fill the live sbsTexture used by the VR eye panels: left camera in U 0..0.5, right in U 0.5..1.
-    this.renderSbsTexture(this.lastRigConfig, {
-      ...this.lastStereoConfig,
-      eyeOrder: 'left-right'
-    });
+    this.renderSbsTexture(this.lastRigConfig, stereoConfig);
 
     this.renderer.setRenderTarget(previousTarget);
     this.renderer.setScissorTest(previousScissorTest);
