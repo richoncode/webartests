@@ -283,6 +283,10 @@ export class StereoRenderer {
     } else if (!enabled && this.qualityHeatmap) {
       this.qualityHeatmap.visible = false;
     }
+
+    if (this.renderer.xr.isPresenting && this.lastRigConfig && this.lastStereoConfig) {
+      this.renderXRStereoPanelTextures();
+    }
   }
 
   private applyXRScale(isPresenting: boolean) {
