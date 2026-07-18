@@ -42,10 +42,6 @@ export class StereoRenderer {
   private rightEyeTarget: THREE.WebGLRenderTarget;
   private leftEyePanel: THREE.Mesh;
   private rightEyePanel: THREE.Mesh;
-  private leftUIPanel: THREE.Mesh;
-  private rightUIPanel: THREE.Mesh;
-  private leftUITexture: THREE.CanvasTexture;
-  private rightUITexture: THREE.CanvasTexture;
   private xrPanelDistanceMeters = 4 / 3.28084;
   private xrPanelWidthMeters = 1.25;
   private xrPanelPlaced = false;
@@ -109,10 +105,6 @@ export class StereoRenderer {
     this.rightEyeTarget = stereoPanel.rightTarget;
     this.leftEyePanel = stereoPanel.leftPanel;
     this.rightEyePanel = stereoPanel.rightPanel;
-    this.leftUIPanel = stereoPanel.leftUIPanel;
-    this.rightUIPanel = stereoPanel.rightUIPanel;
-    this.leftUITexture = stereoPanel.leftUITexture;
-    this.rightUITexture = stereoPanel.rightUITexture;
     this.scene.add(this.stereoPanelGroup);
 
     // 6. Direct manipulation controls (TransformControls)
@@ -222,7 +214,8 @@ export class StereoRenderer {
   // Attach WebXR AR session button for HMD passthrough.
   getXRButtonElement(): HTMLElement {
     return ARButton.createButton(this.renderer, {
-      optionalFeatures: ['dom-overlay', 'local-floor'],
+      requiredFeatures: ['dom-overlay'],
+      optionalFeatures: ['local-floor'],
       domOverlay: { root: document.body }
     });
   }
@@ -235,7 +228,8 @@ export class StereoRenderer {
     if (!supported) return false;
 
     const session = await xr.requestSession('immersive-ar', {
-      optionalFeatures: ['dom-overlay', 'local-floor'],
+      requiredFeatures: ['dom-overlay'],
+      optionalFeatures: ['local-floor'],
       domOverlay: { root: document.body }
     });
     this.renderer.xr.setReferenceSpaceType('local-floor');
@@ -252,7 +246,6 @@ export class StereoRenderer {
     if (isPresenting) {
       this.updateXRStereoPanel(frame);
       this.renderXRStereoPanelTextures();
-      this.updateXRPanelUITextures();
       this.configureXREyeLayers();
       // Render only the room-space stereo screen and flanking UI in AR.
       const previousXRGroupVisible = this.xrGroup.visible;
@@ -569,129 +562,19 @@ export class StereoRenderer {
     group.visible = false;
     const leftPanel = new THREE.Mesh(geometry, leftMaterial);
     const rightPanel = new THREE.Mesh(geometry.clone(), rightMaterial);
-    const ui = this.createXRUIPanels();
     leftPanel.layers.set(1);
     rightPanel.layers.set(2);
     leftPanel.renderOrder = 20;
     rightPanel.renderOrder = 20;
-    group.add(ui.leftUIPanel, leftPanel, rightPanel, ui.rightUIPanel);
+    group.add(leftPanel, rightPanel);
 
     return {
       group,
       leftTarget,
       rightTarget,
       leftPanel,
-      rightPanel,
-      leftUIPanel: ui.leftUIPanel,
-      rightUIPanel: ui.rightUIPanel,
-      leftUITexture: ui.leftUITexture,
-      rightUITexture: ui.rightUITexture
+      rightPanel
     };
-  }
-
-  private createXRUIPanels() {
-    const panelWidth = 0.62;
-    const panelHeight = this.xrPanelWidthMeters / (16 / 9);
-    const gap = 0.12;
-    const sideOffset = (this.xrPanelWidthMeters / 2) + gap + (panelWidth / 2);
-    const leftUITexture = this.createXRUITextTexture();
-    const rightUITexture = this.createXRUITextTexture();
-    const leftMaterial = new THREE.MeshBasicMaterial({
-      map: leftUITexture,
-      transparent: true,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
-    const rightMaterial = new THREE.MeshBasicMaterial({
-      map: rightUITexture,
-      transparent: true,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
-    const leftUIPanel = new THREE.Mesh(new THREE.PlaneGeometry(panelWidth, panelHeight), leftMaterial);
-    const rightUIPanel = new THREE.Mesh(new THREE.PlaneGeometry(panelWidth, panelHeight), rightMaterial);
-    leftUIPanel.position.x = -sideOffset;
-    rightUIPanel.position.x = sideOffset;
-    leftUIPanel.renderOrder = 19;
-    rightUIPanel.renderOrder = 19;
-
-    return { leftUIPanel, rightUIPanel, leftUITexture, rightUITexture };
-  }
-
-  private createXRUITextTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 768;
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    return texture;
-  }
-
-  private updateXRPanelUITextures() {
-    if (!this.lastRigConfig || !this.lastStereoConfig) return;
-    const feet = (meters: number) => meters * 3.28084;
-    this.drawXRPanelTexture(this.leftUITexture, 'Rig Settings', [
-      `Baseline ${feet(this.lastRigConfig.baselineMeters).toFixed(2)} ft`,
-      `FoV ${this.lastRigConfig.fov.toFixed(1)} deg`,
-      `Pitch ${this.lastRigConfig.pitch.toFixed(1)} deg`,
-      `Yaw ${this.lastRigConfig.yaw.toFixed(1)} deg`,
-      `Height ${feet(this.lastRigConfig.z).toFixed(1)} ft`
-    ]);
-
-    this.drawXRPanelTexture(this.rightUITexture, 'Stereo / Presets', [
-      `Quality ${this.lastStereoConfig.showQualityOverlay ? 'On' : 'Off'}`,
-      `Mode kept in HMD`,
-      `Value presets load rig`,
-      `View screen only`,
-      `Planning scene hidden`
-    ]);
-  }
-
-  private drawXRPanelTexture(texture: THREE.CanvasTexture, title: string, rows: string[]) {
-    const canvas = texture.image as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgba(14,14,14,0.88)';
-    this.roundRect(ctx, 0, 0, canvas.width, canvas.height, 28);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(91,155,213,0.8)';
-    ctx.lineWidth = 4;
-    this.roundRect(ctx, 8, 8, canvas.width - 16, canvas.height - 16, 24);
-    ctx.stroke();
-
-    ctx.fillStyle = '#9a9a9a';
-    ctx.font = '700 30px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    ctx.textBaseline = 'top';
-    ctx.fillText(title.toUpperCase(), 34, 34);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '700 34px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    rows.forEach((row, index) => {
-      ctx.fillText(row, 34, 110 + index * 64);
-    });
-
-    ctx.fillStyle = '#5b9bd5';
-    ctx.font = '700 26px SF Mono, Menlo, monospace';
-    ctx.fillText('Room-space panel', 34, canvas.height - 72);
-    texture.needsUpdate = true;
-  }
-
-  private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
   }
 
   private configureXREyeLayers() {
@@ -742,8 +625,6 @@ export class StereoRenderer {
     const panelHeight = this.xrPanelWidthMeters / aspect;
     this.leftEyePanel.scale.set(1, panelHeight / (this.xrPanelWidthMeters / (16 / 9)), 1);
     this.rightEyePanel.scale.copy(this.leftEyePanel.scale);
-    this.leftUIPanel.scale.y = this.leftEyePanel.scale.y;
-    this.rightUIPanel.scale.y = this.leftEyePanel.scale.y;
   }
 
   private renderXRStereoPanelTextures() {

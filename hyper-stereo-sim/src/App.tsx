@@ -201,6 +201,7 @@ export const App: React.FC = () => {
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
+  const hmdOverlayRef = useRef<HTMLDivElement | null>(null);
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -214,6 +215,20 @@ export const App: React.FC = () => {
 
   const activeVenue: BaseVenue = venueId === 'tennis-court' ? tennisCourt.current : emptyVenue.current;
   const coordinateAnchors = activeVenue.getCoordinateAnchors();
+
+  useEffect(() => {
+    const overlay = hmdOverlayRef.current;
+    if (!overlay || !hmdMode) return;
+
+    const keepOverlayInteractive = (event: Event) => {
+      event.preventDefault();
+    };
+
+    overlay.addEventListener('beforexrselect', keepOverlayInteractive);
+    return () => {
+      overlay.removeEventListener('beforexrselect', keepOverlayInteractive);
+    };
+  }, [hmdMode]);
 
   // Load Saved Presets on Mount
   useEffect(() => {
@@ -430,7 +445,9 @@ export const App: React.FC = () => {
 
         {hmdMode && (
           <>
-            <div style={{
+            <div
+              ref={hmdOverlayRef}
+              style={{
               position: 'absolute',
               inset: '16px 24px',
               zIndex: 40,
@@ -440,7 +457,13 @@ export const App: React.FC = () => {
               justifyContent: 'center',
               gap: '28px'
             }}>
-              <div style={{ pointerEvents: 'auto' }}>
+              <div
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerMove={(event) => event.stopPropagation()}
+                onPointerUp={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                style={{ pointerEvents: 'auto' }}
+              >
                 <SidebarLeft
                   rig={rig}
                   setRig={setRig}
@@ -461,7 +484,13 @@ export const App: React.FC = () => {
                 }}
               />
 
-              <div style={{ pointerEvents: 'auto' }}>
+              <div
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerMove={(event) => event.stopPropagation()}
+                onPointerUp={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                style={{ pointerEvents: 'auto' }}
+              >
                 <SidebarRight
                   rig={rig}
                   setRig={setRig}
