@@ -175,8 +175,8 @@ export const App: React.FC = () => {
   });
   const [visConfig, setVisConfig] = useState<VisualizationConfiguration>(startupPreset.visualization);
   const [presets, setPresets] = useState<VenuePreset[]>([]);
-  const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(startupPreset.overlayImageUrl || null);
-  const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(startupPreset.overlayOpacity ?? 0.42);
+  const [presetOverlayUrl, setPresetOverlayUrl] = useState<string | null>(null);
+  const [presetOverlayOpacity, setPresetOverlayOpacity] = useState(0.42);
   const [vrScaleMode, setVrScaleMode] = useState<'tabletop' | 'full-scale'>('full-scale');
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
