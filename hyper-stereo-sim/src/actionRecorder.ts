@@ -40,6 +40,7 @@ interface RecordingPayload {
   meta: RecorderMeta;
   events: RecorderEvent[];
   commentary?: RecorderCommentary[];
+  appState?: unknown;
 }
 
 interface RecorderState {
@@ -54,6 +55,12 @@ interface RecorderState {
   durationMs: number;
   hasRecording: boolean;
   loadedReplay?: RecordingPayload;
+  appState?: unknown;
+  replayElapsedMs: number;
+  replayDurationMs: number;
+  replayCaption: string;
+  replayEventText: string;
+  commentaryMode?: 'speech-recognition' | 'manual-note';
 }
 
 export interface ActionRecorderSnapshot {
@@ -63,6 +70,10 @@ export interface ActionRecorderSnapshot {
   hasRecording: boolean;
   hasReplay: boolean;
   elapsedMs: number;
+  replayElapsedMs: number;
+  replayDurationMs: number;
+  replayCaption: string;
+  replayEventText: string;
   eventCount: number;
   commentaryCount: number;
 }
@@ -76,6 +87,10 @@ export interface ActionRecorderApi {
   loadReplayFile: (file: File) => Promise<void>;
   toggleMic: () => Promise<void>;
   markTransition: (label: string) => void;
+  setAppStateHandlers: (handlers: {
+    capture: () => unknown;
+    restore: (state: unknown) => void;
+  }) => void;
   getSnapshot: () => ActionRecorderSnapshot;
   subscribe: (listener: (snapshot: ActionRecorderSnapshot) => void) => () => void;
 }
@@ -310,7 +325,13 @@ export const installActionRecorder = () => {
     commentary: [],
     durationMs: 0,
     hasRecording: false,
-    loadedReplay: undefined
+    loadedReplay: undefined,
+    appState: undefined,
+    replayElapsedMs: 0,
+    replayDurationMs: 0,
+    replayCaption: '',
+    replayEventText: '',
+    commentaryMode: undefined
   };
 
   let timerId = 0;
@@ -318,6 +339,8 @@ export const installActionRecorder = () => {
   let lastUrl = window.location.href;
   let recognition: SpeechRecognition | undefined;
   let replayAbort = false;
+  let replayTimerId = 0;
+  let appStateHandlers: { capture: () => unknown; restore: (state: unknown) => void } | undefined;
   const subscribers = new Set<(snapshot: ActionRecorderSnapshot) => void>();
 
   const host = document.createElement('div');
@@ -401,6 +424,57 @@ export const installActionRecorder = () => {
         color: #aaa;
         line-height: 1.35;
       }
+      .hsar-replay-panel {
+        display: none;
+        margin-top: 8px;
+        padding: 8px;
+        border: 1px solid #333;
+        border-radius: 5px;
+        background: rgba(0,0,0,0.35);
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay-panel {
+        display: block;
+      }
+      .hsar-progress {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: #2a2a2a;
+        overflow: hidden;
+        margin-bottom: 7px;
+      }
+      .hsar-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #5b9bd5;
+      }
+      .hsar-replay-time {
+        color: #8fc5ff;
+        font-weight: 800;
+      }
+      .hsar-event-text {
+        margin-top: 5px;
+        color: #ddd;
+      }
+      .hsar-caption {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        display: none;
+        max-width: min(760px, calc(100vw - 420px));
+        padding: 9px 13px;
+        border-radius: 6px;
+        background: rgba(0,0,0,0.82);
+        color: #fff;
+        font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        text-align: center;
+        line-height: 1.35;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+      }
+      .hsar-caption:not(:empty) {
+        display: block;
+      }
       .hsar-commentary strong {
         color: #f2f2f2;
       }
@@ -424,7 +498,13 @@ export const installActionRecorder = () => {
         <button class="hsar-button hsar-replay" type="button" disabled>Replay</button>
       </div>
       <input class="hsar-file" type="file" accept="application/json,.json" />
+      <div class="hsar-replay-panel">
+        <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
+        <div><span class="hsar-replay-time">00:00 / 00:00</span></div>
+        <div class="hsar-event-text">Ready</div>
+      </div>
       <div class="hsar-commentary"><strong>Commentary:</strong> mic notes are exported as timestamped text for AI narration/context.</div>
+      <div class="hsar-caption"></div>
     </div>
   `;
 
@@ -439,6 +519,10 @@ export const installActionRecorder = () => {
   const timeLabel = shadow.querySelector('.hsar-time') as HTMLElement;
   const countLabel = shadow.querySelector('.hsar-count') as HTMLElement;
   const loadedLabel = shadow.querySelector('.hsar-loaded') as HTMLElement;
+  const progressFill = shadow.querySelector('.hsar-progress-fill') as HTMLElement;
+  const replayTimeLabel = shadow.querySelector('.hsar-replay-time') as HTMLElement;
+  const eventTextLabel = shadow.querySelector('.hsar-event-text') as HTMLElement;
+  const captionLabel = shadow.querySelector('.hsar-caption') as HTMLElement;
 
   const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
 
@@ -557,6 +641,28 @@ export const installActionRecorder = () => {
     }
   };
 
+  const describeTarget = (selectors?: SelectorCandidates) =>
+    selectors?.name || selectors?.text || selectors?.id || selectors?.testId || selectors?.css || 'page';
+
+  const describeEvent = (event: RecorderEvent) => {
+    if (event.type === 'navigation') return event.value ? `Navigation: ${event.value}` : `Navigation: ${event.url}`;
+    if (event.type === 'click') return `Click: ${describeTarget(event.selectors)}`;
+    if (event.type === 'input') return `Input: ${describeTarget(event.selectors)} = ${event.value ?? ''}`;
+    if (event.type === 'change') return `Change: ${describeTarget(event.selectors)} = ${event.value ?? ''}`;
+    if (event.type === 'keypress') return `Key: ${event.key ?? ''} on ${describeTarget(event.selectors)}`;
+    if (event.type === 'scroll') return `Scroll: ${event.scroll?.x ?? 0}, ${event.scroll?.y ?? 0}`;
+    return event.type;
+  };
+
+  const currentCaptionFor = (elapsedMs: number) => {
+    const commentary = state.loadedReplay?.commentary || [];
+    const current = commentary
+      .filter(item => item.t <= elapsedMs)
+      .sort((a, b) => b.t - a.t)[0];
+    if (!current) return '';
+    return elapsedMs - current.t <= 6000 ? current.text : '';
+  };
+
   const updateUi = () => {
     widget.dataset.recording = String(state.recording);
     widget.dataset.replaying = String(state.replaying);
@@ -564,6 +670,11 @@ export const installActionRecorder = () => {
     timeLabel.textContent = formatMs(elapsed());
     countLabel.textContent = `${state.events.length} event${state.events.length === 1 ? '' : 's'}`;
     loadedLabel.textContent = state.loadedReplay ? 'Replay loaded' : '';
+    const progress = state.replayDurationMs > 0 ? Math.min(1, state.replayElapsedMs / state.replayDurationMs) : 0;
+    progressFill.style.width = `${Math.round(progress * 100)}%`;
+    replayTimeLabel.textContent = `${formatMs(state.replayElapsedMs)} / ${formatMs(state.replayDurationMs)}`;
+    eventTextLabel.textContent = state.replayEventText || 'Ready';
+    captionLabel.textContent = state.replayCaption;
     startButton.disabled = state.recording;
     stopButton.disabled = !state.recording;
     saveButton.disabled = state.recording || !state.hasRecording;
@@ -599,6 +710,10 @@ export const installActionRecorder = () => {
     hasRecording: state.hasRecording,
     hasReplay: Boolean(state.loadedReplay),
     elapsedMs: elapsed(),
+    replayElapsedMs: state.replayElapsedMs,
+    replayDurationMs: state.replayDurationMs,
+    replayCaption: state.replayCaption,
+    replayEventText: state.replayEventText,
     eventCount: state.events.length,
     commentaryCount: state.commentary.length
   });
@@ -628,7 +743,10 @@ export const installActionRecorder = () => {
     const SpeechRecognitionApi = getSpeechRecognition();
     if (!SpeechRecognitionApi) {
       const note = window.prompt('Speech recognition is not available here. Add a manual commentary note?');
-      if (note) addCommentary(note, true);
+      if (note) {
+        state.commentaryMode = 'manual-note';
+        addCommentary(note, true);
+      }
       return;
     }
 
@@ -639,7 +757,7 @@ export const installActionRecorder = () => {
     instance.onresult = (event) => {
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
-        addCommentary(result[0]?.transcript || '', result.isFinal);
+        if (result.isFinal) addCommentary(result[0]?.transcript || '', true);
       }
     };
     instance.onerror = () => {
@@ -651,8 +769,15 @@ export const installActionRecorder = () => {
       updateUi();
     };
     recognition = instance;
+    state.commentaryMode = 'speech-recognition';
     state.micActive = true;
     instance.start();
+    updateUi();
+  };
+
+  const updateReplayProgress = (elapsedMs: number) => {
+    state.replayElapsedMs = Math.min(elapsedMs, state.replayDurationMs);
+    state.replayCaption = currentCaptionFor(state.replayElapsedMs);
     updateUi();
   };
 
@@ -664,6 +789,8 @@ export const installActionRecorder = () => {
     state.startUrl = window.location.href;
     state.events = [];
     state.commentary = [];
+    state.commentaryMode = undefined;
+    state.appState = appStateHandlers?.capture();
     state.durationMs = 0;
     state.hasRecording = false;
     lastUrl = window.location.href;
@@ -691,9 +818,14 @@ export const installActionRecorder = () => {
       userAgent: navigator.userAgent,
       startedAt: state.startedAtIso,
       durationMs: state.durationMs,
-      commentaryMode: state.commentary.length ? 'speech-recognition' : undefined
+      commentaryMode: state.commentaryMode
     };
-    const payload: RecordingPayload = { meta, events: state.events, commentary: state.commentary };
+    const payload: RecordingPayload = {
+      meta,
+      events: state.events,
+      commentary: state.commentary,
+      appState: state.appState
+    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -715,6 +847,10 @@ export const installActionRecorder = () => {
       throw new Error('Invalid recording file');
     }
     state.loadedReplay = payload;
+    state.replayDurationMs = payload.meta.durationMs || payload.events[payload.events.length - 1]?.t || 0;
+    state.replayElapsedMs = 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Ready';
     updateUi();
   };
 
@@ -729,7 +865,21 @@ export const installActionRecorder = () => {
     if (!state.loadedReplay || state.replaying || state.recording) return;
     replayAbort = false;
     state.replaying = true;
+    state.replayElapsedMs = 0;
+    state.replayDurationMs = state.loadedReplay.meta.durationMs || state.loadedReplay.events[state.loadedReplay.events.length - 1]?.t || 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Restoring initial app state';
     updateUi();
+
+    if (state.loadedReplay.appState !== undefined) {
+      appStateHandlers?.restore(state.loadedReplay.appState);
+      await sleep(150);
+    }
+
+    const replayStartedAt = performance.now();
+    replayTimerId = window.setInterval(() => {
+      updateReplayProgress(Math.round(performance.now() - replayStartedAt));
+    }, 100);
 
     const events = state.loadedReplay.events;
     let previousTime = 0;
@@ -738,10 +888,18 @@ export const installActionRecorder = () => {
       const delay = Math.max(0, event.t - previousTime);
       previousTime = event.t;
       await sleep(delay);
+      state.replayElapsedMs = event.t;
+      state.replayCaption = currentCaptionFor(event.t);
+      state.replayEventText = describeEvent(event);
+      updateUi();
       replayEvent(event);
     }
 
+    window.clearInterval(replayTimerId);
+    updateReplayProgress(state.replayDurationMs);
     state.replaying = false;
+    state.replayEventText = replayAbort ? 'Replay stopped' : 'Replay complete';
+    state.replayCaption = '';
     updateUi();
   };
 
@@ -754,6 +912,9 @@ export const installActionRecorder = () => {
     loadReplayFile,
     toggleMic,
     markTransition,
+    setAppStateHandlers: (handlers) => {
+      appStateHandlers = handlers;
+    },
     getSnapshot,
     subscribe: (listener) => {
       subscribers.add(listener);

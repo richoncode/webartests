@@ -72,6 +72,10 @@ export interface HmdControlContext {
     hasRecording: boolean;
     hasReplay: boolean;
     elapsedMs: number;
+    replayElapsedMs: number;
+    replayDurationMs: number;
+    replayCaption: string;
+    replayEventText: string;
     eventCount: number;
     commentaryCount: number;
   };
@@ -201,6 +205,10 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
     hasRecording: false,
     hasReplay: false,
     elapsedMs: 0,
+    replayElapsedMs: 0,
+    replayDurationMs: 0,
+    replayCaption: '',
+    replayEventText: '',
     eventCount: 0,
     commentaryCount: 0
   };
@@ -407,7 +415,9 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
       panel: 'right',
       section: 'Recorder',
       kind: 'button-row',
-      label: `${recorder.recording ? 'Recording' : recorder.replaying ? 'Replaying' : 'Recorder'} ${formatRecorderTime(recorder.elapsedMs)} · ${recorder.eventCount} event${recorder.eventCount === 1 ? '' : 's'}`,
+      label: recorder.replaying
+        ? `Replay ${formatRecorderTime(recorder.replayElapsedMs)} / ${formatRecorderTime(recorder.replayDurationMs)} · ${recorder.replayEventText || 'Playing'}`
+        : `${recorder.recording ? 'Recording' : 'Recorder'} ${formatRecorderTime(recorder.elapsedMs)} · ${recorder.eventCount} event${recorder.eventCount === 1 ? '' : 's'}`,
       buttons: [
         {
           id: 'start',

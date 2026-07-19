@@ -235,6 +235,18 @@ const createLowTrussActualDisp50Preset = (): VenuePreset => ({
   modifiedAt: '2026-07-18T00:20:13.409Z'
 });
 
+interface RecorderAppState {
+  venueId: string;
+  rig: CameraRigConfiguration;
+  stereo: StereoConfiguration;
+  visConfig: VisualizationConfiguration;
+  presetOverlayUrl: string | null;
+  presetOverlayOpacity: number;
+  vrScaleMode: 'tabletop' | 'full-scale';
+  unit: 'feet' | 'meters';
+  hmdRenderMode: 'stereo' | 'sbs';
+}
+
 export const App: React.FC = () => {
   const startupPreset = createLowTrussActualPlanningPreset();
   const [venueId, setVenueId] = useState(startupPreset.venueId);
@@ -255,6 +267,10 @@ export const App: React.FC = () => {
     hasRecording: false,
     hasReplay: false,
     elapsedMs: 0,
+    replayElapsedMs: 0,
+    replayDurationMs: 0,
+    replayCaption: '',
+    replayEventText: '',
     eventCount: 0,
     commentaryCount: 0
   });
@@ -277,6 +293,49 @@ export const App: React.FC = () => {
     if (!recorder) return;
     return recorder.subscribe(setRecorderSnapshot);
   }, []);
+
+  useEffect(() => {
+    const recorder = window.__hyperStereoActionRecorder;
+    if (!recorder) return;
+    recorder.setAppStateHandlers({
+      capture: (): RecorderAppState => ({
+        venueId,
+        rig,
+        stereo,
+        visConfig,
+        presetOverlayUrl,
+        presetOverlayOpacity,
+        vrScaleMode,
+        unit,
+        hmdRenderMode
+      }),
+      restore: (incoming) => {
+        const state = incoming as Partial<RecorderAppState> | undefined;
+        if (!state) return;
+        if (state.venueId) setVenueId(state.venueId);
+        if (state.rig) setRig(state.rig);
+        if (state.stereo) setStereo(state.stereo);
+        if (state.visConfig) setVisConfig(state.visConfig);
+        if ('presetOverlayUrl' in state) setPresetOverlayUrl(state.presetOverlayUrl || null);
+        if (typeof state.presetOverlayOpacity === 'number') setPresetOverlayOpacity(state.presetOverlayOpacity);
+        if (state.vrScaleMode) setVrScaleMode(state.vrScaleMode);
+        if (state.unit) setUnit(state.unit);
+        if (state.hmdRenderMode) setHmdRenderMode(state.hmdRenderMode);
+        setUndoStack([]);
+        setRedoStack([]);
+      }
+    });
+  }, [
+    venueId,
+    rig,
+    stereo,
+    visConfig,
+    presetOverlayUrl,
+    presetOverlayOpacity,
+    vrScaleMode,
+    unit,
+    hmdRenderMode
+  ]);
 
   // Load Saved Presets on Mount
   useEffect(() => {
