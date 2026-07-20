@@ -34,6 +34,11 @@ interface RecorderMeta {
   startedAt: string;
   durationMs: number;
   commentaryMode?: 'speech-recognition' | 'manual-note';
+  voiceContext?: {
+    enabled: boolean;
+    status: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+    message: string;
+  };
 }
 
 interface RecordingPayload {
@@ -47,6 +52,9 @@ interface RecorderState {
   recording: boolean;
   replaying: boolean;
   micActive: boolean;
+  voiceContextEnabled: boolean;
+  voiceContextStatus: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+  voiceContextMessage: string;
   startedAtMs: number;
   startedAtIso: string;
   startUrl: string;
@@ -67,6 +75,9 @@ export interface ActionRecorderSnapshot {
   recording: boolean;
   replaying: boolean;
   micActive: boolean;
+  voiceContextEnabled: boolean;
+  voiceContextStatus: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+  voiceContextMessage: string;
   hasRecording: boolean;
   hasReplay: boolean;
   elapsedMs: number;
@@ -86,6 +97,7 @@ export interface ActionRecorderApi {
   openReplayPicker: () => void;
   loadReplayFile: (file: File) => Promise<void>;
   toggleMic: () => Promise<void>;
+  setVoiceContextEnabled: (enabled: boolean) => void;
   markTransition: (label: string) => void;
   setAppStateHandlers: (handlers: {
     capture: () => unknown;
@@ -318,6 +330,9 @@ export const installActionRecorder = () => {
     recording: false,
     replaying: false,
     micActive: false,
+    voiceContextEnabled: false,
+    voiceContextStatus: 'disabled',
+    voiceContextMessage: 'Voice context disabled for this recording.',
     startedAtMs: 0,
     startedAtIso: '',
     startUrl: '',
@@ -407,6 +422,33 @@ export const installActionRecorder = () => {
         border-color: #5b9bd5;
         color: #8fc5ff;
       }
+      .hsar-button-danger {
+        border-color: #7a2b25;
+        background: #3b1411;
+        color: #ffb8ae;
+      }
+      .hsar-button-danger:not(:disabled):hover {
+        border-color: #ff6b5d;
+        color: #fff;
+      }
+      .hsar-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        padding: 7px 8px;
+        border: 1px solid #2d2d2d;
+        border-radius: 5px;
+        background: rgba(255,255,255,0.04);
+        color: #ddd;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .hsar-option input {
+        width: 15px;
+        height: 15px;
+        accent-color: #ff3838;
+      }
       .hsar-row {
         display: flex;
         gap: 6px;
@@ -456,6 +498,22 @@ export const installActionRecorder = () => {
         margin-top: 5px;
         color: #ddd;
       }
+      .hsar-voice-status {
+        margin-top: 6px;
+        color: #aaa;
+        line-height: 1.35;
+      }
+      .hsar-replay-commentary {
+        margin-top: 6px;
+        padding: 7px;
+        border: 1px solid #2f3b4a;
+        border-radius: 5px;
+        background: rgba(91,155,213,0.08);
+        color: #e8f3ff;
+        line-height: 1.35;
+        max-height: 96px;
+        overflow: auto;
+      }
       .hsar-caption {
         position: fixed;
         left: 50%;
@@ -489,11 +547,15 @@ export const installActionRecorder = () => {
     </style>
     <div class="hsar-widget" data-recording="false" data-replaying="false" data-mic="false">
       <div class="hsar-status"><span class="hsar-dot"></span><span class="hsar-time">00:00</span><span class="hsar-count">0 events</span><span class="hsar-loaded"></span></div>
+      <label class="hsar-option" title="When checked, the recorder asks for microphone permission at Start and saves speech-to-text notes as replay captions.">
+        <input class="hsar-voice-context" type="checkbox" />
+        <span>Rec voice context</span>
+      </label>
       <div class="hsar-controls">
         <button class="hsar-button hsar-start" type="button">Start</button>
         <button class="hsar-button hsar-stop" type="button" disabled>Stop</button>
-        <button class="hsar-button hsar-save" type="button" disabled>Save/Download</button>
-        <button class="hsar-button hsar-mic" type="button">Mic Notes</button>
+        <button class="hsar-button hsar-save" type="button" disabled title="Save/download this recording now. Unsaved recordings are lost when the page reloads.">Save/Download</button>
+        <button class="hsar-button hsar-mic" type="button">Voice</button>
         <button class="hsar-button hsar-load" type="button">Load Replay</button>
         <button class="hsar-button hsar-replay" type="button" disabled>Replay</button>
       </div>
@@ -502,8 +564,10 @@ export const installActionRecorder = () => {
         <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
         <div><span class="hsar-replay-time">00:00 / 00:00</span></div>
         <div class="hsar-event-text">Ready</div>
+        <div class="hsar-voice-status">Voice context disabled.</div>
+        <div class="hsar-replay-commentary"></div>
       </div>
-      <div class="hsar-commentary"><strong>Commentary:</strong> mic notes are exported as timestamped text for AI narration/context.</div>
+      <div class="hsar-commentary"><strong>Voice context:</strong> enable before Start to save speech-to-text notes for replay captions and AI narration context.</div>
       <div class="hsar-caption"></div>
     </div>
   `;
@@ -513,6 +577,7 @@ export const installActionRecorder = () => {
   const stopButton = shadow.querySelector('.hsar-stop') as HTMLButtonElement;
   const saveButton = shadow.querySelector('.hsar-save') as HTMLButtonElement;
   const micButton = shadow.querySelector('.hsar-mic') as HTMLButtonElement;
+  const voiceContextCheckbox = shadow.querySelector('.hsar-voice-context') as HTMLInputElement;
   const loadButton = shadow.querySelector('.hsar-load') as HTMLButtonElement;
   const replayButton = shadow.querySelector('.hsar-replay') as HTMLButtonElement;
   const fileInput = shadow.querySelector('.hsar-file') as HTMLInputElement;
@@ -522,6 +587,8 @@ export const installActionRecorder = () => {
   const progressFill = shadow.querySelector('.hsar-progress-fill') as HTMLElement;
   const replayTimeLabel = shadow.querySelector('.hsar-replay-time') as HTMLElement;
   const eventTextLabel = shadow.querySelector('.hsar-event-text') as HTMLElement;
+  const voiceStatusLabel = shadow.querySelector('.hsar-voice-status') as HTMLElement;
+  const replayCommentaryLabel = shadow.querySelector('.hsar-replay-commentary') as HTMLElement;
   const captionLabel = shadow.querySelector('.hsar-caption') as HTMLElement;
 
   const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
@@ -663,25 +730,64 @@ export const installActionRecorder = () => {
     return elapsedMs - current.t <= 6000 ? current.text : '';
   };
 
+  const voiceStatusFor = (payload?: RecordingPayload) => {
+    if (!payload) return 'Voice context disabled.';
+    const voiceContext = payload.meta.voiceContext;
+    if (voiceContext?.message) return voiceContext.message;
+    if (payload.commentary?.length) return `${payload.commentary.length} voice context note${payload.commentary.length === 1 ? '' : 's'} captured.`;
+    return 'Voice context disabled for this recording.';
+  };
+
+  const commentaryTextFor = (payload?: RecordingPayload) => {
+    const commentary = payload?.commentary || [];
+    if (!commentary.length) return '';
+    return commentary.map(item => `${formatMs(item.t)}  ${item.text}`).join('\n');
+  };
+
+  const updateVoiceStatus = () => {
+    if (!state.voiceContextEnabled) {
+      state.voiceContextStatus = 'disabled';
+      state.voiceContextMessage = 'Voice context disabled for this recording.';
+      return;
+    }
+    if (state.commentary.length > 0) {
+      state.voiceContextStatus = 'captured';
+      state.voiceContextMessage = `${state.commentary.length} voice context note${state.commentary.length === 1 ? '' : 's'} captured.`;
+      return;
+    }
+    if (state.voiceContextStatus === 'unsupported' || state.voiceContextStatus === 'error') return;
+    state.voiceContextStatus = 'enabled-no-transcript';
+    state.voiceContextMessage = 'Voice context enabled, but no speech-to-text was captured yet.';
+  };
+
   const updateUi = () => {
+    updateVoiceStatus();
     widget.dataset.recording = String(state.recording);
     widget.dataset.replaying = String(state.replaying);
     widget.dataset.mic = String(state.micActive);
     timeLabel.textContent = formatMs(elapsed());
     countLabel.textContent = `${state.events.length} event${state.events.length === 1 ? '' : 's'}`;
-    loadedLabel.textContent = state.loadedReplay ? 'Replay loaded' : '';
+    loadedLabel.textContent = state.loadedReplay ? 'Replay ready' : '';
     const progress = state.replayDurationMs > 0 ? Math.min(1, state.replayElapsedMs / state.replayDurationMs) : 0;
     progressFill.style.width = `${Math.round(progress * 100)}%`;
     replayTimeLabel.textContent = `${formatMs(state.replayElapsedMs)} / ${formatMs(state.replayDurationMs)}`;
     eventTextLabel.textContent = state.replayEventText || 'Ready';
+    voiceStatusLabel.textContent = state.replaying || state.loadedReplay
+      ? voiceStatusFor(state.loadedReplay)
+      : state.voiceContextMessage;
+    replayCommentaryLabel.textContent = commentaryTextFor(state.loadedReplay);
+    replayCommentaryLabel.style.display = replayCommentaryLabel.textContent ? 'block' : 'none';
     captionLabel.textContent = state.replayCaption;
+    voiceContextCheckbox.checked = state.voiceContextEnabled;
+    voiceContextCheckbox.disabled = state.recording;
     startButton.disabled = state.recording;
     stopButton.disabled = !state.recording;
     saveButton.disabled = state.recording || !state.hasRecording;
+    saveButton.classList.toggle('hsar-button-danger', state.hasRecording && !state.recording);
     micButton.disabled = !state.recording || state.replaying;
     loadButton.disabled = state.recording || state.replaying;
     replayButton.disabled = state.recording || state.replaying || !state.loadedReplay;
-    micButton.textContent = state.micActive ? 'Stop Mic' : 'Mic Notes';
+    micButton.textContent = state.micActive ? 'Voice On' : 'Voice Off';
     replayButton.textContent = state.replaying ? 'Replaying' : 'Replay';
     const snapshot = getSnapshot();
     subscribers.forEach(listener => listener(snapshot));
@@ -707,6 +813,9 @@ export const installActionRecorder = () => {
     recording: state.recording,
     replaying: state.replaying,
     micActive: state.micActive,
+    voiceContextEnabled: state.voiceContextEnabled,
+    voiceContextStatus: state.voiceContextStatus,
+    voiceContextMessage: state.voiceContextMessage,
     hasRecording: state.hasRecording,
     hasReplay: Boolean(state.loadedReplay),
     elapsedMs: elapsed(),
@@ -730,6 +839,7 @@ export const installActionRecorder = () => {
     const normalized = normalizeText(text);
     if (!normalized || !state.recording) return;
     state.commentary.push({ t: elapsed(), text: normalized, final });
+    updateVoiceStatus();
     updateUi();
   };
 
@@ -742,11 +852,10 @@ export const installActionRecorder = () => {
 
     const SpeechRecognitionApi = getSpeechRecognition();
     if (!SpeechRecognitionApi) {
-      const note = window.prompt('Speech recognition is not available here. Add a manual commentary note?');
-      if (note) {
-        state.commentaryMode = 'manual-note';
-        addCommentary(note, true);
-      }
+      state.voiceContextStatus = 'unsupported';
+      state.voiceContextMessage = 'Voice context is unsupported in this browser, so no transcript was captured.';
+      state.commentaryMode = undefined;
+      updateUi();
       return;
     }
 
@@ -762,6 +871,8 @@ export const installActionRecorder = () => {
     };
     instance.onerror = () => {
       state.micActive = false;
+      state.voiceContextStatus = 'error';
+      state.voiceContextMessage = 'Voice context stopped because speech recognition returned an error.';
       updateUi();
     };
     instance.onend = () => {
@@ -773,6 +884,39 @@ export const installActionRecorder = () => {
     state.micActive = true;
     instance.start();
     updateUi();
+  };
+
+  const setVoiceContextEnabled = (enabled: boolean) => {
+    if (state.recording) return;
+    state.voiceContextEnabled = enabled;
+    state.voiceContextStatus = enabled ? 'enabled-no-transcript' : 'disabled';
+    state.voiceContextMessage = enabled
+      ? 'Voice context will be recorded as speech-to-text after Start.'
+      : 'Voice context disabled for this recording.';
+    updateUi();
+  };
+
+  const buildPayload = (): RecordingPayload => {
+    updateVoiceStatus();
+    const meta: RecorderMeta = {
+      startUrl: state.startUrl,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      userAgent: navigator.userAgent,
+      startedAt: state.startedAtIso,
+      durationMs: state.durationMs,
+      commentaryMode: state.commentaryMode,
+      voiceContext: {
+        enabled: state.voiceContextEnabled,
+        status: state.voiceContextStatus,
+        message: state.voiceContextMessage
+      }
+    };
+    return {
+      meta,
+      events: state.events,
+      commentary: state.commentary,
+      appState: state.appState
+    };
   };
 
   const updateReplayProgress = (elapsedMs: number) => {
@@ -790,6 +934,10 @@ export const installActionRecorder = () => {
     state.events = [];
     state.commentary = [];
     state.commentaryMode = undefined;
+    state.voiceContextStatus = state.voiceContextEnabled ? 'enabled-no-transcript' : 'disabled';
+    state.voiceContextMessage = state.voiceContextEnabled
+      ? 'Voice context enabled, waiting for speech-to-text.'
+      : 'Voice context disabled for this recording.';
     state.appState = appStateHandlers?.capture();
     state.durationMs = 0;
     state.hasRecording = false;
@@ -797,6 +945,7 @@ export const installActionRecorder = () => {
     lastScrollCapture = 0;
     timerId = window.setInterval(updateUi, 250);
     record({ type: 'navigation' });
+    if (state.voiceContextEnabled) void toggleMic();
     updateUi();
   };
 
@@ -807,25 +956,18 @@ export const installActionRecorder = () => {
     state.recording = false;
     state.hasRecording = true;
     window.clearInterval(timerId);
+    updateVoiceStatus();
+    state.loadedReplay = buildPayload();
+    state.replayDurationMs = state.durationMs;
+    state.replayElapsedMs = 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Ready to replay this recording.';
     updateUi();
   };
 
   const downloadRecording = () => {
     if (!state.hasRecording) return;
-    const meta: RecorderMeta = {
-      startUrl: state.startUrl,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
-      userAgent: navigator.userAgent,
-      startedAt: state.startedAtIso,
-      durationMs: state.durationMs,
-      commentaryMode: state.commentaryMode
-    };
-    const payload: RecordingPayload = {
-      meta,
-      events: state.events,
-      commentary: state.commentary,
-      appState: state.appState
-    };
+    const payload = buildPayload();
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -911,6 +1053,7 @@ export const installActionRecorder = () => {
     openReplayPicker,
     loadReplayFile,
     toggleMic,
+    setVoiceContextEnabled,
     markTransition,
     setAppStateHandlers: (handlers) => {
       appStateHandlers = handlers;
@@ -927,6 +1070,9 @@ export const installActionRecorder = () => {
   stopButton.addEventListener('click', stopRecording);
   saveButton.addEventListener('click', downloadRecording);
   micButton.addEventListener('click', () => void toggleMic());
+  voiceContextCheckbox.addEventListener('change', () => {
+    setVoiceContextEnabled(voiceContextCheckbox.checked);
+  });
   loadButton.addEventListener('click', openReplayPicker);
   replayButton.addEventListener('click', () => void replay());
   fileInput.addEventListener('change', () => {

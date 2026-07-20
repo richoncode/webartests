@@ -69,6 +69,9 @@ export interface HmdControlContext {
     recording: boolean;
     replaying: boolean;
     micActive: boolean;
+    voiceContextEnabled: boolean;
+    voiceContextStatus: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+    voiceContextMessage: string;
     hasRecording: boolean;
     hasReplay: boolean;
     elapsedMs: number;
@@ -202,6 +205,9 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
     recording: false,
     replaying: false,
     micActive: false,
+    voiceContextEnabled: false,
+    voiceContextStatus: 'disabled',
+    voiceContextMessage: 'Voice context disabled for this recording.',
     hasRecording: false,
     hasReplay: false,
     elapsedMs: 0,
@@ -439,7 +445,7 @@ export const buildHmdControlSchema = (ctx: HmdControlContext): HmdControlDefinit
         },
         {
           id: 'mic',
-          label: recorder.micActive ? 'Mic Off' : 'Mic',
+          label: recorder.micActive ? 'Voice On' : 'Voice',
           active: recorder.micActive,
           disabled: !recorder.recording || recorder.replaying,
           onClick: () => onRecorderToggleMic?.()
