@@ -511,12 +511,11 @@ export const installActionRecorder = () => {
         display: block;
       }
       .hsar-progress {
-        width: 100%;
+        flex: 1;
         height: 6px;
         border-radius: 999px;
         background: #2a2a2a;
         overflow: hidden;
-        margin-bottom: 7px;
       }
       .hsar-progress-fill {
         height: 100%;
@@ -581,35 +580,47 @@ export const installActionRecorder = () => {
         display: none;
         align-items: center;
         gap: 8px;
-        margin-bottom: 7px;
-        font-weight: 800;
-        color: #ffd166;
       }
-      .hsar-playing-dot {
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: #f0a040;
-        box-shadow: 0 0 0 4px rgba(240,160,64,0.18);
-        animation: hsar-pulse 1.1s ease-in-out infinite;
+      .hsar-mini-stop {
+        appearance: none;
+        flex: none;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #7a2b25;
+        border-radius: 4px;
+        background: #3b1411;
+        color: #ffb8ae;
+        font-size: 10px;
+        line-height: 1;
+        cursor: pointer;
       }
-      @keyframes hsar-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.35; }
+      .hsar-mini-stop:hover {
+        border-color: #ff6b5d;
+        color: #fff;
       }
       .hsar-remaining {
-        margin-left: auto;
+        flex: none;
         color: #8fc5ff;
         font-family: 'SF Mono', 'Fira Code', monospace;
       }
-      /* Replaying hides the recording controls (buttons, voice-context checkbox) so they don't
-         clutter a screen recording of the replay, but keeps the voice-context status and
-         captured commentary visible for now. */
+      /* During playback the widget shrinks to just a stop button and a progress indicator in
+         the corner, so a screen recording of the replay isn't cluttered with the full control
+         panel, voice-context status, or captured commentary. */
+      .hsar-widget[data-replaying="true"] {
+        width: 220px;
+        padding: 8px 10px;
+      }
       .hsar-widget[data-replaying="true"] .hsar-status,
       .hsar-widget[data-replaying="true"] .hsar-option,
       .hsar-widget[data-replaying="true"] .hsar-controls,
       .hsar-widget[data-replaying="true"] .hsar-commentary,
-      .hsar-widget[data-replaying="true"] .hsar-event-text {
+      .hsar-widget[data-replaying="true"] .hsar-replay-time,
+      .hsar-widget[data-replaying="true"] .hsar-event-text,
+      .hsar-widget[data-replaying="true"] .hsar-voice-status,
+      .hsar-widget[data-replaying="true"] .hsar-replay-commentary {
         display: none;
       }
       .hsar-widget[data-replaying="true"] .hsar-mini-status {
@@ -617,6 +628,9 @@ export const installActionRecorder = () => {
       }
       .hsar-widget[data-replaying="true"] .hsar-replay-panel {
         margin-top: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
       }
     </style>
     <div class="hsar-widget" data-recording="false" data-replaying="false" data-mic="false">
@@ -636,11 +650,10 @@ export const installActionRecorder = () => {
       <input class="hsar-file" type="file" accept="application/json,.json" />
       <div class="hsar-replay-panel">
         <div class="hsar-mini-status">
-          <span class="hsar-playing-dot"></span>
-          <span>Replaying</span>
+          <button class="hsar-mini-stop" type="button" title="Stop replay">&#9632;</button>
+          <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
           <span class="hsar-remaining"></span>
         </div>
-        <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
         <div><span class="hsar-replay-time">00:00 / 00:00</span></div>
         <div class="hsar-event-text">Ready</div>
         <div class="hsar-voice-status">Voice context disabled.</div>
@@ -670,6 +683,7 @@ export const installActionRecorder = () => {
   const replayCommentaryLabel = shadow.querySelector('.hsar-replay-commentary') as HTMLElement;
   const captionLabel = shadow.querySelector('.hsar-caption') as HTMLElement;
   const remainingLabel = shadow.querySelector('.hsar-remaining') as HTMLElement;
+  const miniStopButton = shadow.querySelector('.hsar-mini-stop') as HTMLButtonElement;
 
   const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
 
@@ -864,7 +878,7 @@ export const installActionRecorder = () => {
       ? voiceStatusFor(state.loadedReplay)
       : state.voiceContextMessage;
     replayCommentaryLabel.textContent = commentaryTextFor(state.loadedReplay);
-    replayCommentaryLabel.style.display = replayCommentaryLabel.textContent ? 'block' : 'none';
+    replayCommentaryLabel.style.display = !state.replaying && replayCommentaryLabel.textContent ? 'block' : 'none';
     captionLabel.textContent = state.replayCaption;
     voiceContextCheckbox.checked = state.voiceContextEnabled;
     voiceContextCheckbox.disabled = state.recording;
@@ -1117,9 +1131,14 @@ export const installActionRecorder = () => {
   // discrete event replay and cursor movement. Anchoring both to the same absolute clock keeps
   // them in lockstep: whichever list falls behind schedule catches up with a shorter wait
   // instead of drifting further every iteration.
+  // Polls in short slices (rather than one long sleep) so a Stop click during a large gap
+  // between actions still takes effect within ~100ms instead of waiting out the whole gap.
   const waitUntil = async (targetMs: number) => {
-    const remaining = targetMs - (performance.now() - replayStartedAt);
-    if (remaining > 0) await sleep(remaining);
+    while (!replayAbort) {
+      const remaining = targetMs - (performance.now() - replayStartedAt);
+      if (remaining <= 0) return;
+      await sleep(Math.min(remaining, 100));
+    }
   };
 
   // Rotated so the fingertip (near the glyph's top edge) points up-and-left, like a mouse cursor.
@@ -1294,6 +1313,11 @@ export const installActionRecorder = () => {
     if (cursorPressed) setReplayCursorPressed(false);
   };
 
+  const stopReplay = () => {
+    if (!state.replaying) return;
+    replayAbort = true;
+  };
+
   const replay = async () => {
     if (!state.loadedReplay || state.replaying || state.recording) return;
     replayAbort = false;
@@ -1356,6 +1380,7 @@ export const installActionRecorder = () => {
   });
   loadButton.addEventListener('click', openReplayPicker);
   replayButton.addEventListener('click', () => void replay());
+  miniStopButton.addEventListener('click', stopReplay);
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (!file) return;
