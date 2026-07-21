@@ -19,12 +19,20 @@ interface RecorderEvent {
   value?: string;
   key?: string;
   scroll?: { x: number; y: number };
+  x?: number;
+  y?: number;
 }
 
 interface RecorderCommentary {
   t: number;
   text: string;
   final: boolean;
+}
+
+interface RecorderCursorPoint {
+  t: number;
+  x: number;
+  y: number;
 }
 
 interface RecorderMeta {
@@ -45,6 +53,7 @@ interface RecordingPayload {
   meta: RecorderMeta;
   events: RecorderEvent[];
   commentary?: RecorderCommentary[];
+  cursorTrail?: RecorderCursorPoint[];
   appState?: unknown;
 }
 
@@ -60,6 +69,7 @@ interface RecorderState {
   startUrl: string;
   events: RecorderEvent[];
   commentary: RecorderCommentary[];
+  cursorTrail: RecorderCursorPoint[];
   durationMs: number;
   hasRecording: boolean;
   loadedReplay?: RecordingPayload;
@@ -239,8 +249,14 @@ const stableCssPath = (element: Element) => {
     current = current.parentElement;
   }
 
-  const selector = parts.join(' > ');
-  return selector.length > SELECTOR_LIMIT ? selector.slice(0, SELECTOR_LIMIT) : selector;
+  // Trim whole segments off the front (the least-specific, outermost ancestors) rather than
+  // slicing the string by character count, which used to cut mid-tag-name (e.g. "input" ->
+  // "inp") and produce a selector that could never match anything.
+  let trimmed = parts;
+  while (trimmed.join(' > ').length > SELECTOR_LIMIT && trimmed.length > 1) {
+    trimmed = trimmed.slice(1);
+  }
+  return trimmed.join(' > ');
 };
 
 const xpathForElement = (element: Element) => {
@@ -350,6 +366,7 @@ export const installActionRecorder = () => {
     startUrl: '',
     events: [],
     commentary: [],
+    cursorTrail: [],
     durationMs: 0,
     hasRecording: false,
     loadedReplay: undefined,
@@ -364,10 +381,13 @@ export const installActionRecorder = () => {
   let timerId = 0;
   let lastScrollCapture = 0;
   let lastInputCapture = 0;
+  let lastCursorCapture = 0;
   let lastUrl = window.location.href;
+  let replayCursorEl: HTMLDivElement | undefined;
   let recognition: SpeechRecognition | undefined;
   let replayAbort = false;
   let replayTimerId = 0;
+  let replayStartedAt = 0;
   let appStateHandlers: { capture: () => unknown; restore: (state: unknown) => void } | undefined;
   const subscribers = new Set<(snapshot: ActionRecorderSnapshot) => void>();
 
@@ -557,6 +577,47 @@ export const installActionRecorder = () => {
         border-color: #f0a040;
         color: #ffd166;
       }
+      .hsar-mini-status {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 7px;
+        font-weight: 800;
+        color: #ffd166;
+      }
+      .hsar-playing-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #f0a040;
+        box-shadow: 0 0 0 4px rgba(240,160,64,0.18);
+        animation: hsar-pulse 1.1s ease-in-out infinite;
+      }
+      @keyframes hsar-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+      }
+      .hsar-remaining {
+        margin-left: auto;
+        color: #8fc5ff;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+      /* Replaying hides the recording controls (buttons, voice-context checkbox) so they don't
+         clutter a screen recording of the replay, but keeps the voice-context status and
+         captured commentary visible for now. */
+      .hsar-widget[data-replaying="true"] .hsar-status,
+      .hsar-widget[data-replaying="true"] .hsar-option,
+      .hsar-widget[data-replaying="true"] .hsar-controls,
+      .hsar-widget[data-replaying="true"] .hsar-commentary,
+      .hsar-widget[data-replaying="true"] .hsar-event-text {
+        display: none;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-mini-status {
+        display: flex;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay-panel {
+        margin-top: 0;
+      }
     </style>
     <div class="hsar-widget" data-recording="false" data-replaying="false" data-mic="false">
       <div class="hsar-status"><span class="hsar-dot"></span><span class="hsar-time">00:00</span><span class="hsar-count">0 events</span><span class="hsar-loaded"></span></div>
@@ -574,6 +635,11 @@ export const installActionRecorder = () => {
       </div>
       <input class="hsar-file" type="file" accept="application/json,.json" />
       <div class="hsar-replay-panel">
+        <div class="hsar-mini-status">
+          <span class="hsar-playing-dot"></span>
+          <span>Replaying</span>
+          <span class="hsar-remaining"></span>
+        </div>
         <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
         <div><span class="hsar-replay-time">00:00 / 00:00</span></div>
         <div class="hsar-event-text">Ready</div>
@@ -603,6 +669,7 @@ export const installActionRecorder = () => {
   const voiceStatusLabel = shadow.querySelector('.hsar-voice-status') as HTMLElement;
   const replayCommentaryLabel = shadow.querySelector('.hsar-replay-commentary') as HTMLElement;
   const captionLabel = shadow.querySelector('.hsar-caption') as HTMLElement;
+  const remainingLabel = shadow.querySelector('.hsar-remaining') as HTMLElement;
 
   const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
 
@@ -643,8 +710,10 @@ export const installActionRecorder = () => {
       }
     }
     if (selectors.role && selectors.name) {
+      // getExplicitRole() only ever returns a role for these tags (or an explicit [role]
+      // attribute), so scoping the scan to them is equivalent to '*' but far cheaper.
       candidates.push(
-        Array.from(document.querySelectorAll('*')).find(element =>
+        Array.from(document.querySelectorAll('button,a,select,textarea,input,[role]')).find(element =>
           getExplicitRole(element) === selectors.role && getAccessibleName(element) === selectors.name
         )
       );
@@ -687,13 +756,13 @@ export const installActionRecorder = () => {
     element.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
   };
 
-  const replayEvent = (event: RecorderEvent) => {
+  const replayEvent = (event: RecorderEvent): Element | undefined => {
     if (event.type === 'navigation') {
       if (event.url && event.url !== window.location.href && event.url !== state.loadedReplay?.meta.startUrl) {
         history.pushState(null, '', event.url);
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
-      return;
+      return undefined;
     }
 
     if (event.type === 'scroll') {
@@ -703,26 +772,27 @@ export const installActionRecorder = () => {
       } else if (event.scroll) {
         window.scrollTo(event.scroll.x, event.scroll.y);
       }
-      return;
+      return target;
     }
 
     const target = resolveSelector(event.selectors);
-    if (!target) return;
+    if (!target) return undefined;
 
     if (event.type === 'click') {
       (target as HTMLElement).click();
-      return;
+      return target;
     }
 
     if (event.type === 'input' || event.type === 'change') {
       setElementValue(target, event.value);
       dispatchInputEvents(target, event.type);
-      return;
+      return target;
     }
 
     if (event.type === 'keypress') {
       target.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true, cancelable: true }));
     }
+    return target;
   };
 
   const describeTarget = (selectors?: SelectorCandidates) =>
@@ -788,6 +858,7 @@ export const installActionRecorder = () => {
     const progress = state.replayDurationMs > 0 ? Math.min(1, state.replayElapsedMs / state.replayDurationMs) : 0;
     progressFill.style.width = `${Math.round(progress * 100)}%`;
     replayTimeLabel.textContent = `${formatMs(state.replayElapsedMs)} / ${formatMs(state.replayDurationMs)}`;
+    remainingLabel.textContent = formatMs(Math.max(0, state.replayDurationMs - state.replayElapsedMs));
     eventTextLabel.textContent = state.replayEventText || 'Ready';
     voiceStatusLabel.textContent = state.replaying || state.loadedReplay
       ? voiceStatusFor(state.loadedReplay)
@@ -818,6 +889,14 @@ export const installActionRecorder = () => {
       ...event
     });
     updateUi();
+  };
+
+  const recordCursorPoint = (x: number, y: number) => {
+    if (!state.recording) return;
+    // Bypasses updateUi() deliberately: this fires far more often than any
+    // other recorded event, and re-rendering the recorder UI on every sample
+    // isn't needed just to track a cursor trail.
+    state.cursorTrail.push({ t: elapsed(), x, y });
   };
 
   const recordNavigationIfChanged = () => {
@@ -938,6 +1017,7 @@ export const installActionRecorder = () => {
       meta,
       events: state.events,
       commentary: state.commentary,
+      cursorTrail: state.cursorTrail,
       appState: state.appState
     };
   };
@@ -956,6 +1036,7 @@ export const installActionRecorder = () => {
     state.startUrl = window.location.href;
     state.events = [];
     state.commentary = [];
+    state.cursorTrail = [];
     state.commentaryMode = undefined;
     state.voiceContextStatus = state.voiceContextEnabled ? 'enabled-no-transcript' : 'disabled';
     state.voiceContextMessage = state.voiceContextEnabled
@@ -967,6 +1048,7 @@ export const installActionRecorder = () => {
     lastUrl = window.location.href;
     lastScrollCapture = 0;
     lastInputCapture = 0;
+    lastCursorCapture = 0;
     timerId = window.setInterval(updateUi, 250);
     record({ type: 'navigation' });
     if (state.voiceContextEnabled) void toggleMic();
@@ -1027,12 +1109,198 @@ export const installActionRecorder = () => {
 
   const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
+  // Waits until `targetMs` has elapsed since replayStartedAt, on the wall clock, rather than
+  // sleeping for a fixed duration computed from the previous item in the same list. Two
+  // independent lists (events and the cursor trail) that each accumulate their own relative
+  // delays drift apart as soon as one list's per-item processing (selector resolution, DOM
+  // writes) takes noticeably longer than the other's — which is exactly what happened between
+  // discrete event replay and cursor movement. Anchoring both to the same absolute clock keeps
+  // them in lockstep: whichever list falls behind schedule catches up with a shorter wait
+  // instead of drifting further every iteration.
+  const waitUntil = async (targetMs: number) => {
+    const remaining = targetMs - (performance.now() - replayStartedAt);
+    if (remaining > 0) await sleep(remaining);
+  };
+
+  // Rotated so the fingertip (near the glyph's top edge) points up-and-left, like a mouse cursor.
+  const CURSOR_ROTATION = 'rotate(-45deg)';
+  const CURSOR_TRANSFORM_ORIGIN = '50% 10px';
+  const CURSOR_MAX_GLIDE_MS = 500;
+  // Empirically measured (pixel analysis of a rendered frame against a known target point): the
+  // glyph's actual visual fingertip lands 11px left and 8px below the box's nominal (x,y), so
+  // shift the box by the opposite amount to put the real tip exactly on target.
+  const CURSOR_TIP_OFFSET_X = 11;
+  const CURSOR_TIP_OFFSET_Y = -8;
+
+  const ensureReplayCursorEl = () => {
+    if (replayCursorEl) return replayCursorEl;
+    const el = document.createElement('div');
+    el.id = 'hsar-replay-cursor';
+    el.textContent = '\u{1F446}';
+    el.style.cssText = `
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 64px;
+      height: 64px;
+      margin-left: -32px;
+      margin-top: 0px;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      font-size: 56px;
+      line-height: 1;
+      pointer-events: none;
+      z-index: 2147483647;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)) drop-shadow(0 0 3px #fff);
+      transition: left 60ms linear, top 60ms linear, transform 120ms ease-out;
+      transform-origin: ${CURSOR_TRANSFORM_ORIGIN};
+      transform: ${CURSOR_ROTATION} scale(1);
+      user-select: none;
+    `;
+    document.body.appendChild(el);
+    replayCursorEl = el;
+    return el;
+  };
+
+  const setReplayCursorGlideMs = (ms: number) => {
+    const el = ensureReplayCursorEl();
+    el.style.transition = `left ${ms}ms linear, top ${ms}ms linear, transform 120ms ease-out`;
+  };
+
+  const moveReplayCursorTo = (x?: number, y?: number) => {
+    if (typeof x !== 'number' || typeof y !== 'number') return;
+    const el = ensureReplayCursorEl();
+    el.style.display = 'flex';
+    el.style.left = `${x + CURSOR_TIP_OFFSET_X}px`;
+    el.style.top = `${y + CURSOR_TIP_OFFSET_Y}px`;
+  };
+
+  const pulseReplayCursor = () => {
+    const el = replayCursorEl;
+    if (!el) return;
+    el.style.transform = `${CURSOR_ROTATION} scale(0.7)`;
+    window.setTimeout(() => { el.style.transform = `${CURSOR_ROTATION} scale(1)`; }, 120);
+  };
+
+  // Unlike pulseReplayCursor's brief tap animation, this holds the "pressed" size for as long as
+  // a drag is in progress (from the first input sample to the change/release), so the cursor
+  // visibly reads as "mouse button held down" for the whole drag instead of just blipping.
+  const setReplayCursorPressed = (pressed: boolean) => {
+    const el = ensureReplayCursorEl();
+    el.style.transform = `${CURSOR_ROTATION} scale(${pressed ? 0.72 : 1})`;
+  };
+
+  const hideReplayCursor = () => {
+    if (replayCursorEl) replayCursorEl.style.display = 'none';
+  };
+
+  // The independently-sampled mousemove trail tracks where the mouse roughly was, but during a
+  // slider drag the thing that actually matters visually is the thumb, and rounding/throttling
+  // differences between the two recordings meant the cursor could visibly lag or lead it. Reading
+  // the thumb's real position directly off the element removes that gap entirely.
+  const getRangeThumbPosition = (input: HTMLInputElement) => {
+    const rect = input.getBoundingClientRect();
+    const min = parseFloat(input.min || '0');
+    const max = parseFloat(input.max || '100');
+    const value = parseFloat(input.value);
+    const fraction = max > min ? (value - min) / (max - min) : 0;
+    const clamped = Math.min(1, Math.max(0, fraction));
+    return { x: rect.left + clamped * rect.width, y: rect.top + rect.height / 2 };
+  };
+
+  // Events and cursor-trail points used to be replayed by two independently-scheduled loops,
+  // synced only by a shared clock. That still left a genuine race: two setTimeout chains have
+  // no guaranteed relative order when their next deadlines land at nearly the same millisecond,
+  // so a slider-thumb snap and a trail sample due at nearly the same instant could interleave
+  // either way, occasionally letting a stale mousemove sample win for one frame. Merging both
+  // into a single chronologically-sorted queue driven by one loop removes the second scheduler
+  // entirely — there is no other timer that can run between "we just set the cursor position"
+  // and "the loop advances to the next action", so nothing can undo it out of order.
+  type ReplayAction =
+    | { kind: 'dom-event'; t: number; event: RecorderEvent }
+    | { kind: 'cursor-move'; t: number; point: RecorderCursorPoint };
+
+  const compareReplayActions = (a: ReplayAction, b: ReplayAction) => {
+    if (a.t !== b.t) return a.t - b.t;
+    // At equal timestamps, let the raw trail sample apply first and any coincident dom-event
+    // (in particular a slider-thumb snap or a click's cursor jump) apply after, so discrete
+    // actions always get the final say for that instant rather than being stomped by a
+    // same-millisecond mousemove sample.
+    if (a.kind === b.kind) return 0;
+    return a.kind === 'cursor-move' ? -1 : 1;
+  };
+
+  const buildReplayActionQueue = (payload: RecordingPayload): ReplayAction[] => {
+    const queue: ReplayAction[] = [
+      ...payload.events.map((event): ReplayAction => ({ kind: 'dom-event', t: event.t, event })),
+      ...(payload.cursorTrail || []).map((point): ReplayAction => ({ kind: 'cursor-move', t: point.t, point }))
+    ];
+    return queue.sort(compareReplayActions);
+  };
+
+  const playReplayQueue = async (actions: ReplayAction[]) => {
+    // Tracks the timestamp of the last cursor move regardless of whether it came from a raw
+    // trail sample or a slider-thumb snap, so both kinds glide across their real elapsed gap
+    // instead of the thumb-snap case using a fixed duration unrelated to how far apart the
+    // samples actually were (which is what made slider drags look choppy again).
+    let prevCursorMoveT: number | undefined;
+    const glideCursorTo = (t: number, x: number, y: number) => {
+      setReplayCursorGlideMs(prevCursorMoveT !== undefined
+        ? Math.min(Math.max(0, t - prevCursorMoveT), CURSOR_MAX_GLIDE_MS)
+        : 0);
+      moveReplayCursorTo(x, y);
+      prevCursorMoveT = t;
+    };
+    // True for the whole span from a slider's first input sample to its change/release, so the
+    // cursor stays in the small "pressed" pose for the entire drag instead of just blipping.
+    let cursorPressed = false;
+
+    for (const action of actions) {
+      if (replayAbort) break;
+      await waitUntil(action.t);
+      if (replayAbort) break;
+
+      if (action.kind === 'cursor-move') {
+        glideCursorTo(action.t, action.point.x, action.point.y);
+        continue;
+      }
+
+      const { event } = action;
+      // Elapsed time and caption are driven solely by the wall-clock interval timer
+      // (updateReplayProgress) so there's a single clock; setting them again here from the
+      // event's recorded timestamp raced with that timer whenever replay ran slower or faster
+      // than real time, flickering the caption between the two.
+      state.replayEventText = describeEvent(event);
+      updateUi();
+      if (event.type === 'click') {
+        if (typeof event.x === 'number' && typeof event.y === 'number') glideCursorTo(event.t, event.x, event.y);
+        pulseReplayCursor();
+      }
+      const target = replayEvent(event);
+      if ((event.type === 'input' || event.type === 'change') && target instanceof HTMLInputElement && target.type === 'range') {
+        const thumb = getRangeThumbPosition(target);
+        glideCursorTo(event.t, thumb.x, thumb.y);
+        if (event.type === 'input' && !cursorPressed) {
+          cursorPressed = true;
+          setReplayCursorPressed(true);
+        } else if (event.type === 'change' && cursorPressed) {
+          cursorPressed = false;
+          setReplayCursorPressed(false);
+        }
+      }
+    }
+
+    if (cursorPressed) setReplayCursorPressed(false);
+  };
+
   const replay = async () => {
     if (!state.loadedReplay || state.replaying || state.recording) return;
     replayAbort = false;
+    const actionQueue = buildReplayActionQueue(state.loadedReplay);
     state.replaying = true;
     state.replayElapsedMs = 0;
-    state.replayDurationMs = state.loadedReplay.meta.durationMs || state.loadedReplay.events[state.loadedReplay.events.length - 1]?.t || 0;
+    state.replayDurationMs = state.loadedReplay.meta.durationMs || actionQueue.at(-1)?.t || 0;
     state.replayCaption = '';
     state.replayEventText = 'Restoring initial app state';
     updateUi();
@@ -1042,27 +1310,16 @@ export const installActionRecorder = () => {
       await sleep(150);
     }
 
-    const replayStartedAt = performance.now();
+    replayStartedAt = performance.now();
     replayTimerId = window.setInterval(() => {
       updateReplayProgress(Math.round(performance.now() - replayStartedAt));
     }, 100);
 
-    const events = state.loadedReplay.events;
-    let previousTime = 0;
-    for (const event of events) {
-      if (replayAbort) break;
-      const delay = Math.max(0, event.t - previousTime);
-      previousTime = event.t;
-      await sleep(delay);
-      state.replayElapsedMs = event.t;
-      state.replayCaption = currentCaptionFor(event.t);
-      state.replayEventText = describeEvent(event);
-      updateUi();
-      replayEvent(event);
-    }
+    await playReplayQueue(actionQueue);
 
     window.clearInterval(replayTimerId);
     updateReplayProgress(state.replayDurationMs);
+    hideReplayCursor();
     state.replaying = false;
     state.replayEventText = replayAbort ? 'Replay stopped' : 'Replay complete';
     state.replayCaption = '';
@@ -1110,7 +1367,15 @@ export const installActionRecorder = () => {
 
   document.addEventListener('click', (event) => {
     if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
-    record({ type: 'click', selectors: selectorCandidatesFor(event.target) });
+    record({ type: 'click', selectors: selectorCandidatesFor(event.target), x: event.clientX, y: event.clientY });
+  }, { capture: true, passive: true });
+
+  document.addEventListener('mousemove', (event) => {
+    if (!state.recording || shouldIgnoreEvent(event, host)) return;
+    const now = performance.now();
+    if (now - lastCursorCapture < 60) return;
+    lastCursorCapture = now;
+    recordCursorPoint(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   document.addEventListener('input', (event) => {
