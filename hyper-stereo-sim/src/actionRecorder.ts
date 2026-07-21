@@ -119,6 +119,18 @@ const SELECTOR_LIMIT = 120;
 
 const isElement = (target: EventTarget | null): target is Element => target instanceof Element;
 
+// React installs its own get/set on the element instance to track "value"/"checked" changes it
+// made itself. Assigning through that instance property (a plain `el.value = x`) updates React's
+// tracker too, so React sees no difference on the next input event and silently drops onChange.
+// Going through the prototype's native setter bypasses the tracker so the change is detected.
+const nativePropertySetter = (proto: object, prop: string) =>
+  Object.getOwnPropertyDescriptor(proto, prop)?.set;
+
+const nativeInputValueSetter = nativePropertySetter(HTMLInputElement.prototype, 'value');
+const nativeInputCheckedSetter = nativePropertySetter(HTMLInputElement.prototype, 'checked');
+const nativeTextareaValueSetter = nativePropertySetter(HTMLTextAreaElement.prototype, 'value');
+const nativeSelectValueSetter = nativePropertySetter(HTMLSelectElement.prototype, 'value');
+
 const normalizeText = (text: string | null | undefined) =>
   (text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
 
@@ -351,6 +363,7 @@ export const installActionRecorder = () => {
 
   let timerId = 0;
   let lastScrollCapture = 0;
+  let lastInputCapture = 0;
   let lastUrl = window.location.href;
   let recognition: SpeechRecognition | undefined;
   let replayAbort = false;
@@ -651,14 +664,18 @@ export const installActionRecorder = () => {
   const setElementValue = (element: Element, value = '') => {
     if (element instanceof HTMLInputElement) {
       if (element.type === 'checkbox' || element.type === 'radio') {
-        element.checked = value === 'true';
+        nativeInputCheckedSetter?.call(element, value === 'true');
       } else {
-        element.value = value;
+        nativeInputValueSetter?.call(element, value);
       }
       return;
     }
-    if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      element.value = value;
+    if (element instanceof HTMLTextAreaElement) {
+      nativeTextareaValueSetter?.call(element, value);
+      return;
+    }
+    if (element instanceof HTMLSelectElement) {
+      nativeSelectValueSetter?.call(element, value);
       return;
     }
     if (element instanceof HTMLElement && element.isContentEditable) {
@@ -835,10 +852,10 @@ export const installActionRecorder = () => {
     updateUi();
   };
 
-  const addCommentary = (text: string, final: boolean) => {
+  const addCommentary = (text: string, final: boolean, atMs?: number) => {
     const normalized = normalizeText(text);
     if (!normalized || !state.recording) return;
-    state.commentary.push({ t: elapsed(), text: normalized, final });
+    state.commentary.push({ t: atMs ?? elapsed(), text: normalized, final });
     updateVoiceStatus();
     updateUi();
   };
@@ -859,14 +876,20 @@ export const installActionRecorder = () => {
       return;
     }
 
+    const utteranceStartedAt = new Map<number, number>();
     const instance = new SpeechRecognitionApi();
     instance.continuous = true;
     instance.interimResults = true;
     instance.lang = navigator.language || 'en-US';
     instance.onresult = (event) => {
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (!utteranceStartedAt.has(index)) utteranceStartedAt.set(index, elapsed());
         const result = event.results[index];
-        if (result.isFinal) addCommentary(result[0]?.transcript || '', true);
+        if (result.isFinal) {
+          const startedAt = utteranceStartedAt.get(index) ?? elapsed();
+          utteranceStartedAt.delete(index);
+          addCommentary(result[0]?.transcript || '', true, startedAt);
+        }
       }
     };
     instance.onerror = () => {
@@ -943,6 +966,7 @@ export const installActionRecorder = () => {
     state.hasRecording = false;
     lastUrl = window.location.href;
     lastScrollCapture = 0;
+    lastInputCapture = 0;
     timerId = window.setInterval(updateUi, 250);
     record({ type: 'navigation' });
     if (state.voiceContextEnabled) void toggleMic();
@@ -1091,6 +1115,9 @@ export const installActionRecorder = () => {
 
   document.addEventListener('input', (event) => {
     if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
+    const now = performance.now();
+    if (now - lastInputCapture < 100) return;
+    lastInputCapture = now;
     record({ type: 'input', selectors: selectorCandidatesFor(event.target), value: valueFor(event.target) });
   }, { capture: true });
 
