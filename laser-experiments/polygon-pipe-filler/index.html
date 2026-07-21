@@ -1,0 +1,2021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convex Polygon Pipe Filler</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+        .controls {
+            margin-bottom: 20px;
+            background: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 100%;
+            max-width: 800px;
+        }
+        button {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #005f9e; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        .options-row {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        .options-row label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        select {
+            background-color: #3a3a3a;
+            color: white;
+            border: 1px solid #555;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .canvas-container {
+            width: 100%;
+            max-width: 800px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+        }
+        canvas {
+            background-color: #000000;
+            border: 2px solid #333;
+            border-radius: 4px;
+            cursor: crosshair;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            max-width: 100%;
+            height: auto;
+            touch-action: none; /* Prevent scrolling when drawing on mobile */
+        }
+        .instructions { font-size: 14px; color: #aaa; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button id="generateBtn" disabled>Generate Pipes</button>
+        <button id="resetBtn">Reset</button>
+        <div class="options-row">
+            <label for="thicknessSlider">Thickness (<span id="thicknessValue">20</span>/500):
+                <input type="range" id="thicknessSlider" min="2" max="50" value="20">
+            </label>
+            <label for="styleSelect">Style:
+                <select id="styleSelect">
+                    <option value="flat">Flat</option>
+                    <option value="3d-basic">3D Basic</option>
+                    <option value="3d-glossy">3D Glossy</option>
+                    <option value="illustrated">Illustrated Art</option>
+                    <option value="circuit">1940s Circuit Board</option>
+                    <option value="painted_lady">Painted Lady</option>
+                    <option value="ducks">Rows of Ducks</option>
+                    <option value="gears" selected>Gears</option>
+                    <option value="christmas">Christmas Cookies</option>
+                </select>
+            </label>
+            <label for="paletteSelect">Palette:
+                <select id="paletteSelect">
+                    <option value="classic">Classic</option>
+                    <option value="steampunk" selected>SteamPunk</option>
+                    <option value="neon">Neon</option>
+                    <option value="art_pendant">Art Pendant</option>
+                    <option value="circuit">Circuit Colors</option>
+                    <option value="painted_lady">Painted Lady</option>
+                    <option value="ducks">Ducks</option>
+                    <option value="christmas">Christmas</option>
+                </select>
+            </label>
+            <label for="modeSelect">Mode:
+                <select id="modeSelect">
+                    <option value="fill" selected>Fill Interior</option>
+                    <option value="border">Trace Border</option>
+                </select>
+            </label>
+            <label for="densitySlider">Density: <span id="densityValue">50</span>%
+                <input type="range" id="densitySlider" min="5" max="150" value="50">
+            </label>
+            <label for="colorSlider">Color Changes: <span id="colorValue">15</span>%
+                <input type="range" id="colorSlider" min="0" max="100" value="15">
+            </label>
+            <label for="maxStraightSlider">Max Straight: <span id="maxStraightValue">10</span>
+                <input type="range" id="maxStraightSlider" min="2" max="25" value="10">
+            </label>
+            <label for="gearSlider">Gears: <span id="gearValue">6</span>
+                <input type="range" id="gearSlider" min="0" max="20" value="6">
+            </label>
+            <label for="marginSlider">Edge Margin: <span id="marginValue">0</span>
+                <input type="range" id="marginSlider" min="-100" max="100" value="0">
+            </label>
+        </div>
+        <div class="instructions">Tap/Click on the canvas to add at least 3 points. The app will auto-form a convex polygon.</div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const generateBtn = document.getElementById('generateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const thicknessSlider = document.getElementById('thicknessSlider');
+        const thicknessValue = document.getElementById('thicknessValue');
+        const styleSelect = document.getElementById('styleSelect');
+        const paletteSelect = document.getElementById('paletteSelect');
+        const colorSlider = document.getElementById('colorSlider');
+        const colorValue = document.getElementById('colorValue');
+        const maxStraightSlider = document.getElementById('maxStraightSlider');
+        const maxStraightValue = document.getElementById('maxStraightValue');
+        const gearSlider = document.getElementById('gearSlider');
+        const gearValue = document.getElementById('gearValue');
+        const marginSlider = document.getElementById('marginSlider');
+        const marginValue = document.getElementById('marginValue');
+        const modeSelect = document.getElementById('modeSelect');
+        const densitySlider = document.getElementById('densitySlider');
+        const densityValue = document.getElementById('densityValue');
+
+        let rawPoints = [];
+        let hullPoints = [];
+        let isGenerated = false;
+        let draggingPoint = null;
+        let gears = []; // Store generated gears for redraws
+
+        // Palettes
+        const palettes = {
+            classic: ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6', '#e67e22', '#1abc9c', '#ecf0f1', '#d35400'],
+            steampunk: ['#b08d57', '#a97142', '#8c5e3c', '#5e3a21', '#cda434', '#d4af37', '#7b3f00', '#b5a642', '#8a795d'],
+            neon: ['#ff00ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000', '#ff8800'],
+            art_pendant: ['#3498db', '#5dade2', '#d4af37', '#aab7b8', '#d5f5e3', '#f4d03f', '#7f8c8d'],
+            circuit: ['#a52a2a', '#8b4513', '#cd7f32', '#b8860b', '#d2691e'],
+            // More vibrant palette for the new Painted Lady style
+            painted_lady: ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF9F43', '#A29BFE', '#6C5CE7', '#FD79A8', '#00B894', '#FDCB6E', '#E17055'],
+            ducks: ['#FDD835', '#FFEB3B', '#FFF59D', '#FFFFFF', '#E0E0E0', '#FF9800', '#4CAF50'],
+            christmas: ['#c0392b', '#165b33', '#f8b229', '#ffffff', '#0b6e4f', '#e94560', '#d4af37']
+        };
+
+        // Helper to get coordinates for both mouse and touch events
+        function getCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function handlePointerDown(e) {
+            e.preventDefault();
+            const point = getCoordinates(e);
+            let clickedExisting = false;
+
+            for (let p of rawPoints) {
+                if (Math.hypot(p.x - point.x, p.y - point.y) < 15) {
+                    draggingPoint = p;
+                    clickedExisting = true;
+                    break;
+                }
+            }
+
+            if (!clickedExisting) {
+                rawPoints.push(point);
+                draggingPoint = point;
+            }
+
+            hullPoints = calculateConvexHull(rawPoints);
+            if (hullPoints.length >= 3) {
+                generateBtn.disabled = false;
+            }
+
+            if (!isGenerated) {
+                drawBase(styleSelect.value);
+                drawHandles();
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (!draggingPoint) return;
+            e.preventDefault();
+            const point = getCoordinates(e);
+            draggingPoint.x = point.x;
+            draggingPoint.y = point.y;
+
+            hullPoints = calculateConvexHull(rawPoints);
+
+            drawBase(styleSelect.value);
+            drawHandles();
+        }
+
+        function handlePointerUp(e) {
+            if (!draggingPoint) return;
+            e.preventDefault();
+            draggingPoint = null;
+
+            if (isGenerated && hullPoints.length >= 3) {
+                generatePipes();
+            } else if (!isGenerated) {
+                drawBase(styleSelect.value);
+                drawHandles();
+            }
+        }
+
+        canvas.addEventListener('mousedown', handlePointerDown);
+        canvas.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerUp);
+        canvas.addEventListener('touchstart', handlePointerDown, { passive: false });
+        canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+        window.addEventListener('touchend', handlePointerUp);
+
+        generateBtn.addEventListener('click', () => {
+            if (hullPoints.length < 3) return;
+            isGenerated = true;
+            generateBtn.disabled = true;
+            generatePipes();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            rawPoints = [];
+            hullPoints = [];
+            isGenerated = false;
+            generateBtn.disabled = true;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        thicknessSlider.addEventListener('input', (e) => {
+            thicknessValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        styleSelect.addEventListener('change', () => {
+            if (isGenerated) generatePipes();
+        });
+
+        paletteSelect.addEventListener('change', () => {
+            if (isGenerated) generatePipes();
+        });
+
+        colorSlider.addEventListener('input', (e) => {
+            colorValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        maxStraightSlider.addEventListener('input', (e) => {
+            maxStraightValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        gearSlider.addEventListener('input', (e) => {
+            gearValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        marginSlider.addEventListener('input', (e) => {
+            marginValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        modeSelect.addEventListener('change', () => {
+            if (isGenerated) generatePipes();
+        });
+
+        densitySlider.addEventListener('input', (e) => {
+            densityValue.textContent = e.target.value;
+            if (isGenerated) generatePipes();
+        });
+
+        function drawBase(currentStyle = 'illustrated') {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (hullPoints.length >= 3) {
+                ctx.beginPath();
+                ctx.moveTo(hullPoints[0].x, hullPoints[0].y);
+                for (let i = 1; i < hullPoints.length; i++) {
+                    ctx.lineTo(hullPoints[i].x, hullPoints[i].y);
+                }
+                ctx.closePath();
+
+                // Background fills based on style
+                if (currentStyle === 'illustrated') {
+                    ctx.fillStyle = '#e8ecef';
+                    ctx.strokeStyle = '#222';
+                    ctx.lineWidth = 4;
+                } else if (currentStyle === 'circuit') {
+                    ctx.fillStyle = '#8b5a2b';
+                    ctx.strokeStyle = '#d4af37';
+                    ctx.lineWidth = 6;
+                } else if (currentStyle === 'painted_lady') {
+                    ctx.fillStyle = '#2d4227'; // Dark organic hillside
+                    ctx.strokeStyle = '#1a2b16';
+                    ctx.lineWidth = 4;
+                } else if (currentStyle === 'ducks') {
+                    ctx.fillStyle = '#4facfe'; // Water blue
+                    ctx.strokeStyle = '#00f2fe';
+                    ctx.lineWidth = 4;
+                } else if (currentStyle === 'gears') {
+                    ctx.fillStyle = '#1a110a'; // Dark, greasy mechanical void
+                    ctx.strokeStyle = '#3d2b1f';
+                    ctx.lineWidth = 4;
+                } else if (currentStyle === 'christmas') {
+                    ctx.fillStyle = '#7a4a1e'; // Gingerbread dough
+                    ctx.strokeStyle = '#c0392b'; // Candy-cane red trim
+                    ctx.lineWidth = 6;
+                } else {
+                    ctx.fillStyle = '#111';
+                    ctx.strokeStyle = '#555';
+                    ctx.lineWidth = 2;
+                }
+
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        function drawHandles() {
+            ctx.fillStyle = 'rgba(0, 122, 204, 0.8)';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            rawPoints.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            });
+        }
+
+        function calculateConvexHull(points) {
+            if (points.length <= 3) return points;
+            const uniquePoints = points.filter((p, index, self) =>
+                index === self.findIndex((t) => (t.x === p.x && t.y === p.y))
+            );
+
+            const sorted = [...uniquePoints].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+            const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+            const lower = [];
+            for (let p of sorted) {
+                while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+                lower.push(p);
+            }
+
+            const upper = [];
+            for (let i = sorted.length - 1; i >= 0; i--) {
+                let p = sorted[i];
+                while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+                upper.push(p);
+            }
+
+            upper.pop(); lower.pop();
+            return lower.concat(upper);
+        }
+
+        function pointInPolygon(point, vs) {
+            let x = point.x, y = point.y;
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                let xi = vs[i].x, yi = vs[i].y;
+                let xj = vs[j].x, yj = vs[j].y;
+                let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function distToSegmentSquared(p, v, w) {
+            let l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y);
+            if (l2 === 0) return (p.x - v.x)*(p.x - v.x) + (p.y - v.y)*(p.y - v.y);
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            let projX = v.x + t * (w.x - v.x);
+            let projY = v.y + t * (w.y - v.y);
+            return (p.x - projX)*(p.x - projX) + (p.y - projY)*(p.y - projY);
+        }
+
+        function distanceToPolygon(p, poly) {
+            let minDist2 = Infinity;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                let d2 = distToSegmentSquared(p, poly[j], poly[i]);
+                if (d2 < minDist2) minDist2 = d2;
+            }
+            return Math.sqrt(minDist2);
+        }
+
+        // Offset-polygon engine: shrinks (dist > 0) or grows (dist < 0) a convex
+        // polygon by `dist` pixels, regardless of vertex winding or shape.
+        // Works by shifting each edge along its inward normal (found relative to
+        // the centroid) then re-intersecting consecutive shifted edges.
+        function offsetPolygon(poly, dist) {
+            if (!dist || poly.length < 3) return poly.slice();
+            const n = poly.length;
+            const centroid = poly.reduce((acc, p) => ({ x: acc.x + p.x / n, y: acc.y + p.y / n }), { x: 0, y: 0 });
+
+            const offsetLines = [];
+            for (let i = 0; i < n; i++) {
+                let p1 = poly[i], p2 = poly[(i + 1) % n];
+                let dx = p2.x - p1.x, dy = p2.y - p1.y;
+                let len = Math.hypot(dx, dy);
+                if (len === 0) { offsetLines.push({ p1, p2 }); continue; }
+
+                let normal = { x: -dy / len, y: dx / len };
+                let mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                let toCentroid = { x: centroid.x - mid.x, y: centroid.y - mid.y };
+                let inward = (normal.x * toCentroid.x + normal.y * toCentroid.y) > 0 ? normal : { x: -normal.x, y: -normal.y };
+
+                offsetLines.push({
+                    p1: { x: p1.x + inward.x * dist, y: p1.y + inward.y * dist },
+                    p2: { x: p2.x + inward.x * dist, y: p2.y + inward.y * dist }
+                });
+            }
+
+            function lineIntersect(a1, a2, b1, b2) {
+                let d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+                let d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+                let denom = d1x * d2y - d1y * d2x;
+                if (Math.abs(denom) < 1e-9) return { x: (a2.x + b1.x) / 2, y: (a2.y + b1.y) / 2 };
+                let t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / denom;
+                return { x: a1.x + d1x * t, y: a1.y + d1y * t };
+            }
+
+            const result = [];
+            for (let i = 0; i < n; i++) {
+                let prev = offsetLines[(i - 1 + n) % n];
+                let curr = offsetLines[i];
+                result.push(lineIntersect(prev.p1, prev.p2, curr.p1, curr.p2));
+            }
+            return result;
+        }
+
+        // Builds a cumulative-length representation of a polygon's perimeter
+        // so points can be sampled evenly along it.
+        function buildPerimeterPath(poly) {
+            const segments = [];
+            let total = 0;
+            const n = poly.length;
+            for (let i = 0; i < n; i++) {
+                let p1 = poly[i], p2 = poly[(i + 1) % n];
+                let len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                segments.push({ p1, p2, len, start: total });
+                total += len;
+            }
+            return { segments, total };
+        }
+
+        // Returns { x, y, angle } at arc-length `dist` along the perimeter path.
+        // `angle` is the tangent direction of travel at that point.
+        function pointAtDistance(path, dist) {
+            let d = path.total > 0 ? ((dist % path.total) + path.total) % path.total : 0;
+            for (let seg of path.segments) {
+                if (d <= seg.start + seg.len) {
+                    let t = seg.len === 0 ? 0 : (d - seg.start) / seg.len;
+                    return {
+                        x: seg.p1.x + (seg.p2.x - seg.p1.x) * t,
+                        y: seg.p1.y + (seg.p2.y - seg.p1.y) * t,
+                        angle: Math.atan2(seg.p2.y - seg.p1.y, seg.p2.x - seg.p1.x)
+                    };
+                }
+            }
+            let last = path.segments[path.segments.length - 1];
+            return { x: last.p2.x, y: last.p2.y, angle: Math.atan2(last.p2.y - last.p1.y, last.p2.x - last.p1.x) };
+        }
+
+        function drawGear(cx, cy, radius, color, innerColor, teeth, isStacked = false) {
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#000000';
+
+            ctx.beginPath();
+            let innerR = radius * 0.75;
+            for (let i = 0; i < teeth; i++) {
+                let a1 = (i / teeth) * Math.PI * 2;
+                let a2 = ((i + 0.4) / teeth) * Math.PI * 2;
+                let a3 = ((i + 0.6) / teeth) * Math.PI * 2;
+                let a4 = ((i + 1.0) / teeth) * Math.PI * 2;
+
+                if (i === 0) ctx.moveTo(cx + Math.cos(a1)*radius, cy + Math.sin(a1)*radius);
+                else ctx.lineTo(cx + Math.cos(a1)*radius, cy + Math.sin(a1)*radius);
+
+                ctx.lineTo(cx + Math.cos(a2)*radius, cy + Math.sin(a2)*radius);
+                ctx.lineTo(cx + Math.cos(a3)*innerR, cy + Math.sin(a3)*innerR);
+                ctx.lineTo(cx + Math.cos(a4)*innerR, cy + Math.sin(a4)*innerR);
+            }
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill(); ctx.stroke();
+
+            if (innerColor && innerColor !== color) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.65, 0, Math.PI * 2);
+                ctx.fillStyle = innerColor;
+                ctx.fill(); ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.45, 0, Math.PI * 2);
+                ctx.fillStyle = color === '#d4af37' ? '#bdc3c7' : '#d4af37';
+                ctx.fill(); ctx.stroke();
+            }
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.32, 0, Math.PI * 2);
+            ctx.fillStyle = '#e8ecef';
+            ctx.fill(); ctx.stroke();
+
+            if (teeth > 8 && !isStacked) {
+                for (let i = 0; i < 4; i++) {
+                    let a = (i / 4) * Math.PI * 2 + Math.PI/4;
+                    ctx.beginPath();
+                    ctx.arc(cx + Math.cos(a)*radius*0.5, cy + Math.sin(a)*radius*0.5, radius*0.12, 0, Math.PI*2);
+                    ctx.fillStyle = '#e8ecef';
+                    ctx.fill(); ctx.stroke();
+                }
+            }
+
+            if (isStacked) {
+                let stackedRadius = radius * 0.55;
+                let stackedColor = color === '#d4af37' ? '#bdc3c7' : '#d4af37';
+                drawGear(cx, cy, stackedRadius, stackedColor, null, Math.max(6, Math.floor(teeth/2)), false);
+            } else {
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.18, 0, Math.PI * 2);
+                ctx.fillStyle = '#7f8c8d';
+                ctx.fill(); ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.08, 0, Math.PI * 2);
+                ctx.fillStyle = color === '#d4af37' ? '#d4af37' : '#bdc3c7';
+                ctx.fill(); ctx.stroke();
+            }
+        }
+
+        // New function to draw varied houses
+        function drawHouse(ctx, x, y, width, height, color, roofColor, hash) {
+            let yBase = y;
+            let hType = hash % 4; // 4 types of houses
+
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#222'; // Darker outline
+            ctx.lineWidth = 1;
+
+            // Main Body
+            ctx.fillRect(x - width / 2, yBase - height, width, height);
+            ctx.strokeRect(x - width / 2, yBase - height, width, height);
+
+            // Roof
+            ctx.fillStyle = roofColor;
+            ctx.beginPath();
+            if (hType === 0) { // Slanted Roof
+                ctx.moveTo(x - width / 2, yBase - height);
+                ctx.lineTo(x + width / 2, yBase - height - width * 0.3);
+                ctx.lineTo(x + width / 2, yBase - height);
+                ctx.closePath();
+            } else if (hType === 1) { // Peaked Roof
+                ctx.moveTo(x - width / 2, yBase - height);
+                ctx.lineTo(x, yBase - height - width * 0.5);
+                ctx.lineTo(x + width / 2, yBase - height);
+                ctx.closePath();
+            } else if (hType === 2) { // Flat Roof with parapet
+                ctx.rect(x - width / 2, yBase - height - width * 0.1, width, width * 0.1);
+            } else { // Mansard-like
+                ctx.moveTo(x - width / 2, yBase - height);
+                ctx.lineTo(x - width * 0.3, yBase - height - width * 0.3);
+                ctx.lineTo(x + width * 0.3, yBase - height - width * 0.3);
+                ctx.lineTo(x + width / 2, yBase - height);
+                ctx.closePath();
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            // Windows and Door
+            let windowColor = '#add8e6'; // Light blue
+            let doorColor = '#6b4226'; // Brown
+            let numWindows = 1 + (hash % 3);
+            let winW = width * 0.2;
+            let winH = height * 0.2;
+            let doorW = width * 0.25;
+            let doorH = height * 0.3;
+
+            // Door (sometimes on left, sometimes on right)
+            let doorX = (hash % 2 === 0) ? (x - width / 2 + width * 0.1) : (x + width / 2 - width * 0.1 - doorW);
+            ctx.fillStyle = doorColor;
+            ctx.fillRect(doorX, yBase - doorH, doorW, doorH);
+            ctx.strokeRect(doorX, yBase - doorH, doorW, doorH);
+
+
+            // Windows
+            ctx.fillStyle = windowColor;
+            for (let i = 0; i < numWindows; i++) {
+                // Simple grid of windows
+                let winX = x - width / 2 + width * 0.15 + (i % 2) * width * 0.4;
+                let winY = yBase - height * 0.7 + Math.floor(i / 2) * height * 0.3;
+                if (numWindows === 1) { winX = x - winW / 2; winY = yBase - height*0.6; }
+
+                ctx.fillRect(winX, winY, winW, winH);
+                ctx.strokeRect(winX, winY, winW, winH);
+            }
+        }
+
+        function drawDuck(ctx, x, y, size, color, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            // Tail
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(-size*0.8, 0);
+            ctx.lineTo(-size*1.2, -size*0.3);
+            ctx.lineTo(-size*0.7, size*0.3);
+            ctx.fill();
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Body
+            ctx.beginPath();
+            ctx.ellipse(0, 0, size, size * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Head
+            ctx.beginPath();
+            ctx.arc(size * 0.6, -size * 0.4, size * 0.55, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            // Beak (Orange)
+            ctx.fillStyle = '#FF9800';
+            ctx.beginPath();
+            ctx.moveTo(size * 0.9, -size * 0.3);
+            ctx.lineTo(size * 1.5, -size * 0.2);
+            ctx.lineTo(size * 0.9, -size * 0.1);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+
+            // Eye
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(size * 0.7, -size * 0.5, size * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Wing
+            ctx.beginPath();
+            ctx.ellipse(0, size*0.1, size*0.5, size*0.25, Math.PI*0.05, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawLilypad(ctx, cx, cy, size, hash) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate((hash % 360) * Math.PI / 180);
+            ctx.beginPath();
+            let notch = 0.5;
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, size, notch, Math.PI * 2 - notch);
+            ctx.closePath();
+            ctx.fillStyle = (hash % 2 === 0) ? '#2e7d32' : '#388e3c';
+            ctx.fill();
+            ctx.strokeStyle = '#1b5e20';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawLotus(ctx, cx, cy, radius, palette) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            let petals = 8;
+            for (let i = 0; i < petals; i++) {
+                let a = (i / petals) * Math.PI * 2;
+                ctx.save();
+                ctx.rotate(a);
+                ctx.beginPath();
+                ctx.ellipse(0, -radius * 0.5, radius * 0.25, radius * 0.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = palette[i % palette.length];
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.stroke();
+                ctx.restore();
+            }
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.3, 0, Math.PI * 2);
+            ctx.fillStyle = '#f4d03f';
+            ctx.fill();
+            ctx.strokeStyle = '#b8860b';
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Generic leaf used for border-tracing modes; local +x is "forward" so
+        // rotating by the perimeter's tangent angle points it down the path.
+        function drawLeaf(ctx, x, y, size, color, angle) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(-size, 0);
+            ctx.quadraticCurveTo(-size * 0.3, -size * 0.6, size, 0);
+            ctx.quadraticCurveTo(-size * 0.3, size * 0.6, -size, 0);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.9, 0);
+            ctx.lineTo(size * 0.9, 0);
+            ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawCookieStar(ctx, x, y, size, color, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            let spikes = 5, outer = size, inner = size * 0.45;
+            ctx.beginPath();
+            for (let i = 0; i < spikes * 2; i++) {
+                let r = i % 2 === 0 ? outer : inner;
+                let a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+                let px = Math.cos(a) * r, py = Math.sin(a) * r;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#7a4a1e';
+            ctx.lineWidth = Math.max(size * 0.08, 1);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            for (let i = 0; i < spikes; i++) {
+                let a = (i / spikes) * Math.PI * 2 - Math.PI / 2;
+                ctx.beginPath();
+                ctx.arc(Math.cos(a) * outer * 0.5, Math.sin(a) * outer * 0.5, size * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // `angle` is the shape's own rotation (0 = upright). Callers that want
+        // tangential border alignment must add Math.PI / 2 themselves before
+        // passing it in, since upright "up" is local -y, not local +x.
+        function drawGingerbreadMan(ctx, x, y, size, color, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#5c3a1e';
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+
+            ctx.beginPath();
+            ctx.arc(0, -size * 1.3, size * 0.4, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(0, -size * 0.5, size * 0.45, size * 0.6, 0, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(-size * 0.65, -size * 0.7, size * 0.5, size * 0.18, -0.4, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(size * 0.65, -size * 0.7, size * 0.5, size * 0.18, 0.4, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(-size * 0.3, size * 0.3, size * 0.2, size * 0.55, 0.15, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(size * 0.3, size * 0.3, size * 0.2, size * 0.55, -0.15, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.beginPath(); ctx.arc(-size * 0.15, -size * 1.35, size * 0.05, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(size * 0.15, -size * 1.35, size * 0.05, 0, Math.PI * 2); ctx.fill();
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.arc(0, -size * 0.8 + i * size * 0.35, size * 0.06, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawChristmasTreeCookie(ctx, x, y, size, color, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#0b3d1f';
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+
+            ctx.beginPath();
+            ctx.moveTo(0, -size * 1.4);
+            ctx.lineTo(size * 0.55, -size * 0.6);
+            ctx.lineTo(size * 0.3, -size * 0.6);
+            ctx.lineTo(size * 0.7, size * 0.1);
+            ctx.lineTo(size * 0.4, size * 0.1);
+            ctx.lineTo(size * 0.85, size * 0.75);
+            ctx.lineTo(-size * 0.85, size * 0.75);
+            ctx.lineTo(-size * 0.4, size * 0.1);
+            ctx.lineTo(-size * 0.7, size * 0.1);
+            ctx.lineTo(-size * 0.3, -size * 0.6);
+            ctx.lineTo(-size * 0.55, -size * 0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#6b4226';
+            ctx.fillRect(-size * 0.15, size * 0.75, size * 0.3, size * 0.3);
+            ctx.strokeRect(-size * 0.15, size * 0.75, size * 0.3, size * 0.3);
+
+            let ornColors = ['#e74c3c', '#f1c40f', '#3498db', '#ffffff'];
+            for (let i = 0; i < 5; i++) {
+                let oy = -size * 1.0 + i * size * 0.45;
+                let ox = (hash % 2 === 0 ? 1 : -1) * (i % 2) * size * 0.25;
+                ctx.beginPath();
+                ctx.arc(ox, oy, size * 0.08, 0, Math.PI * 2);
+                ctx.fillStyle = ornColors[(hash + i) % ornColors.length];
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // Dedicated renderer for complex steampunk-style overlapping gears
+        function drawSteampunkGear(ctx, cx, cy, radius, color, hash, palette, rotation) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(rotation !== undefined ? rotation : hash);
+
+            // Outer drop shadow for 3D depth layering
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = radius * 0.2;
+            ctx.shadowOffsetX = radius * 0.05;
+            ctx.shadowOffsetY = radius * 0.1;
+
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#111';
+
+            // Outer teeth
+            let teethCount = 8 + (hash % 12) * 2; // Even numbers 8 to 30
+            ctx.beginPath();
+            let innerR = radius * 0.8;
+            for (let i = 0; i < teethCount; i++) {
+                let a1 = (i / teethCount) * Math.PI * 2;
+                let a2 = ((i + 0.3) / teethCount) * Math.PI * 2;
+                let a3 = ((i + 0.7) / teethCount) * Math.PI * 2;
+                let a4 = ((i + 1.0) / teethCount) * Math.PI * 2;
+
+                if (i === 0) ctx.moveTo(Math.cos(a1)*radius, Math.sin(a1)*radius);
+                else ctx.lineTo(Math.cos(a1)*radius, Math.sin(a1)*radius);
+                ctx.lineTo(Math.cos(a2)*radius, Math.sin(a2)*radius);
+                ctx.lineTo(Math.cos(a3)*innerR, Math.sin(a3)*innerR);
+                ctx.lineTo(Math.cos(a4)*innerR, Math.sin(a4)*innerR);
+            }
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Turn off shadow for interior detail drawing
+            ctx.shadowColor = 'transparent';
+            ctx.stroke();
+
+            // Inner design variation
+            let type = hash % 3;
+
+            // Inner hollow backing
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.65, 0, Math.PI * 2);
+            ctx.fillStyle = '#1a110a';
+            ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = color;
+
+            if (type === 0 && radius > 15) {
+                // Spokes
+                let spokes = 4 + (hash % 3);
+                ctx.beginPath();
+                ctx.arc(0,0, radius*0.25, 0, Math.PI*2);
+                for(let i=0; i<spokes; i++) {
+                    let a = (i/spokes)*Math.PI*2;
+                    ctx.moveTo(Math.cos(a)*radius*0.2, Math.sin(a)*radius*0.2);
+                    ctx.lineTo(Math.cos(a-0.1)*radius*0.65, Math.sin(a-0.1)*radius*0.65);
+                    ctx.lineTo(Math.cos(a+0.1)*radius*0.65, Math.sin(a+0.1)*radius*0.65);
+                    ctx.lineTo(Math.cos(a)*radius*0.2, Math.sin(a)*radius*0.2);
+                }
+                ctx.fill(); ctx.stroke();
+            } else if (type === 1 && radius > 15) {
+                // Circular holes
+                ctx.beginPath();
+                ctx.arc(0, 0, radius * 0.65, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+
+                let holes = 4 + (hash % 4);
+                for(let i=0; i<holes; i++) {
+                    let a = (i/holes)*Math.PI*2;
+                    ctx.beginPath();
+                    ctx.arc(Math.cos(a)*radius*0.4, Math.sin(a)*radius*0.4, radius*0.15, 0, Math.PI*2);
+                    ctx.fillStyle = '#1a110a';
+                    ctx.fill(); ctx.stroke();
+                }
+                ctx.fillStyle = color;
+            } else {
+                // Solid concentric tier
+                ctx.beginPath();
+                ctx.arc(0, 0, radius * 0.65, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, 0, radius * 0.45, 0, Math.PI * 2);
+                ctx.fillStyle = palette[(hash+1) % palette.length];
+                ctx.fill(); ctx.stroke();
+            }
+
+            // Center hub
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.25, 0, Math.PI * 2);
+            ctx.fillStyle = palette[(hash+2) % palette.length];
+            ctx.fill(); ctx.stroke();
+
+            // Center Axle pin
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.1, 0, Math.PI * 2);
+            ctx.fillStyle = '#222';
+            ctx.fill(); ctx.stroke();
+
+            // Rivets on the outer rim
+            if (radius > 20) {
+                ctx.fillStyle = '#8f9294'; // Dull silver rivets
+                for (let i = 0; i < 6; i++) {
+                    let a = (i / 6) * Math.PI * 2 + (hash%Math.PI);
+                    ctx.beginPath();
+                    ctx.arc(Math.cos(a)*radius*0.72, Math.sin(a)*radius*0.72, 1.5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // Traces evenly-spaced, tangentially-oriented decorations around the
+        // polygon's perimeter (offset inward/outward by the Edge Margin slider)
+        // instead of filling its interior.
+        function generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor) {
+            const borderPoly = offsetPolygon(hullPoints, marginPx);
+            if (borderPoly.length < 3) return;
+
+            const path = buildPerimeterPath(borderPoly);
+            if (path.total <= 0) return;
+
+            let spacing = (pipeThickness * 2.4) / densityFactor;
+            spacing = Math.max(spacing, pipeThickness * 0.5, 4);
+            let count = Math.max(3, Math.round(path.total / spacing));
+            spacing = path.total / count; // redistribute for perfectly even spacing
+
+            let baseColorChangeChance = parseInt(colorSlider.value, 10) / 100;
+            let currentColor = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            for (let i = 0; i < count; i++) {
+                let d = i * spacing;
+                let pt = pointAtDistance(path, d);
+                let hash = Math.abs(Math.floor(pt.x) * 17 + Math.floor(pt.y) * 23 + i * 13) % 100;
+
+                if (Math.random() < baseColorChangeChance) {
+                    let alt = currentPalette.filter(c => c !== currentColor);
+                    currentColor = alt.length ? alt[Math.floor(Math.random() * alt.length)] : currentColor;
+                }
+
+                if (currentStyle === 'ducks') {
+                    drawDuck(ctx, pt.x, pt.y, pipeThickness * 1.1, currentColor, pt.angle, hash);
+                } else if (currentStyle === 'painted_lady') {
+                    drawLeaf(ctx, pt.x, pt.y, pipeThickness * 1.3, currentColor, pt.angle);
+                } else if (currentStyle === 'christmas') {
+                    let size = pipeThickness * 1.3;
+                    let t = hash % 3;
+                    if (t === 0) drawCookieStar(ctx, pt.x, pt.y, size, currentColor, pt.angle, hash);
+                    else if (t === 1) drawGingerbreadMan(ctx, pt.x, pt.y, size, '#c0783c', pt.angle + Math.PI / 2, hash);
+                    else drawChristmasTreeCookie(ctx, pt.x, pt.y, size, currentColor, pt.angle + Math.PI / 2, hash);
+                } else if (currentStyle === 'gears' || currentStyle === 'illustrated') {
+                    drawSteampunkGear(ctx, pt.x, pt.y, pipeThickness * 1.1, currentColor, hash + i * 37, currentPalette, pt.angle);
+                } else if (currentStyle === 'circuit') {
+                    ctx.save();
+                    ctx.translate(pt.x, pt.y);
+                    ctx.rotate(pt.angle);
+                    ctx.fillStyle = '#d2b48c';
+                    ctx.fillRect(-pipeThickness * 0.6, -pipeThickness * 0.3, pipeThickness * 1.2, pipeThickness * 0.6);
+                    ctx.strokeStyle = '#8b5a2b';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(-pipeThickness * 0.6, -pipeThickness * 0.3, pipeThickness * 1.2, pipeThickness * 0.6);
+                    ctx.restore();
+                } else {
+                    // flat / 3d-basic / 3d-glossy: trace the border as a colored pipe segment
+                    let nextPt = pointAtDistance(path, d + spacing);
+                    ctx.beginPath();
+                    ctx.moveTo(pt.x, pt.y);
+                    ctx.lineTo(nextPt.x, nextPt.y);
+                    ctx.strokeStyle = currentColor;
+                    ctx.lineWidth = pipeThickness;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function generatePipes() {
+            let minX = Math.min(...hullPoints.map(p => p.x));
+            let maxX = Math.max(...hullPoints.map(p => p.x));
+            let minY = Math.min(...hullPoints.map(p => p.y));
+            let maxY = Math.max(...hullPoints.map(p => p.y));
+
+            let width = maxX - minX;
+            let height = maxY - minY;
+            let narrowDim = Math.min(width, height);
+
+            let thicknessFactor = parseInt(thicknessSlider.value, 10) / 500;
+            let pipeThickness = Math.max(narrowDim * thicknessFactor, 2);
+
+            let cellSize = pipeThickness * 2.1;
+
+            let marginInt = parseInt(marginSlider.value, 10);
+            let marginPx = marginInt * (narrowDim / 200);
+            let expandBound = marginPx < 0 ? -marginPx : 0;
+
+            let gridStartX = minX - expandBound;
+            let gridStartY = minY - expandBound;
+            let gridEndX = maxX + expandBound;
+            let gridEndY = maxY + expandBound;
+
+            let gridWidth = gridEndX - gridStartX;
+            let gridHeight = gridEndY - gridStartY;
+
+            let cols = Math.floor(gridWidth / cellSize);
+            let rows = Math.floor(gridHeight / cellSize);
+
+            // Center the grid dynamically so remainder spacing is distributed evenly
+            let offsetX = (gridWidth - (cols * cellSize)) / 2;
+            let offsetY = (gridHeight - (rows * cellSize)) / 2;
+
+            const currentPalette = palettes[paletteSelect.value];
+            const currentStyle = styleSelect.value;
+            const currentMode = modeSelect.value;
+            const densityFactor = Math.max(0.1, parseInt(densitySlider.value, 10) / 50);
+
+            if (currentMode === 'border') {
+                drawBase(currentStyle);
+                generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor);
+                drawHandles();
+                return;
+            }
+
+            let grid = [];
+            let validCells = [];
+
+            for(let r = 0; r < rows; r++) {
+                grid[r] = [];
+                for(let c = 0; c < cols; c++) {
+                    let cx = gridStartX + offsetX + (c * cellSize) + (cellSize / 2);
+                    let cy = gridStartY + offsetY + (r * cellSize) + (cellSize / 2);
+
+                    let checkCy = cy;
+                    if (currentStyle === 'painted_lady') {
+                        checkCy = cy - (pipeThickness * 1.5);
+                    }
+
+                    let isInsideRaw = pointInPolygon({x: cx, y: checkCy}, hullPoints);
+                    let dist = distanceToPolygon({x: cx, y: checkCy}, hullPoints);
+
+                    let isInsideEffective = false;
+                    if (isInsideRaw) {
+                        isInsideEffective = dist >= marginPx;
+                    } else {
+                        isInsideEffective = marginPx < 0 && dist <= -marginPx;
+                    }
+
+                    let cell = { r, c, cx, cy, inside: isInsideEffective, visited: false, edges: [], connectedTo: [] };
+
+                    grid[r][c] = cell;
+                    if(isInsideEffective) validCells.push(cell);
+                }
+            }
+
+            if (validCells.length === 0) return;
+
+            gears = [];
+            if (currentStyle === 'illustrated' || currentStyle === 'circuit' || currentStyle === 'painted_lady' || currentStyle === 'ducks') {
+                let numGears = parseInt(gearSlider.value, 10);
+                for (let i = 0; i < numGears; i++) {
+                    if (validCells.length === 0) break;
+                    let centerCell = validCells[Math.floor(Math.random() * validCells.length)];
+                    if (centerCell.visited) continue;
+
+                    let size = Math.random() > 0.65 ? 1 : 0;
+                    let gearCells = [];
+                    let canPlace = true;
+
+                    for (let dr = -size; dr <= size; dr++) {
+                        for (let dc = -size; dc <= size; dc++) {
+                            let r = centerCell.r + dr;
+                            let c = centerCell.c + dc;
+                            if (r >= 0 && r < rows && c >= 0 && c < cols && grid[r][c] && grid[r][c].inside && !grid[r][c].visited) {
+                                gearCells.push(grid[r][c]);
+                            } else {
+                                canPlace = false;
+                            }
+                        }
+                    }
+
+                    if (canPlace) {
+                        gearCells.forEach(c => c.visited = true);
+                        let isLarge = size === 1;
+                        gears.push({
+                            cx: centerCell.cx,
+                            cy: centerCell.cy,
+                            radius: (isLarge ? 1.6 : 0.8) * cellSize,
+                            color: Math.random() > 0.4 ? '#bdc3c7' : '#d4af37',
+                            innerColor: Math.random() > 0.3 ? currentPalette[Math.floor(Math.random() * currentPalette.length)] : null,
+                            teeth: isLarge ? 16 : 8,
+                            isStacked: isLarge && Math.random() > 0.5,
+                            isLarge: isLarge
+                        });
+                    }
+                }
+            }
+
+            let unvisitedValid = [...validCells].filter(c => !c.visited).sort(() => Math.random() - 0.5);
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+            let baseColorChangeChance = parseInt(colorSlider.value, 10) / 100;
+            let maxStraight = parseInt(maxStraightSlider.value, 10);
+
+            for (let startCell of unvisitedValid) {
+                if (startCell.visited) continue;
+
+                let stack = [startCell];
+                startCell.visited = true;
+                startCell.color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                startCell.lastDir = null;
+                startCell.straightCount = 0;
+
+                while(stack.length > 0) {
+                    let curr = stack[stack.length - 1];
+                    let unvisitedNeighbors = [];
+
+                    for (let [dr, dc] of dirs) {
+                        let nr = curr.r + dr, nc = curr.c + dc;
+                        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                            let neighbor = grid[nr][nc];
+                            if (neighbor.inside && !neighbor.visited) {
+                                unvisitedNeighbors.push({ node: neighbor, dir: [dr, dc] });
+                            }
+                        }
+                    }
+
+                    if (unvisitedNeighbors.length > 0) {
+                        let nextObj = null;
+                        let straightNeighbor = unvisitedNeighbors.find(n => curr.lastDir && n.dir[0] === curr.lastDir[0] && n.dir[1] === curr.lastDir[1]);
+
+                        let canGoStraight = straightNeighbor && curr.straightCount < maxStraight;
+
+                        if (canGoStraight && Math.random() < 0.88) {
+                            nextObj = straightNeighbor;
+                        } else {
+                            let allowedNeighbors = unvisitedNeighbors;
+                            if (curr.straightCount >= maxStraight && straightNeighbor && unvisitedNeighbors.length > 1) {
+                                allowedNeighbors = unvisitedNeighbors.filter(n => n !== straightNeighbor);
+                            }
+                            nextObj = allowedNeighbors[Math.floor(Math.random() * allowedNeighbors.length)];
+                        }
+
+                        let next = nextObj.node;
+                        next.visited = true;
+                        next.lastDir = nextObj.dir;
+
+                        let isStraight = straightNeighbor && nextObj === straightNeighbor;
+                        next.straightCount = isStraight ? curr.straightCount + 1 : 1;
+
+                        let colorChangeChance = isStraight ? (baseColorChangeChance * 0.75) : baseColorChangeChance;
+
+                        if (Math.random() < colorChangeChance) {
+                            let availableColors = currentPalette.filter(c => c !== curr.color);
+                            next.color = availableColors.length > 0 ? availableColors[Math.floor(Math.random() * availableColors.length)] : curr.color;
+                        } else {
+                            next.color = curr.color;
+                        }
+
+                        curr.edges.push(next);
+                        curr.connectedTo.push(next);
+                        next.connectedTo.push(curr);
+                        stack.push(next);
+                    } else {
+                        stack.pop();
+                    }
+                }
+            }
+
+            drawBase(currentStyle);
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            function getJointType(cell) {
+                let conn = cell.connectedTo.length;
+                if (conn === 0) return 0;
+                if (conn === 1) return 1;
+                if (conn > 2) return 2;
+
+                let [n1, n2] = cell.connectedTo;
+                let dx1 = n1.c - cell.c, dy1 = n1.r - cell.r;
+                let dx2 = n2.c - cell.c, dy2 = n2.r - cell.r;
+                if (dx1 === -dx2 && dy1 === -dy2) {
+                    return (cell.r * 11 + cell.c * 31) % 100 < 10 ? 3 : 0;
+                } else {
+                    return 1;
+                }
+            }
+
+            if (currentStyle === 'painted_lady') {
+                let allDrawables = [];
+
+                validCells.forEach(cell => {
+                    cell.edges.forEach(next => {
+                        allDrawables.push({
+                            type: 'segment',
+                            cell: cell,
+                            next: next,
+                            y: Math.max(cell.cy, next.cy)
+                        });
+                    });
+
+                    let jType = getJointType(cell);
+                    if (jType > 0) {
+                        allDrawables.push({ type: 'node', cell: cell, y: cell.cy });
+                    }
+                });
+
+                gears.forEach(g => {
+                    if (!g.isLarge) allDrawables.push({ type: 'tree', g: g, y: g.cy });
+                    else allDrawables.push({ type: 'landmark', g: g, y: g.cy });
+                });
+
+                // Sort by y-coordinate to draw from back (top of screen) to front (bottom of screen)
+                allDrawables.sort((a,b) => a.y - b.y);
+
+                allDrawables.forEach(item => {
+                    if (currentStyle === 'painted_lady') {
+                        if (item.type === 'segment') {
+                            let cell = item.cell, next = item.next;
+
+                            // Calculate vector for the segment
+                            let dx = next.cx - cell.cx;
+                            let dy = next.cy - cell.cy;
+                            let dist = Math.sqrt(dx*dx + dy*dy);
+                            let angle = Math.atan2(dy, dx);
+
+                            // Determine number of houses based on distance
+                            let avgHouseWidth = (pipeThickness * 1.8) / densityFactor;
+                            let numHouses = Math.max(1, Math.floor(dist / avgHouseWidth));
+
+                            for (let i = 0; i < numHouses; i++) {
+                                let t = (i + 0.5) / numHouses + (Math.random() - 0.5) * 0.3;
+                                t = Math.max(0.05, Math.min(0.95, t));
+                                let hx = cell.cx + dx * t;
+                                let hy = cell.cy + dy * t;
+
+                                let perpX = -Math.sin(angle);
+                                let perpY = Math.cos(angle);
+                                let offset = (Math.random() - 0.5) * pipeThickness * 0.8;
+                                hx += perpX * offset;
+                                hy += perpY * offset;
+
+                                let hash = (Math.floor(hx) * 17 + Math.floor(hy) * 23) % 100;
+                                let hWidth = avgHouseWidth * (0.7 + Math.random() * 0.6);
+                                let hHeight = pipeThickness * 3 * (0.7 + Math.random() * 0.8);
+
+                                let colorIndex = hash % currentPalette.length;
+                                let hColor = currentPalette[colorIndex];
+                                let roofColor = (hash % 3 === 0) ? '#4a4a4a' : currentPalette[(colorIndex + 3) % currentPalette.length];
+
+                                drawHouse(ctx, hx, hy, hWidth, hHeight, hColor, roofColor, hash);
+                            }
+
+                        } else if (item.type === 'node') {
+                            let radius = pipeThickness * 0.7;
+                            ctx.beginPath();
+                            ctx.arc(item.cell.cx, item.cell.cy, radius, 0, Math.PI*2);
+                            ctx.fillStyle = '#7CBA7D';
+                            ctx.fill(); ctx.strokeStyle = '#5f6368'; ctx.stroke();
+
+                            ctx.beginPath();
+                            ctx.arc(item.cell.cx, item.cell.cy, radius * 0.4, 0, Math.PI*2);
+                            ctx.fillStyle = '#4E8A51';
+                            ctx.fill(); ctx.stroke();
+
+                        } else if (item.type === 'tree') {
+                            let r = item.g.radius * 0.7;
+                            let cx = item.g.cx;
+                            let cy = item.g.cy;
+
+                            ctx.fillStyle = '#5c3a21';
+                            ctx.fillRect(cx - r*0.15, cy, r*0.3, r*1.2);
+
+                            ctx.beginPath();
+                            ctx.arc(cx, cy - r*0.2, r, 0, Math.PI*2);
+                            ctx.fillStyle = '#4E8A51';
+                            ctx.fill(); ctx.strokeStyle='#2d522f'; ctx.stroke();
+
+                            ctx.beginPath();
+                            ctx.arc(cx - r*0.4, cy + r*0.2, r*0.7, 0, Math.PI*2);
+                            ctx.fillStyle = '#6BB870';
+                            ctx.fill(); ctx.stroke();
+
+                            ctx.beginPath();
+                            ctx.arc(cx + r*0.4, cy + r*0.2, r*0.7, 0, Math.PI*2);
+                            ctx.fill(); ctx.stroke();
+                        } else if (item.type === 'landmark') {
+                            // Large Victorian Clock Towers!
+                            let cx = item.g.cx;
+                            let cy = item.g.cy;
+
+                            let towerW = pipeThickness * 2.5;
+                            let towerH = pipeThickness * 7;
+                            let yBase = cy;
+
+                            let mainColor = currentPalette[Math.floor(cx) % currentPalette.length];
+                            let accentColor = currentPalette[(Math.floor(cx) + 2) % currentPalette.length];
+                            let roofColor = '#3a3a3a';
+
+                            // Base building
+                            ctx.fillStyle = mainColor;
+                            ctx.fillRect(cx - towerW/2, yBase - towerH*0.4, towerW, towerH*0.4);
+                            ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+                            ctx.strokeRect(cx - towerW/2, yBase - towerH*0.4, towerW, towerH*0.4);
+
+                            // Archway/Door
+                            ctx.fillStyle = '#4a2f1d';
+                            ctx.beginPath();
+                            ctx.arc(cx, yBase - towerH*0.15, towerW*0.2, Math.PI, 0);
+                            ctx.lineTo(cx + towerW*0.2, yBase);
+                            ctx.lineTo(cx - towerW*0.2, yBase);
+                            ctx.fill(); ctx.stroke();
+
+                            // Tower shaft
+                            let shaftW = towerW * 0.7;
+                            let shaftH = towerH * 0.5;
+                            let shaftY = yBase - towerH * 0.4 - shaftH;
+                            ctx.fillStyle = accentColor;
+                            ctx.fillRect(cx - shaftW/2, shaftY, shaftW, shaftH);
+                            ctx.strokeRect(cx - shaftW/2, shaftY, shaftW, shaftH);
+
+                            // Tower Windows
+                            ctx.fillStyle = '#add8e6';
+                            ctx.fillRect(cx - shaftW*0.25, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
+                            ctx.strokeRect(cx - shaftW*0.25, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
+                            ctx.fillRect(cx + shaftW*0.1, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
+                            ctx.strokeRect(cx + shaftW*0.1, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
+
+                            // Clock Section
+                            let clockW = shaftW * 1.2;
+                            let clockH = clockW;
+                            let clockY = shaftY - clockH;
+                            ctx.fillStyle = mainColor;
+                            ctx.fillRect(cx - clockW/2, clockY, clockW, clockH);
+                            ctx.strokeRect(cx - clockW/2, clockY, clockW, clockH);
+
+                            // Clock Face
+                            ctx.beginPath();
+                            ctx.arc(cx, clockY + clockH/2, clockW*0.35, 0, Math.PI*2);
+                            ctx.fillStyle = '#f9f9f9';
+                            ctx.fill(); ctx.stroke();
+
+                            // Hands
+                            ctx.beginPath();
+                            ctx.moveTo(cx, clockY + clockH/2);
+                            ctx.lineTo(cx, clockY + clockH*0.25);
+                            ctx.moveTo(cx, clockY + clockH/2);
+                            ctx.lineTo(cx + clockW*0.15, clockY + clockH/2);
+                            ctx.stroke();
+
+                            // Spire Roof
+                            ctx.fillStyle = roofColor;
+                            ctx.beginPath();
+                            ctx.moveTo(cx - clockW*0.6, clockY);
+                            ctx.lineTo(cx, clockY - towerH*0.3);
+                            ctx.lineTo(cx + clockW*0.6, clockY);
+                            ctx.closePath();
+                            ctx.fill(); ctx.stroke();
+                        }
+                    }
+                });
+
+            } else if (currentStyle === 'ducks') {
+                let allDrawables = [];
+
+                // 1. Generate densely packed duck grid independent of the maze paths
+                let duckSize = pipeThickness * 1.5;
+                let rowSpacing = (duckSize * 0.7) / densityFactor; // Tighter Y spacing for overlapping rows
+                let colSpacing = (duckSize * 1.6) / densityFactor; // X spacing
+
+                for (let cy = gridStartY; cy <= gridEndY; cy += rowSpacing) {
+                    // Stagger alternate rows
+                    let rowOffset = (Math.floor(cy / rowSpacing) % 2 === 0) ? 0 : colSpacing / 2;
+                    for (let cx = gridStartX - colSpacing; cx <= gridEndX + colSpacing; cx += colSpacing) {
+
+                        // Add organic scatter/jitter to positions
+                        let px = cx + rowOffset + (Math.random() - 0.5) * colSpacing * 0.5;
+                        let py = cy + (Math.random() - 0.5) * rowSpacing * 0.5;
+
+                        let checkCy = py - duckSize * 0.3; // Check inclusion based on duck body center
+                        let isInsideRaw = pointInPolygon({x: px, y: checkCy}, hullPoints);
+                        let dist = distanceToPolygon({x: px, y: checkCy}, hullPoints);
+                        let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                        if (isInsideEffective) {
+                            let hash = (Math.floor(px) * 17 + Math.floor(py) * 23) % 100;
+                            if (hash < 12) {
+                                allDrawables.push({ type: 'lilypad', cx: px, cy: py, y: py, hash: hash });
+                            } else {
+                                allDrawables.push({ type: 'duck', cx: px, cy: py, y: py, hash: hash, angle: (Math.random() - 0.5) * 0.4 });
+                            }
+                        }
+                    }
+                }
+
+                // 2. Add Gears (Landmarks / Lotuses)
+                gears.forEach(g => {
+                    if (g.isLarge) allDrawables.push({ type: 'landmark', g: g, y: g.cy });
+                    else allDrawables.push({ type: 'lotus', g: g, y: g.cy });
+                });
+
+                // 3. Sort by Y-coordinate for proper back-to-front overlapping
+                allDrawables.sort((a,b) => a.y - b.y);
+
+                // 4. Draw elements
+                allDrawables.forEach(item => {
+                    if (item.type === 'duck') {
+                        let color = currentPalette[item.hash % currentPalette.length];
+
+                        // Water ripple under duck
+                        ctx.beginPath();
+                        ctx.ellipse(item.cx, item.cy + duckSize * 0.25, duckSize * 1.1, duckSize * 0.3, 0, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        drawDuck(ctx, item.cx, item.cy, duckSize * 0.8, color, item.angle, item.hash);
+
+                    } else if (item.type === 'lilypad') {
+                        drawLilypad(ctx, item.cx, item.cy, duckSize * 1.2, item.hash);
+                    } else if (item.type === 'lotus') {
+                        drawLotus(ctx, item.g.cx, item.g.cy, item.g.radius * 0.8, currentPalette);
+                    } else if (item.type === 'landmark') {
+                        // Giant Mama Duck or Swan
+                        ctx.beginPath();
+                        ctx.ellipse(item.g.cx, item.g.cy + pipeThickness * 0.8, pipeThickness * 3.5, pipeThickness * 1.2, 0, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        let angle = (item.g.cx % 10) > 5 ? 0.15 : -0.15; // Point left or right
+                        drawDuck(ctx, item.g.cx, item.g.cy, pipeThickness * 2.8, '#FFFFFF', angle, item.g.cx);
+                    }
+                });
+
+            } else if (currentStyle === 'gears') {
+                let allDrawables = [];
+                // More intense density based on the Gears slider + baseline, scaled by Density
+                let numGears = Math.round((120 + parseInt(gearSlider.value, 10) * 15) * densityFactor);
+
+                // Random organic scatter placement
+                for (let i = 0; i < numGears; i++) {
+                    let px = minX - expandBound + Math.random() * (maxX - minX + 2*expandBound);
+                    let py = minY - expandBound + Math.random() * (maxY - minY + 2*expandBound);
+
+                    let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                    let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                    let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                    if (isInsideEffective) {
+                        let hash = Math.floor(Math.random() * 10000);
+
+                        // Z-Index layering (0: Huge background, 1: Medium, 2: Small foreground)
+                        let layer = (hash % 10 < 3) ? 0 : ((hash % 10 < 7) ? 1 : 2);
+
+                        let baseRadius = pipeThickness * 0.9;
+                        let sizeMult = (layer === 0) ? (2.8 + Math.random()*1.5) : ((layer === 1) ? (1.5 + Math.random()) : (0.6 + Math.random()*0.8));
+                        let radius = baseRadius * sizeMult;
+
+                        allDrawables.push({
+                            type: 'steampunk_gear',
+                            cx: px, cy: py,
+                            radius: radius,
+                            layer: layer,
+                            hash: hash
+                        });
+                    }
+                }
+
+                // Sort heavily by depth layer so tiny gears always sit on top of huge ones
+                allDrawables.sort((a,b) => a.layer - b.layer);
+
+                allDrawables.forEach(item => {
+                    let color = currentPalette[item.hash % currentPalette.length];
+                    drawSteampunkGear(ctx, item.cx, item.cy, item.radius, color, item.hash, currentPalette);
+                });
+
+            } else if (currentStyle === 'christmas') {
+                let allDrawables = [];
+                let cookieSize = pipeThickness * 1.3;
+                let spacing = (cookieSize * 1.8) / densityFactor;
+
+                for (let cy = gridStartY; cy <= gridEndY; cy += spacing) {
+                    let rowOffset = (Math.floor(cy / spacing) % 2 === 0) ? 0 : spacing / 2;
+                    for (let cx = gridStartX - spacing; cx <= gridEndX + spacing; cx += spacing) {
+                        let px = cx + rowOffset + (Math.random() - 0.5) * spacing * 0.4;
+                        let py = cy + (Math.random() - 0.5) * spacing * 0.4;
+
+                        let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                        let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                        let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                        if (isInsideEffective) {
+                            let hash = (Math.floor(px) * 17 + Math.floor(py) * 23) % 100;
+                            allDrawables.push({ cx: px, cy: py, y: py, hash, angle: (Math.random() - 0.5) * 0.6 });
+                        }
+                    }
+                }
+
+                allDrawables.sort((a, b) => a.y - b.y);
+                allDrawables.forEach(item => {
+                    let color = currentPalette[item.hash % currentPalette.length];
+                    let t = item.hash % 3;
+                    if (t === 0) drawCookieStar(ctx, item.cx, item.cy, cookieSize, color, item.angle, item.hash);
+                    else if (t === 1) drawGingerbreadMan(ctx, item.cx, item.cy, cookieSize, '#c0783c', item.angle, item.hash);
+                    else drawChristmasTreeCookie(ctx, item.cx, item.cy, cookieSize, color, item.angle, item.hash);
+                });
+
+            } else {
+                // ALL OTHER STYLES (Pipes & Circuits)
+                if (currentStyle === 'illustrated') {
+                    validCells.forEach(cell => {
+                        cell.edges.forEach(next => {
+                            let isCyl = (cell.r * 17 + next.c * 23) % 100 < 25;
+                            ctx.beginPath();
+                            ctx.moveTo(cell.cx, cell.cy);
+                            ctx.lineTo(next.cx, next.cy);
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = isCyl ? (pipeThickness * 1.8 + 4) : (pipeThickness + 4);
+                            ctx.stroke();
+                        });
+                    });
+                    validCells.forEach(cell => {
+                        let jType = getJointType(cell);
+                        if(jType === 1 || jType === 2) {
+                            let jSize = jType === 1 ? (pipeThickness * 0.8) : (pipeThickness * 0.65);
+                            ctx.beginPath();
+                            ctx.arc(cell.cx, cell.cy, jSize + 2, 0, Math.PI * 2);
+                            ctx.fillStyle = '#000000';
+                            ctx.fill();
+                        } else if (jType === 3) {
+                            ctx.beginPath();
+                            ctx.arc(cell.cx, cell.cy, pipeThickness * 0.6 + 2, 0, Math.PI * 2);
+                            ctx.fillStyle = '#000000';
+                            ctx.fill();
+                        }
+                    });
+                }
+
+                validCells.forEach(cell => {
+                    cell.edges.forEach(next => {
+                        let isCyl = currentStyle === 'illustrated' && (cell.r * 17 + next.c * 23) % 100 < 25;
+
+                        if (currentStyle === 'circuit') {
+                            let isJumper = (cell.r * 7 + next.c * 13) % 100 < 20;
+
+                            if (isJumper) {
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx + 2, cell.cy + 2);
+                                ctx.lineTo(next.cx + 2, next.cy + 2);
+                                ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                                ctx.lineWidth = pipeThickness * 0.4;
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx, cell.cy);
+                                ctx.lineTo(next.cx, next.cy);
+                                ctx.strokeStyle = '#f1c40f';
+                                ctx.lineWidth = pipeThickness * 0.35;
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx, cell.cy);
+                                ctx.lineTo(next.cx, next.cy);
+                                ctx.strokeStyle = '#8c7311';
+                                ctx.lineWidth = pipeThickness * 0.45;
+                                ctx.stroke();
+                                ctx.strokeStyle = '#f1c40f';
+                                ctx.lineWidth = pipeThickness * 0.35;
+                                ctx.stroke();
+                            } else {
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx, cell.cy);
+                                ctx.lineTo(next.cx, next.cy);
+                                ctx.strokeStyle = '#b87333';
+                                ctx.lineWidth = pipeThickness * 0.5;
+                                ctx.stroke();
+                            }
+
+                            let compHash = (cell.r * 17 + next.c * 23) % 100;
+                            if (!isJumper && compHash < 75) {
+                                let dx = next.cx - cell.cx, dy = next.cy - cell.cy;
+                                let midX = (cell.cx + next.cx)/2, midY = (cell.cy + next.cy)/2;
+                                let angle = Math.atan2(dy, dx);
+
+                                ctx.save();
+                                ctx.translate(midX, midY);
+                                ctx.rotate(angle);
+
+                                let resLen = pipeThickness * 2.5;
+                                let resWidth = pipeThickness * 0.9;
+
+                                ctx.strokeStyle = '#c0c0c0';
+                                ctx.lineWidth = pipeThickness * 0.15;
+                                ctx.beginPath();
+                                ctx.moveTo(-resLen/2, 0); ctx.lineTo(-resLen*0.9, 0);
+                                ctx.moveTo(resLen/2, 0); ctx.lineTo(resLen*0.9, 0);
+                                ctx.stroke();
+
+                                let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'];
+                                let b1 = colors[(cell.r + cell.c) % colors.length];
+                                let b2 = colors[(cell.r * 3 + cell.c) % colors.length];
+                                let b3 = colors[(cell.r + cell.c * 5) % colors.length];
+                                let b4 = '#d4af37';
+
+                                if (compHash < 15) {
+                                    ctx.fillStyle = '#a52a2a';
+                                    ctx.fillRect(-resLen/2, -resWidth/2, resLen, resWidth);
+                                    ctx.strokeStyle = '#5c1a1a';
+                                    ctx.lineWidth = 1;
+                                    ctx.strokeRect(-resLen/2, -resWidth/2, resLen, resWidth);
+
+                                    ctx.fillStyle = '#e6ccaa';
+                                    ctx.font = `${pipeThickness * 0.4}px monospace`;
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    let text = (cell.r % 2 === 0) ? "K5%" : "6.2 K5%";
+                                    ctx.fillText(text, 0, 0);
+
+                                } else if (compHash < 35) {
+                                    ctx.fillStyle = '#d2b48c';
+                                    ctx.fillRect(-resLen/2, -resWidth/2, resLen, resWidth);
+                                    ctx.strokeStyle = '#8b5a2b';
+                                    ctx.lineWidth = 1;
+                                    ctx.strokeRect(-resLen/2, -resWidth/2, resLen, resWidth);
+
+                                    let bandW = resLen * 0.12;
+                                    ctx.fillStyle = b1; ctx.fillRect(-resLen*0.35, -resWidth/2, bandW, resWidth);
+                                    ctx.fillStyle = b2; ctx.fillRect(-resLen*0.15, -resWidth/2, bandW, resWidth);
+                                    ctx.fillStyle = b3; ctx.fillRect(resLen*0.05, -resWidth/2, bandW, resWidth);
+                                    ctx.fillStyle = b4; ctx.fillRect(resLen*0.25, -resWidth/2, bandW, resWidth);
+
+                                } else if (compHash < 50) {
+                                    let l = resLen * 0.85, w = resWidth * 0.75;
+                                    ctx.fillStyle = '#4a2f1d';
+                                    ctx.fillRect(-l/2, -w/2, l, w);
+                                    ctx.strokeStyle = '#2a1a10';
+                                    ctx.lineWidth = 1;
+                                    ctx.strokeRect(-l/2, -w/2, l, w);
+
+                                    let bandW = l * 0.12;
+                                    ctx.fillStyle = b2; ctx.fillRect(-l*0.35, -w/2, bandW, w);
+                                    ctx.fillStyle = b3; ctx.fillRect(-l*0.15, -w/2, bandW, w);
+                                    ctx.fillStyle = b1; ctx.fillRect(l*0.05, -w/2, bandW, w);
+                                    ctx.fillStyle = b4; ctx.fillRect(l*0.25, -w/2, bandW, w);
+
+                                } else if (compHash < 65) {
+                                    let l = resLen * 1.1, w = resWidth * 0.6;
+                                    ctx.fillStyle = '#f0f0d0';
+                                    ctx.fillRect(-l/2, -w/2, l, w);
+                                    ctx.strokeStyle = '#a0a0a0';
+                                    ctx.lineWidth = 1;
+                                    ctx.strokeRect(-l/2, -w/2, l, w);
+
+                                    ctx.fillStyle = '#333';
+                                    ctx.font = `bold ${pipeThickness * 0.35}px sans-serif`;
+                                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                                    ctx.fillText("104K", 0, 0);
+
+                                } else {
+                                    let l = resLen * 0.6, w = resWidth * 0.55;
+                                    ctx.fillStyle = 'rgba(255, 180, 150, 0.4)';
+                                    ctx.fillRect(-l/2, -w/2, l, w);
+                                    ctx.strokeStyle = 'rgba(200, 100, 50, 0.8)';
+                                    ctx.strokeRect(-l/2, -w/2, l, w);
+
+                                    ctx.fillStyle = '#c0392b';
+                                    ctx.fillRect(-l*0.3, -w*0.2, l*0.6, w*0.4);
+                                    ctx.fillStyle = '#111';
+                                    ctx.fillRect(l*0.15, -w/2, l*0.2, w);
+                                }
+                                ctx.restore();
+                            }
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(cell.cx, cell.cy);
+                            ctx.lineTo(next.cx, next.cy);
+                            ctx.strokeStyle = next.color;
+                            ctx.lineWidth = isCyl ? (pipeThickness * 1.8) : pipeThickness;
+                            ctx.stroke();
+
+                            if (currentStyle === '3d-basic' || currentStyle === '3d-glossy') {
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx, cell.cy);
+                                ctx.lineTo(next.cx, next.cy);
+                                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                                ctx.lineWidth = pipeThickness * 0.4;
+                                ctx.stroke();
+                                ctx.lineWidth = pipeThickness;
+                            } else if (currentStyle === 'illustrated') {
+                                let dx = next.cx - cell.cx;
+                                let dy = next.cy - cell.cy;
+                                let dist = Math.sqrt(dx*dx + dy*dy);
+                                let ribSpacing = isCyl ? (pipeThickness * 0.4) : (pipeThickness * 0.7);
+                                let steps = Math.floor(dist / ribSpacing);
+
+                                if (steps > 0) {
+                                    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+                                    ctx.lineWidth = isCyl ? 1.5 : Math.max(pipeThickness * 0.15, 1);
+                                    let nx = -dy / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
+                                    let ny = dx / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
+
+                                    for (let i = 1; i <= steps; i++) {
+                                        let px = cell.cx + (dx * (i / (steps + 1)));
+                                        let py = cell.cy + (dy * (i / (steps + 1)));
+                                        ctx.beginPath();
+                                        ctx.moveTo(px + nx, py + ny);
+                                        ctx.lineTo(px - nx, py - ny);
+                                        ctx.stroke();
+                                    }
+                                }
+                            }
+
+                            if (currentStyle === '3d-glossy') {
+                                ctx.beginPath();
+                                ctx.moveTo(cell.cx, cell.cy);
+                                ctx.lineTo(next.cx, next.cy);
+                                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                                ctx.lineWidth = Math.max(pipeThickness * 0.1, 1);
+                                ctx.stroke();
+                                ctx.lineWidth = pipeThickness;
+                            }
+                        }
+                    });
+                });
+
+                validCells.forEach(cell => {
+                    let jType = getJointType(cell);
+                    if(jType > 0) {
+                        if (currentStyle === 'circuit') {
+                            let padRadius = pipeThickness * 0.6;
+                            ctx.beginPath();
+                            ctx.arc(cell.cx, cell.cy, padRadius, 0, Math.PI * 2);
+                            ctx.fillStyle = '#a9a9a9';
+                            ctx.fill();
+
+                            ctx.beginPath();
+                            ctx.arc(cell.cx + padRadius*0.1, cell.cy - padRadius*0.1, padRadius * 0.7, 0, Math.PI * 2);
+                            ctx.fillStyle = '#c0c0c0';
+                            ctx.fill();
+                        } else {
+                            let jointRadius;
+                            if (jType === 1) jointRadius = (currentStyle === 'illustrated') ? pipeThickness * 0.8 : pipeThickness * 0.65;
+                            else if (jType === 2) jointRadius = pipeThickness * 0.65;
+                            else jointRadius = pipeThickness * 0.6;
+
+                            ctx.beginPath();
+                            ctx.arc(cell.cx, cell.cy, jointRadius, 0, Math.PI * 2);
+
+                            if (currentStyle === 'flat') {
+                                ctx.fillStyle = cell.color || '#555';
+                            } else if (currentStyle === 'illustrated') {
+                                ctx.fillStyle = jType === 3 ? cell.color : '#bdc3c7';
+                            } else {
+                                ctx.fillStyle = (paletteSelect.value === 'steampunk') ? '#5e3a21' : '#555';
+                            }
+                            ctx.fill();
+
+                            if (currentStyle === '3d-basic' || currentStyle === '3d-glossy') {
+                                ctx.beginPath();
+                                ctx.arc(cell.cx - pipeThickness*0.15, cell.cy - pipeThickness*0.15, pipeThickness * 0.2, 0, Math.PI * 2);
+                                ctx.fillStyle = (currentStyle === '3d-glossy') ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)';
+                                ctx.fill();
+                            } else if (currentStyle === 'illustrated' && jType !== 3) {
+                                ctx.beginPath();
+                                ctx.arc(cell.cx, cell.cy, jointRadius * 0.6, 0, Math.PI * 2);
+                                ctx.fillStyle = '#000000';
+                                ctx.fill();
+                                ctx.beginPath();
+                                ctx.arc(cell.cx, cell.cy, jointRadius * 0.4, 0, Math.PI * 2);
+                                ctx.fillStyle = (cell.color === '#d4af37' || cell.color === '#f4d03f') ? '#bdc3c7' : '#e6c229';
+                                ctx.fill();
+                            }
+                        }
+                    }
+                });
+
+                if (currentStyle === 'circuit') {
+                    gears.forEach(g => {
+                        let typeHash = (Math.floor(g.cx) * 7 + Math.floor(g.cy) * 11) % 100;
+                        let isLarge = g.teeth > 8;
+
+                        ctx.save();
+                        ctx.translate(g.cx, g.cy);
+
+                        if (isLarge) {
+                            if (typeHash < 50) {
+                                let r = g.radius * 0.8;
+
+                                ctx.strokeStyle = '#c0c0c0';
+                                ctx.lineWidth = pipeThickness * 0.2;
+                                ctx.beginPath();
+                                ctx.moveTo(0, r*0.8); ctx.lineTo(0, r*1.5);
+                                ctx.moveTo(-r*0.5, r*0.5); ctx.lineTo(-r*0.8, r*1.5);
+                                ctx.moveTo(r*0.5, r*0.5); ctx.lineTo(r*0.8, r*1.5);
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.arc(0, 0, r, 0, Math.PI*2);
+                                ctx.fillStyle = '#b0b0b0';
+                                ctx.fill();
+                                ctx.strokeStyle = '#808080';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.arc(0, 0, r*0.8, 0, Math.PI*2);
+                                ctx.strokeStyle = '#a0a0a0';
+                                ctx.stroke();
+
+                                ctx.fillStyle = '#808080';
+                                ctx.fillRect(-r*0.2, -r*1.1, r*0.4, r*0.3);
+                            } else {
+                                let r = g.radius * 0.85;
+                                ctx.beginPath();
+                                ctx.arc(0, 0, r, 0, Math.PI*2);
+                                ctx.fillStyle = '#2980b9';
+                                ctx.fill();
+                                ctx.strokeStyle = '#1a5276';
+                                ctx.lineWidth = 1.5;
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.arc(0, 0, r*0.7, 0, Math.PI*2);
+                                ctx.fillStyle = '#bdc3c7';
+                                ctx.fill();
+                                ctx.strokeStyle = '#7f8c8d';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.moveTo(-r*0.4, 0); ctx.lineTo(r*0.4, 0);
+                                ctx.moveTo(0, -r*0.4); ctx.lineTo(0, r*0.4);
+                                ctx.strokeStyle = '#95a5a6';
+                                ctx.lineWidth = 1.5;
+                                ctx.stroke();
+                            }
+                        } else {
+                            if (typeHash < 33) {
+                                let capLen = g.radius * 1.8;
+                                let capWidth = g.radius * 0.8;
+
+                                ctx.strokeStyle = '#c0c0c0';
+                                ctx.lineWidth = pipeThickness * 0.15;
+                                ctx.beginPath();
+                                ctx.moveTo(-capLen/2, 0); ctx.lineTo(-capLen*0.8, 0);
+                                ctx.moveTo(capLen/2, 0); ctx.lineTo(capLen*0.8, 0);
+                                ctx.stroke();
+
+                                ctx.fillStyle = 'rgba(200, 220, 230, 0.5)';
+                                ctx.fillRect(-capLen/2, -capWidth/2, capLen, capWidth);
+                                ctx.strokeStyle = 'rgba(150, 170, 180, 0.8)';
+                                ctx.lineWidth = 1;
+                                ctx.strokeRect(-capLen/2, -capWidth/2, capLen, capWidth);
+
+                                ctx.fillStyle = '#d3a677';
+                                ctx.fillRect(-capLen*0.4, -capWidth*0.3, capLen*0.8, capWidth*0.6);
+
+                                let dotColors = ['#f1c40f', '#e74c3c', '#ecf0f1'];
+                                for(let d=0; d<3; d++) {
+                                    ctx.beginPath();
+                                    ctx.arc(-capLen*0.2 + (d * capLen*0.2), 0, capWidth*0.15, 0, Math.PI*2);
+                                    ctx.fillStyle = dotColors[d];
+                                    ctx.fill();
+                                }
+                            } else if (typeHash < 66) {
+                                ctx.beginPath();
+                                ctx.arc(0, 0, g.radius * 0.85, 0, Math.PI*2);
+                                ctx.fillStyle = '#d35400';
+                                ctx.fill();
+                                ctx.strokeStyle = '#a04000';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+
+                                ctx.fillStyle = '#fff';
+                                ctx.font = `bold ${pipeThickness * 0.5}px sans-serif`;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText("103", 0, 0);
+                            } else {
+                                let r = g.radius * 0.75;
+                                ctx.rotate(typeHash);
+
+                                ctx.beginPath();
+                                ctx.arc(0, 0, r, 0, Math.PI);
+                                ctx.lineTo(-r, 0);
+                                ctx.closePath();
+
+                                ctx.fillStyle = '#222';
+                                ctx.fill();
+                                ctx.strokeStyle = '#000';
+                                ctx.lineWidth = 1.5;
+                                ctx.stroke();
+
+                                ctx.fillStyle = '#444';
+                                ctx.fillRect(-r*0.8, -r*0.2, r*1.6, r*0.2);
+                            }
+                        }
+                        ctx.restore();
+                    });
+                } else {
+                    gears.forEach(g => drawGear(g.cx, g.cy, g.radius, g.color, g.innerColor, g.teeth, g.isStacked));
+                }
+            }
+
+            // Keep grab handles visible above everything
+            drawHandles();
+        }
+
+        // Initialize with default pendant shape matching the artwork
+        function initApp() {
+            rawPoints = [
+                { x: 290, y: 50 },
+                { x: 510, y: 50 },
+                { x: 550, y: 90 },
+                { x: 550, y: 510 },
+                { x: 510, y: 550 },
+                { x: 290, y: 550 },
+                { x: 250, y: 510 },
+                { x: 250, y: 90 }
+            ];
+            hullPoints = calculateConvexHull(rawPoints);
+            generateBtn.disabled = false;
+            isGenerated = true;
+            generatePipes();
+        }
+
+        // Run init payload
+        initApp();
+    </script>
+</body>
+</html>
