@@ -1105,8 +1105,9 @@ export class StereoRenderer {
   private drawXrUiPanel(panel: XrUiPanel) {
     const { ctx, canvas } = panel;
     const controls = this.hmdControls.filter(control => control.panel === panel.side);
-    const footerControls = controls.filter(control => control.id === 'hmd.exit');
-    const flowControls = controls.filter(control => control.id !== 'hmd.exit');
+    const footerControlIds = new Set(['hmd.exit', 'recorder.controls']);
+    const footerControls = controls.filter(control => footerControlIds.has(control.id));
+    const flowControls = controls.filter(control => !footerControlIds.has(control.id));
     panel.regions = [];
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1164,6 +1165,10 @@ export class StereoRenderer {
     }
 
     if (panel.side === 'right') {
+      const recorderControl = footerControls.find(control => control.id === 'recorder.controls');
+      if (recorderControl?.kind === 'button-row') {
+        this.drawXrButtonRow(panel, recorderControl, canvas.height - 170);
+      }
       ctx.fillStyle = '#777';
       ctx.font = '18px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
       this.wrapXrText(ctx, 'Preset buttons load values only; current VR view stays active.', 34, canvas.height - 64, canvas.width - 68, 24);
@@ -1233,10 +1238,11 @@ export class StereoRenderer {
     active: boolean,
     y: number,
     x = 34,
-    width = panel.canvas.width - 68
+    width = panel.canvas.width - 68,
+    disabled = false
   ) {
     const { ctx } = panel;
-    const hovered = this.xrHoveredRegionId === id;
+    const hovered = !disabled && this.xrHoveredRegionId === id;
     this.roundRect(
       ctx,
       x,
@@ -1244,36 +1250,45 @@ export class StereoRenderer {
       width,
       54,
       10,
-      active ? '#2e4057' : hovered ? '#333023' : '#222',
-      hovered ? '#ffd166' : active ? '#5b9bd5' : '#3a3a3a'
+      disabled ? '#171717' : active ? '#2e4057' : hovered ? '#333023' : '#222',
+      disabled ? '#2b2b2b' : hovered ? '#ffd166' : active ? '#5b9bd5' : '#3a3a3a'
     );
-    ctx.fillStyle = hovered ? '#ffd166' : active ? '#8fc5ff' : '#f0f0f0';
+    ctx.fillStyle = disabled ? '#777' : hovered ? '#ffd166' : active ? '#8fc5ff' : '#f0f0f0';
     ctx.font = '800 22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(label, x + width / 2, y + 35);
     ctx.textAlign = 'left';
-    panel.regions.push({
-      id,
-      kind: 'button',
-      x,
-      y,
-      width,
-      height: 54,
-      control,
-      buttonIndex
-    });
+    if (!disabled) {
+      panel.regions.push({
+        id,
+        kind: 'button',
+        x,
+        y,
+        width,
+        height: 54,
+        control,
+        buttonIndex
+      });
+    }
     return y + 66;
   }
 
   private drawXrButtonRow(panel: XrUiPanel, control: HmdControlDefinition & { kind: 'button-row' }, y: number) {
     const { ctx, canvas } = panel;
+    if (control.id === 'recorder.controls') {
+      const isRecording = control.buttons.some(button => button.id === 'stop' && !button.disabled);
+      ctx.fillStyle = isRecording ? '#ff3838' : '#555';
+      ctx.beginPath();
+      ctx.arc(43, y - 7, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = '#ddd';
     ctx.font = '22px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    ctx.fillText(control.label, 34, y);
+    ctx.fillText(control.label, control.id === 'recorder.controls' ? 58 : 34, y);
     y += 18;
 
     const gap = 10;
-    const cols = panel.side === 'left' ? 4 : 2;
+    const cols = control.id === 'recorder.controls' ? 3 : panel.side === 'left' ? 4 : 2;
     const buttonWidth = (canvas.width - 68 - gap * (cols - 1)) / cols;
     control.buttons.forEach((button, index) => {
       const col = index % cols;
@@ -1287,7 +1302,8 @@ export class StereoRenderer {
         Boolean(button.active),
         y + row * 64,
         34 + col * (buttonWidth + gap),
-        buttonWidth
+        buttonWidth,
+        Boolean(button.disabled)
       );
     });
 

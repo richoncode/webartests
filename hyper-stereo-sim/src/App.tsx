@@ -9,6 +9,7 @@ import { BaseVenue } from './venue/Venue';
 import { TennisCourt } from './venue/TennisCourt';
 import { EmptyVenue } from './venue/EmptyVenue';
 import { StereoRenderer } from './renderer/StereoRenderer';
+import type { ActionRecorderSnapshot } from './actionRecorder';
 
 const defaultStereoConfig: StereoConfiguration = {
   displayMode: '3d-planning',
@@ -234,6 +235,18 @@ const createLowTrussActualDisp50Preset = (): VenuePreset => ({
   modifiedAt: '2026-07-18T00:20:13.409Z'
 });
 
+interface RecorderAppState {
+  venueId: string;
+  rig: CameraRigConfiguration;
+  stereo: StereoConfiguration;
+  visConfig: VisualizationConfiguration;
+  presetOverlayUrl: string | null;
+  presetOverlayOpacity: number;
+  vrScaleMode: 'tabletop' | 'full-scale';
+  unit: 'feet' | 'meters';
+  hmdRenderMode: 'stereo' | 'sbs';
+}
+
 export const App: React.FC = () => {
   const startupPreset = createLowTrussActualPlanningPreset();
   const [venueId, setVenueId] = useState(startupPreset.venueId);
@@ -247,6 +260,23 @@ export const App: React.FC = () => {
   const [unit, setUnit] = useState<'feet' | 'meters'>('feet');
   const [hmdMode, setHmdMode] = useState(false);
   const [hmdRenderMode, setHmdRenderMode] = useState<'stereo' | 'sbs'>('stereo');
+  const [recorderSnapshot, setRecorderSnapshot] = useState<ActionRecorderSnapshot>({
+    recording: false,
+    replaying: false,
+    micActive: false,
+    voiceContextEnabled: false,
+    voiceContextStatus: 'disabled',
+    voiceContextMessage: 'Voice context disabled for this recording.',
+    hasRecording: false,
+    hasReplay: false,
+    elapsedMs: 0,
+    replayElapsedMs: 0,
+    replayDurationMs: 0,
+    replayCaption: '',
+    replayEventText: '',
+    eventCount: 0,
+    commentaryCount: 0
+  });
   
   const [rendererRef, setRendererRef] = useState<StereoRenderer | null>(null);
 
@@ -260,6 +290,55 @@ export const App: React.FC = () => {
 
   const activeVenue: BaseVenue = venueId === 'tennis-court' ? tennisCourt.current : emptyVenue.current;
   const coordinateAnchors = activeVenue.getCoordinateAnchors();
+
+  useEffect(() => {
+    const recorder = window.__hyperStereoActionRecorder;
+    if (!recorder) return;
+    return recorder.subscribe(setRecorderSnapshot);
+  }, []);
+
+  useEffect(() => {
+    const recorder = window.__hyperStereoActionRecorder;
+    if (!recorder) return;
+    recorder.setAppStateHandlers({
+      capture: (): RecorderAppState => ({
+        venueId,
+        rig,
+        stereo,
+        visConfig,
+        presetOverlayUrl,
+        presetOverlayOpacity,
+        vrScaleMode,
+        unit,
+        hmdRenderMode
+      }),
+      restore: (incoming) => {
+        const state = incoming as Partial<RecorderAppState> | undefined;
+        if (!state) return;
+        if (state.venueId) setVenueId(state.venueId);
+        if (state.rig) setRig(state.rig);
+        if (state.stereo) setStereo(state.stereo);
+        if (state.visConfig) setVisConfig(state.visConfig);
+        if ('presetOverlayUrl' in state) setPresetOverlayUrl(state.presetOverlayUrl || null);
+        if (typeof state.presetOverlayOpacity === 'number') setPresetOverlayOpacity(state.presetOverlayOpacity);
+        if (state.vrScaleMode) setVrScaleMode(state.vrScaleMode);
+        if (state.unit) setUnit(state.unit);
+        if (state.hmdRenderMode) setHmdRenderMode(state.hmdRenderMode);
+        setUndoStack([]);
+        setRedoStack([]);
+      }
+    });
+  }, [
+    venueId,
+    rig,
+    stereo,
+    visConfig,
+    presetOverlayUrl,
+    presetOverlayOpacity,
+    vrScaleMode,
+    unit,
+    hmdRenderMode
+  ]);
 
   // Load Saved Presets on Mount
   useEffect(() => {
@@ -352,6 +431,7 @@ export const App: React.FC = () => {
   };
 
   const handleXRPresentingChange = (isPresenting: boolean) => {
+    window.__hyperStereoActionRecorder?.markTransition(isPresenting ? 'webxr-enter' : 'webxr-exit');
     setHmdMode(isPresenting);
     if (isPresenting) {
       rendererRef?.setQualityOverlayEnabled(false);
@@ -372,6 +452,13 @@ export const App: React.FC = () => {
     onExitHmd: () => {
       void rendererRef?.endXRSession();
     },
+    recorderSnapshot,
+    onRecorderStart: () => window.__hyperStereoActionRecorder?.start(),
+    onRecorderStop: () => window.__hyperStereoActionRecorder?.stop(),
+    onRecorderSave: () => window.__hyperStereoActionRecorder?.save(),
+    onRecorderReplay: () => window.__hyperStereoActionRecorder?.replay(),
+    onRecorderLoadReplay: () => window.__hyperStereoActionRecorder?.openReplayPicker(),
+    onRecorderToggleMic: () => void window.__hyperStereoActionRecorder?.toggleMic(),
     onCommitState: handleCommitState,
     unit
   });

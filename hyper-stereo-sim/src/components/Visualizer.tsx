@@ -637,7 +637,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({
           border: `1px solid ${qualityState.color}`,
           borderRadius: '8px',
           padding: '8px 12px',
-          pointerEvents: 'auto'
+          pointerEvents: 'none'
         }}
         title={scaleTooltip}
         >

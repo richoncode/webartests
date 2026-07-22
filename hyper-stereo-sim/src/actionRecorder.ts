@@ -1,0 +1,1469 @@
+type RecorderEventType = 'click' | 'input' | 'change' | 'keypress' | 'scroll' | 'navigation';
+
+interface SelectorCandidates {
+  testId?: string;
+  id?: string;
+  role?: string;
+  name?: string;
+  text?: string;
+  css?: string;
+  xpath?: string;
+  nth?: number;
+}
+
+interface RecorderEvent {
+  t: number;
+  type: RecorderEventType;
+  url: string;
+  selectors?: SelectorCandidates;
+  value?: string;
+  key?: string;
+  scroll?: { x: number; y: number };
+  x?: number;
+  y?: number;
+}
+
+interface RecorderCommentary {
+  t: number;
+  text: string;
+  final: boolean;
+}
+
+interface RecorderCursorPoint {
+  t: number;
+  x: number;
+  y: number;
+}
+
+interface RecorderMeta {
+  startUrl: string;
+  viewport: { width: number; height: number };
+  userAgent: string;
+  startedAt: string;
+  durationMs: number;
+  commentaryMode?: 'speech-recognition' | 'manual-note';
+  voiceContext?: {
+    enabled: boolean;
+    status: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+    message: string;
+  };
+}
+
+interface RecordingPayload {
+  meta: RecorderMeta;
+  events: RecorderEvent[];
+  commentary?: RecorderCommentary[];
+  cursorTrail?: RecorderCursorPoint[];
+  appState?: unknown;
+}
+
+interface RecorderState {
+  recording: boolean;
+  replaying: boolean;
+  micActive: boolean;
+  voiceContextEnabled: boolean;
+  voiceContextStatus: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+  voiceContextMessage: string;
+  startedAtMs: number;
+  startedAtIso: string;
+  startUrl: string;
+  events: RecorderEvent[];
+  commentary: RecorderCommentary[];
+  cursorTrail: RecorderCursorPoint[];
+  durationMs: number;
+  hasRecording: boolean;
+  loadedReplay?: RecordingPayload;
+  appState?: unknown;
+  replayElapsedMs: number;
+  replayDurationMs: number;
+  replayCaption: string;
+  replayEventText: string;
+  commentaryMode?: 'speech-recognition' | 'manual-note';
+}
+
+export interface ActionRecorderSnapshot {
+  recording: boolean;
+  replaying: boolean;
+  micActive: boolean;
+  voiceContextEnabled: boolean;
+  voiceContextStatus: 'disabled' | 'captured' | 'enabled-no-transcript' | 'unsupported' | 'error';
+  voiceContextMessage: string;
+  hasRecording: boolean;
+  hasReplay: boolean;
+  elapsedMs: number;
+  replayElapsedMs: number;
+  replayDurationMs: number;
+  replayCaption: string;
+  replayEventText: string;
+  eventCount: number;
+  commentaryCount: number;
+}
+
+export interface ActionRecorderApi {
+  start: () => void;
+  stop: () => void;
+  save: () => void;
+  replay: () => void;
+  openReplayPicker: () => void;
+  loadReplayFile: (file: File) => Promise<void>;
+  toggleMic: () => Promise<void>;
+  setVoiceContextEnabled: (enabled: boolean) => void;
+  markTransition: (label: string) => void;
+  setAppStateHandlers: (handlers: {
+    capture: () => unknown;
+    restore: (state: unknown) => void;
+  }) => void;
+  getSnapshot: () => ActionRecorderSnapshot;
+  subscribe: (listener: (snapshot: ActionRecorderSnapshot) => void) => () => void;
+}
+
+declare global {
+  interface Window {
+    __hyperStereoActionRecorderInstalled?: boolean;
+    __hyperStereoActionRecorder?: ActionRecorderApi;
+  }
+}
+
+const WIDGET_HOST_ID = 'hsar-action-recorder-host';
+const SELECTOR_LIMIT = 120;
+
+const isElement = (target: EventTarget | null): target is Element => target instanceof Element;
+
+// React installs its own get/set on the element instance to track "value"/"checked" changes it
+// made itself. Assigning through that instance property (a plain `el.value = x`) updates React's
+// tracker too, so React sees no difference on the next input event and silently drops onChange.
+// Going through the prototype's native setter bypasses the tracker so the change is detected.
+const nativePropertySetter = (proto: object, prop: string) =>
+  Object.getOwnPropertyDescriptor(proto, prop)?.set;
+
+const nativeInputValueSetter = nativePropertySetter(HTMLInputElement.prototype, 'value');
+const nativeInputCheckedSetter = nativePropertySetter(HTMLInputElement.prototype, 'checked');
+const nativeTextareaValueSetter = nativePropertySetter(HTMLTextAreaElement.prototype, 'value');
+const nativeSelectValueSetter = nativePropertySetter(HTMLSelectElement.prototype, 'value');
+
+const normalizeText = (text: string | null | undefined) =>
+  (text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+
+const cssEscape = (value: string) => {
+  if ('CSS' in window && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\#.:,[\]()=>+~*^$|]/g, '\\$&');
+};
+
+const safeQueryCount = (selector: string) => {
+  try {
+    return document.querySelectorAll(selector).length;
+  } catch {
+    return 0;
+  }
+};
+
+const attrSelector = (name: string, value: string) => `[${name}="${cssEscape(value)}"]`;
+
+const tagSelector = (element: Element) => element.tagName.toLowerCase();
+
+const textForSelector = (element: Element) => {
+  const tag = element.tagName.toLowerCase();
+  const role = element.getAttribute('role');
+  if (!['button', 'a', 'summary', 'option'].includes(tag) && !['button', 'link', 'menuitem', 'tab', 'option'].includes(role || '')) {
+    return undefined;
+  }
+  return normalizeText(element.textContent || element.getAttribute('aria-label'));
+};
+
+const getExplicitRole = (element: Element) => {
+  const role = element.getAttribute('role');
+  if (role) return role;
+  const tag = element.tagName.toLowerCase();
+  if (tag === 'button') return 'button';
+  if (tag === 'a' && element.hasAttribute('href')) return 'link';
+  if (tag === 'select') return 'combobox';
+  if (tag === 'textarea') return 'textbox';
+  if (tag === 'input') {
+    const type = (element.getAttribute('type') || 'text').toLowerCase();
+    if (type === 'checkbox') return 'checkbox';
+    if (type === 'radio') return 'radio';
+    if (type === 'range') return 'slider';
+    if (type === 'button' || type === 'submit' || type === 'reset') return 'button';
+    return 'textbox';
+  }
+  return undefined;
+};
+
+const getAccessibleName = (element: Element) => {
+  const ariaLabel = normalizeText(element.getAttribute('aria-label'));
+  if (ariaLabel) return ariaLabel;
+
+  const labelledBy = element.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    const label = labelledBy
+      .split(/\s+/)
+      .map(id => document.getElementById(id)?.textContent || '')
+      .join(' ');
+    const normalized = normalizeText(label);
+    if (normalized) return normalized;
+  }
+
+  if (element instanceof HTMLInputElement && element.labels?.length) {
+    const label = Array.from(element.labels).map(item => item.textContent || '').join(' ');
+    const normalized = normalizeText(label);
+    if (normalized) return normalized;
+  }
+
+  const title = normalizeText(element.getAttribute('title'));
+  if (title) return title;
+
+  return normalizeText(element.textContent || (element as HTMLInputElement).value);
+};
+
+const stableCssPath = (element: Element) => {
+  const parts: string[] = [];
+  let current: Element | null = element;
+
+  while (current && current !== document.documentElement && parts.length < 8) {
+    let part = tagSelector(current);
+
+    const testId = current.getAttribute('data-testid') || current.getAttribute('data-test');
+    if (testId) {
+      part += attrSelector(testId === current.getAttribute('data-testid') ? 'data-testid' : 'data-test', testId);
+      parts.unshift(part);
+      break;
+    }
+
+    if (current.id) {
+      part += `#${cssEscape(current.id)}`;
+      parts.unshift(part);
+      break;
+    }
+
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(child => child.tagName === current?.tagName);
+      if (siblings.length > 1) {
+        part += `:nth-of-type(${siblings.indexOf(current) + 1})`;
+      }
+    }
+
+    parts.unshift(part);
+    current = current.parentElement;
+  }
+
+  // Trim whole segments off the front (the least-specific, outermost ancestors) rather than
+  // slicing the string by character count, which used to cut mid-tag-name (e.g. "input" ->
+  // "inp") and produce a selector that could never match anything.
+  let trimmed = parts;
+  while (trimmed.join(' > ').length > SELECTOR_LIMIT && trimmed.length > 1) {
+    trimmed = trimmed.slice(1);
+  }
+  return trimmed.join(' > ');
+};
+
+const xpathForElement = (element: Element) => {
+  const parts: string[] = [];
+  let current: Element | null = element;
+
+  while (current && current.nodeType === Node.ELEMENT_NODE) {
+    const currentElement: Element = current;
+    const tag = currentElement.tagName.toLowerCase();
+    const parent: Element | null = currentElement.parentElement;
+    if (!parent) {
+      parts.unshift(tag);
+      break;
+    }
+
+    const siblings = Array.from(parent.children).filter((child): child is Element => child.tagName === currentElement.tagName);
+    const index = siblings.length > 1 ? `[${siblings.indexOf(currentElement) + 1}]` : '';
+    parts.unshift(`${tag}${index}`);
+    current = parent;
+  }
+
+  return `/${parts.join('/')}`;
+};
+
+const selectorCandidatesFor = (element: Element): SelectorCandidates => {
+  const dataTestId = element.getAttribute('data-testid') || element.getAttribute('data-test') || undefined;
+  const id = element.id || undefined;
+  const role = getExplicitRole(element);
+  const name = role ? getAccessibleName(element) : undefined;
+  const text = textForSelector(element);
+  const css = stableCssPath(element);
+  const xpath = xpathForElement(element);
+  const nth = css ? Array.from(document.querySelectorAll(css)).indexOf(element) : -1;
+
+  return {
+    testId: dataTestId,
+    id,
+    role,
+    name: name || undefined,
+    text,
+    css,
+    xpath,
+    nth: nth >= 0 && safeQueryCount(css) !== 1 ? nth : undefined
+  };
+};
+
+const valueFor = (element: Element) => {
+  if (element instanceof HTMLInputElement) {
+    if (element.type === 'checkbox' || element.type === 'radio') return String(element.checked);
+    return element.value;
+  }
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) return element.value;
+  if (element instanceof HTMLElement && element.isContentEditable) return element.innerText;
+  return undefined;
+};
+
+const isTextEntryElement = (element: Element) => {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLElement && element.isContentEditable) return true;
+  if (!(element instanceof HTMLInputElement)) return false;
+  const type = (element.type || 'text').toLowerCase();
+  return ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(type);
+};
+
+const shouldIgnoreEvent = (event: Event, host: HTMLElement) =>
+  event.composedPath().some(item => item === host);
+
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+const getSpeechRecognition = (): SpeechRecognitionConstructor | undefined => {
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+};
+
+export const installActionRecorder = () => {
+  if (window.__hyperStereoActionRecorderInstalled) return;
+  window.__hyperStereoActionRecorderInstalled = true;
+
+  const state: RecorderState = {
+    recording: false,
+    replaying: false,
+    micActive: false,
+    voiceContextEnabled: false,
+    voiceContextStatus: 'disabled',
+    voiceContextMessage: 'Voice context disabled for this recording.',
+    startedAtMs: 0,
+    startedAtIso: '',
+    startUrl: '',
+    events: [],
+    commentary: [],
+    cursorTrail: [],
+    durationMs: 0,
+    hasRecording: false,
+    loadedReplay: undefined,
+    appState: undefined,
+    replayElapsedMs: 0,
+    replayDurationMs: 0,
+    replayCaption: '',
+    replayEventText: '',
+    commentaryMode: undefined
+  };
+
+  let timerId = 0;
+  let lastScrollCapture = 0;
+  let lastInputCapture = 0;
+  let lastCursorCapture = 0;
+  let lastUrl = window.location.href;
+  let replayCursorEl: HTMLDivElement | undefined;
+  let recognition: SpeechRecognition | undefined;
+  let replayAbort = false;
+  let replayTimerId = 0;
+  let replayStartedAt = 0;
+  let appStateHandlers: { capture: () => unknown; restore: (state: unknown) => void } | undefined;
+  const subscribers = new Set<(snapshot: ActionRecorderSnapshot) => void>();
+
+  const host = document.createElement('div');
+  host.id = WIDGET_HOST_ID;
+  host.style.position = 'fixed';
+  host.style.right = '12px';
+  host.style.bottom = '12px';
+  host.style.zIndex = '2147483647';
+  document.documentElement.appendChild(host);
+
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = `
+    <style>
+      :host { all: initial; }
+      .hsar-widget {
+        box-sizing: border-box;
+        width: 340px;
+        padding: 10px;
+        border: 1px solid rgba(255,255,255,0.22);
+        border-radius: 8px;
+        background: rgba(14,14,14,0.94);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+        color: #f2f2f2;
+        font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .hsar-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .hsar-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #555;
+      }
+      .hsar-widget[data-recording="true"] .hsar-dot {
+        background: #ff3838;
+        box-shadow: 0 0 0 4px rgba(255,56,56,0.16);
+      }
+      .hsar-controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .hsar-button {
+        appearance: none;
+        border: 1px solid #3a3a3a;
+        border-radius: 5px;
+        background: #222;
+        color: #f2f2f2;
+        padding: 7px 9px;
+        font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+      }
+      .hsar-button:disabled {
+        cursor: default;
+        opacity: 0.38;
+      }
+      .hsar-button:not(:disabled):hover {
+        border-color: #5b9bd5;
+        color: #8fc5ff;
+      }
+      .hsar-button-danger {
+        border-color: #7a2b25;
+        background: #3b1411;
+        color: #ffb8ae;
+      }
+      .hsar-button-danger:not(:disabled):hover {
+        border-color: #ff6b5d;
+        color: #fff;
+      }
+      .hsar-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        padding: 7px 8px;
+        border: 1px solid #2d2d2d;
+        border-radius: 5px;
+        background: rgba(255,255,255,0.04);
+        color: #ddd;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .hsar-option input {
+        width: 15px;
+        height: 15px;
+        accent-color: #ff3838;
+      }
+      .hsar-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .hsar-file {
+        display: none;
+      }
+      .hsar-commentary {
+        margin-top: 8px;
+        padding: 7px;
+        border: 1px solid #2d2d2d;
+        border-radius: 5px;
+        background: rgba(255,255,255,0.04);
+        color: #aaa;
+        line-height: 1.35;
+      }
+      .hsar-replay-panel {
+        display: none;
+        margin-top: 8px;
+        padding: 8px;
+        border: 1px solid #333;
+        border-radius: 5px;
+        background: rgba(0,0,0,0.35);
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay-panel {
+        display: block;
+      }
+      .hsar-progress {
+        flex: 1;
+        height: 6px;
+        border-radius: 999px;
+        background: #2a2a2a;
+        overflow: hidden;
+      }
+      .hsar-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #5b9bd5;
+      }
+      .hsar-replay-time {
+        color: #8fc5ff;
+        font-weight: 800;
+      }
+      .hsar-event-text {
+        margin-top: 5px;
+        color: #ddd;
+      }
+      .hsar-voice-status {
+        margin-top: 6px;
+        color: #aaa;
+        line-height: 1.35;
+      }
+      .hsar-replay-commentary {
+        margin-top: 6px;
+        padding: 7px;
+        border: 1px solid #2f3b4a;
+        border-radius: 5px;
+        background: rgba(91,155,213,0.08);
+        color: #e8f3ff;
+        line-height: 1.35;
+        max-height: 96px;
+        overflow: auto;
+      }
+      .hsar-caption {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        display: none;
+        max-width: min(760px, calc(100vw - 420px));
+        padding: 9px 13px;
+        border-radius: 6px;
+        background: rgba(0,0,0,0.82);
+        color: #fff;
+        font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        text-align: center;
+        line-height: 1.35;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+      }
+      .hsar-caption:not(:empty) {
+        display: block;
+      }
+      .hsar-commentary strong {
+        color: #f2f2f2;
+      }
+      .hsar-widget[data-mic="true"] .hsar-mic {
+        border-color: #ff3838;
+        color: #ffb3b3;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay {
+        border-color: #f0a040;
+        color: #ffd166;
+      }
+      .hsar-mini-status {
+        display: none;
+        align-items: center;
+        gap: 8px;
+      }
+      .hsar-mini-stop {
+        appearance: none;
+        flex: none;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #7a2b25;
+        border-radius: 4px;
+        background: #3b1411;
+        color: #ffb8ae;
+        font-size: 10px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .hsar-mini-stop:hover {
+        border-color: #ff6b5d;
+        color: #fff;
+      }
+      .hsar-remaining {
+        flex: none;
+        color: #8fc5ff;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+      }
+      /* During playback the widget shrinks to just a stop button and a progress indicator in
+         the corner, so a screen recording of the replay isn't cluttered with the full control
+         panel, voice-context status, or captured commentary. */
+      .hsar-widget[data-replaying="true"] {
+        width: 220px;
+        padding: 8px 10px;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-status,
+      .hsar-widget[data-replaying="true"] .hsar-option,
+      .hsar-widget[data-replaying="true"] .hsar-controls,
+      .hsar-widget[data-replaying="true"] .hsar-commentary,
+      .hsar-widget[data-replaying="true"] .hsar-replay-time,
+      .hsar-widget[data-replaying="true"] .hsar-event-text,
+      .hsar-widget[data-replaying="true"] .hsar-voice-status,
+      .hsar-widget[data-replaying="true"] .hsar-replay-commentary {
+        display: none;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-mini-status {
+        display: flex;
+      }
+      .hsar-widget[data-replaying="true"] .hsar-replay-panel {
+        margin-top: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+      }
+    </style>
+    <div class="hsar-widget" data-recording="false" data-replaying="false" data-mic="false">
+      <div class="hsar-status"><span class="hsar-dot"></span><span class="hsar-time">00:00</span><span class="hsar-count">0 events</span><span class="hsar-loaded"></span></div>
+      <label class="hsar-option" title="When checked, the recorder asks for microphone permission at Start and saves speech-to-text notes as replay captions.">
+        <input class="hsar-voice-context" type="checkbox" />
+        <span>Rec voice context</span>
+      </label>
+      <div class="hsar-controls">
+        <button class="hsar-button hsar-start" type="button">Start</button>
+        <button class="hsar-button hsar-stop" type="button" disabled>Stop</button>
+        <button class="hsar-button hsar-save" type="button" disabled title="Save/download this recording now. Unsaved recordings are lost when the page reloads.">Save/Download</button>
+        <button class="hsar-button hsar-mic" type="button">Voice</button>
+        <button class="hsar-button hsar-load" type="button">Load Replay</button>
+        <button class="hsar-button hsar-replay" type="button" disabled>Replay</button>
+      </div>
+      <input class="hsar-file" type="file" accept="application/json,.json" />
+      <div class="hsar-replay-panel">
+        <div class="hsar-mini-status">
+          <button class="hsar-mini-stop" type="button" title="Stop replay">&#9632;</button>
+          <div class="hsar-progress"><div class="hsar-progress-fill"></div></div>
+          <span class="hsar-remaining"></span>
+        </div>
+        <div><span class="hsar-replay-time">00:00 / 00:00</span></div>
+        <div class="hsar-event-text">Ready</div>
+        <div class="hsar-voice-status">Voice context disabled.</div>
+        <div class="hsar-replay-commentary"></div>
+      </div>
+      <div class="hsar-commentary"><strong>Voice context:</strong> enable before Start to save speech-to-text notes for replay captions and AI narration context.</div>
+      <div class="hsar-caption"></div>
+    </div>
+  `;
+
+  const widget = shadow.querySelector('.hsar-widget') as HTMLElement;
+  const startButton = shadow.querySelector('.hsar-start') as HTMLButtonElement;
+  const stopButton = shadow.querySelector('.hsar-stop') as HTMLButtonElement;
+  const saveButton = shadow.querySelector('.hsar-save') as HTMLButtonElement;
+  const micButton = shadow.querySelector('.hsar-mic') as HTMLButtonElement;
+  const voiceContextCheckbox = shadow.querySelector('.hsar-voice-context') as HTMLInputElement;
+  const loadButton = shadow.querySelector('.hsar-load') as HTMLButtonElement;
+  const replayButton = shadow.querySelector('.hsar-replay') as HTMLButtonElement;
+  const fileInput = shadow.querySelector('.hsar-file') as HTMLInputElement;
+  const timeLabel = shadow.querySelector('.hsar-time') as HTMLElement;
+  const countLabel = shadow.querySelector('.hsar-count') as HTMLElement;
+  const loadedLabel = shadow.querySelector('.hsar-loaded') as HTMLElement;
+  const progressFill = shadow.querySelector('.hsar-progress-fill') as HTMLElement;
+  const replayTimeLabel = shadow.querySelector('.hsar-replay-time') as HTMLElement;
+  const eventTextLabel = shadow.querySelector('.hsar-event-text') as HTMLElement;
+  const voiceStatusLabel = shadow.querySelector('.hsar-voice-status') as HTMLElement;
+  const replayCommentaryLabel = shadow.querySelector('.hsar-replay-commentary') as HTMLElement;
+  const captionLabel = shadow.querySelector('.hsar-caption') as HTMLElement;
+  const remainingLabel = shadow.querySelector('.hsar-remaining') as HTMLElement;
+  const miniStopButton = shadow.querySelector('.hsar-mini-stop') as HTMLButtonElement;
+
+  const elapsed = () => state.recording ? Math.round(performance.now() - state.startedAtMs) : state.durationMs;
+
+  const formatMs = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
+  const resolveByXpath = (xpath: string) => {
+    try {
+      const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      return result.singleNodeValue instanceof Element ? result.singleNodeValue : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const elementTextMatches = (element: Element, text: string) =>
+    normalizeText(element.textContent || element.getAttribute('aria-label')).includes(text);
+
+  const resolveSelector = (selectors?: SelectorCandidates) => {
+    if (!selectors) return undefined;
+
+    const candidates: (Element | undefined | null)[] = [];
+    if (selectors.testId) {
+      candidates.push(document.querySelector(`[data-testid="${cssEscape(selectors.testId)}"]`));
+      candidates.push(document.querySelector(`[data-test="${cssEscape(selectors.testId)}"]`));
+    }
+    if (selectors.id) candidates.push(document.getElementById(selectors.id));
+    if (selectors.css) {
+      try {
+        const matches = Array.from(document.querySelectorAll(selectors.css));
+        candidates.push(typeof selectors.nth === 'number' ? matches[selectors.nth] : matches[0]);
+      } catch {
+        // Keep walking lower-priority selectors.
+      }
+    }
+    if (selectors.role && selectors.name) {
+      // getExplicitRole() only ever returns a role for these tags (or an explicit [role]
+      // attribute), so scoping the scan to them is equivalent to '*' but far cheaper.
+      candidates.push(
+        Array.from(document.querySelectorAll('button,a,select,textarea,input,[role]')).find(element =>
+          getExplicitRole(element) === selectors.role && getAccessibleName(element) === selectors.name
+        )
+      );
+    }
+    if (selectors.text) {
+      candidates.push(
+        Array.from(document.querySelectorAll('button,a,[role="button"],[role="menuitem"],[role="tab"],summary')).find(element =>
+          elementTextMatches(element, selectors.text || '')
+        )
+      );
+    }
+    if (selectors.xpath) candidates.push(resolveByXpath(selectors.xpath));
+
+    return candidates.find((candidate): candidate is Element => Boolean(candidate));
+  };
+
+  const setElementValue = (element: Element, value = '') => {
+    if (element instanceof HTMLInputElement) {
+      if (element.type === 'checkbox' || element.type === 'radio') {
+        nativeInputCheckedSetter?.call(element, value === 'true');
+      } else {
+        nativeInputValueSetter?.call(element, value);
+      }
+      return;
+    }
+    if (element instanceof HTMLTextAreaElement) {
+      nativeTextareaValueSetter?.call(element, value);
+      return;
+    }
+    if (element instanceof HTMLSelectElement) {
+      nativeSelectValueSetter?.call(element, value);
+      return;
+    }
+    if (element instanceof HTMLElement && element.isContentEditable) {
+      element.innerText = value;
+    }
+  };
+
+  const dispatchInputEvents = (element: Element, type: 'input' | 'change') => {
+    element.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+  };
+
+  const replayEvent = (event: RecorderEvent): Element | undefined => {
+    if (event.type === 'navigation') {
+      if (event.url && event.url !== window.location.href && event.url !== state.loadedReplay?.meta.startUrl) {
+        history.pushState(null, '', event.url);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return undefined;
+    }
+
+    if (event.type === 'scroll') {
+      const target = resolveSelector(event.selectors);
+      if (target instanceof HTMLElement && event.scroll) {
+        target.scrollTo(event.scroll.x, event.scroll.y);
+      } else if (event.scroll) {
+        window.scrollTo(event.scroll.x, event.scroll.y);
+      }
+      return target;
+    }
+
+    const target = resolveSelector(event.selectors);
+    if (!target) return undefined;
+
+    if (event.type === 'click') {
+      (target as HTMLElement).click();
+      return target;
+    }
+
+    if (event.type === 'input' || event.type === 'change') {
+      setElementValue(target, event.value);
+      dispatchInputEvents(target, event.type);
+      return target;
+    }
+
+    if (event.type === 'keypress') {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true, cancelable: true }));
+    }
+    return target;
+  };
+
+  const describeTarget = (selectors?: SelectorCandidates) =>
+    selectors?.name || selectors?.text || selectors?.id || selectors?.testId || selectors?.css || 'page';
+
+  const describeEvent = (event: RecorderEvent) => {
+    if (event.type === 'navigation') return event.value ? `Navigation: ${event.value}` : `Navigation: ${event.url}`;
+    if (event.type === 'click') return `Click: ${describeTarget(event.selectors)}`;
+    if (event.type === 'input') return `Input: ${describeTarget(event.selectors)} = ${event.value ?? ''}`;
+    if (event.type === 'change') return `Change: ${describeTarget(event.selectors)} = ${event.value ?? ''}`;
+    if (event.type === 'keypress') return `Key: ${event.key ?? ''} on ${describeTarget(event.selectors)}`;
+    if (event.type === 'scroll') return `Scroll: ${event.scroll?.x ?? 0}, ${event.scroll?.y ?? 0}`;
+    return event.type;
+  };
+
+  const currentCaptionFor = (elapsedMs: number) => {
+    const commentary = state.loadedReplay?.commentary || [];
+    const current = commentary
+      .filter(item => item.t <= elapsedMs)
+      .sort((a, b) => b.t - a.t)[0];
+    if (!current) return '';
+    return elapsedMs - current.t <= 6000 ? current.text : '';
+  };
+
+  const voiceStatusFor = (payload?: RecordingPayload) => {
+    if (!payload) return 'Voice context disabled.';
+    const voiceContext = payload.meta.voiceContext;
+    if (voiceContext?.message) return voiceContext.message;
+    if (payload.commentary?.length) return `${payload.commentary.length} voice context note${payload.commentary.length === 1 ? '' : 's'} captured.`;
+    return 'Voice context disabled for this recording.';
+  };
+
+  const commentaryTextFor = (payload?: RecordingPayload) => {
+    const commentary = payload?.commentary || [];
+    if (!commentary.length) return '';
+    return commentary.map(item => `${formatMs(item.t)}  ${item.text}`).join('\n');
+  };
+
+  const updateVoiceStatus = () => {
+    if (!state.voiceContextEnabled) {
+      state.voiceContextStatus = 'disabled';
+      state.voiceContextMessage = 'Voice context disabled for this recording.';
+      return;
+    }
+    if (state.commentary.length > 0) {
+      state.voiceContextStatus = 'captured';
+      state.voiceContextMessage = `${state.commentary.length} voice context note${state.commentary.length === 1 ? '' : 's'} captured.`;
+      return;
+    }
+    if (state.voiceContextStatus === 'unsupported' || state.voiceContextStatus === 'error') return;
+    state.voiceContextStatus = 'enabled-no-transcript';
+    state.voiceContextMessage = 'Voice context enabled, but no speech-to-text was captured yet.';
+  };
+
+  const updateUi = () => {
+    updateVoiceStatus();
+    widget.dataset.recording = String(state.recording);
+    widget.dataset.replaying = String(state.replaying);
+    widget.dataset.mic = String(state.micActive);
+    timeLabel.textContent = formatMs(elapsed());
+    countLabel.textContent = `${state.events.length} event${state.events.length === 1 ? '' : 's'}`;
+    loadedLabel.textContent = state.loadedReplay ? 'Replay ready' : '';
+    const progress = state.replayDurationMs > 0 ? Math.min(1, state.replayElapsedMs / state.replayDurationMs) : 0;
+    progressFill.style.width = `${Math.round(progress * 100)}%`;
+    replayTimeLabel.textContent = `${formatMs(state.replayElapsedMs)} / ${formatMs(state.replayDurationMs)}`;
+    remainingLabel.textContent = formatMs(Math.max(0, state.replayDurationMs - state.replayElapsedMs));
+    eventTextLabel.textContent = state.replayEventText || 'Ready';
+    voiceStatusLabel.textContent = state.replaying || state.loadedReplay
+      ? voiceStatusFor(state.loadedReplay)
+      : state.voiceContextMessage;
+    replayCommentaryLabel.textContent = commentaryTextFor(state.loadedReplay);
+    replayCommentaryLabel.style.display = !state.replaying && replayCommentaryLabel.textContent ? 'block' : 'none';
+    captionLabel.textContent = state.replayCaption;
+    voiceContextCheckbox.checked = state.voiceContextEnabled;
+    voiceContextCheckbox.disabled = state.recording;
+    startButton.disabled = state.recording;
+    stopButton.disabled = !state.recording;
+    saveButton.disabled = state.recording || !state.hasRecording;
+    saveButton.classList.toggle('hsar-button-danger', state.hasRecording && !state.recording);
+    micButton.disabled = !state.recording || state.replaying;
+    loadButton.disabled = state.recording || state.replaying;
+    replayButton.disabled = state.recording || state.replaying || !state.loadedReplay;
+    micButton.textContent = state.micActive ? 'Voice On' : 'Voice Off';
+    replayButton.textContent = state.replaying ? 'Replaying' : 'Replay';
+    const snapshot = getSnapshot();
+    subscribers.forEach(listener => listener(snapshot));
+  };
+
+  const record = (event: Omit<RecorderEvent, 't' | 'url'>) => {
+    if (!state.recording) return;
+    state.events.push({
+      t: elapsed(),
+      url: window.location.href,
+      ...event
+    });
+    updateUi();
+  };
+
+  const recordCursorPoint = (x: number, y: number) => {
+    if (!state.recording) return;
+    // Bypasses updateUi() deliberately: this fires far more often than any
+    // other recorded event, and re-rendering the recorder UI on every sample
+    // isn't needed just to track a cursor trail.
+    state.cursorTrail.push({ t: elapsed(), x, y });
+  };
+
+  const recordNavigationIfChanged = () => {
+    if (window.location.href === lastUrl) return;
+    lastUrl = window.location.href;
+    record({ type: 'navigation' });
+  };
+
+  const getSnapshot = (): ActionRecorderSnapshot => ({
+    recording: state.recording,
+    replaying: state.replaying,
+    micActive: state.micActive,
+    voiceContextEnabled: state.voiceContextEnabled,
+    voiceContextStatus: state.voiceContextStatus,
+    voiceContextMessage: state.voiceContextMessage,
+    hasRecording: state.hasRecording,
+    hasReplay: Boolean(state.loadedReplay),
+    elapsedMs: elapsed(),
+    replayElapsedMs: state.replayElapsedMs,
+    replayDurationMs: state.replayDurationMs,
+    replayCaption: state.replayCaption,
+    replayEventText: state.replayEventText,
+    eventCount: state.events.length,
+    commentaryCount: state.commentary.length
+  });
+
+  const stopMic = () => {
+    if (!state.micActive) return;
+    state.micActive = false;
+    recognition?.stop();
+    recognition = undefined;
+    updateUi();
+  };
+
+  const addCommentary = (text: string, final: boolean, atMs?: number) => {
+    const normalized = normalizeText(text);
+    if (!normalized || !state.recording) return;
+    state.commentary.push({ t: atMs ?? elapsed(), text: normalized, final });
+    updateVoiceStatus();
+    updateUi();
+  };
+
+  const toggleMic = async () => {
+    if (!state.recording) return;
+    if (state.micActive) {
+      stopMic();
+      return;
+    }
+
+    const SpeechRecognitionApi = getSpeechRecognition();
+    if (!SpeechRecognitionApi) {
+      state.voiceContextStatus = 'unsupported';
+      state.voiceContextMessage = 'Voice context is unsupported in this browser, so no transcript was captured.';
+      state.commentaryMode = undefined;
+      updateUi();
+      return;
+    }
+
+    const utteranceStartedAt = new Map<number, number>();
+    const instance = new SpeechRecognitionApi();
+    instance.continuous = true;
+    instance.interimResults = true;
+    instance.lang = navigator.language || 'en-US';
+    instance.onresult = (event) => {
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (!utteranceStartedAt.has(index)) utteranceStartedAt.set(index, elapsed());
+        const result = event.results[index];
+        if (result.isFinal) {
+          const startedAt = utteranceStartedAt.get(index) ?? elapsed();
+          utteranceStartedAt.delete(index);
+          addCommentary(result[0]?.transcript || '', true, startedAt);
+        }
+      }
+    };
+    instance.onerror = () => {
+      state.micActive = false;
+      state.voiceContextStatus = 'error';
+      state.voiceContextMessage = 'Voice context stopped because speech recognition returned an error.';
+      updateUi();
+    };
+    instance.onend = () => {
+      state.micActive = false;
+      updateUi();
+    };
+    recognition = instance;
+    state.commentaryMode = 'speech-recognition';
+    state.micActive = true;
+    instance.start();
+    updateUi();
+  };
+
+  const setVoiceContextEnabled = (enabled: boolean) => {
+    if (state.recording) return;
+    state.voiceContextEnabled = enabled;
+    state.voiceContextStatus = enabled ? 'enabled-no-transcript' : 'disabled';
+    state.voiceContextMessage = enabled
+      ? 'Voice context will be recorded as speech-to-text after Start.'
+      : 'Voice context disabled for this recording.';
+    updateUi();
+  };
+
+  const buildPayload = (): RecordingPayload => {
+    updateVoiceStatus();
+    const meta: RecorderMeta = {
+      startUrl: state.startUrl,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      userAgent: navigator.userAgent,
+      startedAt: state.startedAtIso,
+      durationMs: state.durationMs,
+      commentaryMode: state.commentaryMode,
+      voiceContext: {
+        enabled: state.voiceContextEnabled,
+        status: state.voiceContextStatus,
+        message: state.voiceContextMessage
+      }
+    };
+    return {
+      meta,
+      events: state.events,
+      commentary: state.commentary,
+      cursorTrail: state.cursorTrail,
+      appState: state.appState
+    };
+  };
+
+  const updateReplayProgress = (elapsedMs: number) => {
+    state.replayElapsedMs = Math.min(elapsedMs, state.replayDurationMs);
+    state.replayCaption = currentCaptionFor(state.replayElapsedMs);
+    updateUi();
+  };
+
+  const startRecording = () => {
+    if (state.recording) return;
+    state.recording = true;
+    state.startedAtMs = performance.now();
+    state.startedAtIso = new Date().toISOString();
+    state.startUrl = window.location.href;
+    state.events = [];
+    state.commentary = [];
+    state.cursorTrail = [];
+    state.commentaryMode = undefined;
+    state.voiceContextStatus = state.voiceContextEnabled ? 'enabled-no-transcript' : 'disabled';
+    state.voiceContextMessage = state.voiceContextEnabled
+      ? 'Voice context enabled, waiting for speech-to-text.'
+      : 'Voice context disabled for this recording.';
+    state.appState = appStateHandlers?.capture();
+    state.durationMs = 0;
+    state.hasRecording = false;
+    lastUrl = window.location.href;
+    lastScrollCapture = 0;
+    lastInputCapture = 0;
+    lastCursorCapture = 0;
+    timerId = window.setInterval(updateUi, 250);
+    record({ type: 'navigation' });
+    if (state.voiceContextEnabled) void toggleMic();
+    updateUi();
+  };
+
+  const stopRecording = () => {
+    if (!state.recording) return;
+    stopMic();
+    state.durationMs = elapsed();
+    state.recording = false;
+    state.hasRecording = true;
+    window.clearInterval(timerId);
+    updateVoiceStatus();
+    state.loadedReplay = buildPayload();
+    state.replayDurationMs = state.durationMs;
+    state.replayElapsedMs = 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Ready to replay this recording.';
+    updateUi();
+  };
+
+  const downloadRecording = () => {
+    if (!state.hasRecording) return;
+    const payload = buildPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recording-${state.startedAtIso.replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const markTransition = (label: string) => {
+    record({ type: 'navigation', value: label });
+  };
+
+  const loadReplayFile = async (file: File) => {
+    const payload = JSON.parse(await file.text()) as RecordingPayload;
+    if (!payload?.meta?.startUrl || !Array.isArray(payload.events)) {
+      throw new Error('Invalid recording file');
+    }
+    state.loadedReplay = payload;
+    state.replayDurationMs = payload.meta.durationMs || payload.events[payload.events.length - 1]?.t || 0;
+    state.replayElapsedMs = 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Ready';
+    updateUi();
+  };
+
+  const openReplayPicker = () => {
+    if (state.recording || state.replaying) return;
+    fileInput.click();
+  };
+
+  const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+  // Waits until `targetMs` has elapsed since replayStartedAt, on the wall clock, rather than
+  // sleeping for a fixed duration computed from the previous item in the same list. Two
+  // independent lists (events and the cursor trail) that each accumulate their own relative
+  // delays drift apart as soon as one list's per-item processing (selector resolution, DOM
+  // writes) takes noticeably longer than the other's — which is exactly what happened between
+  // discrete event replay and cursor movement. Anchoring both to the same absolute clock keeps
+  // them in lockstep: whichever list falls behind schedule catches up with a shorter wait
+  // instead of drifting further every iteration.
+  // Polls in short slices (rather than one long sleep) so a Stop click during a large gap
+  // between actions still takes effect within ~100ms instead of waiting out the whole gap.
+  const waitUntil = async (targetMs: number) => {
+    while (!replayAbort) {
+      const remaining = targetMs - (performance.now() - replayStartedAt);
+      if (remaining <= 0) return;
+      await sleep(Math.min(remaining, 100));
+    }
+  };
+
+  // Rotated so the fingertip (near the glyph's top edge) points up-and-left, like a mouse cursor.
+  const CURSOR_ROTATION = 'rotate(-45deg)';
+  const CURSOR_TRANSFORM_ORIGIN = '50% 10px';
+  const CURSOR_MAX_GLIDE_MS = 500;
+  // Empirically measured (pixel analysis of a rendered frame against a known target point): the
+  // glyph's actual visual fingertip lands 11px left and 8px below the box's nominal (x,y), so
+  // shift the box by the opposite amount to put the real tip exactly on target.
+  const CURSOR_TIP_OFFSET_X = 11;
+  const CURSOR_TIP_OFFSET_Y = -8;
+
+  const ensureReplayCursorEl = () => {
+    if (replayCursorEl) return replayCursorEl;
+    const el = document.createElement('div');
+    el.id = 'hsar-replay-cursor';
+    el.textContent = '\u{1F446}';
+    el.style.cssText = `
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 64px;
+      height: 64px;
+      margin-left: -32px;
+      margin-top: 0px;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      font-size: 56px;
+      line-height: 1;
+      pointer-events: none;
+      z-index: 2147483647;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)) drop-shadow(0 0 3px #fff);
+      transition: left 60ms linear, top 60ms linear, transform 120ms ease-out;
+      transform-origin: ${CURSOR_TRANSFORM_ORIGIN};
+      transform: ${CURSOR_ROTATION} scale(1);
+      user-select: none;
+    `;
+    document.body.appendChild(el);
+    replayCursorEl = el;
+    return el;
+  };
+
+  const setReplayCursorGlideMs = (ms: number) => {
+    const el = ensureReplayCursorEl();
+    el.style.transition = `left ${ms}ms linear, top ${ms}ms linear, transform 120ms ease-out`;
+  };
+
+  const moveReplayCursorTo = (x?: number, y?: number) => {
+    if (typeof x !== 'number' || typeof y !== 'number') return;
+    const el = ensureReplayCursorEl();
+    el.style.display = 'flex';
+    el.style.left = `${x + CURSOR_TIP_OFFSET_X}px`;
+    el.style.top = `${y + CURSOR_TIP_OFFSET_Y}px`;
+  };
+
+  const pulseReplayCursor = () => {
+    const el = replayCursorEl;
+    if (!el) return;
+    el.style.transform = `${CURSOR_ROTATION} scale(0.7)`;
+    window.setTimeout(() => { el.style.transform = `${CURSOR_ROTATION} scale(1)`; }, 120);
+  };
+
+  // Unlike pulseReplayCursor's brief tap animation, this holds the "pressed" size for as long as
+  // a drag is in progress (from the first input sample to the change/release), so the cursor
+  // visibly reads as "mouse button held down" for the whole drag instead of just blipping.
+  const setReplayCursorPressed = (pressed: boolean) => {
+    const el = ensureReplayCursorEl();
+    el.style.transform = `${CURSOR_ROTATION} scale(${pressed ? 0.72 : 1})`;
+  };
+
+  const hideReplayCursor = () => {
+    if (replayCursorEl) replayCursorEl.style.display = 'none';
+  };
+
+  // The independently-sampled mousemove trail tracks where the mouse roughly was, but during a
+  // slider drag the thing that actually matters visually is the thumb, and rounding/throttling
+  // differences between the two recordings meant the cursor could visibly lag or lead it. Reading
+  // the thumb's real position directly off the element removes that gap entirely.
+  const getRangeThumbPosition = (input: HTMLInputElement) => {
+    const rect = input.getBoundingClientRect();
+    const min = parseFloat(input.min || '0');
+    const max = parseFloat(input.max || '100');
+    const value = parseFloat(input.value);
+    const fraction = max > min ? (value - min) / (max - min) : 0;
+    const clamped = Math.min(1, Math.max(0, fraction));
+    return { x: rect.left + clamped * rect.width, y: rect.top + rect.height / 2 };
+  };
+
+  // Events and cursor-trail points used to be replayed by two independently-scheduled loops,
+  // synced only by a shared clock. That still left a genuine race: two setTimeout chains have
+  // no guaranteed relative order when their next deadlines land at nearly the same millisecond,
+  // so a slider-thumb snap and a trail sample due at nearly the same instant could interleave
+  // either way, occasionally letting a stale mousemove sample win for one frame. Merging both
+  // into a single chronologically-sorted queue driven by one loop removes the second scheduler
+  // entirely — there is no other timer that can run between "we just set the cursor position"
+  // and "the loop advances to the next action", so nothing can undo it out of order.
+  type ReplayAction =
+    | { kind: 'dom-event'; t: number; event: RecorderEvent }
+    | { kind: 'cursor-move'; t: number; point: RecorderCursorPoint };
+
+  const compareReplayActions = (a: ReplayAction, b: ReplayAction) => {
+    if (a.t !== b.t) return a.t - b.t;
+    // At equal timestamps, let the raw trail sample apply first and any coincident dom-event
+    // (in particular a slider-thumb snap or a click's cursor jump) apply after, so discrete
+    // actions always get the final say for that instant rather than being stomped by a
+    // same-millisecond mousemove sample.
+    if (a.kind === b.kind) return 0;
+    return a.kind === 'cursor-move' ? -1 : 1;
+  };
+
+  const buildReplayActionQueue = (payload: RecordingPayload): ReplayAction[] => {
+    const queue: ReplayAction[] = [
+      ...payload.events.map((event): ReplayAction => ({ kind: 'dom-event', t: event.t, event })),
+      ...(payload.cursorTrail || []).map((point): ReplayAction => ({ kind: 'cursor-move', t: point.t, point }))
+    ];
+    return queue.sort(compareReplayActions);
+  };
+
+  const playReplayQueue = async (actions: ReplayAction[]) => {
+    // Tracks the timestamp of the last cursor move regardless of whether it came from a raw
+    // trail sample or a slider-thumb snap, so both kinds glide across their real elapsed gap
+    // instead of the thumb-snap case using a fixed duration unrelated to how far apart the
+    // samples actually were (which is what made slider drags look choppy again).
+    let prevCursorMoveT: number | undefined;
+    const glideCursorTo = (t: number, x: number, y: number) => {
+      setReplayCursorGlideMs(prevCursorMoveT !== undefined
+        ? Math.min(Math.max(0, t - prevCursorMoveT), CURSOR_MAX_GLIDE_MS)
+        : 0);
+      moveReplayCursorTo(x, y);
+      prevCursorMoveT = t;
+    };
+    // True for the whole span from a slider's first input sample to its change/release, so the
+    // cursor stays in the small "pressed" pose for the entire drag instead of just blipping.
+    let cursorPressed = false;
+
+    for (const action of actions) {
+      if (replayAbort) break;
+      await waitUntil(action.t);
+      if (replayAbort) break;
+
+      if (action.kind === 'cursor-move') {
+        glideCursorTo(action.t, action.point.x, action.point.y);
+        continue;
+      }
+
+      const { event } = action;
+      // Elapsed time and caption are driven solely by the wall-clock interval timer
+      // (updateReplayProgress) so there's a single clock; setting them again here from the
+      // event's recorded timestamp raced with that timer whenever replay ran slower or faster
+      // than real time, flickering the caption between the two.
+      state.replayEventText = describeEvent(event);
+      updateUi();
+      if (event.type === 'click') {
+        if (typeof event.x === 'number' && typeof event.y === 'number') glideCursorTo(event.t, event.x, event.y);
+        pulseReplayCursor();
+      }
+      const target = replayEvent(event);
+      if ((event.type === 'input' || event.type === 'change') && target instanceof HTMLInputElement && target.type === 'range') {
+        const thumb = getRangeThumbPosition(target);
+        glideCursorTo(event.t, thumb.x, thumb.y);
+        if (event.type === 'input' && !cursorPressed) {
+          cursorPressed = true;
+          setReplayCursorPressed(true);
+        } else if (event.type === 'change' && cursorPressed) {
+          cursorPressed = false;
+          setReplayCursorPressed(false);
+        }
+      }
+    }
+
+    if (cursorPressed) setReplayCursorPressed(false);
+  };
+
+  const stopReplay = () => {
+    if (!state.replaying) return;
+    replayAbort = true;
+  };
+
+  const replay = async () => {
+    if (!state.loadedReplay || state.replaying || state.recording) return;
+    replayAbort = false;
+    const actionQueue = buildReplayActionQueue(state.loadedReplay);
+    state.replaying = true;
+    state.replayElapsedMs = 0;
+    state.replayDurationMs = state.loadedReplay.meta.durationMs || actionQueue.at(-1)?.t || 0;
+    state.replayCaption = '';
+    state.replayEventText = 'Restoring initial app state';
+    updateUi();
+
+    if (state.loadedReplay.appState !== undefined) {
+      appStateHandlers?.restore(state.loadedReplay.appState);
+      await sleep(150);
+    }
+
+    replayStartedAt = performance.now();
+    replayTimerId = window.setInterval(() => {
+      updateReplayProgress(Math.round(performance.now() - replayStartedAt));
+    }, 100);
+
+    await playReplayQueue(actionQueue);
+
+    window.clearInterval(replayTimerId);
+    updateReplayProgress(state.replayDurationMs);
+    hideReplayCursor();
+    state.replaying = false;
+    state.replayEventText = replayAbort ? 'Replay stopped' : 'Replay complete';
+    state.replayCaption = '';
+    updateUi();
+  };
+
+  window.__hyperStereoActionRecorder = {
+    start: startRecording,
+    stop: stopRecording,
+    save: downloadRecording,
+    replay,
+    openReplayPicker,
+    loadReplayFile,
+    toggleMic,
+    setVoiceContextEnabled,
+    markTransition,
+    setAppStateHandlers: (handlers) => {
+      appStateHandlers = handlers;
+    },
+    getSnapshot,
+    subscribe: (listener) => {
+      subscribers.add(listener);
+      listener(getSnapshot());
+      return () => subscribers.delete(listener);
+    }
+  };
+
+  startButton.addEventListener('click', startRecording);
+  stopButton.addEventListener('click', stopRecording);
+  saveButton.addEventListener('click', downloadRecording);
+  micButton.addEventListener('click', () => void toggleMic());
+  voiceContextCheckbox.addEventListener('change', () => {
+    setVoiceContextEnabled(voiceContextCheckbox.checked);
+  });
+  loadButton.addEventListener('click', openReplayPicker);
+  replayButton.addEventListener('click', () => void replay());
+  miniStopButton.addEventListener('click', stopReplay);
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    void loadReplayFile(file).catch(error => {
+      window.alert(error instanceof Error ? error.message : 'Unable to load recording');
+    });
+    fileInput.value = '';
+  });
+
+  document.addEventListener('click', (event) => {
+    if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
+    record({ type: 'click', selectors: selectorCandidatesFor(event.target), x: event.clientX, y: event.clientY });
+  }, { capture: true, passive: true });
+
+  document.addEventListener('mousemove', (event) => {
+    if (!state.recording || shouldIgnoreEvent(event, host)) return;
+    const now = performance.now();
+    if (now - lastCursorCapture < 60) return;
+    lastCursorCapture = now;
+    recordCursorPoint(event.clientX, event.clientY);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('input', (event) => {
+    if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
+    const now = performance.now();
+    if (now - lastInputCapture < 100) return;
+    lastInputCapture = now;
+    record({ type: 'input', selectors: selectorCandidatesFor(event.target), value: valueFor(event.target) });
+  }, { capture: true });
+
+  document.addEventListener('change', (event) => {
+    if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
+    record({ type: 'change', selectors: selectorCandidatesFor(event.target), value: valueFor(event.target) });
+  }, { capture: true });
+
+  document.addEventListener('keydown', (event) => {
+    if (shouldIgnoreEvent(event, host) || !isElement(event.target)) return;
+    const target = event.target;
+    const shouldRecordKey = ['Enter', 'Tab', 'Escape'].includes(event.key) || isTextEntryElement(target);
+    if (!shouldRecordKey) return;
+    record({ type: 'keypress', selectors: selectorCandidatesFor(target), key: event.key });
+  }, { capture: true });
+
+  const handleScroll = (event: Event) => {
+    if (!state.recording) return;
+    const now = performance.now();
+    if (now - lastScrollCapture < 100) return;
+    lastScrollCapture = now;
+
+    if (isElement(event.target) && event.target !== document.documentElement && event.target !== document.body) {
+      record({
+        type: 'scroll',
+        selectors: selectorCandidatesFor(event.target),
+        scroll: { x: event.target.scrollLeft, y: event.target.scrollTop }
+      });
+      return;
+    }
+
+    record({ type: 'scroll', scroll: { x: window.scrollX, y: window.scrollY } });
+  };
+
+  document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+  window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+
+  const originalPushState = history.pushState;
+  history.pushState = function pushState(...args) {
+    const result = originalPushState.apply(this, args);
+    queueMicrotask(recordNavigationIfChanged);
+    return result;
+  };
+
+  const originalReplaceState = history.replaceState;
+  history.replaceState = function replaceState(...args) {
+    const result = originalReplaceState.apply(this, args);
+    queueMicrotask(recordNavigationIfChanged);
+    return result;
+  };
+
+  window.addEventListener('popstate', () => queueMicrotask(recordNavigationIfChanged), { capture: true, passive: true });
+  window.addEventListener('hashchange', () => queueMicrotask(recordNavigationIfChanged), { capture: true, passive: true });
+  window.addEventListener('beforeunload', () => {
+    if (state.recording) stopRecording();
+  }, { capture: true });
+
+  updateUi();
+};
