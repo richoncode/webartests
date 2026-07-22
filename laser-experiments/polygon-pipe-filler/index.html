@@ -39,6 +39,25 @@
         }
         button:hover { background-color: #005f9e; }
         button:disabled { background-color: #555; cursor: not-allowed; }
+        .refresh-row {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            margin: 5px 0;
+        }
+        .refresh-row button {
+            flex: 1;
+            margin: 0;
+            padding: 10px 4px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .btn-icon {
+            font-size: 22px;
+            vertical-align: middle;
+            margin-right: 2px;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));
+        }
         .shape-presets {
             display: flex;
             flex-wrap: wrap;
@@ -107,7 +126,7 @@
             align-items: stretch;
             gap: 4px;
         }
-        .options-row label[data-tooltip] {
+        .options-row label[data-tooltip]:not(.dim) {
             cursor: help;
         }
         .options-row label[data-tooltip]::after {
@@ -135,8 +154,8 @@
             z-index: 30;
             pointer-events: none;
         }
-        .options-row label[data-tooltip]:hover::after,
-        .options-row label[data-tooltip]:focus-within::after {
+        .options-row label[data-tooltip]:not(.dim):hover::after,
+        .options-row label[data-tooltip]:not(.dim):focus-within::after {
             opacity: 1;
             visibility: visible;
             transform: translateY(0);
@@ -175,6 +194,8 @@
         .mode-toggle-btn:hover { background: #2a2a2a; }
         .mode-toggle-btn.active { background: #007acc; color: #fff; }
         .mode-toggle-btn + .mode-toggle-btn { border-left: 1px solid #444; }
+        #editShapeBtn.active { background-color: #2ecc71; }
+        #editShapeBtn.active:hover { background-color: #27ae60; }
 
         .dual-slider-wrap {
             position: relative;
@@ -249,7 +270,7 @@
             background-color: #000000;
             border: 2px solid #333;
             border-radius: 4px;
-            cursor: crosshair;
+            cursor: default;
             box-shadow: 0 4px 20px rgba(0,0,0,0.6);
             max-width: 100%;
             height: auto;
@@ -309,8 +330,12 @@
 <body>
 
     <div class="controls">
-        <button id="generateBtn" disabled>Refresh</button>
-        <button id="resetBtn">Clear Shape</button>
+        <div class="refresh-row">
+            <button id="refreshColorsBtn" disabled title="Keep the same layout, reroll colors only"><span class="btn-icon">🎨</span> Color</button>
+            <button id="refreshPatternBtn" disabled title="Keep the same colors, reroll layout only"><span class="btn-icon">🔀</span> Pattern</button>
+        </div>
+        <button id="editShapeBtn" title="Add or move the shape's points">✏️ Edit Shape</button>
+        <button id="resetBtn" style="display:none;">Clear Shape</button>
         <div class="shape-presets">
             <button class="preset-btn" data-shape="pendant" title="Pendant">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="8,2 16,2 20,6 20,18 16,22 8,22 4,18 4,6"/></svg>
@@ -336,13 +361,14 @@
                     <option value="3d-basic">3D Basic</option>
                     <option value="3d-glossy">3D Glossy</option>
                     <option value="illustrated">Pipes and Gears</option>
-                    <option value="circuit">1940s Circuit Board</option>
+                    <option value="circuit">Circuit Board</option>
                     <option value="painted_lady">Painted Lady</option>
                     <option value="ducks">Rows of Ducks</option>
                     <option value="gears" selected>Gears</option>
                     <option value="christmas">Christmas Cookies</option>
                     <option value="coins">World Coins</option>
                     <option value="gems">Gems</option>
+                    <option value="buttons">Buttons</option>
                 </select>
             </label>
             <label for="paletteSelect">
@@ -358,6 +384,7 @@
                     <option value="christmas">Christmas</option>
                     <option value="coins">Coins</option>
                     <option value="gems">Gems</option>
+                    <option value="buttons">Buttons</option>
                 </select>
             </label>
             <div class="mode-toggle" role="group" aria-label="Mode">
@@ -369,9 +396,9 @@
                 <option value="border">Trace Border</option>
             </select>
             <label for="thicknessSlider"><span class="ctrl-text"><span id="thicknessLabel">Thickness</span> (<span id="thicknessValue">20</span>/500):</span>
-                <input type="range" id="thicknessSlider" min="2" max="50" value="20">
+                <input type="range" id="thicknessSlider" min="2" max="400" value="20">
             </label>
-            <label for="sizeMinSlider"><span class="ctrl-text"><span id="sizeLabel">Sizes</span>: <span id="sizeMinValue">60</span>%–<span id="sizeMaxValue">430</span>%</span>
+            <label for="sizeMinSlider"><span class="ctrl-text"><span id="sizeLabel">Sizes</span>: <span id="sizeMinValue">60</span><span id="sizeMinSuffix">%</span>–<span id="sizeMaxValue">430</span><span id="sizeMaxSuffix">%</span></span>
                 <div class="dual-slider-wrap">
                     <div class="dual-slider-track"></div>
                     <div class="dual-slider-range" id="sizeRangeHighlight"></div>
@@ -385,7 +412,7 @@
             <label for="gearSlider"><span class="ctrl-text"><span id="gearLabel">Gears</span>: <span id="gearValue">6</span></span>
                 <input type="range" id="gearSlider" min="0" max="20" value="6">
             </label>
-            <label for="colorSlider"><span class="ctrl-text"><span id="colorLabel">Color Changes</span>: <span id="colorValue">15</span>%</span>
+            <label for="colorSlider"><span class="ctrl-text"><span id="colorLabel">Color Changes</span>: <span id="colorValue">2</span></span>
                 <input type="range" id="colorSlider" min="0" max="100" value="15">
             </label>
             <label for="maxStraightSlider"><span class="ctrl-text"><span id="maxStraightLabel">Max Straight</span>: <span id="maxStraightValue">10</span></span>
@@ -395,7 +422,7 @@
                 <input type="range" id="marginSlider" min="-100" max="100" value="0">
             </label>
         </div>
-        <div class="instructions">Tap/Click on the canvas to add at least 3 points. The app will auto-form a convex polygon.</div>
+        <div class="instructions" id="instructions"></div>
     </div>
 
     <div class="canvas-container">
@@ -405,14 +432,45 @@
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const generateBtn = document.getElementById('generateBtn');
+        const refreshColorsBtn = document.getElementById('refreshColorsBtn');
+        const refreshPatternBtn = document.getElementById('refreshPatternBtn');
+        function setRefreshEnabled(enabled) {
+            refreshColorsBtn.disabled = !enabled;
+            refreshPatternBtn.disabled = !enabled;
+        }
         const resetBtn = document.getElementById('resetBtn');
+        const editShapeBtn = document.getElementById('editShapeBtn');
+        const instructions = document.getElementById('instructions');
+        let isEditMode = false;
+        function setEditMode(on) {
+            isEditMode = on;
+            editShapeBtn.classList.toggle('active', on);
+            editShapeBtn.textContent = on ? '✅ Done Editing' : '✏️ Edit Shape';
+            resetBtn.style.display = on ? '' : 'none';
+            canvas.style.cursor = on ? 'crosshair' : 'default';
+            instructions.textContent = on
+                ? 'Tap/click the canvas to add a point, or drag an existing point to move it.'
+                : '';
+            if (isGenerated) generatePipes();
+        }
+        editShapeBtn.addEventListener('click', () => setEditMode(!isEditMode));
         const thicknessSlider = document.getElementById('thicknessSlider');
         const thicknessValue = document.getElementById('thicknessValue');
         const styleSelect = document.getElementById('styleSelect');
         const paletteSelect = document.getElementById('paletteSelect');
         const colorSlider = document.getElementById('colorSlider');
         const colorValue = document.getElementById('colorValue');
+
+        // The source of truth for "how much color variety" is this plain JS
+        // fraction, not colorSlider.value — range inputs silently re-snap their
+        // .value to the nearest step multiple the instant .step changes (a
+        // real browser quirk, not just a display rounding), which would
+        // otherwise drift the percentage on every style/palette switch (e.g.
+        // 100% could silently become 83%). Only the 'input' listener (an
+        // actual user drag) updates this; everything else reads it instead of
+        // colorSlider.value, so "100% = every color in the palette" always
+        // holds regardless of which style/palette is active.
+        let colorPct = parseFloat(colorSlider.value) / 100;
         const maxStraightSlider = document.getElementById('maxStraightSlider');
         const maxStraightValue = document.getElementById('maxStraightValue');
         const gearSlider = document.getElementById('gearSlider');
@@ -426,6 +484,8 @@
         const sizeMaxSlider = document.getElementById('sizeMaxSlider');
         const sizeMinValue = document.getElementById('sizeMinValue');
         const sizeMaxValue = document.getElementById('sizeMaxValue');
+        const sizeMinSuffix = document.getElementById('sizeMinSuffix');
+        const sizeMaxSuffix = document.getElementById('sizeMaxSuffix');
         const sizeRangeHighlight = document.getElementById('sizeRangeHighlight');
 
         let rawPoints = [];
@@ -434,6 +494,30 @@
         let draggingPoint = null;
         let gears = []; // Store generated gears for redraws
         let shapeIsCustom = false; // true once the user hand-edits away from a loaded preset
+
+        // Pattern (placement/shape/size) and Color (palette picks) are driven by
+        // two independently-seeded PRNGs so "Refresh Colors" and "Refresh
+        // Pattern" can regenerate one aspect while replaying the other exactly.
+        // Plain Math.random() is intentionally never used elsewhere in
+        // generation code so every random decision is reproducible this way.
+        function makeRng(seed) {
+            let s = seed >>> 0;
+            return function () {
+                s = (s + 0x6D2B79F5) >>> 0;
+                let t = s;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+        let patternSeed = Math.floor(Math.random() * 4294967296);
+        let colorSeed = Math.floor(Math.random() * 4294967296);
+        let patternRandom = makeRng(patternSeed);
+        let colorRandom = makeRng(colorSeed);
+        function reseedRandom() {
+            patternRandom = makeRng(patternSeed);
+            colorRandom = makeRng(colorSeed);
+        }
 
         // Common laser-cut blanks, offered as one-click starting shapes
         const SHAPE_PRESETS = {
@@ -463,7 +547,7 @@
                 rawPoints = SHAPE_PRESETS[shapeKey]();
                 hullPoints = calculateConvexHull(rawPoints);
                 shapeIsCustom = false;
-                generateBtn.disabled = false;
+                setRefreshEnabled(true);
                 isGenerated = true;
                 applySliderMeta();
                 generatePipes();
@@ -487,7 +571,8 @@
             ducks: ['#FDD835', '#FFEB3B', '#FFF59D', '#FFFFFF', '#E0E0E0', '#FF9800', '#4CAF50'],
             christmas: ['#c0392b', '#165b33', '#f8b229', '#ffffff', '#0b6e4f', '#e94560', '#d4af37'],
             coins: ['#c9c9c9', '#a8a8a8', '#7d7d7d', '#5a5a5a', '#d4af37', '#b8860b', '#b87333', '#cd7f32', '#8b5a2b'],
-            gems: ['#e0115f', '#0f52ba', '#50c878', '#9966cc', '#ffc87c', '#b9f2ff', '#ff8c42']
+            gems: ['#e0115f', '#0f52ba', '#50c878', '#9966cc', '#ffc87c', '#b9f2ff', '#ff8c42'],
+            buttons: ['#e63946', '#f4a340', '#ffd23f', '#6a994e', '#1b4332', '#3a86ff', '#ff5da2', '#b185db', '#f1faee']
         };
 
         // Helper to get coordinates for both mouse and touch events
@@ -512,6 +597,7 @@
         }
 
         function handlePointerDown(e) {
+            if (!isEditMode) return;
             e.preventDefault();
             const point = getCoordinates(e);
             let clickedExisting = false;
@@ -532,7 +618,7 @@
 
             hullPoints = calculateConvexHull(rawPoints);
             if (hullPoints.length >= 3) {
-                generateBtn.disabled = false;
+                setRefreshEnabled(true);
             }
 
             if (!isGenerated) {
@@ -542,7 +628,7 @@
         }
 
         function handlePointerMove(e) {
-            if (!draggingPoint) return;
+            if (!isEditMode || !draggingPoint) return;
             e.preventDefault();
             const point = getCoordinates(e);
             draggingPoint.x = point.x;
@@ -575,9 +661,25 @@
         canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
         window.addEventListener('touchend', handlePointerUp);
 
-        generateBtn.addEventListener('click', () => {
+        refreshColorsBtn.addEventListener('click', () => {
             if (hullPoints.length < 3) return;
             isGenerated = true;
+            const previousPool = colorPoolFingerprint();
+            // A fresh random seed usually gives a different color pool, but at
+            // low color counts it can coincidentally reshuffle to the same set
+            // by chance — retry a few times so a click always visibly changes
+            // something, short of the palette only having one color total.
+            for (let attempt = 0; attempt < 8; attempt++) {
+                colorSeed = Math.floor(Math.random() * 4294967296);
+                generatePipes();
+                if (colorPoolFingerprint() !== previousPool) break;
+            }
+        });
+
+        refreshPatternBtn.addEventListener('click', () => {
+            if (hullPoints.length < 3) return;
+            isGenerated = true;
+            patternSeed = Math.floor(Math.random() * 4294967296);
             generatePipes();
         });
 
@@ -587,7 +689,7 @@
             hullPoints = [];
             isGenerated = false;
             shapeIsCustom = false;
-            generateBtn.disabled = true;
+            setRefreshEnabled(false);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         });
 
@@ -605,9 +707,9 @@
         // that genuinely has no effect, disables the control so it doesn't mislead).
         const STYLE_NOUN = {
             flat: 'Pipe', '3d-basic': 'Pipe', '3d-glossy': 'Pipe',
-            illustrated: 'Gear', circuit: 'Component', painted_lady: 'Leaf',
+            illustrated: 'Gear', circuit: 'Component', painted_lady: 'House',
             ducks: 'Duck', gears: 'Gear', christmas: 'Cookie',
-            coins: 'Coin', gems: 'Gem'
+            coins: 'Coin', gems: 'Gem', buttons: 'Button'
         };
         const MAZE_STYLE_SET = ['flat', '3d-basic', '3d-glossy', 'illustrated', 'circuit'];
 
@@ -616,48 +718,56 @@
             const nounLower = noun.toLowerCase();
             const meta = {};
 
-            if (mode === 'border') {
+            // A style is "point-only" (no traced path) whenever it's not one of
+            // the maze/pipe-tracing styles, with one exception: Painted Lady
+            // always uses House Scale (Thickness) as its size control in both
+            // modes — Border mode strings houses along the perimeter at the
+            // same density/scale convention as Fill's roads, rather than
+            // switching to Sizes like the other point-only styles. In every
+            // other point-only case, Sizes (below) is the sole size control
+            // instead. Labels below are chosen to stay identical across
+            // Fill/Border wherever the underlying meaning doesn't genuinely
+            // differ, so toggling mode doesn't reshuffle the panel's wording.
+            const isPointStyle = !MAZE_STYLE_SET.includes(style) && style !== 'painted_lady';
+
+            if (isPointStyle) {
                 meta.thickness = {
-                    label: noun === 'Pipe' ? 'Pipe Width' : noun + ' Size',
-                    description: noun === 'Pipe' ? "Sets the width of the pipe traced around the border." : `Sets the size of each ${nounLower} placed along the border.`,
-                    disabled: false
+                    label: 'Path Thickness',
+                    description: `Not meaningful for ${nounLower}s, which are placed individually rather than along a traced path — use ${noun} Sizes below to control their size instead.`,
+                    disabled: true
                 };
             } else if (style === 'circuit') {
-                meta.thickness = { label: 'Trace Width', description: "Sets how wide each copper trace and component is drawn.", disabled: false };
+                meta.thickness = { label: 'Trace Thickness', description: mode === 'border' ? "Sets the width of the copper wire and components traced around the border." : "Sets how wide each copper trace and component is drawn.", disabled: false };
             } else if (style === 'painted_lady') {
                 meta.thickness = { label: 'House Scale', description: "Scales the size of the houses lining each road segment.", disabled: false };
-            } else if (MAZE_STYLE_SET.includes(style)) {
-                meta.thickness = { label: 'Pipe Thickness', description: "Sets how wide each pipe segment is, as a fraction of the shape's narrowest dimension.", disabled: false };
             } else {
-                meta.thickness = { label: noun + ' Size', description: `Sets the size of each ${nounLower}.`, disabled: false };
+                meta.thickness = { label: 'Pipe Thickness', description: mode === 'border' ? "Sets the width of the pipe traced around the border." : "Sets how wide each pipe segment is, as a fraction of the shape's narrowest dimension.", disabled: false };
             }
 
-            if (mode === 'border') {
-                meta.density = { label: noun + ' Density', description: `Controls the spacing between ${nounLower}s strung along the traced border.`, disabled: false };
-            } else if (MAZE_STYLE_SET.includes(style)) {
-                meta.density = { label: 'Maze Density', description: "Controls the maze's grid resolution — higher values mean smaller cells, so the pipe pattern has more, tighter turns.", disabled: false };
+            if (MAZE_STYLE_SET.includes(style)) {
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : "Controls the maze's grid resolution — higher values mean smaller cells, so the pipe pattern has more, tighter turns.", disabled: false };
             } else if (style === 'gears') {
-                meta.density = { label: 'Density', description: "Controls the total count of the mixed-size gear swarm.", disabled: false };
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : "Controls the total count of the mixed-size gear swarm.", disabled: false };
             } else if (style === 'painted_lady') {
-                meta.density = { label: 'House Density', description: "Controls how close together houses are placed along each road.", disabled: false };
+                meta.density = { label: 'Density', description: "Controls how close together houses are placed along each road.", disabled: false };
             } else {
-                meta.density = { label: noun + ' Density', description: `Controls how close together the ${nounLower}s are scattered.`, disabled: false };
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : `Controls how close together the ${nounLower}s are scattered.`, disabled: false };
             }
 
-            if (mode === 'fill' && style === 'circuit') {
-                meta.color = { label: 'Jumper Wire %', description: "Controls what percentage of wires are drawn as insulated jumper wires instead of bare copper.", disabled: false };
-            } else if (mode === 'fill' && style === 'painted_lady') {
-                meta.color = { label: 'Neighborhood Variety', description: "Controls how often the houses' color ‘neighborhood’ changes from one road segment to the next.", disabled: false };
+            if (style === 'circuit') {
+                meta.color = { label: 'Component Colors', description: "Circuit's wires and components use realistic fixed colors — bare copper, gold-plated jumpers, standard resistor/capacitor bands — not the palette, so this has no effect here.", disabled: true };
+            } else if (style === 'painted_lady') {
+                meta.color = { label: 'House Colors', description: mode === 'fill' ? "Sets how many palette colors are in play (0% = one color, 100% = the full palette) and how eagerly the houses' color 'neighborhood' changes between road segments." : "Sets how many palette colors are in play (0% = one color, 100% = the full palette) as houses are strung along the border.", disabled: false };
             } else if (mode === 'fill' && MAZE_STYLE_SET.includes(style)) {
-                meta.color = { label: noun + ' Color Variety', description: "Controls how often the pipe color changes as it winds through the maze.", disabled: false };
+                meta.color = { label: noun + ' Colors', description: "Sets how many palette colors are in play (0% = one color, 100% = the full palette) as the pipe winds through the maze.", disabled: false };
             } else {
-                meta.color = { label: noun + ' Color Variety', description: `Controls how often the color changes between neighboring ${nounLower}s — low values create matching color streaks.`, disabled: false };
+                meta.color = { label: noun + ' Colors', description: `Sets how many palette colors are in play (0% = one color, 100% = the full palette) — unlike Cluster Run, a small pool stays small even when a run is forced to switch.`, disabled: false };
             }
 
-            if (mode === 'fill' && MAZE_STYLE_SET.includes(style)) {
-                meta.maxStraight = { label: 'Path Straightness', description: "Caps how many grid cells in a row the pipe can travel in a straight line before it must turn.", disabled: false };
-            } else if (mode === 'fill' && style === 'painted_lady') {
-                meta.maxStraight = { label: 'Road Length', description: "Caps how long each straight road segment can run before turning, which also caps how many segments share a neighborhood color.", disabled: false };
+            if (MAZE_STYLE_SET.includes(style)) {
+                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how many grid cells in a row the pipe can travel in a straight line before it must turn." : `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
+            } else if (style === 'painted_lady') {
+                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how long each straight road segment can run before turning, which also caps how many segments share a neighborhood color." : `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
             } else if (mode === 'fill' && style === 'gears') {
                 // The gears swarm is placed with pure Math.random() (no grid), so
                 // "consecutive" items in the color sequence aren't spatially
@@ -667,30 +777,28 @@
                 meta.maxStraight = { label: 'Color Cluster', description: `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
             }
 
-            if (mode === 'border') {
-                meta.gears = { label: 'Landmark Interval', description: `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).`, disabled: false };
-            } else if (['flat', '3d-basic', '3d-glossy'].includes(style)) {
-                meta.gears = { label: 'Accents', description: "Sets how many decorative gear accents are scattered on top of the pipes.", disabled: false };
+            if (['flat', '3d-basic', '3d-glossy'].includes(style)) {
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : "Sets how many decorative gear accents are scattered on top of the pipes.", disabled: false };
             } else if (style === 'gears') {
-                meta.gears = { label: 'Accent Gears', description: "Adds extra oversized feature gears behind the swarm — independent of Density, which only scales the regular mixed-size count.", disabled: false };
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : "Adds extra oversized feature gears behind the swarm — independent of Density, which only scales the regular mixed-size count.", disabled: false };
             } else {
-                meta.gears = { label: 'Accent Count', description: `Sets how many oversized landmark ${nounLower}s (or related decorations) appear among the regular scatter.`, disabled: false };
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : `Sets how many oversized landmark ${nounLower}s (or related decorations) appear among the regular scatter.`, disabled: false };
             }
 
             meta.margin = {
-                label: mode === 'border' ? 'Border Offset' : 'Edge Margin',
+                label: 'Edge Margin',
                 description: mode === 'border'
                     ? "Offsets the traced path inward (positive) or outward (negative) from the drawn edge."
                     : "Shrinks (positive) or grows (negative) the fillable area inward/outward from the drawn edge.",
                 disabled: false
             };
 
-            if (mode === 'fill' && style === 'gears') {
-                meta.size = { label: 'Sizes', description: "Sets the min/max size range for the gear swarm (as % of base gear size). Accent Gears are drawn as a multiple of the largest size here.", disabled: false };
-            } else if (mode === 'fill' && style === 'gems') {
-                meta.size = { label: 'Sizes', description: "Sets the min/max size range for the scattered gems (as % of base gem size). Accent Count gems are drawn as a multiple of the largest size here.", disabled: false };
+            if (isPointStyle) {
+                meta.size = { label: noun + ' Sizes', description: `Sets the min/max size range for the ${nounLower}s, in the same units as Trace/Pipe Thickness (raw value out of 500, as a fraction of the shape's narrow dimension) since Thickness is disabled for point-only styles. Accent Count ${nounLower}s are drawn as a multiple of the largest size here.`, disabled: false };
+            } else if (style === 'painted_lady') {
+                meta.size = { label: 'House Sizes', description: "Not used — House Scale (Thickness) controls house size in both Fill and Border mode.", disabled: true };
             } else {
-                meta.size = { label: 'Sizes', description: "Only used by the Gears and Gems styles in Fill mode, where it sets the min/max size range.", disabled: true };
+                meta.size = { label: 'Sizes', description: "Only used by point-only styles (everything except Painted Lady's Fill-mode roads and the maze/pipe-tracing styles), where it sets the min/max size range in place of Thickness.", disabled: true };
             }
 
             return meta;
@@ -720,17 +828,57 @@
             });
         }
 
-        // Sizes is shared by both styles that use it, but they need very
-        // different defaults: Gears' huge/medium/small tiers want a wide
-        // spread, while Gems looks best kept tighter so individual gems don't
-        // balloon past the shape's edges and swallow the cut/color variety.
-        const SIZE_DEFAULTS = { gears: { min: 60, max: 430 }, gems: { min: 60, max: 150 } };
+        // Sizes is shared by every point-only style in either mode, and always
+        // uses Trace Width's own units (raw value out of 500, as a fraction of
+        // the shape's narrow dimension) — Trace Width is disabled for these
+        // styles, so Sizes takes over as their sole size control, and using the
+        // identical scale keeps the two controls directly comparable instead of
+        // a separate percentage layered on top.
+        const SIZE_DEFAULTS_POINT = {
+            ducks: { min: 15, max: 40 }, painted_lady: { min: 15, max: 40 }, gears: { min: 12, max: 35 },
+            christmas: { min: 15, max: 40 }, coins: { min: 12, max: 30 }, gems: { min: 10, max: 30 }, buttons: { min: 10, max: 28 }
+        };
 
-        // One suggested palette per style, offered as a one-click shortcut.
+        // Thickness's usable range is 2-400 by default, but some styles look
+        // best capped much lower — House Scale (Painted Lady), Trace Thickness
+        // (Circuit), and Pipe Thickness (the maze/pipe styles) would balloon
+        // absurdly large well before 400.
+        const THICKNESS_MAX_BY_STYLE = {
+            painted_lady: 40, circuit: 50,
+            flat: 50, '3d-basic': 50, '3d-glossy': 50, illustrated: 50
+        };
+        const THICKNESS_MAX_DEFAULT = 400;
+        function applyThicknessRangeForStyle() {
+            let max = THICKNESS_MAX_BY_STYLE[styleSelect.value] || THICKNESS_MAX_DEFAULT;
+            thicknessSlider.max = String(max);
+            if (parseInt(thicknessSlider.value, 10) > max) {
+                thicknessSlider.value = String(max);
+                thicknessValue.textContent = thicknessSlider.value;
+            }
+        }
+
+        // Switches the Sizes slider's default range to the current style (units
+        // are always Trace Width's 2-400-out-of-500 scale, regardless of mode).
+        function applySizeRangeForContext() {
+            sizeMinSlider.min = sizeMaxSlider.min = thicknessSlider.min;
+            sizeMinSlider.max = sizeMaxSlider.max = '120';
+            sizeMinSlider.step = sizeMaxSlider.step = '1';
+            sizeMinSuffix.textContent = sizeMaxSuffix.textContent = '/500';
+            const def = SIZE_DEFAULTS_POINT[styleSelect.value];
+            if (def) {
+                sizeMinSlider.value = def.min;
+                sizeMaxSlider.value = def.max;
+            }
+            updateSizeRangeUI();
+        }
+
+        // One suggested palette per style. Selecting a style auto-applies it;
+        // the button next to the Palette label is a shortcut back to it after
+        // the user has manually picked something else for the same style.
         const STYLE_DEFAULT_PALETTE = {
             flat: 'classic', '3d-basic': 'classic', '3d-glossy': 'classic', illustrated: 'classic',
             circuit: 'circuit', painted_lady: 'painted_lady', ducks: 'ducks', gears: 'steampunk',
-            christmas: 'christmas', coins: 'coins', gems: 'gems'
+            christmas: 'christmas', coins: 'coins', gems: 'gems', buttons: 'buttons'
         };
         const paletteDefaultBtn = document.getElementById('paletteDefaultBtn');
 
@@ -747,24 +895,58 @@
         });
 
         styleSelect.addEventListener('change', () => {
-            const def = SIZE_DEFAULTS[styleSelect.value];
-            if (def) {
-                sizeMinSlider.value = def.min;
-                sizeMaxSlider.value = def.max;
-                updateSizeRangeUI();
-            }
+            applySizeRangeForContext();
+            applyThicknessRangeForStyle();
+            const palDef = STYLE_DEFAULT_PALETTE[styleSelect.value];
+            if (palDef) paletteSelect.value = palDef;
             updatePaletteDefaultBtn();
+            updateColorSliderStep();
+            updateColorCountDisplay();
             applySliderMeta();
             if (isGenerated) generatePipes();
         });
 
         paletteSelect.addEventListener('change', () => {
             updatePaletteDefaultBtn();
+            updateColorSliderStep();
+            updateColorCountDisplay();
             if (isGenerated) generatePipes();
         });
 
-        colorSlider.addEventListener('input', (e) => {
-            colorValue.textContent = e.target.value;
+        // Skips regenerating when a drag only moves the raw slider value but
+        // the color count it resolves to hasn't actually changed — otherwise
+        // every tiny nudge re-renders for no visible difference. Kept in sync
+        // by updateColorCountDisplay() too, so it's accurate after style/
+        // palette changes as well as slider drags.
+        let lastColorCount = null;
+
+        // The slider itself stays a plain 0-100 range under the hood, but what
+        // the user sees is the actual color count that value resolves to for
+        // the current palette (simpler than a raw, hard-to-interpret percent).
+        function updateColorCountDisplay() {
+            lastColorCount = colorCountFromPct(colorPct, palettes[paletteSelect.value].length);
+            colorValue.textContent = lastColorCount;
+        }
+
+        // A fixed, plain-integer step (rather than a per-palette 100/(n-1)
+        // fraction) so the handle's position always lands exactly where it's
+        // set — 100/(n-1) is a repeating binary fraction for most palette
+        // lengths, and browsers silently re-snap .value to the nearest step
+        // multiple, which visibly moved the handle off max after a style
+        // switch even though colorCountFromPct still resolved the correct
+        // (maximum) count. 100 discrete positions is far more resolution than
+        // any palette needs to reach every integer color count while dragging.
+        function updateColorSliderStep() {
+            colorSlider.step = '1';
+            colorSlider.value = Math.round(colorPct * 100);
+        }
+
+        colorSlider.addEventListener('input', () => {
+            colorPct = parseFloat(colorSlider.value) / 100;
+            const count = colorCountFromPct(colorPct, palettes[paletteSelect.value].length);
+            colorValue.textContent = count;
+            if (count === lastColorCount) return;
+            lastColorCount = count;
             if (isGenerated) generatePipes();
         });
 
@@ -784,6 +966,8 @@
         });
 
         modeSelect.addEventListener('change', () => {
+            // Sizes' range/units are the same in both modes now, so its value is
+            // deliberately left untouched here — only a style change re-rolls it.
             applySliderMeta();
             if (isGenerated) generatePipes();
         });
@@ -891,6 +1075,10 @@
                     ctx.fillStyle = '#1a0f2e'; // Dark velvet jewelry box
                     ctx.strokeStyle = '#9966cc';
                     ctx.lineWidth = 5;
+                } else if (currentStyle === 'buttons') {
+                    ctx.fillStyle = '#e8ddc7'; // Cream sewing-box fabric
+                    ctx.strokeStyle = '#8b5a2b'; // Brown thread trim
+                    ctx.lineWidth = 5;
                 } else {
                     ctx.fillStyle = '#111';
                     ctx.strokeStyle = '#555';
@@ -903,6 +1091,7 @@
         }
 
         function drawHandles() {
+            if (!isEditMode) return;
             ctx.fillStyle = 'rgba(0, 122, 204, 0.8)';
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1.5;
@@ -1047,6 +1236,25 @@
             }
             let last = path.segments[path.segments.length - 1];
             return { x: last.p2.x, y: last.p2.y, angle: Math.atan2(last.p2.y - last.p1.y, last.p2.x - last.p1.x) };
+        }
+
+        // Returns true only if a rigid, straight component of full length
+        // `span` can sit at arc-length `dist` without any part of it crossing
+        // into an adjacent segment — checking both that the segment is
+        // actually long enough to contain it (a short edge, like one of the
+        // Circle preset's 32 sides, can be shorter than the component itself,
+        // in which case NO position on it works) and that `dist` has room on
+        // both sides once it does fit.
+        function fitsWithoutCrossingCorner(path, dist, span) {
+            let d = path.total > 0 ? ((dist % path.total) + path.total) % path.total : 0;
+            for (let seg of path.segments) {
+                if (d <= seg.start + seg.len) {
+                    if (seg.len < span) return false;
+                    let clearance = Math.min(d - seg.start, seg.start + seg.len - d);
+                    return clearance >= span / 2;
+                }
+            }
+            return true;
         }
 
         function drawGear(cx, cy, radius, color, innerColor, teeth, isStacked = false) {
@@ -1272,30 +1480,6 @@
             ctx.fillStyle = '#f4d03f';
             ctx.fill();
             ctx.strokeStyle = '#b8860b';
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        // Generic leaf used for border-tracing modes; local +x is "forward" so
-        // rotating by the perimeter's tangent angle points it down the path.
-        function drawLeaf(ctx, x, y, size, color, angle) {
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.rotate(angle);
-            ctx.beginPath();
-            ctx.moveTo(-size, 0);
-            ctx.quadraticCurveTo(-size * 0.3, -size * 0.6, size, 0);
-            ctx.quadraticCurveTo(-size * 0.3, size * 0.6, -size, 0);
-            ctx.closePath();
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(-size * 0.9, 0);
-            ctx.lineTo(size * 0.9, 0);
-            ctx.strokeStyle = 'rgba(0,0,0,0.25)';
             ctx.stroke();
             ctx.restore();
         }
@@ -1696,6 +1880,125 @@
             ctx.restore();
         }
 
+        // Clothing-button silhouettes: mostly round, sometimes square/octagon/
+        // scalloped-flower, matching reference photos of button piles.
+        function buttonOutline(ctx, shapeType, r) {
+            ctx.beginPath();
+            if (shapeType === 6 || shapeType === 7) {
+                let s = r * 0.85, rc = s * 0.25;
+                ctx.moveTo(-s + rc, -s);
+                ctx.lineTo(s - rc, -s); ctx.quadraticCurveTo(s, -s, s, -s + rc);
+                ctx.lineTo(s, s - rc); ctx.quadraticCurveTo(s, s, s - rc, s);
+                ctx.lineTo(-s + rc, s); ctx.quadraticCurveTo(-s, s, -s, s - rc);
+                ctx.lineTo(-s, -s + rc); ctx.quadraticCurveTo(-s, -s, -s + rc, -s);
+                ctx.closePath();
+            } else if (shapeType === 8) {
+                for (let i = 0; i < 8; i++) {
+                    let a = (i / 8) * Math.PI * 2 - Math.PI / 8;
+                    let px = Math.cos(a) * r, py = Math.sin(a) * r;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            } else if (shapeType === 9) {
+                let petals = 8;
+                for (let i = 0; i <= petals * 2; i++) {
+                    let a = (i / (petals * 2)) * Math.PI * 2;
+                    let rr = i % 2 === 0 ? r : r * 0.85;
+                    let px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            } else {
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
+            }
+        }
+
+        function drawButton(ctx, x, y, radius, color, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Cast shadow first, in a fixed screen direction, before rotating.
+            ctx.beginPath();
+            ctx.ellipse(radius * 0.1, radius * 0.14, radius, radius * 0.85, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fill();
+
+            ctx.rotate((hash % 360) * Math.PI / 180);
+
+            let shapeType = hash % 10;
+
+            // Raised glossy outer rim
+            buttonOutline(ctx, shapeType, radius);
+            ctx.fillStyle = shadeColor(color, 1.05);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+            ctx.lineWidth = Math.max(radius * 0.05, 1);
+            ctx.stroke();
+
+            // Recessed matte "washer" where the holes/shank sit
+            buttonOutline(ctx, shapeType, radius * 0.72);
+            ctx.fillStyle = shadeColor(color, 0.88);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+            ctx.lineWidth = Math.max(radius * 0.03, 0.5);
+            ctx.stroke();
+
+            // Marbled/streaked texture on some buttons (bakelite, shell, wood)
+            if (hash % 3 === 0) {
+                ctx.save();
+                buttonOutline(ctx, shapeType, radius * 0.72);
+                ctx.clip();
+                ctx.globalAlpha = 0.3;
+                ctx.strokeStyle = shadeColor(color, hash % 2 === 0 ? 1.4 : 0.55);
+                ctx.lineWidth = Math.max(radius * 0.07, 1);
+                for (let i = 0; i < 3; i++) {
+                    let a = ((hash + i * 40) % 180) * Math.PI / 180;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * radius, Math.sin(a) * radius);
+                    ctx.lineTo(Math.cos(a + Math.PI) * radius, Math.sin(a + Math.PI) * radius);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            // Holes (2 or 4, two arrangements) or a plain carved/shank top
+            let holeStyle = hash % 4;
+            let holeR = Math.max(radius * 0.09, 1);
+            ctx.fillStyle = 'rgba(20,15,10,0.85)';
+            if (holeStyle === 0) {
+                let d = radius * 0.22;
+                [[0, -d], [0, d], [-d, 0], [d, 0]].forEach(([hx, hy]) => {
+                    ctx.beginPath(); ctx.arc(hx, hy, holeR, 0, Math.PI * 2); ctx.fill();
+                });
+            } else if (holeStyle === 1) {
+                let d = radius * 0.24;
+                [[-d, 0], [d, 0]].forEach(([hx, hy]) => {
+                    ctx.beginPath(); ctx.arc(hx, hy, holeR, 0, Math.PI * 2); ctx.fill();
+                });
+            } else if (holeStyle === 2) {
+                ctx.beginPath();
+                ctx.arc(0, 0, radius * 0.12, 0, Math.PI * 2);
+                ctx.fillStyle = shadeColor(color, 0.7);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            } else {
+                let d = radius * 0.2;
+                [[-d, -d], [d, -d], [-d, d], [d, d]].forEach(([hx, hy]) => {
+                    ctx.beginPath(); ctx.arc(hx, hy, holeR, 0, Math.PI * 2); ctx.fill();
+                });
+            }
+
+            // Glossy specular highlight
+            ctx.beginPath();
+            ctx.ellipse(-radius * 0.32, -radius * 0.32, radius * 0.28, radius * 0.16, -0.6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
         // Dedicated renderer for complex steampunk-style overlapping gears
         function drawSteampunkGear(ctx, cx, cy, radius, color, hash, palette, rotation) {
             ctx.save();
@@ -1812,19 +2115,67 @@
             ctx.restore();
         }
 
-        // Walks `items` in place and stamps each with a `.streakColor`. Color Changes
-        // controls how often the color switches between consecutive items (a scatter
-        // equivalent of the maze's color-change chance); maxRun forces a switch after
-        // that many items in a row share a color, same as the maze's Max Straight cap.
-        function assignStreakColors(items, palette, changeChance, maxRun) {
+        // Converts a 0-1 Color-slider fraction into a color-pool count via a
+        // straight linear map from [0,1] to [1, paletteLength] — a clean
+        // bijection with no dead zones, so it pairs exactly with a slider
+        // whose step is set to land on every integer count (see
+        // updateColorSliderStep). 0% is always exactly 1 color; 100% is the
+        // full palette.
+        function colorCountFromPct(pct, paletteLength) {
+            return 1 + Math.round(pct * (paletteLength - 1));
+        }
+
+        // Picks `n` colors at random from `palette`, keyed off colorSeed (via a
+        // fresh, dedicated RNG instance) rather than the shared colorRandom
+        // stream — otherwise which colors got picked would depend on how many
+        // colorRandom() calls happened to run before this one, which differs
+        // between Fill and Border (entirely different code paths) and even
+        // between unrelated slider values. Keying off colorSeed alone means the
+        // active color pool only changes when "Refresh Colors" actually rolls a
+        // new colorSeed, never as a side effect of toggling mode or anything else.
+        // Records the most recent pool this produced (regardless of which style/
+        // mode code path called it) so "Refresh Colors" can verify it actually
+        // got a different set of colors, not just a coincidentally-similar one.
+        let currentColorPool = [];
+        function pickColorSubset(palette, n) {
+            n = Math.max(1, Math.min(Math.round(n), palette.length));
+            let result;
+            if (n >= palette.length) {
+                result = palette;
+            } else {
+                let localRandom = makeRng((colorSeed ^ Math.imul(palette.length, 2654435761) ^ Math.imul(n, 40503)) >>> 0);
+                let indices = palette.map((_, i) => i);
+                for (let i = indices.length - 1; i > 0; i--) {
+                    let j = Math.floor(localRandom() * (i + 1));
+                    [indices[i], indices[j]] = [indices[j], indices[i]];
+                }
+                result = indices.slice(0, n).map(i => palette[i]);
+            }
+            currentColorPool = result;
+            return result;
+        }
+        function colorPoolFingerprint() {
+            return currentColorPool.slice().sort().join(',');
+        }
+
+        // Walks `items` in place and stamps each with a `.streakColor`. Color
+        // restricts WHICH/HOW MANY palette colors are in play (0% = exactly one
+        // color, 100% = the full palette) — a pool size, not a probability —
+        // so it can never be neutralized by maxRun forcing frequent switches;
+        // with a 1-color pool there's simply nothing else to switch to. maxRun
+        // still forces a switch after that many items share a color, same as
+        // the maze's Max Straight cap.
+        function assignStreakColors(items, palette, changePct, maxRun) {
             if (!items.length) return;
-            let color = palette[Math.floor(Math.random() * palette.length)];
+            let activePalette = pickColorSubset(palette, colorCountFromPct(changePct, palette.length));
+            let rollChance = 0.15 + changePct * 0.35;
+            let color = activePalette[Math.floor(colorRandom() * activePalette.length)];
             let run = 0;
             items.forEach(item => {
                 let forceChange = maxRun > 0 && run >= maxRun;
-                if (forceChange || Math.random() < changeChance) {
-                    let alt = palette.filter(c => c !== color);
-                    color = alt.length ? alt[Math.floor(Math.random() * alt.length)] : color;
+                if (forceChange || colorRandom() < rollChance) {
+                    let alt = activePalette.filter(c => c !== color);
+                    color = alt.length ? alt[Math.floor(colorRandom() * alt.length)] : color;
                     run = 1; // this item is the 1st in the new streak, not the 0th
                 } else {
                     run++;
@@ -1833,23 +2184,315 @@
             });
         }
 
+        // Border-mode versions of the maze/pipe styles' Fill-mode per-segment
+        // visuals (glossy highlights, illustrated ribbing, circuit components),
+        // so the single traced path around the border looks like the Fill
+        // pattern rather than a plain stand-in line.
+        function drawPipeOutline(ctx, x1, y1, x2, y2, pipeThickness, isCyl) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = isCyl ? (pipeThickness * 1.8 + 4) : (pipeThickness + 4);
+            ctx.stroke();
+        }
+
+        function drawPipeEdge(ctx, x1, y1, x2, y2, pipeThickness, color, style, isCyl) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = isCyl ? (pipeThickness * 1.8) : pipeThickness;
+            ctx.stroke();
+
+            if (style === '3d-basic' || style === '3d-glossy') {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = pipeThickness * 0.4;
+                ctx.stroke();
+            } else if (style === 'illustrated') {
+                let dx = x2 - x1, dy = y2 - y1;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                let ribSpacing = isCyl ? (pipeThickness * 0.4) : (pipeThickness * 0.7);
+                let steps = Math.floor(dist / ribSpacing);
+                if (steps > 0) {
+                    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+                    ctx.lineWidth = isCyl ? 1.5 : Math.max(pipeThickness * 0.15, 1);
+                    let nx = -dy / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
+                    let ny = dx / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
+                    for (let i = 1; i <= steps; i++) {
+                        let px = x1 + dx * (i / (steps + 1));
+                        let py = y1 + dy * (i / (steps + 1));
+                        ctx.beginPath();
+                        ctx.moveTo(px + nx, py + ny);
+                        ctx.lineTo(px - nx, py - ny);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            if (style === '3d-glossy') {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                ctx.lineWidth = Math.max(pipeThickness * 0.1, 1);
+                ctx.stroke();
+            }
+        }
+
+        function drawPipeJoint(ctx, x, y, pipeThickness, color, style) {
+            let jointRadius = (style === 'illustrated') ? pipeThickness * 0.8 : pipeThickness * 0.65;
+            ctx.beginPath();
+            ctx.arc(x, y, jointRadius, 0, Math.PI * 2);
+            ctx.fillStyle = (style === 'flat') ? (color || '#555') : (style === 'illustrated' ? '#bdc3c7' : '#555');
+            ctx.fill();
+
+            if (style === '3d-basic' || style === '3d-glossy') {
+                ctx.beginPath();
+                ctx.arc(x - pipeThickness * 0.15, y - pipeThickness * 0.15, pipeThickness * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = (style === '3d-glossy') ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)';
+                ctx.fill();
+            } else if (style === 'illustrated') {
+                ctx.beginPath();
+                ctx.arc(x, y, jointRadius * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = '#000000';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x, y, jointRadius * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = '#e6c229';
+                ctx.fill();
+            }
+        }
+
+        function drawCircuitWire(ctx, x1, y1, x2, y2, pipeThickness, isJumper) {
+            if (isJumper) {
+                ctx.beginPath();
+                ctx.moveTo(x1 + 2, y1 + 2); ctx.lineTo(x2 + 2, y2 + 2);
+                ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                ctx.lineWidth = pipeThickness * 0.4;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = '#f1c40f';
+                ctx.lineWidth = pipeThickness * 0.35;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = '#8c7311';
+                ctx.lineWidth = pipeThickness * 0.45;
+                ctx.stroke();
+                ctx.strokeStyle = '#f1c40f';
+                ctx.lineWidth = pipeThickness * 0.35;
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = '#b87333';
+                ctx.lineWidth = pipeThickness * 0.5;
+                ctx.stroke();
+            }
+        }
+
+        function drawCircuitPad(ctx, x, y, pipeThickness) {
+            let padRadius = pipeThickness * 0.6;
+            ctx.beginPath();
+            ctx.arc(x, y, padRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#a9a9a9';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(x + padRadius * 0.1, y - padRadius * 0.1, padRadius * 0.7, 0, Math.PI * 2);
+            ctx.fillStyle = '#c0c0c0';
+            ctx.fill();
+        }
+
+        // Simple, linear, inline components (resistors) — these sit directly
+        // on the regular wire trace like Fill mode's ~75%-of-edges convention.
+        function drawCircuitResistor(ctx, midX, midY, angle, pipeThickness, hash) {
+            ctx.save();
+            ctx.translate(midX, midY);
+            ctx.rotate(angle);
+
+            let resLen = pipeThickness * 2.5;
+            let resWidth = pipeThickness * 0.9;
+
+            ctx.strokeStyle = '#c0c0c0';
+            ctx.lineWidth = pipeThickness * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(-resLen / 2, 0); ctx.lineTo(-resLen * 0.9, 0);
+            ctx.moveTo(resLen / 2, 0); ctx.lineTo(resLen * 0.9, 0);
+            ctx.stroke();
+
+            let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'];
+            let b1 = colors[hash % colors.length];
+            let b2 = colors[(hash * 3) % colors.length];
+            let b3 = colors[(hash * 5) % colors.length];
+            let b4 = '#d4af37';
+            let t = hash % 100;
+
+            if (t < 34) {
+                ctx.fillStyle = '#a52a2a';
+                ctx.fillRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
+                ctx.strokeStyle = '#5c1a1a';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
+
+                ctx.fillStyle = '#e6ccaa';
+                ctx.font = `${pipeThickness * 0.4}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(hash % 2 === 0 ? "K5%" : "6.2 K5%", 0, 0);
+
+            } else if (t < 67) {
+                ctx.fillStyle = '#d2b48c';
+                ctx.fillRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
+                ctx.strokeStyle = '#8b5a2b';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
+
+                let bandW = resLen * 0.12;
+                ctx.fillStyle = b1; ctx.fillRect(-resLen * 0.35, -resWidth / 2, bandW, resWidth);
+                ctx.fillStyle = b2; ctx.fillRect(-resLen * 0.15, -resWidth / 2, bandW, resWidth);
+                ctx.fillStyle = b3; ctx.fillRect(resLen * 0.05, -resWidth / 2, bandW, resWidth);
+                ctx.fillStyle = b4; ctx.fillRect(resLen * 0.25, -resWidth / 2, bandW, resWidth);
+
+            } else {
+                let l = resLen * 0.85, w = resWidth * 0.75;
+                ctx.fillStyle = '#4a2f1d';
+                ctx.fillRect(-l / 2, -w / 2, l, w);
+                ctx.strokeStyle = '#2a1a10';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-l / 2, -w / 2, l, w);
+
+                let bandW = l * 0.12;
+                ctx.fillStyle = b2; ctx.fillRect(-l * 0.35, -w / 2, bandW, w);
+                ctx.fillStyle = b3; ctx.fillRect(-l * 0.15, -w / 2, bandW, w);
+                ctx.fillStyle = b1; ctx.fillRect(l * 0.05, -w / 2, bandW, w);
+                ctx.fillStyle = b4; ctx.fillRect(l * 0.25, -w / 2, bandW, w);
+            }
+            ctx.restore();
+        }
+
+        // Large, non-linear components (ceramic/electrolytic capacitors,
+        // transistors) — reserved for landmark/Accent Count points, standing
+        // out from the regular resistor-dotted trace.
+        function drawCircuitAccentComponent(ctx, midX, midY, angle, pipeThickness, hash) {
+            ctx.save();
+            ctx.translate(midX, midY);
+            ctx.rotate(angle);
+            let scale = 1.8;
+            let t = hash % 4;
+
+            if (t === 0) {
+                // Ceramic disc capacitor
+                let l = pipeThickness * 2.75 * scale * 0.6, w = pipeThickness * 0.54 * scale;
+                ctx.fillStyle = '#f0f0d0';
+                ctx.fillRect(-l / 2, -w / 2, l, w);
+                ctx.strokeStyle = '#a0a0a0';
+                ctx.strokeRect(-l / 2, -w / 2, l, w);
+
+                ctx.fillStyle = '#333';
+                ctx.font = `bold ${pipeThickness * 0.35 * scale}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText("104K", 0, 0);
+
+            } else if (t === 1) {
+                // Electrolytic capacitor — round can with a "-" polarity band
+                let r = pipeThickness * 0.9 * scale;
+                ctx.fillStyle = '#2a4a6a';
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke();
+
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.beginPath(); ctx.arc(-r * 0.3, -r * 0.3, r * 0.35, 0, Math.PI * 2); ctx.fill();
+
+                ctx.fillStyle = '#e0e0e0';
+                ctx.font = `bold ${r * 0.7}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('-', 0, -r * 0.05);
+
+                ctx.strokeStyle = '#c0c0c0';
+                ctx.lineWidth = pipeThickness * 0.12;
+                ctx.beginPath();
+                ctx.moveTo(-r * 0.4, r * 0.85); ctx.lineTo(-r * 0.4, r * 1.6);
+                ctx.moveTo(r * 0.4, r * 0.85); ctx.lineTo(r * 0.4, r * 1.6);
+                ctx.stroke();
+
+            } else if (t === 2) {
+                // Transistor — TO-92 rounded-top case with 3 legs
+                let w = pipeThickness * 1.5 * scale, h = pipeThickness * 1.6 * scale;
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.moveTo(-w / 2, h / 2);
+                ctx.lineTo(-w / 2, -h * 0.1);
+                ctx.arc(0, -h * 0.1, w / 2, Math.PI, 0);
+                ctx.lineTo(w / 2, h / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+
+                ctx.strokeStyle = '#c0c0c0';
+                ctx.lineWidth = pipeThickness * 0.1;
+                ctx.beginPath();
+                ctx.moveTo(-w * 0.3, h / 2); ctx.lineTo(-w * 0.3, h / 2 + pipeThickness * 0.5);
+                ctx.moveTo(0, h / 2); ctx.lineTo(0, h / 2 + pipeThickness * 0.6);
+                ctx.moveTo(w * 0.3, h / 2); ctx.lineTo(w * 0.3, h / 2 + pipeThickness * 0.5);
+                ctx.stroke();
+
+            } else {
+                // Rotary potentiometer — round metal can, adjustment shaft, 3 legs.
+                // Non-linear/rotary, so it belongs with the other large accent
+                // parts rather than the inline resistors — it has no "ends" to
+                // rest cleanly along a straight trace.
+                let r = pipeThickness * 0.85 * scale;
+                ctx.fillStyle = '#b0b0b0';
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+
+                ctx.fillStyle = '#888';
+                ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = Math.max(r * 0.12, 1);
+                ctx.beginPath();
+                ctx.moveTo(-r * 0.25, 0); ctx.lineTo(r * 0.25, 0);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#c0c0c0';
+                ctx.lineWidth = pipeThickness * 0.1;
+                ctx.beginPath();
+                ctx.moveTo(-r * 0.5, r * 0.85); ctx.lineTo(-r * 0.5, r * 1.5);
+                ctx.moveTo(0, r * 0.85); ctx.lineTo(0, r * 1.6);
+                ctx.moveTo(r * 0.5, r * 0.85); ctx.lineTo(r * 0.5, r * 1.5);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         // Traces evenly-spaced, tangentially-oriented decorations around the
         // polygon's perimeter (offset inward/outward by the Edge Margin slider)
         // instead of filling its interior.
-        function generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor) {
+        function generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor, narrowDim) {
             const borderPoly = offsetPolygon(hullPoints, marginPx);
             if (borderPoly.length < 3) return;
 
             const path = buildPerimeterPath(borderPoly);
             if (path.total <= 0) return;
 
-            let spacing = (pipeThickness * 2.4) / densityFactor;
+            // Painted Lady matches Fill's own house-spacing convention (a 1.8
+            // factor, vs. the 2.4 used generically by every other border style)
+            // since House Scale/Density are meant to feel the same in both modes.
+            let spacing = (pipeThickness * (currentStyle === 'painted_lady' ? 1.8 : 2.4)) / densityFactor;
             spacing = Math.max(spacing, pipeThickness * 0.5, 4);
             let count = Math.max(3, Math.round(path.total / spacing));
             spacing = path.total / count; // redistribute for perfectly even spacing
 
-            let baseColorChangeChance = parseInt(colorSlider.value, 10) / 100;
-            let currentColor = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+            let baseColorChangeChance = colorPct;
+            // Color restricts the pool size (not a probability) so a small pool
+            // stays small even when Max Straight forces frequent switching.
+            let activeColorPalette = pickColorSubset(currentPalette, colorCountFromPct(baseColorChangeChance, currentPalette.length));
+            let colorRollChance = 0.15 + baseColorChangeChance * 0.35;
+            let currentColor = activeColorPalette[Math.floor(colorRandom() * activeColorPalette.length)];
 
             // Max Straight caps how many border objects in a row can share a color
             // (a "cluster run"), same idea as the maze's straight-run limit.
@@ -1861,92 +2504,130 @@
             let landmarkCount = parseInt(gearSlider.value, 10);
             let landmarkEvery = landmarkCount > 0 ? Math.max(3, Math.round(count / landmarkCount)) : 0;
 
+            // Positions along the border are deterministic (evenly spaced by
+            // design), so without this the per-point hash below — and every
+            // shape/type choice derived from it — would be identical every
+            // single generation. Mixing in a fresh pattern-seeded offset is
+            // what makes "Refresh Pattern" actually change anything here.
+            let patternHashOffset = Math.floor(patternRandom() * 100000);
+
+            // With Trace Width disabled for point styles here, Sizes is their only
+            // size control — expressed in the exact same units as Trace Width
+            // (raw slider value / 500 of the shape's narrow dimension) so the two
+            // controls are directly comparable instead of a separate percentage
+            // scale layered on top of a frozen thickness value.
+            let sizeMinAbs = narrowDim * (parseInt(sizeMinSlider.value, 10) / 500);
+            let sizeMaxAbs = narrowDim * (parseInt(sizeMaxSlider.value, 10) / 500);
+
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
             for (let i = 0; i < count; i++) {
                 let d = i * spacing;
                 let pt = pointAtDistance(path, d);
-                let hash = Math.abs(Math.floor(pt.x) * 17 + Math.floor(pt.y) * 23 + i * 13) % 100;
+                let hash = Math.abs(Math.floor(pt.x) * 17 + Math.floor(pt.y) * 23 + i * 13 + patternHashOffset) % 100;
 
                 let forceChange = run >= maxRun;
-                if (forceChange || Math.random() < baseColorChangeChance) {
-                    let alt = currentPalette.filter(c => c !== currentColor);
-                    currentColor = alt.length ? alt[Math.floor(Math.random() * alt.length)] : currentColor;
+                if (forceChange || colorRandom() < colorRollChance) {
+                    let alt = activeColorPalette.filter(c => c !== currentColor);
+                    currentColor = alt.length ? alt[Math.floor(colorRandom() * alt.length)] : currentColor;
                     run = 1; // this item is the 1st in the new streak, not the 0th
                 } else {
                     run++;
                 }
 
                 let isLandmark = landmarkEvery > 0 && (i % landmarkEvery === 0);
-                let sizeMult = isLandmark ? 2 : 1;
+                let baseSize = isLandmark
+                    ? sizeMaxAbs * (1.2 + patternRandom() * 0.4)
+                    : sizeMinAbs + patternRandom() * (sizeMaxAbs - sizeMinAbs);
 
                 if (currentStyle === 'ducks') {
                     let color = isLandmark ? '#FFFFFF' : currentColor;
-                    drawDuck(ctx, pt.x, pt.y, pipeThickness * 1.1 * sizeMult, color, pt.angle, hash);
+                    drawDuck(ctx, pt.x, pt.y, baseSize * 1.1, color, pt.angle, hash);
                 } else if (currentStyle === 'painted_lady') {
-                    drawLeaf(ctx, pt.x, pt.y, pipeThickness * 1.3 * sizeMult, currentColor, pt.angle);
+                    // Houses are drawn upright (no rotation to pt.angle) so the
+                    // whole border reads as a row of houses all the same way up,
+                    // rather than tilting to follow the polygon's edges. Sized
+                    // off House Scale (pipeThickness/spacing) rather than House
+                    // Sizes, which is disabled here — matching Fill's own
+                    // avgHouseWidth-based house-sizing convention.
+                    let hWidth = spacing * (0.7 + patternRandom() * 0.6);
+                    let hHeight = pipeThickness * 3 * (0.7 + patternRandom() * 0.8);
+                    let roofColor = colorRandom() < 0.33 ? '#4a4a4a' : currentPalette[Math.floor(colorRandom() * currentPalette.length)];
+                    drawHouse(ctx, pt.x, pt.y, hWidth, hHeight, currentColor, roofColor, hash);
                 } else if (currentStyle === 'christmas') {
-                    let size = pipeThickness * 1.3 * sizeMult;
+                    let size = baseSize * 1.3;
+                    // Gingerbread men and trees have a clear "up" — keep them
+                    // near-vertical (like Fill mode) instead of rotating to the
+                    // path's tangent, which would tip them sideways around curves.
+                    let uprightAngle = (patternRandom() - 0.5) * 0.3;
                     if (isLandmark) {
-                        drawChristmasTreeCookie(ctx, pt.x, pt.y, size, currentColor, pt.angle + Math.PI / 2, hash);
+                        drawChristmasTreeCookie(ctx, pt.x, pt.y, size, currentColor, uprightAngle, hash);
                     } else {
                         let t = hash % 3;
                         if (t === 0) drawCookieStar(ctx, pt.x, pt.y, size, currentColor, pt.angle, hash);
-                        else if (t === 1) drawGingerbreadMan(ctx, pt.x, pt.y, size, '#c0783c', pt.angle + Math.PI / 2, hash);
-                        else drawChristmasTreeCookie(ctx, pt.x, pt.y, size, currentColor, pt.angle + Math.PI / 2, hash);
+                        else if (t === 1) drawGingerbreadMan(ctx, pt.x, pt.y, size, '#c0783c', uprightAngle, hash);
+                        else drawChristmasTreeCookie(ctx, pt.x, pt.y, size, currentColor, uprightAngle, hash);
                     }
                 } else if (currentStyle === 'coins') {
-                    drawCoin(ctx, pt.x, pt.y, pipeThickness * 1.1 * sizeMult, currentColor, hash + i * 37);
+                    drawCoin(ctx, pt.x, pt.y, baseSize * 1.1, currentColor, hash + i * 37);
                 } else if (currentStyle === 'gems') {
-                    drawGem(ctx, pt.x, pt.y, pipeThickness * 0.9 * sizeMult, currentColor, pt.angle, hash);
+                    drawGem(ctx, pt.x, pt.y, baseSize * 0.9, currentColor, pt.angle, hash);
+                } else if (currentStyle === 'buttons') {
+                    drawButton(ctx, pt.x, pt.y, baseSize * 0.9, currentColor, hash + i * 37);
                 } else if (currentStyle === 'gears') {
-                    drawSteampunkGear(ctx, pt.x, pt.y, pipeThickness * 1.1 * sizeMult, currentColor, hash + i * 37, currentPalette, pt.angle);
+                    drawSteampunkGear(ctx, pt.x, pt.y, baseSize * 1.1, currentColor, hash + i * 37, currentPalette, pt.angle);
                 } else if (currentStyle === 'illustrated') {
-                    // "Pipes and Gears": trace a continuous pipe, with gear accents
-                    // only at landmark intervals — not a gear at every single point.
+                    // "Pipes and Gears": trace a continuous pipe styled like Fill's
+                    // illustrated pipes (black outline, rib texture, rivet joints),
+                    // with gear accents only at landmark intervals.
                     let nextPt = pointAtDistance(path, d + spacing);
-                    ctx.beginPath();
-                    ctx.moveTo(pt.x, pt.y);
-                    ctx.lineTo(nextPt.x, nextPt.y);
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = pipeThickness;
-                    ctx.stroke();
+                    let isCyl = hash < 25;
+                    drawPipeOutline(ctx, pt.x, pt.y, nextPt.x, nextPt.y, pipeThickness, isCyl);
+                    drawPipeEdge(ctx, pt.x, pt.y, nextPt.x, nextPt.y, pipeThickness, currentColor, 'illustrated', isCyl);
+                    drawPipeJoint(ctx, pt.x, pt.y, pipeThickness, currentColor, 'illustrated');
 
                     if (isLandmark) {
                         drawSteampunkGear(ctx, pt.x, pt.y, pipeThickness * 1.6, currentColor, hash + i * 37, currentPalette, pt.angle);
                     }
                 } else if (currentStyle === 'circuit') {
-                    // Trace a continuous copper wire, with component accents only
-                    // at landmark intervals — not a component at every single point.
+                    // Trace a continuous copper/jumper wire styled like Fill's
+                    // circuit wires. Simple linear resistors scatter along the
+                    // regular trace (like Fill's ~75%-of-edges convention); large
+                    // non-linear parts (capacitors, transistors) are reserved for
+                    // landmark/Accent Count points, with a pad underneath them.
                     let nextPt = pointAtDistance(path, d + spacing);
-                    ctx.beginPath();
-                    ctx.moveTo(pt.x, pt.y);
-                    ctx.lineTo(nextPt.x, nextPt.y);
-                    ctx.strokeStyle = '#b87333';
-                    ctx.lineWidth = pipeThickness * 0.5;
-                    ctx.stroke();
+                    // A fixed ratio, not tied to Component Colors (disabled for
+                    // this style — see computeSliderMeta) since wire color here
+                    // is realistic/fixed rather than palette-driven.
+                    let isJumper = hash < 20;
+                    drawCircuitWire(ctx, pt.x, pt.y, nextPt.x, nextPt.y, pipeThickness, isJumper);
 
                     if (isLandmark) {
-                        ctx.save();
-                        ctx.translate(pt.x, pt.y);
-                        ctx.rotate(pt.angle);
-                        ctx.fillStyle = '#d2b48c';
-                        ctx.fillRect(-pipeThickness * 0.9, -pipeThickness * 0.45, pipeThickness * 1.8, pipeThickness * 0.9);
-                        ctx.strokeStyle = '#8b5a2b';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(-pipeThickness * 0.9, -pipeThickness * 0.45, pipeThickness * 1.8, pipeThickness * 0.9);
-                        ctx.restore();
+                        // Accent components' widest along-wire extent (the
+                        // ceramic cap/transistor body, at their 1.8x accent scale).
+                        let accentSpan = pipeThickness * 3.2;
+                        if (fitsWithoutCrossingCorner(path, d, accentSpan)) {
+                            drawCircuitPad(ctx, pt.x, pt.y, pipeThickness);
+                            drawCircuitAccentComponent(ctx, pt.x, pt.y, pt.angle, pipeThickness, hash + i * 37);
+                        }
+                    } else if (!isJumper && hash % 100 < 60) {
+                        // A resistor's full lead-to-lead length is ~4.5x Trace
+                        // Width — skip placement wherever it can't fit on this
+                        // segment without crossing into the next one, instead of
+                        // ending on the trace like it should.
+                        let resistorSpan = pipeThickness * 4.5;
+                        if (fitsWithoutCrossingCorner(path, d, resistorSpan)) {
+                            drawCircuitResistor(ctx, pt.x, pt.y, pt.angle, pipeThickness, hash + i * 37);
+                        }
                     }
                 } else {
-                    // flat / 3d-basic / 3d-glossy: trace the border as a colored pipe segment
+                    // flat / 3d-basic / 3d-glossy: trace the border as a colored
+                    // pipe segment styled like each style's Fill-mode glossy
+                    // treatment, with rivet joints and a bead-ornament landmark accent.
                     let nextPt = pointAtDistance(path, d + spacing);
-                    ctx.beginPath();
-                    ctx.moveTo(pt.x, pt.y);
-                    ctx.lineTo(nextPt.x, nextPt.y);
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = pipeThickness;
-                    ctx.stroke();
+                    drawPipeEdge(ctx, pt.x, pt.y, nextPt.x, nextPt.y, pipeThickness, currentColor, currentStyle, false);
+                    drawPipeJoint(ctx, pt.x, pt.y, pipeThickness, currentColor, currentStyle);
 
                     if (isLandmark) {
                         // Landmark Interval shows up as a bead ornament strung on the pipe
@@ -1963,6 +2644,7 @@
         }
 
         function generatePipes() {
+            reseedRandom();
             let minX = Math.min(...hullPoints.map(p => p.x));
             let maxX = Math.max(...hullPoints.map(p => p.x));
             let minY = Math.min(...hullPoints.map(p => p.y));
@@ -1990,7 +2672,7 @@
 
             if (currentMode === 'border') {
                 drawBase(currentStyle);
-                generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor);
+                generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor, narrowDim);
                 drawHandles();
                 return;
             }
@@ -2058,10 +2740,10 @@
                 let numGears = parseInt(gearSlider.value, 10);
                 for (let i = 0; i < numGears; i++) {
                     if (validCells.length === 0) break;
-                    let centerCell = validCells[Math.floor(Math.random() * validCells.length)];
+                    let centerCell = validCells[Math.floor(patternRandom() * validCells.length)];
                     if (centerCell.visited) continue;
 
-                    let size = Math.random() > 0.65 ? 1 : 0;
+                    let size = patternRandom() > 0.65 ? 1 : 0;
                     let gearCells = [];
                     let canPlace = true;
 
@@ -2084,28 +2766,39 @@
                             cx: centerCell.cx,
                             cy: centerCell.cy,
                             radius: (isLarge ? 1.6 : 0.8) * cellSize,
-                            color: Math.random() > 0.4 ? '#bdc3c7' : '#d4af37',
-                            innerColor: Math.random() > 0.3 ? currentPalette[Math.floor(Math.random() * currentPalette.length)] : null,
+                            color: colorRandom() > 0.4 ? '#bdc3c7' : '#d4af37',
+                            innerColor: colorRandom() > 0.3 ? currentPalette[Math.floor(colorRandom() * currentPalette.length)] : null,
                             teeth: isLarge ? 16 : 8,
-                            isStacked: isLarge && Math.random() > 0.5,
+                            isStacked: isLarge && patternRandom() > 0.5,
                             isLarge: isLarge
                         });
                     }
                 }
             }
 
-            let unvisitedValid = [...validCells].filter(c => !c.visited).sort(() => Math.random() - 0.5);
+            let unvisitedValid = [...validCells].filter(c => !c.visited).sort(() => patternRandom() - 0.5);
             const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
-            let baseColorChangeChance = parseInt(colorSlider.value, 10) / 100;
+            let baseColorChangeChance = colorPct;
             let maxStraight = parseInt(maxStraightSlider.value, 10);
+            // Color restricts the pool size (0% = one color, 100% = full palette)
+            // rather than acting as a bare probability.
+            let activeMazePalette = pickColorSubset(currentPalette, colorCountFromPct(baseColorChangeChance, currentPalette.length));
+
+            // Point-only styles' scatter (ducks/gears/christmas/coins/gems/buttons)
+            // no longer scales off Trace Width — Trace Width is disabled for them
+            // (they have no traced path), so Sizes is their sole size control, in
+            // the same units as Trace Width itself (raw value / 500 of the shape's
+            // narrow dimension).
+            let sizeMinAbs = narrowDim * (parseInt(sizeMinSlider.value, 10) / 500);
+            let sizeMaxAbs = narrowDim * (parseInt(sizeMaxSlider.value, 10) / 500);
 
             for (let startCell of unvisitedValid) {
                 if (startCell.visited) continue;
 
                 let stack = [startCell];
                 startCell.visited = true;
-                startCell.color = currentPalette[Math.floor(Math.random() * currentPalette.length)];
+                startCell.color = activeMazePalette[Math.floor(colorRandom() * activeMazePalette.length)];
                 startCell.lastDir = null;
                 startCell.straightCount = 0;
 
@@ -2129,14 +2822,14 @@
 
                         let canGoStraight = straightNeighbor && curr.straightCount < maxStraight;
 
-                        if (canGoStraight && Math.random() < 0.88) {
+                        if (canGoStraight && patternRandom() < 0.88) {
                             nextObj = straightNeighbor;
                         } else {
                             let allowedNeighbors = unvisitedNeighbors;
                             if (curr.straightCount >= maxStraight && straightNeighbor && unvisitedNeighbors.length > 1) {
                                 allowedNeighbors = unvisitedNeighbors.filter(n => n !== straightNeighbor);
                             }
-                            nextObj = allowedNeighbors[Math.floor(Math.random() * allowedNeighbors.length)];
+                            nextObj = allowedNeighbors[Math.floor(patternRandom() * allowedNeighbors.length)];
                         }
 
                         let next = nextObj.node;
@@ -2148,9 +2841,9 @@
 
                         let colorChangeChance = isStraight ? (baseColorChangeChance * 0.75) : baseColorChangeChance;
 
-                        if (Math.random() < colorChangeChance) {
-                            let availableColors = currentPalette.filter(c => c !== curr.color);
-                            next.color = availableColors.length > 0 ? availableColors[Math.floor(Math.random() * availableColors.length)] : curr.color;
+                        if (colorRandom() < colorChangeChance) {
+                            let availableColors = activeMazePalette.filter(c => c !== curr.color);
+                            next.color = availableColors.length > 0 ? availableColors[Math.floor(colorRandom() * availableColors.length)] : curr.color;
                         } else {
                             next.color = curr.color;
                         }
@@ -2234,24 +2927,23 @@
                             let numHouses = Math.max(1, Math.floor(dist / avgHouseWidth));
 
                             for (let i = 0; i < numHouses; i++) {
-                                let t = (i + 0.5) / numHouses + (Math.random() - 0.5) * 0.3;
+                                let t = (i + 0.5) / numHouses + (patternRandom() - 0.5) * 0.3;
                                 t = Math.max(0.05, Math.min(0.95, t));
                                 let hx = cell.cx + dx * t;
                                 let hy = cell.cy + dy * t;
 
                                 let perpX = -Math.sin(angle);
                                 let perpY = Math.cos(angle);
-                                let offset = (Math.random() - 0.5) * pipeThickness * 0.8;
+                                let offset = (patternRandom() - 0.5) * pipeThickness * 0.8;
                                 hx += perpX * offset;
                                 hy += perpY * offset;
 
                                 let hash = (Math.floor(hx) * 17 + Math.floor(hy) * 23) % 100;
-                                let hWidth = avgHouseWidth * (0.7 + Math.random() * 0.6);
-                                let hHeight = pipeThickness * 3 * (0.7 + Math.random() * 0.8);
+                                let hWidth = avgHouseWidth * (0.7 + patternRandom() * 0.6);
+                                let hHeight = pipeThickness * 3 * (0.7 + patternRandom() * 0.8);
 
-                                let colorIndex = hash % currentPalette.length;
                                 let hColor = item.streakColor;
-                                let roofColor = (hash % 3 === 0) ? '#4a4a4a' : currentPalette[(colorIndex + 3) % currentPalette.length];
+                                let roofColor = colorRandom() < 0.33 ? '#4a4a4a' : currentPalette[Math.floor(colorRandom() * currentPalette.length)];
 
                                 drawHouse(ctx, hx, hy, hWidth, hHeight, hColor, roofColor, hash);
                             }
@@ -2298,8 +2990,8 @@
                             let towerH = pipeThickness * 7;
                             let yBase = cy;
 
-                            let mainColor = currentPalette[Math.floor(cx) % currentPalette.length];
-                            let accentColor = currentPalette[(Math.floor(cx) + 2) % currentPalette.length];
+                            let mainColor = currentPalette[Math.floor(colorRandom() * currentPalette.length)];
+                            let accentColor = currentPalette[Math.floor(colorRandom() * currentPalette.length)];
                             let roofColor = '#3a3a3a';
 
                             // Base building
@@ -2368,8 +3060,11 @@
             } else if (currentStyle === 'ducks') {
                 let allDrawables = [];
 
-                // 1. Generate densely packed duck grid independent of the maze paths
-                let duckSize = pipeThickness * 1.5;
+                // 1. Generate densely packed duck grid independent of the maze paths.
+                // Sizes sets the min/max range each duck is randomly sized within;
+                // the grid spacing uses the range's midpoint as a representative scale.
+                let duckSizeMin = sizeMinAbs * 1.5, duckSizeMax = sizeMaxAbs * 1.5;
+                let duckSize = (duckSizeMin + duckSizeMax) / 2;
                 let rowSpacing = (duckSize * 0.7) / densityFactor; // Tighter Y spacing for overlapping rows
                 let colSpacing = (duckSize * 1.6) / densityFactor; // X spacing
 
@@ -2379,8 +3074,8 @@
                     for (let cx = gridStartX - colSpacing; cx <= gridEndX + colSpacing; cx += colSpacing) {
 
                         // Add organic scatter/jitter to positions
-                        let px = cx + rowOffset + (Math.random() - 0.5) * colSpacing * 0.5;
-                        let py = cy + (Math.random() - 0.5) * rowSpacing * 0.5;
+                        let px = cx + rowOffset + (patternRandom() - 0.5) * colSpacing * 0.5;
+                        let py = cy + (patternRandom() - 0.5) * rowSpacing * 0.5;
 
                         let checkCy = py - duckSize * 0.3; // Check inclusion based on duck body center
                         let isInsideRaw = pointInPolygon({x: px, y: checkCy}, hullPoints);
@@ -2392,7 +3087,7 @@
                             if (hash < 12) {
                                 allDrawables.push({ type: 'lilypad', cx: px, cy: py, y: py, hash: hash });
                             } else {
-                                allDrawables.push({ type: 'duck', cx: px, cy: py, y: py, hash: hash, angle: (Math.random() - 0.5) * 0.4 });
+                                allDrawables.push({ type: 'duck', cx: px, cy: py, y: py, hash: hash, angle: (patternRandom() - 0.5) * 0.4, size: duckSizeMin + patternRandom() * (duckSizeMax - duckSizeMin) });
                             }
                         }
                     }
@@ -2418,12 +3113,12 @@
 
                         // Water ripple under duck
                         ctx.beginPath();
-                        ctx.ellipse(item.cx, item.cy + duckSize * 0.25, duckSize * 1.1, duckSize * 0.3, 0, 0, Math.PI * 2);
+                        ctx.ellipse(item.cx, item.cy + item.size * 0.25, item.size * 1.1, item.size * 0.3, 0, 0, Math.PI * 2);
                         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
                         ctx.lineWidth = 1.5;
                         ctx.stroke();
 
-                        drawDuck(ctx, item.cx, item.cy, duckSize * 0.8, color, item.angle, item.hash);
+                        drawDuck(ctx, item.cx, item.cy, item.size * 0.8, color, item.angle, item.hash);
 
                     } else if (item.type === 'lilypad') {
                         drawLilypad(ctx, item.cx, item.cy, duckSize * 1.2, item.hash);
@@ -2448,35 +3143,31 @@
                 // all three size tiers (huge/medium/small).
                 let numGears = Math.round(220 * densityFactor);
 
-                // Sizes (two-thumb slider, % of base gear size) sets the overall
-                // min/max range; the huge/medium/small tiers split it into thirds.
-                let sizeMinPct = parseInt(sizeMinSlider.value, 10) / 100;
-                let sizeMaxPct = parseInt(sizeMaxSlider.value, 10) / 100;
-                let sizeSpan = sizeMaxPct - sizeMinPct;
-                let smallLo = sizeMinPct, smallHi = sizeMinPct + sizeSpan / 3;
-                let medLo = smallHi, medHi = sizeMinPct + sizeSpan * 2 / 3;
-                let hugeLo = medHi, hugeHi = sizeMaxPct;
+                // Sizes sets the overall min/max radius range; the huge/medium/
+                // small tiers split it into thirds.
+                let sizeSpan = sizeMaxAbs - sizeMinAbs;
+                let smallLo = sizeMinAbs, smallHi = sizeMinAbs + sizeSpan / 3;
+                let medLo = smallHi, medHi = sizeMinAbs + sizeSpan * 2 / 3;
+                let hugeLo = medHi, hugeHi = sizeMaxAbs;
 
                 // Random organic scatter placement
                 for (let i = 0; i < numGears; i++) {
-                    let px = minX - expandBound + Math.random() * (maxX - minX + 2*expandBound);
-                    let py = minY - expandBound + Math.random() * (maxY - minY + 2*expandBound);
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2*expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2*expandBound);
 
                     let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                     let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                     let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
 
                     if (isInsideEffective) {
-                        let hash = Math.floor(Math.random() * 10000);
+                        let hash = Math.floor(patternRandom() * 10000);
 
                         // Z-Index layering (0: Huge background, 1: Medium, 2: Small foreground)
                         let layer = (hash % 10 < 3) ? 0 : ((hash % 10 < 7) ? 1 : 2);
 
-                        let baseRadius = pipeThickness * 0.9;
-                        let sizeMult = (layer === 0) ? (hugeLo + Math.random() * (hugeHi - hugeLo))
-                                     : (layer === 1) ? (medLo + Math.random() * (medHi - medLo))
-                                     : (smallLo + Math.random() * (smallHi - smallLo));
-                        let radius = baseRadius * sizeMult;
+                        let radius = (layer === 0) ? (hugeLo + patternRandom() * (hugeHi - hugeLo))
+                                   : (layer === 1) ? (medLo + patternRandom() * (medHi - medLo))
+                                   : (smallLo + patternRandom() * (smallHi - smallLo));
 
                         allDrawables.push({
                             type: 'steampunk_gear',
@@ -2496,17 +3187,16 @@
                 // its fill level.
                 let boost = parseInt(gearSlider.value, 10);
                 for (let i = 0; i < boost; i++) {
-                    let px = minX - expandBound + Math.random() * (maxX - minX + 2*expandBound);
-                    let py = minY - expandBound + Math.random() * (maxY - minY + 2*expandBound);
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2*expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2*expandBound);
 
                     let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                     let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                     let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
 
                     if (isInsideEffective) {
-                        let hash = Math.floor(Math.random() * 10000);
-                        let baseRadius = pipeThickness * 0.9;
-                        let radius = baseRadius * sizeMaxPct * (1.2 + Math.random() * 0.4);
+                        let hash = Math.floor(patternRandom() * 10000);
+                        let radius = sizeMaxAbs * (1.2 + patternRandom() * 0.4);
                         allDrawables.push({ type: 'steampunk_gear', cx: px, cy: py, radius: radius, layer: -1, hash: hash });
                     }
                 }
@@ -2527,14 +3217,17 @@
 
             } else if (currentStyle === 'christmas') {
                 let allDrawables = [];
-                let cookieSize = pipeThickness * 1.3;
+                // Sizes sets the min/max range each cookie is randomly sized
+                // within; spacing uses the range's midpoint as a representative scale.
+                let cookieSizeMin = sizeMinAbs * 1.3, cookieSizeMax = sizeMaxAbs * 1.3;
+                let cookieSize = (cookieSizeMin + cookieSizeMax) / 2;
                 let spacing = (cookieSize * 1.8) / densityFactor;
 
                 for (let cy = gridStartY; cy <= gridEndY; cy += spacing) {
                     let rowOffset = (Math.floor(cy / spacing) % 2 === 0) ? 0 : spacing / 2;
                     for (let cx = gridStartX - spacing; cx <= gridEndX + spacing; cx += spacing) {
-                        let px = cx + rowOffset + (Math.random() - 0.5) * spacing * 0.4;
-                        let py = cy + (Math.random() - 0.5) * spacing * 0.4;
+                        let px = cx + rowOffset + (patternRandom() - 0.5) * spacing * 0.4;
+                        let py = cy + (patternRandom() - 0.5) * spacing * 0.4;
 
                         let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                         let dist = distanceToPolygon({x: px, y: py}, hullPoints);
@@ -2542,7 +3235,7 @@
 
                         if (isInsideEffective) {
                             let hash = (Math.floor(px) * 17 + Math.floor(py) * 23) % 100;
-                            allDrawables.push({ cx: px, cy: py, y: py, hash, angle: (Math.random() - 0.5) * 0.6 });
+                            allDrawables.push({ cx: px, cy: py, y: py, hash, angle: (patternRandom() - 0.5) * 0.6, size: cookieSizeMin + patternRandom() * (cookieSizeMax - cookieSizeMin) });
                         }
                     }
                 }
@@ -2555,32 +3248,36 @@
                 // feature trees scattered on top of the regular cookie scatter.
                 let numLandmarks = parseInt(gearSlider.value, 10);
                 for (let i = 0; i < numLandmarks; i++) {
-                    let px = minX - expandBound + Math.random() * (maxX - minX + 2 * expandBound);
-                    let py = minY - expandBound + Math.random() * (maxY - minY + 2 * expandBound);
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
                     let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                     let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                     let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
                     if (isInsideEffective) {
-                        let hash = Math.floor(Math.random() * 10000);
-                        allDrawables.push({ cx: px, cy: py, y: py, hash, angle: (Math.random() - 0.5) * 0.3, landmark: true, streakColor: currentPalette[hash % currentPalette.length] });
+                        let hash = Math.floor(patternRandom() * 10000);
+                        allDrawables.push({ cx: px, cy: py, y: py, hash, angle: (patternRandom() - 0.5) * 0.3, landmark: true, streakColor: currentPalette[Math.floor(colorRandom() * currentPalette.length)] });
                     }
                 }
 
                 allDrawables.sort((a, b) => a.y - b.y);
                 allDrawables.forEach(item => {
                     if (item.landmark) {
-                        drawChristmasTreeCookie(ctx, item.cx, item.cy, cookieSize * 2.2, item.streakColor, item.angle, item.hash);
+                        drawChristmasTreeCookie(ctx, item.cx, item.cy, cookieSizeMax * (1.2 + patternRandom() * 0.4), item.streakColor, item.angle, item.hash);
                         return;
                     }
                     let t = item.hash % 3;
-                    if (t === 0) drawCookieStar(ctx, item.cx, item.cy, cookieSize, item.streakColor, item.angle, item.hash);
-                    else if (t === 1) drawGingerbreadMan(ctx, item.cx, item.cy, cookieSize, '#c0783c', item.angle, item.hash);
-                    else drawChristmasTreeCookie(ctx, item.cx, item.cy, cookieSize, item.streakColor, item.angle, item.hash);
+                    if (t === 0) drawCookieStar(ctx, item.cx, item.cy, item.size, item.streakColor, item.angle, item.hash);
+                    else if (t === 1) drawGingerbreadMan(ctx, item.cx, item.cy, item.size, '#c0783c', item.angle, item.hash);
+                    else drawChristmasTreeCookie(ctx, item.cx, item.cy, item.size, item.streakColor, item.angle, item.hash);
                 });
 
             } else if (currentStyle === 'coins') {
                 let allDrawables = [];
-                let coinSize = pipeThickness * 1.1;
+                // Sizes sets the min/max range each coin is randomly sized within
+                // (which also gives the pile its jumbled look); spacing uses the
+                // range's midpoint as a representative scale.
+                let coinSizeMin = sizeMinAbs * 1.1, coinSizeMax = sizeMaxAbs * 1.1;
+                let coinSize = (coinSizeMin + coinSizeMax) / 2;
                 // Tighter base spacing than other scatter styles so coins inherently
                 // overlap into a jumbled pile, like a handful tipped onto a table.
                 let spacing = (coinSize * 1.5) / densityFactor;
@@ -2588,16 +3285,16 @@
                 for (let cy = gridStartY; cy <= gridEndY; cy += spacing) {
                     let rowOffset = (Math.floor(cy / spacing) % 2 === 0) ? 0 : spacing / 2;
                     for (let cx = gridStartX - spacing; cx <= gridEndX + spacing; cx += spacing) {
-                        let px = cx + rowOffset + (Math.random() - 0.5) * spacing * 0.6;
-                        let py = cy + (Math.random() - 0.5) * spacing * 0.6;
+                        let px = cx + rowOffset + (patternRandom() - 0.5) * spacing * 0.6;
+                        let py = cy + (patternRandom() - 0.5) * spacing * 0.6;
 
                         let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                         let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                         let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
 
                         if (isInsideEffective) {
-                            let hash = Math.floor(Math.random() * 10000);
-                            allDrawables.push({ cx: px, cy: py, y: py, hash, r: coinSize * (0.55 + Math.random() * 1.1) });
+                            let hash = Math.floor(patternRandom() * 10000);
+                            allDrawables.push({ cx: px, cy: py, y: py, hash, r: coinSizeMin + patternRandom() * (coinSizeMax - coinSizeMin) });
                         }
                     }
                 }
@@ -2610,14 +3307,14 @@
                 // feature coins scattered on top of the regular scatter.
                 let numCoinLandmarks = parseInt(gearSlider.value, 10);
                 for (let i = 0; i < numCoinLandmarks; i++) {
-                    let px = minX - expandBound + Math.random() * (maxX - minX + 2 * expandBound);
-                    let py = minY - expandBound + Math.random() * (maxY - minY + 2 * expandBound);
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
                     let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                     let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                     let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
                     if (isInsideEffective) {
-                        let hash = Math.floor(Math.random() * 10000);
-                        allDrawables.push({ cx: px, cy: py, y: py, hash, r: coinSize * 2.2, streakColor: currentPalette[hash % currentPalette.length] });
+                        let hash = Math.floor(patternRandom() * 10000);
+                        allDrawables.push({ cx: px, cy: py, y: py, hash, r: coinSizeMax * (1.2 + patternRandom() * 0.4), streakColor: currentPalette[Math.floor(colorRandom() * currentPalette.length)] });
                     }
                 }
 
@@ -2628,27 +3325,24 @@
 
             } else if (currentStyle === 'gems') {
                 let allDrawables = [];
-                let gemSize = pipeThickness * 0.9;
-                let spacing = (gemSize * 2.4) / densityFactor;
-
-                // Sizes (two-thumb slider, % of base gem size) sets the min/max
-                // range each scattered gem is randomly sized within.
-                let sizeMinPct = parseInt(sizeMinSlider.value, 10) / 100;
-                let sizeMaxPct = parseInt(sizeMaxSlider.value, 10) / 100;
+                // Sizes sets the min/max range each scattered gem is randomly
+                // sized within (own style multiplier applied on top).
+                let gemSizeMin = sizeMinAbs * 0.9, gemSizeMax = sizeMaxAbs * 0.9;
+                let spacing = ((gemSizeMin + gemSizeMax) / 2 * 2.4) / densityFactor;
 
                 for (let cy = gridStartY; cy <= gridEndY; cy += spacing) {
                     let rowOffset = (Math.floor(cy / spacing) % 2 === 0) ? 0 : spacing / 2;
                     for (let cx = gridStartX - spacing; cx <= gridEndX + spacing; cx += spacing) {
-                        let px = cx + rowOffset + (Math.random() - 0.5) * spacing * 0.4;
-                        let py = cy + (Math.random() - 0.5) * spacing * 0.4;
+                        let px = cx + rowOffset + (patternRandom() - 0.5) * spacing * 0.4;
+                        let py = cy + (patternRandom() - 0.5) * spacing * 0.4;
 
                         let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                         let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                         let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
 
                         if (isInsideEffective) {
-                            let hash = Math.floor(Math.random() * 10000);
-                            allDrawables.push({ cx: px, cy: py, y: py, hash, angle: Math.random() * Math.PI * 2, size: gemSize * (sizeMinPct + Math.random() * (sizeMaxPct - sizeMinPct)) });
+                            let hash = Math.floor(patternRandom() * 10000);
+                            allDrawables.push({ cx: px, cy: py, y: py, hash, angle: patternRandom() * Math.PI * 2, size: gemSizeMin + patternRandom() * (gemSizeMax - gemSizeMin) });
                         }
                     }
                 }
@@ -2661,21 +3355,72 @@
                 // (1.2x-1.6x) of the largest Sizes value — same idea as Accent Gears.
                 let numGemLandmarks = parseInt(gearSlider.value, 10);
                 for (let i = 0; i < numGemLandmarks; i++) {
-                    let px = minX - expandBound + Math.random() * (maxX - minX + 2 * expandBound);
-                    let py = minY - expandBound + Math.random() * (maxY - minY + 2 * expandBound);
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
                     let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
                     let dist = distanceToPolygon({x: px, y: py}, hullPoints);
                     let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
                     if (isInsideEffective) {
-                        let hash = Math.floor(Math.random() * 10000);
-                        let size = gemSize * sizeMaxPct * (1.2 + Math.random() * 0.4);
-                        allDrawables.push({ cx: px, cy: py, y: py, hash, angle: Math.random() * Math.PI * 2, size: size, streakColor: currentPalette[hash % currentPalette.length] });
+                        let hash = Math.floor(patternRandom() * 10000);
+                        let size = gemSizeMax * (1.2 + patternRandom() * 0.4);
+                        allDrawables.push({ cx: px, cy: py, y: py, hash, angle: patternRandom() * Math.PI * 2, size: size, streakColor: currentPalette[Math.floor(colorRandom() * currentPalette.length)] });
                     }
                 }
 
                 allDrawables.sort((a, b) => a.y - b.y);
                 allDrawables.forEach(item => {
                     drawGem(ctx, item.cx, item.cy, item.size, item.streakColor, item.angle, item.hash);
+                });
+
+            } else if (currentStyle === 'buttons') {
+                let allDrawables = [];
+                // Sizes sets the min/max range each scattered button is randomly
+                // sized within (own style multiplier applied on top).
+                let buttonSizeMin = sizeMinAbs * 0.9, buttonSizeMax = sizeMaxAbs * 0.9;
+                // Tighter base spacing than gems so buttons overlap into a
+                // jumbled pile, like a handful tipped out of a sewing box.
+                let spacing = ((buttonSizeMin + buttonSizeMax) / 2 * 1.6) / densityFactor;
+
+                for (let cy = gridStartY; cy <= gridEndY; cy += spacing) {
+                    let rowOffset = (Math.floor(cy / spacing) % 2 === 0) ? 0 : spacing / 2;
+                    for (let cx = gridStartX - spacing; cx <= gridEndX + spacing; cx += spacing) {
+                        let px = cx + rowOffset + (patternRandom() - 0.5) * spacing * 0.6;
+                        let py = cy + (patternRandom() - 0.5) * spacing * 0.6;
+
+                        let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                        let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                        let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                        if (isInsideEffective) {
+                            let hash = Math.floor(patternRandom() * 10000);
+                            allDrawables.push({ cx: px, cy: py, y: py, hash, size: buttonSizeMin + patternRandom() * (buttonSizeMax - buttonSizeMin) });
+                        }
+                    }
+                }
+
+                // Color Changes/Max Straight group the buttons into color streaks
+                // instead of every button picking an independent random color.
+                assignStreakColors(allDrawables, currentPalette, baseColorChangeChance, maxStraight);
+
+                // Accent Count adds oversized feature buttons, sized as a multiple
+                // (1.2x-1.6x) of the largest Sizes value — same idea as Accent Gears.
+                let numButtonLandmarks = parseInt(gearSlider.value, 10);
+                for (let i = 0; i < numButtonLandmarks; i++) {
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
+                    let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                    let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                    let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+                    if (isInsideEffective) {
+                        let hash = Math.floor(patternRandom() * 10000);
+                        let size = buttonSizeMax * (1.2 + patternRandom() * 0.4);
+                        allDrawables.push({ cx: px, cy: py, y: py, hash, size: size, streakColor: currentPalette[Math.floor(colorRandom() * currentPalette.length)] });
+                    }
+                }
+
+                allDrawables.sort((a, b) => a.y - b.y);
+                allDrawables.forEach(item => {
+                    drawButton(ctx, item.cx, item.cy, item.size, item.streakColor, item.hash);
                 });
 
             } else {
@@ -2714,8 +3459,10 @@
                         let isCyl = currentStyle === 'illustrated' && (cell.r * 17 + next.c * 23) % 100 < 25;
 
                         if (currentStyle === 'circuit') {
-                            // Color Changes doubles as the jumper-wire ratio for this style
-                            let isJumper = (cell.r * 7 + next.c * 13) % 100 < parseInt(colorSlider.value, 10);
+                            // A fixed ratio — Component Colors is disabled for
+                            // this style since wire color here is realistic/
+                            // fixed rather than palette-driven.
+                            let isJumper = (cell.r * 7 + next.c * 13) % 100 < 20;
 
                             if (isJumper) {
                                 ctx.beginPath();
@@ -3094,10 +3841,14 @@
             ];
             hullPoints = calculateConvexHull(rawPoints);
             shapeIsCustom = false;
-            generateBtn.disabled = false;
+            setRefreshEnabled(true);
             isGenerated = true;
+            applySizeRangeForContext();
+            applyThicknessRangeForStyle();
             applySliderMeta();
             updatePaletteDefaultBtn();
+            updateColorSliderStep();
+            updateColorCountDisplay();
             generatePipes();
         }
 
