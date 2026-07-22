@@ -369,6 +369,7 @@
                     <option value="coins">World Coins</option>
                     <option value="gems">Gems</option>
                     <option value="buttons">Buttons</option>
+                    <option value="autumn_leaves">Autumn Leaves</option>
                 </select>
             </label>
             <label for="paletteSelect">
@@ -385,6 +386,7 @@
                     <option value="coins">Coins</option>
                     <option value="gems">Gems</option>
                     <option value="buttons">Buttons</option>
+                    <option value="autumn_leaves">Autumn Leaves</option>
                 </select>
             </label>
             <div class="mode-toggle" role="group" aria-label="Mode">
@@ -572,7 +574,8 @@
             christmas: ['#c0392b', '#165b33', '#f8b229', '#ffffff', '#0b6e4f', '#e94560', '#d4af37'],
             coins: ['#c9c9c9', '#a8a8a8', '#7d7d7d', '#5a5a5a', '#d4af37', '#b8860b', '#b87333', '#cd7f32', '#8b5a2b'],
             gems: ['#e0115f', '#0f52ba', '#50c878', '#9966cc', '#ffc87c', '#b9f2ff', '#ff8c42'],
-            buttons: ['#e63946', '#f4a340', '#ffd23f', '#6a994e', '#1b4332', '#3a86ff', '#ff5da2', '#b185db', '#f1faee']
+            buttons: ['#e63946', '#f4a340', '#ffd23f', '#6a994e', '#1b4332', '#3a86ff', '#ff5da2', '#b185db', '#f1faee'],
+            autumn_leaves: ['#c1440e', '#e3641b', '#f2a30f', '#d4a017', '#8b5a2b', '#a52a2a', '#6b4226', '#e8b923']
         };
 
         // Helper to get coordinates for both mouse and touch events
@@ -709,13 +712,18 @@
             flat: 'Pipe', '3d-basic': 'Pipe', '3d-glossy': 'Pipe',
             illustrated: 'Gear', circuit: 'Component', painted_lady: 'House',
             ducks: 'Duck', gears: 'Gear', christmas: 'Cookie',
-            coins: 'Coin', gems: 'Gem', buttons: 'Button'
+            coins: 'Coin', gems: 'Gem', buttons: 'Button', autumn_leaves: 'Leaf'
         };
+        // A few nouns pluralize irregularly (Leaf -> Leaves, not "Leafs") — the
+        // generic slider-description templates below use this instead of a
+        // bare `${nounLower}s` wherever the plural actually appears in copy.
+        const NOUN_PLURAL_OVERRIDES = { autumn_leaves: 'leaves' };
         const MAZE_STYLE_SET = ['flat', '3d-basic', '3d-glossy', 'illustrated', 'circuit'];
 
         function computeSliderMeta(style, mode) {
             const noun = STYLE_NOUN[style] || 'Object';
             const nounLower = noun.toLowerCase();
+            const nounPlural = NOUN_PLURAL_OVERRIDES[style] || (nounLower + 's');
             const meta = {};
 
             // A style is "point-only" (no traced path) whenever it's not one of
@@ -733,7 +741,7 @@
             if (isPointStyle) {
                 meta.thickness = {
                     label: 'Path Thickness',
-                    description: `Not meaningful for ${nounLower}s, which are placed individually rather than along a traced path — use ${noun} Sizes below to control their size instead.`,
+                    description: `Not meaningful for ${nounPlural}, which are placed individually rather than along a traced path — use ${noun} Sizes below to control their size instead.`,
                     disabled: true
                 };
             } else if (style === 'circuit') {
@@ -745,13 +753,13 @@
             }
 
             if (MAZE_STYLE_SET.includes(style)) {
-                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : "Controls the maze's grid resolution — higher values mean smaller cells, so the pipe pattern has more, tighter turns.", disabled: false };
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : "Controls the maze's grid resolution — higher values mean smaller cells, so the pipe pattern has more, tighter turns.", disabled: false };
             } else if (style === 'gears') {
-                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : "Controls the total count of the mixed-size gear swarm.", disabled: false };
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : "Controls the total count of the mixed-size gear swarm.", disabled: false };
             } else if (style === 'painted_lady') {
                 meta.density = { label: 'Density', description: "Controls how close together houses are placed along each road.", disabled: false };
             } else {
-                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounLower}s strung along the traced border.` : `Controls how close together the ${nounLower}s are scattered.`, disabled: false };
+                meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : `Controls how close together the ${nounPlural} are scattered.`, disabled: false };
             }
 
             if (style === 'circuit') {
@@ -765,24 +773,26 @@
             }
 
             if (MAZE_STYLE_SET.includes(style)) {
-                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how many grid cells in a row the pipe can travel in a straight line before it must turn." : `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
+                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how many grid cells in a row the pipe can travel in a straight line before it must turn." : `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
             } else if (style === 'painted_lady') {
-                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how long each straight road segment can run before turning, which also caps how many segments share a neighborhood color." : `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
-            } else if (mode === 'fill' && style === 'gears') {
-                // The gears swarm is placed with pure Math.random() (no grid), so
-                // "consecutive" items in the color sequence aren't spatially
-                // adjacent on screen — a run cap has nothing visible to constrain.
-                meta.maxStraight = { label: 'Color Cluster', description: "This style scatters gears at fully random positions, so consecutive picks aren't near each other on screen — there's no visible run to cap.", disabled: true };
+                meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how long each straight road segment can run before turning, which also caps how many segments share a neighborhood color." : `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
+            } else if (mode === 'fill' && (style === 'gears' || style === 'autumn_leaves')) {
+                // Placed with pure Math.random() (no grid), so "consecutive"
+                // items in the color sequence aren't spatially adjacent on
+                // screen — a run cap has nothing visible to constrain.
+                meta.maxStraight = { label: 'Color Cluster', description: `This style scatters ${nounPlural} at fully random positions, so consecutive picks aren't near each other on screen — there's no visible run to cap.`, disabled: true };
             } else {
-                meta.maxStraight = { label: 'Color Cluster', description: `Caps how many consecutive ${nounLower}s can share the same color before it's forced to change.`, disabled: false };
+                meta.maxStraight = { label: 'Color Cluster', description: `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
             }
 
             if (['flat', '3d-basic', '3d-glossy'].includes(style)) {
-                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : "Sets how many decorative gear accents are scattered on top of the pipes.", disabled: false };
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounPlural} appear evenly along the border (0 disables them).` : "Sets how many decorative gear accents are scattered on top of the pipes.", disabled: false };
             } else if (style === 'gears') {
-                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : "Adds extra oversized feature gears behind the swarm — independent of Density, which only scales the regular mixed-size count.", disabled: false };
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounPlural} appear evenly along the border (0 disables them).` : "Adds extra oversized feature gears behind the swarm — independent of Density, which only scales the regular mixed-size count.", disabled: false };
+            } else if (style === 'autumn_leaves') {
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? "Sets how many acorns, gourds, and pinecones appear evenly along the border (0 disables them)." : "Adds acorns, gourds, and pinecones scattered among the regular leaf pile.", disabled: false };
             } else {
-                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounLower}s appear evenly along the border (0 disables them).` : `Sets how many oversized landmark ${nounLower}s (or related decorations) appear among the regular scatter.`, disabled: false };
+                meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounPlural} appear evenly along the border (0 disables them).` : `Sets how many oversized landmark ${nounPlural} (or related decorations) appear among the regular scatter.`, disabled: false };
             }
 
             meta.margin = {
@@ -794,7 +804,7 @@
             };
 
             if (isPointStyle) {
-                meta.size = { label: noun + ' Sizes', description: `Sets the min/max size range for the ${nounLower}s, in the same units as Trace/Pipe Thickness (raw value out of 500, as a fraction of the shape's narrow dimension) since Thickness is disabled for point-only styles. Accent Count ${nounLower}s are drawn as a multiple of the largest size here.`, disabled: false };
+                meta.size = { label: noun + ' Sizes', description: `Sets the min/max size range for the ${nounPlural}, in the same units as Trace/Pipe Thickness (raw value out of 500, as a fraction of the shape's narrow dimension) since Thickness is disabled for point-only styles. Accent Count ${nounPlural} are drawn as a multiple of the largest size here.`, disabled: false };
             } else if (style === 'painted_lady') {
                 meta.size = { label: 'House Sizes', description: "Not used — House Scale (Thickness) controls house size in both Fill and Border mode.", disabled: true };
             } else {
@@ -836,7 +846,8 @@
         // a separate percentage layered on top.
         const SIZE_DEFAULTS_POINT = {
             ducks: { min: 15, max: 40 }, painted_lady: { min: 15, max: 40 }, gears: { min: 12, max: 35 },
-            christmas: { min: 15, max: 40 }, coins: { min: 12, max: 30 }, gems: { min: 10, max: 30 }, buttons: { min: 10, max: 28 }
+            christmas: { min: 15, max: 40 }, coins: { min: 12, max: 30 }, gems: { min: 10, max: 30 }, buttons: { min: 10, max: 28 },
+            autumn_leaves: { min: 12, max: 32 }
         };
 
         // Thickness's usable range is 2-400 by default, but some styles look
@@ -878,7 +889,7 @@
         const STYLE_DEFAULT_PALETTE = {
             flat: 'classic', '3d-basic': 'classic', '3d-glossy': 'classic', illustrated: 'classic',
             circuit: 'circuit', painted_lady: 'painted_lady', ducks: 'ducks', gears: 'steampunk',
-            christmas: 'christmas', coins: 'coins', gems: 'gems', buttons: 'buttons'
+            christmas: 'christmas', coins: 'coins', gems: 'gems', buttons: 'buttons', autumn_leaves: 'autumn_leaves'
         };
         const paletteDefaultBtn = document.getElementById('paletteDefaultBtn');
 
@@ -1078,6 +1089,10 @@
                 } else if (currentStyle === 'buttons') {
                     ctx.fillStyle = '#e8ddc7'; // Cream sewing-box fabric
                     ctx.strokeStyle = '#8b5a2b'; // Brown thread trim
+                    ctx.lineWidth = 5;
+                } else if (currentStyle === 'autumn_leaves') {
+                    ctx.fillStyle = '#4a3520'; // Damp forest-floor mulch
+                    ctx.strokeStyle = '#2e2013';
                     ctx.lineWidth = 5;
                 } else {
                     ctx.fillStyle = '#111';
@@ -1999,6 +2014,490 @@
             ctx.restore();
         }
 
+        // Fallen leaf — the regular scattered item for Autumn Leaves. Two
+        // silhouettes (a simple pointed oval vs. a five-lobed maple shape) for
+        // variety, colored from the palette like every other style's regular item.
+        function drawFallLeaf(ctx, x, y, size, color, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.fillStyle = color;
+            ctx.strokeStyle = shadeColor(color, 0.6);
+            ctx.lineWidth = Math.max(size * 0.05, 1);
+
+            let isMaple = hash % 2 !== 0;
+            let mapleTipAngles = [], mapleTipRs = [], mapleBase = { x: 0, y: size * 0.88 };
+            const polar = (a, r) => ({ x: Math.sin(a) * r, y: -Math.cos(a) * r });
+
+            if (!isMaple) {
+                // Simple pointed oval leaf (birch/willow-like)
+                ctx.beginPath();
+                ctx.moveTo(0, -size * 1.2);
+                ctx.quadraticCurveTo(size * 0.75, -size * 0.4, size * 0.5, size * 0.5);
+                ctx.quadraticCurveTo(size * 0.2, size * 1.1, 0, size * 1.3);
+                ctx.quadraticCurveTo(-size * 0.2, size * 1.1, -size * 0.5, size * 0.5);
+                ctx.quadraticCurveTo(-size * 0.75, -size * 0.4, 0, -size * 1.2);
+                ctx.closePath();
+            } else {
+                // Five-lobed maple leaf: a palmate fan of tips with shallow,
+                // varied-depth sinuses between them (not deep uniform star
+                // notches), narrowing to a single base point for the stem.
+                let lobes = 5;
+                let tipRFactors = [0.85, 1.0, 1.15, 1.0, 0.85];
+                for (let i = 0; i < lobes; i++) {
+                    mapleTipAngles.push((i - (lobes - 1) / 2) * 0.44);
+                    mapleTipRs.push(size * tipRFactors[i]);
+                }
+                let notchR = size * 0.62;
+                ctx.beginPath();
+                let first = polar(mapleTipAngles[0], mapleTipRs[0]);
+                ctx.moveTo(first.x, first.y);
+                let lastTip = first;
+                for (let i = 0; i < lobes - 1; i++) {
+                    let a0 = mapleTipAngles[i], a1 = mapleTipAngles[i + 1];
+                    let notch = polar((a0 + a1) / 2, notchR);
+                    let nextTip = polar(a1, mapleTipRs[i + 1]);
+                    ctx.lineTo(notch.x, notch.y);
+                    ctx.lineTo(nextTip.x, nextTip.y);
+                    lastTip = nextTip;
+                }
+                // Taper down to the base point on each side, then close.
+                ctx.lineTo(lastTip.x * 0.55, mapleBase.y * 0.75);
+                ctx.lineTo(mapleBase.x, mapleBase.y);
+                ctx.lineTo(first.x * 0.55, mapleBase.y * 0.75);
+                ctx.closePath();
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.strokeStyle = shadeColor(color, 0.55);
+            ctx.lineWidth = Math.max(size * 0.04, 1);
+            if (!isMaple) {
+                // Center vein + a couple of side veins
+                ctx.beginPath();
+                ctx.moveTo(0, -size * 1.1);
+                ctx.lineTo(0, size * 1.15);
+                ctx.moveTo(0, -size * 0.2);
+                ctx.lineTo(size * 0.35, size * 0.1);
+                ctx.moveTo(0, size * 0.3);
+                ctx.lineTo(-size * 0.35, size * 0.6);
+                ctx.stroke();
+            } else {
+                // Palmate venation: one vein from the base to each lobe tip,
+                // pulled back slightly so it never pokes past the silhouette.
+                for (let i = 0; i < mapleTipAngles.length; i++) {
+                    let tip = polar(mapleTipAngles[i], mapleTipRs[i] * 0.82);
+                    ctx.beginPath();
+                    ctx.moveTo(0, size * 0.62);
+                    ctx.lineTo(tip.x, tip.y);
+                    ctx.stroke();
+                }
+            }
+
+            // Stem
+            ctx.strokeStyle = shadeColor(color, 0.45);
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+            ctx.beginPath();
+            if (!isMaple) {
+                ctx.moveTo(0, size * 1.15);
+                ctx.lineTo(0, size * 1.5);
+            } else {
+                ctx.moveTo(0, mapleBase.y * 0.95);
+                ctx.lineTo(0, size * 1.2);
+            }
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // Acorn — one of three Autumn Leaves accent types. Realistic fixed
+        // tones (not palette-driven), like Circuit's components, since it's
+        // meant to look like an actual acorn regardless of chosen palette.
+        function drawAcorn(ctx, x, y, size, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            // Not `hash % 3` directly — the caller picked "acorn" from
+            // ['acorn','gourd','pinecone'][hash % 3], which is always 0 by
+            // the time we get here, so `hash % 3` would always pick the
+            // same tone. Divide that residue out first.
+            let bodyTone = Math.floor(hash / 3) % 3;
+            let bodyColor = bodyTone === 0 ? '#a9752f' : bodyTone === 1 ? '#c08a3e' : '#8f6524';
+
+            // Nut body
+            ctx.fillStyle = bodyColor;
+            ctx.strokeStyle = shadeColor(bodyColor, 0.55);
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.55, -size * 0.05);
+            ctx.quadraticCurveTo(-size * 0.6, size * 0.7, 0, size * 1.05);
+            ctx.quadraticCurveTo(size * 0.6, size * 0.7, size * 0.55, -size * 0.05);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // A couple of soft highlight streaks on the body
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = Math.max(size * 0.05, 1);
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.2, size * 0.1);
+            ctx.lineTo(-size * 0.15, size * 0.7);
+            ctx.stroke();
+
+            // Cap
+            let capColor = '#5e3a21';
+            let domeL0 = { x: -size * 0.62, y: -size * 0.05 };
+            let domeL1 = { x: -size * 0.5, y: -size * 0.55 };
+            let domeTop = { x: 0, y: -size * 0.6 };
+            let domeR1 = { x: size * 0.5, y: -size * 0.55 };
+            let domeR0 = { x: size * 0.62, y: -size * 0.05 };
+            ctx.fillStyle = capColor;
+            ctx.strokeStyle = shadeColor(capColor, 0.55);
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+            ctx.beginPath();
+            ctx.moveTo(domeL0.x, domeL0.y);
+            ctx.quadraticCurveTo(domeL1.x, domeL1.y, domeTop.x, domeTop.y);
+            ctx.quadraticCurveTo(domeR1.x, domeR1.y, domeR0.x, domeR0.y);
+            ctx.quadraticCurveTo(0, size * 0.12, domeL0.x, domeL0.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Cap texture: ridge lines fanning out from an interior apex to
+            // points along the dome's own curve, so they follow the cap's
+            // curvature instead of cutting across it at a fixed diagonal.
+            let bez2 = (p0, p1, p2, t) => {
+                let mt = 1 - t;
+                return { x: mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x, y: mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y };
+            };
+            let capApex = { x: 0, y: -size * 0.4 };
+            ctx.strokeStyle = shadeColor(capColor, 0.4);
+            ctx.lineWidth = Math.max(size * 0.025, 1);
+            for (let rt = -1; rt <= 1.001; rt += 1 / 3) {
+                let pt = rt <= 0 ? bez2(domeL0, domeL1, domeTop, rt + 1) : bez2(domeTop, domeR1, domeR0, rt);
+                ctx.beginPath();
+                ctx.moveTo(capApex.x, capApex.y);
+                ctx.lineTo(pt.x, pt.y);
+                ctx.stroke();
+            }
+
+            // Stem nub
+            ctx.fillStyle = shadeColor(capColor, 0.7);
+            ctx.beginPath();
+            ctx.ellipse(0, -size * 0.62, size * 0.08, size * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Gourd — a second Autumn Leaves accent type. Three variants: a squat
+        // ribbed mini pumpkin (side view), an elongated warty/curved gourd,
+        // or a mini pumpkin seen from directly above.
+        function drawGourd(ctx, x, y, size, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            let colors = ['#d2691e', '#e8a13a', '#e8ddb5', '#8a9a5b'];
+            let bodyColor = colors[hash % colors.length];
+            ctx.fillStyle = bodyColor;
+            ctx.strokeStyle = shadeColor(bodyColor, 0.55);
+            ctx.lineWidth = Math.max(size * 0.06, 1);
+
+            // Not `hash % 3` — the caller already picked "gourd" from
+            // ['acorn','gourd','pinecone'][hash % 3], so that residue is
+            // fixed by the time we get here and `hash % 3` would always
+            // land on the same variant. Dividing it out first decorrelates
+            // this pick from that one.
+            // Variant 0 (ribbed side-view mini pumpkin) is disabled for now
+            // — picking only between 1 (warty) and 2 (top-down) — but the
+            // branch below is left in place in case it comes back later.
+            let variant = 1 + (Math.floor(hash / 3) % 2);
+            if (variant === 0) {
+                // Squat ribbed mini pumpkin. A real ribbed pumpkin reads from
+                // a slight distance as bold alternating light/shadow vertical
+                // bands (each rounded rib catches light on one side), not a
+                // wireframe of thin outlined ellipses over a flat fill — so
+                // the ribs are filled bands with a crease line between them.
+                let bodyRx = size * 0.85, bodyRy = size * 0.7, bodyCy = size * 0.1;
+                let bodyPath = new Path2D();
+                bodyPath.ellipse(0, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
+                ctx.fillStyle = shadeColor(bodyColor, 0.95);
+                ctx.fill(bodyPath);
+
+                ctx.save();
+                ctx.clip(bodyPath);
+                let numRibs = 6;
+                let ribW = (bodyRx * 2) / numRibs;
+                let parity = Math.floor(hash / 2) % 2;
+                for (let i = 0; i < numRibs; i++) {
+                    let cx = -bodyRx + (i + 0.5) * ribW;
+                    ctx.fillStyle = shadeColor(bodyColor, (i + parity) % 2 === 0 ? 1.2 : 0.78);
+                    ctx.beginPath();
+                    ctx.ellipse(cx, bodyCy, ribW * 0.56, bodyRy * 0.98, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Crease lines in the valleys between ribs.
+                ctx.strokeStyle = shadeColor(bodyColor, 0.42);
+                ctx.lineWidth = Math.max(size * 0.02, 1);
+                for (let i = 1; i < numRibs; i++) {
+                    let cx = -bodyRx + i * ribW;
+                    ctx.beginPath();
+                    ctx.ellipse(cx, bodyCy, ribW * 0.07, bodyRy * 0.98, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                ctx.strokeStyle = shadeColor(bodyColor, 0.55);
+                ctx.lineWidth = Math.max(size * 0.06, 1);
+                ctx.stroke(bodyPath);
+            } else if (variant === 1) {
+                // Elongated warty gourd. Real warty gourds (e.g. "Der Wing",
+                // warty Lagenaria cultivars) run pale cream/gold/green — deep
+                // orange with a dense bumpy surface reads as rot, not gourd —
+                // so this variant picks from a restricted subset rather than
+                // the shared 4-color palette.
+                let wartyColors = ['#e8a13a', '#e8ddb5', '#8a9a5b'];
+                bodyColor = wartyColors[Math.floor(hash / 3) % wartyColors.length];
+                ctx.fillStyle = bodyColor;
+                ctx.strokeStyle = shadeColor(bodyColor, 0.55);
+
+                let bodyPath = new Path2D();
+                bodyPath.moveTo(-size * 0.5, size * 0.75);
+                bodyPath.quadraticCurveTo(-size * 0.75, -size * 0.1, -size * 0.25, -size * 0.55);
+                bodyPath.quadraticCurveTo(0, -size * 0.75, size * 0.2, -size * 0.5);
+                bodyPath.quadraticCurveTo(size * 0.65, -size * 0.05, size * 0.45, size * 0.75);
+                bodyPath.quadraticCurveTo(0, size * 1.0, -size * 0.5, size * 0.75);
+                bodyPath.closePath();
+                ctx.fill(bodyPath);
+                ctx.stroke(bodyPath);
+
+                // Dense field of small shaded bumps covering the whole body —
+                // a jittered grid (cheap, near-uniform density) rather than
+                // rejection sampling, clipped to the body path since this
+                // smooth teardrop (no sharp cusp like the pinecone's tip) is
+                // a safe case for ctx.clip(). Each bump is 3 stacked arcs
+                // (base + shadow + highlight) so it reads as a small dome
+                // rather than a flat dot, even at small render sizes.
+                let mix = (n) => { let v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); };
+                ctx.save();
+                ctx.clip(bodyPath);
+                let cols = 7, rows = 9;
+                let gx0 = -size * 0.75, gx1 = size * 0.65, gy0 = -size * 0.8, gy1 = size * 1.0;
+                let cellW = (gx1 - gx0) / cols, cellH = (gy1 - gy0) / rows;
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        let seed = hash * 97 + row * 13 + col * 31;
+                        let bx = gx0 + (col + 0.5) * cellW + (mix(seed + 1.1) - 0.5) * cellW * 0.7;
+                        let by = gy0 + (row + 0.5) * cellH + (mix(seed + 2.7) - 0.5) * cellH * 0.7;
+                        let r = Math.max(size * (0.05 + mix(seed + 3.3) * 0.04), 1.6);
+                        ctx.fillStyle = bodyColor;
+                        ctx.beginPath();
+                        ctx.arc(bx, by, r, 0, Math.PI * 2);
+                        ctx.fill();
+                        if (r > 2.5) {
+                            ctx.fillStyle = shadeColor(bodyColor, 0.6);
+                            ctx.beginPath();
+                            ctx.arc(bx + r * 0.3, by + r * 0.3, r * 0.4, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillStyle = shadeColor(bodyColor, 1.35);
+                            ctx.beginPath();
+                            ctx.arc(bx - r * 0.3, by - r * 0.3, r * 0.45, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+                ctx.restore();
+
+                ctx.strokeStyle = shadeColor(bodyColor, 0.55);
+                ctx.lineWidth = Math.max(size * 0.06, 1);
+                ctx.stroke(bodyPath);
+            } else {
+                // Mini pumpkin seen from directly above: a scalloped outline
+                // whose bulges ARE the ribs (peaks = rib crests, valleys =
+                // creases between them), a dark radial groove in each valley,
+                // a light radial streak up each bulge, and a central stem
+                // seen end-on rather than the side-view curved stem below.
+                let numLobes = 10;
+                let midR = size * 0.85, amp = size * 0.045;
+                let stemR = size * 0.14;
+                ctx.beginPath();
+                let steps = numLobes * 8;
+                for (let s = 0; s <= steps; s++) {
+                    let theta = (s / steps) * Math.PI * 2;
+                    let r = midR + amp * Math.cos(numLobes * theta);
+                    let px = Math.cos(theta) * r, py = Math.sin(theta) * r;
+                    if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fillStyle = shadeColor(bodyColor, 0.98);
+                ctx.fill();
+                ctx.stroke();
+
+                for (let k = 0; k < numLobes; k++) {
+                    // Valley (groove) angle sits exactly between two bulge
+                    // peaks; its own local outer radius is already the
+                    // scallop's minimum there, so the line naturally stops
+                    // right at the crease instead of overshooting it.
+                    let valleyTheta = (k + 0.5) * (Math.PI * 2 / numLobes);
+                    let valleyR = midR + amp * Math.cos(numLobes * valleyTheta);
+                    ctx.strokeStyle = shadeColor(bodyColor, 0.45);
+                    ctx.lineWidth = Math.max(size * 0.035, 1);
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(valleyTheta) * stemR, Math.sin(valleyTheta) * stemR);
+                    ctx.lineTo(Math.cos(valleyTheta) * valleyR * 0.97, Math.sin(valleyTheta) * valleyR * 0.97);
+                    ctx.stroke();
+
+                    // Highlight streak up the middle of each bulge, aligned
+                    // with that bulge's own peak.
+                    let peakTheta = k * (Math.PI * 2 / numLobes);
+                    let peakR = midR + amp;
+                    ctx.strokeStyle = shadeColor(bodyColor, 1.3);
+                    ctx.lineWidth = Math.max(size * 0.03, 1);
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(peakTheta) * stemR * 1.4, Math.sin(peakTheta) * stemR * 1.4);
+                    ctx.lineTo(Math.cos(peakTheta) * peakR * 0.8, Math.sin(peakTheta) * peakR * 0.8);
+                    ctx.stroke();
+                }
+
+                // Central stem, seen end-on from directly above.
+                ctx.fillStyle = '#5a3d1a';
+                ctx.strokeStyle = shadeColor('#5a3d1a', 0.65);
+                ctx.lineWidth = Math.max(size * 0.02, 1);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, stemR, stemR * 0.88, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.strokeStyle = shadeColor('#5a3d1a', 1.5);
+                ctx.lineWidth = Math.max(size * 0.015, 1);
+                ctx.beginPath();
+                ctx.moveTo(-stemR * 0.5, 0);
+                ctx.lineTo(stemR * 0.5, 0);
+                ctx.moveTo(0, -stemR * 0.4);
+                ctx.lineTo(0, stemR * 0.4);
+                ctx.stroke();
+            }
+
+            if (variant !== 2) {
+                // Stem
+                ctx.strokeStyle = '#5a3d1a';
+                ctx.lineWidth = Math.max(size * 0.1, 1);
+                ctx.beginPath();
+                ctx.moveTo(size * 0.05, -size * 0.6);
+                ctx.quadraticCurveTo(size * 0.2, -size * 0.85, size * 0.05, -size * 1.0);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // Pine cone — third Autumn Leaves accent type. From a slight distance
+        // a real cone's scale texture reads as a diagonal crosshatch (the
+        // furrows between overlapping scales), with a small bright highlight
+        // at each scale's exposed tip mattering far more than the scale's
+        // body — so the texture here is line-based (two diagonal families
+        // plus tip ticks) rather than filled scale shapes.
+        function drawPineCone(ctx, x, y, size, angle, hash) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            let bodyColor = (hash % 2 === 0) ? '#6b4a2f' : '#7d5a3a';
+            let bodyPath = new Path2D();
+            bodyPath.moveTo(0, -size * 1.3);
+            bodyPath.quadraticCurveTo(size * 0.55, -size * 0.6, size * 0.5, size * 0.3);
+            bodyPath.quadraticCurveTo(size * 0.4, size * 1.1, 0, size * 1.35);
+            bodyPath.quadraticCurveTo(-size * 0.4, size * 1.1, -size * 0.5, size * 0.3);
+            bodyPath.quadraticCurveTo(-size * 0.55, -size * 0.6, 0, -size * 1.3);
+            bodyPath.closePath();
+            ctx.fillStyle = shadeColor(bodyColor, 0.85);
+            ctx.strokeStyle = shadeColor(bodyColor, 0.5);
+            ctx.lineWidth = Math.max(size * 0.05, 1);
+            ctx.fill(bodyPath);
+            ctx.stroke(bodyPath);
+
+            // Half-width of the body at a given y, sampled from the body's own
+            // curve (via bisection on the same bezier segments used to draw
+            // it). Every crosshatch coordinate below is bounded analytically
+            // by this instead of a ctx.clip() — clipping wide shapes against
+            // the pointed tips is what caused sliver artifacts last round.
+            let bez2c = (p0, p1, p2, t) => {
+                let mt = 1 - t;
+                return { x: mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x, y: mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y };
+            };
+            let coneTop = { x: 0, y: -size * 1.3 }, coneMidR = { x: size * 0.5, y: size * 0.3 }, coneCtrlUpper = { x: size * 0.55, y: -size * 0.6 };
+            let coneBottom = { x: 0, y: size * 1.35 }, coneCtrlLower = { x: size * 0.4, y: size * 1.1 };
+            function halfWidthAtY(targetY) {
+                let p0, p1, p2;
+                if (targetY <= coneMidR.y) { p0 = coneTop; p1 = coneCtrlUpper; p2 = coneMidR; }
+                else { p0 = coneMidR; p1 = coneCtrlLower; p2 = coneBottom; }
+                let lo = 0, hi = 1;
+                for (let k = 0; k < 16; k++) {
+                    let mid = (lo + hi) / 2;
+                    if (bez2c(p0, p1, p2, mid).y < targetY) lo = mid; else hi = mid;
+                }
+                return Math.abs(bez2c(p0, p1, p2, (lo + hi) / 2).x);
+            }
+            const GOLDEN_FRAC = 0.6180339887498949;
+            // Clamp a candidate x at a given y to the body's local half-width,
+            // preserving sign — this is what tapers the lattice into the
+            // pointed tips smoothly instead of needing a hard clip.
+            function clampToBody(px, py) {
+                let hw = halfWidthAtY(py);
+                return Math.sign(px) * Math.min(Math.abs(px), hw);
+            }
+
+            let bandCount = 11;
+            let topY = -size * 1.3, bottomY = size * 1.35;
+            let bandH = (bottomY - topY) / bandCount;
+            let anchorSpacing = size * 0.3;
+            ctx.lineWidth = Math.max(size * 0.022, 1);
+            for (let i = 0; i < bandCount; i++) {
+                let bandTopY = topY + i * bandH, bandBottomY = bandTopY + bandH;
+                let bandMidY = (bandTopY + bandBottomY) / 2;
+                let hwMid = halfWidthAtY(bandMidY);
+                if (hwMid < size * 0.04) continue;
+                let numAnchors = Math.max(1, Math.round((hwMid * 2) / anchorSpacing));
+                let cellW = (hwMid * 2) / numAnchors;
+                let phase = ((i * GOLDEN_FRAC) % 1) * cellW;
+                for (let k = -1; k <= numAnchors; k++) {
+                    let ax = -hwMid + phase + (k + 0.5) * cellW;
+                    if (Math.abs(ax) > halfWidthAtY(bandMidY) + cellW * 0.5) continue;
+                    let half = cellW / 2;
+                    // The X formed by these two diagonals within this cell
+                    // shares edges with neighboring cells, forming one
+                    // continuous diagonal lattice down the whole cone — the
+                    // furrow crosshatch a real cone shows from a distance.
+                    let topL = clampToBody(ax - half, bandTopY), topR = clampToBody(ax + half, bandTopY);
+                    let botL = clampToBody(ax - half, bandBottomY), botR = clampToBody(ax + half, bandBottomY);
+                    ctx.strokeStyle = shadeColor(bodyColor, 0.4 + 0.08 * ((i + k + hash) % 2));
+                    ctx.beginPath();
+                    ctx.moveTo(topL, bandTopY);
+                    ctx.lineTo(botR, bandBottomY);
+                    ctx.moveTo(topR, bandTopY);
+                    ctx.lineTo(botL, bandBottomY);
+                    ctx.stroke();
+
+                    // Bright tip tick at the X's crossing point — a small,
+                    // sharp highlight, since that's what actually reads from
+                    // a distance, not the scale body between the furrows.
+                    if (Math.abs(ax) <= halfWidthAtY(bandMidY)) {
+                        ctx.strokeStyle = shadeColor(bodyColor, 1.7);
+                        ctx.lineWidth = Math.max(size * 0.028, 1);
+                        let tickLen = Math.min(size * 0.09, cellW * 0.4);
+                        ctx.beginPath();
+                        ctx.moveTo(ax, bandMidY - tickLen * 0.5);
+                        ctx.lineTo(ax, bandMidY + tickLen * 0.5);
+                        ctx.stroke();
+                        ctx.lineWidth = Math.max(size * 0.022, 1);
+                    }
+                }
+            }
+
+            ctx.restore();
+        }
+
         // Dedicated renderer for complex steampunk-style overlapping gears
         function drawSteampunkGear(ctx, cx, cy, radius, color, hash, palette, rotation) {
             ctx.save();
@@ -2577,6 +3076,19 @@
                     drawButton(ctx, pt.x, pt.y, baseSize * 0.9, currentColor, hash + i * 37);
                 } else if (currentStyle === 'gears') {
                     drawSteampunkGear(ctx, pt.x, pt.y, baseSize * 1.1, currentColor, hash + i * 37, currentPalette, pt.angle);
+                } else if (currentStyle === 'autumn_leaves') {
+                    // Acorns/gourds/pinecones have a clear "up" (stem/tip), so
+                    // landmarks stay near-vertical like Christmas's gingerbread/
+                    // trees, instead of tilting to the path's tangent.
+                    if (isLandmark) {
+                        let uprightAngle = (patternRandom() - 0.5) * 0.3;
+                        let t = hash % 3;
+                        if (t === 0) drawAcorn(ctx, pt.x, pt.y, baseSize * 1.1, uprightAngle, hash);
+                        else if (t === 1) drawGourd(ctx, pt.x, pt.y, baseSize * 0.9, uprightAngle, hash);
+                        else drawPineCone(ctx, pt.x, pt.y, baseSize * 1.1, uprightAngle, hash);
+                    } else {
+                        drawFallLeaf(ctx, pt.x, pt.y, baseSize, currentColor, pt.angle, hash);
+                    }
                 } else if (currentStyle === 'illustrated') {
                     // "Pipes and Gears": trace a continuous pipe styled like Fill's
                     // illustrated pipes (black outline, rib texture, rivet joints),
@@ -3213,6 +3725,77 @@
 
                 allDrawables.forEach(item => {
                     drawSteampunkGear(ctx, item.cx, item.cy, item.radius, item.streakColor, item.hash, currentPalette);
+                });
+
+            } else if (currentStyle === 'autumn_leaves') {
+                let allDrawables = [];
+                // Same "non-trace" pure-random scatter as Gears — Density drives
+                // total count directly, no grid.
+                let numLeaves = Math.round(220 * densityFactor);
+
+                // Sizes sets the overall min/max leaf-size range; huge/medium/
+                // small tiers split it into thirds, same convention as Gears.
+                let sizeSpan = sizeMaxAbs - sizeMinAbs;
+                let smallLo = sizeMinAbs, smallHi = sizeMinAbs + sizeSpan / 3;
+                let medLo = smallHi, medHi = sizeMinAbs + sizeSpan * 2 / 3;
+                let hugeLo = medHi, hugeHi = sizeMaxAbs;
+
+                for (let i = 0; i < numLeaves; i++) {
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
+
+                    let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                    let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                    let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                    if (isInsideEffective) {
+                        let hash = Math.floor(patternRandom() * 10000);
+                        let layer = (hash % 10 < 3) ? 0 : ((hash % 10 < 7) ? 1 : 2);
+                        let size = (layer === 0) ? (hugeLo + patternRandom() * (hugeHi - hugeLo))
+                                 : (layer === 1) ? (medLo + patternRandom() * (medHi - medLo))
+                                 : (smallLo + patternRandom() * (smallHi - smallLo));
+
+                        allDrawables.push({
+                            type: 'leaf', cx: px, cy: py, size: size, layer: layer, hash: hash,
+                            angle: patternRandom() * Math.PI * 2
+                        });
+                    }
+                }
+
+                // Accent Count here adds acorns, gourds, and pinecones mixed into
+                // the pile — unlike Gears' background Accent Gears, these are
+                // drawn on top (layer 3) since they're meant to stand out, not hide.
+                let accentCount = parseInt(gearSlider.value, 10);
+                for (let i = 0; i < accentCount; i++) {
+                    let px = minX - expandBound + patternRandom() * (maxX - minX + 2 * expandBound);
+                    let py = minY - expandBound + patternRandom() * (maxY - minY + 2 * expandBound);
+
+                    let isInsideRaw = pointInPolygon({x: px, y: py}, hullPoints);
+                    let dist = distanceToPolygon({x: px, y: py}, hullPoints);
+                    let isInsideEffective = isInsideRaw ? (dist >= marginPx) : (marginPx < 0 && dist <= -marginPx);
+
+                    if (isInsideEffective) {
+                        let hash = Math.floor(patternRandom() * 10000);
+                        let accentType = ['acorn', 'gourd', 'pinecone'][hash % 3];
+                        let size = sizeMaxAbs * (0.9 + patternRandom() * 0.5);
+                        allDrawables.push({
+                            type: accentType, cx: px, cy: py, size: size, layer: 3, hash: hash,
+                            angle: (patternRandom() - 0.5) * 0.5
+                        });
+                    }
+                }
+
+                // Cluster Run is disabled (and ignored, via maxRun=0) for this
+                // style, same rationale as Gears: placement is fully random, so
+                // a run cap has nothing spatially adjacent to constrain.
+                assignStreakColors(allDrawables.filter(it => it.type === 'leaf'), currentPalette, baseColorChangeChance, 0);
+
+                allDrawables.sort((a, b) => a.layer - b.layer);
+                allDrawables.forEach(item => {
+                    if (item.type === 'leaf') drawFallLeaf(ctx, item.cx, item.cy, item.size, item.streakColor, item.angle, item.hash);
+                    else if (item.type === 'acorn') drawAcorn(ctx, item.cx, item.cy, item.size, item.angle, item.hash);
+                    else if (item.type === 'gourd') drawGourd(ctx, item.cx, item.cy, item.size, item.angle, item.hash);
+                    else drawPineCone(ctx, item.cx, item.cy, item.size, item.angle, item.hash);
                 });
 
             } else if (currentStyle === 'christmas') {
