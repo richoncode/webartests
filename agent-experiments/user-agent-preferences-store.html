@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A2A Decentralized Preference Delegation - Granular Steps</title>
+    <style>
+        :root {
+            --bg-color: #090d16;
+            --card-bg: #111827;
+            --border-color: #1f2937;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent-user: #3b82f6;
+            --accent-agent: #6366f1;
+            --accent-sport: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            margin: 0 0 4px 0;
+            color: #60a5fa;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin: 0;
+        }
+
+        .dc-trigger-row {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            justify-content: flex-end;
+            flex-shrink: 0;
+            margin-bottom: 8px;
+        }
+
+        .dc-trigger {
+            background: var(--card-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .dc-trigger:hover {
+            background: #17203a;
+            border-color: #2a4060;
+            opacity: 1;
+        }
+
+        .dc-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 5, 10, 0.7);
+            backdrop-filter: blur(2px);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .dc-overlay.open {
+            display: flex;
+        }
+
+        .dc-modal {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            max-width: 640px;
+            width: 100%;
+            max-height: 82vh;
+            overflow-y: auto;
+            padding: 28px 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .dc-modal h2 {
+            margin: 0 0 4px 0;
+            font-size: 1.2rem;
+            color: #60a5fa;
+        }
+
+        .dc-modal .dc-subtitle {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin: 0 0 20px 0;
+        }
+
+        .dc-modal h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent-agent);
+            margin: 22px 0 10px 0;
+        }
+
+        .dc-modal h3:first-of-type {
+            margin-top: 0;
+        }
+
+        .dc-modal ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 0.88rem;
+            line-height: 1.6;
+            color: var(--text-main);
+        }
+
+        .dc-modal li {
+            margin-bottom: 8px;
+        }
+
+        .dc-cite {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-style: italic;
+        }
+
+        .dc-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.3rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .dc-close:hover {
+            color: var(--text-main);
+            opacity: 1;
+        }
+
+        /* Top State Overview Bar */
+        .state-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        .state-box {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 34px 8px 12px;
+            font-size: 0.8rem;
+            height: 130px;
+            box-sizing: border-box;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .state-box .friendly-text {
+            display: block;
+            white-space: pre-line;
+            overflow-wrap: break-word;
+            line-height: 1.4;
+            font-family: inherit;
+        }
+
+        .state-box span {
+            font-family: monospace;
+            color: var(--accent-green);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        button {
+            background-color: var(--accent-user);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.9; }
+        button:disabled { background-color: #374151; color: #6b7280; cursor: not-allowed; }
+
+        /* Memory-mode toggle, sits to the left of the Next/Reset buttons */
+        .mode-toggle {
+            display: flex;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .mode-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 6px 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .mode-btn:hover { opacity: 1; color: var(--text-main); }
+
+        .mode-btn.active {
+            background: var(--accent-agent);
+            color: white;
+        }
+
+        /* Chat stream + always-on progress track, side by side */
+        .chat-wrap {
+            width: 100%;
+            max-width: 900px;
+            flex-grow: 1;
+            min-height: 0;
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Single Column Chat Stream Container */
+        .chat-container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            flex-grow: 1;
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            /* Native scrollbar hidden — a custom, always-visible progress
+               track (see .scroll-track) replaces it so the indicator never
+               fades out when scrolling stops, on any OS/browser. */
+            scrollbar-width: none;
+        }
+        .chat-container::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        /* Custom scroll/progress indicator — always rendered, never an
+           OS-managed overlay, so it can't auto-hide. */
+        .scroll-track {
+            width: 10px;
+            flex-shrink: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            position: relative;
+        }
+        .scroll-thumb {
+            position: absolute;
+            left: 1px;
+            right: 1px;
+            top: 0;
+            min-height: 24px;
+            background: var(--accent-agent);
+            border-radius: 5px;
+            transition: top 0.12s ease, height 0.12s ease;
+        }
+
+        /* Message alignment base - Width set to 60% */
+        .msg {
+            width: 60%;
+            padding: 12px 34px 24px 16px; /* Extra bottom padding for step id badge, extra right padding for json icon */
+            border-radius: 12px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            font-family: monospace;
+            box-sizing: border-box;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            text-align: left;
+            position: relative;
+        }
+
+        /* User: Justified Left */
+        .msg-user {
+            align-self: flex-start;
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+        }
+
+        /* User Agent: Justified Center */
+        .msg-agent {
+            align-self: center;
+            background-color: #312e81;
+            border: 1px solid #6366f1;
+            color: #c7d2fe;
+        }
+
+        /* Sport Agent: Justified Right */
+        .msg-sport {
+            align-self: flex-end;
+            background-color: #581c87;
+            border: 1px solid #8b5cf6;
+            color: #e9d5ff;
+        }
+
+        /* Options presented to Richard: Justified Left (facing the user, like msg-user) */
+        .msg-options {
+            align-self: flex-start;
+            background-color: #1e3a8a;
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+        }
+
+        .options-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .option-chip {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 0.78rem;
+            white-space: normal;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(147, 197, 253, 0.4);
+            border-radius: 999px;
+            padding: 6px 14px;
+            color: #dbeafe;
+        }
+
+        .step-id-badge {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+    }
+
+        /* (Q)/(P)/(PQ) suggestion-source tags — hover to see what they mean */
+        .tag-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tag-badge {
+            cursor: help;
+            font-weight: 700;
+            text-decoration: underline dotted;
+            text-underline-offset: 2px;
+        }
+
+        .tag-tooltip {
+            display: none;
+            position: absolute;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #05070c;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            color: #d1d5db;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+            z-index: 30;
+        }
+
+        .tag-wrap:hover .tag-tooltip {
+            display: block;
+        }
+
+        .json-icon-wrap {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+        }
+
+        .json-icon {
+            display: inline-block;
+            font-family: monospace;
+            font-size: 0.7rem;
+            font-weight: bold;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            padding: 1px 6px;
+            cursor: help;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .json-icon-wrap:hover .json-icon {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .json-tooltip {
+            display: none;
+            position: absolute;
+            top: 22px;
+            right: 0;
+            background: #05070c;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.72rem;
+            line-height: 1.35;
+            white-space: pre;
+            max-width: 340px;
+            max-height: 260px;
+            overflow: auto;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            z-index: 20;
+            color: #d1d5db;
+        }
+
+        .json-icon-wrap:hover .json-tooltip {
+            display: block;
+        }
+
+        .step-divider {
+            align-self: flex-start;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            border-bottom: 1px dashed var(--border-color);
+            width: 100%;
+            text-align: left;
+            padding-bottom: 4px;
+            margin: 8px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dc-trigger-row">
+        <button type="button" class="dc-trigger" onclick="openDesignCriteria()">📐 Design Criteria</button>
+    </div>
+
+    <div class="dc-overlay" id="dcOverlay" onclick="if (event.target === this) closeDesignCriteria()">
+        <div class="dc-modal">
+            <button type="button" class="dc-close" onclick="closeDesignCriteria()" aria-label="Close">×</button>
+            <h2>Design Criteria</h2>
+            <p class="dc-subtitle">Why this demo works the way it does.</p>
+
+            <h3>What this shows</h3>
+            <ul>
+                <li>Richard's personal agent (UserAgent) talking to a specialist sports agent (SportAgent), using the A2A (Agent2Agent) protocol.</li>
+                <li>The point: personalization can happen without the server ever storing your data.</li>
+            </ul>
+
+            <h3>Key choices</h3>
+            <ul>
+                <li>SportAgent never remembers you. It just publishes what it can do in a small public profile, the same way any A2A agent advertises itself before you talk to it. <span class="dc-cite">(A2A — Agent Card discovery)</span></li>
+                <li>Your preferences live only on your device. The UserAgent holds them locally and decides, each time, whether to share them.</li>
+                <li>No memory is still a usable experience — just a less proactive one. Without saved preferences, you still get a good answer; you just don't get the extra, personalized touch.</li>
+                <li>Personalization rides along as normal message data — there's no special "memory" endpoint. That's how A2A expects agents to pass context: inside the request itself, not through shared state. <span class="dc-cite">(A2A — messages carry all shared context)</span></li>
+                <li>Three memory modes, one protocol. Whether your agent remembers everything, only some things, or nothing, SportAgent's replies and the wire format stay the same — only what the client sends changes. This is what "stateless" is supposed to buy you.</li>
+            </ul>
+
+            <h3>Demo Interface Choices</h3>
+            <ul>
+                <li>Suggestion tags — (Q)/(P)/(PQ) — aren't part of the protocol, just a teaching label so it's obvious whether a follow-up came from what you asked (Q), what you're known to like (P), or both.</li>
+                <li>Fixed-size boxes so the layout doesn't jump as text changes.</li>
+                <li>Raw JSON is one hover away — the story stays readable, the wire format stays honest.</li>
+                <li>Restart lands you just past the opening question, not a blank screen — Previous/Next let you scrub back and forth from there without losing your place.</li>
+            </ul>
+        </div>
+    </div>
+
+    <header>
+        <h1>Stateless A2A Preference-Delegation Protocol</h1>
+        <p>Granular Step-by-Step Flow: User (Left) ➔ UserAgent (Center) ➔ SportAgent (Right)</p>
+    </header>
+
+    <!-- State Overview Bar -->
+    <div class="state-bar">
+        <div class="state-box">
+            <strong>📱 Agent Memory:</strong>
+            <span id="localVaultFriendly" class="friendly-text" style="color: var(--accent-green);">No preferences stored</span>
+            <span class="json-icon-wrap">
+                <span class="json-icon">{ }</span>
+                <pre class="json-tooltip" id="localVaultJson">{ "preferences": {} }</pre>
+            </span>
+        </div>
+        <div class="state-box">
+            <strong>🎾 Server Database State:</strong>
+            <span id="serverStateFriendly" class="friendly-text" style="color: var(--accent-sport);">Stateless · 0 users stored</span>
+            <span class="json-icon-wrap">
+                <span class="json-icon">{ }</span>
+                <pre class="json-tooltip" id="serverStateJson">{ "user_database": null (Stateless) }</pre>
+            </span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="mode-toggle" id="modeToggle">
+            <button type="button" class="mode-btn active" data-mode="full" onclick="setMemoryMode('full')">🧠 Agent User Pref Memory</button>
+            <button type="button" class="mode-btn" data-mode="noPref" onclick="setMemoryMode('noPref')">🗒️ No Preference Memory</button>
+            <button type="button" class="mode-btn" data-mode="noMem" onclick="setMemoryMode('noMem')">🚫 No Memory</button>
+        </div>
+        <button id="prevBtn" onclick="prevStep()" disabled style="margin-left: 18px;">Previous</button>
+        <button id="nextBtn" onclick="runNextStep()">Next</button>
+        <button onclick="resetDemo()" style="background-color: var(--accent-red);">Restart</button>
+    </div>
+
+    <!-- Single Column Chat Stream + always-visible progress track -->
+    <div class="chat-wrap">
+        <div class="chat-container" id="chatStream">
+            <div style="text-align: center; color: var(--text-muted); font-style: italic; margin-top: 20px;" id="welcomeMsg">
+                System ready. Click 'Next' to start the interactive protocol sequence.
+            </div>
+        </div>
+        <div class="scroll-track" id="scrollTrack">
+            <div class="scroll-thumb" id="scrollThumb"></div>
+        </div>
+    </div>
+
+    <script>
+        function openDesignCriteria() {
+            document.getElementById("dcOverlay").classList.add("open");
+        }
+
+        function closeDesignCriteria() {
+            document.getElementById("dcOverlay").classList.remove("open");
+        }
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeDesignCriteria();
+        });
+
+        let currentStep = 0;
+        let memoryMode = "full"; // "full" | "noPref" | "noMem"
+
+        const STATELESS_SERVER = "{ \"server_side_storage\": null, \"note\": \"Stateless per Agent Card\" }";
+        const NO_VAULT_DISPLAY = "{ \"agent_memory\": \"not available — this UserAgent has no preference memory\" }";
+
+        const steps = [
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: { type: "divider", text: "User begins discussing the sport with their agent." }
+            },
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: { type: "user", text: "💬 Richard:\n\"Can you get me a breakdown of the Alcaraz match?\"", id: "1U" }
+            },
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent → SportAgent] Discovery:\nQueries for agents that can help with deep sports questions.",
+                    json: "{\n  \"method\": \"GET\",\n  \"url\": \"https://sports-analytics-engine.com/.well-known/agent-card.json\"\n}",
+                    id: "1UA1"
+                }
+            },
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "sport",
+                    text: "🧠 [SportAgent]\nresponds with Agent Card:\n• Name: TennisExpectationAgent\n• Stateless expert tennis-match analytics engine\n• Accepts preference hints via message metadata\n• Holds zero server-side user storage\n• Will respond with suggestions for user",
+                    json: "{\n  \"name\": \"TennisExpectationAgent\",\n  \"description\": \"Stateless expert tennis match analytics engine.\",\n  \"capabilities\": {\n    \"preference_hints_accepted\": true\n  },\n  \"notice\": \"We maintain zero server-side user storage. However, we welcome user-side sport preference hints injected via message metadata to tailor tactical output.\"\n}",
+                    id: "1SA1"
+                }
+            },
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent]:\nChecks agent memory — no known preferences.\n\nAsks: \"What is the tactical expectation for the Alcaraz match?\"\nUser Preferences: none",
+                    json: "{\n  \"parts\": [{\"text\": \"What is the tactical expectation for the Alcaraz match?\"}]\n}",
+                    id: "1UA2"
+                },
+                overrides: {
+                    noPref: {
+                        text: "🤖 [UserAgent]:\nNo agent memory — no known preferences.\n\nAsks SportAgent: \"What is the tactical expectation for the Alcaraz match?\"\nUser Preferences: none"
+                    },
+                    noMem: {
+                        text: "🤖 [UserAgent]:\nNo agent memory — no known preferences.\n\nAsks SportAgent: \"What is the tactical expectation for the Alcaraz match?\"\nUser Preferences: none"
+                    }
+                }
+            },
+            {
+                vaultData: "{ \"preferences\": {} }",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "sport",
+                    text: "🧠 [SportAgent]:\nResponds: tactical breakdown.\nNo user preferences\n\nSuggests User Preferences to remember:\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats\n\nUser Suggestions:\n• Compare Alcaraz's serve stats against his next opponent (Q)\n• See his recent grass-court win/loss record (Q)\n• Pull his head-to-head history on grass courts (Q)",
+                    json: "{\n  \"parts\": [{\"text\": \"Alcaraz enters with a strong baseline game...\"}],\n  \"suggested_preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  },\n  \"suggested_followups\": [\n    \"Compare Alcaraz's serve stats against his next opponent (Q)\",\n    \"See his recent grass-court win/loss record (Q)\",\n    \"Pull his head-to-head history on grass courts (Q)\"\n  ]\n}",
+                    id: "1SA2"
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent]:\nResponds to user\n\nSaves preferences to agent memory:\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats\n\nUser Suggestions:\n• Compare Alcaraz's serve stats against his next opponent (Q)\n• See his recent grass-court win/loss record (Q)\n• Pull his head-to-head history on grass courts (Q)",
+                    json: "{\n  \"preferred_depth\": \"expert_tactical\",\n  \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"],\n  \"suggested_followups\": [\n    \"Compare Alcaraz's serve stats against his next opponent (Q)\",\n    \"See his recent grass-court win/loss record (Q)\",\n    \"Pull his head-to-head history on grass courts (Q)\"\n  ]\n}",
+                    id: "1UA3"
+                },
+                overrides: {
+                    noPref: {
+                        text: "🤖 [UserAgent]:\nResponds to user\n\nPreferences ignored - not remembered.\n\nUser Suggestions:\n• Compare Alcaraz's serve stats against his next opponent (Q)\n• See his recent grass-court win/loss record (Q)\n• Pull his head-to-head history on grass courts (Q)",
+                        json: "{\n  \"suggested_followups\": [\n    \"Compare Alcaraz's serve stats against his next opponent (Q)\",\n    \"See his recent grass-court win/loss record (Q)\",\n    \"Pull his head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    },
+                    noMem: {
+                        text: "🤖 [UserAgent]:\nResponds to user\n\nPreferences ignored - not remembered.\n\nUser Suggestions:\n• Compare Alcaraz's serve stats against his next opponent (Q)\n• See his recent grass-court win/loss record (Q)\n• Pull his head-to-head history on grass courts (Q)",
+                        json: "{\n  \"suggested_followups\": [\n    \"Compare Alcaraz's serve stats against his next opponent (Q)\",\n    \"See his recent grass-court win/loss record (Q)\",\n    \"Pull his head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    }
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "options",
+                    text: "🤖 [UserAgent presents to Richard]:\n\"Alcaraz enters with a strong baseline game...\"\n\nYou might also want to ask —",
+                    options: [
+                        "Compare Alcaraz's serve stats against his next opponent (Q)",
+                        "See his recent grass-court win/loss record (Q)",
+                        "Pull his head-to-head history on grass courts (Q)"
+                    ],
+                    id: "1UA4"
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: { type: "divider", text: "Days later." }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: { type: "user", text: "💬 Richard:\n\"Give me the outlook for today's quarterfinal.\"", id: "2U" }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent]: New session starts.\nRecalls from the SportAgent's Agent Card that it accepts preference hints via message metadata.",
+                    id: "2UA1"
+                },
+                overrides: {
+                    noMem: {
+                        text: "🤖 [UserAgent → SportAgent]:\nNo memory of any prior contact — re-discovers capabilities from scratch.\n→ Confirms (again) that SportAgent accepts preference hints via message metadata.",
+                        json: "{\n  \"method\": \"GET\",\n  \"url\": \"https://sports-analytics-engine.com/.well-known/agent-card.json\"\n}"
+                    }
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent → SportAgent]:\nChecks agent memory — user preferences exist.\n\nAsks: \"Give me the outlook for today's quarterfinal.\"\nUser Preferences:\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats",
+                    json: "{\n  \"parts\": [{\"text\": \"Give me the outlook for today's quarterfinal.\"}],\n  \"context_hints\": {\n    \"source\": \"local_user_memory\",\n    \"preferences\": {\n      \"preferred_depth\": \"expert_tactical\",\n      \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n    }\n  }\n}",
+                    id: "2UA2"
+                },
+                overrides: {
+                    noPref: {
+                        text: "🤖 [UserAgent → SportAgent]:\nNo agent memory — no known preferences.\n\nAsks: \"Give me the outlook for today's quarterfinal.\"\nUser Preferences: none",
+                        json: "{\n  \"parts\": [{\"text\": \"Give me the outlook for today's quarterfinal.\"}]\n}"
+                    },
+                    noMem: {
+                        text: "🤖 [UserAgent → SportAgent]:\nNo agent memory — no known preferences.\n\nAsks: \"Give me the outlook for today's quarterfinal.\"\nUser Preferences: none",
+                        json: "{\n  \"parts\": [{\"text\": \"Give me the outlook for today's quarterfinal.\"}]\n}"
+                    }
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "sport",
+                    text: "🧠 [SportAgent]:\nResponds: grass-court holding percentages directly\nAnswers using user preferences\n\nSuggests User Preferences to remember:\n• Key interests: pressure-point conversion stats\n\nUser Suggestions:\n• Since you track serve-and-volley stats — a deeper serve-effectiveness breakdown for this match (PQ)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (P)",
+                    json: "{\n  \"parts\": [{\"text\": \"Bypassing general overview. Delivering high-depth grass-court holding percentages...\"}],\n  \"suggested_preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\", \"pressure_point_conversion\"]\n  },\n  \"suggested_followups\": [\n    \"Since you track serve-and-volley stats — a deeper serve-effectiveness breakdown for this match (PQ)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (P)\"\n  ]\n}",
+                    id: "2SA1"
+                },
+                overrides: {
+                    noPref: {
+                        text: "🧠 [SportAgent]:\nResponds: standard baseline overview.\nNo user preferences\n\nSuggests remembering:\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats\n\nUser Suggestions:\n• Compare grass-court serve stats against the semifinal opponent (Q)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (Q)",
+                        json: "{\n  \"parts\": [{\"text\": \"Here's the standard tactical overview for today's quarterfinal...\"}],\n  \"suggested_preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  },\n  \"suggested_followups\": [\n    \"Compare grass-court serve stats against the semifinal opponent (Q)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    },
+                    noMem: {
+                        text: "🧠 [SportAgent]:\nResponds: standard baseline overview.\nNo user preferences\n\nSuggests remembering:\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats\n\nUser Suggestions:\n• Compare grass-court serve stats against the semifinal opponent (Q)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (Q)",
+                        json: "{\n  \"parts\": [{\"text\": \"Here's the standard tactical overview for today's quarterfinal...\"}],\n  \"suggested_preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\"]\n  },\n  \"suggested_followups\": [\n    \"Compare grass-court serve stats against the semifinal opponent (Q)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    }
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\", \"pressure_point_conversion\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "agent",
+                    text: "🤖 [UserAgent]:\nRemembers new user preferences\n• Preferred depth: expert tactical analysis\n• Key interests: grass-court metrics, serve-and-volley stats, pressure-point conversion\n\nUser Suggestions:\n• Since you track serve-and-volley stats — a deeper serve-effectiveness breakdown for this match (PQ)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (P)",
+                    json: "{\n  \"preferred_depth\": \"expert_tactical\",\n  \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\", \"pressure_point_conversion\"],\n  \"suggested_followups\": [\n    \"Since you track serve-and-volley stats — a deeper serve-effectiveness breakdown for this match (PQ)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (P)\"\n  ]\n}",
+                    id: "2UA3"
+                },
+                overrides: {
+                    noPref: {
+                        text: "🤖 [UserAgent]:\nResponds to user\n\nPreferences ignored - not remembered.\n\nUser Suggestions:\n• Compare grass-court serve stats against the semifinal opponent (Q)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (Q)",
+                        json: "{\n  \"suggested_followups\": [\n    \"Compare grass-court serve stats against the semifinal opponent (Q)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    },
+                    noMem: {
+                        text: "🤖 [UserAgent]:\nResponds to user\n\nPreferences ignored - not remembered.\n\nUser Suggestions:\n• Compare grass-court serve stats against the semifinal opponent (Q)\n• See a set-by-set win probability breakdown (Q)\n• Pull head-to-head history on grass courts (Q)",
+                        json: "{\n  \"suggested_followups\": [\n    \"Compare grass-court serve stats against the semifinal opponent (Q)\",\n    \"See a set-by-set win probability breakdown (Q)\",\n    \"Pull head-to-head history on grass courts (Q)\"\n  ]\n}"
+                    }
+                }
+            },
+            {
+                vaultData: "{\n  \"preferences\": {\n    \"preferred_depth\": \"expert_tactical\",\n    \"key_interests\": [\"grass_court_metrics\", \"serve_and_volley_stats\", \"pressure_point_conversion\"]\n  }\n}",
+                serverData: STATELESS_SERVER,
+                message: {
+                    type: "options",
+                    text: "🤖 [UserAgent presents to Richard]:\nYou might also want to ask —",
+                    options: [
+                        "Since you track serve-and-volley stats — a deeper serve-effectiveness breakdown for this match (PQ)",
+                        "See a set-by-set win probability breakdown (Q)",
+                        "Pull head-to-head history on grass courts (P)"
+                    ],
+                    id: "2UA4"
+                }
+            }
+        ];
+
+        // Resolves a step's message for the active memory mode: "full" always
+        // uses the base message; "noPref"/"noMem" apply that mode's override
+        // (if the step has one) on top of the base message, field by field.
+        function resolveMessage(step) {
+            const base = step.message;
+            if (memoryMode === "full" || !step.overrides || !step.overrides[memoryMode]) {
+                return base;
+            }
+            return Object.assign({}, base, step.overrides[memoryMode]);
+        }
+
+        function getVaultDisplay(step) {
+            return memoryMode === "full" ? step.vaultData : NO_VAULT_DISPLAY;
+        }
+
+        // Short, human-readable summary for the fixed-size state box — the
+        // full JSON is still available via that box's hover icon.
+        function friendlyMemoryText(vaultJson) {
+            if (memoryMode !== "full") return "🚫 No memory available";
+            let data;
+            try {
+                data = JSON.parse(vaultJson);
+            } catch (e) {
+                return "No preferences stored";
+            }
+            const prefs = data.preferences || {};
+            const keys = Object.keys(prefs);
+            if (keys.length === 0) return "No preferences stored";
+            const depth = String(prefs.preferred_depth || "").replace(/_/g, " ");
+            const interests = (prefs.key_interests || []).map((i) => i.replace(/_/g, " ")).join(", ");
+            return `✅ Preferences:\n• Depth: ${depth}\n• Interests: ${interests}`;
+        }
+
+        function applyStateBar(vaultJson, serverJson) {
+            document.getElementById("localVaultJson").innerText = vaultJson;
+            document.getElementById("localVaultFriendly").innerText = friendlyMemoryText(vaultJson);
+            document.getElementById("serverStateJson").innerText = serverJson;
+            document.getElementById("serverStateFriendly").innerText = "Stateless · 0 users stored";
+        }
+
+        const TAG_EXPLANATIONS = {
+            Q: "From the specific question asked",
+            P: "From a known user preference",
+            PQ: "From both the question and a known preference"
+        };
+
+        // Renders text into `el`, turning any trailing (Q)/(P)/(PQ) suggestion
+        // tag into a small hoverable badge that spells out what it means —
+        // everything else is appended as plain text, same as innerText would.
+        function appendTextWithTags(el, text) {
+            const re = /\((PQ|Q|P)\)/g;
+            let lastIndex = 0;
+            let match;
+            while ((match = re.exec(text)) !== null) {
+                if (match.index > lastIndex) {
+                    el.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                }
+                const tag = match[1];
+                const wrap = document.createElement("span");
+                wrap.className = "tag-wrap";
+                const badge = document.createElement("span");
+                badge.className = "tag-badge";
+                badge.innerText = `(${tag})`;
+                const tooltip = document.createElement("span");
+                tooltip.className = "tag-tooltip";
+                tooltip.innerText = TAG_EXPLANATIONS[tag];
+                wrap.appendChild(badge);
+                wrap.appendChild(tooltip);
+                el.appendChild(wrap);
+                lastIndex = re.lastIndex;
+            }
+            if (lastIndex < text.length) {
+                el.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
+        }
+
+        function buildStepEl(step) {
+            const msg = resolveMessage(step);
+            const el = document.createElement("div");
+
+            if (msg.type === "divider") {
+                el.className = "step-divider";
+                el.innerText = msg.text;
+            } else if (msg.type === "options") {
+                el.className = "msg msg-options";
+
+                const header = document.createElement("div");
+                header.className = "options-header";
+                header.innerText = msg.text;
+                el.appendChild(header);
+
+                // Some "presented to Richard" steps are a plain delivered
+                // response rather than a set of chip options — only build
+                // the chip row when there's actually a list to show.
+                if (msg.options) {
+                    const chips = document.createElement("div");
+                    chips.className = "options-chips";
+                    msg.options.forEach((opt) => {
+                        const chip = document.createElement("span");
+                        chip.className = "option-chip";
+                        appendTextWithTags(chip, opt);
+                        chips.appendChild(chip);
+                    });
+                    el.appendChild(chips);
+                }
+
+                if (msg.id) {
+                    const badge = document.createElement("span");
+                    badge.className = "step-id-badge";
+                    badge.innerText = `[${msg.id}]`;
+                    el.appendChild(badge);
+                }
+            } else {
+                el.className = `msg msg-${msg.type}`;
+                appendTextWithTags(el, msg.text);
+
+                if (msg.json) {
+                    const iconWrap = document.createElement("span");
+                    iconWrap.className = "json-icon-wrap";
+                    const icon = document.createElement("span");
+                    icon.className = "json-icon";
+                    icon.innerText = "{ }";
+                    const tooltip = document.createElement("pre");
+                    tooltip.className = "json-tooltip";
+                    tooltip.innerText = msg.json;
+                    iconWrap.appendChild(icon);
+                    iconWrap.appendChild(tooltip);
+                    el.appendChild(iconWrap);
+                }
+
+                if (msg.id) {
+                    const badge = document.createElement("span");
+                    badge.className = "step-id-badge";
+                    badge.innerText = `[${msg.id}]`;
+                    el.appendChild(badge);
+                }
+            }
+            return el;
+        }
+
+        // Step 2 (right after the scene divider + Richard's opening question)
+        // is treated as "the beginning" — same point Restart lands on —
+        // rather than the true empty state, so Previous can't go further back.
+        const MIN_STEP = 2;
+
+        function updatePrevBtnState() {
+            document.getElementById("prevBtn").disabled = currentStep <= MIN_STEP;
+        }
+
+        function buildDividerEl(text) {
+            const el = document.createElement("div");
+            el.className = "step-divider";
+            el.innerText = text;
+            return el;
+        }
+
+        function runNextStep() {
+            if (currentStep >= steps.length) return;
+
+            const step = steps[currentStep];
+
+            applyStateBar(getVaultDisplay(step), step.serverData);
+
+            const chatStream = document.getElementById("chatStream");
+
+            // Remove welcome text on first run
+            const welcome = document.getElementById("welcomeMsg");
+            if (welcome) welcome.remove();
+
+            chatStream.appendChild(buildStepEl(step));
+
+            currentStep++;
+            if (currentStep >= steps.length) {
+                chatStream.appendChild(buildDividerEl("Demonstration complete."));
+            }
+
+            chatStream.scrollTop = chatStream.scrollHeight;
+            updateScrollThumb();
+            updatePrevBtnState();
+        }
+
+        // Steps backward one step at a time — rebuilds the chat from
+        // scratch up to the new (earlier) currentStep, same rendering path
+        // as the toggle-mode rebuild, just scrolled to the new bottom instead
+        // of preserving scroll position.
+        function prevStep() {
+            if (currentStep <= MIN_STEP) return;
+            currentStep--;
+
+            const chatStream = document.getElementById("chatStream");
+            chatStream.innerHTML = "";
+
+            if (currentStep === 0) {
+                applyStateBar(memoryMode === "full" ? "{ \"preferences\": {} }" : NO_VAULT_DISPLAY, STATELESS_SERVER);
+            } else {
+                for (let i = 0; i < currentStep; i++) {
+                    chatStream.appendChild(buildStepEl(steps[i]));
+                }
+                const lastStep = steps[currentStep - 1];
+                applyStateBar(getVaultDisplay(lastStep), lastStep.serverData);
+            }
+
+            chatStream.scrollTop = chatStream.scrollHeight;
+            updateScrollThumb();
+            updatePrevBtnState();
+        }
+
+        function resetDemo() {
+            currentStep = 0;
+            document.getElementById("chatStream").innerHTML = "";
+            // Jump ahead to just after the first two steps (the scene divider
+            // and Richard's opening question) instead of a blank slate —
+            // gives better context for where the demo picks up from.
+            runNextStep();
+            runNextStep();
+        }
+
+        // Toggling memory mode keeps flow progress exactly where it was —
+        // it just rebuilds the steps already on screen (0..currentStep-1)
+        // with that mode's step text, instead of resetting the demo.
+        function setMemoryMode(mode) {
+            memoryMode = mode;
+            document.querySelectorAll(".mode-btn").forEach((b) => {
+                b.classList.toggle("active", b.dataset.mode === mode);
+            });
+            rerenderVisibleSteps();
+        }
+
+        function rerenderVisibleSteps() {
+            const chatStream = document.getElementById("chatStream");
+            // Preserve where the user was scrolled to — toggling memory mode
+            // only swaps step text/JSON in place, it shouldn't yank the view
+            // back to the bottom if they were reading an earlier step.
+            const prevScrollTop = chatStream.scrollTop;
+            chatStream.innerHTML = "";
+
+            if (currentStep === 0) {
+                chatStream.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-style: italic; margin-top: 20px;" id="welcomeMsg">System ready. Click \'Next\' to start the interactive protocol sequence.</div>';
+                applyStateBar(memoryMode === "full" ? "{ \"preferences\": {} }" : NO_VAULT_DISPLAY, STATELESS_SERVER);
+                updateScrollThumb();
+                return;
+            }
+
+            for (let i = 0; i < currentStep; i++) {
+                chatStream.appendChild(buildStepEl(steps[i]));
+            }
+            if (currentStep >= steps.length) {
+                chatStream.appendChild(buildDividerEl("Demonstration complete."));
+            }
+
+            const lastStep = steps[currentStep - 1];
+            applyStateBar(getVaultDisplay(lastStep), lastStep.serverData);
+            chatStream.scrollTop = Math.min(prevScrollTop, chatStream.scrollHeight - chatStream.clientHeight);
+            updateScrollThumb();
+        }
+
+        // Custom always-on progress/scroll indicator — sized and positioned
+        // like a scrollbar thumb, but drawn by us so it can't fade out as an
+        // OS-managed overlay does once scrolling stops.
+        function updateScrollThumb() {
+            const el = document.getElementById("chatStream");
+            const track = document.getElementById("scrollTrack");
+            const thumb = document.getElementById("scrollThumb");
+            const trackHeight = track.clientHeight;
+            const contentHeight = el.scrollHeight;
+            const viewHeight = el.clientHeight;
+
+            if (contentHeight <= viewHeight) {
+                thumb.style.top = "0px";
+                thumb.style.height = trackHeight + "px";
+                return;
+            }
+
+            const thumbHeight = Math.max(24, (viewHeight / contentHeight) * trackHeight);
+            const maxScroll = contentHeight - viewHeight;
+            const maxThumbTop = trackHeight - thumbHeight;
+            const thumbTop = maxScroll > 0 ? (el.scrollTop / maxScroll) * maxThumbTop : 0;
+
+            thumb.style.height = thumbHeight + "px";
+            thumb.style.top = thumbTop + "px";
+        }
+
+        document.getElementById("chatStream").addEventListener("scroll", updateScrollThumb);
+        window.addEventListener("resize", updateScrollThumb);
+
+        resetDemo();
+    </script>
+</body>
+</html>
