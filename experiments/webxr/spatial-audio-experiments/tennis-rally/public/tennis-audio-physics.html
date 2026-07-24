@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Physics — Tennis Rally Spatial Audio</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 100px; }
+  a.back { display: inline-block; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .nav-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; flex-wrap: wrap; gap: 8px; }
+  a.sibling-link { color: #8fc5ff; text-decoration: none; font-size: 13px; font-weight: 700; }
+  a.sibling-link:hover { text-decoration: underline; }
+  .page { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 680px; margin-bottom: 36px; }
+
+  .toc { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 18px 22px; margin-bottom: 40px; }
+  .toc-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #666; margin-bottom: 10px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { font-size: 13px; margin-bottom: 6px; }
+  .toc a { color: #8fc5ff; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 52px; scroll-margin-top: 24px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+  .section-name { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 14px; color: #888; margin-bottom: 16px; max-width: 680px; line-height: 1.6; }
+  .section-divider { border: none; border-top: 1px solid #1a1a1a; margin-bottom: 20px; }
+
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 16px; background: #0d1620; }
+  .callout.orange { border-color: #f0a040; background: #1a1200; }
+  .callout.green { border-color: #4caf50; background: #0a1a0a; }
+  .callout.red { border-color: #e74c3c; background: #1a0a0a; }
+  .callout strong { color: #ddd; }
+
+  .formula-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  .formula { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; color: #8fc5ff; margin-bottom: 6px; }
+  .formula .op { color: #ff9d6c; }
+  .formula-caption { font-size: 12px; color: #666; margin-top: 8px; }
+
+  pre { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 18px; overflow-x: auto; margin-bottom: 16px; }
+  code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; color: #c8d6e5; line-height: 1.6; }
+  .kw { color: #ff9d6c; }
+  .type { color: #8fc5ff; }
+  .cmt { color: #5f6b73; }
+  .str { color: #a3d977; }
+  code.inline { color: #bbb; background: transparent; }
+
+  .spec-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+  .spec-table td { padding: 8px 14px; border-bottom: 1px solid #161616; vertical-align: top; }
+  .spec-table td:first-child { color: #8fc5ff; width: 150px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  .spec-table td:last-child { color: #bbb; }
+  .spec-table td ul { padding-left: 18px; margin: 2px 0; }
+  .spec-table td ul li { margin-bottom: 6px; }
+  .spec-table td ul li:last-child { margin-bottom: 0; }
+  .spec-table tr:last-child td { border-bottom: none; }
+  .spec-table thead td { color: #666; font-family: inherit; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  .spec-table td.shape-cell { width: 128px; }
+  .sparkline { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 4px; display: block; }
+  .signal-graph { width: 100%; height: auto; display: block; }
+  .sparkline-caption { font-size: 9px; color: #555; font-family: 'SF Mono', 'Fira Code', monospace; margin-top: 3px; text-align: center; }
+
+  .finding-card { border: 1px solid #262626; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; background: #111; }
+  .finding-card h3 { font-size: 14px; color: #ffd166; margin-bottom: 8px; }
+  .finding-card p { font-size: 13px; color: #aaa; line-height: 1.7; }
+  .finding-card .gap { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; font-size: 13px; color: #d98880; }
+  .finding-card .gap strong { color: #e88178; }
+  .finding-card .resolved { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e1e; font-size: 13px; color: #8fce9c; }
+  .finding-card .resolved strong { color: #4caf50; }
+
+  .cite { font-size: 10px; vertical-align: super; color: #5b9bd5; text-decoration: none; margin-left: 1px; }
+  .cite:hover { text-decoration: underline; }
+  .references { margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .references h3 { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .references ol { padding-left: 20px; }
+  .references li { font-size: 13px; color: #888; margin-bottom: 10px; line-height: 1.6; }
+  .references li a { color: #8fc5ff; text-decoration: none; }
+  .references li a:hover { text-decoration: underline; }
+
+  /* Improvement roadmap footnote */
+  .footnote-section { margin-top: 40px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .footnote-section h3 { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .footnote-section .footnote-desc { font-size: 12px; color: #666; margin-bottom: 16px; max-width: 640px; line-height: 1.6; }
+  .roadmap-table td:first-child { color: #ccc; width: auto; font-family: inherit; font-size: 13px; }
+  .roadmap-table td.diff-cell { width: 90px; }
+  .roadmap-table td:last-child { font-size: 12px; }
+  .difficulty-tag, .impact-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; cursor: help; }
+  /* Difficulty: green = easy (favorable). Low cost reads as good news. */
+  .difficulty-tag.low { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .difficulty-tag.medium { color: #ffd166; background: #2b2013; border: 1px solid #f0a04044; }
+  .difficulty-tag.high { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+  /* Impact: green = high value (favorable) — deliberately the *inverse* mapping from difficulty,
+     so green always means "the good outcome" whether that's cheap to build or worth building. */
+  .impact-tag.high { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .impact-tag.medium { color: #ffd166; background: #2b2013; border: 1px solid #f0a04044; }
+  .impact-tag.low { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+  .roadmap-table td.impact-cell { width: 90px; }
+  .references li span.note { color: #666; }
+</style>
+</head>
+<body>
+<div class="nav-row">
+  <a class="back" href="./index.html">← Back to Tennis Rally</a>
+  <a class="sibling-link" href="./porting.html">Porting Guide →</a>
+</div>
+
+<div class="page">
+  <h1>Audio Physics</h1>
+  <p class="subtitle">The theory and math behind every sound decision this simulation makes — why force maps to volume the way it does, why distance and Doppler use the formulas they do, what convolution reverb actually computes, and, honestly, what real acoustic phenomena this simulation still doesn't model.</p>
+
+  <div class="toc">
+    <p class="toc-title">Contents</p>
+    <ol>
+      <li><a href="#force-volume">Force → Perceived Loudness</a></li>
+      <li><a href="#spin">Spin → Volume Adjustment</a></li>
+      <li><a href="#distance">Distance Attenuation &amp; the Inverse-Square Law</a></li>
+      <li><a href="#doppler">The Doppler Effect</a></li>
+      <li><a href="#panning">HRTF vs. Equal-Power Panning</a></li>
+      <li><a href="#reverb">Convolution Reverb</a></li>
+      <li><a href="#spaces">Real Tennis Spaces, and What Shapes Their Sound</a></li>
+      <li><a href="#gaps">What's Not Yet Accounted For</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════ 01 — FORCE → VOLUME ══════════════ -->
+  <div class="section" id="force-volume">
+    <p class="section-title">01</p>
+    <h2 class="section-name">Force → Perceived Loudness</h2>
+    <p class="section-desc">Every hit's loudness starts from a single number this app calls "force" — not a true physical force in newtons, but a deliberately simplified speed-equivalent (m/s) blend, chosen because perceived loudness of an impact tracks impact <em>speed</em> far more intuitively than it tracks force in the strict F=ma sense (a real racket-ball collision force, integrated over a ~5ms contact window, is a large and unintuitive number — not a useful dial for a tuning panel).</p>
+    <hr class="section-divider">
+
+    <div class="formula-box">
+      <div class="formula">racketForce = ‖ball.velocity − effectiveRacketVelocity‖ <span class="op">×</span> 0.5 + ball.speed <span class="op">×</span> 0.3 + ‖effectiveRacketVelocity‖ <span class="op">×</span> 0.2</div>
+      <div class="formula-caption">src/audio/BallAudio.js — a weighted blend of the ball/racket <em>relative</em> closing speed, the ball's own outgoing speed, and the racket's swing speed. Floor hits use an analogous blend of vertical vs. total bounce speed.</div>
+    </div>
+
+    <div class="callout">
+      The double-bar <strong>‖v‖</strong> notation above is deliberate, not decorative: both <code class="inline">ball.velocity</code> and <code class="inline">effectiveRacketVelocity</code> are full 3D vectors, and <code class="inline">−</code> between them is a component-wise vector subtraction — it produces another vector (their relative velocity), not a scalar difference. <strong>‖v‖</strong> then takes that resulting vector's Euclidean length (√(x²+y²+z²)), which is what the code actually calls: <code class="inline">ball.velocity.subtract(effectiveRacketVelocity).length()</code>. It is <em>not</em> "take each vector's magnitude, then subtract those two numbers" — that would be a different (and wrong) quantity, which is why this page uses ‖·‖ for vector norm and reserves plain <code class="inline">|·|</code> elsewhere for ordinary scalar absolute value.
+    </div>
+
+    <p class="section-desc" style="margin-bottom:16px;">That force value then runs through a piecewise-linear map — flat below <code class="inline">forceMin</code>, a straight ramp between the two tuning-panel points, flat above <code class="inline">forceMax</code>:</p>
+
+    <div class="formula-box">
+      <div class="formula">volume(force) = clamp( volumeMin + (force − forceMin) <span class="op">×</span> (volumeMax − volumeMin) / (forceMax − forceMin), volumeMin, volumeMax )</div>
+      <div class="formula-caption">src/audio/BallAudio.js — mapForceToVolume(). This is exactly the shape the Force → Volume Mapping graph draws and lets you drag.</div>
+    </div>
+
+    <div class="callout">
+      <strong>To be precise about which "linear" this is:</strong> the number this ramp produces is fed straight into a Web Audio <code class="inline">GainNode</code> — <code class="inline">voice.gainNode.gain.value = volume</code> in <code class="inline">BallAudio.js</code> — and per the Web Audio spec, <code class="inline">gain.value</code> is always a plain <em>linear</em> amplitude multiplier (1.0 = unity, 0.5 = half the waveform's amplitude). Nothing in this codebase converts to or from decibels anywhere. So this is a linear ramp in linear-amplitude space, not a linear-looking control sitting on top of a dB-scaled parameter — if it were the latter (a fader that's linear in dB), that would actually be a reasonable perceptual approximation, since dB <em>is</em> the log scale that roughly matches loudness perception. It's the fact that it's linear in raw amplitude that makes it a simplification.
+    </div>
+
+    <div class="callout orange">
+      <strong>Concretely, what that costs:</strong> because perceived loudness tracks roughly the <em>logarithm</em> of amplitude, equal steps in linear gain are <em>not</em> equal steps in perceived loudness — they're front-loaded. Going from gain 0.1 → 0.2 doubles the amplitude (a large, clearly audible jump), while going from gain 0.8 → 0.9 is the same +0.1 step but only a ~12% amplitude increase (a much smaller, easy-to-miss jump). A soft-to-medium hit and a medium-to-hard hit that move the same distance along the Force → Volume graph's vertical axis will not sound like equally-sized loudness steps — the low end of that ramp does most of the perceptual work.
+    </div>
+  </div>
+
+  <!-- ══════════════ 02 — SPIN → VOLUME ══════════════ -->
+  <div class="section" id="spin">
+    <p class="section-title">02</p>
+    <h2 class="section-name">Spin → Volume Adjustment</h2>
+    <p class="section-desc">A 2024 modal-analysis study of real tennis serves found a strong <strong>negative</strong> correlation between a serve's spin rate and its impact sound pressure level (r = −0.88)<a class="cite" href="#ref-takeda">[1]</a> — a heavily spun serve measures reliably quieter than a flat one, not louder-because-harder-hit as intuition might suggest. <code class="inline">racketForce()</code> above has no spin term at all, so this is layered on as a separate additive adjustment, applied only to racket hits (floor bounces have no spin data at bounce time in this model).</p>
+    <hr class="section-divider">
+
+    <div class="formula-box">
+      <div class="formula">volumeAdjust(spin) = volumeAdjustAtSpinMin + (spin − spinMin) <span class="op">×</span> (volumeAdjustAtSpinMax − volumeAdjustAtSpinMin) / (spinMax − spinMin), clamped flat outside [spinMin, spinMax]</div>
+      <div class="formula-caption">src/audio/BallAudio.js — mapSpinToVolumeAdjust(). The same flat-ramp-flat shape as the Force → Volume mapping above, over a different axis pair, and always ≤ 0.</div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula">finalVolume = clamp( volume(force) + volumeAdjust(spin), volumeMin, volumeMax )</div>
+      <div class="formula-caption">src/audio/BallAudio.js's _handleImpact() — the spin term is added on top of the existing force→volume result, not substituted for it.</div>
+    </div>
+
+    <div class="callout">
+      <strong>Where the spin number itself comes from:</strong> Replay Loop uses the real recorded spin rate (rpm) for that shot, straight from the match-tracking data. Random Play has no continuous spin value — only a fixed "flat"/"topspin"/"slice" label — so it stands in a representative rpm per label instead (<code class="inline">SPIN_RPM_BY_TYPE</code> in <code class="inline">BallController.js</code>: 200/1400/2800rpm — rough stand-ins, not measured values).
+    </div>
+
+    <div class="callout orange">
+      <strong>How the default curve was actually chosen:</strong> the cited study reports a correlation coefficient, not a slope or an absolute dB/volume figure — there's no equation in the paper to plug numbers into. The default here (0 adjustment at 0rpm, ramping to −0.15 at a plausible hard-topspin-serve rate of 3000rpm) is a deliberately audible dramatization picked by ear, not a fit to the study's actual data. The Spin → Volume Adjustment graph in the Audio Tuning panel's Racket tab (drag either point, same interaction as the Force → Volume graph) can push this well past that default — down to a −1.0 floor, out to 6000rpm — specifically to stress-test how an extreme version of the effect reads, not because real spin rates or the paper's own effect size reach anywhere near that far. The adjustment is capped at 0 everywhere on that graph: spin can quiet a hit here, never make it louder.
+    </div>
+  </div>
+
+  <!-- ══════════════ 03 — DISTANCE ══════════════ -->
+  <div class="section" id="distance">
+    <p class="section-title">03</p>
+    <h2 class="section-name">Distance Attenuation &amp; the Inverse-Square Law</h2>
+    <p class="section-desc">In free space, sound <em>intensity</em> (power per unit area) falls off with the square of distance from a point source, because that same total power is spread over an ever-larger sphere's surface area (4πr²). Sound <em>pressure</em> — what a microphone or eardrum actually measures — falls off more gently, as 1/r, since intensity is proportional to pressure squared. None of the three distance models below are literally the inverse-square law; each is a different practical approximation, matching what the Web Audio <code class="inline">PannerNode</code> spec defines and this app reimplements directly so its own preview graph can plot the identical math without needing a live sound to probe it.</p>
+    <hr class="section-divider">
+
+    <table class="spec-table">
+      <thead><tr><td>Model</td><td>Shape</td><td>Formula (as implemented)</td></tr></thead>
+      <tr>
+        <td>linear</td>
+        <td class="shape-cell">
+          <svg class="sparkline" width="120" height="48" viewBox="0 0 120 48">
+            <polyline points="4.0,4.0 6.8,4.0 9.6,4.0 12.4,4.0 15.2,4.9 18.0,6.2 20.8,7.6 23.6,8.9 26.4,10.2 29.2,11.6 32.0,12.9 34.8,14.2 37.6,15.6 40.4,16.9 43.2,18.2 46.0,19.6 48.8,20.9 51.6,22.2 54.4,23.6 57.2,24.9 60.0,26.2 62.8,27.6 65.6,28.9 68.4,30.2 71.2,31.6 74.0,32.9 76.8,34.2 79.6,35.6 82.4,36.9 85.2,38.2 88.0,39.6 90.8,40.9 93.6,42.2 96.4,43.6 99.2,44.0 102.0,44.0 104.8,44.0 107.6,44.0 110.4,44.0 113.2,44.0 116.0,44.0" fill="none" stroke="#5b9bd5" stroke-width="1.5"/>
+          </svg>
+          <div class="sparkline-caption">rolloff=1 — hard stop at max</div>
+        </td>
+        <td><code class="inline">1 − rolloffFactor × (distance − ref) / (max − ref)</code>, clamped to [ref, max] — decays at a constant rate, then hard-stops at zero past <code class="inline">maxDistance</code>.</td>
+      </tr>
+      <tr>
+        <td>inverse</td>
+        <td class="shape-cell">
+          <svg class="sparkline" width="120" height="48" viewBox="0 0 120 48">
+            <polyline points="4.0,4.0 6.8,4.0 9.6,4.0 12.4,4.0 15.2,10.7 18.0,17.3 20.8,21.8 23.6,25.0 26.4,27.3 29.2,29.2 32.0,30.7 34.8,31.9 37.6,32.9 40.4,33.7 43.2,34.5 46.0,35.1 48.8,35.7 51.6,36.2 54.4,36.6 57.2,37.0 60.0,37.3 62.8,37.7 65.6,37.9 68.4,38.2 71.2,38.4 74.0,38.7 76.8,38.9 79.6,39.1 82.4,39.2 85.2,39.4 88.0,39.6 90.8,39.7 93.6,39.8 96.4,40.0 99.2,40.1 102.0,40.2 104.8,40.3 107.6,40.4 110.4,40.5 113.2,40.6 116.0,40.7" fill="none" stroke="#5b9bd5" stroke-width="1.5"/>
+          </svg>
+          <div class="sparkline-caption">rolloff=1 — eases off, lingers</div>
+        </td>
+        <td><code class="inline">ref / (ref + rolloffFactor × (distance − ref))</code> — closest to the true 1/r pressure falloff near the source; asymptotically approaches (never truly reaches) zero at large distance.</td>
+      </tr>
+      <tr>
+        <td>exponential</td>
+        <td class="shape-cell">
+          <svg class="sparkline" width="120" height="48" viewBox="0 0 120 48">
+            <polyline points="4.0,4.0 6.8,4.0 9.6,4.0 12.4,4.0 15.2,16.2 18.0,26.2 20.8,31.7 23.6,34.9 26.4,37.1 29.2,38.5 32.0,39.6 34.8,40.3 37.6,40.9 40.4,41.4 43.2,41.7 46.0,42.0 48.8,42.3 51.6,42.5 54.4,42.6 57.2,42.8 60.0,42.9 62.8,43.0 65.6,43.1 68.4,43.2 71.2,43.2 74.0,43.3 76.8,43.3 79.6,43.4 82.4,43.4 85.2,43.5 88.0,43.5 90.8,43.5 93.6,43.6 96.4,43.6 99.2,43.6 102.0,43.6 104.8,43.7 107.6,43.7 110.4,43.7 113.2,43.7 116.0,43.7" fill="none" stroke="#5b9bd5" stroke-width="1.5"/>
+          </svg>
+          <div class="sparkline-caption">rolloff=2 — drops hard, early</div>
+        </td>
+        <td><code class="inline">(distance / ref) ^ (−rolloffFactor)</code> — a power-law falloff; with <code class="inline">rolloffFactor</code> near 2, this approximates the intensity (not pressure) inverse-square law directly.</td>
+      </tr>
+    </table>
+    <p class="formula-caption" style="margin-bottom:16px;">src/audio/spatialAttenuation.js — computeAttenuation(). "ref" is <code class="inline">minDistance</code>, "max" is <code class="inline">maxDistance</code>, both scaled by <code class="inline">venueScale</code> first. Each sparkline plots volume (0–1, vertical) against distance 0→12× ref (horizontal) — same axes as the app's own Distance → Volume Preview graph — at illustrative rolloff values; exponential's is deliberately higher (2) than linear/inverse's (1) since that's roughly where it starts to approximate the true inverse-square law, per the note below the table.</p>
+
+    <div class="callout">
+      <strong>venueScale</strong> is this app's own addition, with no Web Audio equivalent: it stretches or shrinks perceived distance without moving anything in the 3D scene, by dividing <code style="color:#ccc">minDistance</code>/<code style="color:#ccc">maxDistance</code> by it before evaluating any of the three formulas above — mathematically identical to scaling the real distance passed in, just applied on the other side of the equation.
+    </div>
+  </div>
+
+  <!-- ══════════════ 04 — DOPPLER ══════════════ -->
+  <div class="section" id="doppler">
+    <p class="section-title">04</p>
+    <h2 class="section-name">The Doppler Effect</h2>
+    <p class="section-desc">The classical moving-source Doppler formula for a stationary listener is <code class="inline">f_observed = f_source × v_sound / (v_sound − v_source_radial)</code>, where <code class="inline">v_source_radial</code> is the source's velocity component <em>directly toward</em> the listener (not its full speed — a source moving tangentially past the listener produces no shift at all, only a source closing or opening the actual distance does).</p>
+    <hr class="section-divider">
+
+    <div class="formula-box">
+      <div class="formula">closingSpeed = (v · (listenerPos − sourcePos)) / ‖listenerPos − sourcePos‖</div>
+      <div class="formula-caption">The dot product of source velocity with the unit vector toward the listener — positive means approaching, negative means receding.</div>
+      <div class="formula" style="margin-top:12px;">pitch = 343 / (343 − clamp(closingSpeed, −308.7, 308.7))</div>
+      <div class="formula-caption">src/audio/BallAudio.js — closingSpeedTowardListener() and dopplerFactor(). 343 m/s is room-temperature air; the clamp to ±90% of that keeps the denominator well away from zero (which would otherwise let a stray high-velocity swing divide by zero or flip the sign entirely).</div>
+    </div>
+
+    <div class="callout orange">
+      <strong>Scale check:</strong> a fast racket swing is roughly 10–30 m/s, against a speed of sound of 343 m/s — so the maximum realistic pitch shift this app ever produces is only a few percent (343/(343−25) ≈ 1.078×, under an 8% pitch rise). That's correct and expected: real Doppler shift from a tennis swing genuinely is this subtle. The effect exists to be physically honest, not to be dramatic.
+    </div>
+
+    <p class="section-desc">The source velocity itself isn't the racket rig's own animated velocity (observed to occasionally point the wrong way), but is instead derived from the ball's real outgoing shot direction — computed deterministically by the physics — rescaled to the swing animation's own reported speed. See the <a class="sibling-link" href="./porting.html#unity" style="font-size:13px;">Porting Guide</a> for why that matters when reimplementing this on another engine.</p>
+  </div>
+
+  <!-- ══════════════ 05 — PANNING ══════════════ -->
+  <div class="section" id="panning">
+    <p class="section-title">05</p>
+    <h2 class="section-name">HRTF vs. Equal-Power Panning</h2>
+    <p class="section-desc">Both panning models answer "which direction did that sound come from?", but by very different means.</p>
+    <hr class="section-divider">
+
+    <table class="spec-table">
+      <thead><tr><td>Model</td><td>How it works</td></tr></thead>
+      <tr><td>equalpower</td><td>A simple left/right (and, for full 3D, front/back) crossfade using <code class="inline">sin</code>/<code class="inline">cos</code> gain curves whose squares always sum to 1 — so total power stays constant as a sound pans, avoiding a perceived dip in loudness at center. No frequency-dependent filtering at all; it can't distinguish "in front" from "behind" or "above" from "below."</td></tr>
+      <tr><td>HRTF</td><td>Filters the signal through a Head-Related Transfer Function — a measured (or modeled) response capturing how a real human head, outer ears (pinnae), and torso reflect and delay sound differently depending on its arrival angle. This is what actually produces interaural time differences (ITD) and interaural level differences (ILD), the real physical cues your brain uses to localize sound in 3D — including front/back and elevation, which equal-power panning structurally cannot represent.</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════════ 06 — REVERB ══════════════ -->
+  <div class="section" id="reverb">
+    <p class="section-title">06</p>
+    <h2 class="section-name">Convolution Reverb</h2>
+    <p class="section-desc">An impulse response (IR) is, in principle, the recording of a single instantaneous click played inside a real (or simulated) space — capturing every early reflection and the full decaying reverberant tail that space produces in response to that click. <strong style="color:#ccc">Convolution</strong> is the mathematical operation of applying that captured response to any other signal: it produces the same signal as if the original dry sound had actually been played inside that recorded space, without needing to simulate the room's geometry at all.</p>
+    <hr class="section-divider">
+
+    <div class="formula-box">
+      <svg class="signal-graph" viewBox="0 0 950 150" role="img" aria-label="Signal graph: source splits into a dry path (dryGain) and a wet path (wetGain, highpass, lowpass, convolver), both summing at outputGain before destination.">
+        <defs>
+          <marker id="sg-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b9bd5"/>
+          </marker>
+        </defs>
+
+        <!-- connectors, drawn first so node boxes sit on top of the line ends -->
+        <g stroke="#5b9bd5" stroke-width="1.5" fill="none" marker-end="url(#sg-arrow)">
+          <path d="M100,72 L138,30"/>
+          <path d="M100,72 L138,114"/>
+          <path d="M240,114 L278,114"/>
+          <path d="M375,114 L413,114"/>
+          <path d="M505,114 L543,114"/>
+          <path d="M240,30 L688,72"/>
+          <path d="M650,114 L688,72"/>
+          <path d="M800,72 L838,72"/>
+        </g>
+        <text x="119" y="46" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="#666">dry</text>
+        <text x="119" y="100" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="#666">wet</text>
+
+        <!-- nodes -->
+        <g font-family="'SF Mono','Fira Code',monospace" font-size="13" text-anchor="middle">
+          <g><rect x="10" y="56" width="90" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="55" y="76" fill="#c8d6e5">source</text></g>
+          <g><rect x="140" y="14" width="100" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="190" y="34" fill="#8fc5ff">dryGain</text></g>
+          <g><rect x="140" y="98" width="100" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="190" y="118" fill="#8fc5ff">wetGain</text></g>
+          <g><rect x="280" y="98" width="95" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="327" y="118" fill="#8fc5ff">highpass</text></g>
+          <g><rect x="415" y="98" width="90" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="460" y="118" fill="#8fc5ff">lowpass</text></g>
+          <g><rect x="545" y="98" width="105" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="597" y="118" fill="#8fc5ff">convolver</text></g>
+          <g><rect x="690" y="56" width="110" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="745" y="76" fill="#8fc5ff">outputGain</text></g>
+          <g><rect x="840" y="56" width="100" height="32" rx="6" fill="#111" stroke="#2a2a2a"/><text x="890" y="76" fill="#c8d6e5">destination</text></g>
+        </g>
+      </svg>
+    </div>
+    <p class="formula-caption" style="margin-top:-8px; margin-bottom:16px;">src/audio/ReverbBus.js — the exact signal graph. Every hit sound fans into both paths simultaneously; <code class="inline">dryLevel</code> and <code class="inline">wetLevel</code> independently gain each path before they sum at <code class="inline">outputGain</code>.</p>
+
+    <table class="spec-table">
+      <thead><tr><td>Control</td><td>What it changes</td></tr></thead>
+      <tr><td>impulseResponse</td><td>Swaps the actual convolution buffer — this changes the reverb's <em>character</em> (tight/boxy vs. long/spacious), since it's a different recorded space entirely.</td></tr>
+      <tr><td>wetLevel / dryLevel</td><td>How loud the reverberant vs. direct signal is, independent of which space is loaded — this changes how "in the room" a hit feels without changing what kind of room it is.</td></tr>
+      <tr><td>lowpassHz / highpassHz</td><td>Filters applied only to the wet path (see the graph above) — modeling how reflected sound loses high frequencies traveling further through air or off soft surfaces, without touching the crisp direct sound at all.</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════════ 07 — REAL TENNIS SPACES ══════════════ -->
+  <div class="section" id="spaces">
+    <p class="section-title">07</p>
+    <h2 class="section-name">Real Tennis Spaces, and What Shapes Their Sound</h2>
+    <p class="section-desc">Everything above is math; this section is the real-world reference it's approximating. If you've never set foot on a tennis court, the range is bigger than it might sound — a hit at a park court and the same hit at a packed championship stadium are barely the same <em>category</em> of sound, before anyone's tuned a single slider.</p>
+    <hr class="section-divider">
+
+    <table class="spec-table">
+      <thead><tr><td>Factor</td><td>What it changes, acoustically</td></tr></thead>
+      <tr><td>Floor</td><td>
+        <ul>
+          <li><strong style="color:#ccc">Hard court</strong> (acrylic over asphalt/concrete) — stiff and reflective: a bright, sharp "pop."</li>
+          <li><strong style="color:#ccc">Clay</strong> — soft and granular: a duller, lower-pitched thud, plus an audible <em>skid</em> as the ball slides on impact, which hard court and grass don't produce.</li>
+          <li><strong style="color:#ccc">Grass</strong> — soft and uneven: a muffled, low bounce, quieter than either.</li>
+          <li><strong style="color:#ccc">Indoor carpet</strong> (thin synthetic over a hard base) — sits somewhere between hard court and clay; historically common at indoor events.</li>
+        </ul>
+      </td></tr>
+      <tr><td>Walls</td><td>Distance to the nearest hard surface controls how much of, and how soon, an early reflection arrives. A fully open outdoor court has no nearby walls at all — only the stands, far off, function as a reflector. An enclosed practice court or a fabric dome has hard (or taut) surfaces just a few meters away, producing fast, strong reflections and audible slap-back — the physical basis for this app's Small/Closed Venue preset.</td></tr>
+      <tr><td>Ceiling</td><td>Open sky simply has no overhead reflection — sound that goes up is gone. A closed retractable roof (Wimbledon Centre Court, Arthur Ashe Stadium) traps that sound instead, adding a real reverberant tail and audibly lengthening the ball's "thwack" — players and commentators routinely describe the same stadium as sounding meaningfully different roof-open vs. roof-closed.</td></tr>
+      <tr><td>Coverings / occupancy</td><td>A crowd is a huge acoustic variable most people don't think about: bodies and clothing absorb sound, so a full stadium has a noticeably shorter reverberation time than the same empty bowl — the classic "occupied vs. unoccupied" distinction acousticians measure for any large venue. Concrete bleachers reflect; cushioned seating absorbs. A fabric dome's membrane roof behaves differently again — it reflects some energy back down rather than letting it escape upward like open sky, but it's not rigid like a real ceiling either.</td></tr>
+      <tr><td>Scale</td><td>A club court might have no more than a few dozen people within earshot; a championship stadium (Arthur Ashe seats roughly 23,000) puts a hit's sound into a space many times larger, with far more distance for it to travel and decay before reaching most of the audience — the direct real-world analog of this app's <code class="inline">venueScale</code> and <code class="inline">maxDistance</code>.</td></tr>
+      <tr><td>Wind &amp; open air</td><td>Purely outdoor courts add a factor this app doesn't model at all: wind doesn't just add its own noise, it physically refracts (bends) how sound propagates over distance, on top of ordinary air absorption (see the citation above).</td></tr>
+    </table>
+
+    <div class="callout">
+      <strong>Mapping this back to the tuning panel:</strong> the Small/Closed Venue preset is standing in for an enclosed practice court or dome — close hard surfaces, a low ceiling, a short reverb tail. The Large/Open Venue preset is standing in for an open-air championship stadium — far more distance for sound to travel, a long, sparse tail from distant surfaces instead of tight nearby slap-back. Neither preset currently models floor material, crowd occupancy, or a closable roof as independent variables — see the roadmap below for what that would take.
+    </div>
+
+    <p class="section-desc" style="margin-bottom:8px;"><strong style="color:#ccc">A few real examples, if you want to hear the difference yourself:</strong></p>
+    <table class="spec-table">
+      <thead><tr><td>Example</td><td>What to listen for</td></tr></thead>
+      <tr><td><a href="https://www.youtube.com/watch?v=a_jrk7kqlzQ" target="_blank" rel="noopener" style="color:#8fc5ff;">Novak Djokovic vs. Pedro Cachin, Wimbledon 2023</a></td><td>Real match highlights, natural broadcast audio — rain forced Centre Court's roof closed partway through this first-round match. Listen for the ball's "thwack" and the crowd both sounding fuller and more contained than an open-air court, since the closed roof traps reflections that would otherwise escape into open sky.</td></tr>
+      <tr><td><a href="https://www.youtube.com/watch?v=68mvhi16Q7M" target="_blank" rel="noopener" style="color:#8fc5ff;">Rafael Nadal vs. Andreas Seppi, US Open 2016</a></td><td>Real match play — the first match ever completed under Arthur Ashe Stadium's closed roof (~23,000 seats). Players who experienced this stadium's enclosed acoustic for the first time described it as unusually loud and reverberant for a space this size.</td></tr>
+      <tr><td><a href="https://www.youtube.com/watch?v=RS9CWw67vYM" target="_blank" rel="noopener" style="color:#8fc5ff;">2024 ITA Indoor Championship, Columbia University</a></td><td>Real collegiate match play inside an enclosed indoor tennis center — close walls and a low ceiling on every side, giving a distinctly boxier, more present sound than any open-air court.</td></tr>
+      <tr><td><a href="https://www.youtube.com/watch?v=gkIsvlZDG-Y" target="_blank" rel="noopener" style="color:#8fc5ff;">Rafael Nadal vs. Novak Djokovic, Roland-Garros 2020 Final</a></td><td>Real match highlights, natural broadcast audio — two of the sport's heaviest clay-court sliders, on real clay. Listen for the duller, lower-pitched bounce compared to a hard court, and the distinct skidding sound as the ball and the players' shoes both slide across the surface — a texture no other surface produces.</td></tr>
+    </table>
+  </div>
+
+  <div class="section" id="gaps">
+    <p class="section-title">08 — Honesty Check</p>
+    <h2 class="section-name">What's Not Yet Accounted For</h2>
+    <p class="section-desc">A 2024 modal-analysis study of real tennis serves — measuring actual impact-sound pressure levels, racket vibration modes, and ball spin/speed with high-speed cameras, motion capture, and an instrumented racket<a class="cite" href="#ref-takeda">[1]</a> — found several real acoustic effects this simulation doesn't model at all. Worth reading in full before assuming the current force→volume model is acoustically complete.</p>
+    <hr class="section-divider">
+
+    <div class="finding-card">
+      <h3>Ball spin isn't in the force model at all</h3>
+      <p>The study found a strong <strong>negative</strong> correlation between a serve's spin rate and both its initial ball speed (r = −0.90) and its impact sound pressure level (r = −0.88)<a class="cite" href="#ref-takeda">[1]</a> — a heavily spun serve is reliably both slower <em>and</em> quieter than a flat one, not louder-because-harder-hit as a naive intuition (or this app's current model) might assume.</p>
+      <p class="resolved"><strong>Resolved:</strong> <code class="inline">racketForce()</code> itself still has no spin term — instead, a separate additive volume adjustment is layered on top of the force→volume result (racket hits only). See <a href="#spin" style="color:#8fce9c;">section 02, Spin → Volume Adjustment</a>, above, for the formula, where the spin number comes from in each mode, and — importantly — an honest note on how the default curve was chosen given the cited study reports a correlation, not a slope.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>Where the ball strikes the racket changes both loudness and timbre</h3>
+      <p>Off-center impact position (which the study found correlates with higher spin — impact deviating from the racket's center as spin increased) reduced the ball impact sound's pressure level, and shifted its spectral content specifically in the 1000–1130 Hz range, where the racket frame's own structural vibration modes peak.<a class="cite" href="#ref-takeda">[1]</a></p>
+      <p class="gap"><strong>Gap:</strong> every hit in this app is one homogeneous event scaled only by the single force number above — there's no racket-relative impact-location parameter, so timbre never shifts with where the ball actually struck the strings.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>Real impact sound is dominated by racket resonance, not broadband noise</h3>
+      <p>Modal analysis (impact-hammer excitation + accelerometers across ten points on the frame) showed vibration acceleration peaking sharply near 1020–1130 Hz, with the exact peak frequency and its location on the frame depending on where the racket was struck.<a class="cite" href="#ref-takeda">[1]</a> A real racket "ping" is a resonant structural response, not uniform noise across the spectrum.</p>
+      <p class="gap"><strong>Gap:</strong> this app's clips are static prerecorded samples — each one does already carry <em>some</em> real resonance baked in, since it's a recording of an actual racket hit rather than synthesized noise, but that resonance is frozen at whatever the recording session happened to capture. Only volume and pitch (uniform playback-rate change, not spectral reshaping) are varied at runtime, so the resonance never shifts with impact position or force the way a real racket's does — the same clip's frozen resonance plays back for a dead-center hit and a frame-edge shank alike.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>String tension shifts the sound's pitch</h3>
+      <p>The same study found roughly a 100 Hz difference in the dominant frequency of the impact sound between rackets strung at 60 lb vs. 42.5 lb, even with otherwise identical serves.<a class="cite" href="#ref-takeda">[1]</a></p>
+      <p class="gap"><strong>Gap:</strong> there's no string-tension (or any other equipment-property) parameter anywhere in this audio model.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>Impact sound is a real anticipation cue — and that's context-dependent</h3>
+      <p>Research surveyed in the same paper shows racket-ball contact sound intensity systematically biases a listener's estimate of ball speed and trajectory<a class="cite" href="#ref-canalbruland2018">[2]</a><a class="cite" href="#ref-canalbruland2022">[3]</a>, but this effect is moderated by context — it's substantially weaker or absent when the same sounds are presented without their normal visual/situational surroundings.<a class="cite" href="#ref-murphy2016">[4]</a><a class="cite" href="#ref-goettker2021">[5]</a></p>
+      <p class="gap"><strong>Gap:</strong> this is a perceptual/gameplay design question this project hasn't addressed at all yet — whether the current sound design would help or hinder a real listener's ability to anticipate an oncoming shot by ear, and whether that's even a design goal here.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>Air absorption isn't modeled on the direct path</h3>
+      <p>Not claimed by the Takeda study above — worth naming plainly regardless: real high frequencies attenuate as sound travels through air, even before any reflection happens, an effect precisely quantified as a function of frequency, temperature, and humidity by the standard reference on atmospheric sound absorption.<a class="cite" href="#ref-bass1990">[6]</a></p>
+      <p class="gap"><strong>Gap:</strong> only the reverb's <em>wet</em> tail has optional lowpass/highpass filtering (see <code class="inline">ReverbBus.js</code>'s signal graph above) — the dry/direct path applies no distance-dependent filtering at all, so a hit heard from 40m away sounds exactly as bright as one heard from 4m, just quieter.</p>
+    </div>
+
+    <div class="finding-card">
+      <h3>Court surface material isn't a variable in the floor-bounce sound</h3>
+      <p>Hard court, clay, and grass differ substantially in shock absorption, vertical deformation, and energy restitution<a class="cite" href="#ref-colino2024">[7]</a> — the same mechanical properties that govern how a real bounce's impact energy decays, and so plausibly shape its acoustic signature too, alongside the coefficient-of-restitution differences already well documented for tennis surfaces. This app doesn't have a paper measuring the bounce <em>sound</em> itself by surface, so this citation is the closest legitimate related research, not a direct acoustic measurement.</p>
+      <p class="gap"><strong>Gap:</strong> <code class="inline">BallController.js</code> already varies bounce restitution/friction by <em>spin type</em> (<code class="inline">BOUNCE_RESTITUTION</code>/<code class="inline">BOUNCE_FRICTION</code>), but nothing varies by <em>surface</em> — there's exactly one floor-hit clip bank, regardless of what the court is supposed to be made of, despite this being one of the most audible, tennis-specific differences in the real sport.</p>
+    </div>
+
+    <div class="references">
+      <h3>References</h3>
+      <ol>
+        <li id="ref-takeda"><a href="https://revistaseug.ugr.es/index.php/IJRSS/article/view/33155" target="_blank" rel="noopener">Takeda, N., Terashima, O., Kinoshita, F., Touyama, H., &amp; Yamada, S. (2024). The Influence of Tennis Serve Kinematics on Ball Impact Sound and Post Impact Ball Speed and Spin.</a> <span class="note">International Journal of Racket Sports Science, 6(1), 9–20. DOI: 10.30827/ijrss.33155.</span></li>
+        <li id="ref-canalbruland2018"><span class="note">Cañal-Bruland, R., Müller, F., Lach, B., &amp; Spence, C. (2018). Auditory contributions to visual anticipation in tennis. Psychology of Sport and Exercise, 36, 100–103. https://doi.org/10.1016/j.psychsport.2018.02.001</span> <span style="color:#555;">— cited within [1].</span></li>
+        <li id="ref-canalbruland2022"><span class="note">Cañal-Bruland, R., Meyerhoff, H. S., &amp; Müller, F. (2022). Context modulates the impact of auditory information on visual anticipation. Cognitive Research: Principles and Implications, 7(1), 76. https://doi.org/10.1186/s41235-022-00425-2</span> <span style="color:#555;">— cited within [1].</span></li>
+        <li id="ref-murphy2016"><span class="note">Murphy, C. P., Jackson, R. C., Cooke, K., Roca, A., Benguigui, N., &amp; Williams, A. M. (2016). Contextual information and perceptual-cognitive expertise in a dynamic, temporally-constrained task. Journal of Experimental Psychology: Applied, 22(4), 455. https://doi.org/10.1037/xap0000094</span> <span style="color:#555;">— cited within [1].</span></li>
+        <li id="ref-goettker2021"><span class="note">Goettker, A., Pidaparthy, H., Braun, D. I., Elder, J. H., &amp; Gegenfurtner, K. R. (2021). Ice hockey spectators use contextual cues to guide predictive eye movements. Current Biology, 31(16), R991–R992. https://doi.org/10.1016/j.cub.2021.06.087</span> <span style="color:#555;">— cited within [1].</span></li>
+        <li id="ref-bass1990"><a href="https://calhoun.nps.edu/server/api/core/bitstreams/16979f4a-ab84-423f-b1d2-483745df339c/content" target="_blank" rel="noopener">Bass, H. E., Sutherland, L. C., &amp; Zuckerwar, A. J. (1990). Atmospheric absorption of sound: Update.</a> <span class="note">The Journal of the Acoustical Society of America, 88(4), 2019–2021. DOI: 10.1121/1.400176 — the standard reference for how atmospheric absorption of sound varies with frequency, temperature, and humidity.</span></li>
+        <li id="ref-colino2024"><a href="https://doi.org/10.1007/s12283-024-00461-9" target="_blank" rel="noopener">Colino, E., García-Unanue, J., &amp; Felipe, J. L. (2024). Mechanical properties influencing athlete–surface interaction on tennis court surfaces.</a> <span class="note">Sports Engineering, 27, Article 18. DOI: 10.1007/s12283-024-00461-9 — shock absorption, deformation, and energy restitution across tennis court surface types; closest related research, not a direct sound measurement.</span></li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ══════════════ FOOTNOTE: IMPROVEMENT ROADMAP ══════════════ -->
+  <div class="footnote-section">
+    <h3>Footnote — Improvement Roadmap</h3>
+    <p class="footnote-desc">Every gap above, plus a couple of simplifications named earlier on this page, weighed on two independent axes: <strong style="color:#ccc">Impact</strong> — how much a listener would actually notice — and <strong style="color:#ccc">Difficulty</strong> — how much work it'd actually be, judged against what already exists in this codebase, not in the abstract. Hover either tag for the one-line reasoning behind it.</p>
+
+    <table class="spec-table roadmap-table">
+      <thead><tr><td>Improvement</td><td>Impact</td><td>Difficulty</td><td>Why</td></tr></thead>
+      <tr>
+        <td>Perceptually-matched force→volume curve</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="Fixes a real front-loaded loudness curve, but most players already tune this by feel/ear via the panel and may not consciously notice the underlying math changed.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag low">Low</span></td>
+        <td>Interpolate in dB space instead of raw linear gain, then convert back (<code class="inline">10^(dB/20)</code>) before assigning <code class="inline">gain.value</code>. One function to change; no new data needed.</td>
+      </tr>
+      <tr>
+        <td>Distance-based air-absorption lowpass on the dry path</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="A genuine, real depth cue (distant hits sound duller) — but subtle, easy to miss unless a listener is specifically listening for it.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag low">Low</span></td>
+        <td>The wet path already has this exact pattern (highpass → lowpass → convolver in <code class="inline">ReverbBus.js</code>) — add one more <code class="inline">BiquadFilterNode</code> to the dry chain with cutoff scaled by distance.</td>
+      </tr>
+      <tr>
+        <td>String-tension pitch parameter</td>
+        <td class="impact-cell"><span class="impact-tag low" title="A real ~100Hz shift per the cited paper, but almost certainly below the threshold most listeners would consciously notice.">Low</span></td>
+        <td class="diff-cell"><span class="difficulty-tag low">Low</span></td>
+        <td>Fold a fixed (not random) offset into the existing pitch-jitter calculation, driven by a new tuning-panel field — no new physics, just one more multiplier term.</td>
+      </tr>
+      <tr>
+        <td>Spin term in the force/volume calculation</td>
+        <td class="impact-cell"><span class="impact-tag high" title="The cited paper's strongest correlations (r = −0.88/−0.90) — makes topspin/slice hits audibly distinct, a real gameplay-relevant cue, not just a realism nicety.">High</span></td>
+        <td class="diff-cell"><span class="difficulty-tag low">Low</span></td>
+        <td><strong style="color:#4caf50;">✓ Done —</strong> shipped as a continuous rpm-driven adjustment (see <a href="#spin">section 02</a>), not just the three-label categorical version originally scoped here — it and the "full continuous fidelity" row below were done together.</td>
+      </tr>
+      <tr>
+        <td>Court-surface material for floor bounces</td>
+        <td class="impact-cell"><span class="impact-tag high" title="Clay vs. hard vs. grass bounce sound is one of the most recognizable, tennis-specific acoustic signatures to real players and viewers alike.">High</span></td>
+        <td class="diff-cell"><span class="difficulty-tag medium">Medium</span></td>
+        <td>Mostly asset work — separate floor clip banks (or an EQ multiplier) per surface type — plus plumbing a "surface" field through floor-hit events. No new DSP concepts, just more content and wiring.</td>
+      </tr>
+      <tr>
+        <td>Listener-velocity term in Doppler</td>
+        <td class="impact-cell"><span class="impact-tag low" title="The camera/listener rarely moves fast enough in this app for the omission to be audible in practice — mostly a completeness nicety.">Low</span></td>
+        <td class="diff-cell"><span class="difficulty-tag medium">Medium</span></td>
+        <td><code class="inline">closingSpeedTowardListener()</code> only accounts for the source's velocity. A fully general Doppler needs the listener's own frame-to-frame velocity too, which isn't currently tracked anywhere (only position is read each frame).</td>
+      </tr>
+      <tr>
+        <td>Full continuous-spin fidelity (matching the cited paper's r = −0.88/−0.90 correlations)</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="Refines the categorical version above with real rpm — but most of that version's perceptual benefit is already captured by the far cheaper categorical fix.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag medium">Medium</span></td>
+        <td><strong style="color:#4caf50;">✓ Done —</strong> <code class="inline">mapSpinToVolumeAdjust()</code> takes a real rpm value (recorded spin rate in Replay Loop, a representative rpm per label in Random Play). "Matching" the paper's r = −0.88/−0.90 isn't literal, though — see <a href="#spin">section 02</a> for why that's a correlation, not a slope, and how the default curve was actually chosen.</td>
+      </tr>
+      <tr>
+        <td>Auditory-anticipation-aware sound design</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="Could meaningfully affect skill-based play if pursued — but its value depends entirely on whether shot-anticipation-by-ear is even a stated design goal here.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag medium">Medium</span></td>
+        <td>Not primarily an engineering problem — building a way to test whether a listener can predict shot speed/direction from sound alone, then deliberately tuning (or deliberately obscuring) that cue, is a design and playtesting effort more than a DSP one.</td>
+      </tr>
+      <tr>
+        <td>Impact-position-driven timbre shift</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="A real, noticeable nuance to attentive players — off-center hits sounding duller — but easy for a casual listener to miss entirely.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag high">High</span></td>
+        <td>Needs either a library of recorded clip variants per racket zone (real production work) or real-time spectral reshaping driven by an impact-offset parameter — genuine new DSP, not just plumbing existing data through.</td>
+      </tr>
+      <tr>
+        <td>Racket modal-resonance synthesis</td>
+        <td class="impact-cell"><span class="impact-tag medium" title="The 'purest' possible fix, but the existing prerecorded clips already carry real baked-in resonance (see the finding above) — the marginal perceptual delta over that enormous engineering cost is smaller than it first looks.">Medium</span></td>
+        <td class="diff-cell"><span class="difficulty-tag high">High</span></td>
+        <td>True physical modeling of the frame's structural resonances (as the cited paper measured via impact-hammer + accelerometers) means a bank of tuned resonant filters or per-zone convolution impulse responses derived from real modal data — a legitimate DSP research effort, not a quick add.</td>
+      </tr>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

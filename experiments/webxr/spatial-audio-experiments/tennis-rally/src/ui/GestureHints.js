@@ -4,7 +4,10 @@ const STYLES = `
   :host { all: initial; }
   * { box-sizing: border-box; }
   .gh-panel {
-    position: fixed; left: 12px; top: 60px; z-index: 2147483000;
+    /* Pushed down from the old top:60px to clear MuteToggle's second row (left:12px/top:60px,
+       both muted and unmuted — see MuteToggle.js), which now permanently lives there instead of
+       teleporting to top-center only while muted. */
+    position: fixed; left: 12px; top: 112px; z-index: 2147483000;
     width: 236px;
     background: rgba(13,13,13,0.9); border: 1px solid #2a2a2a; border-radius: 10px;
     padding: 10px 12px; color: #bbb;
@@ -22,7 +25,7 @@ const STYLES = `
   }
   .gh-close:hover { border-color: #5b9bd5; color: #fff; }
   .gh-reopen {
-    position: fixed; left: 108px; top: 12px; z-index: 2147483000;
+    position: fixed; left: 60px; top: 12px; z-index: 2147483000;
     width: 40px; height: 40px; display: none; align-items: center; justify-content: center;
     background: rgba(13,13,13,0.92); border: 1px solid #2a2a2a; border-radius: 10px;
     color: #888; font: 700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

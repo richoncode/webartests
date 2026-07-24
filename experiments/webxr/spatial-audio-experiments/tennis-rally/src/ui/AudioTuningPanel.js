@@ -1,5 +1,7 @@
 import { clamp } from "../utils/math.js";
 import { computeAttenuation } from "../audio/spatialAttenuation.js";
+import { forceToColor } from "../visuals/ImpactForceColor.js";
+import { toCss } from "./ForceColorKey.js";
 
 const HIT_FIELDS = [
   {
@@ -34,6 +36,15 @@ const HIT_FIELDS = [
 const FORCE_AXIS_MAX = 20;
 const FV_GRAPH_PAD = { left: 32, right: 12, top: 14, bottom: 24 };
 const FV_HIT_RADIUS = 14;
+
+// Spin -> Volume Adjustment graph (racket hits only — see AudioSettingsStore.js's racket.spinMin
+// comment). SPIN_AXIS_MAX (6000rpm) and VOLUME_ADJUST_FLOOR (-1) are the graph/drag's outer
+// extremes, well beyond the tuned default (spinMax=3000, volumeAdjustAtSpinMax=-0.15) — headroom
+// to deliberately push past realistic and test how an extreme spin-quieting effect reads, not a
+// claim that real spin rates or the paper's effect size reach that far. The adjustment can only
+// ever be zero or negative (spin never boosts volume) — see _svFromPixel's clamp.
+const SPIN_AXIS_MAX = 6000;
+const VOLUME_ADJUST_FLOOR = -1;
 
 const SPATIAL_FIELDS = [
   {
@@ -210,32 +221,6 @@ const REVERB_FIELDS = [
   }
 ];
 
-// Two broad-strokes starting points (spatial + reverb together, unlike the finer SPATIAL_PRESETS
-// grid below which only touches spatial) for "what kind of place is this court in":
-//
-// Small/closed venues are physically tiny — a listener is rarely more than a few meters from any
-// hit, so the outer edge of falloff is capped low (low maxDistance) even though rolloffFactor
-// itself is gentle, tuned by ear rather than steepened to match — hard nearby walls mean strong,
-// fast early reflections even though there's no room for a long decay tail (short small-room IR,
-// moderate wetLevel).
-//
-// Large/open venues put real distance between listener and hit, so sound needs to carry much
-// further before fading (high maxDistance, gentle rolloffFactor — exponential reads as more
-// "distant" than inverse at long range) — but with no nearby walls to reflect off, reflections
-// are sparse and diffuse (low wetLevel) even though the space itself supports a long, spacious
-// tail (stadium IR). A touch of lowpass models the treble loss real sound suffers traveling that
-// far through open air.
-export const VENUE_TUNING_PRESETS = {
-  "Small / Closed Venue": {
-    spatial: { distanceModel: "inverse", minDistance: 1, maxDistance: 15, rolloffFactor: 0.45, venueScale: 0.55 },
-    reverb: { enabled: true, dryLevel: 1, wetLevel: 0.35, outputGain: 0.75, impulseResponse: "audio/impulse-responses/small-room.wav", lowpassHz: 0, highpassHz: 0 }
-  },
-  "Large / Open Venue": {
-    spatial: { distanceModel: "exponential", minDistance: 4, maxDistance: 150, rolloffFactor: 0.5, venueScale: 2.2 },
-    reverb: { enabled: true, dryLevel: 1, wetLevel: 0.3, outputGain: 0.88, impulseResponse: "audio/impulse-responses/stadium.wav", lowpassHz: 6000, highpassHz: 0 }
-  }
-};
-
 const STYLES = `
   :host { all: initial; }
   * { box-sizing: border-box; }
@@ -292,6 +277,7 @@ const STYLES = `
   }
   .atp-btn:hover { border-color: #5b9bd5; color: #fff; }
   .atp-btn.danger { border-color: #7a2b25; color: #ffb8ae; }
+  .atp-btn.active { border-color: #5b9bd5; color: #8fc5ff; background: #16202b; }
   .atp-btn-sm { padding: 6px 4px; font-size: 10px; }
   .atp-readout { background: rgba(255,255,255,0.04); border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; margin-top: 6px; line-height: 1.5; }
   .atp-readout div { display: flex; justify-content: space-between; gap: 8px; }
@@ -299,6 +285,14 @@ const STYLES = `
   .atp-graph { width: 100%; height: 120px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 6px; margin-top: 8px; }
   .atp-fv-graph { width: 100%; height: 170px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 6px; cursor: default; touch-action: none; margin-bottom: 4px; }
   .atp-subheading { font-weight: 800; color: #ffd166; margin: 14px 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .atp-fv-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0 8px; }
+  .atp-fv-heading-row .atp-subheading { margin: 0; }
+  .atp-color-mode-btn {
+    background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; font-weight: 700; font-size: 10px;
+    text-transform: none; letter-spacing: normal; white-space: nowrap;
+  }
+  .atp-color-mode-btn:hover { border-color: #5b9bd5; color: #fff; }
   .atp-preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
   .atp-clip-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
   .atp-clip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; font-size: 11px; }
@@ -408,9 +402,10 @@ class FieldRenderer {
 }
 
 export class AudioTuningPanel {
-  constructor({ settingsStore, ballAudio, getListenerPosition, onVenuePreset }) {
+  constructor({ settingsStore, ballAudio, colorModeStore, getListenerPosition, onVenuePreset }) {
     this.settings = settingsStore;
     this.ballAudio = ballAudio;
+    this.colorMode = colorModeStore;
     this.getListenerPosition = getListenerPosition;
     this.onVenuePreset = onVenuePreset || (() => {});
 
@@ -420,6 +415,7 @@ export class AudioTuningPanel {
     this.shadow = this.host.attachShadow({ mode: "open" });
 
     this._fvHeld = { racket: null, floor: null };
+    this._svHeld = null; // Spin -> Volume Adjustment graph is racket-only, so one slot suffices
 
     this._buildMarkup();
 
@@ -447,10 +443,25 @@ export class AudioTuningPanel {
     this._wireGraphRedraw();
     this._wireForceVolumeGraph("racket");
     this._wireForceVolumeGraph("floor");
+    this._wireSpinVolumeGraph();
+    this._wireColorModeToggle("racket");
+    this._wireColorModeToggle("floor");
+    this.setActiveVenue("small"); // matches CourtBuilder's own default (see CourtBuilder.js)
 
     this.settings.subscribe(() => {
       this._redrawGraph();
       this._updateLiveReadout();
+      this._redrawForceVolumeGraph("racket");
+      this._redrawForceVolumeGraph("floor");
+      this._redrawSpinVolumeGraph();
+    });
+
+    // The toggle button's label and the graph's background shading both depend on which mode is
+    // active — redraw/relabel both categories whenever it flips, regardless of which category's
+    // button was actually clicked (the mode is global, not per-category).
+    this._colorModeUnsubscribe = this.colorMode.subscribe(() => {
+      this._updateColorModeButton("racket");
+      this._updateColorModeButton("floor");
       this._redrawForceVolumeGraph("racket");
       this._redrawForceVolumeGraph("floor");
     });
@@ -480,8 +491,15 @@ export class AudioTuningPanel {
         </div>
 
         <div class="atp-section active" data-section="racket">
-          <div class="atp-subheading">Force → Volume Mapping<span class="atp-hint-icon" id="racket-fv-hint" tabindex="0">?</span></div>
+          <div class="atp-fv-heading-row">
+            <div class="atp-subheading">Force → Volume Mapping<span class="atp-hint-icon" id="racket-fv-hint" tabindex="0">?</span></div>
+            <button class="atp-color-mode-btn" id="racket-color-mode-btn" title="Switch whether the ball/trail/log color bands (see the lower-left legend) are computed from raw force or from the mapped volume level"></button>
+          </div>
           <canvas class="atp-fv-graph" id="racket-fv-graph" width="640" height="220"></canvas>
+          <div class="atp-fv-heading-row">
+            <div class="atp-subheading">Spin → Volume Adjustment<span class="atp-hint-icon" id="spin-volume-hint" tabindex="0">?</span></div>
+          </div>
+          <canvas class="atp-fv-graph" id="racket-sv-graph" width="640" height="220"></canvas>
           <div id="racket-fields"></div>
           <div class="atp-row">
             <button class="atp-btn atp-btn-sm" id="test-racket-soft">Soft</button>
@@ -497,7 +515,10 @@ export class AudioTuningPanel {
         </div>
 
         <div class="atp-section" data-section="floor">
-          <div class="atp-subheading">Force → Volume Mapping<span class="atp-hint-icon" id="floor-fv-hint" tabindex="0">?</span></div>
+          <div class="atp-fv-heading-row">
+            <div class="atp-subheading">Force → Volume Mapping<span class="atp-hint-icon" id="floor-fv-hint" tabindex="0">?</span></div>
+            <button class="atp-color-mode-btn" id="floor-color-mode-btn" title="Switch whether the ball/trail/log color bands (see the lower-left legend) are computed from raw force or from the mapped volume level"></button>
+          </div>
           <canvas class="atp-fv-graph" id="floor-fv-graph" width="640" height="220"></canvas>
           <div id="floor-fields"></div>
           <div class="atp-row">
@@ -662,24 +683,33 @@ export class AudioTuningPanel {
     tooltip.style.top = `${Math.max(margin, top)}px`;
   }
 
-  // Unlike _renderPresets()'s SPATIAL_PRESETS (spatial only), these set spatial + reverb
-  // together — a coarse "what kind of place is this" starting point, not a fine-tuned preset.
+  // Both buttons just call onVenuePreset(preset) — main.js's shared setVenuePreset() function
+  // (passed as onVenuePreset to both this panel and VenueQuickSelect.js) is what actually calls
+  // AudioSettingsStore.selectVenue(), swaps court geometry, and syncs both widgets' highlight +
+  // this panel's rendered fields. Each venue keeps its own independently-editable settings (see
+  // AudioSettingsStore.js) — clicking these never resets or overwrites either venue's tuning.
   _wireVenueTuningPresets() {
     const smallBtn = this.shadow.querySelector("#venue-preset-small");
     const largeBtn = this.shadow.querySelector("#venue-preset-large");
     this._wireHint(smallBtn, "A small enclosed room: reflections arrive fast and loud, and there's no room for a long decay tail — but sound still carries at a natural, un-steepened rate within the room's short range.");
     this._wireHint(largeBtn, "A big open-air venue: sound carries much further before fading, with a long, sparse, spacious tail instead of tight slap-back.");
 
-    smallBtn.addEventListener("click", () => {
-      this.settings.set(VENUE_TUNING_PRESETS["Small / Closed Venue"]);
-      this.onVenuePreset("small");
-      this._refreshAllFields();
-    });
-    largeBtn.addEventListener("click", () => {
-      this.settings.set(VENUE_TUNING_PRESETS["Large / Open Venue"]);
-      this.onVenuePreset("large");
-      this._refreshAllFields();
-    });
+    smallBtn.addEventListener("click", () => this.onVenuePreset("small"));
+    largeBtn.addEventListener("click", () => this.onVenuePreset("large"));
+  }
+
+  // Public so main.js's shared setVenuePreset() can keep this panel's own highlight in sync
+  // regardless of which widget's button was actually clicked.
+  setActiveVenue(preset) {
+    this.shadow.querySelector("#venue-preset-small").classList.toggle("active", preset === "small");
+    this.shadow.querySelector("#venue-preset-large").classList.toggle("active", preset === "large");
+  }
+
+  // Public so main.js's shared setVenuePreset() can re-render every field after
+  // AudioSettingsStore.selectVenue() swaps in a totally different settings object — otherwise
+  // this panel's sliders would keep showing whichever venue was active when they were last drawn.
+  refreshFields() {
+    this._refreshAllFields();
   }
 
   _renderPresets() {
@@ -710,6 +740,7 @@ export class AudioTuningPanel {
     this._redrawGraph();
     this._redrawForceVolumeGraph("racket");
     this._redrawForceVolumeGraph("floor");
+    this._redrawSpinVolumeGraph();
   }
 
   // One row per bank entry: filename, an audition ▶ button, a per-clip volume slider, an
@@ -890,6 +921,20 @@ export class AudioTuningPanel {
   // linear force→volume ramp — replaces what used to be four separate sliders. The cursor stays
   // normal until it's within FV_HIT_RADIUS of a point, then switches to a pointer/grab hand and
   // pops up its exact force/volume readout — while dragging, the same popover just follows along.
+  // The mode is global (not per-category — see ColorModeStore.js), but the button lives inside
+  // each category's own section, so both categories' buttons toggle the same shared store and
+  // both get relabeled/redrawn together (see the colorMode.subscribe() call in the constructor).
+  _wireColorModeToggle(category) {
+    const btn = this.shadow.querySelector(`#${category}-color-mode-btn`);
+    btn.addEventListener("click", () => this.colorMode.toggle());
+    this._updateColorModeButton(category);
+  }
+
+  _updateColorModeButton(category) {
+    const btn = this.shadow.querySelector(`#${category}-color-mode-btn`);
+    btn.textContent = this.colorMode.mode === "volume" ? "Color: Volume" : "Color: Force";
+  }
+
   _wireForceVolumeGraph(category) {
     const canvas = this.shadow.querySelector(`#${category}-fv-graph`);
     this._wireHint(
@@ -967,6 +1012,35 @@ export class AudioTuningPanel {
     this._redrawForceVolumeGraph(category);
   }
 
+  // Shades the plot area with the exact same force/volume -> color banding ImpactForceColor.js
+  // applies to the ball, so this graph doubles as a legend for the currently-active color mode:
+  // vertical bands along the force (X) axis in "force" mode, horizontal bands along the volume
+  // (Y) axis in "volume" mode — sampled per-pixel rather than hand-derived from the band math, so
+  // this can never drift out of sync with forceToColor()'s own thresholds.
+  _drawColorBands(canvas, category, { forceMin, forceMax, volumeMin, volumeMax }) {
+    const ctx = canvas.getContext("2d");
+    const { width, height } = canvas;
+    const { left, right, top, bottom } = FV_GRAPH_PAD;
+    const mode = this.colorMode.mode;
+
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    if (mode === "volume") {
+      for (let y = top; y < height - bottom; y++) {
+        const { volume } = this._fvFromPixel(canvas, { x: left, y });
+        ctx.fillStyle = toCss(forceToColor(volume, volumeMin, volumeMax));
+        ctx.fillRect(left, y, width - left - right, 1);
+      }
+    } else {
+      for (let x = left; x < width - right; x++) {
+        const { force } = this._fvFromPixel(canvas, { x, y: top });
+        ctx.fillStyle = toCss(forceToColor(force, forceMin, forceMax));
+        ctx.fillRect(x, top, 1, height - top - bottom);
+      }
+    }
+    ctx.restore();
+  }
+
   _redrawForceVolumeGraph(category) {
     const canvas = this.shadow.querySelector(`#${category}-fv-graph`);
     if (!canvas) return;
@@ -978,6 +1052,9 @@ export class AudioTuningPanel {
     ctx.fillStyle = "#0a0a0a";
     ctx.fillRect(0, 0, width, height);
 
+    const { forceMin, volumeMin, forceMax, volumeMax } = this.settings.get()[category];
+    this._drawColorBands(canvas, category, { forceMin, forceMax, volumeMin, volumeMax });
+
     ctx.strokeStyle = "#222";
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
@@ -987,8 +1064,6 @@ export class AudioTuningPanel {
       ctx.lineTo(width - right, y);
       ctx.stroke();
     }
-
-    const { forceMin, volumeMin, forceMax, volumeMax } = this.settings.get()[category];
 
     // The exact piecewise-linear shape mapForceToVolume() computes: flat at volumeMin below
     // forceMin, linear ramp between the two points, flat at volumeMax above forceMax.
@@ -1024,6 +1099,171 @@ export class AudioTuningPanel {
 
     drawPoint(forceMin, volumeMin, "#5b9bd5", this._fvHeld[category] === "min");
     drawPoint(forceMax, volumeMax, "#f0a040", this._fvHeld[category] === "max");
+  }
+
+  // Spin axis: 0..SPIN_AXIS_MAX mapped left-to-right. Volume-adjust axis: VOLUME_ADJUST_FLOOR..0
+  // mapped bottom-to-top (0 — no reduction — sits at the top, mirroring how 1.0 sits at the top
+  // of the Force -> Volume graph above). Shared by _svFromPixel (inverse) so dragging and drawing
+  // always agree on the same coordinate mapping.
+  _svToPixel(canvas, spin, volumeAdjust) {
+    const { width, height } = canvas;
+    const { left, right, top, bottom } = FV_GRAPH_PAD;
+    const x = left + (clamp(spin, 0, SPIN_AXIS_MAX) / SPIN_AXIS_MAX) * (width - left - right);
+    const normalized = (clamp(volumeAdjust, VOLUME_ADJUST_FLOOR, 0) - VOLUME_ADJUST_FLOOR) / -VOLUME_ADJUST_FLOOR;
+    const y = top + (1 - normalized) * (height - top - bottom);
+    return { x, y };
+  }
+
+  _svFromPixel(canvas, pos) {
+    const { width, height } = canvas;
+    const { left, right, top, bottom } = FV_GRAPH_PAD;
+    const spin = clamp(((pos.x - left) / (width - left - right)) * SPIN_AXIS_MAX, 0, SPIN_AXIS_MAX);
+    const normalized = clamp(1 - (pos.y - top) / (height - top - bottom), 0, 1);
+    // Spin can only ever hold volume steady or quiet it — never boost it — so 0 is a hard
+    // ceiling here regardless of which point is being dragged, not just the tuned default's own
+    // starting value.
+    const volumeAdjust = Math.min(0, VOLUME_ADJUST_FLOOR + normalized * -VOLUME_ADJUST_FLOOR);
+    return { spin, volumeAdjust };
+  }
+
+  // Drag-to-edit for (spinMin,volumeAdjustAtSpinMin)/(spinMax,volumeAdjustAtSpinMax) — the exact
+  // same interaction pattern as _wireForceVolumeGraph above, just a different pair of axes and
+  // capped at 0 on top instead of ranging the full 0..1.
+  _wireSpinVolumeGraph() {
+    const canvas = this.shadow.querySelector("#racket-sv-graph");
+    if (!canvas) return;
+    this._wireHint(
+      this.shadow.querySelector("#spin-volume-hint"),
+      "Real recorded/serve spin correlates with a QUIETER impact — a heavily topspun serve measured both slower and quieter than a flat one (Takeda et al. 2024, r = −0.88 between spin rate and impact sound level — see the Physics page's Honesty Check for the full citation). This is a separate additive adjustment layered on top of the Force → Volume mapping above, not folded into it, and is capped at 0: spin can reduce volume but never boost it. Hover or drag either point to see/change exact values."
+    );
+
+    const canvasPos = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    };
+    const hitTest = (pos) => {
+      const { spinMin, volumeAdjustAtSpinMin, spinMax, volumeAdjustAtSpinMax } = this.settings.get().racket;
+      const minPx = this._svToPixel(canvas, spinMin, volumeAdjustAtSpinMin);
+      const maxPx = this._svToPixel(canvas, spinMax, volumeAdjustAtSpinMax);
+      const distMin = Math.hypot(pos.x - minPx.x, pos.y - minPx.y);
+      const distMax = Math.hypot(pos.x - maxPx.x, pos.y - maxPx.y);
+      if (distMin <= FV_HIT_RADIUS && distMin <= distMax) return "min";
+      if (distMax <= FV_HIT_RADIUS) return "max";
+      return null;
+    };
+    const applyDrag = (point, pos) => {
+      const { spin, volumeAdjust } = this._svFromPixel(canvas, pos);
+      if (point === "min") this.settings.set({ racket: { spinMin: spin, volumeAdjustAtSpinMin: volumeAdjust } });
+      else this.settings.set({ racket: { spinMax: spin, volumeAdjustAtSpinMax: volumeAdjust } });
+    };
+    const showPointTooltip = (point, event) => {
+      const { spinMin, volumeAdjustAtSpinMin, spinMax, volumeAdjustAtSpinMax } = this.settings.get().racket;
+      const spin = point === "min" ? spinMin : spinMax;
+      const volumeAdjust = point === "min" ? volumeAdjustAtSpinMin : volumeAdjustAtSpinMax;
+      this._showTooltipAtPoint(event.clientX, event.clientY, `Spin: ${spin.toFixed(0)} rpm\nVolume adjust: ${volumeAdjust.toFixed(3)}`);
+    };
+
+    canvas.addEventListener("pointerdown", (event) => {
+      const point = hitTest(canvasPos(event));
+      if (!point) return;
+      canvas.setPointerCapture(event.pointerId);
+      this._svHeld = point;
+      canvas.style.cursor = "grabbing";
+      applyDrag(point, canvasPos(event));
+      showPointTooltip(point, event);
+      this._redrawSpinVolumeGraph();
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (this._svHeld != null) {
+        applyDrag(this._svHeld, canvasPos(event));
+        showPointTooltip(this._svHeld, event);
+        return;
+      }
+      const point = hitTest(canvasPos(event));
+      canvas.style.cursor = point ? "pointer" : "default";
+      if (point) showPointTooltip(point, event);
+      else this._hideTooltip();
+    });
+    const release = () => {
+      if (this._svHeld == null) return;
+      this._svHeld = null;
+      canvas.style.cursor = "default";
+      this._hideTooltip();
+      this._redrawSpinVolumeGraph();
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+    canvas.addEventListener("pointerleave", () => {
+      if (this._svHeld == null) {
+        canvas.style.cursor = "default";
+        this._hideTooltip();
+      }
+    });
+
+    this._redrawSpinVolumeGraph();
+  }
+
+  _redrawSpinVolumeGraph() {
+    const canvas = this.shadow.querySelector("#racket-sv-graph");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const { width, height } = canvas;
+    const { left, right, top, bottom } = FV_GRAPH_PAD;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#0a0a0a";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = top + ((height - top - bottom) * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(left, y);
+      ctx.lineTo(width - right, y);
+      ctx.stroke();
+    }
+
+    const { spinMin, volumeAdjustAtSpinMin, spinMax, volumeAdjustAtSpinMax } = this.settings.get().racket;
+
+    // The exact piecewise-linear shape mapSpinToVolumeAdjust() computes: flat at
+    // volumeAdjustAtSpinMin below spinMin, linear ramp between the two points, flat at
+    // volumeAdjustAtSpinMax above spinMax.
+    ctx.strokeStyle = "#e74c3c";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    [
+      this._svToPixel(canvas, 0, volumeAdjustAtSpinMin),
+      this._svToPixel(canvas, spinMin, volumeAdjustAtSpinMin),
+      this._svToPixel(canvas, spinMax, volumeAdjustAtSpinMax),
+      this._svToPixel(canvas, SPIN_AXIS_MAX, volumeAdjustAtSpinMax)
+    ].forEach((pos, i) => (i === 0 ? ctx.moveTo(pos.x, pos.y) : ctx.lineTo(pos.x, pos.y)));
+    ctx.stroke();
+
+    ctx.fillStyle = "#666";
+    ctx.font = "10px monospace";
+    ctx.fillText("0", left - 2, height - bottom + 14);
+    ctx.fillText(`${SPIN_AXIS_MAX} rpm`, width - right - 42, height - bottom + 14);
+    ctx.fillText("Spin (rpm)", width / 2 - 24, height - 4);
+    ctx.fillText("0", 2, top + 8);
+    ctx.fillText(`${VOLUME_ADJUST_FLOOR.toFixed(1)}`, 2, height - bottom + 2);
+
+    const drawPoint = (spin, volumeAdjust, color, held) => {
+      const pos = this._svToPixel(canvas, spin, volumeAdjust);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, held ? 8 : 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0a0a0a";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    };
+
+    drawPoint(spinMin, volumeAdjustAtSpinMin, "#5b9bd5", this._svHeld === "min");
+    drawPoint(spinMax, volumeAdjustAtSpinMax, "#f0a040", this._svHeld === "max");
   }
 
   _wireRecentHit() {
@@ -1180,6 +1420,7 @@ export class AudioTuningPanel {
 
   dispose() {
     clearInterval(this._observer);
+    this._colorModeUnsubscribe();
     this.host.remove();
   }
 }

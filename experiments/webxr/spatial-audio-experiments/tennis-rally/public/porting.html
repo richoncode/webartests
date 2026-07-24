@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Porting Guide — Tennis Rally Spatial Audio</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 100px; }
+  a.back { display: inline-block; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .nav-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; flex-wrap: wrap; gap: 8px; }
+  a.sibling-link { color: #8fc5ff; text-decoration: none; font-size: 13px; font-weight: 700; }
+  a.sibling-link:hover { text-decoration: underline; }
+  .page { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 680px; margin-bottom: 36px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid #2a2a2a; margin-bottom: 40px; padding-bottom: 12px; }
+  .tab {
+    background: #1a1a1a; border: 1px solid #2a2a2a; color: #999;
+    border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 700; font-size: 13px;
+    font-family: inherit; transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+  .tab:hover { border-color: #444; color: #ccc; }
+  .tab.active { border-color: #5b9bd5; color: #8fc5ff; background: #16202b; }
+  .tab.stub { color: #555; }
+  .tab.stub.active { border-color: #555; color: #aaa; background: #1a1a1a; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Section headers */
+  .section { margin-bottom: 48px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+  .section-name { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 14px; color: #888; margin-bottom: 20px; max-width: 680px; line-height: 1.6; }
+  .section-divider { border: none; border-top: 1px solid #1a1a1a; margin-bottom: 20px; }
+
+  /* Callouts */
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 16px; background: #0d1620; }
+  .callout.orange { border-color: #f0a040; background: #1a1200; }
+  .callout.green { border-color: #4caf50; background: #0a1a0a; }
+  .callout strong { color: #ddd; }
+
+  /* Spec table */
+  .spec-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+  .spec-table td { padding: 8px 14px; border-bottom: 1px solid #161616; vertical-align: top; }
+  .spec-table td:first-child { color: #8fc5ff; width: 220px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  .spec-table td:last-child { color: #bbb; }
+  .spec-table tr:last-child td { border-bottom: none; }
+  .spec-table thead td { color: #666; font-family: inherit; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+
+  /* Code blocks */
+  pre { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 18px; overflow-x: auto; margin-bottom: 16px; }
+  code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; color: #c8d6e5; line-height: 1.6; }
+  .kw { color: #ff9d6c; }
+  .type { color: #8fc5ff; }
+  .cmt { color: #5f6b73; }
+  .str { color: #a3d977; }
+
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 20px; }
+  .badge.blue { color: #5b9bd5; background: #1e2d40; border: 1px solid #5b9bd544; }
+  .badge.green { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .badge.orange { color: #ffd166; background: #2b2013; border: 1px solid #f0a04044; }
+  .badge.red { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+
+  /* Recommendation rows */
+  .spec-table tr.recommended td:first-child { color: #6fcf7a; }
+  .spec-table tr.not-recommended td:first-child { color: #d98880; }
+  .pick-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
+  .pick-tag.yes { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .pick-tag.no { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+
+  .stub-body { color: #666; font-size: 14px; padding: 40px 0; text-align: center; border: 1px dashed #262626; border-radius: 12px; }
+
+  /* Citations */
+  .cite { font-size: 10px; vertical-align: super; color: #5b9bd5; text-decoration: none; margin-left: 1px; }
+  .cite:hover { text-decoration: underline; }
+  .references { margin-top: 56px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .references h3 { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .references ol { padding-left: 20px; }
+  .references li { font-size: 13px; color: #888; margin-bottom: 10px; line-height: 1.6; }
+  .references li a { color: #8fc5ff; text-decoration: none; }
+  .references li a:hover { text-decoration: underline; }
+  .references li span.note { color: #666; }
+</style>
+</head>
+<body>
+<div class="nav-row">
+  <a class="back" href="./index.html">← Back to Tennis Rally</a>
+  <a class="sibling-link" href="./tennis-audio-physics.html">Audio Physics →</a>
+</div>
+
+<div class="page">
+  <h1>Porting Guide</h1>
+  <p class="subtitle">This simulation's spatial audio — clip banks, force→volume mapping, distance falloff, reverb, and racket-position Doppler — was built directly against the Web Audio API. This guide maps each piece onto other real-time engines, starting with Unity + AR Foundation.</p>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-panel="unity">Unity (AR Foundation)</button>
+    <button class="tab stub" data-panel="unreal">Unreal Engine</button>
+    <button class="tab stub" data-panel="arkit">Native iOS (ARKit)</button>
+    <button class="tab stub" data-panel="arcore">Native Android (ARCore)</button>
+  </div>
+
+  <!-- ══════════════ UNITY + AR FOUNDATION ══════════════ -->
+  <div class="panel active" id="unity">
+
+    <div class="badge-row">
+      <span class="badge blue">AudioSource / AudioMixer</span>
+      <span class="badge blue">AR Foundation</span>
+      <span class="badge green">Resonance Audio (recommended)</span>
+    </div>
+
+    <div class="callout">
+      <strong>Overall shape of the port:</strong> almost everything this tool's tuning panel exposes is plain data — a force→volume curve, a set of clip banks, distance/rolloff numbers, reverb levels — and ports directly as a C# class with the same field names. The only pieces that need an actual plugin instead of stock Unity are true HRTF spatialization and convolution-style reverb, since Unity's built-in audio doesn't ship either.
+    </div>
+
+    <div class="section">
+      <p class="section-title">01 — Foundations</p>
+      <h2 class="section-name">Spatializer &amp; Reverb Plugin</h2>
+      <p class="section-desc">Stock Unity's 3D audio is a simple distance-based panner — no head-related transfer function, and its reverb (<code style="color:#bbb">AudioReverbFilter</code> / <code style="color:#bbb">AudioReverbZone</code>) is a fixed set of algorithmic presets, not the convolution-against-a-recorded-impulse-response approach this tool uses (<code style="color:#bbb">small-room.wav</code>, <code style="color:#bbb">outdoor-court.wav</code>, <code style="color:#bbb">stadium.wav</code>). For real parity, install a spatial audio plugin before porting anything else.</p>
+      <hr class="section-divider">
+
+      <div class="callout green">
+        <strong>Recommended: Resonance Audio.</strong> Android XR is one of the platforms this project targets, and Android XR ships a first-party <strong style="color:#ccc">Audio SDK</strong> built directly on "an updated Resonance Audio engine"<a class="cite" href="#ref-androidxr-audio">[5]</a> — HRTF spatialization, physical room-acoustics simulation from scene geometry, and precomputed reverb, all native to the OS with zero extra plugin install on that platform. Standardizing on Resonance Audio across every Unity target means the same spatializer choice carries through to Android XR for free, instead of running a different, redundant pipeline there.
+      </div>
+
+      <table class="spec-table">
+        <thead><tr><td>Option</td><td>Notes</td></tr></thead>
+        <tr class="recommended">
+          <td>Resonance Audio</td>
+          <td>
+            <span class="pick-tag yes">✓ Recommended</span><br>
+            Google's spatial audio SDK, open-sourced under Apache 2.0.<a class="cite" href="#ref-resonance-oss">[3]</a> The general-purpose Unity/Unreal engine plugin repos were archived in December 2022<a class="cite" href="#ref-resonance-archived">[4]</a> — no longer actively developed as standalone plugins, but the same engine lives on as the foundation of Android XR's own first-party Audio SDK.<a class="cite" href="#ref-androidxr-audio">[5]</a><br><br>
+            <strong style="color:#ffd166">On Android XR specifically</strong>: the platform's <strong style="color:#ccc">Android XR Audio SDK</strong> — built on this same updated Resonance Audio engine — is the natural, first-party choice, not a third-party add-on.<a class="cite" href="#ref-androidxr-audio">[5]</a> For the other Unity targets (iOS/desktop AR Foundation), the plain Resonance Audio Unity plugin keeps the exact same spatializer/reverb model consistent across every platform this project ships to, rather than mixing spatializers per-platform.
+          </td>
+        </tr>
+        <tr class="not-recommended">
+          <td>Steam Audio</td>
+          <td>
+            <span class="pick-tag no">✕ Not recommended here</span><br>
+            Free, open-source, actively maintained, with generic Android CPU support (armv8/arm64, x86, x64).<a class="cite" href="#ref-steamaudio-platforms">[1]</a> HRTF spatialization plus true convolution-based reverb.<a class="cite" href="#ref-steamaudio-reverb">[2]</a> A genuinely strong plugin on its own — but it has no first-party integration with Android XR's own Resonance-Audio-based room-acoustics pipeline, so using it on that platform means running a second, redundant spatializer alongside (or instead of) the one the OS already provides for free, rather than reusing it.
+          </td>
+        </tr>
+        <tr class="not-recommended">
+          <td>FMOD (as audio backend)</td>
+          <td>
+            <span class="pick-tag no">✕ Not recommended here</span><br>
+            Has a dedicated Convolution Reverb DSP that loads an impulse response file<a class="cite" href="#ref-fmod-convolution">[6]</a> and a visual mixer not unlike this tool's own tuning panel — but it means swapping Unity's entire audio backend, a much bigger lift than adding a spatializer plugin. The only production XR-specific FMOD spatializer is Meta's, built for Quest — there's no equivalent first-party FMOD integration for Android XR, so you'd be hand-rolling the room-acoustics simulation Android XR already gives you natively through Resonance Audio.
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#888; font-size:13px; margin-bottom:8px;">Once you've picked a spatializer, enable it under <strong style="color:#ccc">Edit → Project Settings → Audio → Spatializer Plugin</strong>, then on every 3D <code style="color:#bbb">AudioSource</code>: <code style="color:#bbb">spatialBlend = 1</code> and <code style="color:#bbb">spatialize = true</code>.</p>
+    </div>
+
+    <div class="section">
+      <p class="section-title">02 — Clip Banks &amp; Jitter</p>
+      <h2 class="section-name">Racket / Floor Hit Categories</h2>
+      <p class="section-desc">This app's <code style="color:#bbb">AudioSettingsStore</code> holds a per-category array of clip entries (<code style="color:#bbb">{ url, enabled, volume }</code>), a random-selection pool, and volume/pitch jitter fractions. Ports as-is — Unity has no built-in "weighted random one-shot with jitter", so this stays hand-rolled C# either way.</p>
+      <hr class="section-divider">
+
+      <pre><code><span class="kw">public class</span> <span class="type">HitCategory</span>
+{
+    <span class="kw">public</span> <span class="type">AudioClip</span>[] clips;
+    <span class="kw">public bool</span>[] enabled;
+    <span class="kw">public float</span>[] clipVolume;
+    <span class="kw">public float</span> randomVolumeJitter = <span class="str">0.08f</span>;
+    <span class="kw">public float</span> randomPitchJitter = <span class="str">0.06f</span>;
+    <span class="kw">public int</span> maxSimultaneousSounds = <span class="str">6</span>;
+
+    <span class="kw">private readonly</span> <span class="type">List</span>&lt;<span class="type">AudioSource</span>&gt; _active = <span class="kw">new</span>();
+
+    <span class="kw">public void</span> Play(<span class="type">Vector3</span> position, <span class="type">float</span> volume01, <span class="type">float</span> dopplerPitch)
+    {
+        <span class="cmt">// Evict the oldest voice once at the cap — mirrors maxSimultaneousSounds</span>
+        <span class="kw">if</span> (_active.Count &gt;= maxSimultaneousSounds)
+        {
+            _active[<span class="str">0</span>].Stop();
+            _active.RemoveAt(<span class="str">0</span>);
+        }
+
+        <span class="kw">var</span> enabledIndices = EnabledIndices();
+        <span class="kw">int</span> pick = enabledIndices[<span class="type">Random</span>.Range(<span class="str">0</span>, enabledIndices.Count)];
+
+        <span class="kw">float</span> jitteredVolume = volume01 * clipVolume[pick]
+            * (<span class="str">1f</span> + <span class="type">Random</span>.Range(-randomVolumeJitter, randomVolumeJitter));
+        <span class="kw">float</span> jitteredPitch = dopplerPitch
+            * (<span class="str">1f</span> + <span class="type">Random</span>.Range(-randomPitchJitter, randomPitchJitter));
+
+        <span class="kw">var</span> src = SpawnSourceAt(position);
+        src.clip = clips[pick];
+        src.volume = jitteredVolume;
+        src.pitch = jitteredPitch;
+        src.Play();
+        _active.Add(src);
+    }
+}</code></pre>
+
+      <div class="callout green">
+        <strong>Verified — this needs no conversion.</strong> <code style="color:#ccc">AudioSource.volume</code> is documented as a plain linear 0–1 scalar with a "linear taper"<a class="cite" href="#ref-unity-audiosource-volume">[12]</a> — the exact same convention as this app's own <code style="color:#bbb">GainNode.gain.value</code> (see the <a class="sibling-link" href="./tennis-audio-physics.html#force-volume" style="font-size:13px;">Audio Physics</a> page's note on why that's a simplification). So <code style="color:#ccc">src.volume = jitteredVolume</code> above is a direct, lossless 1:1 assignment — the web app's <code style="color:#bbb">volume</code> field and Unity's <code style="color:#bbb">AudioSource.volume</code> are the same kind of number. <strong style="color:#ffd166">Don't confuse this with Section 06 below</strong>: the dB conversion described there applies only to <code style="color:#bbb">AudioMixer</code>'s exposed group-level parameters, a separate mixing-bus layer — never to <code style="color:#bbb">AudioSource.volume</code> itself.
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-title">03 — Force → Volume Mapping</p>
+      <h2 class="section-name">The Draggable Graph, As a Curve Asset</h2>
+      <p class="section-desc">The two-point drag graph in this app's tuning panel (a piecewise-linear ramp: flat below <code style="color:#bbb">forceMin</code>, linear between the two points, flat above <code style="color:#bbb">forceMax</code>) maps almost exactly onto Unity's built-in <code style="color:#bbb">AnimationCurve</code> — its Inspector curve editor <em>is</em> a drag-to-edit graph, so designers get the same editing experience for free.</p>
+      <hr class="section-divider">
+
+      <pre><code><span class="kw">public</span> <span class="type">AnimationCurve</span> forceToVolume = <span class="type">AnimationCurve</span>.Linear(<span class="str">0f</span>, <span class="str">0.05f</span>, <span class="str">14f</span>, <span class="str">1f</span>);
+
+<span class="kw">float</span> MapForceToVolume(<span class="type">float</span> force) =&gt; forceToVolume.Evaluate(force);</code></pre>
+
+      <div class="callout">
+        Keep the same semantics as the web tool: <strong>"force" is a speed-equivalent (m/s)</strong>, a weighted blend of racket/ball closing speed and each one's own speed — not a true physical force. Compute it identically on both sides so a tuning JSON exported from the web app maps onto the same curve shape in Unity.
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-title">04 — Distance &amp; Rolloff</p>
+      <h2 class="section-name">Min/Max Distance, Rolloff Factor, Venue Scale</h2>
+      <p class="section-desc">Unity's <code style="color:#bbb">AudioSource</code> ships Logarithmic/Linear/Custom rolloff modes, but its "Logarithmic" curve isn't the same math as Web Audio's <code style="color:#bbb">inverse</code> distance model this app defaults to. For exact parity, sample this app's own <code style="color:#bbb">computeAttenuation()</code> function into a <code style="color:#bbb">Custom Rolloff</code> curve<a class="cite" href="#ref-unity-customcurve">[7]</a> instead of relying on Unity's presets.</p>
+      <hr class="section-divider">
+
+      <table class="spec-table">
+        <thead><tr><td>This app</td><td>Unity equivalent</td></tr></thead>
+        <tr><td>minDistance / maxDistance</td><td><code style="color:#bbb">AudioSource.minDistance</code> / <code style="color:#bbb">.maxDistance</code></td></tr>
+        <tr><td>distanceModel: "linear"</td><td><code style="color:#bbb">AudioRolloffMode.Linear</code></td></tr>
+        <tr><td>distanceModel: "inverse" / "exponential"</td><td><code style="color:#bbb">AudioRolloffMode.Custom</code> + a curve baked from this app's own attenuation formula (Unity's built-in Logarithmic mode is close but not numerically identical to the inverse model)</td></tr>
+        <tr><td>rolloffFactor</td><td>folded directly into the baked custom curve's shape — there's no separate Unity parameter for it once you're on Custom rolloff</td></tr>
+        <tr><td>venueScale</td><td>no native equivalent (Unity always measures real Transform distance) — multiply <code style="color:#bbb">minDistance</code>/<code style="color:#bbb">maxDistance</code> by <code style="color:#bbb">venueScale</code> at apply-time instead of scaling geometry, to get the same "sounds bigger/smaller without moving anything" effect</td></tr>
+        <tr><td>coneInnerAngle / coneOuterAngle / coneOuterVolume</td><td>no built-in equivalent — stock <code style="color:#bbb">AudioSource</code> has no directional cone. Approximate by computing the angle between the source's forward vector and the listener manually in script, and fold an angle-based multiplier into the volume passed to <code style="color:#bbb">Play()</code></td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <p class="section-title">05 — Doppler (the part that needs care)</p>
+      <h2 class="section-name">Racket Velocity, Not Automatic Transform Doppler</h2>
+      <p class="section-desc">This is the one piece most likely to get ported wrong. Unity's built-in <code style="color:#bbb">AudioSource.dopplerLevel</code><a class="cite" href="#ref-unity-doppler">[8]</a> computes pitch shift automatically from how far the source's Transform actually moved <em>between frames</em> relative to the AudioListener. That doesn't match this app's model: the racket-hit sound fires as a single instantaneous one-shot at contact, using an <em>effective racket velocity</em> derived from the ball's real outgoing direction (scaled to the animation's reported racket speed) — not the racket rig's own frame-to-frame transform movement, which isn't trustworthy for this.</p>
+      <hr class="section-divider">
+
+      <div class="callout orange">
+        <strong>Set <code style="color:#ffd166">dopplerLevel = 0</code></strong> on these AudioSources and compute the shift manually — otherwise you'll get two competing, inconsistent Doppler effects layered on top of each other.
+      </div>
+
+      <pre><code><span class="kw">const float</span> SpeedOfSound = <span class="str">343f</span>;
+
+<span class="type">float</span> ClosingSpeedTowardListener(<span class="type">Vector3</span> sourceVelocity, <span class="type">Vector3</span> sourcePos, <span class="type">Vector3</span> listenerPos)
+{
+    <span class="type">Vector3</span> toListener = listenerPos - sourcePos;
+    <span class="type">float</span> dist = toListener.magnitude;
+    <span class="kw">if</span> (dist &lt; <span class="str">1e-4f</span>) <span class="kw">return</span> <span class="str">0f</span>;
+    <span class="kw">return</span> <span class="type">Vector3</span>.Dot(sourceVelocity, toListener) / dist;
+}
+
+<span class="type">float</span> DopplerFactor(<span class="type">float</span> closingSpeed)
+{
+    <span class="type">float</span> clamped = <span class="type">Mathf</span>.Clamp(closingSpeed, -SpeedOfSound * <span class="str">0.9f</span>, SpeedOfSound * <span class="str">0.9f</span>);
+    <span class="kw">return</span> SpeedOfSound / (SpeedOfSound - clamped);
+}
+
+<span class="cmt">// At contact: derive effectiveRacketVelocity from the ball's outgoing shot direction
+// (scaled to the animation's reported racket speed), exactly like BallAudio.js does —
+// the racket rig's own raw velocity is not trustworthy as a Doppler source.</span>
+<span class="type">float</span> pitch = DopplerFactor(ClosingSpeedTowardListener(effectiveRacketVelocity, racketPos, listenerPos));
+audioSource.pitch = pitch * jitteredPitch;</code></pre>
+    </div>
+
+    <div class="section">
+      <p class="section-title">06 — Mixing: Global / Racket / Floor Gain</p>
+      <h2 class="section-name">Audio Mixer Groups</h2>
+      <p class="section-desc">The tuning panel's <code style="color:#bbb">globalGain</code>, <code style="color:#bbb">racketGainMultiplier</code>, and <code style="color:#bbb">floorGainMultiplier</code> map naturally onto an Audio Mixer hierarchy: a Master group with Racket and Floor child groups, each independently controllable at runtime.</p>
+      <hr class="section-divider">
+
+      <div class="callout">
+        Mixer-exposed parameters are in <strong>decibels</strong> (Unity's mixer range runs from +20 dB down to a silent floor at −80 dB<a class="cite" href="#ref-unity-mixer-db">[9]</a>), not the 0–1 linear gain this app's model uses everywhere. Convert with <code style="color:#ccc">dB = 20 * log10(linearGain)</code> before calling <code style="color:#bbb">AudioMixer.SetFloat(...)</code>, or the sliders will feel completely different from their web-app counterparts.
+      </div>
+
+      <pre><code><span class="kw">void</span> SetGain(<span class="type">AudioMixer</span> mixer, <span class="type">string</span> exposedParam, <span class="type">float</span> linearGain)
+{
+    <span class="type">float</span> db = linearGain &gt; <span class="str">0.0001f</span> ? <span class="str">20f</span> * <span class="type">Mathf</span>.Log10(linearGain) : <span class="str">-80f</span>;
+    mixer.SetFloat(exposedParam, db);
+}</code></pre>
+    </div>
+
+    <div class="section">
+      <p class="section-title">07 — Venue Presets &amp; Settings Portability</p>
+      <h2 class="section-name">Reusing Exported Tuning JSON</h2>
+      <p class="section-desc">The web app's Save Tuning JSON / Load Tuning JSON buttons already export this entire model as plain JSON with the exact field names used throughout this guide. Mirror <code style="color:#bbb">AudioSettingsStore</code>'s shape as a serializable C# class and you can drop an exported tuning file straight into <code style="color:#bbb">StreamingAssets</code> as a first-pass starting point in Unity.</p>
+      <hr class="section-divider">
+
+      <pre><code>[<span class="type">Serializable</span>]
+<span class="kw">public class</span> <span class="type">SpatialSettings</span>
+{
+    <span class="kw">public string</span> distanceModel; <span class="cmt">// "linear" | "inverse" | "exponential"</span>
+    <span class="kw">public float</span> minDistance, maxDistance, rolloffFactor, venueScale;
+    <span class="kw">public float</span> coneInnerAngle, coneOuterAngle, coneOuterVolume;
+    <span class="kw">public float</span> globalGain, racketGainMultiplier, floorGainMultiplier;
+}
+
+<span class="kw">var</span> settings = <span class="type">JsonUtility</span>.FromJson&lt;<span class="type">SpatialSettings</span>&gt;(jsonText);</code></pre>
+    </div>
+
+    <div class="section">
+      <p class="section-title">08 — AR Foundation Specifics</p>
+      <h2 class="section-name">Listener, Anchoring, and Mobile Performance</h2>
+      <hr class="section-divider">
+
+      <table class="spec-table">
+        <thead><tr><td>Concern</td><td>Guidance</td></tr></thead>
+        <tr><td>Listener position</td><td>Attach the <code style="color:#bbb">AudioListener</code> to the AR session's Camera (under <code style="color:#bbb">XROrigin</code> / <code style="color:#bbb">AR Session Origin</code><a class="cite" href="#ref-arfoundation-manual">[10]</a>) — it then tracks the device pose automatically, the same way this app reads <code style="color:#bbb">scene.activeCamera.position</code> every frame.</td></tr>
+        <tr><td>World anchoring</td><td>Parent the court and its emitters under an anchor managed by <code style="color:#bbb">ARAnchorManager</code><a class="cite" href="#ref-aranchormanager">[11]</a> (or a plane detected via <code style="color:#bbb">ARPlaneManager</code>). Once anchored, ordinary local Transform positions on the racket/ball drive panning and distance exactly like Babylon.js scene-space positions do here.</td></tr>
+        <tr><td>Voice cap on mobile</td><td>Mobile AR is thermally and CPU constrained — keep <code style="color:#bbb">maxSimultaneousSounds</code> conservative (this app defaults to 6) and prefer triggering convolution reverb only on discrete hits rather than running it continuously.</td></tr>
+        <tr><td>Cross-platform spatializer</td><td>Neither Apple's nor Google's native spatial audio APIs are exposed directly through Unity, which is why a cross-platform plugin matters for an AR Foundation app that has to run across iOS, Android, and Android XR from one project. Resonance Audio is the pick that stays consistent everywhere: it's the plain plugin on iOS/desktop, and on Android XR it <em>is</em> the platform's own first-party Audio SDK<a class="cite" href="#ref-androidxr-audio">[5]</a> rather than a third-party add-on running alongside it.</td></tr>
+      </table>
+    </div>
+
+    <div class="references">
+      <h3>References</h3>
+      <ol>
+        <li id="ref-steamaudio-platforms"><a href="https://github.com/ValveSoftware/steam-audio" target="_blank" rel="noopener">Steam Audio — ValveSoftware/steam-audio (GitHub)</a> <span class="note">— supported platforms (Windows, Linux, macOS, Android, iOS).</span></li>
+        <li id="ref-steamaudio-reverb"><a href="https://valvesoftware.github.io/steam-audio/doc/unity/reverb.html" target="_blank" rel="noopener">Steam Audio Reverb — Unity Integration docs</a> <span class="note">— HRTF-rendered direct sound and convolution/parametric/hybrid reverb.</span></li>
+        <li id="ref-resonance-oss"><a href="https://developers.googleblog.com/open-sourcing-resonance-audio/" target="_blank" rel="noopener">Open Sourcing Resonance Audio — Google Developers Blog</a></li>
+        <li id="ref-resonance-archived"><a href="https://github.com/resonance-audio/resonance-audio-unity-sdk" target="_blank" rel="noopener">resonance-audio/resonance-audio-unity-sdk (GitHub)</a> <span class="note">— repository archived Dec 19, 2022.</span></li>
+        <li id="ref-androidxr-audio"><a href="https://developer.android.com/develop/xr/audio-sdk" target="_blank" rel="noopener">Android XR Audio SDK for Unity — Android Developers</a> <span class="note">— "Powered by an updated Resonance Audio engine," providing 3D spatialization, room-acoustics simulation, and precomputed reverb for Android XR.</span></li>
+        <li id="ref-fmod-convolution"><a href="https://www.fmod.com/assets/html5/core_api/convolution_reverb.html" target="_blank" rel="noopener">FMOD Core API — Convolution Reverb example</a></li>
+        <li id="ref-unity-customcurve"><a href="https://docs.unity3d.com/ScriptReference/AudioSource.SetCustomCurve.html" target="_blank" rel="noopener">Unity Scripting API — AudioSource.SetCustomCurve</a></li>
+        <li id="ref-unity-doppler"><a href="https://docs.unity3d.com/ScriptReference/AudioSource-dopplerLevel.html" target="_blank" rel="noopener">Unity Scripting API — AudioSource.dopplerLevel</a></li>
+        <li id="ref-unity-mixer-db"><a href="https://docs.unity3d.com/ScriptReference/Audio.AudioMixer.SetFloat.html" target="_blank" rel="noopener">Unity Scripting API — Audio.AudioMixer.SetFloat</a> <span class="note">— exposed parameters run +20 dB to −80 dB.</span></li>
+        <li id="ref-arfoundation-manual"><a href="https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.1/manual/index.html" target="_blank" rel="noopener">AR Foundation Manual — Unity Package docs</a></li>
+        <li id="ref-aranchormanager"><a href="https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.1/api/UnityEngine.XR.ARFoundation.ARAnchorManager.html" target="_blank" rel="noopener">AR Foundation API — ARAnchorManager</a></li>
+        <li id="ref-unity-audiosource-volume"><a href="https://docs.unity3d.com/ScriptReference/AudioSource-volume.html" target="_blank" rel="noopener">Unity Scripting API — AudioSource.volume</a> <span class="note">— a linear 0–1 scalar ("linear taper"), the same convention as this app's own Web Audio gain values; distinct from AudioMixer's dB-scaled exposed parameters above.</span></li>
+      </ol>
+    </div>
+
+  </div>
+
+  <!-- ══════════════ STUB PANELS ══════════════ -->
+  <div class="panel" id="unreal">
+    <div class="stub-body">Unreal Engine porting guidance — coming soon.</div>
+  </div>
+  <div class="panel" id="arkit">
+    <div class="stub-body">Native iOS (ARKit + AVAudioEngine) porting guidance — coming soon.</div>
+  </div>
+  <div class="panel" id="arcore">
+    <div class="stub-body">Native Android (ARCore + Oboe/AAudio) porting guidance — coming soon.</div>
+  </div>
+
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => t.classList.remove('active'));
+      panels.forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.panel).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

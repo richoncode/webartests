@@ -37,6 +37,12 @@ class VectorArrow {
     this.arrow.root.setEnabled(visible && this._hasLength);
   }
 
+  // shaft and head share a single material instance (see buildArrow) — one update covers both.
+  setColor(color) {
+    this.arrow.shaft.material.diffuseColor.copyFrom(color);
+    this.arrow.shaft.material.emissiveColor.copyFrom(color);
+  }
+
   update(origin, vector) {
     const length = vector.length() * VELOCITY_TO_LENGTH;
     this._hasLength = length > 0.02;
@@ -74,6 +80,11 @@ export class DebugVectors {
   }
 
   update(ball, activeRacket) {
+    // Matches whatever color ImpactForceColor.js last set on the ball itself (see
+    // BallTrail.js's own copy of this same idea) — a hit hard enough to turn the ball red
+    // should turn its velocity arrow red too, not stay a fixed unrelated color.
+    const ballColor = ball.mesh?.material?.diffuseColor;
+    if (ballColor) this.ballArrow.setColor(ballColor);
     this.ballArrow.update(ball.position, ball.velocity);
     if (activeRacket) {
       this.racketArrow.update(activeRacket.position, activeRacket.velocity);

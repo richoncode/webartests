@@ -9,6 +9,11 @@ const CONTACT_RADIUS = 0.95;
 const HIT_TIMEOUT_SLACK = 0.4;
 const BOUNCE_RESTITUTION = { flat: 0.74, topspin: 0.68, slice: 0.8 };
 const BOUNCE_FRICTION = { flat: 0.86, topspin: 0.8, slice: 0.92 };
+// This procedural sim only ever tracks spin as one of three fixed labels, not a real continuous
+// rate — these are rough representative rpm values (not measured) standing in for each label, so
+// BallAudio.js's mapSpinToVolumeAdjust() has a number to work with instead of nothing. Replay
+// Loop uses the actual recorded spin rate instead (see ReplayBallController.js).
+const SPIN_RPM_BY_TYPE = { flat: 200, slice: 1400, topspin: 2800 };
 
 const netHeightAt = (x) => {
   const hw = COURT.doublesWidth / 2;
@@ -212,7 +217,8 @@ export class BallController {
         playerId: receiver.id,
         centerPosition: racketPos,
         velocity: racketVel,
-        speed: racketVel.length()
+        speed: racketVel.length(),
+        spinRpm: SPIN_RPM_BY_TYPE[this.spin] ?? 0
       }
     });
   }

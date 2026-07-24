@@ -36,11 +36,27 @@ const dopplerFactor = (closingSpeed) => {
   return SPEED_OF_SOUND / (SPEED_OF_SOUND - clampedClosingSpeed);
 };
 
-const mapForceToVolume = (force, category) => {
+// Exported so visuals/ImpactForceColor.js's "color by mapped volume" mode uses this exact same
+// mapping instead of recomputing its own approximation of it.
+export const mapForceToVolume = (force, category) => {
   const { forceMin, forceMax, volumeMin, volumeMax } = category;
   const span = forceMax - forceMin || 1;
   const raw = volumeMin + ((force - forceMin) * (volumeMax - volumeMin)) / span;
   return clamp(raw, volumeMin, volumeMax);
+};
+
+// Additive volume adjustment from spin rate (racket hits only — see the comment on
+// AudioSettingsStore.js's racket.spinMin/spinMax/volumeAdjustAtSpinMin/volumeAdjustAtSpinMax for
+// why this is a separate additive term rather than folded into racketForce() itself). Linear
+// ramp from volumeAdjustAtSpinMin (at spinMin rpm) to volumeAdjustAtSpinMax (at spinMax rpm),
+// clamped at both ends — a spin rate above spinMax doesn't keep quieting the hit indefinitely.
+// Exported so visuals/ImpactForceColor.js's "color by mapped volume" mode applies this same
+// adjustment instead of showing a color that doesn't match what's actually audible.
+export const mapSpinToVolumeAdjust = (spinRpm, category) => {
+  const { spinMin, spinMax, volumeAdjustAtSpinMin, volumeAdjustAtSpinMax } = category;
+  const span = spinMax - spinMin || 1;
+  const t = clamp((spinRpm - spinMin) / span, 0, 1);
+  return volumeAdjustAtSpinMin + (volumeAdjustAtSpinMax - volumeAdjustAtSpinMin) * t;
 };
 
 // The stick-figure swing animation's racket velocity *direction* isn't reliably physical — it's
@@ -59,14 +75,16 @@ const effectiveRacketVelocity = (event) => {
   return new Vector3(ballVelocity.x * scale, ballVelocity.y * scale, ballVelocity.z * scale);
 };
 
-const racketForce = (event) => {
+// Exported so other consumers (see visuals/ImpactForceColor.js) can react to the exact same
+// force number BallAudio maps to volume, instead of recomputing their own approximation of it.
+export const racketForce = (event) => {
   const ball = event.ball;
   const racketVelocity = effectiveRacketVelocity(event);
   const relative = ball.velocity.subtract(racketVelocity).length();
   return relative * 0.5 + ball.speed * 0.3 + racketVelocity.length() * 0.2;
 };
 
-const floorForce = (event) => {
+export const floorForce = (event) => {
   const verticalSpeed = Math.abs(event.ball.incomingVelocity?.y ?? event.ball.velocity.y);
   const totalSpeed = event.ball.incomingSpeed ?? event.ball.speed;
   const horizontalSpeed = Math.max(0.001, Math.sqrt(Math.max(0, totalSpeed * totalSpeed - verticalSpeed * verticalSpeed)));
@@ -104,7 +122,11 @@ export class BallAudio {
 
     this._buildPools();
     this._unsubscribe = eventBus.onAny((event) => {
-      if (event.type === "racket-hit" || event.type === "floor-hit") void this._handleImpact(event);
+      if (event.type !== "racket-hit" && event.type !== "floor-hit") return;
+      // _handleImpact is async and this callback can't be awaited, so without this catch any
+      // thrown error (e.g. a NaN reaching an AudioParam, which throws per spec) becomes a
+      // silent unhandled rejection — sound just stops with zero visible trace of why.
+      this._handleImpact(event).catch((error) => console.error("[BallAudio] _handleImpact failed:", error, event));
     });
     // Re-fetches whenever the bank changes (e.g. a clip added from the tuning UI) — already
     // cached URLs are skipped, so this is cheap to call on every settings change.
@@ -294,6 +316,9 @@ export class BallAudio {
 
     const force = category === "racket" ? racketForce(event) : floorForce(event);
     let volume = mapForceToVolume(force, categorySettings);
+    // Spin has no effect on floor-hit sound in this model — see racket.spinMin/spinMax's own
+    // comment in AudioSettingsStore.js — only applies to the racket-hit that sent the ball.
+    if (category === "racket") volume += mapSpinToVolumeAdjust(event.racket.spinRpm ?? 0, categorySettings);
     volume *= 1 + randomRange(-categorySettings.randomVolumeJitter, categorySettings.randomVolumeJitter);
     volume = clamp(volume, categorySettings.volumeMin, categorySettings.volumeMax);
 
@@ -320,6 +345,17 @@ export class BallAudio {
     // the shared DynamicsCompressorNode downstream (see main.js) is the hard backstop.
     const headroom = 1 / Math.sqrt(Math.max(1, activeCountAfter));
     const playedVolume = clamp(finalVolume * headroom * (clipEntry?.volume ?? 1), 0, 1);
+
+    // Setting an AudioParam to NaN throws per the Web Audio spec — clamp() doesn't sanitize NaN
+    // (Math.min/max with a NaN operand return NaN), so any bad upstream number (a stray NaN
+    // velocity, a misconfigured setting) would otherwise throw here and, since this method runs
+    // fire-and-forget per event, silently take out just that one hit's sound with no visible
+    // trace — or worse, keep throwing on every subsequent hit if the bad input persists. Skip
+    // playback instead so one bad event degrades gracefully rather than going permanently silent.
+    if (!Number.isFinite(playedVolume) || !Number.isFinite(doppler)) {
+      console.error("[BallAudio] Skipping impact: non-finite audio value", { playedVolume, doppler, event });
+      return;
+    }
 
     if (clipEntry) {
       this._applySpatialSettings(voice, spatial, position);
