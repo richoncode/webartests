@@ -155,41 +155,41 @@
                             <td><strong>DJI Neo 2</strong><br><span class="text-slate-400 text-[11px]">reference, closed</span></td>
                             <td>151–160g</td>
                             <td>Full integrated (built into airframe)</td>
-                            <td>Omnidirectional (vision + LiDAR + IR)</td>
+                            <td>Omnidirectional sensing (vision + LiDAR + IR) — but slows/stops before impact, doesn't reroute</td>
                             <td>None — app only</td>
                             <td>None</td>
                             <td class="text-slate-500">The goal, not a candidate</td>
-                            <td class="text-[12.5px]" style="color:#92400e;">Fully closed — no MAVLink, no flashable firmware, nothing here to adapt.</td>
+                            <td class="text-[12.5px]" style="color:#92400e;">Fully closed — no MAVLink, no flashable firmware, nothing here to adapt. Even its own avoidance only stops, so it doesn't actually meet the reroute-and-continue requirement either.</td>
                         </tr>
                         <tr style="background:#fffbeb;">
                             <td><strong>ArduCopter micro-whoop</strong><br><span class="text-slate-400 text-[11px]">Flywoo F745 AIO FC + 85mm frame</span></td>
                             <td>~145–155g <span class="text-slate-400">w/ battery+camera+sensors+cage</span></td>
                             <td>Not confirmed on the source build — est. <strong>+10–15g</strong> bolt-on cage (scaled down from a confirmed 7.5g/prop 3" guard set)</td>
-                            <td>None stock — add 2× VL53L1X ToF (~2g each)</td>
+                            <td>None stock — add 2× VL53L1X ToF (fwd + down); stop-capable, but too narrow a FOV for real BendyRuler reroute</td>
                             <td><strong>Full MAVLink + QGroundControl</strong></td>
                             <td><strong>Full</strong> — <span class="inline-code">DO_SET_CAM_TRIG_DIST</span> etc.</td>
                             <td class="font-semibold text-amber-700">Best fit for the open-GCS half</td>
-                            <td class="text-[12.5px]" style="color:#92400e;">Obstacle sensing is single-point ToF, not omnidirectional vision like Neo 2. No physical unit has been built and weighed.</td>
+                            <td class="text-[12.5px]" style="color:#92400e;">2 single-point ToF units can trigger a stop, but ArduPilot's own BendyRuler guidance calls for a 360° lidar or up to 9 rangefinders to actually reroute — the "avoid and keep making progress" requirement is unmet at this sensor budget. No physical unit has been built and weighed.</td>
                         </tr>
                         <tr>
                             <td><strong>BetaFPV Pavo Pico II</strong><br><span class="text-slate-400 text-[11px]">reflashed to INAV, F405-class FC</span></td>
                             <td>~126–130g <span class="text-slate-400">w/ battery+camera+sensors</span></td>
                             <td>Full 360° duct (stock, included above)</td>
-                            <td>None stock — add ToF</td>
+                            <td>None stock — and no confirmed BendyRuler/Dijkstra equivalent on INAV, so added ToF could stop the vehicle but likely can't reroute it</td>
                             <td>Partial — MSP-native waypoints via <span class="inline-code">mwp</span>/INAV Configurator; MAVLink is telemetry-only, not mission upload</td>
                             <td>Partial — MSP-based, less standardized</td>
                             <td class="font-semibold text-amber-700">Best fit for the size/duct half</td>
-                            <td class="text-[12.5px]" style="color:#92400e;">No QGroundControl mission upload — MSP-only planning. INAV target support for this exact board is unconfirmed. Obstacle sensing still single-point ToF, not omnidirectional.</td>
+                            <td class="text-[12.5px]" style="color:#92400e;">No QGroundControl mission upload — MSP-only planning. INAV target support for this exact board is unconfirmed. No documented reroute-and-continue avoidance on INAV at all — this candidate may not be able to meet the obstacle requirement regardless of sensors added.</td>
                         </tr>
                         <tr>
                             <td><strong>Pixhawk 6C Mini + cinewhoop</strong><br><span class="text-slate-400 text-[11px]">original plan, + companion computer</span></td>
                             <td>~325–470g <span class="text-slate-400">w/ battery+camera+sensors</span></td>
                             <td>Ducted frame (confirmed, included above)</td>
-                            <td>Full — stereo depth (RealSense/OAK-D) fits payload</td>
+                            <td>Full — stereo depth (RealSense/OAK-D) gives the wide FOV BendyRuler/Dijkstra actually need to reroute, not just stop</td>
                             <td>Full MAVLink + QGroundControl</td>
                             <td>Full — onboard ROS 2/Python</td>
                             <td class="text-slate-600">Most capable today</td>
-                            <td class="text-[12.5px]" style="color:#92400e;">2–3× over the weight goal no matter which parts are picked — this is structural, not a component swap away.</td>
+                            <td class="text-[12.5px]" style="color:#92400e;">2–3× over the weight goal no matter which parts are picked — this is structural, not a component swap away. The only candidate that could plausibly meet the reroute-and-continue requirement, but that behavior still hasn't been bench-tested here.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -528,14 +528,16 @@ master.mav.command_long_send(
             </div>
             <div class="section-card">
                 <h2 class="text-2xl font-semibold text-slate-800 mb-4">Sensor choices</h2>
+                <p class="text-slate-600 leading-relaxed mb-4">Coverage, not just presence, is what decides whether a sensor can satisfy the requirement above. BendyRuler and Dijkstra need either a 360° lidar <em>or</em> up to 9 individually-aimed rangefinders configured as proximity sensors (<span class="inline-code">PRXx_TYPE=4</span>) to actually probe for open space and reroute — a single forward-facing (or forward+down) sensor can only trigger a stop.</p>
                 <table class="spec-table">
-                    <thead><tr><th>Sensor</th><th>Example</th><th>Strength</th><th>Weakness</th></tr></thead>
+                    <thead><tr><th>Sensor</th><th>Example</th><th>Strength</th><th>Weakness</th><th>Enough for reroute?</th></tr></thead>
                     <tbody>
-                        <tr><td>Stereo depth</td><td>RealSense D435i, OAK-D Lite</td><td>Full 3D point cloud</td><td>CPU-heavy, weak in bright sun / past ~5–10m</td></tr>
-                        <tr><td>2D/3D LiDAR</td><td>RPLIDAR A1/A2, LD19</td><td>360°, low CPU, sunlight-robust</td><td>Single horizontal plane only — misses curbs/branches</td></tr>
-                        <tr><td>1D rangefinder</td><td>TFmini Plus, TFLuna</td><td>Simple, cheap, great for altitude hold</td><td>One direction only</td></tr>
+                        <tr><td>Stereo depth</td><td>RealSense D435i, OAK-D Lite</td><td>Full 3D point cloud</td><td>CPU-heavy, weak in bright sun / past ~5–10m</td><td class="font-semibold" style="color:#166534;">Yes — wide FOV, publishes as <span class="inline-code">OBSTACLE_DISTANCE</span></td></tr>
+                        <tr><td>2D/3D LiDAR</td><td>RPLIDAR A1/A2, LD19</td><td>360°, low CPU, sunlight-robust</td><td>Single horizontal plane only — misses curbs/branches</td><td class="font-semibold" style="color:#166534;">Yes — the 360° case BendyRuler is built around</td></tr>
+                        <tr><td>1–2× 1D ToF rangefinder</td><td>VL53L1X, TFmini Plus, TFLuna</td><td>Simple, cheap, ~2g each, great for altitude hold or a single forward stop-check</td><td>Narrow FOV, one or two fixed directions only</td><td class="font-semibold" style="color:#92400e;">No — stop-capable, not reroute-capable, unless 9 are arranged around the vehicle</td></tr>
                     </tbody>
                 </table>
+                <p class="text-slate-500 text-[12.5px] mt-3">This is why the ArduCopter micro-whoop and Pavo Pico II candidates — see <button class="inline-code" onclick="showTab('overview')">scorecard →</button> — are marked as sensor-gapped: their weight budget assumed 1-2 cheap ToF units, which covers altitude hold and a stop, not the reroute-and-continue behavior the goal actually calls for.</p>
             </div>
             <div class="section-card">
                 <h2 class="text-2xl font-semibold text-slate-800 mb-4">Data flow into the flight stack</h2>
@@ -581,8 +583,8 @@ master.mav.command_long_send(
                 <p class="text-amber-900/80 text-[13px] leading-relaxed"><span class="inline-code">MAV_CMD_DO_SET_CAM_TRIG_DIST</span> assumes a MAVLink-addressable shutter. The physical trigger path for a Pi Camera Module 3 (GPIO signal vs. software-timed capture synced to telemetry) hasn't been chosen or tested.</p>
             </div>
             <div class="gap-card">
-                <h4 class="font-semibold text-sm mb-1">Reroute-and-continue avoidance is unverified</h4>
-                <p class="text-amber-900/80 text-[13px] leading-relaxed">No sensor has actually been selected, mounted, or bench-calibrated. <span class="inline-code">AVOID_MARGIN</span>/<span class="inline-code">PRX1_TYPE</span> values here are defaults, not measured stopping-distance guarantees near people — and nobody has confirmed BendyRuler/Dijkstra actually replans and resumes progress toward the next waypoint on this hardware, rather than just slowing or stopping.</p>
+                <h4 class="font-semibold text-sm mb-1">Reroute-and-continue avoidance is unverified — and two candidates likely can't do it as specced</h4>
+                <p class="text-amber-900/80 text-[13px] leading-relaxed">No sensor has actually been selected, mounted, or bench-calibrated on any candidate, and <span class="inline-code">AVOID_MARGIN</span>/<span class="inline-code">PRX1_TYPE</span> values here are defaults, not measured stopping-distance guarantees near people. Beyond that, two structural issues turned up: the ArduCopter micro-whoop and Pavo Pico II builds only budgeted 1–2 single-point ToF sensors, which ArduPilot's own BendyRuler docs say isn't enough FOV to reroute (they call for a 360° lidar or up to 9 aimed rangefinders); and INAV — the Pavo Pico II's firmware — has no documented BendyRuler/Dijkstra equivalent at all, so it may not be able to reroute regardless of sensors. Only the Pixhawk 6C Mini + cinewhoop candidate's stereo-depth payload gives the coverage this requirement actually needs, and even that hasn't been bench-tested.</p>
             </div>
             <div class="gap-card">
                 <h4 class="font-semibold text-sm mb-1">Regulatory review is missing entirely</h4>
