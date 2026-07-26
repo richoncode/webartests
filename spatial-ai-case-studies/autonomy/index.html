@@ -235,19 +235,26 @@
                     <span class="text-2xl">🎯</span>
                     <h2 class="text-2xl font-semibold text-slate-800">Hardware goal</h2>
                 </div>
-                <p class="text-slate-600 leading-relaxed mb-5">The airframe should <strong>feel and fly like a DJI Neo 2</strong> — small, quiet, sub-250g, guarded props, confident low-altitude obstacle sensing — but be <strong>planned and flown like an open GCS mission</strong>, not a phone app: waypoint/survey grids, scriptable camera triggers, and MAVLink telemetry a companion computer can read and act on.</p>
-                <table class="spec-table mb-3">
-                    <thead><tr><th>Target trait</th><th>DJI Neo 2 side (size &amp; safety)</th><th>Open GCS side (planning &amp; control)</th></tr></thead>
+                <p class="text-slate-600 leading-relaxed mb-2">DJI Neo 2 is referenced for one thing only: <strong>the safety bar</strong> — sub-250g weight class and guarded props. It is not a model for planning, sensing, or capture behavior; those flight requirements are defined independently below and come from the mission itself, not from trying to imitate a consumer drone.</p>
+                <table class="spec-table mb-5">
+                    <thead><tr><th>Safety trait (from DJI Neo 2)</th><th>Target</th></tr></thead>
                     <tbody>
-                        <tr><td>Weight / footprint</td><td>Sub-250g class, palm-sized, indoor-safe</td><td>—</td></tr>
-                        <tr><td>Prop safety</td><td>Integrated ducts/guards, safe near people</td><td>—</td></tr>
-                        <tr><td>Position hold</td><td>Downward VPS, stable at low altitude without GPS lock</td><td>Exposed as EKF-estimated local position, not a black box</td></tr>
-                        <tr><td>Obstacle sensing</td><td>Omnidirectional-grade avoidance</td><td>Distances published as MAVLink <span class="inline-code">OBSTACLE_DISTANCE</span>, tunable avoidance behavior</td></tr>
-                        <tr><td>Mission planning</td><td>—</td><td>QGroundControl-style survey grid, front/side-lap overlap, waypoint upload</td></tr>
-                        <tr><td>Camera control</td><td>—</td><td>Distance-triggered capture, angle/mount scriptable, not fixed by the manufacturer</td></tr>
+                        <tr><td>Weight class</td><td>Sub-250g, palm-sized (Neo 2 itself: 151–160g)</td></tr>
+                        <tr><td>Prop guards</td><td>Integrated or bolt-on cage, safe operating near people</td></tr>
                     </tbody>
                 </table>
-                <p class="text-amber-700 text-[12.5px] font-medium">No current open-source airframe hits the DJI Neo 2 column and the Open GCS column at once — that gap is this project's real hardware target. See <button class="inline-code" onclick="showTab('gaps')">Open Questions →</button>.</p>
+
+                <h3 class="font-semibold text-slate-800 text-sm mb-2">Flight requirements (independent of the Neo 2 comparison)</h3>
+                <table class="spec-table mb-3">
+                    <thead><tr><th>Requirement</th><th>Spec</th></tr></thead>
+                    <tbody>
+                        <tr><td>Waypoint navigation</td><td>Flies an autonomous, GCS-planned mission — not manually piloted</td></tr>
+                        <tr><td>Capture angle</td><td>Camera angled <strong>30–50° left or right</strong> of the flight line (either side, selectable) — not nadir, not straight-forward</td></tr>
+                        <tr><td>Purpose of the angle</td><td>Get several different viewing angles on the <em>same</em> 3D point as the vehicle passes it, along the flight path — richer parallax per pass than a straight-down or straight-forward camera gives</td></tr>
+                        <tr><td>Obstacle behavior</td><td>Detect and avoid obstacles <strong>while continuing to make mission progress</strong> — reroute around, don't just halt in place</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-amber-700 text-[12.5px] font-medium">No current candidate has actually been tested against the angled-capture or progress-preserving-avoidance requirements — see <button class="inline-code" onclick="showTab('gaps')">Open Questions →</button>.</p>
             </div>
         </section>
 
@@ -479,26 +486,34 @@ master.mav.command_long_send(
 
             <div class="section-card">
                 <h2 class="text-2xl font-semibold text-slate-800 mb-4">Camera angle: why straight-down (or straight-forward) isn't enough</h2>
-                <p class="text-slate-600 leading-relaxed mb-4">A camera pointed dead-down over a flat field, or dead-forward along the flight line, both create weak geometry for SfM: parallel/near-parallel rays make it hard for COLMAP to separate camera altitude from focal length, and a forward-looking lens has almost no parallax near the center of frame (classic "motion along the optical axis" degeneracy).</p>
+                <p class="text-slate-600 leading-relaxed mb-4">A camera pointed dead-down over a flat field, or dead-forward along the flight line, both create weak geometry for SfM: parallel/near-parallel rays make it hard for COLMAP to separate camera altitude from focal length, and a forward-looking lens has almost no parallax near the center of frame (classic "motion along the optical axis" degeneracy). The confirmed target — see <button class="inline-code" onclick="showTab('overview')">hardware goal →</button> — is a camera angled <strong>30–50° left or right</strong> of the flight line: as the vehicle flies its waypoint path, each 3D point on the ground gets seen from several different angles in sequence, instead of one repeated nadir or forward view.</p>
                 <table class="spec-table">
                     <thead><tr><th>Camera orientation relative to flight line</th><th>Parallax</th><th>COLMAP result</th></tr></thead>
                     <tbody>
                         <tr><td>Dead-level, straight forward</td><td>Very low (center degenerate)</td><td>Poor — frequent depth drift</td></tr>
-                        <tr><td>15–30° forward, pitched down</td><td>High</td><td>Good — solid for narrow corridors/paths</td></tr>
-                        <tr><td><strong>Sideways (left/right of flight line), 15–30° down</strong></td><td>Very high (clean lateral)</td><td><strong>Best</strong> — strong, consistent parallax the whole pass</td></tr>
+                        <tr><td>30–50° forward, pitched down</td><td>High</td><td>Good — solid for narrow corridors/paths</td></tr>
+                        <tr><td><strong>Sideways (left or right of flight line), 30–50° down</strong></td><td>Very high (clean lateral)</td><td><strong>Best</strong> — matches the target spec; strong, consistent parallax the whole pass</td></tr>
                     </tbody>
                 </table>
-                <p class="text-slate-600 leading-relaxed mt-4 mb-2">Three ways to get a sideways-looking camera on a survey pass:</p>
+                <p class="text-slate-600 leading-relaxed mt-4 mb-2">Three ways to get a 30–50° angled camera on a waypoint pass:</p>
                 <ol class="list-decimal list-inside text-slate-600 text-[13px] space-y-1.5">
-                    <li><strong>Gimbal + MAVLink mount control</strong> — <span class="inline-code">MAV_CMD_DO_MOUNT_CONTROL</span> with yaw ±90° relative to the vehicle nose.</li>
-                    <li><strong>Vehicle yaw override</strong> — fly the multirotor sideways down the track via <span class="inline-code">MAV_CMD_CONDITION_YAW</span> / <span class="inline-code">WP_YAW_BEHAVIOR</span>, front camera fixed.</li>
-                    <li><strong>Fixed sideways mount</strong> (no gimbal) — simplest for a lightweight micro build; camera bolted 90° off the frame's forward axis, pitched 15–30° down.</li>
+                    <li><strong>Gimbal + MAVLink mount control</strong> — <span class="inline-code">MAV_CMD_DO_MOUNT_CONTROL</span>, yaw set to the chosen side (left or right) and pitch 30–50° down, relative to the vehicle nose.</li>
+                    <li><strong>Vehicle yaw override</strong> — fly the multirotor crabbed/sideways down the track via <span class="inline-code">MAV_CMD_CONDITION_YAW</span> / <span class="inline-code">WP_YAW_BEHAVIOR</span>, front camera fixed at the chosen offset.</li>
+                    <li><strong>Fixed angled mount</strong> (no gimbal) — simplest for a lightweight micro build; camera bolted 30–50° off the frame's forward axis to the chosen side, pitched down to match.</li>
                 </ol>
+                <p class="text-slate-500 text-[12.5px] mt-3">None of these three have actually been flown at the 30–50° spec yet — see <button class="inline-code" onclick="showTab('gaps')">Open Questions →</button>.</p>
             </div>
         </section>
 
         <!-- OBSTACLE AVOIDANCE -->
         <section id="tab-avoidance" class="tab-panel space-y-8">
+            <div class="section-card border-2" style="border-color:#fcd34d;">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-2xl">🎯</span>
+                    <h2 class="text-2xl font-semibold text-slate-800">The requirement: avoid obstacles, keep making progress</h2>
+                </div>
+                <p class="text-slate-600 leading-relaxed">Per the <button class="inline-code" onclick="showTab('overview')">hardware goal →</button>, simply stopping in place when something's detected doesn't satisfy the mission — a waypoint survey that halts and waits stops collecting the angled imagery it's out there for. The target behavior is <strong>reroute around the obstacle and continue toward the next waypoint</strong>, not just brake. That rules out "stop-in-place" as an acceptable avoidance mode on its own and points at ArduPilot/PX4's path-replanning behaviors (BendyRuler, Dijkstra) below.</p>
+            </div>
             <div class="section-card">
                 <h2 class="text-2xl font-semibold text-slate-800 mb-4">Sensor choices</h2>
                 <table class="spec-table">
@@ -516,7 +531,7 @@ master.mav.command_long_send(
                     <li>Sensor plugs into the companion computer (USB/CSI/UART).</li>
                     <li>Companion computer builds a local occupancy grid (e.g. ROS 2 <span class="inline-code">nav2</span> / octomap).</li>
                     <li>Results ride back to the flight controller as MAVLink <span class="inline-code">DISTANCE_SENSOR</span> or <span class="inline-code">OBSTACLE_DISTANCE</span> messages.</li>
-                    <li>ArduPilot/PX4 reacts: stop-in-place, or reroute via BendyRuler/Dijkstra (<span class="inline-code">OA_TYPE=1/2</span>, <span class="inline-code">AVOID_ENABLE</span>, <span class="inline-code">AVOID_MARGIN</span>).</li>
+                    <li>ArduPilot/PX4 reacts. Stop-in-place is the simplest mode, but it stalls mission progress — the goal calls for <strong>BendyRuler or Dijkstra</strong> (<span class="inline-code">OA_TYPE=1/2</span>, <span class="inline-code">AVOID_ENABLE</span>, <span class="inline-code">AVOID_MARGIN</span>), which plan a detour around the obstacle and keep heading toward the next waypoint.</li>
                 </ol>
                 <p class="text-slate-500 text-[12.5px]">Always validate at low speed in an open field before running any low-altitude pass near pedestrians.</p>
             </div>
@@ -542,8 +557,8 @@ master.mav.command_long_send(
                 <p class="text-amber-900/80 text-[13px] leading-relaxed">Its FC is STM32F405-based, a chip family INAV broadly supports, but no source found here confirms an INAV unified-target build actually exists for this specific board. Needs a direct check against INAV's target list before treating it as a real option rather than a plausible one.</p>
             </div>
             <div class="gap-card">
-                <h4 class="font-semibold text-sm mb-1">Sideways-camera rig is theory only</h4>
-                <p class="text-amber-900/80 text-[13px] leading-relaxed">The parallax argument for a 15–30° sideways-down camera is sound photogrammetry theory, but no gimbal config, fixed-mount bracket, or actual flight test has confirmed it in practice for this airframe size.</p>
+                <h4 class="font-semibold text-sm mb-1">Angled-camera rig is theory only</h4>
+                <p class="text-amber-900/80 text-[13px] leading-relaxed">The parallax argument for a 30–50° left-or-right camera is sound photogrammetry theory, but no gimbal config, fixed-mount bracket, or actual flight test has confirmed it in practice for this airframe size — including whether the same mount can be switched between left and right without a rebuild.</p>
             </div>
             <div class="gap-card">
                 <h4 class="font-semibold text-sm mb-1">Overlap math hasn't been run against a real site</h4>
@@ -554,8 +569,8 @@ master.mav.command_long_send(
                 <p class="text-amber-900/80 text-[13px] leading-relaxed"><span class="inline-code">MAV_CMD_DO_SET_CAM_TRIG_DIST</span> assumes a MAVLink-addressable shutter. The physical trigger path for a Pi Camera Module 3 (GPIO signal vs. software-timed capture synced to telemetry) hasn't been chosen or tested.</p>
             </div>
             <div class="gap-card">
-                <h4 class="font-semibold text-sm mb-1">Obstacle-avoidance tuning is unverified</h4>
-                <p class="text-amber-900/80 text-[13px] leading-relaxed">No sensor has actually been selected, mounted, or bench-calibrated. <span class="inline-code">AVOID_MARGIN</span>/<span class="inline-code">PRX1_TYPE</span> values here are defaults, not measured stopping-distance guarantees near people.</p>
+                <h4 class="font-semibold text-sm mb-1">Reroute-and-continue avoidance is unverified</h4>
+                <p class="text-amber-900/80 text-[13px] leading-relaxed">No sensor has actually been selected, mounted, or bench-calibrated. <span class="inline-code">AVOID_MARGIN</span>/<span class="inline-code">PRX1_TYPE</span> values here are defaults, not measured stopping-distance guarantees near people — and nobody has confirmed BendyRuler/Dijkstra actually replans and resumes progress toward the next waypoint on this hardware, rather than just slowing or stopping.</p>
             </div>
             <div class="gap-card">
                 <h4 class="font-semibold text-sm mb-1">Regulatory review is missing entirely</h4>
