@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Titanium Colour Physics — Learning Lasers</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 60px 24px 80px;
+    }
+
+    a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+    a.back:hover { color: #aaa; }
+
+    .page { max-width: 860px; margin: 0 auto; }
+
+    .chapter-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #5b9bd5; margin-bottom: 6px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+    .subtitle { color: #666; font-size: 15px; margin-bottom: 40px; max-width: 660px; line-height: 1.7; }
+
+    section { margin-bottom: 64px; }
+    h2 { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+    h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #ddd; }
+    .section-sub { color: #666; font-size: 14px; margin-bottom: 24px; max-width: 640px; line-height: 1.6; }
+    p { color: #777; font-size: 14px; line-height: 1.75; margin-bottom: 14px; max-width: 680px; }
+    p strong { color: #bbb; }
+    p em { color: #999; font-style: italic; }
+
+    .mock-badge {
+      display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: #f0a040; background: #2a1f0d; border: 1px solid #4a3616;
+      padding: 3px 8px; border-radius: 6px; margin-left: 8px; vertical-align: middle;
+    }
+
+    .callout {
+      border-left: 3px solid #5b9bd5; background: #0d1620; padding: 18px 20px;
+      border-radius: 0 8px 8px 0; font-size: 13.5px; color: #aaa; line-height: 1.65;
+      margin: 24px 0; max-width: 680px;
+    }
+    .callout.warn { border-color: #f0a040; background: #201a0d; }
+    .callout a { color: #8fc5ff; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 720px; }
+    @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+    .path-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 24px; }
+    .path-card .icon { font-size: 26px; margin-bottom: 10px; }
+    .path-card h3 { margin-bottom: 12px; }
+    .path-card ul { padding-left: 18px; color: #888; font-size: 13.5px; line-height: 1.8; }
+    .path-card ul li strong { color: #bbb; }
+
+    /* Simulator */
+    .viz { background: #111; border: 1px solid #1a1a1a; border-radius: 14px; padding: 28px; max-width: 780px; }
+    .mode-toggle { display: flex; gap: 8px; margin-bottom: 24px; }
+    .mode-btn {
+      flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a; color: #999; padding: 12px 16px;
+      border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+      text-align: center;
+    }
+    .mode-btn:hover { background: #222; color: #ccc; }
+    .mode-btn.active { background: #16202b; border-color: #5b9bd5; color: #8fc5ff; }
+
+    .sim-layout { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: center; }
+    @media (max-width: 640px) { .sim-layout { grid-template-columns: 1fr; } }
+
+    .swatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .swatch { width: 180px; height: 180px; border-radius: 16px; border: 1px solid #333; box-shadow: 0 8px 30px rgba(0,0,0,0.4); transition: background-color 0.15s; }
+    .swatch-name { font-size: 14px; font-weight: 700; color: #fff; }
+    .swatch-order { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .controls { display: flex; flex-direction: column; gap: 20px; }
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    .label-row { display: flex; justify-content: space-between; align-items: baseline; }
+    .label-text { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #aaa; letter-spacing: 0.5px; }
+    .label-val { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #5b9bd5; }
+    input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; background: #2a2a2a; border-radius: 2px; outline: none; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: #5b9bd5; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; background: #5b9bd5; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
+
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+    .metric-card { background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 12px 14px; }
+    .metric-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 3px; display: block; }
+    .metric-value { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13.5px; color: #ddd; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; max-width: 780px; }
+    th { text-align: left; color: #888; font-weight: 700; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; padding: 10px 12px; border-bottom: 1px solid #2a2a2a; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1c1c1c; color: #ccc; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .swatch-dot { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 8px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.15); }
+
+    .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; max-width: 780px; }
+    .chapter-nav a { text-decoration: none; color: #555; font-size: 14px; transition: color 0.1s; }
+    .chapter-nav a:hover { color: #aaa; }
+    .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <a class="back" href="../">← Back to Learning Lasers</a>
+    <div class="chapter-label">Experiment C · First Draft</div>
+    <h1>Titanium Colour Physics</h1>
+    <p class="subtitle">Anodizing volts and laser power both grow the same nanometre-thin TiO₂ film on titanium — they just take completely different physical routes to get there. This page compares them side by side, then lets you drive both with a shared simulator.</p>
+
+    <section id="one-trick">
+      <h2>Two Machines, One Optical Trick</h2>
+      <p class="section-sub">Neither process adds pigment. Both grow a transparent titanium dioxide (TiO₂) layer a few tens to a few hundred nanometres thick on top of the bare metal. Light reflects off both the top of that film and the metal underneath it; the two reflections interfere, and whichever wavelengths cancel out determine what colour survives. <strong>Thickness is the only dial that matters</strong> — anodizing and lasering are just two different ways of turning that dial.</p>
+      <div class="callout">
+        This is the same optical mechanism covered for stainless steel in <a href="../ss304-colours/" style="color:#8fc5ff;">SS304 Colour Physics</a> (Cr₂O₃ instead of TiO₂) and in <a href="../physics-of-the-beam/12-color-interference/" style="color:#8fc5ff;">Sequence 12: Thin-Film Interference</a> — titanium follows the same interference math, with a slightly different refractive index and a much wider, more saturated colour range.
+      </div>
+    </section>
+
+    <section id="two-paths">
+      <h2>Two Ways to Grow the Film</h2>
+      <p class="section-sub">Electrochemical anodizing and laser marking reach the same colour space from opposite directions — one drives oxide growth with an electric field, the other with heat.</p>
+      <div class="two-col">
+        <div class="path-card">
+          <div class="icon">🔋</div>
+          <h3>Electrochemical Anodizing</h3>
+          <ul>
+            <li><strong>Driver:</strong> DC voltage across the part, immersed in an electrolyte bath (commonly a mild phosphate or borate solution).</li>
+            <li><strong>Mechanism:</strong> The applied field drives oxide growth directly — thickness tracks voltage in a near-linear "anodizing constant," roughly ~2.5&nbsp;nm per volt for titanium.</li>
+            <li><strong>Coverage:</strong> Whole part at once, uniform to the geometry of the electrode.</li>
+            <li><strong>Speed:</strong> Seconds per part once the bath and rig are set up.</li>
+            <li><strong>Reference:</strong> see the real voltage/colour chart at <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener" style="color:#8fc5ff;">EDC Specialties</a>.</li>
+          </ul>
+        </div>
+        <div class="path-card">
+          <div class="icon">📡</div>
+          <h3>IR Laser Marking</h3>
+          <ul>
+            <li><strong>Driver:</strong> Localized heat from an IR fibre laser — no bath, no electrolyte, no field.</li>
+            <li><strong>Mechanism:</strong> Heat drives thermal oxidation. Growth follows a parabolic/Arrhenius law like SS304's: thickness scales roughly with the <em>square root</em> of the heat dose, not linearly.</li>
+            <li><strong>Heat dose knobs:</strong> laser power (peak temperature) and <strong>overscan</strong> — how many times the galvo re-traces the same line, standing in for "time in the bath."</li>
+            <li><strong>Coverage:</strong> Pixel-by-pixel, programmable — gradients, text, and per-pixel colour control that a bath can't do.</li>
+            <li><strong>Speed:</strong> Seconds to tens of seconds per pass set, depending on area and overscan count.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="simulator">
+      <h2>Simulator: Drive the Same Oxide Two Different Ways <span class="mock-badge">Mock</span></h2>
+      <p class="section-sub">Switch modes to control oxide thickness with a bath voltage or with laser power &amp; overscan passes. Both feed the same TiO₂ interference model, so the same colour can come from either path.</p>
+
+      <div class="viz">
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="modeVoltBtn" onclick="setMode('volt')">🔋 Anodizing (Volts)</button>
+          <button class="mode-btn" id="modeLaserBtn" onclick="setMode('laser')">📡 Laser (Power × Overscan)</button>
+        </div>
+
+        <div class="sim-layout">
+          <div class="swatch-wrap">
+            <div class="swatch" id="swatch"></div>
+            <div class="swatch-name" id="swatchName">Bare Titanium</div>
+            <div class="swatch-order" id="swatchOrder">0 nm oxide</div>
+          </div>
+
+          <div class="controls">
+            <div id="voltControls">
+              <div class="control-group">
+                <div class="label-row">
+                  <span class="label-text">Bath Voltage</span>
+                  <span class="label-val" id="voltVal">0 V</span>
+                </div>
+                <input type="range" id="voltSlider" min="0" max="115" step="1" value="0">
+              </div>
+            </div>
+            <div id="laserControls" style="display:none;">
+              <div class="control-group">
+                <div class="label-row">
+                  <span class="label-text">Laser Power</span>
+                  <span class="label-val" id="powerVal">40%</span>
+                </div>
+                <input type="range" id="powerSlider" min="10" max="100" step="1" value="40">
+              </div>
+              <div class="control-group" style="margin-top:16px;">
+                <div class="label-row">
+                  <span class="label-text">Overscan Passes</span>
+                  <span class="label-val" id="overscanVal">1×</span>
+                </div>
+                <input type="range" id="overscanSlider" min="1" max="12" step="1" value="1">
+              </div>
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span class="metric-label">Oxide Thickness</span>
+                <div class="metric-value" id="metThickness">0 nm</div>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Interference Order</span>
+                <div class="metric-value" id="metOrder">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p style="color:#555; font-size:12px; margin-top:20px; margin-bottom:0;">Volts→thickness uses the widely-published ~2.5&nbsp;nm/V titanium anodizing rule. Laser→thickness uses an illustrative <span style="color:#888;">thickness ∝ √(power × passes)</span> heat-dose model, not a calibrated dataset — see the disclaimer below.</p>
+      </div>
+    </section>
+
+    <section id="charts">
+      <h2>Reference Charts</h2>
+      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power×overscan are just two different ways of hitting a given thickness.</p>
+      <table>
+        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Typical Power × Overscan</th></tr></thead>
+        <tbody id="chartBody"></tbody>
+      </table>
+      <p class="callout warn" style="margin-top:20px;">
+        <strong>Mock data:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). The laser column has <strong>no calibrated dataset behind it</strong> — unlike the SS304 lessons, nobody has run a real power/overscan sweep on titanium and measured the resulting colours yet. Treat it as a starting hypothesis, not a setting sheet.
+      </p>
+    </section>
+
+    <section id="differences">
+      <h2>Key Differences</h2>
+      <table>
+        <thead><tr><th>Trait</th><th>🔋 Anodizing</th><th>📡 Laser</th></tr></thead>
+        <tbody>
+          <tr><td>Uniformity</td><td>Very high — whole part colours evenly</td><td>Depends on scan pattern; can vary pixel to pixel</td></tr>
+          <tr><td>Patterning</td><td>Solid colour or masked regions only</td><td>Full raster/vector control — gradients, text, images</td></tr>
+          <tr><td>Speed per part</td><td>Seconds, once rig is set up</td><td>Seconds–minutes, scales with area and overscan</td></tr>
+          <tr><td>Equipment</td><td>Power supply, electrolyte bath, electrodes</td><td>IR fibre laser + galvo, no chemicals</td></tr>
+          <tr><td>Repeatability</td><td>High — voltage is a direct, stable control</td><td>Sensitive to focus, surface prep, and thermal history</td></tr>
+          <tr><td>Reversibility</td><td>Can often be stripped/re-anodized</td><td>Oxide can be removed by re-polishing; base metal unaffected</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="chapter-nav">
+      <a href="../ss304-colours/" class="prev">
+        <span class="label">Related</span>
+        ← SS304 Colour Physics
+      </a>
+      <a href="../physics-of-the-beam/12-color-interference/" class="next">
+        <span class="label">Physics Background</span>
+        Thin-Film Interference →
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // TiO2 interference colour stops (nm -> rgb), illustrative — matches the general
+    // shape of published titanium anodizing colour progressions (1st + 2nd order).
+    const STOPS = [
+      { nm: 0,   rgb: [176, 178, 182], name: 'Bare Titanium' },
+      { nm: 20,  rgb: [214, 190, 120], name: 'Pale Straw' },
+      { nm: 40,  rgb: [176, 108, 58],  name: 'Bronze' },
+      { nm: 60,  rgb: [104, 48, 132],  name: 'Purple' },
+      { nm: 80,  rgb: [40, 40, 132],   name: 'Indigo' },
+      { nm: 100, rgb: [30, 80, 190],   name: 'Blue' },
+      { nm: 120, rgb: [30, 150, 190],  name: 'Cyan / Teal' },
+      { nm: 140, rgb: [50, 170, 130],  name: 'Pale Green' },
+      { nm: 160, rgb: [140, 190, 60],  name: 'Yellow-Green' },
+      { nm: 180, rgb: [214, 180, 40],  name: '2nd-Order Gold' },
+      { nm: 200, rgb: [214, 120, 40],  name: 'Orange' },
+      { nm: 220, rgb: [200, 70, 140],  name: 'Pink / Magenta' },
+      { nm: 240, rgb: [70, 150, 110],  name: '2nd-Order Green' },
+      { nm: 280, rgb: [150, 150, 150], name: 'Pale / Washed Out' }
+    ];
+
+    function getInterferenceColor(nm) {
+      nm = Math.max(0, Math.min(nm, STOPS[STOPS.length - 1].nm));
+      if (nm <= STOPS[0].nm) return { css: `rgb(${STOPS[0].rgb.join(',')})`, name: STOPS[0].name };
+      for (let i = 0; i < STOPS.length - 1; i++) {
+        if (nm <= STOPS[i + 1].nm) {
+          const t = (nm - STOPS[i].nm) / (STOPS[i + 1].nm - STOPS[i].nm);
+          const rgb = STOPS[i].rgb.map((c, idx) => Math.round(c + t * (STOPS[i + 1].rgb[idx] - c)));
+          return { css: `rgb(${rgb.join(',')})`, name: STOPS[i + 1].name };
+        }
+      }
+      const last = STOPS[STOPS.length - 1];
+      return { css: `rgb(${last.rgb.join(',')})`, name: last.name };
+    }
+
+    function orderOf(nm) {
+      if (nm < 20) return '—';
+      if (nm <= 180) return '1st Order';
+      return '2nd Order';
+    }
+
+    // Volts -> nm: widely-cited ~2.5-2.7 nm/V rule of thumb for titanium anodizing.
+    function voltsToNm(v) { return v * 2.6; }
+
+    // Laser power(%) x overscan passes -> nm: illustrative parabolic heat-dose model.
+    // Tuned so 10-100% power x 1-12 passes spans roughly the same 0-280nm range as volts.
+    function laserToNm(power, passes) {
+      const dose = (power / 100) * passes;
+      return 92 * Math.sqrt(dose);
+    }
+
+    let mode = 'volt';
+    const swatch = document.getElementById('swatch');
+    const swatchName = document.getElementById('swatchName');
+    const swatchOrder = document.getElementById('swatchOrder');
+    const metThickness = document.getElementById('metThickness');
+    const metOrder = document.getElementById('metOrder');
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('modeVoltBtn').classList.toggle('active', m === 'volt');
+      document.getElementById('modeLaserBtn').classList.toggle('active', m === 'laser');
+      document.getElementById('voltControls').style.display = m === 'volt' ? 'block' : 'none';
+      document.getElementById('laserControls').style.display = m === 'laser' ? 'block' : 'none';
+      render();
+    }
+
+    function render() {
+      let nm;
+      if (mode === 'volt') {
+        const v = parseFloat(voltSlider.value);
+        document.getElementById('voltVal').textContent = v + ' V';
+        nm = voltsToNm(v);
+      } else {
+        const p = parseFloat(powerSlider.value);
+        const o = parseFloat(overscanSlider.value);
+        document.getElementById('powerVal').textContent = p + '%';
+        document.getElementById('overscanVal').textContent = o + '×';
+        nm = laserToNm(p, o);
+      }
+      const color = getInterferenceColor(nm);
+      swatch.style.backgroundColor = color.css;
+      swatchName.textContent = color.name;
+      swatchOrder.textContent = Math.round(nm) + ' nm oxide';
+      metThickness.textContent = Math.round(nm) + ' nm';
+      metOrder.textContent = orderOf(nm);
+    }
+
+    const voltSlider = document.getElementById('voltSlider');
+    const powerSlider = document.getElementById('powerSlider');
+    const overscanSlider = document.getElementById('overscanSlider');
+    voltSlider.oninput = render;
+    powerSlider.oninput = render;
+    overscanSlider.oninput = render;
+
+    // Reference chart table
+    const chartBody = document.getElementById('chartBody');
+    STOPS.forEach(stop => {
+      if (stop.nm === 0) return;
+      const v = Math.round(stop.nm / 2.6);
+      // Find a power/passes pair that reproduces this nm under the laser model above,
+      // holding passes fixed at a reference of 10 so the numbers stay internally consistent
+      // with what the live simulator would actually show.
+      const passes = 10;
+      const power = Math.min(100, Math.max(1, Math.round(100 * Math.pow(stop.nm / 92, 2) / passes)));
+      const rgb = stop.rgb.join(',');
+      chartBody.innerHTML += `<tr>
+        <td><span class="swatch-dot" style="background:rgb(${rgb});"></span>${stop.name}</td>
+        <td>${stop.nm} nm</td>
+        <td>~${v} V</td>
+        <td>~${power}% × ${passes}</td>
+      </tr>`;
+    });
+
+    render();
+  </script>
+</body>
+</html>
