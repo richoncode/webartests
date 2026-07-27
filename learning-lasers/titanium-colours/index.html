@@ -314,6 +314,54 @@
       </table>
     </section>
 
+    <section id="gap-analysis">
+      <h2>Closing the Gap: Theory vs. Reality</h2>
+      <p class="section-sub">The Reference Charts table above shows it plainly: theory says Blue needs ~7.7% power; the real chip card needs ~23–27% — roughly <strong>3× more power than modelled</strong>. Here's the full derivation behind that theoretical number, followed by why it's probably wrong and what would actually pin it down.</p>
+
+      <h3 style="margin-top:8px;">Full derivation: theoretical power for Blue (100nm target)</h3>
+      <div class="math">
+        <span class="com">// Step 1 — fixed exposure time at the tested reference (1000 LPCM, 200mm/s):</span>
+        <span class="eq">t_exp = (LPCM/10) / speed = (1000/10) / 200 = <span class="res">0.5 s/mm²</span></span>
+
+        <span class="com">// Step 2 — what growth-rate constant would produce 100nm in that time?</span>
+        <span class="com">// (parabolic law: nm = √(k_p · t_exp)  →  k_p = nm² / t_exp)</span>
+        <span class="eq">k_p = 100² / 0.5 = 10 000 / 0.5 = <span class="res">20 000 nm²/s</span></span>
+
+        <span class="com">// Step 3 — invert the Arrhenius law to find the peak temperature that gives that k_p:</span>
+        <span class="com">// (A = 8.9×10¹² nm²/s, E_a = 170 000 J/mol, R = 8.314 J/mol·K, E_a/R ≈ 20 447 K)</span>
+        <span class="eq">T = −(E_a/R) / ln(k_p / A) = −20 447 / ln(20 000 / 8.9×10¹²) = −20 447 / (−19.91) ≈ <span class="res">1027 K ≈ 754°C</span></span>
+
+        <span class="com">// Step 4 — how much energy, injected into the 40µm focal skin, produces that ΔT?</span>
+        <span class="com">// (m·c_p = 1mm² × 40µm × 4506 kg/m³ × 523 J/kg·K ≈ 9.427×10⁻⁵ J/K, η = 0.65)</span>
+        <span class="eq">ΔT = 754 − 20 = 734 K   →   Q = ΔT · m·c_p / η = 734 × 9.427×10⁻⁵ / 0.65 ≈ <span class="res">0.106 J</span></span>
+
+        <span class="com">// Step 5 — what power, over 0.5s at α = 0.55 absorptivity, delivers that much energy?</span>
+        <span class="eq">P = Q / (α · t_exp) = 0.106 / (0.55 × 0.5) ≈ <span class="res">0.387 W = 7.7% of 5W</span></span>
+
+        <span class="com">// The real chip card needs 23-27% (1.15-1.35W) for the same Blue — a ~3x gap.</span>
+      </div>
+
+      <h3 style="margin-top:32px;">Hypotheses: why theory undershoots by ~3×</h3>
+      <ol style="color:#888; font-size:13.5px; line-height:1.9; padding-left:22px; max-width:700px;">
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">Wrong kinetics regime for the Arrhenius constants.</strong> E_a and A here trace back to <em>furnace-style cyclic oxidation studies</em> — titanium held at a steady temperature for minutes to hours. A laser dwell is <0.5s of transient, spiking heat. There's no guarantee slow-oxidation kinetics extrapolate to a sub-second heating event at all — the real process may not even follow a simple parabolic law at this timescale.</li>
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">Absorptivity assumed, not measured.</strong> α_Ti = 0.55 comes from published values for generic/polished titanium at 1064nm. The actual as-received surface (mill finish, native oxide, roughness) could easily absorb less — meaning real power has to work harder to inject the same energy the model assumes arrives "for free."</li>
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">Energy-conversion efficiency (η) borrowed from SS304, unverified for titanium.</strong> η = 0.65 accounts for conduction/radiation losses during the pulse. Titanium's different thermal diffusivity could mean more heat escapes the interaction zone before it can drive oxidation, so more input power is needed to reach the same effective peak temperature.</li>
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">The 40µm focal-skin depth is a reused SS304 assumption, not a titanium measurement.</strong> If titanium's real heated layer is thicker, the same energy spreads over more mass and produces a smaller ΔT than modelled — requiring more power to compensate.</li>
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">Per-mm² patch vs. real spot size.</strong> The model (like SS304's) normalizes energy over a 1mm² patch via LPCM; the real focused spot is only ~0.03mm across. If the true fluence is better described at the actual spot scale than smeared across a virtual mm² patch, the energy accounting could be off by a large factor in either direction.</li>
+        <li style="margin-bottom:14px;"><strong style="color:#bbb;">A_PREFACTOR was tuned against a temperature window, not a single real data point.</strong> When it was chosen, no chip card existed — it was picked only to keep colours inside the literature-cited 600-1200°C rutile range. It was never anchored to an actual (power, colour) measurement, so a 3× miss is well within what an unanchored tuning constant could produce.</li>
+      </ol>
+
+      <h3 style="margin-top:32px;">Next steps to close the gap</h3>
+      <ol style="color:#888; font-size:13.5px; line-height:1.9; padding-left:22px; max-width:700px;">
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Re-fit A_PREFACTOR (and/or α_Ti, η) directly against the chip card.</strong> Real (power%, resulting nm) pairs now exist for the vivid range — solve for the constants that actually reproduce them, instead of a value tuned against a disconnected literature window.</li>
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Find (or generate) rapid-heating oxidation kinetics data.</strong> Look for laser-annealing or flash-oxidation studies on titanium specifically, rather than furnace/cyclic-oxidation papers — the timescale mismatch is likely the single biggest error source.</li>
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Measure real peak surface temperature during exposure</strong> (thermal camera or pyrometer) to validate the energy/ΔT half of the model independently of the growth-rate half — right now a single 3× power gap could be hiding in either stage.</li>
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Measure the actual surface's absorptivity at 1064nm</strong> rather than relying on a generic literature figure for "titanium" — mill finish and native oxide vary enough to matter.</li>
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Rebuild the energy model around the real ~0.03mm spot size</strong> instead of a virtual 1mm² patch, and check whether that resolves or worsens the gap.</li>
+        <li style="margin-bottom:12px;"><strong style="color:#bbb;">Extend the chip card past 61%</strong> to see whether the grey/mauve desaturation trend continues, plateaus, or reverses — filling out the real dataset the model should ultimately be judged against.</li>
+      </ol>
+    </section>
+
     <div class="chapter-nav">
       <a href="../ss304-colours/" class="prev">
         <span class="label">Related</span>
