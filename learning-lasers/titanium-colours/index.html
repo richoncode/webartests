@@ -234,7 +234,7 @@
         <tbody id="chartBody"></tbody>
       </table>
       <p class="callout warn" style="margin-top:20px;">
-        <strong>Calibration status:</strong> Power, Colour, and Regime are read directly from the photographed chip card — real measurement. The four theoretical columns are the tuned Arrhenius model, shown only where a chip has a plausible theoretical counterpart; <strong>"—"</strong> means the real card produced a colour the model doesn't predict at all — mostly true above ~35%, where the real card runs sage-teal transitions and then desaturates into grey/mauve instead of cycling through the model's more saturated "2nd-order" hues (Yellow-Green, 2nd-Order Gold, Orange, Pink/Magenta, Deep Green — none of which were actually observed). Below 13% is untested (no colour); above 61% is untested (unknown). Colours are a careful visual read of a photograph, not a colorimeter measurement.
+        <strong>Calibration status:</strong> Power, Colour, and Regime are read directly from the photographed chip card — real measurement. The four theoretical columns are the tuned Arrhenius model, shown only where a chip has a plausible theoretical counterpart; <strong>"—"</strong> means the real card produced a colour the model doesn't predict at all — mostly true above ~35%, where the real card runs sage-teal transitions and then desaturates into grey/mauve instead. The five darker "Not produced by laser" rows (62–96V) are the reverse case: published anodizing colours (Yellow-Green, 2nd-Order Gold, Orange, Pink/Magenta, Deep Green) with real volts and a computable theoretical laser-power equivalent, but no laser setting — on this card or otherwise — has ever actually produced them; the same 160–250nm range instead shows the real card's sage-to-grey transition above. Below 13% is untested (no colour); above 61% is untested (unknown). Colours are a careful visual read of a photograph, not a colorimeter measurement.
       </p>
     </section>
 
@@ -694,6 +694,13 @@
     // Reference chart table — complete: every real chip card entry, with theoretical
     // Oxide/Volts/Power/Peak-Temp columns pulled in wherever a chip has a theoretical match.
     const chartBody = document.getElementById('chartBody');
+
+    // Theoretical (published-anodizing-style) colours with NO real chip counterpart at all —
+    // these still have real published volts, but no laser setting has ever produced them, so
+    // they get their own clearly-marked rows instead of silently vanishing from the table.
+    const usedTheoNames = new Set(LASER_CHIPS.map(c => c.theo).filter(Boolean));
+    const UNOBSERVED_STOPS = STOPS.filter(s => s.nm > 0 && !usedTheoNames.has(s.name));
+
     LASER_CHIPS.forEach(chip => {
       const regime = chip.p >= LASER_CHIP_DESAT_START ? 'Desaturating' : 'Vivid';
       const regimeColor = chip.p >= LASER_CHIP_DESAT_START ? '#f87171' : '#10b981';
@@ -717,6 +724,26 @@
         <td style="color:${regimeColor};">${regime}</td>
         ${theoCells}
       </tr>`;
+
+      // Insert the unobserved-theoretical rows right after the last chip whose theo is
+      // "Pale Green" (34%) — that's exactly where they'd fall by oxide thickness/volts,
+      // between the real vivid range and the real desaturation range.
+      if (chip.p === 34) {
+        UNOBSERVED_STOPS.forEach(stop => {
+          const v = Math.round(stop.nm / 2.6);
+          const laser = powerForNm(stop.nm);
+          chartBody.innerHTML += `<tr style="background:#1a1210;">
+            <td style="color:#555;">—</td>
+            <td style="color:#666;">Not produced by laser</td>
+            <td style="color:#555;">n/a</td>
+            <td><span class="swatch-dot" style="background:rgb(${stop.rgb.join(',')});"></span>${stop.name}</td>
+            <td>${stop.nm} nm</td>
+            <td>~${v} V</td>
+            <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W)</td>
+            <td>~${Math.round(laser.tPeakC)}°C</td>
+          </tr>`;
+        });
+      }
     });
 
     setMode('volt');
