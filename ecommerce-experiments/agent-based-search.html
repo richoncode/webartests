@@ -58,6 +58,8 @@
     @media (max-width: 760px) { .combo-grid { grid-template-columns: 1fr; } }
     .combo-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; }
     .combo-card.best { border-color: #1f6e46; background: linear-gradient(180deg, #10241a 0%, #141414 60%); }
+    .combo-card.warn { border-color: #3a2f1a; background: linear-gradient(180deg, #241c10 0%, #141414 60%); }
+    .combo-card.warn .combo-rank { color: #f0a040; background: #2e2410; }
     .combo-card .combo-rank { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #6ee7b7; background: #123023; display: inline-block; padding: 3px 9px; border-radius: 6px; margin-bottom: 12px; align-self: flex-start; }
     .combo-card h4 { font-size: 15px; color: #fff; margin-bottom: 4px; }
     .combo-card .combo-cost { color: #999; font-size: 13px; margin-bottom: 14px; }
@@ -234,6 +236,7 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
       <h3>Working combinations — stacking multiple cabinets to fill the 120" run</h3>
       <p class="lead" style="margin-bottom:12px;">A single cabinet is one candidate; a <em>family</em> like HAVSTA — which sells more than one width in the same finish — supports several different end-to-end stackings. Each combination below only uses candidates with zero deficient criteria (a unit that already fails on its own, like VIHALS' height or the Prepac console's depth, can't be fixed by combining it with another), sums their 4.4"×14×4.4" storage-slot counts, and shows the literal width arithmetic that keeps the total at or under the 120" exterior run. Every cabinet name links to its listing. Only combinations that are <em>practically different</em> are shown: the max-slot plan a family can fit, plus an alternate only when swapping in a different model actually changes the cost/verification trade-off or gets you to zero unverified risk — not "3 fit, here's 2 and 1 too."</p>
       <div id="workingCombos"><p style="color:#555;">Loading…</p></div>
+      <p class="lead" id="discountNote" style="margin-top:8px; font-size:12.5px;"></p>
 
       <h3 style="margin-top:36px;">Verified candidates</h3>
       <div class="table-wrap">
@@ -400,15 +403,17 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
             ? '(<span class="spare">' + (Math.round(spare * 1000) / 1000) + '" to spare</span>)'
             : '(<span class="over">' + Math.abs(spare) + '" over budget</span>)');
 
-        var kindLabel = { max: '★ Maximum slots for this family', swap: '⇄ Same slots, swapped composition', 'zero-risk': '✓ Zero-risk max (fully verified)' }[combo.kind] || combo.kind;
+        var kindLabel = { max: '★ Maximum slots for this family', 'zero-risk': '✓ Zero-risk max (fully verified)', 'cross-family': '⚠ Cross-family (breaks matching-style)' }[combo.kind] || combo.kind;
+        var costPerSlot = (combo.estCost / combo.totalStorageUnits).toFixed(2);
+        var cardClass = combo.kind === 'cross-family' ? ' warn' : (combo.familyBest ? ' best' : '');
 
-        return '<div class="combo-card' + (combo.familyBest ? ' best' : '') + '">' +
+        return '<div class="combo-card' + cardClass + '">' +
           '<span class="combo-rank">' + kindLabel + (combo.siteBest ? '<span class="combo-site-best">★ Best on this page</span>' : '') + '</span>' +
           '<h4>' + combo.label + '</h4>' +
-          '<div class="combo-cost">$' + combo.estCost + ' total &middot; ' + conf + '</div>' +
+          '<div class="combo-cost">$' + combo.estCost + ' total ($' + costPerSlot + ' / slot) &middot; ' + conf + '</div>' +
           '<ul class="combo-units">' + unitsHtml + '</ul>' +
           '<div class="combo-layout">Layout (outside width): ' + layoutLine + '</div>' +
-          '<div class="combo-total"><span class="num">' + combo.totalStorageUnits + '</span><span class="label">total 4.4"×14×4.4" storage slots</span></div>' +
+          '<div class="combo-total"><span class="num">' + combo.totalStorageUnits + '</span><span class="label">total 4.4"×14×4.4" storage slots<br>$' + costPerSlot + ' per slot</span></div>' +
           (combo.note ? '<div class="combo-note">' + combo.note + '</div>' : '') +
         '</div>';
       }
@@ -430,6 +435,11 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           '<div class="combo-grid">' + fam.combos.map(renderCombo).join('') + '</div>' +
         '</div>';
       }).join('');
+
+      var dc = data.meta && data.meta.requirements && data.meta.requirements.discountCheck;
+      if (dc) {
+        document.getElementById('discountNote').innerHTML = '<strong style="color:#999;">Discount check (' + dc.checked + '):</strong> ' + dc.result;
+      }
     }).catch(function (err) {
       var msg = 'Failed to load data file: ' + err.message + '. If you opened this file directly (file://), open it through a local server or the live URL instead — browsers block fetch() of local JSON files.';
       ['verifiedBody', 'runnerUpBody'].forEach(function (id) {
