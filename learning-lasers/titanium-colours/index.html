@@ -270,23 +270,13 @@
 
     <section id="charts">
       <h2>Reference Charts</h2>
-      <p class="section-sub">One table, aligned by colour: theory on the left, what the photographed chip card actually shows on the right. Where they land on wildly different power percentages for "the same" colour name, that's the model's approximation talking, not the real card.</p>
+      <p class="section-sub">Every chip from the photographed card (13-61%), complete — with the theoretical model's Oxide/Volts/Power/Peak-Temp columns pulled in wherever a chip has a sensible theoretical counterpart. Where they land on wildly different power percentages for "the same" hue, that's the model's approximation talking, not the real card.</p>
       <table>
-        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power (theoretical)</th><th>Peak Temp (theoretical)</th><th>Power (measured, real chip)</th></tr></thead>
+        <thead><tr><th>Power</th><th>Colour (measured)</th><th>Regime</th><th>Closest theoretical colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power (theoretical)</th><th>Peak Temp (theoretical)</th></tr></thead>
         <tbody id="chartBody"></tbody>
       </table>
       <p class="callout warn" style="margin-top:20px;">
-        <strong>Calibration status:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). "Power (theoretical)" is the tuned Arrhenius model only. "Power (measured, real chip)" is read from the photographed card — where it says <strong>not observed</strong>, the real laser never actually produces that colour; it desaturates into grey/mauve instead of cycling through more saturated "2nd-order" hues the way the theoretical column alone implies.
-      </p>
-
-      <h3 style="margin-top:36px;">Full Real Chip Card Detail</h3>
-      <p class="section-sub">The complete photographed card, full resolution (13-61%) — more granular than the merged table above, which only shows the colours that have a named counterpart in the theoretical model.</p>
-      <table>
-        <thead><tr><th>Power</th><th>Colour</th><th>Regime</th></tr></thead>
-        <tbody id="chipChartBody"></tbody>
-      </table>
-      <p class="callout" style="margin-top:20px;">
-        Below 13% no reliable colour was tested; between 13-41% the card runs a clean gold→bronze→purple→blue→teal→sage progression; from 43-61% it desaturates into greys and mauves. Above 61% is untested. Colours are a visual read of a photograph, not a colorimeter measurement.
+        <strong>Calibration status:</strong> Power, Colour, and Regime are read directly from the photographed chip card — real measurement. The four theoretical columns are the tuned Arrhenius model, shown only where a chip has a plausible theoretical counterpart; <strong>"—"</strong> means the real card produced a colour the model doesn't predict at all — mostly true above ~35%, where the real card runs sage-teal transitions and then desaturates into grey/mauve instead of cycling through the model's more saturated "2nd-order" hues (Yellow-Green, 2nd-Order Gold, Orange, Pink/Magenta, Deep Green — none of which were actually observed). Below 13% is untested (no colour); above 61% is untested (unknown). Colours are a careful visual read of a photograph, not a colorimeter measurement.
       </p>
     </section>
 
@@ -339,24 +329,23 @@
   <script>
     // TiO2 interference colour stops (nm -> rgb), illustrative — matches the general
     // shape of published titanium anodizing colour progressions (1st + 2nd order).
-    // `real` annotates each theoretical colour against the actual photographed chip card:
-    // either the power% range that really produced a matching (or closest) hue, or `observed:
-    // false` where the real card never produces that colour at all (see LASER_CHIPS below).
+    // Cross-referenced against the real chip card via LASER_CHIPS[].theo below, rather than
+    // annotated here — see the merged Reference Charts table for how they actually line up.
     const STOPS = [
       { nm: 0,   rgb: [176, 178, 182], name: 'Bare Titanium' },
-      { nm: 20,  rgb: [214, 190, 120], name: 'Pale Straw',      real: { range: '13–14%', match: 'Pale Gold / Gold' } },
-      { nm: 40,  rgb: [176, 108, 58],  name: 'Bronze',          real: { range: '16–17%', match: 'Orange-Gold / Rust' } },
-      { nm: 60,  rgb: [104, 48, 132],  name: 'Purple',          real: { range: '20%',    match: 'Purple — exact name match' } },
-      { nm: 80,  rgb: [40, 40, 132],   name: 'Indigo',          real: { range: '21–22%', match: 'Violet / Blue-Violet' } },
-      { nm: 100, rgb: [30, 80, 190],   name: 'Blue',            real: { range: '23–27%', match: 'Blue / Bright Blue' } },
-      { nm: 120, rgb: [30, 150, 190],  name: 'Cyan / Teal',     real: { range: '29–31%', match: 'Cyan / Cyan-Teal' } },
-      { nm: 140, rgb: [50, 170, 130],  name: 'Pale Green',      real: { range: '32–34%', match: 'Teal / Teal-Green' } },
-      { nm: 160, rgb: [140, 190, 60],  name: 'Yellow-Green',    real: { observed: false, match: 'Real card shows Sage (~39–40%), not yellow-green' } },
-      { nm: 180, rgb: [214, 180, 40],  name: '2nd-Order Gold',  real: { observed: false, match: 'Real card desaturates to Muted Sage / Grey (~41–43%)' } },
-      { nm: 200, rgb: [214, 120, 40],  name: 'Orange',          real: { observed: false, match: 'Real card shows Grey-Taupe (~45%)' } },
-      { nm: 220, rgb: [200, 70, 140],  name: 'Pink / Magenta',  real: { observed: false, match: 'Real card shows desaturated Mauve-Grey (~47–49%)' } },
-      { nm: 250, rgb: [18, 108, 54],   name: 'Deep Green',      real: { observed: false, match: 'Real card shows Purple-Grey (~55–57%); untested past 61%' } },
-      { nm: 280, rgb: [150, 150, 150], name: 'Pale / Washed Out', real: { range: '~61%', match: 'Charcoal Grey (closest real analogue)' } }
+      { nm: 20,  rgb: [214, 190, 120], name: 'Pale Straw' },
+      { nm: 40,  rgb: [176, 108, 58],  name: 'Bronze' },
+      { nm: 60,  rgb: [104, 48, 132],  name: 'Purple' },
+      { nm: 80,  rgb: [40, 40, 132],   name: 'Indigo' },
+      { nm: 100, rgb: [30, 80, 190],   name: 'Blue' },
+      { nm: 120, rgb: [30, 150, 190],  name: 'Cyan / Teal' },
+      { nm: 140, rgb: [50, 170, 130],  name: 'Pale Green' },
+      { nm: 160, rgb: [140, 190, 60],  name: 'Yellow-Green' },
+      { nm: 180, rgb: [214, 180, 40],  name: '2nd-Order Gold' },
+      { nm: 200, rgb: [214, 120, 40],  name: 'Orange' },
+      { nm: 220, rgb: [200, 70, 140],  name: 'Pink / Magenta' },
+      { nm: 250, rgb: [18, 108, 54],   name: 'Deep Green' },
+      { nm: 280, rgb: [150, 150, 150], name: 'Pale / Washed Out' }
     ];
 
     function getInterferenceColor(nm) {
@@ -449,29 +438,34 @@
     // the theoretical Arrhenius colour for the actual swatch shown — real measurement beats a
     // tuned model. Colours below are a careful visual read of the photographed card, not a
     // colorimeter measurement, and the sparser upper end (43-61) is coarser than the 13-41 run.
+    // `theo` names the theoretical STOPS entry this chip is closest to in hue, if any —
+    // used to pull in the Oxide/Volts/theoretical-Power/Peak-Temp columns for the merged
+    // table below. Left unset where the real chip has no sensible theoretical counterpart
+    // (the 35-41 sage transition and the 43-61 desaturation zone mostly don't correspond
+    // to anything the theoretical model predicts).
     const LASER_CHIPS = [
-      { p: 13, rgb: [224, 196, 140], name: 'Pale Gold' },
-      { p: 14, rgb: [214, 175, 90],  name: 'Gold' },
-      { p: 15, rgb: [208, 155, 65],  name: 'Gold-Orange' },
-      { p: 16, rgb: [198, 132, 52],  name: 'Orange-Gold' },
-      { p: 17, rgb: [182, 105, 52],  name: 'Rust' },
-      { p: 18, rgb: [152, 72, 52],   name: 'Brick Red' },
+      { p: 13, rgb: [224, 196, 140], name: 'Pale Gold',       theo: 'Pale Straw' },
+      { p: 14, rgb: [214, 175, 90],  name: 'Gold',            theo: 'Pale Straw' },
+      { p: 15, rgb: [208, 155, 65],  name: 'Gold-Orange',     theo: 'Pale Straw' },
+      { p: 16, rgb: [198, 132, 52],  name: 'Orange-Gold',     theo: 'Bronze' },
+      { p: 17, rgb: [182, 105, 52],  name: 'Rust',            theo: 'Bronze' },
+      { p: 18, rgb: [152, 72, 52],   name: 'Brick Red',       theo: 'Bronze' },
       { p: 19, rgb: [95, 42, 62],    name: 'Deep Maroon' },
-      { p: 20, rgb: [72, 42, 92],    name: 'Purple' },
-      { p: 21, rgb: [56, 42, 112],   name: 'Violet' },
-      { p: 22, rgb: [46, 52, 132],   name: 'Blue-Violet' },
-      { p: 23, rgb: [36, 72, 162],   name: 'Blue' },
-      { p: 24, rgb: [30, 82, 182],   name: 'Blue' },
-      { p: 25, rgb: [26, 102, 202],  name: 'Bright Blue' },
-      { p: 26, rgb: [30, 112, 197],  name: 'Blue' },
-      { p: 27, rgb: [35, 122, 192],  name: 'Blue' },
+      { p: 20, rgb: [72, 42, 92],    name: 'Purple',          theo: 'Purple' },
+      { p: 21, rgb: [56, 42, 112],   name: 'Violet',          theo: 'Indigo' },
+      { p: 22, rgb: [46, 52, 132],   name: 'Blue-Violet',     theo: 'Indigo' },
+      { p: 23, rgb: [36, 72, 162],   name: 'Blue',            theo: 'Blue' },
+      { p: 24, rgb: [30, 82, 182],   name: 'Blue',            theo: 'Blue' },
+      { p: 25, rgb: [26, 102, 202],  name: 'Bright Blue',     theo: 'Blue' },
+      { p: 26, rgb: [30, 112, 197],  name: 'Blue',            theo: 'Blue' },
+      { p: 27, rgb: [35, 122, 192],  name: 'Blue',            theo: 'Blue' },
       { p: 28, rgb: [30, 142, 187],  name: 'Blue-Cyan' },
-      { p: 29, rgb: [35, 157, 182],  name: 'Cyan' },
-      { p: 30, rgb: [40, 167, 177],  name: 'Cyan' },
-      { p: 31, rgb: [50, 172, 167],  name: 'Cyan-Teal' },
-      { p: 32, rgb: [60, 177, 152],  name: 'Teal' },
-      { p: 33, rgb: [70, 177, 137],  name: 'Teal-Green' },
-      { p: 34, rgb: [80, 177, 127],  name: 'Teal-Green' },
+      { p: 29, rgb: [35, 157, 182],  name: 'Cyan',            theo: 'Cyan / Teal' },
+      { p: 30, rgb: [40, 167, 177],  name: 'Cyan',            theo: 'Cyan / Teal' },
+      { p: 31, rgb: [50, 172, 167],  name: 'Cyan-Teal',       theo: 'Cyan / Teal' },
+      { p: 32, rgb: [60, 177, 152],  name: 'Teal',            theo: 'Pale Green' },
+      { p: 33, rgb: [70, 177, 137],  name: 'Teal-Green',      theo: 'Pale Green' },
+      { p: 34, rgb: [80, 177, 127],  name: 'Teal-Green',      theo: 'Pale Green' },
       { p: 35, rgb: [92, 182, 167],  name: 'Light Teal' },
       { p: 36, rgb: [102, 177, 152], name: 'Teal' },
       { p: 37, rgb: [112, 177, 142], name: 'Teal' },
@@ -487,9 +481,10 @@
       { p: 53, rgb: [162, 132, 157], name: 'Mauve-Purple' },
       { p: 55, rgb: [152, 122, 152], name: 'Purple-Grey' },
       { p: 57, rgb: [132, 112, 142], name: 'Purple-Grey' },
-      { p: 59, rgb: [112, 102, 127], name: 'Dark Grey-Purple' },
-      { p: 61, rgb: [92, 92, 102],   name: 'Charcoal Grey' }
+      { p: 59, rgb: [112, 102, 127], name: 'Dark Grey-Purple', theo: 'Pale / Washed Out' },
+      { p: 61, rgb: [92, 92, 102],   name: 'Charcoal Grey',    theo: 'Pale / Washed Out' }
     ];
+    const STOPS_BY_NAME = Object.fromEntries(STOPS.map(s => [s.name, s]));
     const LASER_CHIP_DESAT_START = 43; // p >= this: card shows desaturating grey/mauve, not clean interference colour
 
     // Interpolates the real chip card. Returns { rgb, name, regime } where regime is
@@ -597,36 +592,31 @@
     voltSlider.oninput = render;
     powerSlider.oninput = render;
 
-    // Reference chart table — merged: theoretical model + real chip card, aligned by colour name
+    // Reference chart table — complete: every real chip card entry, with theoretical
+    // Oxide/Volts/Power/Peak-Temp columns pulled in wherever a chip has a theoretical match.
     const chartBody = document.getElementById('chartBody');
-    STOPS.forEach(stop => {
-      if (stop.nm === 0) return;
-      const v = Math.round(stop.nm / 2.6);
-      const laser = powerForNm(stop.nm);
-      const rgb = stop.rgb.join(',');
-      const real = stop.real || {};
-      const realCell = real.observed === false
-        ? `<span style="color:#f87171;">Not observed</span> <span style="color:#666;">— ${real.match}</span>`
-        : `<strong>${real.range}</strong> <span style="color:#666;">(${real.match})</span>`;
-      chartBody.innerHTML += `<tr>
-        <td><span class="swatch-dot" style="background:rgb(${rgb});"></span>${stop.name}</td>
-        <td>${stop.nm} nm</td>
-        <td>~${v} V</td>
-        <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W)</td>
-        <td>~${Math.round(laser.tPeakC)}°C</td>
-        <td>${realCell}</td>
-      </tr>`;
-    });
-
-    // Real chip card table
-    const chipChartBody = document.getElementById('chipChartBody');
     LASER_CHIPS.forEach(chip => {
       const regime = chip.p >= LASER_CHIP_DESAT_START ? 'Desaturating' : 'Vivid';
       const regimeColor = chip.p >= LASER_CHIP_DESAT_START ? '#f87171' : '#10b981';
-      chipChartBody.innerHTML += `<tr>
+      const stop = chip.theo ? STOPS_BY_NAME[chip.theo] : null;
+      let theoCells;
+      if (stop) {
+        const v = Math.round(stop.nm / 2.6);
+        const laser = powerForNm(stop.nm);
+        theoCells = `
+        <td><span class="swatch-dot" style="background:rgb(${stop.rgb.join(',')});"></span>${stop.name}</td>
+        <td>${stop.nm} nm</td>
+        <td>~${v} V</td>
+        <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W)</td>
+        <td>~${Math.round(laser.tPeakC)}°C</td>`;
+      } else {
+        theoCells = `<td colspan="5" style="color:#555; text-align:center;">—</td>`;
+      }
+      chartBody.innerHTML += `<tr>
         <td>${chip.p}%</td>
         <td><span class="swatch-dot" style="background:rgb(${chip.rgb.join(',')});"></span>${chip.name}</td>
         <td style="color:${regimeColor};">${regime}</td>
+        ${theoCells}
       </tr>`;
     });
 
