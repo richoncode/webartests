@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent-Based Search — Ecommerce Experiments</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding: 60px 24px 80px; }
+    a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; transition: color 0.1s; }
+    a.back:hover { color: #aaa; }
+    .page { max-width: 980px; margin: 0 auto; }
+
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #10b981; margin-bottom: 12px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+    p.subtitle { color: #888; font-size: 15px; margin-bottom: 48px; max-width: 680px; line-height: 1.7; }
+
+    section { margin-bottom: 56px; }
+    h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #ddd; }
+    p.lead { color: #777; font-size: 14px; line-height: 1.75; margin-bottom: 16px; max-width: 700px; }
+    p.lead strong { color: #bbb; }
+
+    .concept-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+    @media (max-width: 700px) { .concept-grid { grid-template-columns: 1fr; } }
+    .concept-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 22px; }
+    .concept-card.bad { border-color: #3a2222; }
+    .concept-card.good { border-color: #1f3a2a; }
+    .concept-card .kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .concept-card.bad .kicker { color: #f87171; }
+    .concept-card.good .kicker { color: #10b981; }
+    .concept-card ul { padding-left: 18px; color: #999; font-size: 13.5px; line-height: 1.8; }
+    .concept-card ul li strong { color: #ccc; }
+
+    .prompt-box {
+      background: #0f1410; border: 1px solid #1f3a2a; border-radius: 12px;
+      padding: 24px 26px; font-size: 13.5px; line-height: 1.75; color: #b8c9bd;
+      white-space: pre-wrap; font-family: 'SF Mono', 'Fira Code', monospace;
+      max-height: 480px; overflow-y: auto;
+    }
+    .prompt-box .hl { color: #6ee7b7; font-weight: 700; }
+
+    .winner-card {
+      background: linear-gradient(180deg, #10241a 0%, #141414 100%);
+      border: 1px solid #1f6e46; border-radius: 16px; padding: 28px 30px; margin-bottom: 28px;
+    }
+    .winner-badge { display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #052e18; background: #34d399; padding: 4px 10px; border-radius: 6px; margin-bottom: 14px; }
+    .winner-card h3 { font-size: 19px; color: #fff; margin-bottom: 6px; }
+    .winner-card .price { color: #6ee7b7; font-weight: 700; font-size: 15px; }
+    .winner-specs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0; }
+    @media (max-width: 700px) { .winner-specs { grid-template-columns: repeat(2, 1fr); } }
+    .winner-specs .spec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b8f7a; margin-bottom: 3px; }
+    .winner-specs .spec-value { font-size: 14px; color: #e5f5ec; font-weight: 600; }
+    .winner-card a.buy { display: inline-block; margin-top: 6px; color: #6ee7b7; text-decoration: none; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid #1f6e46; }
+    .winner-card a.buy:hover { color: #a7f3d0; }
+
+    .table-wrap { width: 100%; overflow-x: auto; border: 1px solid #262626; border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 900px; }
+    th { text-align: left; background: #161616; color: #999; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; padding: 12px 14px; border-bottom: 1px solid #2a2a2a; white-space: nowrap; }
+    td { padding: 12px 14px; border-bottom: 1px solid #1e1e1e; color: #ccc; vertical-align: top; line-height: 1.5; }
+    tr:last-child td { border-bottom: none; }
+    tr.best-row td { background: #0f1a13; }
+    tr.trap-row td { background: #1a1010; }
+    td.name { color: #fff; font-weight: 600; }
+    td a { color: #6ee7b7; text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .badge { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; padding: 2px 7px; border-radius: 5px; }
+    .badge.published { background: #123023; color: #6ee7b7; }
+    .badge.inferred { background: #2e2410; color: #f0a040; }
+    .badge.fail { background: #2e1414; color: #f87171; }
+    .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #ddd; }
+
+    .trap-callout {
+      background: #1a1010; border: 1px solid #3a2222; border-radius: 12px;
+      padding: 20px 24px; margin: 24px 0; font-size: 13.5px; color: #d4a3a3; line-height: 1.7;
+    }
+    .trap-callout strong { color: #f87171; }
+
+    .ruled-out { color: #666; font-size: 13px; line-height: 1.8; padding-left: 18px; max-width: 700px; }
+    .ruled-out li strong { color: #999; }
+
+    .method-list { padding-left: 18px; color: #888; font-size: 13.5px; line-height: 1.85; max-width: 680px; }
+    .method-list li { margin-bottom: 6px; }
+    .method-list li strong { color: #ccc; }
+
+    .tag { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #555; background: #1a1a1a; border: 1px solid #2a2a2a; padding: 3px 9px; border-radius: 6px; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="./" class="back">← Ecommerce Experiments</a>
+
+    <p class="section-label">Retail Lab · Agent Experiment</p>
+    <h1>Agent-Based Search</h1>
+    <p class="subtitle">Marketplace filters trust the spec table. An agent doesn't — it reads the spec table, then goes and checks whether the spec table is lying. This experiment runs one real, deliberately hard shopping request end to end and shows the difference.</p>
+
+    <section id="concept">
+      <h2>Why this is a different kind of search</h2>
+      <p class="lead">Keyword and filter search on Amazon/Wayfair/Walmart answers <strong>"what's listed as matching?"</strong> Agent-based search answers <strong>"what actually matches, and how do I know?"</strong> — by treating every retailer spec field as a claim to verify, not a fact to filter on.</p>
+      <div class="concept-grid">
+        <div class="concept-card bad">
+          <div class="kicker">Marketplace filter search</div>
+          <ul>
+            <li>Trusts the "Product Dimensions" field as-is</li>
+            <li>Can't tell an <strong>overall</strong> measurement from an <strong>interior</strong> one</li>
+            <li>Has no way to catch a scrambled W×H×D field</li>
+            <li>Returns everything that matches the filter, verified or not</li>
+          </ul>
+        </div>
+        <div class="concept-card good">
+          <div class="kicker">Agent-based search</div>
+          <ul>
+            <li>Treats the listed spec as a <strong>hypothesis</strong>, not an answer</li>
+            <li>Hunts for an independent source — dimension diagram, assembly PDF, cut sheet, buyer review — before trusting an interior measurement</li>
+            <li>Separates <strong>verified</strong> results from <strong>inferred</strong> ones, and shows the arithmetic behind every inference</li>
+            <li>Actively looks for the specific failure mode that burned the requester before, in every candidate</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="prompt">
+      <h2>Example prompt</h2>
+      <p class="lead">This is the actual request run through the agent for this experiment — a buffet/sideboard/credenza search with a binding <em>interior</em>-dimension requirement, and an explicit warning about a prior bad purchase caused by a scrambled spec field.</p>
+      <div class="prompt-box">I need to find a buffet/sideboard/credenza. Hard requirements:
+
+DIMENSIONS (interior measurements are the binding constraint):
+<span class="hl">- Interior cabinet compartment: minimum 25" WIDE and minimum 14" DEEP.</span>
+  These are INSIDE-the-cabinet usable dimensions, not overall furniture dimensions.
+- Overall depth will therefore need to be ~17-20" (carcass walls and door
+  thickness typically eat 3-4" of depth and ~3" of width).
+- Total wall run: 120" maximum. Either one single unit, or two IDENTICAL
+  units placed side by side, each 60" or less.
+- Buffet/counter height preferred: roughly 32-36" tall.
+
+STORAGE TYPE:
+- Cabinet space with adjustable shelves is the priority. Drawers are a
+  negative — zero drawers preferred, minimal drawers acceptable.
+<span class="hl">- A 25"+ wide bay means the piece must NOT have a center divider behind
+  each door pair.</span> Typical 4-door/3-divider layouts yield ~14" bays and FAIL.
+  Two-door cabinets with a single full-width adjustable shelf usually have
+  no divider and PASS if wide enough.
+
+CRITICAL METHODOLOGY — READ THIS:
+Retailer spec tables in this product category are frequently WRONG, and
+marketplace filter facets inherit those errors. <span class="hl">I have already been burned:
+a cabinet listed and filtered as 18" deep is actually 11.8" deep with a
+10" interior shelf. Its spec field read "8"W x 14"H x 18"D" — axes scrambled.</span>
+
+So do NOT trust:
+- Amazon/Wayfair/Walmart depth or dimension filter facets
+- The "Product Dimensions" field in a marketplace spec table
+- Marketing copy adjectives like "deep" or "spacious"
+
+DO verify each candidate against at least one of:
+- A manufacturer dimension diagram image showing interior measurements
+- An assembly instruction PDF (IKEA and most solid-wood brands publish
+  internal dimensions)
+- A manufacturer spec sheet or trade/dealer cut sheet
+- Customer Q&A or review text where someone reports measuring the interior
+- Cross-checking the same SKU across 2+ retailers for dimensional agreement
+
+OUTPUT FORMAT:
+A table with one row per candidate: product+brand, overall W×D×H, interior
+bay W×D, doors/drawers, price, retailer+link, and interior dims labelled
+PUBLISHED or INFERRED. Unverified candidates go in a separate section.
+Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
+    </section>
+
+    <section id="results">
+      <h2>Results</h2>
+      <p class="lead">One candidate came back fully verified against every hard requirement, with an internally-consistent, independently-published interior spec. It's shown first, then the full verified table, then the unverified/inferred backups, then the trap this exact product family contains.</p>
+
+      <div class="winner-card">
+        <span class="winner-badge">✓ Best match — verified</span>
+        <h3>Bunker Hill Three-Door Dining Buffet <span style="color:#6b8f7a; font-weight:400;">— Amish, sold by DutchCrafters</span></h3>
+        <div class="price">$3,559 <span style="color:#6b8f7a; font-weight:400; text-decoration:line-through;">$4,745</span></div>
+        <div class="winner-specs">
+          <div><div class="spec-label">Overall</div><div class="spec-value">56¾"W × 20¼"D × 35¼"H</div></div>
+          <div><div class="spec-label">Interior bay</div><div class="spec-value">51⅜"W × 17½"D</div></div>
+          <div><div class="spec-label">Storage</div><div class="spec-value">3 doors, 1 shelf, 3 drawers above</div></div>
+          <div><div class="spec-label">Verification</div><div class="spec-value" style="color:#6ee7b7;">PUBLISHED</div></div>
+        </div>
+        <p style="color:#a8c9b5; font-size:13px; line-height:1.7; max-width:640px; margin-bottom:10px;">DutchCrafters publishes a distinct "Inside Door Space Dimensions" spec line (28"H × 51⅜"W × 17½"D) separate from the overall measurement — exactly the independent interior figure the prompt required. The three door faces total only 45⅜" combined, narrower than the 51⅜" interior cavity, which only makes sense if the face-frame mullions are cosmetic and the box behind them is open corner-to-corner — consistent with the listing's "one adjustable shelf" (singular) spanning the full width. Height math checks out too: 35.25" overall − 28" interior leaves a sane 7.25" for the drawer bank, top, and base — not the kind of scrambled ratio that caused the prior bad purchase.</p>
+        <a class="buy" href="https://www.dutchcrafters.com/Amish-Bunker-Hill-Three-Door-Dining-Buffet/p/48979" target="_blank" rel="noopener">View at DutchCrafters →</a>
+      </div>
+
+      <h3>Verified candidates</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Product + Brand</th><th>Overall W×D×H</th><th>Interior Bay W×D</th><th>Doors / Drawers</th><th>Price</th><th>Retailer</th><th>Interior Dims</th>
+          </tr></thead>
+          <tbody>
+            <tr class="best-row">
+              <td class="name">Bunker Hill Three-Door Dining Buffet<br><span style="color:#777; font-weight:400;">Amish / DutchCrafters</span></td>
+              <td class="mono">56¾" × 20¼" × 35¼"</td>
+              <td class="mono">51⅜" × 17½"<br><span style="color:#6b8f7a;">1 continuous bay</span></td>
+              <td>3 doors, 1 adj. shelf<br>+3 drawers (above bay)</td>
+              <td>$3,559</td>
+              <td><a href="https://www.dutchcrafters.com/Amish-Bunker-Hill-Three-Door-Dining-Buffet/p/48979" target="_blank" rel="noopener">DutchCrafters ↗</a></td>
+              <td><span class="badge published">Published</span><br><span style="color:#777;">"Inside Door Space Dimensions" spec line</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="trap-callout">
+        <strong>⚠ The exact trap this prompt warned about, found in the same product family:</strong> the <strong>Bunker Hill Sideboard</strong> (same maker, same 56¾"W × 20¼"D × 35¼"H overall footprint, $2,909) looks identical from the outside — but its description reads "Two short cabinets with doors... <em>each cabinet door includes one adjustable shelf per door</em>." That's a center divider splitting the case into two ~14"-wide compartments, failing the 25" bay requirement despite an overall width that looks fine on a spec sheet. It's the same failure pattern as the requester's prior 18"-listed/11.8"-actual purchase, just manifesting as a divider instead of a scrambled axis. <a href="https://www.dutchcrafters.com/Amish-Bunker-Hill-Sideboard/p/48967" target="_blank" rel="noopener" style="color:#f87171;">View at DutchCrafters ↗</a> — included here only as a warning, not a recommendation.
+      </div>
+
+      <h3>Unverified / inferred candidates</h3>
+      <p class="lead" style="margin-bottom:12px;">Plausible on overall size, but the interior dimension is inferred from a sibling SKU's published spec (or an assumed construction offset), not independently confirmed for this exact product. Listed separately per the prompt's instructions, not blended with the verified result above.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Product + Brand</th><th>Overall W×D×H</th><th>Interior Bay W×D (inferred)</th><th>Doors / Drawers</th><th>Price</th><th>Retailer</th><th>Basis / What Would Verify It</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="name">Bunker Hill Two-Door Buffet Sideboard<br><span style="color:#777; font-weight:400;">Amish / DutchCrafters</span></td>
+              <td class="mono">40" × 20¼" × 35¼"</td>
+              <td class="mono">≈34.6" × ≈17.5"</td>
+              <td>2 doors, "one adjustable shelf" (singular)</td>
+              <td>$2,654</td>
+              <td><a href="https://www.dutchcrafters.com/Amish-Bunker-Hill-Two-Door-Dining-Buffet-Sideboard/p/48976" target="_blank" rel="noopener">DutchCrafters ↗</a></td>
+              <td><span class="badge inferred">Inferred</span> from the 3-door sibling's published side-wall offset (56.75−51.375=5.375"W, 20.25−17.5=2.75"D). "Singular shelf" wording matches the verified SKU, not the divided one — a good sign, not proof. <strong>Call DutchCrafters for this SKU's own spec line.</strong></td>
+            </tr>
+            <tr>
+              <td class="name">Bunker Hill Four-Door Dining Buffet<br><span style="color:#777; font-weight:400;">Amish / DutchCrafters</span></td>
+              <td class="mono">73½" × 20¼" × 35¼"</td>
+              <td class="mono">≈68.1" × ≈17.5"</td>
+              <td>4 doors, "one adjustable shelf" (singular)</td>
+              <td>$4,282</td>
+              <td><a href="https://www.dutchcrafters.com/Amish-Bunker-Hill-Four-Door-Dining-Buffet/p/48978" target="_blank" rel="noopener">DutchCrafters ↗</a></td>
+              <td><span class="badge inferred">Inferred</span>, same method as above. Exceeds 60" (irrelevant for a single-unit run, only matters for the two-unit option). <strong>Same fix: call for this SKU's spec line.</strong></td>
+            </tr>
+            <tr>
+              <td class="name">District Storage Credenza<br><span style="color:#777; font-weight:400;">National Business Furniture</span></td>
+              <td class="mono">72" × 20.1" × 29.5"</td>
+              <td class="mono">≈33-34" × ≈17"</td>
+              <td>4 doors / 2 compartments, adj. shelves</td>
+              <td>—</td>
+              <td><a href="https://www.nationalbusinessfurniture.com/district-storage-credenza-72w-x-20d-x-29-5h-57655" target="_blank" rel="noopener">NBF ↗</a></td>
+              <td><span class="badge inferred">Inferred</span> per-compartment split. <span class="badge fail" style="margin-left:4px;">Height risk</span> 29.5" is ~2.5" under the 32-36" target. NBF likely rebrands an OEM (Safco/OFM-type) — that manufacturer's own cut sheet would give per-compartment dimensions directly.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lead" style="margin-top:16px; font-size:13px;">Also promising but not reduced to a specific verifiable SKU this pass: <strong>vintage/mid-century credenzas</strong> (Dunbar/Wormley, Widdicomb, G-Plan — 79-84"W × 18-21.5"D × 32-33"H ranges on Chairish/1stDibs) generally clear the overall-size bar, but the listings checked carried only overall dimensions with no interior field — verification there means messaging individual dealers for their own cabinet-interior photos/measurements, not a database lookup.</p>
+
+      <h3>Ruled out in this pass</h3>
+      <ul class="ruled-out">
+        <li><strong>HON Brigade steel storage cabinets</strong> — clears depth easily but overall height (41¾") runs well above the 32-36" band; HON's shorter "credenza height" line instead sits around 29-30", too short. Office steel storage seems to cluster on either side of the buffet-height band with a gap in the middle.</li>
+        <li><strong>Stock IKEA flat-pack sideboards</strong> (BJURSTA, STOCKHOLM, FJÄLLBO, HEMNES, SKRUVBY) — where an overall depth was published at all, it landed around 16.5", which the prompt's own carcass-thickness math predicts fails the 14" interior floor. Not pursued to individual SKU level.</li>
+        <li><strong>IKEA SEKTION base-cabinet-as-sideboard build</strong> — the specific frame checked (single door, 24"×24"×30") is both too narrow and too short as a standalone SKU; a wider double-door SEKTION frame remains a plausible DIY lead but needs its own assembly PDF checked for a center support before it's worth listing.</li>
+      </ul>
+    </section>
+
+    <section id="method">
+      <h2>How the verification actually worked</h2>
+      <ol class="method-list">
+        <li><strong>Search broadly across categories biased toward real depth</strong> — office/commercial credenzas, Amish/solid-wood makers, vintage/mid-century dealers — rather than generic flat-pack listings, which the prompt correctly predicted would mostly fail on interior depth.</li>
+        <li><strong>For every promising candidate, look past the marketplace spec table</strong> for an independent source: a manufacturer's own "interior" spec line, an assembly PDF, a cut sheet, or buyer-reported measurements.</li>
+        <li><strong>Sanity-check the numbers against each other</strong>, not just against the requirement — e.g. does overall height minus interior height leave a plausible amount for the base/top/drawers, or does the ratio look scrambled the way the prior bad purchase was?</li>
+        <li><strong>Actively hunt for the specific failure mode named in the prompt</strong> (a center divider hiding behind a wide-looking cabinet) in every candidate — which is exactly what surfaced the Bunker Hill Sideboard trap sitting right next to the winning candidate.</li>
+        <li><strong>Separate what's confirmed from what's inferred</strong>, and show the arithmetic for every inference, rather than presenting a best-guess number with the same confidence as a published one.</li>
+      </ol>
+      <p class="lead" style="margin-top:20px;"><span class="tag">Agent Research</span><span class="tag">Verification-First</span><span class="tag">Retail Lab</span></p>
+    </section>
+  </div>
+</body>
+</html>
