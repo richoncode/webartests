@@ -270,17 +270,17 @@
 
     <section id="charts">
       <h2>Reference Charts</h2>
-      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power (modelled) are just two different theoretical ways of hitting a given thickness — this table is the anodizing-style comparison, not the measured laser data below.</p>
+      <p class="section-sub">One table, aligned by colour: theory on the left, what the photographed chip card actually shows on the right. Where they land on wildly different power percentages for "the same" colour name, that's the model's approximation talking, not the real card.</p>
       <table>
-        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power (modelled) @ 1000 LPCM, 200mm/s</th><th>Peak Temp</th></tr></thead>
+        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power (theoretical)</th><th>Peak Temp (theoretical)</th><th>Power (measured, real chip)</th></tr></thead>
         <tbody id="chartBody"></tbody>
       </table>
       <p class="callout warn" style="margin-top:20px;">
-        <strong>Calibration status:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). The modelled power column is the theoretical Arrhenius pathway only — see the real measured chart below for what the laser actually does.
+        <strong>Calibration status:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). "Power (theoretical)" is the tuned Arrhenius model only. "Power (measured, real chip)" is read from the photographed card — where it says <strong>not observed</strong>, the real laser never actually produces that colour; it desaturates into grey/mauve instead of cycling through more saturated "2nd-order" hues the way the theoretical column alone implies.
       </p>
 
-      <h3 style="margin-top:36px;">Real Laser Chip Card (measured)</h3>
-      <p class="section-sub">Read directly from a physical titanium chip card at the 1000 LPCM / 200mm/s reference — this is what the simulator's laser-mode swatch actually uses.</p>
+      <h3 style="margin-top:36px;">Full Real Chip Card Detail</h3>
+      <p class="section-sub">The complete photographed card, full resolution (13-61%) — more granular than the merged table above, which only shows the colours that have a named counterpart in the theoretical model.</p>
       <table>
         <thead><tr><th>Power</th><th>Colour</th><th>Regime</th></tr></thead>
         <tbody id="chipChartBody"></tbody>
@@ -339,21 +339,24 @@
   <script>
     // TiO2 interference colour stops (nm -> rgb), illustrative — matches the general
     // shape of published titanium anodizing colour progressions (1st + 2nd order).
+    // `real` annotates each theoretical colour against the actual photographed chip card:
+    // either the power% range that really produced a matching (or closest) hue, or `observed:
+    // false` where the real card never produces that colour at all (see LASER_CHIPS below).
     const STOPS = [
       { nm: 0,   rgb: [176, 178, 182], name: 'Bare Titanium' },
-      { nm: 20,  rgb: [214, 190, 120], name: 'Pale Straw' },
-      { nm: 40,  rgb: [176, 108, 58],  name: 'Bronze' },
-      { nm: 60,  rgb: [104, 48, 132],  name: 'Purple' },
-      { nm: 80,  rgb: [40, 40, 132],   name: 'Indigo' },
-      { nm: 100, rgb: [30, 80, 190],   name: 'Blue' },
-      { nm: 120, rgb: [30, 150, 190],  name: 'Cyan / Teal' },
-      { nm: 140, rgb: [50, 170, 130],  name: 'Pale Green' },
-      { nm: 160, rgb: [140, 190, 60],  name: 'Yellow-Green' },
-      { nm: 180, rgb: [214, 180, 40],  name: '2nd-Order Gold' },
-      { nm: 200, rgb: [214, 120, 40],  name: 'Orange' },
-      { nm: 220, rgb: [200, 70, 140],  name: 'Pink / Magenta' },
-      { nm: 250, rgb: [18, 108, 54],   name: 'Deep Green' },
-      { nm: 280, rgb: [150, 150, 150], name: 'Pale / Washed Out' }
+      { nm: 20,  rgb: [214, 190, 120], name: 'Pale Straw',      real: { range: '13–14%', match: 'Pale Gold / Gold' } },
+      { nm: 40,  rgb: [176, 108, 58],  name: 'Bronze',          real: { range: '16–17%', match: 'Orange-Gold / Rust' } },
+      { nm: 60,  rgb: [104, 48, 132],  name: 'Purple',          real: { range: '20%',    match: 'Purple — exact name match' } },
+      { nm: 80,  rgb: [40, 40, 132],   name: 'Indigo',          real: { range: '21–22%', match: 'Violet / Blue-Violet' } },
+      { nm: 100, rgb: [30, 80, 190],   name: 'Blue',            real: { range: '23–27%', match: 'Blue / Bright Blue' } },
+      { nm: 120, rgb: [30, 150, 190],  name: 'Cyan / Teal',     real: { range: '29–31%', match: 'Cyan / Cyan-Teal' } },
+      { nm: 140, rgb: [50, 170, 130],  name: 'Pale Green',      real: { range: '32–34%', match: 'Teal / Teal-Green' } },
+      { nm: 160, rgb: [140, 190, 60],  name: 'Yellow-Green',    real: { observed: false, match: 'Real card shows Sage (~39–40%), not yellow-green' } },
+      { nm: 180, rgb: [214, 180, 40],  name: '2nd-Order Gold',  real: { observed: false, match: 'Real card desaturates to Muted Sage / Grey (~41–43%)' } },
+      { nm: 200, rgb: [214, 120, 40],  name: 'Orange',          real: { observed: false, match: 'Real card shows Grey-Taupe (~45%)' } },
+      { nm: 220, rgb: [200, 70, 140],  name: 'Pink / Magenta',  real: { observed: false, match: 'Real card shows desaturated Mauve-Grey (~47–49%)' } },
+      { nm: 250, rgb: [18, 108, 54],   name: 'Deep Green',      real: { observed: false, match: 'Real card shows Purple-Grey (~55–57%); untested past 61%' } },
+      { nm: 280, rgb: [150, 150, 150], name: 'Pale / Washed Out', real: { range: '~61%', match: 'Charcoal Grey (closest real analogue)' } }
     ];
 
     function getInterferenceColor(nm) {
@@ -594,19 +597,24 @@
     voltSlider.oninput = render;
     powerSlider.oninput = render;
 
-    // Reference chart table
+    // Reference chart table — merged: theoretical model + real chip card, aligned by colour name
     const chartBody = document.getElementById('chartBody');
     STOPS.forEach(stop => {
       if (stop.nm === 0) return;
       const v = Math.round(stop.nm / 2.6);
       const laser = powerForNm(stop.nm);
       const rgb = stop.rgb.join(',');
+      const real = stop.real || {};
+      const realCell = real.observed === false
+        ? `<span style="color:#f87171;">Not observed</span> <span style="color:#666;">— ${real.match}</span>`
+        : `<strong>${real.range}</strong> <span style="color:#666;">(${real.match})</span>`;
       chartBody.innerHTML += `<tr>
         <td><span class="swatch-dot" style="background:rgb(${rgb});"></span>${stop.name}</td>
         <td>${stop.nm} nm</td>
         <td>~${v} V</td>
         <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W)</td>
         <td>~${Math.round(laser.tPeakC)}°C</td>
+        <td>${realCell}</td>
       </tr>`;
     });
 
