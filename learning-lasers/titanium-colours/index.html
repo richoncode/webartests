@@ -148,9 +148,9 @@
           <ul>
             <li><strong>Driver:</strong> Localized heat from an IR fibre laser — no bath, no electrolyte, no field.</li>
             <li><strong>Mechanism:</strong> Heat drives thermal oxidation. Growth follows a parabolic/Arrhenius law like SS304's: thickness scales roughly with the <em>square root</em> of the heat dose, not linearly.</li>
-            <li><strong>Heat dose knobs:</strong> laser power (peak temperature) and <strong>overscan</strong> — how many times the galvo re-traces the same line, standing in for "time in the bath."</li>
+            <li><strong>Heat dose knobs:</strong> the same three real settings as every other Learning Lasers lesson — <strong>Power</strong>, <strong>Speed (mm/s)</strong>, and <strong>Line Density (LPCM)</strong>. Together they set exposure time — <em>oxide growth is fundamentally power × time</em>, exactly as it is for SS304.</li>
             <li><strong>Coverage:</strong> Pixel-by-pixel, programmable — gradients, text, and per-pixel colour control that a bath can't do.</li>
-            <li><strong>Speed:</strong> Seconds to tens of seconds per pass set, depending on area and overscan count.</li>
+            <li><strong>Job time:</strong> Seconds to tens of seconds depending on area, density, and speed.</li>
           </ul>
         </div>
       </div>
@@ -163,7 +163,7 @@
       <div class="viz">
         <div class="mode-toggle">
           <button class="mode-btn active" id="modeVoltBtn" onclick="setMode('volt')">🔋 Anodizing (Volts)</button>
-          <button class="mode-btn" id="modeLaserBtn" onclick="setMode('laser')">📡 Laser (Power × Overscan)</button>
+          <button class="mode-btn" id="modeLaserBtn" onclick="setMode('laser')">📡 Laser (Power · LPCM · Speed)</button>
         </div>
 
         <div class="sim-layout">
@@ -189,14 +189,27 @@
                   <span class="label-text">Laser Power <span style="color:#555;">(of 5W IR max)</span></span>
                   <span class="label-val" id="powerVal">10% · 0.5 W</span>
                 </div>
-                <input type="range" id="powerSlider" min="1" max="40" step="1" value="10">
+                <input type="range" id="powerSlider" min="1" max="100" step="1" value="10">
               </div>
               <div class="control-group" style="margin-top:16px;">
                 <div class="label-row">
-                  <span class="label-text">Overscan Passes</span>
-                  <span class="label-val" id="overscanVal">4×</span>
+                  <span class="label-text">Line Density (LPCM)</span>
+                  <span class="label-val" id="lpcmVal">400</span>
                 </div>
-                <input type="range" id="overscanSlider" min="1" max="8" step="1" value="4">
+                <input type="range" id="lpcmSlider" min="50" max="1000" step="10" value="400">
+              </div>
+              <div class="control-group" style="margin-top:16px;">
+                <div class="label-row">
+                  <span class="label-text">Speed</span>
+                  <span class="label-val" id="speedVal">100 mm/s</span>
+                </div>
+                <input type="range" id="speedSlider" min="50" max="2000" step="10" value="100">
+              </div>
+              <div class="control-group" style="margin-top:12px;">
+                <div class="label-row">
+                  <span class="label-text" style="color:#555;">Exposure Time (derived)</span>
+                  <span class="label-val" id="texpVal" style="color:#888;">0.4 s / mm²</span>
+                </div>
               </div>
             </div>
 
@@ -237,15 +250,15 @@
         <span class="com">// Titanium's real density &amp; specific heat (vs. SS304's 8000 kg/m³, 500 J/kg·K):</span>
         <span class="eq">ρ_Ti = 4506 kg/m³ · c_p = 523 J/kg·K</span>
 
-        <span class="com">// Exposure: each overscan pass adds one dwell increment (0.1s, ~1000mm/s — titanium anneal-marking</span>
-        <span class="com">// runs faster than SS304's 200mm/s convention):</span>
-        <span class="eq">t_exp = passes × 0.1 s</span>
+        <span class="com">// Real settings — same three controls as every other Learning Lasers lesson (Power, LPCM, Speed).</span>
+        <span class="com">// Oxide growth is fundamentally Power × Time; LPCM and Speed are what set that Time:</span>
+        <span class="eq">t_exp = (LPCM / 10) / speed     (seconds per mm², identical form to SS304's t_exp = LPC / speed)</span>
 
         <span class="com">// Energy injected, same focal-skin model (40µm depth, η = 0.65):</span>
         <span class="eq">Q = P × α_Ti × t_exp     ΔT = Q·η / (m·c_p), m = 1mm² × 40µm × ρ_Ti ≈ 1.80×10⁻⁷ kg</span>
 
-        <span class="com">// Example: 10% of 5W = 0.5W, 4 passes:</span>
-        <span class="eq">t_exp = 0.4s → Q = 0.11 J → ΔT ≈ 758°C → T_peak ≈ 778°C → k_p·t_exp → <span class="res">~113nm → Cyan / Teal</span></span>
+        <span class="com">// Example: 10% of 5W = 0.5W, 400 LPCM, 100mm/s:</span>
+        <span class="eq">t_exp = 40/100 = 0.4s → Q = 0.11 J → ΔT ≈ 758°C → T_peak ≈ 778°C → k_p·t_exp → <span class="res">~113nm → Cyan / Teal</span></span>
 
         <span class="com">// TiO2 (rutile) parabolic growth — activation energy from published cyclic-oxidation studies</span>
         <span class="com">// (155-205 kJ/mol across sources; 170 used here):</span>
@@ -253,15 +266,15 @@
       </div>
       <p>Because titanium is <strong>lighter</strong> (roughly half SS304's density, so less thermal mass to heat) and <strong>absorbs more</strong> 1064nm light, the same power and dwell time pushes it far hotter than steel — which is exactly why real titanium annealing markers run at a fraction of the power used for SS304 structural colour.</p>
       <div class="callout warn">
-        <strong>What's real here and what isn't:</strong> the 5W ceiling, absorptivity, density, specific heat, and the activation energy range are cited, measured values. The Arrhenius pre-exponential factor (<span class="inline-code" style="font-family:'SF Mono',monospace; background:#1a1a1a; padding:1px 5px; border-radius:4px;">A</span>) is <strong>tuned</strong>, not independently sourced — chosen so the model's colours land in the literature-supported 600-1200°C rutile-formation window, the same way the temperature-onset and melt-caution thresholds below are informed estimates rather than measured thresholds for this specific setup. Nobody has run a real power/overscan sweep on titanium and measured the resulting colours the way the SS304 lessons have.
+        <strong>What's real here and what isn't:</strong> the 5W ceiling, absorptivity, density, specific heat, and the activation energy range are cited, measured values. The Arrhenius pre-exponential factor (<span class="inline-code" style="font-family:'SF Mono',monospace; background:#1a1a1a; padding:1px 5px; border-radius:4px;">A</span>) is <strong>tuned</strong>, not independently sourced — chosen so the model's colours land in the literature-supported 600-1200°C rutile-formation window, the same way the temperature-onset and melt-caution thresholds below are informed estimates rather than measured thresholds for this specific setup. Nobody has run a real power/LPCM/speed sweep on titanium and measured the resulting colours the way the SS304 lessons have.
       </div>
     </section>
 
     <section id="charts">
       <h2>Reference Charts</h2>
-      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power×overscan (at a fixed 4-pass reference) are just two different ways of hitting a given thickness.</p>
+      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power (at a fixed 400 LPCM / 100mm/s reference) are just two different ways of hitting a given thickness.</p>
       <table>
-        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power @ 4 Passes</th><th>Peak Temp</th></tr></thead>
+        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power @ 400 LPCM, 100mm/s</th><th>Peak Temp</th></tr></thead>
         <tbody id="chartBody"></tbody>
       </table>
       <p class="callout warn" style="margin-top:20px;">
@@ -295,7 +308,7 @@
         <tbody>
           <tr><td>Uniformity</td><td>Very high — whole part colours evenly</td><td>Depends on scan pattern; can vary pixel to pixel</td></tr>
           <tr><td>Patterning</td><td>Solid colour or masked regions only</td><td>Full raster/vector control — gradients, text, images</td></tr>
-          <tr><td>Speed per part</td><td>Seconds, once rig is set up</td><td>Seconds–minutes, scales with area and overscan</td></tr>
+          <tr><td>Speed per part</td><td>Seconds, once rig is set up</td><td>Seconds–minutes, scales with area, line density (LPCM), and speed</td></tr>
           <tr><td>Equipment</td><td>Power supply, electrolyte bath, electrodes</td><td>IR fibre laser + galvo, no chemicals</td></tr>
           <tr><td>Repeatability</td><td>High — voltage is a direct, stable control</td><td>Sensitive to focus, surface prep, and thermal history</td></tr>
           <tr><td>Reversibility</td><td>Can often be stripped/re-anodized</td><td>Oxide can be removed by re-polishing; base metal unaffected</td></tr>
@@ -382,12 +395,14 @@
     // in the literature-supported 600-1200C rutile window (see the calibration note on the page).
     const A_PREFACTOR = 8.9e12;  // nm^2/s
 
-    function passExposure(passes) { return passes * 0.1; } // s, ~1000mm/s-equivalent dwell per pass
+    // Real settings, same as every other Learning Lasers lesson: Power, LPCM (lines/cm), Speed (mm/s).
+    // Exposure time per mm^2 patch, identical form to SS304's "t_exp = LPC / speed" (LPCM/10 = lines/mm):
+    function computeTExp(lpcm, speedMmS) { return (lpcm / 10) / speedMmS; }
 
     // Returns { nm, tPeakC, state } where state is 'cold' | 'ok' | 'caution'
-    function laserToResult(powerPercent, passes) {
+    function laserToResult(powerPercent, lpcm, speedMmS) {
       const pWatts = (powerPercent / 100) * IR_MAX_W;
-      const tExp = passExposure(passes);
+      const tExp = computeTExp(lpcm, speedMmS);
       const q = pWatts * ALPHA_TI * tExp;
       const deltaT = (q * ETA) / MCP;
       const tPeakC = T_AMBIENT_C + deltaT;
@@ -401,10 +416,10 @@
       return { nm, tPeakC, state: tPeakC > T_CAUTION_C ? 'caution' : 'ok', pWatts, tExp };
     }
 
-    // Inverse: given a target nm, find the power% (at a fixed reference pass count)
+    // Inverse: given a target nm, find the power% (at a fixed reference LPCM/speed)
     // that reproduces it under the same model above — used to populate the reference chart.
-    function powerForNm(nm, passes) {
-      const tExp = passExposure(passes);
+    function powerForNm(nm, lpcm, speedMmS) {
+      const tExp = computeTExp(lpcm, speedMmS);
       const kpNeeded = (nm * nm) / tExp;
       const tKelvin = -EA_OVER_R / Math.log(kpNeeded / A_PREFACTOR);
       const tPeakC = tKelvin - 273.15;
@@ -450,12 +465,15 @@
         nm = voltsToNm(v);
       } else {
         const p = parseFloat(powerSlider.value);
-        const o = parseFloat(overscanSlider.value);
+        const lpcm = parseFloat(lpcmSlider.value);
+        const speed = parseFloat(speedSlider.value);
         const pWatts = (p / 100) * IR_MAX_W;
         document.getElementById('powerVal').textContent = `${p}% · ${pWatts.toFixed(2)} W`;
-        document.getElementById('overscanVal').textContent = o + '×';
+        document.getElementById('lpcmVal').textContent = lpcm;
+        document.getElementById('speedVal').textContent = speed + ' mm/s';
 
-        const result = laserToResult(p, o);
+        const result = laserToResult(p, lpcm, speed);
+        document.getElementById('texpVal').textContent = result.tExp.toFixed(3) + ' s / mm²';
         nm = result.nm;
         metTemp.textContent = Math.round(result.tPeakC) + '°C';
         if (result.state === 'cold') {
@@ -479,24 +497,27 @@
 
     const voltSlider = document.getElementById('voltSlider');
     const powerSlider = document.getElementById('powerSlider');
-    const overscanSlider = document.getElementById('overscanSlider');
+    const lpcmSlider = document.getElementById('lpcmSlider');
+    const speedSlider = document.getElementById('speedSlider');
     voltSlider.oninput = render;
     powerSlider.oninput = render;
-    overscanSlider.oninput = render;
+    lpcmSlider.oninput = render;
+    speedSlider.oninput = render;
 
     // Reference chart table
-    const CHART_REF_PASSES = 4;
+    const CHART_REF_LPCM = 400;
+    const CHART_REF_SPEED = 100;
     const chartBody = document.getElementById('chartBody');
     STOPS.forEach(stop => {
       if (stop.nm === 0) return;
       const v = Math.round(stop.nm / 2.6);
-      const laser = powerForNm(stop.nm, CHART_REF_PASSES);
+      const laser = powerForNm(stop.nm, CHART_REF_LPCM, CHART_REF_SPEED);
       const rgb = stop.rgb.join(',');
       chartBody.innerHTML += `<tr>
         <td><span class="swatch-dot" style="background:rgb(${rgb});"></span>${stop.name}</td>
         <td>${stop.nm} nm</td>
         <td>~${v} V</td>
-        <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W) × ${CHART_REF_PASSES}</td>
+        <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W)</td>
         <td>~${Math.round(laser.tPeakC)}°C</td>
       </tr>`;
     });
