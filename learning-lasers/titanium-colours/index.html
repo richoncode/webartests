@@ -47,6 +47,16 @@
     .callout.warn { border-color: #f0a040; background: #201a0d; }
     .callout a { color: #8fc5ff; }
 
+    .math {
+      background: #0a1018; border: 1px solid #162030; border-radius: 10px;
+      padding: 18px 22px; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12.5px; color: #778; line-height: 2.2; margin: 20px 0; max-width: 680px;
+      white-space: pre-wrap;
+    }
+    .math .eq { color: #5b9bd5; }
+    .math .com { color: #45607a; font-style: italic; }
+    .math .res { color: #f0a040; font-weight: 700; }
+
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 720px; }
     @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
     .path-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 24px; }
@@ -147,8 +157,8 @@
     </section>
 
     <section id="simulator">
-      <h2>Simulator: Drive the Same Oxide Two Different Ways <span class="mock-badge">Mock</span></h2>
-      <p class="section-sub">Switch modes to control oxide thickness with a bath voltage or with laser power &amp; overscan passes. Both feed the same TiO₂ interference model, so the same colour can come from either path.</p>
+      <h2>Simulator: Drive the Same Oxide Two Different Ways <span class="mock-badge">Partially Calibrated</span></h2>
+      <p class="section-sub">Switch modes to control oxide thickness with a bath voltage or with the real <strong>xTool F2 IR module (5W @ 1064nm)</strong> — the same laser used throughout Learning Lasers. Both feed the same TiO₂ interference model, so the same colour can come from either path.</p>
 
       <div class="viz">
         <div class="mode-toggle">
@@ -176,17 +186,17 @@
             <div id="laserControls" style="display:none;">
               <div class="control-group">
                 <div class="label-row">
-                  <span class="label-text">Laser Power</span>
-                  <span class="label-val" id="powerVal">40%</span>
+                  <span class="label-text">Laser Power <span style="color:#555;">(of 5W IR max)</span></span>
+                  <span class="label-val" id="powerVal">10% · 0.5 W</span>
                 </div>
-                <input type="range" id="powerSlider" min="10" max="100" step="1" value="40">
+                <input type="range" id="powerSlider" min="1" max="40" step="1" value="10">
               </div>
               <div class="control-group" style="margin-top:16px;">
                 <div class="label-row">
                   <span class="label-text">Overscan Passes</span>
-                  <span class="label-val" id="overscanVal">1×</span>
+                  <span class="label-val" id="overscanVal">4×</span>
                 </div>
-                <input type="range" id="overscanSlider" min="1" max="12" step="1" value="1">
+                <input type="range" id="overscanSlider" min="1" max="8" step="1" value="4">
               </div>
             </div>
 
@@ -199,22 +209,63 @@
                 <span class="metric-label">Interference Order</span>
                 <div class="metric-value" id="metOrder">—</div>
               </div>
+              <div class="metric-card" id="metTempCard" style="display:none;">
+                <span class="metric-label">Peak Surface Temp</span>
+                <div class="metric-value" id="metTemp">—</div>
+              </div>
+              <div class="metric-card" id="metWarnCard" style="display:none;">
+                <span class="metric-label">Status</span>
+                <div class="metric-value" id="metWarn">—</div>
+              </div>
             </div>
           </div>
         </div>
-        <p style="color:#555; font-size:12px; margin-top:20px; margin-bottom:0;">Volts→thickness uses the widely-published ~2.5&nbsp;nm/V titanium anodizing rule. Laser→thickness uses an illustrative <span style="color:#888;">thickness ∝ √(power × passes)</span> heat-dose model, not a calibrated dataset — see the disclaimer below.</p>
+        <p style="color:#555; font-size:12px; margin-top:20px; margin-bottom:0;">Volts→thickness uses the widely-published ~2.5&nbsp;nm/V titanium anodizing rule. Laser→thickness now runs the real xTool F2 IR spec (5W, 1064nm) through the same energy/temperature model as the SS304 lessons, using titanium's own absorptivity and thermal constants — see the worked example and disclaimer below for exactly what's real physics vs. tuned.</p>
+      </div>
+    </section>
+
+    <section id="laser-physics">
+      <h2>Calibrating the Laser Side to the Real IR Module</h2>
+      <p class="section-sub">The same three-stage model as <a href="../ss304-colours/#parameters" style="color:#8fc5ff;">SS304's parameters section</a> — energy in, peak temperature, then Arrhenius oxide growth — run with titanium's own numbers instead of steel's.</p>
+      <div class="math">
+        <span class="com">// xTool F2 IR module (real spec, same hardware as every other Learning Lasers page):</span>
+        <span class="eq">P_max = 5 W @ 1064 nm</span>
+
+        <span class="com">// Titanium absorbs 1064nm markedly better than SS304 (50-60% vs. 38%):</span>
+        <span class="eq">α_Ti = 0.55</span>
+
+        <span class="com">// Titanium's real density &amp; specific heat (vs. SS304's 8000 kg/m³, 500 J/kg·K):</span>
+        <span class="eq">ρ_Ti = 4506 kg/m³ · c_p = 523 J/kg·K</span>
+
+        <span class="com">// Exposure: each overscan pass adds one dwell increment (0.1s, ~1000mm/s — titanium anneal-marking</span>
+        <span class="com">// runs faster than SS304's 200mm/s convention):</span>
+        <span class="eq">t_exp = passes × 0.1 s</span>
+
+        <span class="com">// Energy injected, same focal-skin model (40µm depth, η = 0.65):</span>
+        <span class="eq">Q = P × α_Ti × t_exp     ΔT = Q·η / (m·c_p), m = 1mm² × 40µm × ρ_Ti ≈ 1.80×10⁻⁷ kg</span>
+
+        <span class="com">// Example: 10% of 5W = 0.5W, 4 passes:</span>
+        <span class="eq">t_exp = 0.4s → Q = 0.11 J → ΔT ≈ 758°C → T_peak ≈ 778°C → k_p·t_exp → <span class="res">~113nm → Cyan / Teal</span></span>
+
+        <span class="com">// TiO2 (rutile) parabolic growth — activation energy from published cyclic-oxidation studies</span>
+        <span class="com">// (155-205 kJ/mol across sources; 170 used here):</span>
+        <span class="eq">k_p(T) = A · exp(−E_a / RT),  E_a ≈ 170 kJ/mol</span>
+      </div>
+      <p>Because titanium is <strong>lighter</strong> (roughly half SS304's density, so less thermal mass to heat) and <strong>absorbs more</strong> 1064nm light, the same power and dwell time pushes it far hotter than steel — which is exactly why real titanium annealing markers run at a fraction of the power used for SS304 structural colour.</p>
+      <div class="callout warn">
+        <strong>What's real here and what isn't:</strong> the 5W ceiling, absorptivity, density, specific heat, and the activation energy range are cited, measured values. The Arrhenius pre-exponential factor (<span class="inline-code" style="font-family:'SF Mono',monospace; background:#1a1a1a; padding:1px 5px; border-radius:4px;">A</span>) is <strong>tuned</strong>, not independently sourced — chosen so the model's colours land in the literature-supported 600-1200°C rutile-formation window, the same way the temperature-onset and melt-caution thresholds below are informed estimates rather than measured thresholds for this specific setup. Nobody has run a real power/overscan sweep on titanium and measured the resulting colours the way the SS304 lessons have.
       </div>
     </section>
 
     <section id="charts">
       <h2>Reference Charts</h2>
-      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power×overscan are just two different ways of hitting a given thickness.</p>
+      <p class="section-sub">Same colour scale, two different input axes. The nanometre column is what actually determines colour; volts and power×overscan (at a fixed 4-pass reference) are just two different ways of hitting a given thickness.</p>
       <table>
-        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Typical Power × Overscan</th></tr></thead>
+        <thead><tr><th>Colour</th><th>Oxide (nm)</th><th>Typical Volts</th><th>Power @ 4 Passes</th><th>Peak Temp</th></tr></thead>
         <tbody id="chartBody"></tbody>
       </table>
       <p class="callout warn" style="margin-top:20px;">
-        <strong>Mock data:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). The laser column has <strong>no calibrated dataset behind it</strong> — unlike the SS304 lessons, nobody has run a real power/overscan sweep on titanium and measured the resulting colours yet. Treat it as a starting hypothesis, not a setting sheet.
+        <strong>Calibration status:</strong> the voltage column follows commonly published titanium anodizing references (the exact numbers vary by electrolyte, alloy, and polish — see <a href="https://edcspecialties.com/product/titanium-anodization/" target="_blank" rel="noopener">EDC Specialties' own chart image</a> for their specific process). The laser columns are now grounded in the real xTool F2 spec (5W, 1064nm) and titanium's real absorptivity/thermal constants, but the oxide-growth-rate constant is still a tuned estimate, not a measured dataset — see the calibration note above.
       </p>
     </section>
 
@@ -288,11 +339,66 @@
     // Volts -> nm: widely-cited ~2.5-2.7 nm/V rule of thumb for titanium anodizing.
     function voltsToNm(v) { return v * 2.6; }
 
-    // Laser power(%) x overscan passes -> nm: illustrative parabolic heat-dose model.
-    // Tuned so 10-100% power x 1-12 passes spans roughly the same 0-280nm range as volts.
-    function laserToNm(power, passes) {
-      const dose = (power / 100) * passes;
-      return 92 * Math.sqrt(dose);
+    // ---- Laser side: real xTool F2 spec (5W, 1064nm) run through the same
+    // energy -> temperature -> Arrhenius-growth pipeline as the SS304 lessons,
+    // with titanium's own constants instead of steel's.
+    const IR_MAX_W   = 5;        // W, xTool F2 IR module (real spec, same as power-beam-heat lesson)
+    const ALPHA_TI   = 0.55;     // absorptivity at 1064nm (titanium: ~50-60%, vs SS304's 0.38)
+    const RHO_TI      = 4506;    // kg/m^3, titanium density (vs SS304's 8000)
+    const CP_TI       = 523;     // J/kg.K, titanium specific heat (vs SS304's 500)
+    const SKIN_M      = 40e-6;   // m, focal-skin depth (reused SS304 assumption)
+    const ETA         = 0.65;    // energy-conversion efficiency (reused SS304 assumption)
+    const AREA_M2     = 1e-6;    // 1 mm^2 patch
+    const MASS_KG     = AREA_M2 * SKIN_M * RHO_TI;
+    const MCP         = MASS_KG * CP_TI;         // J/K
+    const T_AMBIENT_C = 20;
+    const T_ONSET_C   = 400;     // illustrative: below this, no visible thermal colour on titanium
+    const T_CAUTION_C = 1200;    // upper end of the cited 600-1200C rutile-formation window
+    const T_MELT_C    = 1668;    // titanium's actual melting point, for reference
+
+    const EA_JMOL     = 170000;  // J/mol, TiO2 rutile parabolic growth (cited range 155,000-205,300)
+    const R_GAS       = 8.314;   // J/mol.K
+    const EA_OVER_R   = EA_JMOL / R_GAS;
+    // Pre-exponential factor: NOT independently sourced. Tuned so the model's colours land
+    // in the literature-supported 600-1200C rutile window (see the calibration note on the page).
+    const A_PREFACTOR = 8.9e12;  // nm^2/s
+
+    function passExposure(passes) { return passes * 0.1; } // s, ~1000mm/s-equivalent dwell per pass
+
+    // Returns { nm, tPeakC, state } where state is 'cold' | 'ok' | 'caution'
+    function laserToResult(powerPercent, passes) {
+      const pWatts = (powerPercent / 100) * IR_MAX_W;
+      const tExp = passExposure(passes);
+      const q = pWatts * ALPHA_TI * tExp;
+      const deltaT = (q * ETA) / MCP;
+      const tPeakC = T_AMBIENT_C + deltaT;
+
+      if (tPeakC < T_ONSET_C) return { nm: 0, tPeakC, state: 'cold', pWatts, tExp };
+
+      const tEffC = Math.min(tPeakC, T_CAUTION_C);
+      const tKelvin = tEffC + 273.15;
+      const kp = A_PREFACTOR * Math.exp(-EA_OVER_R / tKelvin);
+      const nm = Math.sqrt(kp * tExp);
+      return { nm, tPeakC, state: tPeakC > T_CAUTION_C ? 'caution' : 'ok', pWatts, tExp };
+    }
+
+    // Inverse: given a target nm, find the power% (at a fixed reference pass count)
+    // that reproduces it under the same model above — used to populate the reference chart.
+    function powerForNm(nm, passes) {
+      const tExp = passExposure(passes);
+      const kpNeeded = (nm * nm) / tExp;
+      const tKelvin = -EA_OVER_R / Math.log(kpNeeded / A_PREFACTOR);
+      const tPeakC = tKelvin - 273.15;
+      const deltaT = tPeakC - T_AMBIENT_C;
+      const q = (deltaT * MCP) / ETA;
+      const pWatts = q / (ALPHA_TI * tExp);
+      return { powerPercent: (pWatts / IR_MAX_W) * 100, tPeakC };
+    }
+
+    function orderOf(nm) {
+      if (nm < 20) return '—';
+      if (nm <= 180) return '1st Order';
+      return '2nd Order';
     }
 
     let mode = 'volt';
@@ -301,6 +407,10 @@
     const swatchOrder = document.getElementById('swatchOrder');
     const metThickness = document.getElementById('metThickness');
     const metOrder = document.getElementById('metOrder');
+    const metTempCard = document.getElementById('metTempCard');
+    const metTemp = document.getElementById('metTemp');
+    const metWarnCard = document.getElementById('metWarnCard');
+    const metWarn = document.getElementById('metWarn');
 
     function setMode(m) {
       mode = m;
@@ -308,6 +418,8 @@
       document.getElementById('modeLaserBtn').classList.toggle('active', m === 'laser');
       document.getElementById('voltControls').style.display = m === 'volt' ? 'block' : 'none';
       document.getElementById('laserControls').style.display = m === 'laser' ? 'block' : 'none';
+      metTempCard.style.display = m === 'laser' ? 'block' : 'none';
+      metWarnCard.style.display = m === 'laser' ? 'block' : 'none';
       render();
     }
 
@@ -320,9 +432,23 @@
       } else {
         const p = parseFloat(powerSlider.value);
         const o = parseFloat(overscanSlider.value);
-        document.getElementById('powerVal').textContent = p + '%';
+        const pWatts = (p / 100) * IR_MAX_W;
+        document.getElementById('powerVal').textContent = `${p}% · ${pWatts.toFixed(2)} W`;
         document.getElementById('overscanVal').textContent = o + '×';
-        nm = laserToNm(p, o);
+
+        const result = laserToResult(p, o);
+        nm = result.nm;
+        metTemp.textContent = Math.round(result.tPeakC) + '°C';
+        if (result.state === 'cold') {
+          metWarn.textContent = 'Below colour onset';
+          metWarn.style.color = '#888';
+        } else if (result.state === 'caution') {
+          metWarn.textContent = '⚠ Melt/ablation risk';
+          metWarn.style.color = '#f87171';
+        } else {
+          metWarn.textContent = 'OK';
+          metWarn.style.color = '#10b981';
+        }
       }
       const color = getInterferenceColor(nm);
       swatch.style.backgroundColor = color.css;
@@ -340,25 +466,23 @@
     overscanSlider.oninput = render;
 
     // Reference chart table
+    const CHART_REF_PASSES = 4;
     const chartBody = document.getElementById('chartBody');
     STOPS.forEach(stop => {
       if (stop.nm === 0) return;
       const v = Math.round(stop.nm / 2.6);
-      // Find a power/passes pair that reproduces this nm under the laser model above,
-      // holding passes fixed at a reference of 10 so the numbers stay internally consistent
-      // with what the live simulator would actually show.
-      const passes = 10;
-      const power = Math.min(100, Math.max(1, Math.round(100 * Math.pow(stop.nm / 92, 2) / passes)));
+      const laser = powerForNm(stop.nm, CHART_REF_PASSES);
       const rgb = stop.rgb.join(',');
       chartBody.innerHTML += `<tr>
         <td><span class="swatch-dot" style="background:rgb(${rgb});"></span>${stop.name}</td>
         <td>${stop.nm} nm</td>
         <td>~${v} V</td>
-        <td>~${power}% × ${passes}</td>
+        <td>~${laser.powerPercent.toFixed(1)}% (${((laser.powerPercent/100)*IR_MAX_W).toFixed(2)}W) × ${CHART_REF_PASSES}</td>
+        <td>~${Math.round(laser.tPeakC)}°C</td>
       </tr>`;
     });
 
-    render();
+    setMode('volt');
   </script>
 </body>
 </html>
