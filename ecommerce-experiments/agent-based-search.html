@@ -54,6 +54,26 @@
     .winner-card a.buy { display: inline-block; margin-top: 6px; color: #6ee7b7; text-decoration: none; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid #1f6e46; }
     .winner-card a.buy:hover { color: #a7f3d0; }
 
+    .combo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 20px 0; }
+    @media (max-width: 760px) { .combo-grid { grid-template-columns: 1fr; } }
+    .combo-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; }
+    .combo-card.best { border-color: #1f6e46; background: linear-gradient(180deg, #10241a 0%, #141414 60%); }
+    .combo-card .combo-rank { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #6ee7b7; background: #123023; display: inline-block; padding: 3px 9px; border-radius: 6px; margin-bottom: 12px; align-self: flex-start; }
+    .combo-card h4 { font-size: 15px; color: #fff; margin-bottom: 4px; }
+    .combo-card .combo-cost { color: #999; font-size: 13px; margin-bottom: 14px; }
+    .combo-units { list-style: none; margin-bottom: 14px; }
+    .combo-units li { font-size: 13px; color: #ccc; padding: 8px 0; border-top: 1px solid #232323; }
+    .combo-units li:first-child { border-top: none; }
+    .combo-units .u-name { color: #fff; font-weight: 600; }
+    .combo-units .u-math { color: #6b8f7a; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+    .combo-layout { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #999; background: #0f0f0f; border: 1px solid #232323; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.6; }
+    .combo-layout .over { color: #f87171; }
+    .combo-layout .spare { color: #6ee7b7; }
+    .combo-total { display: flex; align-items: baseline; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid #232323; }
+    .combo-total .num { font-size: 30px; font-weight: 800; color: #6ee7b7; line-height: 1; }
+    .combo-total .label { font-size: 12px; color: #888; }
+    .combo-card .combo-note { font-size: 12px; color: #f0a040; margin-top: 10px; line-height: 1.6; }
+
     .table-wrap { width: 100%; overflow-x: auto; border: 1px solid #262626; border-radius: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 900px; }
     th { text-align: left; background: #161616; color: #999; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; padding: 12px 14px; border-bottom: 1px solid #2a2a2a; white-space: nowrap; }
@@ -230,12 +250,7 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
 
       <h3 style="margin-top:36px;">Combination planner — maximizing storage units, not bay count</h3>
       <p class="lead" style="margin-bottom:12px;">Any combination of matching-style base cabinets at various widths can fill up to 120" of exterior run — the primary criteria is the total count of 25"W×14"D×5"H storage units the combination yields, computed per cabinet as floor(interior W/25) × floor(interior D/14) × floor(interior clear H/5) and summed. The narrower, more width-efficient cabinets win here: <strong>3× TONSTAD Cabinet</strong> yields the same 18-unit maximum as 3 of the unverified HAVSTA Cabinet with Base, but does it with entirely published interior dimensions and at lower cost — so it now ranks first, ahead of the HAVSTA-family options from the last pass.</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Plan</th><th>Units</th><th>Total Width</th><th>Storage Units (25×14×5)</th><th>Est. Cost</th><th>Confidence</th></tr></thead>
-          <tbody id="comboBody"><tr><td colspan="6" style="color:#555;">Loading…</td></tr></tbody>
-        </table>
-      </div>
+      <div class="combo-grid" id="comboGrid"><p style="color:#555;">Loading…</p></div>
       <p class="lead" style="margin-top:14px; font-size:13px;">Every interior <em>height</em> figure feeding this table is INFERRED — no retailer here publishes interior clear height, only overall exterior height — using the same ~2" panel-thickness allowance already evident in TONSTAD's and HAVSTA's own published width offsets. The width and depth figures behind the top-ranked TONSTAD plan are independently PUBLISHED; only the height slice is estimated. Confirm the height inference against one physical unit before ordering three.</p>
 
       <h3 style="margin-top:36px;">Ruled out in this pass — confirmed divided-bay or depth fails</h3>
@@ -327,29 +342,48 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
       var byId = {};
       data.verified.concat(data.runnerUp).forEach(function (item) { byId[item.id] = item; });
 
-      var comboBody = document.getElementById('comboBody');
-      comboBody.innerHTML = data.combinations.map(function (combo, i) {
-        var unitsText = combo.units.map(function (u) {
-          var ref = byId[u.ref];
-          return u.count + '× ' + (ref ? ref.name : u.ref);
-        }).join(' + ');
+      var comboGrid = document.getElementById('comboGrid');
+      comboGrid.innerHTML = data.combinations.map(function (combo, i) {
         var conf = combo.allVerified
           ? '<span class="badge published">All verified</span>'
           : '<span class="badge inferred">Partially inferred</span>';
-        return '<tr' + (i === 0 ? ' class="best-row"' : '') + '>' +
-          '<td class="name">' + combo.label + '</td>' +
-          '<td>' + unitsText + (combo.note ? '<br><span style="color:#777; font-size:12px;">' + combo.note + '</span>' : '') + '</td>' +
-          '<td class="mono">' + combo.totalWidth + '"</td>' +
-          '<td class="mono" style="font-size:18px; font-weight:700;">' + combo.totalStorageUnits + '</td>' +
-          '<td>$' + combo.estCost + '</td>' +
-          '<td>' + conf + '</td>' +
-        '</tr>';
+
+        var unitsHtml = combo.units.map(function (u) {
+          var ref = byId[u.ref];
+          var slotsEach = ref.storageUnits.total;
+          var subtotal = u.count * slotsEach;
+          return '<li><span class="u-name">' + u.count + '× ' + ref.name + '</span> (' + ref.retailer + ', $' + ref.price + ' ea.)' +
+            '<br><span class="u-math">' + slotsEach + ' slots each × ' + u.count + ' = ' + subtotal + ' slots — ' + ref.overall.wDisplay + ' wide each</span></li>';
+        }).join('');
+
+        var widthParts = [];
+        combo.units.forEach(function (u) {
+          var ref = byId[u.ref];
+          for (var k = 0; k < u.count; k++) widthParts.push(ref.overall.wDisplay);
+        });
+        var spare = 120 - combo.totalWidth;
+        var layoutLine = widthParts.join(' + ') + ' = <strong style="color:#ddd;">' + combo.totalWidth + '"</strong> of 120" ' +
+          (spare >= 0
+            ? '(<span class="spare">' + spare.toFixed(3).replace(/\.?0+$/, '') + '" to spare</span>)'
+            : '(<span class="over">' + Math.abs(spare) + '" over budget</span>)');
+
+        return '<div class="combo-card' + (i === 0 ? ' best' : '') + '">' +
+          '<span class="combo-rank">' + (i === 0 ? '★ Top plan' : 'Alt. plan ' + (i + 1)) + '</span>' +
+          '<h4>' + combo.label + '</h4>' +
+          '<div class="combo-cost">$' + combo.estCost + ' total &middot; ' + conf + '</div>' +
+          '<ul class="combo-units">' + unitsHtml + '</ul>' +
+          '<div class="combo-layout">Layout (outside width): ' + layoutLine + '</div>' +
+          '<div class="combo-total"><span class="num">' + combo.totalStorageUnits + '</span><span class="label">total 25"×14"×5" storage slots</span></div>' +
+          (combo.note ? '<div class="combo-note">' + combo.note + '</div>' : '') +
+        '</div>';
       }).join('');
     }).catch(function (err) {
-      ['verifiedBody', 'runnerUpBody', 'comboBody'].forEach(function (id) {
-        document.getElementById(id).innerHTML = '<tr><td colspan="8" style="color:#e74c3c;">Failed to load data file.</td></tr>';
+      var msg = 'Failed to load data file: ' + err.message + '. If you opened this file directly (file://), open it through a local server or the live URL instead — browsers block fetch() of local JSON files.';
+      ['verifiedBody', 'runnerUpBody'].forEach(function (id) {
+        document.getElementById(id).innerHTML = '<tr><td colspan="9" style="color:#e74c3c;">' + msg + '</td></tr>';
       });
-      document.getElementById('ruledOutList').innerHTML = '<li style="color:#e74c3c;">Failed to load data file.</li>';
+      document.getElementById('comboGrid').innerHTML = '<p style="color:#e74c3c;">' + msg + '</p>';
+      document.getElementById('ruledOutList').innerHTML = '<li style="color:#e74c3c;">' + msg + '</li>';
       console.error(err);
     });
   </script>
