@@ -73,6 +73,13 @@
     .combo-total .num { font-size: 30px; font-weight: 800; color: #6ee7b7; line-height: 1; }
     .combo-total .label { font-size: 12px; color: #888; }
     .combo-card .combo-note { font-size: 12px; color: #f0a040; margin-top: 10px; line-height: 1.6; }
+    .combo-card .combo-site-best { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #052e18; background: #34d399; padding: 3px 9px; border-radius: 6px; margin-left: 8px; }
+    .combo-units .u-name a { color: inherit; text-decoration: none; border-bottom: 1px dotted #555; }
+    .combo-units .u-name a:hover { color: #6ee7b7; border-color: #6ee7b7; }
+
+    .family-group { margin-bottom: 30px; }
+    .family-group:last-child { margin-bottom: 0; }
+    .family-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #6b8f7a; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #232323; }
 
     .table-wrap { width: 100%; overflow-x: auto; border: 1px solid #262626; border-radius: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 900px; }
@@ -219,7 +226,11 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
         <a class="buy" href="https://www.ikea.com/us/en/p/tonstad-cabinet-with-doors-off-white-30509997/" target="_blank" rel="noopener">View at IKEA →</a>
       </div>
 
-      <h3>Verified candidates</h3>
+      <h3>Working combinations — stacking multiple cabinets to fill the 120" run</h3>
+      <p class="lead" style="margin-bottom:12px;">A single cabinet is one candidate; a <em>family</em> like HAVSTA — which sells more than one width in the same finish — supports several different end-to-end stackings. Each combination below only uses candidates with zero deficient criteria (a unit that already fails on its own, like VIHALS' height or the Prepac console's depth, can't be fixed by combining it with another), sums their 25"×14"×5" storage-slot counts, and shows the literal width arithmetic that keeps the total at or under the 120" exterior run. Every cabinet name links to its listing.</p>
+      <div id="workingCombos"><p style="color:#555;">Loading…</p></div>
+
+      <h3 style="margin-top:36px;">Verified candidates</h3>
       <div class="table-wrap">
         <table>
           <thead><tr>
@@ -247,11 +258,6 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           <tbody id="runnerUpBody"><tr><td colspan="9" style="color:#555;">Loading…</td></tr></tbody>
         </table>
       </div>
-
-      <h3 style="margin-top:36px;">Combination planner — maximizing storage units, not bay count</h3>
-      <p class="lead" style="margin-bottom:12px;">Any combination of matching-style base cabinets at various widths can fill up to 120" of exterior run — the primary criteria is the total count of 25"W×14"D×5"H storage units the combination yields, computed per cabinet as floor(interior W/25) × floor(interior D/14) × floor(interior clear H/5) and summed. The narrower, more width-efficient cabinets win here: <strong>3× TONSTAD Cabinet</strong> yields the same 18-unit maximum as 3 of the unverified HAVSTA Cabinet with Base, but does it with entirely published interior dimensions and at lower cost — so it now ranks first, ahead of the HAVSTA-family options from the last pass.</p>
-      <div class="combo-grid" id="comboGrid"><p style="color:#555;">Loading…</p></div>
-      <p class="lead" style="margin-top:14px; font-size:13px;">Every interior <em>height</em> figure feeding this table is INFERRED — no retailer here publishes interior clear height, only overall exterior height — using the same ~2" panel-thickness allowance already evident in TONSTAD's and HAVSTA's own published width offsets. The width and depth figures behind the top-ranked TONSTAD plan are independently PUBLISHED; only the height slice is estimated. Confirm the height inference against one physical unit before ordering three.</p>
 
       <h3 style="margin-top:36px;">Ruled out in this pass — confirmed divided-bay or depth fails</h3>
       <ul class="ruled-out" id="ruledOutList"><li style="color:#555;">Loading…</li></ul>
@@ -342,8 +348,7 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
       var byId = {};
       data.verified.concat(data.runnerUp).forEach(function (item) { byId[item.id] = item; });
 
-      var comboGrid = document.getElementById('comboGrid');
-      comboGrid.innerHTML = data.combinations.map(function (combo, i) {
+      function renderCombo(combo) {
         var conf = combo.allVerified
           ? '<span class="badge published">All verified</span>'
           : '<span class="badge inferred">Partially inferred</span>';
@@ -352,7 +357,7 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           var ref = byId[u.ref];
           var slotsEach = ref.storageUnits.total;
           var subtotal = u.count * slotsEach;
-          return '<li><span class="u-name">' + u.count + '× ' + ref.name + '</span> (' + ref.retailer + ', $' + ref.price + ' ea.)' +
+          return '<li><span class="u-name">' + u.count + '× <a href="' + ref.url + '" target="_blank" rel="noopener">' + ref.name + '</a></span> (' + ref.retailer + ', $' + ref.price + ' ea.)' +
             '<br><span class="u-math">' + slotsEach + ' slots each × ' + u.count + ' = ' + subtotal + ' slots — ' + ref.overall.wDisplay + ' wide each</span></li>';
         }).join('');
 
@@ -364,11 +369,11 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
         var spare = 120 - combo.totalWidth;
         var layoutLine = widthParts.join(' + ') + ' = <strong style="color:#ddd;">' + combo.totalWidth + '"</strong> of 120" ' +
           (spare >= 0
-            ? '(<span class="spare">' + spare.toFixed(3).replace(/\.?0+$/, '') + '" to spare</span>)'
+            ? '(<span class="spare">' + (Math.round(spare * 1000) / 1000) + '" to spare</span>)'
             : '(<span class="over">' + Math.abs(spare) + '" over budget</span>)');
 
-        return '<div class="combo-card' + (i === 0 ? ' best' : '') + '">' +
-          '<span class="combo-rank">' + (i === 0 ? '★ Top plan' : 'Alt. plan ' + (i + 1)) + '</span>' +
+        return '<div class="combo-card' + (combo.familyBest ? ' best' : '') + '">' +
+          '<span class="combo-rank">' + (combo.familyBest ? '★ Best in this family' : 'Also viable') + (combo.siteBest ? '<span class="combo-site-best">★ Best on this page</span>' : '') + '</span>' +
           '<h4>' + combo.label + '</h4>' +
           '<div class="combo-cost">$' + combo.estCost + ' total &middot; ' + conf + '</div>' +
           '<ul class="combo-units">' + unitsHtml + '</ul>' +
@@ -376,13 +381,31 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           '<div class="combo-total"><span class="num">' + combo.totalStorageUnits + '</span><span class="label">total 25"×14"×5" storage slots</span></div>' +
           (combo.note ? '<div class="combo-note">' + combo.note + '</div>' : '') +
         '</div>';
+      }
+
+      var families = [];
+      var familyIndex = {};
+      data.combinations.forEach(function (combo) {
+        if (!(combo.family in familyIndex)) {
+          familyIndex[combo.family] = families.length;
+          families.push({ name: combo.family, combos: [] });
+        }
+        families[familyIndex[combo.family]].combos.push(combo);
+      });
+
+      var workingCombos = document.getElementById('workingCombos');
+      workingCombos.innerHTML = families.map(function (fam) {
+        return '<div class="family-group">' +
+          '<div class="family-title">' + fam.name + ' — ' + fam.combos.length + ' proposed combination' + (fam.combos.length === 1 ? '' : 's') + '</div>' +
+          '<div class="combo-grid">' + fam.combos.map(renderCombo).join('') + '</div>' +
+        '</div>';
       }).join('');
     }).catch(function (err) {
       var msg = 'Failed to load data file: ' + err.message + '. If you opened this file directly (file://), open it through a local server or the live URL instead — browsers block fetch() of local JSON files.';
       ['verifiedBody', 'runnerUpBody'].forEach(function (id) {
         document.getElementById(id).innerHTML = '<tr><td colspan="9" style="color:#e74c3c;">' + msg + '</td></tr>';
       });
-      document.getElementById('comboGrid').innerHTML = '<p style="color:#e74c3c;">' + msg + '</p>';
+      document.getElementById('workingCombos').innerHTML = '<p style="color:#e74c3c;">' + msg + '</p>';
       document.getElementById('ruledOutList').innerHTML = '<li style="color:#e74c3c;">' + msg + '</li>';
       console.error(err);
     });
