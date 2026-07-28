@@ -67,6 +67,9 @@
     .combo-units li { font-size: 13px; color: #ccc; padding: 8px 0; border-top: 1px solid #232323; }
     .combo-units li:first-child { border-top: none; }
     .combo-units li.addition { padding-left: 14px; border-top: 1px dashed #2a2a2a; }
+    .combo-units li.bundle-header { background: #161f19; margin: 0 -24px; padding: 8px 24px; border-top: none; }
+    .combo-units li.bundle-item { padding-left: 14px; color: #999; }
+    .combo-units li.bundle-item .u-name { color: #ccc; font-weight: 500; }
     .combo-units .u-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
     .combo-units .u-name { color: #fff; font-weight: 600; }
     .combo-units .u-price { color: #6ee7b7; font-weight: 700; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; white-space: nowrap; }
@@ -373,30 +376,32 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           ? '<span class="badge published">All verified</span>'
           : '<span class="badge inferred">Partially inferred</span>';
 
-        var bundleHtml = '';
-        if (combo.baseBundle) {
-          var b = combo.baseBundle;
-          bundleHtml = '<li><div class="u-row"><span class="u-name">' + (b.sourceUrl ? '<a href="' + b.sourceUrl + '" target="_blank" rel="noopener">' + b.label + '</a>' : b.label) + '</span>' +
-            '<span class="u-price">$' + b.price + '</span></div>' +
-            '<span class="u-bundle-tag">IKEA pre-built combo — fixed price, not per-component</span> <span class="u-math">— ' + b.slots + ' slots, ' + b.widthDisplay + ' wide</span></li>';
+        var bundleHeaderHtml = '';
+        if (combo.bundleInfo) {
+          var bi = combo.bundleInfo;
+          bundleHeaderHtml = '<li class="bundle-header"><div class="u-row"><span class="u-name">' + (bi.sourceUrl ? '<a href="' + bi.sourceUrl + '" target="_blank" rel="noopener">' + bi.label + '</a>' : bi.label) + '</span>' +
+            '<span class="u-price">$' + bi.price + '</span></div>' +
+            '<span class="u-bundle-tag">fixed combo price — items below are not priced individually</span></li>';
         }
 
-        var unitsHtml = bundleHtml + combo.units.map(function (u) {
+        var unitsHtml = bundleHeaderHtml + combo.units.map(function (u) {
           var ref = byId[u.ref];
           var slotsEach = ref.storageUnits.total;
           var subtotal = u.count * slotsEach;
           var priceSubtotal = u.count * ref.price;
           var stackNote = u.stacksOn ? ' — stacked on top of ' + (byId[u.stacksOn] ? byId[u.stacksOn].name : u.stacksOn) + ', adds no floor width' : ' wide each';
-          return '<li' + (u.addition ? ' class="addition"' : '') + '>' +
+          var priceHtml = u.bundleItem
+            ? ''
+            : '<span class="u-price">$' + ref.price + ' ea.' + (u.count > 1 ? ' = $' + priceSubtotal : '') + '</span>';
+          return '<li' + (u.addition ? ' class="addition"' : (u.bundleItem ? ' class="bundle-item"' : '')) + '>' +
             '<div class="u-row"><span class="u-name">' + (u.addition ? '+ ' : '') + u.count + '× <a href="' + ref.url + '" target="_blank" rel="noopener">' + ref.name + '</a></span>' +
-            '<span class="u-price">$' + ref.price + ' ea.' + (u.count > 1 ? ' = $' + priceSubtotal : '') + '</span></div>' +
+            priceHtml + '</div>' +
             (u.addition ? '<span class="u-bundle-tag">bought separately, at its own price</span> ' : '') +
             '<span class="u-math">' + slotsEach + ' slots each × ' + u.count + ' = ' + subtotal + ' slots — ' + ref.overall.wDisplay + stackNote + '</span></li>';
         }).join('');
 
         var widthParts = [];
         var stackedParts = [];
-        if (combo.baseBundle) widthParts.push(combo.baseBundle.widthDisplay);
         combo.units.forEach(function (u) {
           var ref = byId[u.ref];
           if (u.stacksOn) {
