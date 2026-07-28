@@ -66,8 +66,12 @@
     .combo-units { list-style: none; margin-bottom: 14px; }
     .combo-units li { font-size: 13px; color: #ccc; padding: 8px 0; border-top: 1px solid #232323; }
     .combo-units li:first-child { border-top: none; }
+    .combo-units li.addition { padding-left: 14px; border-top: 1px dashed #2a2a2a; }
+    .combo-units .u-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
     .combo-units .u-name { color: #fff; font-weight: 600; }
+    .combo-units .u-price { color: #6ee7b7; font-weight: 700; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; white-space: nowrap; }
     .combo-units .u-math { color: #6b8f7a; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+    .combo-units .u-bundle-tag { color: #6b8f7a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
     .combo-layout { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #999; background: #0f0f0f; border: 1px solid #232323; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.6; }
     .combo-layout .over { color: #f87171; }
     .combo-layout .spare { color: #6ee7b7; }
@@ -369,17 +373,29 @@ Prioritize PUBLISHED. 3 verified options beat 15 guesses.</div>
           ? '<span class="badge published">All verified</span>'
           : '<span class="badge inferred">Partially inferred</span>';
 
-        var unitsHtml = combo.units.map(function (u) {
+        var bundleHtml = '';
+        if (combo.baseBundle) {
+          var b = combo.baseBundle;
+          bundleHtml = '<li><div class="u-row"><span class="u-name">' + (b.sourceUrl ? '<a href="' + b.sourceUrl + '" target="_blank" rel="noopener">' + b.label + '</a>' : b.label) + '</span>' +
+            '<span class="u-price">$' + b.price + '</span></div>' +
+            '<span class="u-bundle-tag">IKEA pre-built combo</span> <span class="u-math">— ' + b.slots + ' slots, ' + b.widthDisplay + ' wide</span></li>';
+        }
+
+        var unitsHtml = bundleHtml + combo.units.map(function (u) {
           var ref = byId[u.ref];
           var slotsEach = ref.storageUnits.total;
           var subtotal = u.count * slotsEach;
+          var priceSubtotal = u.count * ref.price;
           var stackNote = u.stacksOn ? ' — stacked on top of ' + (byId[u.stacksOn] ? byId[u.stacksOn].name : u.stacksOn) + ', adds no floor width' : ' wide each';
-          return '<li><span class="u-name">' + u.count + '× <a href="' + ref.url + '" target="_blank" rel="noopener">' + ref.name + '</a></span> (' + ref.retailer + (ref.color ? ', ' + ref.color : '') + ', $' + ref.price + ' ea.)' +
-            '<br><span class="u-math">' + slotsEach + ' slots each × ' + u.count + ' = ' + subtotal + ' slots — ' + ref.overall.wDisplay + stackNote + '</span></li>';
+          return '<li' + (u.addition ? ' class="addition"' : '') + '>' +
+            '<div class="u-row"><span class="u-name">' + (u.addition ? '+ ' : '') + u.count + '× <a href="' + ref.url + '" target="_blank" rel="noopener">' + ref.name + '</a></span>' +
+            '<span class="u-price">$' + ref.price + ' ea.' + (u.count > 1 ? ' = $' + priceSubtotal : '') + '</span></div>' +
+            '<span class="u-math">' + slotsEach + ' slots each × ' + u.count + ' = ' + subtotal + ' slots — ' + ref.overall.wDisplay + stackNote + '</span></li>';
         }).join('');
 
         var widthParts = [];
         var stackedParts = [];
+        if (combo.baseBundle) widthParts.push(combo.baseBundle.widthDisplay);
         combo.units.forEach(function (u) {
           var ref = byId[u.ref];
           if (u.stacksOn) {
