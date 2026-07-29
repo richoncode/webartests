@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Variant Investigation — dev-preview build</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #111111;
+    --surface-2: #1a1a1a;
+    --border: #2a2a2a;
+    --border-hover: #444444;
+    --text: #ffffff;
+    --text-dim: #bbbbbb;
+    --text-faint: #888888;
+    --text-faintest: #666666;
+    --accent: #5b9bd5;
+    --accent-bg: #1e2d40;
+    --ok: #4caf50;
+    --ok-bg: #1a2a1a;
+    --warn: #f0a040;
+    --warn-bg: #1a1200;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 15px; line-height: 1.7; min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--warn); margin-bottom: 10px; }
+  h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.4px; margin-bottom: 10px; text-wrap: balance; }
+  .lede { color: var(--text-faint); font-size: 15px; max-width: 70ch; margin-bottom: 28px; }
+  .lede strong { color: var(--text-dim); }
+  .target-url { font-family: var(--mono); font-size: 12.5px; color: var(--text-faintest); word-break: break-all; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 32px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 40px; }
+  .chip { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+
+  h2.section-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faintest); margin: 40px 0 16px; }
+  h2.section-title:first-of-type { margin-top: 0; }
+
+  .verdict-box {
+    background: var(--ok-bg); border: 1px solid var(--ok); border-radius: 10px;
+    padding: 22px 24px; margin-bottom: 8px;
+  }
+  .verdict-box .label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ok); margin-bottom: 8px; }
+  .verdict-box p { color: var(--text-dim); font-size: 14.5px; }
+  .verdict-box strong { color: var(--text); }
+
+  p.body-text { color: var(--text-dim); font-size: 14.5px; margin-bottom: 14px; max-width: 72ch; }
+  p.body-text strong { color: var(--text); }
+  p.body-text code { font-family: var(--mono); font-size: 0.9em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 480px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); background: var(--surface-2); }
+  td { color: var(--text-dim); }
+  td.mono, th.mono { font-family: var(--mono); }
+  tr:last-child td { border-bottom: none; }
+
+  pre { font-family: var(--mono); font-size: 12px; line-height: 1.6; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; color: var(--text-dim); margin-bottom: 14px; }
+
+  .callout { border-left: 3px solid var(--accent); background: #0d1620; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; line-height: 1.7; color: var(--text-faint); margin: 14px 0; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .callout strong { color: var(--text-dim); }
+
+  figure { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); max-width: 320px; margin-bottom: 16px; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { font-family: var(--mono); font-size: 11px; color: var(--text-faint); padding: 8px 12px; border-top: 1px solid var(--border); }
+
+  .toggle-wrap { display: flex; justify-content: center; margin: 40px 0; }
+  .toggle-btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 10px 20px; cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .toggle-btn:hover { background: #243550; }
+  .toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  #rawlog { display: none; border-top: 1px solid var(--border); padding-top: 32px; }
+  #rawlog.open { display: block; }
+  #rawlog h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+  #rawlog .log-block { margin-bottom: 28px; }
+
+  footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11.5px; color: var(--text-faintest); }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="back" href="perf-review.html">← Back to Performance Review</a>
+
+  <div class="eyebrow">Variant Investigation</div>
+  <h1>What is the ngrok link, and why did it behave differently?</h1>
+  <p class="lede">
+    This resolves the discrepancy from the main <a href="perf-review.html" style="color:var(--accent)">Performance Review</a>:
+    a reader's iPhone 12 Pro Max appeared to load the 3D tour fine in portrait, contradicting Finding&nbsp;01
+    (every phone-width visitor is blocked). The device, resolution, and browser were all independently verified
+    as accurate — the actual explanation is that <strong>the reader was looking at a different site entirely.</strong>
+  </p>
+  <div class="target-url">https://3404-212-20-115-15.ngrok-free.app/?area=019f3c2d-9baa-77b6-8f78-262ee5d83aeb&amp;owner=019f463a-293c-74ac-986a-e84d65430581&amp;bench=1&amp;label=crowd</div>
+
+  <div class="meta-row">
+    <span class="chip">Checked 2026-07-29</span>
+    <span class="chip">ngrok-free.app tunnel — temporary, will expire/rotate</span>
+    <span class="chip">Chrome (headless) via Puppeteer</span>
+    <span class="chip">Not the audited production URL</span>
+  </div>
+
+  <div class="verdict-box">
+    <div class="label">Verdict</div>
+    <p>
+      This is <strong>a developer's local Vite dev server</strong>, tunneled out via ngrok, running an
+      <strong>in-progress branch</strong> of the same Horizon360/Bryto product — not the production build at
+      <code>horizon360.bryto.com</code>. At the exact resolution in question (428×926, portrait), this build
+      loaded the 3D scene normally with no mobile block. The mystery isn't a bug in this report's testing —
+      it's that two different codebases were being compared.
+    </p>
+  </div>
+
+  <h2 class="section-title">What's actually being served here</h2>
+  <p class="body-text">
+    The HTML response contains unmistakable Vite development-server signatures — <code>/@vite/client</code>,
+    <code>/@react-refresh</code>, and source files served directly as <code>.tsx</code> rather than a bundled,
+    minified <code>main.js</code>. A source file's embedded path even reveals the local machine it's running on:
+  </p>
+  <pre>fileName: "C:/Users/david/Downloads/Antigravity/latest-main-2026-07-28/hawk/src/app/main.tsx"</pre>
+  <p class="body-text">
+    That confirms the internal project codename is <strong>"hawk"</strong> (matching the
+    <code>bryto-hawk-web-data</code> GCS/S3 bucket referenced elsewhere in the code), running from a Windows
+    machine, checked out from <code>main</code> as of the date in the folder name. This is someone's live,
+    currently-running local development build — not a stable or public artifact.
+  </p>
+
+  <h2 class="section-title">Built-in crowd-testing harness</h2>
+  <p class="body-text">
+    The <code>bench=1&amp;label=crowd</code> query parameters aren't incidental — they trigger a purpose-built
+    performance harness embedded directly in the page. It hooks <code>drawElements</code>/<code>drawArrays</code>
+    to count real WebGL draw calls, waits for the scene to visually settle, then measures FPS, frame-time
+    percentiles, triangle count, estimated VRAM, JS heap usage, GPU model (via
+    <code>WEBGL_debug_renderer_info</code>), device memory, and core count — and uploads the result to a
+    <code>/__bench</code> endpoint labeled by whoever's testing it (here, <code>"crowd"</code>).
+  </p>
+  <div class="callout">
+    In other words: the dev team appears to be running their own version of exactly what this report set out
+    to do — gathering real, labeled, per-device performance data from actual testers. This link was very
+    likely sent out for that purpose, which is probably how it ended up in front of a real iPhone 12 Pro Max
+    in the first place.
+  </div>
+
+  <h2 class="section-title">Confirmed: no mobile block at the exact resolution in question</h2>
+  <p class="body-text">
+    Loaded fresh at 428×926 (the same reader's device, verified earlier in this investigation), portrait,
+    with the ngrok interstitial bypassed via the <code>ngrok-skip-browser-warning</code> header:
+  </p>
+  <figure>
+    <img src="data:image/png;base64,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xETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIgKbQOvQAAARZJREFUuRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIiC5EsRE5oQjILkSjovMDSIguRLEROaEIyC5Eo6LzA0iILkSxETmhCMguRKOi8wNIvD/AWvhg85KIBXMAAAAAElFTkSuQmCC" alt="428px portrait screenshot of the dev-preview build, showing a branded HORIZON360 BY BRYTO loading screen actively downloading the 3D scene">
+    <figcaption>428×926 portrait — no block, actively loading (progress bar visible)</figcaption>
+  </figure>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Check</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Page errors</td><td class="mono">none</td></tr>
+        <tr><td><code>.mobile-warning</code> (or any element matching <code>[class*="mobile"]</code>)</td><td class="mono">not present</td></tr>
+        <tr><td>Visible content</td><td>Branded "HORIZON360 BY BRYTO" loading screen, progress bar, "Downloading the 3D scene…"</td></tr>
+        <tr><td>Pan/zoom instructions dialog</td><td>present ("Do not show again" — same UI as production)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="body-text" style="font-size:13px; color:var(--text-faintest);">
+    The scene didn't finish loading within the test window — plausibly the free ngrok tunnel's bandwidth, or
+    a slower unminified dev build serving uncompressed assets from a local machine rather than a CDN. That
+    wasn't chased further: hammering someone's personal dev tunnel for a full load-performance profile isn't
+    an appropriate use of this access, and it isn't needed to answer the question that mattered — does the
+    768px gate exist here? It doesn't.
+  </p>
+
+  <h2 class="section-title">Other differences noticed along the way</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Aspect</th><th>Production (horizon360.bryto.com)</th><th>This dev-preview build</th></tr></thead>
+      <tbody>
+        <tr><td>Serving</td><td class="mono">Google Cloud Storage, minified bundle</td><td class="mono">Vite dev server, unminified TSX</td></tr>
+        <tr><td>Mobile gate (&lt;768px)</td><td class="mono">Blocks with "use desktop" message</td><td class="mono">Not present at 428px</td></tr>
+        <tr><td>Error handling</td><td class="mono">No visible top-level boundary</td><td class="mono">React <code>ErrorBoundary</code> + Sentry + PostHog forwarding</td></tr>
+        <tr><td>Telemetry</td><td class="mono">None observed</td><td class="mono">Sentry (errors) + PostHog (product analytics)</td></tr>
+        <tr><td>i18n</td><td class="mono">Not observed</td><td class="mono">Dedicated i18n module present</td></tr>
+        <tr><td>3D engine license</td><td class="mono">Unclear (no watermark seen)</td><td class="mono">"MADE WITH VERGE3D TRIAL" watermark visible — unlicensed/trial build</td></tr>
+        <tr><td>Loading screen</td><td class="mono">Plain white block message (narrow) / small logo (wide)</td><td class="mono">Branded animated ring logo + progress bar, all widths</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="body-text" style="font-size:13px; color:var(--text-faintest);">
+    Read the "Verge3D Trial" watermark as one data point, not a conclusion — it may simply mean this
+    particular dev machine's Verge3D license hasn't been configured, unrelated to what ships to production.
+  </p>
+
+  <h2 class="section-title">What this means for the main report</h2>
+  <p class="body-text">
+    Finding&nbsp;01 in the Performance Review stands as tested — it accurately describes
+    <code>horizon360.bryto.com</code>, the URL that was actually specified as the audit target, and every
+    number and screenshot there is still real and reproducible against that URL today. This variant simply
+    explains the reader's differing experience: they were on a separate, in-development codebase, which
+    appears to have already addressed the mobile gap this report flagged as the top-priority issue. If that's
+    accurate, the practical recommendation shifts from "fix the bug" to <strong>"ship the branch that already
+    fixed it"</strong> — worth confirming directly with whoever's running that dev server.
+  </p>
+
+  <div class="toggle-wrap">
+    <button id="rawlog-toggle" class="toggle-btn" onclick="const l=document.getElementById('rawlog'); l.classList.toggle('open'); this.textContent = l.classList.contains('open') ? '▲ Hide raw investigation log' : '▼ Show raw investigation log';">▼ Show raw investigation log</button>
+  </div>
+
+  <div id="rawlog">
+    <h2 class="section-title" style="margin-top:0;">Raw investigation log</h2>
+
+    <div class="log-block">
+      <h3>1. Initial reachability check</h3>
+      <p class="body-text">Plain <code>curl</code> against the tunnel, before any bypass headers:</p>
+      <pre>$ curl -sSI --max-time 20 "https://3404-212-20-115-15.ngrok-free.app/?area=...&amp;owner=...&amp;bench=1&amp;label=crowd"
+
+HTTP/2 200
+cache-control: no-cache
+content-type: text/html
+date: Wed, 29 Jul 2026 06:50:24 GMT
+etag: W/"16e8-+6VyWnDTbUqUyyGyDZ6+j+2Rs30"
+ngrok-agent-ips: 212.20.115.15
+vary: Origin</pre>
+      <p class="body-text" style="font-size:13px;">
+        The weak <code>etag</code> format (<code>W/"..."</code>) is characteristic of Express/Vite's default
+        static-file serving, not Google Cloud Storage's <code>UploadServer</code> — the first hint this
+        wasn't the same infrastructure as the production site.
+      </p>
+    </div>
+
+    <div class="log-block">
+      <h3>2. First automated fetch hit ngrok's own interstitial, not the app</h3>
+      <p class="body-text">A plain Puppeteer <code>page.goto()</code> returned ngrok's free-tier "you are about to visit" warning page instead of app content — expected behavior for automated clients without a prior "Visit Site" click. Bypassed with the documented header:</p>
+      <pre>await page.setExtraHTTPHeaders({ 'ngrok-skip-browser-warning': 'true' });</pre>
+    </div>
+
+    <div class="log-block">
+      <h3>3. Source fetch confirming Vite dev mode</h3>
+      <pre>$ curl -sS "https://3404-.../src/app/main.tsx" | head -c 400
+
+import __vite__cjsImport0_react_jsxDevRuntime from
+  "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=0bd0455f";
+const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import "/src/app/instrument.ts";
+import "/src/shared/i18n/index.ts";
+import "/src/shared/utils/logger.ts";
+import { ErrorBoundary, reactErrorHandler } from
+  "/node_modules/.vite/deps/@sentry_react.js?v=0bd0455f";</pre>
+      <p class="body-text" style="font-size:13px;">
+        A production build would never serve raw <code>.tsx</code> or Vite's internal
+        <code>?v=</code>-hashed dep-cache paths — these only exist when a Vite dev server is actively
+        transforming source on request.
+      </p>
+    </div>
+
+    <div class="log-block">
+      <h3>4. Launch test methodology at the exact reported resolution</h3>
+      <pre>await page.setViewport({ width: 428, height: 926, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+await page.setExtraHTTPHeaders({ 'ngrok-skip-browser-warning': 'true' });
+await page.goto(URL, { waitUntil: 'networkidle2', timeout: 30000 });
+// waited 8s, then read back:
+document.querySelectorAll('*').length        // 88
+document.querySelector('canvas')             // null (still downloading)
+document.querySelector('[class*="mobile"]')  // null
+document.body.innerText.slice(0, 300)
+// "Downloading the 3D scene…\n\n2D\nMap\nCommunity\nArtist's Impression: ...
+//  [unreleased]\nMADE WITH VERGE3D TRIAL\nDo not show again"</pre>
+      <p class="body-text" style="font-size:13px;">
+        No <code>pageerror</code> events fired at any point — a meaningful contrast with production, where
+        the same viewport reliably throws the <code>checkHalfFloatTex</code> / <code>getContext</code>
+        exception documented in the main report's Finding&nbsp;01.
+      </p>
+    </div>
+
+    <div class="log-block">
+      <h3>5. Why testing stopped there</h3>
+      <p class="body-text" style="font-size:13px;">
+        The scene never reached a fully-loaded state within the test window. This wasn't chased further with
+        repeated requests or longer timeouts: this tunnel points at one person's local machine on a free
+        ngrok plan, not a production CDN built to absorb load — running a full multi-minute or repeated-load
+        profile against it isn't a reasonable use of incidental access to someone else's dev environment, and
+        it wasn't necessary to answer the one question this investigation needed to resolve: does the 768px
+        mobile gate exist on this build? A single clean load already answered that.
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    Investigated via headless Chrome against a temporary, reader-supplied ngrok URL — not linked from any
+    site index, and not expected to remain valid (ngrok free-tier tunnels rotate/expire). See the companion
+    <a href="perf-review.html">Performance Review</a> for the full production audit.
+  </footer>
+
+</div>
+</body>
+</html>

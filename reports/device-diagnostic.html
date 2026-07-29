@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Device Diagnostic</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d0d; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px; line-height: 1.6; padding: 24px 20px 60px;
+  }
+  h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 28px; }
+  .verdict {
+    border-radius: 12px; padding: 20px; margin-bottom: 24px;
+    font-size: 18px; font-weight: 700; text-align: center;
+  }
+  .verdict.blocked { background: #2a1010; color: #ff6b5e; border: 1px solid #ff6b5e55; }
+  .verdict.ok { background: #0a1a0a; color: #6fd66f; border: 1px solid #6fd66f55; }
+  .row {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid #222;
+    font-size: 14px;
+  }
+  .row .k { color: #888; flex-shrink: 0; }
+  .row .v {
+    font-family: 'SF Mono', 'Fira Code', monospace; color: #fff;
+    text-align: right; word-break: break-all; font-size: 13px;
+  }
+  .section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #5b9bd5; margin: 28px 0 4px;
+  }
+  #mainjs-check { font-size: 13px; color: #888; margin-top: 8px; line-height: 1.6; }
+  #mainjs-check .match { color: #6fd66f; }
+  #mainjs-check .mismatch { color: #ff6b5e; }
+  button {
+    margin-top: 24px; width: 100%; padding: 14px; font-size: 15px; font-weight: 600;
+    background: #1e2d40; border: 1px solid #5b9bd5; color: #5b9bd5; border-radius: 8px;
+  }
+  #copy-status { text-align: center; font-size: 13px; color: #888; margin-top: 10px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>Device Diagnostic</h1>
+  <p class="sub">Reads your actual browser state directly — no third-party site in between.</p>
+
+  <div id="verdict" class="verdict">Checking…</div>
+
+  <div class="section-label">Viewport (what the horizon360 check actually reads)</div>
+  <div class="row"><span class="k">window.innerWidth</span><span class="v" id="iw"></span></div>
+  <div class="row"><span class="k">window.innerHeight</span><span class="v" id="ih"></span></div>
+  <div class="row"><span class="k">window.devicePixelRatio</span><span class="v" id="dpr"></span></div>
+  <div class="row"><span class="k">screen.width × height</span><span class="v" id="scr"></span></div>
+  <div class="row"><span class="k">screen.width × DPR (physical)</span><span class="v" id="phys"></span></div>
+  <div class="row"><span class="k">orientation</span><span class="v" id="orient"></span></div>
+
+  <div class="section-label">Browser</div>
+  <div class="row"><span class="k">navigator.userAgent</span><span class="v" id="ua"></span></div>
+  <div class="row"><span class="k">navigator.maxTouchPoints</span><span class="v" id="touch"></span></div>
+
+  <div class="section-label">Is this the same main.js I've been testing?</div>
+  <div id="mainjs-check">Fetching horizon360's main.js to compare…</div>
+
+  <button onclick="copyReport()">Copy full report to clipboard</button>
+  <div id="copy-status"></div>
+
+<script>
+  const iw = window.innerWidth, ih = window.innerHeight;
+  document.getElementById('iw').textContent = iw;
+  document.getElementById('ih').textContent = ih;
+  document.getElementById('dpr').textContent = window.devicePixelRatio;
+  document.getElementById('scr').textContent = screen.width + ' x ' + screen.height;
+  document.getElementById('phys').textContent = Math.round(screen.width * window.devicePixelRatio) + ' x ' + Math.round(screen.height * window.devicePixelRatio);
+  document.getElementById('orient').textContent = (screen.orientation && screen.orientation.type) || (iw > ih ? 'landscape (inferred)' : 'portrait (inferred)');
+  document.getElementById('ua').textContent = navigator.userAgent;
+  document.getElementById('touch').textContent = navigator.maxTouchPoints;
+
+  const verdictEl = document.getElementById('verdict');
+  if (iw < 768) {
+    verdictEl.className = 'verdict blocked';
+    verdictEl.textContent = 'innerWidth = ' + iw + ' -> horizon360\'s check (innerWidth < 768) would BLOCK this browser';
+  } else {
+    verdictEl.className = 'verdict ok';
+    verdictEl.textContent = 'innerWidth = ' + iw + ' -> horizon360\'s check (innerWidth < 768) would LOAD normally';
+  }
+
+  let mainjsReport = 'fetch failed';
+  fetch('https://horizon360.bryto.com/demo/latest/assets/main.js', { cache: 'no-store' })
+    .then(r => {
+      const len = r.headers.get('content-length');
+      const lastMod = r.headers.get('last-modified');
+      const etag = r.headers.get('etag');
+      const known = { length: '2199058', lastMod: 'Thu, 05 Feb 2026 09:53:05 GMT', etag: '"898d36ab5b1f950e8b4d5ea824c5d0c2"' };
+      const lenMatch = len === known.length;
+      mainjsReport = `content-length: ${len} bytes (previously tested: ${known.length}) ${lenMatch ? '[match]' : '[DIFFERENT]'}\nlast-modified: ${lastMod}\netag: ${etag}`;
+      document.getElementById('mainjs-check').innerHTML =
+        `content-length: <b>${len}</b> bytes <span class="${lenMatch ? 'match' : 'mismatch'}">${lenMatch ? '(matches what was tested)' : '(DIFFERENT from what was tested — ' + known.length + ' bytes)'}</span><br>` +
+        `last-modified: ${lastMod}<br>etag: ${etag}`;
+    })
+    .catch(e => {
+      mainjsReport = 'fetch failed: ' + e.message + ' (likely blocked by CORS from this origin — not conclusive either way)';
+      document.getElementById('mainjs-check').textContent = mainjsReport + '';
+    });
+
+  function copyReport() {
+    setTimeout(() => {
+      const report = [
+        'DEVICE DIAGNOSTIC REPORT',
+        'innerWidth x innerHeight: ' + iw + ' x ' + ih,
+        'devicePixelRatio: ' + window.devicePixelRatio,
+        'screen: ' + screen.width + ' x ' + screen.height,
+        'physical (screen x dpr): ' + Math.round(screen.width * window.devicePixelRatio) + ' x ' + Math.round(screen.height * window.devicePixelRatio),
+        'orientation: ' + ((screen.orientation && screen.orientation.type) || 'unknown'),
+        'userAgent: ' + navigator.userAgent,
+        'maxTouchPoints: ' + navigator.maxTouchPoints,
+        'main.js check: ' + mainjsReport,
+      ].join('\n');
+      navigator.clipboard.writeText(report).then(() => {
+        document.getElementById('copy-status').textContent = 'Copied — paste it here in chat.';
+      }).catch(() => {
+        document.getElementById('copy-status').textContent = 'Copy failed — screenshot this page instead.';
+      });
+    }, 400);
+  }
+</script>
+</body>
+</html>
