@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Infrastructure &amp; Valuation Timeline</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12/dist/style.css">
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+  .react-flow__attribution { display: none; }
+  .react-flow__node[data-id^="lane-"] { pointer-events: none; }
+  .react-flow__node-milestone { pointer-events: auto !important; }
+  .react-flow__node-milestone:hover { z-index: 1000 !important; }
+  .react-flow__node[data-id^="lane-"] .react-flow__handle { display: none; }
+  a.back { display: inline-block; padding: 10px 16px 0 16px; color: #475569; text-decoration: none; font-size: 13px; }
+  a.back:hover { color: #94a3b8; }
+</style>
+</head>
+<body>
+<a class="back" href="./">&larr; Back to Learning Fintech-AI</a>
+<div id="root">
+  <div id="loading-fallback" style="color:#64748b;font-size:13px;padding:24px;">Loading dashboard&hellip;</div>
+</div>
+<script>
+  setTimeout(function () {
+    var el = document.getElementById('loading-fallback');
+    if (el) {
+      el.innerHTML = 'This page loads React, Recharts, and React Flow from esm.sh at load time — a CDN request seems to have stalled or failed. <a href="javascript:location.reload()" style="color:#5b9bd5;">Reload to retry</a>.';
+    }
+  }, 8000);
+</script>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useMemo, useRef } from 'https://esm.sh/react@18.3.1';
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client?bundle';
+import { createPortal } from 'https://esm.sh/react-dom@18.3.1?bundle';
+import { area, line, curveMonotoneX } from 'https://esm.sh/d3-shape@3.2.0';
+import {
+  ReactFlow, ReactFlowProvider, Background, Handle, Position, MarkerType,
+  BaseEdge, EdgeLabelRenderer, getSmoothStepPath,
+} from 'https://esm.sh/@xyflow/react@12.3.5?bundle&deps=react@18.3.1,react-dom@18.3.1';
+import {
+  CheckCircle, TrendingUp, AlertTriangle, Clock, Rocket, Satellite, Target,
+} from 'https://esm.sh/lucide-react@0.462.0?deps=react@18.3.1,react-dom@18.3.1';
+
+/* ------------------------------------------------------------------ */
+/* Layout constants — shared by both charts AND the swimlane timeline,  */
+/* so a given x pixel means the same point in time everywhere.          */
+/* ------------------------------------------------------------------ */
+
+const ASPECTS = [
+  { id: 'pads', label: 'Launchpads', color: '#64748b' },
+  { id: 'ships', label: 'Starships', color: '#a1a1aa' },
+  { id: 'launches', label: 'Starship Launches', color: '#f97316' },
+  { id: 'moon', label: 'Moon Program', color: '#7dd3fc' },
+  { id: 'mars', label: 'Mars Program', color: '#dc2626' },
+  { id: 'tesla', label: 'Tesla (Optimus)', color: '#22d3ee' },
+  { id: 'mfg', label: 'Orbital Mfg', color: '#a855f7' },
+  { id: 'sl', label: 'Starlink v3', color: '#3b82f6' },
+  { id: 'dtc', label: 'DTC Comm', color: '#14b8a6' },
+  { id: 'acquisitions', label: 'Acquisitions', color: '#d97706' },
+];
+
+const SIDEBAR_W = 160;      // left gutter: chart row labels + lane labels, identical in every row
+const TIME_SCALE = 200;     // px per time unit (~1 year) — wide enough that real dates don't need merging
+const BASE_LANE_HEIGHT = 190; // minimum lane height — enough room to actually see cross-lane edges/arrows, not just the nodes
+const LANE_PADDING = 60;      // top/bottom clearance within a lane — cross-lane edges exiting a row near the lane boundary need room to travel too, same reasoning as ROW_GAP
+const NODE_WIDTH = 190;
+const NODE_HEIGHT = 66;
+const ROW_GAP = 56; // vertical clearance between stacked sub-rows — must stay large enough that the connecting line between them is actually visible, not squeezed flush against the card borders
+const CHART_ROW_HEIGHT = 120;
+const TOTAL_WIDTH = 2900;   // fixed content width for charts + timeline (scrolls together as one block)
+const DOMAIN_MAX = (TOTAL_WIDTH - SIDEBAR_W) / TIME_SCALE;
+const YEAR_START = 2021;
+// Ticks are derived FROM the domain, not hardcoded separately — a tick past
+// DOMAIN_MAX would render past the actual plot edge (a real bug found by
+// pixel-checking the previous Recharts-based version against the timeline).
+const YEAR_TICKS = Array.from({ length: Math.floor(DOMAIN_MAX) + 1 }, (_, i) => i);
+const LAST_ACTUAL_T = 4;    // t<=4 (2021-2025) confirmed actuals; t=5 (2026) current-year estimate; t>=6 forecast
+
+function confidenceForT(t) {
+  if (t <= LAST_ACTUAL_T) return 'actual';
+  if (t <= LAST_ACTUAL_T + 1) return 'estimated';
+  return 'forecast';
+}
+
+// The ONE function every coordinate in the page must go through — charts,
+// the swimlane timeline, the year ruler, and the Mars-window overlay all
+// call this instead of re-typing the formula, so alignment is structural.
+function xForT(t) { return SIDEBAR_W + t * TIME_SCALE; }
+
+/* ------------------------------------------------------------------ */
+/* Timeline data. Grounded in public reporting where noted; items       */
+/* without a specific real-world source are illustrative roadmap items.*/
+/* ------------------------------------------------------------------ */
+
+const NODES = [
+  // Acquisitions — real, dated
+  { id: 'ACQ-01', aspect: 'acquisitions', time: 0, date: 'Jul 2021', title: 'Swarm Technologies', status: 'Completed', rev: '$524M', oneTime: true, sourceUrl: 'https://en.wikipedia.org/wiki/SpaceX', desc: 'IoT satellite constellation acquired for $524M (2021) and folded into Starlink.' },
+  { id: 'ACQ-02', aspect: 'acquisitions', time: 2.9, date: 'Nov 2023', title: 'Pioneer Aerospace', status: 'Completed', rev: '$2.2M', oneTime: true, sourceUrl: 'https://en.wikipedia.org/wiki/SpaceX', desc: 'Parachute supplier acquired out of bankruptcy for $2.2M (Nov 2023).' },
+
+  // Launchpads — two sites per state (TX, FL, CA)
+  { id: 'PAD-01', aspect: 'pads', time: 3, date: '~2024 (EST)', title: 'Starbase Pad A (TX)', status: 'Completed', desc: 'Original Starbase orbital launch mount.' },
+  { id: 'PAD-02', aspect: 'pads', time: 4.6, date: '~2026 (EST)', title: 'Starbase Pad B (TX)', status: 'Active', desc: 'Second Starbase mount, doubles Texas launch cadence.' },
+  { id: 'PAD-03', aspect: 'pads', time: 6.2, date: '~2027 (EST)', title: 'LC-39A (FL)', status: 'Active', desc: 'Kennedy Space Center launch tower operational.' },
+  { id: 'PAD-04', aspect: 'pads', time: 7.8, date: '~2028 (EST)', title: 'SLC-37 (FL)', status: 'Pending', desc: 'Former ULA pad at Cape Canaveral converted for Starship.' },
+  { id: 'PAD-05', aspect: 'pads', time: 9.4, date: '~2030 (EST)', title: 'Vandenberg SLC-6 (CA)', status: 'Blocked', desc: 'SpaceX has proposed converting this ex-ULA complex into a west coast Starship pad for polar and sun-synchronous Starlink launches.', blockedBy: 'Under environmental review over sonic-boom concerns.' },
+  { id: 'PAD-06', aspect: 'pads', time: 11, date: '~2032 (EST)', title: 'Vandenberg Pad 2 (CA)', status: 'Blocked', desc: 'Second California pad, doubles west coast launch cadence.', blockedBy: 'Awaiting environmental review completion at Vandenberg SFB.' },
+
+  { id: 'SHP-01', aspect: 'ships', time: 4, date: '~2025 (EST)', title: 'Block 3 Starship', status: 'Completed', desc: 'Upgraded payload bay.' },
+  { id: 'SHP-02', aspect: 'ships', time: 5.5, date: '~2026 (EST)', title: 'Propellant Depot', status: 'Pending', desc: 'Extended orbital loiter variant — the depot at the center of the depot architecture: launch once, fill with ~12 tanker flights, then Mars ships dock to top off. Needs to fly early enough for this to scale up before the 2028 Mars window.' },
+  { id: 'SHP-03', aspect: 'ships', time: 7.3, date: '~2028 (EST)', title: 'Production: 3 Mars Starships + 3 Depots + ~9 Tanker Ships', status: 'Pending', goal: "Illustrative scenario, not an official count. Tanker ships aren't built 1:1 with tanker launches — rapid reflight (see Flight Test 17) means a tanker can fly multiple times in one campaign window. Assuming ~4 flights per tanker: 36 tanker launches only needs ~9 tanker ships built. So production is 3 Mars Starships + 3 depots + ~9 tankers (12 ships total), flying ~42 total launches (3 Mars + 3 depot + 36 tanker) once the campaign runs. No official SpaceX production target confirmed.", desc: 'Fleet build-out for the first uncrewed Mars attempt — the Mars-bound ships themselves, plus the depots and a reusable tanker fleet, all have to be built before the launch campaign can start.' },
+  { id: 'SHP-04', aspect: 'ships', time: 9.3, date: '~2030 (EST)', title: 'Production: 12 Mars Starships + 12 Depots + ~36 Tanker Ships', status: 'Blocked', goal: 'Illustrative scenario, not an official count: scaling to 12 Mars Starships and 12 depots, but the tanker fleet only grows to ~36 ships (not 144) since rapid reflight lets each one fly the campaign multiple times — same ~4-flights-per-tanker assumption as the first fleet. Still ~168 total launches once flown. One step toward Musk’s long-run goal of far more per window. No confirmed manifest.', desc: 'Scaling production of the Mars-bound ships themselves, plus their depots and reusable tanker fleet, for the second Mars window — contingent on the first uncrewed fleet landing successfully.', blockedBy: 'Requires the first uncrewed Mars landing to succeed first.' },
+
+  // Real: booster catch (Flight Test 5, Oct 2024) and V3's first flight (Flight Test 12, May 2026)
+  { id: 'LCH-00', aspect: 'launches', time: 3.8, date: 'Oct 2024', title: 'Super Heavy Booster Catch', status: 'Completed', desc: 'Mechazilla tower-arm catch of the returning Super Heavy booster (Flight Test 5, Oct 2024) — the booster only, not the ship. Repeated on Flights 7, 8, 10, and 11.' },
+  { id: 'LCH-01', aspect: 'launches', time: 5.4, date: 'May 2026', title: 'Flight Test 12 — First V3 Payload', status: 'Completed', desc: 'Block 3 debut. Deployed the first V3 payload despite a booster landing-burn failure.' },
+  { id: 'LCH-13', aspect: 'launches', time: 5.56, date: 'Jul 2026', title: 'Flight Test 13 — Ship Survives Splashdown', status: 'Completed', desc: 'The ship survived splashdown for the first time, yielding heat-shield and engine-bay inspection data; the booster again failed to land.' },
+  { id: 'LCH-14', aspect: 'launches', time: 5.67, date: 'Aug 2026 (predicted)', title: 'Flight Test 14 — Ship Catch Attempt', status: 'Pending', desc: 'Musk has stated Flight 14 will attempt the first catch of the ship itself using the tower chopsticks — SpaceX has repeatedly caught the booster (Flights 5, 7, 8, 10, 11) but never the ship. Would also target stable Earth orbit for the first time.' },
+  { id: 'LCH-15', aspect: 'launches', time: 5.75, date: '~Oct 2026 (estimated)', title: 'Flight Test 15 (Predicted): Block 3 Booster Catch', status: 'Pending', desc: 'Estimated next attempt to catch the Block 3 booster variant with the tower arms — prior booster catches (Flights 5, 7, 8, 10, 11) used the earlier vehicle block. Date is this dashboard’s estimate, not a confirmed SpaceX date.' },
+  { id: 'LCH-17', aspect: 'launches', time: 6.08, date: '~Feb 2027 (estimated)', title: 'Flight Test 17 (Predicted): Rapid Relaunch Demo', status: 'Pending', desc: 'Estimated demonstration of rapid reflight — relaunching a previously caught booster and/or ship on a fast turnaround, mirroring Falcon 9-style reusability. Date is this dashboard’s estimate, not a confirmed SpaceX date.' },
+  { id: 'LCH-T1', aspect: 'launches', time: 7.6, date: '~2028 (EST)', title: 'Depot Fill Campaign (3 depots × ~12 tankers ≈ 36 flights)', status: 'Pending', goal: 'Illustrative scenario: SpaceX’s depot architecture — 1 depot launch, then ~12 tanker launches to fill it, per Mars-bound ship. For 3 ships: 3 depot launches + ~36 tanker launches ≈ 39 flights, before the 3 Mars ships themselves launch. No confirmed SpaceX cadence.', desc: 'The depot and tanker launches that fully fuel the first uncrewed Mars fleet in Earth orbit, right before the transfer window closes.' },
+  { id: 'LCH-T2', aspect: 'launches', time: 9.6, date: '~2030 (EST)', title: 'Depot Fill Campaign (12 depots × ~12 tankers ≈ 144 flights)', status: 'Blocked', goal: 'Illustrative scenario: scaling to 12 Mars-bound ships at the same 1 depot + ~12 tankers per ship ratio ≈ 12 depot launches + ~144 tanker launches — a cadence far beyond anything flown to date. No confirmed SpaceX cadence.', desc: 'The depot and tanker launches that fully fuel the scaled-up second Mars fleet in Earth orbit.', blockedBy: 'Requires the first depot-fill campaign and uncrewed landing to succeed first.' },
+  { id: 'REF-01', aspect: 'launches', time: 6, date: '~2027 (EST)', title: 'Orbital Refueling Demo', status: 'Pending', goal: 'This demo is 1 ship-to-ship transfer — the building block for the depot architecture: 1 depot launch, filled by ~12 tanker launches, then 1 Mars Starship docks and departs fully fueled ≈ 14 total launches per Mars-bound ship. (NASA’s OIG has separately cited up to ~16 tanker flights for the different HLS lunar-lander case — no official Mars number confirmed.)', desc: 'Ship-to-ship cryogenic propellant transfer — no confirmed date yet, but needs to happen early enough to scale from a single demo to Mars-mission-scale propellant loads before the 2028 window, not just clear the HLS bar.' },
+
+  // Orbital Mfg — real deals (Varda, Space Forge) plus an illustrative future capability
+  { id: 'VARDA-01', aspect: 'mfg', time: 2, date: 'Jun 2023–Mar 2026', title: 'Varda In-Space Manufacturing', status: 'Completed', desc: 'Varda Space Industries’ W-series capsules crystallize pharmaceuticals in microgravity and return to Earth. W-1 (Jun 2023) was the first commercial spacecraft to land on a US military test range (Feb 2024); five more flights followed through W-6 (Mar 2026), all launched on Falcon 9 rideshare missions.' },
+  { id: 'FORGE-01', aspect: 'mfg', time: 4.48, date: 'Jun 2025', title: 'ForgeStar-1 (Space Forge)', status: 'Completed', desc: 'UK-based Space Forge launched ForgeStar-1 on a Falcon 9 rideshare (Transporter-14). The craft activated its on-board furnace to 1000°C, producing plasma — a milestone toward in-space semiconductor and alloy manufacturing.' },
+  { id: 'MFG-01', aspect: 'mfg', time: 10.5, date: '~2031 (EST)', title: 'Orbital Metal Foundry Demo', status: 'Blocked', desc: 'In-orbit metal casting and recasting in microgravity — metallurgy, not semiconductor/chip fabrication.', blockedBy: 'Pending microgravity casting hardware qualification.' },
+
+  // Starlink v3 — what the bigger, Starship-launched satellite enables
+  { id: 'SL-01', aspect: 'sl', time: 5.6, date: '~2026 (EST)', title: 'V3 Pez Dispenser', status: 'Completed', desc: 'First batch of 9m V3 satellites deployed from Starship.' },
+  { id: 'SUB-01', aspect: 'sl', time: 7.3, date: 'Jun 2026', title: '12M Subscribers', status: 'Completed', rev: '$11.4B', sourceUrl: 'https://en.wikipedia.org/wiki/Starlink', desc: 'Starlink surpasses 12M subscribers (2026); $11.4B 2025 revenue, $4.4B operating income. Fleet-wide adoption follows from Emirates, Lufthansa Group, and IAG.' },
+  { id: 'SL-03', aspect: 'sl', time: 9, date: '~2030 (EST)', title: 'Laser Mesh Backhaul', status: 'Pending', desc: 'Inter-satellite laser links form a global backbone, cutting reliance on ground stations.' },
+  { id: 'SL-04', aspect: 'sl', time: 10.7, date: '~2031 (EST)', title: '10x Bandwidth per Satellite', status: 'Pending', desc: 'V3’s larger bus and phased array push per-satellite capacity ~10x beyond V2 Mini.' },
+  { id: 'SL-02', aspect: 'sl', time: 12.4, date: '~2033 (EST)', title: 'V3 Constellation', status: 'Blocked', rev: '$2.5B', desc: 'Continuous global coverage.', blockedBy: 'Needs sustained Starship launch cadence not yet reached.' },
+
+  // DTC Comm — achievements to date, real dates where confirmed
+  { id: 'DTC-00', aspect: 'dtc', time: 3, date: 'Jan 2024', title: 'First D2D Satellites + SMS Test', status: 'Completed', desc: 'Initial batch of direct-to-cell satellites reach orbit; SpaceX confirms successful SMS testing with T-Mobile (Jan 2024).' },
+  { id: 'DTC-03', aspect: 'dtc', time: 4.6, date: '~2025 (EST)', title: 'SMS Service Live (T-Mobile)', status: 'Completed', rev: '$50M', desc: 'Commercial texting service goes live with T-Mobile in the US; international partners (Rogers/Canada, Optus/Australia, Kyivstar/Ukraine) follow through 2025.' },
+  { id: 'DTC-04', aspect: 'dtc', time: 6.3, date: '~2027 (EST)', title: 'Data Service Beta', status: 'Active', desc: 'Beta rollout of satellite data connectivity for supported phones.' },
+  { id: 'DTC-01', aspect: 'dtc', time: 8.5, date: '~2029 (EST)', title: 'DTC Voice Beta', status: 'Blocked', rev: '$800M', desc: 'Direct-to-cell voice capability.', blockedBy: 'Voice codec and handset compatibility certification pending.' },
+
+  // Moon Program — real NASA HLS contract history and schedule
+  { id: 'MOON-00', aspect: 'moon', time: 0.29, date: 'Apr 2021', title: 'NASA HLS Contract Award', status: 'Completed', rev: '$2.89B', oneTime: true, sourceUrl: 'https://en.wikipedia.org/wiki/Human_Landing_System', desc: 'NASA awards SpaceX the Human Landing System contract, covering one uncrewed demonstration mission and one crewed lunar landing.' },
+  { id: 'MOON-01', aspect: 'moon', time: 6.5, date: '~mid-2027 (EST, NASA target)', title: 'Uncrewed HLS Test Flight', status: 'Pending', sourceUrl: 'https://en.wikipedia.org/wiki/Human_Landing_System', desc: 'NASA plans to launch one or both HLS vehicles into Earth orbit for testing in mid-2027, ahead of the uncrewed lunar landing demo required by the HLS contract.' },
+  { id: 'MOON-02', aspect: 'moon', time: 7.1, date: '~early 2028 (EST, NASA target)', title: 'Artemis IV Crewed Lunar Landing', status: 'Blocked', sourceUrl: 'https://en.wikipedia.org/wiki/Human_Landing_System', desc: 'As of NASA’s March 2026 schedule, the crewed lunar landing shifted from Artemis III to Artemis IV, now targeted for early 2028.', blockedBy: 'Requires a successful uncrewed HLS test flight first.' },
+
+  // Mars Program — stated goals, pinned to the real transfer windows above.
+  // These are aspirational counts Musk has cited publicly, not a confirmed manifest.
+  { id: 'MARS-01', aspect: 'mars', time: 7.917, date: '~Dec 2028 window (EST)', title: 'First Mars Launch — Uncrewed (Stated Goal)', status: 'Pending', goal: 'Illustrative scenario, not an official count: this scenario\'s first fleet is 3 Mars Starships, each needing its own depot + ~12 tanker flights first (SpaceX\'s stated depot architecture) — ≈42 total launches (3 Mars ships + 3 depots + 36 tankers), not a single ship. See the production and depot-fill nodes above for the full breakdown.', desc: 'SpaceX has repeatedly cited this window for its first Mars landing attempt — an uncrewed test fleet, exact ship count unconfirmed. Musk has stated Optimus units are expected aboard to begin prepping surface infrastructure ahead of any crewed arrival. Contingent on the ship-catch and orbital refueling milestones above.' },
+  { id: 'MARS-02', aspect: 'mars', time: 10, date: '~Jan 2031 window (EST)', title: 'Second Mars Launch — Scale-Up (Stated Goal)', status: 'Blocked', goal: 'Est. ships needed: Musk has floated numbers from a few dozen ships up to his long-run goal of roughly 1,000 ships per window for full colonization — each still needing its own multiple tanker refuelings. No confirmed manifest for this specific window.', desc: 'Musk has publicly talked about scaling quickly after a successful first landing — floating numbers from a few dozen ships up to his long-run goal of roughly 1,000 ships per window for full colonization. No confirmed manifest for this window; could include the first crewed attempt if the uncrewed landing above succeeds.', blockedBy: 'Requires a successful uncrewed Mars landing in the window above.' },
+  { id: 'MARS-03', aspect: 'mars', time: 12.125, date: '~Feb–Mar 2033 window (EST)', title: 'Mars Base Buildout (Stated Goal)', status: 'Blocked', desc: 'Long-stated ambition of permanent surface infrastructure; timeline is aspirational and has repeatedly slipped in public statements.', blockedBy: 'Requires successful crewed missions in the prior window.' },
+
+  // Tesla (Optimus) — a separate public company, shown for context only.
+  // Deliberately excluded from the valuation/revenue charts above (see
+  // COMPOSITE_RAW: tesla is always 0, so it never contributes to that stack).
+  { id: 'TSLA-01', aspect: 'tesla', time: 4.46, date: 'Jun 2025', title: 'Optimus Program Lead Change', status: 'Completed', sourceUrl: 'https://en.wikipedia.org/wiki/Optimus_(robot)', desc: 'Milan Kovac departs after leading the Optimus program since 2022; Ashok Elluswamy, from Tesla’s Autopilot team, takes over.' },
+  { id: 'TSLA-02', aspect: 'tesla', time: 4.96, date: 'Dec 2025', title: 'Optimus v2.3 International Demos', status: 'Completed', sourceUrl: 'https://en.wikipedia.org/wiki/Optimus_(robot)', desc: 'First international public appearances, in London (Dec 13) and Berlin (Dec 20) — greeting attendees, serving popcorn, posing for photos.' },
+  { id: 'TSLA-03', aspect: 'tesla', time: 5.5, date: '~2026 (EST)', title: 'Fremont Volume Production Lines', status: 'Active', sourceUrl: 'https://en.wikipedia.org/wiki/Optimus_(robot)', desc: 'First-generation Optimus production lines being installed at Fremont, targeted at up to 1M units/year capacity.' },
+  { id: 'TSLA-05', aspect: 'tesla', time: 6, date: 'Predicted, no confirmed date', title: 'Optimus v3 Unveiling (Predicted)', status: 'Pending', sourceUrl: 'https://en.wikipedia.org/wiki/Optimus_(robot)', desc: 'v3 unveiling has been deferred until closer to production start — Tesla has given no confirmed date.' },
+  { id: 'TSLA-04', aspect: 'tesla', time: 6.5, date: '~2027 (EST, stated target)', title: 'Gigafactory Texas 2nd-Gen Line (Predicted)', status: 'Blocked', sourceUrl: 'https://en.wikipedia.org/wiki/Optimus_(robot)', desc: 'Second-generation production line targeting up to 10M units/year capacity by 2027 — a Musk-stated goal, not a confirmed manifest.', blockedBy: 'Contingent on Fremont volume production ramping successfully first.' },
+];
+
+const EDGES = [
+  { source: 'PAD-01', target: 'LCH-00', reason: 'Starbase Pad A hosted the booster-catch flight.' },
+  { source: 'LCH-00', target: 'LCH-01', reason: 'Proving the booster catch de-risked the vehicle ahead of the first V3 payload flight.' },
+  { source: 'SHP-01', target: 'LCH-01', reason: 'Block 3 Starship is the vehicle that flew on Flight 12.' },
+  { source: 'LCH-01', target: 'LCH-13', reason: 'Same Block 3 vehicle line, next flight in the test sequence.' },
+  { source: 'LCH-13', target: 'LCH-14', reason: 'Ship survival on Flight 13 is what makes attempting a ship catch on Flight 14 reasonable.' },
+  { source: 'LCH-14', target: 'LCH-15', reason: 'Sequential flight-test cadence — next attempt after the ship-catch try.' },
+  { source: 'LCH-15', target: 'LCH-17', reason: 'Sequential flight-test cadence — a rapid-relaunch demo needs a previously caught vehicle to reuse.' },
+  { source: 'LCH-01', target: 'REF-01', reason: 'A working V3 vehicle is the prerequisite for attempting ship-to-ship propellant transfer.' },
+  { source: 'SHP-02', target: 'REF-01', reason: 'The Propellant Depot variant is the vehicle the refueling demo is built around.' },
+  { source: 'SHP-02', target: 'SHP-03', reason: 'Depot-variant production experience feeds directly into building the Mars-bound fleet.' },
+  { source: 'SHP-03', target: 'SHP-04', reason: 'The first fleet build-out is the baseline the scale-up ramp expands from.' },
+  { source: 'SHP-03', target: 'LCH-T1', reason: 'The tanker fleet has to be built before it can be launched.' },
+  { source: 'LCH-T1', target: 'MARS-01', reason: "Refueling has to complete before the fleet can depart — that's what the tanker campaign is for." },
+  { source: 'SHP-04', target: 'LCH-T2', reason: 'The scaled-up tanker fleet has to be built before it can be launched.' },
+  { source: 'LCH-T2', target: 'MARS-02', reason: "Refueling has to complete before the larger fleet can depart for the second window." },
+  { source: 'REF-01', target: 'MOON-01', reason: "NASA's HLS architecture requires orbital refueling before the lander can reach the Moon.", sourceHandle: 'right', targetHandle: 'top' },
+  { source: 'MOON-00', target: 'MOON-01', reason: 'The NASA contract is what funds and mandates the uncrewed test flight.' },
+  { source: 'MOON-01', target: 'MOON-02', reason: 'NASA requires a successful uncrewed demo before risking a crewed landing.' },
+  { source: 'LCH-01', target: 'SL-01', reason: 'A working V3 Starship is required to deploy the larger V3 satellites.' },
+  { source: 'SL-01', target: 'SUB-01', reason: 'More V3 satellites in orbit is what grows the subscriber base.' },
+  { source: 'SUB-01', target: 'SL-03', reason: 'Revenue and constellation growth fund extending capability to inter-satellite laser links.' },
+  { source: 'SL-03', target: 'SL-04', reason: 'The laser backhaul network is a precursor to the higher-bandwidth satellite generation.' },
+  { source: 'SL-04', target: 'SL-02', reason: 'Full constellation coverage needs the higher-bandwidth satellites deployed at scale.' },
+  { source: 'DTC-00', target: 'DTC-03', reason: 'Proving the D2D link and SMS test is what unlocks a commercial texting launch.' },
+  { source: 'DTC-03', target: 'DTC-04', reason: 'A live SMS service is the base the data service beta builds on.' },
+  { source: 'DTC-04', target: 'DTC-01', reason: 'Data connectivity is a technical precursor to voice, which needs more bandwidth.' },
+  { source: 'REF-01', target: 'LCH-T1', reason: 'The refueling demo has to prove the depot-fill technique before a real tanker campaign can rely on it.' },
+  { source: 'MARS-01', target: 'MARS-02', reason: "SpaceX's stated plan is to scale the fleet only after the first uncrewed landing succeeds." },
+  { source: 'MARS-02', target: 'MARS-03', reason: 'Base infrastructure only makes sense after repeated successful landings.' },
+  { source: 'TSLA-01', target: 'TSLA-02', reason: 'New program leadership oversaw the international demo tour.' },
+  { source: 'TSLA-02', target: 'TSLA-03', reason: 'Public demos preceded the move to volume production lines.' },
+  { source: 'TSLA-03', target: 'TSLA-05', reason: 'Fremont ramp experience feeds directly into the next hardware revision.' },
+  { source: 'TSLA-03', target: 'TSLA-04', reason: "Fremont's production ramp is the proof point before committing to the larger Texas line." },
+  { source: 'TSLA-03', target: 'MARS-01', reason: 'Musk has stated Optimus units — built on this production ramp — are expected on the first Mars ships.' },
+];
+
+// Real Hohmann transfer windows (~26-month synodic period)
+const MARS_WINDOWS = [
+  { year: 2026.833, note: 'Nearest transfer window (~Nov 2026). Real-world Starship progress (ship survival, catch attempts) has been the near-term focus — no confirmed uncrewed Mars attempt is manifested for this window.' },
+  { year: 2028.917, note: 'The window (~Dec 2028) SpaceX has most often cited publicly for an initial uncrewed Mars landing attempt.' },
+  { year: 2031.0, note: 'A plausible slot (~Jan 2031) for crewed missions, contingent on the prior window’s uncrewed landings succeeding.' },
+  { year: 2033.125, note: 'Mars base buildout would need several successful windows before this one (~Feb–Mar 2033).' },
+];
+
+const ASPECT_BY_ID = Object.fromEntries(ASPECTS.map(a => [a.id, a]));
+
+// Fallback "related" link per lane, used by any node that doesn't carry its
+// own precise sourceUrl — every popout should have somewhere relevant to
+// click through to, even for illustrative/estimated items.
+const ASPECT_RELATED_URL = {
+  pads: 'https://en.wikipedia.org/wiki/SpaceX_Starship',
+  ships: 'https://en.wikipedia.org/wiki/SpaceX_Starship',
+  launches: 'https://en.wikipedia.org/wiki/SpaceX_Starship_flight_tests',
+  mars: 'https://en.wikipedia.org/wiki/Colonization_of_Mars',
+  moon: 'https://en.wikipedia.org/wiki/Human_Landing_System',
+  mfg: 'https://en.wikipedia.org/wiki/Varda_Space_Industries',
+  sl: 'https://en.wikipedia.org/wiki/Starlink',
+  dtc: 'https://en.wikipedia.org/wiki/Starlink',
+  acquisitions: 'https://en.wikipedia.org/wiki/SpaceX',
+  tesla: 'https://en.wikipedia.org/wiki/Optimus_(robot)',
+};
+const ASPECT_INDEX = Object.fromEntries(ASPECTS.map((a, i) => [a.id, i]));
+const NODE_BY_ID = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+// When real events cluster too tightly in time to fit side by side at their
+// true positions, stagger them into sub-rows within the same lane instead of
+// nudging their dates or merging them into one card.
+const MIN_GAP_T = NODE_WIDTH / TIME_SCALE;
+const NODE_ROW = {};
+const ASPECT_ROWS_USED = {};
+ASPECTS.forEach(a => {
+  const list = NODES.filter(n => n.aspect === a.id).sort((x, y) => x.time - y.time);
+  const rowLastTime = [];
+  list.forEach(n => {
+    let row = rowLastTime.findIndex(t => n.time - t >= MIN_GAP_T);
+    if (row === -1) { row = rowLastTime.length; rowLastTime.push(n.time); }
+    else { rowLastTime[row] = n.time; }
+    NODE_ROW[n.id] = row;
+  });
+  ASPECT_ROWS_USED[a.id] = Math.max(1, rowLastTime.length);
+});
+
+// Lane height is per-aspect, not uniform: a lane only grows tall enough for
+// however many sub-rows its own real events actually need.
+const ASPECT_HEIGHT = {};
+const ASPECT_Y_OFFSET = {};
+(() => {
+  let cumY = 0;
+  ASPECTS.forEach(a => {
+    const rows = ASPECT_ROWS_USED[a.id];
+    const contentHeight = rows * NODE_HEIGHT + (rows - 1) * ROW_GAP;
+    const h = Math.max(BASE_LANE_HEIGHT, contentHeight + LANE_PADDING);
+    ASPECT_HEIGHT[a.id] = h;
+    ASPECT_Y_OFFSET[a.id] = cumY;
+    cumY += h;
+  });
+})();
+const TIMELINE_HEIGHT = ASPECTS.reduce((sum, a) => sum + ASPECT_HEIGHT[a.id], 0);
+
+const STATUS_ICON = { Completed: CheckCircle, Active: TrendingUp, Blocked: AlertTriangle, Pending: Clock };
+const STATUS_COLOR = {
+  Completed: 'text-emerald-400', Active: 'text-blue-400',
+  Blocked: 'text-red-400', Pending: 'text-amber-400',
+};
+
+/* ------------------------------------------------------------------ */
+/* Chart data — same t/year axis as the timeline below. Each series is  */
+/* split into a solid "actual" segment and a dashed "estimated/forecast"*/
+/* segment that picks up exactly where the solid segment ends.          */
+/* ------------------------------------------------------------------ */
+
+const VALUATION_RAW = [
+  { t: 0, valuation: 0.05 }, { t: 1, valuation: 0.08 }, { t: 2, valuation: 0.12 },
+  { t: 3, valuation: 0.18 }, { t: 4, valuation: 0.24 },
+  { t: 5, valuation: 0.32 }, { t: 6, valuation: 0.41 },
+  { t: 7, valuation: 0.55 }, { t: 8, valuation: 0.74 },
+  { t: 9, valuation: 0.98 }, { t: 10, valuation: 1.25 },
+  { t: 11, valuation: 1.58 }, { t: 12, valuation: 1.95 },
+];
+const VALUATION_DATA = VALUATION_RAW.map(p => ({
+  ...p,
+  confidence: confidenceForT(p.t),
+  valuation_solid: p.t <= LAST_ACTUAL_T ? p.valuation : null,
+  valuation_dashed: p.t >= LAST_ACTUAL_T ? p.valuation : null,
+}));
+
+const COMPOSITE_RAW = [
+  { t: 0, pads: 2, ships: 3, launches: 2, mfg: 0, sl: 0, dtc: 0, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 1, pads: 4, ships: 6, launches: 5, mfg: 0, sl: 0, dtc: 0, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 2, pads: 6, ships: 10, launches: 8, mfg: 2, sl: 0, dtc: 0, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 3, pads: 8, ships: 14, launches: 10, mfg: 3, sl: 0, dtc: 5, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 4, pads: 14, ships: 22, launches: 22, mfg: 4, sl: 6, dtc: 15, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 5, pads: 18, ships: 30, launches: 40, mfg: 6, sl: 20, dtc: 30, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 6, pads: 20, ships: 36, launches: 62, mfg: 8, sl: 55, dtc: 50, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 7, pads: 22, ships: 42, launches: 90, mfg: 12, sl: 120, dtc: 80, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 8, pads: 22, ships: 48, launches: 120, mfg: 20, sl: 220, dtc: 120, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 9, pads: 24, ships: 54, launches: 155, mfg: 40, sl: 360, dtc: 180, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 10, pads: 24, ships: 58, launches: 190, mfg: 80, sl: 520, dtc: 250, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 11, pads: 26, ships: 62, launches: 225, mfg: 130, sl: 700, dtc: 340, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+  { t: 12, pads: 26, ships: 65, launches: 260, mfg: 190, sl: 890, dtc: 450, acquisitions: 0, mars: 0, moon: 0, tesla: 0 },
+];
+const STACK_ORDER = ASPECTS.map(a => a.id);
+const COMPOSITE_DATA = COMPOSITE_RAW.map(p => {
+  const out = { ...p, confidence: confidenceForT(p.t) };
+  let running = 0;
+  STACK_ORDER.forEach(id => {
+    running += p[id];
+    out[`${id}_cum_solid`] = p.t <= LAST_ACTUAL_T ? running : null;
+    out[`${id}_cum_dashed`] = p.t >= LAST_ACTUAL_T ? running : null;
+  });
+  return out;
+});
+
+// Per-series {base, top} bands for the stacked area chart — base/top are the
+// exact same cumulative values used for the solid/dashed overlay lines, so
+// each band's top edge and its overlay line are pixel-identical by
+// construction (same numbers, same xForT/yFor calls) rather than two
+// independently-computed things that happen to agree.
+const COMPOSITE_BANDS = COMPOSITE_RAW.map(row => {
+  let running = 0;
+  const bands = {};
+  STACK_ORDER.forEach(id => {
+    const base = running;
+    running += row[id];
+    bands[id] = { t: row.t, base, top: running };
+  });
+  return bands;
+});
+const COMPOSITE_MAX = Math.max(...COMPOSITE_BANDS.map(row => row[STACK_ORDER[STACK_ORDER.length - 1]].top));
+const VALUATION_MAX = Math.max(...VALUATION_RAW.map(p => p.valuation));
+
+/* ------------------------------------------------------------------ */
+/* Chart building blocks                                                */
+/* ------------------------------------------------------------------ */
+
+function CompositeTooltip({ t }) {
+  const row = COMPOSITE_RAW.find(d => d.t === t);
+  if (!row) return null;
+  const rows = ASPECTS.map(a => ({ ...a, value: row[a.id] })).filter(a => a.value > 0);
+  if (!rows.length) return null;
+  const total = rows.reduce((s, a) => s + a.value, 0);
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-900/95 backdrop-blur px-3 py-2 shadow-2xl text-xs w-[170px]">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-slate-500 font-semibold tracking-wide">{YEAR_START + t}</span>
+        <span className="text-slate-500">${total}M total</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {[...rows].reverse().map(a => (
+          <div key={a.id} className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a.color }} />
+            <span className="text-slate-400">{a.label}</span>
+            <span className="ml-auto font-semibold text-white tabular-nums">${a.value}M</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ValuationTooltip({ t, valuation }) {
+  const compositeRow = COMPOSITE_DATA.find(d => d.t === t);
+  const breakdown = compositeRow
+    ? ASPECTS.map(a => ({ ...a, value: compositeRow[a.id] })).filter(a => a.value > 0)
+    : [];
+  const totalRevenue = breakdown.reduce((s, a) => s + a.value, 0);
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-900/95 backdrop-blur px-3 py-2 shadow-2xl text-xs w-[190px]">
+      <div className="text-slate-500 font-semibold tracking-wide mb-1.5">{YEAR_START + t}</div>
+
+      {breakdown.length > 0 && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[9px] text-slate-500 uppercase tracking-wide">Revenue</span>
+            <span className="text-[10px] text-slate-300 font-semibold tabular-nums">${totalRevenue}M/yr</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            {[...breakdown].reverse().map(a => (
+              <div key={a.id} className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a.color }} />
+                <span className="text-slate-400">{a.label}</span>
+                <span className="ml-auto font-semibold text-white tabular-nums">${a.value}M</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between border-t border-slate-700/70 pt-1.5">
+        <span className="text-[9px] text-slate-500 uppercase tracking-wide">Valuation</span>
+        <span className="text-white font-bold tabular-nums">${valuation.toFixed(2)}T</span>
+      </div>
+    </div>
+  );
+}
+
+function yScaleFor(maxValue, plotHeight, topPad) {
+  const pad = topPad || 10;
+  return v => pad + (1 - (maxValue ? v / maxValue : 0)) * (plotHeight - pad);
+}
+
+function TimeGridLines({ height }) {
+  return (
+    <>
+      {YEAR_TICKS.map(t => (
+        <line key={t} x1={xForT(t)} x2={xForT(t)} y1={0} y2={height} stroke="#1e293b" strokeDasharray="3 3" strokeWidth={1} />
+      ))}
+    </>
+  );
+}
+
+function ChartRow({ icon: Icon, title, height, children }) {
+  return (
+    <div className="relative border-b border-slate-800/70" style={{ height }}>
+      <div className="absolute left-3 top-0 h-full flex items-center z-10 pointer-events-none" style={{ width: SIDEBAR_W - 16 }}>
+        <div className="flex items-center gap-1.5">
+          <Icon size={12} className="text-slate-500 shrink-0" />
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-300 leading-tight">{title}</span>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ValuationChart() {
+  const wrapperRef = useRef(null);
+  const [hoveredT, setHoveredT] = useState(null);
+  const maxT = VALUATION_RAW[VALUATION_RAW.length - 1].t;
+
+  const handleMove = e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const t = Math.round((e.clientX - rect.left - SIDEBAR_W) / TIME_SCALE);
+    setHoveredT(t < 0 || t > maxT ? null : t);
+  };
+
+  const yFor = yScaleFor(VALUATION_MAX * 1.15, CHART_ROW_HEIGHT, 10);
+  const actualPts = VALUATION_DATA.filter(p => p.t <= LAST_ACTUAL_T);
+  const forecastPts = VALUATION_DATA.filter(p => p.t >= LAST_ACTUAL_T);
+  const areaGen = area().x(d => xForT(d.t)).y0(CHART_ROW_HEIGHT).y1(d => yFor(d.valuation)).curve(curveMonotoneX);
+  const lineGen = line().x(d => xForT(d.t)).y(d => yFor(d.valuation)).curve(curveMonotoneX);
+  const hoveredRow = hoveredT !== null ? VALUATION_RAW.find(p => p.t === hoveredT) : null;
+
+  // Portaled to document.body + position:fixed, same reasoning as the node
+  // popouts: a plain absolute child here can't reliably outrank the sticky
+  // year ruler (was a bare z-index number mismatch, and the tooltip's own
+  // height can overflow past this chart's row into the ruler's band).
+  let tooltipStyle = null;
+  if (hoveredRow && wrapperRef.current) {
+    const rect = wrapperRef.current.getBoundingClientRect();
+    tooltipStyle = { position: 'fixed', left: Math.min(rect.left + xForT(hoveredT) + 12, window.innerWidth - 210), top: rect.top + 8 };
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative" style={{ width: TOTAL_WIDTH, height: CHART_ROW_HEIGHT }} onMouseMove={handleMove} onMouseLeave={() => setHoveredT(null)}>
+      <svg width={TOTAL_WIDTH} height={CHART_ROW_HEIGHT} className="block">
+        <defs>
+          <linearGradient id="valGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.55} />
+            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <TimeGridLines height={CHART_ROW_HEIGHT} />
+        <path d={areaGen(actualPts)} fill="url(#valGradient)" />
+        <path d={areaGen(forecastPts)} fill="url(#valGradient)" fillOpacity={0.45} />
+        <path d={lineGen(actualPts)} stroke="#3b82f6" strokeWidth={2} fill="none" />
+        <path d={lineGen(forecastPts)} stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 4" fill="none" />
+        {hoveredT !== null && <line x1={xForT(hoveredT)} x2={xForT(hoveredT)} y1={0} y2={CHART_ROW_HEIGHT} stroke="#475569" strokeWidth={1} />}
+      </svg>
+      {hoveredRow && tooltipStyle && createPortal(
+        <div className="pointer-events-none z-[9999]" style={tooltipStyle}>
+          <ValuationTooltip t={hoveredT} valuation={hoveredRow.valuation} />
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function CompositeChart() {
+  const wrapperRef = useRef(null);
+  const [hoveredT, setHoveredT] = useState(null);
+  const maxT = COMPOSITE_RAW[COMPOSITE_RAW.length - 1].t;
+
+  const handleMove = e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const t = Math.round((e.clientX - rect.left - SIDEBAR_W) / TIME_SCALE);
+    setHoveredT(t < 0 || t > maxT ? null : t);
+  };
+
+  const yFor = yScaleFor(COMPOSITE_MAX * 1.1, CHART_ROW_HEIGHT, 10);
+  const bandAreaGen = area().x(d => xForT(d.t)).y0(d => yFor(d.base)).y1(d => yFor(d.top)).curve(curveMonotoneX);
+  const cumLineGen = line().x(d => xForT(d.t)).y(d => yFor(d.top)).curve(curveMonotoneX);
+  const seriesBands = useMemo(() => Object.fromEntries(STACK_ORDER.map(id => [id, COMPOSITE_BANDS.map(row => row[id])])), []);
+
+  let tooltipStyle = null;
+  if (hoveredT !== null && wrapperRef.current) {
+    const rect = wrapperRef.current.getBoundingClientRect();
+    tooltipStyle = { position: 'fixed', left: Math.min(rect.left + xForT(hoveredT) + 12, window.innerWidth - 190), top: rect.top + 8 };
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative" style={{ width: TOTAL_WIDTH, height: CHART_ROW_HEIGHT }} onMouseMove={handleMove} onMouseLeave={() => setHoveredT(null)}>
+      <svg width={TOTAL_WIDTH} height={CHART_ROW_HEIGHT} className="block">
+        <defs>
+          {ASPECTS.map(a => (
+            <linearGradient id={`grad-${a.id}`} x1="0" y1="0" x2="0" y2="1" key={a.id}>
+              <stop offset="5%" stopColor={a.color} stopOpacity={0.75} />
+              <stop offset="95%" stopColor={a.color} stopOpacity={0.08} />
+            </linearGradient>
+          ))}
+        </defs>
+        <TimeGridLines height={CHART_ROW_HEIGHT} />
+        {STACK_ORDER.map(id => (
+          <path key={id} d={bandAreaGen(seriesBands[id])} fill={`url(#grad-${id})`} />
+        ))}
+        {STACK_ORDER.map(id => {
+          const color = ASPECT_BY_ID[id].color;
+          const solid = seriesBands[id].filter(d => d.t <= LAST_ACTUAL_T);
+          const dashed = seriesBands[id].filter(d => d.t >= LAST_ACTUAL_T);
+          return (
+            <React.Fragment key={id}>
+              <path d={cumLineGen(solid)} stroke={color} strokeWidth={1.25} fill="none" />
+              <path d={cumLineGen(dashed)} stroke={color} strokeWidth={1.25} strokeDasharray="4 3" fill="none" />
+            </React.Fragment>
+          );
+        })}
+        {hoveredT !== null && <line x1={xForT(hoveredT)} x2={xForT(hoveredT)} y1={0} y2={CHART_ROW_HEIGHT} stroke="#475569" strokeWidth={1} />}
+      </svg>
+      {hoveredT !== null && tooltipStyle && createPortal(
+        <div className="pointer-events-none z-[9999]" style={tooltipStyle}>
+          <CompositeTooltip t={hoveredT} />
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Mars transfer window overlay — real ~26-month Hohmann windows,       */
+/* drawn as reference lines spanning charts + timeline together.        */
+/* ------------------------------------------------------------------ */
+
+function YearRuler() {
+  const ticks = Array.from({ length: Math.floor(DOMAIN_MAX) + 1 }, (_, i) => i);
+  return (
+    <div className="sticky top-0 z-40 h-7 bg-slate-950/95 backdrop-blur border-b border-slate-800" style={{ width: TOTAL_WIDTH }}>
+      <div className="absolute left-0 top-0 h-full bg-slate-950" style={{ width: SIDEBAR_W }} />
+      {ticks.map(t => (
+        <span
+          key={t}
+          className="absolute top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400 tabular-nums"
+          style={{ left: xForT(t) + 6 }}
+        >
+          {YEAR_START + t}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MarsWindowLine({ m }) {
+  const monthName = Math.round((m.year % 1) * 12) >= 11 ? 'Dec' : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Math.round((m.year % 1) * 12)];
+  const year = Math.floor(m.year);
+  return (
+    <div className="group absolute top-0 bottom-0 w-3 -ml-1.5 pointer-events-auto cursor-help">
+      <div className="absolute top-0 bottom-0 left-1.5 border-l border-dashed transition-colors group-hover:border-amber-400" style={{ borderColor: 'rgba(245,158,11,0.55)' }} />
+      <div className="sticky top-7 ml-2.5 text-[8px] font-bold uppercase tracking-wider text-amber-500 whitespace-nowrap pointer-events-none" style={{ writingMode: 'vertical-rl' }}>
+        Mars Window · {year}
+      </div>
+      <div className="pointer-events-none absolute top-8 left-4 w-56 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 ease-out z-40">
+        <div className="rounded-xl bg-slate-800/95 backdrop-blur border border-amber-900/60 shadow-2xl p-3">
+          <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide mb-1">Mars Transfer Window</div>
+          <div className="text-[13px] font-semibold text-white mb-1.5">~{monthName} {year}</div>
+          <div className="text-[11px] text-slate-400 leading-snug">{m.note}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarsWindowOverlay() {
+  return (
+    <div className="absolute top-0 left-0 h-full w-full pointer-events-none z-30">
+      {MARS_WINDOWS.map((m, i) => {
+        const x = xForT(m.year - YEAR_START);
+        return (
+          <div key={i} className="absolute top-0 bottom-0" style={{ left: x }}>
+            <MarsWindowLine m={m} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* React Flow: lane background + milestone node + hover popout          */
+/* ------------------------------------------------------------------ */
+
+function LaneNode({ data }) {
+  return <div className="h-full w-full border-t border-slate-800/50" style={{ backgroundColor: data.color + '0d' }} />;
+}
+
+const handleDot = "!opacity-0";
+
+function MilestonePopout({ anchorRect, data, id, StatusIcon, statusColor, isCompleted, isBlocked }) {
+  // Fixed-position + portaled to document.body so it can never get trapped
+  // inside React Flow's transformed viewport (a transform creates its own
+  // stacking context, which silently caps any z-index used inside it —
+  // that's why this used to render underneath the sticky year ruler).
+  //
+  // Anchored diagonally off the node's right side (not centered above/below
+  // and not directly beside it) so the popout never covers the left/right
+  // handles (same-lane edges) or the top/bottom handles (cross-lane edges) —
+  // both stay visible, including their hover-highlight animation.
+  const POPOUT_W = 256;
+  const left = Math.min(anchorRect.right + 14, window.innerWidth - POPOUT_W - 12);
+  // Flip based on the node's actual position in the viewport right now (not
+  // which lane it's in) — a node can end up near the top of the screen
+  // regardless of lane once the page is scrolled.
+  const flipBelow = anchorRect.top < 280;
+  const style = flipBelow
+    ? { position: 'fixed', top: anchorRect.bottom + 14, left }
+    : { position: 'fixed', bottom: window.innerHeight - anchorRect.top + 14, left };
+
+  return createPortal(
+    <div className="pointer-events-none z-[9999]" style={{ ...style, width: POPOUT_W }}>
+      <div className="pointer-events-auto rounded-xl bg-slate-800/95 backdrop-blur border border-slate-700 shadow-2xl p-3.5">
+        <div className="flex items-center justify-between mb-2">
+          <span
+            className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+            style={{ backgroundColor: data.color + '26', color: data.color }}
+          >
+            {data.aspectLabel}
+          </span>
+          <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${statusColor}`}>
+            <StatusIcon size={11} strokeWidth={2.5} />{data.status}
+          </span>
+        </div>
+        <div className="text-[13.5px] font-semibold text-white mb-1 leading-snug">{data.title}</div>
+        {data.date && (
+          <div className="text-[10px] text-slate-500 font-mono mb-1.5">{data.date}</div>
+        )}
+        <div className="text-[11.5px] text-slate-400 leading-snug mb-2.5">{data.desc}</div>
+        {isBlocked && data.blockedBy && (
+          <div className="flex items-start gap-1.5 mb-2.5 -mt-1 bg-red-950/40 border border-red-900/50 rounded-md px-2 py-1.5">
+            <AlertTriangle size={11} className="text-red-400 shrink-0 mt-0.5" />
+            <span className="text-[10.5px] text-red-300/90 leading-snug"><span className="font-semibold uppercase tracking-wide text-red-400">Blocked: </span>{data.blockedBy}</span>
+          </div>
+        )}
+        {data.goal && (
+          <div className="flex items-start gap-1.5 mb-2.5 -mt-1 bg-sky-950/40 border border-sky-900/50 rounded-md px-2 py-1.5">
+            <Target size={11} className="text-sky-400 shrink-0 mt-0.5" />
+            <span className="text-[10.5px] text-sky-300/90 leading-snug"><span className="font-semibold uppercase tracking-wide text-sky-400">Goal: </span>{data.goal}</span>
+          </div>
+        )}
+        {data.rev && (
+          <div className="flex items-center justify-between border-t border-slate-700/70 pt-2">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide">{data.oneTime ? 'Deal Value' : 'Est. Revenue'}</span>
+            <span className="text-[13px] font-bold text-green-400 tabular-nums">{data.rev}{!data.oneTime ? '/yr' : ''}</span>
+          </div>
+        )}
+        {data.sourceUrl ? (
+          <a href={data.sourceUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1 text-[9px] text-sky-400 hover:text-sky-300 underline decoration-sky-700 mt-1 ${!data.rev ? 'border-t border-slate-700/70 pt-2' : ''}`}>
+            source ↗
+          </a>
+        ) : data.relatedUrl ? (
+          <a href={data.relatedUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1 text-[9px] text-slate-400 hover:text-slate-300 underline decoration-slate-600 mt-1 ${!data.rev ? 'border-t border-slate-700/70 pt-2' : ''}`}>
+            related ↗ <span className="italic text-slate-600">(topic reference, not a citation for this figure)</span>
+          </a>
+        ) : (
+          <div className={`text-[9px] text-slate-600 italic mt-1 ${!data.rev ? 'border-t border-slate-700/70 pt-2' : ''}`}>illustrative estimate — no external source</div>
+        )}
+        <div className="text-right text-[11px] text-slate-400 font-mono font-semibold mt-1.5 select-none tracking-wide">{id}</div>
+      </div>
+      <div className={`w-2.5 h-2.5 bg-slate-800 rotate-45 absolute left-3 ${flipBelow ? 'border-l border-t border-slate-700 -top-[5px]' : 'border-r border-b border-slate-700 -bottom-[5px]'}`} />
+    </div>,
+    document.body
+  );
+}
+
+function MilestoneNode({ id, data }) {
+  const StatusIcon = STATUS_ICON[data.status] || Clock;
+  const statusColor = STATUS_COLOR[data.status] || 'text-slate-400';
+  const isCompleted = data.status === 'Completed';
+  const isBlocked = data.status === 'Blocked';
+  const wrapperRef = useRef(null);
+  const [anchorRect, setAnchorRect] = useState(null);
+
+  const handleEnter = () => {
+    data.onHover(id);
+    if (wrapperRef.current) setAnchorRect(wrapperRef.current.getBoundingClientRect());
+  };
+  const handleLeave = () => {
+    data.onHover(null);
+    setAnchorRect(null);
+  };
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="group relative"
+      style={{ width: NODE_WIDTH }}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <Handle type="target" position={Position.Left} id="left" className={handleDot} />
+      <Handle type="source" position={Position.Right} id="right" className={handleDot} />
+      <Handle type="target" position={Position.Top} id="top" className={handleDot} />
+      <Handle type="source" position={Position.Top} id="top" className={handleDot} />
+      <Handle type="target" position={Position.Bottom} id="bottom" className={handleDot} />
+      <Handle type="source" position={Position.Bottom} id="bottom" className={handleDot} />
+
+      <div
+        className={`relative rounded-lg bg-slate-900 border shadow-lg shadow-black/30 px-3 py-2 transition-colors group-hover:border-slate-600 ${isCompleted ? 'border-slate-800' : 'border-dashed border-slate-700'}`}
+        style={{ borderLeft: `4px solid ${data.color}`, minHeight: NODE_HEIGHT }}
+      >
+        <div className="flex items-center gap-1.5 mb-1">
+          <StatusIcon size={12} strokeWidth={2.5} className={statusColor} />
+          <span className={`text-[9px] font-bold uppercase tracking-wider ${statusColor}`}>{data.status}</span>
+          {!isCompleted && <span className="ml-auto text-[8px] font-semibold uppercase tracking-wider text-slate-600">predicted</span>}
+        </div>
+        <div className="text-[12.5px] font-medium text-slate-100 leading-tight pr-7">{data.title}</div>
+        <span className="absolute bottom-1 right-1.5 text-[8px] leading-none text-slate-600/60 font-mono select-none transition-all duration-150 group-hover:text-[13px] group-hover:text-slate-200 group-hover:bottom-1.5 group-hover:right-2">{id}</span>
+      </div>
+
+      {anchorRect && (
+        <MilestonePopout
+          anchorRect={anchorRect}
+          flipBelow={data.flipBelow}
+          data={data}
+          id={id}
+          StatusIcon={StatusIcon}
+          statusColor={statusColor}
+          isCompleted={isCompleted}
+          isBlocked={isBlocked}
+        />
+      )}
+    </div>
+  );
+}
+
+function DependencyEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data }) {
+  const [hovered, setHovered] = useState(false);
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+    borderRadius: data.borderRadius,
+  });
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+      {data.reason && (
+        <path
+          d={path}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={16}
+          style={{ cursor: 'help' }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        />
+      )}
+      {hovered && data.reason && (
+        <EdgeLabelRenderer>
+          <div
+            className="pointer-events-none absolute z-[1000]"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          >
+            <div className="rounded-lg bg-slate-800/95 backdrop-blur border border-slate-700 shadow-2xl px-3 py-2 text-[11px] text-slate-200 leading-snug max-w-[230px] text-center">
+              {data.reason}
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
+const nodeTypes = { milestone: MilestoneNode, lane: LaneNode };
+const edgeTypes = { dependency: DependencyEdge };
+
+function LaneLabels() {
+  // Each label's outer box spans the full scroll width so its inner sticky
+  // child has room to stay pinned to the left edge as the page scrolls right.
+  return (
+    <div className="absolute top-0 left-0 z-20 h-full pointer-events-none" style={{ width: TOTAL_WIDTH }}>
+      {ASPECTS.map(a => (
+        <div
+          key={a.id}
+          className="absolute left-0 right-0"
+          style={{ top: ASPECT_Y_OFFSET[a.id] + ASPECT_HEIGHT[a.id] / 2, transform: 'translateY(-50%)' }}
+        >
+          <div className="sticky left-3 flex items-center gap-2 w-max">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
+            <span className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-300 bg-slate-950/90 px-1.5 py-0.5 rounded backdrop-blur-sm whitespace-nowrap">
+              {a.label}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Timeline() {
+  const [hoveredId, setHoveredId] = useState(null);
+
+  const nodes = useMemo(() => {
+    const laneNodes = ASPECTS.map((a, i) => ({
+      id: `lane-${a.id}`,
+      type: 'lane',
+      position: { x: 0, y: ASPECT_Y_OFFSET[a.id] },
+      data: { color: a.color },
+      style: { width: TOTAL_WIDTH, height: ASPECT_HEIGHT[a.id] },
+      draggable: false,
+      selectable: false,
+      zIndex: 0,
+    }));
+    const milestoneNodes = NODES.map(n => {
+      const aspect = ASPECT_BY_ID[n.aspect];
+      const rowsUsed = ASPECT_ROWS_USED[n.aspect];
+      const contentHeight = rowsUsed * NODE_HEIGHT + (rowsUsed - 1) * ROW_GAP;
+      const laneTop = ASPECT_Y_OFFSET[n.aspect] + (ASPECT_HEIGHT[n.aspect] - contentHeight) / 2;
+      return {
+        id: n.id,
+        type: 'milestone',
+        position: {
+          x: xForT(n.time),
+          y: laneTop + NODE_ROW[n.id] * (NODE_HEIGHT + ROW_GAP),
+        },
+        data: {
+          title: n.title, status: n.status, rev: n.rev, desc: n.desc, blockedBy: n.blockedBy, goal: n.goal, date: n.date, oneTime: n.oneTime, sourceUrl: n.sourceUrl, relatedUrl: n.relatedUrl || ASPECT_RELATED_URL[n.aspect],
+          color: aspect.color, aspectLabel: aspect.label, onHover: setHoveredId,
+          flipBelow: ASPECT_INDEX[n.aspect] === 0,
+        },
+        style: { width: NODE_WIDTH },
+        zIndex: 10,
+      };
+    });
+    return [...laneNodes, ...milestoneNodes];
+  }, []);
+
+  // Same-lane dependencies run left->right (horizontal). Cross-lane
+  // dependencies run top<->bottom (vertical) so the line actually drops
+  // through the swimlanes instead of cutting diagonally across cards.
+  const edges = useMemo(() => EDGES.map(e => {
+    const sourceNode = NODE_BY_ID[e.source];
+    const targetNode = NODE_BY_ID[e.target];
+    const sourceAspect = ASPECT_BY_ID[sourceNode.aspect];
+    const sIdx = ASPECT_INDEX[sourceNode.aspect];
+    const tIdx = ASPECT_INDEX[targetNode.aspect];
+    const isActive = hoveredId && (e.source === hoveredId || e.target === hoveredId);
+    const isDimmed = hoveredId && !isActive;
+    const color = isActive ? sourceAspect.color : '#475569';
+
+    let sourceHandle, targetHandle, borderRadius;
+    if (sIdx === tIdx) {
+      sourceHandle = 'right'; targetHandle = 'left'; borderRadius = 5;
+    } else if (tIdx > sIdx) {
+      sourceHandle = 'bottom'; targetHandle = 'top'; borderRadius = 0;
+    } else {
+      sourceHandle = 'top'; targetHandle = 'bottom'; borderRadius = 0;
+    }
+    // Per-edge override — for when the default straight-down/up routing
+    // would cut through a crowded stack of sub-rows in between.
+    if (e.sourceHandle) sourceHandle = e.sourceHandle;
+    if (e.targetHandle) targetHandle = e.targetHandle;
+
+    return {
+      id: `e-${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+      sourceHandle,
+      targetHandle,
+      type: 'dependency',
+      data: { reason: e.reason, borderRadius },
+      animated: !!isActive,
+      style: {
+        stroke: color,
+        strokeWidth: isActive ? 2.5 : 1.5,
+        opacity: isDimmed ? 0.08 : (isActive ? 1 : 0.4),
+        transition: 'opacity 150ms ease, stroke 150ms ease',
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color },
+      zIndex: isActive ? 5 : 1,
+    };
+  }), [hoveredId]);
+
+  return (
+    <div className="relative h-full" style={{ width: TOTAL_WIDTH }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        minZoom={1}
+        maxZoom={1}
+        panOnDrag={false}
+        panOnScroll={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        proOptions={{ hideAttribution: true }}
+        style={{ width: TOTAL_WIDTH, height: '100%' }}
+        className="!bg-slate-950"
+      >
+        <Background variant="dots" gap={22} size={1} color="#1e293b" />
+      </ReactFlow>
+      <LaneLabels />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* App                                                                  */
+/* ------------------------------------------------------------------ */
+
+function App() {
+  return (
+    <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100">
+      <header className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-slate-800/80">
+        <Rocket size={18} className="text-slate-400" />
+        <div>
+          <h1 className="text-[15px] font-bold tracking-tight leading-none">Space Infrastructure &amp; Valuation Timeline</h1>
+          <p className="text-[11px] text-slate-500 mt-0.5">Charts and swimlanes share one time axis — scroll horizontally and everything moves together</p>
+        </div>
+        <div className="ml-auto flex items-center gap-4 text-[10px] text-slate-500">
+          <div className="flex items-center gap-3">
+            {Object.keys(STATUS_ICON).map(s => {
+              const Icon = STATUS_ICON[s];
+              return (
+                <span key={s} className={`flex items-center gap-1 font-semibold uppercase tracking-wide ${STATUS_COLOR[s]}`}>
+                  <Icon size={11} strokeWidth={2.5} />{s}
+                </span>
+              );
+            })}
+          </div>
+          <div className="w-px h-3 bg-slate-800" />
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border border-slate-500 inline-block" />Completed</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border border-dashed border-slate-500 inline-block" />Predicted</span>
+          <div className="w-px h-3 bg-slate-800" />
+          <span className="flex items-center gap-1.5"><span className="w-3 h-px bg-slate-400 inline-block" />Actual</span>
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="2" className="shrink-0"><line x1="0" y1="1" x2="14" y2="1" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+            Est. / Forecast
+          </span>
+        </div>
+      </header>
+
+      <div className="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-3">
+        <div className="relative rounded-xl border border-slate-800" style={{ width: TOTAL_WIDTH, minWidth: TOTAL_WIDTH }}>
+          <ChartRow icon={Satellite} title="Sector Valuation ($T)" height={CHART_ROW_HEIGHT}>
+            <ValuationChart />
+          </ChartRow>
+          <ChartRow icon={TrendingUp} title="Composite Validation Value ($M)" height={CHART_ROW_HEIGHT}>
+            <CompositeChart />
+          </ChartRow>
+          <YearRuler />
+          <div style={{ height: TIMELINE_HEIGHT }}>
+            <ReactFlowProvider>
+              <Timeline />
+            </ReactFlowProvider>
+          </div>
+          <MarsWindowOverlay />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
