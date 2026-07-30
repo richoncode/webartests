@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protecting Titanium's Interference Colours — Learning Lasers</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 60px 24px 80px;
+    }
+
+    a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+    a.back:hover { color: #aaa; }
+
+    .page { max-width: 860px; margin: 0 auto; }
+
+    .chapter-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #5b9bd5; margin-bottom: 6px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+    .subtitle { color: #666; font-size: 15px; margin-bottom: 40px; max-width: 660px; line-height: 1.7; }
+
+    section { margin-bottom: 64px; }
+    h2 { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+    h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #ddd; }
+    .section-sub { color: #666; font-size: 14px; margin-bottom: 24px; max-width: 660px; line-height: 1.6; }
+    p { color: #777; font-size: 14px; line-height: 1.75; margin-bottom: 14px; max-width: 680px; }
+    p strong { color: #bbb; }
+    p em { color: #999; font-style: italic; }
+    a.inline { color: #8fc5ff; text-decoration: none; border-bottom: 1px solid #8fc5ff44; }
+    a.inline:hover { border-bottom-color: #8fc5ff; }
+
+    ul.plain, ol.plain { padding-left: 20px; color: #888; font-size: 13.5px; line-height: 1.9; max-width: 660px; margin-bottom: 10px; }
+    ul.plain li, ol.plain li { margin-bottom: 6px; }
+    ul.plain strong, ol.plain strong { color: #bbb; }
+
+    .callout {
+      border-left: 3px solid #5b9bd5; background: #0d1620; padding: 18px 20px;
+      border-radius: 0 8px 8px 0; font-size: 13.5px; color: #aaa; line-height: 1.65;
+      margin: 24px 0; max-width: 680px;
+    }
+    .callout.warn { border-color: #f0a040; background: #201a0d; }
+    .callout.danger { border-color: #e74c3c; background: #1a0a0a; }
+    .callout.good { border-color: #4caf50; background: #0a1a0a; }
+    .callout strong { color: #ccc; }
+    .callout a { color: #8fc5ff; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 720px; }
+    @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+    .path-card { background: #141414; border: 1px solid #262626; border-radius: 14px; padding: 24px; }
+    .path-card .icon { font-size: 24px; margin-bottom: 10px; }
+    .path-card h3 { margin-bottom: 10px; }
+    .path-card p { font-size: 13.5px; margin-bottom: 0; }
+
+    /* Theory cards */
+    .theory-grid { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 780px; }
+    .theory-card { background: #141414; border: 1px solid #262626; border-left: 3px solid #5b9bd5; border-radius: 0 12px 12px 0; padding: 20px 24px; }
+    .theory-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .theory-letter { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; font-weight: 700; color: #5b9bd5; background: #16202b; border: 1px solid #5b9bd544; border-radius: 6px; padding: 2px 8px; }
+    .theory-name { font-size: 15px; font-weight: 700; color: #fff; }
+    .theory-row { font-size: 13px; color: #888; line-height: 1.6; margin-top: 6px; }
+    .theory-row .k { color: #555; font-weight: 700; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
+    .theory-row .test { color: #8fc5ff; }
+
+    /* Diagnostic guide (interactive expanders) */
+    .diag {
+      background: #111; border: 1px solid #1e1e1e; border-radius: 14px; padding: 28px; max-width: 780px;
+    }
+    .diag-prompt { font-size: 13px; color: #888; margin-bottom: 16px; }
+    .diag-item { margin-bottom: 8px; }
+    .diag-btn {
+      width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      text-align: left; background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; padding: 12px 16px;
+      border-radius: 10px; font-size: 13.5px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+    }
+    .diag-btn:hover { background: #222; border-color: #444; }
+    .diag-btn.active { background: #16202b; border-color: #5b9bd5; color: #8fc5ff; border-radius: 10px 10px 0 0; }
+    .diag-chevron { color: #666; flex-shrink: 0; transition: transform 0.2s, color 0.2s; }
+    .diag-btn.active .diag-chevron { color: #8fc5ff; transform: rotate(180deg); }
+    .diag-panel { display: none; background: #0d0d0d; border: 1px solid #222; border-top: none; border-radius: 0 0 10px 10px; padding: 18px 20px; }
+    .diag-panel.open { display: block; }
+    .diag-panel .theory-tag { display: inline-block; font-family: 'SF Mono', monospace; font-size: 11px; font-weight: 700; color: #5b9bd5; background: #16202b; border: 1px solid #5b9bd544; border-radius: 6px; padding: 2px 8px; margin-bottom: 8px; }
+    .diag-panel .explain { font-size: 13.5px; color: #ccc; line-height: 1.6; margin-bottom: 8px; }
+    .diag-panel .action { font-size: 13px; color: #888; line-height: 1.6; }
+    .diag-panel .action strong { color: #f0a040; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; max-width: 780px; margin-bottom: 8px; }
+    th { text-align: left; color: #888; font-weight: 700; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.05em; padding: 10px 12px; border-bottom: 1px solid #2a2a2a; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1c1c1c; color: #ccc; vertical-align: top; font-size: 12.5px; line-height: 1.55; }
+    tr:last-child td { border-bottom: none; }
+    .table-wrap { overflow-x: auto; max-width: 780px; margin-bottom: 20px; }
+    .conf { font-size: 10.5px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+    .conf.high { color: #4caf50; background: #0a1a0a; border: 1px solid #4caf5044; }
+    .conf.medium { color: #f0a040; background: #1a1200; border: 1px solid #f0a04044; }
+
+    .chapter-nav { display: flex; justify-content: space-between; margin-top: 80px; padding-top: 40px; border-top: 1px solid #1e1e1e; max-width: 780px; }
+    .chapter-nav a { text-decoration: none; color: #555; font-size: 14px; transition: color 0.1s; }
+    .chapter-nav a:hover { color: #aaa; }
+    .chapter-nav .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #333; margin-bottom: 4px; }
+
+    .learn-more { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; max-width: 780px; }
+    a.learn-card { display: block; background: #141414; border: 1px solid #262626; border-radius: 12px; padding: 18px 20px; text-decoration: none; color: inherit; transition: border-color 0.15s, background 0.15s; }
+    a.learn-card:hover { background: #1a1a1a; border-color: #444; }
+    a.learn-card .lc-title { font-size: 13.5px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    a.learn-card .lc-desc { font-size: 12px; color: #888; line-height: 1.5; }
+
+    /* Stack-cross-section diagrams */
+    .diagram-block { margin-bottom: 30px; max-width: 680px; }
+    .diagram-block h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #5b9bd5; margin-bottom: 12px; }
+    .diagram-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
+    @media (max-width: 560px) { .diagram-pair { grid-template-columns: 1fr; } .diagram-pair .diagram-arrow { transform: rotate(90deg); } }
+    .diagram-arrow { font-size: 20px; color: #5b9bd5; text-align: center; }
+    .diagram-panel { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 10px; }
+    .diagram-svg-wrap svg { display: block; width: 100%; height: auto; }
+    .diagram-caption { margin-top: 8px; }
+    .cap-row { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; color: #999; margin-bottom: 4px; line-height: 1.4; }
+    .cap-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; margin-top: 2px; border: 1px solid rgba(255,255,255,0.15); }
+    .diagram-note { font-size: 12.5px; color: #888; line-height: 1.6; margin: 4px 0 0; }
+    .band-label { font-size: 10.5px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 6px; }
+    .band-label:first-child { margin-top: 0; }
+    .theory-diagram { margin-top: 16px; padding-top: 14px; border-top: 1px solid #222; }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <a class="back" href="./">← Back to Learning Lasers</a>
+    <div class="chapter-label">Experiment D · Field Notes &amp; Open Investigation</div>
+    <h1>Protecting Titanium's Interference Colours</h1>
+    <p class="subtitle">A real observation kicked this off: wiping laser-coloured titanium with isopropyl alcohol left it permanently <strong>duller</strong> — not shifted to a different hue. That single, specific detail rules some explanations out and points straight at others. This page works through the physics, six competing theories for what's actually happening, and the tests that would tell them apart.</p>
+
+    <section id="the-puzzle">
+      <p class="chapter-label" style="color:#f0a040;">The Observation</p>
+      <h2>Three Chemicals, Three Different Outcomes</h2>
+      <p class="section-sub">Every titanium interference colour comes from the same nanometre-thin oxide film — see <a class="inline" href="titanium-colours/">Titanium Colour Physics</a> for how anodizing and laser marking both grow it. So why did three different surface treatments do three completely different things to that same film?</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Observation</th><th>Implication</th><th>Confidence</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Clear varnish preserved some colour but reduced the metallic, vivid look.</td>
+              <td>A conventional clear coat likely adds a thick optical layer and surface reflection that mutes thin-film interference.</td>
+              <td><span class="conf high">High</span></td>
+            </tr>
+            <tr>
+              <td>Wax changed colours dramatically — gold shifted toward blue/purple.</td>
+              <td>A residual wax layer can become part of the optical stack and change the perceived hue outright.</td>
+              <td><span class="conf high">High</span></td>
+            </tr>
+            <tr>
+              <td>Isopropyl alcohol (IPA) permanently dulled a laser-coloured piece.</td>
+              <td>The laser finish may include a fragile texture, removable residue, or porous/mixed oxide sensitive to solvent + wiping.</td>
+              <td><span class="conf high">High (observation)<br><span style="color:#888;font-weight:400;text-transform:none;">medium (mechanism)</span></span></td>
+            </tr>
+            <tr>
+              <td>The IPA effect was <em>dulling</em>, not a major hue jump.</td>
+              <td>Loss of gloss/specular reflection, or removal of an index-matching residue, is more likely than a large change in oxide thickness alone.</td>
+              <td><span class="conf medium">Medium</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <strong>Treat this as a hard constraint until proven otherwise:</strong> avoid solvent cleaning or aggressive wiping on finished laser-coloured titanium pieces until a matching scrap coupon has proven it safe. A permanent, non-reversible dulling is a much worse outcome than a hue shift you could have predicted and designed around.
+      </div>
+    </section>
+
+    <section id="foundation">
+      <p class="chapter-label">Foundation</p>
+      <h2>Why a Coating Can Change a Colour It Never Touches</h2>
+      <p class="section-sub">Titanium oxide colours are <strong>structural</strong>, not pigment — there is no dye to protect. That's exactly what makes them fragile in a way people don't expect.</p>
+      <ul class="plain">
+        <li>The visible colour comes from <a class="inline" href="../physics-of-the-beam/12-color-interference/">thin-film interference</a> in or near the TiO₂ layer — light reflects off the top of the film and off the metal underneath, and whichever wavelengths cancel out determine what colour survives.</li>
+        <li>The hue depends on <strong>optical thickness</strong>: physical thickness × refractive index. Change either number and the colour moves, even if nothing was removed.</li>
+        <li>Adding any coating changes the boundary from <em>air → oxide → titanium</em> into <em>air → coating → oxide → titanium</em> — a new multilayer optical stack, not a passive protective sheet sitting on top of an unchanged colour.</li>
+        <li>Colour change can come from several independent causes: refractive index of the new layer, its thickness, scattering from roughness or particles, absorption/yellowing, or outright mechanical alteration of a delicate surface. Several of the theories below correspond to exactly these mechanisms.</li>
+        <li><strong>Laser-coloured titanium may not be a simple, dense TiO₂ film</strong> the way electrochemically anodized titanium usually is. Laser processing can leave mixed oxides, nanoscale texture, porosity, or redeposited material and process residue — see <a class="inline" href="oxide-edge/">The Oxide Edge</a> for what that kind of laser-induced surface irregularity looks like at an interface between two passes.</li>
+      </ul>
+      <div class="callout">
+        Whether a surface reads as a saturated jewel tone or a washed-out pastel at the <em>same</em> oxide thickness is a separate, related effect — see <a class="inline" href="rich-frosted-burnt/">Rich Colours, Frosted &amp; Burnt</a> for the specular-vs-diffuse reflection physics. Several theories below (C, and part of E) are really asking whether IPA is pushing this titanium finish from the "specular" side of that same divide toward the "diffuse" side.
+      </div>
+    </section>
+
+    <section id="theories">
+      <p class="chapter-label" style="color:#f0a040;">Competing Explanations</p>
+      <h2>Six Theories for the IPA Dulling</h2>
+      <p class="section-sub">None of these is confirmed. They're listed in no particular order of likelihood — the point of writing them out explicitly is that each one predicts a <em>different</em>, checkable outcome, which is what the diagnostic guide below is built on.</p>
+
+      <div class="theory-grid">
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">A</span><span class="theory-name">Residue as optical layer</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">IPA removes a thin transparent or semi-transparent residue that was adding optical thickness to the stack.</p>
+          <div class="theory-row"><span class="k">Predicts</span>A measurable hue shift — the reflection peak should move toward shorter wavelength if optical thickness decreases.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Fixed-angle, fixed-white-balance before/after photography with a numeric hue comparison (not just by eye), plus a spectrometer reading if one's available. A drop of a known liquid (mineral oil, Krytox) should shift the hue further if this is really an optical-thickness effect — not just restore gloss the way Theory B predicts.</span></div>
+          <div class="theory-diagram" id="diagA"></div>
+        </div>
+
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">B</span><span class="theory-name">Residue as index-matching smoother</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">The residue fills microscopic surface valleys and raises specular reflection, making the colour look glossier and more saturated without changing the hue itself.</p>
+          <div class="theory-row"><span class="k">Predicts</span>After IPA, colour is duller with less mirror-like reflection, but hue changes little. A thin oil may temporarily restore brilliance.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Compare dry wipe vs. IPA-drop-no-wipe vs. IPA-wipe; try a removable thin liquid on a test strip and watch for restored brilliance.</span></div>
+          <div class="theory-diagram" id="diagB"></div>
+        </div>
+
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">C</span><span class="theory-name">Mechanical disturbance of fragile texture</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">Wiping — not the solvent — abrades, collapses, or rearranges a fragile laser-formed surface layer or nanostructure.</p>
+          <div class="theory-row"><span class="k">Predicts</span>Dry wiping alone causes dulling. More pressure causes more loss. Reapplying oil does not fully restore original brilliance.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Dry optical-cloth test at matched pressure; microscope inspection before/after; gentle tape-lift contact tests on scrap.</span></div>
+          <div class="theory-diagram" id="diagC"></div>
+        </div>
+
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">D</span><span class="theory-name">Solvent penetration / redeposition</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">IPA enters pores, extracts soluble residues, then redeposits a dull film — or changes wetting behaviour in a persistent way — even with no wiping at all.</p>
+          <div class="theory-row"><span class="k">Predicts</span>An IPA drop left to evaporate <em>without wiping</em> leaves a ring, haze, or local dulling on its own.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Drop-only evaporation test; compare high-purity IPA against lower-grade IPA; inspect residue/ring patterns under angled light.</span></div>
+          <div class="theory-diagram" id="diagD"></div>
+        </div>
+
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">E</span><span class="theory-name">Mixed-oxide / process sensitivity</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">Laser processing creates TiO₂ plus suboxides, or a graded oxide microstructure, whose response to solvent and handling varies by exactly how it was made.</p>
+          <div class="theory-row"><span class="k">Predicts</span>Effects vary strongly by laser settings, colour band, and surface preparation — not a single universal rule.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Repeat every test above across a laser parameter grid; compare against conventionally anodized titanium as a control.</span></div>
+          <div class="theory-diagram" id="diagE"></div>
+        </div>
+
+        <div class="theory-card">
+          <div class="theory-head"><span class="theory-letter">F</span><span class="theory-name">Contamination / oil-film addition</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">The mirror image of Theory A: instead of an existing residue being removed, something new — a fingerprint, a protective oil, a wax — gets deposited on the surface, adding its own optical thickness.</p>
+          <div class="theory-row"><span class="k">Predicts</span>A longer-wavelength shift (e.g. gold moving toward blue or purple) whenever the surface picks up an oil film — from bare-hand handling, a protective oil, or wax — independent of whether any solvent cleaning happened at all. This is not a residual-removal effect; it runs in the opposite direction from Theory A.</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">Repeat the full test protocol with gloves and clean tools throughout, and separately touch an untouched control coupon with a bare finger — no IPA involved at all. If that alone reproduces a similar hue shift, some of the original result may be handling contamination rather than a solvent effect.</span></div>
+          <div class="theory-diagram" id="diagF"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="diagnostics">
+      <p class="chapter-label">Telling Them Apart</p>
+      <h2>Smoothing vs. Thickening</h2>
+      <p class="section-sub">The practical question underneath all six theories is simpler than it looks: was the lost residue mainly <strong>smoothing</strong> the surface (theory B), mainly adding <strong>optical thickness</strong> (theory A), or some mix with mechanical damage (C) or solvent chemistry (D)? These five diagnostics separate the two ends of that spectrum.</p>
+
+      <div class="diagram-block">
+        <h4>Smoothing — the hue barely moves, only the gloss does</h4>
+        <div id="diagSmoothing"></div>
+      </div>
+
+      <div class="diagram-block">
+        <h4>Thickening — the hue itself moves</h4>
+        <div id="diagThickening"></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Diagnostic</th><th>If residue was mainly smoothing</th><th>If residue was mainly optical thickness</th></tr></thead>
+          <tbody>
+            <tr><td>Point-light reflection</td><td>Becomes fuzzier / less intense, similar hue.</td><td>Stays sharp, but hue changes noticeably.</td></tr>
+            <tr><td>Viewing-angle sweep</td><td>Angle dependence stays similar; saturation drops.</td><td>The whole colour-vs-angle behaviour shifts.</td></tr>
+            <tr><td>Reapply removable liquid</td><td>Mineral oil, glycerin, or Krytox restores brilliance while present.</td><td>A liquid shifts hue according to its own thickness/index, not simply restoring gloss.</td></tr>
+            <tr><td>Spectrometer</td><td>Peak intensity drops; peak position barely moves.</td><td>Reflectance peak moves in wavelength.</td></tr>
+            <tr><td>Microscopy</td><td>Surface looks rougher, hazier, or pitted after cleaning.</td><td>Surface looks similar; optical response still changes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:32px;">Interactive: Diagnostic Guide</h3>
+      <p class="section-sub" style="margin-bottom:16px;">If you ran one of these tests on your own scrap and got a result below, click it — this maps straight back to the theories above and says what to try next.</p>
+
+      <div class="diag">
+        <div class="diag-prompt">What did you actually observe? Click one to expand it.</div>
+        <div id="diagList"></div>
+      </div>
+    </section>
+
+    <section id="coatings">
+      <p class="chapter-label">Options</p>
+      <h2>Coating Options and Their Optical Cost</h2>
+      <p class="section-sub">Every candidate below is judged on the same axis: does it protect, and how much does it cost you optically? As a rule, the thinner the layer relative to the oxide film itself (tens to hundreds of nm), the less it disturbs the interference colour underneath.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Option</th><th>Typical scale</th><th>Likely optical effect</th><th>Fit for this project</th></tr></thead>
+          <tbody>
+            <tr><td>No coating</td><td>None</td><td>Preserves original colour best; no added optical layer.</td><td>Best baseline and often best appearance.</td></tr>
+            <tr><td>Fluorosilane monolayer / anti-fingerprint coating</td><td>~1–5 nm</td><td>Least visible change expected — molecularly thin, low-index.</td><td>Most promising, if obtainable and compatible.</td></tr>
+            <tr><td>PFPE oil (e.g. Krytox GPL 105)</td><td>Nanometre-scale if wiped nearly dry</td><td>Possible slight hue shift; may improve gloss by filling roughness. Not a cured hard coating.</td><td>Good reversible experiment on scrap.</td></tr>
+            <tr><td>Microcrystalline wax (Renaissance Wax)</td><td>Tens–hundreds of nm</td><td>Moderate hue shift possible; can reduce sparkle.</td><td>Useful comparison — but observations above suggest visible colour change.</td></tr>
+            <tr><td>Automotive ceramic coating</td><td>Thicker than a monolayer; formulation-dependent</td><td>May still alter hue, gloss, or saturation.</td><td>Worth testing only on coupons; many need solvent prep.</td></tr>
+            <tr><td>Acrylic / polyurethane varnish</td><td>Multi-micron to tens of microns</td><td>Significant reduction in brilliance; plastic-like reflection.</td><td>Generally not recommended.</td></tr>
+            <tr><td>Cerakote clear / Elite / Micro Slick</td><td>Multi-micron</td><td>Likely mutes metallic interference; may scatter light.</td><td>Only if durability matters more than exact colour.</td></tr>
+            <tr><td>ALD alumina, thin SiO₂, or optical DLC</td><td>Nanometre-scale, professionally controlled</td><td>Can preserve optical response better than varnish if uniform.</td><td>Best industrial route, not the easiest hobby route.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>Product examples mentioned in the source discussion:</strong> Daikin OPTOOL DSX/DSX-E and Shin-Etsu KY-series (industrial optical anti-fingerprint coatings — strong conceptual fit, not typically consumer-available); FOTS and FDTS silanes (lab-grade self-assembled monolayer reagents, need careful handling); Krytox GPL 105 (easiest to buy in small amounts, but many listings are repackaged for keyboard hobbyists); Renaissance Wax (accessible baseline, likely to shift interference colours); consumer ceramic coatings like CarPro CQuartz or Gtechniq EXO (worth testing, not equivalent to a true fluorosilane monolayer).</p>
+
+      <div class="callout danger">
+        <strong>Avoid for this specific goal:</strong> NeverWet, PTFE sprays, concrete silane/siloxane sealers, and thick clear coats — none preserve the exact interference appearance. Also avoid GPL 205 grease (much thicker than GPL 105, more likely to visibly alter colour).
+      </div>
+    </section>
+
+    <section id="cautions">
+      <p class="chapter-label">Handling</p>
+      <h2>Cautions Before You Touch a Finished Piece</h2>
+      <ul class="plain">
+        <li>Do not use IPA or acetone on finished laser-coloured pieces unless a matching scrap test has proven it safe first.</li>
+        <li>Use nitrile gloves when handling fresh laser-coloured titanium — fingerprints can become part of the test history otherwise.</li>
+        <li>Avoid paper towels, shop rags, tissues, and cotton fabric. They can lint, scratch, or apply uneven pressure.</li>
+        <li>If wiping is necessary, use a clean optical microfiber cloth or a PEC-PAD-type optical wipe with minimal pressure.</li>
+        <li>For Krytox GPL 105 tests, put a tiny amount on the wipe — not directly on the piece — then buff until no visible oily film remains.</li>
+        <li>Any coating requiring a solvent pre-clean step should be treated as high risk for this specific laser finish until independently tested.</li>
+      </ul>
+    </section>
+
+    <section id="experiment">
+      <p class="chapter-label">Method</p>
+      <h2>Recommended Experimental Matrix</h2>
+      <p class="section-sub">Make several matching titanium coupons at the <em>same</em> laser settings, ideally spanning a colour gradient or multiple colour bands (see <a class="inline" href="titanium-colours/#charts">the reference chip-card approach</a> used on the Titanium Colour Physics page). Keep one untouched control, then divide the rest into masked test strips.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Strip</th><th>Treatment</th><th>Question answered</th><th>Expected result if theory is correct</th></tr></thead>
+          <tbody>
+            <tr><td>A</td><td>Untreated control</td><td>Baseline colour, gloss, angle response.</td><td>Highest-fidelity reference for every comparison.</td></tr>
+            <tr><td>B</td><td>Dry optical wipe only</td><td>Is mechanical contact alone enough to dull it?</td><td>Dulling here supports <span class="test">Theory C</span> — fragile texture / mechanical disturbance.</td></tr>
+            <tr><td>C</td><td>IPA drop, no wiping</td><td>Does solvent alone alter the surface?</td><td>Dulling or rings support <span class="test">Theory D</span> — solvent extraction / redeposition.</td></tr>
+            <tr><td>D</td><td>IPA wipe, controlled pressure</td><td>Does solvent + wiping reproduce the original dulling?</td><td>Dulling only here supports a combined solvent + mechanical mechanism (C + D).</td></tr>
+            <tr><td>E</td><td>Krytox GPL 105, wiped nearly dry</td><td>Can a very thin PFPE layer restore brilliance?</td><td>Restored gloss supports <span class="test">Theory B</span>; a hue shift instead supports <span class="test">Theory F</span> — the Krytox itself is adding thickness, not just filling roughness.</td></tr>
+            <tr><td>F</td><td>Renaissance Wax, buffed</td><td>How large is the wax-induced hue/gloss change?</td><td>Visible shift supports wax becoming part of the optical stack (<span class="test">Theory F</span>).</td></tr>
+            <tr><td>G</td><td>Consumer ceramic coating, uncleaned scrap</td><td>Can an accessible cured coating preserve enough brilliance?</td><td>Good result: durable, only slightly shifted. Bad result: muted / plastic.</td></tr>
+            <tr><td>H</td><td>Fluorosilane / optical anti-fingerprint coating, if obtained</td><td>Does a molecularly thin coating preserve colour while resisting fingerprints?</td><td>Best candidate: minimal hue/saturation change, improved repellency.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:28px;">Measurement Protocol</h3>
+      <ol class="plain">
+        <li>Photograph every coupon before treatment under fixed lighting, camera settings, white balance, and viewing angle.</li>
+        <li>Record point-light reflection sharpness before and after each treatment.</li>
+        <li>Repeat photos at several viewing angles — interference colours are angle-dependent.</li>
+        <li>If available, measure reflectance spectra before and after; record peak wavelength and peak intensity.</li>
+        <li>Inspect at 100–500× magnification before and after IPA, dry wiping, and each coating.</li>
+        <li>After any coating, test fingerprints, water beading, dust attraction, and whether appearance changes after 24–72 hours.</li>
+        <li>Keep one untreated, untouched reference coupon stored in a clean bag for comparison throughout.</li>
+      </ol>
+    </section>
+
+    <section id="recommendation">
+      <p class="chapter-label" style="color:#4caf50;">Where This Leaves Us</p>
+      <h2>Current Recommendation</h2>
+      <div class="callout good">
+        For finished laser-coloured titanium where IPA has already permanently dulled the colour once, don't clean or coat the actual piece first — work from matching scrap coupons. Start with the four-way comparison (untreated vs. dry wipe vs. IPA-drop-no-wipe vs. IPA-wipe), then test Krytox GPL 105 wiped nearly dry, Renaissance Wax, and any accessible fluorosilane/anti-fingerprint coating.
+      </div>
+      <p>The most promising protection route is a true optical anti-fingerprint fluorosilane or similarly molecularly thin coating, provided it can be applied without a damaging solvent-prep step. The most accessible low-risk experiment is Krytox GPL 105 on scrap, applied extremely thinly and buffed with minimal pressure. The strongest mechanical coatings — Cerakote and conventional clear coats — are likely to change the appearance substantially, and should only be used when durability matters more than exact colour.</p>
+    </section>
+
+    <section id="open-questions">
+      <p class="chapter-label">Unresolved</p>
+      <h2>Open Questions for Future Testing</h2>
+      <ul class="plain">
+        <li>Which exact laser settings and titanium grade produced the IPA-sensitive colour?</li>
+        <li>Does the permanent dulling occur with solvent alone, wiping alone, or only both together?</li>
+        <li>Does the dulling vary by colour band — suggesting different oxide thickness or microstructure sensitivity, as <span class="test">Theory E</span> predicts?</li>
+        <li>Can a removable low-index liquid restore gloss without an unacceptable hue shift?</li>
+        <li>Is there a consumer-available anti-fingerprint coating that can be applied without a solvent-clean step?</li>
+        <li>Can the laser colour be intentionally offset so the desired final colour appears only after a chosen coating is applied?</li>
+      </ul>
+    </section>
+
+    <section id="glossary">
+      <h2>Glossary</h2>
+      <p class="section-sub">Terms used across this page, in the order they're most useful to know.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>Structural colour</td><td>Colour produced by physical interference of light, not pigment or dye — everything on this page and on <a class="inline" href="titanium-colours/">Titanium Colour Physics</a>.</td></tr>
+            <tr><td>Optical thickness</td><td>Physical thickness × refractive index — the single number that actually determines hue in a thin-film interference system.</td></tr>
+            <tr><td>Optical stack</td><td>The full sequence of layers light passes through and reflects off — air, any coating, the oxide film, the metal. Adding a coating always creates a new stack, not a passive layer on an unchanged colour.</td></tr>
+            <tr><td>Index matching</td><td>Filling microscopic surface roughness with a liquid or film of similar refractive index, restoring specular reflection without necessarily changing the underlying colour.</td></tr>
+            <tr><td>Redeposition</td><td>Solvent picks up dissolved material and leaves it behind elsewhere as it evaporates, often as a haze or ring rather than a clean removal.</td></tr>
+            <tr><td>PFPE (perfluoropolyether)</td><td>A class of chemically inert, low-surface-energy oils (e.g. Krytox) used here as a thin, reversible test layer.</td></tr>
+            <tr><td>Fluorosilane monolayer</td><td>A molecularly thin (1–5 nm), covalently bonded anti-fingerprint coating — the category with the best chance of protecting without disturbing the interference colour.</td></tr>
+            <tr><td>ΔE (colour difference)</td><td>A standard numeric measure of how different two colours appear — see the <a class="inline" href="../../laser-experiments/color-stability-paper/">Colour Stability Simulator</a> for how researchers track this over time on laser-marked steel.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="continue">
+      <p class="chapter-label">Continue Learning</p>
+      <h2>Related Pages</h2>
+      <div class="learn-more">
+        <a class="learn-card" href="titanium-colours/">
+          <div class="lc-title">💠 Titanium Colour Physics</div>
+          <div class="lc-desc">How anodizing and laser marking both grow the same TiO₂ film this whole page is trying to protect.</div>
+        </a>
+        <a class="learn-card" href="rich-frosted-burnt/">
+          <div class="lc-title">✨ Rich Colours, Frosted &amp; Burnt</div>
+          <div class="lc-desc">The specular-vs-diffuse physics behind why a coating can turn vivid jewel tones into a muted pastel.</div>
+        </a>
+        <a class="learn-card" href="oxide-edge/">
+          <div class="lc-title">📐 The Oxide Edge</div>
+          <div class="lc-desc">What a fragile, irregular laser-formed oxide surface looks like at an interface — relevant to Theory C.</div>
+        </a>
+        <a class="learn-card" href="color-stainless-cleaning/">
+          <div class="lc-title">🧽 Stainless Colour Cleaning</div>
+          <div class="lc-desc">The same "don't disturb the fragile oxide" problem, worked out for SS304 instead of titanium.</div>
+        </a>
+        <a class="learn-card" href="../laser-experiments/color-stability-paper/">
+          <div class="lc-title">📄 Colour Stability Simulator</div>
+          <div class="lc-desc">A research model of how laser-marked colour drifts (ΔE) — the general "does this colour hold up" question.</div>
+        </a>
+        <a class="learn-card" href="materials/">
+          <div class="lc-title">🪨 Materials Guide</div>
+          <div class="lc-desc">Broader IR-laser material behaviour, including what to avoid on anodised and reactive metals.</div>
+        </a>
+      </div>
+    </section>
+
+    <div class="chapter-nav">
+      <a href="titanium-colours/" class="prev">
+        <span class="label">Previous</span>
+        ← Titanium Colour Physics
+      </a>
+      <a href="color-stainless-cleaning/" class="next">
+        <span class="label">Related · Same Problem, Different Metal</span>
+        Stainless Colour Cleaning →
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // ---- Optical-stack cross-section diagrams: air/residue/oxide/metal, drawn to show
+    // whether residue was smoothing an already-rough oxide (hue survives) or genuinely
+    // adding optical thickness to the interference stack (hue moves), plus a before/after
+    // per theory. Not to physical nm scale — relative thickness/roughness only, for teaching.
+    const COLOR = {
+      blue: '#1e50be', blueDull: '#3a5a8f',
+      purple: '#683084', purpleDull: '#584a63',
+      cyan: '#1e96be', cyanDull: '#3f7280',
+      bronze: '#b06c3a', bronzeDull: '#a3763f',
+      paleGreen: '#32aa82', paleGreenDull: '#4d7d6c',
+      metal: '#5f6267',
+      haze: 'rgba(255,255,255,0.55)',
+      film: 'rgba(190,220,255,0.4)',
+      ring: 'rgba(255,255,255,0.42)',
+      thickCoat: 'rgba(150,155,165,0.7)',
+      muted: '#5a6270',
+      none: '#333'
+    };
+
+    function svgPanel(cfg) {
+      const {
+        tag = '', tagColor = '#5b9bd5',
+        topType = 'flat',       // flat | gentle-wave | jagged
+        oxideH = 26,
+        oxideColor = COLOR.blue,
+        residue = 'none',       // none | valley-fill | film | ring
+        residueColor = COLOR.haze,
+        filmH = 11,
+        rays = 'specular',      // specular | diffuse | mixed
+        rayColor = '#fff',      // colour of the OUTGOING ray — the reflected/perceived hue
+        pores = false,
+        debris = false
+      } = cfg;
+
+      const W = 200, H = 140, metalTop = 110;
+      const base = metalTop - oxideH;
+
+      let pts;
+      if (topType === 'gentle-wave') {
+        pts = [[0,0],[20,-4],[40,0],[60,-4],[80,0],[100,-4],[120,0],[140,-4],[160,0],[180,-4],[200,0]];
+      } else if (topType === 'jagged') {
+        pts = [[0,0],[14,-10],[26,3],[40,-14],[58,2],[70,-9],[88,-16],[104,4],[120,-11],[136,1],[152,-15],[168,3],[184,-9],[200,0]];
+      } else {
+        pts = [[0,0],[200,0]];
+      }
+      const topD = pts.map(([x,dy],i) => `${i === 0 ? 'M' : 'L'}${x},${base + dy}`).join(' ');
+      const oxideD = `${topD} L200,${metalTop} L0,${metalTop} Z`;
+      const troughXs = [0,40,80,120,160,200];
+      // Ray reflects at the oxide/metal boundary, not the top surface — the ray line has to
+      // cross the full oxide thickness (and any coating above it) on the way down and back up,
+      // since the oxide's thickness is what actually produces the interference colour.
+      const hitX = 100, hitY = metalTop;
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" width="200" height="140" xmlns="http://www.w3.org/2000/svg">`;
+      svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#0a0a0a" rx="10"/>`;
+      svg += `<rect x="0" y="${metalTop}" width="${W}" height="${H - metalTop}" fill="${COLOR.metal}"/>`;
+      for (let x = -20; x < W; x += 16) {
+        svg += `<line x1="${x}" y1="${metalTop}" x2="${x + (H - metalTop)}" y2="${H}" stroke="#4a4d52" stroke-width="1"/>`;
+      }
+      svg += `<path d="${oxideD}" fill="${oxideColor}" opacity="0.85"/>`;
+      if (pores) {
+        [[40, base + 10], [90, base + 13], [140, base + 9], [170, base + 12]].forEach(([x,y]) => {
+          svg += `<circle cx="${x}" cy="${y}" r="2.3" fill="#000" opacity="0.35"/>`;
+        });
+      }
+      if (residue === 'valley-fill') {
+        troughXs.forEach(x => { svg += `<ellipse cx="${x}" cy="${base}" rx="9" ry="4" fill="${residueColor}"/>`; });
+        svg += `<line x1="0" y1="${base - 4}" x2="200" y2="${base - 4}" stroke="${residueColor}" stroke-width="1.4" stroke-dasharray="3,3"/>`;
+      } else if (residue === 'film') {
+        svg += `<rect x="0" y="${base - filmH}" width="${W}" height="${filmH}" fill="${residueColor}"/>`;
+      } else if (residue === 'ring') {
+        [[50, base - 2, 22, 7], [110, base - 3, 26, 8], [160, base - 1, 18, 6]].forEach(([cx,cy,rx,ry]) => {
+          svg += `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${residueColor}"/>`;
+        });
+      }
+      if (debris) {
+        [[28, base - 24, -18], [52, base - 32, 14], [74, base - 20, -32]].forEach(([x,y,rot]) => {
+          svg += `<rect x="${x}" y="${y}" width="7" height="4" fill="#9a9a9a" opacity="0.85" transform="rotate(${rot} ${x + 3.5} ${y + 2})"/>`;
+        });
+      }
+      svg += `<line x1="28" y1="6" x2="${hitX}" y2="${hitY}" stroke="#f0d080" stroke-width="1.6"/>`;
+      if (rays === 'specular') {
+        svg += `<line x1="${hitX}" y1="${hitY}" x2="172" y2="6" stroke="${rayColor}" stroke-width="2"/>`;
+        svg += `<line x1="${hitX - 4}" y1="${hitY - 2}" x2="166" y2="4" stroke="${rayColor}" stroke-width="1" opacity="0.6"/>`;
+      } else if (rays === 'diffuse') {
+        [[140,38],[55,42],[125,66],[72,64],[100,80]].forEach(([x,y]) => {
+          svg += `<line x1="${hitX}" y1="${hitY}" x2="${x}" y2="${y}" stroke="${rayColor}" stroke-width="1" opacity="0.6"/>`;
+        });
+      } else if (rays === 'mixed') {
+        svg += `<line x1="${hitX}" y1="${hitY}" x2="160" y2="10" stroke="${rayColor}" stroke-width="1.6" opacity="0.8"/>`;
+        [[120,55],[75,60]].forEach(([x,y]) => {
+          svg += `<line x1="${hitX}" y1="${hitY}" x2="${x}" y2="${y}" stroke="${rayColor}" stroke-width="1" opacity="0.5"/>`;
+        });
+      }
+      svg += `<rect x="4" y="5" width="${tag.length * 6 + 10}" height="15" rx="3" fill="#0a0a0a" opacity="0.9"/>`;
+      svg += `<text x="9" y="16" fill="${tagColor}" font-size="10" font-weight="700" font-family="'SF Mono',monospace">${tag}</text>`;
+      svg += `</svg>`;
+      return svg;
+    }
+
+    function capRow(color, label) {
+      return `<div class="cap-row"><span class="cap-dot" style="background:${color}"></span>${label}</div>`;
+    }
+
+    function panelHTML(cfg, capRows) {
+      return `<div class="diagram-panel">${svgPanel(cfg)}<div class="diagram-caption">${capRows.join('')}</div></div>`;
+    }
+
+    function pairHTML(beforeCfg, beforeCap, afterCfg, afterCap, note) {
+      return `<div class="diagram-pair">
+        ${panelHTML(beforeCfg, beforeCap)}
+        <div class="diagram-arrow">→</div>
+        ${panelHTML(afterCfg, afterCap)}
+      </div>${note ? `<p class="diagram-note">${note}</p>` : ''}`;
+    }
+
+    function setDiagram(id, html) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    }
+
+    // Smoothing: rough oxide the whole time; residue only fills the valleys.
+    const smoothingHTML = pairHTML(
+      { tag: 'Before', topType: 'gentle-wave', oxideColor: COLOR.blue, residue: 'valley-fill', residueColor: COLOR.haze, rays: 'specular', rayColor: COLOR.blue },
+      [capRow(COLOR.haze, 'Residue fills the valleys'), capRow(COLOR.blue, 'Oxide: Blue, rough, ~100nm'), capRow(COLOR.blue, '<strong style="color:#ccc">Result: vivid Blue</strong>')],
+      { tag: 'After', topType: 'gentle-wave', oxideColor: COLOR.blue, residue: 'none', rays: 'diffuse', rayColor: COLOR.blueDull },
+      [capRow(COLOR.none, 'Residue: removed'), capRow(COLOR.blue, 'Oxide: Blue, rough, ~100nm (unchanged)'), capRow(COLOR.blueDull, '<strong style="color:#ccc">Result: duller Blue — same hue</strong>')],
+      'Same rough oxide throughout. Removing the residue exposes it — hue barely moves, but the reflection scatters instead of staying sharp.'
+    );
+
+    // Thickening: smooth oxide the whole time; residue is its own optical layer.
+    const thickeningHTML = pairHTML(
+      { tag: 'Before', topType: 'flat', oxideH: 20, oxideColor: COLOR.blue, residue: 'film', residueColor: COLOR.film, filmH: 12, rays: 'specular', rayColor: COLOR.paleGreen },
+      [capRow(COLOR.film, 'Residue film: adds ~40nm'), capRow(COLOR.blue, 'Oxide: Blue, smooth, ~100nm'), capRow(COLOR.paleGreen, '<strong style="color:#ccc">Result: Pale Green (combined stack)</strong>')],
+      { tag: 'After', topType: 'flat', oxideH: 20, oxideColor: COLOR.blue, residue: 'none', rays: 'specular', rayColor: COLOR.blue },
+      [capRow(COLOR.none, 'Residue: removed'), capRow(COLOR.blue, 'Oxide: Blue, smooth, ~100nm (unchanged)'), capRow(COLOR.blue, '<strong style="color:#ccc">Result: reverts to Blue</strong>')],
+      'Same smooth oxide throughout. The residue itself was part of the interference stack — removing it moves the hue back to what the bare oxide produces.'
+    );
+
+    setDiagram('diagSmoothing', smoothingHTML);
+    setDiagram('diagThickening', thickeningHTML);
+
+    // Theory A mirrors "Thickening" — residue as a genuine optical layer, removed by IPA.
+    setDiagram('diagA', thickeningHTML);
+    // Theory B mirrors "Smoothing" — residue as an index-matching filler.
+    setDiagram('diagB', smoothingHTML);
+
+    // Theory F: the mirror image of Theory A — not a residue being removed, but a NEW
+    // coating (oil, fingerprint, wax) being added on top, increasing optical thickness and
+    // pushing the peak to a LONGER wavelength. Grounded in the real wax observation from
+    // "The Observation": a gold laser-coloured finish shifted toward blue/purple once wax
+    // was applied — a genuinely different mechanism from A's removal-based one.
+    const diagFHTML = pairHTML(
+      { tag: 'Before', tagColor: '#4caf50', topType: 'flat', oxideH: 14, oxideColor: COLOR.bronze, residue: 'none', rays: 'specular', rayColor: COLOR.bronze },
+      [capRow(COLOR.bronze, 'Oxide: Gold/Bronze, ~30nm, no coating'), capRow(COLOR.bronze, '<strong style="color:#ccc">Result: warm Gold</strong>')],
+      { tag: 'After', tagColor: '#f0a040', topType: 'flat', oxideH: 14, oxideColor: COLOR.bronze, residue: 'film', residueColor: COLOR.film, filmH: 28, rays: 'specular', rayColor: COLOR.purple },
+      [capRow(COLOR.film, 'New film added: oil, fingerprint, or wax'), capRow(COLOR.bronze, 'Oxide: unchanged underneath'), capRow(COLOR.purple, '<strong style="color:#ccc">Result: shifts toward Blue/Purple — longer wavelength</strong>')],
+      'A real observation from the same investigation: wax applied over a gold laser-coloured finish shifted it toward blue/purple. Unlike Theory A, nothing pre-existing was removed — a new film was added, pushing the reflected peak to a longer wavelength instead of a shorter one.'
+    );
+    setDiagram('diagF', diagFHTML);
+
+    // Theory C: mechanical disturbance — intact fragile texture, then actively abraded/collapsed.
+    const diagCHTML = pairHTML(
+      { tag: 'Before', topType: 'gentle-wave', oxideColor: COLOR.purple, residue: 'none', rays: 'specular', rayColor: COLOR.purple },
+      [capRow(COLOR.purple, 'Oxide: Purple, ~60nm, intact fragile texture'), capRow(COLOR.purple, '<strong style="color:#ccc">Result: vivid Purple</strong>')],
+      { tag: 'After', topType: 'jagged', oxideColor: COLOR.purple, residue: 'none', rays: 'diffuse', debris: true, rayColor: COLOR.purpleDull },
+      [capRow(COLOR.purple, 'Oxide: Purple, ~60nm (same thickness)'), capRow('#9a9a9a', 'Texture: collapsed / abraded by wiping'), capRow(COLOR.purpleDull, '<strong style="color:#ccc">Result: duller Purple — same hue</strong>')],
+      'No solvent required — dry wiping alone can collapse a fragile as-grown texture into an irregular, scattering surface.'
+    );
+    setDiagram('diagC', diagCHTML);
+
+    // Theory D: solvent penetration / redeposition — no wiping, haze appears from within the pores.
+    const diagDHTML = pairHTML(
+      { tag: 'Before', topType: 'flat', oxideColor: COLOR.cyan, residue: 'none', rays: 'specular', pores: true, rayColor: COLOR.cyan },
+      [capRow(COLOR.cyan, 'Oxide: Cyan/Teal, ~120nm, natural micro-pores'), capRow(COLOR.cyan, '<strong style="color:#ccc">Result: vivid Cyan</strong>')],
+      { tag: 'After', topType: 'flat', oxideColor: COLOR.cyan, residue: 'ring', residueColor: COLOR.ring, rays: 'mixed', pores: true, rayColor: COLOR.cyanDull },
+      [capRow(COLOR.ring, 'Residue: uneven redeposited haze/ring'), capRow(COLOR.cyan, 'Oxide: unchanged underneath'), capRow(COLOR.cyanDull, '<strong style="color:#ccc">Result: hazy, duller Cyan — zero wiping</strong>')],
+      'An IPA drop left to evaporate — no wiping at all — can still redeposit an uneven film as it pulls material out of the pores.'
+    );
+    setDiagram('diagD', diagDHTML);
+
+    // Theory E: mixed-oxide sensitivity — same treatment, two different bands respond differently.
+    const diagEHTML =
+      '<div class="band-label">Band 1 — thin, uniform oxide</div>' +
+      pairHTML(
+        { tag: 'Before', topType: 'flat', oxideH: 16, oxideColor: COLOR.bronze, residue: 'none', rays: 'specular', rayColor: COLOR.bronze },
+        [capRow(COLOR.bronze, 'Oxide: Bronze, ~40nm, uniform')],
+        { tag: 'After', topType: 'flat', oxideH: 16, oxideColor: COLOR.bronze, residue: 'none', rays: 'specular', rayColor: COLOR.bronzeDull },
+        [capRow(COLOR.bronzeDull, '<strong style="color:#ccc">Result: barely changed</strong>')],
+        ''
+      ) +
+      '<div class="band-label">Band 2 — thicker, mixed/graded oxide</div>' +
+      pairHTML(
+        { tag: 'Before', topType: 'flat', oxideH: 34, oxideColor: COLOR.paleGreen, residue: 'none', rays: 'specular', pores: true, rayColor: COLOR.paleGreen },
+        [capRow(COLOR.paleGreen, 'Oxide: Pale Green, ~140nm, mixed/graded')],
+        { tag: 'After', topType: 'jagged', oxideH: 34, oxideColor: COLOR.paleGreen, residue: 'ring', residueColor: COLOR.ring, rays: 'diffuse', pores: true, debris: true, rayColor: COLOR.paleGreenDull },
+        [capRow(COLOR.paleGreen, '<strong style="color:#ccc">Result: badly duller/hazy</strong>')],
+        'Same solvent, same wipe, two different outcomes — because the oxide itself was never uniform across the coupon.'
+      );
+    setDiagram('diagE', diagEHTML);
+
+    // Not one of the six theories — a property of a too-thick coating, not the titanium
+    // finish itself. Same oxide throughout; the coating's own thickness/scattering is what
+    // mutes it, regardless of which of the six theories explains the original IPA dulling.
+    const diagThickCoatHTML = pairHTML(
+      { tag: 'Thin/no coating', tagColor: '#4caf50', topType: 'flat', oxideH: 20, oxideColor: COLOR.blue, residue: 'none', rays: 'specular', rayColor: COLOR.blue },
+      [capRow(COLOR.blue, 'Oxide: Blue, ~100nm (unchanged)'), capRow(COLOR.blue, '<strong style="color:#ccc">Result: vivid Blue</strong>')],
+      { tag: 'Thick coating', tagColor: '#f0a040', topType: 'flat', oxideH: 20, oxideColor: COLOR.blue, residue: 'film', residueColor: COLOR.thickCoat, filmH: 34, rays: 'diffuse', rayColor: COLOR.muted },
+      [capRow(COLOR.thickCoat, 'Coating: multi-micron — far thicker than the oxide it sits on'), capRow(COLOR.blue, 'Oxide: unchanged underneath'), capRow(COLOR.muted, '<strong style="color:#ccc">Result: muted, plastic-looking</strong>')],
+      'The oxide never changes here — the coating itself is thick enough to scatter and absorb light on its own, burying the interference colour underneath it regardless of which theory above explains the original dulling.'
+    );
+
+    function extraBoxHTML(cfg) {
+      return `
+        <div class="theory-card" style="margin-top:14px; border-left-color:#f0a040;">
+          <div class="theory-head"><span class="theory-letter" style="color:#f0a040;background:#1a1200;border-color:#f0a04044;">${cfg.badge}</span><span class="theory-name">${cfg.name}</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">${cfg.mechanism}</p>
+          <div class="theory-diagram">${cfg.diagram}</div>
+        </div>
+      `;
+    }
+
+    // Full theory reference data — same text as the static theory-grid cards above,
+    // reused here so the diagnostic guide can show the complete theory box, diagram included.
+    const THEORY_INFO = {
+      A: {
+        name: 'Residue as optical layer',
+        mechanism: 'IPA removes a thin transparent or semi-transparent residue that was adding optical thickness to the stack.',
+        predicts: 'A measurable hue shift — the reflection peak should move toward shorter wavelength if optical thickness decreases.',
+        test: 'Fixed-angle, fixed-white-balance before/after photography with a numeric hue comparison (not just by eye), plus a spectrometer reading if one’s available. A drop of a known liquid (mineral oil, Krytox) should shift the hue further if this is really an optical-thickness effect — not just restore gloss the way Theory B predicts.',
+        diagram: thickeningHTML
+      },
+      B: {
+        name: 'Residue as index-matching smoother',
+        mechanism: 'The residue fills microscopic surface valleys and raises specular reflection, making the colour look glossier and more saturated without changing the hue itself.',
+        predicts: 'After IPA, colour is duller with less mirror-like reflection, but hue changes little. A thin oil may temporarily restore brilliance.',
+        test: 'Compare dry wipe vs. IPA-drop-no-wipe vs. IPA-wipe; try a removable thin liquid on a test strip and watch for restored brilliance.',
+        diagram: smoothingHTML
+      },
+      C: {
+        name: 'Mechanical disturbance of fragile texture',
+        mechanism: 'Wiping — not the solvent — abrades, collapses, or rearranges a fragile laser-formed surface layer or nanostructure.',
+        predicts: 'Dry wiping alone causes dulling. More pressure causes more loss. Reapplying oil does not fully restore original brilliance.',
+        test: 'Dry optical-cloth test at matched pressure; microscope inspection before/after; gentle tape-lift contact tests on scrap.',
+        diagram: diagCHTML
+      },
+      D: {
+        name: 'Solvent penetration / redeposition',
+        mechanism: 'IPA enters pores, extracts soluble residues, then redeposits a dull film — or changes wetting behaviour in a persistent way — even with no wiping at all.',
+        predicts: 'An IPA drop left to evaporate without wiping leaves a ring, haze, or local dulling on its own.',
+        test: 'Drop-only evaporation test; compare high-purity IPA against lower-grade IPA; inspect residue/ring patterns under angled light.',
+        diagram: diagDHTML
+      },
+      E: {
+        name: 'Mixed-oxide / process sensitivity',
+        mechanism: 'Laser processing creates TiO₂ plus suboxides, or a graded oxide microstructure, whose response to solvent and handling varies by exactly how it was made.',
+        predicts: 'Effects vary strongly by laser settings, colour band, and surface preparation — not a single universal rule.',
+        test: 'Repeat every test above across a laser parameter grid; compare against conventionally anodized titanium as a control.',
+        diagram: diagEHTML
+      },
+      F: {
+        name: 'Contamination / oil-film addition',
+        mechanism: 'The mirror image of Theory A: instead of an existing residue being removed, something new — a fingerprint, a protective oil, a wax — gets deposited on the surface, adding its own optical thickness.',
+        predicts: 'A longer-wavelength shift (e.g. gold moving toward blue or purple) whenever the surface picks up an oil film — from bare-hand handling, a protective oil, or wax — independent of whether any solvent cleaning happened at all. This is not a residual-removal effect; it runs in the opposite direction from Theory A.',
+        test: 'Repeat the full test protocol with gloves and clean tools throughout, and separately touch an untouched control coupon with a bare finger — no IPA involved at all. If that alone reproduces a similar hue shift, some of the original result may be handling contamination rather than a solvent effect.',
+        diagram: diagFHTML
+      }
+    };
+
+    function theoryBoxHTML(letter) {
+      const t = THEORY_INFO[letter];
+      if (!t) return '';
+      return `
+        <div class="theory-card" style="margin-top:14px;">
+          <div class="theory-head"><span class="theory-letter">${letter}</span><span class="theory-name">${t.name}</span></div>
+          <p style="margin-bottom:0;color:#999;font-size:13px;">${t.mechanism}</p>
+          <div class="theory-row"><span class="k">Predicts</span>${t.predicts}</div>
+          <div class="theory-row"><span class="k">Distinguishing test</span><span class="test">${t.test}</span></div>
+          <div class="theory-diagram">${t.diagram}</div>
+        </div>
+      `;
+    }
+
+    const OUTCOMES = [
+      {
+        label: 'Duller with little hue shift after a dry wipe',
+        theory: 'Theory C',
+        letter: 'C',
+        explain: 'Mechanical disruption of a fragile texture or loosely attached layer — no chemistry required.',
+        action: 'Minimize contact. Explore no-wipe vapour- or dip-applied coatings only, tested on scrap first.'
+      },
+      {
+        label: 'Duller after an IPA drop, with no wiping at all',
+        theory: 'Theory D',
+        letter: 'D',
+        explain: 'Solvent extraction, pore effects, redeposition, or a persistent wetting change — the solvent alone is doing this.',
+        action: 'Avoid solvent-prep coatings entirely. Test only dry- or vapour-applied protective options.'
+      },
+      {
+        label: 'Hue shifts, but the reflection stays sharp',
+        theory: 'Theory A',
+        letter: 'A',
+        explain: 'Optical thickness changed — the residue or coating was genuinely part of the interference stack.',
+        action: 'Build a colour-calibration chart for whichever coating you choose, so the shift is predictable and repeatable.'
+      },
+      {
+        label: 'Krytox temporarily restores the original brilliance',
+        theory: 'Theory B',
+        letter: 'B',
+        explain: 'Index matching / smoothing was doing most of the work — the surface was rougher than it looked.',
+        action: 'Consider a removable PFPE maintenance layer, or keep searching for a thin, curable anti-fingerprint coating.'
+      },
+      {
+        label: 'A test liquid or oil shifts the hue instead of restoring gloss',
+        theory: 'Theory F',
+        letter: 'F',
+        explain: 'The liquid itself is adding optical thickness on top of the oxide, not just filling roughness — the opposite of what Theory B predicts for the same test.',
+        action: 'Measure the hue shift as a function of how much liquid is applied — if it scales with quantity, this confirms an added-layer effect rather than surface smoothing.'
+      },
+      {
+        label: 'Wax changes the hue dramatically',
+        theory: 'Theory F',
+        letter: 'F',
+        explain: 'A coating was added, not removed — the mirror image of Theory A. The wax film becomes part of the optical stack in its own right and pushes the hue toward a longer wavelength.',
+        action: 'Avoid wax on finished work — unless the final colour is deliberately calibrated with the wax already applied.'
+      },
+      {
+        label: 'Ceramic coating or varnish makes the colour look plastic / muted',
+        theory: 'Coating too thick',
+        letter: null,
+        explain: 'The coating is thick enough to be absorbing, scattering, or contributing its own dominant surface reflection — this isn’t really testing any of the six theories, it’s a property of the coating itself.',
+        action: 'Reserve thicker coatings for pieces where mechanical protection matters more than exact optical fidelity.',
+        extra: {
+          badge: '≠',
+          name: 'Not one of the six theories — a coating-choice problem',
+          mechanism: 'The oxide and its interference colour are unchanged underneath. A sufficiently thick coating mutes the colour on its own, by scattering and absorbing light, regardless of which theory above explains the original IPA dulling.',
+          diagram: diagThickCoatHTML
+        }
+      },
+      {
+        label: 'Effects are inconsistent across different colour bands on the same coupon',
+        theory: 'Theory E',
+        letter: 'E',
+        explain: 'The oxide itself may not be uniform — different colour bands can mean different thickness or microstructure, each responding differently.',
+        action: 'Repeat the full matrix per colour band before drawing any general conclusion, and compare against an anodized control.'
+      }
+    ];
+
+    const diagList = document.getElementById('diagList');
+
+    OUTCOMES.forEach((o, i) => {
+      const item = document.createElement('div');
+      item.className = 'diag-item';
+
+      const btn = document.createElement('button');
+      btn.className = 'diag-btn';
+      btn.innerHTML = `<span>${o.label}</span><span class="diag-chevron">▾</span>`;
+
+      const panel = document.createElement('div');
+      panel.className = 'diag-panel';
+      panel.innerHTML = `
+        <span class="theory-tag">${o.theory}</span>
+        <div class="explain">${o.explain}</div>
+        <div class="action"><strong>Next step:</strong> ${o.action}</div>
+        ${o.letter ? theoryBoxHTML(o.letter) : (o.extra ? extraBoxHTML(o.extra) : '')}
+      `;
+
+      btn.addEventListener('click', () => {
+        const wasOpen = btn.classList.contains('active');
+        document.querySelectorAll('.diag-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.diag-panel').forEach(p => p.classList.remove('open'));
+        if (!wasOpen) {
+          btn.classList.add('active');
+          panel.classList.add('open');
+        }
+      });
+
+      item.appendChild(btn);
+      item.appendChild(panel);
+      diagList.appendChild(item);
+    });
+  </script>
+</body>
+</html>
