@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Sales Tools — Market Evaluation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding: 60px 24px 100px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; margin-top: 0; }
+  p.subtitle { color: #888; font-size: 15px; max-width: 720px; line-height: 1.7; margin-bottom: 12px; }
+
+  /* tabs */
+  .tabbar { display: flex; flex-wrap: wrap; gap: 4px 4px; border-bottom: 1px solid #2a2a2a; margin-bottom: 32px; }
+  .tab-btn { background: transparent; border: none; color: #888; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; font-family: inherit; transition: color .15s, border-color .15s; }
+  .tab-btn:hover { color: #ccc; }
+  .tab-btn.active { color: #fff; border-bottom-color: #5b9bd5; }
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadein .15s ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+  h2 { font-size: 21px; font-weight: 700; margin: 40px 0 16px; }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 16px; font-weight: 700; margin: 28px 0 12px; color: #ddd; }
+  p { color: #999; font-size: 14px; line-height: 1.7; margin-bottom: 14px; max-width: 760px; }
+  strong { color: #ccc; }
+
+  /* tool header */
+  .tool-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tool-num { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #444; }
+  .tool-name { font-size: 22px; font-weight: 700; margin: 4px 0 6px; }
+  .tool-tagline { color: #888; font-size: 14px; max-width: 620px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; padding: 6px 12px; border-radius: 20px; white-space: nowrap; }
+  .badge.good { background: #132a1a; color: #4caf50; border: 1px solid #1f4a2a; }
+  .badge.warn { background: #2a2013; color: #f0a040; border: 1px solid #4a3a1a; }
+  .badge.planned { background: #16202b; color: #5b9bd5; border: 1px solid #234058; }
+  .badge.tbd { background: #1a1a1a; color: #888; border: 1px solid #333; }
+  .badge.launching { background: #2a1515; color: #e74c3c; border: 1px solid #4a2020; }
+  .badge-note { font-size: 12.5px; color: #777; margin: 10px 0 0; max-width: 700px; line-height: 1.6; }
+
+  /* metric cards */
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 20px 0 8px; }
+  .metric-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; padding: 20px 22px; }
+  .metric-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #666; margin-bottom: 8px; }
+  .metric-value { font-size: 24px; font-weight: 700; color: #5b9bd5; line-height: 1.3; }
+  .metric-basis { font-size: 12px; color: #777; margin-top: 8px; line-height: 1.6; }
+
+  /* est tooltip — content lives in .tip but is never rendered in place; a single
+     fixed-position "portal" element (#globalTip) is what actually shows on screen,
+     so no ancestor's overflow:hidden/auto (table-wrap, cards, modal) can clip it. */
+  .est, .term { position: relative; border-bottom: 1px dotted #5b9bd5; cursor: help; display: inline; }
+  .term { border-bottom-color: #777; }
+  .est .tip, .term .tip { display: none; }
+  #globalTip { position: fixed; max-width: 300px; background: #141414; border: 1px solid #333; padding: 12px 14px; border-radius: 10px; font-size: 12px; line-height: 1.6; color: #bbb; font-weight: 400; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .12s; }
+  #globalTip.show { pointer-events: auto; }
+  #globalTip.show { opacity: 1; }
+  #globalTip b { color: #5b9bd5; display: block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  #globalTip a { color: #8fc5ff; }
+  .bracket-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #f0a040; background: #2a2013; border: 1px solid #4a3a1a; padding: 2px 8px; border-radius: 10px; margin-right: 8px; vertical-align: middle; }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; margin: 14px 0 8px; border: 1px solid #2a2a2a; border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #666; background: #161616; padding: 10px 16px; border-bottom: 1px solid #2a2a2a; }
+  tbody td { padding: 12px 16px; border-bottom: 1px solid #222; color: #bbb; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #151515; }
+  tr.sub-row td:first-child { padding-left: 34px; }
+  tr.sub-row-2 td:first-child { padding-left: 58px; }
+  tr.sub-row-2 em { color: #888; }
+  #combinedTable td:first-child, #combinedTable th:first-child { width: 36px; text-align: center; }
+  #combinedTable input[type="checkbox"] { accent-color: #5b9bd5; width: 17px; height: 17px; cursor: pointer; }
+  tr.combined-primary-row td { padding: 18px 16px; font-size: 15px; font-weight: 600; color: #eee; }
+  tr.combined-primary-row td:nth-child(3), tr.combined-primary-row td:nth-child(4), tr.combined-primary-row td:nth-child(5) { font-weight: 700; color: #8fc5ff; font-variant-numeric: tabular-nums; }
+  tr.combined-tbd-row { display: none; }
+  tr.combined-tbd-row td { color: #888; }
+  tr.group-toggle-row td { padding: 10px 16px; border-bottom: 1px dashed #2a2a2a; }
+  .group-toggle { background: none; border: none; color: #5b9bd5; font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
+  .group-toggle:hover { color: #8fc5ff; }
+  tr.combined-total-row td { border-top: 2px solid #333; border-bottom: none; background: #161616; font-variant-numeric: tabular-nums; }
+  .tab-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-left: 5px; padding: 1px 5px; border-radius: 6px; vertical-align: middle; }
+  .tab-badge-planned { color: #5b9bd5; background: #16202b; border: 1px solid #234058; }
+  .tab-badge-tbd { color: #888; background: #1a1a1a; border: 1px solid #333; }
+  .tab-badge-live { color: #4caf50; background: #132a1a; border: 1px solid #1f4a2a; }
+  .tab-badge-launching { color: #e74c3c; background: #2a1515; border: 1px solid #4a2020; }
+  td.tier-enterprise { color: #5b9bd5; font-weight: 600; }
+  td.tier-mid { color: #f0a040; font-weight: 600; }
+  td.tier-niche { color: #888; font-weight: 600; }
+
+  /* callouts */
+  .callout { background: #12202f; border: 1px solid #1e3450; border-left: 3px solid #5b9bd5; border-radius: 10px; padding: 16px 20px; margin: 18px 0; font-size: 13.5px; line-height: 1.7; color: #bbb; max-width: 760px; }
+  .callout.warn { background: #2a2013; border-color: #4a3a1a; border-left-color: #f0a040; }
+  .callout.good { background: #132a1a; border-color: #1f4a2a; border-left-color: #4caf50; }
+  .callout.danger { background: #2a1515; border-color: #4a2020; border-left-color: #e74c3c; }
+  .callout p { color: #bbb; margin-bottom: 8px; max-width: none; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout-title { font-weight: 700; color: #fff; font-size: 13px; margin-bottom: 8px; display: block; }
+  .callout a { color: #8fc5ff; }
+
+  /* open questions */
+  .qlist { list-style: none; margin: 14px 0; max-width: 760px; }
+  .qlist li { position: relative; padding: 8px 0 8px 26px; font-size: 13.5px; color: #aaa; line-height: 1.6; border-bottom: 1px dashed #222; }
+  .qlist li:last-child { border-bottom: none; }
+  .qlist li::before { content: '?'; position: absolute; left: 0; top: 8px; width: 18px; height: 18px; border-radius: 50%; background: #2a2013; color: #f0a040; font-size: 11px; font-weight: 700; text-align: center; line-height: 18px; }
+  .qlist li.resolved::before { content: '✓'; background: #132a1a; color: #4caf50; }
+  .qlist li.resolved { color: #888; }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; gap: 8px; background: #1a1a1a; border: 1px solid #333; color: #ccc; font-size: 13.5px; font-weight: 600; padding: 11px 18px; border-radius: 10px; cursor: pointer; font-family: inherit; transition: background .15s, border-color .15s; }
+  .btn:hover { background: #222; border-color: #444; }
+  .btn.primary { background: #1e2d40; border-color: #5b9bd5; color: #8fc5ff; }
+  .btn.primary:hover { background: #24374d; }
+
+  /* modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 100; padding: 50px 20px; overflow-y: auto; align-items: flex-start; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: #141414; border: 1px solid #2a2a2a; border-radius: 18px; padding: 32px 32px 36px; max-width: 840px; width: 100%; }
+  .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .modal-close { background: #1a1a1a; border: 1px solid #333; color: #999; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; flex-shrink: 0; }
+  .modal-close:hover { background: #222; color: #fff; }
+
+  /* source links list */
+  .src-list { list-style: none; margin: 12px 0; max-width: 760px; }
+  .src-list li { font-size: 13px; color: #888; padding: 6px 0; }
+  .src-list a { color: #8fc5ff; }
+
+  .divider { height: 1px; background: #222; margin: 36px 0; max-width: 760px; }
+  .fine { font-size: 12px; color: #666; margin-top: 4px; }
+
+  .slider-panel { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; padding: 20px 24px; margin: 18px 0; display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
+  .slider-row { display: flex; align-items: center; gap: 16px; }
+  .slider-row label { font-size: 13px; font-weight: 600; color: #ccc; display: flex; align-items: center; gap: 6px; flex: 0 0 240px; }
+  .slider-row label #sBaseSalaryVal, .slider-row label #sProfitShareVal, .slider-row label #sEquityVal { color: #5b9bd5; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .slider-row input[type="range"] { flex: 1; accent-color: #5b9bd5; height: 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Community Sales Tools — Market Evaluation</h1>
+  <p class="subtitle">Working evaluation of the market opportunity for a suite of digital sales tools competing in the home-builder / master-planned-community space, starting from interactive site mapping and extending into adjacent modules. Every number marked <span class="est" tabindex="0">est.<span class="tip"><b>Why this is an estimate</b>Hover any "est." badge on this page — each one explains the specific assumption behind it.</span></span> is a modeled figure, not a measured one — hover it for the reasoning.</p>
+
+  <div class="tabbar" role="tablist">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="mapcorrection">Map Data Correction</button>
+    <button class="tab-btn" data-tab="imagery">Street View Imagery</button>
+    <button class="tab-btn" data-tab="renderstudio">Render Studio</button>
+    <button class="tab-btn" data-tab="ism">Interactive Site Map</button>
+    <button class="tab-btn" data-tab="interior">Interior Configurator</button>
+    <button class="tab-btn" data-tab="structural">Structural Options</button>
+    <button class="tab-btn" data-tab="deposit">Deposit / Hold Engine</button>
+    <button class="tab-btn" data-tab="listings">Listings / Marketplace</button>
+    <button class="tab-btn" data-tab="data">Market Data &amp; Research</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="panel active" id="panel-overview">
+    <h2>Current Business Snapshot: The Offering Company</h2>
+    <p>Context for everything below: this isn't a greenfield idea being sized from zero — there's an existing, self-funded, profitable business with real revenue and clients already. As-provided figures, not externally verifiable the way the Census/Zonda numbers are (no public filing to check an internal dashboard against) — presented as given, with only the internal math checked for consistency.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Capital invested (self-funded)</td><td>~$200,000</td></tr>
+          <tr><td>Institutional capital</td><td>$0 — 100% bootstrapped</td></tr>
+          <tr><td>Profitability</td><td>Profitable</td></tr>
+          <tr><td>All-time gross revenue</td><td>$983,443.28</td></tr>
+          <tr><td>Total historic orders</td><td>583</td></tr>
+          <tr><td>Average order value (<span class="term" tabindex="0">AOV<span class="tip"><b>Definition</b>Average Order Value — total revenue divided by number of orders. A quick per-transaction health metric, used below to sanity-check that all-time revenue reconciles with orders × AOV.</span></span>)</td><td>$1,589.53</td></tr>
+          <tr><td>Active clients</td><td>140 companies/builders</td></tr>
+          <tr><td>Outstanding accounts receivable (<span class="term" tabindex="0">A/R<span class="tip"><b>Definition</b>Accounts Receivable — revenue already billed/invoiced to a client but not yet collected in cash. High A/R means the business is owed money it hasn't been paid yet.</span></span>)</td><td>$56,745.00 (of which $30,614.00 overdue)</td></tr>
+          <tr><td>Draft / pending pipeline</td><td>$50,374.00</td></tr>
+          <tr><td>Estimated current ARR</td><td><span class="est" tabindex="0">~$500,000<span class="tip"><b>As provided</b>Stated as "implied by a 5x revenue multiple calculation" rather than measured directly from monthly/annual recurring billing — treat as a rough current-run-rate estimate, not a precise ARR figure.</span></span></td></tr>
+          <tr><td>Implied valuation (5× ARR)</td><td>$2,500,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout good">
+      <span class="callout-title">Internal consistency check — this one holds up</span>
+      <p>AOV × orders = $1,589.53 × 583 = <strong>$926,696</strong>. Actual all-time gross revenue is <strong>$983,443.28</strong> — a $56,747 gap that matches the stated outstanding A/R of <strong>$56,745.00</strong> to within $2. That's consistent with gross revenue being booked/invoiced (including what's still uncollected) while the AOV figure reflects collected orders — the numbers reconcile almost exactly rather than conflicting. 5× ARR also checks out exactly: $500,000 × 5 = $2,500,000.</p>
+    </div>
+    <div class="callout warn">
+      <span class="callout-title">Worth sanity-checking: the gap between today and the modeled SOM</span>
+      <p>The Combined SOM estimate below is $24M–$71M. Against today's ~$500,000 ARR, that's <span class="bracket-tag">Bracket</span><span class="est" tabindex="0">48× – 142×<span class="tip"><b>How this is built</b>$24M ÷ $500K = 48×. $71M ÷ $500K = 142×.</span></span> current revenue. Not disqualifying on its own — that's what a 3–5 year SOM capture across four tools is supposed to look like from an early base — but a 48–142x growth multiple is exactly the kind of number that should get pressure-tested against a real bottoms-up sales/hiring plan before it goes in front of anyone making a funding or resourcing decision.</p>
+    </div>
+
+    <h2>Combined Market Potential</h2>
+    <p>Every product/tool tab itemized below, each with its own checkbox. The total row at the bottom sums <strong>only the checked rows</strong> — by default, only the two confirmed-real product lines (Map Data Correction, Community Street View Imagery) are checked. Check any of the others to see how the total would change if that speculative or competitive-landscape item were included. TAM/SAM/SOM basis and sourcing for each row live on that row's own tab.</p>
+
+    <div class="table-wrap">
+      <table id="combinedTable">
+        <thead><tr><th></th><th>Product</th><th>TAM</th><th>SAM</th><th>SOM</th></tr></thead>
+        <tbody id="combinedTbody"></tbody>
+        <tfoot>
+          <tr class="combined-total-row">
+            <td></td>
+            <td><strong>Total (checked rows only)</strong></td>
+            <td id="totalTam"><strong>—</strong></td>
+            <td id="totalSam"><strong>—</strong></td>
+            <td id="totalSom"><strong>—</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="fine" id="combinedSkippedNote" style="max-width:none;"></p>
+
+    <div class="callout">
+      <span class="callout-title">Why three are checked by default</span>
+      <p>Live research this session on the startup's own website confirmed its actual current products are <strong>Map Data Correction</strong> and <strong>Community Street View Imagery</strong> (<span class="badge good" style="padding:2px 8px;font-size:9px;">🟢 Live</span>) — a Google/Apple Maps accuracy and Street View imagery business, not the interactive-lot-map-vs-Cecilian/ECI/Zonda business the "Interactive Site Map" tab was originally built around. That tab is confirmed as a <span class="badge planned" style="padding:2px 8px;font-size:9px;">Planned</span> roadmap item — not yet built, but committed — so it's checked too. The five modules grouped under "hypothetical / TBD" below are exploratory ideas only, not yet scoped or decided, and stay unchecked and collapsed by default — expand that group if you want to fold any of them into the total.</p>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-title">Two more rows — Listings/Marketplace and Market Data &amp; Research — are Zonda's business, not a proposal</span>
+      <p>Checked live this session: Zonda's own site confirms their business splits into "Marketplace Solutions" (Digital Software Solutions, plus a listings/search marketplace: NewHomeSource in the US, Livabl in Canada) and "Data Solutions" (Enterprise data platform, Research, Advisory). Both rows exist here for competitive-landscape completeness, not as product proposals — left unchecked by default for the same reason as the speculative modules above.</p>
+    </div>
+
+    <h2>Market Context: The Total Marketing Budget Pool (fact-checked)</h2>
+    <p>A supporting data point on affordability: what a builder already spends on marketing per home/community, independent of any tool we'd sell. Where a given input doesn't match live <a href="https://www.census.gov/construction/nrs/" target="_blank" rel="noopener">U.S. Census Bureau</a> new-residential data pulled this session, we add our own best verified number below it — then everything that flows down from the two is carried forward as a <strong>bracket</strong>, not a single point estimate.</p>
+
+    <h3>Step 1 — Inputs: As Given vs. Our Best (Verified)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Input</th><th>As given</th><th>Our best (verified)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>US single-family homes built/year</td>
+            <td>900,000</td>
+            <td><span class="est" tabindex="0">939,700<span class="tip"><b>Source</b>U.S. Census Bureau / HUD, Monthly New Residential Construction (2025 annual) — single-family housing starts, not seasonally adjusted. <a href="https://www.census.gov/construction/nrc/" target="_blank" rel="noopener">census.gov/construction/nrc</a></span></span></td>
+          </tr>
+          <tr>
+            <td>Marketing $/home (0.8% of avg. home price)</td>
+            <td>$5,633</td>
+            <td><span class="est" tabindex="0">$4,190<span class="tip"><b>Source</b>0.8% × U.S. Census Bureau / HUD's actual 2025 average new-home sale price ($523,800), from Monthly New Residential Sales. <a href="https://www.census.gov/construction/nrs/" target="_blank" rel="noopener">census.gov/construction/nrs</a></span></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Step 2 — Flow-down: Bracket Ranges</h3>
+    <p>Both totals below are run twice — once straight through with the "as given" pipeline, once with "our best" pipeline — and reported as a bracket. Low end always uses our-best inputs; high end always uses the as-given inputs.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Flow-down estimate</th><th>Using our best</th><th>Using as-given</th><th>Bracket</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Annual total marketing spend</td>
+            <td>$3.94B</td>
+            <td>$5.07B</td>
+            <td><span class="bracket-tag">Bracket</span><span class="est" tabindex="0">$3.94B – $5.07B<span class="tip"><b>How this bracket is built</b>Low = 939,700 homes × $4,190 (our-best pipeline). High = 900,000 homes × $5,633 (as-given pipeline). Treat anything outside this range as needing a new source, not just a rounding difference.</span></span></td>
+          </tr>
+          <tr>
+            <td>Per 100-home community</td>
+            <td>$419,000</td>
+            <td>$563,300</td>
+            <td><span class="bracket-tag">Bracket</span><span class="est" tabindex="0">$419,000 – $563,300<span class="tip"><b>How this bracket is built</b>Low = our-best $4,190/home × 100. High = as-given $5,633/home × 100. Homes-per-year cancels out of this one — it's driven entirely by the $/home bracket above.</span></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-title">Net verdict</span>
+      <p>The <em>arithmetic</em> is sound throughout — every downstream number follows correctly from its starting inputs. What's unverified is the 0.8%-of-home-price rate and the home-price figure it implies (~$704k, well above <a href="https://www.census.gov/construction/nrs/" target="_blank" rel="noopener">Census's</a> actual $523,800 average). Until a real source is pinned down, treat <strong>$419k – $563k/community</strong> as the working bracket rather than the single stated figure.</p>
+    </div>
+
+    <h3>Step 3 — Narrowing to the Serviceable Digital Budget</h3>
+    <p>A tool like ours doesn't compete with the whole marketing budget — billboards, physical site signage, model-home staging and print collateral aren't substitutable by software. Excluding that non-digital share (~50–60% of the total, per the same framing) leaves a serviceable digital/tech budget.</p>
+    <div class="callout warn">
+      <span class="callout-title">The 50–60% offline-share figure is itself unsourced</span>
+      <p>Same category of problem as the 0.8% marketing rate above: no citation was given for "traditional media/physical collateral is 50–60% of total marketing spend." Applied here anyway, for completeness, but compounding one unverified assumption on top of another (already-partially-unverified) one — treat this bracket as more speculative than the totals in Step 2.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Input</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Total marketing budget/community (from Step 2)</td><td><span class="bracket-tag">Bracket</span> $419,000 – $563,300</td></tr>
+          <tr><td>Non-digital share excluded (unsourced)</td><td>~50% – 60%</td></tr>
+          <tr>
+            <td>Serviceable digital/tech budget/community</td>
+            <td><span class="bracket-tag">Bracket</span><span class="est" tabindex="0">$167,600 – $281,650<span class="tip"><b>How this bracket is built</b>Low = our-best $419,000 × 40% (digital share, i.e. excluding 60% offline). High = as-given $563,300 × 50% (excluding 50% offline). Note: applying the 40–50%-digital-share range to only the higher $563,300 figure (as a first pass often does) gives a narrower $225,300–$281,650 — this wider version applies the same share range to <em>both</em> ends of the Step 2 bracket, consistent with how every other bracket on this page is built.</span></span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-title">Why this matters for our pricing</span>
+      <p>Against the <strong>total</strong> marketing budget, the core product's target ask — $4,000/community/year (see Site Map tab) — lands at <span class="bracket-tag">Bracket</span><span class="est" tabindex="0">0.71% – 0.95%<span class="tip"><b>How this bracket is built</b>$4,000 ÷ $563,300 (as-given, high end of budget) = 0.71%. $4,000 ÷ $419,000 (our-best, low end of budget) = 0.95%.</span></span>. Against the narrower, more relevant <strong>digital-only</strong> budget, it's <span class="bracket-tag">Bracket</span><span class="est" tabindex="0">1.4% – 2.4%<span class="tip"><b>How this bracket is built</b>$4,000 ÷ $281,650 (high end of digital budget) = 1.42%. $4,000 ÷ $167,600 (low end of digital budget) = 2.39%.</span></span> — still a modest slice of the line item it actually competes with, even after two layers of unsourced assumptions are stacked in.</p>
+    </div>
+
+    <h2>CTO Compensation</h2>
+    <p>Benchmark ranges by funding stage, plus a detailed 3-year model for an unfunded, profitable, SF-Bay-Area scenario.</p>
+    <button class="btn primary" id="openCtoModal">💼 Show CTO Compensation Options</button>
+
+    <h2>Open Questions — Page-Level</h2>
+    <ul class="qlist">
+      <li class="resolved"><s>Where does the 40,000-active-subdivision figure and the 18–36 month average community lifespan come from?</s> — resolved: no public source states "40,000" directly. <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda's</a> real, publicly tracked count of actively-selling communities is ~17,530 (Apr 2026) — under half of "40,000." The 18–36 month figure reconciles from <a href="https://edgar.secdatabase.com/1588/79526626000017/filing-main.htm" target="_blank" rel="noopener">KB Home's 10-K</a> lot counts and Zonda's sales pace, but isn't a single published rule either. Full math and links in the Site Map tab's "TAM Input Check."</li>
+      <li class="resolved"><s>The core tool's SOM range (1,250–3,000 communities) doesn't match "10–15% of 15,000" exactly</s> — resolved: 1,250–3,000 communities × $4,000/yr reproduces the $5M–$12M ARR figure exactly, so the community count is the reliable number. The "10–15%" label was a rounded description that should really read ~8.3%–20% (see Site Map tab).</li>
+      <li>None of the three adjacent modules have an identified competitor. Is that because none exist, or because this round of research didn't look? Worth a dedicated pass before trusting their numbers.</li>
+      <li>Where did the 0.8%-of-home-price marketing benchmark come from? (see fact-check above)</li>
+      <li>Is $4,000/community/year meant to be the price for the base Site Map product alone, or a blended average across builder tiers?</li>
+    </ul>
+
+    <h2>Evidence &amp; Sources</h2>
+    <ul class="src-list">
+      <li>✅ Verified live this session — <a href="https://www.census.gov/construction/nrs/" target="_blank" rel="noopener">U.S. Census Bureau, New Residential Sales</a> (median/average new-home sale price, sales rate)</li>
+      <li>✅ Verified live this session — <a href="https://www.census.gov/construction/nrc/" target="_blank" rel="noopener">U.S. Census Bureau, New Residential Construction</a> (permits, starts, completions)</li>
+      <li>✅ Verified live this session — <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda, New Home Market Update for April 2026</a> — confirmed "17,530 actively selling communities" and "720,924" annualized new-home sales, quoted exactly.</li>
+      <li>✅ Verified live this session — <a href="https://eyeonhousing.org/2026/07/2025-new-single-family-starts-by-census-division/" target="_blank" rel="noopener">NAHB Eye on Housing, 2025 New Single-Family Starts by Census Division</a> — confirmed "939,182 new single-family units started construction nationwide" in 2025.</li>
+      <li>⚠️ Cited but not independently verifiable — <a href="https://edgar.secdatabase.com/1588/79526626000017/filing-main.htm" target="_blank" rel="noopener">KB Home 2025 10-K (claimed: 50–125 lots/product line, 3.7 net orders/month/community)</a>. This host's TLS certificate doesn't match its domain, so its content couldn't be fetched and checked this session — treat the KB Home figures as unconfirmed until read directly from a source that resolves cleanly (e.g. sec.gov's own EDGAR filing pages).</li>
+      <li>📄 Company names, pricing tiers, SAM/SOM figures for the Site Map tool, and the CTO compensation benchmarks — sourced from the original market research provided. <strong>Not independently re-verified via live web search this session</strong> (search budget was exhausted before this page was built) — treat as unverified pending a follow-up verification pass.</li>
+      <li>🧮 Interior Configurator / Structural Options / Deposit Engine figures — constructed by this page from an original "$10k–$15k blended adjacent ARR" claim; no external source.</li>
+    </ul>
+  </div>
+
+  <!-- TOOL PANELS (generated by JS) -->
+  <div class="panel" id="panel-mapcorrection"></div>
+  <div class="panel" id="panel-imagery"></div>
+  <div class="panel" id="panel-renderstudio"></div>
+  <div class="panel" id="panel-ism"></div>
+  <div class="panel" id="panel-interior"></div>
+  <div class="panel" id="panel-structural"></div>
+  <div class="panel" id="panel-deposit"></div>
+  <div class="panel" id="panel-listings"></div>
+  <div class="panel" id="panel-data"></div>
+
+</div>
+
+<div id="globalTip" role="tooltip"></div>
+
+<!-- CTO COMPENSATION MODAL -->
+<div class="modal-overlay" id="ctoModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h2 style="margin-top:0;">CTO Compensation Options</h2>
+        <p class="fine" style="max-width:600px;">Benchmark ranges from the original compensation research provided. Three named sources for the key assumptions were checked live this session — see "Sourcing Check" below for what actually held up.</p>
+      </div>
+      <button class="modal-close" id="closeCtoModal">✕</button>
+    </div>
+
+    <h3>General Stage Benchmarks</h3>
+    <p style="max-width:none;">Original compensation ranges, checked live this session against the one comp database that actually returned checkable data (<a href="https://theartofcto.com/widgets/cto-comp" target="_blank" rel="noopener">The Art of CTO's comp engine</a>, aggregating Levels.fyi / Pave / Kruze Consulting / Carta). It only breaks out non-founder CTO figures starting at Series A, so the earlier stages remain unverified — flagged per row rather than silently left as if equally solid.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Company Stage</th><th>Base Salary</th><th>Equity Stake</th><th>Verification</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Co-Founder (Pre-Seed)</td><td>$0 – $80,000</td><td>10.0% – 35.0%+</td>
+            <td><span class="est" tabindex="0">⚠ Unverified<span class="tip"><b>Checked live this session</b>No public source was found for pre-seed co-founder cash/equity ranges specifically — this row reflects only the originally-provided figure.</span></span></td>
+          </tr>
+          <tr>
+            <td>Unfunded &amp; Profitable</td><td>$100,000 – $160,000</td><td>1.5% – 5.0% (non-founder)</td>
+            <td><span class="est" tabindex="0">⚠ Unverified<span class="tip"><b>Checked live this session</b>Tried <a href="https://www.indexventures.com/optionplan/" target="_blank" rel="noopener">Index Ventures' OptionPlan</a> and the <a href="https://www.holloway.com/g/equity-compensation" target="_blank" rel="noopener">Holloway Guide to Equity Compensation</a> — both real, well-known resources, but neither exposes stage-specific figures for this scenario in fetchable page content (OptionPlan's benchmark data sits behind an interactive tool). No public source confirmed this row.</span></span></td>
+          </tr>
+          <tr>
+            <td>Seed ($1M – $5M raised)</td><td>$120,000 – $180,000</td><td>1.0% – 4.0%</td>
+            <td><span class="est" tabindex="0">⚠ Unverified<span class="tip"><b>Checked live this session</b><a href="https://theartofcto.com/widgets/cto-comp" target="_blank" rel="noopener">The Art of CTO's comp engine</a> starts its stage buckets at Series A — no Seed-specific figures were available to check this row against.</span></span></td>
+          </tr>
+          <tr>
+            <td>Series A ($5M – $20M raised)</td><td>$180,000 – $280,000</td><td>0.5% – 2.0%</td>
+            <td><span class="est" tabindex="0">◐ Partially verified<span class="tip"><b>Checked live this session</b>Equity confirmed at <strong>1–2%</strong> by <a href="https://theartofcto.com/widgets/cto-comp" target="_blank" rel="noopener">The Art of CTO's comp engine</a> (sourced from Levels.fyi/Pave/Kruze/Carta) — narrower than, but consistent with, the originally-stated 0.5–2.0%. Base salary wasn't independently verified for this specific bucket; the source's base-salary breakout starts at Series B–C.</span></span></td>
+          </tr>
+          <tr>
+            <td>Series B / Growth ($20M+)</td><td>$250,000 – $350,000</td><td>0.25% – 1.0%</td>
+            <td><span class="est" tabindex="0">✓ Largely verified<span class="tip"><b>Checked live this session</b><a href="https://theartofcto.com/widgets/cto-comp" target="_blank" rel="noopener">The Art of CTO's comp engine</a> (Series B–C bucket): base <strong>$260K–$310K</strong> (p25–p75), total comp $400K–$575K/yr, equity <strong>0.5–1%</strong> — closely matches this row. Series D+ narrows further to 0.2–0.5% equity, not broken out as its own row here.</span></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Modeled Offer: Unfunded, Profitable, SF Bay Area</h3>
+    <p style="max-width:none;">Assumptions: a cash base salary; a share of net company EBITDA as a profit-share pool; <strong>20%</strong> EBITDA margin assumed on ARR (fixed — no sourced range found for this one); equity, 4-year vest / <span class="term" tabindex="0">1-year cliff<span class="tip"><b>Definition</b>No equity vests at all for the first year — then a full year's worth vests at once on the 1-year anniversary, with the remainder vesting monthly/quarterly after that. Standard protection against paying out equity to someone who leaves after a few months.</span></span> / <span class="term" tabindex="0">double-trigger acceleration<span class="tip"><b>Definition</b>Unvested equity only accelerates (vests immediately) if <em>two</em> things both happen: the company is acquired, <em>and</em> the person is let go (or their role is changed for the worse) within some window after. Protects against being fired right before an acquisition closes to avoid paying out equity, without just giving everyone a free payday on any sale.</span></span>. Company ARR trajectory ($2.5M → $5M → $10M) is also fixed — no alternate scenario was provided. Hover any slider's label for what its range is based on — drag to see the table update live.</p>
+
+    <div class="slider-panel">
+      <div class="slider-row">
+        <label for="sBaseSalary"><span class="est" tabindex="0">Base salary<span class="tip"><b>Range: $160,000–$260,000, $10,000 steps</b>Spans from the originally-stated "Unfunded &amp; Profitable" base ($100K–$160K) up toward its "Series A" base ($180K–$280K). The verified Series B–C comparable ($260K–$310K <span class="term" tabindex="0">p25–p75<span class="tip"><b>Definition</b>25th–75th percentile — the middle half of observed salaries in the dataset, excluding the lowest and highest quarters. A common way comp surveys report a "typical range" without letting outliers skew it.</span></span>, General Stage Benchmarks above) sits just above this slider's ceiling — this model is deliberately more conservative than that comparable.</span></span> <span id="sBaseSalaryVal">$200,000</span></label>
+        <input type="range" id="sBaseSalary" min="160000" max="260000" step="10000" value="200000">
+      </div>
+      <div class="slider-row">
+        <label for="sProfitShare"><span class="est" tabindex="0">EBITDA profit-share<span class="tip"><b>Range: 0%–20%, 2% steps</b>10%–20% was the originally-stated "Unfunded &amp; Profitable" bonus range — this slider extends down to 0% so you can see the no-profit-share baseline too. Defaulted to 14% here, toward the top of that originally-stated range.</span></span> <span id="sProfitShareVal">14%</span></label>
+        <input type="range" id="sProfitShare" min="0" max="20" step="2" value="14">
+      </div>
+      <div class="slider-row">
+        <label for="sEquity"><span class="est" tabindex="0">Equity stake<span class="tip"><b>Range: 2%–15%, 0.5% steps</b>Wider than the originally-stated 1.5%–5.0% "Unfunded &amp; Profitable" equity range, extended here to explore higher scenarios. Defaulted to 15% (the slider's ceiling) — well above even the "Unfunded &amp; Profitable" row's 5.0% high end, and far above the verified Series A non-founder norm of 1–2% equity (General Stage Benchmarks above). Treat this default as an aggressive/upper-bound scenario, not a recommendation.</span></span> <span id="sEquityVal">15.0%</span></label>
+        <input type="range" id="sEquity" min="2" max="15" step="0.5" value="15">
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Metric</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead>
+        <tbody>
+          <tr><td>Company <span class="term" tabindex="0">ARR<span class="tip"><b>Definition</b>Annual Recurring Revenue — a SaaS company's subscription revenue, annualized. Standard yardstick for valuing and comparing recurring-revenue businesses (vs. one-time sales).</span></span></td><td>$2,500,000</td><td>$5,000,000</td><td>$10,000,000</td></tr>
+          <tr><td>Company <span class="term" tabindex="0">EBITDA<span class="tip"><b>Definition</b>Earnings Before Interest, Taxes, Depreciation, and Amortization — a proxy for operating profit/cash flow, stripped of financing and accounting choices. Common basis for valuing and profit-sharing on a private, profitable company.</span></span> (20%)</td><td>$500,000</td><td>$1,000,000</td><td>$2,000,000</td></tr>
+          <tr><td>Base salary</td><td id="baseSalaryY1">$200,000</td><td id="baseSalaryY2">$200,000</td><td id="baseSalaryY3">$200,000</td></tr>
+          <tr class="sub-row">
+            <td><em>Company cash cost <span class="est" tabindex="0">(loaded)<span class="tip"><b>Estimate, not independently sourced this session</b>Base salary × 1.3 — a commonly-cited rule-of-thumb "burden rate" for a small US employer's fully-loaded cost of a salaried hire, covering employer payroll taxes (FICA ~7.65%, CA SUI/ETT), workers' comp, and baseline benefits (health insurance, any 401k match). Real burden rates commonly range ~1.25×–1.4× depending on the actual benefits package and state — treat 1.3× as a midpoint planning estimate, not a quote from payroll/insurance providers.</span></span></em></td>
+            <td><em id="loadedCostY1">$260,000<br><span class="fine">≈$21,667/mo</span></em></td>
+            <td><em id="loadedCostY2">$260,000<br><span class="fine">≈$21,667/mo</span></em></td>
+            <td><em id="loadedCostY3">$260,000<br><span class="fine">≈$21,667/mo</span></em></td>
+          </tr>
+          <tr><td><span class="est" tabindex="0">EBITDA share<span class="tip"><b>How this is computed</b>Year's EBITDA × the profit-share slider %. E.g. at the 10% default: Year 1 = $500,000 × 10% = $50,000. This is the CTO's cash cut of that year's profit — separate from, and on top of, the base salary above.</span></span> <span id="profitShareLabel">(10%)</span></td><td id="ebitdaShareY1">$50,000</td><td id="ebitdaShareY2">$100,000</td><td id="ebitdaShareY3">$200,000</td></tr>
+          <tr><td><strong>Total annual cash</strong></td><td><strong id="totalCashY1">$250,000</strong></td><td><strong id="totalCashY2">$300,000</strong></td><td><strong id="totalCashY3">$400,000</strong></td></tr>
+          <tr><td>Company valuation <span class="est" tabindex="0">— 8× EBITDA<span class="tip"><b>Basis</b>EBITDA × 8. This is the multiple the "Equity value" row below is built on — a profit-multiple convention, typical for a stable, profitable, moderate-growth private company.</span></span></td><td>$4,000,000</td><td>$8,000,000</td><td>$16,000,000</td></tr>
+          <tr class="sub-row"><td><em>Equity value, <span id="equityLabel1">3%</span></em></td><td><em id="paperEbitdaY1">$120,000</em></td><td><em id="paperEbitdaY2">$240,000</em></td><td><em id="paperEbitdaY3">$480,000</em></td></tr>
+          <tr class="sub-row-2"><td><em><span class="est" tabindex="0">Vested value<span class="tip"><b>How this is computed</b>Equity value × the fraction actually vested by that year-end, per the 4-year vest / 1-year cliff schedule above: Year 1 = 25% vested, Year 2 = 50%, Year 3 = 75% (Year 4, not shown, would reach 100%). Nothing at all vests before the 1-year cliff — these year-end marks are exactly when the cliff and straight-line vesting coincide.</span></span></em></td><td><em id="vestedEbitdaY1">$30,000</em></td><td><em id="vestedEbitdaY2">$120,000</em></td><td><em id="vestedEbitdaY3">$360,000</em></td></tr>
+          <tr><td>Company valuation <span class="est" tabindex="0">— 5× ARR<span class="tip"><b>Basis</b>ARR × 5 — the same revenue-multiple method used for today's "Implied valuation (5× ARR) = $2,500,000" on the Overview tab's Current Business Snapshot. Shown for consistency with that figure, not because it's more "correct" than 8× EBITDA — see the note below on why these diverge.</span></span></td><td>$12,500,000</td><td>$25,000,000</td><td>$50,000,000</td></tr>
+          <tr class="sub-row"><td><em>Equity value, <span id="equityLabel2">3%</span></em></td><td><em id="paperArrY1">$375,000</em></td><td><em id="paperArrY2">$750,000</em></td><td><em id="paperArrY3">$1,500,000</em></td></tr>
+          <tr class="sub-row-2"><td><em><span class="est" tabindex="0">Vested value<span class="tip"><b>How this is computed</b>Same vesting fraction as above (25% / 50% / 75% at Year 1/2/3), applied to the 5× ARR equity value instead.</span></span></em></td><td><em id="vestedArrY1">$93,750</em></td><td><em id="vestedArrY2">$375,000</em></td><td><em id="vestedArrY3">$1,125,000</em></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-title">Two valuation methods, one 3.125× gap — pick one and be consistent</span>
+      <p>At a fixed 20% EBITDA margin, 5× ARR is mathematically always <strong>5 ÷ (8 × 0.20) = 3.125×</strong> higher than 8× EBITDA — not a coincidence, just what the two multiples imply at this margin. This page uses 8× EBITDA here (a profit multiple, more typical for a steady, moderate-growth profitable business) but 5× ARR elsewhere for today's valuation (a revenue multiple, more typical for a growth-oriented SaaS business being valued on trajectory rather than current profit). Both are defensible conventions individually, but using whichever one is more flattering in each context — instead of applying the same method throughout — isn't. Worth deciding which basis actually fits this company's growth profile and using it consistently across both the Current Business Snapshot and this model.</p>
+    </div>
+
+    <div class="callout">
+      <span class="callout-title">Structural recommendations</span>
+      <p><strong>Normalized EBITDA:</strong> contractually base profit distributions on normalized EBITDA, to protect against unbudgeted founder expense adjustments.</p>
+      <p><strong>ARR step-ups:</strong> automatic base-salary increases (e.g. +$20,000 per $1M in ARR milestone reached).</p>
+    </div>
+
+    <h3>Additional Terms: Protecting the CTO's Downside</h3>
+    <p style="max-width:none;">This offer asks the CTO to take a discounted cash base and illiquid equity in a company with no VC-style exit path or oversight (no board, no other investors watching the founder's conduct). The terms below are standard practice for de-risking exactly that position — not independently sourced to a specific legal reference, and <strong>not legal advice</strong>. A real employment/equity attorney should draft and review the actual agreement.</p>
+
+    <div class="callout good">
+      <span class="callout-title">Compensation &amp; EBITDA integrity</span>
+      <p><strong>Written normalization methodology:</strong> the "Normalized EBITDA" adjustments above should be defined in writing at signing (what add-backs are and aren't allowed), not left to the founder's discretion after the fact.</p>
+      <p><strong>Audit right:</strong> the CTO can request an independent CPA review of the EBITDA calculation (at company expense) if the profit-share payout is disputed, with a defined resolution process if the audit finds a material discrepancy.</p>
+      <p><strong>Base salary floor:</strong> base cash cannot be unilaterally reduced once set; a below-market entry salary is a one-time negotiated term, not something re-negotiable downward at the founder's option.</p>
+      <p><strong>Payment cadence:</strong> profit-share paid on a defined schedule (e.g. quarterly) rather than at the founder's discretion, with interest accruing on late payments past a grace period.</p>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-title">Equity protection</span>
+      <p><strong>Anti-dilution floor:</strong> the CTO's equity percentage can't be diluted below an agreed floor by new issuances without their consent, outside of a normal future financing round.</p>
+      <p><strong>Buyback / put right:</strong> since this company has no planned VC-style exit, the CTO should have the right (not obligation) to require the company to repurchase vested shares at independently-appraised fair market value starting at a fixed point (e.g. year 5) — otherwise "illiquid equity" can mean equity that's <em>never</em> actually worth anything to them.</p>
+      <p><strong>Full acceleration on change of control:</strong> 100% acceleration (not just double-trigger) if the company is sold — a sale is the one scenario where the founder's incentive to delay vesting and the CTO's interests diverge most sharply.</p>
+      <p><strong>Right of first refusal protection:</strong> any company <span class="term" tabindex="0">ROFR<span class="tip"><b>Definition</b>Right of First Refusal — a clause giving the company the option to buy back the CTO's shares (e.g. before they're sold to a third party) at a set price or method. Protective for the CTO only if that price is pegged to fair market value; if the founder can set the price unilaterally, it's a way to squeeze the CTO out cheaply.</span></span> on the CTO's shares should be at fair market value, not a discretionary formula the founder controls.</p>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-title">Termination &amp; job security</span>
+      <p><strong>Severance minimum:</strong> a defined severance (e.g. 6 months of base + prorated profit-share) if terminated without cause, so the discounted cash base isn't a bet with zero downside protection.</p>
+      <p><strong>Narrow "cause" definition:</strong> "cause" should be tightly and specifically defined in the contract (e.g. fraud, gross negligence) — not a vague catch-all a founder could invoke to avoid severance or accelerate a buyback at a bad price.</p>
+      <p><strong>Narrow clawback scope:</strong> any clawback of already-paid profit-share or vested equity should be limited to fraud or willful misconduct, never "for any reason" or performance-based after the fact.</p>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-title">Information rights &amp; scope protection</span>
+      <p><strong>Financial transparency:</strong> the right to see full company financials at least quarterly — hard to trust an EBITDA-linked profit share without visibility into the underlying numbers.</p>
+      <p><strong>Title &amp; authority protection:</strong> can't be silently stripped of the CTO title, technical decision authority, or direct reports without cause and without triggering the severance terms above.</p>
+      <p><strong>Narrow IP assignment:</strong> IP assignment limited to work product related to company business, with an explicit carve-out for pre-existing IP and unrelated side projects.</p>
+      <p><strong>D&amp;O insurance / indemnification:</strong> standard but easy to skip in a bootstrapped company — the CTO should be covered by Directors &amp; Officers insurance and indemnified for actions taken in the role.</p>
+    </div>
+
+    <h3>Sourcing Check: Claimed vs. Verified</h3>
+    <p style="max-width:none;">Three named sources were proposed for the "$300k SF market rate" and "3% equity" assumptions above. Checked live this session — the results didn't all hold up:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Source</th><th>Claimed</th><th>What's actually there</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><a href="https://carta.com/learn/startups/compensation/benchmarking/" target="_blank" rel="noopener">Carta, Startup Salary Benchmarking Guide</a></td>
+            <td>50th–75th pct. CTO/VP Eng base: $280K–$340K (Tier 1 metros)</td>
+            <td><span class="est" tabindex="0">⚠ Unverifiable<span class="tip"><b>Checked live this session</b>The page returned an HTTP 403 (blocked). Couldn't confirm or refute the $280K–$340K figure — treat as unsourced until it can actually be read.</span></span></td>
+          </tr>
+          <tr>
+            <td><a href="https://theartofcto.com/widgets/cto-comp" target="_blank" rel="noopener">The Art of CTO, Comp Engine (Levels.fyi / Pave / Kruze / Carta aggregate)</a></td>
+            <td>Series B+ CTO cash base: $300K–$350K</td>
+            <td><span class="est" tabindex="0">≈ Close, not exact<span class="tip"><b>Checked live this session</b>The page's real figures: Series B–C non-founder CTO base <strong>$260K–$310K (p25–p75)</strong>, total comp $400K–$575K/yr. Non-founder equity by stage: Series A 1–2%, Series B–C 0.5–1%, Series D+ 0.2–0.5%. The $300K figure used above sits just above this range's midpoint — reasonable, not exact.</span></span></td>
+          </tr>
+          <tr>
+            <td><a href="https://www.rivierapartners.com/insights/2025-executive-compensation-report-reveals-key-trends-in-tech-leadership-pay/" target="_blank" rel="noopener">Riviera Partners, 2025–2026 Executive Compensation Insights</a></td>
+            <td>Series B+ CTO cash base: $300K–$350K</td>
+            <td><span class="est" tabindex="0">✗ Not there<span class="tip"><b>Checked live this session</b>This page doesn't state a CTO base salary range at all. Its only CTO-specific figure is "average equity package for CTOs at PE-backed companies has risen to as much as $6M" — a different metric (PE-backed equity grants, not VC-stage cash base). The $300K–$350K claim isn't supported by this source.</span></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-title">Net verdict</span>
+      <p>Of the three sources proposed, only one (The Art of CTO's comp engine) actually contains checkable data, and its real numbers ($260K–$310K p25–p75 for Series B–C) run a bit below the "$300K SF full-market rate" used in the model above — close enough to keep using $300K as a reasonable midpoint, but it's not a precise citation. Carta couldn't be checked (blocked), and the Riviera figure attributed to this question doesn't actually appear on that page — don't cite it for this claim.</p>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-title">Is 15% equity skewed toward founder-level? — resolved, using the one verified source</span>
+      <p>The Art of CTO's real, sourced numbers show non-founder CTO equity declining by stage: <strong>1–2% at Series A</strong>, <strong>0.5–1% at Series B–C</strong>, <strong>0.2–0.5% at Series D+</strong>. The slider above now defaults to <strong>15%</strong> — 7.5–15× even the highest of those figures (Series A, 1–2%), and squarely into the range this page's own "General Stage Benchmarks" table lists for a true <em>co-founder</em> (10–35%+), not a non-founder executive hire. That's a materially different framing than the earlier 3% default: at 15%, this reads less like "a discounted-cash-base trade-off" and more like founder-level equity — worth being explicit about which one this offer is actually meant to be, since the structural protections elsewhere on this page (buyback rights, full acceleration, etc.) were written for a non-founder hire, not a co-founder-equivalent stake.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- Tool data ----------
+  const TOOLS = [
+    {
+      id: 'mapcorrection',
+      number: 'Core Product',
+      currentlyExists: true,
+      status: { type: 'real', label: 'Live' },
+      name: 'Map Data Correction (Portfolio Core)',
+      tagline: 'Fixes missing roads and broken GPS/navigation routing so new communities actually appear correctly on Google and Apple Maps — the "invisible inventory" problem, where new communities otherwise don\'t show up correctly for 9–12 months.',
+      confidence: { level: 'good', label: 'Verified Live — Real Product', note: 'Checked live this session directly on the startup\'s own website — a real, currently-sold product with published pricing, not a hypothesis. This tab and "Community Imagery Capture" are the two confirmed real product lines; every other tab on this page is either outside research about a competitive category or a speculative expansion idea — see the Overview for the full explanation.' },
+      tam: { value: '$2.1M – $4.8M/yr (subscription framing)', low: 2.08e6, high: 4.75e6, basis: 'Recurring framing: the ~17,530–40,000 active-community range established on the Interactive Site Map tab × the verified $9.90/community/mo subscription rate ($118.80/yr). A one-time framing exists too (see pricing below) and is much larger ($8.7M–$20.0M) since it isn\'t annualized — the recurring number is used here and in the combined total for an apples-to-apples comparison with the other tabs.' },
+      sam: { value: '$1.8M/yr (subscription framing)', low: 1.78e6, high: 1.78e6, basis: '~15,000 Top-200-builder communities (same SAM tier used throughout this page) × the $9.90/mo subscription rate.' },
+      som: { value: '~$100K – $150K (est. share of real revenue)', low: 100e3, high: 150e3, basis: 'Unlike every other tab, this is a real current product — SOM here isn\'t a projection, it\'s an estimated slice of the actual reported traction from the Overview tab\'s Current Business Snapshot (~$500K ARR / $983K all-time). The startup doesn\'t publicly break out revenue by product line, so this specific split (smaller share here, larger share on the Imagery tab) is estimated from the lower per-community price point ($9.90/mo or $499 one-time vs. $1,299–$2,499) — not a disclosed figure. Summing this with the Imagery tab\'s SOM should land back near the real ~$500K total, not double it.' },
+      marketShareNote: 'The startup\'s own site claims serving "10 of the top 20 U.S. home builders" and "400+ communities made visible" — real, stated traction, not independently verified against a builder-side source this session.',
+      competitors: [
+        { name: '(No named competitor found)', tier: 'niche', tierLabel: 'Unclear / Possible Blue Ocean', note: 'The startup\'s own site doesn\'t name competitors, and none were identified this session for this specific niche (fixing map/GPS data for new construction). Could mean genuinely limited direct competition, or just that this wasn\'t researched thoroughly enough — see open questions.' },
+      ],
+      pricingOneTime: [
+        { item: 'Map Modification Service (one-time)', range: '$499 / community — verified live on the startup\'s website' },
+      ],
+      pricingRecurring: [
+        { item: 'Portfolio Core (annual subscription, 12-month contract)', range: '$9.90 / community / mo — verified live on the startup\'s website' },
+      ],
+      openQuestions: [
+        'No named competitor was found for this specific niche — is that because it\'s genuinely underserved, or because this session\'s research wasn\'t thorough enough? Worth a dedicated competitor search.',
+        'The $9.90/mo subscription and $499 one-time fee price the same underlying problem two ways — what share of current customers pick each, and does that change this sizing?',
+        'TAM here ($2M–$5M recurring) is dramatically smaller than every other tab on this page — is that because the real addressable market for this exact service is genuinely small, or because a cheap per-community subscription undervalues a problem the homepage itself frames as costing builders "$75,000+ margin lost on a single missed sale"?',
+      ],
+      extraSection: `
+        <div class="callout good">
+          <span class="callout-title">This is the one tab built on live-verified, real pricing</span>
+          <p>Every number in the pricing table below was read directly off the startup's own website this session, not estimated or carried over from outside research. That's a meaningfully higher confidence level than the "Interactive Site Map" tab, which is sourced to outside research about a competitive category, not to this company's own live pricing — see the Overview for why both exist on this page.</p>
+        </div>
+      `,
+    },
+    {
+      id: 'imagery',
+      number: 'Core Product',
+      currentlyExists: true,
+      status: { type: 'real', label: 'Live' },
+      name: 'Community Street View Imagery (Standard / Plus)',
+      tagline: 'Professional 360° imagery capture of show-ready communities and model homes, published directly to Google Street View — lets buyers see real community progress before visiting.',
+      confidence: { level: 'good', label: 'Verified Live — Real Product', note: 'Checked live this session directly on the startup\'s own website — real, currently-sold product with published pricing.' },
+      tam: { value: '$11.7M – $23.5M/yr', low: 11.69e6, high: 23.48e6, basis: 'Unlike a recurring SaaS tool, this is a one-time per-community project fee — so it\'s sized by the FLOW of new communities launching per year (~9,000–9,400, from the stock-vs-flow reconciliation on the Interactive Site Map tab), not the stock of all active communities. Low = 9,000 communities × $1,299 (Community Standard, portfolio rate). High = 9,397 × $2,499 (Community Plus, standard rate).' },
+      sam: { value: '$4.4M – $8.8M/yr', low: 4.38e6, high: 8.81e6, basis: 'Same ~37.5% Top-200-builder share of the flow used as the SAM ratio elsewhere on this page (~3,375–3,525 new communities/yr) × the Standard–Plus price range.' },
+      som: { value: '~$350K – $400K (est. share of real revenue)', low: 350e3, high: 400e3, basis: 'Same real ~$500K ARR / $983K all-time total as the Map Data Correction tab, split by estimate rather than disclosed figure — the higher-ticket imagery service ($1,299–$2,499/community) plausibly accounts for most of the revenue, consistent with the ~$1,590 average order value reported in the Current Business Snapshot. Check both boxes together and the total should land back near the real ~$500K figure, not double it — that\'s the point of splitting it this way instead of listing the full amount twice.' },
+      marketShareNote: 'No independent market-share data exists for this specific niche (new-construction Street View imagery).',
+      competitors: [
+        { name: 'Matterport', tier: 'enterprise', tierLabel: 'Enterprise / Adjacent', note: 'Confirmed live this session as a real company offering "virtual tours that enhance real estate listings" — but not confirmed as builder/new-construction-specific, and no pricing was found this session. General real-estate 3D/imagery capture, likely overlapping rather than a direct new-construction-Street-View competitor.' },
+      ],
+      pricingOneTime: [
+        { item: 'Community Standard (single capture)', range: '$1,299 (portfolio rate) – $1,749 (standard rate) / community — verified live on the startup\'s website' },
+        { item: 'Community Plus (two-capture, up to 12 months apart)', range: '$1,999 (portfolio rate) – $2,499 (standard rate) / community — verified live on the startup\'s website' },
+      ],
+      pricingRecurring: [],
+      openQuestions: [
+        'Matterport is the only competitor identified, and it\'s not confirmed to be new-construction-specific — is there a more direct competitor in this exact niche that wasn\'t found this session?',
+        'The startup\'s own site frames "$75,000+" margin lost on a single missed sale from invisible inventory — that could support materially higher pricing than $1,299–$2,499/community. Worth understanding why current pricing sits well below that stated value.',
+        'The flow-based TAM assumes every new community needs this once — do multi-phase developments buy this again per phase, which would push the real addressable flow higher than the raw "new communities/year" count?',
+      ],
+    },
+    {
+      id: 'renderstudio',
+      number: 'Core Product',
+      status: { type: 'launching', label: 'Launching' },
+      name: 'Render Studio',
+      tagline: 'Just completed — launching imminently, site and campaign in prep. Likely photorealistic 3D rendering/visualization, complementing the existing photography-based Community Standard/Plus imagery business, but exact scope and pricing aren\'t documented yet.',
+      confidence: { level: 'warn', label: 'Pending Details', note: 'Completed this evening per direct notice — not yet published on the startup\'s website (checked live this session: no mention of "Render Studio" or any rendering product found, only Community Standard/Plus, Map Modifications, and Portfolio Core/Program). Competitors below are reused from research already done elsewhere on this page (mixed verification — see each entry), but Render Studio\'s own pricing, exact scope, and launch date are still unknown. Positioned ahead of Interactive Site Map as requested; needs those specifics filled in once available.' },
+      tam: { value: 'TBD — pending product details', basis: 'Can\'t size this without knowing the pricing unit (per-rendering, per-community package, or subscription), the price point, and how much the target customer overlaps with the existing community universe used elsewhere on this page.' },
+      sam: { value: 'TBD — pending product details', basis: 'Same blocker as TAM.' },
+      som: { value: 'TBD — pending product details', basis: 'Same blocker as TAM — no pricing or launch-date data yet to estimate even a near-term capture number.' },
+      marketShareNote: 'Not yet launched publicly, so no market position to assess yet — but architectural rendering for new-home builders is not a greenfield category; see competitors below, reused from research already done elsewhere on this page.',
+      competitors: [
+        { name: 'Anewgo', tier: 'mid', tierLabel: 'Mid-market / Self-Service', note: 'Confirmed live this session (see Interactive Site Map tab) — sells "3D Renderings, Virtual Tours & Floor Plans" to home builders as part of a broader marketing-tech suite, not renderings alone. Direct overlap with whatever Render Studio ends up scoped as.' },
+        { name: 'Outhouse', tier: 'mid', tierLabel: 'Mid-market', note: 'Architectural visualization + floor-plan rendering bundles for home builders, per the original market research (see Interactive Site Map tab). Tried to verify their site directly this session — two guessed domains (outhouse.co, outhouse.us) both failed (unregistered/parked) — so this entry is still brief-sourced, not independently re-confirmed.' },
+      ],
+      pricingOneTime: [],
+      pricingRecurring: [],
+      openQuestions: [
+        'What exactly does Render Studio produce — exterior renderings, interior renderings, floor-plan visualizations, or some combination?',
+        'What\'s the pricing model and price point — per-rendering, per-community package, or subscription?',
+        'Sold standalone, or bundled with Community Standard/Plus and Map Data Correction?',
+        'Same target buyer as the existing products (builders already on the imagery/map-correction services), or a new customer segment?',
+        'Anewgo and Outhouse both bundle renderings into broader marketing-tech suites rather than selling renderings as a standalone product — is there a dedicated, rendering-only competitor Render Studio would go head-to-head with, or is the real competitive set these bundled players?',
+        'What\'s Render Studio\'s actual differentiation against Anewgo/Outhouse — turnaround time, price, quality, or integration with the existing Map Data Correction / Street View Imagery customer base?',
+      ],
+    },
+    {
+      id: 'ism',
+      number: 'Tool 1',
+      status: { type: 'planned', label: 'Planned' },
+      name: 'Interactive Site Map (Community Mapping)',
+      tagline: '2D/3D interactive lot maps for builder websites and sales-center kiosks — a planned expansion beyond the current Map Data Correction / Street View Imagery business, not yet built.',
+      confidence: { level: 'good', label: 'Sourced', note: 'Competitor names and pricing tiers come from the original market research provided. Not independently re-verified via live web search this session (search budget was exhausted) — treat company-level facts as originally-provided, not primary-verified. Note: this is a different product category than the company\'s current "Map Data Correction" / "Community Street View Imagery" business (see those tabs) — planned, confirmed on the roadmap, but not yet built.' },
+      tam: { value: '$70M – $175M', low: 70e6, high: 175e6, bracket: true, note: 'Corrected: Zonda\'s real active-community count runs under half of "40,000" — see "TAM Input Check" below.', basis: 'As given: 40,000 active US subdivisions × $4,000/yr ≈ $160M midpoint (no public source found for "40,000"). Our best: <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda</a> publicly tracks ≈17,530 actively-selling communities (Apr 2026) × $4,000/yr ≈ $70M. Bracket = $70M (best, current Zonda count) to $175M (as-given, high end of the originally-stated range).' },
+      sam: { value: '$50M – $75M', low: 50e6, high: 75e6, basis: '~15,000 active communities from Top-200 US builders & regional developers × $4,000/yr ≈ $60M ARR midpoint.' },
+      som: { value: '$5M – $12M', low: 5e6, high: 12e6, note: 'Corrected: ≈1,250–3,000 communities, ~8.3%–20% of SAM (not "10–15%" as originally stated — see method below).', basis: 'Reverse-solved from the stated $5M–$12M ARR using the originally-stated $4,000/community/yr rate: 1,250 × $4,000 = $5.00M and 3,000 × $4,000 = $12.00M — both match to the dollar. That confirms 1,250–3,000 communities is the real input, and its true share of the 15,000-community SAM is 1,250/15,000=8.3% to 3,000/15,000=20% — not the "10–15%" originally stated, which was a rounded description that was never recalculated against its own numbers.' },
+      marketShareNote: 'None of these vendors publicly disclose revenue or install-base counts — the "Tier" column is a qualitative read of company size and category positioning from the original research, not a measured market-share percentage. Getting real numbers would need primary research (vendor interviews, G2/Capterra install-base proxies, or a builder survey).',
+      competitors: [
+        { name: 'Cecilian Partners (Xplorer)', tier: 'enterprise', tierLabel: 'Enterprise / Leader', note: 'High-end 3D mapping + deep 2-way ERP integration; positioned at the top of both the one-time and recurring pricing bands.' },
+        { name: 'ECI Software Solutions (LotVue)', tier: 'enterprise', tierLabel: 'Enterprise / Leader', note: 'Bundled into ECI\'s broader homebuilder ERP suite; enterprise-tier recurring pricing.' },
+        { name: 'Zonda Home', tier: 'enterprise', tierLabel: 'Enterprise / Media-led', note: 'Confirmed real product: the <a href="https://www.zondahome.com/digital-solutions/" target="_blank" rel="noopener">"Interactive Site Map Bundle"</a> on Zonda\'s own digital-solutions page — but checked live this session, and like the rest of that page it discloses zero pricing; every path is "Book a Demo." No public per-community or per-home rate exists to cite, so this can\'t be used as a second data point for a bracket against the originally-stated $4,000/yr figure.' },
+        { name: 'Outhouse', tier: 'mid', tierLabel: 'Mid-market', note: 'Architectural visualization + floor-plan rendering bundles; mid one-time-fee band.' },
+        { name: 'Blue Tangerine', tier: 'mid', tierLabel: 'Mid-market / Turnkey', note: 'Turnkey web maps + sales-office kiosks; mid recurring band.' },
+        { name: 'ePlatMaps', tier: 'niche', tierLabel: 'Niche / Value', note: 'Lower one-time setup cost, positioned toward the entry-level SaaS band.' },
+        { name: 'CPS (SiteViewer)', tier: 'niche', tierLabel: 'Niche / Value', note: 'Similar turnkey positioning to ePlatMaps; entry-to-mid SaaS band.' },
+        { name: 'Anewgo', tier: 'mid', tierLabel: 'Mid-market / Self-Service', note: 'Confirmed real company (checked live: <a href="https://anewgo.com/" target="_blank" rel="noopener">anewgo.com</a>) selling "New Home Marketing Technology — 3D Renderings, Virtual Tours & Floor Plans." Reportedly runs a public self-service pricing calculator implying the entry end of the setup/SaaS bands below — but that calculator\'s actual figures couldn\'t be pulled this session (the fetched pages returned no pricing content, likely JS-rendered) — treat the calculator\'s existence as unconfirmed, not the company itself.' },
+      ],
+      pricingOneTime: [
+        { item: '2D Vector / CAD Conversion', range: '$250 – $1,000 / map phase' },
+        { item: '2D Illustrative / Custom Renderings', range: '$1,000 – $3,000 / map phase' },
+        { item: '3D Photorealistic / Drone Overlays', range: '$3,000 – $7,500+ / map phase' },
+      ],
+      pricingRecurring: [
+        { item: 'Entry-level SaaS', range: '$50 – $150 / month / active community' },
+        { item: 'Mid-market / Enterprise SaaS', range: '$200 – $500+ / month / active community' },
+      ],
+      openQuestions: [
+        'Are the competitor pricing bands from public rate cards, sales-call quotes, or estimates? None are cited to a specific source in the original research.',
+        { resolved: true, text: '<s>Real average community lifespan — 18 months or 36 months swings the annualized $4,000/yr figure a lot.</s> — partially resolved: 18–36 months reconciles from <a href="https://edgar.secdatabase.com/1588/79526626000017/filing-main.htm" target="_blank" rel="noopener">KB Home\'s 10-K</a> lot counts and <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda\'s</a> sales pace (see "TAM Input Check" below), but that\'s a market-wide average, not a number pinned to our specific target segment (Top-200 builders) — still worth its own estimate.' },
+        'If <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda\'s</a> real active-community count (~17,530) is this close to the stated SAM (~15,000 Top-200-builder communities), does the TAM→SAM funnel even make sense as originally structured — or is the addressable market basically flat from TAM to SAM, with everything below the Top-200 builders being a much smaller long tail than originally assumed?',
+        { resolved: true, text: '<s>Do any of these vendors offer a free/freemium tier that could undercut our entry pricing?</s> — No, per direct knowledge of this vendor space. Not independently confirmed via a public source this session (freemium-tier absence is hard to prove from the outside — it\'s a "checked, found nothing published" gap, not a verified negative).' },
+      ],
+      extraSection: `
+        <h3>TAM Input Check: How Many "Active Communities" Really Exist?</h3>
+        <p style="max-width:760px;">Resolves the open question about where "40,000 active US subdivisions" comes from.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Input</th><th>As given</th><th>Our best (verified)</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Active communities nationally</td>
+                <td>40,000</td>
+                <td><span class="est" tabindex="0">≈17,530<span class="tip"><b>Source</b>Zonda's publicly reported count of actively-selling communities (a "community" = 5+ units for sale): 15,300 (Dec 2024) → 16,025 (Apr 2025) → 17,530 (Apr 2026). <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda, Apr 2026 market update</a></span></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <span class="callout-title">Net verdict — TAM was likely overstated</span>
+          <p>No public source states "40,000 active subdivisions" directly. The closest reconstruction: ~939,182 single-family starts in 2025 (<a href="https://eyeonhousing.org/2026/07/2025-new-single-family-starts-by-census-division/" target="_blank" rel="noopener">NAHB/Census, 2025</a>) ÷ an assumed 20–25 homes built per community per year ≈ 36,000–47,000 — but that's a broad count of <em>all subdivision-level construction activity</em>, not communities actively marketing homes for sale. Zonda's real, publicly tracked figure for actively-selling communities is <strong>~17,000–18,000</strong> as of 2026 — under half of "40,000."</p>
+          <p>At the originally-stated $4,000/community/yr rate, that swings TAM from $160M (as-given midpoint) down to <strong>≈$70M</strong> using <a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda's</a> latest count — now reflected as the bracket's low end in the TAM card above and in the Overview's combined total.</p>
+        </div>
+        <div class="callout">
+          <span class="callout-title">Bonus: where "18–36 months" likely comes from</span>
+          <p>Not a single published rule either, but it reconciles cleanly: KB Home's 2025 10-K reportedly states communities typically run <strong>50–125 lots per product line</strong>, against a 2025 net order pace of <strong>3.7 sales/month/community</strong> (<a href="https://edgar.secdatabase.com/1588/79526626000017/filing-main.htm" target="_blank" rel="noopener">KB Home 2025 10-K</a> — this host's certificate didn't verify when checked this session, so treat that specific figure as cited-but-unconfirmed until read from a source that resolves cleanly). Zonda's April 2026 update independently confirms <strong>720,924</strong> annualized new-home sales across <strong>17,530</strong> actively-selling communities — about <strong>3.4 sales/month/community</strong> (<a href="https://www.sbcacomponents.com/media/zonda-provides-new-home-market-update-for-april-2026" target="_blank" rel="noopener">Zonda, Apr 2026</a>, verified). 50–125 lots ÷ 3.4–3.7 sales/month ≈ 14–36 months of active selling; add launch and wind-down time and "18–36 months" is a reasonable shorthand — just not a number either source states outright.</p>
+        </div>
+
+        <h3>A Second, Independent Check: Stock vs. Flow</h3>
+        <p style="max-width:760px;">A simpler calc — 900,000 homes/yr ÷ 100 homes/community = <strong>9,000</strong> — looks like it contradicts both "40,000" and Zonda's 17,530. It doesn't; it's answering a different question.</p>
+        <div class="callout good">
+          <span class="callout-title">9,000 is a flow. 17,530 is a stock. They're not directly comparable until you fix that.</span>
+          <p>9,000/yr is <em>how many new communities get started per year</em> (a flow rate). Zonda's 17,530 is <em>how many are actively selling at one snapshot in time</em> (a stock level). Because each community stays active for 18–36 months (see above), several years' worth of "vintages" are all selling simultaneously — so the stock is the flow multiplied by the average lifespan in years, not the flow itself:</p>
+          <p><strong>Active communities (stock) ≈ 9,000/yr × lifespan in years</strong> → at 18 months (1.5 yrs): 13,500 · at 24 months (2 yrs): 18,000 · at 36 months (3 yrs): 27,000.</p>
+          <p>The 24-month midpoint (18,000) lands within 2.7% of Zonda's real, verified 17,530 — two independent methods (Zonda's direct count, and this stock-corrected back-of-envelope calc) now converge on the same ~17,000–18,000 range. That's a meaningfully stronger basis for the corrected TAM than Zonda's number alone, and a much better explanation for why "40,000" doesn't hold up: it's roughly double even the high end (27,000 at a 36-month lifespan) of what the stock-corrected math supports.</p>
+        </div>
+      `,
+    },
+    {
+      id: 'interior',
+      number: 'Tool 2',
+      status: { type: 'tbd', label: 'TBD' },
+      name: '3D Interior Finish Configurator',
+      tagline: 'Let buyers preview cabinets, flooring, countertops, and fixture packages in real time — an adjacent expansion module, not part of the core competitor research.',
+      confidence: { level: 'warn', label: 'Unverified / Speculative', note: 'No named competitor was identified for this category this session (WebSearch budget was exhausted before this page was built). All figures below are constructed from a single blended "$10k–$15k adjacent ARR" claim from the original research, split by assumption across three modules — treat as order-of-magnitude only.' },
+      tam: { value: '$45M – $75M', low: 45e6, high: 75e6, basis: 'Full penetration of the ~15,000-community SAM-tier universe (same tier as the core tool) at an assumed $3,000–$5,000/yr price point.' },
+      sam: { value: '$31M – $53M', low: 31e6, high: 53e6, basis: 'Same universe, discounted ~70% to communities that plausibly already have the digital sales infrastructure (i.e. the core Site Map product) needed to bolt this on.' },
+      som: { value: '$9M – $26M', low: 9e6, high: 26e6, basis: 'Assumes 20%–35% attach rate among that SAM tier (3,000–5,250 communities) × the $3,000–$5,000/yr price.' },
+      marketShareNote: 'No competitor list exists for this module yet — see open questions.',
+      competitors: [],
+      pricingOneTime: [],
+      pricingRecurring: [],
+      openQuestions: [
+        'No named competitor was identified for 3D interior/finish configurators aimed at home builders specifically — is this genuinely underserved, or was this simply not researched?',
+        'Is $3,000–$5,000/yr/community remotely realistic without a single real price point to anchor it? Needs a pricing-page or sales-call source.',
+        'Would this be sold standalone, or does it only make sense bundled with the core Site Map product (i.e. does it have its own market, or is it purely an upsell)?',
+        'What real-time rendering tech would this require, and does that materially change the cost structure vs. the core 2D/3D map product?',
+      ],
+    },
+    {
+      id: 'structural',
+      number: 'Tool 3',
+      status: { type: 'tbd', label: 'TBD' },
+      name: 'Structural Options Configurator',
+      tagline: 'Let buyers select structural add-ons — extra bays, bump-outs, floor plan flips — priced live against the base plan. Adjacent expansion module.',
+      confidence: { level: 'warn', label: 'Unverified / Speculative', note: 'Same caveat as the Interior Configurator tab: no competitor found this session, figures constructed from the original blended adjacent-ARR claim.' },
+      tam: { value: '$30M – $53M', low: 30e6, high: 53e6, basis: 'Full penetration of the ~15,000-community SAM-tier universe at an assumed $2,000–$3,500/yr price point.' },
+      sam: { value: '$21M – $37M', low: 21e6, high: 37e6, basis: 'Same ~70% "already digitally adopted" discount applied as the Interior Configurator tab.' },
+      som: { value: '$6M – $18M', low: 6e6, high: 18e6, basis: '20%–35% attach rate (3,000–5,250 communities) × the $2,000–$3,500/yr price.' },
+      marketShareNote: 'No competitor list exists for this module yet — see open questions.',
+      competitors: [],
+      pricingOneTime: [],
+      pricingRecurring: [],
+      openQuestions: [
+        'Structural options are typically tied tightly to a builder\'s ERP/estimating system (pricing has to reflect real cost deltas) — is this even sellable as a standalone tool, or does it require an ERP integration partnership from day one?',
+        'No competitor identified — is this because incumbents like Cecilian/ECI already bundle a version of this into their existing ERP suites?',
+        'Priced lower than the Interior Configurator on the assumption it\'s "simpler" — is that assumption right, given the real-cost-accuracy requirement above?',
+      ],
+    },
+    {
+      id: 'deposit',
+      number: 'Tool 4',
+      status: { type: 'tbd', label: 'TBD' },
+      name: 'Online Deposit / Hold Engine',
+      tagline: 'Let a buyer place a reservation deposit and hold a lot online, syncing with the builder\'s CRM/ERP. Adjacent expansion module.',
+      confidence: { level: 'warn', label: 'Unverified / Speculative', note: 'Same caveat as the other adjacent tabs. This module\'s TAM uses the full 40,000-community universe (not just the 15,000-community SAM tier) since transactional deposit tooling is plausibly a lower lift for smaller builders than a full 3D configurator — that widened universe is itself an assumption, flagged below.' },
+      tam: { value: '$40M – $100M', low: 40e6, high: 100e6, basis: 'Full penetration of the entire 40,000-community TAM universe at an assumed $1,000–$2,500/yr price point — wider universe than the other two adjacent modules because this one plausibly appeals to smaller builders too.' },
+      sam: { value: '$15M – $38M', low: 15e6, high: 38e6, basis: 'Restricted back down to the ~15,000-community "realistic software buyer" tier at the same price point.' },
+      som: { value: '$4M – $15M', low: 4e6, high: 15e6, basis: '25%–40% attach rate (3,750–6,000 communities) — assumed higher than the other two modules since a deposit/reservation flow is simpler to adopt than a full 3D configurator.' },
+      marketShareNote: 'No competitor list exists for this module yet — see open questions.',
+      competitors: [],
+      pricingOneTime: [],
+      pricingRecurring: [],
+      openQuestions: [
+        'This is the one adjacent module most likely to run into existing competition from general real-estate CRM/reservation tools (not builder-specific) — was that space checked at all?',
+        'Deposit handling touches real money and (likely) trust-account regulations that vary by state — has anyone scoped the compliance lift here? That could dominate the cost structure far more than the market-size numbers above suggest.',
+        'Is the wider 40,000-community TAM assumption (vs. the 15,000-community tier used for the other two modules) actually justified, or just convenient?',
+      ],
+    },
+    {
+      id: 'listings',
+      number: 'Tool 5',
+      status: { type: 'tbd', label: 'TBD' },
+      name: 'New-Home Listings / Marketplace',
+      tagline: 'A consumer-facing search portal where buyers discover builders and communities — top-of-funnel, before any of the other four tools come into play.',
+      confidence: { level: 'warn', label: 'Different Business Model', note: 'Included because it\'s a real, confirmed core business line of Zonda\'s — their "Marketplace Solutions" pillar runs NewHomeSource (US) and Livabl (Canada), confirmed live on zondahome.com this session — not because it fits the same mold as the other four tools. See the feasibility flag below before treating the numbers here like the others.' },
+      tam: { value: '$15M – $45M', low: 15e6, high: 45e6, basis: 'Illustrative only: the 15,000-community SAM-tier universe × an assumed $1,000–$3,000/yr per-community listing/placement fee (no rate card found for this session — fully unverified). This framing almost certainly understates how a real marketplace monetizes (buyer traffic, lead-gen fees, financial-services referrals, advertising), which is exactly the point of the feasibility flag below.' },
+      sam: { value: '$8M – $23M', low: 8e6, high: 23e6, basis: '~50% of the TAM tier — builders willing to pay for placement beyond what they already get organically on these portals.' },
+      som: { value: '$1M – $5M', low: 1e6, high: 5e6, basis: 'A new entrant capturing 10–20% of the SAM tier — before accounting for the traffic/SEO investment a marketplace needs before builders would pay for placement at all.' },
+      marketShareNote: 'Existing players compete primarily on consumer traffic and SEO dominance, built over years — not something a market-share percentage captures well.',
+      competitors: [
+        { name: 'Zonda (NewHomeSource / Livabl)', tier: 'enterprise', tierLabel: 'Enterprise / Incumbent', note: 'Confirmed live this session on <a href="https://www.zondahome.com/" target="_blank" rel="noopener">zondahome.com</a>: "Listings through NewHomeSource (U.S.) and Livabl (Canada)" — Zonda\'s own consumer-facing new-home search marketplace.' },
+        { name: 'Zillow (New Construction)', tier: 'enterprise', tierLabel: 'Enterprise / Traffic Giant', note: 'General knowledge, not independently re-verified this session — Zillow runs a dedicated new-construction search section leveraging its dominant general real-estate traffic.' },
+        { name: 'Realtor.com (New Construction)', tier: 'enterprise', tierLabel: 'Enterprise / Traffic Giant', note: 'General knowledge, not independently re-verified this session — same traffic-driven positioning as Zillow.' },
+      ],
+      pricingOneTime: [],
+      pricingRecurring: [
+        { item: 'Featured / premium builder listing placement (illustrative, unverified)', range: '$1,000 – $3,000/yr per community — no rate card found; a constructed placeholder, not an observed price.' },
+      ],
+      openQuestions: [
+        'Do we have any real buyer-acquisition or existing audience advantage, or would competing here require a multi-year, high-burn SEO/marketing investment before builders would pay for placement at all?',
+        'Should this even be scored the same way as the other four tools, given it\'s a marketplace/media business (two-sided, traffic-dependent) rather than a per-community B2B SaaS add-on?',
+        'No real placement/listing pricing for NewHomeSource, Zillow, or Realtor.com was found this session — does anyone have an actual rate card or account-team quote?',
+      ],
+      extraSection: `
+        <div class="callout danger">
+          <span class="callout-title">Feasibility flag: this is a different kind of business than the other four</span>
+          <p>Tools 1–4 are single-community B2B SaaS sold directly to a builder you can already identify and reach — low distribution cost, no cold-start problem. A listings marketplace is a two-sided, network-effects business: it's only valuable to a builder if it already has significant <em>buyer</em> traffic, and that traffic is exactly what Zillow, Realtor.com, and Zonda's own NewHomeSource have spent years and large budgets building via SEO and brand. A new entrant faces a genuine chicken-and-egg problem that simply doesn't exist for the other four tools.</p>
+          <p>Recommendation: treat this tab as "know your competitor's full footprint," not as a credible near-term product candidate, unless there's a specific buyer-acquisition wedge that changes this calculus.</p>
+        </div>
+      `,
+    },
+    {
+      id: 'data',
+      number: 'Tool 6',
+      status: { type: 'tbd', label: 'TBD' },
+      name: 'Market Data &amp; Research Subscriptions',
+      tagline: 'Aggregated new-home sales, pricing, and community-level market intelligence sold to builders, land developers, investors, and lenders — Zonda\'s other core pillar, alongside their marketplace business.',
+      confidence: { level: 'warn', label: 'Different Business Model — Not Sized', note: 'Included because it\'s Zonda\'s other confirmed core business line ("Data Solutions": Enterprise data platform, Research, Advisory — confirmed live on zondahome.com this session), not because it fits the per-community SaaS mold used elsewhere on this page. Notably, this is the exact category of product this evaluation itself relied on for fact-checking this session — the Zonda community-count and sales-pace figures cited throughout came from precisely this kind of market-research content.' },
+      tam: { value: 'Not sized', basis: 'This product is priced per company / enterprise seat (builders, land developers, multifamily developers, building-product manufacturers, investors, banks, mortgage lenders), not per community — none of the community-count math used for Tools 1–5 transfers here. Sizing this properly would need a separate exercise built on client-company counts and enterprise contract values, which weren\'t available this session.' },
+      sam: { value: 'Not sized', basis: 'Same structural mismatch as TAM — no defensible per-community basis exists for this business.' },
+      som: { value: 'Not sized', basis: 'Same structural mismatch as TAM — no defensible per-community basis exists for this business.' },
+      marketShareNote: 'Zonda appears to be the incumbent in this specific homebuilding-data-and-research niche; exact market share isn\'t publicly disclosed.',
+      competitors: [
+        { name: 'Zonda (Enterprise / Research / Advisory)', tier: 'enterprise', tierLabel: 'Enterprise / Incumbent', note: 'Confirmed live this session on <a href="https://www.zondahome.com/" target="_blank" rel="noopener">zondahome.com</a> — appears to be the dominant player specifically in homebuilding market data and research.' },
+        { name: 'John Burns Research and Consulting (JBREC)', tier: 'enterprise', tierLabel: 'Enterprise', note: 'General knowledge, not independently re-verified this session — a well-known major competitor in housing market research and consulting.' },
+        { name: 'CoreLogic', tier: 'enterprise', tierLabel: 'Enterprise / Adjacent', note: 'General knowledge, not independently re-verified this session — broader real-estate/property data, overlapping with but not specific to homebuilding.' },
+      ],
+      pricingOneTime: [],
+      pricingRecurring: [],
+      openQuestions: [
+        'This is priced per company/enterprise seat, not per community — would need a completely separate sizing exercise (client-company counts, typical enterprise contract value) to evaluate seriously.',
+        'Given Zonda\'s apparent incumbency here — and that this very page relied on their data — is this a credible wedge at all, or a moat that would take years and real capital to contest?',
+      ],
+      extraSection: `
+        <div class="callout danger">
+          <span class="callout-title">Feasibility flag: not sized on purpose</span>
+          <p>Every other tab on this page forces a TAM/SAM/SOM number, even a heavily caveated one. This one doesn't get that treatment because the per-community pricing framework used everywhere else genuinely doesn't apply — an enterprise data/research subscription business is sized by client-company count and contract value, not community count. Forcing a number here would manufacture false precision rather than fill a real gap.</p>
+        </div>
+      `,
+    },
+  ];
+
+  const TIER_CLASS = { enterprise: 'tier-enterprise', mid: 'tier-mid', niche: 'tier-niche' };
+
+  function estSpan(label, tipTitle, tipBody) {
+    return `<span class="est" tabindex="0">${label}<span class="tip"><b>${tipTitle}</b>${tipBody}</span></span>`;
+  }
+
+  function termSpan(label, defText) {
+    return `<span class="term" tabindex="0">${label}<span class="tip"><b>Definition</b>${defText}</span></span>`;
+  }
+
+  function renderTool(t) {
+    const badgeClass = t.confidence.level === 'good' ? 'good' : 'warn';
+    const badgeIcon = t.confidence.level === 'good' ? '✓' : '⚠';
+
+    let html = `
+      <div class="tool-head">
+        <div>
+          <div class="tool-num">${t.number}</div>
+          <div class="tool-name">${t.name}</div>
+          <div class="tool-tagline">${t.tagline}</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-shrink:0;">
+          <span class="badge ${t.status.type === 'real' ? 'good' : t.status.type}">${t.status.type === 'real' ? '🟢' : t.status.type === 'planned' ? '🗺' : t.status.type === 'launching' ? '🚀' : '?'} ${t.status.label}</span>
+          <span class="badge ${badgeClass}">${badgeIcon} ${t.confidence.label}</span>
+        </div>
+      </div>
+      <p class="badge-note">${t.confidence.note}</p>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">${termSpan('TAM', 'Total Addressable Market — the total revenue opportunity if every potential customer in the whole category bought this, with 100% market share. The ceiling, not a forecast.')}</div>
+          <div class="metric-value">${t.tam.bracket ? '<span class="bracket-tag">Bracket</span>' : ''}${estSpan(t.tam.value, 'Basis', t.tam.basis)}</div>
+          ${t.tam.note ? `<div class="metric-basis">${t.tam.note}</div>` : ''}
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">${termSpan('SAM', 'Serviceable Addressable Market — the slice of the TAM this specific product/business model could realistically reach (e.g. restricted by geography, segment, or distribution) if it fully won that slice.')}</div>
+          <div class="metric-value">${t.sam.bracket ? '<span class="bracket-tag">Bracket</span>' : ''}${estSpan(t.sam.value, 'Basis', t.sam.basis)}</div>
+          ${t.sam.note ? `<div class="metric-basis">${t.sam.note}</div>` : ''}
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">${termSpan('SOM', 'Serviceable Obtainable Market — the realistic share of the SAM this business could actually capture in a given timeframe (here, 3–5 years), accounting for competition and execution limits. The number that should drive an actual revenue plan.')}</div>
+          <div class="metric-value">${t.som.bracket ? '<span class="bracket-tag">Bracket</span>' : ''}${estSpan(t.som.value, 'Basis', t.som.basis)}</div>
+          ${t.som.note ? `<div class="metric-basis">${t.som.note}</div>` : ''}
+        </div>
+      </div>
+
+      ${t.extraSection || ''}
+
+      <h3>Competitors &amp; Estimated Market Position</h3>
+      <p style="max-width:760px;">${t.marketShareNote}</p>
+    `;
+
+    if (t.competitors.length) {
+      html += `<div class="table-wrap"><table><thead><tr><th>Competitor</th><th>Tier (est.)</th><th>Notes</th></tr></thead><tbody>`;
+      t.competitors.forEach(c => {
+        html += `<tr><td>${c.name}</td><td class="${TIER_CLASS[c.tier]}">${c.tierLabel}</td><td>${c.note}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    } else {
+      html += `<div class="callout warn"><span class="callout-title">No competitor identified</span><p>This module wasn't part of the original competitor research — see Open Questions below before trusting the market-sizing figures above.</p></div>`;
+    }
+
+    if (t.pricingOneTime.length || t.pricingRecurring.length) {
+      html += `<h3>Pricing Model &amp; Scale</h3>
+        <div class="callout">
+          <span class="callout-title">What these numbers are (and aren't)</span>
+          <p>This is a composite, category-wide price band — not a rate card for any one named competitor, and <strong>not this company's own proposed pricing</strong> either. It reportedly blends two different kinds of source: <strong>Anewgo</strong> is said to run a public self-service pricing calculator, implying the entry end of both bands (confirmed as a real company this session — <a href="https://anewgo.com/" target="_blank" rel="noopener">anewgo.com</a> — but its calculator's actual figures couldn't be pulled this session, so treat that specific input as unconfirmed); <strong>Cecilian Partners (Xplorer / "The XO")</strong> and <strong>ECI (LotVue)</strong> price per-community on custom sales quotes with no public rate sheet, which is where the higher $300–$500+/mo band reportedly comes from. The rationale given for the wide setup range: <span class="term" tabindex="0">CAD<span class="tip"><b>Definition</b>Computer-Aided Design — the engineering/drafting files (lot lines, grading, utilities) a civil engineer produces for a subdivision. Converting these into a web-friendly interactive map is the labor driving the setup-fee range.</span></span>/drone-footage digitization is variable graphics labor ($250–$7,500+), and real-time 2-way <span class="term" tabindex="0">ERP<span class="tip"><b>Definition</b>Enterprise Resource Planning — the backend system a builder runs their whole business on (accounting, scheduling, purchasing, sales). Syncing a sales tool with it means live, two-way data flow instead of manual re-entry.</span></span>/<span class="term" tabindex="0">CRM<span class="tip"><b>Definition</b>Customer Relationship Management — the software tracking leads and buyers through the sales pipeline. Integration here means a lead or reservation captured in the map tool automatically shows up in the builder's sales team's CRM.</span></span> integration (e.g. Salesforce, or ECI's own MarkSystems) pushes costs above entry-level iframe tools. None of this vendor-to-band mapping is independently confirmed — it's presented as given, not verified.</p>
+        </div>`;
+      if (t.pricingOneTime.length) {
+        html += `<p style="max-width:760px;"><strong>One-time implementation / asset setup</strong></p><div class="table-wrap"><table><thead><tr><th>Item</th><th>Range</th></tr></thead><tbody>`;
+        t.pricingOneTime.forEach(p => { html += `<tr><td>${p.item}</td><td>${p.range}</td></tr>`; });
+        html += `</tbody></table></div>`;
+      }
+      if (t.pricingRecurring.length) {
+        html += `<p style="max-width:760px;"><strong>Recurring ${termSpan('SaaS', 'Software as a Service — software sold as an ongoing subscription (monthly/annual fee) rather than a one-time purchase, typically hosted by the vendor rather than installed by the customer.')}</strong></p><div class="table-wrap"><table><thead><tr><th>Tier</th><th>Range</th></tr></thead><tbody>`;
+        t.pricingRecurring.forEach(p => { html += `<tr><td>${p.item}</td><td>${p.range}</td></tr>`; });
+        html += `</tbody></table></div>`;
+      }
+    } else {
+      html += `<h3>Pricing Model &amp; Scale</h3><div class="callout warn"><span class="callout-title">No public pricing found</span><p>No rate card or quoted price exists for this category from this session's research. The $/yr figures used in the TAM/SAM/SOM cards above are constructed placeholders, not observed prices.</p></div>`;
+    }
+
+    html += `<h3>Open Questions</h3><ul class="qlist">`;
+    t.openQuestions.forEach(q => {
+      const resolved = typeof q === 'object' && q.resolved;
+      const text = typeof q === 'object' ? q.text : q;
+      html += `<li class="${resolved ? 'resolved' : ''}">${text}</li>`;
+    });
+    html += `</ul>`;
+
+    return html;
+  }
+
+  TOOLS.forEach(t => {
+    document.getElementById('panel-' + t.id).innerHTML = renderTool(t);
+  });
+
+  // ---------- Tab-bar badges: Live / Planned / TBD ----------
+  TOOLS.forEach(t => {
+    const btn = document.querySelector('.tab-btn[data-tab="' + t.id + '"]');
+    if (!btn || !t.status) return;
+    if (t.status.type === 'real') btn.insertAdjacentHTML('beforeend', ' <span class="tab-badge tab-badge-live" title="Live — already running today">🟢 Live</span>');
+    if (t.status.type === 'planned') btn.insertAdjacentHTML('beforeend', ' <span class="tab-badge tab-badge-planned" title="Planned — confirmed roadmap item, not yet built">Planned</span>');
+    if (t.status.type === 'tbd') btn.insertAdjacentHTML('beforeend', ' <span class="tab-badge tab-badge-tbd" title="TBD — exploratory idea, not yet scoped or decided">TBD</span>');
+    if (t.status.type === 'launching') btn.insertAdjacentHTML('beforeend', ' <span class="tab-badge tab-badge-launching" title="Launching — completed, going live imminently">🚀 Launching</span>');
+  });
+
+  // ---------- Combined Market Potential: checkbox table ----------
+  const fmtM = n => Math.abs(n) < 1e6 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n / 1e6) + 'M';
+  const STATUS_BADGE = {
+    real: '<span class="badge good" style="padding:2px 8px;font-size:9px;">🟢 Live</span>',
+    planned: '<span class="badge planned" style="padding:2px 8px;font-size:9px;">Planned</span>',
+    launching: '<span class="badge launching" style="padding:2px 8px;font-size:9px;">🚀 Launching</span>',
+    tbd: '<span class="badge tbd" style="padding:2px 8px;font-size:9px;">TBD</span>',
+  };
+
+  function combinedRow(t, primary) {
+    const checked = (t.status.type === 'real' || t.status.type === 'planned') ? 'checked' : '';
+    return `
+      <tr class="${primary ? 'combined-primary-row' : 'combined-tbd-row'}">
+        <td><input type="checkbox" class="coverage-chk" data-tool="${t.id}" ${checked}></td>
+        <td>${t.name} ${STATUS_BADGE[t.status.type]}</td>
+        <td>${t.tam.value}</td>
+        <td>${t.sam.value}</td>
+        <td>${t.som.value}</td>
+      </tr>
+    `;
+  }
+
+  function renderCombinedTable() {
+    const tbody = document.getElementById('combinedTbody');
+    const primary = TOOLS.filter(t => t.status.type !== 'tbd');
+    const tbdTools = TOOLS.filter(t => t.status.type === 'tbd');
+
+    tbody.innerHTML = primary.map(t => combinedRow(t, true)).join('')
+      + `<tr class="group-toggle-row">
+           <td></td>
+           <td colspan="4"><button type="button" class="group-toggle" id="tbdToggle">▸ ${tbdTools.length} hypothetical / TBD modules — click to expand</button></td>
+         </tr>`
+      + tbdTools.map(t => combinedRow(t, false)).join('');
+
+    document.querySelectorAll('.coverage-chk').forEach(c => c.addEventListener('change', updateCombinedTotals));
+
+    const toggleBtn = document.getElementById('tbdToggle');
+    const tbdRows = document.querySelectorAll('.combined-tbd-row');
+    toggleBtn.addEventListener('click', () => {
+      const expanded = toggleBtn.classList.toggle('expanded');
+      tbdRows.forEach(r => r.style.display = expanded ? 'table-row' : 'none');
+      toggleBtn.textContent = `${expanded ? '▾' : '▸'} ${tbdTools.length} hypothetical / TBD modules — click to ${expanded ? 'collapse' : 'expand'}`;
+    });
+
+    updateCombinedTotals();
+  }
+
+  function updateCombinedTotals() {
+    let tamLow = 0, tamHigh = 0, samLow = 0, samHigh = 0, somLow = 0, somHigh = 0, included = 0;
+    const skipped = [];
+    document.querySelectorAll('.coverage-chk:checked').forEach(c => {
+      const t = TOOLS.find(x => x.id === c.dataset.tool);
+      if (!t) return;
+      if (t.tam.low == null) { skipped.push(t.name); return; }
+      tamLow += t.tam.low; tamHigh += t.tam.high;
+      samLow += t.sam.low; samHigh += t.sam.high;
+      somLow += t.som.low; somHigh += t.som.high;
+      included++;
+    });
+    document.getElementById('totalTam').innerHTML = included ? `<strong>${fmtM(tamLow)} – ${fmtM(tamHigh)}</strong>` : '<strong>—</strong>';
+    document.getElementById('totalSam').innerHTML = included ? `<strong>${fmtM(samLow)} – ${fmtM(samHigh)}</strong>` : '<strong>—</strong>';
+    document.getElementById('totalSom').innerHTML = included ? `<strong>${fmtM(somLow)} – ${fmtM(somHigh)}</strong>` : '<strong>—</strong>';
+    document.getElementById('combinedSkippedNote').textContent = skipped.length
+      ? `Checked but excluded from the total: ${skipped.join(', ')} — no numeric TAM/SAM/SOM exists for ${skipped.length > 1 ? 'these' : 'this'} row (see its tab for why).`
+      : '';
+  }
+
+  renderCombinedTable();
+
+  // ---------- Tabs ----------
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.panel');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ---------- Portal tooltips (never clipped by an ancestor's overflow) ----------
+  const globalTip = document.getElementById('globalTip');
+
+  function positionTip(trigger) {
+    const rect = trigger.getBoundingClientRect();
+    const tipRect = globalTip.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - tipRect.width / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+    let top = rect.top - tipRect.height - 10;
+    if (top < 8) top = rect.bottom + 10; // flip below if no room above
+    globalTip.style.left = left + 'px';
+    globalTip.style.top = top + 'px';
+  }
+
+  function showTip(trigger) {
+    const src = trigger.querySelector('.tip');
+    if (!src) return;
+    globalTip.innerHTML = src.innerHTML;
+    globalTip.classList.add('show');
+    positionTip(trigger);
+  }
+
+  function hideTip() {
+    globalTip.classList.remove('show');
+  }
+
+  let hideTimer = null;
+  function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hideTip, 150); }
+  function cancelHide() { clearTimeout(hideTimer); }
+
+  document.addEventListener('mouseover', e => {
+    const trigger = e.target.closest('.est, .term');
+    if (trigger) { cancelHide(); showTip(trigger); }
+  });
+  document.addEventListener('mouseout', e => {
+    const trigger = e.target.closest('.est, .term');
+    if (trigger && !trigger.contains(e.relatedTarget) && !globalTip.contains(e.relatedTarget)) scheduleHide();
+  });
+  globalTip.addEventListener('mouseenter', cancelHide);
+  globalTip.addEventListener('mouseleave', scheduleHide);
+  document.addEventListener('focusin', e => {
+    const trigger = e.target.closest('.est, .term');
+    if (trigger) { cancelHide(); showTip(trigger); }
+  });
+  document.addEventListener('focusout', e => {
+    if (e.target.closest('.est, .term')) scheduleHide();
+  });
+  window.addEventListener('scroll', hideTip, true);
+
+  // ---------- CTO modal ----------
+  const ctoModal = document.getElementById('ctoModal');
+  document.getElementById('openCtoModal').addEventListener('click', () => ctoModal.classList.add('open'));
+  document.getElementById('closeCtoModal').addEventListener('click', () => ctoModal.classList.remove('open'));
+  ctoModal.addEventListener('click', (e) => { if (e.target === ctoModal) ctoModal.classList.remove('open'); });
+
+  // ---------- Modeled offer sliders ----------
+  const ARR_BY_YEAR = [2500000, 5000000, 10000000];
+  const EBITDA_BY_YEAR = [500000, 1000000, 2000000]; // fixed 20% margin, not slider-controlled
+  const VAL_EBITDA_BY_YEAR = EBITDA_BY_YEAR.map(e => e * 8);
+  const VAL_ARR_BY_YEAR = ARR_BY_YEAR.map(a => a * 5);
+  const LOADED_COST_MULTIPLIER = 1.3; // rule-of-thumb employer burden rate, see tooltip
+  const VESTED_FRACTION_BY_YEAR = [0.25, 0.50, 0.75]; // 4-year vest / 1-year cliff, at each year-end anniversary
+  const fmtUSD = n => '$' + Math.round(n).toLocaleString('en-US');
+  const fmtLoadedCost = annual => `${fmtUSD(annual)}<br><span class="fine">≈${fmtUSD(annual / 12)}/mo</span>`;
+
+  const sBaseSalary = document.getElementById('sBaseSalary');
+  const sProfitShare = document.getElementById('sProfitShare');
+  const sEquity = document.getElementById('sEquity');
+
+  function renderOfferSliders() {
+    const baseSalary = Number(sBaseSalary.value);
+    const profitShare = Number(sProfitShare.value) / 100;
+    const equity = Number(sEquity.value) / 100;
+
+    document.getElementById('sBaseSalaryVal').textContent = fmtUSD(baseSalary);
+    document.getElementById('sProfitShareVal').textContent = sProfitShare.value + '%';
+    document.getElementById('sEquityVal').textContent = Number(sEquity.value).toFixed(1) + '%';
+    document.getElementById('profitShareLabel').textContent = `(${sProfitShare.value}%)`;
+    document.getElementById('equityLabel1').textContent = Number(sEquity.value).toFixed(1) + '%';
+    document.getElementById('equityLabel2').textContent = Number(sEquity.value).toFixed(1) + '%';
+
+    const loadedCost = baseSalary * LOADED_COST_MULTIPLIER;
+
+    [0, 1, 2].forEach(i => {
+      const y = i + 1;
+      const ebitdaShare = EBITDA_BY_YEAR[i] * profitShare;
+      const totalCash = baseSalary + ebitdaShare;
+      document.getElementById('baseSalaryY' + y).textContent = fmtUSD(baseSalary);
+      document.getElementById('loadedCostY' + y).innerHTML = fmtLoadedCost(loadedCost);
+      document.getElementById('ebitdaShareY' + y).textContent = fmtUSD(ebitdaShare);
+      document.getElementById('totalCashY' + y).textContent = fmtUSD(totalCash);
+      const equityValueEbitda = VAL_EBITDA_BY_YEAR[i] * equity;
+      const equityValueArr = VAL_ARR_BY_YEAR[i] * equity;
+      document.getElementById('paperEbitdaY' + y).textContent = fmtUSD(equityValueEbitda);
+      document.getElementById('paperArrY' + y).textContent = fmtUSD(equityValueArr);
+      document.getElementById('vestedEbitdaY' + y).textContent = fmtUSD(equityValueEbitda * VESTED_FRACTION_BY_YEAR[i]);
+      document.getElementById('vestedArrY' + y).textContent = fmtUSD(equityValueArr * VESTED_FRACTION_BY_YEAR[i]);
+    });
+  }
+
+  [sBaseSalary, sProfitShare, sEquity].forEach(el => el.addEventListener('input', renderOfferSliders));
+  renderOfferSliders();
+</script>
+</body>
+</html>
