@@ -1,6 +1,9 @@
 import { App } from '../app.js';
 import { Persistence } from '../persistence.js';
 import { UI } from '../utils.js';
+import { XCSViewer } from '../viewer.js';
+import { PalMgr } from '../palettes.js';
+import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // Shape Fill — ported unchanged from laser-experiments/laser-fill-generator
@@ -180,8 +183,311 @@ function computeSliderMeta(style, mode) {
 // `cfg.maxStraight`, `cfg.colorPct`. Every drawing/geometry function's
 // math is otherwise untouched.
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// xTool (vector) mode — instead of hand-rewriting every draw* function as
+// a separate vector emitter, this is a generic Canvas2D-command recorder.
+// It implements just enough of the CanvasRenderingContext2D/Path2D surface
+// that the (unmodified) draw* functions actually use. Swapping the
+// engine's `ctx`/`PathCtor` to point at one of these during a second,
+// identically-reseeded generatePipes() run captures every fill()/stroke()
+// call it issues — which, since generation is seeded and deterministic,
+// reproduces the exact same shapes/colors/positions as the canvas render —
+// then converts that recording into real XCS vector shapes.
+//
+// Two things the canvas relies on have no equivalent in this app's XCS
+// renderer (xcs-canvas.js), so they're approximated rather than exact:
+//   - Alpha: xcs-canvas.js never reads the stored `alpha` field — every
+//     vector shape renders fully opaque. Every rgba()/globalAlpha fill is
+//     therefore flattened into an opaque color by compositing it against
+//     the current "backdrop" (the nearest enclosing opaque fill) at
+//     record time, so the *visible* result matches even though the vector
+//     shape itself has no transparency.
+//   - Stroke width: the XCS renderer draws every path as a fixed hairline,
+//     so a canvas `ctx.lineWidth`-thick stroke becomes a filled capsule
+//     (round-capped thick-line polygon) instead of a thin vector stroke.
+//     Thin cosmetic outlines (lineWidth <= 3 local units) are skipped
+//     entirely rather than converted, since the underlying fill already
+//     carries the correct silhouette/color and a hairline border is not
+//     visually significant.
+// Anything drawn while a clip() is active is skipped (no clip-path
+// equivalent exists here) — this only affects a few small decorative
+// textures (button marbling, gourd rib/wart texture), never a shape's
+// base silhouette or color. fillText() is skipped for the same reason
+// real XCS text baking is a much larger undertaking than these tiny
+// embossed labels (coin denominations, resistor codes) warrant.
+// ═══════════════════════════════════════════════════════════════════
+
+function matIdentity() { return [1, 0, 0, 1, 0, 0]; }
+function matMultiply(m1, m2) {
+  const [a1, b1, c1, d1, e1, f1] = m1;
+  const [a2, b2, c2, d2, e2, f2] = m2;
+  return [
+    a1 * a2 + c1 * b2, b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2, b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1, b1 * e2 + d1 * f2 + f1
+  ];
+}
+function matTranslate(m, x, y) { return matMultiply(m, [1, 0, 0, 1, x, y]); }
+function matRotate(m, rad) { const c = Math.cos(rad), s = Math.sin(rad); return matMultiply(m, [c, s, -s, c, 0, 0]); }
+function matApply(m, x, y) { const [a, b, c, d, e, f] = m; return { x: a * x + c * y + e, y: b * x + d * y + f }; }
+
+function parseCanvasColor(str) {
+  if (typeof str !== 'string') return { r: 0, g: 0, b: 0, a: 1 };
+  if (str[0] === '#') {
+    let c = str.slice(1);
+    if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+    return { r: parseInt(c.substring(0, 2), 16), g: parseInt(c.substring(2, 4), 16), b: parseInt(c.substring(4, 6), 16), a: 1 };
+  }
+  const m = str.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  return { r: 0, g: 0, b: 0, a: 1 };
+}
+function rgbToHex(r, g, b) {
+  const h = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+// Flattens a (possibly semi-transparent) canvas color into an opaque hex,
+// compositing over `backdropHex` — needed since the XCS renderer has no
+// alpha/transparency support at all.
+function flattenColor(colorStr, globalAlpha, backdropHex) {
+  const c = parseCanvasColor(colorStr);
+  const a = c.a * globalAlpha;
+  if (a >= 0.999) return rgbToHex(c.r, c.g, c.b);
+  const bg = parseCanvasColor(backdropHex || '#000000');
+  return rgbToHex(c.r * a + bg.r * (1 - a), c.g * a + bg.g * (1 - a), c.b * a + bg.b * (1 - a));
+}
+
+// Path2D substitute — same subset of methods, recorded in local
+// (untransformed) coordinates; transformed to absolute space only when
+// actually filled/stroked/clipped (matching how these are always used
+// here: built and consumed within one unchanging transform scope).
+class RecordingPath {
+  constructor() { this.segs = []; }
+  moveTo(x, y) { this.segs.push({ c: 'M', x, y }); }
+  lineTo(x, y) { this.segs.push({ c: 'L', x, y }); }
+  quadraticCurveTo(cpx, cpy, x, y) { this.segs.push({ c: 'Q', cpx, cpy, x, y }); }
+  arc(x, y, r, a0, a1, ccw) { this.segs.push({ c: 'ARC', x, y, r, a0, a1, ccw: !!ccw }); }
+  ellipse(x, y, rx, ry, rot, a0, a1, ccw) { this.segs.push({ c: 'ELLIPSE', x, y, rx, ry, rot, a0, a1, ccw: !!ccw }); }
+  rect(x, y, w, h) { this.segs.push({ c: 'RECT', x, y, w, h }); }
+  closePath() { this.segs.push({ c: 'Z' }); }
+}
+
+// Samples a canvas arc()/ellipse() into a polyline of absolute {x,y}
+// points — simpler and, at the sizes these shapes render, visually
+// indistinguishable from true SVG elliptical-arc commands.
+function sampleArcPoints(seg, m) {
+  const isEllipse = seg.c === 'ELLIPSE';
+  const rx = isEllipse ? seg.rx : seg.r, ry = isEllipse ? seg.ry : seg.r;
+  const rot = isEllipse ? (seg.rot || 0) : 0;
+  let a0 = seg.a0, a1 = seg.a1;
+  if (seg.ccw) { while (a1 > a0) a1 -= Math.PI * 2; } else { while (a1 < a0) a1 += Math.PI * 2; }
+  const span = Math.abs(a1 - a0);
+  const steps = Math.max(2, Math.ceil((span / (Math.PI * 2)) * 48));
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = a0 + (a1 - a0) * (i / steps);
+    const lx = Math.cos(t) * rx, ly = Math.sin(t) * ry;
+    const cr = Math.cos(rot), sr = Math.sin(rot);
+    const ex = seg.x + (lx * cr - ly * sr), ey = seg.y + (lx * sr + ly * cr);
+    pts.push(matApply(m, ex, ey));
+  }
+  return pts;
+}
+
+// Converts recorded (local-space) path segments into an absolute-space SVG
+// path `d` string, applying matrix `m` to every point.
+function segsToAbsoluteDPath(segs, m) {
+  let d = '';
+  segs.forEach(seg => {
+    if (seg.c === 'M' || seg.c === 'L') {
+      const p = matApply(m, seg.x, seg.y);
+      d += `${seg.c === 'M' ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+    } else if (seg.c === 'Q') {
+      const cp = matApply(m, seg.cpx, seg.cpy), p = matApply(m, seg.x, seg.y);
+      d += `Q ${cp.x.toFixed(3)} ${cp.y.toFixed(3)} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+    } else if (seg.c === 'ARC' || seg.c === 'ELLIPSE') {
+      sampleArcPoints(seg, m).forEach((p, i) => { d += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `; });
+    } else if (seg.c === 'RECT') {
+      const corners = [[seg.x, seg.y], [seg.x + seg.w, seg.y], [seg.x + seg.w, seg.y + seg.h], [seg.x, seg.y + seg.h]];
+      corners.forEach(([x, y], i) => { const p = matApply(m, x, y); d += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `; });
+      d += 'Z ';
+    } else if (seg.c === 'Z') {
+      d += 'Z ';
+    }
+  });
+  return d.trim();
+}
+
+function absolutePointsBBox(pts) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+  return { minX, minY, maxX, maxY };
+}
+// All absolute {x,y} points a set of recorded segments passes through
+// (used only for bounding-box sizing, not for the emitted geometry itself).
+function segsToAbsolutePoints(segs, m) {
+  const pts = [];
+  segs.forEach(seg => {
+    if (seg.c === 'M' || seg.c === 'L') pts.push(matApply(m, seg.x, seg.y));
+    else if (seg.c === 'Q') { pts.push(matApply(m, seg.cpx, seg.cpy)); pts.push(matApply(m, seg.x, seg.y)); }
+    else if (seg.c === 'ARC' || seg.c === 'ELLIPSE') pts.push(...sampleArcPoints(seg, m));
+    else if (seg.c === 'RECT') { pts.push(matApply(m, seg.x, seg.y)); pts.push(matApply(m, seg.x + seg.w, seg.y + seg.h)); }
+  });
+  return pts;
+}
+
+// Converts a thick stroke (a chain of absolute {x,y} points, canvas
+// lineCap='round'/lineJoin='round' as used throughout this engine) into a
+// filled round-capped polygon path — since the XCS renderer only ever
+// draws hairline strokes regardless of lineWidth.
+function capsuleDPath(points, width) {
+  if (points.length < 2) return '';
+  const half = width / 2;
+  const CAP_STEPS = 10;
+  let d = '';
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i], p2 = points[i + 1];
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    // Normal = direction rotated +90°; the two rails run at p+normal and p-normal.
+    const nx = -uy * half, ny = ux * half;
+    d += `M ${(p1.x + nx).toFixed(3)} ${(p1.y + ny).toFixed(3)} `;
+    d += `L ${(p2.x + nx).toFixed(3)} ${(p2.y + ny).toFixed(3)} `;
+    // Round cap at the far end (p2): sweep the outward semicircle from
+    // +normal to -normal through the forward direction.
+    const capAngle2 = Math.atan2(ny, nx);
+    for (let s = 1; s <= CAP_STEPS; s++) {
+      const a = capAngle2 - Math.PI * (s / CAP_STEPS);
+      d += `L ${(p2.x + Math.cos(a) * half).toFixed(3)} ${(p2.y + Math.sin(a) * half).toFixed(3)} `;
+    }
+    // Round cap at the near end (p1): sweep from -normal back to +normal
+    // through the backward direction.
+    const capAngle1 = Math.atan2(-ny, -nx);
+    for (let s = 1; s <= CAP_STEPS; s++) {
+      const a = capAngle1 - Math.PI * (s / CAP_STEPS);
+      d += `L ${(p1.x + Math.cos(a) * half).toFixed(3)} ${(p1.y + Math.sin(a) * half).toFixed(3)} `;
+    }
+    d += 'Z ';
+  }
+  return d.trim();
+}
+
+class RecordingCtx {
+  // `offsetX`/`offsetY` (in mm, applied after scale) let the caller recenter
+  // content within the XCS viewer's fixed 100x100mm viewBox — needed since
+  // Shape Fill's canvas is 4:3 (1200x900) while the bed is square, so a
+  // width-based scale alone leaves content pinned to one corner rather than
+  // centered the way every other Pattern Tool tab's own generation math is.
+  constructor(scale = 1, offsetX = 0, offsetY = 0) {
+    this.shapes = []; // { dPath, color, minX, minY, maxX, maxY } — all in mm (post-scale, post-offset)
+    this._scale = scale; // px -> mm, applied only at flush time (fill/stroke)
+    this._offsetX = offsetX;
+    this._offsetY = offsetY;
+    this._current = new RecordingPath();
+    this._matrix = matIdentity();
+    this._stack = [];
+    this._depth = 0;
+    this._backdrop = '#000000';
+    this._sceneBackground = '#000000';
+    this.fillStyle = '#000000';
+    this.strokeStyle = '#000000';
+    this.lineWidth = 1;
+    this.lineCap = 'butt';
+    this.lineJoin = 'miter';
+    this.globalAlpha = 1;
+    this.font = '';
+    this.textAlign = 'left';
+    this.textBaseline = 'alphabetic';
+    this.shadowColor = 'transparent';
+    this.shadowBlur = 0;
+    this.shadowOffsetX = 0;
+    this.shadowOffsetY = 0;
+    this._clipDepth = 0;
+  }
+  save() {
+    if (this._depth === 0) this._backdrop = this._sceneBackground;
+    this._stack.push({ m: this._matrix, clipDepth: this._clipDepth });
+    this._depth++;
+  }
+  restore() {
+    const s = this._stack.pop();
+    if (s) { this._matrix = s.m; this._clipDepth = s.clipDepth; }
+    this._depth = Math.max(0, this._depth - 1);
+  }
+  translate(x, y) { this._matrix = matTranslate(this._matrix, x, y); }
+  rotate(a) { this._matrix = matRotate(this._matrix, a); }
+  scale() { /* never used with non-1 args in this engine */ }
+  beginPath() { this._current = new RecordingPath(); }
+  moveTo(x, y) { this._current.moveTo(x, y); }
+  lineTo(x, y) { this._current.lineTo(x, y); }
+  quadraticCurveTo(cpx, cpy, x, y) { this._current.quadraticCurveTo(cpx, cpy, x, y); }
+  arc(x, y, r, a0, a1, ccw) { this._current.arc(x, y, r, a0, a1, ccw); }
+  ellipse(x, y, rx, ry, rot, a0, a1, ccw) { this._current.ellipse(x, y, rx, ry, rot, a0, a1, ccw); }
+  rect(x, y, w, h) { this._current.rect(x, y, w, h); }
+  closePath() { this._current.closePath(); }
+  clip(path) { this._clipDepth++; }
+  _scaledMatrix() {
+    const scaleM = [this._scale, 0, 0, this._scale, 0, 0];
+    const offsetM = [1, 0, 0, 1, this._offsetX, this._offsetY];
+    return matMultiply(matMultiply(offsetM, scaleM), this._matrix);
+  }
+  _emit(segs, colorStr, isThickStroke, widthPx) {
+    if (this._clipDepth > 0) return;
+    const flat = flattenColor(colorStr, this.globalAlpha, this._backdrop);
+    const m = this._scaledMatrix();
+    const pts = segsToAbsolutePoints(segs, m);
+    if (!pts.length) return;
+    const bbox = absolutePointsBBox(pts);
+    // xcs-canvas.js's _renderPath() does
+    // `el.setAttribute('transform', translate(p.x, p.y))` on top of whatever
+    // `d` we hand it — so dPath must be authored relative to the shape's own
+    // center, with x/y (below, in buildXCSProject) providing the absolute
+    // placement. Building dPath in absolute coordinates here would double
+    // that translation (once via d, once via the renderer's own transform).
+    const cx = (bbox.minX + bbox.maxX) / 2, cy = (bbox.minY + bbox.maxY) / 2;
+    const centeredM = matMultiply([1, 0, 0, 1, -cx, -cy], m);
+    let dPath;
+    if (isThickStroke) {
+      const width = widthPx * this._scale;
+      const centeredPts = pts.map(p => ({ x: p.x - cx, y: p.y - cy }));
+      dPath = capsuleDPath(centeredPts, width);
+      const pad = width / 2;
+      bbox.minX -= pad; bbox.minY -= pad; bbox.maxX += pad; bbox.maxY += pad;
+    } else {
+      dPath = segsToAbsoluteDPath(segs, centeredM) + ' Z';
+    }
+    if (!dPath) return;
+    this.shapes.push({ dPath, color: flat, minX: bbox.minX, minY: bbox.minY, maxX: bbox.maxX, maxY: bbox.maxY });
+    const isOpaque = parseCanvasColor(colorStr).a * this.globalAlpha >= 0.999;
+    if (isOpaque) {
+      this._backdrop = flat;
+      if (this._depth === 0) this._sceneBackground = flat;
+    }
+  }
+  fill(path) { this._emit((path || this._current).segs, this.fillStyle, false); }
+  stroke(path) {
+    const segs = (path || this._current).segs;
+    if (this.lineWidth > 3) this._emit(segs, this.strokeStyle, true, this.lineWidth);
+    // thin cosmetic outlines are skipped — the underlying fill already carries the shape/color
+  }
+  fillRect(x, y, w, h) { this._emit([{ c: 'RECT', x, y, w, h }], this.fillStyle, false); }
+  strokeRect(x, y, w, h) {
+    if (this.lineWidth <= 3) return;
+    this._emit([{ c: 'M', x, y }, { c: 'L', x: x + w, y }, { c: 'L', x: x + w, y: y + h }, { c: 'L', x, y: y + h }, { c: 'L', x, y }], this.strokeStyle, true, this.lineWidth);
+  }
+  fillText() { /* skipped — see header note */ }
+  clearRect() { /* no-op — nothing to "clear" when recording vector shapes */ }
+}
+
 function createEngine(canvas) {
-  const ctx = canvas.getContext('2d');
+  const realCtx = canvas.getContext('2d');
+  // Swappable so an xTool-mode build can temporarily redirect every drawing
+  // call (including drawGear's, which closes over `ctx` directly rather
+  // than taking it as a parameter) into a RecordingCtx instead of the real
+  // canvas, without touching any draw* function's body.
+  let ctx = realCtx;
+  let PathCtor = Path2D;
 
   let rawPoints = [];
   let hullPoints = [];
@@ -1227,7 +1533,7 @@ function createEngine(canvas) {
     let variant = 1 + (Math.floor(hash / 3) % 2);
     if (variant === 0) {
       let bodyRx = size * 0.85, bodyRy = size * 0.7, bodyCy = size * 0.1;
-      let bodyPath = new Path2D();
+      let bodyPath = new PathCtor();
       bodyPath.ellipse(0, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
       ctx.fillStyle = shadeColor(bodyColor, 0.95);
       ctx.fill(bodyPath);
@@ -1263,7 +1569,7 @@ function createEngine(canvas) {
       ctx.fillStyle = bodyColor;
       ctx.strokeStyle = shadeColor(bodyColor, 0.55);
 
-      let bodyPath = new Path2D();
+      let bodyPath = new PathCtor();
       bodyPath.moveTo(-size * 0.5, size * 0.75);
       bodyPath.quadraticCurveTo(-size * 0.75, -size * 0.1, -size * 0.25, -size * 0.55);
       bodyPath.quadraticCurveTo(0, -size * 0.75, size * 0.2, -size * 0.5);
@@ -1378,7 +1684,7 @@ function createEngine(canvas) {
     ctx.rotate(angle);
 
     let bodyColor = (hash % 2 === 0) ? '#6b4a2f' : '#7d5a3a';
-    let bodyPath = new Path2D();
+    let bodyPath = new PathCtor();
     bodyPath.moveTo(0, -size * 1.3);
     bodyPath.quadraticCurveTo(size * 0.55, -size * 0.6, size * 0.5, size * 0.3);
     bodyPath.quadraticCurveTo(size * 0.4, size * 1.1, 0, size * 1.35);
@@ -3340,6 +3646,95 @@ function createEngine(canvas) {
 
     handlePointerDown, handlePointerMove, handlePointerUp,
 
+    // Builds a real XCSProject by re-running generatePipes(cfg) with `ctx`
+    // temporarily swapped to a RecordingCtx. Generation is seeded/
+    // deterministic (reseedRandom() at the top of generatePipes resets to
+    // patternSeed/colorSeed every call), so this reproduces the exact same
+    // layout/colors as the canvas render — nothing is regenerated, only
+    // recorded differently. See the RecordingCtx block above this factory
+    // for what is and isn't achievable with real vector shapes.
+    async buildXCSProject(cfg) {
+      const project = XCSExporter.createProject();
+      if (hullPoints.length < 3) return project;
+
+      const PX_TO_MM = 100 / 1200; // canvas is 1200x900 -> scaling by width gives a 100x75mm footprint
+      const wasEditMode = isEditMode;
+      const savedCtx = ctx, savedPathCtor = PathCtor;
+      isEditMode = false;
+
+      const runRecording = (offsetX, offsetY) => {
+        const rec = new RecordingCtx(PX_TO_MM, offsetX, offsetY);
+        ctx = rec; PathCtor = RecordingPath;
+        try {
+          generatePipes(cfg);
+        } finally {
+          ctx = savedCtx; PathCtor = savedPathCtor;
+        }
+        return rec;
+      };
+
+      // Pass 1 (uncentered): measure where the content actually lands.
+      // Shape Fill's canvas is 4:3 (1200x900) but the XCS viewer's viewBox
+      // is a fixed, square 100x100mm — unlike every other Pattern Tool tab,
+      // whose own generation math already targets that square bed directly,
+      // a width-based px->mm scale alone leaves Shape Fill's content pinned
+      // to one corner instead of centered. Since generation is deterministic
+      // (reseedRandom() at the top of generatePipes resets to the same
+      // patternSeed/colorSeed every call), re-running it a second time with
+      // a measured centering offset baked in is cheap and exact — not a
+      // regeneration, the same recording just shifted to sit centered in
+      // the fixed bed the same way every other tab's content does.
+      const measurePass = runRecording(0, 0);
+      let centerOffsetX = 0, centerOffsetY = 0;
+      if (measurePass.shapes.length) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        measurePass.shapes.forEach(s => {
+          if (s.minX < minX) minX = s.minX; if (s.minY < minY) minY = s.minY;
+          if (s.maxX > maxX) maxX = s.maxX; if (s.maxY > maxY) maxY = s.maxY;
+        });
+        centerOffsetX = 50 - (minX + maxX) / 2;
+        centerOffsetY = 50 - (minY + maxY) / 2;
+      }
+      const rec = centerOffsetX || centerOffsetY ? runRecording(centerOffsetX, centerOffsetY) : measurePass;
+      isEditMode = wasEditMode;
+
+
+
+      const isRealLaser = cfg.laserPaletteId && cfg.laserPaletteId !== 'true-color';
+      const laser = isRealLaser ? App.palettes[cfg.laserPaletteId] : null;
+      const isIR = !!laser && (laser.laser === 'ir' || (laser.name || '').toUpperCase().includes('IR'));
+      const laserSource = isIR ? 'red' : 'blue';
+
+      // True Color has no calibration table to draw power from (it was
+      // never a real laser palette to begin with) — generic defaults,
+      // matching PalMgr.getParams()'s own fallback exactly. With a real
+      // laser palette active, each shape's flattened color is matched to
+      // its nearest calibrated entry for a representative power value —
+      // an approximation, since most drawn shades are derived tints
+      // (shadeColor()) rather than the palette's literal swatches.
+      const paramsForColor = (hex) => {
+        if (!laser || !laser.entries || !laser.entries.length) {
+          return { power: 20, speed: 100, density: 1000, repeat: 1, processingLightSource: 'blue' };
+        }
+        let bestIdx = 0, bestDist = Infinity;
+        laser.entries.forEach((e, i) => { const d = colorDistance2(hex, e.rgb); if (d < bestDist) { bestDist = d; bestIdx = i; } });
+        const e = laser.entries[bestIdx];
+        return { power: e.power, speed: laser.speed, density: laser.lpcm, repeat: 1, processingLightSource: laserSource };
+      };
+
+      await Promise.all(rec.shapes.map(s => {
+        const w = Math.max(0.02, s.maxX - s.minX), h = Math.max(0.02, s.maxY - s.minY);
+        return XCSExporter.addPath(project, {
+          x: (s.minX + s.maxX) / 2, y: (s.minY + s.maxY) / 2, width: w, height: h,
+          dPath: s.dPath, layerColor: s.color, laserSource, isFill: true,
+          params: paramsForColor(s.color),
+          extraDisplayData: { hideLabels: true }
+        });
+      }));
+      [...new Set(rec.shapes.map(s => s.color))].forEach((c, i) => project.setLayerName(c, `Layer ${i + 1}`));
+      return project;
+    },
+
     generate(cfg) {
       if (hullPoints.length < 3) { ctx.clearRect(0, 0, canvas.width, canvas.height); drawHandles(); return; }
       isGenerated = true;
@@ -3380,7 +3775,10 @@ const DEFAULTS = {
   // 'true-color' (default) renders the decorative Color Mapping palette as-is.
   // Any other value is a real App.palettes id — a laser-calibrated palette —
   // and rendering substitutes each decorative color with its nearest match.
-  laserPaletteId: 'true-color'
+  laserPaletteId: 'true-color',
+  // 'html' (default) shows the raw canvas render. 'xtool' shows the same
+  // pattern as real XCS vector shapes via the standard XCSViewer.
+  renderTarget: 'html'
 };
 
 const TRUE_COLOR_ID = 'true-color';
@@ -3479,6 +3877,37 @@ function disableControl(ctrl, disabled) {
   ctrl.style.opacity = disabled ? '0.4' : '';
 }
 
+// Rebuilds the real XCSProject (async, fire-and-forget from most call
+// sites) and, if xTool mode is currently visible, re-renders it. Every
+// regenerate-triggering action calls this so the two modes never drift out
+// of sync — but the *toggle* itself never calls this: it only awaits
+// whatever build is already in flight (or already finished), so switching
+// modes never re-runs generation.
+function syncXCSProject(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst) return Promise.resolve(null);
+  const { cfg, state } = inst;
+  const promise = state.engine.buildXCSProject(cfg).then(project => {
+    state.project = project;
+    if (cfg.renderTarget === 'xtool') XCSViewer.update(inst.pane, inst.state);
+    return project;
+  }).catch(err => {
+    console.error('Shape Fill: failed to build XCS project for xTool mode', err);
+    return state.project || null;
+  });
+  state.projectPromise = promise;
+  return promise;
+}
+
+function updateShapeFillViewerVisibility(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst) return;
+  const { cfg, state } = inst;
+  const isXTool = cfg.renderTarget === 'xtool';
+  state.htmlViewerEl.style.display = isXTool ? 'none' : '';
+  state.xcsViewerEl.style.display = isXTool ? '' : 'none';
+}
+
 export const ShapeFillTab = {
   create(tabId, initialCfg) {
     const cfg = { ...DEFAULTS, ...(initialCfg || {}) };
@@ -3502,8 +3931,8 @@ export const ShapeFillTab = {
         <div class="tool-header"><span class="tool-title">Shape Fill</span></div>
         <div class="tool-scroll"></div>
       </div>
-      <div class="xcs-viewer">
-        <div class="viewer-top"><div class="viewer-fname">Shape Fill</div></div>
+      <div class="xcs-viewer sf-html-viewer">
+        <div class="viewer-top"><div class="viewer-fname">Shape Fill (HTML preview)</div></div>
         <div class="viewer-main">
           <div class="canvas-panel">
             <div class="canvas-label">Laser Area — Shape Fill</div>
@@ -3516,10 +3945,20 @@ export const ShapeFillTab = {
 
     const canvasEl = pane.querySelector('.sf-canvas');
     const engine = createEngine(canvasEl);
-    const state = { engine, canvasEl };
+    const htmlViewerEl = pane.querySelector('.sf-html-viewer');
+    const state = { engine, canvasEl, htmlViewerEl, project: null, projectPromise: null };
     App.instances[tabId] = { type: 'shapefill', pane, cfg, state };
 
-    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); };
+    // The real XCSViewer — same component every other tab uses. Its own
+    // create() reads/writes App.instances[tabId] (e.g. it sets
+    // inst.xcsCanvas), so it must run after the line above.
+    const xcsViewerEl = XCSViewer.create(tabId);
+    xcsViewerEl.querySelector('.viewer-fname').textContent = 'Shape Fill (xTool)';
+    pane.appendChild(xcsViewerEl);
+    state.xcsViewerEl = xcsViewerEl;
+    updateShapeFillViewerVisibility(tabId);
+
+    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProject(tabId); };
 
     canvasEl.addEventListener('mousedown', e => { engine.handlePointerDown(e, cfg); persistShape(); });
     canvasEl.addEventListener('mousemove', e => { engine.handlePointerMove(e, cfg); });
@@ -3537,6 +3976,7 @@ export const ShapeFillTab = {
       cfg.rawPoints = engine.getRawPoints();
       Persistence.save();
     }
+    syncXCSProject(tabId);
     return pane;
   },
 
@@ -3549,7 +3989,7 @@ export const ShapeFillTab = {
     scroll.innerHTML = '';
 
     const rebuild = () => this.renderControls(tabId);
-    const set = (key, val) => { cfg[key] = val; Persistence.save(); engine.generate(cfg); };
+    const set = (key, val) => { cfg[key] = val; Persistence.save(); engine.generate(cfg); syncXCSProject(tabId); };
 
     const meta = computeSliderMeta(cfg.style, cfg.mode);
 
@@ -3562,7 +4002,7 @@ export const ShapeFillTab = {
       Object.assign(btn.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', flex: '1 1 0', minWidth: '0', padding: '6px 2px' });
       btn.innerHTML = `<span style="width:16px;height:16px;display:inline-flex">${p.svg}</span><span style="font-size:9px">${p.label}</span>`;
       btn.onclick = () => {
-        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); };
+        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProject(tabId); };
         if (engine.isShapeCustom()) {
           if (confirm('Replace your custom-edited shape with this preset? This cannot be undone.')) apply();
         } else apply();
@@ -3576,6 +4016,7 @@ export const ShapeFillTab = {
       canvasEl.style.cursor = on ? 'crosshair' : 'default';
       cfg.rawPoints = engine.getRawPoints();
       Persistence.save();
+      syncXCSProject(tabId);
       rebuild();
     });
     editBtn.style.width = '100%';
@@ -3585,6 +4026,7 @@ export const ShapeFillTab = {
       engine.clearShape();
       cfg.rawPoints = [];
       Persistence.save();
+      syncXCSProject(tabId);
     });
     clearBtn.style.width = '100%';
     clearBtn.style.display = engine.isEditMode() ? '' : 'none';
@@ -3609,6 +4051,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
+      syncXCSProject(tabId);
       rebuild();
     });
 
@@ -3625,6 +4068,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
+      syncXCSProject(tabId);
       rebuild();
     });
 
@@ -3633,6 +4077,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
+      syncXCSProject(tabId);
       rebuild();
     });
     const paletteDefaultBtn = UI.makeActionBtn('★', false, () => {
@@ -3642,6 +4087,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
+      syncXCSProject(tabId);
       rebuild();
     });
     paletteDefaultBtn.title = 'Use default palette for this style';
@@ -3654,6 +4100,7 @@ export const ShapeFillTab = {
       cfg.mode = v;
       Persistence.save();
       engine.generate(cfg);
+      syncXCSProject(tabId);
       rebuild();
     }, { fill: 'Fill Interior', border: 'Trace Border' });
 
@@ -3708,8 +4155,8 @@ export const ShapeFillTab = {
     ]));
 
     // ── Refresh ──
-    const refreshColorsBtn = UI.makeActionBtn('🎨 Colors', false, () => engine.refreshColors(cfg));
-    const refreshPatternBtn = UI.makeActionBtn('🔀 Pattern', false, () => engine.refreshPattern(cfg));
+    const refreshColorsBtn = UI.makeActionBtn('🎨 Colors', false, () => { engine.refreshColors(cfg); syncXCSProject(tabId); });
+    const refreshPatternBtn = UI.makeActionBtn('🔀 Pattern', false, () => { engine.refreshPattern(cfg); syncXCSProject(tabId); });
     refreshColorsBtn.style.flex = '1'; refreshPatternBtn.style.flex = '1';
     refreshColorsBtn.title = 'Keep the same layout, reroll colors only';
     refreshPatternBtn.title = 'Keep the same colors, reroll layout only';
@@ -3722,13 +4169,38 @@ export const ShapeFillTab = {
     const colorMappingLink = document.createElement('button');
     colorMappingLink.className = 'hbtn sm';
     colorMappingLink.style.width = '100%';
-    colorMappingLink.textContent = 'How colors map to xTool →';
+    colorMappingLink.textContent = 'Color → power mapping docs →';
     colorMappingLink.title = 'How the app maps swatch colors to xTool export layers and power settings';
     colorMappingLink.onclick = () => {
       const params = new URLSearchParams({ laser: cfg.laserPaletteId, style: cfg.paletteId });
       window.location.href = '../laser-color-mapping.html?' + params.toString();
     };
     scroll.appendChild(colorMappingLink);
+
+    // ── Render target toggle (bottom of panel) ──
+    // Switches which already-built view is shown; never triggers a
+    // regenerate itself — see syncXCSProject()/buildXCSProject() above.
+    const modeToggleWrap = document.createElement('div');
+    Object.assign(modeToggleWrap.style, { marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' });
+    const modeToggleLabel = document.createElement('div');
+    Object.assign(modeToggleLabel.style, { fontSize: '10px', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' });
+    modeToggleLabel.textContent = 'Render Target';
+    const modeToggleBtns = UI.makeToggles(['html', 'xtool'], cfg.renderTarget, async v => {
+      cfg.renderTarget = v;
+      Persistence.save();
+      updateShapeFillViewerVisibility(tabId);
+      if (v === 'xtool') {
+        await (state.projectPromise || syncXCSProject(tabId));
+        if (cfg.renderTarget === 'xtool') XCSViewer.update(pane, state);
+      }
+    }, { html: '🖼️ HTML', xtool: '📐 xTool' });
+    modeToggleWrap.appendChild(modeToggleLabel);
+    modeToggleWrap.appendChild(modeToggleBtns);
+    const modeToggleNote = document.createElement('div');
+    Object.assign(modeToggleNote.style, { fontSize: '10.5px', color: '#666', lineHeight: '1.4' });
+    modeToggleNote.textContent = 'xTool mode shows the same pattern as real, exportable vector shapes (Shapes/Palette/Process/JSON, Export XCS) instead of a flat canvas image. Switching does not reroll the pattern or colors.';
+    modeToggleWrap.appendChild(modeToggleNote);
+    scroll.appendChild(modeToggleWrap);
   }
 };
 
