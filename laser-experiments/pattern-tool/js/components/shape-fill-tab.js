@@ -203,12 +203,13 @@ function computeSliderMeta(style, mode) {
 //     record time, so the *visible* result matches even though the vector
 //     shape itself has no transparency.
 //   - Stroke width: the XCS renderer draws every path as a fixed hairline,
-//     so a canvas `ctx.lineWidth`-thick stroke becomes a filled capsule
-//     (round-capped thick-line polygon) instead of a thin vector stroke.
-//     Thin cosmetic outlines (lineWidth <= 3 local units) are skipped
-//     entirely rather than converted, since the underlying fill already
-//     carries the correct silhouette/color and a hairline border is not
-//     visually significant.
+//     so every canvas ctx.stroke() becomes a filled capsule (round-capped
+//     thick-line polygon) instead of a thin vector stroke. The canvas's own
+//     per-shape lineWidth is a pixel value tuned for on-screen looks, not a
+//     meaningful physical thickness on the bed, so it's ignored for xTool
+//     output — instead every stroke uses one user-controlled physical width
+//     (cfg.outlineWidthMM, see the "Outline Width" slider). 0mm skips all
+//     outlines (fills only).
 // Anything drawn while a clip() is active is skipped (no clip-path
 // equivalent exists here) — this only affects a few small decorative
 // textures (button marbling, gourd rib/wart texture), never a shape's
@@ -379,11 +380,14 @@ class RecordingCtx {
   // Shape Fill's canvas is 4:3 (1200x900) while the bed is square, so a
   // width-based scale alone leaves content pinned to one corner rather than
   // centered the way every other Pattern Tool tab's own generation math is.
-  constructor(scale = 1, offsetX = 0, offsetY = 0) {
+  constructor(scale = 1, offsetX = 0, offsetY = 0, outlineWidthMM = 0) {
     this.shapes = []; // { dPath, color, minX, minY, maxX, maxY } — all in mm (post-scale, post-offset)
     this._scale = scale; // px -> mm, applied only at flush time (fill/stroke)
     this._offsetX = offsetX;
     this._offsetY = offsetY;
+    // User-controlled physical outline width (mm), uniform across every
+    // stroke() regardless of the canvas's own lineWidth. 0 disables outlines.
+    this._outlineWidthMM = outlineWidthMM;
     this._current = new RecordingPath();
     this._matrix = matIdentity();
     this._stack = [];
@@ -467,14 +471,17 @@ class RecordingCtx {
   }
   fill(path) { this._emit((path || this._current).segs, this.fillStyle, false); }
   stroke(path) {
+    if (this._outlineWidthMM <= 0) return;
     const segs = (path || this._current).segs;
-    if (this.lineWidth > 3) this._emit(segs, this.strokeStyle, true, this.lineWidth);
-    // thin cosmetic outlines are skipped — the underlying fill already carries the shape/color
+    // widthPx is divided by scale here so _emit's `widthPx * this._scale`
+    // comes back out to exactly this._outlineWidthMM, independent of the
+    // canvas's own (irrelevant, on-screen-only) this.lineWidth.
+    this._emit(segs, this.strokeStyle, true, this._outlineWidthMM / this._scale);
   }
   fillRect(x, y, w, h) { this._emit([{ c: 'RECT', x, y, w, h }], this.fillStyle, false); }
   strokeRect(x, y, w, h) {
-    if (this.lineWidth <= 3) return;
-    this._emit([{ c: 'M', x, y }, { c: 'L', x: x + w, y }, { c: 'L', x: x + w, y: y + h }, { c: 'L', x, y: y + h }, { c: 'L', x, y }], this.strokeStyle, true, this.lineWidth);
+    if (this._outlineWidthMM <= 0) return;
+    this._emit([{ c: 'M', x, y }, { c: 'L', x: x + w, y }, { c: 'L', x: x + w, y: y + h }, { c: 'L', x, y: y + h }, { c: 'L', x, y }], this.strokeStyle, true, this._outlineWidthMM / this._scale);
   }
   fillText() { /* skipped — see header note */ }
   clearRect() { /* no-op — nothing to "clear" when recording vector shapes */ }
@@ -3663,7 +3670,7 @@ function createEngine(canvas) {
       isEditMode = false;
 
       const runRecording = (offsetX, offsetY) => {
-        const rec = new RecordingCtx(PX_TO_MM, offsetX, offsetY);
+        const rec = new RecordingCtx(PX_TO_MM, offsetX, offsetY, cfg.outlineWidthMM);
         ctx = rec; PathCtor = RecordingPath;
         try {
           generatePipes(cfg);
@@ -3778,7 +3785,13 @@ const DEFAULTS = {
   laserPaletteId: 'true-color',
   // 'html' (default) shows the raw canvas render. 'xtool' shows the same
   // pattern as real XCS vector shapes via the standard XCSViewer.
-  renderTarget: 'html'
+  renderTarget: 'html',
+  // xTool-mode-only: physical width (mm) used to convert every ctx.stroke()
+  // call into a filled capsule outline. The canvas's own per-shape lineWidth
+  // (a pixel value tuned for on-screen looks) is not a meaningful physical
+  // thickness on the bed, so this single dial overrides it uniformly. 0 = no
+  // outlines at all (fills only). Has no effect on the HTML canvas render.
+  outlineWidthMM: 0.2
 };
 
 const TRUE_COLOR_ID = 'true-color';
@@ -4176,6 +4189,20 @@ export const ShapeFillTab = {
       window.location.href = '../laser-color-mapping.html?' + params.toString();
     };
     scroll.appendChild(colorMappingLink);
+
+    // ── Outline width (xTool-only) ──
+    // Purely a vector-export concern: converts every ctx.stroke() into a
+    // filled capsule of this physical width. Doesn't touch the HTML canvas
+    // render, so this only ever needs to rebuild the XCS project, never a
+    // full engine.generate(cfg).
+    const outlineWidthCtrl = UI.makeRange(0, 2, 0.1, cfg.outlineWidthMM, v => {
+      cfg.outlineWidthMM = +v;
+      Persistence.save();
+      syncXCSProject(tabId);
+    }, 'mm');
+    scroll.appendChild(UI.makeSection('Outline Width (xTool)', [
+      UI.makeRow('Thickness', outlineWidthCtrl, '0mm = no outlines (fills only). Overrides the canvas\'s own per-shape line width with one physical value for the vector export.')
+    ]));
 
     // ── Render target toggle (bottom of panel) ──
     // Switches which already-built view is shown; never triggers a
