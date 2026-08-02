@@ -91,6 +91,37 @@
     padding: 14px 18px; margin-bottom: 18px;
   }
 
+  /* Live mapping diagram */
+  .map-diagram {
+    margin-top: 16px;
+    padding: 16px;
+    background: #0d0d0d;
+    border: 1px solid #223;
+    border-radius: 10px;
+  }
+  .map-diagram-caption {
+    font-size: 11.5px; color: #6a92b8; margin-bottom: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .map-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+  }
+  .map-row + .map-row { border-top: 1px solid #181818; }
+  .map-chip {
+    width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.2);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .map-hex { color: #888; min-width: 64px; }
+  .map-arrow { color: #3a5a78; font-size: 15px; }
+  .map-laser-label { color: #ddd; flex: 1; }
+  .map-power { color: #f0a040; font-weight: 700; }
+  .map-diagram-note { font-size: 12px; color: #666; margin-top: 12px; line-height: 1.5; }
+  .map-diagram-note.err { color: #e07050; }
+
   /* Details disclosure */
   details { margin-bottom: 24px; }
   details > summary {
@@ -129,10 +160,66 @@
     <div class="summary-row"><span class="num">1</span><p>Most Pattern Tool colors come from a <strong>palette file</strong> where every swatch is really "this is what N% laser power looks like burned into real material."</p></div>
     <div class="summary-row"><span class="num">2</span><p>Picking a swatch there isn't decoration — it sets the power/speed baked into the exported <code>.xcs</code> file, ready for xTool.</p></div>
     <div class="summary-row"><span class="num">3</span><p><strong>Shape Fill</strong> is different: its "Color Mapping" list (SteamPunk, Neon, Autumn&nbsp;Leaves…) is just decorative — until now, unrelated to lasers at all.</p></div>
-    <div class="summary-row"><span class="num">4</span><p>Shape Fill now has a <strong>Laser Palette</strong> selector above Color Mapping. Leave it on <strong>True Color</strong> and colors are exactly as chosen. Pick a real laser palette instead, and every decorative color is swapped for its closest match in that palette — no two colors sharing one match.</p></div>
+    <div class="summary-row"><span class="num">4</span><p>Shape Fill now has a <strong>Laser Palette</strong> selector above Color Mapping. Leave it on <strong>True Color</strong> and colors are exactly as chosen. Pick a real laser palette instead — like the new <strong>Titanium IR</strong> palette below — and every decorative color is swapped for its closest match in that palette, no two colors sharing one match.</p></div>
     <div class="summary-row"><span class="num">5</span><p>Hover the <strong>Color Mapping</strong> label any time to see each true color next to what it's currently mapped to.</p></div>
     <div class="summary-row"><span class="num">6</span><p>This still only changes what color the <em>preview</em> is drawn in. Shape Fill still has no "Export XCS" button — see Details below for exactly where that line is.</p></div>
+
+    <div class="map-diagram">
+      <div class="map-diagram-caption" id="mapDiagramCaption">Example: SteamPunk (Shape Fill's default Color Mapping) → Titanium IR (834 LPCM)</div>
+      <div id="mapDiagram"><div class="map-diagram-note">Loading live example…</div></div>
+    </div>
   </div>
+
+  <script>
+    (async function () {
+      const el = document.getElementById('mapDiagram');
+      // The exact 9 colors Shape Fill's "SteamPunk" Color Mapping uses by default.
+      const trueColors = ['#b08d57', '#a97142', '#8c5e3c', '#5e3a21', '#cda434', '#d4af37', '#7b3f00', '#b5a642', '#8a795d'];
+
+      function hexToRgb(hex) {
+        const c = hex.replace('#', '');
+        return [parseInt(c.substring(0, 2), 16), parseInt(c.substring(2, 4), 16), parseInt(c.substring(4, 6), 16)];
+      }
+      function dist2(a, b) {
+        const [r1, g1, b1] = hexToRgb(a), [r2, g2, b2] = hexToRgb(b);
+        return (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2;
+      }
+      // Identical algorithm to Shape Fill's own resolveRenderPalette: nearest
+      // match, no laser entry reused across two different true colors.
+      function mapNoDuplicates(colors, entries) {
+        const used = new Set();
+        return colors.map(hex => {
+          let bestIdx = -1, bestDist = Infinity;
+          entries.forEach((e, i) => {
+            if (used.has(i)) return;
+            const d = dist2(hex, e.rgb);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+          });
+          used.add(bestIdx);
+          return { trueColor: hex, entry: entries[bestIdx] };
+        });
+      }
+
+      try {
+        const res = await fetch('pattern-tool/palettes/titanium-ir-834lpcm.json');
+        if (!res.ok) throw new Error('fetch failed');
+        const laser = await res.json();
+        const mapped = mapNoDuplicates(trueColors, laser.entries);
+        el.innerHTML = mapped.map(m => `
+          <div class="map-row">
+            <div class="map-chip" style="background:${m.trueColor}"></div>
+            <div class="map-hex">${m.trueColor}</div>
+            <div class="map-arrow">&rarr;</div>
+            <div class="map-chip" style="background:${m.entry.rgb}"></div>
+            <div class="map-laser-label">${m.entry.label}</div>
+            <div class="map-power">${m.entry.power}%</div>
+          </div>
+        `).join('') + `<div class="map-diagram-note">Live example — computed in this page, from the real ${laser.entries.length}-entry <code>titanium-ir-834lpcm.json</code> palette, using the same nearest-match-without-duplicates rule Shape Fill applies.</div>`;
+      } catch (e) {
+        el.innerHTML = '<div class="map-diagram-note err">Live example unavailable (couldn\'t load the palette file over file:// — serve this page from a local server to see it). The algorithm is described in Details below.</div>';
+      }
+    })();
+  </script>
 
   <details>
     <summary>Details — the real xTool pipeline</summary>
@@ -160,6 +247,12 @@
         So when a tool's "Color" control shows you a <em>Gold</em> swatch, it isn't a decorative choice —
         it's a stand-in for "burn this shape at 20% power." Speed, LPCM, and repeat count come from the same
         JSON, at the palette level or per-entry.
+      </p>
+      <p>
+        <code>pattern-tool/palettes/</code> now has four such files: two LaFont SS304 steel sweeps, an
+        RR Lines speed sweep, and a new <code>titanium-ir-834lpcm.json</code> — an 80-step IR power sweep
+        (12–91%) on titanium, crosshatch fill, 200&nbsp;mm/s, 834&nbsp;LPCM, sampled from a photographed
+        physical chip card. The live example in the Summary above uses this one.
       </p>
 
       <h3>The code path, end to end</h3>
