@@ -1,10 +1,10 @@
 import { App } from './app.js';
 import { Persistence } from './persistence.js';
 import { UI } from './utils.js';
-import { 
-  MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab, 
+import {
+  MandalaTab, GeometryTab, FractalTab, PathTab, AttractorTab,
   VoronoiTab, PaletteTestTab, GradientTab, MathTab, TabMgr,
-  PaletteGridTab, HilbertTab, BitmapTab
+  PaletteGridTab, HilbertTab, BitmapTab, ShapeFillTab
 } from './tabs.js';
 
 // Dependency Injection
@@ -129,7 +129,10 @@ const PATTERNS = [
   { id: 'test-tiles', short: 'Tiles', label: 'Tiles Pattern', cat: 'Material & Technical', comp: MathTab, cfg: { type: 'tiles' }, icon: '▤' },
 
   // Bitmap & Dithering
-  { id: 'bitmap-dither', short: 'Dither', label: 'Dither Density Test', cat: 'Bitmap', comp: BitmapTab, cfg: { type: 'dither-test' }, icon: '▞' }
+  { id: 'bitmap-dither', short: 'Dither', label: 'Dither Density Test', cat: 'Bitmap', comp: BitmapTab, cfg: { type: 'dither-test' }, icon: '▞' },
+
+  // Illustrated Fills
+  { id: 'shapefill', short: 'ShapeFill', label: 'Shape Fill', cat: 'Illustrated Fills', comp: ShapeFillTab, icon: '🧩' }
 ];
 
 window.addEventListener('DOMContentLoaded', async () => {
