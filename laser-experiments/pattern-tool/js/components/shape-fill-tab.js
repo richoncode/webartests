@@ -4016,7 +4016,7 @@ export const ShapeFillTab = {
     state.xcsViewerEl = xcsViewerEl;
     updateShapeFillViewerVisibility(tabId);
 
-    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProject(tabId); };
+    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); };
 
     canvasEl.addEventListener('mousedown', e => { engine.handlePointerDown(e, cfg); persistShape(); });
     canvasEl.addEventListener('mousemove', e => { engine.handlePointerMove(e, cfg); });
@@ -4064,7 +4064,7 @@ export const ShapeFillTab = {
       Object.assign(btn.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', flex: '1 1 0', minWidth: '0', padding: '6px 2px' });
       btn.innerHTML = `<span style="width:16px;height:16px;display:inline-flex">${p.svg}</span><span style="font-size:9px">${p.label}</span>`;
       btn.onclick = () => {
-        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProject(tabId); };
+        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); };
         if (engine.isShapeCustom()) {
           if (confirm('Replace your custom-edited shape with this preset? This cannot be undone.')) apply();
         } else apply();
@@ -4078,7 +4078,7 @@ export const ShapeFillTab = {
       canvasEl.style.cursor = on ? 'crosshair' : 'default';
       cfg.rawPoints = engine.getRawPoints();
       Persistence.save();
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     });
     editBtn.style.width = '100%';
@@ -4088,7 +4088,7 @@ export const ShapeFillTab = {
       engine.clearShape();
       cfg.rawPoints = [];
       Persistence.save();
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
     });
     clearBtn.style.width = '100%';
     clearBtn.style.display = engine.isEditMode() ? '' : 'none';
@@ -4113,7 +4113,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     });
 
@@ -4130,7 +4130,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     });
 
@@ -4139,7 +4139,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     });
     const paletteDefaultBtn = UI.makeActionBtn('★', false, () => {
@@ -4149,7 +4149,7 @@ export const ShapeFillTab = {
       applyPaletteResolution(cfg);
       Persistence.save();
       engine.generate(cfg);
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     });
     paletteDefaultBtn.title = 'Use default palette for this style';
@@ -4162,7 +4162,7 @@ export const ShapeFillTab = {
       cfg.mode = v;
       Persistence.save();
       engine.generate(cfg);
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
       rebuild();
     }, { fill: 'Fill Interior', border: 'Trace Border' });
 
@@ -4217,8 +4217,8 @@ export const ShapeFillTab = {
     ]));
 
     // ── Refresh ──
-    const refreshColorsBtn = UI.makeActionBtn('🎨 Colors', false, () => { engine.refreshColors(cfg); syncXCSProject(tabId); });
-    const refreshPatternBtn = UI.makeActionBtn('🔀 Pattern', false, () => { engine.refreshPattern(cfg); syncXCSProject(tabId); });
+    const refreshColorsBtn = UI.makeActionBtn('🎨 Colors', false, () => { engine.refreshColors(cfg); syncXCSProjectDebounced(tabId); });
+    const refreshPatternBtn = UI.makeActionBtn('🔀 Pattern', false, () => { engine.refreshPattern(cfg); syncXCSProjectDebounced(tabId); });
     refreshColorsBtn.style.flex = '1'; refreshPatternBtn.style.flex = '1';
     refreshColorsBtn.title = 'Keep the same layout, reroll colors only';
     refreshPatternBtn.title = 'Keep the same colors, reroll layout only';

@@ -123,7 +123,16 @@ export const XCSViewer = {
     inst.xcsCanvas.onItemLeave = () => {
       this.onLeave(v);
     };
-    
+
+    // One delegated listener instead of an onclick closure assigned to
+    // every rendered SVG element on every sync (thousands of them for a
+    // large project) — renderChunked/restyleInPlace just tag each element
+    // with data-idx as they're built/restyled.
+    q('.svg-content').addEventListener('click', e => {
+      const el = e.target.closest('[data-idx]');
+      if (el) { e.stopPropagation(); this.onItemClick(v, +el.dataset.idx); }
+    });
+
     v.querySelectorAll('.rtab').forEach(t => {
       t.onclick = () => {
         const wasJSON = v.querySelector('.rtab.active')?.dataset.tab === 'json';
@@ -337,17 +346,36 @@ export const XCSViewer = {
     const inst = Object.values(App.instances).find(i => i.pane.contains(v));
     if (!inst || !state.project) return;
 
-    state.renderedShapes = state.project.getItems().map(item => item.getRenderProps());
+    const prevRendered = state.renderedShapes;
+    const newRendered = state.project.getItems().map(item => item.getRenderProps());
+    state.renderedShapes = newRendered;
 
-    // Delegate rendering to the unified XCSCanvas
-    inst.xcsCanvas.render(state.project);
-
-    // Wire up click-to-scroll interaction on all rendered SVG elements
+    // Fast path: if every item's geometry (dPath/x/y/w/h) is byte-identical
+    // to what's already on screen — e.g. only colors/power/speed changed,
+    // as with a "refresh colors" or laser-palette swap, geometry-affecting
+    // params (style/thickness/density/etc.) untouched — there's no need to
+    // tear down and rebuild potentially thousands of SVG nodes. Just
+    // restyle the existing elements in place; this is why changing color
+    // is (and should be) dramatically faster than changing something that
+    // actually moves shapes around.
     const svgContent = inst.xcsCanvas._content;
-    Array.from(svgContent.children).forEach((el, i) => {
-      el.style.cursor = 'pointer';
-      el.onclick = (e) => { e.stopPropagation(); this.onItemClick(v, i); };
-    });
+    const geometryUnchanged = prevRendered && prevRendered.length === newRendered.length &&
+      svgContent.children.length === newRendered.length &&
+      prevRendered.every((p, i) => {
+        const n = newRendered[i];
+        return p.dPath === n.dPath && p.x === n.x && p.y === n.y && p.w === n.w && p.h === n.h;
+      });
+
+    if (geometryUnchanged) {
+      this.restyleInPlace(svgContent, newRendered);
+    } else {
+      // Fire-and-forget: progressively appends across animation frames (see
+      // renderChunked) rather than blocking the main thread for the whole
+      // rebuild, so the shape count/first chunks are visible immediately
+      // and the rest fills in — instead of a multi-second freeze followed
+      // by everything popping in at once.
+      this.renderChunked(v, inst, state.project);
+    }
 
     this.applyTransform(v, state);
     this.renderStats(v, state);
@@ -368,6 +396,75 @@ export const XCSViewer = {
       if (activeTab === 'process') this.renderProcessTree(v, state); else state._processStale = true;
       if (activeTab === 'json') this.renderJSON(v, state);
     }
+  },
+
+  // Restyles already-rendered SVG elements in place (fill/stroke only) —
+  // used when update() has determined every item's geometry is identical
+  // to what's already on screen. Mirrors the shared fill/stroke logic in
+  // xcs-canvas.js's _renderItem (that file is not modified — this only
+  // ever touches attributes it already sets on elements it already built).
+  restyleInPlace(svgContent, rendered) {
+    Array.from(svgContent.children).forEach((el, i) => {
+      const p = rendered[i];
+      if (!p || p.type === 'TEXT' || p.type === 'BITMAP') return;
+      el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
+      if (p.isFill && p.fillRule) el.setAttribute('fill-rule', p.fillRule);
+      el.setAttribute('stroke', p.layerColor);
+    });
+  },
+
+  // Appends rendered SVG elements a chunk at a time across animation
+  // frames instead of building the whole project synchronously in one
+  // blocking pass — for a large project this turns a multi-second freeze
+  // into a visibly progressive fill-in with a real percentage indicator
+  // (the .canvas-progress bar already existed in the markup above but had
+  // nothing driving it until this). xcs-canvas.js itself is not modified;
+  // this calls its already-public building blocks (_renderItem/
+  // _attachHover/clear/_content) directly instead of its single synchronous
+  // render() method.
+  //
+  // `state._renderGen` is a token guarding against overlap: if another
+  // update() (geometry-changing or not) starts while a chunked render is
+  // still appending, the stale run's next animation-frame callback sees a
+  // mismatched token and stops immediately rather than corrupting the
+  // now-current render's element order.
+  renderChunked(v, inst, project) {
+    const state = inst.state;
+    const canvas = inst.xcsCanvas;
+    canvas.clear();
+    const items = project.getItems();
+    const total = items.length;
+    const CHUNK = 300;
+    const gen = (state._renderGen = (state._renderGen || 0) + 1);
+    const showBar = total > CHUNK;
+    if (showBar) this.showProgress(v, 0);
+    return new Promise(resolve => {
+      const step = () => {
+        if (state._renderGen !== gen) { resolve(); return; }
+        const frag = document.createDocumentFragment();
+        const end = Math.min(state._renderChunkIndex + CHUNK, total);
+        for (; state._renderChunkIndex < end; state._renderChunkIndex++) {
+          const item = items[state._renderChunkIndex];
+          const el = canvas._renderItem(item);
+          if (el) {
+            canvas._attachHover(el, item);
+            el.style.cursor = 'pointer';
+            el.dataset.idx = state._renderChunkIndex;
+            frag.appendChild(el);
+          }
+        }
+        canvas._content.appendChild(frag);
+        if (showBar) this.showProgress(v, Math.round(100 * state._renderChunkIndex / total));
+        if (state._renderChunkIndex < total) {
+          requestAnimationFrame(step);
+        } else {
+          if (showBar) this.hideProgress(v);
+          resolve();
+        }
+      };
+      state._renderChunkIndex = 0;
+      step();
+    });
   },
 
   showProgress(v, percent) {
