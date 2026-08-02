@@ -3724,7 +3724,10 @@ export const ShapeFillTab = {
     colorMappingLink.style.width = '100%';
     colorMappingLink.textContent = 'How colors map to xTool →';
     colorMappingLink.title = 'How the app maps swatch colors to xTool export layers and power settings';
-    colorMappingLink.onclick = () => { window.location.href = '../laser-color-mapping.html'; };
+    colorMappingLink.onclick = () => {
+      const params = new URLSearchParams({ laser: cfg.laserPaletteId, style: cfg.paletteId });
+      window.location.href = '../laser-color-mapping.html?' + params.toString();
+    };
     scroll.appendChild(colorMappingLink);
   }
 };

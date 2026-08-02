@@ -92,6 +92,32 @@
   }
 
   /* Live mapping diagram */
+  .map-controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 4px; }
+  .map-control-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px; }
+  .map-control-field label { font-size: 10.5px; color: #789; text-transform: uppercase; letter-spacing: 0.05em; }
+  .map-control-field select {
+    background: #161616; border: 1px solid #2a2a2a; color: #7ab3e0;
+    font-size: 13px; padding: 7px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .map-source-note { font-size: 11.5px; color: #6a92b8; margin: 10px 0 0; font-style: italic; }
+
+  .palette-details {
+    margin-top: 16px;
+    padding: 16px 18px;
+    background: #12181f;
+    border: 1px solid #223;
+    border-radius: 10px;
+  }
+  .palette-details-name { font-size: 14px; font-weight: 700; color: #eee; margin-bottom: 10px; }
+  .palette-details-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px 18px; margin-bottom: 10px;
+  }
+  .pd-item .pd-key { font-size: 10px; color: #678; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pd-item .pd-val { font-size: 13px; color: #ddd; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .palette-details-desc { font-size: 12.5px; color: #999; line-height: 1.55; margin-top: 10px; border-top: 1px solid #1e2530; padding-top: 10px; }
+  .palette-details-caveats { font-size: 11.5px; color: #766; margin-top: 8px; line-height: 1.5; }
+
   .map-diagram {
     margin-top: 16px;
     padding: 16px;
@@ -164,17 +190,61 @@
     <div class="summary-row"><span class="num">5</span><p>Hover the <strong>Color Mapping</strong> label any time to see each true color next to what it's currently mapped to.</p></div>
     <div class="summary-row"><span class="num">6</span><p>This still only changes what color the <em>preview</em> is drawn in. Shape Fill still has no "Export XCS" button — see Details below for exactly where that line is.</p></div>
 
+    <div class="map-controls">
+      <div class="map-control-field">
+        <label for="laserSelect">Laser Palette</label>
+        <select id="laserSelect"><option>Loading…</option></select>
+      </div>
+      <div class="map-control-field">
+        <label for="styleSelect">Color Mapping (Shape Fill style)</label>
+        <select id="styleSelect"></select>
+      </div>
+    </div>
+    <div class="map-source-note" id="mapSourceNote"></div>
+
+    <div class="palette-details" id="paletteDetails">
+      <div class="map-diagram-note">Loading palette details…</div>
+    </div>
+
     <div class="map-diagram">
-      <div class="map-diagram-caption" id="mapDiagramCaption">Example: SteamPunk (Shape Fill's default Color Mapping) → Titanium IR (834 LPCM)</div>
+      <div class="map-diagram-caption" id="mapDiagramCaption"></div>
       <div id="mapDiagram"><div class="map-diagram-note">Loading live example…</div></div>
     </div>
   </div>
 
   <script>
     (async function () {
-      const el = document.getElementById('mapDiagram');
-      // The exact 9 colors Shape Fill's "SteamPunk" Color Mapping uses by default.
-      const trueColors = ['#b08d57', '#a97142', '#8c5e3c', '#5e3a21', '#cda434', '#d4af37', '#7b3f00', '#b5a642', '#8a795d'];
+      // Mirrors shape-fill-tab.js's PALETTES / PALETTE_OPTIONS exactly — the
+      // decorative "Color Mapping" color sets Shape Fill offers.
+      const COLOR_MAPPING_PALETTES = {
+        classic: ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6', '#e67e22', '#1abc9c', '#ecf0f1', '#d35400'],
+        steampunk: ['#b08d57', '#a97142', '#8c5e3c', '#5e3a21', '#cda434', '#d4af37', '#7b3f00', '#b5a642', '#8a795d'],
+        neon: ['#ff00ff', '#00ffff', '#00ff00', '#ffff00', '#ff0000', '#ff8800'],
+        art_pendant: ['#3498db', '#5dade2', '#d4af37', '#aab7b8', '#d5f5e3', '#f4d03f', '#7f8c8d'],
+        circuit: ['#a52a2a', '#8b4513', '#cd7f32', '#b8860b', '#d2691e'],
+        painted_lady: ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF9F43', '#A29BFE', '#6C5CE7', '#FD79A8', '#00B894', '#FDCB6E', '#E17055'],
+        ducks: ['#FDD835', '#FFEB3B', '#FFF59D', '#FFFFFF', '#E0E0E0', '#FF9800', '#4CAF50'],
+        christmas: ['#c0392b', '#165b33', '#f8b229', '#ffffff', '#0b6e4f', '#e94560', '#d4af37'],
+        coins: ['#c9c9c9', '#a8a8a8', '#7d7d7d', '#5a5a5a', '#d4af37', '#b8860b', '#b87333', '#cd7f32', '#8b5a2b'],
+        gems: ['#e0115f', '#0f52ba', '#50c878', '#9966cc', '#ffc87c', '#b9f2ff', '#ff8c42'],
+        buttons: ['#e63946', '#f4a340', '#ffd23f', '#6a994e', '#1b4332', '#3a86ff', '#ff5da2', '#b185db', '#f1faee'],
+        autumn_leaves: ['#c1440e', '#e3641b', '#f2a30f', '#d4a017', '#8b5a2b', '#a52a2a', '#6b4226', '#e8b923']
+      };
+      const COLOR_MAPPING_OPTIONS = [
+        ['classic', 'Classic'], ['steampunk', 'SteamPunk'], ['neon', 'Neon'], ['art_pendant', 'Cool Stainless'],
+        ['circuit', 'Circuit Colors'], ['painted_lady', 'Painted Lady'], ['ducks', 'Ducks'], ['christmas', 'Christmas'],
+        ['coins', 'Coins'], ['gems', 'Gems'], ['buttons', 'Buttons'], ['autumn_leaves', 'Autumn Leaves']
+      ];
+      // Mirrors pattern-tool/js/constants.js's PALETTE_FILES (the real,
+      // xTool-calibrated laser palettes) — 'true-color' isn't a real file.
+      const LASER_PALETTE_FILES = ['laFont-1000lpcm', 'laFont-846lpcm', 'rr-lines-10-200-mixed', 'titanium-ir-834lpcm'];
+
+      const laserSelect = document.getElementById('laserSelect');
+      const styleSelect = document.getElementById('styleSelect');
+      const sourceNote = document.getElementById('mapSourceNote');
+      const detailsEl = document.getElementById('paletteDetails');
+      const diagramEl = document.getElementById('mapDiagram');
+      const captionEl = document.getElementById('mapDiagramCaption');
 
       function hexToRgb(hex) {
         const c = hex.replace('#', '');
@@ -200,12 +270,93 @@
         });
       }
 
+      let laserPalettes = null; // id -> full parsed JSON, once loaded
+      let loadError = null;
       try {
-        const res = await fetch('pattern-tool/palettes/titanium-ir-834lpcm.json');
-        if (!res.ok) throw new Error('fetch failed');
-        const laser = await res.json();
+        const jsons = await Promise.all(LASER_PALETTE_FILES.map(async id => {
+          const res = await fetch(`pattern-tool/palettes/${id}.json`);
+          if (!res.ok) throw new Error(`${id}.json: HTTP ${res.status}`);
+          return [id, await res.json()];
+        }));
+        laserPalettes = Object.fromEntries(jsons);
+      } catch (e) {
+        loadError = e;
+      }
+
+      // Populate the two selects.
+      COLOR_MAPPING_OPTIONS.forEach(([id, label]) => {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = label;
+        styleSelect.appendChild(opt);
+      });
+      laserSelect.innerHTML = '';
+      if (laserPalettes) {
+        LASER_PALETTE_FILES.forEach(id => {
+          const opt = document.createElement('option');
+          opt.value = id; opt.textContent = laserPalettes[id].name;
+          laserSelect.appendChild(opt);
+        });
+      } else {
+        const opt = document.createElement('option');
+        opt.textContent = 'Unavailable (see note below)';
+        laserSelect.appendChild(opt);
+      }
+
+      // Pick up whichever palette/style Shape Fill's "How colors map to
+      // xTool →" button was clicked with — so this page reflects what was
+      // actually selected there, not a fixed example. Falls back to a
+      // sensible default (and says so) if the link was opened without them,
+      // or with "true-color" (which has nothing real to map against).
+      const params = new URLSearchParams(location.search);
+      const requestedLaser = params.get('laser');
+      const requestedStyle = params.get('style');
+      let usedFallbackLaser = false, usedFallbackStyle = false;
+
+      let initialLaser = requestedLaser;
+      if (!initialLaser || initialLaser === 'true-color' || !LASER_PALETTE_FILES.includes(initialLaser)) {
+        initialLaser = 'titanium-ir-834lpcm';
+        usedFallbackLaser = true;
+      }
+      let initialStyle = requestedStyle;
+      if (!initialStyle || !COLOR_MAPPING_PALETTES[initialStyle]) {
+        initialStyle = 'steampunk';
+        usedFallbackStyle = true;
+      }
+      if (laserSelect.querySelector(`option[value="${initialLaser}"]`)) laserSelect.value = initialLaser;
+      styleSelect.value = initialStyle;
+
+      function renderDetails(laser) {
+        // Same IR-detection fallback as pattern-tool/js/palettes.js's
+        // getParams(): some palette files (e.g. laFont-1000lpcm.json) omit an
+        // explicit "laser" field and rely on "IR" appearing in the name instead.
+        const isIR = laser.laser === 'ir' || (laser.name || '').toUpperCase().includes('IR');
+        const rows = [
+          ['Speed', `${laser.speed} mm/s`],
+          ['LPCM', laser.lpcm],
+          ['Laser', isIR ? 'IR fibre' : 'Blue diode'],
+        ];
+        if (laser.material) rows.push(['Material', laser.material]);
+        if (laser.fillPattern) rows.push(['Fill pattern', laser.fillPattern]);
+        if (laser.powerRangePct) rows.push(['Power range', `${laser.powerRangePct[0]}–${laser.powerRangePct[1]}%`]);
+        if (laser.chipCount || laser.entries) rows.push(['Steps', laser.chipCount || laser.entries.length]);
+        if (laser.process) rows.push(['Process', laser.process]);
+
+        detailsEl.innerHTML = `
+          <div class="palette-details-name">${laser.name}</div>
+          <div class="palette-details-grid">
+            ${rows.map(([k, v]) => `<div class="pd-item"><div class="pd-key">${k}</div><div class="pd-val">${v}</div></div>`).join('')}
+          </div>
+          ${laser.description ? `<div class="palette-details-desc">${laser.description}</div>` : ''}
+          ${(laser.caveats && laser.caveats.length) ? `<div class="palette-details-caveats">${laser.caveats.map(c => '• ' + c).join('<br>')}</div>` : ''}
+        `;
+      }
+
+      function renderDiagram(styleId, laser) {
+        const trueColors = COLOR_MAPPING_PALETTES[styleId];
+        const styleLabel = COLOR_MAPPING_OPTIONS.find(([id]) => id === styleId)?.[1] || styleId;
+        captionEl.textContent = `${styleLabel} (Color Mapping) → ${laser.name}`;
         const mapped = mapNoDuplicates(trueColors, laser.entries);
-        el.innerHTML = mapped.map(m => `
+        diagramEl.innerHTML = mapped.map(m => `
           <div class="map-row">
             <div class="map-chip" style="background:${m.trueColor}"></div>
             <div class="map-hex">${m.trueColor}</div>
@@ -214,9 +365,28 @@
             <div class="map-laser-label">${m.entry.label}</div>
             <div class="map-power">${m.entry.power}%</div>
           </div>
-        `).join('') + `<div class="map-diagram-note">Live example — computed in this page, from the real ${laser.entries.length}-entry <code>titanium-ir-834lpcm.json</code> palette, using the same nearest-match-without-duplicates rule Shape Fill applies.</div>`;
-      } catch (e) {
-        el.innerHTML = '<div class="map-diagram-note err">Live example unavailable (couldn\'t load the palette file over file:// — serve this page from a local server to see it). The algorithm is described in Details below.</div>';
+        `).join('') + `<div class="map-diagram-note">Live — computed in this page from the real ${laser.entries.length}-entry palette file, using the same nearest-match-without-duplicates rule Shape Fill applies.</div>`;
+      }
+
+      function renderAll() {
+        const laser = laserPalettes[laserSelect.value];
+        renderDetails(laser);
+        renderDiagram(styleSelect.value, laser);
+      }
+
+      if (loadError) {
+        detailsEl.innerHTML = `<div class="map-diagram-note err">Couldn't load palette files (${loadError.message}). If you opened this page directly from disk (file://), serve it from a local server instead — see Details below for the algorithm.</div>`;
+        diagramEl.innerHTML = '';
+      } else {
+        const notes = [];
+        if (usedFallbackLaser) notes.push(requestedLaser === 'true-color'
+          ? 'Shape Fill was set to True Color when you clicked through, so there was no laser palette to show — defaulting to Titanium IR as an example.'
+          : 'No laser palette was passed in, so this defaults to Titanium IR as an example.');
+        if (usedFallbackStyle) notes.push('No Color Mapping style was passed in, so this defaults to SteamPunk.');
+        sourceNote.textContent = notes.join(' ');
+        renderAll();
+        laserSelect.addEventListener('change', renderAll);
+        styleSelect.addEventListener('change', renderAll);
       }
     })();
   </script>
@@ -252,7 +422,9 @@
         <code>pattern-tool/palettes/</code> now has four such files: two LaFont SS304 steel sweeps, an
         RR Lines speed sweep, and a new <code>titanium-ir-834lpcm.json</code> — an 80-step IR power sweep
         (12–91%) on titanium, crosshatch fill, 200&nbsp;mm/s, 834&nbsp;LPCM, sampled from a photographed
-        physical chip card. The live example in the Summary above uses this one.
+        physical chip card. The live example in the Summary above defaults to this one, and reflects
+        whichever Laser Palette was actually selected in Shape Fill when you followed its "How colors map
+        to xTool" link — switch either dropdown up there to explore the others.
       </p>
 
       <h3>The code path, end to end</h3>
