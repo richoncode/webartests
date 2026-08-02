@@ -3680,29 +3680,39 @@ function createEngine(canvas) {
         return rec;
       };
 
-      // Pass 1 (uncentered): measure where the content actually lands.
-      // Shape Fill's canvas is 4:3 (1200x900) but the XCS viewer's viewBox
-      // is a fixed, square 100x100mm — unlike every other Pattern Tool tab,
-      // whose own generation math already targets that square bed directly,
-      // a width-based px->mm scale alone leaves Shape Fill's content pinned
-      // to one corner instead of centered. Since generation is deterministic
-      // (reseedRandom() at the top of generatePipes resets to the same
-      // patternSeed/colorSeed every call), re-running it a second time with
-      // a measured centering offset baked in is cheap and exact — not a
-      // regeneration, the same recording just shifted to sit centered in
-      // the fixed bed the same way every other tab's content does.
-      const measurePass = runRecording(0, 0);
+      // Measure where the content lands, then shift it to center — without
+      // re-running generation a second time. Shape Fill's canvas is 4:3
+      // (1200x900) but the XCS viewer's viewBox is a fixed, square
+      // 100x100mm — unlike every other Pattern Tool tab, whose own
+      // generation math already targets that square bed directly, a
+      // width-based px->mm scale alone leaves Shape Fill's content pinned
+      // to one corner instead of centered.
+      //
+      // RecordingCtx's offsetX/offsetY are baked into `_scaledMatrix()` as a
+      // pure additive translate applied after scale/rotation (see its
+      // `offsetM` composition), and every dPath is built relative to each
+      // shape's own bbox center (`centeredM` in `_emit`) — so the offset
+      // passed to the constructor cancels out of every dPath exactly and
+      // only ever shifts the recorded bbox (minX/minY/maxX/maxY), which is
+      // what determines each shape's placement (x/y) below. That means a
+      // second full `runRecording()` pass at a different offset reproduces
+      // byte-for-byte (module float-formatting noise on values that land
+      // exactly on zero, e.g. "0.000" vs "-0.000") the same dPath strings as
+      // the first pass — so instead of re-running all ~40 draw functions a
+      // second time (verified: this used to cost ~400ms on the "gears"
+      // style alone), just record once and apply the centering shift when
+      // computing each shape's placement.
+      const rec = runRecording(0, 0);
       let centerOffsetX = 0, centerOffsetY = 0;
-      if (measurePass.shapes.length) {
+      if (rec.shapes.length) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        measurePass.shapes.forEach(s => {
+        rec.shapes.forEach(s => {
           if (s.minX < minX) minX = s.minX; if (s.minY < minY) minY = s.minY;
           if (s.maxX > maxX) maxX = s.maxX; if (s.maxY > maxY) maxY = s.maxY;
         });
         centerOffsetX = 50 - (minX + maxX) / 2;
         centerOffsetY = 50 - (minY + maxY) / 2;
       }
-      const rec = centerOffsetX || centerOffsetY ? runRecording(centerOffsetX, centerOffsetY) : measurePass;
       isEditMode = wasEditMode;
 
 
@@ -3732,7 +3742,7 @@ function createEngine(canvas) {
       await Promise.all(rec.shapes.map(s => {
         const w = Math.max(0.02, s.maxX - s.minX), h = Math.max(0.02, s.maxY - s.minY);
         return XCSExporter.addPath(project, {
-          x: (s.minX + s.maxX) / 2, y: (s.minY + s.maxY) / 2, width: w, height: h,
+          x: (s.minX + s.maxX) / 2 + centerOffsetX, y: (s.minY + s.maxY) / 2 + centerOffsetY, width: w, height: h,
           dPath: s.dPath, layerColor: s.color, laserSource, isFill: true,
           params: paramsForColor(s.color),
           extraDisplayData: { hideLabels: true }
@@ -3900,6 +3910,8 @@ function syncXCSProject(tabId) {
   const inst = App.instances[tabId];
   if (!inst) return Promise.resolve(null);
   const { cfg, state } = inst;
+  clearTimeout(state._syncDebounceTimer);
+  state._syncDebounceTimer = null;
   const promise = state.engine.buildXCSProject(cfg).then(project => {
     state.project = project;
     if (cfg.renderTarget === 'xtool') XCSViewer.update(inst.pane, inst.state);
@@ -3910,6 +3922,33 @@ function syncXCSProject(tabId) {
   });
   state.projectPromise = promise;
   return promise;
+}
+
+// A slider drag fires its onChange on every tick of the drag (see
+// UI.makeRange's 'input' listener), and each tick would otherwise kick off
+// its own full, synchronous ~1-3s syncXCSProject() — since nothing yields
+// back to the event loop mid-build, a 15-tick drag queues 15 full rebuilds
+// back to back, of which only the last is ever seen. Debouncing collapses
+// that into a single rebuild once the drag settles, without changing
+// behavior for one-shot actions (style/palette/preset changes, refresh
+// buttons), which call syncXCSProject directly and are unaffected by this.
+function syncXCSProjectDebounced(tabId, delay = 150) {
+  const inst = App.instances[tabId];
+  if (!inst) return;
+  const { state } = inst;
+  clearTimeout(state._syncDebounceTimer);
+  state._syncDebounceTimer = setTimeout(() => syncXCSProject(tabId), delay);
+}
+
+// Anything that's about to read state.project/state.projectPromise (the
+// render-target toggle, Export XCS/Palette) must not observe a stale,
+// pre-drag build sitting behind a still-pending debounce timer — this
+// cancels the timer and runs the rebuild immediately instead.
+function flushXCSProjectSync(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst) return Promise.resolve(null);
+  if (inst.state._syncDebounceTimer) return syncXCSProject(tabId);
+  return inst.state.projectPromise || syncXCSProject(tabId);
 }
 
 function updateShapeFillViewerVisibility(tabId) {
@@ -3961,6 +4000,12 @@ export const ShapeFillTab = {
     const htmlViewerEl = pane.querySelector('.sf-html-viewer');
     const state = { engine, canvasEl, htmlViewerEl, project: null, projectPromise: null };
     App.instances[tabId] = { type: 'shapefill', pane, cfg, state };
+    // Generic hook viewer.js (shared by every pattern tab) can call before
+    // reading state.project/projectPromise, without needing to import
+    // anything Shape-Fill-specific — flushes a pending debounced slider
+    // rebuild (see syncXCSProjectDebounced) so exports never read stale,
+    // pre-drag geometry. A no-op for tabs that never populate it.
+    state.flushPendingSync = () => flushXCSProjectSync(tabId);
 
     // The real XCSViewer — same component every other tab uses. Its own
     // create() reads/writes App.instances[tabId] (e.g. it sets
@@ -4002,7 +4047,11 @@ export const ShapeFillTab = {
     scroll.innerHTML = '';
 
     const rebuild = () => this.renderControls(tabId);
-    const set = (key, val) => { cfg[key] = val; Persistence.save(); engine.generate(cfg); syncXCSProject(tabId); };
+    // engine.generate(cfg) stays synchronous on every drag tick (cheap
+    // raster redraw, keeps the live HTML canvas fluid) — only the expensive
+    // XCS rebuild is debounced, since these are all range-slider values
+    // (see UI.makeRange below) that fire on every tick of a drag.
+    const set = (key, val) => { cfg[key] = val; Persistence.save(); engine.generate(cfg); syncXCSProjectDebounced(tabId); };
 
     const meta = computeSliderMeta(cfg.style, cfg.mode);
 
@@ -4198,7 +4247,7 @@ export const ShapeFillTab = {
     const outlineWidthCtrl = UI.makeRange(0, 2, 0.1, cfg.outlineWidthMM, v => {
       cfg.outlineWidthMM = +v;
       Persistence.save();
-      syncXCSProject(tabId);
+      syncXCSProjectDebounced(tabId);
     }, 'mm');
     scroll.appendChild(UI.makeSection('Outline Width (xTool)', [
       UI.makeRow('Thickness', outlineWidthCtrl, '0mm = no outlines (fills only). Overrides the canvas\'s own per-shape line width with one physical value for the vector export.')
@@ -4217,7 +4266,7 @@ export const ShapeFillTab = {
       Persistence.save();
       updateShapeFillViewerVisibility(tabId);
       if (v === 'xtool') {
-        await (state.projectPromise || syncXCSProject(tabId));
+        await flushXCSProjectSync(tabId);
         if (cfg.renderTarget === 'xtool') XCSViewer.update(pane, state);
       }
     }, { html: '🖼️ HTML', xtool: '📐 xTool' });
