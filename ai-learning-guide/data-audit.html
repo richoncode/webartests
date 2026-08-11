@@ -62,12 +62,27 @@
      and stays pinned while its section's rows scroll underneath — the next
      specialty's header then takes over the same slot once its row reaches
      that offset in normal flow, per the standard sticky-list-header pattern. */
-  .specialty-group-header td { background: #161616; padding: 16px 16px 16px 0; border-bottom: 1px solid #2a2a2a; position: sticky; top: var(--thead-h, 41px); z-index: 1; }
+  /* only the 3-line summary (title, our bottom-up, Gemini bottom-up) sticks —
+     the longer "basis"/note explanation lives in a separate, non-sticky row
+     right below (.specialty-group-meta-row) so it scrolls away normally
+     instead of eating into the frozen area, especially on mobile where it
+     wraps to several lines. */
+  .specialty-group-header td { background: #161616; padding: 16px 16px 6px 0; position: sticky; top: var(--thead-h, 41px); z-index: 1; }
   .specialty-group-title { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px; }
   .specialty-group-salary { font-size: 13px; color: #ddd; margin-bottom: 4px; }
   .specialty-group-salary strong { color: #4caf50; }
   .median-inline { color: #4caf50; font-weight: 700; }
+  .specialty-group-meta-row td { background: #161616; padding: 0 16px 16px 0; border-bottom: 1px solid #2a2a2a; }
   .specialty-group-meta { font-size: 12px; color: #777; line-height: 1.6; }
+
+  /* two stacked locked bars (column header + specialty header) eat too much
+     of a small screen — keep only the column header sticky on mobile and
+     let the specialty header scroll normally with the rows. Declared after
+     the base sticky rule above so it wins the cascade (same specificity —
+     source order decides, media query alone doesn't). */
+  @media (max-width: 760px) {
+    .specialty-group-header td { position: static; }
+  }
 
   /* Gemini alternate-source lines — orange, distinct from our own green
      figures, everywhere a range/median is shown. Declared after the rules
@@ -243,7 +258,11 @@ function renderCombinedTable() {
           <div class="specialty-group-title">${esc(s.name)}</div>
           <div class="specialty-group-salary">Bottom-up: <strong>${esc(sr.range)}</strong> <span class="median-inline">(median ${esc(sr.median)})</span></div>
           ${geminiHeaderLine}
-          <div class="specialty-group-meta" style="margin-top:6px;">${esc(sr.basis)} ${esc(sr.note)}</div>
+        </td>
+      </tr>
+      <tr class="specialty-group-meta-row">
+        <td colspan="6">
+          <div class="specialty-group-meta">${esc(sr.basis)} ${esc(sr.note)}</div>
         </td>
       </tr>`;
     const companyRows = COMPANIES.filter(c => c.specialtyIds.includes(s.id)).map(c => {
