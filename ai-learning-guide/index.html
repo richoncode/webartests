@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Learning Guide — webartests</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a { color: #5b9bd5; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 24px; }
+
+  /* freshness callout */
+  .callout { border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 48px; background: #1a1200; max-width: 640px; }
+  .callout strong { color: #ccc; }
+
+  /* section headings */
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+  .section-name { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 14px; color: #666; margin-bottom: 20px; max-width: 640px; line-height: 1.6; }
+  .section { margin-bottom: 56px; }
+
+  /* mode toggle */
+  .mode-toggle-row { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; flex-wrap: wrap; }
+  .mode-toggle-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; }
+  .mode-toggle { display: inline-flex; background: #111; border: 1px solid #2a2a2a; border-radius: 8px; padding: 3px; gap: 2px; }
+  .mode-btn { background: transparent; border: none; color: #999; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-family: inherit; cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .mode-btn:hover { color: #ccc; }
+  .mode-btn.active { background: #1e2d40; color: #5b9bd5; }
+  .mode-btn-sub { font-size: 11px; opacity: 0.65; margin-left: 4px; }
+
+  /* specialty/company selector (shared card style — same visual language for
+     either mode's checkbox grid) */
+  .specialty-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 8px; }
+  .specialty-card { display: flex; gap: 12px; align-items: flex-start; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 18px 20px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .specialty-card:hover { background: #1f1f1f; border-color: #444; }
+  .specialty-card:has(input:checked) { border-color: #5b9bd5; background: #16222f; }
+  .specialty-card input { width: 18px; height: 18px; margin-top: 2px; accent-color: #5b9bd5; cursor: pointer; flex-shrink: 0; }
+  .specialty-card h3 { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .specialty-card p { font-size: 13px; color: #888; line-height: 1.5; }
+  /* company mode: cards sharing a specialty with the current selection, but
+     not themselves selected — a discovery cue distinct from the blue
+     checked-state highlight above. */
+  .specialty-card.similar-match { border-color: #4caf50; background: #16241a; }
+  .specialty-card.similar-match:hover { background: #1a2e1e; }
+  .similar-hint { font-size: 12px; color: #4caf50; margin: 10px 0 0; }
+  /* company mode: the long tail beyond the featured/top set stays hidden
+     until "Show more" is clicked — kept as flat siblings in the same grid
+     (not a nested wrapper) so the grid layout doesn't break either way. */
+  #selectorGrid .more-item { display: none; }
+  #selectorGrid.show-more .more-item { display: flex; }
+
+  /* company-mode nesting: company block -> specialty sub-block -> classes */
+  .company-block { margin-bottom: 44px; padding-top: 28px; border-top: 1px solid #1a1a1a; }
+  .company-block:first-child { padding-top: 0; border-top: none; }
+  .company-block-title { font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .company-block-oneliner { font-size: 13.5px; color: #888; line-height: 1.6; margin-bottom: 8px; max-width: 640px; }
+  .company-careers-link { font-size: 13px; margin-bottom: 20px; display: inline-block; }
+  .specialty-sub-block { margin: 20px 0 28px; padding-left: 18px; border-left: 2px solid #222; }
+  .specialty-sub-block-title { font-size: 14.5px; font-weight: 700; color: #ccc; margin-bottom: 12px; }
+
+  /* multi-company comparison table (company mode, 2+ companies selected) */
+  .comparison-section { margin-bottom: 44px; padding-bottom: 28px; border-bottom: 1px solid #1a1a1a; }
+  .comparison-callout { font-size: 12.5px; color: #777; line-height: 1.6; margin: 6px 0 16px; max-width: 640px; }
+  .comparison-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .btn-copy { display: inline-block; background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 8px; font-size: 12.5px; font-family: inherit; text-decoration: none; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  .btn-copy:hover { border-color: #5b9bd5; color: #5b9bd5; }
+  /* overflow-x: auto alone would make this its own scroll container and
+     break page-level position:sticky on the header (a well-known CSS
+     gotcha) — so this scrolls vertically too, within a bounded height, and
+     the sticky header pins to the top of THAT scroll instead. */
+  .comparison-table-wrap { overflow: auto; max-height: 480px; margin-bottom: 8px; }
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .comparison-table th, .comparison-table td { padding: 10px 16px 10px 0; border-bottom: 1px solid #222; text-align: left; vertical-align: top; white-space: normal; }
+  .comparison-table th { color: #666; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; white-space: nowrap; position: sticky; top: 0; background: #0d0d0d; z-index: 1; }
+  .comparison-table tbody tr:hover { background: #141414; }
+  .comparison-table input[type="checkbox"] { width: 16px; height: 16px; accent-color: #5b9bd5; cursor: pointer; }
+  .comparison-dash { color: #444; }
+  .median-inline { color: #4caf50; font-weight: 700; }
+  .alt-source { color: #f0a040; font-size: 11px; margin-top: 3px; }
+  .alt-source-median { color: #f0a040; font-weight: 700; }
+
+  .selection-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 0; flex-wrap: wrap; }
+  .selection-bar-actions { display: flex; align-items: center; gap: 16px; }
+  .count-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 20px; color: #5b9bd5; background: #1e2d40; border: 1px solid #5b9bd544; }
+  .link-btn { background: none; border: none; color: #666; font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; font-family: inherit; }
+  .link-btn:hover { color: #aaa; }
+
+  /* empty state */
+  .empty-state { border: 1px dashed #2a2a2a; border-radius: 16px; padding: 48px 24px; text-align: center; color: #666; font-size: 14px; margin-top: 8px; }
+
+  /* results */
+  #results { display: none; }
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .result-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 22px 24px; }
+  .result-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .result-card h3 { font-size: 16px; font-weight: 600; color: #fff; line-height: 1.35; }
+  .result-card > p { font-size: 13.5px; color: #bbb; line-height: 1.6; margin-bottom: 8px; }
+  .provider-text { font-size: 12px; color: #666; margin-bottom: 8px; }
+  .verification-note { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 10px; }
+  .result-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #222; flex-wrap: wrap; }
+  .result-card-footer a { font-size: 13px; text-decoration: none; font-weight: 600; }
+  .result-card-footer a:hover { text-decoration: underline; }
+  .as-of { font-size: 10.5px; color: #444; white-space: nowrap; }
+  .mini-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .mini-chip { font-size: 10.5px; color: #666; background: #151515; border: 1px solid #262626; padding: 2px 8px; border-radius: 10px; }
+
+  /* badges */
+  .badge { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 3px 9px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+  .badge.blue   { color: #5b9bd5; background: #1e2d40; border: 1px solid #5b9bd544; }
+  .badge.green  { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .badge.orange { color: #f0a040; background: #1a1200; border: 1px solid #f0a04044; }
+  .badge.neutral{ color: #888; background: #1a1a1a; border: 1px solid #2a2a2a; }
+
+  /* specialty blocks — just a heading + its classes now. Hardware/cloud/
+     purchase info lives INSIDE each class's own card (see .course-hardware
+     below), since it's the class that determines what's actually needed,
+     not the specialty as a whole. */
+  .specialty-block { margin-bottom: 44px; padding-top: 28px; border-top: 1px solid #1a1a1a; }
+  .specialty-block:first-child { padding-top: 0; border-top: none; }
+  .specialty-block-title { font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 16px; }
+
+  /* per-course hardware/service widget, nested inside a course's own card */
+  .course-hardware { border-top: 1px solid #222; margin-top: 12px; padding-top: 12px; }
+  .course-hardware .hw-note { font-size: 12.5px; color: #999; line-height: 1.55; margin: 6px 0 8px; }
+  .hw-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 12.5px; color: #888; margin-top: 6px; }
+  .hw-line .hw-label { color: #666; flex-shrink: 0; }
+  .hw-line a { text-decoration: none; }
+  .hw-line a:hover { text-decoration: underline; }
+  .hw-line .sep { color: #444; }
+
+  .subsection-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 8px; }
+
+  .empty-section-note { font-size: 13px; color: #555; font-style: italic; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>AI Learning Guide</h1>
+  <p class="subtitle">Pick one or more AI specialty areas. For everything you check, you'll see companies known to hire for it, free courses to learn it, the hardware it actually takes to practice hands-on, and free/paid ways to get that hardware without buying it outright.</p>
+
+  <div class="callout">
+    <strong>Snapshot from August 2026 — not live, not auto-updating.</strong> Every company, course, and price below was researched and verified at a point in time (each item shows its own "as of" date). Job markets, free-tier terms, and hardware prices change — treat this as a well-researched starting point, not a live feed, and re-verify anything time-sensitive before acting on it.
+  </div>
+
+  <div class="mode-toggle-row">
+    <span class="mode-toggle-label">Explore by</span>
+    <div class="mode-toggle" role="group" aria-label="Explore by">
+      <button type="button" class="mode-btn active" data-mode="specialty">Specialty <span class="mode-btn-sub">→ class → hardware</span></button>
+      <button type="button" class="mode-btn" data-mode="company">Company <span class="mode-btn-sub">→ specialty → class → hardware</span></button>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="section-title">Step 1</p>
+    <h2 class="section-name" id="step1Title">Choose your specialties</h2>
+    <p class="section-desc" id="step1Desc">Select as many as you're curious about — everything below unions across your selection, with shared companies/courses/tools shown once.</p>
+    <div class="specialty-grid" id="selectorGrid"></div>
+    <p class="similar-hint" id="similarHint" style="display:none;">Green border = shares at least one specialty with every company you've already selected.</p>
+    <div id="moreBtnWrap" style="display:none; margin-top:2px;">
+      <button type="button" class="link-btn" id="moreBtn">Show more</button>
+    </div>
+    <div class="selection-bar">
+      <span class="count-badge" id="countBadge">0 specialties selected</span>
+      <span class="selection-bar-actions">
+        <a class="link-btn" href="data-audit.html" target="_blank" rel="noopener">Audit research data</a>
+        <button type="button" class="link-btn" id="copyStateBtn">Copy page state</button>
+        <button type="button" class="link-btn" id="clearBtn">Clear selection</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="empty-state" id="emptyState">Select at least one specialty above to see companies, courses, hardware, and where to get it.</div>
+
+  <div id="results">
+    <div class="section" id="step2Section">
+      <p class="section-title">Step 2</p>
+      <h2 class="section-name" id="step2Title">Classes to take — and what each one actually needs</h2>
+      <p class="section-desc" id="step2Desc">One block per specialty, listing its classes. Hardware requirements vary class by class even within the same specialty (a pure-reading course needs nothing; a hands-on notebook needs a GPU) — so each class shows its own hardware tier, the free/cheap way to get it, and where to buy in if you want to go beyond free.</p>
+      <div id="specialtyBlocks"></div>
+    </div>
+
+    <div class="section" id="step3Section">
+      <p class="section-title">Step 3</p>
+      <h2 class="section-name">Companies known to hire for this</h2>
+      <p class="section-desc">Companies with real, verifiable teams/products across everything you selected above — not a live job-count feed. Click through to each one's own careers page.</p>
+      <div id="companiesSection" class="result-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+
+// ── rendering ──
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Gemini's dataset (supplied by the user, not researched by this page's own
+// agents) is an independent second opinion, loaded from a plain JSON file so
+// it stays a genuinely separate artifact. See data-audit.html for the full
+// per-company comparison; here it's just a second line under the specialty
+// salary cell. GEMINI_DATA is null until the fetch resolves.
+let GEMINI_DATA = null;
+function parseDollar(str) {
+  const m = str && str.match(/\$[\d,]+/);
+  return m ? parseInt(m[0].replace(/[$,]/g, ''), 10) : null;
+}
+function parseRangeLowHigh(str) {
+  const matches = str && str.match(/\$[\d,]+/g);
+  return matches && matches.length >= 2 ? [parseInt(matches[0].replace(/[$,]/g, ''), 10), parseInt(matches[1].replace(/[$,]/g, ''), 10)] : null;
+}
+function geminiBottomUp(specialtyId) {
+  const entries = (GEMINI_DATA && GEMINI_DATA.data[specialtyId]) || {};
+  const medians = [], lows = [], highs = [];
+  Object.values(entries).forEach(e => {
+    if (!e) return;
+    const med = parseDollar(e.median);
+    if (med != null) medians.push(med);
+    const lh = parseRangeLowHigh(e.range);
+    if (lh) { lows.push(lh[0]); highs.push(lh[1]); }
+  });
+  if (!medians.length) return null;
+  medians.sort((a, b) => a - b);
+  const mid = Math.floor(medians.length / 2);
+  const medianVal = medians.length % 2 ? medians[mid] : Math.round((medians[mid - 1] + medians[mid]) / 2);
+  const rangeStr = (lows.length && highs.length) ? `$${Math.round(Math.min(...lows) / 1000)}K–$${Math.round(Math.max(...highs) / 1000)}K` : null;
+  return { range: rangeStr, median: `~$${Math.round(medianVal / 1000)}K`, count: medians.length };
+}
+
+const TIER_LABEL = {
+  'none-cpu-only': 'No special hardware',
+  'consumer-gpu': 'Consumer GPU',
+  'datacenter-gpu-tpu': 'Datacenter GPU/TPU',
+  'specialized-edge-or-robot': 'Specialized edge/robot hardware',
+};
+const TIER_BADGE_CLASS = {
+  'none-cpu-only': 'badge green',
+  'consumer-gpu': 'badge blue',
+  'datacenter-gpu-tpu': 'badge orange',
+  'specialized-edge-or-robot': 'badge orange',
+};
+const COST_BADGE = {
+  free: '<span class="badge green">Free</span>',
+  'free-to-audit': '<span class="badge blue">Free to Audit</span>',
+  'free-with-paid-certificate': '<span class="badge orange">Free (Paid Cert.)</span>',
+};
+
+function specialtyChips(ids, checkedSet) {
+  return ids.filter(id => checkedSet.has(id)).map(id => {
+    const s = SPECIALTIES.find(x => x.id === id);
+    return s ? `<span class="mini-chip">${esc(s.name)}</span>` : '';
+  }).join('');
+}
+
+function dedupeByIntersect(arr, checkedSet) {
+  const map = new Map();
+  arr.forEach(item => {
+    if (item.specialtyIds.some(id => checkedSet.has(id)) && !map.has(item.id)) map.set(item.id, item);
+  });
+  return [...map.values()];
+}
+
+function companyCard(c, checkedSet) {
+  return `
+    <div class="result-card">
+      <h3>${esc(c.name)}</h3>
+      <p>${esc(c.oneLiner)}</p>
+      <div class="mini-chip-row">${specialtyChips(c.specialtyIds, checkedSet)}</div>
+      <div class="result-card-footer">
+        <a href="${esc(c.careersUrl)}" target="_blank" rel="noopener">Careers →</a>
+        <span class="as-of">as of ${esc(c.asOfDate)}</span>
+      </div>
+    </div>`;
+}
+
+// The hardware/cloud/purchase widget nested INSIDE each course's own card —
+// it's the class that determines what's needed, not the specialty as a
+// whole, so this never gets a card of its own.
+function courseHardwareWidget(c) {
+  const cloudAlts = (c.cloudAltIds || []).map(id => CLOUD_ALTS.find(a => a.id === id)).filter(Boolean);
+  const purchasePoints = (c.purchaseIds || []).map(id => PURCHASE_POINTS.find(p => p.id === id)).filter(Boolean);
+
+  const cloudLine = cloudAlts.length
+    ? `<div class="hw-line"><span class="hw-label">Free/cheap via:</span> ${cloudAlts.map(a =>
+        `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>`
+      ).join('<span class="sep"> · </span>')}</div>`
+    : '';
+  const buyLine = purchasePoints.length
+    ? `<div class="hw-line"><span class="hw-label">Buy:</span> ${purchasePoints.map(p =>
+        `<a href="${esc(p.whereUrl)}" target="_blank" rel="noopener">${esc(p.specificExample)}</a> (${esc(p.approxPriceAsOf)})`
+      ).join('<span class="sep"> · </span>')}</div>`
+    : '';
+
+  return `
+    <div class="course-hardware">
+      <span class="${TIER_BADGE_CLASS[c.hardwareTier]}">${esc(TIER_LABEL[c.hardwareTier])}</span>
+      <p class="hw-note">${esc(c.hardwareNote)}</p>
+      ${cloudLine}
+      ${buyLine}
+    </div>`;
+}
+
+function courseCard(c) {
+  return `
+    <div class="result-card">
+      <div class="result-card-head">
+        <h3>${esc(c.name)}</h3>
+        ${COST_BADGE[c.cost] || ''}
+      </div>
+      <p class="provider-text">${esc(c.provider)} · ${esc(c.format)} · ${esc(c.level)}</p>
+      <p class="verification-note">${esc(c.verificationNote)}</p>
+      ${courseHardwareWidget(c)}
+      <div class="result-card-footer">
+        <a href="${esc(c.url)}" target="_blank" rel="noopener">Open course →</a>
+        <span class="as-of">as of ${esc(c.asOfDate)}</span>
+      </div>
+    </div>`;
+}
+
+function emptyNote(label) {
+  return `<p class="empty-section-note">No ${label} for this combination.</p>`;
+}
+
+// One block per selected specialty, listing its classes — each class shows
+// its OWN hardware tier + free/cheap way to get it + where to buy, nested
+// in that class's own card (see courseHardwareWidget above). Courses are
+// filtered per-specialty here (not deduped across specialties), since each
+// block is its own self-contained "explore this specialty" unit; a course
+// spanning two selected specialties intentionally appears in both blocks.
+function specialtyBlock(specialty) {
+  const courses = COURSES.filter(c => c.specialtyIds.includes(specialty.id));
+  return `
+    <div class="specialty-block">
+      <h3 class="specialty-block-title">${esc(specialty.name)}</h3>
+      <div class="result-grid">
+        ${courses.length ? courses.map(courseCard).join('') : emptyNote('classes')}
+      </div>
+    </div>`;
+}
+
+// Company mode: Company -> Specialty -> Class. One block per selected
+// company; nested inside it, one sub-block per specialty THAT COMPANY
+// belongs to (its full specialtyIds, not filtered by any specialty
+// selection — there isn't one in this mode). If two selected companies
+// share a specialty, that specialty's classes intentionally appear once
+// under each company block — same "each top-level selection is its own
+// self-contained exploration" rule used in specialty mode.
+function companyExploreBlock(company) {
+  const specialties = company.specialtyIds.map(id => SPECIALTIES.find(s => s.id === id)).filter(Boolean);
+  const subBlocks = specialties.map(s => {
+    const courses = COURSES.filter(c => c.specialtyIds.includes(s.id));
+    return `
+      <div class="specialty-sub-block">
+        <h4 class="specialty-sub-block-title">${esc(s.name)}</h4>
+        <div class="result-grid">
+          ${courses.length ? courses.map(courseCard).join('') : emptyNote('classes')}
+        </div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="company-block">
+      <h3 class="company-block-title">${esc(company.name)}</h3>
+      <p class="company-block-oneliner">${esc(company.oneLiner)}</p>
+      <a class="company-careers-link" href="${esc(company.careersUrl)}" target="_blank" rel="noopener">Careers →</a>
+      ${subBlocks}
+    </div>`;
+}
+
+// Multi-company comparison (company mode, 2+ companies selected): rows are
+// the union of specialties across the selected companies (a company with no
+// presence in a row shows "–" — this also makes shared specialties visually
+// obvious as the rows with no dashes). Checking a row's checkbox reveals that
+// specialty's classes below, via comparisonChecked (persists across re-renders
+// so toggling a company selection doesn't lose which rows were expanded).
+let comparisonChecked = new Set();
+let currentComparisonPrompt = '';
+
+function buildComparisonPrompt(selectedCompanies, rows) {
+  const pairs = selectedCompanies.flatMap(c =>
+    rows.filter(s => c.specialtyIds.includes(s.id)).map(s => `- ${c.name} — ${s.name}`)
+  ).join('\n');
+  return `Look up CURRENT job-opening counts and salary/comp ranges (today's date, not the estimates below) for these company/specialty combinations:\n${pairs}\n\nFor each: search LinkedIn Jobs, Indeed, and the company's own careers page for a current count of open roles relevant to that specialty, and check levels.fyi/Glassdoor/Payscale for current salary ranges for that role type at that company. Note the search date and source for each figure so it's clear this is a fresh snapshot, not a repeat of a cached estimate.`;
+}
+
+function copyToClipboard(text, btn, originalLabel) {
+  const restore = () => { btn.textContent = originalLabel; };
+  const showCopied = () => { btn.textContent = 'Copied!'; setTimeout(restore, 1800); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopied).catch(() => fallbackCopy(text, showCopied));
+  } else {
+    fallbackCopy(text, showCopied);
+  }
+}
+
+// "Copy page state" — a plain-text snapshot of exactly what's selected right
+// now, meant to be pasted back into a conversation with Claude so it can see
+// what produced a particular result without the user having to describe it.
+function buildPageStateText() {
+  const checked = getChecked();
+  const lines = ['AI Learning Guide — page state snapshot', `URL: ${location.href}`];
+  if (currentMode === 'specialty') {
+    const names = SPECIALTIES.filter(s => checked.has(s.id)).map(s => s.name);
+    lines.push('Mode: Specialty (Specialty → Class → Hardware)');
+    lines.push(names.length ? `Selected specialties (${names.length}): ${names.join(', ')}` : 'Selected specialties: none');
+  } else {
+    const names = COMPANIES.filter(c => checked.has(c.id)).map(c => c.name);
+    lines.push('Mode: Company (Company → Specialty → Class → Hardware)');
+    lines.push(names.length ? `Selected companies (${names.length}): ${names.join(', ')}` : 'Selected companies: none');
+    if (names.length >= 2) {
+      const expandedRows = SPECIALTIES.filter(s => comparisonChecked.has(s.id)).map(s => s.name);
+      lines.push(expandedRows.length ? `Comparison table rows expanded: ${expandedRows.join(', ')}` : 'Comparison table rows expanded: none');
+    }
+  }
+  return lines.join('\n');
+}
+
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  done();
+}
+
+function renderComparisonClasses() {
+  const el = document.getElementById('comparisonClasses');
+  if (!el) return;
+  const checkedRows = SPECIALTIES.filter(s => comparisonChecked.has(s.id));
+  el.innerHTML = checkedRows.length
+    ? checkedRows.map(specialtyBlock).join('')
+    : '<p class="empty-section-note">Check a specialty above to see its classes here.</p>';
+}
+
+function companyComparisonSection(selectedCompanies) {
+  const specialtyIdsInPlay = new Set(selectedCompanies.flatMap(c => c.specialtyIds));
+  const rows = SPECIALTIES.filter(s => specialtyIdsInPlay.has(s.id));
+  currentComparisonPrompt = buildComparisonPrompt(selectedCompanies, rows);
+
+  const headerCols = selectedCompanies.map(c => `<th>${esc(c.name)}</th>`).join('');
+  const bodyRows = rows.map(s => {
+    const sr = s.salaryRange;
+    const salaryTitle = sr ? `Bottom-up from real per-company data: ${sr.basis} ${sr.note}` : '';
+    const gBottomUp = geminiBottomUp(s.id);
+    const geminiLine = gBottomUp
+      ? `<div class="alt-source">Gemini: ${gBottomUp.range ? esc(gBottomUp.range) : 'range unavailable'} <span class="alt-source-median">(median ${esc(gBottomUp.median)})</span></div>`
+      : '';
+    const salaryCell = sr
+      ? `<td title="${esc(salaryTitle)}">${esc(sr.range)} <span class="median-inline">(median ${esc(sr.median)})</span>${geminiLine}</td>`
+      : `<td><span class="comparison-dash">–</span></td>`;
+    const companyCells = selectedCompanies.map(c => {
+      const re = c.roleEstimates && c.roleEstimates[s.id];
+      if (!re) return `<td><span class="comparison-dash">–</span></td>`;
+      return `<td title="${esc('Source: ' + re.source + '. ' + re.note)}">${esc(re.estimate)}</td>`;
+    }).join('');
+    return `
+      <tr>
+        <td><input type="checkbox" class="compare-specialty-chk" value="${s.id}" ${comparisonChecked.has(s.id) ? 'checked' : ''}></td>
+        <td>${esc(s.name)}</td>
+        ${salaryCell}
+        ${companyCells}
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="comparison-section">
+      <h3 class="specialty-block-title">How your selected companies compare</h3>
+      <p class="comparison-callout">Rough snapshot as of 2026-08-10. Role-count estimates come from job-board keyword searches; the salary column is a real bottom-up median computed from actual per-company data (Levels.fyi/Glassdoor company pages, disclosed job postings) — see the audit page for each company's own figure and source, not a top-down market blend. Nothing here is a live feed. Hover a cell for its basis. Check a specialty row to see its classes below, or copy a research prompt to look up current numbers yourself.</p>
+      <div class="comparison-actions">
+        <button type="button" class="btn-copy" id="copyPromptBtn">Copy research prompt for current numbers</button>
+        <a class="btn-copy" href="data-audit.html" target="_blank" rel="noopener">Audit the research data →</a>
+      </div>
+      <div class="comparison-table-wrap">
+        <table class="comparison-table">
+          <thead><tr><th></th><th>Specialty</th><th>Est. salary range</th>${headerCols}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+      <div id="comparisonClasses">${SPECIALTIES.filter(s => comparisonChecked.has(s.id)).map(specialtyBlock).join('') || '<p class="empty-section-note">Check a specialty above to see its classes here.</p>'}</div>
+    </div>`;
+}
+
+function getChecked() {
+  return new Set([...document.querySelectorAll('.item-chk:checked')].map(el => el.value));
+}
+
+// Company mode only: highlights unchecked company cards that share at least
+// one specialty with EVERY already-checked company (not just any one of
+// them — a candidate that only overlaps company A but has nothing to do
+// with company B isn't "similar to your selection", it's similar to A alone).
+// Runs off the live grid DOM rather than a full re-render so checkbox states
+// in the grid are never disturbed.
+function updateSimilarHighlights() {
+  const hint = document.getElementById('similarHint');
+  if (currentMode !== 'company') {
+    hint.style.display = 'none';
+    return;
+  }
+  const grid = document.getElementById('selectorGrid');
+  const checked = getChecked();
+  const checkedCompanies = COMPANIES.filter(c => checked.has(c.id));
+  grid.querySelectorAll('.specialty-card').forEach(card => {
+    const input = card.querySelector('input.item-chk');
+    const company = COMPANIES.find(c => c.id === input.value);
+    const isSimilar = !input.checked && company && checkedCompanies.length > 0 &&
+      checkedCompanies.every(cc => company.specialtyIds.some(id => cc.specialtyIds.includes(id)));
+    card.classList.toggle('similar-match', !!isSimilar);
+  });
+  hint.style.display = checkedCompanies.length > 0 ? 'block' : 'none';
+}
+
+let currentMode = 'specialty';
+
+function render() {
+  const checked = getChecked();
+  updateSimilarHighlights();
+  const noun = currentMode === 'company' ? 'compan' : 'specialt';
+  document.getElementById('countBadge').textContent = `${checked.size} ${noun}${checked.size === 1 ? 'y' : 'ies'} selected`;
+
+  const emptyEl = document.getElementById('emptyState');
+  const resultsEl = document.getElementById('results');
+  if (checked.size === 0) {
+    emptyEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  resultsEl.style.display = 'block';
+
+  const step3 = document.getElementById('step3Section');
+  if (currentMode === 'specialty') {
+    document.getElementById('step2Title').textContent = 'Classes to take — and what each one actually needs';
+    document.getElementById('step2Desc').textContent = "One block per specialty, listing its classes. Hardware requirements vary class by class even within the same specialty (a pure-reading course needs nothing; a hands-on notebook needs a GPU) — so each class shows its own hardware tier, the free/cheap way to get it, and where to buy in if you want to go beyond free.";
+    document.getElementById('specialtyBlocks').innerHTML =
+      SPECIALTIES.filter(s => checked.has(s.id)).map(specialtyBlock).join('');
+
+    const companies = dedupeByIntersect(COMPANIES, checked);
+    document.getElementById('companiesSection').innerHTML = companies.length
+      ? companies.map(c => companyCard(c, checked)).join('')
+      : emptyNote('companies');
+    step3.style.display = 'block';
+  } else {
+    document.getElementById('step2Title').textContent = 'Specialties and classes for each company';
+    document.getElementById('step2Desc').textContent = "One block per company you selected, broken down by the specialty area(s) it's tagged to and the classes for each — same per-class hardware/cloud/purchase info as specialty mode.";
+    const selectedCompanies = COMPANIES.filter(c => checked.has(c.id));
+    const comparisonHtml = selectedCompanies.length >= 2 ? companyComparisonSection(selectedCompanies) : '';
+    document.getElementById('specialtyBlocks').innerHTML =
+      comparisonHtml + selectedCompanies.map(companyExploreBlock).join('');
+    step3.style.display = 'none';
+  }
+}
+
+function selectorCard(id, name, desc, isMore) {
+  return `
+    <label class="specialty-card${isMore ? ' more-item' : ''}">
+      <input type="checkbox" class="item-chk" value="${id}">
+      <div>
+        <h3>${esc(name)}</h3>
+        <p>${esc(desc)}</p>
+      </div>
+    </label>`;
+}
+
+function renderSelectorGrid() {
+  const grid = document.getElementById('selectorGrid');
+  const moreBtnWrap = document.getElementById('moreBtnWrap');
+  const moreBtn = document.getElementById('moreBtn');
+  grid.classList.remove('show-more');
+  moreBtn.dataset.expanded = 'false';
+
+  if (currentMode === 'specialty') {
+    grid.innerHTML = SPECIALTIES.map(s => selectorCard(s.id, s.name, s.oneLineDescription, false)).join('');
+    moreBtnWrap.style.display = 'none';
+  } else {
+    // Featured = a curated set of the largest/most recognizable employers
+    // (spans both "well-known" and "plausibly big employer" — not a live
+    // hiring-volume ranking, which this page deliberately never claims).
+    // Everything else stays behind "Show more" so 39 checkboxes doesn't
+    // dominate the page on load.
+    const featured = COMPANIES.filter(c => c.featured);
+    const rest = COMPANIES.filter(c => !c.featured);
+    grid.innerHTML = featured.map(c => selectorCard(c.id, c.name, c.oneLiner, false)).join('')
+      + rest.map(c => selectorCard(c.id, c.name, c.oneLiner, true)).join('');
+    moreBtnWrap.style.display = rest.length ? 'block' : 'none';
+    moreBtn.textContent = `Show ${rest.length} more companies`;
+  }
+  document.querySelectorAll('.item-chk').forEach(el => el.addEventListener('change', render));
+}
+
+function setMode(mode) {
+  if (mode === currentMode) return;
+  currentMode = mode;
+  comparisonChecked = new Set();
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('step1Title').textContent = mode === 'company' ? 'Choose companies' : 'Choose your specialties';
+  document.getElementById('step1Desc').textContent = mode === 'company'
+    ? "Select one or more companies — for each, you'll see the specialty area(s) it's tagged to and the classes for those specialties."
+    : "Select as many as you're curious about — everything below unions across your selection, with shared companies/courses/tools shown once.";
+  document.getElementById('emptyState').textContent = mode === 'company'
+    ? 'Select at least one company above to see its specialty area(s) and relevant classes.'
+    : 'Select at least one specialty above to see companies, courses, hardware, and where to get it.';
+  renderSelectorGrid();
+  render();
+}
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+document.getElementById('clearBtn').addEventListener('click', () => {
+  document.querySelectorAll('.item-chk:checked').forEach(el => el.checked = false);
+  render();
+});
+document.getElementById('copyStateBtn').addEventListener('click', (e) => {
+  copyToClipboard(buildPageStateText(), e.currentTarget, 'Copy page state');
+});
+document.getElementById('specialtyBlocks').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('compare-specialty-chk')) return;
+  if (e.target.checked) comparisonChecked.add(e.target.value);
+  else comparisonChecked.delete(e.target.value);
+  renderComparisonClasses();
+});
+document.getElementById('specialtyBlocks').addEventListener('click', (e) => {
+  if (e.target.id !== 'copyPromptBtn') return;
+  copyToClipboard(currentComparisonPrompt, e.target, 'Copy research prompt for current numbers');
+});
+document.getElementById('moreBtn').addEventListener('click', () => {
+  const grid = document.getElementById('selectorGrid');
+  const btn = document.getElementById('moreBtn');
+  const expanded = btn.dataset.expanded === 'true';
+  grid.classList.toggle('show-more', !expanded);
+  btn.dataset.expanded = String(!expanded);
+  const restCount = COMPANIES.filter(c => !c.featured).length;
+  btn.textContent = expanded ? `Show ${restCount} more companies` : 'Show fewer companies';
+});
+
+renderSelectorGrid();
+render();
+fetch('gemini-salary-data.json')
+  .then(r => r.json())
+  .then(json => { GEMINI_DATA = json; render(); })
+  .catch(() => { GEMINI_DATA = null; });
+</script>
+</body>
+</html>

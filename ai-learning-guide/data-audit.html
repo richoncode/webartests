@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Research Data Audit — AI Learning Guide</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a { color: #5b9bd5; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  /* wider than the main page's 900px — this page is a data table meant to
+     be scanned across, not read as prose, so it earns the extra width. */
+  .page { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 700px; margin-bottom: 24px; }
+
+  .callout { border-left: 3px solid #f0a040; border-radius: 0 6px 6px 0; padding: 14px 18px; font-size: 13px; color: #999; line-height: 1.7; margin-bottom: 40px; background: #1a1200; max-width: 720px; }
+  .callout strong { color: #ccc; }
+  .callout ul { margin: 8px 0 0 18px; }
+  .callout li { margin-bottom: 4px; }
+
+  .audit-nav { display: flex; gap: 18px; font-size: 13px; margin-bottom: 48px; padding-bottom: 20px; border-bottom: 1px solid #1a1a1a; flex-wrap: wrap; }
+  .audit-nav a { text-decoration: none; }
+  .audit-nav a:hover { text-decoration: underline; }
+
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+  .section-name { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 14px; color: #666; margin-bottom: 24px; max-width: 680px; line-height: 1.6; }
+  .section { margin-bottom: 64px; }
+
+  /* combined specialty -> company table. overflow-x alone would make this
+     its own scroll container and break page-level position:sticky on the
+     header, so it scrolls vertically too, within a bounded height — the
+     sticky header then pins to the top of THAT scroll instead. */
+  .audit-table-wrap { overflow: auto; max-height: 640px; }
+  /* table-layout:fixed + a <colgroup> gives every column a predictable
+     share of the container width instead of letting the longest string in
+     any one column (e.g. a long company name) balloon that column and push
+     everything else into horizontal-scroll territory. */
+  .audit-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+  .audit-table th, .audit-table td { padding: 12px 16px 12px 0; border-bottom: 1px solid #222; text-align: left; vertical-align: top; overflow-wrap: break-word; }
+  .audit-table th { color: #666; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; white-space: nowrap; position: sticky; top: 0; background: #0d0d0d; z-index: 2; }
+  .audit-table td.meta-cell { color: #888; font-size: 12.5px; line-height: 1.55; }
+  .audit-table td.range-cell { color: #ddd; font-size: 12.5px; }
+  .audit-table td.median-cell { color: #4caf50; font-weight: 700; font-size: 12.5px; }
+  .audit-table tbody tr:hover { background: #131313; }
+  .audit-table .no-data { color: #555; font-style: italic; }
+  .audit-table .meta-cell .meta-line + .meta-line { margin-top: 6px; }
+
+  /* Sticks right below the column header (top offset = the thead's own
+     height, measured in JS into --thead-h since it depends on font metrics)
+     and stays pinned while its section's rows scroll underneath — the next
+     specialty's header then takes over the same slot once its row reaches
+     that offset in normal flow, per the standard sticky-list-header pattern. */
+  .specialty-group-header td { background: #161616; padding: 16px 16px 16px 0; border-bottom: 1px solid #2a2a2a; position: sticky; top: var(--thead-h, 41px); z-index: 1; }
+  .specialty-group-title { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .specialty-group-salary { font-size: 13px; color: #ddd; margin-bottom: 4px; }
+  .specialty-group-salary strong { color: #4caf50; }
+  .median-inline { color: #4caf50; font-weight: 700; }
+  .specialty-group-meta { font-size: 12px; color: #777; line-height: 1.6; }
+
+  /* Gemini alternate-source lines — orange, distinct from our own green
+     figures, everywhere a range/median is shown. Declared after the rules
+     above so it wins the cascade when both classes land on one element. */
+  .alt-source { color: #f0a040; font-size: 11.5px; margin-top: 3px; }
+  .alt-source-median { color: #f0a040; font-weight: 700; }
+  td.range-cell .alt-source, td.median-cell .alt-source { font-size: 11px; }
+
+  .company-subrow .company-cell { padding-left: 24px; }
+  .company-subrow .company-cell a { text-decoration: none; }
+  .company-subrow .company-cell a:hover { text-decoration: underline; }
+  .postings-link { white-space: nowrap; text-decoration: none; font-size: 12.5px; }
+  .postings-link:hover { text-decoration: underline; }
+
+  /* per-company alternate view */
+  .audit-company-block { margin-bottom: 40px; padding-top: 24px; border-top: 1px solid #1a1a1a; }
+  .audit-company-block:first-child { padding-top: 0; border-top: none; }
+  .audit-company-block h3 { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .audit-oneliner { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 6px; max-width: 640px; }
+  .audit-careers-link { font-size: 12.5px; margin-bottom: 16px; display: inline-block; text-decoration: none; }
+  .audit-careers-link:hover { text-decoration: underline; }
+  .audit-as-of { font-size: 10.5px; color: #444; margin-left: 8px; }
+
+  .audit-row { background: #141414; border: 1px solid #232323; border-radius: 12px; padding: 14px 18px; margin-top: 10px; }
+  .audit-row-head { font-size: 13.5px; font-weight: 700; color: #5b9bd5; margin-bottom: 6px; }
+  .audit-row-estimate { font-size: 13.5px; color: #ddd; line-height: 1.6; margin-bottom: 8px; }
+  .audit-row-meta { font-size: 12px; color: #888; line-height: 1.6; }
+  .audit-label { color: #666; }
+  .audit-postings-link { font-size: 12px; display: inline-block; margin-top: 8px; text-decoration: none; }
+  .audit-postings-link:hover { text-decoration: underline; }
+  .no-data { color: #555; font-style: italic; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Back to AI Learning Guide</a>
+
+<div class="page">
+  <h1>Research Data Audit</h1>
+  <p class="subtitle">Every company's own salary range, median, and role-count estimate — each with its own source (Levels.fyi, Glassdoor, or a disclosed job posting) and caveats, unabbreviated — plus a live search link, so every number here can be traced and checked, not just taken on faith.</p>
+
+  <div class="callout">
+    <strong>How this is built, and what changed:</strong>
+    <ul>
+      <li>Every company row's salary range/median is that company's OWN real data — a Levels.fyi self-reported median, a Glassdoor company-page average, or a disclosed job posting's pay band. Where a company only had a thin sample (n=2–3) or an "average" rather than a formal median, that's stated explicitly rather than smoothed over.</li>
+      <li>Each specialty's header figure is a genuine bottom-up computation — the median of the real company medians in the rows below it — not a separately-sourced market blend. This replaced an earlier top-down approach that repeated one identical blended number across every company row (unbelievable on its face) and, in one case, asserted a "$300K+" figure with no citable source at all. Both mistakes were caught by a user, not found internally.</li>
+      <li>Role counts still come from job-board keyword searches, which are inherently noisy — the same search on different boards routinely returns very different totals for the same company on the same day. This is a single research pass from 2026-08-10, not a live feed. Every row has a "Search postings →" link — click through to check a real current listing yourself.</li>
+      <li><span class="alt-source" style="font-size:13px;">Orange text</span> below a range/median is an independent second dataset (supplied by the user, sourced from Gemini) — a different set of sites, pulled separately, shown for comparison rather than as corroboration. Where the two disagree, that gap is informative in itself; where a company shows no orange line, Gemini had no usable data for that pairing either. Note: Gemini's own dataset repeats identical Google DeepMind and OpenAI figures across several different specialties, suggesting it's less specialty-differentiated than the proxy titles used elsewhere on this page — treat a repeated Gemini figure as a company-wide number, not one verified per specialty.</li>
+    </ul>
+  </div>
+
+  <nav class="audit-nav">
+    <a href="#combined-section">Salary ranges + hiring companies (combined)</a>
+    <a href="#role-estimates-section">Alternate view: by company</a>
+  </nav>
+
+  <div class="section" id="combined-section">
+    <p class="section-title">Data set 1</p>
+    <h2 class="section-name">Salary ranges &amp; hiring companies, by specialty</h2>
+    <p class="section-desc">The specialty header shows the bottom-up range/median (built from the company rows below it — see its "basis" line for exactly which companies and figures went in). Each company row below shows that company's OWN salary range, median, role-count estimate, source, and a live posting-search link — real per-company data, not a repeated aggregate.</p>
+    <div class="audit-table-wrap">
+      <table class="audit-table">
+        <colgroup>
+          <col style="width:13%"><col style="width:12%"><col style="width:8%"><col style="width:17%"><col style="width:38%"><col style="width:12%">
+        </colgroup>
+        <thead>
+          <tr><th>Company</th><th>Salary range</th><th>Median</th><th>Role-count estimate</th><th>Source &amp; note</th><th>Typical postings</th></tr>
+        </thead>
+        <tbody id="combinedTableBody"></tbody>
+      </table>
+    </div>
+    <p class="section-desc" style="margin-top:10px; margin-bottom:0; font-size:12px;">Where a company's median says "computed midpoint, not directly reported," that company's own source didn't publish a median, so a simple midpoint of its real disclosed range was used instead — labeled as such, not presented as an official statistic.</p>
+  </div>
+
+  <div class="section" id="role-estimates-section">
+    <p class="section-title">Data set 2</p>
+    <h2 class="section-name">Alternate view: role-count estimates, by company</h2>
+    <p class="section-desc">Same data as above, regrouped so you can look up one company across all of its specialties instead of one specialty across all of its companies.</p>
+    <div id="roleEstimatesSection"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Job-board search links are generated, not a verified single "typical"
+// posting — there's no reliable canonical-posting URL for most of these
+// 54 company/specialty pairs (see the per-row notes). A live search is the
+// honest version of "go check a real posting": it never 404s and always
+// reflects what's actually up right now, which is the whole point.
+const SEARCH_KEYWORDS = {
+  "computer-vision": "computer vision engineer",
+  "llm-engineering-nlp": "LLM engineer",
+  "generative-ai-multimodal": "generative AI engineer",
+  "reinforcement-learning": "reinforcement learning engineer",
+  "robotics-embodied-ai": "robotics engineer",
+  "mlops-ai-infra": "MLOps engineer",
+  "ai-safety-alignment": "AI safety researcher",
+  "speech-conversational-ai": "voice AI engineer",
+  "applied-data-science-ml": "data scientist",
+  "edge-ai-on-device": "edge AI engineer",
+};
+function typicalPostingUrl(companyName, specialtyId) {
+  const keyword = SEARCH_KEYWORDS[specialtyId] || specialtyId;
+  return `https://www.indeed.com/jobs?q=${encodeURIComponent(companyName + ' ' + keyword)}`;
+}
+
+// Gemini's dataset — supplied by the user, not researched by this page's own
+// agents — is an independent second opinion, loaded from a plain JSON file
+// so it's a genuinely separate artifact, not baked into data.js alongside
+// our own figures. GEMINI_DATA is null until the fetch below resolves.
+let GEMINI_DATA = null;
+
+function geminiEntry(specialtyId, companyId) {
+  const bySpecialty = GEMINI_DATA && GEMINI_DATA.data[specialtyId];
+  return bySpecialty ? bySpecialty[companyId] : undefined; // undefined = not in Gemini's dataset at all; null = Gemini found no data
+}
+
+// Gemini's own text uses full dollar amounts ("$84,000"), not our "$84K"
+// shorthand — parse those out only for computing the bottom-up aggregate
+// below; the per-company display always echoes Gemini's original text as-is.
+function parseDollar(str) {
+  const m = str && str.match(/\$[\d,]+/);
+  return m ? parseInt(m[0].replace(/[$,]/g, ''), 10) : null;
+}
+function parseRangeLowHigh(str) {
+  const matches = str && str.match(/\$[\d,]+/g);
+  return matches && matches.length >= 2 ? [parseInt(matches[0].replace(/[$,]/g, ''), 10), parseInt(matches[1].replace(/[$,]/g, ''), 10)] : null;
+}
+
+function geminiBottomUp(specialtyId) {
+  const entries = (GEMINI_DATA && GEMINI_DATA.data[specialtyId]) || {};
+  const medians = [], lows = [], highs = [];
+  Object.values(entries).forEach(e => {
+    if (!e) return;
+    const med = parseDollar(e.median);
+    if (med != null) medians.push(med);
+    const lh = parseRangeLowHigh(e.range);
+    if (lh) { lows.push(lh[0]); highs.push(lh[1]); }
+  });
+  if (!medians.length) return null;
+  medians.sort((a, b) => a - b);
+  const mid = Math.floor(medians.length / 2);
+  const medianVal = medians.length % 2 ? medians[mid] : Math.round((medians[mid - 1] + medians[mid]) / 2);
+  const rangeStr = (lows.length && highs.length) ? `$${Math.round(Math.min(...lows) / 1000)}K–$${Math.round(Math.max(...highs) / 1000)}K` : null;
+  return { range: rangeStr, median: `~$${Math.round(medianVal / 1000)}K`, count: medians.length };
+}
+
+function geminiCellLines(specialtyId, companyId) {
+  const g = geminiEntry(specialtyId, companyId);
+  if (g === undefined) return { rangeLine: '', medianLine: '' };
+  if (g === null) {
+    const line = `<div class="alt-source">Gemini: no data found</div>`;
+    return { rangeLine: line, medianLine: line };
+  }
+  return {
+    rangeLine: `<div class="alt-source">Gemini: ${esc(g.range || 'no range reported')}</div>`,
+    medianLine: `<div class="alt-source">Gemini: ${esc(g.median || 'no median reported')}</div>`,
+  };
+}
+
+function renderCombinedTable() {
+  document.getElementById('combinedTableBody').innerHTML = SPECIALTIES.map(s => {
+    const sr = s.salaryRange;
+    const gBottomUp = geminiBottomUp(s.id);
+    const geminiHeaderLine = gBottomUp
+      ? `<div class="alt-source">Gemini bottom-up: ${gBottomUp.range ? esc(gBottomUp.range) : 'range unavailable'} <span class="alt-source-median">(median ${esc(gBottomUp.median)})</span> — computed the same way, from ${gBottomUp.count} of the companies below</div>`
+      : `<div class="alt-source">Gemini bottom-up: no usable data among these companies</div>`;
+    const headerRow = `
+      <tr class="specialty-group-header">
+        <td colspan="6">
+          <div class="specialty-group-title">${esc(s.name)}</div>
+          <div class="specialty-group-salary">Bottom-up: <strong>${esc(sr.range)}</strong> <span class="median-inline">(median ${esc(sr.median)})</span></div>
+          ${geminiHeaderLine}
+          <div class="specialty-group-meta" style="margin-top:6px;">${esc(sr.basis)} ${esc(sr.note)}</div>
+        </td>
+      </tr>`;
+    const companyRows = COMPANIES.filter(c => c.specialtyIds.includes(s.id)).map(c => {
+      const re = c.roleEstimates[s.id];
+      const postingsUrl = typicalPostingUrl(c.name, s.id);
+      const postingsLink = `<a class="postings-link" href="${esc(postingsUrl)}" target="_blank" rel="noopener">Search postings →</a>`;
+      const gemini = geminiCellLines(s.id, c.id);
+      const salaryCells = re.salaryRange
+        ? `<td class="range-cell">${esc(re.salaryRange)}${gemini.rangeLine}</td><td class="median-cell">${esc(re.salaryMedian)}${gemini.medianLine}</td>`
+        : `<td colspan="2" class="no-data">No comp data found${gemini.rangeLine}</td>`;
+      const salaryLine = re.salaryRange
+        ? `<div class="meta-line"><span class="audit-label">Salary:</span> ${esc(re.salarySource)} &mdash; ${esc(re.salaryNote)}</div>`
+        : `<div class="meta-line"><span class="audit-label">Salary:</span> ${esc(re.salaryNote)}</div>`;
+      return `
+        <tr class="company-subrow">
+          <td class="company-cell"><a href="${esc(c.careersUrl)}" target="_blank" rel="noopener">${esc(c.name)}</a></td>
+          ${salaryCells}
+          <td>${esc(re.estimate)}</td>
+          <td class="meta-cell">
+            <div class="meta-line"><span class="audit-label">Roles:</span> ${esc(re.source)} &mdash; ${esc(re.note)}</div>
+            ${salaryLine}
+          </td>
+          <td>${postingsLink}</td>
+        </tr>`;
+    }).join('');
+    return headerRow + companyRows;
+  }).join('');
+}
+
+function renderRoleEstimates() {
+  document.getElementById('roleEstimatesSection').innerHTML = COMPANIES.map(c => {
+    const specialties = c.specialtyIds.map(id => SPECIALTIES.find(s => s.id === id)).filter(Boolean);
+    const rows = specialties.map(s => {
+      const re = c.roleEstimates[s.id];
+      const postingsUrl = typicalPostingUrl(c.name, s.id);
+      const postingsLink = `<a class="audit-postings-link" href="${esc(postingsUrl)}" target="_blank" rel="noopener">Search typical postings →</a>`;
+      const g = geminiEntry(s.id, c.id);
+      const geminiInline = g === undefined ? '' : g === null
+        ? `<div class="alt-source">Gemini: no data found</div>`
+        : `<div class="alt-source">Gemini: ${esc(g.range || g.median || 'no data found')}</div>`;
+      const salaryBlock = re.salaryRange
+        ? `<div class="audit-row-estimate"><strong>${esc(re.salaryRange)}</strong> <span class="median-inline">(median ${esc(re.salaryMedian)})</span></div>
+           <div class="audit-row-meta"><span class="audit-label">Salary source:</span> ${esc(re.salarySource)} &mdash; ${esc(re.salaryNote)}</div>
+           ${geminiInline}`
+        : `<p class="no-data">No compensation data found — ${esc(re.salaryNote)}</p>${geminiInline}`;
+      return `
+        <div class="audit-row">
+          <div class="audit-row-head">${esc(s.name)}</div>
+          ${salaryBlock}
+          <div class="audit-row-estimate" style="margin-top:10px;">${esc(re.estimate)}</div>
+          <div class="audit-row-meta"><span class="audit-label">Roles source:</span> ${esc(re.source)} &mdash; ${esc(re.note)}</div>
+          ${postingsLink}
+        </div>`;
+    }).join('');
+    return `
+      <div class="audit-company-block">
+        <h3>${esc(c.name)}<span class="audit-as-of">as of ${esc(c.asOfDate)}</span></h3>
+        <p class="audit-oneliner">${esc(c.oneLiner)}</p>
+        <a class="audit-careers-link" href="${esc(c.careersUrl)}" target="_blank" rel="noopener">Careers →</a>
+        ${rows}
+      </div>`;
+  }).join('');
+}
+
+function setStickyOffsets() {
+  const thead = document.querySelector('.audit-table thead');
+  document.querySelector('.audit-table').style.setProperty('--thead-h', thead.getBoundingClientRect().height + 'px');
+}
+setStickyOffsets();
+window.addEventListener('resize', setStickyOffsets);
+
+fetch('gemini-salary-data.json')
+  .then(r => r.json())
+  .then(json => { GEMINI_DATA = json; })
+  .catch(() => { GEMINI_DATA = null; })
+  .finally(() => {
+    renderCombinedTable();
+    renderRoleEstimates();
+  });
+</script>
+</body>
+</html>
