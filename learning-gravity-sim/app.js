@@ -156,36 +156,52 @@ function recordTiming(stepMs, frameMs, interFrameMs) {
 // declared some N "safe." When latched on, watch the SAME rolling step-time
 // average already driving the stats display; if it stays clearly over
 // budget for a sustained stretch (not just one noisy sample near the
-// boundary), re-run the search to find whatever's actually true right now.
-// That re-check can land lower (still throttled) or recover back up
-// (conditions improved) — it's a full re-run of the same search, not a
-// one-directional step-down.
+// boundary), surface an offer to re-check rather than silently taking over —
+// the re-check pauses the live sim for up to ~20s while it searches, which
+// is disruptive enough that it should be the user's call, not automatic.
 const WATCHDOG_BAD_MULTIPLIER = 1.4;
 const WATCHDOG_SUSTAINED_MS = 4000;
 const WATCHDOG_COOLDOWN_MS = 15000;
 let watchdogBadSinceMs = null;
 let watchdogCooldownUntilMs = null;
+let watchdogOfferShown = false;
+
+function showRetestOffer(show) {
+  watchdogOfferShown = show;
+  document.getElementById('retestOffer').classList.toggle('show', show);
+}
 
 function checkAutoWatchdog(avgStepMs) {
-  if (!autoMaxLatched || benchmarking || !currentMode) { watchdogBadSinceMs = null; return; }
+  if (!autoMaxLatched || benchmarking || !currentMode) {
+    watchdogBadSinceMs = null;
+    if (watchdogOfferShown) showRetestOffer(false);
+    return;
+  }
   const now = performance.now();
-  if (watchdogCooldownUntilMs != null && now < watchdogCooldownUntilMs) return;
   if (avgStepMs > FRAME_BUDGET_MS * WATCHDOG_BAD_MULTIPLIER) {
     if (watchdogBadSinceMs == null) watchdogBadSinceMs = now;
-    if (now - watchdogBadSinceMs >= WATCHDOG_SUSTAINED_MS) {
-      watchdogBadSinceMs = null;
-      // Cooldown starts once the re-check actually FINISHES, not when it's
-      // triggered — the search itself can run 10-20s, and starting the
-      // cooldown clock beforehand would let it expire before fresh,
-      // post-recheck stats even exist to judge stability against.
-      runAutoMaxSearch(currentMode, 'Re-checking…').then(() => {
-        watchdogCooldownUntilMs = performance.now() + WATCHDOG_COOLDOWN_MS;
-      });
+    const cooldownClear = watchdogCooldownUntilMs == null || now >= watchdogCooldownUntilMs;
+    if (!watchdogOfferShown && cooldownClear && now - watchdogBadSinceMs >= WATCHDOG_SUSTAINED_MS) {
+      showRetestOffer(true);
     }
   } else {
+    // Recovered on its own (or was only ever a brief blip) — the offer, if
+    // showing, is no longer relevant.
     watchdogBadSinceMs = null;
+    if (watchdogOfferShown) showRetestOffer(false);
   }
 }
+
+document.getElementById('retestBtn').addEventListener('click', async () => {
+  if (benchmarking || !currentMode) return;
+  showRetestOffer(false);
+  await runAutoMaxSearch(currentMode, 'Re-checking…');
+  // Cooldown starts once the re-check actually FINISHES, not when the user
+  // clicked — the search itself can run 10-20s, and starting the cooldown
+  // clock beforehand would let it expire before fresh, post-recheck stats
+  // even exist to judge stability against.
+  watchdogCooldownUntilMs = performance.now() + WATCHDOG_COOLDOWN_MS;
+});
 
 function buildModeButtons() {
   const container = document.getElementById('modeButtons');
@@ -251,6 +267,8 @@ async function initScene(mode) {
   if (mode.isGpu) computeViewTransform(viewCssWidth, viewCssHeight, mode);
   stepTimes = []; frameTimes = []; interFrameTimes = []; lastRafTime = null;
   lastRecordedStepCount = -1; lastCompletionTime = null;
+  watchdogBadSinceMs = null;
+  if (watchdogOfferShown) showRetestOffer(false);
   currentMode = mode;
 }
 
