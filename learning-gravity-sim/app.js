@@ -194,6 +194,7 @@ async function initScene(mode) {
   mode.init(currentN, seed);
   if (mode.isGpu) computeViewTransform(viewCssWidth, viewCssHeight, mode);
   stepTimes = []; frameTimes = []; interFrameTimes = []; lastRafTime = null;
+  lastRecordedStepCount = -1; lastCompletionTime = null;
   currentMode = mode;
 }
 
@@ -241,26 +242,50 @@ async function switchMode(modeId) {
   await initScene(mode);
 }
 
+// Tracks, per async mode, the last stepCount/completion-time we already
+// recorded stats for — lets frame() tell a genuinely NEW completed step
+// apart from a busy-guarded no-op tick.
+let lastRecordedStepCount = -1;
+let lastCompletionTime = null;
+
 function frame(now) {
   requestAnimationFrame(frame);
+  if (!running || !currentMode) { lastRafTime = null; return; }
+
+  if (currentMode === WorkersMode || currentMode.isGpu) {
+    // step() is fire-and-forget here — it kicks off an async round-trip
+    // (worker postMessage, or a GPU submit) and no-ops if the previous one
+    // hasn't finished yet. Naively recording stats every rAF tick regardless
+    // would report the display's ~60Hz refresh rate as "FPS" even while the
+    // simulation itself is only really completing a fraction of that many
+    // steps per second — exactly the gap that made a mode showing "60 FPS"
+    // able to also show a physics-step time well over the 16.7ms budget.
+    // Recording only on an actual stepCount change, with inter-completion
+    // timing instead of inter-rAF timing, makes FPS reflect the real
+    // simulation cadence instead of the compositor's.
+    currentMode.step();
+    if (currentMode.stepCount !== lastRecordedStepCount) {
+      lastRecordedStepCount = currentMode.stepCount;
+      const interCompletionMs = lastCompletionTime != null ? now - lastCompletionTime : null;
+      lastCompletionTime = now;
+      recordTiming(currentMode.lastStepMs, currentMode.lastStepMs, interCompletionMs);
+    }
+    if (!currentMode.isGpu) {
+      currentMode.getPositions(scratchX, scratchY);
+      drawCanvas2d(scratchX, scratchY, currentN);
+    }
+    return;
+  }
+
   const interFrameMs = lastRafTime != null ? now - lastRafTime : null;
   lastRafTime = now;
-  if (!running || !currentMode) return;
   const stepStart = performance.now();
   currentMode.step();
   const stepEnd = performance.now();
-  if (!currentMode.isGpu) {
-    currentMode.getPositions(scratchX, scratchY);
-    drawCanvas2d(scratchX, scratchY, currentN);
-  }
+  currentMode.getPositions(scratchX, scratchY);
+  drawCanvas2d(scratchX, scratchY, currentN);
   const frameEnd = performance.now();
-  // WorkersMode.step() is fire-and-forget (kicks off an async round-trip
-  // across worker threads and returns immediately) — the synchronous
-  // stepEnd-stepStart delta here would just measure "how long it took to
-  // schedule a postMessage", not the real work. It reports its own
-  // measured round-trip time once each one actually completes.
-  const reportedStepMs = (currentMode === WorkersMode || currentMode.isGpu) ? currentMode.lastStepMs : (stepEnd - stepStart);
-  recordTiming(reportedStepMs, frameEnd - stepStart, interFrameMs);
+  recordTiming(stepEnd - stepStart, frameEnd - stepStart, interFrameMs);
 }
 
 document.getElementById('particleSlider').addEventListener('input', async (e) => {

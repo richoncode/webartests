@@ -394,7 +394,7 @@ const WorkersMode = {
   description: 'The outer loop split across real OS threads (<code>navigator.hardwareConcurrency</code> Web Workers), each computing its own slice against a copy of the full particle set. No SharedArrayBuffer — GitHub Pages can\'t set the COOP/COEP headers it needs — so every step copies pos/mass to every worker via structured clone. That copy cost is real and counted in the reported step time, not hidden.',
   n: 0,
   posX: null, posY: null, velX: null, velY: null, mass: null,
-  workers: [], workerCount: 0, busy: false, lastStepMs: 0,
+  workers: [], workerCount: 0, busy: false, lastStepMs: 0, stepCount: 0,
   init(n, seed) {
     const s = generateScene(n, seed);
     this.posX = s.posX; this.posY = s.posY; this.velX = s.velX; this.velY = s.velY; this.mass = s.mass;
@@ -412,6 +412,7 @@ const WorkersMode = {
     const t0 = performance.now();
     this._runStep().then(() => {
       this.lastStepMs = performance.now() - t0;
+      this.stepCount++;
       this.busy = false;
     });
   },
@@ -606,7 +607,7 @@ function makeGpuMode(config) {
     // conservative placeholder and gets replaced with a real, measured
     // number by calibrateCeiling() before the user can ever pick an N.
     maxManualN: 3000,
-    busy: false, lastStepMs: 0, deviceLost: false,
+    busy: false, lastStepMs: 0, deviceLost: false, stepCount: 0,
 
     async checkSupport() {
       if (!navigator.gpu) return false;
@@ -775,7 +776,7 @@ function makeGpuMode(config) {
       const t0 = performance.now();
       this._submitStep();
       this.device.queue.onSubmittedWorkDone()
-        .then(() => { this.lastStepMs = performance.now() - t0; this.busy = false; })
+        .then(() => { this.lastStepMs = performance.now() - t0; this.stepCount++; this.busy = false; })
         .catch(() => { this.busy = false; });
     },
 
