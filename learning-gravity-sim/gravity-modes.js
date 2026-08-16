@@ -598,12 +598,15 @@ function makeGpuMode(config) {
     n: 0, paddedN: 0,
 
     isGpu: true,
-    // GPU compute is dispatched async (the JS thread never blocks waiting
-    // on it inside the normal per-frame step()), so a slow frame here just
-    // drops FPS rather than freezing the tab the way a slow CPU O(N^2) step
-    // would — safe to let the manual slider reach the same cap the
-    // benchmark sweep uses.
-    maxManualN: 200000,
+    // A flat "GPU is async so any N is safe" assumption turned out to be
+    // wrong in practice: queue.submit() not blocking JS only means the MAIN
+    // THREAD doesn't stall — it says nothing about a single dispatch taking
+    // so long that the driver's own hang-detection resets the device, which
+    // surfaces as the whole tab appearing to freeze. This starts as a
+    // conservative placeholder and gets replaced with a real, measured
+    // number by calibrateCeiling() before the user can ever pick an N.
+    maxManualN: 3000,
+    busy: false, lastStepMs: 0, deviceLost: false,
 
     async checkSupport() {
       if (!navigator.gpu) return false;
@@ -618,6 +621,14 @@ function makeGpuMode(config) {
     async setup(canvas) {
       this.canvas = canvas;
       this.device = await this.adapter.requestDevice();
+      // If the driver ever resets the device (e.g. after a dispatch it
+      // decided had hung), don't keep silently trying to submit into a
+      // dead device every frame — that's exactly the kind of "stalled"
+      // state this whole fix is trying to avoid leaving the user stuck in.
+      this.device.lost.then((info) => {
+        this.deviceLost = true;
+        console.error(`${this.label}: GPU device lost (${info.reason}): ${info.message}`);
+      });
       this.context = canvas.getContext('webgpu');
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.activate();
@@ -714,7 +725,10 @@ function makeGpuMode(config) {
       this.context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' });
     },
 
-    step() {
+    // The actual encode+submit work, with no timing or backpressure of its
+    // own — step() (live use) and the benchmark/calibration paths both
+    // build on this, but need different wrapping around it.
+    _submitStep() {
       const dev = this.device;
       const encoder = dev.createCommandEncoder();
       {
@@ -744,6 +758,27 @@ function makeGpuMode(config) {
       dev.queue.submit([encoder.finish()]);
     },
 
+    // queue.submit() not blocking JS only means the CALLER doesn't stall —
+    // it says nothing about how long the GPU actually takes to work through
+    // what was submitted. The live rAF loop calls step() every ~16ms
+    // regardless of whether the previous frame's GPU work has finished; at
+    // a high enough N a single frame's compute can take far longer than
+    // that, and without a guard the queue backs up further and further
+    // every tick with nothing ever draining it — which is exactly what
+    // "stalled at high particle counts" looks like from the outside. This
+    // mirrors WorkersMode's fire-and-forget + busy-guard pattern: skip
+    // resubmitting until the previous submission has actually finished, so
+    // there's never more than one frame of GPU work in flight.
+    step() {
+      if (this.busy || this.deviceLost) return;
+      this.busy = true;
+      const t0 = performance.now();
+      this._submitStep();
+      this.device.queue.onSubmittedWorkDone()
+        .then(() => { this.lastStepMs = performance.now() - t0; this.busy = false; })
+        .catch(() => { this.busy = false; });
+    },
+
     // queue.submit() returns immediately — the GPU work it enqueued may
     // still be running. Wall-clock timing around step() alone measures
     // "how long it took to record and submit commands," not real GPU cost.
@@ -752,6 +787,43 @@ function makeGpuMode(config) {
     // benchmark needs to get an honest per-step cost for these two modes.
     async waitForGPU() {
       await this.device.queue.onSubmittedWorkDone();
+    },
+
+    // Replaces the old flat 200,000-for-every-GPU-mode guess with a number
+    // grounded in this device's actual measured throughput: time one real
+    // dispatch at a moderate reference count, then extrapolate an N whose
+    // O(N^2) cost would still land comfortably under SAFE_SINGLE_STEP_MS —
+    // generous margin below typical driver hang-detection windows (~2s on
+    // Windows), so a single frame at the resulting ceiling stays well short
+    // of "the GPU looks hung." The two GPU modes calibrate independently,
+    // since the tiled mode's real throughput advantage should raise its
+    // ceiling too, not just its measured FPS.
+    async calibrateCeiling() {
+      const REF_N = 2000;
+      const SAFE_SINGLE_STEP_MS = 250;
+      const HARD_CAP_N = 200000;
+      const FLOOR_N = 2000;
+      try {
+        this.init(REF_N, 1);
+        this._submitStep();
+        await this.device.queue.onSubmittedWorkDone(); // warm up: shader/pipeline compile, allocation
+        // Take the min of a couple of timed samples rather than trusting a
+        // single one — a lone sample that happens to land during a GC pause
+        // or driver hiccup would otherwise produce a needlessly conservative
+        // (or, worse, an overconfident) ceiling from one bad data point.
+        let refMs = Infinity;
+        for (let i = 0; i < 2; i++) {
+          const t0 = performance.now();
+          this._submitStep();
+          await this.device.queue.onSubmittedWorkDone();
+          refMs = Math.min(refMs, performance.now() - t0);
+        }
+        refMs = Math.max(0.05, refMs);
+        const estimate = REF_N * Math.sqrt(SAFE_SINGLE_STEP_MS / refMs);
+        this.maxManualN = Math.max(FLOOR_N, Math.min(HARD_CAP_N, Math.round(estimate / 1000) * 1000));
+      } catch (e) {
+        console.error(`${this.label}: ceiling calibration failed, keeping conservative default`, e);
+      }
     },
   };
 }

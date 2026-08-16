@@ -188,6 +188,13 @@ async function initScene(mode) {
 // second-guessed by a DOM query or silently fall back to the wrong mode.
 let selectedMode = SoAMode;
 
+// When latched on, "Max @ 60fps" re-runs its search on every mode switch
+// instead of firing once — the button behaves like an autopilot toggle
+// rather than a one-shot jump. A manual slider drag disengages it (see the
+// slider's 'input' listener below), the same way touching the wheel
+// disengages a car's autopilot.
+let autoMaxLatched = false;
+
 async function switchMode(modeId) {
   const mode = MODES.find((m) => m.id === modeId);
   if (!mode || (mode.isGpu && !mode.supported)) return;
@@ -196,6 +203,10 @@ async function switchMode(modeId) {
   canvasGpu.style.display = mode.isGpu ? 'block' : 'none';
   document.getElementById('modeDesc').innerHTML = `<strong>${mode.label}:</strong> ${mode.description}`;
   updateModeButtonsUI(modeId);
+  if (autoMaxLatched) {
+    await runAutoMaxSearch(mode);
+    return;
+  }
   // Each mode has its own safe manual ceiling (see gravity-modes.js) — a
   // brute-force CPU mode reached from a huge GPU-mode N would otherwise
   // inherit a particle count it could never actually step through at any
@@ -223,11 +234,15 @@ function frame(now) {
   // stepEnd-stepStart delta here would just measure "how long it took to
   // schedule a postMessage", not the real work. It reports its own
   // measured round-trip time once each one actually completes.
-  const reportedStepMs = currentMode === WorkersMode ? WorkersMode.lastStepMs : (stepEnd - stepStart);
+  const reportedStepMs = (currentMode === WorkersMode || currentMode.isGpu) ? currentMode.lastStepMs : (stepEnd - stepStart);
   recordTiming(reportedStepMs, frameEnd - stepStart, interFrameMs);
 }
 
 document.getElementById('particleSlider').addEventListener('input', async (e) => {
+  if (autoMaxLatched) {
+    autoMaxLatched = false;
+    document.getElementById('maxAt60Btn').classList.remove('primary');
+  }
   currentN = sliderFracToN((+e.target.value) / SLIDER_RESOLUTION, selectedMode.maxManualN);
   document.getElementById('particleCountLabel').textContent = currentN.toLocaleString();
   await initScene(selectedMode);
@@ -243,18 +258,26 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 window.addEventListener('resize', resizeCanvases);
 
 // Runs the same doubling-ramp + binary-search used by the "all modes"
-// benchmark below, but for just the currently selected mode, then jumps the
-// live scene straight to that N — an interactive shortcut for "show me the
-// most this mode can actually do."
-document.getElementById('maxAt60Btn').addEventListener('click', async () => {
-  if (benchmarking) return;
-  const mode = selectedMode;
-  const btn = document.getElementById('maxAt60Btn');
-  const originalLabel = btn.textContent;
+// benchmark below, but for just one mode, then jumps the live scene
+// straight to that N. Shared by the button's initial click (one search) and
+// by switchMode() while the toggle is latched on (a search on every switch).
+async function runAutoMaxSearch(mode) {
   benchmarking = true;
+  const btn = document.getElementById('maxAt60Btn');
   btn.disabled = true;
+  const originalLabel = btn.textContent;
   btn.textContent = 'Searching…';
   setControlsDisabled(true);
+
+  // The live rAF loop keeps calling currentMode.step() (plus a 2D redraw)
+  // every ~16ms regardless of what this search is doing — left running, it
+  // competes with the search's own measurements for the main thread and
+  // badly distorts them (this is exactly what made an isolated ~0.8ms GPU
+  // dispatch measure as a suspiciously vsync-shaped ~18ms once a live CPU
+  // mode was still ticking in the background). runBenchmark() already
+  // paused this for the same reason; this path needs the same guard.
+  const wasRunning = running;
+  running = false;
 
   if (mode === WasmSimdMode && !WasmSimdMode.instance) await WasmSimdMode.load();
   if (mode.isGpu) {
@@ -265,11 +288,20 @@ document.getElementById('maxAt60Btn').addEventListener('click', async () => {
   currentN = Math.max(PARTICLE_MIN_N, Math.min(mode.maxManualN, result.tooSlow ? PARTICLE_MIN_N : result.n));
   setSliderForN(currentN, mode.maxManualN);
   await initScene(mode);
+  running = wasRunning;
 
   btn.textContent = originalLabel;
   btn.disabled = false;
   setControlsDisabled(false);
   benchmarking = false;
+}
+
+document.getElementById('maxAt60Btn').addEventListener('click', async () => {
+  if (benchmarking) return;
+  autoMaxLatched = !autoMaxLatched;
+  document.getElementById('maxAt60Btn').classList.toggle('primary', autoMaxLatched);
+  if (!autoMaxLatched) return; // just disengaged — leave the current N as-is
+  await runAutoMaxSearch(selectedMode);
 });
 
 // ── "Max particles at 60fps" benchmark ──
@@ -282,6 +314,18 @@ const FRAME_BUDGET_MS = 1000 / 60;
 const BENCH_CAP_N = 200000;
 const BENCH_SEED = 424242;
 let benchmarking = false;
+
+// A promise that never settles (a device that's actually wedged, or an
+// onSubmittedWorkDone() that some driver never resolves after a hang) would
+// otherwise leave the search hung forever rather than reporting "too slow."
+// Races against a generous timeout so the search always terminates.
+function withTimeout(promise, ms, fallback) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then((v) => { clearTimeout(timer); resolve(v); }, () => { clearTimeout(timer); resolve(fallback); });
+  });
+}
+const GPU_STEP_TIMEOUT_MS = 3000;
 
 // Each mode type needs a different notion of "time one step and wait for it
 // to really finish" — a synchronous CPU step, an awaited Workers round-trip
@@ -299,15 +343,32 @@ function makeStepTimer(mode) {
     };
   }
   if (mode.isGpu) {
+    // Every trial is awaited individually (real backpressure — never more
+    // than one outstanding submission) rather than firing `trials` dispatches
+    // back-to-back before waiting on any of them, which is exactly the
+    // queue-pileup pattern that made GPU modes stall at high N in the first
+    // place. The first trial's time is checked before committing to 19 more:
+    // if a single dispatch already blew way past budget, running more
+    // identical ones only compounds the risk for no useful extra precision.
     return async (n) => {
+      if (mode.deviceLost) return Infinity;
       mode.init(n, BENCH_SEED);
-      mode.step();
-      await mode.waitForGPU();
-      const trials = 20;
       const t0 = performance.now();
-      for (let i = 0; i < trials; i++) mode.step();
-      await mode.waitForGPU();
-      return (performance.now() - t0) / trials;
+      mode._submitStep();
+      const done = await withTimeout(mode.device.queue.onSubmittedWorkDone(), GPU_STEP_TIMEOUT_MS, 'timeout');
+      const firstMs = performance.now() - t0;
+      if (done === 'timeout' || mode.deviceLost) return Infinity;
+      if (firstMs > FRAME_BUDGET_MS * 4) return firstMs;
+      const trials = 20;
+      let total = firstMs;
+      for (let i = 1; i < trials; i++) {
+        const ti = performance.now();
+        mode._submitStep();
+        const d = await withTimeout(mode.device.queue.onSubmittedWorkDone(), GPU_STEP_TIMEOUT_MS, 'timeout');
+        if (d === 'timeout' || mode.deviceLost) return Infinity;
+        total += performance.now() - ti;
+      }
+      return total / trials;
     };
   }
   return async (n) => {
@@ -320,12 +381,25 @@ function makeStepTimer(mode) {
   };
 }
 
+// A single measurement over budget could be the real cost, or it could be a
+// transient hiccup — OS scheduling noise, a GC pause from whatever mode ran
+// right before this one, a GPU driver warming up. Retrying once before
+// accepting a "too slow" verdict costs almost nothing on the common path
+// (only failing samples get retried) but prevents one bad sample — especially
+// dangerous at the very first N tested, where it would otherwise sink the
+// entire search to "too slow" — from throwing away an otherwise-good result.
+async function measureWithRetry(stepTimeFn, n) {
+  const first = await stepTimeFn(n);
+  if (first <= FRAME_BUDGET_MS) return first;
+  return await stepTimeFn(n);
+}
+
 async function findMaxNAt60fps(stepTimeFn) {
   let lastGoodN = 0, lastGoodMs = 0;
   let n = PARTICLE_MIN_N;
   let firstBadN = null;
   while (n <= BENCH_CAP_N) {
-    const ms = await stepTimeFn(n);
+    const ms = await measureWithRetry(stepTimeFn, n);
     if (ms <= FRAME_BUDGET_MS) { lastGoodN = n; lastGoodMs = ms; n *= 2; }
     else { firstBadN = n; break; }
   }
@@ -335,7 +409,7 @@ async function findMaxNAt60fps(stepTimeFn) {
   let lo = lastGoodN, hi = firstBadN;
   for (let iter = 0; iter < 7 && hi - lo > Math.max(1, Math.floor(lo * 0.02)); iter++) {
     const mid = Math.round((lo + hi) / 2);
-    const ms = await stepTimeFn(mid);
+    const ms = await measureWithRetry(stepTimeFn, mid);
     if (ms <= FRAME_BUDGET_MS) { lo = mid; lastGoodMs = ms; } else { hi = mid; }
   }
   return { n: lo, ms: lastGoodMs };
@@ -379,6 +453,7 @@ function setControlsDisabled(disabled) {
   document.getElementById('particleSlider').disabled = disabled;
   document.getElementById('playPauseBtn').disabled = disabled;
   document.getElementById('resetBtn').disabled = disabled;
+  document.getElementById('runBenchmarkBtn').disabled = disabled;
 }
 
 async function runBenchmark() {
@@ -388,6 +463,7 @@ async function runBenchmark() {
   const statusEl = document.getElementById('benchmarkStatus');
   const defaultStatusText = statusEl.textContent;
   btn.disabled = true;
+  document.getElementById('maxAt60Btn').disabled = true;
   setControlsDisabled(true);
 
   const wasRunning = running;
@@ -423,11 +499,28 @@ async function runBenchmark() {
   document.getElementById('playPauseBtn').textContent = running ? 'Pause' : 'Play';
 
   btn.disabled = false;
+  document.getElementById('maxAt60Btn').disabled = false;
   setControlsDisabled(false);
   benchmarking = false;
 }
 
 document.getElementById('runBenchmarkBtn').addEventListener('click', runBenchmark);
+
+// Sets up the device/pipelines and measures a real safe particle ceiling for
+// one GPU mode, up front — before the user can ever touch its slider or
+// buttons. If either step throws (driver quirk, shader compile failure,
+// mid-calibration device loss), the mode is marked unsupported and disabled
+// rather than leaving bootstrap() itself throwing and taking the whole page
+// down with it.
+async function setUpGpuMode(mode) {
+  try {
+    await mode.setup(canvasGpu);
+    await mode.calibrateCeiling();
+  } catch (e) {
+    console.error(`${mode.label}: setup/calibration failed, disabling`, e);
+    mode.supported = false;
+  }
+}
 
 async function bootstrap() {
   // Each mode must request its OWN adapter — a GPUAdapter can only ever be
@@ -436,7 +529,9 @@ async function bootstrap() {
   // ("adapter is consumed") the moment both had been switched to once.
   GpuMode.supported = await GpuMode.checkSupport();
   GpuTiledMode.supported = await GpuTiledMode.checkSupport();
-  document.getElementById('gpuNote').classList.toggle('show', !GpuMode.supported);
+  if (GpuMode.supported) await setUpGpuMode(GpuMode);
+  if (GpuTiledMode.supported) await setUpGpuMode(GpuTiledMode);
+  document.getElementById('gpuNote').classList.toggle('show', !GpuMode.supported && !GpuTiledMode.supported);
   buildModeButtons();
 
   resizeCanvases();
