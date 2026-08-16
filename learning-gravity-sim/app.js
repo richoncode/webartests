@@ -1,9 +1,19 @@
 const MODES = [NaiveMode, SoAMode, QuantizedMode, BarnesHutMode, WasmSimdMode, WorkersMode, GpuMode, GpuTiledMode];
-const PARTICLE_STEPS = [100, 200, 400, 800, 1200, 2000, 3000, 4000, 6000];
 const STATS_WINDOW = 30;
 
+// The particle slider is a fixed-resolution log-scale control (0..SLIDER_RESOLUTION
+// mapped onto [PARTICLE_MIN_N, mode.maxManualN]) rather than an index into a
+// fixed list — that's what lets "Max @ 60fps" jump to an arbitrary N the
+// search actually found, instead of snapping to the nearest of a handful of
+// preset steps. Each mode supplies its own maxManualN ceiling (see
+// gravity-modes.js) so the same slider resolution stays meaningful whether
+// the mode caps out in the thousands (CPU) or the hundreds of thousands (GPU).
+const PARTICLE_MIN_N = 100;
+const SLIDER_RESOLUTION = 1000;
+const DEFAULT_N = 800;
+
 let currentMode = null;
-let currentN = PARTICLE_STEPS[3];
+let currentN = DEFAULT_N;
 let seed = 12345;
 let running = true;
 let stepTimes = [], frameTimes = [], interFrameTimes = [];
@@ -14,8 +24,40 @@ const canvas2d = document.getElementById('glCanvas2d');
 const canvasGpu = document.getElementById('glCanvasGpu');
 const ctx = canvas2d.getContext('2d');
 
-const scratchX = new Float32Array(PARTICLE_STEPS[PARTICLE_STEPS.length - 1]);
-const scratchY = new Float32Array(PARTICLE_STEPS[PARTICLE_STEPS.length - 1]);
+// Sized to the largest possible manual ceiling (GPU modes) so the CPU-side
+// getPositions()/drawCanvas2d readback path never needs a resize check.
+const scratchX = new Float32Array(200000);
+const scratchY = new Float32Array(200000);
+
+function sliderFracToN(t, hiN) {
+  const logN = Math.log10(PARTICLE_MIN_N) + Math.max(0, Math.min(1, t)) * (Math.log10(hiN) - Math.log10(PARTICLE_MIN_N));
+  return niceRoundN(Math.round(Math.pow(10, logN)));
+}
+function nToSliderFrac(n, hiN) {
+  const t = (Math.log10(n) - Math.log10(PARTICLE_MIN_N)) / (Math.log10(hiN) - Math.log10(PARTICLE_MIN_N));
+  return Math.max(0, Math.min(1, t));
+}
+function niceRoundN(n) {
+  n = Math.max(PARTICLE_MIN_N, n);
+  if (n < 500) return Math.round(n / 10) * 10;
+  if (n < 2000) return Math.round(n / 50) * 50;
+  if (n < 10000) return Math.round(n / 100) * 100;
+  if (n < 50000) return Math.round(n / 1000) * 1000;
+  return Math.round(n / 2000) * 2000;
+}
+function setSliderForN(n, hiN) {
+  document.getElementById('particleSlider').value = String(Math.round(nToSliderFrac(n, hiN) * SLIDER_RESOLUTION));
+  document.getElementById('particleCountLabel').textContent = n.toLocaleString();
+}
+
+// Particles are drawn at a fixed reference size at DEFAULT_N and shrink as N
+// climbs — without this, a 40,000-particle GPU scene renders as one solid
+// blue disc long before you get to see the density that makes GPU mode
+// interesting. Clamped so tiny scenes don't balloon and huge ones don't
+// vanish to sub-pixel.
+function particleScaleFactor(n) {
+  return Math.max(0.15, Math.min(1.6, Math.sqrt(DEFAULT_N / n)));
+}
 
 function resizeCanvases() {
   const rect = canvas2d.parentElement.getBoundingClientRect();
@@ -36,24 +78,25 @@ function computeViewTransform(cssW, cssH, gpuModeOverride) {
     const dpr = window.devicePixelRatio || 1;
     const ndcScaleX = (viewScalePxPerWorld * dpr) / (canvasGpu.width / 2);
     const ndcScaleY = (viewScalePxPerWorld * dpr) / (canvasGpu.height / 2);
-    gm.setView(ndcScaleX, -ndcScaleY, 3.5);
+    gm.setView(ndcScaleX, -ndcScaleY, 3.5 * particleScaleFactor(currentN));
   }
 }
 
 function drawCanvas2d(xs, ys, n) {
   ctx.clearRect(0, 0, viewCssWidth, viewCssHeight);
   const cx = viewCssWidth / 2, cy = viewCssHeight / 2, s = viewScalePxPerWorld;
+  const scale = particleScaleFactor(n);
   ctx.fillStyle = '#5b9bd5';
   for (let i = 1; i < n; i++) {
     const px = cx + xs[i] * s, py = cy - ys[i] * s;
     ctx.beginPath();
-    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.arc(px, py, 2 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
   if (n > 0) {
     ctx.fillStyle = '#f0a040';
     ctx.beginPath();
-    ctx.arc(cx + xs[0] * s, cy - ys[0] * s, 6, 0, Math.PI * 2);
+    ctx.arc(cx + xs[0] * s, cy - ys[0] * s, 6 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -153,6 +196,12 @@ async function switchMode(modeId) {
   canvasGpu.style.display = mode.isGpu ? 'block' : 'none';
   document.getElementById('modeDesc').innerHTML = `<strong>${mode.label}:</strong> ${mode.description}`;
   updateModeButtonsUI(modeId);
+  // Each mode has its own safe manual ceiling (see gravity-modes.js) — a
+  // brute-force CPU mode reached from a huge GPU-mode N would otherwise
+  // inherit a particle count it could never actually step through at any
+  // usable frame rate.
+  if (currentN > mode.maxManualN) currentN = mode.maxManualN;
+  setSliderForN(currentN, mode.maxManualN);
   await initScene(mode);
 }
 
@@ -179,8 +228,8 @@ function frame(now) {
 }
 
 document.getElementById('particleSlider').addEventListener('input', async (e) => {
-  currentN = PARTICLE_STEPS[+e.target.value];
-  document.getElementById('particleCountLabel').textContent = currentN;
+  currentN = sliderFracToN((+e.target.value) / SLIDER_RESOLUTION, selectedMode.maxManualN);
+  document.getElementById('particleCountLabel').textContent = currentN.toLocaleString();
   await initScene(selectedMode);
 });
 document.getElementById('playPauseBtn').addEventListener('click', (e) => {
@@ -193,6 +242,36 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 window.addEventListener('resize', resizeCanvases);
 
+// Runs the same doubling-ramp + binary-search used by the "all modes"
+// benchmark below, but for just the currently selected mode, then jumps the
+// live scene straight to that N — an interactive shortcut for "show me the
+// most this mode can actually do."
+document.getElementById('maxAt60Btn').addEventListener('click', async () => {
+  if (benchmarking) return;
+  const mode = selectedMode;
+  const btn = document.getElementById('maxAt60Btn');
+  const originalLabel = btn.textContent;
+  benchmarking = true;
+  btn.disabled = true;
+  btn.textContent = 'Searching…';
+  setControlsDisabled(true);
+
+  if (mode === WasmSimdMode && !WasmSimdMode.instance) await WasmSimdMode.load();
+  if (mode.isGpu) {
+    if (!mode.device) await mode.setup(canvasGpu);
+    else mode.activate();
+  }
+  const result = await findMaxNAt60fps(makeStepTimer(mode));
+  currentN = Math.max(PARTICLE_MIN_N, Math.min(mode.maxManualN, result.tooSlow ? PARTICLE_MIN_N : result.n));
+  setSliderForN(currentN, mode.maxManualN);
+  await initScene(mode);
+
+  btn.textContent = originalLabel;
+  btn.disabled = false;
+  setControlsDisabled(false);
+  benchmarking = false;
+});
+
 // ── "Max particles at 60fps" benchmark ──
 // An alternative, more intuitive framing than "ms/step at a fixed N": for
 // each mode, find the largest particle count whose step time still fits the
@@ -200,7 +279,6 @@ window.addEventListener('resize', resizeCanvases);
 // a mode's actual complexity class (O(N^2) vs O(N log N) vs O(N)), then a
 // short binary search narrows it down within that bracket.
 const FRAME_BUDGET_MS = 1000 / 60;
-const BENCH_MIN_N = 100;
 const BENCH_CAP_N = 200000;
 const BENCH_SEED = 424242;
 let benchmarking = false;
@@ -244,7 +322,7 @@ function makeStepTimer(mode) {
 
 async function findMaxNAt60fps(stepTimeFn) {
   let lastGoodN = 0, lastGoodMs = 0;
-  let n = BENCH_MIN_N;
+  let n = PARTICLE_MIN_N;
   let firstBadN = null;
   while (n <= BENCH_CAP_N) {
     const ms = await stepTimeFn(n);
@@ -265,7 +343,7 @@ async function findMaxNAt60fps(stepTimeFn) {
 
 function formatMaxN(r) {
   if (r.unsupported) return '—';
-  if (r.tooSlow) return `< ${BENCH_MIN_N}`;
+  if (r.tooSlow) return `< ${PARTICLE_MIN_N}`;
   return r.hitCap ? `${r.n.toLocaleString()}+` : r.n.toLocaleString();
 }
 
@@ -277,7 +355,7 @@ function renderBenchmarkResults(resultsByModeId) {
     const row = document.createElement('div');
     row.className = 'bench-row' + (r && r.unsupported ? ' unsupported' : '');
     const pct = r && !r.unsupported && !r.tooSlow && r.n > 0
-      ? Math.max(3, ((Math.log10(r.n) - Math.log10(BENCH_MIN_N)) / (Math.log10(BENCH_CAP_N) - Math.log10(BENCH_MIN_N))) * 100)
+      ? Math.max(3, ((Math.log10(r.n) - Math.log10(PARTICLE_MIN_N)) / (Math.log10(BENCH_CAP_N) - Math.log10(PARTICLE_MIN_N))) * 100)
       : 0;
     const label = document.createElement('span');
     label.className = 'bench-label';
@@ -339,9 +417,7 @@ async function runBenchmark() {
   statusEl.textContent = defaultStatusText;
 
   currentN = prevN;
-  const idx = PARTICLE_STEPS.indexOf(prevN);
-  document.getElementById('particleSlider').value = String(idx >= 0 ? idx : 3);
-  document.getElementById('particleCountLabel').textContent = currentN;
+  setSliderForN(currentN, prevMode.maxManualN);
   await initScene(prevMode);
   running = wasRunning;
   document.getElementById('playPauseBtn').textContent = running ? 'Pause' : 'Play';
@@ -362,11 +438,6 @@ async function bootstrap() {
   GpuTiledMode.supported = await GpuTiledMode.checkSupport();
   document.getElementById('gpuNote').classList.toggle('show', !GpuMode.supported);
   buildModeButtons();
-
-  const slider = document.getElementById('particleSlider');
-  slider.max = String(PARTICLE_STEPS.length - 1);
-  slider.value = '3';
-  document.getElementById('particleCountLabel').textContent = currentN;
 
   resizeCanvases();
   renderBenchmarkResults(new Map());

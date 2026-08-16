@@ -48,6 +48,12 @@ function generateScene(n, seed) {
 const NaiveMode = {
   id: 'naive',
   label: 'Naive',
+  // O(N^2), no shortcuts — a manual slider drag past this would leave a
+  // single step() call running for a very long time (10,000^2 pairs is
+  // already ~100M; the benchmark's real "max at 60fps" search for this
+  // mode lands in the low thousands, so this ceiling still gives generous
+  // headroom above what's actually sustainable without risking a stall).
+  maxManualN: 12000,
   description: 'Array of <code>{x,y,vx,vy,mass}</code> objects (array-of-structs), O(N²) nested loop in plain JS. The deliberately-unoptimized baseline every other mode is measured against.',
   particles: null,
   init(n, seed) {
@@ -90,6 +96,7 @@ const NaiveMode = {
 const SoAMode = {
   id: 'soa',
   label: 'SoA',
+  maxManualN: 12000,
   description: 'Same algorithm as Naive, but positions/velocities/mass each live in their own contiguous <code>Float32Array</code> instead of per-particle objects — no GC pressure from object allocation, and no per-particle pointer chasing. SoA\'s usual cache advantage comes from scanning ONE field across every element; this kernel\'s inner loop needs THREE fields (x, y, mass) of the same particle j together, which is exactly the pattern where array-of-structs can hold its own — don\'t assume SoA automatically wins here, watch the numbers for your access pattern.',
   posX: null, posY: null, velX: null, velY: null, mass: null, n: 0,
   init(n, seed) {
@@ -130,6 +137,7 @@ const SoAMode = {
 const QuantizedMode = {
   id: 'quantized',
   label: 'Quantized',
+  maxManualN: 12000,
   description: 'Position/velocity stored as <code>Int16</code> fixed-point (half the bytes of Float32); dequantized to float for the actual math each step, requantized after. Halves memory footprint at the cost of precision and conversion overhead — for a compute-bound loop like this, that overhead can outweigh the bandwidth savings. Watch the numbers, don\'t assume.',
   n: 0,
   init(n, seed) {
@@ -281,6 +289,10 @@ function computeQuadForce(node, idx, posX, posY, theta, out) {
 const BarnesHutMode = {
   id: 'barnes-hut',
   label: 'Barnes-Hut',
+  // O(N log N) — genuinely safe much higher than the brute-force modes,
+  // though the per-step quadtree rebuild (real object allocation, not
+  // free) means it's still not GPU-safe territory.
+  maxManualN: 30000,
   description: 'A quadtree over the current positions, aggregating mass/center-of-mass per node, so a whole distant cluster of particles can be treated as one point mass instead of summing each individually — O(N log N) instead of O(N²). Verified against brute force at theta=0 (full recursion, no approximation) to ~1e-14. But the tree is rebuilt from scratch every step, and that cost is real: in this implementation it only pays off once N is large enough (roughly N > ~2000 here) — below that, brute force can actually be faster. The algorithmic win is real, just not free, and not universal.',
   n: 0, theta: 0.6,
   posX: null, posY: null, velX: null, velY: null, mass: null,
@@ -318,6 +330,7 @@ const BarnesHutMode = {
 const WasmSimdMode = {
   id: 'wasm-simd',
   label: 'WASM SIMD',
+  maxManualN: 12000,
   description: 'Same struct-of-arrays layout, but the O(N²) force loop is real WebAssembly using <code>v128</code>/<code>f32x4</code> SIMD instructions — 4 particles processed per lane group instead of one at a time. Unit-tested against a plain-JS reference to float32 tolerance before being wired in here.',
   instance: null, n: 0, paddedN: 0,
   offsets: null,
@@ -377,6 +390,7 @@ const WasmSimdMode = {
 const WorkersMode = {
   id: 'workers',
   label: 'Web Workers',
+  maxManualN: 12000,
   description: 'The outer loop split across real OS threads (<code>navigator.hardwareConcurrency</code> Web Workers), each computing its own slice against a copy of the full particle set. No SharedArrayBuffer — GitHub Pages can\'t set the COOP/COEP headers it needs — so every step copies pos/mass to every worker via structured clone. That copy cost is real and counted in the reported step time, not hidden.',
   n: 0,
   posX: null, posY: null, velX: null, velY: null, mass: null,
@@ -584,6 +598,12 @@ function makeGpuMode(config) {
     n: 0, paddedN: 0,
 
     isGpu: true,
+    // GPU compute is dispatched async (the JS thread never blocks waiting
+    // on it inside the normal per-frame step()), so a slow frame here just
+    // drops FPS rather than freezing the tab the way a slow CPU O(N^2) step
+    // would — safe to let the manual slider reach the same cap the
+    // benchmark sweep uses.
+    maxManualN: 200000,
 
     async checkSupport() {
       if (!navigator.gpu) return false;
