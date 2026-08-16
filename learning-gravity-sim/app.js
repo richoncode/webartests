@@ -192,8 +192,17 @@ let selectedMode = SoAMode;
 // instead of firing once — the button behaves like an autopilot toggle
 // rather than a one-shot jump. A manual slider drag disengages it (see the
 // slider's 'input' listener below), the same way touching the wheel
-// disengages a car's autopilot.
-let autoMaxLatched = false;
+// disengages a car's autopilot. Defaults to on so the page opens already
+// running each mode at its real sustainable ceiling.
+let autoMaxLatched = true;
+
+// The single source of truth for the toggle's visual state — used by the
+// click handler, the slider's disengage path, AND bootstrap (so the
+// default-on state is reflected from the very first paint, not just after
+// the user's first manual click).
+function setAutoMaxLatchUI(latched) {
+  document.getElementById('maxAt60Btn').classList.toggle('primary', latched);
+}
 
 async function switchMode(modeId) {
   const mode = MODES.find((m) => m.id === modeId);
@@ -241,7 +250,7 @@ function frame(now) {
 document.getElementById('particleSlider').addEventListener('input', async (e) => {
   if (autoMaxLatched) {
     autoMaxLatched = false;
-    document.getElementById('maxAt60Btn').classList.remove('primary');
+    setAutoMaxLatchUI(false);
   }
   currentN = sliderFracToN((+e.target.value) / SLIDER_RESOLUTION, selectedMode.maxManualN);
   document.getElementById('particleCountLabel').textContent = currentN.toLocaleString();
@@ -299,7 +308,7 @@ async function runAutoMaxSearch(mode) {
 document.getElementById('maxAt60Btn').addEventListener('click', async () => {
   if (benchmarking) return;
   autoMaxLatched = !autoMaxLatched;
-  document.getElementById('maxAt60Btn').classList.toggle('primary', autoMaxLatched);
+  setAutoMaxLatchUI(autoMaxLatched);
   if (!autoMaxLatched) return; // just disengaged — leave the current N as-is
   await runAutoMaxSearch(selectedMode);
 });
@@ -536,6 +545,7 @@ async function bootstrap() {
 
   resizeCanvases();
   renderBenchmarkResults(new Map());
+  setAutoMaxLatchUI(autoMaxLatched);
   await switchMode('soa');
   requestAnimationFrame(frame);
 }
