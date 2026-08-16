@@ -148,6 +148,7 @@ function recordTiming(stepMs, frameMs, interFrameMs) {
   const interactionsPerSec = currentN * currentN * (1000 / avgStep);
   document.getElementById('statInteractions').textContent = formatBigNumber(interactionsPerSec);
   checkAutoWatchdog(avgStep);
+  updateWatchdogDebug(avgStep);
 }
 
 // The Max@60fps search is a point-in-time burst measurement — real sustained
@@ -191,6 +192,93 @@ function checkAutoWatchdog(avgStepMs) {
     if (watchdogOfferShown) showRetestOffer(false);
   }
 }
+
+// A live, always-visible readout of the watchdog's internal timers and
+// thresholds — added specifically so a single screenshot carries enough to
+// diagnose "why didn't (or did) the offer show" without a round-trip.
+function updateWatchdogDebug(avgStepMs) {
+  const el = document.getElementById('watchdogDebug');
+  if (!el) return;
+  const now = performance.now();
+  const badThreshold = FRAME_BUDGET_MS * WATCHDOG_BAD_MULTIPLIER;
+  const isBad = avgStepMs > badThreshold;
+  const badForS = watchdogBadSinceMs != null ? ((now - watchdogBadSinceMs) / 1000).toFixed(1) : '0.0';
+  const cooldownRemainS = (watchdogCooldownUntilMs != null && now < watchdogCooldownUntilMs)
+    ? ((watchdogCooldownUntilMs - now) / 1000).toFixed(1) + 's'
+    : 'none';
+  el.textContent =
+    `watchdog · avg=${avgStepMs.toFixed(2)}ms budget=${FRAME_BUDGET_MS.toFixed(2)}ms bad>${badThreshold.toFixed(2)}ms [${isBad ? 'BAD' : 'ok'}] · ` +
+    `sustained=${badForS}s/${(WATCHDOG_SUSTAINED_MS / 1000).toFixed(1)}s · cooldown=${cooldownRemainS} · ` +
+    `offer=${watchdogOfferShown} · latched=${autoMaxLatched} · searching=${benchmarking}`;
+}
+
+// Gathers everything relevant to a "why did/didn't the watchdog fire"
+// question into one plain-text block — recent raw samples included, since
+// the smoothed rolling average alone can hide whether it's genuinely
+// stable-bad or bouncing across the threshold.
+function buildDiagnosticLog() {
+  const now = performance.now();
+  const mode = currentMode;
+  const avgStep = stepTimes.length ? stepTimes.reduce((a, b) => a + b, 0) / stepTimes.length : NaN;
+  const avgFrame = frameTimes.length ? frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length : NaN;
+  const fps = interFrameTimes.length ? 1000 / (interFrameTimes.reduce((a, b) => a + b, 0) / interFrameTimes.length) : NaN;
+  const lines = [];
+  lines.push(`Gravity sim diagnostic log — ${new Date().toISOString()}`);
+  lines.push(`User agent: ${navigator.userAgent}`);
+  lines.push(`devicePixelRatio: ${window.devicePixelRatio}`);
+  lines.push('');
+  lines.push(`Mode: ${mode ? mode.id : '(none)'}   N: ${currentN}   maxManualN: ${mode ? mode.maxManualN : 'n/a'}`);
+  lines.push(`autoMaxLatched: ${autoMaxLatched}   benchmarking: ${benchmarking}   running: ${running}`);
+  lines.push('');
+  lines.push(`FPS: ${fps.toFixed(1)}   physics step avg: ${avgStep.toFixed(2)}ms   frame total avg: ${avgFrame.toFixed(2)}ms`);
+  lines.push(`Frame budget (60fps): ${FRAME_BUDGET_MS.toFixed(2)}ms   watchdog bad threshold (${WATCHDOG_BAD_MULTIPLIER}x): ${(FRAME_BUDGET_MS * WATCHDOG_BAD_MULTIPLIER).toFixed(2)}ms`);
+  lines.push('');
+  lines.push('Watchdog state:');
+  lines.push(`  badSinceMs: ${watchdogBadSinceMs}  (${watchdogBadSinceMs != null ? ((now - watchdogBadSinceMs) / 1000).toFixed(2) + 's ago' : 'n/a'})`);
+  lines.push(`  sustained-required: ${(WATCHDOG_SUSTAINED_MS / 1000).toFixed(1)}s`);
+  lines.push(`  cooldownUntilMs: ${watchdogCooldownUntilMs}  (${watchdogCooldownUntilMs != null ? Math.max(0, (watchdogCooldownUntilMs - now) / 1000).toFixed(2) + 's remaining' : 'n/a'})`);
+  lines.push(`  cooldown window: ${(WATCHDOG_COOLDOWN_MS / 1000).toFixed(1)}s`);
+  lines.push(`  offerShown: ${watchdogOfferShown}`);
+  lines.push('');
+  lines.push(`stepTimes (${stepTimes.length} samples): [${stepTimes.map((t) => t.toFixed(2)).join(', ')}]`);
+  lines.push(`interFrameTimes (${interFrameTimes.length} samples): [${interFrameTimes.map((t) => t.toFixed(2)).join(', ')}]`);
+  if (mode && mode.isGpu) {
+    lines.push('');
+    lines.push('GPU mode state:');
+    lines.push(`  renderTechnique: ${mode.renderTechnique}   renderShape: ${mode.renderShape}`);
+    lines.push(`  busy: ${mode.busy}   lastStepMs: ${typeof mode.lastStepMs === 'number' ? mode.lastStepMs.toFixed(2) : mode.lastStepMs}   stepCount: ${mode.stepCount}   deviceLost: ${mode.deviceLost}`);
+  }
+  return lines.join('\n');
+}
+
+document.getElementById('copyLogBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('copyLogBtn');
+  const original = btn.textContent;
+  const log = buildDiagnosticLog();
+  try {
+    await navigator.clipboard.writeText(log);
+    btn.textContent = 'Copied!';
+  } catch (e) {
+    // Async clipboard API can be unavailable/blocked in some contexts —
+    // fall back to the older select+execCommand path rather than leaving
+    // the user with no way to get the text out.
+    const ta = document.createElement('textarea');
+    ta.value = log;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      btn.textContent = 'Copied!';
+    } catch (e2) {
+      btn.textContent = 'Copy failed — see console';
+      console.log(log);
+    }
+    document.body.removeChild(ta);
+  }
+  setTimeout(() => { btn.textContent = original; }, 2000);
+});
 
 document.getElementById('retestBtn').addEventListener('click', async () => {
   if (benchmarking || !currentMode) return;
