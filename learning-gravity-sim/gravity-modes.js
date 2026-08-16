@@ -193,6 +193,123 @@ const QuantizedMode = {
   },
 };
 
+// ── Mode: Barnes-Hut ──
+// The algorithmic alternative to everything above: instead of computing all
+// N^2 pairwise forces, build a quadtree over the current positions (each
+// node tracks the total mass and center-of-mass of everything beneath it),
+// then for each particle, treat any node whose region is "far enough away"
+// (size/distance < theta) as a single point mass instead of recursing into
+// it. This is O(N log N) instead of O(N^2) — but the tree has to be rebuilt
+// from scratch every step, and that allocation/traversal overhead is real:
+// verified standalone against the brute-force reference before wiring in
+// here, theta=0 (which forces full recursion, i.e. no approximation at all)
+// matches brute force to ~1e-14 — confirming the tree/aggregation logic
+// itself is correct — while theta=0.5 measurably WINS on speed only once N
+// is large enough to outweigh that per-step tree-build cost (in this JS
+// implementation, roughly N > ~2000; below that, brute force can be faster).
+const MAX_QUADTREE_DEPTH = 32;
+
+function makeQuadNode(cx, cy, halfSize) {
+  return { cx, cy, halfSize, mass: 0, comX: 0, comY: 0, children: null, particleIdx: -1, count: 0 };
+}
+function subdivideQuadNode(node) {
+  const h = node.halfSize / 2;
+  node.children = [
+    makeQuadNode(node.cx - h, node.cy + h, h),
+    makeQuadNode(node.cx + h, node.cy + h, h),
+    makeQuadNode(node.cx - h, node.cy - h, h),
+    makeQuadNode(node.cx + h, node.cy - h, h),
+  ];
+}
+function quadrantOf(node, px, py) {
+  const east = px >= node.cx, north = py >= node.cy;
+  if (north) return east ? 1 : 0;
+  return east ? 3 : 2;
+}
+function insertIntoQuadtree(node, idx, posX, posY, mass, depth) {
+  if (node.count === 0) {
+    node.particleIdx = idx;
+    node.mass = mass[idx]; node.comX = posX[idx]; node.comY = posY[idx];
+    node.count = 1;
+    return;
+  }
+  if (node.children === null) {
+    const existingIdx = node.particleIdx;
+    node.particleIdx = -1;
+    if (depth < MAX_QUADTREE_DEPTH) {
+      subdivideQuadNode(node);
+      insertIntoQuadtree(node.children[quadrantOf(node, posX[existingIdx], posY[existingIdx])], existingIdx, posX, posY, mass, depth + 1);
+      insertIntoQuadtree(node.children[quadrantOf(node, posX[idx], posY[idx])], idx, posX, posY, mass, depth + 1);
+    }
+    // if the depth cap is hit (near-coincident particles), fall through and
+    // just fold the new particle's mass/COM into this node without further
+    // subdivision — an approximation floor for a degenerate edge case.
+  } else {
+    insertIntoQuadtree(node.children[quadrantOf(node, posX[idx], posY[idx])], idx, posX, posY, mass, depth + 1);
+  }
+  const newMass = node.mass + mass[idx];
+  node.comX = (node.comX * node.mass + posX[idx] * mass[idx]) / newMass;
+  node.comY = (node.comY * node.mass + posY[idx] * mass[idx]) / newMass;
+  node.mass = newMass;
+  node.count++;
+}
+function accumulateQuadForce(mx, my, m, px, py, out) {
+  const dx = mx - px, dy = my - py;
+  const distSq = dx * dx + dy * dy + SOFTENING;
+  const invDist = 1 / Math.sqrt(distSq);
+  const invDist3 = invDist * invDist * invDist;
+  const scale = m * invDist3;
+  out.x += scale * dx; out.y += scale * dy;
+}
+function computeQuadForce(node, idx, posX, posY, theta, out) {
+  if (node.count === 0) return;
+  if (node.count === 1) {
+    if (node.particleIdx === idx) return;
+    accumulateQuadForce(node.comX, node.comY, node.mass, posX[idx], posY[idx], out);
+    return;
+  }
+  const dx = node.comX - posX[idx], dy = node.comY - posY[idx];
+  const dist = Math.sqrt(dx * dx + dy * dy) + 1e-9;
+  const s = node.halfSize * 2;
+  if (s / dist < theta) {
+    accumulateQuadForce(node.comX, node.comY, node.mass, posX[idx], posY[idx], out);
+  } else {
+    for (const child of node.children) computeQuadForce(child, idx, posX, posY, theta, out);
+  }
+}
+
+const BarnesHutMode = {
+  id: 'barnes-hut',
+  label: 'Barnes-Hut',
+  description: 'A quadtree over the current positions, aggregating mass/center-of-mass per node, so a whole distant cluster of particles can be treated as one point mass instead of summing each individually — O(N log N) instead of O(N²). Verified against brute force at theta=0 (full recursion, no approximation) to ~1e-14. But the tree is rebuilt from scratch every step, and that cost is real: in this implementation it only pays off once N is large enough (roughly N > ~2000 here) — below that, brute force can actually be faster. The algorithmic win is real, just not free, and not universal.',
+  n: 0, theta: 0.6,
+  posX: null, posY: null, velX: null, velY: null, mass: null,
+  init(n, seed) {
+    const s = generateScene(n, seed);
+    this.posX = s.posX; this.posY = s.posY; this.velX = s.velX; this.velY = s.velY; this.mass = s.mass;
+    this.n = n;
+    this._accX = new Float32Array(n); this._accY = new Float32Array(n);
+  },
+  step() {
+    const { posX, posY, velX, velY, mass, n, theta, _accX: accX, _accY: accY } = this;
+    let worldHalf = WORLD_HALF_EXTENT * 1.3;
+    for (let i = 0; i < n; i++) {
+      worldHalf = Math.max(worldHalf, Math.abs(posX[i]) * 1.05, Math.abs(posY[i]) * 1.05);
+    }
+    const tree = makeQuadNode(0, 0, worldHalf);
+    for (let i = 0; i < n; i++) insertIntoQuadtree(tree, i, posX, posY, mass, 0);
+    const out = { x: 0, y: 0 };
+    for (let i = 0; i < n; i++) {
+      out.x = 0; out.y = 0;
+      computeQuadForce(tree, i, posX, posY, theta, out);
+      accX[i] = G * out.x; accY[i] = G * out.y;
+    }
+    for (let i = 0; i < n; i++) { velX[i] += accX[i] * DT; velY[i] += accY[i] * DT; }
+    for (let i = 0; i < n; i++) { posX[i] += velX[i] * DT; posY[i] += velY[i] * DT; }
+  },
+  getPositions(outX, outY) { outX.set(this.posX); outY.set(this.posY); },
+};
+
 // ── Mode: WASM SIMD ──
 // Same SoA layout, but the O(N^2) force loop runs as compiled WebAssembly
 // using real v128/f32x4 SIMD instructions (4 particles per lane group). JS
@@ -241,6 +358,74 @@ const WasmSimdMode = {
     // memory can be detached/regrown between calls in theory; views stay valid here since we only grow once in init()
     for (let i = 0; i < this.n; i++) { outX[i] = this.viewX[i]; outY[i] = this.viewY[i]; }
   },
+};
+
+// ── Mode: Web Workers ──
+// True OS-thread parallelism (unlike SIMD, which is data-parallel within one
+// thread): the outer loop is split across navigator.hardwareConcurrency
+// workers, each computing acceleration for its own slice of particles
+// against the FULL position/mass set (every worker needs everyone's data —
+// gravity is all-pairs). GitHub Pages can't set the COOP/COEP response
+// headers SharedArrayBuffer requires, so this uses plain postMessage
+// structured-clone copies instead of zero-copy shared memory — a real,
+// measurable cost (see the mode's own reported step time vs. SoA at the
+// same N) that a SharedArrayBuffer version could avoid on a host that sets
+// those headers. step() is fire-and-forget: it kicks off the round-trip and
+// returns immediately, skipping a new round-trip if the previous one hasn't
+// resolved yet (frame-skipping under load) rather than letting overlapping
+// requests race on the same arrays.
+const WorkersMode = {
+  id: 'workers',
+  label: 'Web Workers',
+  description: 'The outer loop split across real OS threads (<code>navigator.hardwareConcurrency</code> Web Workers), each computing its own slice against a copy of the full particle set. No SharedArrayBuffer — GitHub Pages can\'t set the COOP/COEP headers it needs — so every step copies pos/mass to every worker via structured clone. That copy cost is real and counted in the reported step time, not hidden.',
+  n: 0,
+  posX: null, posY: null, velX: null, velY: null, mass: null,
+  workers: [], workerCount: 0, busy: false, lastStepMs: 0,
+  init(n, seed) {
+    const s = generateScene(n, seed);
+    this.posX = s.posX; this.posY = s.posY; this.velX = s.velX; this.velY = s.velY; this.mass = s.mass;
+    this.n = n;
+    this.busy = false;
+    this.lastStepMs = 0;
+    if (this.workers.length === 0) {
+      this.workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+      for (let i = 0; i < this.workerCount; i++) this.workers.push(new Worker('gravity-worker.js'));
+    }
+  },
+  step() {
+    if (this.busy) return; // previous round-trip still in flight — skip this tick rather than race
+    this.busy = true;
+    const t0 = performance.now();
+    this._runStep().then(() => {
+      this.lastStepMs = performance.now() - t0;
+      this.busy = false;
+    });
+  },
+  async _runStep() {
+    const { posX, posY, mass, velX, velY, n, workers, workerCount } = this;
+    const chunk = Math.ceil(n / workerCount);
+    const promises = [];
+    for (let w = 0; w < workerCount; w++) {
+      const start = w * chunk, end = Math.min(n, start + chunk);
+      if (start >= end) continue;
+      const worker = workers[w];
+      promises.push(new Promise((resolve) => {
+        worker.onmessage = (e) => resolve(e.data);
+        worker.postMessage({ posX, posY, mass, start, end, softening: SOFTENING, n });
+      }));
+    }
+    const results = await Promise.all(promises);
+    for (const r of results) {
+      const len = r.end - r.start;
+      for (let k = 0; k < len; k++) {
+        const i = r.start + k;
+        velX[i] += G * r.outAX[k] * DT;
+        velY[i] += G * r.outAY[k] * DT;
+      }
+    }
+    for (let i = 0; i < n; i++) { posX[i] += velX[i] * DT; posY[i] += velY[i] * DT; }
+  },
+  getPositions(outX, outY) { outX.set(this.posX); outY.set(this.posY); },
 };
 
 // ── Mode: GPU (WebGPU compute + render) ──

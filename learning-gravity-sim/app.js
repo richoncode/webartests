@@ -1,4 +1,4 @@
-const MODES = [NaiveMode, SoAMode, QuantizedMode, WasmSimdMode, GpuMode];
+const MODES = [NaiveMode, SoAMode, QuantizedMode, BarnesHutMode, WasmSimdMode, WorkersMode, GpuMode];
 const PARTICLE_STEPS = [100, 200, 400, 800, 1200, 2000, 3000, 4000, 6000];
 const STATS_WINDOW = 30;
 
@@ -165,7 +165,13 @@ function frame(now) {
     drawCanvas2d(scratchX, scratchY, currentN);
   }
   const frameEnd = performance.now();
-  recordTiming(stepEnd - stepStart, frameEnd - stepStart, interFrameMs);
+  // WorkersMode.step() is fire-and-forget (kicks off an async round-trip
+  // across worker threads and returns immediately) — the synchronous
+  // stepEnd-stepStart delta here would just measure "how long it took to
+  // schedule a postMessage", not the real work. It reports its own
+  // measured round-trip time once each one actually completes.
+  const reportedStepMs = currentMode === WorkersMode ? WorkersMode.lastStepMs : (stepEnd - stepStart);
+  recordTiming(reportedStepMs, frameEnd - stepStart, interFrameMs);
 }
 
 document.getElementById('particleSlider').addEventListener('input', async (e) => {
