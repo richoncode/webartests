@@ -168,7 +168,12 @@ function buildModeButtons() {
 }
 
 function updateModeButtonsUI(activeId) {
-  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.modeId === activeId));
+  // Scoped to #modeButtons specifically — the render-technique/shape toggle
+  // buttons below also use the .mode-btn class for consistent styling, and
+  // an unscoped '.mode-btn' query here would strip their active state on
+  // every mode switch (they have no data-modeId, so the toggle condition is
+  // always false for them).
+  document.querySelectorAll('#modeButtons .mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.modeId === activeId));
 }
 
 let initGeneration = 0;
@@ -182,6 +187,18 @@ let initGeneration = 0;
 // to the real mode once setup+init has fully completed. The generation
 // counter guards against two overlapping calls (e.g. rapid slider drags)
 // resolving out of order and leaving currentMode pointed at a stale mode.
+// Which GPU visualization to use — a global rather than a per-mode setting,
+// so switching between GPU and GPU Tiled preserves whichever technique/shape
+// you're currently comparing rather than each mode remembering its own.
+let gpuRenderTechnique = 'quads';
+let gpuRenderShape = 'circle';
+
+function applyGpuRenderSettings(mode) {
+  if (!mode.isGpu) return;
+  mode.renderTechnique = gpuRenderTechnique;
+  mode.renderShape = gpuRenderShape;
+}
+
 async function initScene(mode) {
   const myGen = ++initGeneration;
   currentMode = null;
@@ -192,6 +209,7 @@ async function initScene(mode) {
   }
   if (myGen !== initGeneration) return;
   mode.init(currentN, seed);
+  applyGpuRenderSettings(mode);
   if (mode.isGpu) computeViewTransform(viewCssWidth, viewCssHeight, mode);
   stepTimes = []; frameTimes = []; interFrameTimes = []; lastRafTime = null;
   lastRecordedStepCount = -1; lastCompletionTime = null;
@@ -228,6 +246,7 @@ async function switchMode(modeId) {
   canvas2d.style.display = mode.isGpu ? 'none' : 'block';
   canvasGpu.style.display = mode.isGpu ? 'block' : 'none';
   document.getElementById('modeDesc').innerHTML = `<strong>${mode.label}:</strong> ${mode.description}`;
+  document.getElementById('gpuRenderToggles').classList.toggle('show', mode.isGpu);
   updateModeButtonsUI(modeId);
   if (autoMaxLatched) {
     await runAutoMaxSearch(mode);
@@ -306,6 +325,24 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   await initScene(selectedMode);
 });
 window.addEventListener('resize', resizeCanvases);
+
+document.querySelectorAll('#techniqueToggle .mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    gpuRenderTechnique = btn.dataset.technique;
+    document.querySelectorAll('#techniqueToggle .mode-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    // The shape toggle only means anything for the instanced-quads
+    // technique — the splat path has no per-particle shape to pick.
+    document.getElementById('shapeToggleWrap').style.display = gpuRenderTechnique === 'quads' ? '' : 'none';
+    if (currentMode && currentMode.isGpu) currentMode.renderTechnique = gpuRenderTechnique;
+  });
+});
+document.querySelectorAll('#shapeToggle .mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    gpuRenderShape = btn.dataset.shape;
+    document.querySelectorAll('#shapeToggle .mode-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    if (currentMode && currentMode.isGpu) currentMode.renderShape = gpuRenderShape;
+  });
+});
 
 // Runs the same doubling-ramp + binary-search used by the "all modes"
 // benchmark below, but for just one mode, then jumps the live scene

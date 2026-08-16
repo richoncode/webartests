@@ -576,9 +576,99 @@ fn vs(@builtin(vertex_index) vIdx: u32, @builtin(instance_index) iIdx: u32) -> V
 }
 
 @fragment
-fn fs(in: VSOut) -> @location(0) vec4f {
+fn fs_circle(in: VSOut) -> @location(0) vec4f {
+  // An analytic signed-distance test for a circle (dot(p,p) - 1) — already
+  // the cheapest possible form of "SDF rendering," no texture lookup
+  // involved. fs_square below is the same geometry with that discard
+  // removed entirely, to A/B whether the per-fragment branch itself is
+  // worth its cost once dots are only a couple of pixels across anyway.
   if (dot(in.localPos, in.localPos) > 1.0) { discard; }
   return vec4f(0.357, 0.612, 0.835, 1.0);
+}
+
+@fragment
+fn fs_square(in: VSOut) -> @location(0) vec4f {
+  return vec4f(0.357, 0.612, 0.835, 1.0);
+}
+`;
+
+// An entirely different rendering technique: instead of one instanced quad
+// draw call per particle (N draws through the fixed-function rasterizer,
+// each paying real fill-rate cost, worse with overlap near the dense
+// center), scatter every particle into a density grid with a compute
+// shader — O(N) atomic writes, no rasterizer involved — then do a SINGLE
+// fullscreen draw that reads the grid and colors each pixel by density.
+// Render cost becomes independent of N entirely (always 1 draw call over a
+// fixed-size grid); the tradeoff is the visual character shifts from crisp
+// discrete dots to a density/glow field, especially where particles cluster.
+const GPU_DENSITY_GRID_SIZE = 512;
+
+const GPU_DENSITY_CLEAR_WGSL = `
+const GRID_SIZE: u32 = ${GPU_DENSITY_GRID_SIZE}u;
+@group(0) @binding(0) var<storage, read_write> density: array<atomic<u32>>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= GRID_SIZE * GRID_SIZE) { return; }
+  atomicStore(&density[i], 0u);
+}
+`;
+
+const GPU_DENSITY_SCATTER_WGSL = `
+const GRID_SIZE: u32 = ${GPU_DENSITY_GRID_SIZE}u;
+struct ViewParams { scaleX: f32, scaleY: f32, pointSize: f32, _pad: f32 }
+struct Params { n: u32, g: f32, dt: f32, softening: f32 }
+@group(0) @binding(0) var<uniform> view: ViewParams;
+@group(0) @binding(1) var<uniform> params: Params;
+@group(0) @binding(2) var<storage, read> pos: array<vec2f>;
+@group(0) @binding(3) var<storage, read_write> density: array<atomic<u32>>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.n) { return; }
+  let p = pos[i];
+  // Same world -> NDC transform the point renderer's vertex shader uses,
+  // so the density grid lines up with exactly the same framing/zoom.
+  let u = p.x * view.scaleX * 0.5 + 0.5;
+  let v = p.y * view.scaleY * 0.5 + 0.5;
+  if (u < 0.0 || u >= 1.0 || v < 0.0 || v >= 1.0) { return; }
+  let gx = u32(u * f32(GRID_SIZE));
+  let gy = u32(v * f32(GRID_SIZE));
+  atomicAdd(&density[gy * GRID_SIZE + gx], 1u);
+}
+`;
+
+const GPU_DENSITY_RESOLVE_WGSL = `
+const GRID_SIZE: u32 = ${GPU_DENSITY_GRID_SIZE}u;
+@group(0) @binding(0) var<storage, read> density: array<u32>;
+
+struct VSOut { @builtin(position) clipPos: vec4f, @location(0) uv: vec2f }
+
+@vertex
+fn vs(@builtin(vertex_index) vIdx: u32) -> VSOut {
+  var quad = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
+  );
+  let p = quad[vIdx];
+  var out: VSOut;
+  out.clipPos = vec4f(p, 0.0, 1.0);
+  out.uv = vec2f(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+  return out;
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4f {
+  let gx = u32(in.uv.x * f32(GRID_SIZE));
+  let gy = u32(in.uv.y * f32(GRID_SIZE));
+  if (gx >= GRID_SIZE || gy >= GRID_SIZE) { return vec4f(0.0, 0.0, 0.0, 1.0); }
+  let c = f32(density[gy * GRID_SIZE + gx]);
+  // sqrt tone-mapping so a handful of overlapping particles doesn't just
+  // clip straight to white — density grows gradually into a visible glow.
+  let intensity = clamp(sqrt(c) * 0.4, 0.0, 1.0);
+  return vec4f(vec3f(0.357, 0.612, 0.835) * intensity, 1.0);
 }
 `;
 
@@ -608,6 +698,11 @@ function makeGpuMode(config) {
     // number by calibrateCeiling() before the user can ever pick an N.
     maxManualN: 3000,
     busy: false, lastStepMs: 0, deviceLost: false, stepCount: 0,
+    // Which visualization to render each step, and (when technique is
+    // 'quads') whether dots get the circle discard test or not — both
+    // toggleable live from the UI so the two approaches can be A/B compared
+    // at the same N. Physics is identical either way; only this changes.
+    renderTechnique: 'quads', renderShape: 'circle',
 
     async checkSupport() {
       if (!navigator.gpu) return false;
@@ -640,13 +735,48 @@ function makeGpuMode(config) {
 
       this.velPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: velModule, entryPoint: 'main' } });
       this.posPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: posModule, entryPoint: 'main' } });
-      this.renderPipeline = this.device.createRenderPipeline({
+      // Two render pipelines sharing the same vertex stage — only the
+      // fragment entry point (with vs. without the circle discard) differs,
+      // so switching the "shape" toggle is just picking which pipeline to
+      // bind, not recompiling anything at toggle time.
+      this.renderPipelineCircle = this.device.createRenderPipeline({
         layout: 'auto',
         vertex: { module: renderModule, entryPoint: 'vs' },
-        fragment: { module: renderModule, entryPoint: 'fs', targets: [{ format: this.format }] },
+        fragment: { module: renderModule, entryPoint: 'fs_circle', targets: [{ format: this.format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      this.renderPipelineSquare = this.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: renderModule, entryPoint: 'vs' },
+        fragment: { module: renderModule, entryPoint: 'fs_square', targets: [{ format: this.format }] },
         primitive: { topology: 'triangle-list' },
       });
       this.viewParamsBuffer = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+      // Density-splat resources: fixed-size grid, independent of N, so all
+      // of this is created once here rather than in init().
+      const gridCells = GPU_DENSITY_GRID_SIZE * GPU_DENSITY_GRID_SIZE;
+      this.densityBuffer = this.device.createBuffer({ size: gridCells * 4, usage: GPUBufferUsage.STORAGE });
+      const clearModule = this.device.createShaderModule({ code: GPU_DENSITY_CLEAR_WGSL });
+      const scatterModule = this.device.createShaderModule({ code: GPU_DENSITY_SCATTER_WGSL });
+      const resolveModule = this.device.createShaderModule({ code: GPU_DENSITY_RESOLVE_WGSL });
+      this.densityClearPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: clearModule, entryPoint: 'main' } });
+      this.densityScatterPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: scatterModule, entryPoint: 'main' } });
+      this.densityResolvePipeline = this.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: resolveModule, entryPoint: 'vs' },
+        fragment: { module: resolveModule, entryPoint: 'fs', targets: [{ format: this.format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      this.densityClearBindGroup = this.device.createBindGroup({
+        layout: this.densityClearPipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: this.densityBuffer } }],
+      });
+      this.densityResolveBindGroup = this.device.createBindGroup({
+        layout: this.densityResolvePipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: this.densityBuffer } }],
+      });
+      this.densityClearDispatchCount = Math.ceil(gridCells / 64);
     },
 
     init(n, seed) {
@@ -700,11 +830,25 @@ function makeGpuMode(config) {
           { binding: 2, resource: { buffer: this.velBuffer } },
         ],
       });
-      this.renderBindGroup = dev.createBindGroup({
-        layout: this.renderPipeline.getBindGroupLayout(0),
+      // renderPipelineCircle and renderPipelineSquare share an identical
+      // vertex stage and resource bindings, but layout:'auto' bind group
+      // layouts are opaque, per-pipeline objects — the spec does not
+      // guarantee a bind group built against one pipeline's auto layout is
+      // valid for a different pipeline's, even a structurally identical
+      // one. One bind group per pipeline avoids relying on that.
+      const renderBindGroupEntries = [
+        { binding: 0, resource: { buffer: this.viewParamsBuffer } },
+        { binding: 1, resource: { buffer: this.posBuffer } },
+      ];
+      this.renderBindGroupCircle = dev.createBindGroup({ layout: this.renderPipelineCircle.getBindGroupLayout(0), entries: renderBindGroupEntries });
+      this.renderBindGroupSquare = dev.createBindGroup({ layout: this.renderPipelineSquare.getBindGroupLayout(0), entries: renderBindGroupEntries });
+      this.densityScatterBindGroup = dev.createBindGroup({
+        layout: this.densityScatterPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.viewParamsBuffer } },
-          { binding: 1, resource: { buffer: this.posBuffer } },
+          { binding: 1, resource: { buffer: this.paramsBuffer } },
+          { binding: 2, resource: { buffer: this.posBuffer } },
+          { binding: 3, resource: { buffer: this.densityBuffer } },
         ],
       });
 
@@ -746,13 +890,39 @@ function makeGpuMode(config) {
         pass.dispatchWorkgroups(this.dispatchCount);
         pass.end();
       }
-      {
+      if (this.renderTechnique === 'splat') {
+        {
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(this.densityClearPipeline);
+          pass.setBindGroup(0, this.densityClearBindGroup);
+          pass.dispatchWorkgroups(this.densityClearDispatchCount);
+          pass.end();
+        }
+        {
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(this.densityScatterPipeline);
+          pass.setBindGroup(0, this.densityScatterBindGroup);
+          pass.dispatchWorkgroups(this.dispatchCount);
+          pass.end();
+        }
+        {
+          const view = this.context.getCurrentTexture().createView();
+          const pass = encoder.beginRenderPass({
+            colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
+          });
+          pass.setPipeline(this.densityResolvePipeline);
+          pass.setBindGroup(0, this.densityResolveBindGroup);
+          pass.draw(6, 1);
+          pass.end();
+        }
+      } else {
         const view = this.context.getCurrentTexture().createView();
         const pass = encoder.beginRenderPass({
           colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
         });
-        pass.setPipeline(this.renderPipeline);
-        pass.setBindGroup(0, this.renderBindGroup);
+        const useSquare = this.renderShape === 'square';
+        pass.setPipeline(useSquare ? this.renderPipelineSquare : this.renderPipelineCircle);
+        pass.setBindGroup(0, useSquare ? this.renderBindGroupSquare : this.renderBindGroupCircle);
         pass.draw(6, this.n);
         pass.end();
       }
