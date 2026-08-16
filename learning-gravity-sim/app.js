@@ -70,15 +70,31 @@ function resizeCanvases() {
   computeViewTransform(rect.width, rect.height);
 }
 
+// The GPU render pass's cost depends on N too (draw-call instance count,
+// and — since dot size shrinks with particleScaleFactor — how much fill-rate
+// each instance actually costs). Any code that times a GPU step for a given
+// n needs to render with the SAME point size the live app would actually use
+// at that n, or the render pass either draws nothing (point size 0, before
+// setView() has ever been called) or draws the wrong size left over from
+// whatever n was last live-viewed — both silently understate or misstate the
+// real compute+render cost. This is the one place that math lives, shared by
+// the live view, calibration, and the max-at-60fps search.
+function gpuViewParamsForN(n) {
+  const dpr = window.devicePixelRatio || 1;
+  return {
+    scaleX: (viewScalePxPerWorld * dpr) / (canvasGpu.width / 2),
+    scaleY: -(viewScalePxPerWorld * dpr) / (canvasGpu.height / 2),
+    pointSize: 3.5 * particleScaleFactor(n),
+  };
+}
+
 function computeViewTransform(cssW, cssH, gpuModeOverride) {
   viewCssWidth = cssW; viewCssHeight = cssH;
   viewScalePxPerWorld = (Math.min(cssW, cssH) * 0.9) / (2 * WORLD_HALF_EXTENT);
   const gm = gpuModeOverride || currentMode;
   if (gm && gm.isGpu && gm.device) {
-    const dpr = window.devicePixelRatio || 1;
-    const ndcScaleX = (viewScalePxPerWorld * dpr) / (canvasGpu.width / 2);
-    const ndcScaleY = (viewScalePxPerWorld * dpr) / (canvasGpu.height / 2);
-    gm.setView(ndcScaleX, -ndcScaleY, 3.5 * particleScaleFactor(currentN));
+    const vp = gpuViewParamsForN(currentN);
+    gm.setView(vp.scaleX, vp.scaleY, vp.pointSize);
   }
 }
 
@@ -362,6 +378,13 @@ function makeStepTimer(mode) {
     return async (n) => {
       if (mode.deviceLost) return Infinity;
       mode.init(n, BENCH_SEED);
+      // Render at the SAME point size the live view would actually use at
+      // this n — otherwise every n in the sweep gets measured with whatever
+      // point size happened to be left in the view-params buffer (zero, if
+      // this mode has never been live-viewed yet), which silently omits or
+      // misstates the render pass's real, N-dependent cost.
+      const vp = gpuViewParamsForN(n);
+      mode.setView(vp.scaleX, vp.scaleY, vp.pointSize);
       const t0 = performance.now();
       mode._submitStep();
       const done = await withTimeout(mode.device.queue.onSubmittedWorkDone(), GPU_STEP_TIMEOUT_MS, 'timeout');
@@ -524,7 +547,7 @@ document.getElementById('runBenchmarkBtn').addEventListener('click', runBenchmar
 async function setUpGpuMode(mode) {
   try {
     await mode.setup(canvasGpu);
-    await mode.calibrateCeiling();
+    await mode.calibrateCeiling(gpuViewParamsForN);
   } catch (e) {
     console.error(`${mode.label}: setup/calibration failed, disabling`, e);
     mode.supported = false;
@@ -532,6 +555,12 @@ async function setUpGpuMode(mode) {
 }
 
 async function bootstrap() {
+  // Sized BEFORE any GPU calibration runs — gpuViewParamsForN() needs real
+  // canvas dimensions and viewScalePxPerWorld to render calibration's probe
+  // step at a realistic point size instead of whatever a not-yet-sized
+  // canvas would produce.
+  resizeCanvases();
+
   // Each mode must request its OWN adapter — a GPUAdapter can only ever be
   // used to create a single device, so sharing one adapter object between
   // GpuMode and GpuTiledMode would make the second mode's setup() throw
@@ -543,7 +572,6 @@ async function bootstrap() {
   document.getElementById('gpuNote').classList.toggle('show', !GpuMode.supported && !GpuTiledMode.supported);
   buildModeButtons();
 
-  resizeCanvases();
   renderBenchmarkResults(new Map());
   setAutoMaxLatchUI(autoMaxLatched);
   await switchMode('soa');

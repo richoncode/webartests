@@ -798,13 +798,25 @@ function makeGpuMode(config) {
     // of "the GPU looks hung." The two GPU modes calibrate independently,
     // since the tiled mode's real throughput advantage should raise its
     // ceiling too, not just its measured FPS.
-    async calibrateCeiling() {
+    // getViewParams(n) -> {scaleX, scaleY, pointSize} lets the app tell this
+    // mode what the live view would actually look like at a given N — the
+    // render pass's cost depends on point size (fill-rate) as well as N
+    // (instance count), so timing it with the view-params buffer still at
+    // its post-creation zero (nothing has ever called setView() yet, this
+    // early in page load) would measure zero-area quads, i.e. an almost-free
+    // render pass. That understates the real cost enough to matter: it's
+    // what made this calibration land well above the real sustainable N.
+    async calibrateCeiling(getViewParams) {
       const REF_N = 2000;
       const SAFE_SINGLE_STEP_MS = 250;
       const HARD_CAP_N = 200000;
       const FLOOR_N = 2000;
       try {
         this.init(REF_N, 1);
+        if (getViewParams) {
+          const vp = getViewParams(REF_N);
+          this.setView(vp.scaleX, vp.scaleY, vp.pointSize);
+        }
         this._submitStep();
         await this.device.queue.onSubmittedWorkDone(); // warm up: shader/pipeline compile, allocation
         // Take the min of a couple of timed samples rather than trusting a
