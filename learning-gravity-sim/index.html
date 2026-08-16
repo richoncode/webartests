@@ -60,6 +60,19 @@
 
   .gpu-note { font-size: 12px; color: #f0a040; margin-top: 10px; display: none; }
   .gpu-note.show { display: block; }
+
+  button.action:disabled, .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .bench-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  .bench-status { font-size: 13px; color: #888; min-height: 18px; }
+  .bench-results { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .bench-row { display: flex; align-items: center; gap: 12px; }
+  .bench-label { width: 140px; flex-shrink: 0; font-size: 13px; color: #ccc; }
+  .bench-bar-track { display: flex; flex: 1; height: 22px; background: #111; border: 1px solid #232323; border-radius: 6px; overflow: hidden; }
+  .bench-bar-fill { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #3d6f96, #5b9bd5); border-radius: 5px; transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .bench-row.unsupported .bench-bar-fill { background: #2a2a2a; }
+  .bench-row.unsupported .bench-label, .bench-row.unsupported .bench-value { color: #555; }
+  .bench-value { width: 92px; flex-shrink: 0; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #5b9bd5; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -67,7 +80,7 @@
 
 <div class="page">
   <h1>2D Gravity Sim — Performance Modes</h1>
-  <p class="subtitle">The same Newtonian gravity simulation, run seven different ways — same particles, same physics, same timestep — so you can watch how much of "performance" comes from data layout, algorithmic complexity, hardware SIMD, real multithreading, precision, and moving the whole loop onto the GPU.</p>
+  <p class="subtitle">The same Newtonian gravity simulation, run eight different ways — same particles, same physics, same timestep — so you can watch how much of "performance" comes from data layout, algorithmic complexity, hardware SIMD, real multithreading, precision, and moving the whole loop onto the GPU (with and without shared-memory tiling).</p>
 
   <div class="callout">
     <strong>How to read this:</strong> switching modes or the particle-count slider resets the scene to the same seeded initial conditions, so any two modes are directly comparable at a given N. "Physics step" time is the compute-only cost (what these modes are actually about); "frame" time also includes drawing the particles to screen.
@@ -105,6 +118,20 @@
   <div class="canvas-wrap">
     <canvas id="glCanvas2d" width="1200" height="1120"></canvas>
     <canvas id="glCanvasGpu" width="1200" height="1120"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="bench-header">
+      <div>
+        <span class="control-label" style="margin-bottom: 4px;">Max particles at 60fps</span>
+        <div class="bench-status" id="benchmarkStatus">Ramps each mode's particle count up until its step time crosses the 16.7ms/frame budget, then binary-searches for the boundary.</div>
+      </div>
+      <button class="action primary" id="runBenchmarkBtn">Run benchmark (all modes)</button>
+    </div>
+    <div class="callout" style="max-width: none; margin-top: 16px;">
+      <strong>Methodology:</strong> every mode is measured against the same fixed benchmark seed, independent of the scene above. For the six CPU/CPU-multithreaded modes, only the physics step is timed — drawing to the 2D canvas isn't part of what's being compared. For the two GPU modes, the step already includes rendering (positions are read straight from the storage buffer, so compute and render aren't separable costs) — their numbers reflect compute+render together, via <code>onSubmittedWorkDone()</code> for real GPU-completion timing rather than just measuring how long <code>submit()</code> took to return. Web Workers' number includes its real per-step structured-clone copy cost. The sweep is capped at 200,000 particles to keep a full run bounded — a mode reporting "200,000+" likely goes higher, the cap just stops the search there rather than claiming that's a hard ceiling.
+    </div>
+    <div class="bench-results" id="benchmarkResults"></div>
   </div>
 </div>
 

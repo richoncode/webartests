@@ -1,4 +1,4 @@
-const MODES = [NaiveMode, SoAMode, QuantizedMode, BarnesHutMode, WasmSimdMode, WorkersMode, GpuMode];
+const MODES = [NaiveMode, SoAMode, QuantizedMode, BarnesHutMode, WasmSimdMode, WorkersMode, GpuMode, GpuTiledMode];
 const PARTICLE_STEPS = [100, 200, 400, 800, 1200, 2000, 3000, 4000, 6000];
 const STATS_WINDOW = 30;
 
@@ -28,14 +28,15 @@ function resizeCanvases() {
   computeViewTransform(rect.width, rect.height);
 }
 
-function computeViewTransform(cssW, cssH) {
+function computeViewTransform(cssW, cssH, gpuModeOverride) {
   viewCssWidth = cssW; viewCssHeight = cssH;
   viewScalePxPerWorld = (Math.min(cssW, cssH) * 0.9) / (2 * WORLD_HALF_EXTENT);
-  if (GpuMode.supported && GpuMode.device) {
+  const gm = gpuModeOverride || currentMode;
+  if (gm && gm.isGpu && gm.device) {
     const dpr = window.devicePixelRatio || 1;
     const ndcScaleX = (viewScalePxPerWorld * dpr) / (canvasGpu.width / 2);
     const ndcScaleY = (viewScalePxPerWorld * dpr) / (canvasGpu.height / 2);
-    GpuMode.setView(ndcScaleX, -ndcScaleY, 3.5);
+    gm.setView(ndcScaleX, -ndcScaleY, 3.5);
   }
 }
 
@@ -97,7 +98,7 @@ function buildModeButtons() {
     btn.className = 'mode-btn';
     btn.textContent = mode.label;
     btn.dataset.modeId = mode.id;
-    if (mode === GpuMode && !GpuMode.supported) {
+    if (mode.isGpu && !mode.supported) {
       btn.classList.add('unsupported');
       btn.title = 'WebGPU not available in this browser';
     } else {
@@ -126,10 +127,13 @@ async function initScene(mode) {
   const myGen = ++initGeneration;
   currentMode = null;
   if (mode === WasmSimdMode && !WasmSimdMode.instance) await WasmSimdMode.load();
-  if (mode === GpuMode && !GpuMode.device) await GpuMode.setup(canvasGpu);
+  if (mode.isGpu) {
+    if (!mode.device) await mode.setup(canvasGpu);
+    else mode.activate();
+  }
   if (myGen !== initGeneration) return;
   mode.init(currentN, seed);
-  if (mode === GpuMode) computeViewTransform(viewCssWidth, viewCssHeight);
+  if (mode.isGpu) computeViewTransform(viewCssWidth, viewCssHeight, mode);
   stepTimes = []; frameTimes = []; interFrameTimes = []; lastRafTime = null;
   currentMode = mode;
 }
@@ -143,10 +147,10 @@ let selectedMode = SoAMode;
 
 async function switchMode(modeId) {
   const mode = MODES.find((m) => m.id === modeId);
-  if (!mode || (mode === GpuMode && !GpuMode.supported)) return;
+  if (!mode || (mode.isGpu && !mode.supported)) return;
   selectedMode = mode;
-  canvas2d.style.display = mode === GpuMode ? 'none' : 'block';
-  canvasGpu.style.display = mode === GpuMode ? 'block' : 'none';
+  canvas2d.style.display = mode.isGpu ? 'none' : 'block';
+  canvasGpu.style.display = mode.isGpu ? 'block' : 'none';
   document.getElementById('modeDesc').innerHTML = `<strong>${mode.label}:</strong> ${mode.description}`;
   updateModeButtonsUI(modeId);
   await initScene(mode);
@@ -160,7 +164,7 @@ function frame(now) {
   const stepStart = performance.now();
   currentMode.step();
   const stepEnd = performance.now();
-  if (currentMode !== GpuMode) {
+  if (!currentMode.isGpu) {
     currentMode.getPositions(scratchX, scratchY);
     drawCanvas2d(scratchX, scratchY, currentN);
   }
@@ -189,8 +193,173 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 window.addEventListener('resize', resizeCanvases);
 
+// ── "Max particles at 60fps" benchmark ──
+// An alternative, more intuitive framing than "ms/step at a fixed N": for
+// each mode, find the largest particle count whose step time still fits the
+// 16.7ms/frame budget. Doubling ramp-up finds a bracket fast regardless of
+// a mode's actual complexity class (O(N^2) vs O(N log N) vs O(N)), then a
+// short binary search narrows it down within that bracket.
+const FRAME_BUDGET_MS = 1000 / 60;
+const BENCH_MIN_N = 100;
+const BENCH_CAP_N = 200000;
+const BENCH_SEED = 424242;
+let benchmarking = false;
+
+// Each mode type needs a different notion of "time one step and wait for it
+// to really finish" — a synchronous CPU step, an awaited Workers round-trip
+// (bypassing its fire-and-forget busy-guard so the benchmark can await every
+// step directly), or a GPU submit plus onSubmittedWorkDone().
+function makeStepTimer(mode) {
+  if (mode === WorkersMode) {
+    return async (n) => {
+      mode.init(n, BENCH_SEED);
+      await mode._runStep();
+      const trials = 8;
+      const t0 = performance.now();
+      for (let i = 0; i < trials; i++) await mode._runStep();
+      return (performance.now() - t0) / trials;
+    };
+  }
+  if (mode.isGpu) {
+    return async (n) => {
+      mode.init(n, BENCH_SEED);
+      mode.step();
+      await mode.waitForGPU();
+      const trials = 20;
+      const t0 = performance.now();
+      for (let i = 0; i < trials; i++) mode.step();
+      await mode.waitForGPU();
+      return (performance.now() - t0) / trials;
+    };
+  }
+  return async (n) => {
+    mode.init(n, BENCH_SEED);
+    mode.step();
+    const trials = 15;
+    const t0 = performance.now();
+    for (let i = 0; i < trials; i++) mode.step();
+    return (performance.now() - t0) / trials;
+  };
+}
+
+async function findMaxNAt60fps(stepTimeFn) {
+  let lastGoodN = 0, lastGoodMs = 0;
+  let n = BENCH_MIN_N;
+  let firstBadN = null;
+  while (n <= BENCH_CAP_N) {
+    const ms = await stepTimeFn(n);
+    if (ms <= FRAME_BUDGET_MS) { lastGoodN = n; lastGoodMs = ms; n *= 2; }
+    else { firstBadN = n; break; }
+  }
+  if (firstBadN === null) return { n: lastGoodN || BENCH_CAP_N, ms: lastGoodMs, hitCap: true };
+  if (lastGoodN === 0) return { n: 0, ms: lastGoodMs, tooSlow: true };
+
+  let lo = lastGoodN, hi = firstBadN;
+  for (let iter = 0; iter < 7 && hi - lo > Math.max(1, Math.floor(lo * 0.02)); iter++) {
+    const mid = Math.round((lo + hi) / 2);
+    const ms = await stepTimeFn(mid);
+    if (ms <= FRAME_BUDGET_MS) { lo = mid; lastGoodMs = ms; } else { hi = mid; }
+  }
+  return { n: lo, ms: lastGoodMs };
+}
+
+function formatMaxN(r) {
+  if (r.unsupported) return '—';
+  if (r.tooSlow) return `< ${BENCH_MIN_N}`;
+  return r.hitCap ? `${r.n.toLocaleString()}+` : r.n.toLocaleString();
+}
+
+function renderBenchmarkResults(resultsByModeId) {
+  const container = document.getElementById('benchmarkResults');
+  container.innerHTML = '';
+  for (const mode of MODES) {
+    const r = resultsByModeId.get(mode.id);
+    const row = document.createElement('div');
+    row.className = 'bench-row' + (r && r.unsupported ? ' unsupported' : '');
+    const pct = r && !r.unsupported && !r.tooSlow && r.n > 0
+      ? Math.max(3, ((Math.log10(r.n) - Math.log10(BENCH_MIN_N)) / (Math.log10(BENCH_CAP_N) - Math.log10(BENCH_MIN_N))) * 100)
+      : 0;
+    const label = document.createElement('span');
+    label.className = 'bench-label';
+    label.textContent = mode.label;
+    const track = document.createElement('span');
+    track.className = 'bench-bar-track';
+    const fill = document.createElement('span');
+    fill.className = 'bench-bar-fill';
+    fill.style.width = pct + '%';
+    track.appendChild(fill);
+    const value = document.createElement('span');
+    value.className = 'bench-value';
+    value.textContent = r ? formatMaxN(r) : '…';
+    row.append(label, track, value);
+    container.appendChild(row);
+  }
+}
+
+function setControlsDisabled(disabled) {
+  document.querySelectorAll('.mode-btn').forEach((b) => { if (!b.classList.contains('unsupported')) b.disabled = disabled; });
+  document.getElementById('particleSlider').disabled = disabled;
+  document.getElementById('playPauseBtn').disabled = disabled;
+  document.getElementById('resetBtn').disabled = disabled;
+}
+
+async function runBenchmark() {
+  if (benchmarking) return;
+  benchmarking = true;
+  const btn = document.getElementById('runBenchmarkBtn');
+  const statusEl = document.getElementById('benchmarkStatus');
+  const defaultStatusText = statusEl.textContent;
+  btn.disabled = true;
+  setControlsDisabled(true);
+
+  const wasRunning = running;
+  running = false;
+  const prevMode = selectedMode;
+  const prevN = currentN;
+
+  const resultsByModeId = new Map();
+  renderBenchmarkResults(resultsByModeId);
+
+  for (const mode of MODES) {
+    if (mode.isGpu && !mode.supported) {
+      resultsByModeId.set(mode.id, { unsupported: true });
+      renderBenchmarkResults(resultsByModeId);
+      continue;
+    }
+    statusEl.textContent = `Testing ${mode.label}…`;
+    if (mode === WasmSimdMode && !WasmSimdMode.instance) await WasmSimdMode.load();
+    if (mode.isGpu) {
+      if (!mode.device) await mode.setup(canvasGpu);
+      else mode.activate();
+    }
+    const r = await findMaxNAt60fps(makeStepTimer(mode));
+    resultsByModeId.set(mode.id, r);
+    renderBenchmarkResults(resultsByModeId);
+  }
+  statusEl.textContent = defaultStatusText;
+
+  currentN = prevN;
+  const idx = PARTICLE_STEPS.indexOf(prevN);
+  document.getElementById('particleSlider').value = String(idx >= 0 ? idx : 3);
+  document.getElementById('particleCountLabel').textContent = currentN;
+  await initScene(prevMode);
+  running = wasRunning;
+  document.getElementById('playPauseBtn').textContent = running ? 'Pause' : 'Play';
+
+  btn.disabled = false;
+  setControlsDisabled(false);
+  benchmarking = false;
+}
+
+document.getElementById('runBenchmarkBtn').addEventListener('click', runBenchmark);
+
 async function bootstrap() {
+  // Each mode must request its OWN adapter — a GPUAdapter can only ever be
+  // used to create a single device, so sharing one adapter object between
+  // GpuMode and GpuTiledMode would make the second mode's setup() throw
+  // ("adapter is consumed") the moment both had been switched to once.
   GpuMode.supported = await GpuMode.checkSupport();
+  GpuTiledMode.supported = await GpuTiledMode.checkSupport();
   document.getElementById('gpuNote').classList.toggle('show', !GpuMode.supported);
   buildModeButtons();
 
@@ -200,6 +369,7 @@ async function bootstrap() {
   document.getElementById('particleCountLabel').textContent = currentN;
 
   resizeCanvases();
+  renderBenchmarkResults(new Map());
   await switchMode('soa');
   requestAnimationFrame(frame);
 }

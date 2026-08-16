@@ -462,6 +462,63 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 }
 `;
 
+// Classic GPU Gems N-body tiling: instead of every one of the 64 threads in
+// a workgroup independently re-reading the SAME particle's pos/mass from
+// (slow, high-latency) storage-buffer memory, the workgroup cooperatively
+// loads one tile of 64 particles into (fast, on-chip) workgroup-shared
+// memory ONCE, all 64 threads read that shared copy, then the workgroup
+// moves to the next tile. Same O(N^2) total work, far fewer global memory
+// reads. workgroupBarrier() calls stay OUTSIDE any per-thread conditional —
+// WGSL requires uniform control flow across a barrier, so the "am I a real
+// particle" check only wraps the data-dependent math, never the barriers.
+const GPU_TILED_VELOCITY_WGSL = `
+struct Params { n: u32, g: f32, dt: f32, softening: f32 }
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> pos: array<vec2f>;
+@group(0) @binding(2) var<storage, read> mass: array<f32>;
+@group(0) @binding(3) var<storage, read_write> vel: array<vec2f>;
+
+var<workgroup> tilePos: array<vec2f, 64>;
+var<workgroup> tileMass: array<f32, 64>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_id) lid: vec3u) {
+  let i = gid.x;
+  let valid = i < params.n;
+  var myPos = vec2f(0.0, 0.0);
+  if (valid) { myPos = pos[i]; }
+  var acc = vec2f(0.0, 0.0);
+
+  let numTiles = (params.n + 63u) / 64u;
+  for (var t: u32 = 0u; t < numTiles; t = t + 1u) {
+    let srcIdx = t * 64u + lid.x;
+    if (srcIdx < params.n) {
+      tilePos[lid.x] = pos[srcIdx];
+      tileMass[lid.x] = mass[srcIdx];
+    } else {
+      tilePos[lid.x] = vec2f(0.0, 0.0);
+      tileMass[lid.x] = 0.0;
+    }
+    workgroupBarrier();
+
+    if (valid) {
+      for (var k: u32 = 0u; k < 64u; k = k + 1u) {
+        let d = tilePos[k] - myPos;
+        let distSq = dot(d, d) + params.softening;
+        let invDist = 1.0 / sqrt(distSq);
+        let invDist3 = invDist * invDist * invDist;
+        acc = acc + d * (tileMass[k] * invDist3);
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (valid) {
+    vel[i] = vel[i] + acc * (params.g * params.dt);
+  }
+}
+`;
+
 const GPU_POSITION_WGSL = `
 struct Params { n: u32, g: f32, dt: f32, softening: f32 }
 @group(0) @binding(0) var<uniform> params: Params;
@@ -510,138 +567,185 @@ fn fs(in: VSOut) -> @location(0) vec4f {
 }
 `;
 
-const GpuMode = {
+// Both GPU modes share every line of device/pipeline/buffer/render setup —
+// the ONLY thing that differs is which WGSL source computes velocities (the
+// naive one re-reads every other particle's pos/mass straight from storage
+// buffer memory each invocation; the tiled one stages each block of 64 into
+// workgroup-shared memory first). Factoring that out is what let the tiled
+// mode get added without copying ~130 lines of WebGPU boilerplate a second
+// time.
+function makeGpuMode(config) {
+  return {
+    id: config.id,
+    label: config.label,
+    description: config.description,
+    velocityWgsl: config.velocityWgsl,
+    supported: false, adapter: null, device: null, context: null, canvas: null,
+    n: 0, paddedN: 0,
+
+    isGpu: true,
+
+    async checkSupport() {
+      if (!navigator.gpu) return false;
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return false;
+        this.adapter = adapter;
+        return true;
+      } catch (e) { return false; }
+    },
+
+    async setup(canvas) {
+      this.canvas = canvas;
+      this.device = await this.adapter.requestDevice();
+      this.context = canvas.getContext('webgpu');
+      this.format = navigator.gpu.getPreferredCanvasFormat();
+      this.activate();
+
+      const velModule = this.device.createShaderModule({ code: this.velocityWgsl });
+      const posModule = this.device.createShaderModule({ code: GPU_POSITION_WGSL });
+      const renderModule = this.device.createShaderModule({ code: GPU_RENDER_WGSL });
+
+      this.velPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: velModule, entryPoint: 'main' } });
+      this.posPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: posModule, entryPoint: 'main' } });
+      this.renderPipeline = this.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: renderModule, entryPoint: 'vs' },
+        fragment: { module: renderModule, entryPoint: 'fs', targets: [{ format: this.format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      this.viewParamsBuffer = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    },
+
+    init(n, seed) {
+      const s = generateScene(n, seed);
+      this.n = n;
+      const paddedN = Math.max(64, Math.ceil(n / 64) * 64);
+      this.paddedN = paddedN;
+      const dev = this.device;
+
+      const posArr = new Float32Array(paddedN * 2);
+      const velArr = new Float32Array(paddedN * 2);
+      const massArr = new Float32Array(paddedN);
+      for (let i = 0; i < n; i++) {
+        posArr[i * 2] = s.posX[i]; posArr[i * 2 + 1] = s.posY[i];
+        velArr[i * 2] = s.velX[i]; velArr[i * 2 + 1] = s.velY[i];
+        massArr[i] = s.mass[i];
+      }
+
+      if (this.posBuffer) { this.posBuffer.destroy(); this.velBuffer.destroy(); this.massBuffer.destroy(); }
+
+      this.posBuffer = dev.createBuffer({ size: posArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
+      new Float32Array(this.posBuffer.getMappedRange()).set(posArr);
+      this.posBuffer.unmap();
+
+      this.velBuffer = dev.createBuffer({ size: velArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
+      new Float32Array(this.velBuffer.getMappedRange()).set(velArr);
+      this.velBuffer.unmap();
+
+      this.massBuffer = dev.createBuffer({ size: massArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
+      new Float32Array(this.massBuffer.getMappedRange()).set(massArr);
+      this.massBuffer.unmap();
+
+      if (!this.paramsBuffer) this.paramsBuffer = dev.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      dev.queue.writeBuffer(this.paramsBuffer, 0, new Uint32Array([n]));
+      dev.queue.writeBuffer(this.paramsBuffer, 4, new Float32Array([G, DT, SOFTENING]));
+
+      this.velBindGroup = dev.createBindGroup({
+        layout: this.velPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.paramsBuffer } },
+          { binding: 1, resource: { buffer: this.posBuffer } },
+          { binding: 2, resource: { buffer: this.massBuffer } },
+          { binding: 3, resource: { buffer: this.velBuffer } },
+        ],
+      });
+      this.posBindGroup = dev.createBindGroup({
+        layout: this.posPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.paramsBuffer } },
+          { binding: 1, resource: { buffer: this.posBuffer } },
+          { binding: 2, resource: { buffer: this.velBuffer } },
+        ],
+      });
+      this.renderBindGroup = dev.createBindGroup({
+        layout: this.renderPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.viewParamsBuffer } },
+          { binding: 1, resource: { buffer: this.posBuffer } },
+        ],
+      });
+
+      this.dispatchCount = Math.ceil(n / 64);
+    },
+
+    setView(scaleX, scaleY, pointSize) {
+      this.device.queue.writeBuffer(this.viewParamsBuffer, 0, new Float32Array([scaleX, scaleY, pointSize, 0]));
+    },
+
+    // Both GPU modes render to the SAME shared canvas, and a WebGPU canvas
+    // context can only be configured for one device at a time. setup() only
+    // runs once per mode (the first time it's selected), so switching
+    // GPU -> GPU Tiled -> GPU again would otherwise leave the context still
+    // configured for Tiled's device while plain GPU's step() tries to
+    // present through it — a cross-device texture error. Call this every
+    // time this mode becomes the active one, not just on first setup.
+    activate() {
+      this.context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' });
+    },
+
+    step() {
+      const dev = this.device;
+      const encoder = dev.createCommandEncoder();
+      {
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.velPipeline);
+        pass.setBindGroup(0, this.velBindGroup);
+        pass.dispatchWorkgroups(this.dispatchCount);
+        pass.end();
+      }
+      {
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.posPipeline);
+        pass.setBindGroup(0, this.posBindGroup);
+        pass.dispatchWorkgroups(this.dispatchCount);
+        pass.end();
+      }
+      {
+        const view = this.context.getCurrentTexture().createView();
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
+        });
+        pass.setPipeline(this.renderPipeline);
+        pass.setBindGroup(0, this.renderBindGroup);
+        pass.draw(6, this.n);
+        pass.end();
+      }
+      dev.queue.submit([encoder.finish()]);
+    },
+
+    // queue.submit() returns immediately — the GPU work it enqueued may
+    // still be running. Wall-clock timing around step() alone measures
+    // "how long it took to record and submit commands," not real GPU cost.
+    // onSubmittedWorkDone() resolves once the GPU has actually finished
+    // everything submitted so far, which the max-particles-at-60fps
+    // benchmark needs to get an honest per-step cost for these two modes.
+    async waitForGPU() {
+      await this.device.queue.onSubmittedWorkDone();
+    },
+  };
+}
+
+const GpuMode = makeGpuMode({
   id: 'gpu',
   label: 'GPU (WebGPU)',
   description: 'A real WGSL compute shader — one invocation per particle, still O(N²) per step but run across thousands of GPU threads at once. Positions are read directly from the storage buffer by an instanced render pipeline, so there\'s no CPU readback in the per-frame hot loop.',
-  supported: false, adapter: null, device: null, context: null, canvas: null,
-  n: 0, paddedN: 0,
+  velocityWgsl: GPU_VELOCITY_WGSL,
+});
 
-  async checkSupport() {
-    if (!navigator.gpu) return false;
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) return false;
-      this.adapter = adapter;
-      return true;
-    } catch (e) { return false; }
-  },
-
-  async setup(canvas) {
-    this.canvas = canvas;
-    this.device = await this.adapter.requestDevice();
-    this.context = canvas.getContext('webgpu');
-    this.format = navigator.gpu.getPreferredCanvasFormat();
-    this.context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' });
-
-    const velModule = this.device.createShaderModule({ code: GPU_VELOCITY_WGSL });
-    const posModule = this.device.createShaderModule({ code: GPU_POSITION_WGSL });
-    const renderModule = this.device.createShaderModule({ code: GPU_RENDER_WGSL });
-
-    this.velPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: velModule, entryPoint: 'main' } });
-    this.posPipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module: posModule, entryPoint: 'main' } });
-    this.renderPipeline = this.device.createRenderPipeline({
-      layout: 'auto',
-      vertex: { module: renderModule, entryPoint: 'vs' },
-      fragment: { module: renderModule, entryPoint: 'fs', targets: [{ format: this.format }] },
-      primitive: { topology: 'triangle-list' },
-    });
-    this.viewParamsBuffer = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  },
-
-  init(n, seed) {
-    const s = generateScene(n, seed);
-    this.n = n;
-    const paddedN = Math.max(64, Math.ceil(n / 64) * 64);
-    this.paddedN = paddedN;
-    const dev = this.device;
-
-    const posArr = new Float32Array(paddedN * 2);
-    const velArr = new Float32Array(paddedN * 2);
-    const massArr = new Float32Array(paddedN);
-    for (let i = 0; i < n; i++) {
-      posArr[i * 2] = s.posX[i]; posArr[i * 2 + 1] = s.posY[i];
-      velArr[i * 2] = s.velX[i]; velArr[i * 2 + 1] = s.velY[i];
-      massArr[i] = s.mass[i];
-    }
-
-    if (this.posBuffer) { this.posBuffer.destroy(); this.velBuffer.destroy(); this.massBuffer.destroy(); }
-
-    this.posBuffer = dev.createBuffer({ size: posArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-    new Float32Array(this.posBuffer.getMappedRange()).set(posArr);
-    this.posBuffer.unmap();
-
-    this.velBuffer = dev.createBuffer({ size: velArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-    new Float32Array(this.velBuffer.getMappedRange()).set(velArr);
-    this.velBuffer.unmap();
-
-    this.massBuffer = dev.createBuffer({ size: massArr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-    new Float32Array(this.massBuffer.getMappedRange()).set(massArr);
-    this.massBuffer.unmap();
-
-    if (!this.paramsBuffer) this.paramsBuffer = dev.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    dev.queue.writeBuffer(this.paramsBuffer, 0, new Uint32Array([n]));
-    dev.queue.writeBuffer(this.paramsBuffer, 4, new Float32Array([G, DT, SOFTENING]));
-
-    this.velBindGroup = dev.createBindGroup({
-      layout: this.velPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.paramsBuffer } },
-        { binding: 1, resource: { buffer: this.posBuffer } },
-        { binding: 2, resource: { buffer: this.massBuffer } },
-        { binding: 3, resource: { buffer: this.velBuffer } },
-      ],
-    });
-    this.posBindGroup = dev.createBindGroup({
-      layout: this.posPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.paramsBuffer } },
-        { binding: 1, resource: { buffer: this.posBuffer } },
-        { binding: 2, resource: { buffer: this.velBuffer } },
-      ],
-    });
-    this.renderBindGroup = dev.createBindGroup({
-      layout: this.renderPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.viewParamsBuffer } },
-        { binding: 1, resource: { buffer: this.posBuffer } },
-      ],
-    });
-
-    this.dispatchCount = Math.ceil(n / 64);
-  },
-
-  setView(scaleX, scaleY, pointSize) {
-    this.device.queue.writeBuffer(this.viewParamsBuffer, 0, new Float32Array([scaleX, scaleY, pointSize, 0]));
-  },
-
-  step() {
-    const dev = this.device;
-    const encoder = dev.createCommandEncoder();
-    {
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(this.velPipeline);
-      pass.setBindGroup(0, this.velBindGroup);
-      pass.dispatchWorkgroups(this.dispatchCount);
-      pass.end();
-    }
-    {
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(this.posPipeline);
-      pass.setBindGroup(0, this.posBindGroup);
-      pass.dispatchWorkgroups(this.dispatchCount);
-      pass.end();
-    }
-    {
-      const view = this.context.getCurrentTexture().createView();
-      const pass = encoder.beginRenderPass({
-        colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
-      });
-      pass.setPipeline(this.renderPipeline);
-      pass.setBindGroup(0, this.renderBindGroup);
-      pass.draw(6, this.n);
-      pass.end();
-    }
-    dev.queue.submit([encoder.finish()]);
-  },
-};
+const GpuTiledMode = makeGpuMode({
+  id: 'gpu-tiled',
+  label: 'GPU (Tiled)',
+  description: 'Same WGSL compute+render pipeline as plain GPU mode, but the velocity pass stages each block of 64 particles into fast workgroup-shared memory once, then has all 64 threads in the workgroup reuse that shared copy — instead of every thread independently re-reading the same particle\'s position and mass from slower storage-buffer memory. Same O(N²) work, fewer redundant global memory reads.',
+  velocityWgsl: GPU_TILED_VELOCITY_WGSL,
+});
