@@ -147,6 +147,44 @@ function recordTiming(stepMs, frameMs, interFrameMs) {
   document.getElementById('statFrame').textContent = avgFrame.toFixed(2) + ' ms';
   const interactionsPerSec = currentN * currentN * (1000 / avgStep);
   document.getElementById('statInteractions').textContent = formatBigNumber(interactionsPerSec);
+  checkAutoWatchdog(avgStep);
+}
+
+// The Max@60fps search is a point-in-time burst measurement — real sustained
+// use (especially on phones) can degrade well below what it found, most
+// likely thermal throttling kicking in well after the search already
+// declared some N "safe." When latched on, watch the SAME rolling step-time
+// average already driving the stats display; if it stays clearly over
+// budget for a sustained stretch (not just one noisy sample near the
+// boundary), re-run the search to find whatever's actually true right now.
+// That re-check can land lower (still throttled) or recover back up
+// (conditions improved) — it's a full re-run of the same search, not a
+// one-directional step-down.
+const WATCHDOG_BAD_MULTIPLIER = 1.4;
+const WATCHDOG_SUSTAINED_MS = 4000;
+const WATCHDOG_COOLDOWN_MS = 15000;
+let watchdogBadSinceMs = null;
+let watchdogCooldownUntilMs = null;
+
+function checkAutoWatchdog(avgStepMs) {
+  if (!autoMaxLatched || benchmarking || !currentMode) { watchdogBadSinceMs = null; return; }
+  const now = performance.now();
+  if (watchdogCooldownUntilMs != null && now < watchdogCooldownUntilMs) return;
+  if (avgStepMs > FRAME_BUDGET_MS * WATCHDOG_BAD_MULTIPLIER) {
+    if (watchdogBadSinceMs == null) watchdogBadSinceMs = now;
+    if (now - watchdogBadSinceMs >= WATCHDOG_SUSTAINED_MS) {
+      watchdogBadSinceMs = null;
+      // Cooldown starts once the re-check actually FINISHES, not when it's
+      // triggered — the search itself can run 10-20s, and starting the
+      // cooldown clock beforehand would let it expire before fresh,
+      // post-recheck stats even exist to judge stability against.
+      runAutoMaxSearch(currentMode, 'Re-checking…').then(() => {
+        watchdogCooldownUntilMs = performance.now() + WATCHDOG_COOLDOWN_MS;
+      });
+    }
+  } else {
+    watchdogBadSinceMs = null;
+  }
 }
 
 function buildModeButtons() {
@@ -348,12 +386,12 @@ document.querySelectorAll('#shapeToggle .mode-btn').forEach((btn) => {
 // benchmark below, but for just one mode, then jumps the live scene
 // straight to that N. Shared by the button's initial click (one search) and
 // by switchMode() while the toggle is latched on (a search on every switch).
-async function runAutoMaxSearch(mode) {
+async function runAutoMaxSearch(mode, searchingLabel) {
   benchmarking = true;
   const btn = document.getElementById('maxAt60Btn');
   btn.disabled = true;
   const originalLabel = btn.textContent;
-  btn.textContent = 'Searching…';
+  btn.textContent = searchingLabel || 'Searching…';
   setControlsDisabled(true);
 
   // The live rAF loop keeps calling currentMode.step() (plus a 2D redraw)
