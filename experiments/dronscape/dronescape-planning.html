@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dronscape — Simulator Architecture Planning</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a { color: #5b9bd5; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 880px; margin: 0 auto; }
+
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #5b9bd5; margin-bottom: 12px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 700px; margin-bottom: 24px; }
+
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 16px; background: #0d1620; max-width: 700px; }
+  .callout strong { color: #ccc; }
+  .callout.warn { border-left-color: #f0a040; background: #1c1509; }
+
+  h2 { font-size: 22px; font-weight: 700; margin: 48px 0 6px; letter-spacing: -0.3px; }
+  h2 .num { color: #5b9bd5; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 15px; margin-right: 10px; }
+  .h2-desc { color: #888; font-size: 13.5px; max-width: 700px; margin-bottom: 20px; }
+  h3 { font-size: 15.5px; font-weight: 700; color: #ddd; margin: 22px 0 8px; }
+  p.body-text { color: #b3b3b3; font-size: 14px; line-height: 1.75; max-width: 700px; margin-bottom: 12px; }
+  p.body-text strong { color: #ddd; }
+  ul.plain { color: #b3b3b3; font-size: 14px; line-height: 1.8; max-width: 700px; margin: 0 0 14px 20px; }
+  ul.plain li strong { color: #ddd; }
+
+  /* requirements */
+  .reqs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .req { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px 16px; }
+  .req .req-icon { font-size: 18px; margin-bottom: 6px; display: block; }
+  .req .req-title { font-size: 13.5px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .req .req-body { font-size: 12.5px; color: #888; line-height: 1.5; }
+
+  /* comparison tables */
+  .table-wrap { overflow-x: auto; margin: 12px 0 20px; max-width: 700px; }
+  table.stack-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+  .stack-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: #5b9bd5; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; white-space: nowrap; }
+  .stack-table td { padding: 10px; border-bottom: 1px solid #1c1c1c; color: #aaa; vertical-align: top; font-size: 12.8px; line-height: 1.55; }
+  .stack-table td.opt { color: #fff; font-weight: 700; white-space: nowrap; font-size: 13px; }
+  .stack-table td a { font-size: 12.3px; }
+  .stack-table tr:last-child td { border-bottom: none; }
+
+  /* badges (reused visual language from the main Dronscape page) */
+  .badge { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 5px; flex-shrink: 0; white-space: nowrap; }
+  .badge.rec { color: #4caf50; background: #0f2015; border: 1px solid #1e3d26; }
+  .badge.consider { color: #5b9bd5; background: #0d1620; border: 1px solid #1a3050; }
+  .badge.advanced { color: #f0a040; background: #241a0d; border: 1px solid #4d3319; }
+  .badge.skip { color: #888; background: #1c1c1c; border: 1px dashed #3a3a3a; }
+
+  /* track cards */
+  .track-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 22px 24px; margin-bottom: 18px; }
+  .track-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
+  .track-num { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #5b9bd5; background: #0a1520; border: 1px solid #1a3050; padding: 1px 7px; border-radius: 5px; flex-shrink: 0; }
+  .track-title { font-size: 16px; font-weight: 700; color: #fff; }
+  .track-sub { font-size: 12.5px; color: #666; margin-bottom: 14px; }
+  .track-card p.body-text { max-width: none; margin-bottom: 10px; }
+
+  /* diagrams */
+  .diagram { background: #0a0a0a; border: 1px solid #232323; border-radius: 12px; padding: 20px; margin: 14px 0 18px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  .drow { display: flex; gap: 10px; align-items: stretch; margin-bottom: 4px; flex-wrap: wrap; }
+  .dbox { flex: 1; min-width: 140px; border: 1px solid #2e2e2e; border-radius: 8px; padding: 10px 12px; background: #151515; color: #ddd; text-align: center; }
+  .dbox.accent { border-color: #1a3050; background: #0d1620; color: #7db4e0; }
+  .dbox.dim { color: #777; border-style: dashed; }
+  .darrow { text-align: center; color: #555; font-size: 14px; margin: 2px 0; }
+  .dlabel { text-align: center; color: #555; font-size: 10.5px; margin: 4px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* trial concept card */
+  .trial-mock { background: #0a0a0a; border: 1px solid #232323; border-radius: 12px; padding: 16px 18px; margin: 14px 0 18px; font-size: 12.5px; }
+  .trial-row { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid #1c1c1c; align-items: center; flex-wrap: wrap; }
+  .trial-row:last-child { border-bottom: none; }
+  .trial-row .tlabel { color: #666; width: 110px; flex-shrink: 0; }
+  .trial-row .tval { color: #ccc; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+
+  /* verdict list for the reuse-vs-build section */
+  .verdict { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+  .verdict-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .verdict-head .vname { font-size: 14.5px; font-weight: 700; color: #fff; }
+  .verdict p.body-text { margin-bottom: 6px; max-width: none; }
+  .verdict .flag { display: block; margin-top: 8px; padding: 8px 10px; background: #1c1509; border-left: 2px solid #f0a040; border-radius: 0 6px 6px 0; color: #d9a35c; font-size: 12px; }
+
+  /* roadmap */
+  .phase { display: flex; gap: 16px; margin-bottom: 4px; }
+  .phase-marker { flex-shrink: 0; width: 26px; display: flex; flex-direction: column; align-items: center; }
+  .phase-dot { width: 10px; height: 10px; border-radius: 50%; background: #5b9bd5; margin-top: 6px; }
+  .phase-line { flex: 1; width: 1px; background: #2a2a2a; margin-top: 4px; min-height: 30px; }
+  .phase-body { padding-bottom: 28px; }
+  .phase-body h3 { margin-top: 0; }
+
+  details.source-note { margin-top: 40px; padding-top: 20px; border-top: 1px solid #1c1c1c; }
+  details.source-note summary { cursor: pointer; font-size: 12px; color: #555; list-style: none; }
+  details.source-note summary::-webkit-details-marker { display: none; }
+  details.source-note summary::before { content: '▸ '; }
+  details.source-note[open] summary::before { content: '▾ '; }
+  details.source-note .note-body { margin-top: 12px; font-size: 12.5px; color: #666; line-height: 1.7; }
+  details.source-note .note-body a { color: #5b9bd5; }
+  details.source-note .note-body ul { margin: 8px 0 8px 20px; }
+  details.source-note .note-body li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <p class="section-label">Simulator Architecture Planning</p>
+  <h1>Building the Dronscape Simulator</h1>
+  <p class="subtitle">A tech-stack planning doc for a web + WebXR drone/swarm simulator where different AI and control models can be swapped in per experimental trial, with simulated RF channels and interference zones to see how each model responds to link degradation and jamming. This is a <strong>planning document, not an implementation</strong> — it lays out real, verified options and a recommended path, so a build plan can be scoped and approved separately.</p>
+
+  <div class="callout">
+    <strong>How this connects to the taxonomy:</strong> the <a href="./">Dronscape feature landscape</a> already catalogs the behaviors worth testing here — the Human/AI-Hybrid Control spectrum's Contested-Link Autonomy tier, and the Communications/C2 and Resilient-Comms categories (Anti-Jam RF Link, GPS-Denied Navigation, Self-Healing MANET, Bent-Pipe Relay). This simulator is the thing you'd build to actually exercise those behaviors against different control-model implementations, instead of just reading about them.
+  </div>
+  <div class="callout warn">
+    <strong>Verification note:</strong> every named tool/library below (ROS2 bridges, ArduPilot/PX4 SITL, Gazebo, OpenC3, MAVLink, ONNX Runtime Web, TensorFlow.js, NS-3, SPLAT!, Immersive Web SDK) was independently checked this session against its real repo/docs/release metadata — not recalled from memory. Three corrections came out of that check and are applied throughout: there is no version called <strong>"COSMOS 3"</strong> (the real, current project is OpenC3 COSMOS, latest release <strong>v7.3.0</strong>); Meta's WebXR SDK lives at <strong>github.com/facebook/immersive-web-sdk</strong>, not under a meta-quest org path; and there is <strong>no mature, widely-used web-native library for RF/jamming visualization</strong> — that layer has to be built custom. See "Sourcing &amp; methodology" at the bottom for the full verification trail.
+  </div>
+
+  <h2><span class="num">01</span>Requirements, restated</h2>
+  <p class="h2-desc">Four things the request is actually asking for, since a simulator built for one of these implicitly shapes what's possible for the others.</p>
+  <div class="reqs">
+    <div class="req"><span class="req-icon">🕶️</span><div class="req-title">Web + WebXR</div><div class="req-body">Runs in a browser with no install; a headset (Quest, etc.) can drop into an immersive or AR view of the same simulation, not a separate build.</div></div>
+    <div class="req"><span class="req-icon">🔌</span><div class="req-title">Pluggable control models</div><div class="req-body">Different AI/autonomy/manual-control implementations can be inserted and selected per run, so trials actually compare something.</div></div>
+    <div class="req"><span class="req-icon">🧰</span><div class="req-title">Reuse real stacks</div><div class="req-body">ROS2, ArduPilot, and a COSMOS-style C2 system are all real, mature, and built for exactly this kind of software-only vehicle simulation — worth weighing against building everything from scratch.</div></div>
+    <div class="req"><span class="req-icon">📡</span><div class="req-title">RF &amp; interference simulation</div><div class="req-body">Radio channels and jamming/interference zones a drone can fly into, so a control model's response to link loss or GPS denial is something you can actually observe, not just assert.</div></div>
+  </div>
+
+  <h2><span class="num">02</span>Architecture layers</h2>
+  <p class="h2-desc">Regardless of which tools fill them, the simulator decomposes into the same five layers. The tooling choice per layer is mostly independent of the others.</p>
+
+  <div class="table-wrap">
+    <table class="stack-table">
+      <tr><th>Layer</th><th>Job</th><th>Lightweight option</th><th>Real-stack option</th></tr>
+      <tr><td class="opt">Presentation / WebXR</td><td>Render the swarm and environment; support desktop, mobile, and headset (VR/AR) sessions from one codebase.</td><td><a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a> + the browser <a href="https://immersiveweb.dev/" target="_blank" rel="noopener">WebXR Device API</a> directly</td><td><a href="https://github.com/facebook/immersive-web-sdk" target="_blank" rel="noopener">Immersive Web SDK</a> (ECS, interactions/locomotion/spatial-UI built in, itself built on Three.js) — already in this repo as <a href="../../iwsdk-app-a/" target="_blank" rel="noopener">iwsdk-app-a</a></td></tr>
+      <tr><td class="opt">Flight physics</td><td>Turn control commands into motion — position, velocity, attitude, drag, wind.</td><td>Custom quadrotor/fixed-wing rigid-body model in JS (small, fast, easy to reason about)</td><td><a href="https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html" target="_blank" rel="noopener">ArduPilot SITL</a> or <a href="https://docs.px4.io/main/en/simulation/" target="_blank" rel="noopener">PX4 SITL</a> running real flight-control firmware, optionally paired with <a href="https://gazebosim.org/" target="_blank" rel="noopener">Gazebo Sim</a> for full rigid-body + sensor physics</td></tr>
+      <tr><td class="opt">Control model (the pluggable part)</td><td>Consume state, produce commands — this is what gets swapped per trial.</td><td>A JS module interface, or a trained policy run in-browser via <a href="https://onnxruntime.ai/docs/tutorials/web/" target="_blank" rel="noopener">ONNX Runtime Web</a> / <a href="https://github.com/tensorflow/tfjs" target="_blank" rel="noopener">TensorFlow.js</a></td><td>A ROS2 node (any language, any framework) talking to the sim over the comms layer below — lets you drop in existing academic/open-source swarm-AI code unmodified</td></tr>
+      <tr><td class="opt">Comms bridge</td><td>Move state and commands between the browser and anything running server-side.</td><td>Plain WebSocket + JSON (no bridge needed for the browser-only track)</td><td><a href="https://github.com/RobotWebTools/rosbridge_suite" target="_blank" rel="noopener">rosbridge_suite</a> + <a href="https://github.com/RobotWebTools/roslibjs" target="_blank" rel="noopener">roslibjs</a> for ROS2, or <a href="https://github.com/ArduPilot/node-mavlink" target="_blank" rel="noopener">node-mavlink</a> for a direct MAVLink link</td></tr>
+      <tr><td class="opt">C2 / telemetry console</td><td>A ground-station surface — command entry, telemetry dashboards, multi-vehicle/multi-radio management.</td><td>Skip it — fold the handful of controls you need into the WebXR HUD</td><td><a href="https://github.com/OpenC3/cosmos" target="_blank" rel="noopener">OpenC3 COSMOS</a> (open-source, has a real web UI, purpose-built for exactly this)</td></tr>
+    </table>
+  </div>
+
+  <h2><span class="num">03</span>Three tracks, in order of how much you reuse</h2>
+  <p class="h2-desc">These aren't mutually exclusive phases so much as a dial — Track 1 is fully self-contained and deployable as a static page like everything else in this repo; Track 2 and 3 trade that simplicity for real autopilot/C2 fidelity at the cost of needing a backend process running somewhere.</p>
+
+  <div class="track-card">
+    <div class="track-head"><span class="track-num">TRACK 1</span><span class="track-title">Browser-native</span><span class="badge rec">Recommended start</span></div>
+    <div class="track-sub">Everything runs client-side. No backend, no install, fits this repo's normal deploy model exactly.</div>
+    <div class="diagram">
+      <div class="drow"><div class="dbox accent">WebXR Frontend<br>(Three.js)</div></div>
+      <div class="darrow">↕ state / commands, same process</div>
+      <div class="drow"><div class="dbox">Control-Model Plugin<br>(JS module, or ONNX-RT Web / TF.js policy)</div></div>
+      <div class="darrow">↓ commands&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ state</div>
+      <div class="drow"><div class="dbox">Custom Flight Physics<br>(JS rigid-body model)</div><div class="dbox">RF/Jamming Layer<br>(custom geofence math)</div></div>
+    </div>
+    <p class="body-text">The whole loop — physics tick, control model, RF-zone check, render — runs in one requestAnimationFrame loop, same pattern already used by other physics demos in this repo (see <code>learning-gravity-sim/</code>). A "control model" here is just an object with a fixed interface: given the current state and comms-quality reading, return a command. Swapping models is a dropdown, not a redeploy. This is also the only track where a genuinely novel AI control policy — a small trained network — can run <em>in the browser itself</em> via ONNX Runtime Web or TensorFlow.js, with zero backend, which is arguably the most "web-native" way to satisfy the pluggable-AI-model requirement.</p>
+    <p class="body-text">Trade-off: the physics and autopilot behavior are only as realistic as what you write. Good for testing the <em>logic</em> of a control model's response to jamming; not a substitute for validating against real flight-control firmware.</p>
+  </div>
+
+  <div class="track-card">
+    <div class="track-head"><span class="track-num">TRACK 2</span><span class="track-title">Real autopilot in the loop</span><span class="badge advanced">Advanced / needs a backend</span></div>
+    <div class="track-sub">The WebXR view becomes a live digital-twin viewer over an actual ArduPilot or PX4 SITL instance.</div>
+    <div class="diagram">
+      <div class="dlabel">browser</div>
+      <div class="drow"><div class="dbox accent">WebXR Frontend (Three.js)</div></div>
+      <div class="darrow">⇄ rosbridge/roslibjs (WebSocket+JSON) or node-mavlink (MAVLink)</div>
+      <div class="dlabel">backend process(es) — local machine, container, or small server</div>
+      <div class="drow"><div class="dbox">ArduPilot SITL <span style="color:#666">or</span> PX4 SITL</div><div class="dbox">Gazebo Sim<br>(physics + sensors)</div></div>
+      <div class="darrow">↕ AP_DDS / px4_ros_com (ROS2 topics)</div>
+      <div class="drow"><div class="dbox">Control model as a ROS2 node<br>(any language, existing swarm-AI code included)</div></div>
+    </div>
+    <p class="body-text">ArduPilot and PX4 are both real flight-control firmware that runs as ordinary software with no hardware attached — that's what SITL <em>is</em>. Each has a real ROS2 bridge: ArduPilot's <a href="https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_DDS" target="_blank" rel="noopener">AP_DDS</a> module plus the <a href="https://github.com/ArduPilot/ardupilot_gz" target="_blank" rel="noopener">ardupilot_gz</a> Gazebo packages; PX4's <a href="https://github.com/PX4/px4_ros_com" target="_blank" rel="noopener">px4_ros_com</a> and <a href="https://github.com/PX4/px4_msgs" target="_blank" rel="noopener">px4_msgs</a> over its uXRCE-DDS bridge. This means a "control model" can be genuinely arbitrary robotics code someone else already published as a ROS2 node — you're not reimplementing swarm AI, you're wiring the sim up to run it.</p>
+    <p class="body-text">Trade-off: this is real infrastructure — Linux (or WSL2), ROS2, and either ArduPilot/PX4 build tooling or Docker images for them, running somewhere the browser can reach over WebSocket. It's no longer a pure static page; it needs a machine (yours, or a small always-on server) running the sim backend.</p>
+  </div>
+
+  <div class="track-card">
+    <div class="track-head"><span class="track-num">TRACK 3</span><span class="track-title">Full C2 fidelity</span><span class="badge advanced">Optional add-on to Track 2</span></div>
+    <div class="track-sub">Layer in a real command/telemetry system so the "ground station" side is as real as the autopilot side.</div>
+    <p class="body-text"><a href="https://github.com/OpenC3/cosmos" target="_blank" rel="noopener">OpenC3 COSMOS</a> (the actively-maintained successor to Ball Aerospace's COSMOS, currently at v7.3.0) is a real open-source command/telemetry system with a proper browser-based UI — command/telemetry packet definitions, scripting, dashboards. It's not something you embed inside the Three.js view; it runs as a second surface (a 2D ops console) reading the same live telemetry stream the WebXR "tactical view" renders in 3D. Valuable specifically because it maps onto Dronscape's own <strong>Communications, C2 &amp; Interoperability</strong> category — multi-radio management, standardized command/telemetry — rather than an ad hoc JSON message format you'd otherwise invent yourself.</p>
+    <p class="body-text">Only worth the setup cost once Track 2 is working and the experiment specifically calls for realistic multi-vehicle/multi-radio C2, not for testing a single control model's jamming response.</p>
+  </div>
+
+  <h2><span class="num">04</span>The pluggable control-model interface</h2>
+  <p class="h2-desc">The one piece of design that has to be right regardless of track, since it's the actual "insert and select for a trial" mechanism the request is asking for.</p>
+  <p class="body-text">Define one contract that every control model implements, independent of how it's actually run:</p>
+  <ul class="plain">
+    <li><strong>Input (per tick):</strong> own state (position, velocity, attitude, battery), local sensor reads, and — critically — the current comms-link reading from the RF layer (signal quality, GPS-lock confidence, whether the uplink/downlink is currently jammed).</li>
+    <li><strong>Output (per tick):</strong> a command — waypoint, velocity/attitude setpoint, or (for swarm models) a set of per-drone commands.</li>
+    <li><strong>Metadata:</strong> a name, a short description, and which "class" it represents (manual scripted path, classical PID/guidance, learned/RL policy, ROS2-bridged external node) — so a trial log can say what was actually being tested, not just "model #3."</li>
+  </ul>
+  <p class="body-text">In Track 1 this is just a JS interface (a function or small class). In Track 2/3 it's the same contract satisfied by a ROS2 node — the frontend doesn't need to know which track produced a given command, only that the shape is consistent, which is what makes the two tracks interchangeable behind the same selector UI later.</p>
+
+  <h3>What a trial actually records</h3>
+  <p class="body-text">"Experimentation trials" implies comparing runs, not just watching one. A trial is a config plus a log:</p>
+  <div class="trial-mock">
+    <div class="trial-row"><span class="tlabel">scenario</span><span class="tval">4-drone swarm · waypoint traverse · 2 jamming zones active</span></div>
+    <div class="trial-row"><span class="tlabel">control model</span><span class="tval">"RL-policy-v3" (ONNX, in-browser)</span></div>
+    <div class="trial-row"><span class="tlabel">metrics logged</span><span class="tval">time-to-target · link-drop events · GPS-denial duration · collisions · recovery time after each jam exit</span></div>
+    <div class="trial-row"><span class="tlabel">comparable against</span><span class="tval">same scenario, "PID-baseline" and "ArduPilot-SITL-guided" runs</span></div>
+  </div>
+
+  <h2><span class="num">05</span>Simulating RF channels and interference zones</h2>
+  <p class="h2-desc">This is the one piece with no mature off-the-shelf web library — confirmed this session, not assumed — so it has to be purpose-built regardless of which track is chosen.</p>
+  <p class="body-text">A workable model, cheap enough to run every physics tick:</p>
+  <ul class="plain">
+    <li><strong>Baseline link quality:</strong> free-space path loss from each drone to its relay/GCS — signal falls off with distance, giving a natural "RF horizon" without any hand-authored zones.</li>
+    <li><strong>Jamming/interference zones:</strong> author-defined volumes (spheres, extruded polygons) with a jam type — broadband noise (degrades general link quality), GPS-specific (kills position-fix confidence without touching the comms link), or directional (a cone from a fixed emitter). A drone's per-tick signal state is baseline minus whatever zones it's currently inside.</li>
+    <li><strong>Feed into the control-model contract above:</strong> the comms-link reading is just another input field. A model that ignores it flies straight through a jam zone and loses link; a model that implements the Dronscape taxonomy's Contested-Link Autonomy tier (RF-horizon dive, GPS-denied dead-reckoning, self-healing mesh relay) visibly changes behavior at the zone boundary — which is the actual experiment.</li>
+    <li><strong>Visualize it:</strong> render jamming zones as translucent volumes in the WebXR scene — in an immersive session you can physically walk/fly into one and watch the HUD's link-quality readout degrade in real time.</li>
+  </ul>
+  <p class="body-text">For higher fidelity later — real terrain-aware propagation instead of simple geometric zones — <a href="https://www.nsnam.org/" target="_blank" rel="noopener">NS-3</a> is a real, current network simulator with genuine wireless/RF channel models (its ns-3.48 release added a ray-tracing channel model). It isn't browser-based, so the realistic path is running it offline to precompute a signal-strength/interference grid for a given terrain and radio layout, then importing that grid as static data the live sim reads from — not driving the simulation live. <a href="https://www.qsl.net/kd2bd/splat.html" target="_blank" rel="noopener">SPLAT!</a> (terrain-based coverage prediction) is real but its last release was 2014 — usable for one-off precomputed coverage maps, not something to build a live pipeline around.</p>
+
+  <h2><span class="num">06</span>Verdicts on the specifically-requested stacks</h2>
+  <p class="h2-desc">Direct answers to "is it worth reusing ROS2 / ArduPilot / COSMOS," now that all three are verified.</p>
+
+  <div class="verdict">
+    <div class="verdict-head"><span class="vname">ROS2</span><span class="badge consider">Worth it if you want external code to plug in</span></div>
+    <p class="body-text">Real value if the goal is letting genuinely external control-model implementations — someone else's published swarm-AI research code, most of which ships as ROS2 nodes — plug in unmodified. The browser-bridge story is solid and standard: <a href="https://github.com/RobotWebTools/rosbridge_suite" target="_blank" rel="noopener">rosbridge_suite</a> (WebSocket+JSON bridge, ROS2-supported, actively maintained) with <a href="https://github.com/RobotWebTools/roslibjs" target="_blank" rel="noopener">roslibjs</a> as the browser client — this is the de facto standard pattern, not a one-off hack.</p>
+    <div class="flag">Cost: a real ROS2 environment (Linux/WSL2 or Docker) has to run somewhere. Not something a static GitHub Pages deploy can host by itself.</div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-head"><span class="vname">ArduPilot (SITL)</span><span class="badge rec">Best single reuse candidate</span></div>
+    <p class="body-text">ArduPilot is arguably the best-fit reuse target of the three, because <a href="https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html" target="_blank" rel="noopener">SITL</a> is specifically a pure-software simulation mode built for exactly this use case — no hardware, just the real flight-control firmware. It already has a real ROS2/DDS bridge (<a href="https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_DDS" target="_blank" rel="noopener">AP_DDS</a>, part of the main ArduPilot repo) and a Gazebo integration (<a href="https://github.com/ArduPilot/ardupilot_gz" target="_blank" rel="noopener">ardupilot_gz</a>), and speaks MAVLink, which has a real, ArduPilot-org-maintained JS library (<a href="https://github.com/ArduPilot/node-mavlink" target="_blank" rel="noopener">node-mavlink</a>) — a legitimate, low-effort path to a direct browser↔autopilot link that doesn't require standing up ROS2 at all if you don't need it yet.</p>
+    <p class="body-text">Also directly useful for the RF-interference ask: ArduPilot SITL already supports injecting failure conditions (simulated GPS glitch/loss, RC/telemetry loss) as parameters — real failsafe behavior you'd otherwise have to fake.</p>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-head"><span class="vname">"COSMOS 3"</span><span class="badge skip">Correction, not a verdict</span></div>
+    <p class="body-text">No version called "COSMOS 3" exists for the real project this almost certainly refers to. The actual tool is <a href="https://github.com/OpenC3/cosmos" target="_blank" rel="noopener">OpenC3 COSMOS</a> (formerly Ball Aerospace COSMOS) — currently <strong>v7.3.0</strong>, confirmed against its GitHub releases, actively maintained, with a real browser-based UI. It's a legitimate command/telemetry system, valuable specifically for a Track-3-style realistic C2 console (see above) — just not under the version name given in the original request.</p>
+  </div>
+
+  <h2><span class="num">07</span>Recommended path</h2>
+  <div class="phase">
+    <div class="phase-marker"><div class="phase-dot"></div><div class="phase-line"></div></div>
+    <div class="phase-body">
+      <h3>Phase 1 — Browser-native MVP (Track 1)</h3>
+      <p class="body-text">Three.js + WebXR scene, custom lightweight flight physics, the control-model plugin interface with two or three JS-native models to start (a scripted path, a simple PID-style guidance model, and one ONNX/TF.js learned policy), and the geofenced RF/jamming layer. Fully static — deployable in this repo exactly like every other demo, no backend to run or maintain.</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-marker"><div class="phase-dot"></div><div class="phase-line"></div></div>
+    <div class="phase-body">
+      <h3>Phase 2 — Real autopilot bridge (Track 2)</h3>
+      <p class="body-text">Once the control-model interface and RF layer are proven out in Phase 1, add ArduPilot SITL as an optional backend behind the same interface — either a direct node-mavlink bridge for a fast path, or a ROS2/rosbridge path if external swarm-AI nodes need to plug in. The WebXR frontend doesn't change; it gains a second source of "control model" that happens to be real firmware instead of a JS function.</p>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="phase-marker"><div class="phase-dot"></div></div>
+    <div class="phase-body">
+      <h3>Phase 3 — C2 console (Track 3, optional)</h3>
+      <p class="body-text">Only if a specific experiment needs realistic multi-vehicle/multi-radio command-and-control: add OpenC3 COSMOS as a companion ops console reading the same telemetry stream.</p>
+    </div>
+  </div>
+
+  <details class="source-note">
+    <summary>Sourcing &amp; methodology</summary>
+    <div class="note-body">
+      Every tool named above was verified this session via direct WebFetch/GitHub-API/npm-registry calls against its real repo, docs, or release metadata — not recalled from training data. Specifically checked: current release tags and "pushed" dates (to confirm active maintenance, not an abandoned repo), the real org/path a project lives under, and whether a claimed integration (e.g. a ROS2 bridge) is an official, separate, or DIY-pattern thing.
+      <ul>
+        <li><strong>ROS2 bridging:</strong> <a href="https://github.com/RobotWebTools/rosbridge_suite" target="_blank" rel="noopener">rosbridge_suite</a> and <a href="https://github.com/RobotWebTools/roslibjs" target="_blank" rel="noopener">roslibjs</a> — both real, ROS2-supported (Humble/Jazzy/Rolling), actively maintained.</li>
+        <li><strong>ArduPilot:</strong> <a href="https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html" target="_blank" rel="noopener">SITL docs</a>; AP_DDS confirmed to live inside the main ardupilot/ardupilot repo at <code>libraries/AP_DDS</code> (not a standalone repo, despite how it's sometimes referenced); <a href="https://github.com/ArduPilot/ardupilot_gz" target="_blank" rel="noopener">ardupilot_gz</a> confirmed active (pushed 2026-04-11).</li>
+        <li><strong>PX4:</strong> <a href="https://docs.px4.io/main/en/simulation/" target="_blank" rel="noopener">SITL docs</a>; <a href="https://github.com/PX4/px4_ros_com" target="_blank" rel="noopener">px4_ros_com</a> and <a href="https://github.com/PX4/px4_msgs" target="_blank" rel="noopener">px4_msgs</a> both confirmed active, the latter pushed the same day as this research.</li>
+        <li><strong>Gazebo:</strong> current release is <strong>Gazebo Sim 10 "Jetty"</strong> (v10.0.0, Oct 2025) at <a href="https://gazebosim.org/" target="_blank" rel="noopener">gazebosim.org</a>. A browser-streaming client exists (<code>gzweb</code>) but the classic <code>osrf/gzweb</code> repo is explicitly for the legacy "Gazebo Classic" only — the actively-maintained one for modern Gazebo Sim is a separate project, <a href="https://github.com/gazebo-web/gzweb" target="_blank" rel="noopener">gazebo-web/gzweb</a>. Framed above as an official companion project, not a built-in feature, deliberately.</li>
+        <li><strong>OpenC3 COSMOS:</strong> confirmed via the GitHub Releases API that the current tag is <strong>v7.3.0</strong>. No evidence "COSMOS 3" is a real current or historical version number — flagged directly in the doc above as a correction to the original request rather than silently substituted.</li>
+        <li><strong>node-mavlink:</strong> confirmed published under the ArduPilot GitHub org (not a third party), npm latest 2.3.0 (Aug 2025).</li>
+        <li><strong>ONNX Runtime Web / TensorFlow.js:</strong> both confirmed real and actively maintained (TF.js: 19.1k stars, active issue/PR volume).</li>
+        <li><strong>RF simulation:</strong> <a href="https://www.nsnam.org/" target="_blank" rel="noopener">NS-3</a> confirmed current (ns-3.48, June 2026, added a ray-tracing channel model). <a href="https://www.qsl.net/kd2bd/splat.html" target="_blank" rel="noopener">SPLAT!</a> confirmed real but dormant — last release v1.4.2, December 2014; described above as usable for one-off precompute, not as an actively maintained tool. A GitHub search specifically for a web-native RF/jamming visualization library turned up only hobby-scale (1–2 star) projects — the doc states plainly above that no mature library exists for this, rather than naming one that doesn't hold up.</li>
+        <li><strong>Immersive Web SDK:</strong> confirmed real org path is <a href="https://github.com/facebook/immersive-web-sdk" target="_blank" rel="noopener">github.com/facebook/immersive-web-sdk</a> (not a meta-quest org path, which 404s), pushed 2026-08-12, ECS-based, built on Three.js — matches the version (<code>@iwsdk/core@0.3.1</code>) already vendored in this repo's own <code>iwsdk-app-a/</code>.</li>
+      </ul>
+      This session's WebSearch quota was exhausted at research time, so verification leaned on direct WebFetch calls to official docs/repos plus the GitHub Releases/API and npm registry for version metadata — sources that don't depend on search and are arguably more authoritative for "is this real and current" than a search snippet would have been anyway.
+    </div>
+  </details>
+</div>
+</body>
+</html>
