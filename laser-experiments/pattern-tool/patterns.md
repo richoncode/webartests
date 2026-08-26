@@ -112,7 +112,7 @@ This document tracks the implementation of mathematical and geometric generators
 - [ ] Gray-Scott spots (Advanced RD)
 - [ ] Slime Mold (Vector variant)
 
-## 6. Material & Technical [IN MENU] (9/10)
+## 6. Material & Technical [IN MENU] (9/11)
 - [x] Palette Test (Grid + Power Labels)
 - [x] Palette Grid (Power/Speed/Density)
 - [x] Gradient Grid
@@ -124,6 +124,7 @@ This document tracks the implementation of mathematical and geometric generators
 - [x] Measurement Scale (Ruler)
 - [ ] Focus Array (Z-step emulation)
 - [ ] Air Assist / Burn Test
+- [ ] Dithered QR Code (photo embedded via two-pass Floyd–Steinberg error diffusion — pass 1 dithers the image, pass 2 forces QR data-module pixels and diffuses the resulting error, relying on QR error correction to keep it scannable; ref: andrewt.net/dithered-qr-codes/wtf)
 
 ---
 
