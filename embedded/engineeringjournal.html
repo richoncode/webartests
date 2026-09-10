@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engineering Journal — embedded</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+
+  .page { max-width: 880px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 28px; }
+
+  /* Live working files — always reachable, above the entries */
+  .live { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+  .live-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #444; }
+  .live a { display: inline-block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
+            padding: 6px 13px; font-size: 13px; color: #5b9bd5; text-decoration: none; transition: border-color 0.15s, background 0.15s; }
+  .live a:hover { background: #222; border-color: #5b9bd5; }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 40px; }
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.1s, border-color 0.1s; font-family: inherit; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  .count { font-size: 13px; color: #444; margin-left: 4px; }
+
+  /* Entries */
+  .entry { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; margin-bottom: 16px; overflow: hidden; }
+  .entry[open] { border-color: #3a3a3a; }
+
+  .entry > summary { list-style: none; cursor: pointer; padding: 22px 28px; display: flex; align-items: flex-start; gap: 14px; transition: background 0.15s; }
+  .entry > summary::-webkit-details-marker { display: none; }
+  .entry > summary:hover { background: #222; }
+
+  .chev { flex-shrink: 0; width: 10px; height: 10px; margin-top: 7px; border-right: 2px solid #666; border-bottom: 2px solid #666; transform: rotate(-45deg); transition: transform 0.15s, border-color 0.15s; }
+  .entry[open] > summary .chev { transform: rotate(45deg); border-color: #5b9bd5; }
+  .entry > summary:hover .chev { border-color: #aaa; }
+
+  .head { flex: 1; min-width: 0; }
+  .stamp { display: block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #5b9bd5; margin-bottom: 5px; }
+  .title { display: block; font-size: 17px; font-weight: 600; color: #fff; }
+  .synopsis { display: block; font-size: 14px; color: #777; line-height: 1.5; margin-top: 6px; }
+
+  .body { padding: 4px 28px 28px 52px; border-top: 1px solid #222; margin-top: 0; padding-top: 24px; }
+  .body h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin: 28px 0 10px; }
+  .body h3:first-child { margin-top: 0; }
+  .body p { font-size: 14px; color: #bbb; line-height: 1.7; margin-bottom: 12px; }
+  .body p:last-child { margin-bottom: 0; }
+  .body ul { margin: 0 0 12px 18px; }
+  .body li { font-size: 14px; color: #bbb; line-height: 1.7; margin-bottom: 4px; }
+  .body code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; color: #ddd; background: #111; border: 1px solid #262626; border-radius: 4px; padding: 1px 5px; }
+  .body a { color: #5b9bd5; text-decoration: none; border-bottom: 1px solid #5b9bd544; }
+  .body a:hover { border-bottom-color: #5b9bd5; }
+
+  pre.data { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; line-height: 1.6; color: #bbb; }
+
+  table.res { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  table.res th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #555; padding: 0 14px 8px 0; border-bottom: 1px solid #262626; }
+  table.res td { padding: 8px 14px 8px 0; border-bottom: 1px solid #161616; font-size: 13px; color: #bbb; vertical-align: top; }
+  table.res td:first-child { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #888; white-space: nowrap; }
+  table.res tr:last-child td { border-bottom: none; }
+
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 14px; }
+  .callout.blue { background: #0d1620; border-color: #5b9bd5; }
+  .callout.green { background: #0a1a0a; border-color: #4caf50; }
+  .callout.orange { background: #1a1200; border-color: #f0a040; }
+  .callout.red { background: #1a0a0a; border-color: #e74c3c; }
+  .callout strong { color: #ccc; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 20px; margin-left: 8px; vertical-align: 2px; }
+  .badge.blue { color: #5b9bd5; background: #1e2d40; border: 1px solid #5b9bd544; }
+  .badge.green { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .badge.orange { color: #f0a040; background: #2a2000; border: 1px solid #f0a04044; }
+  .badge.red { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+  .badge.neutral { color: #888; background: #1a1a1a; border: 1px solid #2a2a2a; }
+
+  /* Figures */
+  figure { margin: 0 0 14px; }
+  figure img { display: block; width: 100%; max-width: 540px; border: 1px solid #2a2a2a; border-radius: 10px; }
+  figcaption { font-size: 12px; color: #555; margin-top: 8px; line-height: 1.5; }
+
+  /* Entry assets */
+  .assets-path { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #555; margin-bottom: 12px; }
+  ul.assets { list-style: none; margin: 0; }
+  ul.assets li { margin-bottom: 7px; font-size: 13px; color: #666; line-height: 1.6; }
+  ul.assets a { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; color: #5b9bd5; text-decoration: none; border-bottom: 1px solid #5b9bd544; }
+  ul.assets a:hover { border-bottom-color: #5b9bd5; }
+  ul.assets .note { color: #666; }
+
+  @media (max-width: 600px) {
+    body { padding: 40px 16px 60px; }
+    .entry > summary { padding: 18px 20px; }
+    .body { padding: 22px 20px 24px 20px; }
+  }
+</style>
+</head>
+<body>
+<a class="back" href="../">← Back</a>
+
+<div class="page">
+  <h1>Engineering Journal</h1>
+  <p class="subtitle">Working log for the <code>embedded/</code> experiments. Newest entry first, expanded by default.</p>
+
+  <div class="live">
+    <span class="live-k">Live</span>
+    <a href="seeed-studio-epaper/dashboard/mockup.html">Dashboard mockup</a>
+    <a href="seeed-studio-epaper/README.md">reTerminal E1002 notes</a>
+    <a href="seeed-studio-epaper/firmware/dashboard/dashboard.ino">Dashboard firmware</a>
+  </div>
+
+  <div class="toolbar">
+    <button id="expand">Expand all</button>
+    <button id="collapse">Collapse all</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <details class="entry" open>
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-09T19:10-07:00">Wed 9 Sep 2026 · 19:10 PDT</time></span>
+        <span class="title">Cake and eagle icons, and two collisions found by measuring<span class="badge green">Flashed</span></span>
+        <span class="synopsis">The star was a pentagon. PRIME sat on the mission name. Two further overlaps only showed up when the column widths were worked out on paper rather than looked at.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The test frames earned their keep</h3>
+      <figure>
+        <img src="journal-assets/2026-09-09_icons-and-band-layout/test-mode-1-before.jpg" alt="Test mode 1 showing the birthday band beside the bins band, with the PRIME pill overlapping the mission name">
+        <figcaption>Test mode 1, 2026-09-09. The shared row works — birthday left, bins right. The PRIME pill sits on top of &ldquo;15-24&rdquo;, and the event icon is a pentagon.</figcaption>
+      </figure>
+      <p>Pressing white-right put both band cases on the panel within a minute, which is what the mode was for. Test mode 2 confirmed the outlined SMOKE chip reads at a glance and that a red battery bar and <code>PLUG IN NOW</code> land correctly.</p>
+
+      <h3>The star was a pentagon</h3>
+      <p><code>drawStar</code> filled triangles from the centre to each pair of <em>adjacent</em> vertices, which tiles a solid pentagon rather than a star. The yellow blob on both frames was that. Replaced outright, since birthdays and Wildlife Day now have icons of their own.</p>
+      <table class="res">
+        <tr><th>Event kind</th><th>Icon</th></tr>
+        <tr><td><code>EVT_BIRTHDAY</code></td><td>layer cake — paper body, yellow frosting, three candles with lit flames</td></tr>
+        <tr><td><code>EVT_WILDLIFE</code></td><td>soaring eagle — swept wings, body, yellow beak, paper silhouette outlined in ink</td></tr>
+      </table>
+      <p>At 34 px a silhouette reads as a bird; any attempt at feather detail turns to mud on this panel. <code>CalendarEvent</code> gained a <code>kind</code> field, so the icon follows from the date rather than from parsing the label.</p>
+
+      <h3>PRIME needed a column, not a gap</h3>
+      <p>The pill was placed at the measured end of the mission name plus ten pixels, which put it over the last characters. The band is now three columns with reserved widths — name, a 66 px PRIME slot at x = 544, and a 168 px time column — so the pill cannot land on text whatever the name length. It also gained an ink outline, matching the air chip.</p>
+
+      <h3>Two collisions that only arithmetic found</h3>
+      <p>Working the widths out rather than eyeballing them turned up two more faults, both of which would have shipped:</p>
+      <ul>
+        <li><code>PM - 45 min after sunset</code> is 24 characters. Right-aligned in the time column it reached back to x = 586, inside PRIME's slot at 602. AM/PM now travels with the time — <code>8:14 PM</code> — leaving <code>45 min after sunset</code> at 152 px, comfortably clear.</li>
+        <li>The longest real mission name, <code>FALCON 9 - TRANSPORTER 18 (DEDICATED SSO RIDESHARE)</code>, overflows the name column at 18 pt <em>and</em> at 12 pt. There were only two steps, so it would have run into PRIME. A third step at 9 pt fits it in 408 px.</li>
+        <li><code>launchTime[8]</code> could not hold <code>11:52 PM</code> — nine bytes with the terminator.</li>
+      </ul>
+      <p><code>PLUG IN NOW</code> was a fixed 178 px pill the words very nearly filled; it is now sized from the measured text with even padding and vertically centred.</p>
+
+      <h3>The mockup was broken, and silently</h3>
+      <div class="callout red"><strong>Cause:</strong> earlier mockup edits used bare string replacement with no assertion, so a pattern that failed to match printed a success message and changed nothing. <code>layout()</code> had grown a third parameter while its only call site still passed two, and the footer referenced a <code>runway</code> variable that had been split into <code>runwayN</code> and <code>runwayL</code>. The file parsed; it just could not run.</div>
+      <p>Every edit now asserts its match, and <code>mockup-render-check.js</code> executes the page's own script against a minimal DOM across the full cross-product of controls — day, sky, launch, calendar, air, battery, runway — checking that the panel and the geometry table both produce output. It reports <strong>3240 combinations rendering cleanly</strong> and would have failed on both of the above immediately.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-09_icons-and-band-layout/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/test-mode-1-before.jpg">test-mode-1-before.jpg</a> <span class="note">— shared row working, PRIME on the name, pentagon icon</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/test-mode-2-before.jpg">test-mode-2-before.jpg</a> <span class="note">— smoke chip, red battery, full-width event band</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/launch-band-widths.log">launch-band-widths.log</a> <span class="note">— the column budget and both collisions</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/render.h">render.h</a> <span class="note">— cake, eagle, PRIME column, sized pill</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/calendar.h">calendar.h</a> <span class="note">— dates with their kinds</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/mockup-render-check.js">mockup-render-check.js</a> <span class="note">— runs the mockup headless across every control combination</span></li>
+        <li><a href="journal-assets/2026-09-09_icons-and-band-layout/mockup.html">mockup.html</a> <span class="note">— caught up and executing</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-09T18:20-07:00">Wed 9 Sep 2026 · 18:20 PDT</time></span>
+        <span class="title">Calendar band, shared row, and buttons for development<span class="badge green">On the panel</span></span>
+        <span class="synopsis">Five fixed dates get a band of their own. A third band would have crushed the forecast strip, so the event and bins bands share a row. The three buttons now drive refresh and test frames.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Five dates, in the firmware</h3>
+      <p>These do not change, so <code>calendar.h</code> holds them outright — no fetch, no configuration file. The lookup runs off the synced clock and is independent of every network call, so a birthday still shows on a morning when the network is down.</p>
+      <pre class="data">Jan  8   RHONDA'S BIRTHDAY
+May  8   RICHARD'S BIRTHDAY
+Jun 15   MAESTRO'S BIRTHDAY
+Sep  4   CALIFORNIA WILDLIFE DAY
+Oct 10   TORI'S BIRTHDAY</pre>
+      <p>The band is green with a yellow star, so it is not read as bin-night red or launch blue at a glance. The name steps down through three type sizes if it needs to; <code>CALIFORNIA WILDLIFE DAY</code> is the longest at 23 characters.</p>
+
+      <h3>A third band does not fit</h3>
+      <p>A birthday can land on a bin-night Monday with a clear-sky launch, and all three bands stacked come to 152 px — leaving the forecast strip 73 px against the 104 px its contents need. Rather than drop one, the event and bins bands share a single 44 px row, split 398 | 4 | 398. Both are one-line messages, so neither loses anything, and the bins band simply drops its "curb by 6 AM" subtitle at half width.</p>
+      <table class="res">
+        <tr><th>Bands</th><th>Forecast strip</th></tr>
+        <tr><td>none</td><td>225 px</td></tr>
+        <tr><td>bins + launch</td><td>121 px</td></tr>
+        <tr><td>event + bins <em>(shared row)</em></td><td>177 px</td></tr>
+        <tr><td>event + bins + launch <em>(shared row)</em></td><td>117 px</td></tr>
+      </table>
+      <p>All eight combinations were checked; the tightest leaves 117 px, above the 104 px floor.</p>
+
+      <h3>Tested by dating it today</h3>
+      <p>The event band would otherwise have sat unexercised until October. A temporary build added the current date to the calendar and set <code>BIN_WEEKDAY</code> to Wednesday, which put both bands on the panel at once and ran the shared-row path for real. Confirmed on the panel, then both temporary edits were reverted and the real build reflashed — the calendar holds five entries and <code>BIN_WEEKDAY</code> is back to Monday.</p>
+
+      <h3>SUN read as Sunday</h3>
+      <p>The daylight cell was labeled <code>SUN</code>, directly above a forecast column labeled <code>SUN</code> for Sunday — the same three letters meaning two different things in adjacent boxes. It now reads <code>DAYLIGHT</code>.</p>
+
+      <h3>Buttons</h3>
+      <table class="res">
+        <tr><th>Button</th><th>Pin</th><th>Does</th></tr>
+        <tr><td>Green</td><td><code>GPIO3</code></td><td>refresh now — fetches and repaints even when the hash matches</td></tr>
+        <tr><td>White right</td><td><code>GPIO4</code></td><td>next test frame</td></tr>
+        <tr><td>White left</td><td><code>GPIO5</code></td><td>back to live</td></tr>
+      </table>
+      <p>Deep sleep had been waking on <code>ext0</code>, which watches exactly one pin. Three buttons needs <code>ext1</code> with a bitmask, and <code>esp_sleep_get_ext1_wakeup_status()</code> then says <em>which</em> button woke the board rather than merely that something did. Their pull-ups are held through sleep; without that the pins float and the board wakes on noise.</p>
+      <p>An update button that sometimes appears to do nothing is not an update button, so green forces the repaint past the change check.</p>
+
+      <h3>Four test frames</h3>
+      <p><code>testdata.h</code> carries synthetic frames that never touch the network — test mode short-circuits the fetch entirely and draws straight away:</p>
+      <ol style="margin:0 0 12px 18px">
+        <li style="font-size:14px;color:#bbb;line-height:1.7">every band at once, the tightest layout there is</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7">wildfire smoke at AQI 164, a 104&deg; peak, and 11% battery so <code>PLUG IN NOW</code> shows</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7">carried-over data with the stale bar and no air reading</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7">a wet week at 90% precipitation, moderate air, plus bins</li>
+      </ol>
+      <p>The header reads <code>TEST MODE n - not live data</code> in place of the timestamp, because a synthetic frame that looks real is worse than no test mode at all. Returning to live clears the stored hash so the next live wake definitely repaints.</p>
+
+      <h3>The mockup caught up</h3>
+      <p>The mockup had fallen several changes behind the firmware — no air chip, no footer reflow, no <code>DAYLIGHT</code>, no event band — which makes it a poor specification. It now carries the event band, the shared row, a Calendar control listing all five dates, the outlined air chip and the two- and three-line footer columns.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Press the buttons: the wake path, the mode cycling and the forced repaint have never been exercised by a human hand.</li>
+        <li>The 06:00 wake tomorrow is the first timer wake — <code>sleeping 43405 s</code> confirmed the alignment.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-09_calendar-and-buttons/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/calendar.h">calendar.h</a> <span class="note">— the five dates and the lookup</span></li>
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/testdata.h">testdata.h</a> <span class="note">— the four synthetic frames</span></li>
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/layout.h">layout.h</a> <span class="note">— the shared-row geometry</span></li>
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/dashboard.ino">dashboard.ino</a> <span class="note">— ext1 wake and the mode decision</span></li>
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/band-geometry.log">band-geometry.log</a> <span class="note">— all eight band combinations against the 104 px floor</span></li>
+        <li><a href="journal-assets/2026-09-09_calendar-and-buttons/mockup.html">mockup.html</a> <span class="note">— the spec, caught up with the firmware</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-09T18:05-07:00">Wed 9 Sep 2026 · 18:05 PDT</time></span>
+        <span class="title">Contrast, footer overlap, and change detection proved<span class="badge green">Verified</span></span>
+        <span class="synopsis">Yellow type on paper was near-invisible, the runway line was overlapping the credits, and the repaint test was impossible because three hashed fields had stopped being drawn.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Yellow on paper does not read</h3>
+      <figure>
+        <img src="journal-assets/2026-09-09_contrast-and-change-detection/panel-before-contrast-fix.jpg" alt="The panel showing air quality 62 MODERATE in yellow on white, and the runway text overlapping the source credits">
+        <figcaption>Photographed 2026-09-09 17:12. <code>62 MODERATE</code> in yellow on paper white, and <code>94 days until recharge</code> running through <code>open-meteo - thespacedevs</code>.</figcaption>
+      </figure>
+      <p>Green and red type hold up on this panel; yellow does not, and an air-quality reading is exactly the field that must be legible from across a room. The number is now always ink, and the band name sits on a filled chip with a black border — ink on yellow, paper on green and red — so <code>GOOD</code>, <code>MODERATE</code> and <code>SMOKE</code> all read at one strength. Every segment of the band bar is outlined whether lit or not, so the yellow one has an edge instead of bleeding into the paper.</p>
+
+      <h3>The footer was overlapping, not merely wide</h3>
+      <p><code>94 days until recharge</code> at 18 pt reached x = 658 while the source credits began at x = 553. The two were drawn over each other; the photograph shows the collision.</p>
+      <table class="res">
+        <tr><th>Column</th><th>Was</th><th>Now</th></tr>
+        <tr><td>Runway</td><td>262 – 658, one 18 pt line</td><td>262 – 363, <code>92 days</code> at 12 pt over <code>until recharge</code> at 9 pt</td></tr>
+        <tr><td>Credits</td><td>553 – 778, two lines</td><td>692 – 778, three lines</td></tr>
+        <tr><td>Gap</td><td>−105 px, overlapping</td><td>329 px</td></tr>
+      </table>
+
+      <h3>Why the repaint test could not be run</h3>
+      <p>The complaint was that change detection ignores the update-time text so the behavior can be tested. <code>asOf</code> was in fact never hashed. The real fault was three fields that were still hashed but had stopped being drawn: <code>nowTemp</code>, <code>nowCode</code> and <code>condition</code> all left the panel when the current temperature and its condition line came out of the header. The screen was repainting because the outdoor temperature had moved a degree, with nothing on the panel to show it.</p>
+      <div class="callout blue"><strong>Rule:</strong> the hash covers exactly what is drawn, and nothing else. A field that is hashed but not drawn repaints the screen for a change nobody can see. A field that is drawn but not hashed leaves a stale value on the panel.</div>
+      <p>That second half applied too: the battery had been hashed in 5% buckets to suppress repaints, which allowed the panel to display a percentage that no longer matched the reading behind it. Battery and runway are now hashed exactly. At about 1 %/day that costs roughly one repaint a day, which is the price of the number on screen being true.</p>
+
+      <h3>Proved across two boots</h3>
+      <pre class="data">run 1   draw: repainting, hash 11bc5646 -> c64d8bbb
+        draw: full refresh took 37937 ms
+        total cycle ~48 s
+
+run 2   draw: skipped, content unchanged (hash c64d8bbb)
+        panel never touched
+        total cycle ~10 s</pre>
+      <p>The same hash across two separate power-on boots means the NVS copy survives a power cycle, not just the RTC copy across deep sleep. A wake that finds nothing new now costs ten seconds of radio and no flicker at all.</p>
+
+      <h3>Refresh time</h3>
+      <p>Measured 37.9 s this round against 35.8 s earlier, both well past the 15–20 s Seeed publishes. Nothing in the sketch influences it; the number is what it is, which is why not repainting matters as much as it does.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>The 06:00 wake is the first timer wake rather than a power-on, and the first to read the hash from <code>RTC_DATA_ATTR</code> rather than fall back to NVS.</li>
+        <li>Read the air chip on the panel — whether ink on yellow is genuinely legible at distance is a judgement that cannot be made from a screenshot.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-09_contrast-and-change-detection/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-09_contrast-and-change-detection/panel-before-contrast-fix.jpg">panel-before-contrast-fix.jpg</a> <span class="note">— yellow-on-paper air reading and the footer collision</span></li>
+        <li><a href="journal-assets/2026-09-09_contrast-and-change-detection/change-detection.log">change-detection.log</a> <span class="note">— both runs, repaint then skip</span></li>
+        <li><a href="journal-assets/2026-09-09_contrast-and-change-detection/render.h">render.h</a> <span class="note">— air chip, outlined segments, footer reflow</span></li>
+        <li><a href="journal-assets/2026-09-09_contrast-and-change-detection/model.h">model.h</a> <span class="note">— the hash, covering exactly what is drawn</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-09T17:20-07:00">Wed 9 Sep 2026 · 17:20 PDT</time></span>
+        <span class="title">Battery estimate, wake cadence, and the last failing fetch<span class="badge green">All three parse</span></span>
+        <span class="synopsis">A 607,333-day runway decoded to a 1970 baseline. Three days of unattended running supplied the real drain rate, and the launch fetch finally parses.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Three days unattended</h3>
+      <figure>
+        <img src="journal-assets/2026-09-09_battery-and-cadence/panel-2026-09-09-87pct.jpg" alt="The panel showing Wednesday 9 September, peak 102 degrees, air quality 48, five-day forecast and 87 percent battery">
+        <figcaption>Photographed 2026-09-09 08:39. Degree rings, the five-day strip and the air panel all reading correctly; the runway figure is nonsense.</figcaption>
+      </figure>
+      <p>The board ran on battery from the 6th to the 9th with no cable attached, waking and repainting on its own. Two frames a day apart gave the first real drain measurement:</p>
+      <table class="res">
+        <tr><th>When</th><th>Battery</th><th>Runway shown</th></tr>
+        <tr><td>Tue 8 Sep, 05:57</td><td>88%</td><td>607,333 days</td></tr>
+        <tr><td>Wed 9 Sep, 05:57</td><td>87%</td><td>450,346 days</td></tr>
+      </table>
+      <p><strong>1.0 %/day</strong>, which is what Seeed's three-month figure implies. The hardware is behaving; only the arithmetic was wrong.</p>
+
+      <h3>The 1970 baseline</h3>
+      <p>607,333 days from 88% implies a drain of 0.000145 %/day, which implies an elapsed baseline of about 20,690 days — 56.6 years. That is the distance from the epoch. <code>estimateRunwayDays()</code> was being called before <code>syncClock()</code>, so the very first boot anchored its baseline to a 1970 timestamp and every later reading divided a small drop by half a century.</p>
+      <p>Two defenses. The estimate now runs only after NTP has set the clock, and any stored timestamp earlier than November 2023 is discarded and re-anchored rather than trusted.</p>
+
+      <h3>Measured prior instead of "learning"</h3>
+      <p>The old version refused to answer until it had four samples and a 3% drop, which is why the panel said "learning drain rate" for three days. The 1.0 %/day measured above is now the starting estimate, so the first frame after a flash shows a real number. Measured history displaces it over about a week, weighted by how long the window is — a single day of readings at 1% resolution is far too noisy to stand on. The rate is clamped to 0.2–20 %/day, so the worst a corrupt baseline can now print is 500 days rather than 607,333.</p>
+      <pre class="data">scenario                             days   %/day
+first frame, no history    87%         87    1.00
+1 %/day over 1 day         87%         87    1.00
+7% over 7 days             81%         81    1.00
+the old 1970 case          88%        440    0.20  (clamped)
+5% drop in one day         85%         54    1.57
+40% over 4 days            50%          8    6.14</pre>
+
+      <h3>Two wakes a day, at the right two</h3>
+      <p>Twelve-hour intervals, and the flicker of a full repaint makes that the right trade. Aligning a 12 h interval to midnight would have woken it at 00:00 and 12:00 — no use to a morning dashboard. The alignment is anchored to <code>WAKE_HOUR_MORNING</code>, so it wakes at <strong>06:00 and 18:00</strong>; every hour from 00 to 23 was checked to confirm it schedules one of those two.</p>
+      <p>The panel had also been advertising <code>next 06:00</code> while the timer was set for twelve hours later, because the displayed time and the sleep duration were computed separately. One function now feeds both.</p>
+
+      <h3>The launch fetch, finally</h3>
+      <p>Every run since first light had failed here with <code>IncompleteInput</code>, and forcing HTTP/1.0 had not helped. Cloudflare answers <code>Connection: close</code> with no <code>Content-Length</code>, so a streaming parse ends the first time a pause between TLS records leaves <code>available()</code> at zero. The 4 kB weather and 354-byte air responses arrive in a single burst and survived it; the 26 kB launch list never did. Reading the body to completion before parsing fixes it:</p>
+      <pre class="data">api.open-meteo.com             parsed  4,496 bytes
+air-quality-api.open-meteo.com parsed    354 bytes
+ll.thespacedevs.com            parsed 26,352 bytes
+runway: 93 days until recharge
+draw: full refresh took 35768 ms
+sleeping 2519 s (0.7 h)          -> 18:00</pre>
+
+      <h3>Display</h3>
+      <p>The footer reads <code>93 days until recharge</code> — no tilde, no caption above it. A tilde in front of a number that is already an estimate only added a character to decode.</p>
+
+      <h3>Still standing</h3>
+      <ul>
+        <li>Every run so far has been a power-on wake. A timer wake is what exercises the RTC hash path, and the aligned sleep now makes that observable at 06:00 or 18:00.</li>
+        <li>The full refresh measures 35.8 s against Seeed's quoted 15–20 s, consistently.</li>
+        <li>The serial device number changes between plug-ins — it was <code>usbserial-210</code>, now <code>usbserial-110</code>. <code>build.sh</code> discovers it rather than hard-coding it.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-09_battery-and-cadence/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/panel-2026-09-08-88pct.jpg">panel-2026-09-08-88pct.jpg</a> <span class="note">— 88%, runway 607,333 days</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/panel-2026-09-09-87pct.jpg">panel-2026-09-09-87pct.jpg</a> <span class="note">— 87% a day later, the two points behind the 1.0 %/day prior</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/battery.h">battery.h</a> <span class="note">— prior, blend, clamps, timestamp validation</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/fetch.h">fetch.h</a> <span class="note">— body read to completion before parsing</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/dashboard.ino">dashboard.ino</a> <span class="note">— 06:00/18:00 alignment, estimate after NTP</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/config.h">config.h</a> <span class="note">— 12 h wake and the drain constants</span></li>
+        <li><a href="journal-assets/2026-09-09_battery-and-cadence/serial-run.log">serial-run.log</a> <span class="note">— the run with all three endpoints parsing</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T17:30-07:00">Sun 6 Sep 2026 · 17:30 PDT</time></span>
+        <span class="title">First light — running on the panel<span class="badge green">Live</span></span>
+        <span class="synopsis">Five bugs between a verified flash and a working dashboard: a boot loop from the app offset, blank text from a digits-only font, and every fetch defeated by chunked transfer encoding.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Boot loop — the app went to the wrong address</h3>
+      <p>The first flash verified every hash and then boot-looped on <code>invalid magic byte</code>. arduino-cli honours a custom <code>partitions.csv</code> for the table it writes but not for where it puts the app: it always writes the application at <code>0x10000</code> and <code>boot_app0</code> at <code>0xe000</code>. This board's factory layout reserves 500 kB of NVS, which pushes <code>otadata</code> to <code>0x86000</code> and <code>app0</code> to <code>0x90000</code>, so the bootloader looked where the table said and found nothing.</p>
+      <pre class="data">0x0      bootloader
+0x8000   partitions
+0x86000  boot_app0    (otadata, not the usual 0xe000)
+0x90000  app          (app0,    not the usual 0x10000)</pre>
+      <p><code>build.sh --upload</code> now flashes with esptool at those offsets instead of calling <code>arduino-cli upload</code>.</p>
+
+      <h3>Upload speed</h3>
+      <p>arduino-cli defaults to 921600 baud and the upload died immediately after the rate change — the same CH340 ceiling found while reading the factory image back. The FQBN now pins <code>UploadSpeed=115200</code>.</p>
+
+      <h3>Blank text — font 6 has no letters</h3>
+      <figure>
+        <img src="journal-assets/2026-09-06_first-light/panel-first-boot-no-data.jpg" alt="The panel showing the dashboard layout with all values at zero and a red stale bar">
+        <figcaption>First frame on the panel, 2026-09-06. Layout, colors, rules and the battery gauge all correct; every value empty and the weekday missing entirely.</figcaption>
+      </figure>
+      <p>The weekday, date and every large label were blank. Built-in fonts 6, 7 and 8 contain only <code>1234567890:-.apm</code> — a digits-and-clock set — so any letter drawn in font 6 renders as nothing. Only the numerals had survived. Font 4 tops out at 26 px, so the whole layout moved to the Adafruit free fonts that <code>LOAD_GFXFF</code> already compiles in: <code>FreeSansBold</code> at 9, 12, 18 and 24 pt. Those are bold at every size, which also answered the small labels being hard to read.</p>
+      <p>Including the font headers explicitly duplicates every glyph table — TFT_eSPI has already compiled them in.</p>
+
+      <h3>Every fetch failed — chunked transfer encoding</h3>
+      <p>Wi-Fi joined and NTP synced, yet all three endpoints returned HTTP 200 and then <code>InvalidInput</code>. <code>getSize()</code> reported <code>-1</code>, which was the clue: both APIs answer HTTP/1.1 with chunked encoding, and <code>HTTPClient::getStream()</code> hands back the raw socket with the chunk-size framing still in it. ArduinoJson was reading <code>1a3b\r\n{</code>. HTTPClient only removes that framing inside <code>getString()</code>.</p>
+      <p><code>http.useHTTP10(true)</code> settles it — HTTP/1.0 has no chunked encoding, so the body parses as a stream and the filter keeps the document small. Weather and air quality parsed on the next flash.</p>
+
+      <h3>The launch request was too large to read</h3>
+      <p>Asking for five launches in detailed mode is ~71 kB and the TLS read did not survive it: <code>IncompleteInput</code>. It now runs in two steps — the ~25 kB list carries <code>net</code>, <code>name</code> and <code>id</code>, enough to decide whether anything qualifies tonight, and one launch is fetched in detail only when one does. A failure in the second step costs the landing note, not the band.</p>
+
+      <h3>Repaint only when the picture changes</h3>
+      <p>A full refresh measured <strong>35.8 s</strong>, well past Seeed's quoted 15–20 s, and drives the panel through twenty or thirty visible color passes. The Model now hashes exactly the fields that reach the screen, kept in <code>RTC_DATA_ATTR</code> across deep sleep and in NVS across a power cycle. An unchanged hash skips the draw and the refresh entirely.</p>
+      <p>The hash deliberately excludes the fetch time and rounds the battery to the nearest 5%, or every wake would differ and the whole exercise would be pointless. A failed fetch draws nothing at all and leaves the last good frame up.</p>
+
+      <h3>Corrections from the first frame with real data</h3>
+      <figure>
+        <img src="journal-assets/2026-09-06_first-light/panel-first-data.jpg" alt="The panel showing real weather data for San Martin with a five-day forecast strip">
+        <figcaption>Real data on the panel, 2026-09-06 16:22. Peak 83 at 4:00 PM, air quality 35, and a five-day strip reaching 105 on Wednesday.</figcaption>
+      </figure>
+      <table class="res">
+        <tr><th>Seen</th><th>Cause</th><th>Fix</th></tr>
+        <tr><td>Degree shown as a backtick</td><td>the free fonts are ASCII only and have no degree glyph; a backtick stood in for one</td><td>draw a ring, 5 px radius at 24 pt down to 2 px at 9 pt</td></tr>
+        <tr><td>Sunrise and sunset ran past their cell</td><td>13 characters at 18 pt need ~234 px in a 220 px cell</td><td>measure and step down to 12 pt</td></tr>
+        <tr><td><code>next 18:0</code></td><td>the string is 24 characters and the buffer was 24</td><td>widened to 40</td></tr>
+        <tr><td>Current temperature and "Clear all day" in the header</td><td>the TODAY column and its icon already carry both</td><td>removed</td></tr>
+        <tr><td>"RUNWAY learning drain rate"</td><td>a label explaining that there is no number yet</td><td>draw nothing until there is one</td></tr>
+        <tr><td>Air quality read <code>-1 GOOD</code></td><td>a failed fetch left <code>aqi = -1</code>, which is below the good threshold</td><td>show <code>--</code> and "no reading"</td></tr>
+      </table>
+
+      <h3>Not fixable</h3>
+      <div class="callout orange"><strong>The flicker is the panel.</strong> Spectra 6 places six pigments by driving the display through repeated full-screen color passes, and each one is visible. There is no partial-refresh mode on the E1002. The only lever is refreshing less often, which the content hash now does.</div>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Confirm the corrected frame on the panel — it was flashed and verified, then the board was unplugged, and it finishes the cycle on battery.</li>
+        <li>Watch a timer wake rather than a power-on wake, which exercises the RTC hash path and the aligned sleep.</li>
+        <li>Let the battery history build past four samples so the runway estimate appears.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_first-light/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_first-light/panel-first-boot-no-data.jpg">panel-first-boot-no-data.jpg</a> <span class="note">— first frame, layout right and every value empty</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/panel-first-data.jpg">panel-first-data.jpg</a> <span class="note">— first frame with real data</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/dashboard.ino">dashboard.ino</a> <span class="note">— diagnostics and the repaint decision</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/fetch.h">fetch.h</a> <span class="note">— HTTP/1.0, filters, two-step launch lookup</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/render.h">render.h</a> <span class="note">— free fonts and the degree ring</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/model.h">model.h</a> <span class="note">— the content hash</span></li>
+        <li><a href="journal-assets/2026-09-06_first-light/build.sh">build.sh</a> <span class="note">— flashing at the factory offsets</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T16:35-07:00">Sun 6 Sep 2026 · 16:35 PDT</time></span>
+        <span class="title">Live endpoints checked against the parser<span class="badge red">3 bugs</span></span>
+        <span class="synopsis">Booster landing data was absent from the response the firmware requested, the sky test read the wrong hour, and a 50-character mission name truncated mid-word. All three found before flashing.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Method</h3>
+      <p>The three URLs were rebuilt from <code>config.h</code> itself rather than retyped, fetched live, and every JSON path <code>fetch.h</code> reads was checked against the response. Then <code>launches()</code> and <code>weather()</code> were re-implemented in Python against the same payloads to watch the selection logic run.</p>
+      <pre class="data">open-meteo forecast       HTTP 200    4,526 bytes
+open-meteo air quality    HTTP 200      354 bytes
+launch library (list)     HTTP 200   25,334 bytes
+launch library (detailed) HTTP 200   83,213 bytes</pre>
+
+      <h3>Bug 1 — the landing data was never there</h3>
+      <p><code>fetch.h</code> read <code>results[0].rocket.launcher_stage[0].landing.location.abbrev</code>. In the default list response <code>rocket</code> carries only <code>configuration</code> and <code>id</code>, so that path is absent and every launch would have fallen through to "booster downrange". It would not have crashed, which is worse — the LZ-4 sonic-boom warning would simply never have appeared.</p>
+      <p><code>mode=detailed</code> supplies it: <code>landing.location.abbrev</code> is <code>OCISLY</code> with <code>landing.type.abbrev</code> <code>ASDS</code> for a droneship recovery. The band now distinguishes a droneship landing from an <code>LZ-4</code> pad return, which is the one that arrives with booms.</p>
+      <p>That response is 83 kB. An ArduinoJson filter keeps only the four fields drawn:</p>
+      <pre class="data">83,213 bytes on the wire  ->  612 bytes held in the document</pre>
+
+      <h3>Bug 2 — the sky test read the wrong hour</h3>
+      <p>The launch band was gated on <code>nowCode &lt;= 2</code>, the weather code at the moment of the refresh. A dashboard drawn at 06:00 was deciding whether a 20:14 launch would be visible using the sky twelve hours earlier. Today's data shows how weak that proxy is: the daily code came back as 3, overcast, while the current code was 0, clear.</p>
+      <p>The request now carries <code>hourly=cloud_cover</code>, and the test reads cloud cover at the lift-off hour against <code>WX_CLEAR_MAX_CLOUD_PCT</code> — a threshold that had been defined in <code>config.h</code> since the design and never used.</p>
+
+      <h3>Bug 3 — mission names truncated mid-word</h3>
+      <p>Real names run to fifty characters. <code>Falcon 9 Block 5 | SDA Tranche 1 Transport Layer A</code> in a 40-byte field became <code>FALCON 9 BLOCK 5 | SDA TRANCHE 1 TRANSP</code>. The vehicle half is the least interesting part, so the name now reduces to its first two words and keeps the mission:</p>
+      <pre class="data">Falcon 9 Block 5 | USSF-153                        -> FALCON 9 - USSF-153
+Falcon 9 Block 5 | SDA Tranche 1 Transport Layer A -> FALCON 9 - SDA TRANCHE 1 TRANSPORT LAYER A
+Falcon 9 Block 5 | Transporter 18 (Dedicated SSO)  -> FALCON 9 - TRANSPORTER 18 (DEDICATED SSO RIDESHARE)</pre>
+      <p>Anything still too long is cut at a word boundary. The renderer now measures the result at font 4 and steps down to font 2 rather than running into the lift-off time, and the PRIME tag is only drawn if it clears that column.</p>
+
+      <h3>What the parser produces from today's data</h3>
+      <pre class="data">header    SUNDAY / 6 September 2026 / now 83` code 0
+peak      83` at 4:00 PM
+sun       6:41a -> 7:27p
+air       32 GOOD  PM2.5 4.0
+strip     TODAY 83/51 0%   MON 89/50 0%   TUE 94/53 1%
+          WED 105/71 7%    THU 102/71 0%
+bins      false (today is Sunday; BIN_WEEKDAY is Monday)
+launch    no band - the only launch today flew at 07:26 local</pre>
+      <p>Every field the panel draws now comes from a response that was actually received, not from the documented shape of one.</p>
+
+      <h3>Still unexercised</h3>
+      <p>The parsing is checked; the device is not. Panel output, Wi-Fi join, TLS on-chip, the battery ADC, the NVS write and deep-sleep wake have all still never run.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_endpoint-validation/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_endpoint-validation/open-meteo-forecast.json">open-meteo-forecast.json</a> <span class="note">— the live response, with cloud cover</span></li>
+        <li><a href="journal-assets/2026-09-06_endpoint-validation/open-meteo-air-quality.json">open-meteo-air-quality.json</a> <span class="note">— live air quality</span></li>
+        <li><a href="journal-assets/2026-09-06_endpoint-validation/launchlibrary-detailed-trimmed.json">launchlibrary-detailed-trimmed.json</a> <span class="note">— detailed mode, first two launches, showing the landing block</span></li>
+        <li><a href="journal-assets/2026-09-06_endpoint-validation/fetch.h">fetch.h</a> <span class="note">— the parser as corrected</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T16:05-07:00">Sun 6 Sep 2026 · 16:05 PDT</time></span>
+        <span class="title">Firmware written and compiling<span class="badge green">Builds</span></span>
+        <span class="synopsis">Both sketches build against the real toolchain. Four things the compiler settled that the documentation did not, including a board profile that would have stranded 24 MB of flash.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Built, not just written</h3>
+      <p>arduino-cli, esp32 core 3.3.11, ArduinoJson 7.4.3 and Seeed_GFX 2.0.3 are installed, and both sketches compile:</p>
+      <pre class="data">dashboard     1,145,691 bytes   9.1% of the 12 MB app0 slot
+calibration     386,604 bytes
+globals          49,188 bytes   15% of DRAM</pre>
+      <p>Nothing has run on the device. Every runtime path — display output, Wi-Fi join, JSON parse, deep sleep — is still unexercised.</p>
+
+      <h3>Structure</h3>
+      <p>Network code and drawing code never meet. <code>fetch.h</code> fills a <code>Model</code>, <code>render.h</code> reads one, and neither knows the other exists.</p>
+      <table class="res">
+        <tr><th>File</th><th>Role</th></tr>
+        <tr><td><code>dashboard.ino</code></td><td>wake, connect, fetch, draw, sleep</td></tr>
+        <tr><td><code>model.h</code></td><td>one struct holding everything the panel shows</td></tr>
+        <tr><td><code>layout.h</code></td><td><code>computeLayout()</code>, mirroring the mockup's function</td></tr>
+        <tr><td><code>render.h</code></td><td>draws the Model into the layout rectangles</td></tr>
+        <tr><td><code>fetch.h</code></td><td>the three keyless endpoints into the Model</td></tr>
+        <tr><td><code>battery.h</code></td><td>percentage from an interpolated discharge curve, runway fit stored in NVS</td></tr>
+      </table>
+
+      <h3>What the compiler settled</h3>
+      <ul>
+        <li><strong>The six colors are <code>TFT_*</code>.</strong> Seeed's wiki lists <code>GxEPD_*</code> names; Seeed_GFX does not define them. Combo 521 sets <code>USE_COLORFULL_EPAPER</code>, which defines <code>TFT_BLACK</code>, <code>TFT_WHITE</code>, <code>TFT_RED</code>, <code>TFT_YELLOW</code>, <code>TFT_BLUE</code> and <code>TFT_GREEN</code>, and folds every other color name onto the nearest of them.</li>
+        <li><strong><code>BOARD_SCREEN_COMBO</code> belongs in <code>driver.h</code>.</strong> The library finds it through <code>#if __has_include("driver.h")</code>, so a define in the <code>.ino</code> reaches only the sketch and <code>EPaper</code> goes undefined at link time. Both sketches now carry one.</li>
+        <li><strong><code>timegm()</code> is absent from the ESP32's newlib.</strong> Launch times arrive from thespacedevs in UTC, and <code>mktime()</code> would apply the local zone to them. Replaced with an explicit days-from-civil conversion.</li>
+        <li><strong>The board profile is wrong for this hardware.</strong> Seeed's wiki says select <code>XIAO_ESP32S3</code>, which offers only 8 MB of flash — this board carries 32 MB with two 12 MB OTA slots. Building that way writes an 8 MB partition table and strands 24 MB.</li>
+      </ul>
+
+      <h3>Flash layout preserved</h3>
+      <p><code>build.sh</code> targets <code>esp32:esp32:esp32s3</code> with <code>FlashSize=32M,PSRAM=opi,PartitionScheme=custom</code>, and a <code>partitions.csv</code> beside each sketch reproduces the factory table read off the board. The build was checked rather than assumed: the generated table is the factory one, <code>app0</code> is 12 MB, and the merged image is exactly 33,554,432 bytes.</p>
+
+      <h3>Color calibration dropped</h3>
+      <p>The firmware draws with the six symbolic constants, so the panel renders whatever those are and the mockup's hex values never reach it — calibrating them would have changed nothing downstream. Type legibility is the part that still has to be seen on the panel: whether font 1 labels and white-on-green survive at distance. That gets answered by the dashboard itself.</p>
+
+      <h3>A gitignore hole, opened and closed</h3>
+      <p>Copying <code>secrets.h</code> into the firmware sketch put it outside the anchored <code>dashboard/secrets.h</code> pattern, which matches only the directory beside the ignore file. In a repository that publishes to GitHub Pages that would have committed the Wi-Fi password. The pattern is now <code>**/secrets.h</code>, and <code>git check-ignore</code> confirms both copies are ignored while the example template stays tracked.</p>
+      <div class="callout orange"><strong>Method note:</strong> a repository-wide <code>grep -rl</code> for the password returned nothing while the files plainly contained it. Exposure checks now use <code>git check-ignore</code> and <code>git status</code>, which are the authority on what would actually be committed.</div>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Mirror the factory image off this machine. Still outstanding, and flashing is what it protects against.</li>
+        <li>Flash and watch one cycle: panel output, Wi-Fi join, three parses, deep sleep, and the button wake.</li>
+        <li>Read the panel for type legibility and adjust font sizes against the headroom each box has.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_firmware-build/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_firmware-build/dashboard.ino">dashboard.ino</a> <span class="note">— wake, fetch, draw, sleep</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/layout.h">layout.h</a> <span class="note">— geometry, mirroring the mockup</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/render.h">render.h</a> <span class="note">— all drawing</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/fetch.h">fetch.h</a> <span class="note">— the three endpoints and their parsing</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/battery.h">battery.h</a> <span class="note">— discharge curve and runway fit</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/model.h">model.h</a> <span class="note">— the struct between them</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/driver.h">driver.h</a> <span class="note">— the combo define the library needs to see</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/partitions.csv">partitions.csv</a> <span class="note">— factory table, kept</span></li>
+        <li><a href="journal-assets/2026-09-06_firmware-build/build.sh">build.sh</a> <span class="note">— the FQBN that matters</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T15:38-07:00">Sun 6 Sep 2026 · 15:38 PDT</time></span>
+        <span class="title">Five-day forecast with precipitation<span class="badge blue">Design</span></span>
+        <span class="synopsis">Today became the first column of a five-day strip rather than a separate block, which removed the duplication and paid for the row. Current conditions moved into the header.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>What changed</h3>
+      <p>The panel now carries high, low and precipitation for today and the four days after it. Today is the strip's first column, highlighted yellow, so today's figures and the rest of the week come from one <code>daily</code> array in one request — there is no second call and no way for "today" to disagree between two places on the screen.</p>
+      <p>That removed the old current-conditions block, which was about to repeat today's high underneath a strip that already showed it. Current temperature, condition and icon moved into the header beside the weekday.</p>
+
+      <h3>The stack</h3>
+      <table class="res">
+        <tr><th>Band</th><th>Height</th><th>Carries</th></tr>
+        <tr><td>Header</td><td>84</td><td>weekday, date, current icon and temperature, condition, place, as-of and next-refresh</td></tr>
+        <tr><td>Keyline</td><td>5</td><td>red rule</td></tr>
+        <tr><td>Detail row</td><td>80</td><td>Peak 280 px (yellow) · Sun 220 px (green) · Air 292 px</td></tr>
+        <tr><td>Forecast</td><td>121–225</td><td>five columns on a 160 px pitch, today first</td></tr>
+        <tr><td>Bins</td><td>40</td><td>Mondays, single line</td></tr>
+        <tr><td>Launch</td><td>56</td><td>conditional</td></tr>
+        <tr><td>Footer</td><td>78</td><td>battery and runway</td></tr>
+      </table>
+      <p>Both bands shrank to buy the strip its room — bins from 66 to 40, launch from 74 to 56 — by dropping to one line of text each. The forecast strip absorbs whatever height the bands leave: 225 px with neither, 121 px with both.</p>
+
+      <h3>Each forecast column</h3>
+      <p>Day label, condition icon, high and low, and precipitation probability. The high turns red at 90 °F or above, the low is always blue, and the precipitation figure with its drop icon grays out below 20% so a dry week reads as visibly quiet rather than as a row of numbers.</p>
+
+      <h3>Geometry holds</h3>
+      <p>All four band combinations tile 0 to 480 with no gaps or overlaps, and content fits every box in the tightest state:</p>
+      <pre class="data">box            height  content  headroom
+header             84       56      +28
+peak               80       67      +13
+sun                80       40      +40
+air                80       56      +24
+forecast column   121      104      +17
+bins               40       22      +18
+launch             56       38      +18
+footer             78       32      +46</pre>
+      <p>The previous layout ran the weather block at +5 px. Nothing is now tighter than +13, so raising a type size after the calibration print will not immediately break something.</p>
+
+      <h3>Request</h3>
+      <p>One Open-Meteo call covers it, with <code>forecast_days=5</code> and <code>precipitation_probability_max</code> and <code>precipitation_sum</code> added to the daily set:</p>
+      <pre class="data">daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,
+      precipitation_sum,sunrise,sunset,weather_code
+hourly=temperature_2m          (peak hour)
+current=temperature_2m,apparent_temperature,weather_code
+temperature_unit=fahrenheit&precipitation_unit=inch&forecast_days=5</pre>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_five-day-forecast/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_five-day-forecast/mockup.html">mockup.html</a> <span class="note">— five-day strip, five sky states with their own forecast sets</span></li>
+        <li><a href="journal-assets/2026-09-06_five-day-forecast/config.h">config.h</a> <span class="note">— extended forecast request</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T15:20-07:00">Sun 6 Sep 2026 · 15:20 PDT</time></span>
+        <span class="title">Layout moves to fixed pixel geometry<span class="badge green">Fixed</span></span>
+        <span class="synopsis">The Air card clipped its own label and pushed its bar off the panel. Flexible boxes could overflow silently, so the mockup now places every box at absolute coordinates — the ones the firmware will draw at.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The bug</h3>
+      <p>On a Monday with a launch showing, the <strong>AIR</strong> label was cut off at the top and the air-quality bar had been pushed out of the panel entirely.</p>
+
+      <h3>Two causes</h3>
+      <ul>
+        <li>The three right-column cards each carried <code>flex: 1</code>. With both bands drawn, the column is 165 px, so each card received about 55 px — while the Air card's content needed 86. Flexible boxes overflow without complaint, so nothing announced the failure.</li>
+        <li>The page's <code>line-height: 1.7</code> was inheriting into the panel and inflating every text box. An 11 px label was occupying 19 px of vertical space.</li>
+      </ul>
+
+      <h3>Fixed geometry instead</h3>
+      <p>On-device rendering means the firmware draws with absolute <code>fillRect</code> and <code>drawString</code> coordinates, so a mockup that reflows is the wrong specification. One <code>layout()</code> function now computes every rectangle from seven constants — header 80, keyline 5, footer 78, bin band 66, launch band 74, rules 4, and a column split at x = 470 — and each box is placed absolutely from that table. Inside the panel <code>line-height</code> is pinned at 1.15, so a text box is its font size and nothing more.</p>
+      <p>The mockup gained a geometry table under the panel listing <code>x, y, w, h</code> for the current state, and a <strong>Coords</strong> control that draws each box's bounds and dimensions over the panel. Both exist to be transcribed into <code>layout.h</code> rather than measured by eye.</p>
+
+      <h3>Verified rather than eyeballed</h3>
+      <p>All four states — bins and launch, independently present or absent — tile 0 to 480 with no gaps and no overlaps, and the right column's height always equals the main row's:</p>
+      <pre class="data">state           mainH   peak    air
+neither           313    172    137
+launch            235    129    102
+bins              243    134    105
+bins + launch     165     91     70</pre>
+      <p>Content now fits inside every box in the tightest state, with headroom:</p>
+      <table class="res">
+        <tr><th>Box</th><th>Height</th><th>Content</th><th>Headroom</th></tr>
+        <tr><td>weather</td><td>165</td><td>160</td><td>+5</td></tr>
+        <tr><td>peak</td><td>91</td><td>78</td><td>+13</td></tr>
+        <tr><td>air</td><td>70</td><td>56</td><td>+14</td></tr>
+        <tr><td>bins</td><td>66</td><td>43</td><td>+23</td></tr>
+        <tr><td>launch</td><td>74</td><td>42</td><td>+32</td></tr>
+      </table>
+      <p>Reaching that meant dropping the weather icon to 84 px and the current temperature to 66 px, and moving PM2.5 onto the air-quality value row rather than a third line. Weather at +5 px is the tight one: if the calibration print shows the type needs to be larger to stay legible, that box gives first.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_layout-geometry/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_layout-geometry/mockup.html">mockup.html</a> <span class="note">— absolute geometry, coordinate overlay, geometry table</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T15:05-07:00">Sun 6 Sep 2026 · 15:05 PDT</time></span>
+        <span class="title">Build plan and architecture decisions<span class="badge green">Decided</span></span>
+        <span class="synopsis">TRMNL renders the E1002 in monochrome, so it is out. The dashboard draws on-device in Arduino, wakes every six hours, and reminds about bins on Monday for a Tuesday pickup.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>TRMNL is out</h3>
+      <p>TRMNL officially supports the E1002 and would have supplied a finished fetch-and-display pipeline, but <a href="https://help.trmnl.com/en/articles/12408721-seeed-studio-devices-xiao-diy-kit-and-reterminal">its firmware renders E1002 content in monochrome</a>. The design is built on six colors, so TRMNL and Seeed's TRMNL firmware channel both fail the requirement. Custom firmware either way.</p>
+
+      <h3>Decisions</h3>
+      <table class="res">
+        <tr><th>Decision</th><th>Choice</th><th>Consequence</th></tr>
+        <tr><td>Rendering</td><td>on-device</td><td>Layout becomes C++ draw calls, fonts are embedded, and the device parses the three JSON APIs itself. No render pipeline, no external dependency, nothing published. Every design change means a reflash or OTA.</td></tr>
+        <tr><td>Wake interval</td><td>every 6 hours</td><td>Seeed's ~3-month battery figure. AQI and launch times stay current through the day.</td></tr>
+        <tr><td>Bin pickup</td><td>Tuesday</td><td>The reminder lands on Monday's refresh — <code>BIN_WEEKDAY 1</code>, already correct.</td></tr>
+      </table>
+      <p>Choosing on-device rendering makes the type and color work load-bearing: there is no browser to fall back on, and every layout decision has to survive being written in draw calls against embedded fonts.</p>
+
+      <h3>Toolchain</h3>
+      <p>Seeed's <a href="https://wiki.seeedstudio.com/reterminal_e10xx_with_arduino/">Arduino cookbook</a> builds the E Series against the ESP32 Arduino core with the board set to <code>XIAO_ESP32S3</code> and the package URL <code>https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json</code>. The display comes from <strong>Seeed_GFX</strong>, a TFT_eSPI fork, selected by <code>#define BOARD_SCREEN_COMBO 521</code> for the E1002's UC8179C controller:</p>
+      <pre class="data">#define BOARD_SCREEN_COMBO 521
+#include "TFT_eSPI.h"
+
+EPaper epaper;
+epaper.begin();
+epaper.fillScreen(TFT_WHITE);
+epaper.update();            // one full refresh, 15-20 s</pre>
+
+      <h3>Order of work</h3>
+      <ol style="margin:0 0 12px 18px">
+        <li style="font-size:14px;color:#bbb;line-height:1.7;margin-bottom:4px">Mirror the factory image off this machine. Nothing gets written to the board before that.</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7;margin-bottom:4px">Install the core and Seeed_GFX, flash a stock example, confirm the panel draws and the buttons respond.</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7;margin-bottom:4px">Run the calibration sketch and photograph the result. Correct the mockup palette against the photograph.</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7;margin-bottom:4px">Skeleton: Wi-Fi join, NTP, battery read on GPIO1 with GPIO21 enable, deep sleep waking on GPIO4, one full refresh.</li>
+        <li style="font-size:14px;color:#bbb;line-height:1.7;margin-bottom:4px">Fetch and parse the three endpoints, then draw the layout band by band.</li>
+      </ol>
+
+      <h3>Calibration comes before layout</h3>
+      <p>The mockup's palette is an approximation of Spectra 6, and every band in the design assumes those colors separate cleanly and hold legible type. <code>firmware/calibration/calibration.ino</code> prints the six colors as solid blocks, as 2 px rules, three type sizes, and the six foreground-on-background pairings the dashboard actually uses — header blue on white, peak black on yellow, bins white on red, and the rest. Photograph the panel and correct the palette from the photograph.</p>
+      <p>The sketch also settles an ambiguity: Seeed's wiki shows <code>TFT_WHITE</code> in its own example and lists <code>GxEPD_*</code> names for the six colors. Which set the installed library exposes is decided at compile time, and the palette defines sit in one block at the top of the sketch for that reason.</p>
+
+      <h3>Open</h3>
+      <ul>
+        <li>TLS handling for the three HTTPS endpoints — embedded root certificates against <code>setInsecure()</code>, decided when the fetch code is written.</li>
+        <li>Staleness. E-paper holds its last frame, so a failed Wi-Fi join leaves a stale dashboard looking current. Plan: the header carries an "as of" time on every draw, and a red bar appears after two missed refreshes.</li>
+        <li>Button roles beyond the wake pin. Right white wakes and refreshes; green and left white are unassigned.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_build-plan/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_build-plan/calibration.ino">calibration.ino</a> <span class="note">— color, rule-weight, type-size and contrast-pairing test frame</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T14:52-07:00">Sun 6 Sep 2026 · 14:52 PDT</time></span>
+        <span class="title">Dashboard revision — air quality replaces the inside reading<span class="badge blue">Design</span></span>
+        <span class="synopsis">Air conditioning holds the indoor temperature flat, so that tile bought nothing. US AQI takes the space, and red now appears on every screen rather than only on Mondays.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Why the inside reading went</h3>
+      <p>The SHT4x sits on the board at I²C <code>GPIO19/20</code> and reads fine — the tile was never blocked. It was simply dull: air conditioning holds the house within a couple of degrees all day, so a third of the right column carried a number that never moved. The pins stay in <code>config.h</code> for the enclosure-alarm idea, where a changing temperature is the whole point.</p>
+
+      <h3>Air quality takes the space</h3>
+      <p>US AQI and PM2.5 from <a href="https://open-meteo.com/">Open-Meteo's air-quality endpoint</a> — keyless, same provider as the forecast, so no new secret. Checked against the live endpoint: San Martin returned <code>us_aqi 30</code>, <code>pm2_5 3.5 µg/m³</code>. In a California summer this is the number that changes what you do with the day, and during a smoke event it changes it a lot.</p>
+      <p>The EPA bands collapse onto the three colors the panel has for a scale: green to 50, yellow to 100, red above. A three-segment bar fills to the current band, so the reading is legible from across the room without reading the number.</p>
+
+      <h3>Red on every screen</h3>
+      <p>Red previously appeared only on Mondays or at low battery, so most mornings used five colors. It now has three homes, and at least one is always showing:</p>
+      <table class="res">
+        <tr><th>Where</th><th>When</th></tr>
+        <tr><td>Keyline under the header</td><td>always — a 5 px rule framing the blue band</td></tr>
+        <tr><td>Peak temperature</td><td>whenever the forecast high clears 90 °F, which is most of a San Martin summer</td></tr>
+        <tr><td>Air quality</td><td>AQI above 100</td></tr>
+        <tr><td>Bins band</td><td>Mondays</td></tr>
+        <tr><td>Battery</td><td>at or below 15%</td></tr>
+      </table>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_dashboard-rev2/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_dashboard-rev2/mockup.html">mockup.html</a> <span class="note">— adds an AQI control alongside day, sky, launch and battery</span></li>
+        <li><a href="journal-assets/2026-09-06_dashboard-rev2/config.h">config.h</a> <span class="note">— air-quality endpoint, AQI bands, hot-peak threshold</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T14:44-07:00">Sun 6 Sep 2026 · 14:44 PDT</time></span>
+        <span class="title">Morning dashboard — layout, data sources, configuration<span class="badge blue">Design</span></span>
+        <span class="synopsis">An 800 × 480 layout in all six Spectra colors for San Martin, CA: peak temperature, battery runway, a Monday bin reminder, and a Vandenberg launch band that appears only when the sky will show it.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Layout</h3>
+      <p>Open <a href="seeed-studio-epaper/dashboard/mockup.html">the mockup</a> to step through days, sky conditions, launch states and battery levels. It draws the panel at its exact 800 × 480 in the six colors Spectra 6 can produce, so what appears there is what the panel can render.</p>
+      <table class="res">
+        <tr><th>Band</th><th>Height</th><th>Color</th><th>Carries</th></tr>
+        <tr><td>Header</td><td>80 px</td><td>blue</td><td>weekday, date, place, refresh time</td></tr>
+        <tr><td>Weather</td><td>flexible</td><td>paper</td><td>icon, current temperature, condition, overnight low, feels-like</td></tr>
+        <tr><td>Peak</td><td>third of the right column</td><td>yellow</td><td>the day's high and the hour it arrives</td></tr>
+        <tr><td>Sun</td><td>third</td><td>green</td><td>sunrise and sunset</td></tr>
+        <tr><td>Inside</td><td>third</td><td>paper</td><td>SHT4x temperature and humidity</td></tr>
+        <tr><td>Bins</td><td>66 px, Mondays</td><td>red</td><td>curb-by time</td></tr>
+        <tr><td>Launch</td><td>74 px, conditional</td><td>blue + yellow</td><td>vehicle, mission, lift-off time, where to look</td></tr>
+        <tr><td>Battery</td><td>78 px</td><td>green / yellow / red</td><td>segments, percentage, runway in days</td></tr>
+      </table>
+      <p>Both conditional bands can appear at once; the weather block gives up the height. Flat blocks and heavy type throughout, because six colors and no anti-aliasing punish gradients and thin strokes.</p>
+
+      <h3>Peak temperature</h3>
+      <p>The yellow card carries the forecast high and the hour it lands, from Open-Meteo's hourly series rather than the daily maximum alone — on a valley day the difference between a 94° peak at 15:40 and the same peak at noon changes what the day looks like.</p>
+
+      <h3>Battery runway</h3>
+      <p>Five segments, colored green above 35%, yellow between 15 and 35, red below 15. Beside them a runway in days, estimated from the drain between wakes.</p>
+      <table class="res">
+        <tr><th>State</th><th>Shows</th></tr>
+        <tr><td>Fewer than 4 days of history, or under 3% total drop</td><td><code>learning drain rate…</code></td></tr>
+        <tr><td>Enough history</td><td><code>≈ 71 days left</code>, turning red at 10 days or fewer</td></tr>
+        <tr><td>15% or below</td><td>a red <code>PLUG IN NOW</code> pill, replacing the estimate</td></tr>
+      </table>
+      <p>An estimate needs history, so the device stores one battery sample per wake in NVS and fits a slope across them. Until that data exists the panel says so rather than printing a number it cannot support.</p>
+
+      <h3>Vandenberg launches</h3>
+      <p>A launch 200 miles south is worth walking outside for only when the rocket climbs into sunlight while the ground here is already dark. The band appears when all three hold:</p>
+      <ul>
+        <li>The local sky is clear or partly cloudy — cloud cover at or below 35%. Overcast, rain or fog and the band does not draw at all.</li>
+        <li>Lift-off falls after sunset (less a 15-minute margin) or before sunrise.</li>
+        <li>Lift-off is today, local time.</li>
+      </ul>
+      <p>Lift-off within 90 minutes of sunset earns a yellow <strong>PRIME</strong> tag — that is the window where the plume catches the sun. The band names the vehicle and mission, the local time, how far after sunset it falls, and <code>LOOK SSE</code>: the bearing from San Martin to Vandenberg is about 160°. A booster returning to <code>LZ-4</code> is called out separately from a droneship recovery, since that one arrives with sonic booms.</p>
+
+      <h3>Data sources</h3>
+      <table class="res">
+        <tr><th>Source</th><th>Used for</th><th>Key</th></tr>
+        <tr><td><a href="https://open-meteo.com/">Open-Meteo</a></td><td>current, hourly and daily temperature, sunrise, sunset, weather code</td><td>none required</td></tr>
+        <tr><td><a href="https://thespacedevs.com/llapi">Launch Library 2</a>, location id 11</td><td>upcoming Vandenberg launches and booster landings</td><td>none required</td></tr>
+        <tr><td>Onboard SHT4x</td><td>inside temperature and humidity</td><td>—</td></tr>
+      </table>
+      <p>Both APIs are keyless, so the device stores no credential beyond the Wi-Fi password. Location id 11 resolves to <code>Vandenberg SFB, CA, USA</code>, checked against the live endpoint rather than taken from documentation.</p>
+
+      <h3>Configuration</h3>
+      <p>San Martin sits at 37.08778, −121.60000 (<a href="https://en.wikipedia.org/wiki/San_Martin,_California">Wikipedia</a>), timezone <code>America/Los_Angeles</code>. Coordinates, endpoints, thresholds and the pin map live in <code>dashboard/config.h</code>, which git tracks.</p>
+      <p>Wi-Fi joins the 2.4 GHz band — the ESP32-S3 has no 5 GHz radio. The SSID and password sit in <code>dashboard/secrets.h</code>, which git ignores, with <code>secrets.example.h</code> tracked as the template. This repository publishes to GitHub Pages, so a committed password would be world-readable.</p>
+
+      <h3>Refresh schedule</h3>
+      <p>Wake at 06:00 for the dashboard people read, then every six hours. Six hours is the interval behind Seeed's three-month battery figure, and each repaint costs 15–20 seconds of full refresh. Anything faster trades the battery life away for a screen nobody watches.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Confirm the six rendered colors against the panel — the mockup approximates them, and real Spectra output is more muted than any screen preview.</li>
+        <li>Build it in ESPHome first to measure a real refresh cycle's battery cost, which the runway estimate depends on.</li>
+        <li>Decide the bin reminder's timing: it currently reads as an evening instruction on a screen refreshed in the morning.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1444/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1444/mockup.html">mockup.html</a> <span class="note">— the layout as designed, with day, sky, launch and battery controls</span></li>
+        <li><a href="journal-assets/2026-09-06_1444/config.h">config.h</a> <span class="note">— coordinates, endpoints, thresholds, pin map</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T14:32-07:00">Sun 6 Sep 2026 · 14:32 PDT</time></span>
+        <span class="title">What the E1002 can do, and what to build with it<span class="badge blue">Reference</span></span>
+        <span class="synopsis">A 15–20 second full refresh with no partial update decides everything. The board suits things that change on a schedule or a button press, not things that respond continuously.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Capabilities</h3>
+      <table class="res">
+        <tr><th>Item</th><th>Detail</th><th>Source</th></tr>
+        <tr><td>Display</td><td>7.3 in E Ink Spectra 6, 800 × 480, six colors — black, white, red, yellow, blue, green</td><td>Seeed spec</td></tr>
+        <tr><td>Refresh</td><td>15–20 s full refresh, <strong>no partial refresh</strong>; holds its frame unpowered</td><td>Seeed spec</td></tr>
+        <tr><td>SoC</td><td>ESP32-S3 rev v0.2, dual core + LP core, 240 MHz</td><td>read from the board</td></tr>
+        <tr><td>Memory</td><td>8 MB PSRAM, 32 MB flash — app0 and app1 at 12 MB each, spiffs 6 MB</td><td>read from the board</td></tr>
+        <tr><td>Wireless</td><td>2.4 GHz Wi-Fi b/g/n, Bluetooth 5.0</td><td>Seeed spec</td></tr>
+        <tr><td>Sensing</td><td>SHT4x temperature and humidity on I²C (GPIO19/20)</td><td>Seeed ESPHome cookbook</td></tr>
+        <tr><td>Input</td><td>Three buttons — green GPIO3, white left GPIO5, white right GPIO4. No touchscreen.</td><td>Seeed ESPHome cookbook</td></tr>
+        <tr><td>Output</td><td>Buzzer on GPIO45 (PWM), status LED on GPIO6</td><td>Seeed ESPHome cookbook</td></tr>
+        <tr><td>Storage</td><td>microSD to 32 GB, FAT32</td><td>Seeed spec</td></tr>
+        <tr><td>Expansion</td><td>8-pin header — UART / I²C / GPIO</td><td>Seeed spec</td></tr>
+        <tr><td>Power</td><td>2000 mAh, USB-C 5 V/1 A, battery sense on GPIO1 (enable GPIO21); ~3 months at a 6-hour refresh</td><td>Seeed spec</td></tr>
+        <tr><td>Physical</td><td>176 × 120 × 53 mm, 17 mm without the stand, metal enclosure</td><td>Seeed spec</td></tr>
+      </table>
+      <p>Seeed's table lists the microphone as <em>reserved</em> rather than fitted, so treat it as absent until something on this unit proves otherwise. Capacitive touch belongs to the E1003, not this model.</p>
+
+      <h3>The constraint that decides everything</h3>
+      <div class="callout orange"><strong>No partial refresh.</strong> Every update repaints the whole panel over 15–20 seconds, with the color flashing that Spectra 6 needs. Nothing that expects a response inside a second belongs on this screen.</div>
+      <p>That removes menus, scrolling, live readouts, games, progress bars, and anything cursor-driven. What remains is everything whose natural cadence is minutes to hours — and there the panel is better than an LCD, because it draws no power holding an image, stays readable in daylight, and looks like print rather than a screen.</p>
+      <p>Battery maths follows the same line. Three months assumes a six-hour refresh. A one-minute refresh would flatten it in days, so the refresh interval is the design decision, not an afterthought.</p>
+
+      <h3>Fits the cadence — scheduled, wakes on a timer</h3>
+      <ul>
+        <li><strong>Morning dashboard.</strong> Calendar, weather, tide or sunrise times, drawn once at 06:00 and once at 18:00. The canonical use, and the one the 3-month figure describes.</li>
+        <li><strong>Role of the day from the AI learning guide.</strong> Pull one entry from <code>ai-learning-guide/</code> each morning — company, role, what to learn for it. Turns a page nobody rereads into something passively encountered.</li>
+        <li><strong>Dronscape capability of the day.</strong> Same pattern against the 60-feature landscape, one card per day with its source link as a QR code.</li>
+        <li><strong>Workshop conditions log.</strong> SHT4x to microSD every few minutes; redraw a 24-hour temperature and humidity chart four times a day. The sensor is already on the board and currently does nothing.</li>
+        <li><strong>Paper of the day.</strong> One arXiv abstract in the areas being tracked, fetched over Wi-Fi at a fixed hour.</li>
+      </ul>
+
+      <h3>Fits the cadence — on demand, a button press earns the wait</h3>
+      <ul>
+        <li><strong>QR handoff to the phone or Quest.</strong> A button renders a QR for a chosen GitHub Pages demo URL. Testing already means opening a pushed page on a headset; a physical button that puts the link in front of the camera removes the typing. Twenty seconds is nothing against walking to a laptop.</li>
+        <li><strong>Laser job preview.</strong> Render a pattern-tool SVG to the panel before cutting — six colors map onto pass or layer assignments, so the preview shows what each pass will do.</li>
+        <li><strong>Dithered image frame.</strong> Six-color dithering against the Spectra palette is the same problem as the dithered QR idea already sitting in the pattern-tool list. The panel is the output device that makes it worth solving properly.</li>
+        <li><strong>Bench sign.</strong> Green button cycles a status — cutting, do not enter, free — with the buzzer confirming the press. It holds the frame with the machine powered down.</li>
+      </ul>
+
+      <h3>Fits the hardware, not just the screen</h3>
+      <ul>
+        <li><strong>Enclosure temperature alarm.</strong> SHT4x plus the buzzer, running on battery inside or beside the laser enclosure. The display only redraws when a threshold is crossed, so it costs almost nothing.</li>
+        <li><strong>Home Assistant panel.</strong> ESPHome support is already there; this is the shortest path to something useful and a good way to learn the refresh behavior before writing firmware.</li>
+        <li><strong>Slow generative art.</strong> One frame an hour from a shader-style field quantised to six colors — a physical counterpart to the WebGL work, where a 20-second repaint reads as deliberate rather than slow.</li>
+      </ul>
+
+      <h3>Ruled out</h3>
+      <p>Anything with a cursor, a scroll, an animation, or a sub-second response. Video, games, live sensor traces, and text entry all fight the panel. A second screen for a laptop is the specific trap — it looks plausible and the refresh makes it unusable.</p>
+
+      <h3>Where to start</h3>
+      <p>ESPHome first, because it reaches every peripheral without writing firmware and shows what a real refresh cycle costs in battery. Once the cadence is understood, Arduino or Zephyr for anything that needs its own drawing code. Both need the factory image mirrored off this machine first.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1432/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1432/peripherals.md">peripherals.md</a> <span class="note">— pin map, partition layout, and display and power figures with their sources</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T13:55-07:00">Sun 6 Sep 2026 · 13:55 PDT</time></span>
+        <span class="title">Factory image captured and verified<span class="badge green">Done</span></span>
+        <span class="synopsis">A 16 MB address ceiling in the ROM loader stopped the backup halfway. Switching loader at the boundary finished it: 32 MB, verified against independent reads, sha256 recorded.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The ceiling</h3>
+      <p>The <code>--no-stub</code> run read 64 consecutive chunks — the whole lower 16 MB — without a single retry, then refused every chunk from <code>0x01000000</code> onward:</p>
+      <pre class="data">chunk  64/128  0x00fc0000  256 kB  50.0%  1 attempt(s)
+chunk  65/128  0x01000000  FAILED after 8 attempts: ERROR: A fatal error occurred:
+  Can't access flash regions larger than 16MB (set size 0x40000 from address
+  0x01000000 goes past 16MB by 0x40000 bytes).</pre>
+      <p>The ROM loader addresses flash with 24 bits, so 16 MB is its hard limit. Reaching a 32 MB part requires the stub flasher — the same stub whose corruption the ROM loader was chosen to avoid.</p>
+      <table class="res">
+        <tr><th>Region</th><th>ROM loader (<code>--no-stub</code>)</th><th>Stub flasher</th></tr>
+        <tr><td>below 16 MB</td><td>reliable — 64 of 64 first attempt</td><td>corrupts roughly 3 reads in 5</td></tr>
+        <tr><td>16 MB and above</td><td>refuses — cannot address it</td><td>the only way in</td></tr>
+      </table>
+      <p>No single <code>esptool read-flash</code> invocation can capture all 32 MB of this board. Testing a read above the boundary before starting a 32 MB run would have shown this in thirty seconds.</p>
+
+      <h3>The fix</h3>
+      <p><code>read-flash-chunked.py</code> gained <code>--stub-mode</code>, defaulting to <code>auto</code>: the ROM loader for chunks entirely below <code>0x1000000</code>, the stub flasher at and above. Each log line names the mode it used. Because completed chunks stay on disk, resuming skipped the 64 already read and finished only the upper half.</p>
+      <table class="res">
+        <tr><th>Half</th><th>Loader</th><th>Attempts per chunk</th></tr>
+        <tr><td>lower 16 MB</td><td>ROM</td><td>64 chunks, all first attempt</td></tr>
+        <tr><td>upper 16 MB</td><td>stub</td><td>59 first, 4 second, 1 third — no failures</td></tr>
+      </table>
+      <p>The stub behaved far better here than its 2-of-5 showing during the trials, so its corruption rate is not steady across the part.</p>
+
+      <h3>Verification</h3>
+      <p>The assembled image is 33 554 432 bytes. Independent reads taken minutes apart, through a different loader, match it byte for byte:</p>
+      <table class="res">
+        <tr><th>Check</th><th>Result</th></tr>
+        <tr><td>ESP image magic <code>0xE9</code> at <code>0x0</code></td><td>present</td></tr>
+        <tr><td>Partition magic <code>0xAA50</code> at <code>0x8000</code>, table parses</td><td>six partitions</td></tr>
+        <tr><td><code>0xFF</code> fill</td><td>94.8%, consistent with a mostly-erased 32 MB part</td></tr>
+        <tr><td><code>0x00000000</code> against an independent ROM-loader read</td><td>identical</td></tr>
+        <tr><td><code>0x01000000</code> against two independent stub reads</td><td>identical</td></tr>
+      </table>
+      <pre class="data">NAME               TYPE/SUB   OFFSET     SIZE
+nvs                01/02      0x00009000 0x0007d000 (500 kB)
+otadata            01/00      0x00086000 0x00002000 (8 kB)
+phy_init           01/01      0x00088000 0x00001000 (4 kB)
+app0               00/10      0x00090000 0x00c00000 (12288 kB)
+app1               00/11      0x00c90000 0x00c00000 (12288 kB)
+spiffs             01/82      0x01890000 0x00600000 (6144 kB)</pre>
+
+      <h3>Two images of this board never share a checksum</h3>
+      <p>A read taken eleven minutes earlier differs from the final image in 53 bytes, at <code>0x00c036</code> and <code>0x00cb80</code>–<code>0x00cbbb</code>. Both sit inside the <code>nvs</code> partition. esptool hard-resets the board after every operation, the firmware boots and writes NVS, and those bytes move. Everything outside <code>nvs</code> was byte-identical. Compare regions outside <code>nvs</code> when checking one capture against another.</p>
+
+      <h3>Where it lives</h3>
+      <pre class="data">seeed-studio-epaper/firmware-backup/
+  2026-09-06_reterminal-e1002-factory-32MB.bin            33554432 bytes
+  2026-09-06_reterminal-e1002-factory-32MB.bin.sha256
+  2026-09-06_reterminal-e1002-factory-32MB.manifest.txt
+
+sha256  2062e5caa9dd8ff2e92e1d24b8a5cdda25992623694d1db1dfb0b3a1c23d7eda</pre>
+      <p>Git ignores the image itself — 32 MB does not belong in a GitHub Pages repository whose history already runs to 340 MB — and tracks the checksum and manifest. <strong>The only copy is on this machine.</strong> Mirror it somewhere else before writing anything to the board.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Mirror the image off this machine. Until that happens the board has no recovery path.</li>
+        <li>Pick a firmware direction: Seeed's web flasher, ESPHome, Arduino, or Zephyr.</li>
+        <li>Confirm a restore round-trips — write the image back and diff everything outside <code>nvs</code> — while a known-good factory image still exists.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1355/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1355/2026-09-06_reterminal-e1002-factory-32MB.manifest.txt">…factory-32MB.manifest.txt</a> <span class="note">— capture method, partition table, verification results</span></li>
+        <li><a href="journal-assets/2026-09-06_1355/2026-09-06_reterminal-e1002-factory-32MB.bin.sha256">…factory-32MB.bin.sha256</a> <span class="note">— checksum of the assembled image</span></li>
+        <li><a href="journal-assets/2026-09-06_1355/chunked-backup.log">chunked-backup.log</a> <span class="note">— both runs, the 16 MB refusals, and per-chunk attempt counts</span></li>
+        <li><a href="journal-assets/2026-09-06_1355/read-flash-chunked.py">read-flash-chunked.py</a> <span class="note">— the reader with <code>--stub-mode auto</code>, as run</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T12:28-07:00">Sun 6 Sep 2026 · 12:28 PDT</time></span>
+        <span class="title">The CH340 link cannot sustain a long read — the ROM loader can<span class="badge blue">Finding</span></span>
+        <span class="synopsis">Backing up the 32 MB factory image failed three times. The stub flasher is twice as fast per byte and corrupts often enough to lose that advantage; esptool's slower <code>--no-stub</code> path passed every trial.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>What prompted it</h3>
+      <p>Backing up the factory image before flashing anything means reading all 32 MB off the board. A plain <code>esptool read-flash 0x0 0x2000000</code> never finished: 921600 lost the chip the moment esptool switched rate, 460800 died with <code>Invalid head of packet</code>, and 115200 reached 240 kB before failing with <code>Corrupt data, expected 0x1000 bytes but received 0xfea bytes</code>.</p>
+
+      <h3>Trials</h3>
+      <p>Rather than spend another 50 minutes discovering a failure, characterise the link with 256 kB reads first. Every trial below is a read; nothing was written to the device.</p>
+      <table class="res">
+        <tr><th>Config</th><th>Short reads passed</th><th>Throughput</th></tr>
+        <tr><td>921600 + stub</td><td>0 — loses the chip after the rate change</td><td>—</td></tr>
+        <tr><td>460800 + stub</td><td>0 — <code>Invalid head of packet</code></td><td>—</td></tr>
+        <tr><td>230400 + stub</td><td>0 — short packets, <code>expected 0x1000, received 0xfc7</code></td><td>—</td></tr>
+        <tr><td>115200 + stub</td><td>2 of 5</td><td>≈10.8 kB/s while running</td></tr>
+        <tr><td>57600 + stub</td><td>1 of 1, at 512 kB</td><td>≈5.4 kB/s</td></tr>
+        <tr><td>115200 <code>--no-stub</code></td><td>4 of 4</td><td>≈5.45 kB/s — 256 kB in 47–48 s</td></tr>
+      </table>
+
+      <h3>The inversion</h3>
+      <p>esptool uploads a stub flasher by default because it moves data roughly twice as fast as the ROM loader. On this link that advantage disappears. At one success in two or three attempts, a 256 kB chunk costs about three tries, so the stub's effective throughput lands near 4 kB/s — below the ROM loader's steady 5.45 kB/s, and with far more babysitting.</p>
+      <div class="callout blue"><strong>Rule for this board:</strong> run everything at 115200, and pick the loader by address — the ROM loader below 16 MB, the stub flasher at and above it, where the ROM loader cannot reach. Below the line the usual advice, raise the baud and keep the stub, is backwards.</div>
+      <p>The failure is not a clean threshold. A single 256 kB read at 115200 with the stub passed on the first attempt, which is what made 115200 look reliable at first; repeating it showed 2 of 5. One sample was not enough to characterise a flaky link.</p>
+
+      <h3>Working around it</h3>
+      <p><code>seeed-studio-epaper/tools/read-flash-chunked.py</code> reads the image 256 kB at a time, retries a chunk up to eight times, and keeps completed chunks on disk so an interrupted run resumes rather than restarting. It concatenates the parts at the end and prints the SHA-256. A corrupted chunk now costs 48 seconds instead of the whole transfer.</p>
+      <pre class="data">./tools/read-flash-chunked.py \
+  --esptool .venv/bin/esptool \
+  --port /dev/cu.usbserial-210 --chip esp32s3 \
+  --baud 115200 --chunk 0x40000 --retries 10 \
+  --out firmware-backup/2026-09-06_reterminal-e1002-factory-32MB.bin</pre>
+
+      <h3>Status</h3>
+      <p>The full 32 MB backup started at 12:28:02 PDT, reading 128 chunks of 256 kB into <code>seeed-studio-epaper/firmware-backup/</code>.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1228/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1228/baud-trials.log">baud-trials.log</a> <span class="note">— every trial with its verbatim esptool error and timing</span></li>
+        <li><a href="journal-assets/2026-09-06_1228/monolithic-read-failures.log">monolithic-read-failures.log</a> <span class="note">— the three whole-image attempts, with the point each one reached</span></li>
+        <li><a href="journal-assets/2026-09-06_1228/read-flash-chunked.py">read-flash-chunked.py</a> <span class="note">— the chunked reader as run, snapshotted at this entry</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T12:13-07:00">Sun 6 Sep 2026 · 12:13 PDT</time></span>
+        <span class="title">reTerminal E1002 identified, ROM bootloader responding<span class="badge green">Resolved</span></span>
+        <span class="synopsis">The board is a Seeed reTerminal E1002. Seeed routes its USB-C port through the CH340 to UART0 by design, and esptool reaches the ESP32-S3 ROM on the first attempt.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The device</h3>
+      <figure>
+        <img src="journal-assets/2026-09-06_1213/device-reterminal-e1002.jpg" alt="Seeed Studio reTerminal E1002 full-color ePaper display showing its factory demo screen">
+        <figcaption>Photographed from the bench, 2026-09-06. The panel shows the factory demo image; ePaper holds its last frame with no power, so the visible screen says nothing about whether the board is running.</figcaption>
+      </figure>
+      <p>The <a href="https://www.seeedstudio.com/reTerminal-E1002-p-6533.html">Seeed Studio reTerminal E1002</a> is a 7.3-inch E Ink Spectra 6 full-color ePaper terminal at 800×480, built on the ESP32-S3R8 with 8 MB PSRAM and 32 MB flash, Wi-Fi 4 and Bluetooth 5.0, a 2000 mAh battery, and USB-C 5 V/1 A input. Seeed's <a href="https://wiki.seeedstudio.com/getting_started_with_reterminal_e1002/">getting-started wiki</a> and the <a href="https://docs.zephyrproject.org/latest/boards/seeed/reterminal_e1002/doc/index.html">Zephyr board documentation</a> both cover it.</p>
+
+      <h3>Why a CH340 sits in front of an ESP32-S3</h3>
+      <p>The ESP32-S3 carries a native USB_SERIAL_JTAG peripheral, so a bridge chip looks redundant. Seeed wires one in deliberately: on the E1002 the USB port reaches UART0 through the CH340 rather than through USB_SERIAL_JTAG, which lets the CH340 drive the EN and BOOT pins and put the board into flashing mode over USB with no button press. The <a href="https://docs.zephyrproject.org/latest/boards/seeed/reterminal_e1002/doc/index.html">Zephyr board documentation</a> states this directly.</p>
+      <p>So <code>1A86:7523</code> on this bench is the reTerminal E1002, and the generic <code>USB Serial</code> descriptor is expected rather than suspicious.</p>
+
+      <h3>Talking to it</h3>
+      <p>esptool v5.4.0, installed into a throwaway venv rather than the system Python, connects on the first attempt and drives its own reset sequence:</p>
+      <pre class="data">Connected to ESP32-S3 on /dev/cu.usbserial-210:
+Chip type:          ESP32-S3 (QFN56) (revision v0.2)
+Features:           Wi-Fi, BT 5 (LE), Dual Core + LP Core, 240MHz, Embedded PSRAM 8MB (AP_3v3)
+Crystal frequency:  40MHz
+MAC:                e0:72:a1:f9:02:60
+
+Flash Memory Information:
+Manufacturer: ef            (Winbond)
+Device: 4019                (W25Q256, 32 Mbyte)
+Detected flash size: 32MB
+Flash type set in eFuse: quad (4 data lines)
+Flash voltage set by eFuse: 3.3V</pre>
+      <p>Silicon revision v0.2, 8 MB embedded PSRAM, and 32 MB of Winbond flash match the published E1002 specification exactly. <code>e0:72:a1:f9:02:60</code> is the base MAC, which also identifies the board on Wi-Fi.</p>
+
+      <h3>Why the earlier sweep heard nothing</h3>
+      <ul>
+        <li>The application firmware writes nothing to UART0, and the board spends most of its life asleep to reach its quoted three-month battery figure. There is no periodic console output to catch.</li>
+        <li>The ROM downloader answers esptool's SLIP-framed binary protocol, not human-readable text, so passive listening finds nothing legible at any baud rate.</li>
+        <li>The earlier reset attempt asserted DTR and RTS together and released them together. That is not the esptool download-mode sequence, so the chip came back up running its application rather than in the ROM downloader.</li>
+      </ul>
+      <div class="callout green"><strong>Corrected reading:</strong> the 36 stray bytes were noise, as suspected — but the UART was never dead. The link works; only the download-mode entry sequence was wrong.</div>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Back up the factory image before writing anything: <code>esptool --port /dev/cu.usbserial-210 --chip esp32s3 read-flash 0x0 0x2000000 fw-backup-32MB.bin</code>. At 32 MB this takes a while, and it is the only way back to the shipped firmware.</li>
+        <li>Choose a path: Seeed's <a href="https://seeed-projects.github.io/OSHW-reTerminal-Series-E-D/">browser web-flasher</a>, <a href="https://wiki.seeedstudio.com/reterminal_e10xx_with_esphome/">ESPHome</a> for Home Assistant, <a href="https://wiki.seeedstudio.com/reterminal_e10xx_with_arduino/">Arduino</a>, or Zephyr.</li>
+        <li>Decide whether the ePaper work belongs in this repo as a web-side companion, or stays firmware-only.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1213/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1213/device-reterminal-e1002.jpg">device-reterminal-e1002.jpg</a> <span class="note">— bench photo, resized for the page</span></li>
+        <li><a href="journal-assets/2026-09-06_1213/IMG_8971.HEIC">IMG_8971.HEIC</a> <span class="note">— the original 4032×3024 capture, unmodified</span></li>
+        <li><a href="journal-assets/2026-09-06_1213/esptool-chip-detect.log">esptool-chip-detect.log</a> <span class="note">— verbatim <code>chip-id</code> and <code>flash-id</code> output</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-06T12:07-07:00">Sun 6 Sep 2026 · 12:07 PDT</time></span>
+        <span class="title">Identify the USB serial device on <code>/dev/cu.usbserial-210</code><span class="badge orange">Inconclusive</span></span>
+        <span class="synopsis">A CH340 bridge enumerates cleanly, but nothing transmits on the UART across ten baud rates, reset pulses, and a 15-second passive listen.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Goal</h3>
+      <p>Determine whether the device plugged into USB is a Seeed Studio board, and open a serial link to it.</p>
+
+      <h3>What the host enumerates</h3>
+      <p><code>ioreg</code> reports a single USB serial device (the only other item on the bus is an Apple Watch charging cable):</p>
+      <pre class="data">/dev/cu.usbserial-210      (also /dev/tty.usbserial-210)
+attached  Sep 6, 11:53
+USB Product Name   "USB Serial"
+idVendor           6790  = 0x1A86   QinHeng / WCH
+idProduct         29987  = 0x7523   CH340 serial converter</pre>
+      <p>The pair <code>1A86:7523</code> is the fixed identifier of the WCH CH340 USB-to-UART bridge — see <a href="https://devicehunt.com/view/type/usb/vendor/1A86/device/7523">DeviceHunt</a> and the <a href="https://usb-ids.gowdy.us/read/UD/1a86/7523">usb.ids registry</a>. A CH340 is a bare bridge chip: it reports no board identity, only the generic string <code>USB Serial</code>, so the descriptors alone cannot name what sits behind it.</p>
+      <p>The bridge chip does not narrow the field much on its own. Seeed's XIAO family presents native USB under Seeed's own vendor ID <code>0x2886</code> — the Seeeduino XIAO enumerates as <code>2886:802F</code>, per <a href="https://github.com/Seeed-Studio/Signed_USB_Serial_Driver/blob/master/seeed_usb_serial.inf">Seeed's driver INF</a> — but many boards, Seeed's own included, route USB through a third-party UART bridge instead. A CH340 is equally consistent with a USB-to-TTL adapter, an Arduino clone, or a controller board.</p>
+
+      <h3>Method</h3>
+      <p>pyserial is absent from the Homebrew Python, so the probe drives the port through raw <code>termios</code> instead of adding a dependency. Three choices keep the probe non-destructive:</p>
+      <ul>
+        <li>Open the callout node <code>/dev/cu.*</code>, which does not block waiting for carrier detect.</li>
+        <li>Clear <code>HUPCL</code> in the control flags, so closing the port does not drop DTR and reset an attached board.</li>
+        <li>Send only read-only queries: <code>CR/LF</code>, GRBL's <code>?</code> status request and <code>$I</code> build-info request, and Marlin's <code>M115</code> firmware-info request.</li>
+      </ul>
+      <p>A second pass adds an Arduino-style auto-reset — assert DTR and RTS for 200 ms, release, then listen — and reaches non-standard baud rates through the macOS <code>IOSSIOSPEED</code> ioctl (<code>0x80045402</code>), which <code>termios</code> speed constants do not cover.</p>
+
+      <h3>Results</h3>
+      <table class="res">
+        <tr><th>Pass</th><th>Coverage</th><th>Outcome</th></tr>
+        <tr><td>Passive + queries</td><td>115200, 9600, 57600, 38400, 19200, 230400</td><td>Silent, except 3 bytes at 9600 (<code>40 0a fe</code>)</td></tr>
+        <tr><td>Reset pulse</td><td>115200, 74880, 9600, 250000, 921600</td><td>Silent, except 22 garbled bytes at 74880</td></tr>
+        <tr><td>Reset sweep, 2 trials each</td><td>10 rates, 9600 → 921600</td><td>1 hit in 20 trials: 11 garbled bytes at 38400</td></tr>
+        <tr><td>Loopback</td><td>115200</td><td>No echo — TX and RX are not tied together</td></tr>
+        <tr><td>Passive listen, 15 s</td><td>115200 and 9600</td><td>Zero bytes, zero bursts</td></tr>
+      </table>
+
+      <h3>Reading the result</h3>
+      <p>Three bursts totalling 36 bytes arrived across roughly thirty trials, at three unrelated baud rates, and none reproduced on a second attempt at the same rate. A genuine transmitter would produce framing errors at every wrong rate and clean text at the right one; it would also repeat. A floating UART RX pin picks up noise and emits exactly this pattern — occasional short random bursts, unrepeatable.</p>
+      <div class="callout orange"><strong>Conclusion:</strong> the CH340 bridge and its macOS driver work — the port opens, accepts baud changes, and drives DTR/RTS. Nothing is talking on the UART behind it.</div>
+
+      <h3>Candidate causes</h3>
+      <ul>
+        <li>The adapter is a bare USB-to-TTL cable with nothing wired to its RX/TX pins.</li>
+        <li>The attached board is unpowered, held in reset, or runs firmware that prints nothing on boot.</li>
+        <li>TX is wired to TX and RX to RX rather than crossed.</li>
+        <li>Logic levels mismatch — a 5 V adapter against a 3.3 V board, or the reverse.</li>
+      </ul>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Name the board, which narrows the expected baud and boot banner immediately.</li>
+        <li>Check for a power LED on the board and confirm the adapter's voltage-select jumper.</li>
+        <li>Confirm the crossover: adapter TX to board RX, adapter RX to board TX, grounds common.</li>
+        <li>If the board is an ESP8266 or ESP32, run <code>esptool.py chip_id</code>, which drives its own reset sequence and reports the chip over the ROM bootloader rather than relying on application output.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-06_1207/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-06_1207/usb-enumeration.txt">usb-enumeration.txt</a> <span class="note">— <code>ioreg</code> and <code>/dev</code> listings behind the identification above</span></li>
+        <li><a href="journal-assets/2026-09-06_1207/probe-1-passive-and-queries.py">probe-1-passive-and-queries.py</a> <span class="note">— passive listen plus the GRBL and Marlin read-only queries, six baud rates</span></li>
+        <li><a href="journal-assets/2026-09-06_1207/probe-2-reset-pulse.py">probe-2-reset-pulse.py</a> <span class="note">— DTR/RTS reset pulse, <code>IOSSIOSPEED</code> for non-standard bauds, loopback and modem-line checks</span></li>
+        <li><a href="journal-assets/2026-09-06_1207/probe-3-baud-sweep.py">probe-3-baud-sweep.py</a> <span class="note">— ten baud rates, two reset trials each, ranked by printable ratio</span></li>
+        <li><a href="journal-assets/2026-09-06_1207/probe-4-passive-listen.py">probe-4-passive-listen.py</a> <span class="note">— 15-second passive listen at 115200 and 9600, counting bursts</span></li>
+        <li><a href="journal-assets/2026-09-06_1207/probe-output.log">probe-output.log</a> <span class="note">— verbatim console capture from all four runs</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+</div>
+
+<script>
+  var entries = document.querySelectorAll('.entry');
+  document.getElementById('count').textContent =
+    entries.length + (entries.length === 1 ? ' entry' : ' entries');
+  document.getElementById('expand').addEventListener('click', function () {
+    entries.forEach(function (e) { e.open = true; });
+  });
+  document.getElementById('collapse').addEventListener('click', function () {
+    entries.forEach(function (e) { e.open = false; });
+  });
+</script>
+</body>
+</html>

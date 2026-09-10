@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morning Dashboard — reTerminal E1002</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 660px; margin-bottom: 32px; }
+
+  .controls { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; margin-bottom: 24px; }
+  .controls label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  select, input[type=range] { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  input[type=range] { padding: 0; width: 120px; }
+  .val { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #5b9bd5; min-width: 38px; }
+  .note { font-size: 13px; color: #666; margin-bottom: 24px; max-width: 660px; }
+  .note b { color: #aaa; }
+
+  .frame { display: inline-block; padding: 14px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; }
+  .caption { font-size: 12px; color: #555; margin-top: 10px; font-family: 'SF Mono','Fira Code',monospace; }
+
+  /* ── E Ink Spectra 6 palette, approximated as the panel renders it ── */
+  .panel {
+    --paper:  #EDEAE2;
+    --ink:    #22201E;
+    --red:    #C0392B;
+    --yellow: #E8C33A;
+    --blue:   #2F5597;
+    --green:  #4A8B3B;
+    width: 800px; height: 480px;
+    background: var(--paper); color: var(--ink);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .hd { background: var(--blue); color: var(--paper); height: 80px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+  .hd-day { font-size: 38px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .hd-date { font-size: 16px; font-weight: 600; opacity: 0.85; margin-top: 3px; }
+  .hd-right { text-align: right; }
+  .hd-place { font-size: 14px; font-weight: 800; letter-spacing: 2px; }
+  .hd-sub { font-size: 12px; opacity: 0.8; margin-top: 3px; }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+  .wx { flex: 1.3; padding: 14px 22px; display: flex; flex-direction: column; justify-content: center;
+        border-right: 4px solid var(--ink); min-width: 0; }
+  .wx-top { display: flex; align-items: center; gap: 14px; }
+  .wx-now { font-size: 76px; font-weight: 800; line-height: 0.88; letter-spacing: -3px; }
+  .wx-cond { font-size: 19px; font-weight: 700; margin-top: 8px; }
+  .wx-lo { font-size: 15px; font-weight: 600; margin-top: 5px; }
+  .wx-lo b { color: var(--blue); }
+
+  .side { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .card { flex: 1; padding: 8px 16px; display: flex; flex-direction: column; justify-content: center;
+          border-bottom: 4px solid var(--ink); min-height: 0; }
+  .card:last-child { border-bottom: none; }
+  .card-k { font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; }
+  .peak { background: var(--yellow); }
+  .peak-v { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -2px; }
+  .peak-t { font-size: 13px; font-weight: 700; }
+  .sun { background: var(--green); color: var(--paper); }
+  .sun-row { display: flex; justify-content: space-between; font-size: 17px; font-weight: 700; margin-top: 2px; }
+  .in-row { display: flex; gap: 14px; align-items: baseline; }
+  .in-v { font-size: 26px; font-weight: 800; }
+  .in-u { font-size: 13px; font-weight: 700; }
+
+  .band { flex-shrink: 0; display: flex; align-items: center; gap: 14px;
+          padding: 0 24px; border-top: 4px solid var(--ink); }
+  .bin { background: var(--red); color: var(--paper); height: 66px; }
+  .bin-txt { font-size: 25px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+  .bin-sub { font-size: 13px; font-weight: 700; opacity: 0.92; }
+  .lch { background: var(--blue); color: var(--paper); height: 74px; }
+  .lch-txt { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.15; }
+  .lch-sub { font-size: 13px; font-weight: 700; opacity: 0.92; margin-top: 2px; }
+  .lch-time { font-size: 30px; font-weight: 800; margin-left: auto; text-align: right; line-height: 1; }
+  .lch-tz { font-size: 12px; font-weight: 700; opacity: 0.85; }
+  .prime { display: inline-block; background: var(--yellow); color: var(--ink); font-size: 11px;
+           font-weight: 800; letter-spacing: 1.2px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: 3px; }
+
+  .ft { height: 78px; flex-shrink: 0; display: flex; align-items: center; gap: 16px;
+        padding: 0 24px; border-top: 4px solid var(--ink); }
+  .bat { display: flex; align-items: center; gap: 4px; }
+  .bat-body { width: 96px; height: 34px; border: 4px solid var(--ink); border-radius: 5px; padding: 3px; display: flex; gap: 3px; }
+  .bat-cap { width: 6px; height: 15px; background: var(--ink); border-radius: 0 3px 3px 0; }
+  .seg { flex: 1; }
+  .bat-pct { font-size: 30px; font-weight: 800; letter-spacing: -1px; }
+  .bat-info { flex: 1; min-width: 0; }
+  .bat-k { font-size: 10px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+  .bat-v { font-size: 19px; font-weight: 800; }
+  .ft-right { text-align: right; font-size: 11px; font-weight: 600; line-height: 1.5; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 800;
+          letter-spacing: 0.5px; color: var(--paper); background: var(--red); }
+</style>
+</head>
+<body>
+<a class="back" href="../../">← Back</a>
+
+<div class="page">
+  <h1>Morning Dashboard</h1>
+  <p class="subtitle">Layout for the reTerminal E1002 at its native 800 × 480, drawn in the six colours the Spectra 6 panel can produce. Hard-coded for San Martin, CA.</p>
+
+  <div class="controls">
+    <label for="day">Day</label>
+    <select id="day">
+      <option value="1">Monday</option>
+      <option value="2" selected>Tuesday</option>
+      <option value="6">Saturday</option>
+    </select>
+    <label for="cond">Sky</label>
+    <select id="cond">
+      <option value="clear" selected>Clear</option>
+      <option value="partly">Partly cloudy</option>
+      <option value="cloud">Cloudy</option>
+      <option value="rain">Rain</option>
+      <option value="fog">Fog</option>
+    </select>
+    <label for="lch">Vandenberg</label>
+    <select id="lch">
+      <option value="none">Nothing tonight</option>
+      <option value="prime" selected>Launch, prime window</option>
+      <option value="late">Launch, late night</option>
+      <option value="landing">Launch + LZ-4 landing</option>
+    </select>
+    <label for="bat">Battery</label>
+    <input type="range" id="bat" min="0" max="100" value="78">
+    <span class="val" id="batval">78%</span>
+    <label for="days">Runway</label>
+    <select id="days">
+      <option value="ok" selected>Enough data</option>
+      <option value="learning">Still learning</option>
+    </select>
+  </div>
+
+  <p class="note">The launch band appears only when the sky is <b>clear or partly cloudy</b> — pick Cloudy, Rain or Fog and it disappears, which is the rule doing its job. Both bands can show at once; the weather block gives up the space.</p>
+
+  <div class="frame">
+    <div class="panel">
+
+      <div class="hd">
+        <div>
+          <div class="hd-day" id="hd-day">TUESDAY</div>
+          <div class="hd-date" id="hd-date">8 September 2026</div>
+        </div>
+        <div class="hd-right">
+          <div class="hd-place">SAN MARTIN, CA</div>
+          <div class="hd-sub">updated 06:00</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="wx">
+          <div class="wx-top">
+            <svg id="icon" width="96" height="96" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <div class="wx-now"><span id="wx-now">61</span>°</div>
+          </div>
+          <div class="wx-cond" id="wx-cond">Clear all day</div>
+          <div class="wx-lo">Low tonight <b id="wx-lo">54°</b> &nbsp;·&nbsp; Feels like <b id="wx-fl">59°</b></div>
+        </div>
+        <div class="side">
+          <div class="card peak">
+            <div class="card-k">Peak today</div>
+            <div class="peak-v"><span id="pk">94</span>°</div>
+            <div class="peak-t" id="pk-t">at 3:40 PM</div>
+          </div>
+          <div class="card sun">
+            <div class="card-k">Sun</div>
+            <div class="sun-row"><span id="sr">6:42a</span><span id="ss">7:29p</span></div>
+          </div>
+          <div class="card">
+            <div class="card-k">Inside</div>
+            <div class="in-row"><span class="in-v" id="in-t">72°</span><span class="in-u" id="in-h">41% RH</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="band bin" id="bin">
+        <svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="9" y="14" width="30" height="29" rx="3" fill="#EDEAE2"/>
+          <rect x="6" y="9" width="36" height="6" rx="3" fill="#EDEAE2"/>
+          <rect x="19" y="5" width="10" height="5" rx="2" fill="#EDEAE2"/>
+          <rect x="16" y="20" width="4" height="17" fill="#C0392B"/>
+          <rect x="28" y="20" width="4" height="17" fill="#C0392B"/>
+        </svg>
+        <div>
+          <div class="bin-txt">BINS OUT TONIGHT</div>
+          <div class="bin-sub">Kerb by 6 AM — it is Monday</div>
+        </div>
+      </div>
+
+      <div class="band lch" id="lch">
+        <svg width="42" height="42" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 3c7 7 10 16 10 25l-4 6H18l-4-6c0-9 3-18 10-25z" fill="#EDEAE2" stroke="#22201E" stroke-width="2"/>
+          <circle cx="24" cy="19" r="4.5" fill="#2F5597" stroke="#22201E" stroke-width="2"/>
+          <path d="M14 30l-5 8h9zM34 30l5 8h-9z" fill="#C0392B" stroke="#22201E" stroke-width="2"/>
+          <path d="M20 40c1 4 2 5 4 6 2-1 3-2 4-6z" fill="#E8C33A"/>
+        </svg>
+        <div>
+          <div class="lch-txt" id="lch-txt">FALCON 9 · STARLINK 15-24<span class="prime" id="lch-prime">PRIME</span></div>
+          <div class="lch-sub" id="lch-sub">LOOK SSE · 200 mi · booster back to LZ-4</div>
+        </div>
+        <div class="lch-time"><span id="lch-time">8:14</span><div class="lch-tz" id="lch-tz">PM · 45 min after sunset</div></div>
+      </div>
+
+      <div class="ft">
+        <div class="bat">
+          <div class="bat-body" id="bat-body"></div>
+          <div class="bat-cap"></div>
+        </div>
+        <div class="bat-pct" id="bat-pct">78%</div>
+        <div class="bat-info">
+          <div class="bat-k">Runway</div>
+          <div class="bat-v" id="run">≈ 71 days left</div>
+        </div>
+        <div class="ft-right">next refresh 06:00<br>open-meteo · thespacedevs · 6 h wake</div>
+      </div>
+
+    </div>
+    <div class="caption">800 × 480 · six colours · full refresh 15–20 s</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var P = { paper:'#EDEAE2', ink:'#22201E', red:'#C0392B', yellow:'#E8C33A', blue:'#2F5597', green:'#4A8B3B' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function rays() {
+    var out = '<g stroke="'+P.ink+'" stroke-width="5" stroke-linecap="round">';
+    for (var i = 0; i < 8; i++) {
+      var a = i * Math.PI / 4;
+      out += '<line x1="'+(50+Math.cos(a)*30).toFixed(1)+'" y1="'+(50+Math.sin(a)*30).toFixed(1)+
+             '" x2="'+(50+Math.cos(a)*41).toFixed(1)+'" y2="'+(50+Math.sin(a)*41).toFixed(1)+'"/>';
+    }
+    return out + '</g>';
+  }
+  var ICONS = {
+    clear:  '<circle cx="50" cy="50" r="22" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="4"/>' + rays(),
+    partly: '<circle cx="38" cy="38" r="17" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<path d="M28 74h44a15 15 0 0 0 0-30 21 21 0 0 0-40-4 13 13 0 0 0-4 34z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>',
+    cloud:  '<path d="M24 76h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>',
+    rain:   '<path d="M24 62h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<g stroke="'+P.blue+'" stroke-width="7" stroke-linecap="round"><line x1="34" y1="72" x2="30" y2="88"/><line x1="52" y1="72" x2="48" y2="88"/><line x1="70" y1="72" x2="66" y2="88"/></g>',
+    fog:    '<path d="M24 56h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<g stroke="'+P.blue+'" stroke-width="7" stroke-linecap="round"><line x1="20" y1="70" x2="80" y2="70"/><line x1="30" y1="84" x2="72" y2="84"/></g>'
+  };
+
+  var COND = {
+    clear:  {label:'Clear all day',            now:61, peak:94, peakAt:'at 3:40 PM', lo:54, feels:59, clearSky:true},
+    partly: {label:'Partly cloudy',            now:59, peak:88, peakAt:'at 3:10 PM', lo:53, feels:57, clearSky:true},
+    cloud:  {label:'Overcast',                 now:56, peak:74, peakAt:'at 2:20 PM', lo:52, feels:54, clearSky:false},
+    rain:   {label:'Rain this morning',        now:53, peak:61, peakAt:'at 1:50 PM', lo:49, feels:50, clearSky:false},
+    fog:    {label:'Valley fog, burning off',  now:51, peak:83, peakAt:'at 3:55 PM', lo:48, feels:49, clearSky:false}
+  };
+  var DAYS = {1:['MONDAY','7 September 2026'], 2:['TUESDAY','8 September 2026'], 6:['SATURDAY','12 September 2026']};
+  var LAUNCH = {
+    prime:   {txt:'FALCON 9 · STARLINK 15-24', sub:'LOOK SSE · 200 mi · booster to droneship',
+              time:'8:14', tz:'PM · 45 min after sunset', prime:true},
+    late:    {txt:'FALCON 9 · USSF-153',       sub:'LOOK SSE · 200 mi · high overhead pass',
+              time:'11:52', tz:'PM · well after dark', prime:false},
+    landing: {txt:'FALCON 9 · SDA TRANCHE 1',  sub:'LOOK SSE · booster back to LZ-4 · expect booms',
+              time:'8:47', tz:'PM · 78 min after sunset', prime:true}
+  };
+
+  function render() {
+    var d = $('day').value, c = $('cond').value, pct = +$('bat').value,
+        learning = $('days').value === 'learning', lk = $('lch').value;
+    var w = COND[c];
+
+    $('hd-day').textContent = DAYS[d][0];
+    $('hd-date').textContent = DAYS[d][1];
+    $('icon').innerHTML = ICONS[c];
+    $('wx-now').textContent = w.now;
+    $('wx-cond').textContent = w.label;
+    $('wx-lo').textContent = w.lo + '°';
+    $('wx-fl').textContent = w.feels + '°';
+    $('pk').textContent = w.peak;
+    $('pk-t').textContent = w.peakAt;
+
+    $('bin').style.display = (d === '1') ? 'flex' : 'none';
+
+    // A launch only earns space when the sky will actually show it.
+    var show = lk !== 'none' && w.clearSky;
+    $('lch').style.display = show ? 'flex' : 'none';
+    if (show) {
+      var L = LAUNCH[lk];
+      $('lch-txt').firstChild.nodeValue = L.txt;
+      $('lch-prime').style.display = L.prime ? 'inline-block' : 'none';
+      $('lch-sub').textContent = L.sub;
+      $('lch-time').textContent = L.time;
+      $('lch-tz').textContent = L.tz;
+    }
+
+    var col = pct <= 15 ? P.red : (pct <= 35 ? P.yellow : P.green);
+    var html = '';
+    for (var i = 0; i < 5; i++) {
+      html += '<div class="seg" style="background:' + (pct > i * 20 ? col : 'transparent') + '"></div>';
+    }
+    $('bat-body').innerHTML = html;
+    $('bat-pct').textContent = pct + '%';
+    $('bat-pct').style.color = pct <= 15 ? P.red : P.ink;
+    $('batval').textContent = pct + '%';
+
+    var run = $('run');
+    if (pct <= 15) {
+      run.innerHTML = '<span class="pill">PLUG IN NOW</span>';
+    } else if (learning) {
+      run.textContent = 'learning drain rate…';
+      run.style.color = P.ink;
+    } else {
+      var days = Math.round(pct * 0.91);
+      run.textContent = '≈ ' + days + ' days left';
+      run.style.color = days <= 10 ? P.red : P.ink;
+    }
+  }
+
+  ['day','cond','lch','bat','days'].forEach(function (id) {
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  });
+  render();
+})();
+</script>
+</body>
+</html>

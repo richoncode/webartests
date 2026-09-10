@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morning Dashboard — reTerminal E1002</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 680px; margin-bottom: 28px; }
+  .controls { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+  .controls label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  select, input[type=range] { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  input[type=range] { padding: 0; width: 120px; }
+  .val { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #5b9bd5; min-width: 38px; }
+  .note { font-size: 13px; color: #666; margin-bottom: 22px; max-width: 680px; }
+  .note b { color: #aaa; }
+  .frame { display: inline-block; padding: 14px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; }
+  .caption { font-size: 12px; color: #555; margin-top: 10px; font-family: 'SF Mono','Fira Code',monospace; }
+  .geom { margin-top: 34px; }
+  .geom h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .geom p { font-size: 14px; color: #666; margin-bottom: 16px; max-width: 680px; }
+  table.g { border-collapse: collapse; font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; }
+  table.g th { text-align: left; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #555; padding: 0 18px 8px 0; border-bottom: 1px solid #262626; }
+  table.g td { padding: 6px 18px 6px 0; border-bottom: 1px solid #161616; color: #bbb; }
+  table.g td:first-child { color: #5b9bd5; }
+  table.g tr.off td { color: #444; }
+
+  /* ── E Ink Spectra 6 palette, approximated until the panel is photographed ── */
+  .panel {
+    --paper:  #EDEAE2; --ink: #22201E; --red: #C0392B;
+    --yellow: #E8C33A; --blue: #2F5597; --green: #4A8B3B;
+    position: relative; width: 800px; height: 480px;
+    background: var(--paper); color: var(--ink);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    line-height: 1.15; overflow: hidden;
+  }
+  .box { position: absolute; overflow: hidden; }
+  .k { font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; }
+  .rule { background: var(--red); }
+  .hrule, .vrule { background: var(--ink); }
+
+  /* Header */
+  .hd { background: var(--blue); color: var(--paper); padding: 0 22px; display: flex; align-items: center; justify-content: space-between; }
+  .hd-day { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
+  .hd-date { font-size: 14px; font-weight: 600; opacity: 0.85; margin-top: 3px; }
+  .hd-mid { display: flex; align-items: center; gap: 10px; }
+  .hd-now { font-size: 46px; font-weight: 800; letter-spacing: -2px; }
+  .hd-cond { font-size: 14px; font-weight: 700; opacity: 0.92; max-width: 120px; }
+  .hd-place { font-size: 13px; font-weight: 800; letter-spacing: 1.8px; text-align: right; }
+  .hd-sub { font-size: 11px; opacity: 0.85; margin-top: 3px; text-align: right; }
+
+  /* Detail row */
+  .cell { padding: 0 16px; display: flex; flex-direction: column; justify-content: center; }
+  .peak { background: var(--yellow); }
+  .peak-v { font-size: 34px; font-weight: 800; line-height: 1; margin-top: 3px; letter-spacing: -1px; }
+  .peak-t { font-size: 12px; font-weight: 700; margin-top: 3px; }
+  .sun { background: var(--green); color: var(--paper); }
+  .sun-v { font-size: 20px; font-weight: 800; margin-top: 4px; }
+  .air-row { display: flex; gap: 9px; align-items: baseline; margin-top: 3px; }
+  .air-v { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .air-b { font-size: 13px; font-weight: 800; letter-spacing: 0.8px; }
+  .air-pm { font-size: 11px; font-weight: 700; opacity: 0.72; margin-left: auto; }
+  .air-chip { font-size: 12px; font-weight: 800; letter-spacing: 0.8px; padding: 3px 8px;
+              border: 2px solid var(--ink); }
+  .air-bar { height: 6px; margin-top: 6px; display: flex; gap: 2px; }
+  .air-bar div { flex: 1; }
+
+  /* Forecast strip */
+  .fc { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
+  .fc.today { background: var(--yellow); }
+  .fc-d { font-size: 12px; font-weight: 800; letter-spacing: 1.4px; }
+  .fc-t { display: flex; align-items: baseline; gap: 7px; }
+  .fc-hi { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .fc-lo { font-size: 15px; font-weight: 700; color: var(--blue); }
+  .fc-p { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--blue); }
+  .fc-p.dry { color: rgba(34,32,30,0.38); }
+
+  /* Bands */
+  .bin { background: var(--red); color: var(--paper); padding: 0 22px; display: flex; align-items: center; gap: 11px; }
+  .bin-txt { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
+  .bin-sub { font-size: 13px; font-weight: 700; opacity: 0.9; margin-left: auto; }
+  .lch { background: var(--blue); color: var(--paper); padding: 0 22px; display: flex; align-items: center; gap: 12px; }
+  .lch-txt { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
+  .lch-sub { font-size: 12px; font-weight: 700; opacity: 0.92; margin-top: 2px; }
+  .lch-time { font-size: 25px; font-weight: 800; margin-left: auto; text-align: right; }
+  .lch-tz { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .prime { display: inline-block; background: var(--yellow); color: var(--ink); font-size: 10px; font-weight: 800;
+           letter-spacing: 1.2px; padding: 2px 7px; border-radius: 10px; margin-left: 7px; vertical-align: 2px; }
+
+  /* Footer */
+  .ft { padding: 0 22px; display: flex; align-items: center; gap: 16px; }
+  .bat-body { width: 92px; height: 32px; border: 4px solid var(--ink); border-radius: 5px; padding: 3px; display: flex; gap: 3px; }
+  .bat-cap { width: 6px; height: 14px; background: var(--ink); border-radius: 0 3px 3px 0; }
+  .seg { flex: 1; }
+  .bat-pct { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+  .bat-info { flex: 1; min-width: 0; }
+  .bat-v { font-size: 18px; font-weight: 800; }
+  .run-n { font-size: 17px; font-weight: 800; }
+  .run-l { font-size: 12px; font-weight: 700; }
+  .ft-right { text-align: right; font-size: 11px; font-weight: 700; line-height: 1.75; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 800; color: var(--paper); background: var(--red); }
+
+  .grid .box { outline: 1px dashed rgba(255,0,255,0.5); outline-offset: -1px; }
+  .grid .box::after { content: attr(data-g); position: absolute; left: 2px; top: 1px;
+                      font: 700 9px/1.2 'SF Mono', monospace; color: #d0f; background: rgba(255,255,255,0.82); padding: 1px 3px; }
+</style>
+</head>
+<body>
+<a class="back" href="../../">← Back</a>
+
+<div class="page">
+  <h1>Morning Dashboard</h1>
+  <p class="subtitle">Layout for the reTerminal E1002 at its native 800 × 480, in the six colours Spectra 6 can produce. Hard-coded for San Martin, CA. Every box is absolutely placed, so the coordinates below are the ones the firmware draws at.</p>
+
+  <div class="controls">
+    <label for="day">Day</label>
+    <select id="day"><option value="1">Monday</option><option value="2" selected>Tuesday</option><option value="6">Saturday</option></select>
+    <label for="cond">Sky</label>
+    <select id="cond">
+      <option value="clear" selected>Clear</option><option value="partly">Partly cloudy</option>
+      <option value="cloud">Cloudy</option><option value="rain">Rain</option><option value="fog">Fog</option>
+    </select>
+    <label for="lch">Vandenberg</label>
+    <select id="lch">
+      <option value="none">Nothing tonight</option><option value="prime" selected>Launch, prime window</option>
+      <option value="late">Launch, late night</option><option value="landing">Launch + LZ-4 landing</option>
+    </select>
+    <label for="evt">Calendar</label>
+    <select id="evt">
+      <option value="" selected>No event</option>
+      <option value="RICHARD'S BIRTHDAY">Richard — 8 May</option>
+      <option value="RHONDA'S BIRTHDAY">Rhonda — 8 Jan</option>
+      <option value="MAESTRO'S BIRTHDAY">Maestro — 15 Jun</option>
+      <option value="TORI'S BIRTHDAY">Tori — 10 Oct</option>
+      <option value="CALIFORNIA WILDLIFE DAY">California Wildlife Day — 4 Sep</option>
+    </select>
+    <label for="aqi">Air</label>
+    <select id="aqi"><option value="30" selected>AQI 30</option><option value="78">AQI 78</option><option value="164">AQI 164</option></select>
+    <label for="bat">Battery</label>
+    <input type="range" id="bat" min="0" max="100" value="78"><span class="val" id="batval">78%</span>
+    <label for="days">Runway</label>
+    <select id="days"><option value="ok" selected>Enough data</option><option value="learning">Still learning</option></select>
+    <label for="grid">Coords</label>
+    <select id="grid"><option value="off" selected>Hidden</option><option value="on">Overlay</option></select>
+  </div>
+
+  <p class="note">Today is the first column of the forecast strip, so today's high, low and precipitation come from the same array as the other four days — no second request and no chance of "today" disagreeing between two places. The launch band draws only when the sky is <b>clear or partly cloudy</b>; the strip absorbs whatever height the bands leave.</p>
+
+  <div class="frame">
+    <div class="panel" id="panel"></div>
+    <div class="caption">800 × 480 · six colours · full refresh 15–20 s</div>
+  </div>
+
+  <div class="geom">
+    <h2>Layout geometry</h2>
+    <p>Recomputed for the current state. These are the rectangles the firmware fills and clips text into — transcribe them straight into <code>layout.h</code>.</p>
+    <table class="g" id="gtable"></table>
+  </div>
+</div>
+
+<script>
+(function () {
+  var P = { paper:'#EDEAE2', ink:'#22201E', red:'#C0392B', yellow:'#E8C33A', blue:'#2F5597', green:'#4A8B3B' };
+  var W = 800, H = 480;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var HEADER_H = 84, KEYLINE_H = 5, DETAIL_H = 80, FOOTER_H = 78;
+  var BIN_H = 40, LCH_H = 56, EVT_H = 44, RULE = 4;
+  // Stacking event + bins + launch leaves the forecast strip at 73 px against
+  // the 104 px its contents need, so event and bins share one row when both fire.
+  var HALF_W = 398;
+  var FC_PITCH = 160, FC_COLW = 156, FC_N = 5;
+  var CELLS = [[0,280],[284,220],[508,292]];   // peak | sun | air
+
+  function layout(showEvt, showBin, showLch) {
+    var L = {};
+    L.header  = [0, 0, W, HEADER_H];
+    L.keyline = [0, HEADER_H, W, KEYLINE_H];
+    var top = HEADER_H + KEYLINE_H;
+    L.peak = [CELLS[0][0], top, CELLS[0][1], DETAIL_H];
+    L.cell1Rule = [CELLS[0][1], top, RULE, DETAIL_H];
+    L.sun  = [CELLS[1][0], top, CELLS[1][1], DETAIL_H];
+    L.cell2Rule = [CELLS[1][0] + CELLS[1][1], top, RULE, DETAIL_H];
+    L.air  = [CELLS[2][0], top, CELLS[2][1], DETAIL_H];
+    L.detailRule = [0, top + DETAIL_H, W, RULE];
+    var fcTop = top + DETAIL_H + RULE;
+
+    L.footer   = [0, H - FOOTER_H, W, FOOTER_H];
+    L.footRule = [0, H - FOOTER_H - RULE, W, RULE];
+    var bb = H - FOOTER_H - RULE;
+    if (showLch) { L.launch = [0, bb - LCH_H, W, LCH_H]; bb -= LCH_H + RULE; L.lchRule = [0, bb, W, RULE]; }
+    L.sharedRow = showEvt && showBin;
+    if (L.sharedRow) {
+      var y = bb - EVT_H;
+      L.event      = [0, y, HALF_W, EVT_H];
+      L.evtBinRule = [HALF_W, y, RULE, EVT_H];
+      L.bins       = [HALF_W + RULE, y, HALF_W, EVT_H];
+      bb -= EVT_H + RULE; L.bandRule = [0, bb, W, RULE];
+    } else if (showEvt) {
+      L.event = [0, bb - EVT_H, W, EVT_H]; bb -= EVT_H + RULE; L.bandRule = [0, bb, W, RULE];
+    } else if (showBin) {
+      L.bins  = [0, bb - BIN_H, W, BIN_H]; bb -= BIN_H + RULE; L.bandRule = [0, bb, W, RULE];
+    }
+    L.forecast = [0, fcTop, W, bb - fcTop];
+    return L;
+  }
+
+  function rays() {
+    var out = '<g stroke="'+P.ink+'" stroke-width="6" stroke-linecap="round">';
+    for (var i = 0; i < 8; i++) { var a = i * Math.PI / 4;
+      out += '<line x1="'+(50+Math.cos(a)*30).toFixed(1)+'" y1="'+(50+Math.sin(a)*30).toFixed(1)+
+             '" x2="'+(50+Math.cos(a)*42).toFixed(1)+'" y2="'+(50+Math.sin(a)*42).toFixed(1)+'"/>'; }
+    return out + '</g>';
+  }
+  function icon(kind, onYellow) {
+    var cloudFill = onYellow ? P.paper : P.paper;
+    return {
+      clear:  '<circle cx="50" cy="50" r="21" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="6"/>' + rays(),
+      partly: '<circle cx="38" cy="38" r="17" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="6"/>' +
+              '<path d="M28 76h44a15 15 0 0 0 0-30 21 21 0 0 0-40-4 13 13 0 0 0-4 34z" fill="'+cloudFill+'" stroke="'+P.ink+'" stroke-width="6"/>',
+      cloud:  '<path d="M24 76h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+cloudFill+'" stroke="'+P.ink+'" stroke-width="6"/>',
+      rain:   '<path d="M24 60h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+cloudFill+'" stroke="'+P.ink+'" stroke-width="6"/>' +
+              '<g stroke="'+P.blue+'" stroke-width="8" stroke-linecap="round"><line x1="34" y1="72" x2="30" y2="90"/><line x1="52" y1="72" x2="48" y2="90"/><line x1="70" y1="72" x2="66" y2="90"/></g>',
+      fog:    '<path d="M24 54h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+cloudFill+'" stroke="'+P.ink+'" stroke-width="6"/>' +
+              '<g stroke="'+P.blue+'" stroke-width="8" stroke-linecap="round"><line x1="20" y1="72" x2="80" y2="72"/><line x1="30" y1="88" x2="72" y2="88"/></g>'
+    }[kind];
+  }
+  function drop(col) {
+    return '<svg width="11" height="14" viewBox="0 0 12 16"><path d="M6 1c3 5 5 7.5 5 10a5 5 0 0 1-10 0c0-2.5 2-5 5-10z" fill="'+col+'"/></svg>';
+  }
+
+  var COND = {
+    clear:  {label:'Clear all day',           now:61, peakAt:'at 3:40 PM', clearSky:true},
+    partly: {label:'Partly cloudy',           now:59, peakAt:'at 3:10 PM', clearSky:true},
+    cloud:  {label:'Overcast',                now:56, peakAt:'at 2:20 PM', clearSky:false},
+    rain:   {label:'Rain this morning',       now:53, peakAt:'at 1:50 PM', clearSky:false},
+    fog:    {label:'Valley fog',              now:51, peakAt:'at 3:55 PM', clearSky:false}
+  };
+  // daily[0] is today — the strip's first column and the "today" figures are one array
+  var FORECAST = {
+    clear:  [['TODAY','clear',94,54,0],['WED','clear',96,56,0],['THU','partly',91,55,10],['FRI','partly',86,53,20],['SAT','cloud',79,52,30]],
+    partly: [['TODAY','partly',88,53,10],['WED','partly',85,52,20],['THU','cloud',80,51,40],['FRI','rain',72,50,70],['SAT','partly',78,49,20]],
+    cloud:  [['TODAY','cloud',74,52,30],['WED','rain',68,51,60],['THU','rain',66,50,80],['FRI','cloud',71,49,30],['SAT','partly',77,48,10]],
+    rain:   [['TODAY','rain',61,49,90],['WED','rain',64,48,70],['THU','cloud',69,47,40],['FRI','partly',74,48,20],['SAT','clear',80,50,0]],
+    fog:    [['TODAY','fog',83,48,0],['WED','fog',81,47,0],['THU','clear',88,50,0],['FRI','clear',92,52,0],['SAT','partly',87,53,10]]
+  };
+  var DAYS = {1:['MONDAY','7 September 2026'], 2:['TUESDAY','8 September 2026'], 6:['SATURDAY','12 September 2026']};
+  var LAUNCH = {
+    prime:   {txt:'FALCON 9 · STARLINK 15-24', sub:'LOOK SSE · 200 mi · booster to droneship', time:'8:14',  tz:'PM · 45 min after sunset', prime:true},
+    late:    {txt:'FALCON 9 · USSF-153',       sub:'LOOK SSE · 200 mi · high overhead pass',   time:'11:52', tz:'PM · well after dark',     prime:false},
+    landing: {txt:'FALCON 9 · SDA TRANCHE 1',  sub:'LOOK SSE · booster back to LZ-4 · booms',  time:'8:47',  tz:'PM · 78 min after sunset', prime:true}
+  };
+
+  function box(cls, r, html, name) {
+    return '<div class="box ' + cls + '" data-g="' + name + ' ' + r.join(',') +
+           '" style="left:' + r[0] + 'px;top:' + r[1] + 'px;width:' + r[2] + 'px;height:' + r[3] + 'px">' + (html || '') + '</div>';
+  }
+
+  function render() {
+    var d = $('day').value, c = $('cond').value, pct = +$('bat').value,
+        learning = $('days').value === 'learning', lk = $('lch').value, aqi = +$('aqi').value;
+    var w = COND[c], fc = FORECAST[c];
+    var showBin = (d === '1'), showLch = (lk !== 'none') && w.clearSky;
+    var L = layout(showBin, showLch);
+    var today = fc[0], hot = today[2] >= 90;
+
+    var band = aqi <= 50 ? ['GOOD', P.green, 0] : aqi <= 100 ? ['MODERATE', P.yellow, 1] : ['SMOKE', P.red, 2];
+    var pm = aqi <= 50 ? '3.5' : aqi <= 100 ? '24.1' : '81.6';
+    var batCol = pct <= 15 ? P.red : (pct <= 35 ? P.yellow : P.green);
+    var segs = '', bars = '';
+    for (var i = 0; i < 5; i++) segs += '<div class="seg" style="background:' + (pct > i * 20 ? batCol : 'transparent') + '"></div>';
+    [P.green, P.yellow, P.red].forEach(function (col, i) {
+      bars += '<div style="background:' + (i <= band[2] ? col : 'rgba(0,0,0,0.10)') + '"></div>'; });
+    var rdays = Math.round(pct / 1.0);              // 1.0 %/day measured on the bench
+    var runwayN = pct <= 15 ? '<span class="pill">PLUG IN NOW</span>' : rdays + ' days';
+    var runwayL = pct <= 15 ? '' : 'until recharge';
+    var runCol = (pct > 15 && rdays <= 10) ? P.red : P.ink;
+
+    var h = '';
+    h += box('hd', L.header,
+      '<div><div class="hd-day">' + DAYS[d][0] + '</div><div class="hd-date">' + DAYS[d][1] + '</div></div>' +
+      '<div class="hd-mid"><svg width="52" height="52" viewBox="0 0 100 100">' + icon(c) + '</svg>' +
+        '<div class="hd-now">' + w.now + '°</div><div class="hd-cond">' + w.label + '</div></div>' +
+      '<div><div class="hd-place">SAN MARTIN, CA</div><div class="hd-sub">as of 06:00 · next 12:00</div></div>', 'header');
+    h += box('rule', L.keyline, '', 'keyline');
+
+    h += box('cell peak', L.peak,
+      '<div class="k">Peak today</div>' +
+      '<div class="peak-v" style="color:' + (hot ? P.red : P.ink) + '">' + today[2] + '°</div>' +
+      '<div class="peak-t">' + w.peakAt + '</div>', 'peak');
+    h += box('vrule', L.cell1Rule, '', 'cell1Rule');
+    h += box('cell sun', L.sun, '<div class="k">Sun</div><div class="sun-v">6:42a → 7:29p</div>', 'sun');
+    h += box('vrule', L.cell2Rule, '', 'cell2Rule');
+    h += box('cell air', L.air,
+      '<div class="k">Air</div>' +
+      '<div class="air-row"><span class="air-v">' + aqi + '</span>' +
+        '<span class="air-chip" style="background:' + band[1] + ';color:' +
+          (band[1] === P.yellow ? P.ink : P.paper) + '">' + band[0] + '</span>' +
+        '<span class="air-pm">PM2.5 ' + pm + '</span></div>' +
+      '<div class="air-bar">' + bars + '</div>', 'air');
+    h += box('hrule', L.detailRule, '', 'detailRule');
+
+    // Forecast strip: five columns on a 160 px pitch, today first
+    var f = L.forecast;
+    for (var i = 0; i < FC_N; i++) {
+      var col = fc[i], x = i * FC_PITCH, cw = (i === FC_N - 1) ? FC_PITCH : FC_COLW;
+      var isToday = (i === 0);
+      var wet = col[4] >= 20;
+      h += box('fc' + (isToday ? ' today' : ''), [x, f[1], cw, f[3]],
+        '<div class="fc-d">' + col[0] + '</div>' +
+        '<svg width="36" height="36" viewBox="0 0 100 100">' + icon(col[1], isToday) + '</svg>' +
+        '<div class="fc-t"><span class="fc-hi" style="color:' + (col[2] >= 90 ? P.red : P.ink) + '">' + col[2] + '°</span>' +
+          '<span class="fc-lo">' + col[3] + '°</span></div>' +
+        '<div class="fc-p' + (wet ? '' : ' dry') + '">' + drop(wet ? P.blue : 'rgba(34,32,30,0.30)') + col[4] + '%</div>',
+        'fc' + i);
+      if (i < FC_N - 1) h += box('vrule', [x + FC_COLW, f[1], RULE, f[3]], '', 'fcRule' + i);
+    }
+
+    if (showEvt || showBin) h += box('hrule', L.bandRule, '', 'bandRule');
+    if (showEvt) {
+      h += box('evt' + (L.sharedRow ? ' half' : ''), L.event,
+        '<svg width="30" height="30" viewBox="0 0 32 32">' +
+          '<path d="M16 2l4 9 10 1-7 7 2 10-9-5-9 5 2-10-7-7 10-1z" fill="' + P.yellow + '"/></svg>' +
+        '<div class="evt-txt">' + evt + '</div>', 'event');
+      if (L.sharedRow) h += box('vrule', L.evtBinRule, '', 'evtBinRule');
+    }
+    if (showBin) {
+      h += box('bin' + (L.sharedRow ? ' half' : ''), L.bins,
+        '<svg width="26" height="26" viewBox="0 0 48 48">' +
+          '<rect x="9" y="14" width="30" height="29" rx="3" fill="#EDEAE2"/>' +
+          '<rect x="6" y="9" width="36" height="6" rx="3" fill="#EDEAE2"/>' +
+          '<rect x="19" y="5" width="10" height="5" rx="2" fill="#EDEAE2"/></svg>' +
+        '<div class="bin-txt">BINS OUT TONIGHT</div>' +
+        '<div class="bin-sub">kerb by 6 AM · pickup Tuesday</div>', 'bins');
+    }
+    if (showLch) {
+      var Lc = LAUNCH[lk];
+      h += box('hrule', L.lchRule, '', 'lchRule');
+      h += box('lch', L.launch,
+        '<svg width="30" height="30" viewBox="0 0 48 48">' +
+          '<path d="M24 3c7 7 10 16 10 25l-4 6H18l-4-6c0-9 3-18 10-25z" fill="#EDEAE2" stroke="#22201E" stroke-width="2"/>' +
+          '<circle cx="24" cy="19" r="4.5" fill="#2F5597" stroke="#22201E" stroke-width="2"/>' +
+          '<path d="M14 30l-5 8h9zM34 30l5 8h-9z" fill="#C0392B" stroke="#22201E" stroke-width="2"/>' +
+          '<path d="M20 40c1 4 2 5 4 6 2-1 3-2 4-6z" fill="#E8C33A"/></svg>' +
+        '<div><div class="lch-txt">' + Lc.txt + (Lc.prime ? '<span class="prime">PRIME</span>' : '') + '</div>' +
+        '<div class="lch-sub">' + Lc.sub + '</div></div>' +
+        '<div class="lch-time">' + Lc.time + '<div class="lch-tz">' + Lc.tz + '</div></div>', 'launch');
+    }
+
+    h += box('hrule', L.footRule, '', 'footRule');
+    h += box('ft', L.footer,
+      '<div style="display:flex;align-items:center;gap:4px"><div class="bat-body">' + segs + '</div><div class="bat-cap"></div></div>' +
+      '<div class="bat-pct" style="color:' + (pct <= 15 ? P.red : P.ink) + '">' + pct + '%</div>' +
+      '<div class="bat-info"><div class="k">Runway</div><div class="bat-v" style="color:' + runCol + '">' + runway + '</div></div>' +
+      '<div class="ft-right">open-meteo · air quality<br>thespacedevs · 6 h wake</div>', 'footer');
+
+    var panel = $('panel');
+    panel.innerHTML = h;
+    panel.className = 'panel' + ($('grid').value === 'on' ? ' grid' : '');
+    $('batval').textContent = pct + '%';
+
+    var order = ['header','keyline','peak','cell1Rule','sun','cell2Rule','air','detailRule','forecast','bandRule','event','evtBinRule','bins','lchRule','launch','footRule','footer'];
+    var rows = '<tr><th>Box</th><th>x</th><th>y</th><th>w</th><th>h</th></tr>';
+    order.forEach(function (k) {
+      var r = L[k];
+      rows += r ? '<tr><td>' + k + '</td><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>'
+                : '<tr class="off"><td>' + k + '</td><td colspan="4">not drawn in this state</td></tr>';
+    });
+    rows += '<tr><td>fc column pitch</td><td colspan="4">160 px · columns 156 wide · last 160 · 4 px rules</td></tr>';
+    $('gtable').innerHTML = rows;
+  }
+
+  ['day','cond','lch','evt','aqi','bat','days','grid'].forEach(function (id) {
+    $(id).addEventListener('input', render); $(id).addEventListener('change', render);
+  });
+  render();
+})();
+</script>
+</body>
+</html>

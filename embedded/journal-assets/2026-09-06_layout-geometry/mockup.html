@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morning Dashboard — reTerminal E1002</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 900px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 680px; margin-bottom: 28px; }
+
+  .controls { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+  .controls label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  select, input[type=range] { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 7px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  input[type=range] { padding: 0; width: 120px; }
+  .val { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #5b9bd5; min-width: 38px; }
+  .note { font-size: 13px; color: #666; margin-bottom: 22px; max-width: 680px; }
+  .note b { color: #aaa; }
+
+  .frame { display: inline-block; padding: 14px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; }
+  .caption { font-size: 12px; color: #555; margin-top: 10px; font-family: 'SF Mono','Fira Code',monospace; }
+
+  /* Geometry readout — the coordinates the firmware draws at */
+  .geom { margin-top: 34px; }
+  .geom h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .geom p { font-size: 14px; color: #666; margin-bottom: 16px; max-width: 680px; }
+  table.g { border-collapse: collapse; font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; }
+  table.g th { text-align: left; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #555; padding: 0 18px 8px 0; border-bottom: 1px solid #262626; }
+  table.g td { padding: 6px 18px 6px 0; border-bottom: 1px solid #161616; color: #bbb; }
+  table.g td:first-child { color: #5b9bd5; }
+  table.g tr.off td { color: #444; }
+
+  /* ── E Ink Spectra 6 palette, approximated until the panel is photographed ── */
+  .panel {
+    --paper:  #EDEAE2;
+    --ink:    #22201E;
+    --red:    #C0392B;
+    --yellow: #E8C33A;
+    --blue:   #2F5597;
+    --green:  #4A8B3B;
+    position: relative; width: 800px; height: 480px;
+    background: var(--paper); color: var(--ink);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    line-height: 1.15;
+    overflow: hidden;
+  }
+  /* Every box is absolutely placed from the LAYOUT table below. Nothing reflows,
+     so what appears here is what the firmware draws at the same coordinates. */
+  .box { position: absolute; overflow: hidden; }
+
+  .k { font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; }
+
+  .hd { background: var(--blue); color: var(--paper); padding: 0 24px;
+        display: flex; align-items: center; justify-content: space-between; }
+  .hd-day { font-size: 38px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .hd-date { font-size: 16px; font-weight: 600; opacity: 0.85; margin-top: 3px; }
+  .hd-place { font-size: 14px; font-weight: 800; letter-spacing: 2px; text-align: right; }
+  .hd-sub { font-size: 12px; opacity: 0.85; margin-top: 3px; text-align: right; }
+  .rule { background: var(--red); }
+  .vrule, .hrule { background: var(--ink); }
+
+  .wx { padding: 0 22px; display: flex; flex-direction: column; justify-content: center; }
+  .wx-top { display: flex; align-items: center; gap: 14px; }
+  .wx-now { font-size: 66px; font-weight: 800; line-height: 0.88; letter-spacing: -3px; }
+  .wx-cond { font-size: 19px; font-weight: 700; margin-top: 8px; }
+  .wx-lo { font-size: 15px; font-weight: 600; margin-top: 5px; }
+  .wx-lo b { color: var(--blue); }
+  .wx-sun { font-size: 15px; font-weight: 700; margin-top: 7px; display: flex; align-items: center; gap: 8px; }
+
+  .peak { background: var(--yellow); padding: 0 16px; display: flex; flex-direction: column; justify-content: center; }
+  .peak-v { font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -2px; margin-top: 2px; }
+  .peak-t { font-size: 13px; font-weight: 700; margin-top: 2px; }
+
+  .air { padding: 0 16px; display: flex; flex-direction: column; justify-content: center; }
+  .air-row { display: flex; gap: 9px; align-items: baseline; margin-top: 3px; }
+  .air-v { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .air-b { font-size: 13px; font-weight: 800; letter-spacing: 0.8px; }
+  .air-pm { font-size: 11px; font-weight: 700; opacity: 0.72; margin-left: auto; }
+  .air-bar { height: 6px; margin-top: 6px; display: flex; gap: 2px; }
+  .air-bar div { flex: 1; }
+
+  .bin { background: var(--red); color: var(--paper); padding: 0 24px; display: flex; align-items: center; gap: 14px; }
+  .bin-txt { font-size: 25px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+  .bin-sub { font-size: 13px; font-weight: 700; opacity: 0.92; }
+  .lch { background: var(--blue); color: var(--paper); padding: 0 24px; display: flex; align-items: center; gap: 14px; }
+  .lch-txt { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.15; }
+  .lch-sub { font-size: 13px; font-weight: 700; opacity: 0.92; margin-top: 2px; }
+  .lch-time { font-size: 30px; font-weight: 800; margin-left: auto; text-align: right; line-height: 1; }
+  .lch-tz { font-size: 12px; font-weight: 700; opacity: 0.85; }
+  .prime { display: inline-block; background: var(--yellow); color: var(--ink); font-size: 11px;
+           font-weight: 800; letter-spacing: 1.2px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: 3px; }
+
+  .ft { padding: 0 24px; display: flex; align-items: center; gap: 16px; }
+  .bat-body { width: 96px; height: 34px; border: 4px solid var(--ink); border-radius: 5px; padding: 3px; display: flex; gap: 3px; }
+  .bat-cap { width: 6px; height: 15px; background: var(--ink); border-radius: 0 3px 3px 0; }
+  .seg { flex: 1; }
+  .bat-pct { font-size: 30px; font-weight: 800; letter-spacing: -1px; }
+  .bat-info { flex: 1; min-width: 0; }
+  .bat-v { font-size: 19px; font-weight: 800; }
+  .ft-right { text-align: right; font-size: 11px; font-weight: 600; line-height: 1.5; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 800;
+          letter-spacing: 0.5px; color: var(--paper); background: var(--red); }
+
+  /* Coordinate overlay */
+  .grid .box { outline: 1px dashed rgba(255,0,255,0.55); outline-offset: -1px; }
+  .grid .box::after { content: attr(data-g); position: absolute; left: 2px; top: 1px;
+                      font: 700 9px/1.2 'SF Mono', monospace; color: #d0f; background: rgba(255,255,255,0.82);
+                      padding: 1px 3px; letter-spacing: 0; }
+</style>
+</head>
+<body>
+<a class="back" href="../../">← Back</a>
+
+<div class="page">
+  <h1>Morning Dashboard</h1>
+  <p class="subtitle">Layout for the reTerminal E1002 at its native 800 × 480, in the six colours Spectra 6 can produce. Hard-coded for San Martin, CA. Every box is absolutely placed, so the coordinates below are the ones the firmware draws at.</p>
+
+  <div class="controls">
+    <label for="day">Day</label>
+    <select id="day">
+      <option value="1">Monday</option>
+      <option value="2" selected>Tuesday</option>
+      <option value="6">Saturday</option>
+    </select>
+    <label for="cond">Sky</label>
+    <select id="cond">
+      <option value="clear" selected>Clear</option>
+      <option value="partly">Partly cloudy</option>
+      <option value="cloud">Cloudy</option>
+      <option value="rain">Rain</option>
+      <option value="fog">Fog</option>
+    </select>
+    <label for="lch">Vandenberg</label>
+    <select id="lch">
+      <option value="none">Nothing tonight</option>
+      <option value="prime" selected>Launch, prime window</option>
+      <option value="late">Launch, late night</option>
+      <option value="landing">Launch + LZ-4 landing</option>
+    </select>
+    <label for="aqi">Air</label>
+    <select id="aqi">
+      <option value="30" selected>AQI 30 — good</option>
+      <option value="78">AQI 78 — moderate</option>
+      <option value="164">AQI 164 — smoke</option>
+    </select>
+    <label for="bat">Battery</label>
+    <input type="range" id="bat" min="0" max="100" value="78">
+    <span class="val" id="batval">78%</span>
+    <label for="days">Runway</label>
+    <select id="days">
+      <option value="ok" selected>Enough data</option>
+      <option value="learning">Still learning</option>
+    </select>
+    <label for="grid">Coords</label>
+    <select id="grid">
+      <option value="off" selected>Hidden</option>
+      <option value="on">Overlay</option>
+    </select>
+  </div>
+
+  <p class="note">The launch band draws only when the sky is <b>clear or partly cloudy</b>. Both bands can show at once — the weather area and the right column shrink to absorb them, and every box keeps explicit pixel bounds so nothing can overflow the way flexible boxes did.</p>
+
+  <div class="frame">
+    <div class="panel" id="panel"></div>
+    <div class="caption">800 × 480 · six colours · full refresh 15–20 s</div>
+  </div>
+
+  <div class="geom">
+    <h2>Layout geometry</h2>
+    <p>Recomputed for the current state. These are the rectangles the firmware fills and clips text into — transcribe them straight into <code>layout.h</code>.</p>
+    <table class="g" id="gtable"></table>
+  </div>
+</div>
+
+<script>
+(function () {
+  var P = { paper:'#EDEAE2', ink:'#22201E', red:'#C0392B', yellow:'#E8C33A', blue:'#2F5597', green:'#4A8B3B' };
+  var W = 800, H = 480;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ── Fixed geometry ───────────────────────────────────────────────────────
+  var HEADER_H = 80, KEYLINE_H = 5, FOOTER_H = 78;
+  var BIN_H = 66, LCH_H = 74, RULE = 4;
+  var SPLIT_X = 470;               // weather | right column
+  var PEAK_FRACTION = 0.55;        // of the right column's height
+
+  function layout(showBin, showLch) {
+    var L = {};
+    L.header   = [0, 0, W, HEADER_H];
+    L.keyline  = [0, HEADER_H, W, KEYLINE_H];
+    var top    = HEADER_H + KEYLINE_H;
+    L.footer   = [0, H - FOOTER_H, W, FOOTER_H];
+    L.footRule = [0, H - FOOTER_H - RULE, W, RULE];
+
+    var bandBottom = H - FOOTER_H - RULE;
+    if (showLch) { L.launch = [0, bandBottom - LCH_H, W, LCH_H]; bandBottom -= LCH_H + RULE;
+                   L.lchRule = [0, bandBottom, W, RULE]; }
+    if (showBin) { L.bins   = [0, bandBottom - BIN_H, W, BIN_H]; bandBottom -= BIN_H + RULE;
+                   L.binRule = [0, bandBottom, W, RULE]; }
+
+    var mainH = bandBottom - top;
+    L.weather = [0, top, SPLIT_X, mainH];
+    L.vrule   = [SPLIT_X, top, RULE, mainH];
+    var colX = SPLIT_X + RULE, colW = W - colX;
+    var peakH = Math.round(mainH * PEAK_FRACTION);
+    L.peak    = [colX, top, colW, peakH];
+    L.colRule = [colX, top + peakH, colW, RULE];
+    L.air     = [colX, top + peakH + RULE, colW, mainH - peakH - RULE];
+    return L;
+  }
+
+  // ── Content ──────────────────────────────────────────────────────────────
+  function rays() {
+    var out = '<g stroke="'+P.ink+'" stroke-width="5" stroke-linecap="round">';
+    for (var i = 0; i < 8; i++) { var a = i * Math.PI / 4;
+      out += '<line x1="'+(50+Math.cos(a)*30).toFixed(1)+'" y1="'+(50+Math.sin(a)*30).toFixed(1)+
+             '" x2="'+(50+Math.cos(a)*41).toFixed(1)+'" y2="'+(50+Math.sin(a)*41).toFixed(1)+'"/>'; }
+    return out + '</g>';
+  }
+  var ICONS = {
+    clear:  '<circle cx="50" cy="50" r="22" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="4"/>' + rays(),
+    partly: '<circle cx="38" cy="38" r="17" fill="'+P.yellow+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<path d="M28 74h44a15 15 0 0 0 0-30 21 21 0 0 0-40-4 13 13 0 0 0-4 34z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>',
+    cloud:  '<path d="M24 76h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>',
+    rain:   '<path d="M24 62h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<g stroke="'+P.blue+'" stroke-width="7" stroke-linecap="round"><line x1="34" y1="72" x2="30" y2="88"/><line x1="52" y1="72" x2="48" y2="88"/><line x1="70" y1="72" x2="66" y2="88"/></g>',
+    fog:    '<path d="M24 56h50a17 17 0 0 0 0-34 24 24 0 0 0-45-5 14 14 0 0 0-5 39z" fill="'+P.paper+'" stroke="'+P.ink+'" stroke-width="4"/>' +
+            '<g stroke="'+P.blue+'" stroke-width="7" stroke-linecap="round"><line x1="20" y1="70" x2="80" y2="70"/><line x1="30" y1="84" x2="72" y2="84"/></g>'
+  };
+  var COND = {
+    clear:  {label:'Clear all day',           now:61, peak:94, peakAt:'at 3:40 PM', lo:54, feels:59, clearSky:true},
+    partly: {label:'Partly cloudy',           now:59, peak:88, peakAt:'at 3:10 PM', lo:53, feels:57, clearSky:true},
+    cloud:  {label:'Overcast',                now:56, peak:74, peakAt:'at 2:20 PM', lo:52, feels:54, clearSky:false},
+    rain:   {label:'Rain this morning',       now:53, peak:61, peakAt:'at 1:50 PM', lo:49, feels:50, clearSky:false},
+    fog:    {label:'Valley fog, burning off', now:51, peak:83, peakAt:'at 3:55 PM', lo:48, feels:49, clearSky:false}
+  };
+  var DAYS = {1:['MONDAY','7 September 2026'], 2:['TUESDAY','8 September 2026'], 6:['SATURDAY','12 September 2026']};
+  var LAUNCH = {
+    prime:   {txt:'FALCON 9 · STARLINK 15-24', sub:'LOOK SSE · 200 mi · booster to droneship', time:'8:14',  tz:'PM · 45 min after sunset', prime:true},
+    late:    {txt:'FALCON 9 · USSF-153',       sub:'LOOK SSE · 200 mi · high overhead pass',   time:'11:52', tz:'PM · well after dark',     prime:false},
+    landing: {txt:'FALCON 9 · SDA TRANCHE 1',  sub:'LOOK SSE · booster back to LZ-4 · expect booms', time:'8:47', tz:'PM · 78 min after sunset', prime:true}
+  };
+
+  function box(cls, r, html, name) {
+    return '<div class="box ' + cls + '" data-g="' + name + ' ' + r.join(',') + '" style="left:' + r[0] +
+           'px;top:' + r[1] + 'px;width:' + r[2] + 'px;height:' + r[3] + 'px">' + (html || '') + '</div>';
+  }
+
+  function render() {
+    var d = $('day').value, c = $('cond').value, pct = +$('bat').value,
+        learning = $('days').value === 'learning', lk = $('lch').value, aqi = +$('aqi').value;
+    var w = COND[c];
+    var showBin = (d === '1');
+    var showLch = (lk !== 'none') && w.clearSky;
+    var L = layout(showBin, showLch);
+
+    var hot = w.peak >= 90;
+    var band = aqi <= 50 ? ['GOOD', P.green, 0] : aqi <= 100 ? ['MODERATE', P.yellow, 1] : ['SMOKE', P.red, 2];
+    var pm   = aqi <= 50 ? '3.5' : aqi <= 100 ? '24.1' : '81.6';
+    var batCol = pct <= 15 ? P.red : (pct <= 35 ? P.yellow : P.green);
+
+    var segs = '';
+    for (var i = 0; i < 5; i++) segs += '<div class="seg" style="background:' + (pct > i * 20 ? batCol : 'transparent') + '"></div>';
+    var bars = '';
+    [P.green, P.yellow, P.red].forEach(function (col, i) {
+      bars += '<div style="background:' + (i <= band[2] ? col : 'rgba(0,0,0,0.10)') + '"></div>';
+    });
+
+    var runway = pct <= 15 ? '<span class="pill">PLUG IN NOW</span>'
+               : learning  ? 'learning drain rate…'
+               : '≈ ' + Math.round(pct * 0.91) + ' days left';
+    var runCol = (!learning && pct > 15 && Math.round(pct * 0.91) <= 10) ? P.red : P.ink;
+
+    var h = '';
+    h += box('hd', L.header,
+      '<div><div class="hd-day">' + DAYS[d][0] + '</div><div class="hd-date">' + DAYS[d][1] + '</div></div>' +
+      '<div><div class="hd-place">SAN MARTIN, CA</div><div class="hd-sub">as of 06:00 · next 12:00</div></div>', 'header');
+    h += box('rule', L.keyline, '', 'keyline');
+
+    h += box('wx', L.weather,
+      '<div class="wx-top">' +
+        '<svg width="84" height="84" viewBox="0 0 100 100">' + ICONS[c] + '</svg>' +
+        '<div class="wx-now">' + w.now + '°</div>' +
+      '</div>' +
+      '<div class="wx-cond">' + w.label + '</div>' +
+      '<div class="wx-lo">Low tonight <b>' + w.lo + '°</b> &nbsp;·&nbsp; Feels like <b>' + w.feels + '°</b></div>' +
+      '<div class="wx-sun"><svg width="15" height="15" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6" fill="' + P.green + '"/></svg>' +
+        '6:42a &nbsp;→&nbsp; 7:29p</div>', 'weather');
+    h += box('vrule', L.vrule, '', 'vrule');
+
+    h += box('peak', L.peak,
+      '<div class="k">Peak today</div>' +
+      '<div class="peak-v" style="color:' + (hot ? P.red : P.ink) + '">' + w.peak + '°</div>' +
+      '<div class="peak-t">' + w.peakAt + '</div>', 'peak');
+    h += box('hrule', L.colRule, '', 'colRule');
+
+    h += box('air', L.air,
+      '<div class="k">Air</div>' +
+      '<div class="air-row"><span class="air-v" style="color:' + band[1] + '">' + aqi + '</span>' +
+        '<span class="air-b" style="color:' + band[1] + '">' + band[0] + '</span>' +
+        '<span class="air-pm">PM2.5 ' + pm + '</span></div>' +
+      '<div class="air-bar">' + bars + '</div>', 'air');
+
+    if (showBin) {
+      h += box('hrule', L.binRule, '', 'binRule');
+      h += box('bin', L.bins,
+        '<svg width="40" height="40" viewBox="0 0 48 48">' +
+          '<rect x="9" y="14" width="30" height="29" rx="3" fill="#EDEAE2"/>' +
+          '<rect x="6" y="9" width="36" height="6" rx="3" fill="#EDEAE2"/>' +
+          '<rect x="19" y="5" width="10" height="5" rx="2" fill="#EDEAE2"/>' +
+          '<rect x="16" y="20" width="4" height="17" fill="#C0392B"/>' +
+          '<rect x="28" y="20" width="4" height="17" fill="#C0392B"/></svg>' +
+        '<div><div class="bin-txt">BINS OUT TONIGHT</div>' +
+        '<div class="bin-sub">Kerb by 6 AM — pickup is Tuesday</div></div>', 'bins');
+    }
+    if (showLch) {
+      var Lc = LAUNCH[lk];
+      h += box('hrule', L.lchRule, '', 'lchRule');
+      h += box('lch', L.launch,
+        '<svg width="42" height="42" viewBox="0 0 48 48">' +
+          '<path d="M24 3c7 7 10 16 10 25l-4 6H18l-4-6c0-9 3-18 10-25z" fill="#EDEAE2" stroke="#22201E" stroke-width="2"/>' +
+          '<circle cx="24" cy="19" r="4.5" fill="#2F5597" stroke="#22201E" stroke-width="2"/>' +
+          '<path d="M14 30l-5 8h9zM34 30l5 8h-9z" fill="#C0392B" stroke="#22201E" stroke-width="2"/>' +
+          '<path d="M20 40c1 4 2 5 4 6 2-1 3-2 4-6z" fill="#E8C33A"/></svg>' +
+        '<div><div class="lch-txt">' + Lc.txt + (Lc.prime ? '<span class="prime">PRIME</span>' : '') + '</div>' +
+        '<div class="lch-sub">' + Lc.sub + '</div></div>' +
+        '<div class="lch-time">' + Lc.time + '<div class="lch-tz">' + Lc.tz + '</div></div>', 'launch');
+    }
+
+    h += box('hrule', L.footRule, '', 'footRule');
+    h += box('ft', L.footer,
+      '<div style="display:flex;align-items:center;gap:4px">' +
+        '<div class="bat-body">' + segs + '</div><div class="bat-cap"></div></div>' +
+      '<div class="bat-pct" style="color:' + (pct <= 15 ? P.red : P.ink) + '">' + pct + '%</div>' +
+      '<div class="bat-info"><div class="k">Runway</div>' +
+        '<div class="bat-v" style="color:' + runCol + '">' + runway + '</div></div>' +
+      '<div class="ft-right">open-meteo · air quality<br>thespacedevs · 6 h wake</div>', 'footer');
+
+    var panel = $('panel');
+    panel.innerHTML = h;
+    panel.className = 'panel' + ($('grid').value === 'on' ? ' grid' : '');
+    $('batval').textContent = pct + '%';
+
+    var order = ['header','keyline','weather','vrule','peak','colRule','air','binRule','bins','lchRule','launch','footRule','footer'];
+    var rows = '<tr><th>Box</th><th>x</th><th>y</th><th>w</th><th>h</th></tr>';
+    order.forEach(function (k) {
+      var r = L[k];
+      rows += r ? '<tr><td>' + k + '</td><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>'
+                : '<tr class="off"><td>' + k + '</td><td colspan="4">not drawn in this state</td></tr>';
+    });
+    $('gtable').innerHTML = rows;
+  }
+
+  ['day','cond','lch','aqi','bat','days','grid'].forEach(function (id) {
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+# reTerminal E1002 factory flash image
+captured    2026-09-06, 12:28-13:53 PDT
+device      ESP32-S3 (QFN56) rev v0.2, MAC e0:72:a1:f9:02:60
+port        /dev/cu.usbserial-210 (CH340 1A86:7523)
+tool        esptool v5.4.0 via tools/read-flash-chunked.py, 256 kB chunks
+method      ROM loader below 0x1000000, stub flasher at and above it
+file        2026-09-06_reterminal-e1002-factory-32MB.bin
+size        33554432 bytes (32 MB)
+sha256      2062e5caa9dd8ff2e92e1d24b8a5cdda25992623694d1db1dfb0b3a1c23d7eda
+read time   00:29:26 for the upper half; the lower half ran 12:28-13:20
+retries     lower 16 MB: 64/64 first attempt (ROM loader)
+            upper 16 MB: 59 first attempt, 4 second, 1 third (stub flasher)
+
+## Partition table (read from 0x8000)
+NAME               TYPE/SUB   OFFSET     SIZE
+nvs                01/02      0x00009000 0x0007d000 (500 kB)
+otadata            01/00      0x00086000 0x00002000 (8 kB)
+phy_init           01/01      0x00088000 0x00001000 (4 kB)
+app0               00/10      0x00090000 0x00c00000 (12288 kB)
+app1               00/11      0x00c90000 0x00c00000 (12288 kB)
+spiffs             01/82      0x01890000 0x00600000 (6144 kB)
+
+## Verification
+size matches 32 MB                                        yes
+ESP image magic 0xE9 at 0x0                               yes
+partition magic 0xAA50 at 0x8000, table parses            yes
+0xFF fill 94.8%, consistent with a mostly-erased 32 MB     yes
+0x00000000 matches an independent ROM-loader read          yes
+0x01000000 matches two independent stub reads              yes
+
+## Note on re-reading
+A read taken 11 minutes earlier differs in 53 bytes, at 0x00c036 and
+0x00cb80-0x00cbbb. Both sit inside the nvs partition (0x9000-0x86000).
+esptool hard-resets the board after every operation, the firmware boots and
+writes NVS, so the nvs region changes between reads. Everything outside nvs
+was byte-identical. Expect a re-read to produce a different sha256 for this
+reason alone; compare regions outside nvs when checking an image.
