@@ -1,0 +1,58 @@
+# Can the E1002 refresh less than the whole panel? — investigated 2026-09-09
+# Seeed_GFX 2.0.3, combo 521 -> ED2208_DRIVER
+
+## Everything on EPaper that touches the panel
+   (the class subclasses TFT_eSprite, so all drawing is an in-RAM buffer)
+      void begin(uint8_t wake = 0);
+      void drawBufferPixel(int32_t x, int32_t y, uint32_t color, uint8_t bpp);
+      void update();
+      void update(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *data);
+      void updataPartial(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+      void initGrayMode(uint8_t grayLevel);
+      void deinitGrayMode();
+      void sleep();
+      void wake();
+      typedef float (*GetTempCallback)();
+      typedef float (*GetHumiCallback)();
+      void  setTemp(GetTempCallback callback);
+      float getTemp();
+      void  setHumi(GetHumiCallback callback);
+      float getHumi();
+
+## updataPartial() cannot be built for this panel
+  It ends in EPD_UPDATE_PARTIAL(). Occurrences of that macro in the ED2208
+  driver: 0
+  No #ifndef fallback exists anywhere in the library, so the call would not compile.
+
+  Drivers that DO define it — all mono or black/white/red/yellow, none Spectra 6:
+    ED103TC2_Defines.h
+    SSD1677_Defines.h
+    SSD1681_Defines.h
+    SSD1683_Defines.h
+    SSD1680_Defines.h
+    UC8179_Defines.h
+
+## EPD_SET_WINDOW is a no-op on ED2208
+  #define EPD_SET_WINDOW(x1, y1, x2, y2)                  \
+      do                                                  \
+      {                                                   \
+      } while (0)
+
+## EPD_UPDATE takes no region
+  #define EPD_UPDATE()        \
+      do                      \
+      {                       \
+          writecommand(0x12); \
+          writedata(0x00);    \
+          delay(1);           \
+          CHECK_BUSY();       \
+      } while (0)
+
+## Where the 37.9 s actually goes
+  frame buffer              192,000 bytes at 4 bpp
+  update() pushes OLD+NEW   384,000 bytes
+  transfer at 20 MHz          0.15 s     0.4%
+  transfer at 10 MHz          0.31 s     0.8%
+  waveform                   37.7 s    99.6%
+
+  Pushing an 8x8 block instead of the whole frame would recover 0.15 s of 37.9 s.

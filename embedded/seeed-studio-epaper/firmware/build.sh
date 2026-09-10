@@ -19,7 +19,13 @@ shift || true
 # corrupts sustained transfers above it. arduino-cli defaults to 921600 and the
 # upload fails right after the rate change.
 FQBN="esp32:esp32:esp32s3:FlashSize=32M,PSRAM=opi,PartitionScheme=custom,UploadSpeed=115200"
-PORT="${PORT:-$(ls /dev/cu.usbserial-* 2>/dev/null | head -1)}"   # the node number changes between plug-ins
+# The /dev node number changes between plug-ins, so discover it. Kept out of the
+# failure path: compiling must not require the board to be attached, and under
+# `set -e` a failed discovery would otherwise abort the whole script.
+PORT="${PORT:-}"
+if [[ -z "$PORT" ]]; then
+  PORT="$(ls /dev/cu.usbserial-* 2>/dev/null | head -1 || true)"
+fi
 
 cd "$(dirname "$0")"
 echo "building $SKETCH"
@@ -32,6 +38,10 @@ arduino-cli compile --fqbn "$FQBN" "$SKETCH"
 # board boot-loops with "invalid magic byte". Flash with esptool at the offsets
 # the table actually specifies.
 if [[ "${1:-}" == "--upload" ]]; then
+  if [[ -z "$PORT" ]]; then
+    echo "no /dev/cu.usbserial-* found — is the board plugged in?" >&2
+    exit 1
+  fi
   echo
   echo "Flashing overwrites the factory firmware. The backup is at"
   echo "  ../firmware-backup/2026-09-06_reterminal-e1002-factory-32MB.bin"

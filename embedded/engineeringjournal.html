@@ -122,6 +122,59 @@
     <summary>
       <span class="chev"></span>
       <span class="head">
+        <span class="stamp"><time datetime="2026-09-09T19:45-07:00">Wed 9 Sep 2026 · 19:45 PDT</time></span>
+        <span class="title">There is no partial refresh to find<span class="badge orange">Closed</span></span>
+        <span class="synopsis">Three ways to refresh less than the whole panel, all dead ends: the partial macro is undefined for this driver, the window command is empty, and the waveform is 99.6% of the cost.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>What the class offers</h3>
+      <p><code>EPaper</code> subclasses <code>TFT_eSprite</code>, so all drawing lands in an in-RAM framebuffer and only a handful of calls reach the panel:</p>
+      <table class="res">
+        <tr><th>Call</th><th>What it does</th></tr>
+        <tr><td><code>fillScreen()</code> / <code>fillSprite()</code></td><td>writes the RAM buffer; no panel activity at all</td></tr>
+        <tr><td><code>update()</code></td><td>pushes the whole buffer and runs the waveform</td></tr>
+        <tr><td><code>update(x,y,w,h,data)</code></td><td>pushes a region from a caller-supplied buffer</td></tr>
+        <tr><td><code>updataPartial(x,y,w,h)</code></td><td>the library's partial-refresh path <em>(spelling is theirs)</em></td></tr>
+        <tr><td><code>sleep()</code> / <code>wake()</code></td><td>panel power state</td></tr>
+      </table>
+      <p>Clearing is therefore always two steps — fill the buffer, then <code>update()</code>. Nothing skips the waveform.</p>
+
+      <h3>Three reasons a region refresh cannot work here</h3>
+      <ul>
+        <li><strong>The partial path does not exist for this driver.</strong> Combo 521 selects <code>ED2208_DRIVER</code>, and <code>updataPartial()</code> ends by calling <code>EPD_UPDATE_PARTIAL()</code>. That macro appears zero times in <code>ED2208_Defines.h</code>, with no <code>#ifndef</code> fallback anywhere in the library — the call would not compile. Six drivers do define it, all mono or black/white/red/yellow. None is Spectra 6.</li>
+        <li><strong>There is no window to set.</strong> <code>EPD_SET_WINDOW</code> on ED2208 is <code>do { } while (0)</code>. Even the full-frame path is not windowing anything; the macro survives for drivers that support it.</li>
+        <li><strong>The data would land in the wrong place.</strong> <code>EPD_PUSH_NEW_COLORS</code> issues command <code>0x10</code> and streams <code>w/2 × h</code> bytes into panel RAM from offset zero. Without a window a 200×100 region would overwrite the top-left corner rather than appear at <code>(x,y)</code>. The <code>x</code> and <code>y</code> arguments only reach <code>pushImage</code> into the local sprite buffer; they never leave the microcontroller.</li>
+      </ul>
+
+      <h3>And there would be nothing to win</h3>
+      <p>The refresh cost is not data transfer. <code>EPD_UPDATE()</code> is a bare <code>0x12</code> with no region parameter, so it drives the whole panel through the Spectra colour passes however many bytes were sent:</p>
+      <pre class="data">frame buffer              192,000 bytes at 4 bpp
+update() pushes OLD+NEW   384,000 bytes
+
+measured refresh           37.9 s
+  transfer at 20 MHz        0.15 s    0.4%
+  waveform                 37.7 s   99.6%</pre>
+      <p>Pushing a single 8×8 block instead of the entire frame would recover 0.15 s of 37.9 s. Attempting it would have corrupted the panel, taken the same 38 seconds, and needed a second full refresh to recover, so it was not flashed.</p>
+      <div class="callout orange"><strong>Settled:</strong> the flicker is a fixed cost per repaint, confirmed from the driver source rather than taken from the specification sheet. The only lever is how often the panel repaints, which the content hash already minimizes.</div>
+
+      <h3>Correction</h3>
+      <p>Two earlier notes were wrong and are corrected here. The controller is driven as <strong>ED2208</strong>, not the UC8179C that Seeed's wiki names — <code>UC8179_Defines.h</code> is a separate driver for a different board, and it is one of the six that does implement partial refresh, which is probably how the confusion arose. And <code>update(x,y,w,h,data)</code> was described as possibly shortening the refresh; the waveform is 99.6% of the cost and panel-wide by command design, so it cannot.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-09_refresh-cost/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-09_refresh-cost/refresh-paths.log">refresh-paths.log</a> <span class="note">— the class surface, the undefined macro, the empty window command, and the timing split, quoted from the library</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
         <span class="stamp"><time datetime="2026-09-09T19:10-07:00">Wed 9 Sep 2026 · 19:10 PDT</time></span>
         <span class="title">Cake and eagle icons, and two collisions found by measuring<span class="badge green">Flashed</span></span>
         <span class="synopsis">The star was a pentagon. PRIME sat on the mission name. Two further overlaps only showed up when the column widths were worked out on paper rather than looked at.</span>
@@ -746,7 +799,7 @@ bins + launch     165     91     70</pre>
       <p>Choosing on-device rendering makes the type and color work load-bearing: there is no browser to fall back on, and every layout decision has to survive being written in draw calls against embedded fonts.</p>
 
       <h3>Toolchain</h3>
-      <p>Seeed's <a href="https://wiki.seeedstudio.com/reterminal_e10xx_with_arduino/">Arduino cookbook</a> builds the E Series against the ESP32 Arduino core with the board set to <code>XIAO_ESP32S3</code> and the package URL <code>https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json</code>. The display comes from <strong>Seeed_GFX</strong>, a TFT_eSPI fork, selected by <code>#define BOARD_SCREEN_COMBO 521</code> for the E1002's UC8179C controller:</p>
+      <p>Seeed's <a href="https://wiki.seeedstudio.com/reterminal_e10xx_with_arduino/">Arduino cookbook</a> builds the E Series against the ESP32 Arduino core with the board set to <code>XIAO_ESP32S3</code> and the package URL <code>https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json</code>. The display comes from <strong>Seeed_GFX</strong>, a TFT_eSPI fork, selected by <code>#define BOARD_SCREEN_COMBO 521</code> for the E1002's ED2208 controller:</p>
       <pre class="data">#define BOARD_SCREEN_COMBO 521
 #include "TFT_eSPI.h"
 
