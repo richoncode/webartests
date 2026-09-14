@@ -109,6 +109,7 @@
     <span class="live-k">Live</span>
     <a href="seeed-studio-epaper/dashboard/mockup.html">Dashboard mockup</a>
     <a href="seeed-studio-epaper/README.md">reTerminal E1002 notes</a>
+    <a href="espRotary/README.md">espRotary notes</a>
     <a href="seeed-studio-epaper/firmware/dashboard/dashboard.ino">Dashboard firmware</a>
   </div>
 
@@ -119,6 +120,621 @@
   </div>
 
   <details class="entry" open>
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-14T15:05-07:00">Mon 14 Sep 2026 · 15:05 PDT</time></span>
+        <span class="title">Every control shows its own range<span class="badge green">b19</span></span>
+        <span class="synopsis">The ring paints the range the knob moves through, and the swatch paints the answer. Two of the faults behind it were mine drawing over my own output, and one was a socket carrying the wrong reply.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The four adjust screens</h3>
+      <figure>
+        <a href="journal-assets/2026-09-14_ring-styles/ring-styles.svg"><img src="journal-assets/2026-09-14_ring-styles/ring-styles.svg" alt="Four round screens side by side. COLOR shows a full spectrum ring with the marker on sky blue. SATURATION runs white to sky blue. BRIGHTNESS runs dark to sky blue. WARMTH runs candle amber to daylight blue. Each has a central swatch of the resulting colour and its value below."></a>
+        <figcaption>Drawn with the firmware's own dot angles, colours and value floor.</figcaption>
+      </figure>
+      <table class="res">
+        <tr><th>Control</th><th>Ring</th><th>Rendered at</th></tr>
+        <tr><td>COLOR</td><td>full spectrum</td><td>full saturation and value</td></tr>
+        <tr><td>SATURATION</td><td>white to the current hue</td><td>full value</td></tr>
+        <tr><td>BRIGHTNESS</td><td>dark to the current colour</td><td>floored at 18%</td></tr>
+        <tr><td>WARMTH</td><td>candle amber to daylight blue</td><td>—</td></tr>
+      </table>
+      <p>Hue and saturation render at full value on purpose: a range you cannot see is no use for choosing from, whatever the light is currently set to. Brightness is the exception, because varying brightness <em>is</em> its range — but its dots stop at 18% rather than fading into the black glass.</p>
+      <p>The swatch is the opposite: hue, saturation and brightness together, black when the light is off. It answers "what will this look like" rather than illustrating one axis.</p>
+
+      <h3>A socket carrying the wrong reply</h3>
+      <p>The swatch came up black in colour mode and the LEDs stayed dark, which both trace to the UI believing the light was off while it was plainly on.</p>
+      <div class="callout blue">
+        <p><strong>The connection is persistent, and a write's acknowledgement returns on it.</strong> Tapping into the adjustments fires a status query immediately after the mode and power writes, so the query read the acknowledgement of the write — a frame with no datapoints in it. <code>dps["20"]</code> was absent, power defaulted to false, and every consequence followed from there.</p>
+      </div>
+      <p><code>exchange()</code> now drains the socket before it sends, and a status reply carrying no power datapoint is rejected rather than read as "off". Across a full session of testing afterwards the rejection never fired once, which is the result worth having: the drain was the fix and the guard is there in case it is ever not.</p>
+
+      <h3>Two faults from drawing over my own output</h3>
+      <table class="res">
+        <tr><th>Symptom</th><th>Cause</th></tr>
+        <tr><td>a black spot eating the top of the ring, coming and going</td><td>the network activity dot sat at the exact position of the ring's top dot</td></tr>
+        <tr><td>the hint on the scene screen read like a title</td><td>the title was blanked there for repeating the mode name, leaving the hint as the only word on the glass</td></tr>
+      </table>
+      <p>The activity dot moved down beside the build stamp. The title came back: the arrow hint names <em>where a swipe takes you</em>, and with nothing above it that reads as a label for where you are.</p>
+
+      <h3>Measured, from a real session</h3>
+      <pre class="data">gesture 0x05 tap  scr=0 ctl=2 pwr=1 mode=2 L=100 c=100 s=1000 h=205  publish+0ms
+draw took 28 ms  full=1
+draw took  9 ms  full=0
+
+16 gestures   0 rejected   0 unusable reads
+heap 228,444 steady        worker stack 8,964 free of 12,288</pre>
+      <p>A knob turn costs 9 ms and a change of screen 26–29 ms. Every gesture published at <code>+0ms</code>, so the controller is classifying as fast as it can and nothing is waiting on a timer.</p>
+
+      <h3>The LEDs are a colour preview</h3>
+      <p>They light on the COLOR and SATURATION screens and nowhere else — not in white mode, not on scene, not while browsing, not when the light is off. A ring of LEDs that stays on regardless is a second light source in the room and tells you nothing.</p>
+
+      <h3>The build stamp gets its own font</h3>
+      <p>The built-in font scales by whole numbers, so the smallest interface text cannot grow a little — it can only double. The stamp shrinks instead: a hand-cut 3×5 bitmap covering the digits, a colon and the letter b, four pixels to a character. Every label on the glass is now larger than the build number, which is the relationship that matters.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-14_ring-styles/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-14_ring-styles/ring-styles.svg">ring-styles.svg</a> <span class="note">— the four screens</span></li>
+        <li><a href="journal-assets/2026-09-14_ring-styles/make-ring-styles.py">make-ring-styles.py</a> <span class="note">— draws them from the firmware's arithmetic</span></li>
+        <li><a href="journal-assets/2026-09-14_ring-styles/session-b17.log">session-b17.log</a> <span class="note">— the captured session the numbers come from</span></li>
+        <li><a href="journal-assets/2026-09-14_ring-styles/control.ino">control.ino</a> <span class="note">— b19</span></li>
+        <li><a href="journal-assets/2026-09-14_ring-styles/tuya.h">tuya.h</a> <span class="note">— the drain, and buffers big enough for a scene</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-14T13:40-07:00">Mon 14 Sep 2026 · 13:40 PDT</time></span>
+        <span class="title">Option A built, and six things wrong with the first cut<span class="badge blue">b11</span></span>
+        <span class="synopsis">Press now walks off › white › color › scene › music. The clear rectangle that made a repaint fast was eating the ring, and half the presses never reached the code.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The machine</h3>
+      <figure>
+        <a href="journal-assets/2026-09-14_esprotary-state-v2/state-machine-v2.svg"><img src="journal-assets/2026-09-14_esprotary-state-v2/state-machine-v2.svg" alt="LIGHTS at the top, with turn or swipe browsing groups. A blue press arrow leads to a chain of five chips — OFF, WHITE, COLOR, SCENE, MUSIC — wrapping back to OFF. A grey tap arrow leads down to the ADJUST frame, which lists one row per mode: WHITE holds BRIGHT and WARMTH, COLOR holds COLOR, SAT and BRIGHT, SCENE holds SCENE and BRIGHT, and MUSIC has no adjustments."></a>
+        <figcaption>Two screens. Tap moves in and out, swipe moves sideways, press always means power.</figcaption>
+      </figure>
+      <p>A group offers only the modes its datapoints support, so the Bar bulbs skip COLOR and the plugs get OFF and ON alone. MUSIC is in the cycle because every bulb with <code>dp 21</code> advertises it, and it carries no adjustments — nothing on the ring can feed it audio.</p>
+
+      <h3>What went wrong</h3>
+      <table class="res">
+        <tr><th>Report</th><th>Cause</th><th>Fix</th></tr>
+        <tr><td>browsing groups took most of a second</td><td>every detent wiped the whole screen and repainted all 52 ring dots</td><td>text paints its own background; only the dots that moved get touched</td></tr>
+        <tr><td>rotating in SCENE broke the graphics</td><td>the clear rectangle overlapped the ring</td><td>nothing is cleared at all any more</td></tr>
+        <tr><td>two presses to step one mode</td><td>the debounce threw away edges instead of waiting for them</td><td>the level must hold 15 ms; no edge is discarded</td></tr>
+        <tr><td>presses did nothing after entering SCENE</td><td>the same discarded edge</td><td>as above</td></tr>
+        <tr><td>the cycle skipped MUSIC</td><td>I left it out on the grounds it has no data datapoint</td><td>it is in the cycle, with no adjustments behind it</td></tr>
+        <tr><td>COLOR reverted to white on tap</td><td>the worker ran status reads before writes</td><td>writes first, and a read leaves <code>dp 21</code> alone for 6 s after a press</td></tr>
+      </table>
+
+      <h3>The clear rectangle was eating the ring</h3>
+      <p>To make a knob turn cheap I wiped only the value block — <code>fillRect(14, 58, 212, 88)</code> — instead of the whole screen. The ring sits at radius 108 with 4-pixel dots, so its leftmost dot spans x 8–16 and its rightmost spans x 224–232. The wipe ran from x 14 to x 226 and sliced both of them in half, once per detent, which is why the damage looked like it accumulated.</p>
+      <div class="callout blue">
+        <p><strong>The fix removes the clear rather than resizing it.</strong> Every line now prints through <code>setTextColor(fg, bg)</code> padded to a fixed column count, so redrawing a line covers whatever it replaces. A rectangle wide enough for the text will always reach the ring on a round screen; a rectangle narrow enough to miss the ring is too narrow for the text. Opaque glyphs dodge the geometry entirely.</p>
+      </div>
+      <p>Each line's column budget keeps its band inside the ring at that height — 14 characters at size 2 for the group name at y 66, 5 for the big value at y 80, 12 for the exit hint at y 206. Longer names truncate instead of overflowing off the glass, which they used to do.</p>
+
+      <h3>Half the presses never arrived</h3>
+      <p>The old debounce took one sample, waited 12 ms, took a second, and acted only if they agreed. When they disagreed it returned without updating the recorded level — so the edge was gone, and the switch's next transition looked like no change at all. Roughly every other press vanished.</p>
+      <pre class="data">before   read → wait 12 ms → read → if equal act, else forget the edge
+after    track the raw level and when it last changed;
+         act when it has held the new level for 15 ms</pre>
+      <p>The new version never discards a transition — it postpones it.</p>
+
+      <h3>Reads were overtaking writes</h3>
+      <p>Tapping into the adjustments queues a status read so the ring shows what the light is really doing. The worker checked the read before the writes, so a tap right after a press asked the bulb what mode it was in before the <code>dp 21</code> write had left the ESP. The bulb answered "white", that answer overwrote the press, and the control list rebuilt itself as BRIGHT and WARMTH.</p>
+      <p>Writes now run first, and for six seconds after a press a read leaves <code>dp 21</code> alone: inside that window the knob is the truth, because the bulb has not caught up.</p>
+
+      <h3>Also</h3>
+      <ul>
+        <li>The SPI clock runs at 80 MHz instead of 40.</li>
+        <li>The marker snaps to a ring dot, which makes moving it a two-dot repaint rather than a redraw.</li>
+        <li>The scene screen printed <code>SCENE</code> above the preset name. A control label that repeats the mode name says nothing, so it is suppressed.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-14_esprotary-state-v2/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-14_esprotary-state-v2/state-machine-v2.svg">state-machine-v2.svg</a> <span class="note">— the machine as built</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-v2/make-state-diagram.py">make-state-diagram.py</a> <span class="note">— draws it</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-v2/control.ino">control.ino</a> <span class="note">— b11</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-v2/scenes.h">scenes.h</a> <span class="note">— the six scene payloads for dp 25</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-v2/gen_caps.py">gen_caps.py</a> <span class="note">— stamps each group's real capabilities into the firmware</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-14T12:15-07:00">Mon 14 Sep 2026 · 12:15 PDT</time></span>
+        <span class="title">Three ways to put mode on the knob<span class="badge orange">Decision open</span></span>
+        <span class="synopsis">Press should step through a light's modes, not just its power. Three flows do that, drawn as state diagrams. One needs a gesture the hardware does not have.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <p>Each diagram uses one colour per input and the same colour throughout: <span style="color:#4caf50">turn</span>, <span style="color:#5b9bd5">press</span>, <span style="color:#9aa0a6">tap</span>, <span style="color:#f0a040">swipe</span>.</p>
+
+      <h3>Option A — the browse screen is the light's top level</h3>
+      <figure>
+        <a href="journal-assets/2026-09-14_ui-flow-options/flow-option-a.svg"><img src="journal-assets/2026-09-14_ui-flow-options/flow-option-a.svg" alt="LIGHTS at the top with two self-transitions: turn or swipe browses groups, press steps off, white, colour, scene. A tap arrow runs down to three mode-specific adjust frames: white holds bright and warmth, colour holds bright, hue and sat, scene holds scene and bright. Swipe moves sideways within each frame."></a>
+        <figcaption>Two levels. Press does the mode cycle where you already are.</figcaption>
+      </figure>
+      <p>Press on the browse screen steps <code>off › white › colour › scene</code>, so the light you are looking at changes mode under your thumb and off stays one position in the same cycle. Tap drops into the adjustments that mode actually has. Two gestures reach any control, and nothing new has to be invented.</p>
+      <p>The cost: the browse screen now carries two jobs. Turning browses groups and pressing changes the mode of whichever group is showing, so a press lands on a different light depending on where the list sits.</p>
+
+      <h3>Option B — each light gets its own home screen</h3>
+      <figure>
+        <a href="journal-assets/2026-09-14_ui-flow-options/flow-option-b.svg"><img src="journal-assets/2026-09-14_ui-flow-options/flow-option-b.svg" alt="LIGHTS browses groups with press as plain on and off. A tap opens BACK PORCH, a home screen whose press steps through the modes. A second tap enters the adjust carousel. A dashed red arrow marks the missing return path from the home screen back to LIGHTS."></a>
+        <figcaption>Three levels, and the return path is the problem.</figcaption>
+      </figure>
+      <p>This is the literal reading: browse presses on and off, and the mode cycle lives one level in, on a screen that belongs to a single light. Each screen does one thing.</p>
+      <div class="callout red">
+        <p><strong>It needs a gesture that does not exist.</strong> Tap already means "go deeper" on two levels, so leaving the home screen has to be something else — a long press, a downward swipe, or a double tap. Long press is the one we removed for firing unreliably, and a swipe up or down collides with nothing today but has no meaning either.</p>
+      </div>
+
+      <h3>Option C — mode is one more adjust screen</h3>
+      <figure>
+        <a href="journal-assets/2026-09-14_ui-flow-options/flow-option-c.svg"><img src="journal-assets/2026-09-14_ui-flow-options/flow-option-c.svg" alt="LIGHTS browses groups with press as plain on and off. One tap enters a single carousel holding MODE, BRIGHT, WARMTH, HUE and SAT, with swipe moving between them and the carousel wrapping around."></a>
+        <figcaption>Press means exactly one thing on every screen.</figcaption>
+      </figure>
+      <p>Press stays plain on/off everywhere, and mode becomes something the knob sets like any other value: swipe to the MODE screen, turn to pick, swipe on to the controls. The carousel holds only the screens a light supports, so the Bar group shows MODE, BRIGHT and WARMTH and nothing else.</p>
+      <p>The cost: changing mode takes a tap plus a swipe plus a turn, where A does it in one press. It also makes the carousel long — five screens on the Back Porch.</p>
+
+      <h3>Side by side</h3>
+      <table class="res">
+        <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
+        <tr><td>Levels</td><td>2</td><td>3</td><td>2</td></tr>
+        <tr><td>Gestures to change mode</td><td>1 press</td><td>tap, press</td><td>tap, swipe, turn</td></tr>
+        <tr><td>Gestures to dim</td><td>tap, turn</td><td>tap, tap, turn</td><td>tap, swipe, turn</td></tr>
+        <tr><td>What press means</td><td>power, extended into modes</td><td>power up top, mode below</td><td>power, always</td></tr>
+        <tr><td>Needs a new gesture</td><td>no</td><td><strong>yes</strong></td><td>no</td></tr>
+        <tr><td>Longest carousel</td><td>3 screens</td><td>3 screens</td><td>5 screens</td></tr>
+      </table>
+      <p>A is the one I would build. It spends the press — an input doing almost nothing today — on the thing you asked to reach quickly, and it adds no gesture and no level. C is the fallback if a press landing on the wrong light turns out to be the annoyance in practice.</p>
+
+      <h3>The constraint all three run into</h3>
+      <p>Every bulb's <code>dp 21</code> advertises the same four modes, and on most of them the enum is lying — the datapoint that mode needs is absent:</p>
+      <table class="res">
+        <tr><th>Group</th><th>Datapoints</th><th>Modes that work</th></tr>
+        <tr><td>Back Porch, Laundry</td><td>22, 23, 24</td><td>white + warmth, colour, scene</td></tr>
+        <tr><td>Bar, Bath, Kitchen, Dining</td><td>22, 23, <strong>no 24</strong></td><td>white + warmth, scene — no colour</td></tr>
+        <tr><td>Richard Bedside</td><td>22, 24, <strong>no 23</strong></td><td>white, colour, scene — no warmth</td></tr>
+        <tr><td>Out front fan, plugs</td><td>1</td><td>on / off only</td></tr>
+      </table>
+      <p>So the cycle has to come from the datapoints a device reports, not from the enum, or half the house gets a colour mode that does nothing. The Bar, Bath, Kitchen and Dining bulbs are "Dim to Warm" parts — they carry a warmth axis on <code>dp 23</code> that no screen has ever touched.</p>
+      <p>Music mode has no data datapoint on any bulb here. Nothing on the ring can feed it, so all three flows leave it out.</p>
+
+      <h3>Two changes that do not wait on the decision</h3>
+      <p><strong>The colour ring marks where you are.</strong> <code>ring()</code> takes a <code>markPct</code> and paints an oversized dot in the current hue with a double white outline, so the rainbow says your position rather than only the range.</p>
+      <p><strong>The knob's two speeds move closer together.</strong> A fast flick crossed the range in 120° of wrist, which overshot; a slow turn moved one raw unit, which took a full revolution to get anywhere.</p>
+      <table class="res">
+        <tr><th></th><th>slow, per detent</th><th>fast, per detent</th><th>detents to cross</th></tr>
+        <tr><td>brightness — was</td><td>1 L*</td><td>16 L*</td><td>6</td></tr>
+        <tr><td>brightness — now</td><td><strong>2 L*</strong></td><td><strong>10 L*</strong></td><td>10</td></tr>
+        <tr><td>colour — was</td><td>1°</td><td>60°</td><td>6</td></tr>
+        <tr><td>colour — now</td><td><strong>7°</strong></td><td><strong>36°</strong></td><td>10</td></tr>
+      </table>
+      <p>Both derive from the range rather than from constants per screen: fast is a tenth of the range, slow a fiftieth, and the ramp between them stays squared so the knob holds fine control until you really move it. A full sweep now takes half a turn of the dial.</p>
+      <p>Build <strong>b3</strong> compiles with both, at 987,518 bytes — 31% of the app partition. It is not flashed; the panel still runs b2.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-14_ui-flow-options/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/flow-option-a.svg">flow-option-a.svg</a> <span class="note">— browse screen carries the mode cycle</span></li>
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/flow-option-b.svg">flow-option-b.svg</a> <span class="note">— per-light home screen</span></li>
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/flow-option-c.svg">flow-option-c.svg</a> <span class="note">— mode as an adjust screen</span></li>
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/make-flow-diagrams.py">make-flow-diagrams.py</a> <span class="note">— draws all three, one colour per input</span></li>
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/perceptual.h">perceptual.h</a> <span class="note">— the recompressed acceleration</span></li>
+        <li><a href="journal-assets/2026-09-14_ui-flow-options/control.ino">control.ino</a> <span class="note">— b3, with the marked colour ring</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-14T11:35-07:00">Mon 14 Sep 2026 · 11:35 PDT</time></span>
+        <span class="title">What the Back Porch lights can actually do<span class="badge blue">Reference</span></span>
+        <span class="synopsis">Eight datapoints, seven readable. The control app uses three of them. The schema hides two scale traps and one encoding that differs between the cloud and the LAN.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The hardware</h3>
+      <p>Both Back Porch units are the same product — <strong>Galaxy AI-Plus</strong>, product id <code>f5gp0ubz4tkpgbd1</code>, Tuya category <code>dd</code> (light strip), protocol 3.3 on the LAN. Identical schemas, so anything here applies to both.</p>
+
+      <h3>Every datapoint</h3>
+      <table class="res">
+        <tr><th>DP</th><th>Code</th><th>Type</th><th>Range</th><th>Readable</th><th>Used today</th></tr>
+        <tr><td>20</td><td>switch_led</td><td>Boolean</td><td>on / off</td><td>yes</td><td><strong>yes</strong> — knob press</td></tr>
+        <tr><td>21</td><td>work_mode</td><td>Enum</td><td>white · colour · scene · music</td><td>yes</td><td>write only, forced to <code>colour</code></td></tr>
+        <tr><td>22</td><td>bright_value</td><td>Integer</td><td>10 – 1000</td><td>yes</td><td><strong>yes</strong> — the knob</td></tr>
+        <tr><td>23</td><td>temp_value</td><td>Integer</td><td>0 – 1000</td><td>yes</td><td>no</td></tr>
+        <tr><td>24</td><td>colour_data</td><td>h / s / v</td><td>h 0–360, s 0–1000, v 0–1000</td><td>yes</td><td><strong>yes</strong> — the colour screen</td></tr>
+        <tr><td>25</td><td>scene_data</td><td>up to 8 units</td><td>see below</td><td>yes</td><td>no</td></tr>
+        <tr><td>26</td><td>countdown</td><td>Integer</td><td>0 – 86400 s</td><td>yes</td><td>no</td></tr>
+        <tr><td>28</td><td>control_data</td><td>mode + h/s/v/bright/temp</td><td>direct or gradient</td><td><strong>no</strong></td><td>no</td></tr>
+      </table>
+      <p>Seven of the eight come back in a <code>DP_QUERY</code>. <code>28</code> never does, and the bulb never pushes it: it is a command envelope carrying a complete absolute target, so there is no stored value to report. Read where the light <em>is</em> from 22, 23 and 24; write how it <em>moves</em> through 28.</p>
+
+      <h3>Live state</h3>
+      <pre class="data">                 dp20   dp21    dp22   dp23   dp24
+Back Porch 1     off    white    570    855   000003e803e8
+Back porch 2     off    white    570   1000   000003e803e8</pre>
+      <p>Brightness matches, white temperature does not — 855 against 1000. The two units have drifted apart because nothing in the control app writes <code>dp 23</code>, so whatever the Smart Life app last set on each one stands. Anyone driving these as a group should write all of 22, 23 and 24 rather than assume the pair agree. The stored colour decodes to hue 0, saturation 1000, value 1000 — full red, held but not lit, since both are in white mode.</p>
+
+      <h3>Three traps in the schema</h3>
+      <div class="callout orange">
+        <p><strong>The same field has two scales.</strong> <code>dp 24</code> declares saturation and value as 0–1000. <code>dp 28</code> declares the same two names as <strong>0–255</strong>, with hue still 0–360 and brightness still 0–1000 in both. Passing a saturation of 1000 into <code>dp 28</code> is four times over its ceiling.</p>
+      </div>
+      <div class="callout orange">
+        <p><strong>Colour is JSON in the cloud and hex on the LAN.</strong> The cloud reports <code>dp 24</code> as <code>{"h":0,"s":1000,"v":1000}</code>; the bulb reports the identical state as <code>000003e803e8</code>, twelve hex characters, four per channel. The firmware writes the hex form. Copying a value out of the cloud API into a LAN write sends a string the bulb cannot parse.</p>
+      </div>
+      <div class="callout orange">
+        <p><strong>Brightness bottoms out at 10, not 0,</strong> and these bulbs use Tuya's v1 code names — <code>bright_value</code>, <code>temp_value</code>, <code>colour_data</code>, not the <code>_v2</code> set. Off is <code>dp 20</code>; there is no brightness value that means dark. The dimming curve already floors at 10, so this one is handled.</p>
+      </div>
+
+      <h3>dp 25, decoded</h3>
+      <p>A scene is up to eight units, each a colour plus how to reach it. The LAN form is 14 bytes per unit; reading the same bulb through the cloud at the same moment gives the JSON to check it against:</p>
+      <pre class="data">bytes: 00 0e 0d 00 00 00 00 00 00 00 00 c8 00 00
+
+0      scene number, 0-based        →  1
+1      unit_switch_duration    0-100 →  14
+2      unit_gradient_duration  0-100 →  13
+3      unit_change_mode              →  static · jump · gradient
+4-5    h            0-360
+6-7    s            0-1000
+8-9    v            0-1000
+10-11  bright       0-1000           →  200
+12-13  temperature  0-1000</pre>
+      <p>Every field matches the cloud's JSON. Only four of them prove the layout — the scene number, the two durations and the brightness of 200 sitting at bytes 10–11. The rest are zero in this scene, so their positions follow the field order rather than evidence. A scene with distinct h, s and v would pin them down.</p>
+      <p><code>jump</code> and <code>gradient</code> are the interesting part: the bulb can walk between colours on its own timing, without a packet per step.</p>
+
+      <h3>What the control app touches</h3>
+      <p>Three datapoints. <code>setBool(20)</code> for power, <code>setInt(22)</code> for the knob, and <code>setStr(21,"colour")</code> followed by <code>setStr(24, hsv)</code> for the colour screen. It reads 20 and 22 when a group is opened and ignores the rest, so the ring shows power and brightness truthfully but shows a colour it assumes rather than one it read.</p>
+
+      <h3>Worth building</h3>
+      <table class="res">
+        <tr><th>DP</th><th>What it would give</th><th>Cost</th></tr>
+        <tr><td>23</td><td>a warm-to-cool axis for white mode — a third knob screen, and the one that matters on a porch</td><td>small: another <code>setInt</code>, another screen</td></tr>
+        <tr><td>28</td><td>the knob fades instead of stepping; the bulb interpolates, the ESP sends one packet</td><td>needs the 0–255 scale and a test — I have not written to it</td></tr>
+        <tr><td>26</td><td>"porch off in an hour" from the ring</td><td>small, but needs a way to enter a duration</td></tr>
+        <tr><td>21</td><td><code>music</code> mode — undocumented in this schema, effect unknown</td><td>unknown; worth one experiment</td></tr>
+      </table>
+      <p>Only the eight rows and the ranges above are verified — they come from the product's own schema and from a live query. Nothing here is a test of <code>dp 28</code> or of music mode; both are read from the schema, not yet driven.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-14_back-porch-capabilities/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-14_back-porch-capabilities/back-porch-schema.json">back-porch-schema.json</a> <span class="note">— full schema and live state for both units, keys stripped</span></li>
+        <li><a href="journal-assets/2026-09-14_back-porch-capabilities/decode-dp25.py">decode-dp25.py</a> <span class="note">— decodes the LAN scene bytes and checks them against the cloud</span></li>
+        <li><a href="journal-assets/2026-09-14_back-porch-capabilities/dp25-decode.txt">dp25-decode.txt</a> <span class="note">— its output, all nine fields matching</span></li>
+        <li><a href="journal-assets/2026-09-14_back-porch-capabilities/all-devices-dps.json">all-devices-dps.json</a> <span class="note">— which datapoints every light on the network reports</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-14T10:20-07:00">Mon 14 Sep 2026 · 10:20 PDT</time></span>
+        <span class="title">espRotary state machine, and what the input layer cost to get right<span class="badge green">Settled</span></span>
+        <span class="synopsis">Three screens driven by tap, swipe, rotate and press. The gesture layer took four attempts because every rule keyed off the finger count, which is a matter of sampling luck.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The machine as it stands</h3>
+      <figure>
+        <img src="journal-assets/2026-09-14_esprotary-state-machine/state-machine.svg" alt="State machine with three boxes: LIGHTS, BRIGHTNESS and COLOR. Tap moves from LIGHTS to BRIGHTNESS and back, and returns to LIGHTS from COLOR. Swipe moves between BRIGHTNESS and COLOR in both directions. Each state has self-transitions: rotate or swipe browses groups in LIGHTS, rotate dims in BRIGHTNESS, rotate changes colour in COLOR, and the knob press toggles power in both control states.">
+        <figcaption>Grey is tap, yellow is swipe, green stays put.</figcaption>
+      </figure>
+      <table class="res">
+        <tr><th>Input</th><th>LIGHTS</th><th>BRIGHTNESS</th><th>COLOR</th></tr>
+        <tr><td>Rotate</td><td>next group</td><td>dim</td><td>colour</td></tr>
+        <tr><td>Swipe ← →</td><td>next group</td><td>to COLOR</td><td>to BRIGHTNESS</td></tr>
+        <tr><td>Tap</td><td>enter</td><td>back to LIGHTS</td><td>back to LIGHTS</td></tr>
+        <tr><td>Knob press</td><td>—</td><td>on / off</td><td>on / off</td></tr>
+      </table>
+      <p>The grammar is per input rather than per screen: tap moves in and out, swipe moves sideways, the knob press always means power. A swipe on a white-only group has nowhere to go and is ignored — only Back Porch, Laundry and Richard Bedside report <code>dp 24</code>.</p>
+
+      <h3>Four attempts at one line</h3>
+      <p>Gestures come from the CST816T's own classifier, which publishes a code rather than a raw touch: <code>0x05</code> tap, <code>0x0C</code> long press, <code>0x03</code>/<code>0x04</code> swipe. Deciding when to accept one took four goes, and every failed rule made the same wrong assumption — that the finger count is a reliable signal.</p>
+      <table class="res">
+        <tr><th>Rule</th><th>Swipe</th><th>Tap</th></tr>
+        <tr><td>any frame with a finger</td><td>fires repeatedly — one swipe toggled twice and landed back where it started</td><td>works</td></tr>
+        <tr><td>two consecutive finger frames</td><td>—</td><td>never arms; taps vanish</td></tr>
+        <tr><td>on the touch-down edge</td><td>once</td><td>works, when the down frame is caught</td></tr>
+        <tr><td><strong>on the gesture-register edge</strong></td><td><strong>once</strong></td><td><strong>always</strong></td></tr>
+      </table>
+      <div class="callout blue"><strong>Why the finger count could never work:</strong> reads are interrupt gated, and a quick tap can start and finish between two polls. Instrumentation showed <code>lastF=0</code> in nearly every frame while <code>lastG</code> held a real gesture — the chip had classified a swipe the code then discarded. The gesture register going none → something <em>is</em> the event, and it does not depend on when the finger happened to be sampled.</div>
+      <p>The two gestures also publish at opposite moments — a swipe while the finger is down, a tap after it lifts — so any rule tied to the current touch state satisfies one and breaks the other.</p>
+
+      <h3>Three input faults, three causes</h3>
+      <table class="res">
+        <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+        <tr><td>rogue touches with nobody near it</td><td>free-running I²C polling sampled the register file mid-update and during LED and SPI noise</td><td>read only when the INT line fires; 2419 frames later, zero rejects</td></tr>
+        <tr><td>long delay on tap <em>and</em> swipe</td><td><code>EnDClick</code>: the chip cannot declare a single click until the double-tap window expires</td><td><code>MotionMask</code> <code>0x07</code> → <code>0x06</code>; latency went to 0 ms</td></tr>
+        <tr><td>touch firing when the knob is pressed</td><td>pressing the knob presses the glass; the chip classifies the squeeze as <code>0x0C</code></td><td>suppress touch while the press is held</td></tr>
+      </table>
+      <p>The tap delay was diagnosed from the observation that <em>tap</em> was slow too. A tap is published on lift with nothing left to classify, so classification time could not explain it — which pointed at a wait both gestures shared, and the only shared wait was the double-click window.</p>
+
+      <h3>Brightness the eye's way</h3>
+      <p>Perceived lightness relates to emitted light by roughly a cube, so stepping the device value evenly feels coarse in the dark and barely moves near full. The knob steps CIE L* linearly and the device value follows the curve:</p>
+      <pre class="data">L*     0    20    40    60    80   100
+dps   10    40   121   288   571  1000
+step   -   +19   +49   +96  +158  +235</pre>
+      <p>Rotation is accelerated to match the wrist rather than the encoder: at 20 detents per revolution a comfortable 120° arc is about six detents, so a fast flick crosses the whole range at ~16 units per detent while a slow turn drops to 1 for placing a value exactly.</p>
+
+      <h3>The UI froze because the network was in the loop</h3>
+      <p>A three-bulb group meant three sequential blocking round trips inside the draw loop. Sends now run on their own task pinned to core 0; the UI writes a desired state and never waits. Values coalesce, so spinning the knob produces one send per round trip rather than a backlog.</p>
+
+      <h3>Wording</h3>
+      <p>The hue angle is gone — a number nobody thinks in. The colour screen names what it shows across eleven bands, from RED through TEAL to VIOLET. "Hue" became "color", and the words "swipe" and "toggle" were replaced by arrow glyphs drawn as triangles and the phrase <code>press for on / off</code>: the hints now describe what the control does rather than what you do to it.</p>
+
+      <h3>Build stamp</h3>
+      <div class="callout orange"><strong>Every screen now carries <code>b&lt;n&gt; &lt;compile time&gt;</code>,</strong> bumped by <code>build.sh</code> on each compile. Across this session we repeatedly discussed a build that was not the one running, so a fix looked like it had failed when it had never been flashed. Asking for feedback without naming the expected build is how that happens.</div>
+
+      <h3>Time lost to my own tooling</h3>
+      <ul>
+        <li>A DTR+RTS reset pulse is the <em>enter bootloader</em> sequence on USB-Serial/JTAG, not a restart. It left the board in download mode with a black screen, which looked like a firmware crash.</li>
+        <li>Native USB re-enumerates on every reset, killing an open file descriptor. Captures opened around a flash read a dead handle and recorded nothing, silently. The reader now reopens when the port drops.</li>
+        <li><code>printf '\a'</code> is inaudible here, so several requests to act on the device were never heard and their capture windows closed empty. Alerts now use <code>afplay</code>.</li>
+      </ul>
+
+      <h3>Next</h3>
+      <ul>
+        <li>A full repaint costs 36–38 ms on every state change. Repainting only what changed would remove it, at the cost of restructuring <code>draw()</code>.</li>
+        <li>Three capabilities sit unused on the colour lights: <code>dp 23</code> colour temperature, <code>dp 26</code> countdown, and <code>dp 28</code> gradient transitions, which would make knob-driven dimming fade rather than step.</li>
+        <li>The instrumentation stays in until the feel is settled.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-14_esprotary-state-machine/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-14_esprotary-state-machine/state-machine.svg">state-machine.svg</a> <span class="note">— the three screens and every transition</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-machine/control.ino">control.ino</a> <span class="note">— UI, worker task, group dispatch</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-machine/touch.h">touch.h</a> <span class="note">— gesture-edge input, interrupt gated and filtered</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-machine/perceptual.h">perceptual.h</a> <span class="note">— the L* curve and the wrist-arc acceleration</span></li>
+        <li><a href="journal-assets/2026-09-14_esprotary-state-machine/build.sh">build.sh</a> <span class="note">— stamps the build number each compile</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-11T16:40-07:00">Fri 11 Sep 2026 · 16:40 PDT</time></span>
+        <span class="title">espRotary control app — groups, and the Tuya protocol in C++<span class="badge blue">Built</span></span>
+        <span class="synopsis">Lights group by the number on their name. Three screens, driven by rotate, press and touch. The LAN protocol had to be written from scratch, and one bulb quirk shapes the whole design.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>State machine</h3>
+      <figure>
+        <img src="journal-assets/2026-09-11_esprotary-control/state-diagram.svg" alt="State diagram with three boxes — SELECT, BRIGHTNESS and HUE. Press moves between SELECT and BRIGHTNESS in both directions. Long touch moves between BRIGHTNESS and HUE in both directions. Press from HUE returns directly to SELECT. Each state has a self-transition for rotation, and BRIGHTNESS has one for touch toggling power.">
+        <figcaption>Three screens. Green loops are actions that stay put; grey are press; yellow is long touch.</figcaption>
+      </figure>
+      <table class="res">
+        <tr><th>Screen</th><th>Rotate</th><th>Touch</th><th>Long touch</th><th>Press</th></tr>
+        <tr><td>SELECT</td><td>next group</td><td>—</td><td>—</td><td>enter BRIGHTNESS</td></tr>
+        <tr><td>BRIGHTNESS</td><td>dim</td><td>toggle on/off</td><td>HUE, if colour</td><td>back to SELECT</td></tr>
+        <tr><td>HUE</td><td>hue</td><td>toggle on/off</td><td>back to BRIGHTNESS</td><td>back to SELECT</td></tr>
+      </table>
+      <p>Long touch is offered only when the group reports <code>dps 24</code>. A dimmable or switch-only group ignores it rather than opening a screen with nothing behind it. Entering BRIGHTNESS reads the first member's live state, so the knob starts from whatever the light is actually doing rather than from a remembered value.</p>
+
+      <h3>Grouping falls out of the names</h3>
+      <p>A trailing number makes a group, folding case — which matters, because "Back Porch 1" and "Back porch 2" are spelled differently in the app and would otherwise have become two groups of one.</p>
+      <pre class="data">Back Porch   2  colour      Bar      3  dimmable    Bath   3  dimmable
+Laundry      1  colour      Dining   1  dimmable    Kitchen 1 dimmable
+Richard Bedside 1 colour    Living room plug 2, Living room tree 1,
+                            Window lights 1, Out front 1   switch
+
+11 groups, 17 lights reachable on the LAN</pre>
+      <p>Capability came from probing each bulb rather than from its model number: <code>dps 24</code> present means colour, <code>dps 22</code> alone means dimmable, neither means a switch. Four of the groups turned out to be colour-capable and the bar and bath lights are white-only, which is why hue is gated rather than global.</p>
+
+      <h3>The protocol had to be written</h3>
+      <p>No Arduino library speaks Tuya's LAN protocol, so <code>tuya.h</code> implements it: the <code>55AA</code> frame with sequence, command, length, CRC-32 and <code>AA55</code> trailer, with the payload AES-128-ECB encrypted under the device's local key through mbedTLS. Commands other than <code>DP_QUERY</code> also carry a fifteen-byte version header ahead of the ciphertext.</p>
+
+      <h3>One bulb quirk drives the design</h3>
+      <div class="callout orange"><strong>These bulbs accept exactly one local connection</strong> and hold a dead socket for a while after a failed attempt. The firmware keeps one connection per light and never opens a second.</div>
+      <p>This was learned the hard way. Probing a bulb at 3.5, then 3.4, then 3.3 in a loop produced "connects in 40 ms then rejects the key" for the newer versions and "unable to connect" for 3.3 — which reads exactly like a device speaking a newer protocol with a stale key. It was neither. Each attempt was colliding with the socket the previous one had left behind. A single clean attempt after a pause returned the state immediately:</p>
+      <pre class="data">Bar 2  v3.3  305 ms  {'20': True, '21': 'white', '22': 1000, '23': 1000, ...}</pre>
+      <p>The signal-strength reading in the SmartLife app, −49 dBm, ruled out the weak-Wi-Fi explanation that had also been on the table. Outbound commands are rate limited to one per 120 ms so a fast spin cannot queue dozens behind a bulb that answers in a few hundred.</p>
+
+      <h3>Names are not to be trusted yet</h3>
+      <p>The Tuya cloud calls <code>...33a3ea</code> <strong>Bar 2</strong>, and the SmartLife app's own Device Information screen shows that same ID under <strong>Bar 1</strong>. Blinking each bar light a distinguishing number of times is how the physical mapping gets settled; until it is, the group names are app labels rather than observed fact.</p>
+
+      <h3>Secrets</h3>
+      <p>The generated device table carries every local key, so <code>devices_secret.h</code>, <code>secrets.h</code> and <code>devices.json</code> are all excluded from git and confirmed so with <code>git check-ignore</code>. Only names, addresses and capabilities are tracked.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-11_esprotary-control/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-11_esprotary-control/state-diagram.svg">state-diagram.svg</a> <span class="note">— the three screens and every transition</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-control/control.ino">control.ino</a> <span class="note">— UI, state machine, group dispatch</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-control/tuya.h">tuya.h</a> <span class="note">— the LAN protocol client</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-control/groups.json">groups.json</a> <span class="note">— groups and capabilities, no keys</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-11T15:40-07:00">Fri 11 Sep 2026 · 15:40 PDT</time></span>
+        <span class="title">espRotary — the encoder is clean, and the screen needs two undocumented rails<span class="badge green">All pass</span></span>
+        <span class="synopsis">704 quadrature edges with none missed, so the stock firmware's unreliable knob is its own doing. The panel stayed black until two power pins that appear only in Elecrow's source were driven high.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The knob is not the problem</h3>
+      <p>The stock app responds inconsistently to the knob, so the encoder was measured before anything was assumed. An interrupt-driven 4× quadrature state machine, counting every edge and flagging any transition where both lines moved at once:</p>
+      <pre class="data">CW    52 quarter-steps (13.0 detents)  in  448 ms   221.0 edges/s   missed 0
+CCW   85 quarter-steps (21.2 detents)  in  916 ms   159.4 edges/s   missed 0
+CW    80 quarter-steps (20.0 detents)  in  564 ms   196.8 edges/s   missed 0
+CCW   80 quarter-steps (20.0 detents)  in 1052 ms   128.3 edges/s   missed 0
+
+totals: 704 valid edges, 0 missed (0.00%)</pre>
+      <p>Both directions track symmetrically — 20 detents each way counted exactly 80 quarter-steps — and the peak was 571 edges/s with nothing dropped.</p>
+      <div class="callout green"><strong>Conclusion:</strong> the hardware is clean, so the stock firmware's unreliability is application-level. The most likely cause is polling the pins rather than taking interrupts, which drops edges whenever the UI is busy redrawing.</div>
+
+      <h3>The screen needs two pins nobody documents</h3>
+      <p>The first guided self-test ran to completion with the panel dark. The SPI pins were not the problem; Elecrow's own example uses exactly the numbers their wiki gives. What the wiki omits is in the example's <code>setup()</code>:</p>
+      <pre class="data">// These two rails must remain enabled while the display is operating.
+pinMode(1, OUTPUT); digitalWrite(1, HIGH);
+pinMode(2, OUTPUT); digitalWrite(2, HIGH);</pre>
+      <p>Two power-enable rails on <code>GPIO1</code> and <code>GPIO2</code>. Without them the display is dark whatever the SPI configuration. The backlight is a PWM channel as well, so <code>digitalWrite(46, HIGH)</code> does not light it:</p>
+      <pre class="data">ledcAttach(46, 5000, 8);
+ledcWrite(46, 200);</pre>
+
+      <h3>A test that could only pass</h3>
+      <div class="callout red"><strong>The display test reported <code>PASS — GC9A01 on SCLK10 MOSI11 DC3 CS9 RST14 BL46</code> while the screen was black.</strong> It called <code>drawResult(true, …)</code> having asked nothing. A check that cannot fail is worse than no check: it turned a dark panel into a green tick and sent the diagnosis off in the wrong direction.</div>
+      <p>It now draws the colour sweep and then requires the knob to be turned to confirm the screen is readable, so an unreadable panel fails it. That rule applies to the rest of the sequence too — every test either measures something or asks for confirmation.</p>
+
+      <h3>Guided on the device, not in the terminal</h3>
+      <p>Each test puts its instruction on the 240 × 240 panel, advances on its own when the goal is met, and mirrors everything to serial. The rotation tests draw a live detent counter and progress bar so the count is visible while turning rather than guessed at. Direction is checked by sign, so a reversed encoder reports <code>WRONG WAY</code> instead of quietly passing. Turning the knob at the summary screen reruns the whole sequence without reflashing.</p>
+
+      <h3>Every peripheral confirmed</h3>
+      <pre class="data">TEST 1  Display      PASS  panel, rails GPIO1/2 and PWM backlight
+TEST 2  CW slow      PASS  10 detents correct way in 6.4s, 0 missed   26.3 edges/s
+TEST 3  CW fast      PASS  20 detents correct way in 2.6s, 0 missed   51.3 edges/s
+TEST 4  CCW slow     PASS  10 detents correct way in 3.5s, 0 missed   24.6 edges/s
+TEST 5  CCW fast     PASS  20 detents correct way in 2.1s, 0 missed   66.2 edges/s
+TEST 6  Knob press   PASS  press and release on GPIO41
+TEST 7  Touch        PASS  CST816D at 0x15, touch at x=133 y=129
+TEST 8  LED ring     PASS  5x WS2812B on GPIO48
+
+All passed. 584 edges, 0 missed (0.00%)</pre>
+      <p>The pin map in the project README is no longer documentation — every line of it has now been driven on this board.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Mirror the factory image off this machine. Both the full 16 MB and the extracted 2.89 MB app are on disk only.</li>
+        <li>The dither seen at rest in the free-turning test — isolated single quarter-steps — is worth pinning down, since a UI acting on every step would read it as jitter.</li>
+        <li>Build something with the knob now that all four inputs are proven.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-11_esprotary-selftest/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-11_esprotary-selftest/peripheral-verification.log">peripheral-verification.log</a> <span class="note">— the free-turning encoder run and both self-test runs</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-selftest/selftest.ino">selftest.ino</a> <span class="note">— the guided on-screen sequence</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-selftest/rotary-test.ino">rotary-test.ino</a> <span class="note">— encoder characterization with pin discovery</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-selftest/pins.h">pins.h</a> <span class="note">— the confirmed pin map, rails included</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-selftest/build.sh">build.sh</a> <span class="note">— FQBN, and why never to pass --baud here</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-11T14:49-07:00">Fri 11 Sep 2026 · 14:49 PDT</time></span>
+        <span class="title">espRotary — new board, identified and backed up<span class="badge blue">New project</span></span>
+        <span class="synopsis">A CrowPanel 1.28" rotary knob display. Native USB rather than a bridge chip, which inverts the baud lesson from the reTerminal, and a 16 MB factory image is safely off the board.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>A second project on this bench</h3>
+      <figure>
+        <img src="journal-assets/2026-09-11_esprotary-bringup/device-listing.jpg" alt="Product listing for the Elecrow 1.28 inch ESP32 rotary display, a round knurled knob with a circular colour screen">
+        <figcaption>The device as listed: a 1.28" round IPS screen set into a knurled rotary knob.</figcaption>
+      </figure>
+      <p>The board is a <a href="https://www.elecrow.com/crowpanel-1-28inch-hmi-esp32-rotary-display-240-240-ips-round-touch-knob-screen.html">CrowPanel 1.28inch-HMI ESP32 Rotary Display</a>: a 240 × 240 round IPS panel on a GC9A01 driver, CST816D capacitive touch, a rotary encoder that also presses, and a ring of five WS2812B LEDs, all on an ESP32-S3-N16R8.</p>
+
+      <h3>Read off the board, not the listing</h3>
+      <pre class="data">chip        ESP32-S3 (QFN56) revision v0.2
+features    Wi-Fi, BT 5 (LE), dual core + LP core, 240 MHz, 8 MB embedded PSRAM
+crystal     40 MHz
+MAC         68:ee:8f:5d:b3:74
+flash       JEDEC ba 4018 — 16 MB, quad I/O, 3.3 V
+USB mode    USB-Serial/JTAG — native, no bridge chip
+node        /dev/cu.usbmodem21101</pre>
+
+      <h3>Not the reTerminal, despite the same silicon</h3>
+      <table class="res">
+        <tr><th></th><th>reTerminal E1002</th><th>espRotary</th></tr>
+        <tr><td>USB</td><td>CH340 bridge <code>1a86:7523</code></td><td>native <code>303a</code></td></tr>
+        <tr><td>Node</td><td><code>/dev/cu.usbserial-*</code></td><td><code>/dev/cu.usbmodem*</code></td></tr>
+        <tr><td>MAC</td><td><code>e0:72:a1:f9:02:60</code></td><td><code>68:ee:8f:5d:b3:74</code></td></tr>
+        <tr><td>Flash</td><td>32 MB, app at <code>0x90000</code></td><td>16 MB, app at <code>0x10000</code></td></tr>
+      </table>
+      <p>Same chip and the same silicon revision, so only the MAC and the flash settle which board is on the end of the cable. Worth knowing when both are plugged in.</p>
+
+      <h3>The baud lesson inverts</h3>
+      <div class="callout orange"><strong>Do not pass <code>--baud</code> on this board.</strong> The first backup attempt at 921600 died after 20 kB with <code>Serial data stream stopped</code>. There is no UART to reclock — the ESP32-S3 speaks USB CDC directly, so the argument is meaningless and actively harmful. At the default it sustains 1384 kbit/s.</div>
+      <p>That is the exact opposite of the reTerminal, where a CH340 bridge forced everything down to 115200 and a 32 MB read took an hour in chunks with retries. Here the whole 16 MB came back in a single pass in 96.9 seconds, roughly ten times faster.</p>
+
+      <h3>Partition table</h3>
+      <pre class="data">NAME         TYPE/SUB  OFFSET       SIZE
+nvs          01/02     0x00009000   24 kB
+phy_init     01/01     0x0000f000    4 kB
+app0         00/00     0x00010000   16320 kB  (factory, no OTA, no filesystem)</pre>
+      <p>One factory app at the default <code>0x10000</code>, so <code>arduino-cli upload</code> will write where the bootloader looks. None of the offset surgery the reTerminal needed applies here.</p>
+
+      <h3>Factory image saved first</h3>
+      <pre class="data">16,777,216 bytes
+sha256 3137fbe2bfb7052279fbb801f1d262de94c3056a27b3183637758914c273f6cf
+
+ESP image magic 0xE9 at 0x0                              yes
+partition magic 0xAA50 at 0x8000, table parses           yes
+app image magic 0xE9 at 0x10000                          yes
+0xFF fill 83.5%, consistent with a 1.6 MB app in 16 MB   yes
+first 256 kB match an independent earlier read           yes</pre>
+      <p>Backed up before anything else was attempted. Git ignores the image and tracks its checksum and manifest, so mirror it off this machine.</p>
+
+      <h3>Pin map, unverified</h3>
+      <p>Elecrow's wiki gives display SPI on <code>GPIO10/11/3/9/14</code> with backlight on <code>GPIO46</code>, touch I²C on <code>GPIO6/7</code> with interrupt <code>GPIO5</code> and reset <code>GPIO13</code>, the encoder on <code>GPIO45/42</code> with its push on <code>GPIO41</code>, and the WS2812B chain on <code>GPIO48</code>. None of it has been checked against the board. The same page also lists an SSD1306 OLED and a pair of test pins, which may belong to another board in the family.</p>
+
+      <h3>Next</h3>
+      <ul>
+        <li>Mirror the factory image off this machine.</li>
+        <li>Decide the graphics path: Elecrow's examples use LVGL with LovyanGFX, against driving GC9A01 more directly.</li>
+        <li>Confirm the pin map by lighting each peripheral in turn rather than trusting the wiki.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-11_esprotary-bringup/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-11_esprotary-bringup/board-identification.log">board-identification.log</a> <span class="note">— what enumerated, and the baud comparison</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-bringup/2026-09-11_crowpanel-1v28-rotary-factory-16MB.manifest.txt">…factory-16MB.manifest.txt</a> <span class="note">— capture method, partition table, verification</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-bringup/2026-09-11_crowpanel-1v28-rotary-factory-16MB.bin.sha256">…factory-16MB.bin.sha256</a> <span class="note">— checksum of the image</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-bringup/README.md">README.md</a> <span class="note">— device, pin map, serial notes</span></li>
+        <li><a href="journal-assets/2026-09-11_esprotary-bringup/device-listing.jpg">device-listing.jpg</a> <span class="note">— the listing this started from</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
     <summary>
       <span class="chev"></span>
       <span class="head">
