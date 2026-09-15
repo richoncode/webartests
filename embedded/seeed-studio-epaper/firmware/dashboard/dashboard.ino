@@ -37,7 +37,14 @@ RTC_DATA_ATTR int      rtcTestMode = 0;    // 0 = live; 1..TEST_MODE_COUNT = syn
 
 // Which button, if any, woke us. ext1 reports a bitmask of the pins that were
 // low, so a press can be attributed rather than merely detected.
+// A CPU reset does not clear the RTC wake-cause register, so after a flash the
+// chip still reports the EXT1 wake that preceded it. That read as a fresh press
+// and dropped the device into test mode on every upload. Only a genuine
+// deep-sleep wake can have been caused by a button.
+static bool wokeFromSleep() { return esp_reset_reason() == ESP_RST_DEEPSLEEP; }
+
 static int wakeButton() {
+  if (!wokeFromSleep()) return -1;
   if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT1) return -1;
   uint64_t mask = esp_sleep_get_ext1_wakeup_status();
   if (mask & (1ULL << PIN_BTN_GREEN))   return PIN_BTN_GREEN;
@@ -47,6 +54,7 @@ static int wakeButton() {
 }
 
 static const char *wakeReason() {
+  if (!wokeFromSleep()) return "power-on";
   switch (esp_sleep_get_wakeup_cause()) {
     case ESP_SLEEP_WAKEUP_TIMER: return "timer";
     case ESP_SLEEP_WAKEUP_EXT1:  return "button";
@@ -121,12 +129,50 @@ static void sleepUntilNextWake() {
   esp_deep_sleep_start();
 }
 
+// ── refresh indicator ───────────────────────────────────────────────────────
+// A Spectra 6 full refresh takes about 36 seconds, and for most of it the panel
+// cycles through flat colour fields that look like a fault. The LED says the
+// device is working, not stuck. The blinking runs on its own task because
+// update() blocks for the whole refresh and returns nothing until it is done.
+static TaskHandle_t blinkTask = nullptr;
+
+static void blinkLoop(void *) {
+  pinMode(PIN_LED, OUTPUT);
+  bool on = false;
+  for (;;) {
+    on = !on;
+    digitalWrite(PIN_LED, on ? HIGH : LOW);
+    vTaskDelay(400 / portTICK_PERIOD_MS);
+  }
+}
+static void blinkStart() {
+  if (!blinkTask) xTaskCreatePinnedToCore(blinkLoop, "blink", 1536, nullptr, 1, &blinkTask, 0);
+}
+static void blinkStop() {
+  if (blinkTask) { vTaskDelete(blinkTask); blinkTask = nullptr; }
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
+}
+// Two deliberate flashes: the press was heard and the work is done, but nothing
+// on the panel changed. Without it a button press that finds no new data is
+// indistinguishable from a button press that did nothing at all.
+static void blinkAcknowledge() {
+  blinkStop();
+  for (int i = 0; i < 2; i++) {
+    digitalWrite(PIN_LED, HIGH); delay(120);
+    digitalWrite(PIN_LED, LOW);  delay(160);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(400);                       // let the USB serial settle before the first print
   rtcWakeCount++;
   int btn = wakeButton();
+  // A fresh boot means new firmware: leave any test mode behind and repaint, so
+  // what is on the glass is what this build draws.
   bool forceRepaint = false;
+  if (!wokeFromSleep()) { rtcTestMode = 0; forceRepaint = true; }
   if (btn == PIN_BTN_GREEN) {
     // An update button that sometimes does nothing is not an update button.
     rtcTestMode = 0;
@@ -138,6 +184,11 @@ void setup() {
     rtcTestMode = 0;
     forceRepaint = true;
   }
+  // The press is acknowledged now rather than when the panel finally moves.
+  // Wi-Fi and three fetches stand between the button and the first pixel, so
+  // without this the device looks ignored for the best part of ten seconds.
+  if (btn > 0) blinkStart();
+
   Serial.printf("\n=== wake %lu (%s%s) ===\n", rtcWakeCount, wakeReason(),
                 btn == PIN_BTN_GREEN ? ": green/refresh"
               : btn == PIN_BTN_WHITE_R ? ": white-R/next test"
@@ -157,6 +208,7 @@ void setup() {
     epaper.update();
     rtcLastHash = 0;            // force a real repaint on the way back to live
     Serial.println("  draw: test frame");
+    blinkStop();
     sleepUntilNextWake();
   }
 
@@ -179,7 +231,7 @@ void setup() {
   Serial.printf("  fetch: weather %s, air %s, launch %s, bins %s\n",
                 gotWeather ? "ok" : "FAILED", gotAir ? "ok" : "FAILED",
                 m.launchTonight ? "band" : "none",
-                m.binsTonight ? "tonight" : "no");
+                m.bins == BIN_OUT ? "out tonight" : m.bins == BIN_IN ? "bring in" : "no");
 
   // The runway needs a real wall clock: anchoring it before NTP is what put the
   // baseline in 1970 and produced a 607,333-day estimate.
@@ -230,23 +282,28 @@ void setup() {
 
   if (want == known && !forceRepaint) {
     Serial.printf("  draw: skipped, content unchanged (hash %08x)\n", want);
+    blinkAcknowledge();     // pressed, worked, nothing to redraw
   } else if (!gotWeather && known == 0) {
     Serial.println("  draw: skipped, no data has ever been fetched");
+    blinkAcknowledge();
   } else {
     Serial.printf("  draw: repainting%s, hash %08x -> %08x\n",
                   forceRepaint ? " (button)" : "", known, want);
     uint32_t t0 = millis();
+    blinkStart();                  // the panel spends 36 s looking broken otherwise
     epaper.begin();
     epaper.setRotation(0);
     Renderer renderer(epaper);
     renderer.draw(m);
     epaper.update();
+    blinkStop();
     Serial.printf("  draw: full refresh took %lu ms\n", millis() - t0);
     rtcLastHash = want;
     prefs.putUInt("hash", want);
   }
   prefs.end();
 
+  blinkStop();          // whatever route got here, the light goes out
   sleepUntilNextWake();
 }
 

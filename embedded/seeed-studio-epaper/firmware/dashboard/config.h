@@ -28,8 +28,16 @@
 #define WAKE_HOUR_MORNING   6      // the dashboard people actually read
 #define WAKE_INTERVAL_HOURS 12     // 06:00 and 18:00 -- two repaints a day at most
 
-// Bin night: reminder shown on this weekday. 1 = Monday.
-#define BIN_WEEKDAY         1
+// Bump this whenever the drawing changes shape. The content hash covers the
+// data, not the layout, so without it a firmware update that moves everything
+// around finds the same hash, skips the repaint, and leaves the old arrangement
+// on the glass until something in the weather happens to change.
+#define LAYOUT_VERSION      3
+
+// Bins. They go to the curb on Monday night and come back in on Tuesday, once
+// the truck has been. Two reminders, one band. 1 = Monday.
+#define BIN_OUT_WEEKDAY     1
+#define BIN_IN_WEEKDAY      2
 
 // Battery
 #define BATT_ADC_PIN        1
@@ -96,10 +104,20 @@
 #define WX_CLEAR_MAX_CLOUD_PCT   35
 #define LAUNCH_DUSK_MARGIN_MIN   15   // count from sunset minus this
 // Best viewing runs from sunset to about 90 min after; flag those as prime.
-#define LAUNCH_PRIME_WINDOW_MIN  90
+// The band carries a chance rather than a verdict. Green says go outside,
+// yellow says worth a look, blue says it is happening and probably not visible.
+// The floor is low on purpose: a launch at ten percent is still a launch
+// tonight, and "probably not, but it is up there at 6:29" is the point of it.
+#define LAUNCH_SHOW_MIN_PCT       5
+#define LAUNCH_YELLOW_PCT        30
+#define LAUNCH_GREEN_PCT         55
+#define LAUNCH_PLUME_LAG_MIN      6    // the sky is judged this long after lift-off
+#define LAUNCH_PREP_MIN           5    // "out by" this many minutes before it goes
 
 // Bearing from San Martin (37.08778, -121.60000) to Vandenberg SFB
-// (34.742, -120.573) is about 160 degrees — south-south-east, 200 miles out.
+// SLC-4E (34.632, -120.611) bears 162 degrees from San Martin — south-south-east,
+// 178 miles out. The pad coordinates come from Launch Library's own record; the
+// bearing and distance are the great-circle values between the two.
 #define LAUNCH_LOOK_BEARING_DEG  160
 #define LAUNCH_LOOK_LABEL        "LOOK SSE"
 

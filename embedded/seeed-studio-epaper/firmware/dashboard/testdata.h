@@ -33,12 +33,13 @@ inline void loadTestFrame(Model &m, int mode) {
     case 1:   // every band at once — the tightest layout there is
       m.eventToday = true; m.eventKind = EVT_BIRTHDAY;
       snprintf(m.eventName, sizeof(m.eventName), "RICHARD'S BIRTHDAY");
-      m.binsTonight = true;
-      m.launchTonight = true; m.launchPrime = true;
+      m.bins = BIN_OUT;
+      m.launchTonight = true; m.launchChance = 78;
       snprintf(m.launchName, sizeof(m.launchName), "FALCON 9 - STARLINK 15-24");
-      snprintf(m.launchSub,  sizeof(m.launchSub),  "LOOK SSE - 200 mi - booster to droneship");
+      snprintf(m.launchDrift,   sizeof(m.launchDrift),   "drifts right");
+      snprintf(m.launchBooster, sizeof(m.launchBooster), "LZ-4 return, booms");
       snprintf(m.launchTime, sizeof(m.launchTime), "8:14 PM");
-      snprintf(m.launchTz,   sizeof(m.launchTz),   "45 min after sunset");
+      snprintf(m.launchPrep, sizeof(m.launchPrep), "out by 8:09");
       break;
 
     case 2:   // wildfire smoke and a flat battery
@@ -63,7 +64,7 @@ inline void loadTestFrame(Model &m, int mode) {
       fillDay(m.days[2], "WED",    3, 69, 47, 40);
       fillDay(m.days[3], "THU",    1, 74, 48, 20);
       fillDay(m.days[4], "FRI",    0, 80, 50, 0);
-      m.binsTonight = true;
+      m.bins = BIN_OUT;
       break;
   }
   snprintf(m.asOf, sizeof(m.asOf), "TEST MODE %d - not live data", mode);

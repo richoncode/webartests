@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 // Everything the panel draws, in one struct. Fetch fills it, render reads it,
 // and nothing else talks to the network.
 
@@ -12,6 +13,11 @@ struct DayForecast {
   int   low;
   int   precipPct;     // precipitation_probability_max
 };
+
+// Which bin reminder is due, if any.
+#define BIN_NONE 0
+#define BIN_OUT  1
+#define BIN_IN   2
 
 struct Model {
   // header
@@ -44,13 +50,17 @@ struct Model {
   bool     eventToday;
   uint8_t  eventKind;      // EventKind from calendar.h
   char     eventName[32];
-  bool  binsTonight;
+  uint8_t bins;                 // BIN_NONE, BIN_OUT or BIN_IN
   bool  launchTonight;
   char  launchName[52];
-  char  launchSub[56];
+  // The sub-line is kept in parts rather than as a sentence: the renderer is
+  // the only place that can measure, so it is the only place that can decide
+  // what to drop when the line will not fit.
+  char  launchDrift[18];        // "drifts right", or empty
+  char  launchBooster[40];      // "LZ-4 return, booms" | "droneship" | "expended"
   char  launchTime[12];
-  char  launchTz[32];
-  bool  launchPrime;
+  char  launchPrep[16];         // "out by 6:24"
+  int   launchChance;           // 0-99, or 0 when nothing is shown
 
   // footer
   int   batteryPct;
@@ -79,6 +89,8 @@ struct Model {
     // being drawn when the header lost the current temperature and its
     // condition line. Hashing a field the panel no longer shows repaints the
     // screen for a change nobody can see, which is exactly the symptom.
+    int layoutVersion = LAYOUT_VERSION;     // a new arrangement is new content
+    mix(&layoutVersion, sizeof layoutVersion);
     str(weekday); str(dateLine); str(peakAt); str(sunrise); str(sunset);
     mix(&peakTemp, sizeof peakTemp); mix(&aqi, sizeof aqi);
     int pm = (int)(pm25 * 10);              // tenths, as drawn
@@ -91,10 +103,10 @@ struct Model {
       str(days[i].label);
     }
     mix(&eventToday, sizeof eventToday); mix(&eventKind, sizeof eventKind); str(eventName);
-    mix(&binsTonight, sizeof binsTonight);
+    mix(&bins, sizeof bins);
     mix(&launchTonight, sizeof launchTonight);
-    str(launchName); str(launchSub); str(launchTime); str(launchTz);
-    mix(&launchPrime, sizeof launchPrime);
+    str(launchName); str(launchDrift); str(launchBooster); str(launchTime); str(launchPrep);
+    mix(&launchChance, sizeof launchChance);
     // Both are drawn exactly, so both are hashed exactly. Bucketing them let the
     // panel show a percentage that no longer matched the reading behind it.
     // At ~1 %/day this costs about one repaint a day, which is the honest price

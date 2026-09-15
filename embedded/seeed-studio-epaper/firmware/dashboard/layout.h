@@ -12,7 +12,11 @@ static const int16_t PANEL_W = 800, PANEL_H = 480;
 static const int16_t HEADER_H  = 84;
 static const int16_t KEYLINE_H = 5;
 static const int16_t DETAIL_H  = 80;
-static const int16_t FOOTER_H  = 78;
+// The sources moved to a strip of their own along the very bottom, which frees
+// the right of the footer for the water-filter badge. FOOTER_H gave up exactly
+// SRC_H, so nothing above the footer moved a pixel.
+static const int16_t FOOTER_H  = 60;
+static const int16_t SRC_H     = 18;
 static const int16_t BIN_H     = 40;
 static const int16_t LCH_H     = 56;
 static const int16_t EVT_H     = 44;
@@ -34,7 +38,7 @@ struct Rect { int16_t x, y, w, h; };
 
 struct Layout {
   Rect header, keyline, peak, cell1Rule, sun, cell2Rule, air, detailRule;
-  Rect forecast, bandRule, event, evtBinRule, bins, lchRule, launch, footRule, footer;
+  Rect forecast, bandRule, event, evtBinRule, bins, lchRule, launch, footRule, footer, src;
   bool showEvent, showBins, showLaunch, sharedRow;
 
   Rect fcCol(int i) const {
@@ -68,10 +72,11 @@ inline Layout computeLayout(bool showEvent, bool showBins, bool showLaunch) {
 
   const int16_t fcTop = top + DETAIL_H + RULE;
 
-  L.footer   = { 0, (int16_t)(PANEL_H - FOOTER_H), PANEL_W, FOOTER_H };
-  L.footRule = { 0, (int16_t)(PANEL_H - FOOTER_H - RULE), PANEL_W, RULE };
+  L.src      = { 0, (int16_t)(PANEL_H - SRC_H), PANEL_W, SRC_H };
+  L.footer   = { 0, (int16_t)(PANEL_H - SRC_H - FOOTER_H), PANEL_W, FOOTER_H };
+  L.footRule = { 0, (int16_t)(PANEL_H - SRC_H - FOOTER_H - RULE), PANEL_W, RULE };
 
-  int16_t bb = PANEL_H - FOOTER_H - RULE;
+  int16_t bb = PANEL_H - SRC_H - FOOTER_H - RULE;
   if (showLaunch) {
     L.launch  = { 0, (int16_t)(bb - LCH_H), PANEL_W, LCH_H };
     bb -= LCH_H + RULE;

@@ -123,6 +123,322 @@
     <summary>
       <span class="chev"></span>
       <span class="head">
+        <span class="stamp"><time datetime="2026-09-15T16:10-07:00">Tue 15 Sep 2026 · 16:10 PDT</time></span>
+        <span class="title">The chance model reaches the panel<span class="badge green">flashed</span></span>
+        <span class="synopsis">A launch that scored 10% this morning was on the glass at 89% by evening. Getting there turned up four bugs the panel had been hiding, one of which fired on every flash.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The model, and how it was checked</h3>
+      <p><code>chance.h</code> touches neither the network nor the clock, which is the whole reason it can be trusted: <code>tools/chance-test.cpp</code> compiles it with a host compiler and asserts every row against what <code>chance-model.py</code> — the model in the plan — returns for identical inputs.</p>
+      <pre class="data">USSF-259 tonight, 18:29, Go          10%  ok
+18:47 Friday, Go                     29%  ok
+the same, 40% cloud                  21%  ok
+04:42 pre-dawn, TBC                  48%  ok
+19:49, half an hour after sunset     95%  ok
+the same, overcast                   10%  ok
+23:50, clear, long after dark        13%  ok
+noon                                  2%  ok
+all rows match</pre>
+      <p>The first run failed three of those rows. The code was right and the table was stale — I had copied the expected values from the journal's worked examples, which used a sunset four minutes earlier. Expectations now come from running the model itself, so the test compares two implementations rather than an implementation against my typing.</p>
+      <p>The floor is 5%, not 15%. A launch at ten percent is still a launch happening tonight, and "probably not, but it is up there at 6:29" is what the band is for. Every launch of the day is scored and the best one wins, rather than the first to clear a threshold.</p>
+
+      <h3>Four bugs, three of them invisible</h3>
+      <table class="res">
+        <tr><th>What happened</th><th>Why</th></tr>
+        <tr><td>the new layout flashed but the panel kept the old one</td><td>the content hash covers the data, not the drawing, so a rearranged panel hashes the same and skips the repaint</td></tr>
+        <tr><td>every upload dropped the device into test mode</td><td>a CPU reset does not clear the RTC wake-cause register, so the chip still reported the button press that preceded the previous sleep</td></tr>
+        <tr><td>the sun and cloud sat half an icon too low</td><td><code>drawWeatherIcon</code> takes the <em>top</em> and finds its own centre; I passed a centre</td></tr>
+        <tr><td>the launch band vanished entirely</td><td>Launch Library throttled the request and a refused fetch erased the band</td></tr>
+      </table>
+      <figure>
+        <a href="journal-assets/2026-09-15_chance-in-firmware/panel-icon-low.png"><img src="journal-assets/2026-09-15_chance-in-firmware/panel-icon-low.png" alt="Photograph of the e-paper panel showing the icon bug: in each forecast column the cloud sits low against the temperatures, while the rain percentage beside it sits at the right height. The launch band below reads FALCON 9 - USSF-259 at 89 percent, 7:18 PM."></a>
+        <figcaption>The photograph that found it. Every cloud 19 px low; the percentage beside it correct, which is what pointed at the icon call rather than the row.</figcaption>
+      </figure>
+      <p>The first two were silent. A layout change that does not repaint looks exactly like a flash that failed, and a device that boots into a synthetic test frame looks the same again — both of which happened repeatedly before either was understood. <code>LAYOUT_VERSION</code> now mixes into the hash, and a button is only believed when <code>esp_reset_reason()</code> says the chip actually woke from sleep; a cold boot clears test mode and repaints, so a fresh flash always shows what that build draws.</p>
+
+      <h3>Throttled, and the band went with it</h3>
+      <pre class="data">ll.thespacedevs.com      HTTP 200, parsed 26623 bytes
+ll.thespacedevs.com      HTTP 429 (), heap 246540 -> 203512
+
+HTTP/2 429
+retry-after: 131
+{"detail":"Request was throttled. Expected available in 131 seconds."}</pre>
+      <div class="callout red">
+        <p><strong>A refused request erased the launch.</strong> The panel said "no launch tonight" when the truth was "I could not ask" — the worst kind of wrong, because it is indistinguishable from a correct answer. On its own schedule the device wakes twice a day and would never meet this limit; it surfaced because the button was pressed repeatedly and because I was querying the same endpoint from a laptop while testing.</p>
+      </div>
+      <p>The answer now survives a refusal. The launch is held in RTC memory — name, chance, time, prep, drift, booster — keyed to the day and the lift-off minute, and shown when the network will not talk. It expires by itself once the rocket has gone, so it cannot report a launch that already happened. And because the booster and the orbit do not change between wakes, a launch already asked about is not asked about again: one request per wake instead of two.</p>
+      <p>The throttle also showed what absent data defaults to. With the detail request refused, the booster read <code>expended</code> for a mission that lands on a droneship — a missing field reading as a definite claim rather than as unknown.</p>
+
+      <h3>The band, as it now reads</h3>
+      <pre class="data">FALCON 9 - USSF-259                        89%    7:18 PM
+LOOK SSE - out by 7:13 - booster: droneship      chance tonight</pre>
+      <p>Three booster outcomes rather than two, because a droneship landing is still a recovery — it simply is not a second thing to watch from here. Only an expended booster is no return at all. The line is assembled in the renderer, where it can be measured, and drops its parts in order when it will not fit: the drift hint first, then the look label, then the prep time. The booster is last, because it is the part worth walking outside for.</p>
+      <p>The drift hint comes from the mission's orbit and the geometry of the two sites. SLC-4E bears 162° from San Martin at 178 miles; a polar or sun-synchronous flight leaves the pad on an azimuth of 180 to 189, which is 18 to 27 degrees right of that line, so it drifts right and recedes down the coast. Low-inclination flights lean the other way, but Launch Library publishes the orbit and not the azimuth, and LEO spans inclinations that go both ways — so that case says only that the track is shallower.</p>
+
+      <h3>The forecast columns, and the light</h3>
+      <p>Sky and chance of rain read as one fact, so they share a line. The height that frees goes into the temperatures: high from <code>F_MID</code> to <code>F_BIG</code>, low from <code>F_BODY</code> to <code>F_MID</code>, measured at 67 + 7 + 51 px against a 156 px column before it was committed rather than after.</p>
+      <p>The sources moved to a strip of their own along the bottom edge, one line, and the footer gave up exactly that height so nothing above it moved.</p>
+      <p>The LED now blinks from the moment a button wakes the device, not from the moment the panel moves. Wi-Fi and three fetches stand between the press and the first pixel, and without it the thing looks ignored for the best part of ten seconds. A press that finds nothing new to draw gets two deliberate flashes instead of silence: heard, worked, nothing changed. Every path to sleep puts the light out.</p>
+
+      <h3>Still ahead</h3>
+      <ul>
+        <li>The quote of the day, the water-filter badge and the permanent band are mockup and plan; the firmware still hides the band when no launch qualifies.</li>
+        <li>The firmware calls Launch Library v2.2.0, which is deprecated. It answers today. When it stops, the band will disappear with no other symptom — the same failure the cache now covers for a throttle.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-15_chance-in-firmware/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/panel-icon-low.png">panel-icon-low.png</a> <span class="note">— the photograph that found the icon bug</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/chance.h">chance.h</a> <span class="note">— the curves, free of network and clock</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/chance-test.cpp">chance-test.cpp</a> <span class="note">— the host test</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/chance-test.txt">chance-test.txt</a> <span class="note">— its output</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/session-429.log">session-429.log</a> <span class="note">— the throttled wake</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/session-testmode.log">session-testmode.log</a> <span class="note">— the flash that woke into test mode</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/fetch.h">fetch.h</a> <span class="note">— scoring, the cache, the booster</span></li>
+        <li><a href="journal-assets/2026-09-15_chance-in-firmware/render.h">render.h</a> <span class="note">— the band, the columns, the source strip</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-15T15:40-07:00">Tue 15 Sep 2026 · 15:40 PDT</time></span>
+        <span class="title">Looking at all 32 states<span class="badge red">5 defects, 1 accepted</span></span>
+        <span class="synopsis">The event band has never had a single CSS rule. Its name fell out of the bottom of the band in every version of this mockup, and 58,320 passing render checks never noticed, because they only ever asked whether boxes existed.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Looking, rather than clicking</h3>
+      <p>Thirty-two states is too many to click through and hold in mind, so <code>tools/contact-sheet.js</code> runs the mockup's own script against a minimal DOM, walks the tour by pressing its Next button, and lays every state out on one page. Defects that survive a state-by-state review because nothing looks wrong on its own are obvious when the states sit next to each other.</p>
+
+      <h3>The event band had no rules at all</h3>
+      <figure>
+        <a href="journal-assets/2026-09-15_mockup-review/event-band-before-after.png"><img src="journal-assets/2026-09-15_mockup-review/event-band-before-after.png" alt="Two renders of the same panel. In the first, the event half of the shared row is blank paper with a small cake icon at the top left and the words RHONDA'S BIRTHDAY cut in half by the bottom edge of the band. In the second the band is green, the cake and the name sit on one line, centred."></a>
+        <figcaption>Left as it was, right as it is. The name was falling out of a 44 px band.</figcaption>
+      </figure>
+      <p>The stylesheet carries rules for <code>.bin</code>, <code>.bin-txt</code>, <code>.bin-sub</code>, <code>.lch</code> and the rest. It has never carried one for <code>.evt</code>. With no flex row to lay it out, the icon and the name stacked as ordinary blocks, the band kept the page's default background instead of green, and the name dropped straight through the bottom edge.</p>
+      <div class="callout red">
+        <p><strong>This is in every version of the mockup, back to the first one that had a calendar.</strong> It survived because the render check asked whether boxes exist, not whether their contents fit inside them — and a birthday is the one band that does not appear on an ordinary day, so nobody had a reason to look.</p>
+      </div>
+
+      <h3>What else the sheet showed</h3>
+      <table class="res">
+        <tr><th>What was wrong</th><th>Why</th><th>Fix</th></tr>
+        <tr><td>event name fell out of the band</td><td>no <code>.evt</code> rules; the box was a plain block</td><td>flex row, green ground, paper ink, matching <code>drawEvent</code></td></tr>
+        <tr><td>bins wrapped to two lines beside an event</td><td>at half width the sub-line has nowhere to go</td><td>hide the sub-line in the shared row, which is what the firmware already does</td></tr>
+        <tr><td>green launch band used black text</td><td>the chance scale put ink on everything above 30%</td><td>paper on green, ink on yellow — the pairing the SUN cell and the bin band already use</td></tr>
+        <tr><td>rocket vanished on the yellow band</td><td>its fills were hard-coded for the blue one</td><td>the glyph takes the band's own ink</td></tr>
+        <tr><td>forecast strip read WED-SAT on a Monday</td><td>the four labels were constants in the sample data</td><td>derive them from the selected day</td></tr>
+        <tr><td>the tour's "no bands" state showed the bin band, and the full-width event band was unreachable</td><td>every state inherited Tuesday, which raises bins and forces the shared row</td><td>those three states move to Saturday; a flat-battery-plus-badge state joins them</td></tr>
+      </table>
+      <p>The last one mattered more than it reads: with the event states stuck on Tuesday, <strong>the full-width event band was never drawn by the tour at all</strong>, which is the one place the name is set at the larger size.</p>
+
+      <h3>One collision, accepted</h3>
+      <div class="callout orange">
+        <p><strong>A birthday and a launch worth seeing are both green, and they sit next to each other.</strong> <code>drawEvent</code> chose green so an event could not be mistaken for bin night or a launch — and the chance scale has since made a launch above 55% green too. The panel has six inks, and four are spoken for: blue is the header, red is bins, yellow is the peak, green is the event. A third band cannot have a colour of its own.</p>
+      </div>
+      <p>They stay distinguishable by the rule between them, the rocket against the cake, and a percentage that only one of them carries. Worth revisiting if it reads as one green mass on the glass, which is a question only the panel can answer.</p>
+
+      <h3>Checks that would have caught it</h3>
+      <p>The render check now walks the tour by clicking Next rather than trusting the array, and asserts on every state that the band drew something, that the source strip reaches the bottom edge, and that no forecast column falls below the 104 px its contents need. Across 58,321 control combinations the tightest column is 165 px.</p>
+      <pre class="data">tour walks 32 named states, every one of them renders
+mockup renders cleanly across 58321 control combinations
+tightest forecast column across all of them: 165px (needs 104)</pre>
+      <p>None of that would have caught the event band, though. A check that measures whether text fits inside its box is the one still missing, and the contact sheet is the stand-in until it exists.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-15_mockup-review/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-15_mockup-review/tour-contact-sheet.html">tour-contact-sheet.html</a> <span class="note">— all 32 states on one page</span></li>
+        <li><a href="journal-assets/2026-09-15_mockup-review/event-band-before-after.png">event-band-before-after.png</a> <span class="note">— the defect and the fix</span></li>
+        <li><a href="journal-assets/2026-09-15_mockup-review/contact-sheet.js">contact-sheet.js</a> <span class="note">— builds the sheet from the mockup's own script</span></li>
+        <li><a href="journal-assets/2026-09-15_mockup-review/mockup-render-check.js">mockup-render-check.js</a> <span class="note">— the sweep and the tour walk</span></li>
+        <li><a href="journal-assets/2026-09-15_mockup-review/mockup.html">mockup.html</a> <span class="note">— the corrected layout spec</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-15T11:20-07:00">Tue 15 Sep 2026 · 11:20 PDT</time></span>
+        <span class="title">A line for the days without a launch<span class="badge blue">77 quotes, measured</span></span>
+        <span class="synopsis">The band goes empty on most days. Give it a quotation instead — classical, liberal, empowering — one a day, and prove every one of them fits before a panel ever sees it.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The band, always occupied</h3>
+      <p>Most days carry no launch worth standing outside for, and the band simply vanishes. A line of the day fills it: a launch when there is something to see, a quotation otherwise, and the row never disappears.</p>
+      <figure>
+        <a href="journal-assets/2026-09-15_daily-quote/quote-band.svg"><img src="journal-assets/2026-09-15_daily-quote/quote-band.svg" alt="Three renders of an 800 by 56 pixel band on pale paper with a blue edge stripe: a quotation in bold black with the attribution right-aligned below it. Two are set at F_BODY and the longest at F_TINY."></a>
+        <figcaption>Quiet by design: paper and ink, where a launch band is a slab of colour.</figcaption>
+      </figure>
+      <p>The day of the year picks the line, so it is fixed for the whole day and the panel repaints once when it turns over — the same discipline as every other field.</p>
+
+      <h3>Choosing them</h3>
+      <p>The brief was classical yet liberal, and empowering. That reads as the Stoics and the Greeks for self-command, Rome for nerve, the Enlightenment and the abolitionists for liberty, and a few later voices who earned a place in the same argument. Nothing devotional, nothing partisan, and nothing that reads like a motivational poster.</p>
+      <pre class="data">77 lines · 51 distinct voices
+Seneca ×4 · Marcus Aurelius ×3 · Epictetus ×3 · Frederick Douglass ×3</pre>
+      <div class="callout blue">
+        <p><strong>Attribution is the hard part.</strong> A great many quotations circulate under the wrong name, so where the popular attribution is wrong the real author is credited: <strong>E. B. Hall</strong>, not Voltaire, for defending to the death the right to say it; <strong>John Philpot Curran</strong>, not Jefferson, for eternal vigilance; <strong>Ian Maclaren</strong>, not Plato, for everyone fighting a hard battle. Lines whose source could not be established were dropped however well they read — several of the most-quoted Emerson and Twain lines are not theirs.</p>
+      </div>
+
+      <h3>Proving they fit, without a panel</h3>
+      <p>A quotation that overruns the band is a defect you would only find on the glass, days later, on whichever day that line came round. So the widths are measured here instead.</p>
+      <p><code>tools/gfxfont.py</code> parses the GFX font headers and sums each glyph's <code>xAdvance</code> — the same arithmetic Adafruit GFX performs on the device — so the number it returns is the number the panel will produce. <code>tools/check-quotes.py</code> runs every entry through it against the band's 756 px of usable width:</p>
+      <pre class="data">77 quotes · 71 fit at F_BODY · 6 need F_TINY · 0 do not fit</pre>
+      <p>The check exits non-zero when one does not fit, so a quotation added later cannot quietly overrun. The quote is drawn at F_BODY where it fits and F_TINY where it does not, the attribution always F_TINY and right-aligned.</p>
+
+      <h3>What this costs the rest of the panel</h3>
+      <div class="callout orange">
+        <p><strong>The band stops being optional.</strong> <code>computeLayout</code> currently hands its 56 pixels and a rule back to the rows above when there is no launch, so those rows have been laid out with the extra space available. Making the band permanent takes it away on every day, and the forecast, event and bin rows have to be checked in the mockup at their new heights before this goes anywhere near the device.</p>
+      </div>
+
+      <h3>The work</h3>
+      <table class="res">
+        <tr><th>File</th><th>State</th><th>Change</th></tr>
+        <tr><td><code>quotes.h</code></td><td><strong>written</strong></td><td>77 entries, the day-of-year selector, and the reasoning in its header</td></tr>
+        <tr><td><code>tools/gfxfont.py</code></td><td><strong>written</strong></td><td>measures a string exactly as the device will</td></tr>
+        <tr><td><code>tools/check-quotes.py</code></td><td><strong>written</strong></td><td>fails the build if a line cannot fit the band</td></tr>
+        <tr><td><code>model.h</code></td><td>to do</td><td><code>quoteText</code> and <code>quoteWho</code> pointers, both hashed — the day's turnover should repaint, and nothing else should</td></tr>
+        <tr><td><code>render.h</code></td><td>to do</td><td><code>drawQuote</code>, and the band chooses between it and <code>drawLaunch</code></td></tr>
+        <tr><td><code>layout.h</code></td><td>to do</td><td>the band becomes unconditional; the rows above shrink by 56 px plus a rule</td></tr>
+        <tr><td><code>dashboard/mockup.html</code></td><td>to do</td><td>the quote band, and every other row re-checked at its new height</td></tr>
+        <tr><td><code>mockup-render-check.js</code></td><td>to do</td><td>sweep the two band states rather than assuming the launch one</td></tr>
+      </table>
+
+      <h3>Open</h3>
+      <ul>
+        <li><strong>77 lines is 4.7 turns of the year.</strong> A given day lands on the same quotation every 77 days, which is frequent enough to notice. Seeding the index with the year as well would break the pattern without making the line unpredictable within a day.</li>
+        <li><strong>Long quotations are cramped.</strong> Six of them drop to F_TINY, which on this panel after a full refresh may be too small to read from across a room. A second line is not available — three lines do not fit 56 px — so the alternative is dropping those six.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-15_daily-quote/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-15_daily-quote/quotes.h">quotes.h</a> <span class="note">— the 77 lines and the reasoning behind them</span></li>
+        <li><a href="journal-assets/2026-09-15_daily-quote/check-quotes.py">check-quotes.py</a> <span class="note">— measures every line against the band</span></li>
+        <li><a href="journal-assets/2026-09-15_daily-quote/check-quotes.txt">check-quotes.txt</a> <span class="note">— its output, all 77 measured</span></li>
+        <li><a href="journal-assets/2026-09-15_daily-quote/gfxfont.py">gfxfont.py</a> <span class="note">— text widths from the font headers themselves</span></li>
+        <li><a href="journal-assets/2026-09-15_daily-quote/quote-band.svg">quote-band.svg</a> <span class="note">— the band above</span></li>
+        <li><a href="journal-assets/2026-09-15_daily-quote/make-quote-band.py">make-quote-band.py</a> <span class="note">— draws it from the measured widths</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
+        <span class="stamp"><time datetime="2026-09-15T09:30-07:00">Tue 15 Sep 2026 · 09:30 PDT</time></span>
+        <span class="title">Plan: a launch chance, not a launch verdict<span class="badge orange">Plan</span></span>
+        <span class="synopsis">A Falcon 9 lifts from Vandenberg at 18:00 tonight and the panel is right to stay quiet — 73 minutes before sunset there is nothing to see. But the same rule hides every marginal evening and every pre-dawn launch, which is exactly when a heads-up would earn its place.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>Why the panel is blank tonight</h3>
+      <pre class="data">USSF-259 · Falcon 9 · Vandenberg · 18:00 PDT · status Go
+sunset in San Martin           19:13
+band requires lift-off ≥       18:58   (sunset − 15)
+missed by                      58 min
+cloud cover this evening       0% every hour</pre>
+      <p>The weather passed and the clock failed. That is the rule working: what makes one of these worth walking outside for at 200 miles is the twilight plume — the rocket climbing into sunlight while you are already standing in the dark — and an hour before sunset there is no plume to see.</p>
+      <p>The trouble is what else that rule hides. It is a threshold, and a launch at 18:47 with sunset at 19:09 fails it by the same silence as one at noon. It also has no idea that dawn exists: <code>USSF R-3</code> on the 27th lifts at 04:42, two hours before sunrise, into exactly the same twilight geometry from the other side, and the current code would never mention it.</p>
+
+      <h3>The replacement: a curve and a number</h3>
+      <p>Score the opportunity instead of ruling on it, and put the score on the panel:</p>
+      <pre class="data">chance = twilight(t) × sky(cloud) × confidence(status)</pre>
+      <figure>
+        <a href="journal-assets/2026-09-15_launch-chance/launch-chance.svg"><img src="journal-assets/2026-09-15_launch-chance/launch-chance.svg" alt="Top: a curve of visibility chance against lift-off time relative to sunset, rising steeply just before sunset, holding near 95 percent from about 20 to 75 minutes after, then decaying through the evening. Tonight's 18:00 launch sits at 4 percent, Friday's 18:47 at 35 percent. Bottom: three renders of the panel band — green at 78 percent, yellow at 35 percent, blue at 18 percent — each with a rocket icon, mission name, look direction, a be-outside-by time, the percentage and the lift-off time."></a>
+        <figcaption>The band on the panel is 800 px wide; below 15% it is not drawn at all.</figcaption>
+      </figure>
+      <table class="res">
+        <tr><th>Term</th><th>What it reads</th><th>Shape</th></tr>
+        <tr><td><code>twilight</code></td><td>minutes from sunset, or from sunrise for a pre-dawn launch</td><td>0.02 in daylight, rising through 0.45 ten minutes before sunset to a 0.95 plateau from +20 to +75, decaying to 0.12 deep in the night</td></tr>
+        <tr><td><code>sky</code></td><td>cloud cover at the lift-off hour, already in the model</td><td>1.0 below 10%, 0.8 at 35%, 0.45 at 60%, 0.02 at overcast</td></tr>
+        <tr><td><code>confidence</code></td><td>the launch status abbreviation</td><td>Go 1.0 · TBC 0.8 · TBD 0.55 · Hold 0.4</td></tr>
+      </table>
+      <p>The sky is judged at <strong>lift-off + 6 minutes</strong>, not at lift-off. The plume is at its best once the vehicle is high enough to catch the sun, and those six minutes are the difference between dismissing a launch and flagging it.</p>
+      <table class="res">
+        <tr><th>Case</th><th>Lift-off</th><th>vs dusk</th><th>Cloud</th><th>Status</th><th>Chance</th><th>Band</th></tr>
+        <tr><td>USSF-259, tonight</td><td>18:00</td><td>−67 min</td><td>0%</td><td>Go</td><td>4%</td><td>hidden</td></tr>
+        <tr><td>Starlink 15-27, Friday</td><td>18:47</td><td>−16 min</td><td>0%</td><td>Go</td><td><strong>35%</strong></td><td>yellow</td></tr>
+        <tr><td>the same, 40% cloud</td><td>18:47</td><td>−16 min</td><td>40%</td><td>Go</td><td>26%</td><td>blue</td></tr>
+        <tr><td>USSF R-3, 27th, pre-dawn</td><td>04:42</td><td>−2 h to sunrise</td><td>0%</td><td>TBC</td><td><strong>45%</strong></td><td>yellow</td></tr>
+        <tr><td>an ideal one</td><td>19:40</td><td>+36 min</td><td>5%</td><td>Go</td><td>95%</td><td>green</td></tr>
+        <tr><td>ideal, but overcast</td><td>19:40</td><td>+36 min</td><td>90%</td><td>Go</td><td>10%</td><td>hidden</td></tr>
+        <tr><td>midnight, clear</td><td>23:50</td><td>+4 h 46</td><td>0%</td><td>Go</td><td>13%</td><td>hidden</td></tr>
+      </table>
+      <p>Tonight still stays off the panel, which is the point: the change is not "show more launches", it is "show the ones where there is something to decide".</p>
+
+      <h3>What the band says</h3>
+      <p>A rocket glyph, the mission, the chance, the lift-off time, and the time to be outside — lift-off minus five minutes, which is the thing a heads-up is actually for. The band colour carries the same number again so it reads from across the room, using three of the six inks the panel has:</p>
+      <table class="res">
+        <tr><th>Chance</th><th>Band</th><th>Text</th><th>Reads as</th></tr>
+        <tr><td>≥ 55%</td><td>green</td><td>black</td><td>go outside</td></tr>
+        <tr><td>30–54%</td><td>yellow</td><td>black</td><td>worth a look</td></tr>
+        <tr><td>15–29%</td><td>blue</td><td>white</td><td>probably not, but it is happening</td></tr>
+        <tr><td>&lt; 15%</td><td>—</td><td>—</td><td>not drawn</td></tr>
+      </table>
+      <p>The <code>PRIME</code> pill goes: it was a coarse version of the same idea, and a percentage says everything it said with a number behind it.</p>
+
+      <h3>The work</h3>
+      <table class="res">
+        <tr><th>File</th><th>Change</th></tr>
+        <tr><td><code>chance.h</code> <em>new</em></td><td>the three curves and <code>launchChance()</code>, pure arithmetic with no network or clock in it, so it can be tested on the host</td></tr>
+        <tr><td><code>model.h</code></td><td>add <code>launchChance</code> and <code>launchPrep</code>; rename <code>launchTonight</code> to <code>launchShow</code>; drop <code>launchPrime</code>. Hash the two new fields and stop hashing the old one — a field the panel no longer draws must not repaint it.</td></tr>
+        <tr><td><code>fetch.h</code></td><td>ask LL2 for <code>status.abbrev</code> as well as <code>net</code>, <code>name</code> and <code>id</code>; replace the two early <code>continue</code> tests with a score; keep the best-scoring launch of the day rather than the first qualifying one</td></tr>
+        <tr><td><code>render.h</code></td><td>rewrite <code>drawLaunch</code>: glyph, name, sub-line, percentage, time. Band colour from the score. The name's three-step font shrink stays — mission names are long and the percentage now takes width the pill used to.</td></tr>
+        <tr><td><code>config.h</code></td><td><code>LAUNCH_SHOW_MIN_PCT</code>, <code>LAUNCH_GREEN_PCT</code>, <code>LAUNCH_YELLOW_PCT</code>, <code>LAUNCH_PLUME_LAG_MIN</code>, <code>LAUNCH_PREP_MIN</code>. <code>LAUNCH_DUSK_MARGIN_MIN</code> and <code>LAUNCH_PRIME_WINDOW_MIN</code> go.</td></tr>
+        <tr><td><code>testdata.h</code></td><td>four launch states — none, 18%, 35%, 78% — plus a mission name long enough to force the smallest font</td></tr>
+        <tr><td><code>dashboard/mockup.html</code></td><td>the band in its three colours, since the mockup is the layout spec</td></tr>
+        <tr><td><code>mockup-render-check.js</code></td><td>extend the control sweep with the chance buckets, so the geometry is checked in every combination rather than the one that happens to be on screen</td></tr>
+      </table>
+
+      <h3>What can be proved without the device</h3>
+      <ol>
+        <li><strong>The scoring, on the host.</strong> <code>chance.h</code> takes minutes and percentages and returns a number, so <code>g++</code> compiles it against a table of cases and asserts every row — the seven above become the test.</li>
+        <li><strong>The layout, headless.</strong> The mockup render check already sweeps the control combinations; the new states go into that sweep. Nothing about the band's geometry needs a panel to verify.</li>
+        <li><strong>The build.</strong> <code>arduino-cli compile</code> needs no board attached.</li>
+        <li><strong>The live data.</strong> The LL2 and Open-Meteo queries can be run from here against the real endpoints and scored, which is how the table above was produced.</li>
+      </ol>
+      <p>What cannot: the ink. Whether yellow text-on-band reads at arm's length, and whether a 26 px percentage is legible after a full refresh, are panel questions.</p>
+
+      <h3>Open decisions</h3>
+      <ul>
+        <li><strong>The deep-night floor.</strong> A clear midnight launch scores 13% and stays hidden. At 200 miles with no illuminated plume there is genuinely little to see — but a bright first stage and a staging flash are not nothing. Raising the floor to 0.2 would put those on the panel.</li>
+        <li><strong>Tomorrow's pre-dawn.</strong> The filter is "today". An evening refresh cannot warn about a 04:42 launch the next morning, because the day boundary falls between them. Extending to "the next 18 hours" would fix it and costs one more day of hourly cloud.</li>
+        <li><strong>Trajectory.</strong> Every Vandenberg launch here is treated as heading SSE. Polar and sun-synchronous flights differ enough to matter, and LL2 carries the orbit abbreviation in the same response that is already being fetched.</li>
+      </ul>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-15_launch-chance/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-15_launch-chance/launch-chance.svg">launch-chance.svg</a> <span class="note">— the curve and the three bands</span></li>
+        <li><a href="journal-assets/2026-09-15_launch-chance/chance-model.py">chance-model.py</a> <span class="note">— the model, to argue with before it becomes C</span></li>
+        <li><a href="journal-assets/2026-09-15_launch-chance/chance-model.txt">chance-model.txt</a> <span class="note">— the worked cases</span></li>
+        <li><a href="journal-assets/2026-09-15_launch-chance/make-figure.py">make-figure.py</a> <span class="note">— draws the figure from the model</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
         <span class="stamp"><time datetime="2026-09-14T21:15-07:00">Mon 14 Sep 2026 · 21:15 PDT</time></span>
         <span class="title">Wiring the cell, and turning the tray around<span class="badge blue">interactive</span></span>
         <span class="synopsis">Three boards between a lithium cell and a 5 V input, with the connector pinouts read out of Elecrow's schematic. And the case model, rotatable in the page.</span>
