@@ -646,11 +646,8 @@ static void powerTick() {
     backlight(blNow + (target > blNow ? 1 : -1));
   }
   // Never sleep mid-send: a half-written frame leaves the bulb's single
-  // connection slot held open. And never sleep with a USB host attached — the
-  // device is on mains then, so there is nothing to save, and the
-  // USB-Serial/JTAG peripheral goes off the bus in light sleep, which takes the
-  // port with it and leaves no way to flash without turning the knob first.
-  if (idle >= IDLE_SLEEP_MS && !netBusy && !Serial) sleepNow();
+  // connection slot held open.
+  if (idle >= IDLE_SLEEP_MS && !netBusy) sleepNow();
 }
 
 // ── the press cycle ─────────────────────────────────────────────────────────
