@@ -24,26 +24,29 @@ const PALETTES = {
   coins: ['#c9c9c9', '#a8a8a8', '#7d7d7d', '#5a5a5a', '#d4af37', '#b8860b', '#b87333', '#cd7f32', '#8b5a2b'],
   gems: ['#e0115f', '#0f52ba', '#50c878', '#9966cc', '#ffc87c', '#b9f2ff', '#ff8c42'],
   buttons: ['#e63946', '#f4a340', '#ffd23f', '#6a994e', '#1b4332', '#3a86ff', '#ff5da2', '#b185db', '#f1faee'],
-  autumn_leaves: ['#c1440e', '#e3641b', '#f2a30f', '#d4a017', '#8b5a2b', '#a52a2a', '#6b4226', '#e8b923']
+  autumn_leaves: ['#c1440e', '#e3641b', '#f2a30f', '#d4a017', '#8b5a2b', '#a52a2a', '#6b4226', '#e8b923'],
+  jigsaw: ['#2e86ab', '#f6ae2d', '#e4572e', '#17bebb', '#a53860', '#76b041', '#6a4c93', '#e0a458', '#3d5a80']
 };
 
 const STYLE_OPTIONS = [
   ['flat', 'Flat'], ['3d-basic', '3D Basic'], ['3d-glossy', '3D Glossy'],
   ['illustrated', 'Pipes and Gears'], ['circuit', 'Circuit Board'], ['painted_lady', 'Painted Lady'],
   ['ducks', 'Rows of Ducks'], ['gears', 'Gears'], ['christmas', 'Christmas Cookies'],
-  ['coins', 'World Coins'], ['gems', 'Gems'], ['buttons', 'Buttons'], ['autumn_leaves', 'Autumn Leaves']
+  ['coins', 'World Coins'], ['gems', 'Gems'], ['buttons', 'Buttons'], ['autumn_leaves', 'Autumn Leaves'],
+  ['jigsaw', 'Jigsaw Puzzle']
 ];
 const PALETTE_OPTIONS = [
   ['classic', 'Classic'], ['steampunk', 'SteamPunk'], ['neon', 'Neon'], ['art_pendant', 'Cool Stainless'],
   ['circuit', 'Circuit Colors'], ['painted_lady', 'Painted Lady'], ['ducks', 'Ducks'], ['christmas', 'Christmas'],
-  ['coins', 'Coins'], ['gems', 'Gems'], ['buttons', 'Buttons'], ['autumn_leaves', 'Autumn Leaves']
+  ['coins', 'Coins'], ['gems', 'Gems'], ['buttons', 'Buttons'], ['autumn_leaves', 'Autumn Leaves'],
+  ['jigsaw', 'Jigsaw']
 ];
 
 const STYLE_NOUN = {
   flat: 'Pipe', '3d-basic': 'Pipe', '3d-glossy': 'Pipe',
   illustrated: 'Gear', circuit: 'Component', painted_lady: 'House',
   ducks: 'Duck', gears: 'Gear', christmas: 'Cookie',
-  coins: 'Coin', gems: 'Gem', buttons: 'Button', autumn_leaves: 'Leaf'
+  coins: 'Coin', gems: 'Gem', buttons: 'Button', autumn_leaves: 'Leaf', jigsaw: 'Piece'
 };
 const NOUN_PLURAL_OVERRIDES = { autumn_leaves: 'leaves' };
 const MAZE_STYLE_SET = ['flat', '3d-basic', '3d-glossy', 'illustrated', 'circuit'];
@@ -54,14 +57,15 @@ const SIZE_DEFAULTS_POINT = {
   autumn_leaves: { min: 12, max: 32 }
 };
 const THICKNESS_MAX_BY_STYLE = {
-  painted_lady: 40, circuit: 50,
+  painted_lady: 40, circuit: 50, jigsaw: 120,
   flat: 50, '3d-basic': 50, '3d-glossy': 50, illustrated: 50
 };
 const THICKNESS_MAX_DEFAULT = 400;
 const STYLE_DEFAULT_PALETTE = {
   flat: 'classic', '3d-basic': 'classic', '3d-glossy': 'classic', illustrated: 'classic',
   circuit: 'circuit', painted_lady: 'painted_lady', ducks: 'ducks', gears: 'steampunk',
-  christmas: 'christmas', coins: 'coins', gems: 'gems', buttons: 'buttons', autumn_leaves: 'autumn_leaves'
+  christmas: 'christmas', coins: 'coins', gems: 'gems', buttons: 'buttons', autumn_leaves: 'autumn_leaves',
+  jigsaw: 'jigsaw'
 };
 
 // Common laser-cut blanks, offered as one-click starting shapes. Coordinates
@@ -96,14 +100,16 @@ const SHAPE_PRESET_LIST = [
 
 // Every slider means something different depending on style/mode; this maps
 // the current combination to a contextual label/description/disabled state.
-function computeSliderMeta(style, mode) {
+function computeSliderMeta(style, mode, opts = {}) {
   const noun = STYLE_NOUN[style] || 'Object';
   const nounLower = noun.toLowerCase();
   const nounPlural = NOUN_PLURAL_OVERRIDES[style] || (nounLower + 's');
   const meta = {};
   const isPointStyle = !MAZE_STYLE_SET.includes(style) && style !== 'painted_lady';
 
-  if (isPointStyle) {
+  if (style === 'jigsaw') {
+    meta.thickness = { label: 'Piece Size', description: "Pieces interlock, so their size is entirely decided by how finely the shape is divided. Density does that on its own.", disabled: true };
+  } else if (isPointStyle) {
     meta.thickness = { label: 'Path Thickness', description: `Not meaningful for ${nounPlural}, which are placed individually rather than along a traced path — use ${noun} Sizes below to control their size instead.`, disabled: true };
   } else if (style === 'circuit') {
     meta.thickness = { label: 'Trace Thickness', description: mode === 'border' ? "Sets the width of the copper wire and components traced around the border." : "Sets how wide each copper trace and component is drawn.", disabled: false };
@@ -113,7 +119,9 @@ function computeSliderMeta(style, mode) {
     meta.thickness = { label: 'Pipe Thickness', description: mode === 'border' ? "Sets the width of the pipe traced around the border." : "Sets how wide each pipe segment is, as a fraction of the shape's narrowest dimension.", disabled: false };
   }
 
-  if (MAZE_STYLE_SET.includes(style)) {
+  if (style === 'jigsaw') {
+    meta.density = { label: 'Density', description: mode === 'border' ? `Sets how finely the border is divided, and so how large each of the ${nounPlural} strung along it is.` : `Divides the shape into ${nounPlural}. Higher values mean more, smaller pieces. Nothing else changes their size — they interlock, so the grid decides it.`, disabled: false };
+  } else if (MAZE_STYLE_SET.includes(style)) {
     meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : "Controls the maze's grid resolution — higher values mean smaller cells, so the pipe pattern has more, tighter turns.", disabled: false };
   } else if (style === 'gears') {
     meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : "Controls the total count of the mixed-size gear swarm.", disabled: false };
@@ -123,7 +131,9 @@ function computeSliderMeta(style, mode) {
     meta.density = { label: 'Density', description: mode === 'border' ? `Controls the spacing between ${nounPlural} strung along the traced border.` : `Controls how close together the ${nounPlural} are scattered.`, disabled: false };
   }
 
-  if (style === 'circuit') {
+  if (style === 'jigsaw') {
+    meta.color = { label: 'Piece Colors', description: "How many colors the field is drawn in, counted rather than as a percentage of the palette — 1 up to every color the Color Mapping palette holds.", disabled: false };
+  } else if (style === 'circuit') {
     meta.color = { label: 'Component Colors', description: "Circuit's wires and components use realistic fixed colors — bare copper, gold-plated jumpers, standard resistor/capacitor bands — not the palette, so this has no effect here.", disabled: true };
   } else if (style === 'painted_lady') {
     meta.color = { label: 'House Colors', description: mode === 'fill' ? "Sets how many palette colors are in play (0% = one color, 100% = the full palette) and how eagerly the houses' color 'neighborhood' changes between road segments." : "Sets how many palette colors are in play (0% = one color, 100% = the full palette) as houses are strung along the border.", disabled: false };
@@ -133,7 +143,13 @@ function computeSliderMeta(style, mode) {
     meta.color = { label: noun + ' Colors', description: `Sets how many palette colors are in play (0% = one color, 100% = the full palette) — unlike Cluster Run, a small pool stays small even when a run is forced to switch.`, disabled: false };
   }
 
-  if (MAZE_STYLE_SET.includes(style)) {
+  if (style === 'jigsaw') {
+    // Only the Random order rolls a colour per piece; the other two place
+    // colours by position, so there is no run for a cap to act on.
+    meta.maxStraight = opts.colorOrder === 'random'
+      ? { label: 'Color Cluster', description: "Caps how many consecutive pieces can share the same color before it is forced to change.", disabled: false }
+      : { label: 'Color Cluster', description: "Only the Random color order rolls a color per piece. Distinct and By Row place them by position, so there is no run to cap.", disabled: true };
+  } else if (MAZE_STYLE_SET.includes(style)) {
     meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how many grid cells in a row the pipe can travel in a straight line before it must turn." : `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
   } else if (style === 'painted_lady') {
     meta.maxStraight = { label: 'Color Cluster', description: mode === 'fill' ? "Caps how long each straight road segment can run before turning, which also caps how many segments share a neighborhood color." : `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
@@ -143,7 +159,9 @@ function computeSliderMeta(style, mode) {
     meta.maxStraight = { label: 'Color Cluster', description: `Caps how many consecutive ${nounPlural} can share the same color before it's forced to change.`, disabled: false };
   }
 
-  if (['flat', '3d-basic', '3d-glossy'].includes(style)) {
+  if (style === 'jigsaw') {
+    meta.gears = { label: 'Accent Count', description: "Every piece is identical, so there is no oversized landmark piece to place. Use Loose Pieces below to lift some of the field out of its solved fit instead.", disabled: true };
+  } else if (['flat', '3d-basic', '3d-glossy'].includes(style)) {
     meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounPlural} appear evenly along the border (0 disables them).` : "Sets how many decorative gear accents are scattered on top of the pipes.", disabled: false };
   } else if (style === 'gears') {
     meta.gears = { label: 'Accent Count', description: mode === 'border' ? `Sets how many oversized landmark ${nounPlural} appear evenly along the border (0 disables them).` : "Adds extra oversized feature gears behind the swarm — independent of Density, which only scales the regular mixed-size count.", disabled: false };
@@ -161,7 +179,9 @@ function computeSliderMeta(style, mode) {
     disabled: false
   };
 
-  if (isPointStyle) {
+  if (style === 'jigsaw') {
+    meta.size = { label: 'Sizes', description: "Every piece is identical, so there is no size range — Piece Size sets them all.", disabled: true };
+  } else if (isPointStyle) {
     meta.size = { label: noun + ' Sizes', description: `Sets the min/max size range for the ${nounPlural}, in the same units as Trace/Pipe Thickness (raw value out of 500, as a fraction of the shape's narrow dimension) since Thickness is disabled for point-only styles. Accent Count ${nounPlural} are drawn as a multiple of the largest size here.`, disabled: false };
   } else if (style === 'painted_lady') {
     meta.size = { label: 'House Sizes', description: "Not used — House Scale (Thickness) controls house size in both Fill and Border mode.", disabled: true };
@@ -262,6 +282,58 @@ function flattenColor(colorStr, globalAlpha, backdropHex) {
 // (untransformed) coordinates; transformed to absolute space only when
 // actually filled/stroked/clipped (matching how these are always used
 // here: built and consumed within one unchanging transform scope).
+// A long polyline widened into one closed ribbon: the left rail out, a round
+// cap, the right rail back, a round cap. capsuleDPath above spends 22 points
+// per segment, and its overlapping circles round every interior join for free.
+// A Jigsaw grid line is a single stroke of a few thousand segments, where that
+// encoding costs tens of thousands of points and megabytes of path text. The
+// ribbon carries the identical line in two points per sample; the normal at
+// each sample averages the neighbouring tangents, which stays inside a tenth
+// of the line width at these curvatures.
+//
+// Only the Jigsaw generator opts in, by setting `ctx.ribbonStrokes`. Measured
+// against the illustrated styles the ribbon does shrink most of them — gears
+// by 14%, coins by 16% — but it also moves their geometry at sharp joins, and
+// changing what those styles already emit is not this feature's business.
+const RIBBON_MIN_POINTS = 64;
+
+function ribbonDPath(points, width) {
+  const pts = [];
+  for (const q of points) {
+    const prev = pts[pts.length - 1];
+    if (!prev || Math.hypot(q.x - prev.x, q.y - prev.y) > 1e-6) pts.push(q);
+  }
+  if (pts.length < 2) return '';
+  const half = width / 2;
+  const n = pts.length;
+  const CAP_STEPS = 8;
+  const f = v => v.toFixed(3);
+  const left = [], right = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * half, ny = dx / len * half;
+    left.push({ x: pts[i].x + nx, y: pts[i].y + ny });
+    right.push({ x: pts[i].x - nx, y: pts[i].y - ny });
+  }
+  let d = 'M ' + f(left[0].x) + ' ' + f(left[0].y) + ' ';
+  for (let i = 1; i < n; i++) d += 'L ' + f(left[i].x) + ' ' + f(left[i].y) + ' ';
+  // Round cap at the far end, sweeping from the left rail round to the right.
+  const endA = Math.atan2(left[n - 1].y - pts[n - 1].y, left[n - 1].x - pts[n - 1].x);
+  for (let k = 1; k < CAP_STEPS; k++) {
+    const a = endA - Math.PI * (k / CAP_STEPS);
+    d += 'L ' + f(pts[n - 1].x + Math.cos(a) * half) + ' ' + f(pts[n - 1].y + Math.sin(a) * half) + ' ';
+  }
+  for (let i = n - 1; i >= 0; i--) d += 'L ' + f(right[i].x) + ' ' + f(right[i].y) + ' ';
+  const startA = Math.atan2(right[0].y - pts[0].y, right[0].x - pts[0].x);
+  for (let k = 1; k < CAP_STEPS; k++) {
+    const a = startA - Math.PI * (k / CAP_STEPS);
+    d += 'L ' + f(pts[0].x + Math.cos(a) * half) + ' ' + f(pts[0].y + Math.sin(a) * half) + ' ';
+  }
+  return d.trim() + ' Z';
+}
+
 class RecordingPath {
   constructor() { this.segs = []; }
   moveTo(x, y) { this.segs.push({ c: 'M', x, y }); }
@@ -307,7 +379,17 @@ function segsToAbsoluteDPath(segs, m) {
       const cp = matApply(m, seg.cpx, seg.cpy), p = matApply(m, seg.x, seg.y);
       d += `Q ${cp.x.toFixed(3)} ${cp.y.toFixed(3)} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
     } else if (seg.c === 'ARC' || seg.c === 'ELLIPSE') {
-      sampleArcPoints(seg, m).forEach((p, i) => { d += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `; });
+      // Only move when the path has not started. Canvas semantics are that
+      // arc() on an open path draws a LINE to the arc's start point and then
+      // the arc; emitting M unconditionally restarted the subpath at every
+      // arc, so an outline built from lines and arcs — a jigsaw piece, a gear
+      // tooth, a coin rim — exported as several disconnected subpaths and
+      // filled as fragments. The repeated coordinate made it invisible in the
+      // path text: each stray M moved to exactly where the previous L already
+      // was.
+      sampleArcPoints(seg, m).forEach((p, i) => {
+        d += `${(i === 0 && !d) ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+      });
     } else if (seg.c === 'RECT') {
       const corners = [[seg.x, seg.y], [seg.x + seg.w, seg.y], [seg.x + seg.w, seg.y + seg.h], [seg.x, seg.y + seg.h]];
       corners.forEach(([x, y], i) => { const p = matApply(m, x, y); d += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${p.y.toFixed(3)} `; });
@@ -443,23 +525,33 @@ class RecordingCtx {
     const pts = segsToAbsolutePoints(segs, m);
     if (!pts.length) return;
     const bbox = absolutePointsBBox(pts);
-    // xcs-canvas.js's _renderPath() does
-    // `el.setAttribute('transform', translate(p.x, p.y))` on top of whatever
-    // `d` we hand it — so dPath must be authored relative to the shape's own
-    // center, with x/y (below, in buildXCSProject) providing the absolute
-    // placement. Building dPath in absolute coordinates here would double
-    // that translation (once via d, once via the renderer's own transform).
-    const cx = (bbox.minX + bbox.maxX) / 2, cy = (bbox.minY + bbox.maxY) / 2;
-    const centeredM = matMultiply([1, 0, 0, 1, -cx, -cy], m);
+    // dPath is authored relative to the shape's TOP-LEFT, with x/y (below, in
+    // buildXCSProject) giving that top-left on the bed. This is the relative
+    // geometry rule in xcsformat.md section 13, and it is what xTool Studio
+    // actually honours — measured by the path-origin round-trip test, where a
+    // centre-relative path lands displaced by exactly half its own width and
+    // height while a top-left-relative one lands exactly right.
+    //
+    // Our own renderer cannot tell the two apart: xcs-canvas.js's _renderPath()
+    // simply applies translate(p.x, p.y) to whatever `d` it is given, so either
+    // convention looks correct here. That is precisely why this had to be
+    // settled against Studio rather than against the preview.
+    //
+    // A thick stroke extends half its width beyond the centreline on every
+    // side, so the box is padded first and the path authored against the padded
+    // corner — otherwise the shape's declared origin is not its real one.
     let dPath;
     if (isThickStroke) {
       const width = widthPx * this._scale;
-      const centeredPts = pts.map(p => ({ x: p.x - cx, y: p.y - cy }));
-      dPath = capsuleDPath(centeredPts, width);
       const pad = width / 2;
       bbox.minX -= pad; bbox.minY -= pad; bbox.maxX += pad; bbox.maxY += pad;
+      const localPts = pts.map(p => ({ x: p.x - bbox.minX, y: p.y - bbox.minY }));
+      dPath = (this.ribbonStrokes && localPts.length >= RIBBON_MIN_POINTS)
+        ? ribbonDPath(localPts, width)
+        : capsuleDPath(localPts, width);
     } else {
-      dPath = segsToAbsoluteDPath(segs, centeredM) + ' Z';
+      const localM = matMultiply([1, 0, 0, 1, -bbox.minX, -bbox.minY], m);
+      dPath = segsToAbsoluteDPath(segs, localM) + ' Z';
     }
     if (!dPath) return;
     this.shapes.push({ dPath, color: flat, minX: bbox.minX, minY: bbox.minY, maxX: bbox.maxX, maxY: bbox.maxY });
@@ -486,6 +578,11 @@ class RecordingCtx {
   fillText() { /* skipped — see header note */ }
   clearRect() { /* no-op — nothing to "clear" when recording vector shapes */ }
 }
+
+// The engine's canvas is 1200x900 and scaling by width puts it on a 100x75mm
+// footprint of the bed, so a millimetre is 12 canvas pixels. Both the XCS
+// recording and any on-canvas width that means a physical size use this.
+const PX_TO_MM = 100 / 1200;
 
 function createEngine(canvas) {
   const realCtx = canvas.getContext('2d');
@@ -2238,6 +2335,10 @@ function createEngine(canvas) {
         ctx.fillStyle = '#4a3520';
         ctx.strokeStyle = '#2e2013';
         ctx.lineWidth = 5;
+      } else if (currentStyle === 'jigsaw') {
+        ctx.fillStyle = '#15171a';
+        ctx.strokeStyle = '#3a3f45';
+        ctx.lineWidth = 4;
       } else {
         ctx.fillStyle = '#111';
         ctx.strokeStyle = '#555';
@@ -2273,7 +2374,11 @@ function createEngine(canvas) {
     const path = buildPerimeterPath(borderPoly);
     if (path.total <= 0) return;
 
-    let spacing = (pipeThickness * (currentStyle === 'painted_lady' ? 1.8 : 2.4)) / densityFactor;
+    // Jigsaw has no Thickness of its own — Density sizes its pieces the same way
+    // it divides the grid in Fill Interior — so its spacing comes off the shape.
+    let spacing = currentStyle === 'jigsaw'
+      ? (narrowDim * 0.072) / Math.pow(densityFactor, 0.7)
+      : (pipeThickness * (currentStyle === 'painted_lady' ? 1.8 : 2.4)) / densityFactor;
     spacing = Math.max(spacing, pipeThickness * 0.5, 4);
     let count = Math.max(3, Math.round(path.total / spacing));
     spacing = path.total / count;
@@ -2353,6 +2458,9 @@ function createEngine(canvas) {
         } else {
           drawFallLeaf(ctx, pt.x, pt.y, baseSize, currentColor, pt.angle, hash);
         }
+      } else if (currentStyle === 'jigsaw') {
+        // Sized to the spacing so consecutive pieces meet rather than float apart.
+        drawJigsawPiece(pt.x, pt.y, spacing, currentColor, pt.angle, cfg.outlineWidthMM > 0, jigsawOutlineColor(currentPalette, cfg), cfg.outlineWidthMM);
       } else if (currentStyle === 'illustrated') {
         let nextPt = pointAtDistance(path, d + spacing);
         let isCyl = hash < 25;
@@ -2419,6 +2527,282 @@ function createEngine(canvas) {
   // (thicknessSlider/paletteSelect/styleSelect/modeSelect/densitySlider/
   // marginSlider/gearSlider/sizeMinSlider/sizeMaxSlider/maxStraightSlider/
   // colorPct) everywhere they appeared; the generation math is unchanged.
+
+  // ── Jigsaw ─────────────────────────────────────────────────────────
+  // One master piece repeated across a grid. Every vertical boundary carries
+  // the same curve and every horizontal boundary carries another, so each
+  // piece is the previous one translated by a cell and all of them are
+  // congruent. Alternating the tab direction column by column would break
+  // that: it yields four piece shapes — tab/tab, tab/socket, socket/tab,
+  // socket/socket — and no rotation maps one onto another.
+
+  // A connector is the part of a circle standing above its boundary. Deriving
+  // the radius from the tab depth and the neck ratio puts the neck exactly
+  // where the circle crosses the boundary, so the head is always wider than
+  // the neck and the pieces interlock at every setting.
+  function jigsawGeo(tabH, neckRatio) {
+    const q = Math.sqrt(1 - neckRatio * neckRatio);
+    const r = tabH / (1 + q);
+    return { r, nw: neckRatio * r, off: tabH - r };
+  }
+
+  // Canvas arc() takes a direction flag rather than a waypoint, so pick the
+  // sweep that actually passes through the apex.
+  function arcThrough(C, r, A, B, apex) {
+    const ang = pt => Math.atan2(pt.y - C.y, pt.x - C.x);
+    const norm = d => { let v = d; while (v < 0) v += Math.PI * 2; while (v >= Math.PI * 2) v -= Math.PI * 2; return v; };
+    const a0 = ang(A), a1 = ang(B);
+    ctx.arc(C.x, C.y, r, a0, a1, !(norm(ang(apex) - a0) < norm(a1 - a0)));
+  }
+
+  // Walks one boundary into the current path, from A to B. `nrm` is the
+  // world-fixed bulge direction, the same for every boundary of that
+  // orientation — which is what keeps the pieces congruent. To traverse a
+  // boundary backwards the caller swaps A and B and hands over
+  // `jigsawFlip(knobs)`, which reproduces the identical curve rather than a
+  // mirrored one.
+  function jigsawEdge(A, B, nrm, knobs, geo) {
+    const dx = B.x - A.x, dy = B.y - A.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const dir = { x: dx / len, y: dy / len };
+    const at = (u, v) => ({ x: A.x + dir.x * u + nrm.x * v, y: A.y + dir.y * u + nrm.y * v });
+    for (const k of knobs) {
+      const c = k.t * len;
+      const near = at(c - geo.nw, 0), far = at(c + geo.nw, 0);
+      const C = at(c, k.sign * geo.off), apex = at(c, k.sign * (geo.off + geo.r));
+      ctx.lineTo(near.x, near.y);
+      arcThrough(C, geo.r, near, far, apex);
+    }
+    ctx.lineTo(B.x, B.y);
+  }
+  function jigsawFlip(knobs) {
+    return knobs.map(k => ({ t: 1 - k.t, sign: k.sign })).reverse();
+  }
+
+  function jigsawKnobs(cfg, rand) {
+    if (cfg.jigProfile === 'twin') {
+      const spread = 0.21 + 0.06 * (cfg.jigPos / 100);
+      return [{ t: 0.5 - spread, sign: 1 }, { t: 0.5 + spread, sign: -1 }];
+    }
+    if (cfg.jigProfile === 'random') {
+      return [{ t: 0.5 + (rand() * 2 - 1) * 0.18, sign: rand() < 0.5 ? 1 : -1 }];
+    }
+    return [{ t: cfg.jigPos / 100, sign: 1 }];
+  }
+
+  const JIG_OUTLINE = '#141414';
+
+  // Index 0 is the near-black default; anything above it picks a colour out of
+  // the resolved palette, so an outline engraved at a real laser entry's power
+  // is reachable without hardcoding one.
+  function jigsawOutlineColor(palette, cfg) {
+    const i = cfg.jigOutlineIdx || 0;
+    if (i <= 0 || !palette || !palette.length) return JIG_OUTLINE;
+    return palette[(i - 1) % palette.length] || JIG_OUTLINE;
+  }
+
+  // A single free-standing piece, used when Trace Border strings pieces around
+  // the perimeter and when Scatter has separated them.
+  function jigsawPiecePath(x, y, size, angle, knobs, geo) {
+    const h = size / 2;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const P = (u, v) => ({ x: x + u * c - v * s, y: y + u * s + v * c });
+    const tl = P(-h, -h), tr = P(h, -h), br = P(h, h), bl = P(-h, h);
+    const nx = { x: c, y: s }, ny = { x: -s, y: c };
+    ctx.beginPath();
+    ctx.moveTo(tl.x, tl.y);
+    jigsawEdge(tl, tr, ny, knobs, geo);
+    jigsawEdge(tr, br, nx, knobs, geo);
+    jigsawEdge(br, bl, ny, jigsawFlip(knobs), geo);
+    jigsawEdge(bl, tl, nx, jigsawFlip(knobs), geo);
+    ctx.closePath();
+  }
+
+  function drawJigsawPiece(x, y, size, color, angle, outlineOn, outlineColor, outlineWidthMM) {
+    const rand = makeRng(Math.floor(size * 977) ^ 0x51ed);
+    const cfgLike = { jigProfile: 'single', jigPos: 50 };
+    const knobs = jigsawKnobs(cfgLike, rand);
+    const geo = jigsawGeo(size * 0.2, 0.55);
+    jigsawPiecePath(x, y, size, angle, knobs, geo);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (outlineOn) {
+      ctx.strokeStyle = outlineColor || JIG_OUTLINE;
+      ctx.lineWidth = Math.max(0.5, outlineWidthMM / PX_TO_MM);
+      ctx.stroke();
+    }
+  }
+
+  function generateJigsaw(currentPalette, marginPx, densityFactor, narrowDim, cfg) {
+    // Everywhere else in Shape Fill, Thickness sets an object's size and Density
+    // divides the spacing between objects. Interlocking pieces have no spacing,
+    // and their size is whatever the grid leaves them — so Density is the only
+    // control, and Thickness is greyed out. The exponent spreads the slider:
+    // straight division left the top third of its travel all sitting on the
+    // piece cap. At the mid-point, 50, a cell is narrowDim/25.
+    let cell = Math.max(8, narrowDim * 0.04 / Math.pow(densityFactor, 0.7));
+
+    let minX = Math.min(...hullPoints.map(p => p.x)), maxX = Math.max(...hullPoints.map(p => p.x));
+    let minY = Math.min(...hullPoints.map(p => p.y)), maxY = Math.max(...hullPoints.map(p => p.y));
+    const expand = marginPx < 0 ? -marginPx : 0;
+    const gx0 = minX - expand, gy0 = minY - expand;
+    const gw = (maxX + expand) - gx0, gh = (maxY + expand) - gy0;
+
+    // patterns.md caps a pattern at 2000 shapes before it needs a thinning
+    // guard, and a piece is one shape. Rather than silently dropping pieces,
+    // grow the cell until the grid fits — Piece Size and Density then stop
+    // having an effect, which reads on screen as the pieces refusing to get
+    // smaller.
+    const MAX_PIECES = 1800;
+    let cols = Math.max(1, Math.floor(gw / cell));
+    let rows = Math.max(1, Math.floor(gh / cell));
+    if (cols * rows > MAX_PIECES) {
+      cell *= Math.sqrt((cols * rows) / MAX_PIECES);
+      cols = Math.max(1, Math.floor(gw / cell));
+      rows = Math.max(1, Math.floor(gh / cell));
+    }
+    const ox = gx0 + (gw - cols * cell) / 2, oy = gy0 + (gh - rows * cell) / 2;
+    const corner = (i, j) => ({ x: ox + i * cell, y: oy + j * cell });
+
+    const tabPct = Math.max(8, Math.min(32, cfg.jigTab)) / 100;
+    const neck = Math.max(0.25, Math.min(0.75, cfg.jigNeck / 100));
+    const geoFull = jigsawGeo(cell * tabPct, neck);
+    const geoTwin = jigsawGeo(cell * tabPct * 0.82, neck);
+    const geo = cfg.jigProfile === 'twin' ? geoTwin : geoFull;
+
+    // Single and Twin reuse one curve on every boundary; Random rolls a fresh
+    // one per boundary and gives up congruence in exchange for the look.
+    const shared = jigsawKnobs(cfg, patternRandom);
+    const vKnobs = [], hKnobs = [];
+    for (let i = 0; i <= cols; i++) vKnobs.push(cfg.jigProfile === 'random' ? jigsawKnobs(cfg, patternRandom) : shared);
+    for (let j = 0; j <= rows; j++) hKnobs.push(cfg.jigProfile === 'random' ? jigsawKnobs(cfg, patternRandom) : shared);
+    const flat = cfg.jigEdge === 'flat';
+    const vAt = i => (flat && (i === 0 || i === cols)) ? [] : vKnobs[i];
+    const hAt = j => (flat && (j === 0 || j === rows)) ? [] : hKnobs[j];
+
+    const NX = { x: 1, y: 0 }, NY = { x: 0, y: 1 };
+
+    // Same containment rule every other style uses: a piece is kept when its
+    // centre sits inside the shape by at least the margin, so the field
+    // follows the pendant or circle outline and edge pieces overhang it.
+    const keep = [];
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const cx = ox + (i + 0.5) * cell, cy = oy + (j + 0.5) * cell;
+      const insideRaw = pointInPolygon({ x: cx, y: cy }, hullPoints);
+      const dist = distanceToPolygon({ x: cx, y: cy }, hullPoints);
+      const inside = insideRaw ? dist >= marginPx : (marginPx < 0 && dist <= -marginPx);
+      if (!inside) continue;
+      if (patternRandom() < cfg.jigMissing / 100) continue;
+      keep.push({ i, j, cx, cy, jx: patternRandom(), jy: patternRandom() });
+    }
+    if (!keep.length) return;
+
+    // Colour
+    const pool = pickColorSubset(currentPalette, colorCountFromPct(cfg.colorPct, currentPalette.length));
+    const n = Math.max(1, pool.length);
+    if (cfg.jigOrder === 'random') {
+      assignStreakColors(keep, currentPalette, cfg.colorPct, cfg.maxStraight);
+    } else if (cfg.jigOrder === 'rows') {
+      keep.forEach(c => { c.streakColor = pool[c.j % n]; });
+    } else {
+      keep.forEach(c => { c.streakColor = pool[n === 2 ? (c.i + c.j) % 2 : (c.i + 2 * c.j) % n]; });
+    }
+
+    // Fit
+    const sc = cfg.jigScatter / 100;
+    const loose = new Set();
+    if (cfg.jigFit === 'loose' && sc > 0) {
+      const want = Math.min(keep.length, Math.max(1, Math.round(keep.length * cfg.jigLoose / 100)));
+      const pick = makeRng(patternSeed ^ 0xabcd);
+      while (loose.size < want) loose.add(Math.floor(pick() * keep.length));
+    }
+    const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
+    keep.forEach((c, k) => {
+      c.tx = 0; c.ty = 0; c.rot = 0;
+      if (sc <= 0 || cfg.jigFit === 'solved') return;
+      if (cfg.jigFit === 'explode') {
+        c.tx = (c.cx - midX) * sc * 0.55; c.ty = (c.cy - midY) * sc * 0.55;
+      } else if (cfg.jigFit === 'pile') {
+        c.tx = (c.jx * 2 - 1) * sc * cell * 1.4; c.ty = (c.jy * 2 - 1) * sc * cell * 1.4;
+        c.rot = (c.jx * 2 - 1) * sc * Math.PI;
+      } else if (loose.has(k)) {
+        c.tx = (c.jx * 2 - 1) * sc * cell * 3.2; c.ty = (c.jy * 2 - 1) * sc * cell * 3.2;
+        c.rot = (c.jy * 2 - 1) * sc * Math.PI;
+      }
+    });
+    const moved = keep.some(c => c.tx || c.ty || c.rot);
+
+    const piecePath = c => {
+      const tl = corner(c.i, c.j), tr = corner(c.i + 1, c.j);
+      const br = corner(c.i + 1, c.j + 1), bl = corner(c.i, c.j + 1);
+      ctx.beginPath();
+      ctx.moveTo(tl.x, tl.y);
+      jigsawEdge(tl, tr, NY, hAt(c.j), geo);
+      jigsawEdge(tr, br, NX, vAt(c.i + 1), geo);
+      jigsawEdge(br, bl, NY, jigsawFlip(hAt(c.j + 1)), geo);
+      jigsawEdge(bl, tl, NX, jigsawFlip(vAt(c.i)), geo);
+      ctx.closePath();
+    };
+
+    const outlineOn = cfg.outlineWidthMM > 0;
+    const outlineColor = jigsawOutlineColor(currentPalette, cfg);
+    // The line is what makes the pieces readable, so the canvas has to show the
+    // width that will actually be engraved. Deriving it from the cell instead
+    // left the slider with no visible effect outside the XCS export.
+    const strokeW = Math.max(0.5, cfg.outlineWidthMM / PX_TO_MM);
+    // A grid-line run is thousands of segments long — see RIBBON_MIN_POINTS.
+    ctx.ribbonStrokes = true;
+
+    keep.forEach(c => {
+      if (c.tx || c.ty || c.rot) {
+        ctx.save();
+        ctx.translate(c.cx + c.tx, c.cy + c.ty);
+        ctx.rotate(c.rot);
+        ctx.translate(-c.cx, -c.cy);
+      }
+      piecePath(c);
+      ctx.fillStyle = c.streakColor || pool[0];
+      ctx.fill();
+      // Once a piece has moved it shares no boundary, so it carries its own
+      // outline. A solved field strokes the boundary graph below instead, so
+      // no interior line is engraved twice at double exposure.
+      if (outlineOn && moved) {
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = strokeW;
+        ctx.stroke();
+      }
+      if (c.tx || c.ty || c.rot) ctx.restore();
+    });
+
+    if (outlineOn && !moved) {
+      const present = new Set(keep.map(c => c.i + ':' + c.j));
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = strokeW;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Consecutive boundaries along one grid line share their endpoints, so a
+      // whole run strokes as a single line. A missing piece ends the run.
+      const chain = (count, exists, A, B, nrm, knobsAt) => {
+        let open = false;
+        for (let k = 0; k < count; k++) {
+          if (exists(k)) {
+            const a = A(k), b = B(k);
+            if (!open) { ctx.beginPath(); ctx.moveTo(a.x, a.y); open = true; }
+            jigsawEdge(a, b, nrm, knobsAt(k), geo);
+          } else if (open) { ctx.stroke(); open = false; }
+        }
+        if (open) ctx.stroke();
+      };
+      for (let i = 0; i <= cols; i++)
+        chain(rows, j => present.has((i - 1) + ':' + j) || present.has(i + ':' + j),
+          j => corner(i, j), j => corner(i, j + 1), NX, () => vAt(i));
+      for (let j = 0; j <= rows; j++)
+        chain(cols, i => present.has(i + ':' + (j - 1)) || present.has(i + ':' + j),
+          i => corner(i, j), i => corner(i + 1, j), NY, () => hAt(j));
+    }
+    ctx.ribbonStrokes = false;
+  }
+
   function generatePipes(cfg) {
     reseedRandom();
     let minX = Math.min(...hullPoints.map(p => p.x));
@@ -2448,6 +2832,13 @@ function createEngine(canvas) {
     if (currentMode === 'border') {
       drawBase(currentStyle);
       generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor, narrowDim, cfg);
+      drawHandles();
+      return;
+    }
+
+    if (currentStyle === 'jigsaw') {
+      drawBase(currentStyle);
+      generateJigsaw(currentPalette, marginPx, densityFactor, narrowDim, cfg);
       drawHandles();
       return;
     }
@@ -3664,7 +4055,6 @@ function createEngine(canvas) {
       const project = XCSExporter.createProject();
       if (hullPoints.length < 3) return project;
 
-      const PX_TO_MM = 100 / 1200; // canvas is 1200x900 -> scaling by width gives a 100x75mm footprint
       const wasEditMode = isEditMode;
       const savedCtx = ctx, savedPathCtor = PathCtor;
       isEditMode = false;
@@ -3742,7 +4132,8 @@ function createEngine(canvas) {
       await Promise.all(rec.shapes.map(s => {
         const w = Math.max(0.02, s.maxX - s.minX), h = Math.max(0.02, s.maxY - s.minY);
         return XCSExporter.addPath(project, {
-          x: (s.minX + s.maxX) / 2 + centerOffsetX, y: (s.minY + s.maxY) / 2 + centerOffsetY, width: w, height: h,
+          // Top-left, matching the origin the dPath is authored against.
+          x: s.minX + centerOffsetX, y: s.minY + centerOffsetY, width: w, height: h,
           dPath: s.dPath, layerColor: s.color, laserSource, isFill: true,
           params: paramsForColor(s.color),
           extraDisplayData: { hideLabels: true }
@@ -3789,6 +4180,11 @@ const DEFAULTS = {
   thickness: 20, sizeMin: 60, sizeMax: 430, density: 50,
   gears: 6, colorPct: 0.15, maxStraight: 10, margin: 0,
   rawPoints: null,
+  // Jigsaw style only. Connector geometry, then how the field is coloured and
+  // how far it is from its solved fit.
+  jigProfile: 'single', jigTab: 20, jigNeck: 55, jigPos: 50,
+  jigEdge: 'flat', jigOrder: 'diagonal', jigOutlineIdx: 0,
+  jigFit: 'solved', jigScatter: 0, jigLoose: 12, jigMissing: 0,
   // 'true-color' (default) renders the decorative Color Mapping palette as-is.
   // Any other value is a real App.palettes id — a laser-calibrated palette —
   // and rendering substitutes each decorative color with its nearest match.
@@ -3912,7 +4308,21 @@ function syncXCSProject(tabId) {
   const { cfg, state } = inst;
   clearTimeout(state._syncDebounceTimer);
   state._syncDebounceTimer = null;
+  // buildXCSProject is async (awaits XCSExporter.addPath internally) and
+  // nothing previously stopped two calls from being in flight at once —
+  // e.g. a user action landing while an earlier build/render was still
+  // resolving. Nothing guarantees resolution order matches call order, so
+  // without this token a slower-but-stale build could resolve AFTER a
+  // faster-but-newer one and overwrite state.project/renderedShapes with
+  // outdated geometry, or trigger a renderChunked() call whose _renderGen
+  // token still "wins" purely by timing luck even though it belongs to a
+  // build that's no longer current — that class of race is the root cause
+  // of a real, reproduced bug (a stray few leftover DOM shapes after rapid
+  // interrupted changes). Only the result whose seq still matches the
+  // latest-issued call when it resolves is ever applied.
+  const seq = (state._syncSeq = (state._syncSeq || 0) + 1);
   const promise = state.engine.buildXCSProject(cfg).then(project => {
+    if (state._syncSeq !== seq) return state.project;
     state.project = project;
     if (cfg.renderTarget === 'xtool') XCSViewer.update(inst.pane, inst.state);
     return project;
@@ -3949,6 +4359,48 @@ function flushXCSProjectSync(tabId) {
   if (!inst) return Promise.resolve(null);
   if (inst.state._syncDebounceTimer) return syncXCSProject(tabId);
   return inst.state.projectPromise || syncXCSProject(tabId);
+}
+
+// The tab label is the export filename — viewer.js downloads whatever the
+// header says — so it names the style being filled rather than the tool:
+// GearsSep16-1303, JigsawPuzzleSep16-1303. It follows the Style dropdown, but
+// only while the name is still one we generated. Once the tab has been renamed
+// by hand, nothing here touches it again.
+const AUTO_NAME_RE = /^([A-Za-z0-9]+?)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\d{1,2}-\d{4})$/;
+
+function styleSlug(style) {
+  return ((STYLE_OPTIONS.find(o => o[0] === style) || [null, 'ShapeFill'])[1]).replace(/[^a-z0-9]/gi, '');
+}
+
+// Returns the timestamp when the label is still auto-generated — either the
+// registry's own ShapeFill<stamp> or a <Style><stamp> we renamed it to — and
+// null once it is the user's own text, which must never be overwritten.
+// Reading the stamp back out of the label rather than storing it means a tab
+// restored from Persistence or a .rnr file keeps the timestamp it opened with.
+function autoNameStamp(label) {
+  const m = AUTO_NAME_RE.exec(label || '');
+  if (!m) return null;
+  const known = ['ShapeFill'].concat(STYLE_OPTIONS.map(o => o[1].replace(/[^a-z0-9]/gi, '')));
+  return known.indexOf(m[1]) >= 0 ? m[2] : null;
+}
+
+function refreshShapeFillName(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst) return;
+  const tab = App.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const stamp = autoNameStamp(tab.label);
+  if (stamp === null) return;
+  const name = styleSlug(inst.cfg.style) + stamp;
+  if (tab.label !== name && App.TabMgr) App.TabMgr.setLabel(tabId, name);
+  // setLabel only reaches the first .viewer-fname in the pane; Shape Fill has
+  // two panes, and the xTool one is what Export XCS reads.
+  const { state } = inst;
+  if (state.htmlViewerEl) {
+    const h = state.htmlViewerEl.querySelector('.viewer-fname');
+    if (h) h.textContent = name;
+  }
+  if (state.xcsViewerEl) state.xcsViewerEl.querySelector('.viewer-fname').textContent = name;
 }
 
 function updateShapeFillViewerVisibility(tabId) {
@@ -4011,9 +4463,9 @@ export const ShapeFillTab = {
     // create() reads/writes App.instances[tabId] (e.g. it sets
     // inst.xcsCanvas), so it must run after the line above.
     const xcsViewerEl = XCSViewer.create(tabId);
-    xcsViewerEl.querySelector('.viewer-fname').textContent = 'Shape Fill (xTool)';
     pane.appendChild(xcsViewerEl);
     state.xcsViewerEl = xcsViewerEl;
+    refreshShapeFillName(tabId);
     updateShapeFillViewerVisibility(tabId);
 
     const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); };
@@ -4053,7 +4505,8 @@ export const ShapeFillTab = {
     // (see UI.makeRange below) that fire on every tick of a drag.
     const set = (key, val) => { cfg[key] = val; Persistence.save(); engine.generate(cfg); syncXCSProjectDebounced(tabId); };
 
-    const meta = computeSliderMeta(cfg.style, cfg.mode);
+    const meta = computeSliderMeta(cfg.style, cfg.mode, { colorOrder: cfg.jigOrder });
+    refreshShapeFillName(tabId);
 
     // ── Shape ──
     const presetRow = document.createElement('div');
@@ -4166,10 +4619,18 @@ export const ShapeFillTab = {
       rebuild();
     }, { fill: 'Fill Interior', border: 'Trace Border' });
 
-    scroll.appendChild(UI.makeSection('Style', [
+    const LASER_PALETTE_TIP = 'Choose a real xTool laser palette to substitute for the colors below (nearest match, no two colors sharing one entry) — or True Color to draw them exactly as chosen.';
+    const isJigsaw = cfg.style === 'jigsaw';
+
+    // Jigsaw groups the panel by concern — colour together, piece shape
+    // together, fit together — so its colour rows leave Style and reappear in a
+    // Color section below. Every other style keeps the panel it has.
+    scroll.appendChild(UI.makeSection('Style', isJigsaw ? [
       UI.makeRow('Style', styleSelectEl),
-      UI.makeRow('Laser Palette', laserPaletteCtrl,
-        'Choose a real xTool laser palette to substitute for the colors below (nearest match, no two colors sharing one entry) — or True Color to draw them exactly as chosen.'),
+      UI.makeRow('Mode', modeToggle)
+    ] : [
+      UI.makeRow('Style', styleSelectEl),
+      UI.makeRow('Laser Palette', laserPaletteCtrl, LASER_PALETTE_TIP),
       UI.makeRow('Color Mapping', paletteRow, buildColorMappingTooltip(cfg)),
       UI.makeRow('Mode', modeToggle)
     ]));
@@ -4182,13 +4643,23 @@ export const ShapeFillTab = {
 
     const densityCtrl = UI.makeRange(5, 150, 1, cfg.density, v => set('density', +v));
 
-    const colorCtrl = UI.makeRange(0, 100, 1, Math.round(cfg.colorPct * 100), v => set('colorPct', +v / 100));
+    // Every other style expresses Colors as a percentage of the palette, since
+    // what it controls is how eagerly a traced run changes colour. Jigsaw
+    // pieces are discrete and countable, so the same stored colorPct is shown
+    // as the number of colours actually in play. colorCountFromPct round-trips
+    // exactly, so nothing else in the engine has to know the difference.
+    const jigPalLen = (PALETTES[cfg.paletteId] || []).length || 1;
+    const colorCtrl = (cfg.style === 'jigsaw' && jigPalLen > 1)
+      ? UI.makeRange(1, jigPalLen, 1, 1 + Math.round(cfg.colorPct * (jigPalLen - 1)),
+          v => set('colorPct', (+v - 1) / (jigPalLen - 1)))
+      : UI.makeRange(0, 100, 1, Math.round(cfg.colorPct * 100), v => set('colorPct', +v / 100));
     disableControl(colorCtrl, meta.color.disabled);
 
     const maxStraightCtrl = UI.makeRange(1, 25, 1, cfg.maxStraight, v => set('maxStraight', +v));
     disableControl(maxStraightCtrl, meta.maxStraight.disabled);
 
     const gearsCtrl = UI.makeRange(0, 20, 1, cfg.gears, v => set('gears', +v));
+    disableControl(gearsCtrl, meta.gears.disabled);
 
     const marginCtrl = UI.makeRange(-100, 100, 1, cfg.margin, v => set('margin', +v));
 
@@ -4205,16 +4676,117 @@ export const ShapeFillTab = {
     disableControl(sizeMinCtrl, meta.size.disabled);
     disableControl(sizeMaxCtrl, meta.size.disabled);
 
-    scroll.appendChild(UI.makeSection('Pattern', [
-      UI.makeRow(meta.thickness.label, thicknessCtrl, meta.thickness.description),
-      UI.makeRow(meta.density.label, densityCtrl, meta.density.description),
-      UI.makeRow(meta.size.label + ' Min', sizeMinCtrl, meta.size.description),
-      UI.makeRow(meta.size.label + ' Max', sizeMaxCtrl, meta.size.description),
-      UI.makeRow(meta.color.label, colorCtrl, meta.color.description),
-      UI.makeRow(meta.maxStraight.label, maxStraightCtrl, meta.maxStraight.description),
-      UI.makeRow(meta.gears.label, gearsCtrl, meta.gears.description),
-      UI.makeRow(meta.margin.label, marginCtrl, meta.margin.description)
-    ]));
+    if (!isJigsaw) {
+      scroll.appendChild(UI.makeSection('Pattern', [
+        UI.makeRow(meta.thickness.label, thicknessCtrl, meta.thickness.description),
+        UI.makeRow(meta.density.label, densityCtrl, meta.density.description),
+        UI.makeRow(meta.size.label + ' Min', sizeMinCtrl, meta.size.description),
+        UI.makeRow(meta.size.label + ' Max', sizeMaxCtrl, meta.size.description),
+        UI.makeRow(meta.color.label, colorCtrl, meta.color.description),
+        UI.makeRow(meta.maxStraight.label, maxStraightCtrl, meta.maxStraight.description),
+        UI.makeRow(meta.gears.label, gearsCtrl, meta.gears.description),
+        UI.makeRow(meta.margin.label, marginCtrl, meta.margin.description)
+      ]));
+    }
+
+    // ── Jigsaw: grouped by concern ──
+    if (isJigsaw) {
+      const profileSel = makeLabeledSelect(
+        [['single', 'Single — one per side'], ['twin', 'Twin — two per side'], ['random', 'Random']],
+        cfg.jigProfile, v => { set('jigProfile', v); rebuild(); });
+      const edgeToggle = UI.makeToggles(['flat', 'bleed'], cfg.jigEdge, v => set('jigEdge', v),
+        { flat: 'Flat Edge', bleed: 'Bleed' });
+      const orderToggle = UI.makeToggles(['diagonal', 'rows', 'random'], cfg.jigOrder,
+        v => { set('jigOrder', v); rebuild(); }, { diagonal: 'Distinct', rows: 'By Row', random: 'Random' });
+      const fitToggle = UI.makeToggles(['solved', 'explode', 'pile', 'loose'], cfg.jigFit,
+        v => {
+          // Leaving Solved with Scatter still at zero would redraw the identical
+          // field, reading as a dead button. Open it far enough to see.
+          if (v !== 'solved' && cfg.jigScatter === 0) cfg.jigScatter = 25;
+          set('jigFit', v);
+          rebuild();
+        },
+        { solved: 'Solved', explode: 'Explode', pile: 'Pile', loose: 'Loose' });
+      // Four toggles overrun the panel width on one line.
+      [orderToggle, fitToggle].forEach(t => {
+        t.style.flexWrap = 'wrap';
+        t.style.justifyContent = 'flex-end';
+        t.querySelectorAll('button').forEach(b => { b.style.flex = '0 0 auto'; });
+      });
+
+      const scatterCtrl = UI.makeRange(0, 100, 1, cfg.jigScatter, v => set('jigScatter', +v), '%');
+      disableControl(scatterCtrl, cfg.jigFit === 'solved');
+      const looseCtrl = UI.makeRange(1, 50, 1, cfg.jigLoose, v => set('jigLoose', +v), '%');
+      disableControl(looseCtrl, cfg.jigFit !== 'loose');
+
+      const outlineWidthCtrl = UI.makeRange(0, 2, 0.05, cfg.outlineWidthMM, v => {
+        cfg.outlineWidthMM = +v;
+        Persistence.save();
+        engine.generate(cfg);
+        syncXCSProjectDebounced(tabId);
+      }, 'mm');
+      // Index 0 is the near-black default; the rest are the Color Mapping
+      // palette's own colors, so the line can be engraved at a real entry's power.
+      const outlineSwatches = [{ rgb: '#141414', label: 'Dark' }]
+        .concat((PALETTES[cfg.paletteId] || []).map((hex, i) => ({ rgb: hex, label: 'Color ' + (i + 1) })));
+      const outlineColorCtrl = UI.makePalettePicker(
+        outlineSwatches, Math.min(cfg.jigOutlineIdx || 0, outlineSwatches.length - 1),
+        v => set('jigOutlineIdx', v), { title: 'Outline Color' });
+      disableControl(outlineColorCtrl, cfg.outlineWidthMM <= 0);
+
+      scroll.appendChild(UI.makeSection('Color', [
+        UI.makeRow('Laser Palette', laserPaletteCtrl, LASER_PALETTE_TIP),
+        UI.makeRow('Color Mapping', paletteRow, buildColorMappingTooltip(cfg)),
+        UI.makeRow(meta.color.label, colorCtrl, meta.color.description),
+        UI.makeRow('Color Order', orderToggle,
+          'Distinct guarantees no piece shares a color with the piece beside or above it. By Row bands the field. Random rolls, capped by Color Cluster.'),
+        UI.makeRow(meta.maxStraight.label, maxStraightCtrl, meta.maxStraight.description)
+      ]));
+
+      scroll.appendChild(UI.makeSection('Pattern', [
+        UI.makeRow(meta.density.label, densityCtrl, meta.density.description),
+        UI.makeRow(meta.margin.label, marginCtrl, meta.margin.description)
+      ]));
+
+      scroll.appendChild(UI.makeSection('Piece', [
+        UI.makeRow('Connector', profileSel,
+          'Single puts one connector on each side and every piece is identical. Twin puts two per side, one out and one in, and the pieces stay identical. Random rolls a fresh curve per boundary and gives that up.'),
+        UI.makeRow('Connector Depth', UI.makeRange(8, 32, 1, cfg.jigTab, v => set('jigTab', +v), '%'),
+          'How far a connector stands out of its boundary, as a percentage of the piece.'),
+        UI.makeRow('Neck', UI.makeRange(25, 75, 1, cfg.jigNeck, v => set('jigNeck', +v), '%'),
+          'How wide the neck is against the head. Lower pinches the neck and deepens the interlock.'),
+        UI.makeRow('Tab Position', UI.makeRange(30, 70, 1, cfg.jigPos, v => set('jigPos', +v), '%'),
+          'Where the connector sits along its boundary.'),
+        UI.makeRow('Edge Pieces', edgeToggle,
+          'Flat Edge trims the outermost boundaries straight, the way a finished puzzle reads. Bleed lets the connectors run past the edge of the field.')
+      ]));
+
+      scroll.appendChild(UI.makeSection('Fit', [
+        UI.makeRow('Fit', fitToggle,
+          'Solved leaves the pieces interlocked. Explode drifts the whole field outward without overlapping. Pile offsets and turns every piece. Loose lifts a few out of an otherwise solved field.'),
+        UI.makeRow('Scatter', scatterCtrl, 'How far the chosen fit moves the pieces.'),
+        UI.makeRow('Loose Pieces', looseCtrl, 'Percentage of the field lifted out, for the Loose fit.'),
+        UI.makeRow('Missing Pieces', UI.makeRange(0, 40, 1, cfg.jigMissing, v => set('jigMissing', +v), '%'),
+          'Percentage of pieces left out, opening holes onto the board beneath.')
+      ]));
+
+      scroll.appendChild(UI.makeSection('Line', [
+        UI.makeRow('Outline Width', outlineWidthCtrl,
+          '0mm engraves the piece colors alone with no outline. A solved field shares each interior boundary between two pieces and engraves it once; Scatter separates them, and each piece then carries its own.'),
+        UI.makeRow('Outline Color', outlineColorCtrl,
+          'Dark is a near-black line. Any other swatch takes a color from the Color Mapping palette, so the line engraves at that entry\'s power.')
+      ]));
+
+      // Rows the other styles use that a field of identical interlocking pieces
+      // has no use for. Collapsed rather than hidden so the reason stays
+      // reachable on hover.
+      scroll.appendChild(UI.makeSection('Not used by this style', [
+        UI.makeRow(meta.thickness.label, thicknessCtrl, meta.thickness.description),
+        UI.makeRow(meta.size.label + ' Min', sizeMinCtrl, meta.size.description),
+        UI.makeRow(meta.size.label + ' Max', sizeMaxCtrl, meta.size.description),
+        UI.makeRow(meta.gears.label, gearsCtrl, meta.gears.description)
+      ], true));
+    }
 
     // ── Refresh ──
     const refreshColorsBtn = UI.makeActionBtn('🎨 Colors', false, () => { engine.refreshColors(cfg); syncXCSProjectDebounced(tabId); });
@@ -4249,7 +4821,7 @@ export const ShapeFillTab = {
       Persistence.save();
       syncXCSProjectDebounced(tabId);
     }, 'mm');
-    scroll.appendChild(UI.makeSection('Outline Width (xTool)', [
+    if (!isJigsaw) scroll.appendChild(UI.makeSection('Outline Width (xTool)', [
       UI.makeRow('Thickness', outlineWidthCtrl, '0mm = no outlines (fills only). Overrides the canvas\'s own per-shape line width with one physical value for the vector export.')
     ]));
 

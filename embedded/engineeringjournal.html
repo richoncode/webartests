@@ -123,6 +123,70 @@
     <summary>
       <span class="chev"></span>
       <span class="head">
+        <span class="stamp"><time datetime="2026-09-16T14:30-07:00">Wed 16 Sep 2026 · 14:30 PDT</time></span>
+        <span class="title">The laser tool now checks itself against the machine<span class="badge green">complete</span></span>
+        <span class="synopsis">A jigsaw fill went into Shape Fill, and driving the real xTool Studio over its debug port found two exporter bugs that our own preview could never have shown.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>A jigsaw that is genuinely one repeated piece</h3>
+      <p>Pieces are congruent only when every vertical boundary carries the same curve and every horizontal boundary carries another. Alternating the tab direction column by column breaks that — it yields four piece shapes, and no rotation maps one onto another. Two profiles survive: a <strong>single</strong> knob per side, and a <strong>twin</strong> pair, one out and one in, point-symmetric about the edge midpoint.</p>
+      <p>A connector is the part of a circle standing above its boundary. Deriving the radius from the tab depth and the neck ratio puts the neck exactly where the circle crosses the boundary, so the head is always wider than the neck and the pieces interlock at every setting — no combination of sliders can produce a tab that does not lock.</p>
+      <pre class="data">interior pieces congruent   3.2e-13 mm  (single and twin)
+bleed border, twin profile  one piece shape across all 596
+distinct colours, 8 asked   8 drawn, 0 adjacent clashes
+composition centre          50.00, 50.00 on every preset</pre>
+
+      <h3>Two controls were doing one job</h3>
+      <p>Everywhere else in Shape Fill, Thickness sets an object's size and Density divides the spacing between objects. Interlocking pieces have no spacing, so the first version had both sliders resizing the same grid and neither could be reconciled with the other. Density now carries it alone, the way it does for the other fills, and Piece Size is greyed with the reason.</p>
+      <p>Piece Colors had the same shape of problem in reverse: it was the shared percentage control, so asking for 8 gave two colours — <code>1 + round(0.08 × 8)</code> of a nine-colour palette. Pieces are discrete and countable, so it is a count now, stored as the same <code>colorPct</code> underneath so persistence is untouched.</p>
+
+      <h3>Driving xTool Studio, because our preview cannot be the judge</h3>
+      <p>xTool Studio is Electron 36.2.0. Launched with <code>--remote-debugging-port</code> it accepts the Chrome DevTools Protocol, and a screenshot taken through <code>Page.captureScreenshot</code> is rendered inside Chromium rather than grabbed from the display — so it needs no Screen Recording permission, which this machine does not grant. Accessibility is refused too, and neither is needed.</p>
+      <p>The first round trip was a simple test: the same 20 mm square three times, once as a RECT and twice as a PATH, authored against two different origins. Our renderer draws all three in a neat row. Studio does not.</p>
+      <pre class="data">shape             expected mm     studio mm       delta
+ORIGIN_RECT       15, 40          15.0, 40.0      +0.0, +0.0    ok
+ORIGIN_TOPLEFT    45, 40          44.9, 40.0      -0.1, +0.0    ok
+ORIGIN_CENTRED    75, 40          84.7, 50.0      +9.7, +10.0   MISPLACED</pre>
+      <p>Exactly half the square's width and height. <strong>Studio reads <code>x</code>/<code>y</code> as the top-left</strong>, which <code>xcsformat.md</code> §13 has always said, while Shape Fill's recorder authored every path against its centre. Our viewer cannot tell the difference: <code>_renderPath</code> applies <code>translate(x, y)</code> to whatever <code>dPath</code> it is handed, so both conventions look correct there. Because each shape has a different bounding box, every shape was displaced by a different amount — which is why the jigsaw arrived scrambled rather than merely shifted.</p>
+
+      <h3>The second bug hid behind a repeated coordinate</h3>
+      <p>With placement fixed the field registered on its board, but the pieces still filled as triangles. Every <code>ctx.arc()</code> was emitting <code>M</code> for its first sampled point, restarting the subpath:</p>
+      <pre class="data">M 0.000 0.000 L 3.440 0.000 L 3.440 1.514 M 3.440 1.514 L 3.469 1.476 …
+                                          ^^ new subpath, same point</pre>
+      <p>The move went to precisely where the previous line already was, so the path text looked innocent while each outline exported as four disconnected pieces. Canvas semantics are that <code>arc()</code> on an open path draws a <em>line</em> to the arc start. After the fix, 207 of 212 paths carry exactly one <code>M</code>; the five that do not are capsule strokes, where multiple subpaths are correct.</p>
+      <pre class="data">all 14 styles, after both fixes
+centre of design    50.0, 50.0 on every one
+dPath origin        within 0.005 mm of its own top-left (13 of 14)</pre>
+
+      <h3>The verifier grew a place to put tests like this</h3>
+      <p>The validation dashboard now has two tabs. <strong>Unit Tests</strong> keeps the eight structural checks. <strong>Render Tests</strong> lists whole exported projects, each expanding to its element results, with buttons to view the project in the canvas and to export the <code>.xcs</code>. The seven checks that call <code>verifyGeometry()</code> moved across as the <em>Geometry Baseline</em> project — they measure where a shape landed, not whether the file parses.</p>
+      <p>Adding a test is one entry in <code>render-tests.js</code>. <code>roundtrip.mjs</code> then builds it, exports it, launches Studio, opens the file, screenshots it and measures every shape back in millimetres. Studio draws its work area on a WebGL canvas, so there is no DOM geometry to read and <code>toDataURL</code> returns an empty buffer; the measurement is done on the screenshot instead, which needed a small PNG decoder since this machine has neither PIL nor numpy.</p>
+      <p>Two things that cost time and are worth remembering. Studio composites shapes over the grey bed, so a <code>#10b981</code> fill paints as <code>rgb(85,182,133)</code> and matching has to be nearest-colour. And the scan must be confined to the bed, because the layer swatch strip in the bottom-left chrome is painted in the very colours under test.</p>
+
+      <h3>The test that passes and fails at the same time</h3>
+      <p>Path Origin Convention reports <strong>3/3 in our renderer</strong> and <strong>one element misplaced in Studio</strong>. That gap is the whole argument for working only in real XCS project mode, and it is now a standing regression guard rather than a story. It stays even though the bug is fixed.</p>
+
+      <h3>What this exposed that is not fixed</h3>
+      <p>Exporting every style and reading the result turned up more than the two bugs. World Coins emits <strong>51 layers</strong> from a single palette colour, because <code>shadeColor()</code> derivatives never pass through <code>mapPaletteToLaser</code> — and choosing a real laser palette changes that number not at all. Gears writes <strong>4,434 shapes</strong> against a documented 2,000-shape guard that was never implemented. 94% of its shapes are completely covered by a later one and still engrave. Autumn Leaves loses 29% of its drawing to clipping and collapses 579 line widths into one.</p>
+      <p>All of it is written up in <a href="../laser-experiments/xcs-format-support.html">XCS Format Support</a>, with four plans: extend the verifier, fix colour and layer management, bring the two renders to parity, and retire the HTML preview so there is only ever one render — the file the machine gets.</p>
+
+      <h3>Assets</h3>
+      <ul>
+        <li><a href="journal-assets/2026-09-16_xcs-roundtrip/path-origin-studio.png">path-origin-studio.png</a> — the three squares in Studio, the third displaced by half its own size</li>
+        <li><a href="journal-assets/2026-09-16_xcs-roundtrip/jigsaw-before-studio.png">jigsaw-before-studio.png</a> — scrambled: both bugs present</li>
+        <li><a href="journal-assets/2026-09-16_xcs-roundtrip/jigsaw-after-studio.png">jigsaw-after-studio.png</a> — interlocking, registered, centred</li>
+        <li><a href="journal-assets/2026-09-16_xcs-roundtrip/verifier-render-tests.png">verifier-render-tests.png</a> — the dashboard with both tabs</li>
+        <li><a href="journal-assets/2026-09-16_xcs-roundtrip/render-tests.js">render-tests.js</a> and <a href="journal-assets/2026-09-16_xcs-roundtrip/roundtrip.mjs">roundtrip.mjs</a> — the registry and the runner as they stand</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
         <span class="stamp"><time datetime="2026-09-15T18:05-07:00">Tue 15 Sep 2026 · 18:05 PDT</time></span>
         <span class="title">Everything from the mockup is on the panel<span class="badge green">complete</span></span>
         <span class="synopsis">The band never goes empty, the filter badge counts its three days down, and Launch Library moved to 2.3.0 — which promptly failed silently, twelve levels deep.</span>

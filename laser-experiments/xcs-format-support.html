@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XCS Format Support</title>
+<style>
+  :root {
+    --bg:#0d0d0d; --card:#1a1a1a; --border:#2a2a2a; --text:#fff; --sub:#888;
+    --blue:#5b9bd5; --green:#4caf50; --orange:#f0a040; --red:#e74c3c;
+  }
+  * { box-sizing:border-box; }
+  body {
+    background:var(--bg); color:var(--text); margin:0;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding:60px 24px 80px; line-height:1.6;
+  }
+  .wrap { max-width:900px; margin:0 auto; }
+  a.back { color:#555; text-decoration:none; font-size:14px; display:inline-block; margin-bottom:24px; }
+  a.back:hover { color:#aaa; }
+  h1 { font-weight:300; font-size:34px; margin:0 0 10px; }
+  .lede { color:var(--sub); font-size:16px; margin:0 0 14px; }
+  .locked {
+    display:inline-block; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--orange); border:1px solid #3a2f1c; background:#231c10;
+    border-radius:20px; padding:4px 12px; margin-bottom:40px;
+  }
+  h2 {
+    font-weight:400; font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+    color:#666; margin:52px 0 18px; padding-bottom:10px; border-bottom:1px solid var(--border);
+  }
+  .card {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    padding:28px; margin-bottom:16px;
+  }
+  .card h3 { margin:0 0 6px; font-size:17px; font-weight:600; }
+  .card h3 a { color:var(--blue); text-decoration:none; }
+  .card h3 a:hover { text-decoration:underline; }
+  .card .meta { font-family:'SF Mono','Fira Code',monospace; font-size:11.5px; color:#5a5a5a; margin-bottom:12px; }
+  .card p { color:#bbb; font-size:14.5px; margin:0 0 10px; }
+  .card p:last-child { margin-bottom:0; }
+  .card ul { margin:10px 0 0; padding-left:20px; }
+  .card li { color:#bbb; font-size:14.5px; margin-bottom:7px; }
+  b { color:#fff; font-weight:600; }
+  code {
+    font-family:'SF Mono','Fira Code',monospace; font-size:12.5px; color:var(--orange);
+    background:#141414; border:1px solid #242424; border-radius:4px; padding:1px 5px;
+  }
+  pre {
+    background:#0a0a0a; border:1px solid var(--border); border-radius:10px;
+    padding:16px 18px; overflow-x:auto; margin:14px 0 0;
+  }
+  pre code { background:none; border:none; padding:0; color:#bbb; font-size:12.5px; line-height:1.7; }
+  pre code .ok { color:var(--green); }
+  pre code .bad { color:var(--red); }
+
+  .rule {
+    background:#171310; border:1px solid #3a2f1c; border-left:3px solid var(--orange);
+    border-radius:12px; padding:24px 28px; margin-bottom:16px;
+  }
+  .rule h3 { margin:0 0 10px; font-size:16px; color:var(--orange); font-weight:600; }
+  .rule p, .rule li { color:#c9c2b6; font-size:14.5px; }
+  .rule ol { margin:10px 0 0; padding-left:22px; }
+  .rule li { margin-bottom:7px; }
+  .rule li b { color:#fff; }
+
+  table { width:100%; border-collapse:collapse; margin-top:14px; }
+  th, td { text-align:left; padding:9px 12px; font-size:14px; border-bottom:1px solid var(--border); color:#bbb; vertical-align:top; }
+  th { color:#777; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; font-weight:500; }
+  td:first-child { color:#fff; white-space:nowrap; }
+  td code, th code { font-size:12px; }
+
+  .tools { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px; }
+  .tool {
+    display:block; background:var(--card); border:1px solid var(--border); border-radius:16px;
+    padding:24px; text-decoration:none; transition:border-color .2s, transform .2s;
+  }
+  .tool:hover { border-color:#3d4a57; transform:translateY(-2px); }
+  .tool .icon { font-size:26px; display:block; margin-bottom:10px; }
+  .tool h3 { margin:0 0 6px; font-size:16px; color:var(--blue); font-weight:600; }
+  .tool p { color:var(--sub); font-size:13.5px; margin:0; }
+  .tag {
+    display:inline-block; font-family:'SF Mono','Fira Code',monospace; font-size:10.5px;
+    color:#666; border:1px solid var(--border); border-radius:20px; padding:3px 10px; margin-top:12px;
+  }
+  .chip {
+    display:inline-block; font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+    border-radius:20px; padding:3px 10px; margin-left:10px; vertical-align:middle; font-weight:600;
+  }
+  .chip.blocking { color:var(--red); border:1px solid #4a2320; background:#1f1312; }
+  .chip.sample   { color:var(--orange); border:1px solid #3a2f1c; background:#231c10; }
+  .chip.build    { color:var(--blue); border:1px solid #23344a; background:#121a23; }
+  .num { font-family:'SF Mono','Fira Code',monospace; color:#fff; }
+  .measured {
+    font-size:11.5px; color:#5a5a5a; font-style:italic; margin-top:14px;
+  }
+  details.plan {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    margin-bottom:16px; overflow:hidden;
+  }
+  details.plan > summary {
+    padding:22px 28px; cursor:pointer; list-style:none; display:flex; align-items:center; gap:12px;
+  }
+  details.plan > summary::-webkit-details-marker { display:none; }
+  details.plan > summary::before {
+    content:'\25B8'; color:#555; font-size:13px; transition:transform .15s; flex:none;
+  }
+  details.plan[open] > summary::before { transform:rotate(90deg); }
+  details.plan > summary h3 { margin:0; font-size:17px; font-weight:600; flex:1; }
+  details.plan > summary:hover h3 { color:var(--blue); }
+  details.plan .plan-body { padding:0 28px 28px; border-top:1px solid var(--border); margin-top:0; padding-top:22px; }
+  details.plan h4 {
+    font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:#666;
+    margin:28px 0 12px; font-weight:500;
+  }
+  details.plan .plan-body > h4:first-child { margin-top:0; }
+  details.plan p, details.plan li { color:#bbb; font-size:14.5px; }
+  details.plan ol, details.plan ul { padding-left:22px; margin:10px 0 0; }
+  details.plan li { margin-bottom:8px; }
+  .goal {
+    background:#101a12; border:1px solid #1f3a24; border-left:3px solid var(--green);
+    border-radius:10px; padding:16px 20px; margin:0 0 6px;
+  }
+  .goal p { color:#c2d4c6; margin:0; }
+  .goal .eq {
+    font-family:'SF Mono','Fira Code',monospace; color:var(--green); font-size:15px; display:block; margin-top:8px;
+  }
+  .pending { color:var(--orange); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">&larr; Laser Experiments</a>
+  <h1>XCS Format Support</h1>
+  <p class="lede">
+    What the tool knows about the <code>.xcs</code> file format, where each rule is written down, and how to
+    check a generated file against the real thing. Everything here targets the xTool F2 on the VANTAGE-ALPHA
+    baseline.
+  </p>
+  <span class="locked">Format and viewer specs locked 2026-03-18</span>
+
+  <h2>The rule that governs everything else</h2>
+
+  <div class="rule">
+    <h3>No speculative implementation</h3>
+    <p>
+      When a feature is not explicitly documented in <code>xcsformat.md</code>, do not guess the JSON.
+      <b>XCSViewer.md &sect;3</b> makes this a mandatory protocol:
+    </p>
+    <ol>
+      <li><b>Stop.</b> Do not attempt to guess the structure.</li>
+      <li><b>Wait.</b> Say that the feature is unsupported by current knowledge.</li>
+      <li><b>Ask.</b> Request an exported <code>.xcs</code> sample from xTool Creative Space that demonstrates it.</li>
+      <li><b>Confirm.</b> Implement only after the sample is analysed and <code>xcsformat.md</code> updated with verified facts.</li>
+    </ol>
+    <p style="margin-top:14px">
+      Triggers that call for a sample: new shape types (polygons, stars, <b>bezier curves</b>), new processing
+      modes such as 3D relief, bitmap filters and image adjustments, and grouping or nesting of objects.
+    </p>
+  </div>
+
+  <h2>The rules you hit most often</h2>
+
+  <div class="card">
+    <h3>Relative geometry</h3>
+    <p>
+      XCS separates an object's origin from its geometric data. Path coordinates are relative to the object's own
+      top-left; the bed position lives only in <code>x</code> and <code>y</code>. Set both to absolute machine
+      coordinates and XCS applies the offset twice, which drops the shape far outside the work area or onto 0,0.
+    </p>
+<pre><code><span class="bad">wrong</span>   dPath "M 50 50 …"   x: 50   y: 50   &rarr; drawn 50mm from an anchor at 50,50
+<span class="ok">right</span>   dPath "M  0  0 …"   x: 50   y: 50   &rarr; drawn at 50,50</code></pre>
+    <p style="margin-top:14px">
+      Generate technical paths centred on <code>(width/2, height/2)</code>, then set <code>x</code> and
+      <code>y</code> to the top-left position you want. <code>offsetX</code>/<code>offsetY</code> carry the
+      distance from that anchor to the geometric centre. Documented in <b>xcsformat.md &sect;13</b>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>The bed, and where a pattern sits on it</h3>
+    <table>
+      <tr><th>Rule</th><th>Value</th></tr>
+      <tr><td>Working surface</td><td>0,0 to 100,100 mm</td></tr>
+      <tr><td>Default centre</td><td>50,50 mm &mdash; every generated pattern</td></tr>
+      <tr><td>Coordinates</td><td>mm from top-left</td></tr>
+      <tr><td>Fill processing</td><td><code>COLOR_FILL_ENGRAVE</code>, reached through <code>isFill: true</code></td></tr>
+      <tr><td>Path processing</td><td><code>VECTOR_ENGRAVING</code>, reached through <code>isFill: false</code></td></tr>
+    </table>
+    <p style="margin-top:14px">
+      Never hardcode a processing-type string in a pattern component &mdash; use the <code>isFill</code>
+      abstraction and let the exporter choose. From <b>GEMINI.md &sect;1 and &sect;4</b>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Three-point sync</h3>
+    <p>
+      Geometry is joined to its laser settings by matching GUIDs, and a file that breaks the join opens without
+      settings. Two structural tests every export must pass:
+    </p>
+    <ul>
+      <li><b>Canvas to device.</b> Root <code>canvasId</code> must exist as a key in <code>device.data.value</code>
+      and match the <code>id</code> of the corresponding entry in <code>canvas[]</code>.</li>
+      <li><b>Shape to parameter.</b> Every shape id in <code>canvas[n].displays[]</code> must exist as a key in
+      <code>device.data.value[n][1].displays.value</code>.</li>
+    </ul>
+    <p style="margin-top:12px">
+      Plus the boilerplate: 36-character UUIDs, every <code>layerColor</code> present in
+      <code>canvas.layerData</code>, every Map wrapped as <code>{"dataType":"Map","value":[…]}</code>, all four
+      operation nodes per shape, and root metadata <code>extId: "GS006"</code> / <code>extName: "F2"</code>.
+      <b>xcsformat.md &sect;2, &sect;6, &sect;7</b>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Text grows upward from a left-edge baseline</h3>
+    <p>
+      XCS anchors text at the left edge of the baseline and glyphs grow up from it, so a label placed at the
+      bottom of a grid overlaps the grid rather than sitting under it.
+    </p>
+    <table>
+      <tr><th>Scenario</th><th>Anchor</th><th>Grows</th></tr>
+      <tr><td>Horizontal, 0&deg;</td><td>Left-edge baseline</td><td>Right (+X)</td></tr>
+      <tr><td>Vertical, &minus;90&deg;</td><td>Top-edge baseline</td><td>Down (+Y)</td></tr>
+      <tr><td>Centre horizontally</td><td><code>targetX &minus; width/2</code></td><td>&mdash;</td></tr>
+      <tr><td>Centre vertically</td><td><code>targetY + width/2</code></td><td>&mdash;</td></tr>
+    </table>
+    <p style="margin-top:14px">
+      Text also has to be baked: a <code>TEXT</code> object carries <code>charJSONs</code>, one PATH per
+      character, and <code>fontData</code> with metrics and glyph paths. Without them the text is invisible to
+      F2 offline processing. <b>xcsformat.md &sect;4, &sect;11, &sect;12</b> and <b>XCSViewer.md &sect;5</b>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>One module owns the format</h3>
+    <p>
+      <code>xcs-system.js</code> is the only module permitted to generate and manage formal XCS structures. It
+      handles text baking, node boilerplate and the conversion to the left-baseline anchor.
+      <code>XCSExporter</code> and <code>XCSIR</code> are thin compatibility bridges over it.
+      <b>XCSViewer.md &sect;2</b>.
+    </p>
+    <table>
+      <tr><th>Property</th><th>Internal</th><th>Formal XCS</th></tr>
+      <tr><td>Coordinates</td><td>mm from top-left</td><td>factor in <code>scale</code> and <code>offsetX/Y</code></td></tr>
+      <tr><td>Dimensions</td><td><code>w</code>, <code>h</code> in mm, final size</td><td><code>width</code>, <code>height</code>, may be unscaled</td></tr>
+      <tr><td>Text anchor</td><td>centre or baseline</td><td>left-edge baseline, strict</td></tr>
+      <tr><td>Colours</td><td>hex, <code>#5b9bd5</code></td><td><code>lineColor</code> decimal, <code>fillColor</code> hex</td></tr>
+    </table>
+  </div>
+
+  <h2>Needs and missing concepts</h2>
+
+  <p class="lede" style="font-size:14.5px; margin-bottom:24px">
+    Gaps found by exporting every Shape Fill style to XCS and reading what came out. The canvas preview and the
+    engraved result are not the same picture, and these are the reasons why.
+  </p>
+
+  <div class="card">
+    <h3>Buried geometry is still engraved<span class="chip blocking">blocking</span></h3>
+    <p>
+      The canvas hides whatever a later shape paints over. The recorder does not &mdash; every
+      <code>fill()</code> and <code>stroke()</code> becomes a shape in the file, including the parts no one will
+      ever see. Nothing removes them afterwards.
+    </p>
+    <table>
+      <tr><th>Style</th><th>Shapes</th><th>Fully boxed over by a later shape</th></tr>
+      <tr><td>Gears</td><td class="num">4,434</td><td class="num">4,149 &mdash; 94%</td></tr>
+      <tr><td>Autumn Leaves</td><td class="num">1,409</td><td class="num">1,223 &mdash; 87%</td></tr>
+      <tr><td>Christmas Cookies</td><td class="num">63</td><td class="num">50 &mdash; 79%</td></tr>
+      <tr><td>World Coins</td><td class="num">260</td><td class="num">185 &mdash; 71%</td></tr>
+      <tr><td>Jigsaw, Pile fit</td><td class="num">1,194</td><td class="num">598 &mdash; 50%</td></tr>
+      <tr><td>Jigsaw, Solved</td><td class="num">651</td><td class="num">1 &mdash; 0%</td></tr>
+    </table>
+    <p style="margin-top:14px">
+      Two costs. Burn time is spent on invisible geometry, and where a hidden shape and the shape above it are on
+      different layers, that area is engraved twice at two different powers. Jigsaw's solved fit is the control
+      case: pieces tile without overlapping, so nothing is buried.
+    </p>
+    <p><b>Needed:</b> occlusion culling before export, or boolean subtraction of covered regions. Neither exists.</p>
+    <p class="measured">Counted as shapes whose bounding box sits entirely inside a later shape's box &mdash; an upper bound, since a covering box does not always mean covering geometry.</p>
+  </div>
+
+  <div class="card">
+    <h3>Layer count runs far past what the tool indexes<span class="chip sample">needs a sample</span></h3>
+    <p>
+      Every distinct flattened colour becomes its own layer with its own parameter block. The 3D shading in these
+      styles generates shades that never passed through <code>mapPaletteToLaser</code>, so the count is not bounded
+      by the palette.
+    </p>
+    <table>
+      <tr><th>Style</th><th>Layers in the exported file</th></tr>
+      <tr><td>World Coins</td><td class="num">51</td></tr>
+      <tr><td>Circuit Board</td><td class="num">38</td></tr>
+      <tr><td>Autumn Leaves</td><td class="num">37</td></tr>
+      <tr><td>Buttons</td><td class="num">26</td></tr>
+      <tr><td>Jigsaw</td><td class="num">7</td></tr>
+    </table>
+    <p style="margin-top:14px">
+      <code>XCS_LAYERS</code> in <code>constants.js</code> lists eight. The viewer's shape list looks a colour up
+      in it and simply omits the <code>L1</code>&hellip;<code>L8</code> tag when it is not found, so a 51-layer
+      export degrades quietly rather than failing.
+    </p>
+    <p>
+      <b>Unknown:</b> whether XCS Studio or the F2 accepts 51 parameter blocks at all. Untested, and the
+      no-speculation rule applies &mdash; this needs an exported sample with many layers before we guess.
+      <b>Needed either way:</b> quantise colours to the laser palette before emitting layers.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>The 2,000-shape guard is not implemented<span class="chip build">build</span></h3>
+    <p>
+      <code>patterns.md</code> requires a thinning or resolution guard above 2,000 shapes. Gears exports
+      <span class="num">4,434</span> &mdash; 2.2&times; over &mdash; at <span class="num">40.7 MB</span>. Jigsaw
+      caps itself at 1,800 pieces, but it is the only style that does.
+    </p>
+    <table>
+      <tr><th>Style</th><th>Shapes</th><th>File</th></tr>
+      <tr><td>Gears</td><td class="num">4,434</td><td class="num">40.7 MB</td></tr>
+      <tr><td>Autumn Leaves</td><td class="num">1,409</td><td class="num">4.9 MB</td></tr>
+      <tr><td>Painted Lady</td><td class="num">1,240</td><td class="num">5.3 MB</td></tr>
+      <tr><td>Jigsaw</td><td class="num">651</td><td class="num">4.6 MB</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Curves are sampled, not carried<span class="chip sample">needs a sample</span></h3>
+    <p>
+      The recorder speaks <code>M L Q ARC ELLIPSE RECT Z</code>. There is no cubic bezier, so every curve is
+      flattened to a polyline before it reaches the file &mdash; the main reason a 4,434-shape export is 40 MB.
+      Bezier curves are explicitly on XCSViewer.md's ask-for-a-sample list, so emitting <code>C</code> is blocked
+      until a sample from Creative Space proves the structure.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Everything else found</h3>
+    <table>
+      <tr><th>Gap</th><th>Effect</th><th>Kind</th></tr>
+      <tr>
+        <td><code>clip()</code> content dropped</td>
+        <td>Anything drawn inside a clip is skipped: button marbling, gourd rib and wart texture. Silhouettes and base colours survive.</td>
+        <td><span class="chip sample">sample</span></td>
+      </tr>
+      <tr>
+        <td><code>fillText()</code> dropped</td>
+        <td>Coin denominations and years, resistor codes (<code>104K</code>, <code>K5%</code>) never engrave. Glyph baking exists for real TEXT objects but is not wired into the recorder.</td>
+        <td><span class="chip build">build</span></td>
+      </tr>
+      <tr>
+        <td><code>calculatePathLength</code> ignores <code>C</code>, <code>A</code>, <code>H</code>, <code>V</code></td>
+        <td>Measures <code>M L Q Z</code> only, so any path built from other commands reports a short or zero run length and time estimates are wrong.</td>
+        <td><span class="chip build">build</span></td>
+      </tr>
+      <tr>
+        <td><code>calculatePathBBox</code> counts control points</td>
+        <td>Walks every coordinate pair, including bezier handles that sit outside the curve, so a shape's reported box is larger than its outline.</td>
+        <td><span class="chip build">build</span></td>
+      </tr>
+      <tr>
+        <td>No alpha</td>
+        <td><code>xcs-canvas.js</code> never reads it; every shape renders opaque. Translucent fills are composited against the backdrop at record time, which matches visually but cannot represent real transparency.</td>
+        <td><span class="chip sample">sample</span></td>
+      </tr>
+      <tr>
+        <td>One stroke width for the whole design</td>
+        <td>XCS draws paths as hairlines, so strokes become filled capsules at a single physical Outline Width. Per-shape line weights in the artwork are lost.</td>
+        <td><span class="chip build">build</span></td>
+      </tr>
+      <tr>
+        <td>Grouping and nesting</td>
+        <td>Undocumented in <code>xcsformat.md</code> and on the ask-for-a-sample list. Every shape is emitted flat.</td>
+        <td><span class="chip sample">sample</span></td>
+      </tr>
+    </table>
+    <p class="measured">Measured on the Pendant preset at default settings, one style per run, seeds pinned so the comparison is like for like.</p>
+  </div>
+
+  <h2>Plans</h2>
+
+  <p class="lede" style="font-size:14.5px; margin-bottom:24px">
+    Worked plans for closing the gaps above. Each carries the change, how to get there from here, what could go
+    wrong, and how it will be proved.
+  </p>
+
+  <details class="plan">
+    <summary><h3>Extend the XCS verifier</h3><span class="chip build">build first</span></summary>
+    <div class="plan-body">
+
+      <div class="goal">
+        <p>
+          <b>The rule.</b> Nothing counts as verified until a real <code>.xcs</code> has been opened in xTool
+          Creative Space and matched against what our renderer drew. Every refinement in the plans below gets a
+          test here first, and the test ships with an export button.
+          <span class="eq">our renderer = Creative Space = the machine</span>
+        </p>
+      </div>
+
+      <p>
+        This plan comes first because it is the instrument for the other three. Without it, each of them is a
+        claim.
+      </p>
+
+      <h4>What the verifier does today</h4>
+      <p>
+        <a href="xcs-module/">XCS Module Validation</a> runs <span class="num">16</span> checks in a single
+        ungrouped list: PROJECT Init, TEXT Baking, RECT / SCORE, CIRCLE / ENGRAVE, BITMAP / COLOR, IMAGE
+        Passthrough, Closed Filled Path, OPEN PATH (Spiral), Compound Vectors, Compound (Reversed), Boundary
+        Frame, Capsule Stroke, Arc Sampling, Color Fidelity, Scale Stress and RUNTIME CRASH.
+      </p>
+      <p>
+        <span class="num">7</span> of those already measure rendered geometry rather than structure.
+        <code>verifyGeometry()</code> reads the rendered SVG's own <code>getBBox()</code> and compares it against
+        expected millimetres, at a 0.3 mm tolerance, for CLOSED_PATH, SPIRAL, COMPOUND, COMPOUND_REV, FRAME,
+        CAPSULE_STROKE and ARC_SAMPLE. Its comment records why it exists: structural assertions like
+        <code>!!dPath</code> never caught the double-translate placement bug, because
+        <code>_renderPath()</code> applies its own translate on top of whatever <code>dPath</code> it is given.
+      </p>
+      <p>
+        Three round-trip exports exist already &mdash; <b>Test Export (PNG + XCS)</b>, <b>Test Export (Stress)</b>
+        for the 1000-item project, and <b>Text Cal Export</b>. They are buttons a person remembers to press, not
+        tests with a recorded expected result.
+      </p>
+
+      <h4>The restructure</h4>
+      <ol>
+        <li><b>Put the existing 16 into a <i>Unit Tests</i> tab.</b> Unchanged in content and order. They assert
+        that the file is structurally correct.</li>
+        <li><b>Add a <i>Render Tests</i> tab.</b> Each entry is a scenario rather than an assertion: it draws
+        something, renders it both ways, compares, and offers the <code>.xcs</code> for Creative Space.</li>
+        <li><b>Its first entry is <i>Geometry Baseline</i></b> &mdash; the seven existing
+        <code>verifyGeometry()</code> checks, moved across intact. They are the baseline every later entry is
+        measured against, and moving rather than rewriting them keeps that baseline honest.</li>
+        <li><b>Give every render entry the same four parts:</b> what it draws, the automated comparison and its
+        tolerance, an export button, and <b>the expected observation in Creative Space written down before anyone
+        opens it</b>. A round trip with no recorded expectation proves nothing.</li>
+      </ol>
+
+      <h4>The render tests to add, in the order the work needs them</h4>
+      <table>
+        <tr><th>#</th><th>Entry</th><th>Draws</th><th>Passes when</th><th>Round trip confirms</th></tr>
+        <tr>
+          <td class="num">0</td><td><b>Geometry Baseline</b></td>
+          <td>The seven existing shapes</td>
+          <td>Every <code>getBBox()</code> within 0.3 mm of expected</td>
+          <td>Shapes land where the viewer says. Already the de facto baseline.</td>
+        </tr>
+        <tr>
+          <td class="num">1</td><td><b>Layer Budget</b></td>
+          <td>A field in 1, 4 and N colours plus outlines</td>
+          <td><code>layerData</code> holds exactly colours + 1, and every shape's colour is in that set</td>
+          <td>Creative Space lists that many layers, with the powers we intended.</td>
+        </tr>
+        <tr>
+          <td class="num">2</td><td><b>Stroke Width Ladder</b></td>
+          <td>Lines at 0.05, 0.1, 0.2, 0.5, 1 and 2 mm</td>
+          <td>Each exported capsule measures its nominal width</td>
+          <td>The ladder is visibly six different weights, and says which ones the beam actually resolves.</td>
+        </tr>
+        <tr>
+          <td class="num">3</td><td><b>Overlap and Occlusion</b></td>
+          <td>Stacked opaque shapes, fully and partly covered</td>
+          <td>Shape count matches the culling policy once one exists</td>
+          <td>Whether a buried shape burns. The one test that cannot be answered off the machine.</td>
+        </tr>
+        <tr>
+          <td class="num">4</td><td><b>Text Fidelity</b></td>
+          <td>Baked text at 2, 4, 8 and 16 mm</td>
+          <td>Glyph paths present, advances correct, anchored left-baseline</td>
+          <td>The smallest legible size. Extends the existing Text Cal Export into a test.</td>
+        </tr>
+        <tr>
+          <td class="num">5</td><td><b>Curve Fidelity</b></td>
+          <td>Circles, arcs and a jigsaw connector at several radii</td>
+          <td>Sampled polyline stays within tolerance of the true curve</td>
+          <td>Where sampling starts to show as faceting on the engraving.</td>
+        </tr>
+        <tr>
+          <td class="num">6</td><td><b>Translucency and Clip</b></td>
+          <td>Layered translucent fills; a clipped texture</td>
+          <td>Flattened colour matches the composite; clipped content accounted for</td>
+          <td>Whether either concept survives at all &mdash; this is the sample the no-speculation rule wants.</td>
+        </tr>
+        <tr>
+          <td class="num">7</td><td><b>Style Parity</b></td>
+          <td>Each Shape Fill style, canvas against XCS</td>
+          <td>Raster difference within that style's recorded tolerance</td>
+          <td>The migration gate. One entry per style, each carrying its own number.</td>
+        </tr>
+        <tr>
+          <td class="num">8</td><td><b>Budget and Scale</b></td>
+          <td>Progressively denser fields</td>
+          <td>Shape count and file size stay inside the declared budget</td>
+          <td>Where Creative Space or the F2 starts to struggle. Extends Test Export (Stress).</td>
+        </tr>
+      </table>
+
+      <h4>Round trips need a record, not a button</h4>
+      <p>
+        The three export buttons today produce a file and nothing else. Each render entry should instead carry a
+        short result log &mdash; date, XCS version, what was observed, pass or fail &mdash; stored beside the test
+        so the answer survives the person who ran it. That is the gap between
+        <a href="xcs-module/manual-test-loop.md">manual-test-loop.md</a> as a procedure and as evidence, and it is
+        the same gap <a href="pattern-tool/exportpatches.md">exportpatches.md</a> is filling by hand for the
+        export format.
+      </p>
+
+      <h4>What could go wrong</h4>
+      <ul>
+        <li><b>Round trips are manual and will lag.</b> The automated half runs in a second; the Creative Space
+        half needs a person. Entries will sit with a green automated result and no round trip, which must be
+        visible as its own state rather than read as a pass.</li>
+        <li><b>Tolerances get tuned until they pass.</b> Same risk as the migration plan. A tolerance is a
+        reviewed number with an image attached, not a knob.</li>
+        <li><b>Raster diffing in a browser is fiddly.</b> Canvas to bitmap is easy; SVG to bitmap at matching
+        scale is less so, and antialiasing differences will show as a noise floor that has to be measured before
+        any threshold means anything.</li>
+        <li><b>Tests 3 and 6 may be unanswerable for a while.</b> Both wait on evidence from the machine, so they
+        should ship as entries in a known-unanswered state rather than be left out and forgotten.</li>
+      </ul>
+
+      <h4>Test and validation of the verifier itself</h4>
+      <ol>
+        <li><b>The baseline still passes after the move.</b> The seven geometry checks must report identically
+        before and after being relocated into the Render Tests tab &mdash; the move is a refactor and has to be
+        provable as one.</li>
+        <li><b>Deliberate breakage.</b> Each new entry gets a known-bad variant that must fail it. A render test
+        that has never failed has not been shown to test anything.</li>
+        <li><b>Noise floor first.</b> Measure the raster difference of a design against itself before setting any
+        threshold, so tolerances are set above the measured floor rather than guessed.</li>
+        <li><b>Counts on the page.</b> The tab badges read passed, failed, and awaiting round trip, separately.</li>
+      </ol>
+
+      <h4>Answers this needs first</h4>
+      <ul>
+        <li>Do round-trip results live in the page, or in a file beside <code>manual-test-loop.md</code>?</li>
+        <li>Should Style Parity be one entry per style, or one entry with a per-style table?</li>
+        <li>Is a red round trip a build failure, or a recorded known gap?</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="plan">
+    <summary><h3>Colour and layer management</h3><span class="chip blocking">blocking</span></summary>
+    <div class="plan-body">
+
+      <div class="goal">
+        <p>
+          <b>The rule, for every style.</b> A generated file carries one layer per colour actually in play, plus
+          one black layer for outlines. Nothing else. This holds for Gears, Coins, Circuit Board and the rest
+          exactly as it holds for Jigsaw.
+          <span class="eq">layers = colours in play + 1</span>
+        </p>
+      </div>
+
+      <h4>Scope and history</h4>
+      <p>
+        Palette-bounded layers were always the intention. A laser engraves a fixed set of powers, the palette is
+        that set, and a file that asks for more colours than the palette holds is asking for something the machine
+        cannot do. The true-colour path &mdash; every shade the draw code invents becoming its own layer &mdash;
+        was drift, not a decision, and it went unnoticed for a long time. This plan is the correction, and it
+        applies to all fourteen styles.
+      </p>
+
+      <h4>Where the extra layers come from</h4>
+      <p>
+        Every distinct colour the recorder sees becomes a layer, and the draw code emits far more colours than the
+        palette holds. Jigsaw is quoted first only because its extras are few enough to count by eye; the
+        arithmetic and the fix are the same for every style:</p>
+      <table>
+        <tr><th>Piece Colors</th><th>Layers today</th><th>Breakdown</th></tr>
+        <tr><td class="num">1</td><td class="num">4</td><td>1 palette + <code>#15171a</code> board + <code>#3a3f45</code> board edge + <code>#141414</code> outline</td></tr>
+        <tr><td class="num">4</td><td class="num">7</td><td>4 palette + the same three</td></tr>
+        <tr><td class="num">9</td><td class="num">12</td><td>9 palette + the same three</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        The illustrated styles are far worse, because their shading generates colours that never passed through
+        the palette at all:
+      </p>
+      <table>
+        <tr><th>Style</th><th>Layers</th><th>From the palette</th><th>Generated</th></tr>
+        <tr><td>World Coins</td><td class="num">51</td><td class="num">1</td><td class="num">50</td></tr>
+        <tr><td>Circuit Board</td><td class="num">38</td><td class="num">2</td><td class="num">36</td></tr>
+        <tr><td>Autumn Leaves</td><td class="num">37</td><td class="num">4</td><td class="num">33</td></tr>
+        <tr><td>Gears</td><td class="num">14</td><td class="num">9</td><td class="num">5</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        Choosing a real laser palette instead of True Color does <b>not</b> reduce this. Measured across seven
+        styles, the layer count is identical either way &mdash; Coins is 51 both times.
+        <code>mapPaletteToLaser</code> runs once, over the decorative palette, before any drawing happens.
+        Everything invented after that point escapes it entirely, so the leak is downstream of the mapping in
+        every style. That is why the fix has to sit at the point colours become shapes, not at the point the
+        palette is chosen.
+      </p>
+      <p style="margin-top:14px">Three sources, in order of how much they contribute:</p>
+      <ul>
+        <li><b>Shading derivatives.</b> <code>shadeColor()</code> lightens and darkens a palette colour for 3D
+        relief, and each result is a new colour. Translucent highlights add more, since
+        <code>flattenColor()</code> composites them against whatever is behind and emits the composite.</li>
+        <li><b>Fixed decorative colours.</b> Circuit's copper and gold, coin metals, gear silver &mdash;
+        hardcoded in the draw functions and never routed through <code>mapPaletteToLaser</code>.</li>
+        <li><b>The board.</b> <code>drawBase()</code> fills and strokes the shape outline in a per-style colour,
+        adding two layers that are backdrop rather than pattern.</li>
+      </ul>
+
+      <h4>The change</h4>
+      <p>
+        Quantise at the single choke point rather than in fourteen styles' worth of draw code.
+        <code>RecordingCtx._emit</code> is the only place a colour becomes a shape, and
+        <code>buildXCSProject</code> is the only place shapes become layers.
+      </p>
+      <ol>
+        <li><b>Tag strokes.</b> <code>_emit</code> already knows <code>isThickStroke</code>. Record it on the
+        shape so outlines are separable from fills.</li>
+        <li><b>Build the allowed set.</b> After the recording run, read the engine's <code>currentColorPool</code>
+        &mdash; the exact subset <code>pickColorSubset</code> chose, already mapped through
+        <code>resolveRenderPalette</code> to real laser entries. That is the <span class="num">N</span>.</li>
+        <li><b>Snap every fill</b> to the nearest member of that set, and <b>every stroke</b> to the single black
+        outline layer.</li>
+        <li><b>Decide the board explicitly.</b> Either drop it from the export, since an unengraved area is the
+        material itself, or let it claim one palette entry by choice. It must not create its own layer by
+        accident.</li>
+        <li><b>Assert before returning.</b> <code>buildXCSProject</code> refuses to hand back a project whose
+        layer count is not <code>N + 1</code>.</li>
+      </ol>
+
+      <h4>Transition</h4>
+      <ol>
+        <li>Land the tagging and the assertion behind a <code>Layer Mode</code> control offering
+        <b>Palette</b> and <b>Every colour</b>, defaulting to Every colour, so nothing changes on the first
+        deploy and both outputs can be exported from the same design and compared.</li>
+        <li>Walk the fourteen styles, recording the before and after layer count and a canvas capture of each.
+        Jigsaw and the flat styles should be visually unchanged; the 3D and illustrated styles will not be.</li>
+        <li>Flip the default to Palette once the captures have been reviewed. Keep Every colour available for one
+        release so an older <code>.rnr</code> can still reproduce its original export.</li>
+        <li>Remove Every colour, and with it the legacy path.</li>
+      </ol>
+
+      <h4>What could go wrong</h4>
+      <ul>
+        <li><b>The 3D styles flatten.</b> 3D Glossy and 3D Basic exist entirely to paint highlights and shadows.
+        Snapping those to the palette collapses a glossy pipe to a flat one. Arguably honest &mdash; the engraver
+        has N powers, not a gradient &mdash; but it is a visible regression and needs to be seen before the
+        default flips.</li>
+        <li><b>Circuit Board's fixed colours.</b> Its Colors slider is disabled and its description says the
+        realistic copper, gold and resistor bands bypass the palette by design. Whether that was a decision or
+        another piece of the same drift is worth settling before it is granted an exemption &mdash; a board the
+        F2 can actually engrave needs its colours to be powers like any other style's.</li>
+        <li><b>Nearest-colour in RGB is perceptually wrong.</b> <code>colorDistance2</code> is a plain squared
+        RGB distance, which misjudges dark and saturated pairs. Two shades a viewer reads as different can snap to
+        one entry while two they read as the same split across two.</li>
+        <li><b>Layer order shifts.</b> Layers carry the processing sequence under
+        <code>pathPlanning: "custom"</code>. Merging colours changes which shapes share a layer and therefore the
+        order they burn in.</li>
+        <li><b>Black may not exist in the palette.</b> The outline layer needs a real power. If the laser palette
+        has no near-black entry, the darkest available one stands in and the outline is not as dark as the preview
+        suggests.</li>
+        <li><b>Older exports stop matching.</b> Anything already sent to the machine was built the old way;
+        re-exporting the same <code>.rnr</code> will not produce the same file.</li>
+      </ul>
+
+      <h4>Test and validation</h4>
+      <ol>
+        <li><b>The rule itself.</b> For all fourteen styles, both modes, at Colors 1, 4 and maximum: assert
+        <code>Object.keys(canvas.layerData).length === N + 1</code>.</li>
+        <li><b>No stragglers.</b> Assert every shape's <code>layerColor</code> is either in the allowed set or is
+        the outline black &mdash; a set-membership test, not a count, so a merge that loses a colour is caught.</li>
+        <li><b>Integrity holds.</b> Re-run both joins from <code>xcsformat.md</code> &sect;6 after the merge, since
+        rewriting a shape's layer touches <code>layerData</code> and the device map together.</li>
+        <li><b>Visual delta.</b> Capture the canvas for every style before and after and put them side by side.
+        The flat styles and Jigsaw must be pixel-identical; the rest are a judgement call to be made from the
+        captures, not from the diff.</li>
+        <li><b>Shape count unchanged.</b> Quantising colour must not add or drop geometry. Assert the shape count
+        is identical across the two layer modes for the same seed.</li>
+        <li><b>On the machine.</b> One style through the <a href="xcs-module/manual-test-loop.md">manual test
+        loop</a> into Creative Space, confirming the layer list reads as N + 1 with sane powers &mdash; the only
+        check that proves the F2 accepts it.</li>
+      </ol>
+
+      <h4>Answers this needs first</h4>
+      <ul>
+        <li>Does the board engrave at all, or is it backdrop?</li>
+        <li>Was Circuit Board's palette bypass intended, or is it the same drift? If intended, its fixed colours
+        become its palette rather than an exemption.</li>
+        <li>Is the black outline layer always black, or the darkest entry in the active laser palette?</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="plan">
+    <summary><h3>HTML and XCS renders at parity</h3><span class="chip blocking">blocking</span></summary>
+    <div class="plan-body">
+
+      <div class="goal">
+        <p>
+          <b>The rule.</b> Switching Render Target changes how a design is stored, never what it looks like.
+          Anything the canvas draws reaches the XCS project, or the canvas stops drawing it.
+          <span class="eq">canvas draw operations = XCS shapes</span>
+        </p>
+      </div>
+
+      <h4>The deficit today</h4>
+      <p>
+        Counting what the canvas is asked to draw against what the recorder emits, same seed, Pendant preset,
+        default settings:
+      </p>
+      <table>
+        <tr><th>Style</th><th>Canvas ops</th><th>XCS shapes</th><th>Lost</th><th>Why</th></tr>
+        <tr><td>Autumn Leaves</td><td class="num">1,976</td><td class="num">1,409</td><td class="num">567 &mdash; 29%</td><td>all clipped</td></tr>
+        <tr><td>Buttons</td><td class="num">79</td><td class="num">64</td><td class="num">15 &mdash; 19%</td><td>clipped; 43 more flattened from translucent</td></tr>
+        <tr><td>World Coins</td><td class="num">260</td><td class="num">260</td><td class="num">0</td><td>but 62 text draws dropped</td></tr>
+        <tr><td>Circuit Board</td><td class="num">693</td><td class="num">693</td><td class="num">0</td><td>but 31 text draws dropped</td></tr>
+        <tr><td>Gears</td><td class="num">4,434</td><td class="num">4,434</td><td class="num">0</td><td>&mdash;</td></tr>
+        <tr><td>Jigsaw</td><td class="num">651</td><td class="num">651</td><td class="num">0</td><td>&mdash;</td></tr>
+        <tr><td>Pipes and Gears</td><td class="num">967</td><td class="num">967</td><td class="num">0</td><td>&mdash;</td></tr>
+        <tr><td>Painted Lady</td><td class="num">1,240</td><td class="num">1,240</td><td class="num">0</td><td>&mdash;</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        Geometry parity is already exact for most styles. The breaks are four, and each has a different cost:
+      </p>
+      <ul>
+        <li><b>Line weight collapses to one.</b> The worst break, and it shows in no shape count. Autumn Leaves
+        asks the canvas for <span class="num">579 distinct line widths</span> and every one is exported at the
+        single Outline Width. Coins asks for 22, Buttons 21, Pipes and Gears 8.</li>
+        <li><b>Clipped drawing is dropped.</b> 567 operations in Autumn Leaves, 15 in Buttons &mdash; gourd rib
+        and wart texture, button marbling.</li>
+        <li><b>Text is dropped.</b> 62 draws in Coins, 31 in Circuit Board &mdash; denominations, years, resistor
+        codes.</li>
+        <li><b>Translucency is baked.</b> 43 fills in Buttons are composited against their backdrop at record
+        time. The still image matches; the concept does not survive.</li>
+      </ul>
+
+      <h4>What has to be resolved first</h4>
+      <p>
+        Parity cannot be declared until each of these is either implemented or deliberately closed off, and two of
+        them are gated by the no-speculation protocol rather than by effort.
+      </p>
+      <table>
+        <tr><th>#</th><th>Gap</th><th>Kind</th><th>Note</th></tr>
+        <tr><td class="num">1</td><td>Per-shape stroke width</td><td><span class="chip build">build</span></td><td>The recorder already sees <code>lineWidth</code> and deliberately ignores it, because a canvas pixel width is tuned for screen. With <code>PX_TO_MM</code> now shared, converting it is arithmetic. Biggest single win.</td></tr>
+        <tr><td class="num">2</td><td>Text baking in the recorder</td><td><span class="chip build">build</span></td><td>The machinery exists for real TEXT objects &mdash; <code>charJSONs</code> and <code>fontData</code> per <code>xcsformat.md</code> &sect;11. It is simply not wired to <code>fillText()</code>.</td></tr>
+        <tr><td class="num">3</td><td>Colour and layer management</td><td><span class="chip blocking">blocking</span></td><td>The plan above. Parity in colour is meaningless while one design emits 51 layers.</td></tr>
+        <tr><td class="num">4</td><td>Clip paths</td><td><span class="chip sample">needs a sample</span></td><td>No documented equivalent. Either an <code>.xcs</code> sample proves one exists, or the affected textures are cut from the canvas so both renders agree on their absence.</td></tr>
+        <tr><td class="num">5</td><td>Alpha</td><td><span class="chip sample">needs a sample</span></td><td><code>xcs-canvas.js</code> never reads it. Flattening is a reasonable permanent answer &mdash; but that is a decision to record, not a gap to leave open.</td></tr>
+      </table>
+
+      <h4>The change</h4>
+      <ol>
+        <li><b>Make the deficit visible.</b> Land the op-count harness first, as a test that reports canvas
+        operations against XCS shapes per style. It is the instrument for everything below and it already
+        exists in rough form.</li>
+        <li><b>Carry stroke width through.</b> <code>_emit</code> takes the recorded <code>lineWidth</code>,
+        converts with <code>PX_TO_MM</code>, and builds the capsule at that width. Outline Width becomes a
+        multiplier on the artwork's own weights rather than a replacement for them, with 0 still meaning no
+        outlines.</li>
+        <li><b>Bake text.</b> Route <code>fillText()</code> through the existing glyph path, emitting one PATH per
+        character at the recorded transform.</li>
+        <li><b>Close clip and alpha by decision.</b> Once 1 to 3 land, the residual is only these two. Either a
+        sample arrives and they are implemented, or the canvas stops drawing what cannot be exported &mdash;
+        parity by subtraction is still parity, and is honest about what the machine can do.</li>
+        <li><b>Assert it.</b> The harness becomes a gate: a style whose counts diverge fails.</li>
+      </ol>
+
+      <h4>Transition</h4>
+      <ol>
+        <li>Harness first, reporting only. Record a baseline for all fourteen styles so every later step is
+        measured against it rather than against memory.</li>
+        <li>Stroke width, then text. Both add shapes to the export, so file sizes rise &mdash; Autumn Leaves most
+        of all. Re-measure against the 2,000-shape guard at the same time.</li>
+        <li>Colour and layer plan lands.</li>
+        <li>Clip and alpha resolved by sample or by subtraction.</li>
+        <li>Harness flips from reporting to failing.</li>
+      </ol>
+
+      <h4>What could go wrong</h4>
+      <ul>
+        <li><b>Parity makes the files bigger, not smaller.</b> Every gap closed adds geometry. Autumn Leaves gains
+        567 shapes before anything else changes, and Gears is already 2.2&times; over the shape guard.</li>
+        <li><b>Real line widths may not be printable.</b> A canvas <code>lineWidth</code> of 1 px is 0.083 mm,
+        below what the beam resolves. Widths need a floor, and the floor changes the drawing.</li>
+        <li><b>Text at these sizes may be unreadable.</b> A coin denomination is a few millimetres wide. Baking it
+        faithfully may produce something that engraves as a smudge &mdash; in which case dropping it, and dropping
+        it from the canvas too, is the better answer.</li>
+        <li><b>Parity by subtraction is a product decision.</b> Removing gourd texture and button marbling from the
+        canvas makes the two renders agree by making the preview worse. That is a call to make deliberately, not
+        one to arrive at because a sample never turned up.</li>
+        <li><b>Counting operations is not comparing pictures.</b> Equal counts do not prove equal output; the
+        raster comparison below is what actually settles it.</li>
+      </ul>
+
+      <h4>Test and validation</h4>
+      <ol>
+        <li><b>Operation count.</b> Per style, per mode: canvas <code>fill</code> plus <code>stroke</code> calls
+        against XCS shape count, with the dropped ones attributed to clip, text or empty path. Cheap enough to run
+        on every change.</li>
+        <li><b>Raster diff.</b> The real test. Render the canvas to a bitmap, render the XCS project's SVG to a
+        bitmap at the same size, and compare pixel by pixel. Report a percentage per style and keep the
+        difference image. This catches what counting cannot &mdash; a shape that exports but lands in the wrong
+        place or the wrong colour.</li>
+        <li><b>Per-style budget.</b> Each style declares its acceptable difference. Jigsaw and the flat styles at
+        zero; the illustrated styles at whatever the captures justify, written down rather than assumed.</li>
+        <li><b>Regression on shape count.</b> Track shapes and file size per style against the baseline, so the
+        cost of each closed gap is visible as it lands.</li>
+        <li><b>On the machine.</b> The style with the largest remaining difference through the
+        <a href="xcs-module/manual-test-loop.md">manual test loop</a>. A raster diff proves our two renders agree
+        with each other, not that either agrees with the F2.</li>
+      </ol>
+
+      <h4>Answers this needs first</h4>
+      <ul>
+        <li>Is parity the goal for every style, or do the illustrated styles get a declared budget?</li>
+        <li>If no clip sample arrives, do the affected textures come out of the canvas?</li>
+        <li>Does Outline Width become a multiplier on the artwork's own widths, or stay an override?</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="plan">
+    <summary><h3>Back to XCS-only rendering</h3><span class="chip blocking">blocking</span></summary>
+    <div class="plan-body">
+
+      <div class="goal">
+        <p>
+          <b>The rule.</b> Work only in real XCS project mode. If a pattern cannot be seen as XCS shapes, it does
+          not exist. The point is to stop a gap opening between the patterns we believe we have and the ones that
+          actually run on the laser.
+          <span class="eq">one render, and it is the file the machine gets</span>
+        </p>
+      </div>
+
+      <h4>How the rule was lost</h4>
+      <p>
+        Every tab in the tool renders through <code>XCSViewer</code> and nothing else. Fifteen of the sixteen still
+        do. Shape Fill is the single exception: it carries a <code>renderTarget</code> of <code>html</code> or
+        <code>xtool</code>, and it <b>defaults to <code>html</code></b> &mdash; so the first thing anyone sees is
+        the mode that is not real.
+      </p>
+      <p>
+        The file's own header says where that came from: <i>ported unchanged from
+        <code>laser-experiments/laser-fill-generator</code></i>. The canvas arrived as baggage with a port of a
+        standalone canvas app, which still exists alongside the tool. The rule was not argued away, it was
+        carried around, and then fourteen styles were built and tuned against the canvas rather than against the
+        file.
+      </p>
+      <p>
+        The cost is the chasm the rule existed to prevent. The two plans above are the measurements of it: a style
+        can look finished on the canvas while dropping 29% of its drawing, collapsing 579 line weights into one,
+        and asking for 51 laser layers.
+      </p>
+
+      <h4>How far each style is from surviving without the canvas</h4>
+      <p>
+        Counting what the canvas asks for that the XCS project cannot yet carry &mdash; clipped drawing, text,
+        translucency, distinct line widths, and layers generated outside the palette:
+      </p>
+      <table>
+        <tr><th>Style</th><th>Clipped</th><th>Text</th><th>Translucent</th><th>Line widths</th><th>Generated layers</th><th>Total</th></tr>
+        <tr><td>Jigsaw</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
+        <tr><td>Gears</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">5</td><td class="num">6</td></tr>
+        <tr><td>Flat</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">7</td><td class="num">8</td></tr>
+        <tr><td>Rows of Ducks</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">1</td><td class="num">11</td><td class="num">11</td></tr>
+        <tr><td>3D Basic</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">3</td><td class="num">12</td><td class="num">14</td></tr>
+        <tr><td>Christmas Cookies</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">8</td><td class="num">7</td><td class="num">14</td></tr>
+        <tr><td>Painted Lady</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">15</td><td class="num">16</td></tr>
+        <tr><td>Pipes and Gears</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">8</td><td class="num">11</td><td class="num">18</td></tr>
+        <tr><td>3D Glossy</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">4</td><td class="num">16</td><td class="num">19</td></tr>
+        <tr><td>Circuit Board</td><td class="num">0</td><td class="num">31</td><td class="num">0</td><td class="num">7</td><td class="num">36</td><td class="num">73</td></tr>
+        <tr><td>Gems</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">22</td><td class="num">59</td><td class="num">80</td></tr>
+        <tr><td>Buttons</td><td class="num">15</td><td class="num">0</td><td class="num">43</td><td class="num">21</td><td class="num">26</td><td class="num">104</td></tr>
+        <tr><td>World Coins</td><td class="num">0</td><td class="num">62</td><td class="num">0</td><td class="num">22</td><td class="num">50</td><td class="num">133</td></tr>
+        <tr><td>Autumn Leaves</td><td class="num">567</td><td class="num">0</td><td class="num">0</td><td class="num">579</td><td class="num">33</td><td class="num">1,178</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        Nine styles are within reach on the strength of the colour plan alone. Five are not, and Autumn Leaves is
+        an order of magnitude past the rest.
+      </p>
+
+      <h4>The change, in two halves</h4>
+      <p><b>Half one: raise the XCS project to the level the styles need.</b></p>
+      <ol>
+        <li>Colour and layer management, so a style's colours are powers.</li>
+        <li>Per-shape stroke width, so line weight survives.</li>
+        <li>Text baking through the recorder.</li>
+        <li>Clip and alpha resolved &mdash; by a sample from Creative Space, or by a recorded decision that they
+        are out of scope.</li>
+      </ol>
+      <p style="margin-top:16px"><b>Half two: bring each style onto it, one at a time.</b></p>
+      <ol>
+        <li>Take the style in the order above, cheapest first.</li>
+        <li>Render it both ways and diff the rasters.</li>
+        <li>Close the difference &mdash; by teaching the exporter, or by changing the drawing so it only asks for
+        what the file can carry.</li>
+        <li>Agree its tolerance and write it down. Not every style needs zero; a style needs a number it meets.</li>
+        <li>Mark it migrated. Once a style is migrated it is developed against XCS output only.</li>
+      </ol>
+      <p style="margin-top:16px"><b>Then remove the split.</b></p>
+      <ol>
+        <li>Flip <code>renderTarget</code> to default to <code>xtool</code> &mdash; a one-line change that can
+        land early and immediately stops new work being done against the canvas.</li>
+        <li>When every style is migrated, delete the toggle, the second viewer, and
+        <code>updateShapeFillViewerVisibility</code>.</li>
+        <li>The canvas stays, but only as the recorder's input. It stops being something anyone looks at.</li>
+      </ol>
+
+      <h4>What could go wrong</h4>
+      <ul>
+        <li><b>A style may not survive the move.</b> Autumn Leaves at 1,178 may cost more than it is worth. Retiring
+        a style is an allowed outcome &mdash; a style that only exists on a canvas is exactly what the rule was
+        written to prevent.</li>
+        <li><b>The canvas is faster.</b> The XCS viewer draws SVG shapes and Gears emits 4,434 of them. Interactive
+        slider dragging may become unusable before the shape-count guard is in. That guard stops being a nicety.</li>
+        <li><b>Editing the shape needs a canvas.</b> Edit Shape drags handles on the canvas element. That interaction
+        has to survive the removal of the canvas as a <i>view</i>, or move onto the XCS viewer.</li>
+        <li><b>Flipping the default surfaces everything at once.</b> Fourteen styles will look wrong on first
+        open. Worth doing early anyway, because that is the honest picture.</li>
+        <li><b>Tolerances can be set to hide the problem.</b> A generous number makes a style pass without fixing
+        it. Tolerances belong in review, with the difference image attached.</li>
+      </ul>
+
+      <h4>Test and validation</h4>
+      <ol>
+        <li><b>The rule as a test.</b> No component outside <code>xcs-tab.js</code> may hold a second render path.
+        Assert that <code>renderTarget</code>, or anything like it, appears in no component &mdash; a grep-level
+        check that keeps the rule from being lost a second time.</li>
+        <li><b>Raster diff per style</b>, canvas against XCS project, with the difference image kept and the
+        per-style tolerance recorded beside it.</li>
+        <li><b>The distance table as a burn-down.</b> Re-run the counts above after each step of half one. Every
+        number should fall; any that rises is a regression with a name.</li>
+        <li><b>Shape count and file size per style</b>, tracked in the same run, since closing gaps adds geometry.</li>
+        <li><b>On the machine.</b> The migration is not finished on a raster diff. Each migrated style goes through
+        the <a href="xcs-module/manual-test-loop.md">manual test loop</a> at least once &mdash; that is the whole
+        point of the rule.</li>
+      </ol>
+
+      <h4>Answers this needs first</h4>
+      <ul>
+        <li>Flip the default to <code>xtool</code> now, before the work, or at the end of it?</li>
+        <li>Is retiring a style an acceptable outcome, or must all fourteen migrate?</li>
+        <li>Where does Edit Shape live once the canvas is not a view?</li>
+      </ul>
+    </div>
+  </details>
+
+  <h2>The documents</h2>
+
+  <div class="card">
+    <h3><a href="pattern-tool/xcsformat.md">xcsformat.md</a></h3>
+    <div class="meta">pattern-tool/ &middot; 207 lines &middot; locked 2026-03-18 &middot; the source of truth</div>
+    <p>
+      The format itself, section by section: node hierarchy, shape-to-parameter mapping, the mandatory processing
+      node structure, text objects and glyph baking, layer sequencing and <code>pathPlanning</code>, integrity
+      checks, exporter rules, the reference <code>.xcs</code> files, anchoring and rotation facts, and the
+      relative geometry rule. Named by GEMINI.md as the authority; nothing goes in the exporter that is not
+      verified here.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3><a href="pattern-tool/XCSViewer.md">XCSViewer.md</a></h3>
+    <div class="meta">pattern-tool/ &middot; 73 lines &middot; locked 2026-03-18 &middot; how the tool represents XCS</div>
+    <p>
+      Internal representation against the formal format, the core model in <code>xcs-system.js</code>, the parser
+      in <code>xcs-tab.js</code>, and the coordinate and anchor maths for centring and &minus;90&deg; rotation.
+      Carries the no-speculative-implementation protocol.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3><a href="pattern-tool/GEMINI.md">GEMINI.md</a></h3>
+    <div class="meta">pattern-tool/ &middot; 36 lines &middot; mandates, absolute precedence</div>
+    <p>
+      Hardware constraints, architecture map, the UX normalisation mandates every pattern panel follows, and the
+      maintenance rules. Read it before touching anything in <code>pattern-tool/</code>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3><a href="xcs-module/manual-test-loop.md">manual-test-loop.md</a></h3>
+    <div class="meta">xcs-module/ &middot; 61 lines &middot; verification procedure</div>
+    <p>
+      How to check generated output against the official xTool XCS Studio software, rather than against our own
+      viewer. The only way to confirm a structural change actually opens on the machine.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3><a href="pattern-tool/exportpatches.md">exportpatches.md</a></h3>
+    <div class="meta">pattern-tool/ &middot; 10 lines &middot; what was tried and what failed</div>
+    <p>
+      Six export iterations against the F2, each with the change made and the result. Iterations 1 to 5 all
+      failed &mdash; missing settings UI, then no device selected on open, then the F2 entry still missing after
+      switching to 36-character GUIDs and adding all four operation nodes. Iteration 6 added the root metadata
+      <code>extId</code>, <code>extName</code>, <code>version</code> and <code>minRequiredVersion</code>, and is
+      still marked <span class="pending">pending test</span>.
+    </p>
+  </div>
+
+  <h2>Tools</h2>
+
+  <div class="tools">
+    <a class="tool" href="xcs-module/">
+      <span class="icon">🧪</span>
+      <h3>XCS Module Validation</h3>
+      <p>Unit and functional tests over the core module &mdash; project generation, baked glyphs, coordinate anchoring.</p>
+      <span class="tag">xcs-module/index.html</span>
+    </a>
+    <a class="tool" href="pattern-tool/?type=test-xcs&cfg=%7B%22type%22%3A%22test%22%7D">
+      <span class="icon">📐</span>
+      <h3>XCS Reference Test</h3>
+      <p>Generates the reference pattern to export and open in Creative Space, for checking geometry lands where the viewer says.</p>
+      <span class="tag">Pattern Tool &middot; Material &amp; Technical</span>
+    </a>
+    <a class="tool" href="pattern-tool/">
+      <span class="icon">🎛️</span>
+      <h3>Pattern Tool</h3>
+      <p>Open XCS parses an existing <code>.xcs</code> file into the internal representation; any pattern tab exports one.</p>
+      <span class="tag">pattern-tool/index.html</span>
+    </a>
+  </div>
+</div>
+</body>
+</html>

@@ -144,6 +144,55 @@
         .splitter:hover::after, .splitter.dragging::after {
             background: var(--primary);
         }
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid #2a2a2a; }
+        .tab-btn {
+            background: none; border: none; border-bottom: 2px solid transparent;
+            color: #666; font-size: 11px; font-weight: bold; text-transform: uppercase;
+            letter-spacing: 0.08em; padding: 8px 14px; cursor: pointer; font-family: inherit;
+        }
+        .tab-btn:hover { color: #aaa; }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-btn .badge { margin-left: 6px; }
+        .tab-panel { display: none; flex: 1; overflow-y: auto; }
+        .tab-panel.active { display: block; }
+        .rt-project {
+            background: #141414; border: 1px solid #2a2a2a; border-radius: 8px;
+            margin-bottom: 8px; overflow: hidden;
+        }
+        .rt-project-header {
+            display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+        }
+        .rt-project-header:hover { background: #181818; }
+        .rt-caret { color: #555; font-size: 10px; width: 10px; transition: transform .15s; }
+        .rt-project.open .rt-caret { transform: rotate(90deg); }
+        .rt-project-name { flex: 1; font-size: 13px; font-weight: 600; color: #eee; }
+        .rt-project-status {
+            font-size: 10px; font-weight: bold; letter-spacing: .06em; text-transform: uppercase;
+            padding: 3px 9px; border-radius: 20px; border: 1px solid #333; color: #666;
+        }
+        .rt-project-status.pass { color: var(--success); border-color: #1f3a24; background: #101a12; }
+        .rt-project-status.fail { color: var(--danger);  border-color: #4a2320; background: #1f1312; }
+        .rt-project-body { display: none; padding: 0 14px 14px; border-top: 1px solid #222; }
+        .rt-project.open .rt-project-body { display: block; }
+        .rt-project-body .rt-q { padding-top: 12px; }
+        .rt-card {
+            background: #141414; border: 1px solid #2a2a2a; border-radius: 8px;
+            padding: 14px 16px; margin-bottom: 10px;
+        }
+        .rt-card h4 { margin: 0 0 6px; font-size: 13px; color: #eee; font-weight: 600; }
+        .rt-card .rt-q { font-size: 11px; color: #888; line-height: 1.6; margin-bottom: 10px; }
+        .rt-card table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .rt-card th, .rt-card td { text-align: left; padding: 3px 6px; font-size: 10.5px; color: #999; }
+        .rt-card th { color: #555; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
+        .rt-card td:first-child { color: #ddd; font-family: monospace; }
+        .rt-actions { display: flex; gap: 6px; }
+        .rt-actions button {
+            background: #1f1f1f; border: 1px solid #333; color: #ccc; font-size: 10.5px;
+            padding: 5px 12px; border-radius: 5px; cursor: pointer; font-family: inherit;
+        }
+        .rt-actions button:hover { border-color: var(--primary); color: #fff; }
+        .rt-note { font-size: 10.5px; color: #666; margin-top: 8px; line-height: 1.6; }
+        .rt-note code { color: #888; }
         .panel-header {
             font-size: 11px;
             font-weight: bold;
@@ -273,6 +322,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
             <button class="toggle-btn" onclick="testExport()" style="background: var(--success); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;">Test Export (PNG + XCS)</button>
+            <button class="toggle-btn" onclick="testExportStress()" style="background: var(--warning); color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Download the 1000-item SCALE_STRESS project as a real .xcs file for physical XCS Studio verification">Test Export (Stress)</button>
             <button class="toggle-btn" onclick="textCalExport()" style="background: #8b5cf6; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Export 5-size text calibration .xcs">Text Cal Export</button>
             <button class="toggle-btn" onclick="previewTextCal()" style="background: #f59e0b; color: #fff; border: none; padding: 6px 16px; font-weight: bold; border-radius: 6px;" title="Preview text cal in canvas (shared renderer)">Preview Text Cal</button>
             <a href="./xcs-format.html" class="back-link" style="margin-right: 12px;">XCS Format Specs</a>
@@ -281,11 +331,16 @@
 
     <div class="grid">
         <div id="unitPanel" class="panel panel-tests">
-            <div class="panel-header">
-                <div>Unit Tests <span id="testProgress" class="badge">0/0</span></div>
+            <div class="panel-header" style="margin-bottom: 0;">
+                <div class="tab-bar" style="flex:1; margin-bottom:0; border-bottom:none;">
+                    <button class="tab-btn active" data-tab="unit" onclick="switchTestTab('unit')">Unit Tests <span id="testProgress" class="badge">0/0</span></button>
+                    <button class="tab-btn" data-tab="render" onclick="switchTestTab('render')">Render Tests <span id="renderProgress" class="badge">0/0</span></button>
+                </div>
                 <button class="toggle-btn" onclick="toggleAllTests()">Toggle All</button>
             </div>
-            <div id="testContainer" style="flex: 1; overflow-y: auto;"></div>
+            <div style="border-bottom:1px solid #2a2a2a; margin-bottom:14px;"></div>
+            <div id="testContainer" class="tab-panel active"></div>
+            <div id="renderContainer" class="tab-panel"></div>
         </div>
 
         <div class="splitter-h" id="subSplitter"></div>
@@ -400,6 +455,7 @@
         import { XCSProject } from './js/xcs-system.js';
         import { XCSExporter } from './js/xcs-exporter.js';
         import { XCSCanvas }   from './js/xcs-canvas.js';
+        import { RENDER_TESTS } from './js/render-tests.js';
 
         const svg = document.getElementById('testCanvas');
         const pop = document.getElementById('canvasPopover');
@@ -525,9 +581,25 @@
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const filename = `XCSTest${month}${day}-${hours}${minutes}`;
-            
+
             window.downloadProject(filename);
             window.downloadCanvasPNG(filename);
+        };
+
+        // Downloads the SCALE_STRESS project (built in run(), see window.__stressProject)
+        // as a real .xcs file — this is the piece that closes the "we've never
+        // verified this dashboard's project-scale assumptions on real hardware/
+        // software" gap end-to-end: the in-browser SCALE_STRESS test only proves the
+        // JS model/renderer handle 1000 items; opening this file in real XCS Studio
+        // is what actually proves it.
+        window.testExportStress = () => {
+            if (!window.__stressProject) { alert('Stress project not ready yet — reload and wait for tests to finish.'); return; }
+            const now = new Date();
+            const month = now.toLocaleString('en-US', { month: 'short' });
+            const day = now.getDate();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            XCSExporter.exportProject(window.__stressProject, `XCSStressTest${month}${day}-${hours}${minutes}`);
         };
 
         // ── TEXT CAL SHARED BUILDER ─────────────────────────────────────────
@@ -622,7 +694,71 @@
         };
 
         const tests = [];
-        const log = (name, passed, msg="", reason="", testId="", description="", category="core") => {
+        window.switchTestTab = (tab) => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+            document.getElementById('testContainer').classList.toggle('active', tab === 'unit');
+            document.getElementById('renderContainer').classList.toggle('active', tab === 'render');
+        };
+        // A render test is a whole exported project, and the checks inside it are
+        // its elements. The tab lists the projects; opening one shows the element
+        // results for it. `tab` is either "unit" or "render:<projectId>".
+        const renderGroups = new Map();
+
+        // Projects that are not built from the RENDER_TESTS registry. The
+        // dashboard's own project is one: its seven geometry checks are the
+        // baseline every other render test is judged against.
+        const RENDER_GROUP_META = {
+            baseline: {
+                name: 'Geometry Baseline — dashboard project',
+                question: 'The checks that measure where a shape actually rendered, through getBBox(), rather than whether the file is structurally correct. Placement bugs slip past structural assertions: a dPath authored in the wrong coordinate space still exists, still has the right commands, and still lands in the wrong place.',
+                note: 'Round trip: use <code>Test Export (PNG + XCS)</code> above, then open the file in xTool Studio.',
+                actions: [
+                    ['View', () => { if (window.__dashboardProject) render(window.__dashboardProject); }],
+                    ['Export .xcs', () => testExport()]
+                ]
+            }
+        };
+
+        function ensureRenderGroup(id, opts = {}) {
+            if (renderGroups.has(id)) return renderGroups.get(id);
+            const el = document.createElement('div');
+            el.className = 'rt-project';
+            el.id = `rtp-${id}`;
+            el.innerHTML = `
+                <div class="rt-project-header">
+                    <span class="rt-caret">&#9656;</span>
+                    <span class="rt-project-name">${opts.name || id}</span>
+                    <span class="rt-project-status">not run</span>
+                    <span class="rt-actions" onclick="event.stopPropagation()"></span>
+                </div>
+                <div class="rt-project-body">
+                    ${opts.question ? `<div class="rt-q">${opts.question}</div>` : ''}
+                    ${opts.table || ''}
+                    <div class="rt-results"></div>
+                    ${opts.note ? `<div class="rt-note">${opts.note}</div>` : ''}
+                </div>`;
+            el.querySelector('.rt-project-header').onclick = () => el.classList.toggle('open');
+            const actions = el.querySelector('.rt-actions');
+            for (const [label, fn] of opts.actions || []) {
+                const b = document.createElement('button');
+                b.textContent = label;
+                b.onclick = fn;
+                actions.appendChild(b);
+            }
+            document.getElementById('renderContainer').appendChild(el);
+            const g = { el, body: el.querySelector('.rt-results'),
+                        status: el.querySelector('.rt-project-status'), results: [] };
+            renderGroups.set(id, g);
+            return g;
+        }
+
+        function refreshRenderTotals() {
+            let pass = 0, total = 0;
+            for (const g of renderGroups.values()) { pass += g.results.filter(Boolean).length; total += g.results.length; }
+            document.getElementById('renderProgress').textContent = `${pass}/${total}`;
+        }
+
+        const log = (name, passed, msg="", reason="", testId="", description="", category="core", tab="unit") => {
             const row = document.createElement('div');
             row.id = `test-row-${testId}`;
             row.className = `test-row ${passed ? 'passed' : 'failed'} ${!passed ? 'expanded' : ''}`;
@@ -664,16 +800,58 @@
                 };
             }
             
-            const container = document.getElementById('testContainer');
-            if (container) container.appendChild(row);
-            tests.push(passed);
-            document.getElementById('testProgress').textContent = `${tests.filter(t => t).length}/${tests.length}`;
+            if (tab.startsWith('render')) {
+                const id = tab.split(':')[1] || 'baseline';
+                const g = ensureRenderGroup(id, RENDER_GROUP_META[id] || { name: id });
+                g.body.appendChild(row);
+                g.results.push(passed);
+                const bad = g.results.filter(r => !r).length;
+                g.status.textContent = `${g.results.filter(Boolean).length}/${g.results.length}`;
+                g.status.className = 'rt-project-status ' + (bad ? 'fail' : 'pass');
+                if (bad) g.el.classList.add('open');
+                refreshRenderTotals();
+            } else {
+                document.getElementById('testContainer').appendChild(row);
+                tests.push(passed);
+                document.getElementById('testProgress').textContent =
+                    `${tests.filter(t => t).length}/${tests.length}`;
+            }
         };
+
+        // Measures a rendered test item's actual on-screen geometry (via the SVG's
+        // own getBBox(), in the same top-left-origin coordinate space as x/y/width/
+        // height) and compares it against expected values. Structural assertions
+        // (e.g. "!!dPath", "isFill===false") never caught the double-translate
+        // placement bug found earlier — xcs-canvas.js's _renderPath() applies its
+        // own translate(x,y) on top of whatever dPath it's given, so a dPath authored
+        // in the wrong coordinate space silently double-offsets. This is the check
+        // that would have caught it automatically. Must run AFTER render(project),
+        // since that's what populates the SVG with data-test-id-tagged elements.
+        function verifyGeometry(testId, expected, tolerance = 0.3) {
+            const el = document.querySelector(`[data-test-id="${testId}"]`);
+            if (!el) return { ok: false, detail: 'element not found in rendered SVG' };
+            // NOT el.getBBox() — per SVG spec, getBBox() on a leaf element excludes
+            // that element's OWN transform attribute (here, translate(x,y)), so it
+            // would return LOCAL pre-translate coordinates, not where the shape
+            // actually renders. getBoundingClientRect() mapped back through the
+            // SVG's CTM (via the existing getSVGPoint helper above) accounts for
+            // every transform in the chain and is what actually measures on-screen
+            // position — the same fix used earlier when this exact class of bug
+            // was first found in Shape Fill's xTool export.
+            const rect = el.getBoundingClientRect();
+            const topLeft = getSVGPoint(rect.left, rect.top);
+            const bottomRight = getSVGPoint(rect.right, rect.bottom);
+            const box = { x: topLeft.x, y: topLeft.y, width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y };
+            const close = (a, b) => Math.abs(a - b) <= tolerance;
+            const ok = close(box.x, expected.x) && close(box.y, expected.y)
+                && close(box.width, expected.width) && close(box.height, expected.height);
+            return { ok, detail: `expected x:${expected.x.toFixed(2)} y:${expected.y.toFixed(2)} w:${expected.width.toFixed(2)} h:${expected.height.toFixed(2)} — got x:${box.x.toFixed(2)} y:${box.y.toFixed(2)} w:${box.width.toFixed(2)} h:${box.height.toFixed(2)}` };
+        }
 
         async function run() {
             try {
                 const project = new XCSProject();
-                
+
                 // 1. PROJECT INIT
                 log("PROJECT Init", !!project.canvasId && project.canvas[0].id === project.canvasId, "ID: " + project.canvasId.slice(0,8), "Project root must contain a valid canvasId.", "INIT", "Verifies project instance creation, UUID generation, and root canvas mapping for XCS v1.5.8.", "internal");
 
@@ -686,18 +864,18 @@
 
                 // --- MIDDLE ROW: VECTORS (SCORE/ENGRAVE) ---
                 // Layout Verification: 3x3mm box above the SCORE rectangle, 2mm gap, horizontally centered
-                // Now using TOP-LEFT logic: 
-                // score is at 28.75, 51.7. 
+                // Now using TOP-LEFT logic:
+                // score is at 28.75, 51.7.
                 // scoreVerify (3x3) should be at x: 28.75 + (10/2) - (3/2) = 32.25
                 // y: 51.7 - 2 (gap) - 3 (size) = 46.7
                 const scoreX = 28.75, scoreY = 65.0, scoreSize = 10;
                 const vSize = 3, vGap = 2;
-                
-                const scoreVerify = await project.addItem('RECT', { 
-                    x: scoreX + (scoreSize/2) - (vSize/2), 
-                    y: scoreY - vGap - vSize, 
-                    width: vSize, height: vSize, 
-                    layerColor: "#5b9bd5", params: { power: 10, speed: 200 } 
+
+                const scoreVerify = await project.addItem('RECT', {
+                    x: scoreX + (scoreSize/2) - (vSize/2),
+                    y: scoreY - vGap - vSize,
+                    width: vSize, height: vSize,
+                    layerColor: "#5b9bd5", params: { power: 10, speed: 200 }
                 });
                 scoreVerify.display.testId = "SCORE_VERIFY";
 
@@ -710,28 +888,36 @@
                 engrave.display.testId = "ENGRAVE";
                 log("CIRCLE / ENGRAVE", engrave.display.isFill === true, "isFill: true", "Engrave mode requires path closing and fill property enabled.", "ENGRAVE", "Validates Circle geometry with Fill Engrave logic, ensuring the 'isFill' mandate is correctly handled.", "core");
 
+                // CLOSED_PATH: dPath authored TOP-LEFT-relative (local 0..12, 0..12) —
+                // log() deferred to the post-render geometry-verification pass below.
                 const path = await project.addItem('PATH', { x: 80.25, y: 64.0, width: 12, height: 12, dPath: "M 0 0 L 12 0 L 6 12 Z", layerColor: "#f87171", params: { power: 40, speed: 60 } });
                 path.display.testId = "CLOSED_PATH";
-                log("Closed Filled Path", !!path.display.dPath, "dPath exists", "Hardware Exporter requires baked 'dPath' string for PATH objects.", "CLOSED_PATH", "Ensures that complex closed vector geometries contain the raw SVG path data required for machine interpretation.", "core");
 
                 // --- BOTTOM ROW: RASTERS & OPEN PATHS ---
+                // SPIRAL: dPath authored relative to its own local origin (0,0), which
+                // is NOT its top-left corner — the loop sweeps outward in all
+                // directions, so track the actual local bbox as it's built rather than
+                // assuming it matches the declared width/height (it doesn't exactly).
                 let spiralD = "M 0 0 ";
+                let spiralMinX = 0, spiralMinY = 0, spiralMaxX = 0, spiralMaxY = 0;
                 for(let i=0; i<30; i++) {
                     const r = i * 0.3;
                     const a = i * 0.8;
-                    spiralD += `L ${r * Math.cos(a)} ${r * Math.sin(a)} `;
+                    const px = r * Math.cos(a), py = r * Math.sin(a);
+                    spiralD += `L ${px} ${py} `;
+                    if (px < spiralMinX) spiralMinX = px; if (px > spiralMaxX) spiralMaxX = px;
+                    if (py < spiralMinY) spiralMinY = py; if (py > spiralMaxY) spiralMaxY = py;
                 }
                 const spiral = await project.addItem('PATH', { x: 21.25, y: 92.0, width: 15, height: 15, dPath: spiralD, processingType: "VECTOR_ENGRAVING", layerColor: "#f59e0b", params: { power: 50, speed: 150 } });
                 spiral.display.testId = "SPIRAL";
-                log("OPEN PATH (Spiral)", spiral.display.isFill === false, "isFill: false", "Open paths must not have fill properties enabled for vector scoring.", "SPIRAL", "Validates non-closed path geometries, confirming they remain unfilled for physical scoring on the hardware plate.", "core");
 
-                const bitmap = await project.addItem('BITMAP', { 
-                    x: 50.0, y: 92.0, width: 15, height: 15, 
-                    processingType: "COLOR_ENGRAVE", 
+                const bitmap = await project.addItem('BITMAP', {
+                    x: 50.0, y: 92.0, width: 15, height: 15,
+                    processingType: "COLOR_ENGRAVE",
                     layerColor: "#ec4899",
                     params: { power: 60, speed: 200, density: 300 },
                     originWidth: 64, originHeight: 64,
-                    base64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAAcklEQVR42mNgYOHgERCRkFFQ0dAxMLGwcXDx8AkIjYxNTM3MLSytrG1s7eydOHXm3IVLV63btG3XvkPHTp27dO3WvUfPXr379O3Xf4ZRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVguBsAAKbB8Orca5pHAAAAAElFTkSuQmCC" 
+                    base64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAAcklEQVR42mNgYOHgERCRkFFQ0dAxMLGwcXDx8AkIjYxNTM3MLSytrG1s7eydOHXm3IVLV63btG3XvkPHTp27dO3WvUfPXr379O3Xf4ZRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVg1IBRA0YNGDVguBsAAKbB8Orca5pHAAAAAElFTkSuQmCC"
                 });
                 bitmap.display.testId = "BITMAP";
                 log("BITMAP / COLOR", !!bitmap.display.base64 && bitmap.laser.processingType === "COLOR_ENGRAVE", "64x64 RAMP", "Color Engrave mode requires persistent 'base64' source data.", "BITMAP", "Verifies the integration of high-resolution raster assets with grayscale (Color Engrave) machine instructions.", "core");
@@ -742,6 +928,7 @@
 
                 // --- NEW: COMPOUND VECTORS (KNOCKOUTS) ---
                 // Square (Outer) + Circle (Hole) + Triangle (Solid again)
+                // subPaths are TOP-LEFT-relative (local 0..s, 0..s), like CLOSED_PATH.
                 const s = 15;
                 const h = (s*0.3*Math.sqrt(3))/2;
                 const compound = await project.addCompoundPath({
@@ -755,7 +942,6 @@
                     ]
                 });
                 compound.display.testId = "COMPOUND";
-                log("Compound Vectors", compound.display.isCompoundPath === true && compound.display.fillRule === "evenodd", "isCompoundPath: true", "Compound vectors must use 'evenodd' fill rule for nested knockouts.", "COMPOUND", "Verifies the nested knockout engine (Square-Circle-Triangle) using the Even-Odd fill rule for 1:1 hardware parity.", "core");
 
                 // --- NEW: COMPOUND VECTORS (REVERSED WINDINGS) ---
                 // Square (CCW) + Circle (CCW) + Triangle (CCW, Downwards)
@@ -770,14 +956,21 @@
                     ]
                 });
                 compoundRev.display.testId = "COMPOUND_REV";
-                log("Compound (Reversed)", compoundRev.display.fillRule === "evenodd", "evenodd", "Verifies CCW windings and inverted triangle geometry.", "COMPOUND_REV", "Ensures that Even-Odd knockout logic remains robust even when path directions (windings) are reversed.", "core");
 
                 // --- NEW: BOUNDARY FRAME (CENTERED) ---
                 // Mimics Pattern Tool: Outer (Edge+Offset+Thk/2) + Inner (Edge+Offset-Thk/2)
+                // Unlike CLOSED_PATH/COMPOUND above, this one's subPaths are
+                // CENTER-relative (local -outerW/2..outerW/2) — x/y is the shape's
+                // CENTER, not its top-left corner. This is the exact convention Shape
+                // Fill's xTool export relies on for every one of its ~4000+ shapes
+                // (RecordingCtx._emit's centeredM), and the two conventions coexisting
+                // un-flagged in this same dashboard is itself part of the gap this
+                // pass closes: nothing here has ever verified either one lands where
+                // it's supposed to.
                 const bW = 20, bH = 20, bThk = 1.0;
                 const outerW = bW + bThk, outerH = bH + bThk;
                 const innerW = bW - bThk, innerH = bH - bThk;
-                
+
                 const frame = await project.addCompoundPath({
                     x: 80.0, y: 35.0, width: outerW, height: outerH,
                     isFill: true, layerColor: "#ffffff", // Use white for high contrast
@@ -788,13 +981,195 @@
                     ]
                 });
                 frame.display.testId = "FRAME";
-                log("Boundary Frame", frame.display.fillRule === "evenodd", "evenodd", "Verifies centered compound geometry (Outer/Inner rectangles) for hollow technical frames.", "FRAME", "Strict validation of the 'Even-Odd' frame logic used in the Pattern Tool's technical boundary system.", "core");
+
+                // --- NEW: CAPSULE_STROKE ---
+                // A filled, round-capped polygon standing in for a variable-width
+                // vector stroke — XCS PATH has no native stroke-width concept, so
+                // Shape Fill converts every thick canvas stroke (every gear-tooth
+                // outline, when Outline Width > 0) into exactly this shape via
+                // capsuleDPath() in shape-fill-tab.js. Authored independently here
+                // (not imported) to keep this dashboard self-contained, but mirrors
+                // that function's math for a single two-point segment: two parallel
+                // rails offset by the stroke's half-width, joined by semicircular
+                // end caps.
+                const capLen = 10, capWidth = 2, capHalf = capWidth / 2;
+                const CAP_STEPS = 10;
+                let capD = `M 0 ${capHalf} L ${capLen} ${capHalf} `;
+                for (let cs = 1; cs <= CAP_STEPS; cs++) {
+                    const a = Math.PI / 2 - Math.PI * (cs / CAP_STEPS);
+                    capD += `L ${capLen + capHalf * Math.cos(a)} ${capHalf * Math.sin(a)} `;
+                }
+                for (let cs = 1; cs <= CAP_STEPS; cs++) {
+                    const a = -Math.PI / 2 - Math.PI * (cs / CAP_STEPS);
+                    capD += `L ${capHalf * Math.cos(a)} ${capHalf * Math.sin(a)} `;
+                }
+                capD += 'Z';
+                const capsule = await project.addItem('PATH', { x: 60.0, y: 100.0, width: capLen + capWidth, height: capWidth, dPath: capD, isFill: true, layerColor: "#22d3ee", params: { power: 35, speed: 90 } });
+                capsule.display.testId = "CAPSULE_STROKE";
+
+                // --- NEW: ARC_SAMPLE ---
+                // A circle built by programmatically sampling points around its
+                // circumference into a polyline 'd' string — not a hand-typed 'A'
+                // command, and not literal fixed coordinates like every other test in
+                // this dashboard. This is the technique sampleArcPoints() in
+                // shape-fill-tab.js uses for every arc()/ellipse() call, meaning
+                // nearly every curved shape (hub circles, spokes, teeth) in gears —
+                // that sampler has never been exercised here before.
+                const arcRadius = 5;
+                const ARC_STEPS = 32;
+                let arcD = '';
+                for (let as = 0; as <= ARC_STEPS; as++) {
+                    const t = (as / ARC_STEPS) * Math.PI * 2;
+                    arcD += `${as === 0 ? 'M' : 'L'} ${arcRadius * Math.cos(t)} ${arcRadius * Math.sin(t)} `;
+                }
+                arcD += 'Z';
+                const arcSample = await project.addItem('PATH', { x: 100.0, y: 100.0, width: arcRadius * 2, height: arcRadius * 2, dPath: arcD, isFill: true, layerColor: "#a3e635", params: { power: 45, speed: 100 } });
+                arcSample.display.testId = "ARC_SAMPLE";
+
+                // --- NEW: COLOR_FLATTEN ---
+                // A plain opaque hex — what flattenColor()'s alpha/backdrop
+                // compositing in shape-fill-tab.js always produces, since XCS never
+                // reads an alpha channel. This dashboard doesn't need to duplicate
+                // that compositing math; it only needs to confirm the *output
+                // contract* renders faithfully with no hidden opacity/CSS
+                // interference anywhere in the shared renderer.
+                const flattenColorHex = "#c88a3f";
+                const colorFlatten = await project.addItem('RECT', { x: 100.0, y: 35.0, width: 8, height: 8, layerColor: flattenColorHex, params: { power: 25, speed: 100 } });
+                colorFlatten.display.testId = "COLOR_FLATTEN";
+
+                // --- NEW: SCALE_STRESS ---
+                // Shape Fill's "gears" style alone produces 4,300-4,600+ PATH items
+                // in a single project; this dashboard's previous largest project had
+                // 13. Built as its own detached project (not added to the visible
+                // dashboard project/canvas) so it doesn't clutter the JSON/canvas
+                // views — rendered into an off-screen SVG purely to verify the count,
+                // and exportable via the "Test Export (Stress)" button for a real
+                // physical XCS Studio check.
+                const STRESS_COUNT = 1000;
+                const stressProject = new XCSProject();
+                const stressGridSize = Math.ceil(Math.sqrt(STRESS_COUNT));
+                for (let i = 0; i < STRESS_COUNT; i++) {
+                    const gx = i % stressGridSize, gy = Math.floor(i / stressGridSize);
+                    await stressProject.addItem('RECT', { x: gx, y: gy, width: 0.5, height: 0.5, layerColor: "#5b9bd5", params: { power: 10, speed: 100 } });
+                }
+                window.__stressProject = stressProject;
 
                 currentProject = project;
+                window.__dashboardProject = project;
                 render(project);
+
+                // ── POST-RENDER GEOMETRY VERIFICATION ──────────────────────────
+                // Requires items to already be in the DOM (render() above), since
+                // verifyGeometry() measures actual rendered position via getBBox().
+                const closedPathGeo = verifyGeometry("CLOSED_PATH", { x: 80.25, y: 64.0, width: 12, height: 12 });
+                log("Closed Filled Path", !!path.display.dPath && closedPathGeo.ok, "dPath exists", "Hardware Exporter requires baked 'dPath' string for PATH objects." + (closedPathGeo.ok ? '' : ` PLACEMENT MISMATCH: ${closedPathGeo.detail}`), "CLOSED_PATH", "Ensures closed vector geometries contain a baked 'dPath' string AND that it renders at the correct absolute position (verified via getBBox(), not just structural presence).", "core", "render");
+
+                const spiralGeo = verifyGeometry("SPIRAL", { x: 21.25 + spiralMinX, y: 92.0 + spiralMinY, width: spiralMaxX - spiralMinX, height: spiralMaxY - spiralMinY });
+                log("OPEN PATH (Spiral)", spiral.display.isFill === false && spiralGeo.ok, "isFill: false", "Open paths must not have fill properties enabled for vector scoring." + (spiralGeo.ok ? '' : ` PLACEMENT MISMATCH: ${spiralGeo.detail}`), "SPIRAL", "Validates non-closed path geometries stay unfilled AND that a path recorded relative to its own local origin (not its bbox corner) still lands at the correct absolute position.", "core", "render");
+
+                const compoundGeo = verifyGeometry("COMPOUND", { x: 10.0, y: 35.0, width: s, height: s });
+                log("Compound Vectors", compound.display.isCompoundPath === true && compound.display.fillRule === "evenodd" && compoundGeo.ok, "isCompoundPath: true", "Compound vectors must use 'evenodd' fill rule for nested knockouts." + (compoundGeo.ok ? '' : ` PLACEMENT MISMATCH: ${compoundGeo.detail}`), "COMPOUND", "Verifies the nested knockout engine (Square-Circle-Triangle) using the Even-Odd fill rule AND correct absolute placement.", "core", "render");
+
+                const compoundRevGeo = verifyGeometry("COMPOUND_REV", { x: 35.0, y: 35.0, width: s, height: s });
+                log("Compound (Reversed)", compoundRev.display.fillRule === "evenodd" && compoundRevGeo.ok, "evenodd", "Verifies CCW windings and inverted triangle geometry." + (compoundRevGeo.ok ? '' : ` PLACEMENT MISMATCH: ${compoundRevGeo.detail}`), "COMPOUND_REV", "Ensures Even-Odd knockout logic remains robust with reversed windings AND correct absolute placement.", "core", "render");
+
+                const frameGeo = verifyGeometry("FRAME", { x: 80.0 - outerW / 2, y: 35.0 - outerH / 2, width: outerW, height: outerH });
+                log("Boundary Frame", frame.display.fillRule === "evenodd" && frameGeo.ok, "evenodd", "Verifies centered compound geometry (Outer/Inner rectangles) for hollow technical frames." + (frameGeo.ok ? '' : ` PLACEMENT MISMATCH: ${frameGeo.detail}`), "FRAME", "Strict validation of the Even-Odd frame logic AND correct absolute placement for a CENTER-anchored compound path — the exact convention Shape Fill's xTool export relies on for every one of its ~4,000+ shapes.", "core", "render");
+
+                const capsuleGeo = verifyGeometry("CAPSULE_STROKE", { x: 60.0 - capHalf, y: 100.0 - capHalf, width: capLen + capWidth, height: capWidth });
+                log("Capsule Stroke", !!capsule.display.dPath && capsuleGeo.ok, "capsule polygon", capsuleGeo.ok ? '' : `PLACEMENT/SIZE MISMATCH: ${capsuleGeo.detail}`, "CAPSULE_STROKE", "Verifies a filled, round-capped polygon standing in for a variable-width vector stroke renders at the correct physical footprint — the technique Shape Fill uses for every gear-tooth outline. Never previously tested in this dashboard.", "core", "render");
+
+                const arcGeo = verifyGeometry("ARC_SAMPLE", { x: 100.0 - arcRadius, y: 100.0 - arcRadius, width: arcRadius * 2, height: arcRadius * 2 });
+                log("Arc Sampling", !!arcSample.display.dPath && arcGeo.ok, `${ARC_STEPS}-seg circle`, arcGeo.ok ? '' : `PLACEMENT/SIZE MISMATCH: ${arcGeo.detail}`, "ARC_SAMPLE", "Verifies a circle built by programmatically sampling its circumference (not a hand-typed 'd' string) renders at the correct radius/extents — the technique every curved shape in gears/hubs/spokes relies on. Never previously tested in this dashboard.", "core", "render");
+
+                const flattenEl = document.querySelector('[data-test-id="COLOR_FLATTEN"]');
+                const flattenOk = !!flattenEl && flattenEl.getAttribute('fill') === flattenColorHex;
+                log("Color Fidelity", flattenOk, flattenColorHex, flattenOk ? '' : `Rendered fill did not exactly match the source hex (found: ${flattenEl ? flattenEl.getAttribute('fill') : 'element not found'}).`, "COLOR_FLATTEN", "Confirms a plain opaque hex (what alpha/backdrop-flattening compositing always produces) renders with zero CSS/opacity interference. Never previously tested in this dashboard.", "internal");
+
+                const stressSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                const stressContent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                stressSvg.appendChild(stressContent);
+                const stressCanvas = new XCSCanvas(stressSvg, stressContent, null);
+                const stressRenderedCount = stressCanvas.render(stressProject);
+                let stressRoundTrip = true;
+                try { JSON.parse(JSON.stringify(stressProject.toJSON())); } catch (e) { stressRoundTrip = false; }
+                const stressOk = stressProject.getItems().length === STRESS_COUNT && stressRenderedCount === STRESS_COUNT && stressContent.children.length === STRESS_COUNT && stressRoundTrip;
+                log("Scale Stress", stressOk, `${STRESS_COUNT} items`, stressOk ? '' : `count/round-trip mismatch (items:${stressProject.getItems().length}, rendered:${stressRenderedCount}, domChildren:${stressContent.children.length}, jsonRoundTrip:${stressRoundTrip})`, "SCALE_STRESS", `Verifies a single project with ${STRESS_COUNT} items (gears alone produces 4,300+) still constructs, renders, and JSON round-trips correctly. Use "Test Export (Stress)" to get a real .xcs file of this size for physical XCS Studio verification. Never previously tested in this dashboard — the previous largest project had 13 items.`, "internal");
             } catch(e) {
                 log("RUNTIME CRASH", false, "FATAL", e.message, "CRASH", "Fatal exception intercepted during project generation cycle.", "internal");
                 console.error(e);
+            }
+        }
+
+        // ── Render test registry ────────────────────────────────────────────
+        // The seven geometry checks above are the baseline: they prove a shape
+        // lands where the file says inside our own renderer. These entries go
+        // further — each one builds a project whose correct appearance is known,
+        // and exports it so the identical geometry can be opened in xTool Studio.
+        // Our renderer agreeing with itself is not the same as agreeing with the
+        // machine, and only the round trip settles that.
+        async function buildRenderTestProject(test) {
+            const p = new XCSProject();
+            await test.build(p);
+            return p;
+        }
+
+        function stamp() {
+            const d = new Date(), pad = n => String(n).padStart(2, '0');
+            return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}${d.getDate()}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+        }
+
+        window.renderTestShow = async (id) => {
+            const test = RENDER_TESTS.find(t => t.id === id);
+            const project = await buildRenderTestProject(test);
+            currentProject = project;
+            render(project);                       // must precede verifyGeometry: it measures the DOM
+
+            // Re-running replaces the previous element results rather than
+            // stacking a second set under the same project.
+            const g = ensureRenderGroup(id, RENDER_GROUP_META[id]);
+            g.body.innerHTML = '';
+            g.results.length = 0;
+            refreshRenderTotals();
+
+            for (const e of test.expected) {
+                const geo = verifyGeometry(e.testId, { x: e.x, y: e.y, width: e.width, height: e.height });
+                log(e.testId, geo.ok,
+                    `${e.width}x${e.height}mm at ${e.x},${e.y}`,
+                    geo.ok ? '' : `PLACEMENT MISMATCH: ${geo.detail}`,
+                    e.testId,
+                    `Element of the ${test.name} project. Expected top-left (${e.x}, ${e.y}) at ${e.width} x ${e.height} mm, measured from the rendered SVG via getBBox().`,
+                    'core', `render:${id}`);
+            }
+            g.el.classList.add('open');
+        };
+
+        window.renderTestExport = async (id) => {
+            const test = RENDER_TESTS.find(t => t.id === id);
+            const project = await buildRenderTestProject(test);
+            XCSExporter.exportProject(project, `rt-${test.id}-${stamp()}`);
+        };
+
+        function mountRenderTests() {
+            // Baseline first — it is the reference the rest are judged against,
+            // and the dashboard run that fills it finishes after this point.
+            ensureRenderGroup('baseline', RENDER_GROUP_META.baseline);
+            if (!RENDER_TESTS.length) return;
+            for (const t of RENDER_TESTS) {
+                RENDER_GROUP_META[t.id] = {
+                    name: t.name,
+                    question: t.question,
+                    table: `<table>
+                        <tr><th>Element</th><th>Expected top-left</th><th>Size</th></tr>
+                        ${t.expected.map(e => `<tr><td>${e.testId}</td><td>${e.x}, ${e.y} mm</td><td>${e.width} &times; ${e.height} mm</td></tr>`).join('')}
+                    </table>`,
+                    note: `Round trip: <code>node tools/roundtrip.mjs ${t.id}</code> exports this project, opens it in xTool Studio and measures it back.`,
+                    actions: [
+                        ['Run & view', () => renderTestShow(t.id)],
+                        ['Export .xcs', () => renderTestExport(t.id)]
+                    ]
+                };
+                ensureRenderGroup(t.id, RENDER_GROUP_META[t.id]);
             }
         }
 
@@ -808,6 +1183,7 @@
             document.getElementById('canvasStats').textContent = `${count} items`;
         }
 
+        mountRenderTests();
         applyTransform();
         // ── SPLITTER LOGIC ──────────────────────────────────────────────────
         const splitter = document.getElementById('mainSplitter');
