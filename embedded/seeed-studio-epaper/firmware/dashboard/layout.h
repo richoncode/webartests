@@ -76,12 +76,14 @@ inline Layout computeLayout(bool showEvent, bool showBins, bool showLaunch) {
   L.footer   = { 0, (int16_t)(PANEL_H - SRC_H - FOOTER_H), PANEL_W, FOOTER_H };
   L.footRule = { 0, (int16_t)(PANEL_H - SRC_H - FOOTER_H - RULE), PANEL_W, RULE };
 
+  // The band always carries something now — a launch worth seeing, or the line
+  // of the day — so its height comes off the strip every day rather than only
+  // on launch days. showLaunch survives as the choice of what goes in it.
   int16_t bb = PANEL_H - SRC_H - FOOTER_H - RULE;
-  if (showLaunch) {
-    L.launch  = { 0, (int16_t)(bb - LCH_H), PANEL_W, LCH_H };
-    bb -= LCH_H + RULE;
-    L.lchRule = { 0, bb, PANEL_W, RULE };
-  }
+  L.launch  = { 0, (int16_t)(bb - LCH_H), PANEL_W, LCH_H };
+  bb -= LCH_H + RULE;
+  L.lchRule = { 0, bb, PANEL_W, RULE };
+  (void)showLaunch;
   if (L.sharedRow) {
     const int16_t y = bb - EVT_H;
     L.event      = { 0, y, HALF_W, EVT_H };

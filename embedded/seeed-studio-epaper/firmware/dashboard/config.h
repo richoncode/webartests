@@ -32,7 +32,14 @@
 // data, not the layout, so without it a firmware update that moves everything
 // around finds the same hash, skips the repaint, and leaves the old arrangement
 // on the glass until something in the weather happens to change.
-#define LAYOUT_VERSION      3
+#define LAYOUT_VERSION      7
+
+// The water filter is changed on the first Sunday of the month, and the badge
+// stands for three days: Sunday green, Monday yellow, Tuesday red. The colour
+// counts the days down rather than grading severity — red is the last day of
+// the reminder, not a worse problem.
+#define FILTER_FIRST_WEEKDAY  0    // Sunday
+#define FILTER_DAYS           3
 
 // Bins. They go to the curb on Monday night and come back in on Tuesday, once
 // the truck has been. Two reminders, one band. 1 = Monday.
@@ -92,9 +99,14 @@
 // tonight. Only then is one launch fetched in detail for its landing data.
 // Asking for five detailed launches up front is ~71 kB and the read does not
 // survive it: ArduinoJson reports IncompleteInput.
+// v2.3.0, not 2.2.0. The old version still answers, and when it stops the band
+// will vanish with no other symptom — the one failure the RTC cache cannot
+// cover, because it expires with the day. The collection is plural in 2.3.0
+// and the list response carries the mission's orbit, which the drift hint used
+// to need a second request for.
 #define LL2_PATH \
-  "/2.2.0/launch/upcoming/?location__ids=11&limit=5&hide_recent_previous=true"
-#define LL2_DETAIL_FMT  "/2.2.0/launch/%s/?mode=detailed"
+  "/2.3.0/launches/upcoming/?location__ids=11&limit=5&hide_recent_previous=true"
+#define LL2_DETAIL_FMT  "/2.3.0/launches/%s/?mode=detailed"
 
 // A Vandenberg launch is worth showing only when it is dark here and the rocket
 // climbs into sunlight — the twilight effect. Show a launch when ALL hold:

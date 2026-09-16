@@ -62,6 +62,12 @@ struct Model {
   char  launchPrep[16];         // "out by 6:24"
   int   launchChance;           // 0-99, or 0 when nothing is shown
 
+  // The band falls back to a line of the day. The index is enough: the text
+  // lives in quotes.h and never changes between builds.
+  int   quoteIdx;
+  // -1 when the filter is not due, else 0, 1 or 2 for the three days of it.
+  int   filterDay;
+
   // footer
   int   batteryPct;
   int   runwayDays;      // days until recharge; always populated from a prior
@@ -107,6 +113,8 @@ struct Model {
     mix(&launchTonight, sizeof launchTonight);
     str(launchName); str(launchDrift); str(launchBooster); str(launchTime); str(launchPrep);
     mix(&launchChance, sizeof launchChance);
+    mix(&quoteIdx, sizeof quoteIdx);
+    mix(&filterDay, sizeof filterDay);
     // Both are drawn exactly, so both are hashed exactly. Bucketing them let the
     // panel show a percentage that no longer matched the reading behind it.
     // At ~1 %/day this costs about one repaint a day, which is the honest price

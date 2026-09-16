@@ -123,6 +123,78 @@
     <summary>
       <span class="chev"></span>
       <span class="head">
+        <span class="stamp"><time datetime="2026-09-15T18:05-07:00">Tue 15 Sep 2026 · 18:05 PDT</time></span>
+        <span class="title">Everything from the mockup is on the panel<span class="badge green">complete</span></span>
+        <span class="synopsis">The band never goes empty, the filter badge counts its three days down, and Launch Library moved to 2.3.0 — which promptly failed silently, twelve levels deep.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>The band always carries something</h3>
+      <p><code>computeLayout</code> no longer treats the band as optional: its 56 pixels come off the forecast strip every day, and what goes in it is the choice. A launch when one scores above the floor, and the line of the day otherwise — paper and ink with a single stripe of blue down the edge, so the row reads as a band rather than as a gap.</p>
+      <p>The strip can afford it. With the band permanent and an event and bins sharing a row — the tightest the panel gets — there are <strong>117 px</strong> for a column that needs <strong>107</strong>. That was measured before the change went in, not after it looked wrong.</p>
+
+      <h3>The checker and the renderer disagreed by 16 pixels</h3>
+      <p><code>check-quotes.py</code> had been measuring bare text against 756 px. <code>drawQuote</code> wraps the line in quote marks and loses 8 px to the blue stripe, so the real budget is <strong>748 px for the text plus its quotes</strong>. Reconciled, every line still fits — but the split moved:</p>
+      <pre class="data">before   77 quotes · 71 fit at F_BODY · 6 need F_TINY · 0 do not fit
+after    77 quotes · 66 fit at F_BODY · 11 need F_TINY · 0 do not fit</pre>
+      <p>Eleven lines now drop a size rather than six. The test frame deliberately shows the longest of them, so the worst case is one button press away instead of something to be discovered on a random Tuesday in March.</p>
+
+      <h3>The first Sunday, checked against a calendar</h3>
+      <p>The water filter badge stands for three days from the first Sunday of the month. My first attempt at finding that date disagreed with the calendar on <strong>104 days out of 24 months</strong> — it found the wrong Sunday entirely in months that begin late in the week. The version that shipped steps back to the most recent Sunday and wraps that date into the first week:</p>
+      <pre class="data">int back  = (lt.tm_wday - FILTER_FIRST_WEEKDAY + 7) % 7;
+int first = ((lt.tm_mday - back - 1) % 7 + 7) % 7 + 1;
+int since = lt.tm_mday - first;
+
+first-Sunday over 36 months: every day agrees</pre>
+      <p>A calendar rule that is only exercised three days a month is exactly the kind that sits wrong for half a year. Thirty-six months of dates cost nothing to check.</p>
+
+      <h3>2.3.0, and a failure with no symptom</h3>
+      <p>The firmware had been calling Launch Library v2.2.0, which is deprecated. The move to 2.3.0 is more than a path change — the collection is plural — and the first flash after it reported:</p>
+      <pre class="data">ll.thespacedevs.com   parse failed: TooDeep after 51741 bytes
+fetch: weather ok, air ok, launch none, bins bring in</pre>
+      <div class="callout red">
+        <p><strong>2.3.0 nests twelve levels deep; ArduinoJson stops at ten.</strong> A filter does not rescue it — the parser still has to walk the whole document to apply one. On the panel this looked like nothing at all: the band simply was not there, indistinguishable from a quiet evening. Had the log not been open, 2.3.0 would have looked like it worked.</p>
+      </div>
+      <p>The nesting limit is 16 now and the same request parses. One gain came with the move: the 2.3.0 list carries <code>mission.orbit.abbrev</code>, which the trajectory hint used to need the second request for — so the drift survives a throttled detail request, and only the booster falls back. The cost is traffic: 51,741 bytes for the list against 26,623 on 2.2.0, with the heap bottoming at 200,320 free.</p>
+
+      <h3>Test frames, newest first</h3>
+      <p>The white-R button used to walk from the oldest frame to the newest, so whatever was being worked on was five presses away. Reversed:</p>
+      <table class="res">
+        <tr><th>Press</th><th>Frame</th></tr>
+        <tr><td>1</td><td>the quiet day — the band carries the longest quote, the worst case for legibility</td></tr>
+        <tr><td>2</td><td>the water filter badge, green day</td></tr>
+        <tr><td>3</td><td>every band at once, with the red badge beside a full footer</td></tr>
+        <tr><td>4</td><td>wildfire smoke and a flat battery</td></tr>
+        <tr><td>5</td><td>carried-over data</td></tr>
+        <tr><td>6</td><td>a wet week</td></tr>
+      </table>
+
+      <h3>An edit that silently did not happen</h3>
+      <div class="callout orange">
+        <p><strong>The quote screen came up blank the first time.</strong> The script that was to add <code>drawQuote</code> failed an assertion partway and exited before writing the file, so the include, the function and the band dispatch never landed. A later script added the filter badge, printed <code>ok</code>, and I took that as the render work being done. The layout change had applied, so the band was allocated 56 px every day with nothing drawn into it.</p>
+      </div>
+      <p>The file is now checked for the symbols after every edit rather than the script being trusted to have written them. This is the second time this shape of mistake has cost a flash; a script that prints nothing useful is not evidence.</p>
+
+      <h3>Assets</h3>
+      <p class="assets-path">journal-assets/2026-09-15_firmware-complete/</p>
+      <ul class="assets">
+        <li><a href="journal-assets/2026-09-15_firmware-complete/session-toodeep.log">session-toodeep.log</a> <span class="note">— 2.3.0 failing silently</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/first-sunday-check.py">first-sunday-check.py</a> <span class="note">— the rule against 36 months of dates</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/first-sunday-check.txt">first-sunday-check.txt</a> <span class="note">— its verdict</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/check-quotes.txt">check-quotes.txt</a> <span class="note">— all 77 measured against the renderer's real budget</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/render.h">render.h</a> <span class="note">— the quote band and the filter badge</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/fetch.h">fetch.h</a> <span class="note">— 2.3.0, the orbit from the list, the filter date</span></li>
+        <li><a href="journal-assets/2026-09-15_firmware-complete/testdata.h">testdata.h</a> <span class="note">— six frames, newest first</span></li>
+      </ul>
+
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
         <span class="stamp"><time datetime="2026-09-15T16:10-07:00">Tue 15 Sep 2026 · 16:10 PDT</time></span>
         <span class="title">The chance model reaches the panel<span class="badge green">flashed</span></span>
         <span class="synopsis">A launch that scored 10% this morning was on the glass at 89% by evening. Getting there turned up four bugs the panel had been hiding, one of which fired on every flash.</span>
