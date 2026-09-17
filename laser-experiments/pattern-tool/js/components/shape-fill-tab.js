@@ -4198,8 +4198,10 @@ function createEngine(canvas) {
      *                6,073 on its own.
      *   occlusion    each shape loses the part any later shape covers. A shape
      *                covered entirely disappears.
-     *   merge        same-coloured survivors become one outline, so a boundary
-     *                two of them share engraves once instead of twice.
+     *   merge        optional, off by default: same-coloured survivors become
+     *                one outline. Occlusion has already left them non-
+     *                overlapping, so this buys file size rather than engraving
+     *                quality, and costs per-object selection in Studio.
      *
      * None of this changes the picture — everything removed was invisible —
      * and tools/occlude-check.mjs holds that to 0.05% of the ink mask.
@@ -4235,7 +4237,7 @@ function createEngine(canvas) {
         kept = items.map((it, i) => ({ rings: occ[i].rings, rule: 'evenodd', color: it.color }))
                     .filter(it => it.rings.length);
       }
-      if (cfg.mergeSameColour !== false) {
+      if (cfg.mergeSameColour === true) {
         kept = [...mergeByColour(kept).entries()].map(([color, rings]) => ({ rings, rule: 'evenodd', color }));
       }
 
@@ -4346,7 +4348,7 @@ function createEngine(canvas) {
         return { power: e.power, speed: laser.speed, density: laser.lpcm, repeat: 1, processingLightSource: laserSource };
       };
 
-      const emitShapes = (cfg.removeBuried === false && cfg.mergeSameColour === false)
+      const emitShapes = (cfg.removeBuried === false && cfg.mergeSameColour !== true)
         ? rec.shapes
         : await this.flattenRecording(rec.shapes, cfg);
 
@@ -4429,7 +4431,13 @@ const DEFAULTS = {
   // xTool-mode-only. The machine engraves every shape in full, including the
   // parts a later shape covers, which is 22% to 79% of the engraved area.
   removeBuried: true,
-  mergeSameColour: true
+  // Off by default. Removing buried geometry already leaves no two shapes
+  // overlapping — each has everything above it subtracted, so any two of them
+  // intersect in nothing — and xTool Studio already groups every object of a
+  // colour into one layer, which is where an artist adjusts them together.
+  // Merging only welds those objects into a single outline: it makes the file
+  // smaller and costs the ability to select one of them.
+  mergeSameColour: false
 };
 
 // Older saved configs predate the weight and carry only outlineWidthMM.
@@ -5146,15 +5154,17 @@ export const ShapeFillTab = {
     };
     if (!isJigsaw) scroll.appendChild(UI.makeSection('Buried Geometry (xTool)', [
       UI.makeToggleRow('Remove Buried', cfg.removeBuried !== false, buriedToggle('removeBuried')),
-      UI.makeToggleRow('Merge Same Colour', cfg.mergeSameColour !== false, buriedToggle('mergeSameColour'))
+      UI.makeToggleRow('Merge Same Colour', cfg.mergeSameColour === true, buriedToggle('mergeSameColour'))
     ], false, null,
       'Remove Buried subtracts from each shape whatever a later shape covers, and drops the ones covered '
       + 'entirely — between a fifth and four fifths of the engraved area on the styles measured, all of it '
-      + 'burn time spent on something nobody sees. Merge Same Colour then unions the survivors that share a '
-      + 'colour, so a boundary two of them share engraves once rather than twice; the cost is that a merged '
-      + 'colour is one object in xTool Studio rather than many. Neither changes how the design looks. Both are '
-      + 'slow on a dense design — Gears takes about half a minute — and run only when the xTool project is '
-      + 'rebuilt, never on a canvas redraw.'));
+      + 'burn time spent on something nobody sees. It also leaves no two shapes overlapping anywhere, so '
+      + 'nothing engraves twice. Merge Same Colour goes further and welds every object of one colour into a '
+      + 'single outline: the file gets smaller, and that colour becomes one object in xTool Studio instead of '
+      + 'many. It is off by default because Studio already puts every object of a colour in one layer, which '
+      + 'is where they are adjusted together — merging only gives up being able to select one of them. '
+      + 'Neither changes how the design looks. Both run only when the xTool project is rebuilt, never on a '
+      + 'canvas redraw, and both are slow on a dense design — Gears takes about half a minute.'));
 
     scroll.appendChild(UI.makeSection('Detail the Export Drops', [
       UI.makeToggleRow('Engraved Text', cfg.showEngravedText !== false, detailToggle('showEngravedText')),
