@@ -4,25 +4,45 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Smart TENS — Design</title>
-<style>body{background:#0d0d0d;color:#888;font-family:system-ui,sans-serif;padding:48px;}</style>
+<style>body{background:#0d0d0d;color:#888;font-family:system-ui,sans-serif;padding:48px;margin:0}</style>
 </head>
 <body>
 <p id="status">Loading design…</p>
-<script>
-(async () => {
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#1a2838',
+    primaryTextColor: '#e8eef5',
+    primaryBorderColor: '#3d6a8f',
+    lineColor: '#7aa2c4',
+    secondaryColor: '#1c2418',
+    tertiaryColor: '#241a1a',
+    fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+  },
+  flowchart: { curve: 'basis', padding: 12 },
+  securityLevel: 'loose'
+});
+const status = document.getElementById('status');
+try {
   const n = 5;
   const parts = [];
   for (let i = 0; i < n; i++) {
     const r = await fetch('./parts/p' + i + '.txt');
-    if (!r.ok) throw new Error('missing part ' + i);
+    if (!r.ok) throw new Error('missing part ' + i + ' (' + r.status + ')');
     parts.push(await r.text());
   }
-  document.open();
-  document.write(parts.join(''));
-  document.close();
-})().catch((e) => {
-  document.getElementById('status').textContent = 'Failed to load design: ' + e.message;
-});
+  const doc = new DOMParser().parseFromString(parts.join(''), 'text/html');
+  document.head.innerHTML = doc.head.innerHTML;
+  document.body.innerHTML = doc.body.innerHTML;
+  document.querySelectorAll('script[type="module"]').forEach((s) => s.remove());
+  await mermaid.run({ querySelector: '.mermaid' });
+} catch (e) {
+  status.textContent = 'Failed to load design: ' + e.message;
+  console.error(e);
+}
 </script>
 </body>
 </html>
