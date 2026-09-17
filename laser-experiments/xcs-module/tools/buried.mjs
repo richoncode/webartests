@@ -6,13 +6,12 @@
  * spent on something nobody will see, and where the two are on different layers
  * the area is engraved twice at two different powers.
  *
- * The method is a stencil. Paint every shape into an offscreen canvas in paint
- * order with its index encoded as a unique RGB, then read back which indices
- * still own pixels. A shape with none left is completely buried and can be
- * deleted outright; one with fewer than it started with is partly buried and is
- * what boolean subtraction would trim. Painting each shape alone inside its own
- * bounding box gives the area it started with, and the two together give the
- * share of engraving that is redundant.
+ * The method walks from the topmost shape down, keeping a bitmap of what the
+ * shapes above have already covered. Each shape is painted alone inside its own
+ * bounding box: the pixels it covers are the area it started with, and the ones
+ * not already in the bitmap are what stays visible. A shape with none left is
+ * completely buried and can be deleted outright; one with fewer than it started
+ * with is what boolean subtraction would trim.
  *
  * This replaces the earlier bounding-box count, which could only ever be an
  * upper bound: a box sitting inside another box does not mean the geometry is
@@ -73,26 +72,26 @@ const STENCIL = px => `(async () => {
   };
   const idOf = i => 'rgb(' + ((i >> 16) & 255) + ',' + ((i >> 8) & 255) + ',' + (i & 255) + ')';
 
-  // Pass one: paint in order, each shape in its own id colour.
-  g.clearRect(0, 0, N, N);
-  for (let i = 0; i < paths.length; i++) { g.fillStyle = idOf(i + 1); paint(i); }
-  const data = g.getImageData(0, 0, N, N).data;
-  const visible = new Uint32Array(paths.length + 1);
-  let inkPx = 0, blendPx = 0;
-  for (let k = 0; k < data.length; k += 4) {
-    if (data[k + 3] < 200) continue;
-    inkPx++;
-    const id = (data[k] << 16) | (data[k + 1] << 8) | data[k + 2];
-    // An antialiased edge blends two ids into a third that belongs to no shape.
-    // Those pixels are dropped and counted, so the size of the effect is
-    // reported rather than hidden.
-    if (id >= 1 && id <= paths.length) visible[id]++; else blendPx++;
-  }
-
-  // Pass two: each shape alone inside its own bounding box, for the area it
-  // started with. One canvas, cleared only over the box just used.
-  const own = new Uint32Array(paths.length + 1);
-  for (let i = 0; i < paths.length; i++) {
+  // Top-down coverage, one shape at a time.
+  //
+  // The first version of this encoded each shape's index as a unique RGB,
+  // painted them all in order, and counted the pixels each index still owned.
+  // That undercounted burial badly — it reported 6 wholly hidden shapes in
+  // Gears where exact polygon subtraction finds 1,083. Consecutive indices
+  // differ by one in the blue channel, so an antialiased edge between a shape
+  // and the shape covering it blends to a colour that is still a valid index.
+  // Buried shapes were handed phantom edge pixels, and the run's own
+  // blend-detection reported 0.0% because no blend ever looked invalid.
+  //
+  // This walks from the topmost shape down instead, keeping a bitmap of what
+  // the shapes above have already covered. Each shape is painted alone inside
+  // its own bounding box: the pixels it covers are its own area, and the ones
+  // not already in the bitmap are what stays visible. No identity is encoded in
+  // a colour, so there is nothing for antialiasing to corrupt.
+  const covered = new Uint8Array(N * N);
+  const own = new Uint32Array(paths.length);
+  const visible = new Uint32Array(paths.length);
+  for (let i = paths.length - 1; i >= 0; i--) {
     const s = paths[i];
     if (!s) continue;
     const d = displays[i];
@@ -105,15 +104,24 @@ const STENCIL = px => `(async () => {
     g.fillStyle = '#ffffff';
     paint(i);
     const px = g.getImageData(x0, y0, w, h).data;
-    let n = 0;
-    for (let k = 3; k < px.length; k += 4) if (px[k] > 127) n++;
-    own[i + 1] = n;
+    let o = 0, v = 0;
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        if (px[(yy * w + xx) * 4 + 3] <= 127) continue;
+        o++;
+        const idx = (y0 + yy) * N + (x0 + xx);
+        if (!covered[idx]) { v++; covered[idx] = 1; }
+      }
+    }
+    own[i] = o; visible[i] = v;
     g.clearRect(x0, y0, w, h);
   }
+  let inkPx = 0;
+  for (let i = 0; i < covered.length; i++) if (covered[i]) inkPx++;
 
   let fully = 0, partly = 0, ownTotal = 0, visTotal = 0, zeroArea = 0;
-  for (let i = 1; i <= paths.length; i++) {
-    if (!own[i]) { zeroArea++; continue; }
+  for (let i = 0; i < paths.length; i++) {
+    if (!own[i]) { zeroArea++; fully++; continue; }
     ownTotal += own[i]; visTotal += visible[i];
     if (visible[i] === 0) fully++;
     else if (visible[i] < own[i] * 0.98) partly++;
@@ -123,8 +131,7 @@ const STENCIL = px => `(async () => {
     shapes: paths.length, fully, partly, zeroArea,
     ownMM2: +mm2(ownTotal).toFixed(1),
     visMM2: +mm2(visTotal).toFixed(1),
-    inkMM2: +mm2(inkPx).toFixed(1),
-    blendPct: +(100 * blendPx / Math.max(1, inkPx)).toFixed(1)
+    inkMM2: +mm2(inkPx).toFixed(1)
   });
 })()`;
 
@@ -160,7 +167,7 @@ for (const style of styles) {
       String(o.ownMM2).padStart(15) +
       String(o.visMM2).padStart(14) +
       `${wasted.toFixed(0)}%`.padStart(9) +
-      `${o.blendPct}%`.padStart(8));
+      String(o.zeroArea).padStart(10));
     c.close();
   } catch (e) {
     console.log('  ' + style.padEnd(16) + 'FAILED: ' + e.message.slice(0, 60));

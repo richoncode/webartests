@@ -184,3 +184,98 @@ export function ringsBounds(rings) {
 export function dropSlivers(rings, minMM2) {
   return rings.filter(r => Math.abs(Clipper.Area(r)) / (SCALE * SCALE) >= minMM2);
 }
+
+/**
+ * Remove what is buried.
+ *
+ * `shapes` are in paint order — index 0 is painted first and is therefore the
+ * one most likely to be covered. Each entry is { rings, rule, bounds }, bounds
+ * in millimetres as returned by ringsBounds. Every shape is replaced by the
+ * part of it no later shape covers; a shape covered entirely comes back empty.
+ *
+ * Only shapes whose bounding boxes actually overlap are considered, found
+ * through a uniform grid. Without that this is quadratic, and a design of six
+ * thousand shapes is eighteen million pairs.
+ *
+ * What is subtracted is each covering shape's *original* geometry, not its
+ * clipped remainder. The two give the same answer — anything that clipped the
+ * coverer is above this shape too and is subtracted in its own right — and the
+ * original is already to hand.
+ *
+ * @param {Array<{rings:Array, rule?:string, bounds:Object}>} shapes
+ * @param {{minMM2?:number}} [opts] area below which a remainder is discarded
+ * @returns {{rings:Array, empty:boolean, removed:boolean, trimmed:boolean}[]} one
+ *          per input: `empty` had no geometry to begin with, `removed` was
+ *          wholly covered, `trimmed` lost part of itself.
+ */
+export function occludeScene(shapes, opts = {}) {
+  const minMM2 = opts.minMM2 ?? 0;
+  const n = shapes.length;
+
+  // A grid sized to the median shape: much smaller and the big shapes touch
+  // every cell, much larger and the filter stops filtering.
+  const spans = shapes.filter(s => s.bounds).map(s =>
+    Math.max(s.bounds.x1 - s.bounds.x0, s.bounds.y1 - s.bounds.y0));
+  spans.sort((a, b) => a - b);
+  const cell = Math.max(0.5, spans[Math.floor(spans.length / 2)] || 2);
+  const key = (cx, cy) => cx + ',' + cy;
+  const grid = new Map();
+  const cellsOf = (b) => {
+    const out = [];
+    for (let cy = Math.floor(b.y0 / cell); cy <= Math.floor(b.y1 / cell); cy++)
+      for (let cx = Math.floor(b.x0 / cell); cx <= Math.floor(b.x1 / cell); cx++)
+        out.push(key(cx, cy));
+    return out;
+  };
+  for (let i = 0; i < n; i++) {
+    if (!shapes[i].bounds) continue;
+    for (const k of cellsOf(shapes[i].bounds)) {
+      let list = grid.get(k);
+      if (!list) grid.set(k, list = []);
+      list.push(i);
+    }
+  }
+
+  const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = shapes[i];
+    // Empty input is not the same finding as buried output, and counting the
+    // two together once made a degenerate-path count look like an occlusion
+    // result. They are reported apart.
+    if (!s.bounds || !s.rings.length) { out[i] = { rings: [], empty: true, removed: false, trimmed: false }; continue; }
+    const above = new Set();
+    for (const k of cellsOf(s.bounds)) {
+      const list = grid.get(k);
+      if (!list) continue;
+      for (const j of list) if (j > i && overlaps(s.bounds, shapes[j].bounds)) above.add(j);
+    }
+    if (!above.size) { out[i] = { rings: s.rings, empty: false, removed: false, trimmed: false }; continue; }
+    const clip = [];
+    for (const j of above) for (const r of shapes[j].rings) clip.push(r);
+    let rings = subtract(s.rings, [clip], s.rule || 'nonzero');
+    if (minMM2 > 0) rings = dropSlivers(rings, minMM2);
+    out[i] = { rings, empty: false, removed: rings.length === 0, trimmed: rings.length > 0 };
+  }
+  return out;
+}
+
+/**
+ * Merge shapes that share a colour into as few outlines as they make, so a
+ * boundary two of them share is engraved once rather than twice.
+ *
+ * @param {Array<{rings:Array, color:string}>} shapes
+ * @returns {Map<string, Array>} colour to merged rings
+ */
+export function mergeByColour(shapes) {
+  const byColour = new Map();
+  for (const s of shapes) {
+    if (!s.rings || !s.rings.length) continue;
+    let list = byColour.get(s.color);
+    if (!list) byColour.set(s.color, list = []);
+    list.push(s.rings);
+  }
+  const merged = new Map();
+  for (const [colour, sets] of byColour) merged.set(colour, unionAll(sets, 'nonzero'));
+  return merged;
+}
