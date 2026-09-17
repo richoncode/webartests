@@ -648,6 +648,35 @@ function createEngine(canvas) {
   let ctx = realCtx;
   let PathCtor = Path2D;
 
+  // Two kinds of detail the canvas can draw and the XCS recorder cannot carry,
+  // so whenever they are on, the two canvases legitimately disagree. Each is a
+  // toggle rather than a decision: turned off, the canvas stops drawing them
+  // too and both renders agree; turned on, the canvas shows them and the
+  // export omits them. See the "Detail the Export Drops" section of the panel.
+  let showEngravedText = true;
+  let showClippedTexture = true;
+
+  // Coin denominations and years, resistor codes. Baking real TEXT objects
+  // needs charJSONs and fontData per xcsformat.md section 11, which is not
+  // wired to fillText().
+  function fillTextIf(text, x, y) {
+    if (showEngravedText) ctx.fillText(text, x, y);
+  }
+
+  // Button marbling, gourd ribs and warts. There is no documented clip-path
+  // equivalent in the format, so RecordingCtx skips every draw made inside a
+  // clip. Clipping to nothing when the toggle is off makes the canvas agree
+  // with the export without unpicking the texture routines themselves.
+  function clipTo(path) {
+    if (showClippedTexture) {
+      if (path) ctx.clip(path); else ctx.clip();
+      return;
+    }
+    ctx.beginPath();
+    ctx.rect(0, 0, 0, 0);
+    ctx.clip();
+  }
+
   let rawPoints = [];
   let hullPoints = [];
   let isGenerated = false;
@@ -1199,7 +1228,7 @@ function createEngine(canvas) {
       ctx.save();
       ctx.translate(px, py);
       ctx.rotate(a + Math.PI / 2);
-      ctx.fillText(text[i], 0, 0);
+      fillTextIf(text[i], 0, 0);
       ctx.restore();
     }
     ctx.restore();
@@ -1277,7 +1306,7 @@ function createEngine(canvas) {
       ctx.font = `bold ${radius * 0.7}px Georgia, 'Times New Roman', serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, 0, radius * 0.02);
+      fillTextIf(text, 0, radius * 0.02);
     } else if (type === 2) {
       let spikes = 5, outer = radius * 0.45, inner = radius * 0.2;
       ctx.beginPath();
@@ -1321,7 +1350,7 @@ function createEngine(canvas) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = `rgba(0,0,0,${legendAlpha})`;
-      ctx.fillText(String(year), 0, radius * 0.62);
+      fillTextIf(String(year), 0, radius * 0.62);
     }
 
     ctx.beginPath();
@@ -1490,7 +1519,7 @@ function createEngine(canvas) {
     if (hash % 3 === 0) {
       ctx.save();
       buttonOutline(ctx, shapeType, radius * 0.72);
-      ctx.clip();
+      clipTo();
       ctx.globalAlpha = 0.3;
       ctx.strokeStyle = shadeColor(color, hash % 2 === 0 ? 1.4 : 0.55);
       ctx.lineWidth = Math.max(radius * 0.07, 1);
@@ -1711,7 +1740,7 @@ function createEngine(canvas) {
       ctx.fill(bodyPath);
 
       ctx.save();
-      ctx.clip(bodyPath);
+      clipTo(bodyPath);
       let numRibs = 6;
       let ribW = (bodyRx * 2) / numRibs;
       let parity = Math.floor(hash / 2) % 2;
@@ -1753,7 +1782,7 @@ function createEngine(canvas) {
 
       let mix = (n) => { let v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); };
       ctx.save();
-      ctx.clip(bodyPath);
+      clipTo(bodyPath);
       let cols = 7, rows = 9;
       let gx0 = -size * 0.75, gx1 = size * 0.65, gy0 = -size * 0.8, gy1 = size * 1.0;
       let cellW = (gx1 - gx0) / cols, cellH = (gy1 - gy0) / rows;
@@ -2233,7 +2262,7 @@ function createEngine(canvas) {
       ctx.font = `${pipeThickness * 0.4}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(hash % 2 === 0 ? "K5%" : "6.2 K5%", 0, 0);
+      fillTextIf(hash % 2 === 0 ? "K5%" : "6.2 K5%", 0, 0);
 
     } else if (t < 67) {
       ctx.fillStyle = '#d2b48c';
@@ -2282,7 +2311,7 @@ function createEngine(canvas) {
       ctx.fillStyle = '#333';
       ctx.font = `bold ${pipeThickness * 0.35 * scale}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText("104K", 0, 0);
+      fillTextIf("104K", 0, 0);
 
     } else if (t === 1) {
       let r = pipeThickness * 0.9 * scale;
@@ -2296,7 +2325,7 @@ function createEngine(canvas) {
       ctx.fillStyle = '#e0e0e0';
       ctx.font = `bold ${r * 0.7}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('-', 0, -r * 0.05);
+      fillTextIf('-', 0, -r * 0.05);
 
       ctx.strokeStyle = '#c0c0c0';
       ctx.lineWidth = pipeThickness * 0.12;
@@ -2875,6 +2904,8 @@ function createEngine(canvas) {
 
   function generatePipes(cfg) {
     reseedRandom();
+    showEngravedText = cfg.showEngravedText !== false;
+    showClippedTexture = cfg.showClippedTexture !== false;
     let minX = Math.min(...hullPoints.map(p => p.x));
     let maxX = Math.max(...hullPoints.map(p => p.x));
     let minY = Math.min(...hullPoints.map(p => p.y));
@@ -3727,7 +3758,7 @@ function createEngine(canvas) {
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 let text = (cell.r % 2 === 0) ? "K5%" : "6.2 K5%";
-                ctx.fillText(text, 0, 0);
+                fillTextIf(text, 0, 0);
 
               } else if (compHash < 35) {
                 ctx.fillStyle = '#d2b48c';
@@ -3767,7 +3798,7 @@ function createEngine(canvas) {
                 ctx.fillStyle = '#333';
                 ctx.font = `bold ${pipeThickness * 0.35}px sans-serif`;
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText("104K", 0, 0);
+                fillTextIf("104K", 0, 0);
 
               } else {
                 let l = resLen * 0.6, w = resWidth * 0.55;
@@ -3988,7 +4019,7 @@ function createEngine(canvas) {
               ctx.font = `bold ${pipeThickness * 0.5}px sans-serif`;
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
-              ctx.fillText("103", 0, 0);
+              fillTextIf("103", 0, 0);
             } else {
               let r = g.radius * 0.75;
               ctx.rotate(typeHash);
@@ -4310,7 +4341,11 @@ const DEFAULTS = {
   // xTool-mode-only: scales every exported outline relative to the width the
   // style drew with. 1 = as drawn (parity with the HTML canvas), 0 = no
   // outlines at all. Has no effect on the HTML canvas render.
-  outlineWeight: 1
+  outlineWeight: 1,
+  // Detail the recorder cannot carry. On, the canvas draws it and the export
+  // omits it; off, neither draws it and the two canvases agree.
+  showEngravedText: true,
+  showClippedTexture: true
 };
 
 // Older saved configs predate the weight and carry only outlineWidthMM.
@@ -5002,6 +5037,26 @@ export const ShapeFillTab = {
     if (!isJigsaw) scroll.appendChild(UI.makeSection('Outline Weight (xTool)', [
       UI.makeRow('Weight', outlineWeightCtrl, '1x engraves each outline at the width the pattern draws it, matching the HTML canvas. Raise it to thicken every line together, or set 0x for fills with no outlines.')
     ]));
+
+    // ── Detail the export drops ──
+    // Two things the canvas can draw that RecordingCtx cannot carry. Leaving
+    // them on keeps the canvas as it has always looked and leaves the export
+    // short of it; turning them off makes both canvases agree. Neither is a
+    // decision the tool should make on its own, so both are toggles.
+    const detailToggle = (key) => v => {
+      cfg[key] = v;
+      Persistence.save();
+      engine.generate(cfg);
+      syncXCSProjectDebounced(tabId);
+    };
+    scroll.appendChild(UI.makeSection('Detail the Export Drops', [
+      UI.makeToggleRow('Engraved Text', cfg.showEngravedText !== false, detailToggle('showEngravedText')),
+      UI.makeToggleRow('Clipped Texture', cfg.showClippedTexture !== false, detailToggle('showClippedTexture'))
+    ], false, null,
+      'The XCS export carries neither, so while they are ON the two canvases genuinely differ. '
+      + 'Engraved Text is the coin denominations and years and the circuit resistor codes. '
+      + 'Clipped Texture is the button marbling and the gourd ribs and warts on Autumn Leaves. '
+      + 'Turn one OFF and the HTML canvas stops drawing it too, so both renders agree on its absence.'));
 
     // ── Render target toggle (bottom of panel) ──
     // Switches which already-built view is shown; never triggers a
