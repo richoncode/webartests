@@ -1,42 +1,22 @@
- two exclusive electrical paths · never both closed</text>
+ MCU (hardware interlock: EN ∧ SEL=STIM ∧ dead-man)</text>
+
+      <text x="20" y="36" fill="#888" font-size="12" font-family="sans-serif">Shared pads: one physical pair · two exclusive electrical paths · never both closed</text>
       <text x="20" y="54" fill="#666" font-size="11" font-family="sans-serif">Use photoMOS / low-RON analog switches rated above stim compliance voltage, or a discrete T-switch with make-before-break forbidden</text>
     </svg>
     <p class="schematic-caption">Fig. 3 — Shared-electrode isolation. Pads always see protection; mux connects <em>either</em> the clamped AFE <em>or</em> the isolated stimulator, with an intentional open/blank gap between.</p>
   </div>
 
   <h3>Switch sequence (firmware + hardware)</h3>
-  <div class="mermaid">
-sequenceDiagram
-  participant MCU
-  participant MUX as T-switch
-  participant AFE as EMG AFE
-  participant STIM as Isolated stim
-  participant PAD as Shared pads
-
-  Note over MCU,PAD: MONITOR default
-  MCU->>MUX: SEL SENSE
-  MUX->>AFE: connect pads to AFE
-  MUX--xSTIM: stim path open
-  AFE->>MCU: EMG samples
-
-  Note over MCU,PAD: ARM to TENS transition
-  MCU->>AFE: blank ADC
-  MCU->>STIM: EN off
-  MCU->>MUX: SEL OPEN break-before-make
-  Note over MUX: AFE inputs quieted to REF
-  Note over MUX: both throws open 50 to 200 us
-  MCU->>MUX: SEL STIM
-  MUX->>STIM: connect pads to stim
-  MUX--xAFE: sense path open plus clamps
-  MCU->>STIM: EN on and dead-man
-  STIM->>PAD: biphasic CC pulses
-  Note over AFE: clamps only no active path
-
-  Note over MCU,PAD: Return to MONITOR
-  MCU->>STIM: EN off wait discharge
-  MCU->>MUX: SEL OPEN
-  MCU->>MUX: SEL SENSE
-  MCU->>AFE: unblank after settling
+  <div class="schematic-frame" id="switch-seq">
+    <ol class="seq-steps">
+      <li><strong>MONITOR (default)</strong> — SEL = SENSE; pads connected to AFE; stim path open; EMG samples flow.</li>
+      <li><strong>Blank</strong> — MCU blanks ADC / holds last sample; stim EN stays off.</li>
+      <li><strong>OPEN (break-before-make)</strong> — both throws open for 50–200&nbsp;µs; AFE inputs quieted to REF.</li>
+      <li><strong>STIM</strong> — SEL = STIM; pads to isolated H-bridge; sense path open behind clamps; EN on only with dead-man.</li>
+      <li><strong>Pulses</strong> — biphasic constant-current on shared pads; AFE sees clamps only.</li>
+      <li><strong>Return</strong> — EN off, wait discharge; SEL = OPEN; SEL = SENSE; unblank after settling / artifact window.</li>
+    </ol>
+    <p class="schematic-caption">Fig. 4 — Shared-pad switch sequence (same states as the former Mermaid diagram; HTML so it cannot fail to render).</p>
   </div>
 
   <h3>Hard rules for shared pads</h3>
@@ -165,7 +145,4 @@ stateDiagram-v2
 
   <h2 id="open">Open questions</h2>
   <ul>
-    <li>Cramp detection: unsupervised outlier vs supervised TinyML after labeled nights/workouts?</li>
-    <li>Shared pads (Fig. 3 mux) vs hybrid (shared on primary cramp muscle, dedicated elsewhere)?</li>
-    <li>On-leg wearable vs bedside “cramp kit” you grab when it hits?</li>
-    <li>
+    <li>Cramp detection: unsupervised outlier vs supervised TinyML after labeled nights/
