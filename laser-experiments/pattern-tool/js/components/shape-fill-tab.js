@@ -4,6 +4,10 @@ import { UI } from '../utils.js';
 import { XCSViewer } from '../viewer.js';
 import { PalMgr } from '../palettes.js';
 import { XCSExporter } from '../../../xcs-module/js/xcs-exporter.js';
+import {
+  SCALE as GEO_SCALE, dPathToRings, ringsToDPath, ringsBounds,
+  unionSelf, occludeScene, mergeByColour
+} from '../../../xcs-module/js/geometry.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // Shape Fill — ported unchanged from laser-experiments/laser-fill-generator
@@ -4182,6 +4186,78 @@ function createEngine(canvas) {
     // layout/colors as the canvas render — nothing is regenerated, only
     // recorded differently. See the RecordingCtx block above this factory
     // for what is and isn't achievable with real vector shapes.
+    /**
+     * Removes buried geometry from a recording, before it becomes a project.
+     *
+     * The recorder emits one shape per fill() and stroke(), and the machine
+     * engraves all of them — including whatever a later shape covers. Measured,
+     * that is 22% to 79% of the engraved area. Three passes fix it:
+     *
+     *   self-union   a capsule stroke is 30 to 60 overlapping quads; this makes
+     *                it one outline, and shrinks Gears from 86,669 subpaths to
+     *                6,073 on its own.
+     *   occlusion    each shape loses the part any later shape covers. A shape
+     *                covered entirely disappears.
+     *   merge        same-coloured survivors become one outline, so a boundary
+     *                two of them share engraves once instead of twice.
+     *
+     * None of this changes the picture — everything removed was invisible —
+     * and tools/occlude-check.mjs holds that to 0.05% of the ink mask.
+     *
+     * It is slow: Gears takes about 27 seconds, World Coins about 6. The pass
+     * yields every few shapes so the tool stays usable while it runs, and it
+     * only ever runs on the debounced project build, never on a canvas redraw.
+     */
+    async flattenRecording(shapes, cfg) {
+      const yieldEvery = 200;
+      const breathe = async (i) => {
+        if (i % yieldEvery === 0) await new Promise(r => setTimeout(r, 0));
+      };
+
+      const items = [];
+      for (let i = 0; i < shapes.length; i++) {
+        const s = shapes[i];
+        let rings;
+        try { rings = dPathToRings(s.dPath); } catch (e) { rings = null; }
+        if (!rings || !rings.length) continue;
+        // dPath is authored against the shape's own top-left; the scene needs
+        // every shape in one space before anything can be subtracted from it.
+        const dx = Math.round(s.minX * GEO_SCALE), dy = Math.round(s.minY * GEO_SCALE);
+        for (const r of rings) for (const p of r) { p.X += dx; p.Y += dy; }
+        items.push({ rings: unionSelf(rings, 'nonzero'), rule: 'evenodd', color: s.color });
+        await breathe(i);
+      }
+      for (const it of items) it.bounds = ringsBounds(it.rings);
+
+      let kept = items;
+      if (cfg.removeBuried !== false) {
+        const occ = occludeScene(items);
+        kept = items.map((it, i) => ({ rings: occ[i].rings, rule: 'evenodd', color: it.color }))
+                    .filter(it => it.rings.length);
+      }
+      if (cfg.mergeSameColour !== false) {
+        kept = [...mergeByColour(kept).entries()].map(([color, rings]) => ({ rings, rule: 'evenodd', color }));
+      }
+
+      const out = [];
+      for (let i = 0; i < kept.length; i++) {
+        const b = ringsBounds(kept[i].rings);
+        if (!b) continue;
+        const ox = Math.round(b.x0 * GEO_SCALE), oy = Math.round(b.y0 * GEO_SCALE);
+        const local = kept[i].rings.map(r => r.map(p => ({ X: p.X - ox, Y: p.Y - oy })));
+        out.push({
+          dPath: ringsToDPath(local), color: kept[i].color,
+          minX: b.x0, minY: b.y0, maxX: b.x1, maxY: b.y1,
+          // Clipper nests an island inside a hole, and only evenodd reads that
+          // correctly whatever the winding. Confirmed against Studio by the
+          // buried-geometry render test.
+          fillRule: 'evenodd'
+        });
+        await breathe(i);
+      }
+      return out;
+    },
+
     async buildXCSProject(cfg) {
       const project = XCSExporter.createProject();
       if (hullPoints.length < 3) return project;
@@ -4270,17 +4346,21 @@ function createEngine(canvas) {
         return { power: e.power, speed: laser.speed, density: laser.lpcm, repeat: 1, processingLightSource: laserSource };
       };
 
-      await Promise.all(rec.shapes.map(s => {
+      const emitShapes = (cfg.removeBuried === false && cfg.mergeSameColour === false)
+        ? rec.shapes
+        : await this.flattenRecording(rec.shapes, cfg);
+
+      await Promise.all(emitShapes.map(s => {
         const w = Math.max(0.02, s.maxX - s.minX), h = Math.max(0.02, s.maxY - s.minY);
         return XCSExporter.addPath(project, {
           // Top-left, matching the origin the dPath is authored against.
           x: s.minX + centerOffsetX, y: s.minY + centerOffsetY, width: w, height: h,
           dPath: s.dPath, layerColor: s.color, laserSource, isFill: true,
           params: paramsForColor(s.color),
-          extraDisplayData: { hideLabels: true }
+          extraDisplayData: { hideLabels: true, fillRule: s.fillRule || 'nonzero' }
         });
       }));
-      [...new Set(rec.shapes.map(s => s.color))].forEach((c, i) => project.setLayerName(c, `Layer ${i + 1}`));
+      [...new Set(emitShapes.map(s => s.color))].forEach((c, i) => project.setLayerName(c, `Layer ${i + 1}`));
       return project;
     },
 
@@ -4345,7 +4425,11 @@ const DEFAULTS = {
   // Detail the recorder cannot carry. On, the canvas draws it and the export
   // omits it; off, neither draws it and the two canvases agree.
   showEngravedText: true,
-  showClippedTexture: true
+  showClippedTexture: true,
+  // xTool-mode-only. The machine engraves every shape in full, including the
+  // parts a later shape covers, which is 22% to 79% of the engraved area.
+  removeBuried: true,
+  mergeSameColour: true
 };
 
 // Older saved configs predate the weight and carry only outlineWidthMM.
@@ -5049,6 +5133,29 @@ export const ShapeFillTab = {
       engine.generate(cfg);
       syncXCSProjectDebounced(tabId);
     };
+    // ── Buried geometry ──
+    // The machine engraves every shape in full, including the parts a later
+    // shape covers. Both passes are vector work on the exported geometry and
+    // neither changes the picture, so they are on by default; they are toggles
+    // because they are slow enough to be worth turning off while iterating,
+    // and because merging gives up per-shape selection in Studio.
+    const buriedToggle = (key) => v => {
+      cfg[key] = v;
+      Persistence.save();
+      syncXCSProjectDebounced(tabId);
+    };
+    if (!isJigsaw) scroll.appendChild(UI.makeSection('Buried Geometry (xTool)', [
+      UI.makeToggleRow('Remove Buried', cfg.removeBuried !== false, buriedToggle('removeBuried')),
+      UI.makeToggleRow('Merge Same Colour', cfg.mergeSameColour !== false, buriedToggle('mergeSameColour'))
+    ], false, null,
+      'Remove Buried subtracts from each shape whatever a later shape covers, and drops the ones covered '
+      + 'entirely — between a fifth and four fifths of the engraved area on the styles measured, all of it '
+      + 'burn time spent on something nobody sees. Merge Same Colour then unions the survivors that share a '
+      + 'colour, so a boundary two of them share engraves once rather than twice; the cost is that a merged '
+      + 'colour is one object in xTool Studio rather than many. Neither changes how the design looks. Both are '
+      + 'slow on a dense design — Gears takes about half a minute — and run only when the xTool project is '
+      + 'rebuilt, never on a canvas redraw.'));
+
     scroll.appendChild(UI.makeSection('Detail the Export Drops', [
       UI.makeToggleRow('Engraved Text', cfg.showEngravedText !== false, detailToggle('showEngravedText')),
       UI.makeToggleRow('Clipped Texture', cfg.showClippedTexture !== false, detailToggle('showClippedTexture'))

@@ -58,8 +58,17 @@ export async function compare(style, weight, outDir) {
     const hBuf = Buffer.from(html.split(',')[1], 'base64');
 
     await c.evaluate('[...document.querySelectorAll("button")].find(b=>/xTool/.test(b.textContent)).click()');
-    await waitFor(c, '(()=>{const v=document.querySelector(".xcs-viewer:not(.sf-html-viewer)");const s=v&&v.querySelector("svg");return !!(s && s.querySelectorAll("path,rect,circle,polygon").length>20)})()', { timeoutMs: 400000, everyMs: 2000 });
-    await new Promise(r => setTimeout(r, 2000));
+    // Merging same-coloured shapes can legitimately reduce a design to a
+    // handful of objects — jigsaw becomes three — so readiness cannot be "more
+    // than twenty shapes". Wait for the count to stop changing instead.
+    await waitFor(c, '(()=>{const v=document.querySelector(".xcs-viewer:not(.sf-html-viewer)");const s=v&&v.querySelector("svg");return !!(s && s.querySelectorAll("path,rect,circle,polygon").length>0)})()', { timeoutMs: 600000, everyMs: 2000 });
+    let stable = -1, same = 0;
+    while (same < 3) {
+      await new Promise(r => setTimeout(r, 1500));
+      const n = await c.evaluate('document.querySelectorAll(".xcs-viewer:not(.sf-html-viewer) svg path,.xcs-viewer:not(.sf-html-viewer) svg rect,.xcs-viewer:not(.sf-html-viewer) svg circle,.xcs-viewer:not(.sf-html-viewer) svg polygon").length');
+      same = (n === stable) ? same + 1 : 0;
+      stable = n;
+    }
     const shapes = await c.evaluate('document.querySelectorAll(".xcs-viewer:not(.sf-html-viewer) svg path,.xcs-viewer:not(.sf-html-viewer) svg rect,.xcs-viewer:not(.sf-html-viewer) svg circle,.xcs-viewer:not(.sf-html-viewer) svg polygon").length');
     const xcs = await c.evaluate('(async()=>{const v=document.querySelector(".xcs-viewer:not(.sf-html-viewer)");const s=v.querySelector("svg");const cl=s.cloneNode(true);cl.setAttribute("width",1200);cl.setAttribute("height",1200);const i=new Image();i.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(new XMLSerializer().serializeToString(cl));await i.decode();const cv=document.createElement("canvas");cv.width=1200;cv.height=1200;cv.getContext("2d").drawImage(i,0,0,1200,1200);return cv.toDataURL("image/png");})()');
     const xBuf = Buffer.from(xcs.split(',')[1], 'base64');
