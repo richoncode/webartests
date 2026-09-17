@@ -1,0 +1,126 @@
+DS1299"]
+    FILT["Anti-alias\n20–500 Hz"]
+  end
+
+  subgraph Digital["Controller"]
+    MCU["MCU / nRF52840\nor ESP32-S3"]
+    DET["Feature + outlier\ndetector"]
+    FSM["Mode FSM\nMonitor | Armed | TENS"]
+  end
+
+  subgraph Stim["Stimulator"]
+    ISO["Isolated boost\n~30–60 V limited"]
+    CC["H-bridge /\nconstant-current"]
+    SAFE["Current sense +\ndead-man + fuse"]
+  end
+
+  subgraph App["Host"]
+    BLE["BLE / USB"]
+    UI["Phone / laptop\nUI + logs"]
+  end
+
+  E1 --> PROT --> MUX
+  MUX -->|SENSE| AFE --> FILT --> MCU
+  MUX -->|STIM| CC
+  E2 -.->|optional| CC
+  REF --> AFE
+  MCU --> DET --> FSM
+  FSM -->|mux + enable| ISO --> CC
+  FSM -->|SEL| MUX
+  CC --> SAFE
+  MCU <--> BLE <--> UI
+  </div>
+
+  <h2 id="schematics">Schematics</h2>
+
+  <h3>Block schematic — one EMG channel (instrumentation path)</h3>
+  <div class="schematic-frame">
+    <svg viewBox="0 0 860 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="EMG channel schematic">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#7aa2c4"/>
+        </marker>
+      </defs>
+      <!-- electrodes -->
+      <rect x="20" y="70" width="70" height="40" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="55" y="94" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">IN+</text>
+      <rect x="20" y="140" width="70" height="40" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="55" y="164" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">IN−</text>
+      <rect x="20" y="210" width="70" height="36" rx="6" fill="#241a1a" stroke="#6a3d3d"/>
+      <text x="55" y="232" text-anchor="middle" fill="#e0b0b0" font-size="11" font-family="sans-serif">REF</text>
+
+      <!-- protection -->
+      <rect x="140" y="85" width="110" height="100" rx="8" fill="#141414" stroke="#444"/>
+      <text x="195" y="115" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">Protection</text>
+      <text x="195" y="135" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">1kΩ series</text>
+      <text x="195" y="152" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">TVS / diodes</text>
+      <text x="195" y="169" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">RC bleed</text>
+
+      <!-- IA -->
+      <rect x="300" y="85" width="130" height="100" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="365" y="120" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">Inst. amp</text>
+      <text x="365" y="140" text-anchor="middle" fill="#7aa2c4" font-size="11" font-family="sans-serif">AD8232 / INA</text>
+      <text x="365" y="160" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">G ≈ 100</text>
+
+      <!-- filter -->
+      <rect x="480" y="85" width="120" height="100" rx="8" fill="#141414" stroke="#444"/>
+      <text x="540" y="120" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">Band-pass</text>
+      <text x="540" y="140" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">~20–450 Hz</text>
+      <text x="540" y="160" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">notch 60 Hz</text>
+
+      <!-- ADC -->
+      <rect x="650" y="95" width="100" height="80" rx="8" fill="#1c2418" stroke="#3d6a4a"/>
+      <text x="700" y="130" text-anchor="middle" fill="#b8d8c0" font-size="12" font-family="sans-serif">ADC</text>
+      <text x="700" y="150" text-anchor="middle" fill="#7a9a80" font-size="11" font-family="sans-serif">1–2 kS/s</text>
+
+      <!-- MCU -->
+      <rect x="790" y="105" width="50" height="60" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="815" y="140" text-anchor="middle" fill="#d0b8e8" font-size="11" font-family="sans-serif">MCU</text>
+
+      <!-- wires -->
+      <line x1="90" y1="90" x2="140" y2="110" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="90" y1="160" x2="140" y2="150" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="250" y1="135" x2="300" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="430" y1="135" x2="480" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="600" y1="135" x2="650" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="750" y1="135" x2="790" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="90" y1="228" x2="365" y2="200" stroke="#6a3d3d" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="220" y="50" fill="#666" font-size="12" font-family="sans-serif">Per-channel EMG sense path (repeat × N)</text>
+    </svg>
+    <p class="schematic-caption">Fig. 1 — Single differential EMG channel. Prefer integrated biopotential AFE (AD8232) early; migrate to ADS1299 for 8 synced channels.</p>
+  </div>
+
+  <h3>Block schematic — isolated TENS driver (one stim pair)</h3>
+  <div class="schematic-frame">
+    <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TENS driver schematic">
+      <rect x="20" y="110" width="90" height="70" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="65" y="140" text-anchor="middle" fill="#d0b8e8" font-size="12" font-family="sans-serif">MCU PWM</text>
+      <text x="65" y="158" text-anchor="middle" fill="#8870a0" font-size="10" font-family="sans-serif">+ enable</text>
+
+      <rect x="150" y="100" width="120" height="90" rx="8" fill="#1c1010" stroke="#8f3d3d"/>
+      <text x="210" y="130" text-anchor="middle" fill="#e0b0b0" font-size="12" font-family="sans-serif">Dead-man</text>
+      <text x="210" y="148" text-anchor="middle" fill="#a07070" font-size="10" font-family="sans-serif">AND gate /</text>
+      <text x="210" y="164" text-anchor="middle" fill="#a07070" font-size="10" font-family="sans-serif">hold-to-run</text>
+
+      <rect x="310" y="90" width="140" height="110" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="380" y="125" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">Isolated boost</text>
+      <text x="380" y="145" text-anchor="middle" fill="#7aa2c4" font-size="10" font-family="sans-serif">flyback / module</text>
+      <text x="380" y="163" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">30–60 V capped</text>
+      <text x="380" y="181" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">opto / digi-iso</text>
+
+      <rect x="490" y="90" width="150" height="110" rx="8" fill="#141414" stroke="#444"/>
+      <text x="565" y="125" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">H-bridge + CC</text>
+      <text x="565" y="145" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">biphasic pulses</text>
+      <text x="565" y="163" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">Isense shunt</text>
+      <text x="565" y="181" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">Imax hard clip</text>
+
+      <rect x="680" y="70" width="70" height="50" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="715" y="100" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">STIM+</text>
+      <rect x="680" y="170" width="70" height="50" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="715" y="200" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">STIM−</text>
+
+      <rect x="780" y="110" width="60" height="70" rx="8" fill="#1c2418" stroke="#3d6a4a"/>
+      <text x="810" y="140" text-anchor="middle" fill="#b8d8c0" font-size="11" font-family="sans-serif">Skin</text>
+      <text x="810" y="158" text-anchor="middle" fill="#7a9a80" font-size="10" font-family="sans-serif">Zload</text>
+
+      <line x1="110" y1="145" x2="150" y2="145" stroke="#7aa2c4" stroke-w
