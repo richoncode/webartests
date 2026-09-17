@@ -8,6 +8,7 @@ import {
   SCALE as GEO_SCALE, dPathToRings, ringsToDPath, ringsBounds,
   unionSelf, occludeScene, mergeByColour
 } from '../../../xcs-module/js/geometry.js';
+import * as FlattenCache from '../../../xcs-module/js/flatten-cache.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // Shape Fill — ported unchanged from laser-experiments/laser-fill-generator
@@ -4266,6 +4267,19 @@ function createEngine(canvas) {
      * only ever runs on the debounced project build, never on a canvas redraw.
      */
     async flattenRecording(shapes, cfg) {
+      // The pass is the whole cost of a build — 87 seconds against 0.4 with it
+      // turned off, on Gears — and loading an unchanged design was paying it
+      // again every time. The key is the recording itself, so a hit means the
+      // input that produced the stored output was exactly this one.
+      const key = FlattenCache.fingerprint([
+        cfg.removeBuried === false ? 'raw' : 'occlude',
+        cfg.mergeSameColour === true ? 'merge' : 'keep',
+        shapes.length,
+        ...shapes.map(s => s.color + '|' + s.minX.toFixed(3) + ',' + s.minY.toFixed(3) + '|' + s.dPath)
+      ]);
+      const hit = await FlattenCache.read(key);
+      if (hit) return hit;
+
       // Hand the thread back on elapsed time rather than on a shape count: the
       // shapes vary enormously in cost, so a count either yields far too often
       // on cheap ones or leaves visible stalls on expensive ones.
@@ -4318,6 +4332,7 @@ function createEngine(canvas) {
         });
         await breathe();
       }
+      FlattenCache.write(key, out);
       return out;
     },
 
