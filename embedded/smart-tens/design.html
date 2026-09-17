@@ -134,6 +134,7 @@
     <a href="#modes">Modes</a> ·
     <a href="#architecture">Architecture</a> ·
     <a href="#schematics">Schematics</a> ·
+    <a href="#shared-iso">Shared-electrode isolation</a> ·
     <a href="#software">Software</a> ·
     <a href="#plan">Plan</a> ·
     <a href="#bom">BOM</a> ·
@@ -161,22 +162,23 @@
   </div>
   <div class="callout warn">
     <strong>Sense / stim isolation rule:</strong> never drive TENS into an active EMG front-end input.
-    Phase 1 uses <em>separate</em> stim electrode pairs. Phase 2 may share sites via analog mux with
-    make-before-break protection and input clamps.
+    Same skin electrodes <em>can</em> be shared (see <a href="#shared-iso">Shared-electrode isolation</a>) only through a
+    break-before-make analog mux / T-switch that parks the AFE safely before the stim H-bridge engages, with
+    clamps, series R, and firmware blanking. Phase 1 may still use dedicated stim pads while proving the mux on the bench.
   </div>
 
   <h2 id="architecture">System architecture</h2>
   <div class="mermaid">
 flowchart LR
   subgraph Body["Leg electrode array"]
-    E1["Ch1–Ch4 EMG pairs"]
-    E2["Stim pairs A/B"]
+    E1["Shared electrode pairs\n(sense + stim)"]
+    E2["Optional dedicated\nstim pads"]
     REF["Ref / bias"]
   end
 
   subgraph Analog["Analog front-end"]
     PROT["Input protection\nTVS + series R"]
-    MUX["Sense / stim mux\n(optional Ph2)"]
+    MUX["Sense/stim T-switch\nbreak-before-make"]
     AFE["AFE: AD8232 ×N\nor ADS1299"]
     FILT["Anti-alias\n20–500 Hz"]
   end
@@ -198,11 +200,14 @@ flowchart LR
     UI["Phone / laptop\nUI + logs"]
   end
 
-  E1 --> PROT --> MUX --> AFE --> FILT --> MCU
+  E1 --> PROT --> MUX
+  MUX -->|SENSE| AFE --> FILT --> MCU
+  MUX -->|STIM| CC
+  E2 -.->|optional| CC
   REF --> AFE
-  E2 --> CC
   MCU --> DET --> FSM
-  FSM -->|enable| ISO --> CC
+  FSM -->|mux + enable| ISO --> CC
+  FSM -->|SEL| MUX
   CC --> SAFE
   MCU <--> BLE <--> UI
   </div>
@@ -313,7 +318,144 @@ flowchart LR
     <p class="schematic-caption">Fig. 2 — Isolated constant-current biphasic stimulator. Prefer a certified TENS module early; custom HV only after Current Sense + fuse + dead-man are proven.</p>
   </div>
 
+  <h2 id="shared-iso">Shared-electrode isolation (sense + stim on same pads)</h2>
+  <p>
+    Goal: one differential pair on the muscle does <strong>both</strong> EMG monitoring and TENS,
+    without frying the instrumentation amp or creating a sneak path from the HV rail into the ADC.
+    The skin nodes are common; the electronics are mutually exclusive through a
+    <strong>break-before-make</strong> analog path select (T-switch / SPDT mux per electrode).
+  </p>
+
+  <h3>Topology — one shared pair</h3>
+  <div class="schematic-frame">
+    <svg viewBox="0 0 920 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shared electrode sense stim isolation schematic">
+      <!-- Skin electrodes -->
+      <rect x="20" y="150" width="88" height="44" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="64" y="176" text-anchor="middle" fill="#c8d8e8" font-size="13" font-family="sans-serif">PAD +</text>
+      <rect x="20" y="230" width="88" height="44" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="64" y="256" text-anchor="middle" fill="#c8d8e8" font-size="13" font-family="sans-serif">PAD −</text>
+
+      <!-- Series R + TVS -->
+      <rect x="140" y="140" width="100" height="150" rx="8" fill="#141414" stroke="#444"/>
+      <text x="190" y="175" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">Protection</text>
+      <text x="190" y="198" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">Rs 470Ω–2k</text>
+      <text x="190" y="218" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">bidir TVS</text>
+      <text x="190" y="238" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">bleed RC</text>
+      <text x="190" y="262" text-anchor="middle" fill="#666" font-size="10" font-family="sans-serif">both legs</text>
+
+      <!-- T-switch / mux -->
+      <rect x="280" y="110" width="160" height="210" rx="10" fill="#1c1509" stroke="#f0a040" stroke-width="1.5"/>
+      <text x="360" y="138" text-anchor="middle" fill="#f0c080" font-size="13" font-family="sans-serif">T-switch / mux</text>
+      <text x="360" y="158" text-anchor="middle" fill="#b8a080" font-size="11" font-family="sans-serif">break-before-make</text>
+      <text x="360" y="188" text-anchor="middle" fill="#ccc" font-size="11" font-family="sans-serif">SEL = SENSE</text>
+      <text x="360" y="208" text-anchor="middle" fill="#7dba88" font-size="11" font-family="sans-serif">PAD ↔ AFE only</text>
+      <text x="360" y="238" text-anchor="middle" fill="#ccc" font-size="11" font-family="sans-serif">SEL = STIM</text>
+      <text x="360" y="258" text-anchor="middle" fill="#e07070" font-size="11" font-family="sans-serif">PAD ↔ H-bridge only</text>
+      <text x="360" y="288" text-anchor="middle" fill="#888" font-size="10" font-family="sans-serif">mid: both open +</text>
+      <text x="360" y="302" text-anchor="middle" fill="#888" font-size="10" font-family="sans-serif">AFE inputs shorted</text>
+
+      <!-- AFE branch -->
+      <rect x="490" y="80" width="130" height="100" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="555" y="112" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">AFE clamps</text>
+      <text x="555" y="132" text-anchor="middle" fill="#7aa2c4" font-size="10" font-family="sans-serif">diodes to rails</text>
+      <text x="555" y="150" text-anchor="middle" fill="#7aa2c4" font-size="10" font-family="sans-serif">+ series R</text>
+      <text x="555" y="168" text-anchor="middle" fill="#666" font-size="10" font-family="sans-serif">never see HV</text>
+
+      <rect x="660" y="80" width="110" height="100" rx="8" fill="#1c2418" stroke="#3d6a4a"/>
+      <text x="715" y="120" text-anchor="middle" fill="#b8d8c0" font-size="12" font-family="sans-serif">Inst amp</text>
+      <text x="715" y="140" text-anchor="middle" fill="#7a9a80" font-size="10" font-family="sans-serif">AD8232 / ADS</text>
+      <text x="715" y="158" text-anchor="middle" fill="#666" font-size="10" font-family="sans-serif">blank during stim</text>
+
+      <!-- Stim branch -->
+      <rect x="490" y="230" width="130" height="100" rx="8" fill="#1c1010" stroke="#8f3d3d"/>
+      <text x="555" y="265" text-anchor="middle" fill="#e0b0b0" font-size="12" font-family="sans-serif">Isolated CC</text>
+      <text x="555" y="285" text-anchor="middle" fill="#a07070" font-size="10" font-family="sans-serif">H-bridge out</text>
+      <text x="555" y="303" text-anchor="middle" fill="#666" font-size="10" font-family="sans-serif">HV only when SEL=STIM</text>
+
+      <rect x="660" y="230" width="110" height="100" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="715" y="270" text-anchor="middle" fill="#d0b8e8" font-size="12" font-family="sans-serif">Isense +</text>
+      <text x="715" y="290" text-anchor="middle" fill="#8870a0" font-size="10" font-family="sans-serif">dead-man</text>
+      <text x="715" y="308" text-anchor="middle" fill="#666" font-size="10" font-family="sans-serif">Imax clip</text>
+
+      <!-- MCU control -->
+      <rect x="800" y="150" width="100" height="100" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="850" y="185" text-anchor="middle" fill="#d0b8e8" font-size="12" font-family="sans-serif">MCU</text>
+      <text x="850" y="205" text-anchor="middle" fill="#8870a0" font-size="10" font-family="sans-serif">SEL / EN</text>
+      <text x="850" y="225" text-anchor="middle" fill="#8870a0" font-size="10" font-family="sans-serif">blank / PWM</text>
+
+      <!-- wires -->
+      <line x1="108" y1="172" x2="140" y2="172" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="108" y1="252" x2="140" y2="252" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="240" y1="215" x2="280" y2="215" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="440" y1="140" x2="490" y2="130" stroke="#7dba88" stroke-width="1.5"/>
+      <line x1="620" y1="130" x2="660" y2="130" stroke="#7dba88" stroke-width="1.5"/>
+      <line x1="440" y1="280" x2="490" y2="280" stroke="#e07070" stroke-width="1.5"/>
+      <line x1="620" y1="280" x2="660" y2="280" stroke="#e07070" stroke-width="1.5"/>
+      <line x1="770" y1="130" x2="820" y2="170" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="770" y1="280" x2="820" y2="230" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="360" y1="320" x2="360" y2="350" stroke="#f0a040" stroke-width="1.2"/>
+      <line x1="360" y1="350" x2="850" y2="350" stroke="#f0a040" stroke-width="1.2"/>
+      <line x1="850" y1="350" x2="850" y2="250" stroke="#f0a040" stroke-width="1.2"/>
+      <text x="520" y="368" fill="#f0c080" font-size="11" font-family="sans-serif">SEL / EN from MCU (hardware interlock: EN ∧ SEL=STIM ∧ dead-man)</text>
+
+      <text x="20" y="36" fill="#888" font-size="12" font-family="sans-serif">Shared pads: one physical pair · two exclusive electrical paths · never both closed</text>
+      <text x="20" y="54" fill="#666" font-size="11" font-family="sans-serif">Use photoMOS / low-RON analog switches rated above stim compliance voltage, or a discrete T-switch with make-before-break forbidden</text>
+    </svg>
+    <p class="schematic-caption">Fig. 3 — Shared-electrode isolation. Pads always see protection; mux connects <em>either</em> the clamped AFE <em>or</em> the isolated stimulator, with an intentional open/blank gap between.</p>
+  </div>
+
+  <h3>Switch sequence (firmware + hardware)</h3>
+  <div class="mermaid">
+sequenceDiagram
+  participant MCU
+  participant MUX as T-switch
+  participant AFE as EMG AFE
+  participant STIM as Isolated CC / H-bridge
+  participant PAD as Shared pads
+
+  Note over MCU,PAD: MONITOR (default)
+  MCU->>MUX: SEL = SENSE
+  MUX->>AFE: PAD connected
+  MUX--xSTIM: STIM path open
+  AFE->>MCU: EMG samples
+
+  Note over MCU,PAD: ARM → TENS transition
+  MCU->>AFE: blank / hold last sample (ignore ADC)
+  MCU->>STIM: EN = 0 (rail still safe)
+  MCU->>MUX: SEL = OPEN (break-before-make)
+  Note over MUX: AFE inputs shorted to REF<br/>via weak R; both throws open ≥50–200 µs
+  MCU->>MUX: SEL = STIM
+  MUX->>STIM: PAD connected
+  MUX--xAFE: sense path open + clamps
+  MCU->>STIM: EN = 1 ∧ dead-man
+  STIM->>PAD: biphasic CC pulses
+  Note over AFE: clamps only; no active path
+
+  Note over MCU,PAD: Return to MONITOR
+  MCU->>STIM: EN = 0, wait discharge
+  MCU->>MUX: SEL = OPEN
+  MCU->>MUX: SEL = SENSE
+  MCU->>AFE: unblank after settling (RC / artifact window)
+  </div>
+
+  <h3>Hard rules for shared pads</h3>
+  <ul>
+    <li><strong>Break-before-make only</strong> — never a make-before-break mux; mid-state must disconnect stim before sense reconnects.</li>
+    <li><strong>AFE never sees compliance voltage</strong> — when SEL=STIM, sense throw is open and AFE pins sit behind rail clamps + series R (and optionally a short across IN+/IN− through a quieting resistor to REF).</li>
+    <li><strong>Stim enable is gated</strong> — hardware AND: <code>SEL==STIM</code> ∧ <code>dead-man</code> ∧ <code>not FAULT</code>. Firmware alone is not enough.</li>
+    <li><strong>Blanking window</strong> — discard EMG for the open gap + a post-stim artifact window (typically tens–hundreds of ms) before outlier logic resumes.</li>
+    <li><strong>Switch rating</strong> — off isolation and voltage rating must exceed the stim open-circuit / compliance voltage (design for ≥2× expected peak).</li>
+    <li><strong>Common REF</strong> — bias/reference electrode stays on a bony site and is <em>not</em> a stim return unless the topology is explicitly redesigned for that (default: REF is sense-only).</li>
+    <li><strong>Lead-off / wet check</strong> — before enabling STIM, verify electrode impedance is in-range so you do not command high voltage into an open lead.</li>
+  </ul>
+
+  <div class="callout danger">
+    <strong>Bench gate before skin:</strong> prove the mux on a resistive dummy load with a scope on the AFE input pins during STIM.
+    Pass criterion: AFE input voltage stays within clamp limits for every pulse; no DC offset residual that rails the amp after return to SENSE.
+  </div>
+
   <h3>Electrode map (large leg muscles)</h3>
+
   <div class="mermaid">
 flowchart TB
   subgraph Quads["Quadriceps"]
@@ -386,7 +528,7 @@ stateDiagram-v2
       </tr>
       <tr>
         <td><strong>2 — TENS on dummy, then skin</strong></td>
-        <td>Isolated module or discrete CC driver; separate stim pads</td>
+        <td>Isolated CC driver + T-switch mux on dummy load; then shared-pad sensory TENS under hold-to-run</td>
         <td>Measured pulse shape / current on resistive load; then low-intensity sensory TENS under hold-to-run</td>
       </tr>
       <tr>
@@ -423,7 +565,7 @@ stateDiagram-v2
   <h2 id="open">Open questions</h2>
   <ul>
     <li>Cramp detection: unsupervised outlier vs supervised TinyML after labeled nights/workouts?</li>
-    <li>Shared vs dedicated stim electrodes (complexity vs comfort)?</li>
+    <li>Shared pads (Fig. 3 mux) vs hybrid (shared on primary cramp muscle, dedicated elsewhere)?</li>
     <li>On-leg wearable vs bedside “cramp kit” you grab when it hits?</li>
     <li>Regulatory posture: personal research only vs eventual FDA path (assume personal for now)?</li>
   </ul>
@@ -433,7 +575,7 @@ stateDiagram-v2
   </div>
 
   <footer>
-    Smart TENS · design rev 2026-09-16 · project folder <code>smart-tens/</code> · experimental DIY, not clinical advice
+    Smart TENS · design rev 2026-09-17 · project folder <code>smart-tens/</code> · experimental DIY, not clinical advice
   </footer>
 </div>
 </body>
