@@ -19,6 +19,130 @@
 
 export const RENDER_TESTS = [
   {
+    id: 'buried-geometry',
+    name: 'Buried Geometry — what flattening produces',
+    question:
+      'Removing buried geometry means subtracting whatever is painted above a ' +
+      'shape and unioning what remains with its same-coloured neighbours. That ' +
+      'produces four things this file has never asked Studio to draw: holes, ' +
+      'holes with islands inside them, concave remainders, and shapes that abut ' +
+      'along an exactly shared edge. It also produces slivers too thin to engrave. ' +
+      'Every element here is the hand-authored output of that algorithm, so the ' +
+      'approach can be judged before any of it is built. If Studio fills the ' +
+      'holes solid, occlusion cannot be represented as compound paths at all and ' +
+      'the whole plan needs a different shape. The merged and unmerged pair is ' +
+      'the exception: it should look identical either way, which is the finding ' +
+      'rather than a failure — a double-engraved overlap is invisible to every ' +
+      'render and only the machine can settle it.',
+    build: async (project) => {
+      const P = (pts) => pts.map(([x, y], i) =>
+        `${i === 0 ? 'M' : 'L'} ${x.toFixed(3)} ${y.toFixed(3)}`).join(' ') + ' Z';
+      const box = (x0, y0, x1, y1) => P([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+      const add = async (testId, x, y, width, height, layerColor, subPaths) => {
+        const it = await project.addCompoundPath({
+          x, y, width, height, subPaths,
+          layerColor, isFill: true, params: { power: 20, speed: 100 }
+        });
+        if (it) it.display.testId = testId;
+        return it;
+      };
+
+      // Control: a RECT has no dPath, so both renderers must agree on it, and it
+      // carries the pixels-to-millimetres scale for every measurement below.
+      const ctrl = await project.addItem('RECT', {
+        x: 8, y: 8, width: 16, height: 16,
+        layerColor: '#1d4ed8', params: { power: 20, speed: 100 }
+      });
+      ctrl.display.testId = 'BG_CONTROL';
+
+      // One hole. What subtracting a shape wholly inside another leaves behind.
+      await add('HOLE_SIMPLE', 32, 8, 20, 20, '#16a34a',
+        [{ dPath: box(0, 0, 20, 20) }, { dPath: box(6, 6, 14, 14) }]);
+
+      // A hole with an island in it — nesting depth two. Subtracting a ring
+      // leaves exactly this, and evenodd has to survive two crossings, not one.
+      await add('HOLE_NESTED', 60, 8, 20, 20, '#dc2626',
+        [{ dPath: box(0, 0, 20, 20) }, { dPath: box(4, 4, 16, 16) }, { dPath: box(8, 8, 12, 12) }]);
+
+      // A concave remainder: a square with a semicircular bite out of one edge,
+      // which is what a partly covered shape becomes. No hole — the boundary
+      // itself turns inward, and a renderer that quietly convex-hulls a path
+      // would show a full square here.
+      const bite = () => {
+        const pts = [[0, 0], [20, 0], [20, 4]];
+        for (let i = 0; i <= 24; i++) {
+          const a = -Math.PI / 2 + (i / 24) * Math.PI;   // sweeps into the shape
+          pts.push([20 - Math.cos(a) * 6, 10 + Math.sin(a) * 6]);
+        }
+        pts.push([20, 16], [20, 20], [0, 20]);
+        return P(pts);
+      };
+      await add('CRESCENT', 8, 36, 20, 20, '#ea580c', [{ dPath: bite() }]);
+
+      // The same silhouette twice: once as two overlapping shapes of one colour,
+      // once as the single merged outline that unioning them produces. These
+      // should be indistinguishable on screen, and that is the point — if they
+      // are, then no render can tell whether merging happened, and the overlap
+      // that engraves twice is invisible until the part comes off the machine.
+      const sq = (x, y) => project.addCompoundPath({
+        x, y, width: 12, height: 12, subPaths: [{ dPath: box(0, 0, 12, 12) }],
+        layerColor: '#7c3aed', isFill: true, params: { power: 20, speed: 100 }
+      });
+      for (const it of [await sq(36, 36), await sq(44, 40)]) {
+        if (it) it.display.testId = 'SEAM_UNMERGED';
+      }
+      await add('SEAM_MERGED', 64, 36, 20, 16, '#db2777',
+        [{ dPath: P([[0, 0], [12, 0], [12, 4], [20, 4], [20, 16], [8, 16], [8, 12], [0, 12]]) }]);
+
+      // Slivers. Boolean subtraction leaves hairline remainders, and the
+      // threshold below which they should be discarded is a measurement, not a
+      // guess. Three teeth on a spine, thinnest longest: the measured width says
+      // which survived — 20 mm if 0.05 does, 14 if only 0.10 and up, 8 if only
+      // 0.20, and 0.5 if none does. One connected shape, so the box is one blob.
+      await add('SLIVER', 8, 64, 20, 3, '#ca8a04', [
+        { dPath: box(0, 0, 0.5, 3) },
+        { dPath: box(0.5, 0.20, 20, 0.25) },
+        { dPath: box(0.5, 1.20, 14, 1.30) },
+        { dPath: box(0.5, 2.20, 8, 2.40) }
+      ]);
+
+      // Two colours meeting on an exactly shared edge at x = 48 — what clipping
+      // a lower shape against an upper one produces everywhere it is applied.
+      // A gap or an overlap here is a per-seam error repeated thousands of times.
+      await add('ABUT_A', 36, 64, 12, 12, '#0891b2', [{ dPath: box(0, 0, 12, 12) }]);
+      await add('ABUT_B', 48, 64, 12, 12, '#78350f', [{ dPath: box(0, 0, 12, 12) }]);
+    },
+    expected: [
+      { testId: 'BG_CONTROL',    x: 8,  y: 8,  width: 16, height: 16 },
+      { testId: 'HOLE_SIMPLE',   x: 32, y: 8,  width: 20, height: 20 },
+      { testId: 'HOLE_NESTED',   x: 60, y: 8,  width: 20, height: 20 },
+      { testId: 'CRESCENT',      x: 8,  y: 36, width: 20, height: 20 },
+      { testId: 'SEAM_UNMERGED', x: 36, y: 36, width: 20, height: 16 },
+      { testId: 'SEAM_MERGED',   x: 64, y: 36, width: 20, height: 16 },
+      { testId: 'SLIVER',        x: 8,  y: 64, width: 20, height: 3  },
+      { testId: 'ABUT_A',        x: 36, y: 64, width: 12, height: 12 },
+      { testId: 'ABUT_B',        x: 48, y: 64, width: 12, height: 12 }
+    ],
+    // Must land on the bed. A hole and a fill share a bounding box, so nothing
+    // but a probe can tell whether evenodd survived.
+    holes: [
+      { testId: 'HOLE_SIMPLE',   atX: 42, atY: 18 },
+      { testId: 'HOLE_NESTED',   atX: 66, atY: 18 },
+      { testId: 'CRESCENT',      atX: 26, atY: 46 },
+      { testId: 'SEAM_UNMERGED', atX: 52, atY: 37 },
+      { testId: 'SEAM_MERGED',   atX: 80, atY: 37 }
+    ],
+    // Must land on the shape's own colour.
+    solid: [
+      { testId: 'HOLE_SIMPLE',   atX: 34, atY: 18 },
+      { testId: 'HOLE_NESTED',   atX: 70, atY: 18 },
+      { testId: 'CRESCENT',      atX: 13, atY: 46 },
+      { testId: 'SEAM_MERGED',   atX: 74, atY: 44 },
+      { testId: 'ABUT_A',        atX: 47, atY: 70 },
+      { testId: 'ABUT_B',        atX: 49, atY: 70 }
+    ]
+  },
+  {
     id: 'stroke-thickness',
     name: 'Stroke Thickness — thick and thin borders',
     question:

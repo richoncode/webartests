@@ -13,7 +13,7 @@
 import { XCSProject } from '../js/xcs-system.js';
 import { RENDER_TESTS, getRenderTest } from '../js/render-tests.js';
 import { writeFileSync, mkdirSync } from 'fs';
-import { decodePNG, assignBoxes } from './png.mjs';
+import { decodePNG, assignBoxes, pixelAt } from './png.mjs';
 import { execSync } from 'child_process';
 import { join, resolve } from 'path';
 
@@ -124,7 +124,41 @@ export async function run(testId, outDir) {
                  Math.abs(mw - e.width) < 0.6 && Math.abs(mh - e.height) < 0.6 };
   });
 
-  return { test, file, png, pxPerMm, results };
+  // A hole and a fill have the same bounding box, so the box measurement above
+  // cannot tell them apart. Probe points can: a hole probe has to land on the
+  // bed, a solid probe on the shape's own colour. The mm-to-pixel mapping comes
+  // from the control shape, so the probes follow Studio's zoom and pan.
+  const verdict = (mmX, mmY) => {
+    const cx = Math.round(ox + mmX * pxPerMm), cy = Math.round(oy + mmY * pxPerMm);
+    // Three by three and take the majority, so one antialiased pixel on an edge
+    // does not decide it.
+    const votes = {};
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const [r, g, b] = pixelAt(img, cx + dx, cy + dy);
+        let key = 'bed';
+        if (Math.max(r, g, b) - Math.min(r, g, b) >= 18) {
+          let bestD = Infinity;
+          for (const [id, t] of Object.entries(colourTargets)) {
+            const d = Math.hypot(r - t[0], g - t[1], b - t[2]);
+            if (d < bestD) { bestD = d; key = id; }
+          }
+        }
+        votes[key] = (votes[key] || 0) + 1;
+      }
+    }
+    return Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
+  };
+
+  const probes = [
+    ...(test.holes || []).map(h => ({ ...h, want: 'bed' })),
+    ...(test.solid || []).map(h => ({ ...h, want: 'fill' }))
+  ].map(p => {
+    const got = verdict(p.atX, p.atY);
+    return { ...p, got, ok: p.want === 'bed' ? got === 'bed' : got === p.testId };
+  });
+
+  return { test, file, png, pxPerMm, results, probes };
 }
 
 function hexToRgb(hex) {
@@ -147,5 +181,16 @@ for (const r of res.results) {
     `${r.dx >= 0 ? '+' : ''}${r.dx.toFixed(1)}, ${r.dy >= 0 ? '+' : ''}${r.dy.toFixed(1)}`.padEnd(16) +
     `${r.mw.toFixed(1)} x ${r.mh.toFixed(1)}   ` + (r.ok ? 'ok' : 'MISPLACED'));
 }
-console.log(`\n  ${fails === 0 ? 'PASS — Studio agrees with the file' : `FAIL — ${fails} of ${res.results.length} shapes misplaced by Studio`}`);
+if (res.probes.length) {
+  console.log('\n  probe             at mm        wants           Studio drew');
+  for (const p of res.probes) {
+    if (!p.ok) fails++;
+    console.log('  ' + p.testId.padEnd(16) +
+      `${p.atX}, ${p.atY}`.padEnd(13) +
+      (p.want === 'bed' ? 'bed (a hole)' : 'its own fill').padEnd(16) +
+      (p.got === 'bed' ? 'bed' : p.got).padEnd(16) + (p.ok ? 'ok' : 'WRONG'));
+  }
+}
+const total = res.results.length + res.probes.length;
+console.log(`\n  ${fails === 0 ? 'PASS — Studio agrees with the file' : `FAIL — ${fails} of ${total} checks disagree with the file`}`);
 console.log(`  screenshot: ${res.png}`);
