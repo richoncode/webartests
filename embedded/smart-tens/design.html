@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart TENS — Design</title>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1a2838',
+      primaryTextColor: '#e8eef5',
+      primaryBorderColor: '#3d6a8f',
+      lineColor: '#7aa2c4',
+      secondaryColor: '#1c2418',
+      tertiaryColor: '#241a1a',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+    },
+    flowchart: { curve: 'basis', padding: 12 },
+    securityLevel: 'loose'
+  });
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0d0d; color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px; line-height: 1.7; min-height: 100vh;
+    padding: 48px 24px 96px;
+  }
+  a { color: #6db3e8; }
+  .page { max-width: 920px; margin: 0 auto; }
+  .section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: #6db3e8; margin-bottom: 12px;
+  }
+  h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+  h2 {
+    font-size: 20px; font-weight: 700; margin: 40px 0 12px;
+    padding-bottom: 8px; border-bottom: 1px solid #222;
+  }
+  h3 { font-size: 15px; font-weight: 700; color: #ccc; margin: 20px 0 8px; }
+  .subtitle { color: #888; max-width: 720px; margin-bottom: 20px; }
+  .callout {
+    border-left: 3px solid #6db3e8; border-radius: 0 8px 8px 0;
+    padding: 12px 16px; font-size: 13px; color: #999; line-height: 1.7;
+    margin-bottom: 16px; background: #0d1620; max-width: 820px;
+  }
+  .callout strong { color: #ccc; }
+  .callout.danger {
+    border-left-color: #e07070; background: #1c1010; color: #b89898;
+  }
+  .callout.warn {
+    border-left-color: #f0a040; background: #1c1509; color: #b8a080;
+  }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 28px; }
+  .pill {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid #333; color: #aaa; background: #151515;
+  }
+  .pill.live { border-color: #2a4a32; color: #7dba88; background: #0f1a12; }
+  .pill.phase { border-color: #3d6a8f; color: #8bb8d9; background: #0d1620; }
+  p { margin-bottom: 12px; color: #bbb; max-width: 820px; }
+  ul, ol { margin: 0 0 16px 1.25rem; color: #bbb; max-width: 820px; }
+  li { margin-bottom: 6px; }
+  table {
+    width: 100%; max-width: 820px; border-collapse: collapse;
+    font-size: 13px; margin: 12px 0 24px;
+  }
+  th, td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid #222; vertical-align: top;
+  }
+  th { color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { color: #ccc; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px; background: #1a1a1a; padding: 1px 6px; border-radius: 4px; color: #c8d8e8;
+  }
+  .mermaid {
+    background: #111; border: 1px solid #222; border-radius: 12px;
+    padding: 20px 12px; margin: 16px 0 28px; overflow-x: auto;
+  }
+  .schematic-frame {
+    background: #111; border: 1px solid #222; border-radius: 12px;
+    padding: 20px; margin: 16px 0 28px; overflow-x: auto;
+  }
+  .schematic-frame svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  .schematic-caption { font-size: 12px; color: #666; margin-top: 10px; text-align: center; }
+  .grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 28px; max-width: 820px;
+  }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card {
+    background: #141414; border: 1px solid #242424; border-radius: 10px; padding: 14px 16px;
+  }
+  .card h3 { margin-top: 0; color: #ddd; }
+  .card p, .card li { font-size: 13px; color: #999; }
+  .toc { font-size: 13px; color: #888; margin-bottom: 28px; }
+  .toc a { color: #7aa2c4; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  footer { margin-top: 48px; font-size: 12px; color: #555; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="section-label">Project design</p>
+  <h1>Smart TENS</h1>
+  <p class="subtitle">
+    Multi-electrode sensing and stimulation for large leg muscles (quads, hamstrings, calves):
+    monitor EMG, flag outlier / cramp-like patterns, and optionally apply TENS to help the muscle
+    leave a cramp state toward relaxation.
+  </p>
+
+  <div class="pill-row">
+    <span class="pill live">Status: design</span>
+    <span class="pill phase">Phase 0 → 3</span>
+    <span class="pill">EMG + TENS</span>
+    <span class="pill">DIY experimental</span>
+  </div>
+
+  <div class="callout danger">
+    <strong>Not a medical device.</strong> This document is an engineering design for a personal
+    prototype. Electrical stimulation can be harmful. Do not use on the chest, neck, head, or
+    across the heart; do not use with a pacemaker / implanted stimulator, pregnancy, open wounds,
+    or impaired sensation without clinician guidance. Keep stimulation current-limited, isolated,
+    and under a dead-man / intentional enable. Treat all numbers below as starting points to
+    validate on the bench with a series resistor / dummy load — never “tune on skin” first.
+  </div>
+
+  <nav class="toc">
+    <a href="#goals">Goals</a> ·
+    <a href="#modes">Modes</a> ·
+    <a href="#architecture">Architecture</a> ·
+    <a href="#schematics">Schematics</a> ·
+    <a href="#software">Software</a> ·
+    <a href="#plan">Plan</a> ·
+    <a href="#bom">BOM</a> ·
+    <a href="#open">Open questions</a>
+  </nav>
+
+  <h2 id="goals">Goals</h2>
+  <ol>
+    <li><strong>Sense</strong> EMG from multiple sites on large leg muscles (target: 4–8 differential channels + shared reference / bias).</li>
+    <li><strong>Track</strong> per-channel baselines (quiet / voluntary contract / walk) and detect <em>outlier</em> patterns consistent with cramp (sustained high amplitude, tremor-band energy, asymmetry vs contralateral).</li>
+    <li><strong>Actuate (TENS mode)</strong> biphasic constant-current pulses on selected electrode pairs to interrupt cramp / encourage relaxation, with hard safety limits.</li>
+    <li><strong>Log &amp; review</strong> waveforms, detections, and stim events on phone/laptop for tuning thresholds.</li>
+  </ol>
+
+  <h2 id="modes">Operating modes</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Monitor</h3>
+      <p>Continuous EMG acquisition. Streaming feature vector (RMS, MAV, zero-crossings, 40–80&nbsp;Hz band power). Outlier score vs rolling personal baseline. No HV stim rail enabled.</p>
+    </div>
+    <div class="card">
+      <h3>TENS</h3>
+      <p>User- or rule-armed. Mux disconnects sense path on active stim channels (or uses dedicated stim electrodes). Constant-current biphasic pulses; intensity ramp; auto-stop on timeout / release / EMG drop.</p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <strong>Sense / stim isolation rule:</strong> never drive TENS into an active EMG front-end input.
+    Phase 1 uses <em>separate</em> stim electrode pairs. Phase 2 may share sites via analog mux with
+    make-before-break protection and input clamps.
+  </div>
+
+  <h2 id="architecture">System architecture</h2>
+  <div class="mermaid">
+flowchart LR
+  subgraph Body["Leg electrode array"]
+    E1["Ch1–Ch4 EMG pairs"]
+    E2["Stim pairs A/B"]
+    REF["Ref / bias"]
+  end
+
+  subgraph Analog["Analog front-end"]
+    PROT["Input protection\nTVS + series R"]
+    MUX["Sense / stim mux\n(optional Ph2)"]
+    AFE["AFE: AD8232 ×N\nor ADS1299"]
+    FILT["Anti-alias\n20–500 Hz"]
+  end
+
+  subgraph Digital["Controller"]
+    MCU["MCU / nRF52840\nor ESP32-S3"]
+    DET["Feature + outlier\ndetector"]
+    FSM["Mode FSM\nMonitor | Armed | TENS"]
+  end
+
+  subgraph Stim["Stimulator"]
+    ISO["Isolated boost\n~30–60 V limited"]
+    CC["H-bridge /\nconstant-current"]
+    SAFE["Current sense +\ndead-man + fuse"]
+  end
+
+  subgraph App["Host"]
+    BLE["BLE / USB"]
+    UI["Phone / laptop\nUI + logs"]
+  end
+
+  E1 --> PROT --> MUX --> AFE --> FILT --> MCU
+  REF --> AFE
+  E2 --> CC
+  MCU --> DET --> FSM
+  FSM -->|enable| ISO --> CC
+  CC --> SAFE
+  MCU <--> BLE <--> UI
+  </div>
+
+  <h2 id="schematics">Schematics</h2>
+
+  <h3>Block schematic — one EMG channel (instrumentation path)</h3>
+  <div class="schematic-frame">
+    <svg viewBox="0 0 860 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="EMG channel schematic">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#7aa2c4"/>
+        </marker>
+      </defs>
+      <!-- electrodes -->
+      <rect x="20" y="70" width="70" height="40" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="55" y="94" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">IN+</text>
+      <rect x="20" y="140" width="70" height="40" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="55" y="164" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">IN−</text>
+      <rect x="20" y="210" width="70" height="36" rx="6" fill="#241a1a" stroke="#6a3d3d"/>
+      <text x="55" y="232" text-anchor="middle" fill="#e0b0b0" font-size="11" font-family="sans-serif">REF</text>
+
+      <!-- protection -->
+      <rect x="140" y="85" width="110" height="100" rx="8" fill="#141414" stroke="#444"/>
+      <text x="195" y="115" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">Protection</text>
+      <text x="195" y="135" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">1kΩ series</text>
+      <text x="195" y="152" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">TVS / diodes</text>
+      <text x="195" y="169" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">RC bleed</text>
+
+      <!-- IA -->
+      <rect x="300" y="85" width="130" height="100" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="365" y="120" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">Inst. amp</text>
+      <text x="365" y="140" text-anchor="middle" fill="#7aa2c4" font-size="11" font-family="sans-serif">AD8232 / INA</text>
+      <text x="365" y="160" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">G ≈ 100</text>
+
+      <!-- filter -->
+      <rect x="480" y="85" width="120" height="100" rx="8" fill="#141414" stroke="#444"/>
+      <text x="540" y="120" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">Band-pass</text>
+      <text x="540" y="140" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">~20–450 Hz</text>
+      <text x="540" y="160" text-anchor="middle" fill="#777" font-size="11" font-family="sans-serif">notch 60 Hz</text>
+
+      <!-- ADC -->
+      <rect x="650" y="95" width="100" height="80" rx="8" fill="#1c2418" stroke="#3d6a4a"/>
+      <text x="700" y="130" text-anchor="middle" fill="#b8d8c0" font-size="12" font-family="sans-serif">ADC</text>
+      <text x="700" y="150" text-anchor="middle" fill="#7a9a80" font-size="11" font-family="sans-serif">1–2 kS/s</text>
+
+      <!-- MCU -->
+      <rect x="790" y="105" width="50" height="60" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="815" y="140" text-anchor="middle" fill="#d0b8e8" font-size="11" font-family="sans-serif">MCU</text>
+
+      <!-- wires -->
+      <line x1="90" y1="90" x2="140" y2="110" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="90" y1="160" x2="140" y2="150" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="250" y1="135" x2="300" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="430" y1="135" x2="480" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="600" y1="135" x2="650" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="750" y1="135" x2="790" y2="135" stroke="#7aa2c4" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="90" y1="228" x2="365" y2="200" stroke="#6a3d3d" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="220" y="50" fill="#666" font-size="12" font-family="sans-serif">Per-channel EMG sense path (repeat × N)</text>
+    </svg>
+    <p class="schematic-caption">Fig. 1 — Single differential EMG channel. Prefer integrated biopotential AFE (AD8232) early; migrate to ADS1299 for 8 synced channels.</p>
+  </div>
+
+  <h3>Block schematic — isolated TENS driver (one stim pair)</h3>
+  <div class="schematic-frame">
+    <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TENS driver schematic">
+      <rect x="20" y="110" width="90" height="70" rx="8" fill="#241a28" stroke="#6a3d8f"/>
+      <text x="65" y="140" text-anchor="middle" fill="#d0b8e8" font-size="12" font-family="sans-serif">MCU PWM</text>
+      <text x="65" y="158" text-anchor="middle" fill="#8870a0" font-size="10" font-family="sans-serif">+ enable</text>
+
+      <rect x="150" y="100" width="120" height="90" rx="8" fill="#1c1010" stroke="#8f3d3d"/>
+      <text x="210" y="130" text-anchor="middle" fill="#e0b0b0" font-size="12" font-family="sans-serif">Dead-man</text>
+      <text x="210" y="148" text-anchor="middle" fill="#a07070" font-size="10" font-family="sans-serif">AND gate /</text>
+      <text x="210" y="164" text-anchor="middle" fill="#a07070" font-size="10" font-family="sans-serif">hold-to-run</text>
+
+      <rect x="310" y="90" width="140" height="110" rx="8" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="380" y="125" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">Isolated boost</text>
+      <text x="380" y="145" text-anchor="middle" fill="#7aa2c4" font-size="10" font-family="sans-serif">flyback / module</text>
+      <text x="380" y="163" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">30–60 V capped</text>
+      <text x="380" y="181" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">opto / digi-iso</text>
+
+      <rect x="490" y="90" width="150" height="110" rx="8" fill="#141414" stroke="#444"/>
+      <text x="565" y="125" text-anchor="middle" fill="#aaa" font-size="12" font-family="sans-serif">H-bridge + CC</text>
+      <text x="565" y="145" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">biphasic pulses</text>
+      <text x="565" y="163" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">Isense shunt</text>
+      <text x="565" y="181" text-anchor="middle" fill="#777" font-size="10" font-family="sans-serif">Imax hard clip</text>
+
+      <rect x="680" y="70" width="70" height="50" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="715" y="100" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">STIM+</text>
+      <rect x="680" y="170" width="70" height="50" rx="6" fill="#1a2838" stroke="#3d6a8f"/>
+      <text x="715" y="200" text-anchor="middle" fill="#c8d8e8" font-size="12" font-family="sans-serif">STIM−</text>
+
+      <rect x="780" y="110" width="60" height="70" rx="8" fill="#1c2418" stroke="#3d6a4a"/>
+      <text x="810" y="140" text-anchor="middle" fill="#b8d8c0" font-size="11" font-family="sans-serif">Skin</text>
+      <text x="810" y="158" text-anchor="middle" fill="#7a9a80" font-size="10" font-family="sans-serif">Zload</text>
+
+      <line x1="110" y1="145" x2="150" y2="145" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="270" y1="145" x2="310" y2="145" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="450" y1="145" x2="490" y2="145" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="640" y1="120" x2="680" y2="95" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="640" y1="170" x2="680" y2="195" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="750" y1="95" x2="780" y2="130" stroke="#7aa2c4" stroke-width="1.5"/>
+      <line x1="750" y1="195" x2="780" y2="160" stroke="#7aa2c4" stroke-width="1.5"/>
+
+      <text x="30" y="40" fill="#666" font-size="12" font-family="sans-serif">TENS path — patient-side isolated; current-limited; software + hardware interlocks</text>
+      <text x="30" y="260" fill="#888" font-size="11" font-family="sans-serif">Target pulse params (starting point, validate on dummy load): 50–150 µs/phase · 1–100 Hz · ≤20–40 mA peak · biphasic charge-balanced · session ≤10–20 min</text>
+    </svg>
+    <p class="schematic-caption">Fig. 2 — Isolated constant-current biphasic stimulator. Prefer a certified TENS module early; custom HV only after Current Sense + fuse + dead-man are proven.</p>
+  </div>
+
+  <h3>Electrode map (large leg muscles)</h3>
+  <div class="mermaid">
+flowchart TB
+  subgraph Quads["Quadriceps"]
+    Q1["EMG Ch1 VL"]
+    Q2["EMG Ch2 RF / VM"]
+    QS["Stim pair Q"]
+  end
+  subgraph Hams["Hamstrings"]
+    H1["EMG Ch3 BF"]
+    H2["EMG Ch4 ST/SM"]
+    HS["Stim pair H"]
+  end
+  subgraph Calves["Triceps surae"]
+    C1["EMG Ch5 MG"]
+    C2["EMG Ch6 LG / Soleus"]
+    CS["Stim pair C"]
+  end
+  REF["Common REF on bony landmark\n(patella / tibia / malleolus)"]
+  Q1 & Q2 & H1 & H2 & C1 & C2 --> REF
+  </div>
+  <p>Start with <strong>2 EMG + 1 stim pair</strong> on the worst cramp muscle (often calf or quad), then scale the array.</p>
+
+  <h2 id="software">Software plan</h2>
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> Boot
+  Boot --> SelfTest: rails OK / Isense OK
+  SelfTest --> Monitor: pass
+  SelfTest --> Fault: fail
+  Monitor --> OutlierHold: score > T_hi for N windows
+  OutlierHold --> Monitor: score clears / user dismiss
+  OutlierHold --> Armed: user confirms TENS
+  Armed --> TensRun: hold-to-run + intensity lock
+  TensRun --> Monitor: timeout / release / EMG settle
+  TensRun --> Fault: overcurrent / open lead
+  Fault --> [*]
+  </div>
+
+  <h3>Firmware (MCU)</h3>
+  <ul>
+    <li>Sample EMG @ 1–2&nbsp;kHz/ch; DMA into ring buffers.</li>
+    <li>Per 100–200&nbsp;ms window: RMS, MAV, dominant band energy, contralateral ratio if available.</li>
+    <li>Personal baseline: EWMA of quiet + activity modes; outlier = persistent z-score / Hotelling-style score.</li>
+    <li>TENS ISR: charge-balanced biphasic timing; ramp; hard session timer; kill on button release.</li>
+    <li>BLE GATT: stream compressed features + optional raw snippets; log stim events.</li>
+  </ul>
+
+  <h3>Host app</h3>
+  <ul>
+    <li>Live strip charts per channel; outlier badges; arm / intensity UI with deliberate confirms.</li>
+    <li>Session export (CSV/Parquet) for tuning thresholds offline.</li>
+    <li>Later: on-device TinyML classifier once labeled cramp sessions exist.</li>
+  </ul>
+
+  <h2 id="plan">Phased plan</h2>
+  <table>
+    <thead>
+      <tr><th>Phase</th><th>Deliverable</th><th>Success criteria</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>0 — Safety &amp; paper</strong></td>
+        <td>This design page; hazard list; electrode map; dummy-load test plan</td>
+        <td>Written interlocks; no skin stim until Phase 2 gate</td>
+      </tr>
+      <tr>
+        <td><strong>1 — Sense-only prototype</strong></td>
+        <td>2–4× AD8232 + MCU + BLE; gel electrodes on one leg</td>
+        <td>Clean EMG at rest / flex / walk; baseline + outlier flag demos on screen</td>
+      </tr>
+      <tr>
+        <td><strong>2 — TENS on dummy, then skin</strong></td>
+        <td>Isolated module or discrete CC driver; separate stim pads</td>
+        <td>Measured pulse shape / current on resistive load; then low-intensity sensory TENS under hold-to-run</td>
+      </tr>
+      <tr>
+        <td><strong>3 — Closed loop</strong></td>
+        <td>Outlier → arm → stim → watch EMG settle; multi-muscle array</td>
+        <td>Logged sessions; false-positive rate acceptable for personal use; optional PCB spin</td>
+      </tr>
+      <tr>
+        <td><strong>4 — Wearable refine</strong></td>
+        <td>Custom enclosure, dry/textile electrodes, battery + charging</td>
+        <td>Comfortable multi-hour monitor; reliable lead-off detect</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="bom">Rough BOM (Phase 1–2)</h2>
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Qty</th><th>Notes / ballpark USD</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>AD8232 Heart Rate Monitor modules (repurposed EMG)</td><td>2–4</td><td>~$8–15 each; easy start</td></tr>
+      <tr><td>nRF52840 or ESP32-S3 dev board</td><td>1</td><td>~$5–15</td></tr>
+      <tr><td>Disposable Ag/AgCl electrodes + leads</td><td>1 pack</td><td>~$10–25</td></tr>
+      <tr><td>Isolated TENS module <em>or</em> HV CC kit</td><td>1</td><td>Prefer module first; $20–80</td></tr>
+      <tr><td>TVS, series resistors, polyfuse, shunt</td><td>lot</td><td>~$5–15</td></tr>
+      <tr><td>Dummy load resistors (1–10 kΩ, HV rated)</td><td>set</td><td>Required before skin</td></tr>
+      <tr><td>LiPo + charger / USB power bank</td><td>1</td><td>~$10–25; keep stim isolated</td></tr>
+      <tr><td><strong>Phase 1 sense-only</strong></td><td></td><td><strong>~$50–100</strong></td></tr>
+      <tr><td><strong>Phase 1+2 with module TENS</strong></td><td></td><td><strong>~$80–200</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="open">Open questions</h2>
+  <ul>
+    <li>Cramp detection: unsupervised outlier vs supervised TinyML after labeled nights/workouts?</li>
+    <li>Shared vs dedicated stim electrodes (complexity vs comfort)?</li>
+    <li>On-leg wearable vs bedside “cramp kit” you grab when it hits?</li>
+    <li>Regulatory posture: personal research only vs eventual FDA path (assume personal for now)?</li>
+  </ul>
+
+  <div class="callout">
+    <strong>Next concrete step:</strong> Phase 0 checklist + Phase 1 breadboard — two AD8232 channels into an ESP32-S3/nRF52, serial/BLE strip chart, and a written dummy-load procedure for any future stim board.
+  </div>
+
+  <footer>
+    Smart TENS · design rev 2026-09-16 · project folder <code>smart-tens/</code> · experimental DIY, not clinical advice
+  </footer>
+</div>
+</body>
+</html>
