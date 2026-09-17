@@ -123,6 +123,63 @@
     <summary>
       <span class="chev"></span>
       <span class="head">
+        <span class="stamp"><time datetime="2026-09-16T18:18-07:00">Wed 16 Sep 2026 · 18:18 PDT</time></span>
+        <span class="title">All 14 Shape Fill styles now render the same in both canvases<span class="badge green">complete</span></span>
+        <span class="synopsis">Flat engraved its gears as solid black discs and Illustrated lost every outline. Two separate causes, opposite in direction, and the louder one was in the canvas rather than the exporter.</span>
+      </span>
+    </summary>
+    <div class="body">
+
+      <h3>One outline width cannot serve two purposes</h3>
+      <p>The recorder forced every <code>ctx.stroke()</code> to a single physical width, on the reasoning that a canvas pixel width is tuned for the screen and means nothing on the bed. That reasoning is wrong, because a style's line widths are structural rather than decorative.</p>
+      <p>Flat's <code>drawGear</code> draws several concentric rings a few tenths of a millimetre apart on a gear 6.7&nbsp;mm across. Illustrated's <code>drawPipeOutline</code> strokes a 27&nbsp;px black underlay beneath each pipe, and that underlay <em>is</em> the outline. Forcing both to 0.2&nbsp;mm was 11&times; too wide for the first and 11&times; too narrow for the second, in the same export.</p>
+      <pre class="data">flat          2 px rings, 0.167 mm as drawn, exported at 0.200 mm
+illustrated  27 px underlay, 2.250 mm as drawn, exported at 0.200 mm</pre>
+      <p><code>RecordingCtx.stroke()</code> now builds the capsule at the recorded <code>lineWidth</code>, converted with the same <code>PX_TO_MM</code> that places every other coordinate. The panel's slider became <strong>Outline Weight</strong>: 1&times; engraves each line at the width the pattern draws it, 0&times; means fills only. Jigsaw keeps its Outline Width in millimetres, because there the line is real geometry the canvas draws too.</p>
+      <p><code>save()</code> and <code>restore()</code> now carry the paint state rather than the matrix alone. A real canvas restores <code>lineWidth</code>, this one did not, and the moment stroke widths started mattering a width set inside a save block would have leaked into every later stroke.</p>
+
+      <h3>The black gears were not the stroke width</h3>
+      <p>Carrying the true widths through fixed Illustrated and left Flat's gears solid black. Every measurement said the capsules were thin: the largest black path was 63 subpaths, each a 1&nbsp;mm segment in a band of 0.164&nbsp;mm. Hiding just the black paths and re-rendering settled it — the gold gears, their teeth and their concentric rings were all underneath, drawn correctly.</p>
+      <pre class="data">element   fill #000000   stroke #000000   stroke-width (none)
+SVG default stroke-width = 1 user unit
+1 user unit on this bed  = 1 mm</pre>
+      <p>The cause was in <code>viewer.js</code>. Its <code>restyleInPlace</code> repeats the fill and stroke rules rather than calling them, so it can drift from <code>xcs-canvas.js</code> — and it had, setting <code>stroke</code> on filled shapes and never setting <code>stroke-width</code>. SVG defaults that to one user unit, which on this bed is a millimetre, so every restyled shape wore a 1&nbsp;mm black band. On 0.17&nbsp;mm gear detail that paints a disc.</p>
+      <p>Both callers now go through one exported <code>applyPaint()</code> in <code>xcs-canvas.js</code>, so there is no second copy left to drift.</p>
+
+      <h3>Every style measured, same page load</h3>
+      <p>Each capture pair comes from a single page load, because every load reseeds the pattern and an HTML capture from one run against an XCS capture from another compares two different designs. Pendant preset, brushed steel blank, Outline Weight 1&times;, margin 0. &Delta;L is mean luminance on a 0&ndash;255 scale over every non-transparent pixel.</p>
+      <pre class="data">style           shapes   html L   xcs L      dL
+flat               251    176.2    176.5    -0.3
+3d-basic           429    158.2    158.5    -0.3
+3d-glossy          488    167.3    167.3     0.0
+illustrated        973    136.8    137.6    -0.7
+circuit            592    174.4    174.6    -0.3
+painted_lady     1,184    149.2    149.9    -0.7
+ducks            1,768    172.6    169.3    +3.3
+gears            4,135     90.9     91.4    -0.5
+christmas          917    121.5    122.6    -1.1
+coins            6,278    102.3    105.8    -3.5
+gems             2,185    153.8    154.8    -1.0
+buttons          1,929    182.2    183.6    -1.4
+autumn_leaves    1,379    129.7    129.3    +0.4
+jigsaw             652     86.2     87.1    -0.9</pre>
+      <p>Antialiasing between the two renderers sets a floor of about &plusmn;3.5, measured by diffing a render against itself. Every style is inside it. Buttons, which paints 2,203 of its 2,220 fills with alpha and read 77.8 points darker at its worst, sits at &minus;1.4 &mdash; flattening translucency against the blank turns out to be fine once nothing else is distorting tone. Coins and Ducks sit on the floor rather than comfortably inside it, so they are where to look next.</p>
+
+      <h3>Assets</h3>
+      <ul>
+        <li><a href="journal-assets/2026-09-16_canvas-parity/flat-before.png">flat-before.png</a> &mdash; the reported defect, reproduced by putting the missing <code>stroke-width</code> back</li>
+        <li><a href="journal-assets/2026-09-16_canvas-parity/flat-black-paths-hidden.png">flat-black-paths-hidden.png</a> &mdash; the same render with the black paths hidden, showing the gears intact underneath</li>
+        <li><a href="journal-assets/2026-09-16_canvas-parity/flat-illustrated-after.png">flat-illustrated-after.png</a> &mdash; both styles after, HTML canvas beside XCS canvas</li>
+        <li><a href="journal-assets/2026-09-16_canvas-parity/all-styles-1.png">all-styles-1.png</a> and <a href="journal-assets/2026-09-16_canvas-parity/all-styles-2.png">all-styles-2.png</a> &mdash; all 14 styles, both canvases</li>
+        <li><a href="../laser-experiments/parity-captures/">parity-captures/</a> &mdash; the per-style page, with side-by-side, overlay and difference views</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="entry">
+    <summary>
+      <span class="chev"></span>
+      <span class="head">
         <span class="stamp"><time datetime="2026-09-16T14:30-07:00">Wed 16 Sep 2026 · 14:30 PDT</time></span>
         <span class="title">The laser tool now checks itself against the machine<span class="badge green">complete</span></span>
         <span class="synopsis">A jigsaw fill went into Shape Fill, and driving the real xTool Studio over its debug port found two exporter bugs that our own preview could never have shown.</span>
