@@ -4266,9 +4266,15 @@ function createEngine(canvas) {
      * only ever runs on the debounced project build, never on a canvas redraw.
      */
     async flattenRecording(shapes, cfg) {
-      const yieldEvery = 200;
-      const breathe = async (i) => {
-        if (i % yieldEvery === 0) await new Promise(r => setTimeout(r, 0));
+      // Hand the thread back on elapsed time rather than on a shape count: the
+      // shapes vary enormously in cost, so a count either yields far too often
+      // on cheap ones or leaves visible stalls on expensive ones.
+      const SLICE_MS = 12;
+      let lastYield = performance.now();
+      const breathe = async () => {
+        if (performance.now() - lastYield < SLICE_MS) return;
+        await new Promise(r => setTimeout(r, 0));
+        lastYield = performance.now();
       };
 
       const items = [];
@@ -4282,18 +4288,18 @@ function createEngine(canvas) {
         const dx = Math.round(s.minX * GEO_SCALE), dy = Math.round(s.minY * GEO_SCALE);
         for (const r of rings) for (const p of r) { p.X += dx; p.Y += dy; }
         items.push({ rings: unionSelf(rings, 'nonzero'), rule: 'evenodd', color: s.color });
-        await breathe(i);
+        await breathe();
       }
       for (const it of items) it.bounds = ringsBounds(it.rings);
 
       let kept = items;
       if (cfg.removeBuried !== false) {
-        const occ = occludeScene(items);
+        const occ = await occludeScene(items);
         kept = items.map((it, i) => ({ rings: occ[i].rings, rule: 'evenodd', color: it.color }))
                     .filter(it => it.rings.length);
       }
       if (cfg.mergeSameColour === true) {
-        kept = [...mergeByColour(kept).entries()].map(([color, rings]) => ({ rings, rule: 'evenodd', color }));
+        kept = [...(await mergeByColour(kept)).entries()].map(([color, rings]) => ({ rings, rule: 'evenodd', color }));
       }
 
       const out = [];
@@ -4310,7 +4316,7 @@ function createEngine(canvas) {
           // buried-geometry render test.
           fillRule: 'evenodd'
         });
-        await breathe(i);
+        await breathe();
       }
       return out;
     },

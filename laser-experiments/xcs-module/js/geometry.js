@@ -202,14 +202,28 @@ export function dropSlivers(rings, minMM2) {
  * coverer is above this shape too and is subtracted in its own right — and the
  * original is already to hand.
  *
+ * This is the long pass — about 27 seconds on Gears — so it is async and hands
+ * the thread back whenever it has held it for `sliceMs`. Without that it blocks
+ * for its whole duration and the page looks frozen on load.
+ *
+ * Yielding on a shape count instead was tried and is not enough: one shape can
+ * take seconds by itself when thousands overlap it, so a count of 50 still left
+ * blocks of 2.8 seconds. Time is what the reader notices, so time is what this
+ * counts.
+ *
  * @param {Array<{rings:Array, rule?:string, bounds:Object}>} shapes
- * @param {{minMM2?:number}} [opts] area below which a remainder is discarded
+ * @param {{minMM2?:number, sliceMs?:number, onProgress?:Function}} [opts]
+ *        `minMM2` is the area below which a remainder is discarded, `sliceMs`
+ *        how long it may hold the thread between yields
  * @returns {{rings:Array, empty:boolean, removed:boolean, trimmed:boolean}[]} one
  *          per input: `empty` had no geometry to begin with, `removed` was
  *          wholly covered, `trimmed` lost part of itself.
  */
-export function occludeScene(shapes, opts = {}) {
+export async function occludeScene(shapes, opts = {}) {
   const minMM2 = opts.minMM2 ?? 0;
+  const sliceMs = opts.sliceMs ?? 12;
+  let lastYield = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const n = shapes.length;
 
   // A grid sized to the median shape: much smaller and the big shapes touch
@@ -256,6 +270,11 @@ export function occludeScene(shapes, opts = {}) {
     let rings = subtract(s.rings, [clip], s.rule || 'nonzero');
     if (minMM2 > 0) rings = dropSlivers(rings, minMM2);
     out[i] = { rings, empty: false, removed: rings.length === 0, trimmed: rings.length > 0 };
+    if (now() - lastYield >= sliceMs) {
+      if (opts.onProgress) opts.onProgress(i, n);
+      await new Promise(r => setTimeout(r, 0));
+      lastYield = now();
+    }
   }
   return out;
 }
@@ -267,7 +286,7 @@ export function occludeScene(shapes, opts = {}) {
  * @param {Array<{rings:Array, color:string}>} shapes
  * @returns {Map<string, Array>} colour to merged rings
  */
-export function mergeByColour(shapes) {
+export async function mergeByColour(shapes) {
   const byColour = new Map();
   for (const s of shapes) {
     if (!s.rings || !s.rings.length) continue;
@@ -276,6 +295,9 @@ export function mergeByColour(shapes) {
     list.push(s.rings);
   }
   const merged = new Map();
-  for (const [colour, sets] of byColour) merged.set(colour, unionAll(sets, 'nonzero'));
+  for (const [colour, sets] of byColour) {
+    merged.set(colour, unionAll(sets, 'nonzero'));
+    await new Promise(r => setTimeout(r, 0));
+  }
   return merged;
 }

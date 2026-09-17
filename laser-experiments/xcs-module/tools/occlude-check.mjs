@@ -61,11 +61,11 @@ const RUN = (px, minMM2, emit) => `(async () => {
   lap('selfUnion');
   for (const s of shapes) s.bounds = G.ringsBounds(s.rings);
 
-  const occ = G.occludeScene(shapes, { minMM2: ${minMM2} });
+  const occ = await G.occludeScene(shapes, { minMM2: ${minMM2} });
   lap('occlude');
   const kept = shapes.map((s, i) => ({ rings: occ[i].rings, rule: 'evenodd', color: s.color }));
 
-  const merged = G.mergeByColour(kept);
+  const merged = await G.mergeByColour(kept);
   lap('merge');
 
   const count = list => {
