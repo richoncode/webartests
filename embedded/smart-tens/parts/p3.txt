@@ -1,0 +1,171 @@
+ two exclusive electrical paths · never both closed</text>
+      <text x="20" y="54" fill="#666" font-size="11" font-family="sans-serif">Use photoMOS / low-RON analog switches rated above stim compliance voltage, or a discrete T-switch with make-before-break forbidden</text>
+    </svg>
+    <p class="schematic-caption">Fig. 3 — Shared-electrode isolation. Pads always see protection; mux connects <em>either</em> the clamped AFE <em>or</em> the isolated stimulator, with an intentional open/blank gap between.</p>
+  </div>
+
+  <h3>Switch sequence (firmware + hardware)</h3>
+  <div class="mermaid">
+sequenceDiagram
+  participant MCU
+  participant MUX as T-switch
+  participant AFE as EMG AFE
+  participant STIM as Isolated stim
+  participant PAD as Shared pads
+
+  Note over MCU,PAD: MONITOR default
+  MCU->>MUX: SEL SENSE
+  MUX->>AFE: connect pads to AFE
+  MUX--xSTIM: stim path open
+  AFE->>MCU: EMG samples
+
+  Note over MCU,PAD: ARM to TENS transition
+  MCU->>AFE: blank ADC
+  MCU->>STIM: EN off
+  MCU->>MUX: SEL OPEN break-before-make
+  Note over MUX: AFE inputs quieted to REF
+  Note over MUX: both throws open 50 to 200 us
+  MCU->>MUX: SEL STIM
+  MUX->>STIM: connect pads to stim
+  MUX--xAFE: sense path open plus clamps
+  MCU->>STIM: EN on and dead-man
+  STIM->>PAD: biphasic CC pulses
+  Note over AFE: clamps only no active path
+
+  Note over MCU,PAD: Return to MONITOR
+  MCU->>STIM: EN off wait discharge
+  MCU->>MUX: SEL OPEN
+  MCU->>MUX: SEL SENSE
+  MCU->>AFE: unblank after settling
+  </div>
+
+  <h3>Hard rules for shared pads</h3>
+  <ul>
+    <li><strong>Break-before-make only</strong> — never a make-before-break mux; mid-state must disconnect stim before sense reconnects.</li>
+    <li><strong>AFE never sees compliance voltage</strong> — when SEL=STIM, sense throw is open and AFE pins sit behind rail clamps + series R (and optionally a short across IN+/IN− through a quieting resistor to REF).</li>
+    <li><strong>Stim enable is gated</strong> — hardware AND: <code>SEL==STIM</code> ∧ <code>dead-man</code> ∧ <code>not FAULT</code>. Firmware alone is not enough.</li>
+    <li><strong>Blanking window</strong> — discard EMG for the open gap + a post-stim artifact window (typically tens–hundreds of ms) before outlier logic resumes.</li>
+    <li><strong>Switch rating</strong> — off isolation and voltage rating must exceed the stim open-circuit / compliance voltage (design for ≥2× expected peak).</li>
+    <li><strong>Common REF</strong> — bias/reference electrode stays on a bony site and is <em>not</em> a stim return unless the topology is explicitly redesigned for that (default: REF is sense-only).</li>
+    <li><strong>Lead-off / wet check</strong> — before enabling STIM, verify electrode impedance is in-range so you do not command high voltage into an open lead.</li>
+  </ul>
+
+  <div class="callout danger">
+    <strong>Bench gate before skin:</strong> prove the mux on a resistive dummy load with a scope on the AFE input pins during STIM.
+    Pass criterion: AFE input voltage stays within clamp limits for every pulse; no DC offset residual that rails the amp after return to SENSE.
+  </div>
+
+  <h3>Electrode map (large leg muscles)</h3>
+
+  <div class="mermaid">
+flowchart TB
+  subgraph Quads["Quadriceps"]
+    Q1["EMG Ch1 VL"]
+    Q2["EMG Ch2 RF / VM"]
+    QS["Stim pair Q"]
+  end
+  subgraph Hams["Hamstrings"]
+    H1["EMG Ch3 BF"]
+    H2["EMG Ch4 ST/SM"]
+    HS["Stim pair H"]
+  end
+  subgraph Calves["Triceps surae"]
+    C1["EMG Ch5 MG"]
+    C2["EMG Ch6 LG / Soleus"]
+    CS["Stim pair C"]
+  end
+  REF["Common REF on bony landmark\n(patella / tibia / malleolus)"]
+  Q1 & Q2 & H1 & H2 & C1 & C2 --> REF
+  </div>
+  <p>Start with <strong>2 EMG + 1 stim pair</strong> on the worst cramp muscle (often calf or quad), then scale the array.</p>
+
+  <h2 id="software">Software plan</h2>
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> Boot
+  Boot --> SelfTest: rails OK / Isense OK
+  SelfTest --> Monitor: pass
+  SelfTest --> Fault: fail
+  Monitor --> OutlierHold: score > T_hi for N windows
+  OutlierHold --> Monitor: score clears / user dismiss
+  OutlierHold --> Armed: user confirms TENS
+  Armed --> TensRun: hold-to-run + intensity lock
+  TensRun --> Monitor: timeout / release / EMG settle
+  TensRun --> Fault: overcurrent / open lead
+  Fault --> [*]
+  </div>
+
+  <h3>Firmware (MCU)</h3>
+  <ul>
+    <li>Sample EMG @ 1–2&nbsp;kHz/ch; DMA into ring buffers.</li>
+    <li>Per 100–200&nbsp;ms window: RMS, MAV, dominant band energy, contralateral ratio if available.</li>
+    <li>Personal baseline: EWMA of quiet + activity modes; outlier = persistent z-score / Hotelling-style score.</li>
+    <li>TENS ISR: charge-balanced biphasic timing; ramp; hard session timer; kill on button release.</li>
+    <li>BLE GATT: stream compressed features + optional raw snippets; log stim events.</li>
+  </ul>
+
+  <h3>Host app</h3>
+  <ul>
+    <li>Live strip charts per channel; outlier badges; arm / intensity UI with deliberate confirms.</li>
+    <li>Session export (CSV/Parquet) for tuning thresholds offline.</li>
+    <li>Later: on-device TinyML classifier once labeled cramp sessions exist.</li>
+  </ul>
+
+  <h2 id="plan">Phased plan</h2>
+  <table>
+    <thead>
+      <tr><th>Phase</th><th>Deliverable</th><th>Success criteria</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>0 — Safety &amp; paper</strong></td>
+        <td>This design page; hazard list; electrode map; dummy-load test plan</td>
+        <td>Written interlocks; no skin stim until Phase 2 gate</td>
+      </tr>
+      <tr>
+        <td><strong>1 — Sense-only prototype</strong></td>
+        <td>2–4× AD8232 + MCU + BLE; gel electrodes on one leg</td>
+        <td>Clean EMG at rest / flex / walk; baseline + outlier flag demos on screen</td>
+      </tr>
+      <tr>
+        <td><strong>2 — TENS on dummy, then skin</strong></td>
+        <td>Isolated CC driver + T-switch mux on dummy load; then shared-pad sensory TENS under hold-to-run</td>
+        <td>Measured pulse shape / current on resistive load; then low-intensity sensory TENS under hold-to-run</td>
+      </tr>
+      <tr>
+        <td><strong>3 — Closed loop</strong></td>
+        <td>Outlier → arm → stim → watch EMG settle; multi-muscle array</td>
+        <td>Logged sessions; false-positive rate acceptable for personal use; optional PCB spin</td>
+      </tr>
+      <tr>
+        <td><strong>4 — Wearable refine</strong></td>
+        <td>Custom enclosure, dry/textile electrodes, battery + charging</td>
+        <td>Comfortable multi-hour monitor; reliable lead-off detect</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="bom">Rough BOM (Phase 1–2)</h2>
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Qty</th><th>Notes / ballpark USD</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>AD8232 Heart Rate Monitor modules (repurposed EMG)</td><td>2–4</td><td>~$8–15 each; easy start</td></tr>
+      <tr><td>nRF52840 or ESP32-S3 dev board</td><td>1</td><td>~$5–15</td></tr>
+      <tr><td>Disposable Ag/AgCl electrodes + leads</td><td>1 pack</td><td>~$10–25</td></tr>
+      <tr><td>Isolated TENS module <em>or</em> HV CC kit</td><td>1</td><td>Prefer module first; $20–80</td></tr>
+      <tr><td>TVS, series resistors, polyfuse, shunt</td><td>lot</td><td>~$5–15</td></tr>
+      <tr><td>Dummy load resistors (1–10 kΩ, HV rated)</td><td>set</td><td>Required before skin</td></tr>
+      <tr><td>LiPo + charger / USB power bank</td><td>1</td><td>~$10–25; keep stim isolated</td></tr>
+      <tr><td><strong>Phase 1 sense-only</strong></td><td></td><td><strong>~$50–100</strong></td></tr>
+      <tr><td><strong>Phase 1+2 with module TENS</strong></td><td></td><td><strong>~$80–200</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="open">Open questions</h2>
+  <ul>
+    <li>Cramp detection: unsupervised outlier vs supervised TinyML after labeled nights/workouts?</li>
+    <li>Shared pads (Fig. 3 mux) vs hybrid (shared on primary cramp muscle, dedicated elsewhere)?</li>
+    <li>On-leg wearable vs bedside “cramp kit” you grab when it hits?</li>
+    <li>
