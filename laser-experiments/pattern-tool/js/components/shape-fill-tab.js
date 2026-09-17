@@ -885,7 +885,7 @@ function createEngine(canvas) {
 
   function drawGear(cx, cy, radius, color, innerColor, teeth, isStacked = false) {
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = OUTLINE;
 
     ctx.beginPath();
     let innerR = radius * 0.75;
@@ -920,7 +920,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 0.32, 0, Math.PI * 2);
-    ctx.fillStyle = '#e8ecef';
+    ctx.fillStyle = paletteNear('#e8ecef');
     ctx.fill(); ctx.stroke();
 
     if (teeth > 8 && !isStacked) {
@@ -928,7 +928,7 @@ function createEngine(canvas) {
         let a = (i / 4) * Math.PI * 2 + Math.PI/4;
         ctx.beginPath();
         ctx.arc(cx + Math.cos(a)*radius*0.5, cy + Math.sin(a)*radius*0.5, radius*0.12, 0, Math.PI*2);
-        ctx.fillStyle = '#e8ecef';
+        ctx.fillStyle = paletteNear('#e8ecef');
         ctx.fill(); ctx.stroke();
       }
     }
@@ -940,7 +940,7 @@ function createEngine(canvas) {
     } else {
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 0.18, 0, Math.PI * 2);
-      ctx.fillStyle = '#7f8c8d';
+      ctx.fillStyle = paletteNear('#7f8c8d');
       ctx.fill(); ctx.stroke();
 
       ctx.beginPath();
@@ -955,7 +955,7 @@ function createEngine(canvas) {
     let hType = hash % 4;
 
     ctx.fillStyle = color;
-    ctx.strokeStyle = '#222';
+    ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = 1;
 
     ctx.fillRect(x - width / 2, yBase - height, width, height);
@@ -1020,7 +1020,7 @@ function createEngine(canvas) {
     ctx.lineTo(-size*1.2, -size*0.3);
     ctx.lineTo(-size*0.7, size*0.3);
     ctx.fill();
-    ctx.strokeStyle = '#222';
+    ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -1033,7 +1033,7 @@ function createEngine(canvas) {
     ctx.arc(size * 0.6, -size * 0.4, size * 0.55, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = '#FF9800';
+    ctx.fillStyle = paletteNear('#FF9800');
     ctx.beginPath();
     ctx.moveTo(size * 0.9, -size * 0.3);
     ctx.lineTo(size * 1.5, -size * 0.2);
@@ -1041,14 +1041,14 @@ function createEngine(canvas) {
     ctx.closePath();
     ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = OUTLINE;
     ctx.beginPath();
     ctx.arc(size * 0.7, -size * 0.5, size * 0.08, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.beginPath();
     ctx.ellipse(0, size*0.1, size*0.5, size*0.25, Math.PI*0.05, 0, Math.PI*2);
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.strokeStyle = shadeColor(color, 0.72);
     ctx.stroke();
 
     ctx.restore();
@@ -1065,7 +1065,7 @@ function createEngine(canvas) {
     ctx.closePath();
     ctx.fillStyle = (hash % 2 === 0) ? '#2e7d32' : '#388e3c';
     ctx.fill();
-    ctx.strokeStyle = '#1b5e20';
+    ctx.strokeStyle = paletteNear('#1b5e20');
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
@@ -1083,15 +1083,15 @@ function createEngine(canvas) {
       ctx.ellipse(0, -radius * 0.5, radius * 0.25, radius * 0.5, 0, 0, Math.PI * 2);
       ctx.fillStyle = palette[i % palette.length];
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.strokeStyle = shadeColor(palette[i % palette.length], 0.79);
       ctx.stroke();
       ctx.restore();
     }
     ctx.beginPath();
     ctx.arc(0, 0, radius * 0.3, 0, Math.PI * 2);
-    ctx.fillStyle = '#f4d03f';
+    ctx.fillStyle = paletteNear('#f4d03f');
     ctx.fill();
-    ctx.strokeStyle = '#b8860b';
+    ctx.strokeStyle = paletteNear('#b8860b');
     ctx.stroke();
     ctx.restore();
   }
@@ -1111,11 +1111,11 @@ function createEngine(canvas) {
     ctx.closePath();
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = '#7a4a1e';
+    ctx.strokeStyle = paletteNear('#7a4a1e');
     ctx.lineWidth = Math.max(size * 0.08, 1);
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillStyle = shadeColor(color, 1.595);
     for (let i = 0; i < spikes; i++) {
       let a = (i / spikes) * Math.PI * 2 - Math.PI / 2;
       ctx.beginPath();
@@ -1130,7 +1130,7 @@ function createEngine(canvas) {
     ctx.translate(x, y);
     ctx.rotate(angle);
     ctx.fillStyle = color;
-    ctx.strokeStyle = '#5c3a1e';
+    ctx.strokeStyle = paletteNear('#5c3a1e');
     ctx.lineWidth = Math.max(size * 0.06, 1);
 
     ctx.beginPath();
@@ -1155,7 +1155,7 @@ function createEngine(canvas) {
     ctx.ellipse(size * 0.3, size * 0.3, size * 0.2, size * 0.55, -0.15, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillStyle = shadeColor(color, 1.63);
     ctx.beginPath(); ctx.arc(-size * 0.15, -size * 1.35, size * 0.05, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(size * 0.15, -size * 1.35, size * 0.05, 0, Math.PI * 2); ctx.fill();
     for (let i = 0; i < 3; i++) {
@@ -1171,7 +1171,7 @@ function createEngine(canvas) {
     ctx.translate(x, y);
     ctx.rotate(angle);
     ctx.fillStyle = color;
-    ctx.strokeStyle = '#0b3d1f';
+    ctx.strokeStyle = paletteNear('#0b3d1f');
     ctx.lineWidth = Math.max(size * 0.06, 1);
 
     ctx.beginPath();
@@ -1190,11 +1190,11 @@ function createEngine(canvas) {
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#6b4226';
+    ctx.fillStyle = paletteNear('#6b4226');
     ctx.fillRect(-size * 0.15, size * 0.75, size * 0.3, size * 0.3);
     ctx.strokeRect(-size * 0.15, size * 0.75, size * 0.3, size * 0.3);
 
-    let ornColors = ['#e74c3c', '#f1c40f', '#3498db', '#ffffff'];
+    let ornColors = ['#e74c3c', '#f1c40f', '#3498db', '#ffffff'].map(paletteNear);
     for (let i = 0; i < 5; i++) {
       let oy = -size * 1.0 + i * size * 0.45;
       let ox = (hash % 2 === 0 ? 1 : -1) * (i % 2) * size * 0.25;
@@ -1206,16 +1206,70 @@ function createEngine(canvas) {
     ctx.restore();
   }
 
+  // ── The palette is the only source of colour ──
+  //
+  // Every colour a style draws with has to be one the palette chose, because a
+  // colour is a laser layer and the palette is what bounds how many there are.
+  // The generator always picked its base colours correctly; the draw functions
+  // then invented more — 33 shadeColor() tints, 73 hard-coded hex literals —
+  // and World Coins reached about 400 distinct colours from a palette of 9.
+  //
+  // These bind the drawing to the palette at the point a colour is chosen,
+  // rather than correcting it afterwards. Both canvases then draw the same
+  // thing because both are handed the same thing, and the layer count is the
+  // palette's size by construction.
+  let activePalette = [];   // the resolved palette, in its own order
+  let paletteByLum = [];    // the same colours, darkest first
+
+  // The one colour allowed outside the palette. The rule is the palette's
+  // colours plus black for outlines — singular. The draw functions between
+  // them named twelve different near-blacks, which is twelve layers doing one
+  // job, so they all resolve here.
+  const OUTLINE = '#141414';
+
+  function setActivePalette(list) {
+    activePalette = (list && list.length) ? list.slice() : [];
+    paletteByLum = activePalette.slice().sort((a, b) => luminanceOf(a) - luminanceOf(b));
+  }
+  function luminanceOf(hex) {
+    const c = parseCanvasColor(hex);
+    return c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+  }
+
+  /**
+   * The palette entry closest to a colour. Use it wherever a draw function
+   * would otherwise name a colour outright — the intent survives (a warm metal
+   * lands on the palette's warmest entry) while the result stays a real layer.
+   */
+  function paletteNear(hex) {
+    if (!activePalette.length) return hex;
+    let best = activePalette[0], bestD = Infinity;
+    for (const p of activePalette) {
+      const d = colorDistance2(hex, p);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }
+
+  /**
+   * A lighter or darker relative of a colour, chosen from the palette.
+   *
+   * Callers pass the multiplier they used to, so every existing call site keeps
+   * reading the way it did: above 1 lightens, below 1 darkens. The multiplier
+   * becomes a number of steps along the palette ordered by luminance, at
+   * roughly 1.25x per step, and clamps at the ends. A palette of five colours
+   * therefore has five shades and no more, which is the truth about the
+   * machine rather than a limitation of this function.
+   */
   function shadeColor(hex, factor) {
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
-    let r = parseInt(c.substring(0, 2), 16);
-    let g = parseInt(c.substring(2, 4), 16);
-    let b = parseInt(c.substring(4, 6), 16);
-    r = Math.min(255, Math.max(0, Math.round(r * factor)));
-    g = Math.min(255, Math.max(0, Math.round(g * factor)));
-    b = Math.min(255, Math.max(0, Math.round(b * factor)));
-    return `rgb(${r},${g},${b})`;
+    if (!paletteByLum.length) return hex;
+    const base = paletteNear(hex);
+    const i = paletteByLum.indexOf(base);
+    if (i < 0) return base;
+    if (!(factor > 0) || factor === 1) return base;
+    const steps = Math.round(Math.log(factor) / Math.log(1.25));
+    const j = Math.min(paletteByLum.length - 1, Math.max(0, i + steps));
+    return paletteByLum[j];
   }
 
   function drawCoinLegend(ctx, text, radius, fontSize, arc, centerAngle) {
@@ -1246,7 +1300,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.arc(radius * 0.1, radius * 0.14, radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = shadeColor(color, 0.79);
     ctx.fill();
 
     ctx.rotate((hash % 360) * Math.PI / 180);
@@ -1259,12 +1313,12 @@ function createEngine(canvas) {
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fillStyle = baseColor;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeStyle = shadeColor(color, 0.615);
     ctx.lineWidth = Math.max(radius * 0.06, 1);
     ctx.stroke();
 
     let ridges = 28;
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.strokeStyle = shadeColor(color, 0.825);
     ctx.lineWidth = Math.max(radius * 0.04, 0.5);
     for (let i = 0; i < ridges; i++) {
       let a = (i / ridges) * Math.PI * 2;
@@ -1276,22 +1330,22 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.arc(0, 0, radius * 0.84, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.strokeStyle = shadeColor(color, 1.21);
     ctx.lineWidth = Math.max(radius * 0.05, 1);
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(0, 0, radius * 0.8, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = shadeColor(color, 0.79);
     ctx.stroke();
 
     if (radius > 10) {
-      ctx.fillStyle = `rgba(0,0,0,${legendAlpha})`;
+      ctx.fillStyle = shadeColor(color, 0.8);
       drawCoinLegend(ctx, COIN_LEGENDS[hash % COIN_LEGENDS.length], radius * 0.68, Math.max(radius * 0.16, 4), Math.PI * 0.85, -Math.PI / 2);
     }
 
     let type = hash % 5;
-    ctx.fillStyle = `rgba(0,0,0,${legendAlpha + 0.1})`;
-    ctx.strokeStyle = `rgba(0,0,0,${legendAlpha + 0.1})`;
+    ctx.fillStyle = shadeColor(color, 0.8);
+    ctx.strokeStyle = shadeColor(color, 0.8);
     ctx.lineWidth = Math.max(radius * 0.05, 1);
     if (type === 0) {
       ctx.beginPath();
@@ -1353,13 +1407,13 @@ function createEngine(canvas) {
       ctx.font = `${radius * 0.16}px Georgia, 'Times New Roman', serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = `rgba(0,0,0,${legendAlpha})`;
+      ctx.fillStyle = shadeColor(color, 0.8);
       fillTextIf(String(year), 0, radius * 0.62);
     }
 
     ctx.beginPath();
     ctx.arc(-radius * 0.3, -radius * 0.3, radius * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${0.22 - wear * 0.15})`;
+    ctx.fillStyle = shadeColor(color, 1.25);
     ctx.fill();
 
     ctx.restore();
@@ -1406,7 +1460,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.ellipse(size * 0.1, size * 0.16, size * 0.95, size * 0.55, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = shadeColor(color, 0.79);
     ctx.fill();
 
     ctx.rotate(angle);
@@ -1423,7 +1477,7 @@ function createEngine(canvas) {
     ctx.closePath();
     ctx.fillStyle = shades[0];
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.strokeStyle = shadeColor(color, 0.755);
     ctx.lineWidth = Math.max(size * 0.03, 0.5);
     ctx.stroke();
 
@@ -1438,7 +1492,7 @@ function createEngine(canvas) {
       let shadeIdx = 1 + ((i + Math.floor(hash / 7)) % 4);
       ctx.fillStyle = shades[shadeIdx];
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.strokeStyle = shadeColor(color, 0.72);
       ctx.lineWidth = Math.max(size * 0.035, 0.5);
       ctx.stroke();
     }
@@ -1446,13 +1500,13 @@ function createEngine(canvas) {
     ctx.beginPath();
     outer.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
     ctx.closePath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.strokeStyle = shadeColor(color, 1.35);
     ctx.lineWidth = Math.max(size * 0.05, 1);
     ctx.stroke();
 
     let glintAngle = (hash % 360) * Math.PI / 180;
     let gx = Math.cos(glintAngle) * size * 0.22, gy = Math.sin(glintAngle) * size * 0.22 - size * 0.12;
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeStyle = shadeColor(color, 1.665);
     ctx.lineWidth = Math.max(size * 0.05, 1);
     ctx.beginPath();
     ctx.moveTo(gx - size * 0.18, gy); ctx.lineTo(gx + size * 0.18, gy);
@@ -1499,7 +1553,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.ellipse(radius * 0.1, radius * 0.14, radius, radius * 0.85, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = shadeColor(color, 0.79);
     ctx.fill();
 
     ctx.rotate((hash % 360) * Math.PI / 180);
@@ -1509,14 +1563,14 @@ function createEngine(canvas) {
     buttonOutline(ctx, shapeType, radius);
     ctx.fillStyle = shadeColor(color, 1.05);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.strokeStyle = shadeColor(color, 0.685);
     ctx.lineWidth = Math.max(radius * 0.05, 1);
     ctx.stroke();
 
     buttonOutline(ctx, shapeType, radius * 0.72);
     ctx.fillStyle = shadeColor(color, 0.88);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.strokeStyle = shadeColor(color, 0.825);
     ctx.lineWidth = Math.max(radius * 0.03, 0.5);
     ctx.stroke();
 
@@ -1539,7 +1593,7 @@ function createEngine(canvas) {
 
     let holeStyle = hash % 4;
     let holeR = Math.max(radius * 0.09, 1);
-    ctx.fillStyle = 'rgba(20,15,10,0.85)';
+    ctx.fillStyle = shadeColor(color, 0.405);
     if (holeStyle === 0) {
       let d = radius * 0.22;
       [[0, -d], [0, d], [-d, 0], [d, 0]].forEach(([hx, hy]) => {
@@ -1555,7 +1609,7 @@ function createEngine(canvas) {
       ctx.arc(0, 0, radius * 0.12, 0, Math.PI * 2);
       ctx.fillStyle = shadeColor(color, 0.7);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.strokeStyle = shadeColor(color, 0.79);
       ctx.lineWidth = 1;
       ctx.stroke();
     } else {
@@ -1567,7 +1621,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.ellipse(-radius * 0.32, -radius * 0.32, radius * 0.28, radius * 0.16, -0.6, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = shadeColor(color, 1.245);
     ctx.fill();
 
     ctx.restore();
@@ -1676,7 +1730,7 @@ function createEngine(canvas) {
     ctx.fill();
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.strokeStyle = shadeColor(bodyColor, 1.175);
     ctx.lineWidth = Math.max(size * 0.05, 1);
     ctx.beginPath();
     ctx.moveTo(-size * 0.2, size * 0.1);
@@ -1729,7 +1783,7 @@ function createEngine(canvas) {
     ctx.translate(x, y);
     ctx.rotate(angle);
 
-    let colors = ['#d2691e', '#e8a13a', '#e8ddb5', '#8a9a5b'];
+    let colors = ['#d2691e', '#e8a13a', '#e8ddb5', '#8a9a5b'].map(paletteNear);
     let bodyColor = colors[hash % colors.length];
     ctx.fillStyle = bodyColor;
     ctx.strokeStyle = shadeColor(bodyColor, 0.55);
@@ -1769,7 +1823,7 @@ function createEngine(canvas) {
       ctx.lineWidth = Math.max(size * 0.06, 1);
       ctx.stroke(bodyPath);
     } else if (variant === 1) {
-      let wartyColors = ['#e8a13a', '#e8ddb5', '#8a9a5b'];
+      let wartyColors = ['#e8a13a', '#e8ddb5', '#8a9a5b'].map(paletteNear);
       bodyColor = wartyColors[Math.floor(hash / 3) % wartyColors.length];
       ctx.fillStyle = bodyColor;
       ctx.strokeStyle = shadeColor(bodyColor, 0.55);
@@ -1854,7 +1908,7 @@ function createEngine(canvas) {
         ctx.stroke();
       }
 
-      ctx.fillStyle = '#5a3d1a';
+      ctx.fillStyle = paletteNear('#5a3d1a');
       ctx.strokeStyle = shadeColor('#5a3d1a', 0.65);
       ctx.lineWidth = Math.max(size * 0.02, 1);
       ctx.beginPath();
@@ -1872,7 +1926,7 @@ function createEngine(canvas) {
     }
 
     if (variant !== 2) {
-      ctx.strokeStyle = '#5a3d1a';
+      ctx.strokeStyle = paletteNear('#5a3d1a');
       ctx.lineWidth = Math.max(size * 0.1, 1);
       ctx.beginPath();
       ctx.moveTo(size * 0.05, -size * 0.6);
@@ -1978,7 +2032,7 @@ function createEngine(canvas) {
     // showed it, which is exactly the gap between what was previewed and what
     // would come off the machine. The goal is a drawing that lasers as it looks.
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#111';
+    ctx.strokeStyle = OUTLINE;
 
     let teethCount = 8 + (hash % 12) * 2;
     ctx.beginPath();
@@ -2005,7 +2059,7 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.arc(0, 0, radius * 0.65, 0, Math.PI * 2);
-    ctx.fillStyle = '#1a110a';
+    ctx.fillStyle = OUTLINE;
     ctx.fill(); ctx.stroke();
 
     ctx.fillStyle = color;
@@ -2032,7 +2086,7 @@ function createEngine(canvas) {
         let a = (i/holes)*Math.PI*2;
         ctx.beginPath();
         ctx.arc(Math.cos(a)*radius*0.4, Math.sin(a)*radius*0.4, radius*0.15, 0, Math.PI*2);
-        ctx.fillStyle = '#1a110a';
+        ctx.fillStyle = OUTLINE;
         ctx.fill(); ctx.stroke();
       }
       ctx.fillStyle = color;
@@ -2054,11 +2108,11 @@ function createEngine(canvas) {
 
     ctx.beginPath();
     ctx.arc(0, 0, radius * 0.1, 0, Math.PI * 2);
-    ctx.fillStyle = '#222';
+    ctx.fillStyle = OUTLINE;
     ctx.fill(); ctx.stroke();
 
     if (radius > 20) {
-      ctx.fillStyle = '#8f9294';
+      ctx.fillStyle = paletteNear('#8f9294');
       for (let i = 0; i < 6; i++) {
         let a = (i / 6) * Math.PI * 2 + (hash%Math.PI);
         ctx.beginPath();
@@ -2117,7 +2171,7 @@ function createEngine(canvas) {
   function drawPipeOutline(ctx, x1, y1, x2, y2, pipeThickness, isCyl) {
     ctx.beginPath();
     ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = isCyl ? (pipeThickness * 1.8 + 4) : (pipeThickness + 4);
     ctx.stroke();
   }
@@ -2132,7 +2186,7 @@ function createEngine(canvas) {
     if (style === '3d-basic' || style === '3d-glossy') {
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.strokeStyle = shadeColor(color, 1.21);
       ctx.lineWidth = pipeThickness * 0.4;
       ctx.stroke();
     } else if (style === 'illustrated') {
@@ -2141,7 +2195,7 @@ function createEngine(canvas) {
       let ribSpacing = isCyl ? (pipeThickness * 0.4) : (pipeThickness * 0.7);
       let steps = Math.floor(dist / ribSpacing);
       if (steps > 0) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.strokeStyle = shadeColor(color, 0.755);
         ctx.lineWidth = isCyl ? 1.5 : Math.max(pipeThickness * 0.15, 1);
         let nx = -dy / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
         let ny = dx / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
@@ -2159,7 +2213,7 @@ function createEngine(canvas) {
     if (style === '3d-glossy') {
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.strokeStyle = shadeColor(color, 1.42);
       ctx.lineWidth = Math.max(pipeThickness * 0.1, 1);
       ctx.stroke();
     }
@@ -2180,11 +2234,11 @@ function createEngine(canvas) {
     } else if (style === 'illustrated') {
       ctx.beginPath();
       ctx.arc(x, y, jointRadius * 0.6, 0, Math.PI * 2);
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = OUTLINE;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(x, y, jointRadius * 0.4, 0, Math.PI * 2);
-      ctx.fillStyle = '#e6c229';
+      ctx.fillStyle = paletteNear('#e6c229');
       ctx.fill();
     }
   }
@@ -2193,28 +2247,28 @@ function createEngine(canvas) {
     if (isJumper) {
       ctx.beginPath();
       ctx.moveTo(x1 + 2, y1 + 2); ctx.lineTo(x2 + 2, y2 + 2);
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = pipeThickness * 0.4;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = '#f1c40f';
+      ctx.strokeStyle = paletteNear('#f1c40f');
       ctx.lineWidth = pipeThickness * 0.35;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = '#8c7311';
+      ctx.strokeStyle = paletteNear('#8c7311');
       ctx.lineWidth = pipeThickness * 0.45;
       ctx.stroke();
-      ctx.strokeStyle = '#f1c40f';
+      ctx.strokeStyle = paletteNear('#f1c40f');
       ctx.lineWidth = pipeThickness * 0.35;
       ctx.stroke();
     } else {
       ctx.beginPath();
       ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = '#b87333';
+      ctx.strokeStyle = paletteNear('#b87333');
       ctx.lineWidth = pipeThickness * 0.5;
       ctx.stroke();
     }
@@ -2224,12 +2278,12 @@ function createEngine(canvas) {
     let padRadius = pipeThickness * 0.6;
     ctx.beginPath();
     ctx.arc(x, y, padRadius, 0, Math.PI * 2);
-    ctx.fillStyle = '#a9a9a9';
+    ctx.fillStyle = paletteNear('#a9a9a9');
     ctx.fill();
 
     ctx.beginPath();
     ctx.arc(x + padRadius * 0.1, y - padRadius * 0.1, padRadius * 0.7, 0, Math.PI * 2);
-    ctx.fillStyle = '#c0c0c0';
+    ctx.fillStyle = paletteNear('#c0c0c0');
     ctx.fill();
   }
 
@@ -2241,14 +2295,14 @@ function createEngine(canvas) {
     let resLen = pipeThickness * 2.5;
     let resWidth = pipeThickness * 0.9;
 
-    ctx.strokeStyle = '#c0c0c0';
+    ctx.strokeStyle = paletteNear('#c0c0c0');
     ctx.lineWidth = pipeThickness * 0.15;
     ctx.beginPath();
     ctx.moveTo(-resLen / 2, 0); ctx.lineTo(-resLen * 0.9, 0);
     ctx.moveTo(resLen / 2, 0); ctx.lineTo(resLen * 0.9, 0);
     ctx.stroke();
 
-    let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'];
+    let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'].map(paletteNear);
     let b1 = colors[hash % colors.length];
     let b2 = colors[(hash * 3) % colors.length];
     let b3 = colors[(hash * 5) % colors.length];
@@ -2256,22 +2310,22 @@ function createEngine(canvas) {
     let t = hash % 100;
 
     if (t < 34) {
-      ctx.fillStyle = '#a52a2a';
+      ctx.fillStyle = paletteNear('#a52a2a');
       ctx.fillRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
-      ctx.strokeStyle = '#5c1a1a';
+      ctx.strokeStyle = paletteNear('#5c1a1a');
       ctx.lineWidth = 1;
       ctx.strokeRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
 
-      ctx.fillStyle = '#e6ccaa';
+      ctx.fillStyle = paletteNear('#e6ccaa');
       ctx.font = `${pipeThickness * 0.4}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       fillTextIf(hash % 2 === 0 ? "K5%" : "6.2 K5%", 0, 0);
 
     } else if (t < 67) {
-      ctx.fillStyle = '#d2b48c';
+      ctx.fillStyle = paletteNear('#d2b48c');
       ctx.fillRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
-      ctx.strokeStyle = '#8b5a2b';
+      ctx.strokeStyle = paletteNear('#8b5a2b');
       ctx.lineWidth = 1;
       ctx.strokeRect(-resLen / 2, -resWidth / 2, resLen, resWidth);
 
@@ -2283,9 +2337,9 @@ function createEngine(canvas) {
 
     } else {
       let l = resLen * 0.85, w = resWidth * 0.75;
-      ctx.fillStyle = '#4a2f1d';
+      ctx.fillStyle = paletteNear('#4a2f1d');
       ctx.fillRect(-l / 2, -w / 2, l, w);
-      ctx.strokeStyle = '#2a1a10';
+      ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = 1;
       ctx.strokeRect(-l / 2, -w / 2, l, w);
 
@@ -2307,31 +2361,31 @@ function createEngine(canvas) {
 
     if (t === 0) {
       let l = pipeThickness * 2.75 * scale * 0.6, w = pipeThickness * 0.54 * scale;
-      ctx.fillStyle = '#f0f0d0';
+      ctx.fillStyle = paletteNear('#f0f0d0');
       ctx.fillRect(-l / 2, -w / 2, l, w);
-      ctx.strokeStyle = '#a0a0a0';
+      ctx.strokeStyle = paletteNear('#a0a0a0');
       ctx.strokeRect(-l / 2, -w / 2, l, w);
 
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = paletteNear('#333');
       ctx.font = `bold ${pipeThickness * 0.35 * scale}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       fillTextIf("104K", 0, 0);
 
     } else if (t === 1) {
       let r = pipeThickness * 0.9 * scale;
-      ctx.fillStyle = '#2a4a6a';
+      ctx.fillStyle = paletteNear('#2a4a6a');
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillStyle = paletteNear('#ffffff');
       ctx.beginPath(); ctx.arc(-r * 0.3, -r * 0.3, r * 0.35, 0, Math.PI * 2); ctx.fill();
 
-      ctx.fillStyle = '#e0e0e0';
+      ctx.fillStyle = paletteNear('#e0e0e0');
       ctx.font = `bold ${r * 0.7}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       fillTextIf('-', 0, -r * 0.05);
 
-      ctx.strokeStyle = '#c0c0c0';
+      ctx.strokeStyle = paletteNear('#c0c0c0');
       ctx.lineWidth = pipeThickness * 0.12;
       ctx.beginPath();
       ctx.moveTo(-r * 0.4, r * 0.85); ctx.lineTo(-r * 0.4, r * 1.6);
@@ -2340,7 +2394,7 @@ function createEngine(canvas) {
 
     } else if (t === 2) {
       let w = pipeThickness * 1.5 * scale, h = pipeThickness * 1.6 * scale;
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = OUTLINE;
       ctx.beginPath();
       ctx.moveTo(-w / 2, h / 2);
       ctx.lineTo(-w / 2, -h * 0.1);
@@ -2348,9 +2402,9 @@ function createEngine(canvas) {
       ctx.lineTo(w / 2, h / 2);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
 
-      ctx.strokeStyle = '#c0c0c0';
+      ctx.strokeStyle = paletteNear('#c0c0c0');
       ctx.lineWidth = pipeThickness * 0.1;
       ctx.beginPath();
       ctx.moveTo(-w * 0.3, h / 2); ctx.lineTo(-w * 0.3, h / 2 + pipeThickness * 0.5);
@@ -2360,19 +2414,19 @@ function createEngine(canvas) {
 
     } else {
       let r = pipeThickness * 0.85 * scale;
-      ctx.fillStyle = '#b0b0b0';
+      ctx.fillStyle = paletteNear('#b0b0b0');
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = paletteNear('#555'); ctx.lineWidth = 1; ctx.stroke();
 
-      ctx.fillStyle = '#888';
+      ctx.fillStyle = paletteNear('#888');
       ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = paletteNear('#333');
       ctx.lineWidth = Math.max(r * 0.12, 1);
       ctx.beginPath();
       ctx.moveTo(-r * 0.25, 0); ctx.lineTo(r * 0.25, 0);
       ctx.stroke();
 
-      ctx.strokeStyle = '#c0c0c0';
+      ctx.strokeStyle = paletteNear('#c0c0c0');
       ctx.lineWidth = pipeThickness * 0.1;
       ctx.beginPath();
       ctx.moveTo(-r * 0.5, r * 0.85); ctx.lineTo(-r * 0.5, r * 1.5);
@@ -2396,52 +2450,52 @@ function createEngine(canvas) {
       ctx.closePath();
 
       if (currentStyle === 'illustrated') {
-        ctx.fillStyle = '#e8ecef';
-        ctx.strokeStyle = '#222';
+        ctx.fillStyle = paletteNear('#e8ecef');
+        ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 4;
       } else if (currentStyle === 'circuit') {
-        ctx.fillStyle = '#8b5a2b';
-        ctx.strokeStyle = '#d4af37';
+        ctx.fillStyle = paletteNear('#8b5a2b');
+        ctx.strokeStyle = paletteNear('#d4af37');
         ctx.lineWidth = 6;
       } else if (currentStyle === 'painted_lady') {
-        ctx.fillStyle = '#2d4227';
-        ctx.strokeStyle = '#1a2b16';
+        ctx.fillStyle = paletteNear('#2d4227');
+        ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 4;
       } else if (currentStyle === 'ducks') {
-        ctx.fillStyle = '#4facfe';
-        ctx.strokeStyle = '#00f2fe';
+        ctx.fillStyle = paletteNear('#4facfe');
+        ctx.strokeStyle = paletteNear('#00f2fe');
         ctx.lineWidth = 4;
       } else if (currentStyle === 'gears') {
-        ctx.fillStyle = '#1a110a';
-        ctx.strokeStyle = '#3d2b1f';
+        ctx.fillStyle = OUTLINE;
+        ctx.strokeStyle = paletteNear('#3d2b1f');
         ctx.lineWidth = 4;
       } else if (currentStyle === 'christmas') {
-        ctx.fillStyle = '#7a4a1e';
-        ctx.strokeStyle = '#c0392b';
+        ctx.fillStyle = paletteNear('#7a4a1e');
+        ctx.strokeStyle = paletteNear('#c0392b');
         ctx.lineWidth = 6;
       } else if (currentStyle === 'coins') {
-        ctx.fillStyle = '#2b1d10';
-        ctx.strokeStyle = '#d4af37';
+        ctx.fillStyle = OUTLINE;
+        ctx.strokeStyle = paletteNear('#d4af37');
         ctx.lineWidth = 5;
       } else if (currentStyle === 'gems') {
-        ctx.fillStyle = '#1a0f2e';
-        ctx.strokeStyle = '#9966cc';
+        ctx.fillStyle = OUTLINE;
+        ctx.strokeStyle = paletteNear('#9966cc');
         ctx.lineWidth = 5;
       } else if (currentStyle === 'buttons') {
-        ctx.fillStyle = '#e8ddc7';
-        ctx.strokeStyle = '#8b5a2b';
+        ctx.fillStyle = paletteNear('#e8ddc7');
+        ctx.strokeStyle = paletteNear('#8b5a2b');
         ctx.lineWidth = 5;
       } else if (currentStyle === 'autumn_leaves') {
-        ctx.fillStyle = '#4a3520';
-        ctx.strokeStyle = '#2e2013';
+        ctx.fillStyle = paletteNear('#4a3520');
+        ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 5;
       } else if (currentStyle === 'jigsaw') {
-        ctx.fillStyle = '#15171a';
-        ctx.strokeStyle = '#3a3f45';
+        ctx.fillStyle = OUTLINE;
+        ctx.strokeStyle = paletteNear('#3a3f45');
         ctx.lineWidth = 4;
       } else {
-        ctx.fillStyle = '#111';
-        ctx.strokeStyle = '#555';
+        ctx.fillStyle = OUTLINE;
+        ctx.strokeStyle = paletteNear('#555');
         ctx.lineWidth = 2;
       }
 
@@ -2456,7 +2510,7 @@ function createEngine(canvas) {
   function drawHandles() {
     if (!isEditMode) return;
     ctx.fillStyle = 'rgba(0, 122, 204, 0.8)';
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = paletteNear('#ffffff');
     ctx.lineWidth = 1.5;
     rawPoints.forEach(p => {
       ctx.beginPath();
@@ -2601,7 +2655,7 @@ function createEngine(canvas) {
           ctx.arc(pt.x, pt.y, pipeThickness * 1.3, 0, Math.PI * 2);
           ctx.fillStyle = currentColor;
           ctx.fill();
-          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.strokeStyle = shadeColor(currentColor, 0.72);
           ctx.lineWidth = 1.5;
           ctx.stroke();
         }
@@ -2926,6 +2980,7 @@ function createEngine(canvas) {
     // decorative colors ("True Color") or their nearest-match substitutes
     // from a real xTool laser palette — same shape either way (plain hex array).
     const currentPalette = cfg.resolvedPalette || PALETTES[cfg.paletteId];
+    setActivePalette(currentPalette);
     const currentStyle = cfg.style;
     const currentMode = cfg.mode;
     const densityFactor = Math.max(0.1, cfg.density / 50);
@@ -3190,12 +3245,12 @@ function createEngine(canvas) {
             let radius = pipeThickness * 0.7;
             ctx.beginPath();
             ctx.arc(item.cell.cx, item.cell.cy, radius, 0, Math.PI*2);
-            ctx.fillStyle = '#7CBA7D';
-            ctx.fill(); ctx.strokeStyle = '#5f6368'; ctx.stroke();
+            ctx.fillStyle = paletteNear('#7CBA7D');
+            ctx.fill(); ctx.strokeStyle = paletteNear('#5f6368'); ctx.stroke();
 
             ctx.beginPath();
             ctx.arc(item.cell.cx, item.cell.cy, radius * 0.4, 0, Math.PI*2);
-            ctx.fillStyle = '#4E8A51';
+            ctx.fillStyle = paletteNear('#4E8A51');
             ctx.fill(); ctx.stroke();
 
           } else if (item.type === 'tree') {
@@ -3203,17 +3258,17 @@ function createEngine(canvas) {
             let cx = item.g.cx;
             let cy = item.g.cy;
 
-            ctx.fillStyle = '#5c3a21';
+            ctx.fillStyle = paletteNear('#5c3a21');
             ctx.fillRect(cx - r*0.15, cy, r*0.3, r*1.2);
 
             ctx.beginPath();
             ctx.arc(cx, cy - r*0.2, r, 0, Math.PI*2);
-            ctx.fillStyle = '#4E8A51';
-            ctx.fill(); ctx.strokeStyle='#2d522f'; ctx.stroke();
+            ctx.fillStyle = paletteNear('#4E8A51');
+            ctx.fill(); ctx.strokeStyle=paletteNear('#2d522f'); ctx.stroke();
 
             ctx.beginPath();
             ctx.arc(cx - r*0.4, cy + r*0.2, r*0.7, 0, Math.PI*2);
-            ctx.fillStyle = '#6BB870';
+            ctx.fillStyle = paletteNear('#6BB870');
             ctx.fill(); ctx.stroke();
 
             ctx.beginPath();
@@ -3233,10 +3288,10 @@ function createEngine(canvas) {
 
             ctx.fillStyle = mainColor;
             ctx.fillRect(cx - towerW/2, yBase - towerH*0.4, towerW, towerH*0.4);
-            ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+            ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1;
             ctx.strokeRect(cx - towerW/2, yBase - towerH*0.4, towerW, towerH*0.4);
 
-            ctx.fillStyle = '#4a2f1d';
+            ctx.fillStyle = paletteNear('#4a2f1d');
             ctx.beginPath();
             ctx.arc(cx, yBase - towerH*0.15, towerW*0.2, Math.PI, 0);
             ctx.lineTo(cx + towerW*0.2, yBase);
@@ -3250,7 +3305,7 @@ function createEngine(canvas) {
             ctx.fillRect(cx - shaftW/2, shaftY, shaftW, shaftH);
             ctx.strokeRect(cx - shaftW/2, shaftY, shaftW, shaftH);
 
-            ctx.fillStyle = '#add8e6';
+            ctx.fillStyle = paletteNear('#add8e6');
             ctx.fillRect(cx - shaftW*0.25, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
             ctx.strokeRect(cx - shaftW*0.25, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
             ctx.fillRect(cx + shaftW*0.1, shaftY + shaftH*0.2, shaftW*0.15, shaftH*0.4);
@@ -3265,7 +3320,7 @@ function createEngine(canvas) {
 
             ctx.beginPath();
             ctx.arc(cx, clockY + clockH/2, clockW*0.35, 0, Math.PI*2);
-            ctx.fillStyle = '#f9f9f9';
+            ctx.fillStyle = paletteNear('#f9f9f9');
             ctx.fill(); ctx.stroke();
 
             ctx.beginPath();
@@ -3332,7 +3387,7 @@ function createEngine(canvas) {
 
           ctx.beginPath();
           ctx.ellipse(item.cx, item.cy + item.size * 0.25, item.size * 1.1, item.size * 0.3, 0, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.strokeStyle = shadeColor(color, 1.21);
           ctx.lineWidth = 1.5;
           ctx.stroke();
 
@@ -3345,7 +3400,7 @@ function createEngine(canvas) {
         } else if (item.type === 'landmark') {
           ctx.beginPath();
           ctx.ellipse(item.g.cx, item.g.cy + pipeThickness * 0.8, pipeThickness * 3.5, pipeThickness * 1.2, 0, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.strokeStyle = shadeColor(color, 1.28);
           ctx.lineWidth = 3;
           ctx.stroke();
 
@@ -3662,7 +3717,7 @@ function createEngine(canvas) {
             ctx.beginPath();
             ctx.moveTo(cell.cx, cell.cy);
             ctx.lineTo(next.cx, next.cy);
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = OUTLINE;
             ctx.lineWidth = isCyl ? (pipeThickness * 1.8 + 4) : (pipeThickness + 4);
             ctx.stroke();
           });
@@ -3673,12 +3728,12 @@ function createEngine(canvas) {
             let jSize = jType === 1 ? (pipeThickness * 0.8) : (pipeThickness * 0.65);
             ctx.beginPath();
             ctx.arc(cell.cx, cell.cy, jSize + 2, 0, Math.PI * 2);
-            ctx.fillStyle = '#000000';
+            ctx.fillStyle = OUTLINE;
             ctx.fill();
           } else if (jType === 3) {
             ctx.beginPath();
             ctx.arc(cell.cx, cell.cy, pipeThickness * 0.6 + 2, 0, Math.PI * 2);
-            ctx.fillStyle = '#000000';
+            ctx.fillStyle = OUTLINE;
             ctx.fill();
           }
         });
@@ -3695,31 +3750,31 @@ function createEngine(canvas) {
               ctx.beginPath();
               ctx.moveTo(cell.cx + 2, cell.cy + 2);
               ctx.lineTo(next.cx + 2, next.cy + 2);
-              ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+              ctx.strokeStyle = OUTLINE;
               ctx.lineWidth = pipeThickness * 0.4;
               ctx.stroke();
 
               ctx.beginPath();
               ctx.moveTo(cell.cx, cell.cy);
               ctx.lineTo(next.cx, next.cy);
-              ctx.strokeStyle = '#f1c40f';
+              ctx.strokeStyle = paletteNear('#f1c40f');
               ctx.lineWidth = pipeThickness * 0.35;
               ctx.stroke();
 
               ctx.beginPath();
               ctx.moveTo(cell.cx, cell.cy);
               ctx.lineTo(next.cx, next.cy);
-              ctx.strokeStyle = '#8c7311';
+              ctx.strokeStyle = paletteNear('#8c7311');
               ctx.lineWidth = pipeThickness * 0.45;
               ctx.stroke();
-              ctx.strokeStyle = '#f1c40f';
+              ctx.strokeStyle = paletteNear('#f1c40f');
               ctx.lineWidth = pipeThickness * 0.35;
               ctx.stroke();
             } else {
               ctx.beginPath();
               ctx.moveTo(cell.cx, cell.cy);
               ctx.lineTo(next.cx, next.cy);
-              ctx.strokeStyle = '#b87333';
+              ctx.strokeStyle = paletteNear('#b87333');
               ctx.lineWidth = pipeThickness * 0.5;
               ctx.stroke();
             }
@@ -3737,27 +3792,27 @@ function createEngine(canvas) {
               let resLen = pipeThickness * 2.5;
               let resWidth = pipeThickness * 0.9;
 
-              ctx.strokeStyle = '#c0c0c0';
+              ctx.strokeStyle = paletteNear('#c0c0c0');
               ctx.lineWidth = pipeThickness * 0.15;
               ctx.beginPath();
               ctx.moveTo(-resLen/2, 0); ctx.lineTo(-resLen*0.9, 0);
               ctx.moveTo(resLen/2, 0); ctx.lineTo(resLen*0.9, 0);
               ctx.stroke();
 
-              let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'];
+              let colors = ['#000000', '#8b4513', '#ff0000', '#ffa500', '#ffff00', '#008000', '#0000ff'].map(paletteNear);
               let b1 = colors[(cell.r + cell.c) % colors.length];
               let b2 = colors[(cell.r * 3 + cell.c) % colors.length];
               let b3 = colors[(cell.r + cell.c * 5) % colors.length];
               let b4 = '#d4af37';
 
               if (compHash < 15) {
-                ctx.fillStyle = '#a52a2a';
+                ctx.fillStyle = paletteNear('#a52a2a');
                 ctx.fillRect(-resLen/2, -resWidth/2, resLen, resWidth);
-                ctx.strokeStyle = '#5c1a1a';
+                ctx.strokeStyle = paletteNear('#5c1a1a');
                 ctx.lineWidth = 1;
                 ctx.strokeRect(-resLen/2, -resWidth/2, resLen, resWidth);
 
-                ctx.fillStyle = '#e6ccaa';
+                ctx.fillStyle = paletteNear('#e6ccaa');
                 ctx.font = `${pipeThickness * 0.4}px monospace`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -3765,9 +3820,9 @@ function createEngine(canvas) {
                 fillTextIf(text, 0, 0);
 
               } else if (compHash < 35) {
-                ctx.fillStyle = '#d2b48c';
+                ctx.fillStyle = paletteNear('#d2b48c');
                 ctx.fillRect(-resLen/2, -resWidth/2, resLen, resWidth);
-                ctx.strokeStyle = '#8b5a2b';
+                ctx.strokeStyle = paletteNear('#8b5a2b');
                 ctx.lineWidth = 1;
                 ctx.strokeRect(-resLen/2, -resWidth/2, resLen, resWidth);
 
@@ -3779,9 +3834,9 @@ function createEngine(canvas) {
 
               } else if (compHash < 50) {
                 let l = resLen * 0.85, w = resWidth * 0.75;
-                ctx.fillStyle = '#4a2f1d';
+                ctx.fillStyle = paletteNear('#4a2f1d');
                 ctx.fillRect(-l/2, -w/2, l, w);
-                ctx.strokeStyle = '#2a1a10';
+                ctx.strokeStyle = OUTLINE;
                 ctx.lineWidth = 1;
                 ctx.strokeRect(-l/2, -w/2, l, w);
 
@@ -3793,27 +3848,27 @@ function createEngine(canvas) {
 
               } else if (compHash < 65) {
                 let l = resLen * 1.1, w = resWidth * 0.6;
-                ctx.fillStyle = '#f0f0d0';
+                ctx.fillStyle = paletteNear('#f0f0d0');
                 ctx.fillRect(-l/2, -w/2, l, w);
-                ctx.strokeStyle = '#a0a0a0';
+                ctx.strokeStyle = paletteNear('#a0a0a0');
                 ctx.lineWidth = 1;
                 ctx.strokeRect(-l/2, -w/2, l, w);
 
-                ctx.fillStyle = '#333';
+                ctx.fillStyle = paletteNear('#333');
                 ctx.font = `bold ${pipeThickness * 0.35}px sans-serif`;
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 fillTextIf("104K", 0, 0);
 
               } else {
                 let l = resLen * 0.6, w = resWidth * 0.55;
-                ctx.fillStyle = 'rgba(255, 180, 150, 0.4)';
+                ctx.fillStyle = paletteNear('#ffb496');
                 ctx.fillRect(-l/2, -w/2, l, w);
-                ctx.strokeStyle = 'rgba(200, 100, 50, 0.8)';
+                ctx.strokeStyle = paletteNear('#c86432');
                 ctx.strokeRect(-l/2, -w/2, l, w);
 
-                ctx.fillStyle = '#c0392b';
+                ctx.fillStyle = paletteNear('#c0392b');
                 ctx.fillRect(-l*0.3, -w*0.2, l*0.6, w*0.4);
-                ctx.fillStyle = '#111';
+                ctx.fillStyle = OUTLINE;
                 ctx.fillRect(l*0.15, -w/2, l*0.2, w);
               }
               ctx.restore();
@@ -3830,7 +3885,7 @@ function createEngine(canvas) {
               ctx.beginPath();
               ctx.moveTo(cell.cx, cell.cy);
               ctx.lineTo(next.cx, next.cy);
-              ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+              ctx.strokeStyle = paletteNear('#ffffff');
               ctx.lineWidth = pipeThickness * 0.4;
               ctx.stroke();
               ctx.lineWidth = pipeThickness;
@@ -3842,7 +3897,7 @@ function createEngine(canvas) {
               let steps = Math.floor(dist / ribSpacing);
 
               if (steps > 0) {
-                ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+                ctx.strokeStyle = OUTLINE;
                 ctx.lineWidth = isCyl ? 1.5 : Math.max(pipeThickness * 0.15, 1);
                 let nx = -dy / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
                 let ny = dx / dist * (pipeThickness * (isCyl ? 0.9 : 0.45));
@@ -3862,7 +3917,7 @@ function createEngine(canvas) {
               ctx.beginPath();
               ctx.moveTo(cell.cx, cell.cy);
               ctx.lineTo(next.cx, next.cy);
-              ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+              ctx.strokeStyle = paletteNear('#ffffff');
               ctx.lineWidth = Math.max(pipeThickness * 0.1, 1);
               ctx.stroke();
               ctx.lineWidth = pipeThickness;
@@ -3878,12 +3933,12 @@ function createEngine(canvas) {
             let padRadius = pipeThickness * 0.6;
             ctx.beginPath();
             ctx.arc(cell.cx, cell.cy, padRadius, 0, Math.PI * 2);
-            ctx.fillStyle = '#a9a9a9';
+            ctx.fillStyle = paletteNear('#a9a9a9');
             ctx.fill();
 
             ctx.beginPath();
             ctx.arc(cell.cx + padRadius*0.1, cell.cy - padRadius*0.1, padRadius * 0.7, 0, Math.PI * 2);
-            ctx.fillStyle = '#c0c0c0';
+            ctx.fillStyle = paletteNear('#c0c0c0');
             ctx.fill();
           } else {
             let jointRadius;
@@ -3911,7 +3966,7 @@ function createEngine(canvas) {
             } else if (currentStyle === 'illustrated' && jType !== 3) {
               ctx.beginPath();
               ctx.arc(cell.cx, cell.cy, jointRadius * 0.6, 0, Math.PI * 2);
-              ctx.fillStyle = '#000000';
+              ctx.fillStyle = OUTLINE;
               ctx.fill();
               ctx.beginPath();
               ctx.arc(cell.cx, cell.cy, jointRadius * 0.4, 0, Math.PI * 2);
@@ -3934,7 +3989,7 @@ function createEngine(canvas) {
             if (typeHash < 50) {
               let r = g.radius * 0.8;
 
-              ctx.strokeStyle = '#c0c0c0';
+              ctx.strokeStyle = paletteNear('#c0c0c0');
               ctx.lineWidth = pipeThickness * 0.2;
               ctx.beginPath();
               ctx.moveTo(0, r*0.8); ctx.lineTo(0, r*1.5);
@@ -3944,41 +3999,41 @@ function createEngine(canvas) {
 
               ctx.beginPath();
               ctx.arc(0, 0, r, 0, Math.PI*2);
-              ctx.fillStyle = '#b0b0b0';
+              ctx.fillStyle = paletteNear('#b0b0b0');
               ctx.fill();
-              ctx.strokeStyle = '#808080';
+              ctx.strokeStyle = paletteNear('#808080');
               ctx.lineWidth = 1;
               ctx.stroke();
 
               ctx.beginPath();
               ctx.arc(0, 0, r*0.8, 0, Math.PI*2);
-              ctx.strokeStyle = '#a0a0a0';
+              ctx.strokeStyle = paletteNear('#a0a0a0');
               ctx.stroke();
 
-              ctx.fillStyle = '#808080';
+              ctx.fillStyle = paletteNear('#808080');
               ctx.fillRect(-r*0.2, -r*1.1, r*0.4, r*0.3);
             } else {
               let r = g.radius * 0.85;
               ctx.beginPath();
               ctx.arc(0, 0, r, 0, Math.PI*2);
-              ctx.fillStyle = '#2980b9';
+              ctx.fillStyle = paletteNear('#2980b9');
               ctx.fill();
-              ctx.strokeStyle = '#1a5276';
+              ctx.strokeStyle = paletteNear('#1a5276');
               ctx.lineWidth = 1.5;
               ctx.stroke();
 
               ctx.beginPath();
               ctx.arc(0, 0, r*0.7, 0, Math.PI*2);
-              ctx.fillStyle = '#bdc3c7';
+              ctx.fillStyle = paletteNear('#bdc3c7');
               ctx.fill();
-              ctx.strokeStyle = '#7f8c8d';
+              ctx.strokeStyle = paletteNear('#7f8c8d');
               ctx.lineWidth = 1;
               ctx.stroke();
 
               ctx.beginPath();
               ctx.moveTo(-r*0.4, 0); ctx.lineTo(r*0.4, 0);
               ctx.moveTo(0, -r*0.4); ctx.lineTo(0, r*0.4);
-              ctx.strokeStyle = '#95a5a6';
+              ctx.strokeStyle = paletteNear('#95a5a6');
               ctx.lineWidth = 1.5;
               ctx.stroke();
             }
@@ -3987,23 +4042,23 @@ function createEngine(canvas) {
               let capLen = g.radius * 1.8;
               let capWidth = g.radius * 0.8;
 
-              ctx.strokeStyle = '#c0c0c0';
+              ctx.strokeStyle = paletteNear('#c0c0c0');
               ctx.lineWidth = pipeThickness * 0.15;
               ctx.beginPath();
               ctx.moveTo(-capLen/2, 0); ctx.lineTo(-capLen*0.8, 0);
               ctx.moveTo(capLen/2, 0); ctx.lineTo(capLen*0.8, 0);
               ctx.stroke();
 
-              ctx.fillStyle = 'rgba(200, 220, 230, 0.5)';
+              ctx.fillStyle = paletteNear('#c8dce6');
               ctx.fillRect(-capLen/2, -capWidth/2, capLen, capWidth);
-              ctx.strokeStyle = 'rgba(150, 170, 180, 0.8)';
+              ctx.strokeStyle = paletteNear('#96aab4');
               ctx.lineWidth = 1;
               ctx.strokeRect(-capLen/2, -capWidth/2, capLen, capWidth);
 
-              ctx.fillStyle = '#d3a677';
+              ctx.fillStyle = paletteNear('#d3a677');
               ctx.fillRect(-capLen*0.4, -capWidth*0.3, capLen*0.8, capWidth*0.6);
 
-              let dotColors = ['#f1c40f', '#e74c3c', '#ecf0f1'];
+              let dotColors = ['#f1c40f', '#e74c3c', '#ecf0f1'].map(paletteNear);
               for(let d=0; d<3; d++) {
                 ctx.beginPath();
                 ctx.arc(-capLen*0.2 + (d * capLen*0.2), 0, capWidth*0.15, 0, Math.PI*2);
@@ -4013,13 +4068,13 @@ function createEngine(canvas) {
             } else if (typeHash < 66) {
               ctx.beginPath();
               ctx.arc(0, 0, g.radius * 0.85, 0, Math.PI*2);
-              ctx.fillStyle = '#d35400';
+              ctx.fillStyle = paletteNear('#d35400');
               ctx.fill();
-              ctx.strokeStyle = '#a04000';
+              ctx.strokeStyle = paletteNear('#a04000');
               ctx.lineWidth = 1;
               ctx.stroke();
 
-              ctx.fillStyle = '#fff';
+              ctx.fillStyle = paletteNear('#fff');
               ctx.font = `bold ${pipeThickness * 0.5}px sans-serif`;
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
@@ -4033,13 +4088,13 @@ function createEngine(canvas) {
               ctx.lineTo(-r, 0);
               ctx.closePath();
 
-              ctx.fillStyle = '#222';
+              ctx.fillStyle = OUTLINE;
               ctx.fill();
-              ctx.strokeStyle = '#000';
+              ctx.strokeStyle = OUTLINE;
               ctx.lineWidth = 1.5;
               ctx.stroke();
 
-              ctx.fillStyle = '#444';
+              ctx.fillStyle = paletteNear('#444');
               ctx.fillRect(-r*0.8, -r*0.2, r*1.6, r*0.2);
             }
           }
