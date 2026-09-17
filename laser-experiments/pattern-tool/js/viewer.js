@@ -1,7 +1,7 @@
 import { App } from './app.js';
 import { Persistence } from './persistence.js';
 import { XCSProject } from '../../xcs-module/js/xcs-system.js';
-import { XCSCanvas } from '../../xcs-module/js/xcs-canvas.js';
+import { XCSCanvas, applyPaint } from '../../xcs-module/js/xcs-canvas.js';
 import { PAD, XCS_LAYERS } from './constants.js';
 import { svgEl, syntaxHL, dl } from './utils.js';
 
@@ -400,16 +400,15 @@ export const XCSViewer = {
 
   // Restyles already-rendered SVG elements in place (fill/stroke only) —
   // used when update() has determined every item's geometry is identical
-  // to what's already on screen. Mirrors the shared fill/stroke logic in
-  // xcs-canvas.js's _renderItem (that file is not modified — this only
-  // ever touches attributes it already sets on elements it already built).
+  // to what's already on screen. Calls xcs-canvas.js's own applyPaint so the
+  // two cannot diverge: this used to repeat the logic and set `stroke` on
+  // filled shapes with no `stroke-width`, which SVG defaults to 1 user unit
+  // — a millimetre on this bed — flooding small detail with black.
   restyleInPlace(svgContent, rendered) {
     Array.from(svgContent.children).forEach((el, i) => {
       const p = rendered[i];
       if (!p || p.type === 'TEXT' || p.type === 'BITMAP') return;
-      el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
-      if (p.isFill && p.fillRule) el.setAttribute('fill-rule', p.fillRule);
-      el.setAttribute('stroke', p.layerColor);
+      applyPaint(el, p);
     });
   },
 

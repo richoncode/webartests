@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parity Captures</title>
+<style>
+  :root { --bg:#0d0d0d; --card:#1a1a1a; --border:#2a2a2a; --sub:#888; --blue:#5b9bd5; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:#fff; margin:0; padding:40px 24px 80px;
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  .wrap { max-width:1400px; margin:0 auto; }
+  a.back { color:#555; text-decoration:none; font-size:14px; display:inline-block; margin-bottom:20px; }
+  a.back:hover { color:#aaa; }
+  h1 { font-weight:300; font-size:28px; margin:0 0 8px; color:var(--blue); }
+  p.lede { color:var(--sub); max-width:760px; line-height:1.6; margin:0 0 24px; }
+  .controls { display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+  button { background:#1a1a1a; border:1px solid #333; color:#ccc; font-size:12px;
+           padding:7px 14px; border-radius:6px; cursor:pointer; font-family:inherit; }
+  button.on { background:#1e2d40; border-color:var(--blue); color:#fff; }
+  label { color:var(--sub); font-size:12px; margin-left:10px; }
+  input[type=range] { accent-color:var(--blue); vertical-align:middle; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+  .panel h2 { margin:0 0 10px; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#666; font-weight:500; }
+  .stage { position:relative; background:#000; border-radius:8px; overflow:hidden; aspect-ratio:1; }
+  .stage img { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .single { max-width:780px; margin:0 auto; }
+  .note { color:#666; font-size:12.5px; line-height:1.6; margin-top:18px; max-width:860px; }
+  .note b { color:#ddd; }
+  .styles { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .styles button { font-size:12px; }
+  .delta { font-family:'SF Mono','Fira Code',monospace; font-size:13px; color:var(--sub); margin-bottom:20px; }
+  .delta b { color:#fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">&larr; Laser Experiments</a>
+  <h1>Parity captures</h1>
+  <p class="lede">
+    The HTML canvas and the XCS canvas for every Shape Fill style, both captured from the same page load so the
+    two views draw the same design. Pendant preset, brushed steel blank, Outline Weight 1&times;, margin 0.
+    Overlay fades between them; Difference shows where they disagree.
+  </p>
+
+  <div class="styles" id="styles"></div>
+  <p class="delta" id="delta"></p>
+
+  <div class="controls">
+    <button id="bSide" class="on">Side by side</button>
+    <button id="bOver">Overlay</button>
+    <button id="bDiff">Difference</button>
+    <label>fade <input id="fade" type="range" min="0" max="100" value="50" style="width:160px"></label>
+  </div>
+
+  <div id="side" class="pair">
+    <div class="panel"><h2>HTML canvas</h2><div class="stage"><img id="sideA" src="fixed/gears-html.png"></div></div>
+    <div class="panel"><h2>XCS canvas</h2><div class="stage"><img id="sideB" src="fixed/gears-xcs.png"></div></div>
+  </div>
+
+  <div id="one" class="panel single" style="display:none">
+    <h2 id="oneTitle">Overlay</h2>
+    <div class="stage">
+      <img id="a" src="fixed/gears-html.png">
+      <img id="b" src="fixed/gears-xcs.png" style="opacity:.5">
+      <canvas id="diff" style="position:absolute;inset:0;width:100%;height:100%;display:none"></canvas>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>What to look for.</b> The blank is the same size and shape in both. The XCS canvas also draws the bed grid,
+    which the HTML canvas has no equivalent of, and it does not clip at the bed edge &mdash; so anything a style
+    scatters past the blank stays visible there and is cropped in the HTML canvas.
+    &Delta;L is the difference in mean luminance over every non-transparent pixel, on a 0&ndash;255 scale.
+    Antialiasing between the two renderers sets a floor of about &plusmn;3.5, so nothing here reads as a
+    visible difference. Measured 2026-09-16.
+  </p>
+</div>
+<script>
+  const STYLES = [
+    ['flat', 'Flat', -0.3], ['3d-basic', '3D Basic', -0.3], ['3d-glossy', '3D Glossy', 0.0],
+    ['illustrated', 'Illustrated', -0.7], ['circuit', 'Circuit Board', -0.3],
+    ['painted_lady', 'Painted Lady', -0.7], ['ducks', 'Ducks', 3.3], ['gears', 'Gears', -0.5],
+    ['christmas', 'Christmas', -1.1], ['coins', 'World Coins', -3.5], ['gems', 'Gems', -1.0],
+    ['buttons', 'Buttons', -1.4], ['autumn_leaves', 'Autumn Leaves', 0.4], ['jigsaw', 'Jigsaw', -0.9]
+  ];
+  const side = document.getElementById('side'), one = document.getElementById('one');
+  const a = document.getElementById('a'), b = document.getElementById('b');
+  const diff = document.getElementById('diff'), title = document.getElementById('oneTitle');
+  const fade = document.getElementById('fade');
+  const buttons = { bSide: document.getElementById('bSide'), bOver: document.getElementById('bOver'), bDiff: document.getElementById('bDiff') };
+  let mode = 'side';
+
+  function show(m) {
+    mode = m;
+    for (const k in buttons) buttons[k].classList.toggle('on', k === ({ side:'bSide', over:'bOver', diff:'bDiff' })[m]);
+    side.style.display = m === 'side' ? 'grid' : 'none';
+    one.style.display  = m === 'side' ? 'none' : 'block';
+    a.style.display = b.style.display = m === 'over' ? 'block' : 'none';
+    diff.style.display = m === 'diff' ? 'block' : 'none';
+    title.textContent = m === 'over' ? 'Overlay' : 'Difference';
+    if (m === 'diff') drawDiff();
+  }
+  const styleBar = document.getElementById('styles'), deltaEl = document.getElementById('delta');
+  const sideA = document.getElementById('sideA'), sideB = document.getElementById('sideB');
+  let current = 'gears';
+
+  function pick(id) {
+    current = id;
+    const row = STYLES.find(s => s[0] === id);
+    [...styleBar.children].forEach(el => el.classList.toggle('on', el.dataset.id === id));
+    sideA.src = a.src = `fixed/${id}-html.png`;
+    sideB.src = b.src = `fixed/${id}-xcs.png`;
+    const d = row[2];
+    deltaEl.innerHTML = `<b>${row[1]}</b> &nbsp; &Delta;L ${d > 0 ? '+' : ''}${d.toFixed(1)}`;
+    if (mode === 'diff') drawDiff();
+  }
+  STYLES.forEach(([id, label]) => {
+    const btn = document.createElement('button');
+    btn.textContent = label; btn.dataset.id = id;
+    btn.onclick = () => pick(id);
+    styleBar.appendChild(btn);
+  });
+
+  buttons.bSide.onclick = () => show('side');
+  buttons.bOver.onclick = () => show('over');
+  buttons.bDiff.onclick = () => show('diff');
+  fade.oninput = () => { b.style.opacity = fade.value / 100; };
+  pick('gears');
+
+  function drawDiff() {
+    const w = a.naturalWidth, h = a.naturalHeight;
+    if (!w) { setTimeout(drawDiff, 200); return; }
+    diff.width = w; diff.height = h;
+    const g = diff.getContext('2d');
+    const ca = document.createElement('canvas'); ca.width = w; ca.height = h;
+    const cb = document.createElement('canvas'); cb.width = w; cb.height = h;
+    ca.getContext('2d').drawImage(a, 0, 0, w, h);
+    cb.getContext('2d').drawImage(b, 0, 0, w, h);
+    const da = ca.getContext('2d').getImageData(0, 0, w, h);
+    const db = cb.getContext('2d').getImageData(0, 0, w, h);
+    const out = g.createImageData(w, h);
+    for (let i = 0; i < da.data.length; i += 4) {
+      const d = Math.max(Math.abs(da.data[i] - db.data[i]),
+                         Math.abs(da.data[i+1] - db.data[i+1]),
+                         Math.abs(da.data[i+2] - db.data[i+2]));
+      out.data[i] = d > 24 ? 255 : 0;
+      out.data[i+1] = d > 24 ? 40 : Math.max(0, 90 - d);
+      out.data[i+2] = d > 24 ? 40 : 0;
+      out.data[i+3] = 255;
+    }
+    g.putImageData(out, 0, 0);
+  }
+</script>
+</body>
+</html>

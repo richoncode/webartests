@@ -68,16 +68,36 @@ const STYLE_DEFAULT_PALETTE = {
   jigsaw: 'jigsaw'
 };
 
+// What the blank itself is made of. This is the material under the engraving,
+// not part of the design: it is drawn in the preview so a pattern can be judged
+// against the stock it will actually be cut from, and it is never exported —
+// the shape is guidance, and the engraving is what reaches the machine.
+const BLANK_OPTIONS = [
+  ['steel',    'Brushed Steel', '#b9bfc4', '#8d949a'],
+  ['silver',   'Polished Silver', '#dde2e6', '#a8b0b6'],
+  ['gold',     'Gold',          '#d4af37', '#a8862a'],
+  ['copper',   'Copper',        '#b87333', '#8c5626'],
+  ['brass',    'Brass',         '#c9a227', '#9a7b1d'],
+  ['titanium', 'Titanium',      '#6d7278', '#4a4e53'],
+  ['red',      'Shiny Red',     '#c0392b', '#8e2a20'],
+  ['green',    'Shiny Green',   '#1e8449', '#146238'],
+  ['blue',     'Shiny Blue',    '#2e5f9e', '#224874'],
+  ['black',    'Anodised Black','#1e2124', '#3a3f45'],
+  ['white',    'Ceramic White', '#e8e6e1', '#b9b6af']
+];
+const BLANK_BY_ID = Object.fromEntries(BLANK_OPTIONS.map(([id, label, fill, stroke]) => [id, { label, fill, stroke }]));
+
 // Common laser-cut blanks, offered as one-click starting shapes. Coordinates
-// assume the engine's fixed 1200x900 internal canvas resolution.
+// assume the engine's fixed 1200x1200 internal canvas, which is the 100 x 100 mm
+// bed at PX_TO_MM — the same square the XCS canvas frames.
 const SHAPE_PRESETS = {
   pendant: () => [
-    { x: 435, y: 75 }, { x: 765, y: 75 }, { x: 825, y: 135 }, { x: 825, y: 765 },
-    { x: 765, y: 825 }, { x: 435, y: 825 }, { x: 375, y: 765 }, { x: 375, y: 135 }
+    { x: 435, y: 225 }, { x: 765, y: 225 }, { x: 825, y: 285 }, { x: 825, y: 915 },
+    { x: 765, y: 975 }, { x: 435, y: 975 }, { x: 375, y: 915 }, { x: 375, y: 285 }
   ],
   circle: () => {
     let pts = [];
-    let cx = 600, cy = 450, r = 330, n = 32;
+    let cx = 600, cy = 600, r = 330, n = 32;
     for (let i = 0; i < n; i++) {
       let a = (i / n) * Math.PI * 2;
       pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
@@ -85,10 +105,10 @@ const SHAPE_PRESETS = {
     return pts;
   },
   cuff: () => [
-    { x: 225, y: 330 }, { x: 975, y: 330 }, { x: 975, y: 570 }, { x: 225, y: 570 }
+    { x: 225, y: 480 }, { x: 975, y: 480 }, { x: 975, y: 720 }, { x: 225, y: 720 }
   ],
   bracelet: () => [
-    { x: 150, y: 367.5 }, { x: 1050, y: 367.5 }, { x: 1050, y: 532.5 }, { x: 150, y: 532.5 }
+    { x: 150, y: 517.5 }, { x: 1050, y: 517.5 }, { x: 1050, y: 682.5 }, { x: 150, y: 682.5 }
   ]
 };
 const SHAPE_PRESET_LIST = [
@@ -224,12 +244,20 @@ function computeSliderMeta(style, mode, opts = {}) {
 //     shape itself has no transparency.
 //   - Stroke width: the XCS renderer draws every path as a fixed hairline,
 //     so every canvas ctx.stroke() becomes a filled capsule (round-capped
-//     thick-line polygon) instead of a thin vector stroke. The canvas's own
-//     per-shape lineWidth is a pixel value tuned for on-screen looks, not a
-//     meaningful physical thickness on the bed, so it's ignored for xTool
-//     output — instead every stroke uses one user-controlled physical width
-//     (cfg.outlineWidthMM, see the "Outline Width" slider). 0mm skips all
-//     outlines (fills only).
+//     thick-line polygon) instead of a thin vector stroke. The capsule takes
+//     the width the style actually drew with — ctx.lineWidth, converted from
+//     canvas pixels to millimetres by the same PX_TO_MM that places every
+//     other coordinate — so the export reproduces what the canvas shows.
+//     cfg.outlineWeight then scales every one of those widths together
+//     (1 = as drawn, 0 = no outlines at all, fills only).
+//
+//     A single uniform width was tried first and cannot work: a style's line
+//     widths are structural, not decorative. Gears draw 2px rings a few
+//     tenths of a millimetre apart, and forcing those to 0.2mm merged them
+//     into a solid black disc; illustrated draws a 27px black underlay
+//     beneath each pipe to make its outline, and forcing that to 0.2mm
+//     erased the outline. One number was 11x too wide for the first and 11x
+//     too narrow for the second, in the same export.
 // Anything drawn while a clip() is active is skipped (no clip-path
 // equivalent exists here) — this only affects a few small decorative
 // textures (button marbling, gourd rib/wart texture), never a shape's
@@ -458,24 +486,33 @@ function capsuleDPath(points, width) {
 
 class RecordingCtx {
   // `offsetX`/`offsetY` (in mm, applied after scale) let the caller recenter
-  // content within the XCS viewer's fixed 100x100mm viewBox — needed since
+  // content within the XCS canvas's fixed 100x100mm viewBox — needed since
   // Shape Fill's canvas is 4:3 (1200x900) while the bed is square, so a
   // width-based scale alone leaves content pinned to one corner rather than
   // centered the way every other Pattern Tool tab's own generation math is.
-  constructor(scale = 1, offsetX = 0, offsetY = 0, outlineWidthMM = 0) {
+  constructor(scale = 1, offsetX = 0, offsetY = 0, outlineWeight = 1, backdropHex = '#000000') {
     this.shapes = []; // { dPath, color, minX, minY, maxX, maxY } — all in mm (post-scale, post-offset)
     this._scale = scale; // px -> mm, applied only at flush time (fill/stroke)
     this._offsetX = offsetX;
     this._offsetY = offsetY;
-    // User-controlled physical outline width (mm), uniform across every
-    // stroke() regardless of the canvas's own lineWidth. 0 disables outlines.
-    this._outlineWidthMM = outlineWidthMM;
+    // Scales every stroke's true (as-drawn) width. 1 reproduces the canvas,
+    // 0 disables outlines entirely.
+    this._outlineWeight = outlineWeight;
     this._current = new RecordingPath();
     this._matrix = matIdentity();
     this._stack = [];
     this._depth = 0;
-    this._backdrop = '#000000';
-    this._sceneBackground = '#000000';
+    // What a translucent fill is composited against. This is the material the
+    // design sits on, so it is the blank's colour — not black.
+    //
+    // It used to start black and be corrected by the first opaque fill, which
+    // was drawBase's board. Once the board stopped being recorded — the shape
+    // is guidance and is not exported — nothing set it, and every translucent
+    // fill composited against black. Buttons paints 2,203 of its 2,220 fills
+    // with alpha, so it exported as 728 pure-black shapes and read 82 points
+    // more near-black than the canvas.
+    this._backdrop = backdropHex;
+    this._sceneBackground = backdropHex;
     this.fillStyle = '#000000';
     this.strokeStyle = '#000000';
     this.lineWidth = 1;
@@ -491,14 +528,28 @@ class RecordingCtx {
     this.shadowOffsetY = 0;
     this._clipDepth = 0;
   }
+  // save()/restore() carry the paint state, not just the matrix. A real
+  // canvas restores lineWidth, and now that lineWidth decides an exported
+  // capsule's physical width, a width set inside a save block has to stop
+  // applying at the matching restore or it leaks into every later stroke.
   save() {
     if (this._depth === 0) this._backdrop = this._sceneBackground;
-    this._stack.push({ m: this._matrix, clipDepth: this._clipDepth });
+    this._stack.push({
+      m: this._matrix, clipDepth: this._clipDepth,
+      lineWidth: this.lineWidth, lineCap: this.lineCap, lineJoin: this.lineJoin,
+      fillStyle: this.fillStyle, strokeStyle: this.strokeStyle,
+      globalAlpha: this.globalAlpha
+    });
     this._depth++;
   }
   restore() {
     const s = this._stack.pop();
-    if (s) { this._matrix = s.m; this._clipDepth = s.clipDepth; }
+    if (s) {
+      this._matrix = s.m; this._clipDepth = s.clipDepth;
+      this.lineWidth = s.lineWidth; this.lineCap = s.lineCap; this.lineJoin = s.lineJoin;
+      this.fillStyle = s.fillStyle; this.strokeStyle = s.strokeStyle;
+      this.globalAlpha = s.globalAlpha;
+    }
     this._depth = Math.max(0, this._depth - 1);
   }
   translate(x, y) { this._matrix = matTranslate(this._matrix, x, y); }
@@ -563,17 +614,21 @@ class RecordingCtx {
   }
   fill(path) { this._emit((path || this._current).segs, this.fillStyle, false); }
   stroke(path) {
-    if (this._outlineWidthMM <= 0) return;
-    const segs = (path || this._current).segs;
-    // widthPx is divided by scale here so _emit's `widthPx * this._scale`
-    // comes back out to exactly this._outlineWidthMM, independent of the
-    // canvas's own (irrelevant, on-screen-only) this.lineWidth.
-    this._emit(segs, this.strokeStyle, true, this._outlineWidthMM / this._scale);
+    const widthPx = this._strokeWidthPx();
+    if (widthPx <= 0) return;
+    this._emit((path || this._current).segs, this.strokeStyle, true, widthPx);
+  }
+  // The width the style actually drew with, scaled by the user's weight.
+  // _emit multiplies by this._scale to reach millimetres.
+  _strokeWidthPx() {
+    if (this._outlineWeight <= 0) return 0;
+    return Math.max(0, this.lineWidth) * this._outlineWeight;
   }
   fillRect(x, y, w, h) { this._emit([{ c: 'RECT', x, y, w, h }], this.fillStyle, false); }
   strokeRect(x, y, w, h) {
-    if (this._outlineWidthMM <= 0) return;
-    this._emit([{ c: 'M', x, y }, { c: 'L', x: x + w, y }, { c: 'L', x: x + w, y: y + h }, { c: 'L', x, y: y + h }, { c: 'L', x, y }], this.strokeStyle, true, this._outlineWidthMM / this._scale);
+    const widthPx = this._strokeWidthPx();
+    if (widthPx <= 0) return;
+    this._emit([{ c: 'M', x, y }, { c: 'L', x: x + w, y }, { c: 'L', x: x + w, y: y + h }, { c: 'L', x, y: y + h }, { c: 'L', x, y }], this.strokeStyle, true, widthPx);
   }
   fillText() { /* skipped — see header note */ }
   clearRect() { /* no-op — nothing to "clear" when recording vector shapes */ }
@@ -599,8 +654,14 @@ function createEngine(canvas) {
   let draggingPoint = null;
   let gears = []; // Store generated gears for redraws
   let shapeIsCustom = false; // true once the user hand-edits away from a loaded preset
+  let presetKey = null;      // which preset is loaded, so the panel can name it
   let isEditMode = false;
   let currentColorPool = [];
+  // The drawn shape — pendant, cuff, circle — is guidance for where the pattern
+  // goes, not artwork. It is neither engraved nor a clipping boundary; limits
+  // are imposed by hand after import. So the board is drawn for the on-screen
+  // preview and skipped entirely while recording for export.
+  let suppressBoard = false;
 
   function makeRng(seed) {
     let s = seed >>> 0;
@@ -623,8 +684,6 @@ function createEngine(canvas) {
 
   function getCoordinates(e) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
 
     let clientX, clientY;
     if (e.touches && e.touches.length > 0) {
@@ -635,9 +694,18 @@ function createEngine(canvas) {
       clientY = e.clientY;
     }
 
+    // The canvas is `object-fit: contain`, so the 1200x1200 bitmap is scaled by
+    // whichever axis is tighter and centred inside the element, with bars on the
+    // other axis. Dividing by the element box alone — which is what this did
+    // while the bitmap and the box happened to share an aspect ratio — puts every
+    // Edit Shape handle off by the width of those bars.
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    const padX = (rect.width - canvas.width * scale) / 2;
+    const padY = (rect.height - canvas.height * scale) / 2;
+
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
+      x: (clientX - rect.left - padX) / scale,
+      y: (clientY - rect.top - padY) / scale
     };
   }
 
@@ -1872,11 +1940,10 @@ function createEngine(canvas) {
     ctx.translate(cx, cy);
     ctx.rotate(rotation !== undefined ? rotation : hash);
 
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = radius * 0.2;
-    ctx.shadowOffsetX = radius * 0.05;
-    ctx.shadowOffsetY = radius * 0.1;
-
+    // No drop shadow. A laser has discrete powers and no blur, so a soft shadow
+    // cannot be engraved as drawn — the recorder discarded it and the canvas
+    // showed it, which is exactly the gap between what was previewed and what
+    // would come off the machine. The goal is a drawing that lasers as it looks.
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = '#111';
 
@@ -1899,7 +1966,6 @@ function createEngine(canvas) {
     ctx.fillStyle = color;
     ctx.fill();
 
-    ctx.shadowColor = 'transparent';
     ctx.stroke();
 
     let type = hash % 3;
@@ -2284,9 +2350,10 @@ function createEngine(canvas) {
     ctx.restore();
   }
 
-  function drawBase(currentStyle = 'illustrated') {
+  function drawBase(currentStyle = 'illustrated', blankId) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    if (suppressBoard) return;
     if (hullPoints.length >= 3) {
       ctx.beginPath();
       ctx.moveTo(hullPoints[0].x, hullPoints[0].y);
@@ -2344,6 +2411,9 @@ function createEngine(canvas) {
         ctx.strokeStyle = '#555';
         ctx.lineWidth = 2;
       }
+
+      const blank = BLANK_BY_ID[blankId];
+      if (blank) { ctx.fillStyle = blank.fill; ctx.strokeStyle = blank.stroke; ctx.lineWidth = 4; }
 
       ctx.fill();
       ctx.stroke();
@@ -2830,14 +2900,14 @@ function createEngine(canvas) {
     let expandBound = marginPx < 0 ? -marginPx : 0;
 
     if (currentMode === 'border') {
-      drawBase(currentStyle);
+      drawBase(currentStyle, cfg.blank);
       generateBorder(currentStyle, currentPalette, pipeThickness, marginPx, densityFactor, narrowDim, cfg);
       drawHandles();
       return;
     }
 
     if (currentStyle === 'jigsaw') {
-      drawBase(currentStyle);
+      drawBase(currentStyle, cfg.blank);
       generateJigsaw(currentPalette, marginPx, densityFactor, narrowDim, cfg);
       drawHandles();
       return;
@@ -3013,7 +3083,7 @@ function createEngine(canvas) {
       }
     }
 
-    drawBase(currentStyle);
+    drawBase(currentStyle, cfg.blank);
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -3971,7 +4041,7 @@ function createEngine(canvas) {
     hullPoints = calculateConvexHull(rawPoints);
 
     if (!isGenerated) {
-      drawBase(cfg.style);
+      drawBase(cfg.style, cfg.blank);
       drawHandles();
     }
   }
@@ -3986,7 +4056,7 @@ function createEngine(canvas) {
 
     hullPoints = calculateConvexHull(rawPoints);
 
-    drawBase(cfg.style);
+    drawBase(cfg.style, cfg.blank);
     drawHandles();
   }
 
@@ -3998,13 +4068,41 @@ function createEngine(canvas) {
     if (isGenerated && hullPoints.length >= 3) {
       generatePipes(cfg);
     } else if (!isGenerated) {
-      drawBase(cfg.style);
+      drawBase(cfg.style, cfg.blank);
       drawHandles();
     }
   }
 
   return {
     hasShape: () => hullPoints.length >= 3,
+
+    // Name and real size of the shape being filled, for the panel. Size is the
+    // guidance shape's bounding box in millimetres on the bed — the thing the
+    // artist is actually cutting from, not the canvas or the design's extent.
+    getShapeInfo() {
+      if (hullPoints.length < 3) return null;
+      const hull = this.getHullMM();
+      const xs = hull.map(p => p.x), ys = hull.map(p => p.y);
+      const w = Math.max(...xs) - Math.min(...xs);
+      const h = Math.max(...ys) - Math.min(...ys);
+      const preset = SHAPE_PRESET_LIST.find(p => p.key === presetKey);
+      return { name: shapeIsCustom || !preset ? 'Custom shape' : preset.label, w, h, points: rawPoints.length };
+    },
+
+    // The guidance shape in bed millimetres, centred on 50,50 the same way
+    // buildXCSProject centres the design. The viewer paints this behind the
+    // engraving so the blank is visible in both render targets; it is not part
+    // of the project and never reaches the file.
+    getHullMM() {
+      if (hullPoints.length < 3) return [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      hullPoints.forEach(p => {
+        if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+      });
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      return hullPoints.map(p => ({ x: 50 + (p.x - cx) * PX_TO_MM, y: 50 + (p.y - cy) * PX_TO_MM }));
+    },
     isGenerated: () => isGenerated,
     isShapeCustom: () => shapeIsCustom,
     isEditMode: () => isEditMode,
@@ -4013,13 +4111,14 @@ function createEngine(canvas) {
     setEditMode(on, cfg) {
       isEditMode = on;
       if (isGenerated) generatePipes(cfg);
-      else { drawBase(cfg.style); drawHandles(); }
+      else { drawBase(cfg.style, cfg.blank); drawHandles(); }
     },
 
     loadPreset(shapeKey, cfg) {
       rawPoints = SHAPE_PRESETS[shapeKey]();
       hullPoints = calculateConvexHull(rawPoints);
       shapeIsCustom = false;
+      presetKey = shapeKey;
       isGenerated = true;
       generatePipes(cfg);
     },
@@ -4029,9 +4128,10 @@ function createEngine(canvas) {
       rawPoints = points.map(p => ({ x: p.x, y: p.y }));
       hullPoints = calculateConvexHull(rawPoints);
       shapeIsCustom = true;
+      presetKey = null;
       isGenerated = rawPoints.length >= 3;
       if (isGenerated) generatePipes(cfg);
-      else { drawBase(cfg.style); drawHandles(); }
+      else { drawBase(cfg.style, cfg.blank); drawHandles(); }
     },
 
     clearShape() {
@@ -4060,19 +4160,22 @@ function createEngine(canvas) {
       isEditMode = false;
 
       const runRecording = (offsetX, offsetY) => {
-        const rec = new RecordingCtx(PX_TO_MM, offsetX, offsetY, cfg.outlineWidthMM);
+        const blank = BLANK_BY_ID[cfg.blank] || BLANK_BY_ID.steel;
+        const rec = new RecordingCtx(PX_TO_MM, offsetX, offsetY, outlineWeightOf(cfg), blank.fill);
         ctx = rec; PathCtor = RecordingPath;
+        suppressBoard = true;
         try {
           generatePipes(cfg);
         } finally {
           ctx = savedCtx; PathCtor = savedPathCtor;
+          suppressBoard = false;
         }
         return rec;
       };
 
       // Measure where the content lands, then shift it to center — without
       // re-running generation a second time. Shape Fill's canvas is 4:3
-      // (1200x900) but the XCS viewer's viewBox is a fixed, square
+      // (1200x900) but the XCS canvas's viewBox is a fixed, square
       // 100x100mm — unlike every other Pattern Tool tab, whose own
       // generation math already targets that square bed directly, a
       // width-based px->mm scale alone leaves Shape Fill's content pinned
@@ -4093,15 +4196,22 @@ function createEngine(canvas) {
       // style alone), just record once and apply the centering shift when
       // computing each shape's placement.
       const rec = runRecording(0, 0);
+      // Centre the shape the artist drew on the middle of the bed, so the XCS
+      // view frames the design the way xTool Studio opens it and the way the
+      // preview shows it. Centring the ink instead moved the design by however
+      // far a style happened to scatter — Gears throws pieces to a 135 x 152 mm
+      // extent, so its 100 x 75 mm design was being placed as if it were half as
+      // wide again. Anything that lands off the bed stays off it; the guidance
+      // shape is not a clipping boundary, and the artist repositions in Studio.
       let centerOffsetX = 0, centerOffsetY = 0;
-      if (rec.shapes.length) {
+      if (hullPoints.length >= 3) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        rec.shapes.forEach(s => {
-          if (s.minX < minX) minX = s.minX; if (s.minY < minY) minY = s.minY;
-          if (s.maxX > maxX) maxX = s.maxX; if (s.maxY > maxY) maxY = s.maxY;
+        hullPoints.forEach(p => {
+          if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
         });
-        centerOffsetX = 50 - (minX + maxX) / 2;
-        centerOffsetY = 50 - (minY + maxY) / 2;
+        centerOffsetX = 50 - ((minX + maxX) / 2) * PX_TO_MM;
+        centerOffsetY = 50 - ((minY + maxY) / 2) * PX_TO_MM;
       }
       isEditMode = wasEditMode;
 
@@ -4179,6 +4289,8 @@ const DEFAULTS = {
   style: 'gears', paletteId: 'steampunk', mode: 'fill',
   thickness: 20, sizeMin: 60, sizeMax: 430, density: 50,
   gears: 6, colorPct: 0.15, maxStraight: 10, margin: 0,
+  // The stock the design sits on. Preview only — never exported.
+  blank: 'steel',
   rawPoints: null,
   // Jigsaw style only. Connector geometry, then how the field is coloured and
   // how far it is from its solved fit.
@@ -4192,13 +4304,19 @@ const DEFAULTS = {
   // 'html' (default) shows the raw canvas render. 'xtool' shows the same
   // pattern as real XCS vector shapes via the standard XCSViewer.
   renderTarget: 'html',
-  // xTool-mode-only: physical width (mm) used to convert every ctx.stroke()
-  // call into a filled capsule outline. The canvas's own per-shape lineWidth
-  // (a pixel value tuned for on-screen looks) is not a meaningful physical
-  // thickness on the bed, so this single dial overrides it uniformly. 0 = no
-  // outlines at all (fills only). Has no effect on the HTML canvas render.
-  outlineWidthMM: 0.2
+  // Jigsaw only: the piece outline is part of that style's geometry, so its
+  // width is a real physical dimension the canvas draws with too.
+  outlineWidthMM: 0.2,
+  // xTool-mode-only: scales every exported outline relative to the width the
+  // style drew with. 1 = as drawn (parity with the HTML canvas), 0 = no
+  // outlines at all. Has no effect on the HTML canvas render.
+  outlineWeight: 1
 };
+
+// Older saved configs predate the weight and carry only outlineWidthMM.
+function outlineWeightOf(cfg) {
+  return cfg.outlineWeight == null ? 1 : +cfg.outlineWeight;
+}
 
 const TRUE_COLOR_ID = 'true-color';
 
@@ -4324,7 +4442,7 @@ function syncXCSProject(tabId) {
   const promise = state.engine.buildXCSProject(cfg).then(project => {
     if (state._syncSeq !== seq) return state.project;
     state.project = project;
-    if (cfg.renderTarget === 'xtool') XCSViewer.update(inst.pane, inst.state);
+    if (cfg.renderTarget === 'xtool') { XCSViewer.update(inst.pane, inst.state); paintBlankBackdrop(tabId); }
     return project;
   }).catch(err => {
     console.error('Shape Fill: failed to build XCS project for xTool mode', err);
@@ -4403,6 +4521,39 @@ function refreshShapeFillName(tabId) {
   if (state.xcsViewerEl) state.xcsViewerEl.querySelector('.viewer-fname').textContent = name;
 }
 
+// XCSViewer.update() rebuilds the SVG from the project, so the backdrop has to
+// be re-inserted after each render rather than drawn once. It goes in as the
+// first child so every engraved shape sits on top of it, and it carries a class
+// so a re-render replaces it instead of stacking copies.
+function refreshShapeInfo(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst) return;
+  const el = inst.pane.querySelector('.sf-shape-info');
+  if (!el) return;
+  const info = inst.state.engine.getShapeInfo();
+  el.textContent = info ? `${info.name} — ${info.w.toFixed(1)} × ${info.h.toFixed(1)} mm` : 'No shape yet';
+  el.style.color = info ? '#ccc' : '#666';
+}
+
+function paintBlankBackdrop(tabId) {
+  const inst = App.instances[tabId];
+  if (!inst || !inst.state.xcsViewerEl) return;
+  const svg = inst.state.xcsViewerEl.querySelector('svg');
+  if (!svg) return;
+  svg.querySelectorAll('.sf-blank-backdrop').forEach(el => el.remove());
+  const hull = inst.state.engine.getHullMM();
+  if (hull.length < 3) return;
+  const blank = BLANK_BY_ID[inst.cfg.blank] || BLANK_BY_ID.steel;
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  el.setAttribute('class', 'sf-blank-backdrop');
+  el.setAttribute('points', hull.map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' '));
+  el.setAttribute('fill', blank.fill);
+  el.setAttribute('stroke', blank.stroke);
+  el.setAttribute('stroke-width', '0.3');
+  el.style.pointerEvents = 'none';
+  svg.insertBefore(el, svg.firstChild);
+}
+
 function updateShapeFillViewerVisibility(tabId) {
   const inst = App.instances[tabId];
   if (!inst) return;
@@ -4440,8 +4591,8 @@ export const ShapeFillTab = {
         <div class="viewer-main">
           <div class="canvas-panel">
             <div class="canvas-label">Laser Area — Shape Fill</div>
-            <canvas class="sf-canvas" width="1200" height="900"
-              style="width:100%;height:100%;display:block;touch-action:none;cursor:default;"></canvas>
+            <canvas class="sf-canvas" width="1200" height="1200"
+              style="width:100%;height:100%;object-fit:contain;display:block;touch-action:none;cursor:default;"></canvas>
           </div>
         </div>
       </div>
@@ -4468,7 +4619,7 @@ export const ShapeFillTab = {
     refreshShapeFillName(tabId);
     updateShapeFillViewerVisibility(tabId);
 
-    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); };
+    const persistShape = () => { cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); refreshShapeInfo(tabId); };
 
     canvasEl.addEventListener('mousedown', e => { engine.handlePointerDown(e, cfg); persistShape(); });
     canvasEl.addEventListener('mousemove', e => { engine.handlePointerMove(e, cfg); });
@@ -4517,7 +4668,7 @@ export const ShapeFillTab = {
       Object.assign(btn.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', flex: '1 1 0', minWidth: '0', padding: '6px 2px' });
       btn.innerHTML = `<span style="width:16px;height:16px;display:inline-flex">${p.svg}</span><span style="font-size:9px">${p.label}</span>`;
       btn.onclick = () => {
-        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); };
+        const apply = () => { engine.loadPreset(p.key, cfg); cfg.rawPoints = engine.getRawPoints(); Persistence.save(); syncXCSProjectDebounced(tabId); refreshShapeInfo(tabId); paintBlankBackdrop(tabId); };
         if (engine.isShapeCustom()) {
           if (confirm('Replace your custom-edited shape with this preset? This cannot be undone.')) apply();
         } else apply();
@@ -4546,13 +4697,40 @@ export const ShapeFillTab = {
     clearBtn.style.width = '100%';
     clearBtn.style.display = engine.isEditMode() ? '' : 'none';
 
+    // What is being filled, and how big it really is on the bed. The preset
+    // buttons say what you can pick; this says what you have.
+    const shapeInfoEl = document.createElement('div');
+    shapeInfoEl.className = 'sf-shape-info';
+    Object.assign(shapeInfoEl.style, {
+      fontSize: '11.5px', color: '#ccc', fontFamily: "'SF Mono','Fira Code',monospace",
+      padding: '6px 0 2px', letterSpacing: '0.02em'
+    });
+    const info = engine.getShapeInfo();
+    shapeInfoEl.textContent = info
+      ? `${info.name} — ${info.w.toFixed(1)} × ${info.h.toFixed(1)} mm`
+      : 'No shape yet';
+    if (!info) shapeInfoEl.style.color = '#666';
+
     const instructionsEl = document.createElement('div');
     Object.assign(instructionsEl.style, { fontSize: '11px', color: '#888', lineHeight: '1.4' });
     instructionsEl.textContent = engine.isEditMode()
       ? 'Tap/click the canvas to add a point, or drag an existing point to move it.'
       : 'Pick a preset below, or click Edit Shape to draw a custom outline.';
 
-    scroll.appendChild(UI.makeSection('Shape', [presetRow, editBtn, clearBtn, instructionsEl]));
+    // The blank the design sits on. It changes nothing in the export — the shape
+    // is guidance and the board is never recorded — so this only regenerates the
+    // canvas, and does so through the seeded generator, which redraws the same
+    // pattern rather than rolling a new one.
+    const blankSelect = makeLabeledSelect(
+      BLANK_OPTIONS.map(([id, label]) => [id, label]), cfg.blank || 'steel',
+      v => { cfg.blank = v; Persistence.save(); engine.generate(cfg); paintBlankBackdrop(tabId); });
+
+    scroll.appendChild(UI.makeSection('Shape', [
+      presetRow, editBtn, clearBtn, shapeInfoEl,
+      UI.makeRow('Material', blankSelect,
+        'The stock the pattern is engraved on, shown behind the design so it can be judged against the blank it will be cut from. Preview only — the shape is guidance and neither it nor its colour is exported.'),
+      instructionsEl
+    ]));
 
     // ── Style & Palette ──
     const styleSelectEl = makeLabeledSelect(STYLE_OPTIONS, cfg.style, v => {
@@ -4719,7 +4897,7 @@ export const ShapeFillTab = {
       const looseCtrl = UI.makeRange(1, 50, 1, cfg.jigLoose, v => set('jigLoose', +v), '%');
       disableControl(looseCtrl, cfg.jigFit !== 'loose');
 
-      const outlineWidthCtrl = UI.makeRange(0, 2, 0.05, cfg.outlineWidthMM, v => {
+      const outlineWidthCtrl = UI.makeRange(0, 2, 0.025, cfg.outlineWidthMM, v => {
         cfg.outlineWidthMM = +v;
         Persistence.save();
         engine.generate(cfg);
@@ -4811,18 +4989,18 @@ export const ShapeFillTab = {
     };
     scroll.appendChild(colorMappingLink);
 
-    // ── Outline width (xTool-only) ──
-    // Purely a vector-export concern: converts every ctx.stroke() into a
-    // filled capsule of this physical width. Doesn't touch the HTML canvas
-    // render, so this only ever needs to rebuild the XCS project, never a
-    // full engine.generate(cfg).
-    const outlineWidthCtrl = UI.makeRange(0, 2, 0.1, cfg.outlineWidthMM, v => {
-      cfg.outlineWidthMM = +v;
+    // ── Outline weight (xTool-only) ──
+    // Purely a vector-export concern: scales the capsule each ctx.stroke()
+    // becomes, relative to the width the style drew with. Doesn't touch the
+    // HTML canvas render, so this only ever needs to rebuild the XCS project,
+    // never a full engine.generate(cfg).
+    const outlineWeightCtrl = UI.makeRange(0, 3, 0.05, outlineWeightOf(cfg), v => {
+      cfg.outlineWeight = +v;
       Persistence.save();
       syncXCSProjectDebounced(tabId);
-    }, 'mm');
-    if (!isJigsaw) scroll.appendChild(UI.makeSection('Outline Width (xTool)', [
-      UI.makeRow('Thickness', outlineWidthCtrl, '0mm = no outlines (fills only). Overrides the canvas\'s own per-shape line width with one physical value for the vector export.')
+    }, 'x');
+    if (!isJigsaw) scroll.appendChild(UI.makeSection('Outline Weight (xTool)', [
+      UI.makeRow('Weight', outlineWeightCtrl, '1x engraves each outline at the width the pattern draws it, matching the HTML canvas. Raise it to thicken every line together, or set 0x for fills with no outlines.')
     ]));
 
     // ── Render target toggle (bottom of panel) ──
@@ -4839,7 +5017,7 @@ export const ShapeFillTab = {
       updateShapeFillViewerVisibility(tabId);
       if (v === 'xtool') {
         await flushXCSProjectSync(tabId);
-        if (cfg.renderTarget === 'xtool') XCSViewer.update(pane, state);
+        if (cfg.renderTarget === 'xtool') { XCSViewer.update(pane, state); paintBlankBackdrop(tabId); }
       }
     }, { html: '🖼️ HTML', xtool: '📐 xTool' });
     modeToggleWrap.appendChild(modeToggleLabel);

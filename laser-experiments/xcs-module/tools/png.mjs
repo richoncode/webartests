@@ -97,28 +97,62 @@ export function colourBox(img, rgb, tol = 14, region = null) {
 export function assignBoxes(img, targets, region, maxDist = 90) {
   const { width, channels, data } = img;
   const ids = Object.keys(targets);
-  const box = {};
-  for (const id of ids) box[id] = { x0: Infinity, y0: Infinity, x1: -1, y1: -1, n: 0 };
+  const W = region.x1 - region.x0 + 1, H = region.y1 - region.y0 + 1;
+  const owner = new Int8Array(W * H).fill(-1);
+
   for (let y = region.y0; y <= region.y1; y++) {
     for (let x = region.x0; x <= region.x1; x++) {
       const i = (y * width + x) * channels;
       const r = data[i], g = data[i + 1], b = data[i + 2];
-      if (Math.max(r, g, b) - Math.min(r, g, b) < 18) continue;   // grey: bed, grid, chrome
-      let best = null, bestD = Infinity;
-      for (const id of ids) {
-        const t = targets[id];
+      if (Math.max(r, g, b) - Math.min(r, g, b) < 18) continue;   // bed, grid, chrome
+      let best = -1, bestD = Infinity;
+      for (let k = 0; k < ids.length; k++) {
+        const t = targets[ids[k]];
         const d = Math.hypot(r - t[0], g - t[1], b - t[2]);
-        if (d < bestD) { bestD = d; best = id; }
+        if (d < bestD) { bestD = d; best = k; }
       }
-      if (bestD > maxDist) continue;
-      const q = box[best]; q.n++;
-      if (x < q.x0) q.x0 = x; if (x > q.x1) q.x1 = x;
-      if (y < q.y0) q.y0 = y; if (y > q.y1) q.y1 = y;
+      if (bestD <= maxDist) owner[(y - region.y0) * W + (x - region.x0)] = best;
     }
   }
-  for (const id of ids) {
-    const q = box[id];
-    if (q.n) { q.w = q.x1 - q.x0 + 1; q.h = q.y1 - q.y0 + 1; } else box[id] = null;
+
+  // Keep only each target's largest connected blob. A single distance threshold
+  // cannot separate the targets cleanly: Studio composites its fills over the
+  // bed, so a colour can land 70 away from what we asked for, while a loose
+  // threshold lets antialiasing halos from one shape be claimed by another and
+  // stretch its box across the window. Connectivity settles it — the design's
+  // shapes are solid regions and the strays are not.
+  const box = {};
+  for (const id of ids) box[id] = null;
+  const seen = new Uint8Array(W * H);
+  const stack = new Int32Array(W * H);
+  for (let p0 = 0; p0 < owner.length; p0++) {
+    if (owner[p0] < 0 || seen[p0]) continue;
+    const k = owner[p0];
+    let top = 0, n = 0;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    stack[top++] = p0; seen[p0] = 1;
+    while (top > 0) {
+      const p = stack[--top];
+      const x = p % W, y = (p / W) | 0;
+      n++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (x > 0     && owner[p - 1] === k && !seen[p - 1]) { seen[p - 1] = 1; stack[top++] = p - 1; }
+      if (x < W - 1 && owner[p + 1] === k && !seen[p + 1]) { seen[p + 1] = 1; stack[top++] = p + 1; }
+      if (y > 0     && owner[p - W] === k && !seen[p - W]) { seen[p - W] = 1; stack[top++] = p - W; }
+      if (y < H - 1 && owner[p + W] === k && !seen[p + W]) { seen[p + W] = 1; stack[top++] = p + W; }
+    }
+    const id = ids[k];
+    if (!box[id] || n > box[id].n) {
+      box[id] = { x0: x0 + region.x0, y0: y0 + region.y0, x1: x1 + region.x0, y1: y1 + region.y0,
+                  w: x1 - x0 + 1, h: y1 - y0 + 1, n };
+    }
   }
   return box;
+}
+
+/** The colour at one pixel, for checking that a hole is actually a hole. */
+export function pixelAt(img, x, y) {
+  const i = (y * img.width + x) * img.channels;
+  return [img.data[i], img.data[i + 1], img.data[i + 2]];
 }

@@ -90,6 +90,7 @@
   .chip.blocking { color:var(--red); border:1px solid #4a2320; background:#1f1312; }
   .chip.sample   { color:var(--orange); border:1px solid #3a2f1c; background:#231c10; }
   .chip.build    { color:var(--blue); border:1px solid #23344a; background:#121a23; }
+  .chip.done     { color:var(--green); border:1px solid #1e3a22; background:#101d13; }
   .num { font-family:'SF Mono','Fira Code',monospace; color:#fff; }
   .measured {
     font-size:11.5px; color:#5a5a5a; font-style:italic; margin-top:14px;
@@ -543,6 +544,138 @@
   </details>
 
   <details class="plan">
+    <summary><h3>The design has no edge</h3><span class="chip blocking">blocking · approval needed</span></summary>
+    <div class="plan-body">
+
+      <div class="goal">
+        <p>
+          <b>The problem.</b> The HTML canvas clips drawing at its own edge. The recorder has no edge to clip
+          against, so everything a style scatters past the canvas is exported anyway — landing off the machine bed
+          and changing where the rest of the design sits.
+          <span class="eq">gears exports 135 &times; 152 mm onto a 100 &times; 100 mm bed</span>
+        </p>
+      </div>
+
+      <h4>How it was found</h4>
+      <p>
+        Rendering Gears both ways and diffing the two rasters gave <b>67% of pixels differing</b>, which is far too
+        much for the &ldquo;something looks slightly off&rdquo; it started as. Registering the two images by their
+        ink showed why: the canvas render is 4:3 and the XCS render is square, and <i>both are full of ink to the
+        very edge</i>. The XCS view is not a worse drawing of the same design &mdash; it is a different crop of a
+        larger one.
+      </p>
+      <p>
+        The canvas is 1200 &times; 900 px, which at <code>PX_TO_MM</code> is 100 &times; 75 mm. Measured extents
+        of what actually gets exported:
+      </p>
+      <table>
+        <tr><th>Style</th><th>Exported extent</th><th>Size</th></tr>
+        <tr><td>Gears</td><td>x &minus;17.5 &hellip; 117.5, y &minus;25.8 &hellip; 125.8</td><td class="num">135 &times; 152 mm</td></tr>
+        <tr><td>World Coins</td><td>x &minus;28.1 &hellip; 128.1, y &minus;46.2 &hellip; 146.2</td><td class="num">156 &times; 192 mm</td></tr>
+        <tr><td>Jigsaw</td><td>x 31.1 &hellip; 68.8, y 18.6 &hellip; 81.3</td><td class="num">38 &times; 63 mm</td></tr>
+        <tr><td>Pipes and Gears</td><td>x 30.8 &hellip; 69.2, y 18.4 &hellip; 81.6</td><td class="num">38 &times; 63 mm</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        Counting shapes against the bed separates the styles that scatter from the styles that fill:
+      </p>
+      <table>
+        <tr><th>Style</th><th>Shapes</th><th>On the bed</th><th>Straddling</th><th>Entirely off</th></tr>
+        <tr><td>World Coins</td><td class="num">260</td><td class="num">43%</td><td class="num">17%</td><td class="num">39%</td></tr>
+        <tr><td>Christmas Cookies</td><td class="num">63</td><td class="num">33%</td><td class="num">33%</td><td class="num">33%</td></tr>
+        <tr><td>Buttons</td><td class="num">64</td><td class="num">55%</td><td class="num">45%</td><td class="num">0%</td></tr>
+        <tr><td>Gems</td><td class="num">161</td><td class="num">68%</td><td class="num">32%</td><td class="num">0%</td></tr>
+        <tr><td>Autumn Leaves</td><td class="num">1,409</td><td class="num">87%</td><td class="num">12%</td><td class="num">1%</td></tr>
+        <tr><td>Gears</td><td class="num">4,434</td><td class="num">94%</td><td class="num">5%</td><td class="num">1%</td></tr>
+        <tr><td>Rows of Ducks</td><td class="num">92</td><td class="num">100%</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+        <tr><td>Jigsaw</td><td class="num">651</td><td class="num">100%</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        <b>A third of World Coins is entirely off the bed.</b> It cannot engrave, and it was never visible in the
+        preview that approved it. Gears loses only 6%, but that 6% is enough to move the ink bounding box from
+        100 &times; 75 mm to 135 &times; 152 mm &mdash; and since <code>centerOffsetX/Y</code> centres <i>that</i>
+        box on 50,50, the whole design shifts. That is the visible difference, not the shading.
+      </p>
+
+      <h4>The decision needed</h4>
+      <p>Three answers, and they are not equivalent. This is the approval this plan is asking for.</p>
+      <table>
+        <tr><th></th><th>Option</th><th>What it means</th></tr>
+        <tr>
+          <td class="num">A</td><td><b>Clip to the canvas</b></td>
+          <td>Treat the canvas rectangle as the design surface and clip every shape to it, the way the preview
+          already does. Parity by construction, and nothing can land off the bed. Costs real polygon
+          clipping &mdash; flatten each straddling shape and run Sutherland&ndash;Hodgman against the rectangle.
+          Changes the output of six styles.</td>
+        </tr>
+        <tr>
+          <td class="num">B</td><td><b>Scale to fit</b></td>
+          <td>Keep every shape and shrink the whole design until it fits the bed. Nothing is lost, no clipping code
+          is needed. But the engraved size stops matching what the size sliders imply, and a style that scatters
+          far shrinks the part you actually care about.</td>
+        </tr>
+        <tr>
+          <td class="num">C</td><td><b>Centre on the canvas, keep the overflow</b></td>
+          <td>Compute <code>centerOffset</code> from the canvas rectangle rather than the ink bounding box. One
+          line. It fixes the framing, so the XCS view shows what the preview shows &mdash; but shapes outside the
+          canvas still export and still sit off the bed, silently.</td>
+        </tr>
+      </table>
+      <p style="margin-top:14px">
+        <b>Recommendation: A, with C as the same change's first half.</b> The preview is already drawing the
+        honest picture; the exporter is the thing that disagrees with it. B hides a real problem by making
+        everything smaller, and C alone leaves content off the bed where nobody looks.
+      </p>
+
+      <h4>The change</h4>
+      <ol>
+        <li>Base <code>centerOffsetX/Y</code> on the canvas rectangle rather than the recorded ink bounds. On its
+        own this makes the XCS view frame the design the way the canvas does.</li>
+        <li>Drop shapes whose bounding box lies entirely outside the canvas &mdash; 39% of World Coins, 1% of
+        Gears &mdash; before any clipping work, since they need none.</li>
+        <li>Clip the straddlers. Flatten each to a polyline at the existing tolerance and run
+        Sutherland&ndash;Hodgman against the rectangle. Closed fills clip cleanly; an open stroke has to be clipped
+        as a polyline and may fall into several pieces.</li>
+        <li>Assert the result: no exported shape may extend beyond the bed, for any style, at any settings.</li>
+      </ol>
+
+      <h4>What could go wrong</h4>
+      <ul>
+        <li><b>Clipping a stroke is not clipping a fill.</b> A capsule or ribbon is already a filled polygon by the
+        time the recorder sees it, so it clips as a fill &mdash; correct, but its round cap becomes a straight cut
+        at the boundary, which is right for a bed edge and wrong-looking if anyone expects a cap.</li>
+        <li><b>Styles that rely on overflow will look cropped, because they are.</b> Coins scatters well past the
+        canvas by design and currently gets away with it. After the change, its edge is the bed edge.</li>
+        <li><b>The centring mandate interacts.</b> GEMINI.md requires the pattern centred on 50,50. Centring the
+        canvas rather than the ink is compatible, but only once the ink is inside the canvas.</li>
+        <li><b>Shape counts drop.</b> Coins loses 39% of its shapes outright. That is a saving, not a regression,
+        but every count recorded before this change stops comparing.</li>
+      </ul>
+
+      <h4>Test and validation</h4>
+      <ol>
+        <li><b>Extent assertion.</b> For all fourteen styles, both modes, several densities: every shape's box
+        inside 0&ndash;100 mm on both axes. This is the check that would have caught it, and it is four lines.</li>
+        <li><b>Raster diff, canvas against XCS canvas.</b> The number that started this: currently <b>67% of pixels
+        differing</b> on Gears. Track it down per style and record what remains once framing is no longer the
+        cause.</li>
+        <li><b>Shape count before and after</b>, per style, so the clipping is visible as a number rather than
+        discovered later.</li>
+        <li><b>Round trip on the two worst.</b> World Coins and Christmas Cookies through
+        <a href="xcs-module/manual-test-loop.md">the manual test loop</a> &mdash; they are the styles where the
+        change is most visible, so they are the ones to look at in Studio.</li>
+      </ol>
+
+      <h4>Answers this needs first</h4>
+      <ul>
+        <li>Clip, scale, or keep the overflow?</li>
+        <li>If clipping: is the canvas rectangle the design surface, or should the shape outline (the pendant, the
+        cuff) be the clip boundary instead?</li>
+        <li>Should a style that loses a third of its shapes to clipping warn, or just clip?</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="plan">
     <summary><h3>Colour and layer management</h3><span class="chip blocking">blocking</span></summary>
     <div class="plan-body">
 
@@ -721,15 +854,18 @@
         Geometry parity is already exact for most styles. The breaks are four, and each has a different cost:
       </p>
       <ul>
-        <li><b>Line weight collapses to one.</b> The worst break, and it shows in no shape count. Autumn Leaves
-        asks the canvas for <span class="num">579 distinct line widths</span> and every one is exported at the
-        single Outline Width. Coins asks for 22, Buttons 21, Pipes and Gears 8.</li>
         <li><b>Clipped drawing is dropped.</b> 567 operations in Autumn Leaves, 15 in Buttons &mdash; gourd rib
         and wart texture, button marbling.</li>
         <li><b>Text is dropped.</b> 62 draws in Coins, 31 in Circuit Board &mdash; denominations, years, resistor
         codes.</li>
         <li><b>Translucency is baked.</b> 43 fills in Buttons are composited against their backdrop at record
         time. The still image matches; the concept does not survive.</li>
+        <li><b>Drop shadows vanish.</b> <code>RecordingCtx</code> declares <code>shadowColor</code>,
+        <code>shadowBlur</code>, <code>shadowOffsetX</code> and <code>shadowOffsetY</code>, and nothing ever reads
+        them. Gears is the only style that uses them &mdash; <span class="num">218</span> of its 2,674 fills, all
+        from <code>drawSteampunkGear</code> &mdash; and losing them is the single largest visual difference in
+        that style. The shadow is what separates one gear from the one behind it; without it the field reads flat
+        and the shapes merge.</li>
       </ul>
 
       <h4>What has to be resolved first</h4>
@@ -739,22 +875,61 @@
       </p>
       <table>
         <tr><th>#</th><th>Gap</th><th>Kind</th><th>Note</th></tr>
-        <tr><td class="num">1</td><td>Per-shape stroke width</td><td><span class="chip build">build</span></td><td>The recorder already sees <code>lineWidth</code> and deliberately ignores it, because a canvas pixel width is tuned for screen. With <code>PX_TO_MM</code> now shared, converting it is arithmetic. Biggest single win.</td></tr>
+        <tr><td class="num">1</td><td>Per-shape stroke width</td><td><span class="chip done">shipped</span></td><td><code>RecordingCtx.stroke()</code> converts the recorded <code>lineWidth</code> with <code>PX_TO_MM</code> and builds the capsule at that width; <code>cfg.outlineWeight</code> scales every width together. See the measured result below.</td></tr>
         <tr><td class="num">2</td><td>Text baking in the recorder</td><td><span class="chip build">build</span></td><td>The machinery exists for real TEXT objects &mdash; <code>charJSONs</code> and <code>fontData</code> per <code>xcsformat.md</code> &sect;11. It is simply not wired to <code>fillText()</code>.</td></tr>
         <tr><td class="num">3</td><td>Colour and layer management</td><td><span class="chip blocking">blocking</span></td><td>The plan above. Parity in colour is meaningless while one design emits 51 layers.</td></tr>
         <tr><td class="num">4</td><td>Clip paths</td><td><span class="chip sample">needs a sample</span></td><td>No documented equivalent. Either an <code>.xcs</code> sample proves one exists, or the affected textures are cut from the canvas so both renders agree on their absence.</td></tr>
         <tr><td class="num">5</td><td>Alpha</td><td><span class="chip sample">needs a sample</span></td><td><code>xcs-canvas.js</code> never reads it. Flattening is a reasonable permanent answer &mdash; but that is a decision to record, not a gap to leave open.</td></tr>
+        <tr><td class="num">6</td><td>Drop shadows</td><td><span class="chip blocking">decision</span></td><td>A laser has N discrete powers and no blur, so a soft shadow cannot be engraved as drawn. Either emit a hard offset silhouette at a darker palette entry &mdash; one extra shape per gear, restoring the depth cue &mdash; or drop shadows from the canvas as well, so both renders are flat and honest. Doing neither leaves Gears looking like two different patterns.</td></tr>
       </table>
+
+      <h4>Measured parity</h4>
+      <p>
+        Both captures come from the same page load, Pendant preset, brushed steel blank, Outline Weight 1&times;,
+        margin 0. Mean luminance runs 0&ndash;255 over every non-transparent pixel; a style is at parity when the
+        two canvases differ by less than the &plusmn;3.5 antialiasing floor the renderers set between them.
+        Measured 2026-09-16.
+      </p>
+      <table>
+        <tr><th>Style</th><th>XCS shapes</th><th>HTML L</th><th>XCS L</th><th>&Delta;L</th></tr>
+        <tr><td>Flat</td><td class="num">251</td><td class="num">176.2</td><td class="num">176.5</td><td class="num">&minus;0.3</td></tr>
+        <tr><td>3D Basic</td><td class="num">429</td><td class="num">158.2</td><td class="num">158.5</td><td class="num">&minus;0.3</td></tr>
+        <tr><td>3D Glossy</td><td class="num">488</td><td class="num">167.3</td><td class="num">167.3</td><td class="num">0.0</td></tr>
+        <tr><td>Illustrated</td><td class="num">973</td><td class="num">136.8</td><td class="num">137.6</td><td class="num">&minus;0.7</td></tr>
+        <tr><td>Circuit Board</td><td class="num">592</td><td class="num">174.4</td><td class="num">174.6</td><td class="num">&minus;0.3</td></tr>
+        <tr><td>Painted Lady</td><td class="num">1,184</td><td class="num">149.2</td><td class="num">149.9</td><td class="num">&minus;0.7</td></tr>
+        <tr><td>Ducks</td><td class="num">1,768</td><td class="num">172.6</td><td class="num">169.3</td><td class="num">+3.3</td></tr>
+        <tr><td>Gears</td><td class="num">4,135</td><td class="num">90.9</td><td class="num">91.4</td><td class="num">&minus;0.5</td></tr>
+        <tr><td>Christmas</td><td class="num">917</td><td class="num">121.5</td><td class="num">122.6</td><td class="num">&minus;1.1</td></tr>
+        <tr><td>World Coins</td><td class="num">6,278</td><td class="num">102.3</td><td class="num">105.8</td><td class="num">&minus;3.5</td></tr>
+        <tr><td>Gems</td><td class="num">2,185</td><td class="num">153.8</td><td class="num">154.8</td><td class="num">&minus;1.0</td></tr>
+        <tr><td>Buttons</td><td class="num">1,929</td><td class="num">182.2</td><td class="num">183.6</td><td class="num">&minus;1.4</td></tr>
+        <tr><td>Autumn Leaves</td><td class="num">1,379</td><td class="num">129.7</td><td class="num">129.3</td><td class="num">+0.4</td></tr>
+        <tr><td>Jigsaw</td><td class="num">652</td><td class="num">86.2</td><td class="num">87.1</td><td class="num">&minus;0.9</td></tr>
+      </table>
+      <p style="margin-top:14px">
+        Two defects closed together here, and only one of them was the stroke width. Forcing every stroke to a
+        single physical width was 11&times; too wide for Flat's gear rings, a few tenths of a millimetre apart on
+        a 6.7&nbsp;mm gear, and 11&times; too narrow for the 27&nbsp;px black underlay
+        <code>drawPipeOutline</code> draws to make Illustrated's outlines. The second defect was in this canvas
+        rather than the exporter: <code>viewer.js</code>'s <code>restyleInPlace</code> repeated the fill and
+        stroke logic instead of calling it, and set <code>stroke</code> on filled shapes without a
+        <code>stroke-width</code>. SVG then defaults to one user unit, and a user unit on this bed is a
+        millimetre, so every restyled shape wore a 1&nbsp;mm black band and Flat's gears painted as solid black
+        discs. Both canvases now call <code>applyPaint()</code> in <code>xcs-canvas.js</code>, so the logic has
+        one home.
+      </p>
 
       <h4>The change</h4>
       <ol>
         <li><b>Make the deficit visible.</b> Land the op-count harness first, as a test that reports canvas
         operations against XCS shapes per style. It is the instrument for everything below and it already
         exists in rough form.</li>
-        <li><b>Carry stroke width through.</b> <code>_emit</code> takes the recorded <code>lineWidth</code>,
-        converts with <code>PX_TO_MM</code>, and builds the capsule at that width. Outline Width becomes a
-        multiplier on the artwork's own weights rather than a replacement for them, with 0 still meaning no
-        outlines.</li>
+        <li><b>Carry stroke width through.</b> Done. <code>_emit</code> takes the recorded <code>lineWidth</code>,
+        converts with <code>PX_TO_MM</code>, and builds the capsule at that width. The panel's Outline Weight
+        slider scales the artwork's own weights rather than replacing them: 1&times; engraves each line as drawn,
+        0&times; means no outlines. <code>save()</code> and <code>restore()</code> now carry the paint state, since
+        a <code>lineWidth</code> set inside a save block has to stop applying at the matching restore.</li>
         <li><b>Bake text.</b> Route <code>fillText()</code> through the existing glyph path, emitting one PATH per
         character at the recorded transform.</li>
         <li><b>Close clip and alpha by decision.</b> Once 1 to 3 land, the residual is only these two. Either a
@@ -812,7 +987,10 @@
       <ul>
         <li>Is parity the goal for every style, or do the illustrated styles get a declared budget?</li>
         <li>If no clip sample arrives, do the affected textures come out of the canvas?</li>
-        <li>Does Outline Width become a multiplier on the artwork's own widths, or stay an override?</li>
+        <li>Does Outline Width become a multiplier on the artwork's own widths, or stay an override? Gears asks
+        for 1.5 px, which is 0.125 mm, and gets 0.2 mm &mdash; every line 1.6&times; heavier than drawn. Coins asks
+        for 181 distinct widths, Buttons 157, Gems 104, and all of them get the one.</li>
+        <li>Hard offset shadow, or no shadow anywhere?</li>
       </ul>
     </div>
   </details>
@@ -909,10 +1087,10 @@
         <li><b>A style may not survive the move.</b> Autumn Leaves at 1,178 may cost more than it is worth. Retiring
         a style is an allowed outcome &mdash; a style that only exists on a canvas is exactly what the rule was
         written to prevent.</li>
-        <li><b>The canvas is faster.</b> The XCS viewer draws SVG shapes and Gears emits 4,434 of them. Interactive
+        <li><b>The canvas is faster.</b> The XCS canvas draws SVG shapes and Gears emits 4,434 of them. Interactive
         slider dragging may become unusable before the shape-count guard is in. That guard stops being a nicety.</li>
         <li><b>Editing the shape needs a canvas.</b> Edit Shape drags handles on the canvas element. That interaction
-        has to survive the removal of the canvas as a <i>view</i>, or move onto the XCS viewer.</li>
+        has to survive the removal of the canvas as a <i>view</i>, or move onto the XCS canvas.</li>
         <li><b>Flipping the default surfaces everything at once.</b> Fourteen styles will look wrong on first
         open. Worth doing early anyway, because that is the honest picture.</li>
         <li><b>Tolerances can be set to hide the problem.</b> A generous number makes a style pass without fixing

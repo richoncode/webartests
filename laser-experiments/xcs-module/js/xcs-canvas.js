@@ -16,6 +16,40 @@
  * Stable checkpoint: xcs-text-stable-v1 (scale=fontSize/72, height=22.76*scale)
  */
 
+/**
+ * Paints one rendered primitive. Every consumer that restyles an element the
+ * canvas already built calls this rather than setting the attributes itself —
+ * pattern-tool's restyleInPlace once duplicated the logic, drifted, and left
+ * filled shapes with `stroke` set and no `stroke-width`. The SVG default is
+ * then 1 user unit, and a user unit here is a millimetre, so every shape wore
+ * a 1 mm black band: Shape Fill's flat gears, 6.7 mm across with 0.17 mm
+ * detail, engraved as solid black discs.
+ *
+ * @param {Element} el  The SVG element to paint.
+ * @param {Object}  p   The rendered primitive ({ isFill, layerColor, fillRule }).
+ */
+export function applyPaint(el, p) {
+  el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
+  if (p.isFill && p.fillRule) el.setAttribute('fill-rule', p.fillRule);
+  // A filled shape gets no stroke. It used to get a 0.05-unit hairline in
+  // its own colour, which is 0.6 px once the 100 mm bed is drawn at 1200 px
+  // — so every shape grew by 0.3 px on each side. Nothing exported it, so
+  // the machine never saw it, but on a design like Shape Fill's gears,
+  // where 4,135 of 4,236 shapes are small and dark, it took the near-black
+  // area from 33% to 44% and made this canvas read far darker than the HTML
+  // one. The canvas has to be honest about tone; it is the one we keep.
+  //
+  // An unfilled shape is different: it is VECTOR_ENGRAVING, its fill is
+  // transparent, and the stroke is the only thing drawing it.
+  if (p.isFill) {
+    el.setAttribute('stroke', 'none');
+    el.removeAttribute('stroke-width');
+  } else {
+    el.setAttribute('stroke', p.layerColor);
+    el.setAttribute('stroke-width', '0.05');
+  }
+}
+
 export class XCSCanvas {
   /**
    * @param {SVGElement}     svgEl      - The <svg> element that owns the viewBox.
@@ -96,10 +130,7 @@ export class XCSCanvas {
 
     // Shared: apply stroke/fill for non-TEXT, non-BITMAP primitives
     if (p.type !== 'TEXT' && p.type !== 'BITMAP') {
-      el.setAttribute('fill', p.isFill ? p.layerColor : 'transparent');
-      if (p.isFill && p.fillRule) el.setAttribute('fill-rule', p.fillRule);
-      el.setAttribute('stroke', p.layerColor);
-      el.setAttribute('stroke-width', '0.05');
+      applyPaint(el, p);
       el.style.pointerEvents = 'auto';
       el.style.cursor = 'help';
     }
