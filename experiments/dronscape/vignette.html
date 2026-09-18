@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dronscape — Supervisory Swarm Vignette (Track 1)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0d0d;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 60px 24px 80px;
+  }
+  a { color: #5b9bd5; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 1080px; margin: 0 auto; }
+
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #5b9bd5; margin-bottom: 12px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 760px; margin-bottom: 20px; }
+
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 16px; background: #0d1620; max-width: 760px; }
+  .callout strong { color: #ccc; }
+  .callout.green { background: #0a1a0a; border-color: #4caf50; }
+  .callout.orange { background: #1a1200; border-color: #f0a040; }
+
+  .walk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0 28px; }
+  .walk-step { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 12px 14px; }
+  .walk-n { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #5b9bd5; margin-bottom: 4px; }
+  .walk-step p { font-size: 12.5px; color: #888; line-height: 1.5; }
+  .walk-step strong { color: #ddd; }
+
+  .status {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #bbb; background: #111; border: 1px solid #2a2a2a; border-radius: 20px; padding: 4px 10px; }
+  .pill b { font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 700; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.ok { background: #4caf50; }
+  .dot.warn { background: #f0a040; }
+  .dot.bad { background: #e74c3c; }
+  .dot.idle { background: #555; }
+  .status .spacer { flex: 1; min-width: 8px; }
+  .mode-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #888; background: #1a1a1a; border: 1px solid #2a2a2a; padding: 3px 10px; border-radius: 20px; }
+  .mode-tag.live { color: #4caf50; background: #1a2a1a; border-color: #4caf5044; }
+  .mode-tag.replay { color: #f0a040; background: #241a0d; border-color: #4d3319; }
+  .mode-tag.jam { color: #e74c3c; background: #2a1010; border-color: #c0392b; }
+
+  button {
+    background: #1a1a1a; border: 1px solid #333; color: #ccc;
+    padding: 8px 18px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  button.primary:hover { background: #243550; }
+  button.danger { background: #2a1010; border-color: #c0392b; color: #e74c3c; }
+  button.danger:hover { background: #3a1515; }
+  button.warn { background: #241a0d; border-color: #f0a040; color: #f0a040; }
+  button.warn:hover { background: #2e220f; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+
+  .sim { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin-bottom: 16px; }
+  .map-card, .panel, .replay {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 16px;
+  }
+  .map-wrap {
+    position: relative; background: #0a0a0a; border: 1px solid #262626;
+    border-radius: 12px; overflow: hidden; height: 520px;
+  }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  .map-legend {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+    font-size: 11px; color: #666;
+  }
+  .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; }
+
+  .panel h2, .replay h2 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    color: #666; margin-bottom: 12px;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .hint { font-size: 12px; color: #666; line-height: 1.5; margin: 4px 0 12px; }
+  .sel-count { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #5b9bd5; margin-bottom: 10px; }
+
+  .roster { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 248px; overflow: auto; }
+  .agent-row {
+    display: flex; align-items: center; gap: 6px; background: #111; border: 1px solid #222;
+    border-radius: 8px; padding: 6px 8px; cursor: pointer; font-size: 11.5px; color: #bbb;
+  }
+  .agent-row:hover { border-color: #444; }
+  .agent-row.sel { background: #1e2d40; border-color: #5b9bd5; color: #fff; }
+  .agent-row .id { font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 700; min-width: 22px; }
+  .agent-row .task { color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px; border-radius: 10px; margin-left: auto; flex-shrink: 0; }
+  .badge.ok { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .badge.warn { color: #f0a040; background: #241a0d; border: 1px solid #4d3319; }
+  .badge.bad { color: #e74c3c; background: #2a1010; border: 1px solid #c0392b66; }
+
+  .aar { font-size: 12.5px; color: #888; line-height: 1.55; background: #111; border: 1px solid #222; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .aar strong { color: #ccc; }
+
+  .replay-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .replay-controls input[type="range"] { flex: 1; min-width: 160px; accent-color: #5b9bd5; }
+  .time { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #5b9bd5; min-width: 92px; }
+
+  .log {
+    max-height: 180px; overflow: auto; background: #0a0a0a; border: 1px solid #222;
+    border-radius: 10px; padding: 8px 0;
+  }
+  .log-row { display: grid; grid-template-columns: 54px 1fr; gap: 10px; padding: 5px 12px; font-size: 12px; color: #888; }
+  .log-row:hover, .log-row.on { background: #141414; }
+  .log-row .t { font-family: 'SF Mono', 'Fira Code', monospace; color: #555; }
+  .log-row.ok .msg { color: #bbb; }
+  .log-row.warn .msg { color: #f0a040; }
+  .log-row.fail .msg { color: #e74c3c; }
+  .log-row.info .msg { color: #5b9bd5; }
+  .log-empty { padding: 14px 12px; color: #555; font-size: 12px; }
+
+  .note { margin-top: 18px; font-size: 12.5px; color: #555; max-width: 760px; line-height: 1.6; }
+  .note a { color: #7ea9c9; }
+
+  @media (max-width: 880px) {
+    .sim { grid-template-columns: 1fr; }
+    .walk { grid-template-columns: 1fr; }
+    .map-wrap { height: 400px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <a class="back" href="./">← Back</a>
+
+  <p class="section-label">Interactive vignette · Track 1</p>
+  <h1>Supervisory Swarm C2</h1>
+  <p class="subtitle">Sixteen agents. Mission-level tasking. A jam toggle. The swarm keeps the last order when the link dies — and the operator can see what broke.</p>
+
+  <div class="callout">
+    <strong>Thesis:</strong> Supervisors task a small swarm at mission level; under degraded communications the swarm still behaves, and the operator can see what broke.
+  </div>
+  <div class="callout green">
+    <strong>60-second walkthrough.</strong> Select Alpha → Survey ridge → flip <em>Degrade / jam</em> as they enter the orange sector → try Abort on a lost agent (command fails) → reassign the still-linked flights → scrub the after-action strip.
+  </div>
+
+  <div class="walk">
+    <div class="walk-step"><div class="walk-n">01 · Task</div><p>Click a flight, then <strong>assign</strong> a mission. Agents leave the FOB as a group — you are not flying airframes.</p></div>
+    <div class="walk-step"><div class="walk-n">02 · Degrade</div><p>Flip <strong>jam</strong>. Inside the sector, links go degraded then lost. Last-order autonomy continues. New C2 may timeout or fail.</p></div>
+    <div class="walk-step"><div class="walk-n">03 · See what broke</div><p>Badges, the status strip, stale last-fix marks, and the <strong>replay log</strong> show tasked vs not-delivered.</p></div>
+  </div>
+
+  <div class="status" id="statusStrip">
+    <span class="pill"><span class="dot idle"></span><b id="statN">16</b> agents</span>
+    <span class="pill"><span class="dot ok"></span><b id="statOk">16</b> healthy</span>
+    <span class="pill"><span class="dot warn"></span><b id="statDeg">0</b> degraded</span>
+    <span class="pill"><span class="dot bad"></span><b id="statLost">0</b> lost</span>
+    <span class="mode-tag live" id="modeTag">Live</span>
+    <span class="mode-tag" id="jamTag">Link: clear</span>
+    <span class="spacer"></span>
+    <button id="jamBtn" class="warn">Degrade / jam</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="sim">
+    <div class="map-card">
+      <div class="map-wrap"><canvas id="map" width="900" height="640"></canvas></div>
+      <div class="map-legend">
+        <span><i class="swatch" style="background:#4caf50"></i> Healthy</span>
+        <span><i class="swatch" style="background:#f0a040"></i> Degraded</span>
+        <span><i class="swatch" style="background:#e74c3c"></i> Lost contact</span>
+        <span><i class="swatch" style="background:#5b9bd5;border-radius:2px"></i> Last C2 fix (stale)</span>
+        <span>Click agents · Shift-click to add</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Mission tasking</h2>
+      <p class="hint">Assign / reassign / abort a mission for the selected subset. Lost-contact agents will not hear a new order.</p>
+      <div class="btn-row">
+        <button data-flight="A">Alpha</button>
+        <button data-flight="B">Bravo</button>
+        <button data-flight="C">Charlie</button>
+        <button data-flight="D">Delta</button>
+        <button id="selAll">All</button>
+        <button id="selNone">Clear</button>
+      </div>
+      <div class="sel-count" id="selCount">0 selected</div>
+      <div class="btn-row">
+        <button class="primary" data-task="survey">Survey ridge</button>
+        <button class="primary" data-task="recon">Recon corridor</button>
+        <button data-task="hold">Hold station</button>
+        <button data-task="rtb">Return to base</button>
+        <button class="danger" id="abortBtn">Abort</button>
+      </div>
+      <h2 style="margin-top:14px">Roster · link health</h2>
+      <div class="roster" id="roster"></div>
+    </div>
+  </div>
+
+  <div class="replay">
+    <h2>After-action / replay</h2>
+    <div class="aar" id="aar">No events yet. Task a flight to start the strip.</div>
+    <div class="replay-controls">
+      <button id="playBtn">Play</button>
+      <button id="liveBtn" disabled>Resume live</button>
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0">
+      <span class="time" id="timeLabel">00:00 / 00:00</span>
+    </div>
+    <div class="log" id="log"><div class="log-empty">After-action events will list what was tasked and what failed.</div></div>
+  </div>
+
+  <p class="note">
+    Browser-native Track 1 vignette — placeholder kinematics, no backend, no firmware-in-the-loop.
+    Taxonomy and later tracks: <a href="./">feature landscape</a> ·
+    <a href="./dronescape-planning.html">simulator architecture planning</a>.
+  </p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var CANVAS = document.getElementById('map');
+  var CTX = CANVAS.getContext('2d');
+  var JAM = { x: 58, y: 36, r: 16 };
+  var HOME = { x: 16, y: 80 };
+  var FLIGHTS = [
+    { id: 'A', name: 'Alpha', color: '#5b9bd5' },
+    { id: 'B', name: 'Bravo', color: '#7eb8e0' },
+    { id: 'C', name: 'Charlie', color: '#4caf50' },
+    { id: 'D', name: 'Delta', color: '#f0a040' }
+  ];
+  var SLOTS = [
+    { x: -2.1, y: -2.1 }, { x: 2.1, y: -2.1 },
+    { x: -2.1, y: 2.1 }, { x: 2.1, y: 2.1 }
+  ];
+  var TASKS = {
+    survey: {
+      name: 'Survey ridge',
+      wps: [{ x: 42, y: 54 }, { x: 56, y: 38 }, { x: 50, y: 18 }, { x: 30, y: 16 }, { x: 70, y: 16 }],
+      loopFrom: 3
+    },
+    recon: {
+      name: 'Recon corridor',
+      wps: [{ x: 30, y: 62 }, { x: 48, y: 46 }, { x: 64, y: 36 }, { x: 82, y: 26 }],
+      loopFrom: -1
+    },
+    hold: { name: 'Hold station', wps: [], loopFrom: -1 },
+    rtb: { name: 'Return to base', wps: [HOME], loopFrom: -1 }
+  };
+
+  var LOST_AFTER = 1.35;
+  var RECOVER_AFTER = 0.55;
+  var DEGRADE_DELAY = 0.85;
+  var SNAP_DT = 0.12;
+  var MAX_SNAPS = 900;
+
+  var state = {
+    t: 0,
+    jamOn: false,
+    live: true,
+    playingReplay: false,
+    agents: [],
+    inbox: [],
+    events: [],
+    snaps: [],
+    snapAcc: 0,
+    viewIndex: -1
+  };
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(t) { return pad(Math.floor(t / 60)) + ':' + pad(Math.floor(t % 60)); }
+  function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+  function lerpAngle(a, b, k) {
+    var d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    return a + d * k;
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  function spawn() {
+    var agents = [];
+    FLIGHTS.forEach(function (f, fi) {
+      for (var i = 0; i < 4; i++) {
+        var slot = SLOTS[i];
+        var x = HOME.x + 7 + fi * 7 + slot.x;
+        var y = HOME.y - 2 + slot.y;
+        agents.push({
+          id: f.id + (i + 1),
+          flight: f.id,
+          color: f.color,
+          slot: i,
+          x: x, y: y, heading: -Math.PI / 2,
+          homeX: x, homeY: y,
+          link: 'healthy',
+          jamTimer: 0, recoverTimer: 0,
+          autonomy: false,
+          task: null,
+          lastFix: { x: x, y: y },
+          trail: [],
+          selected: false
+        });
+      }
+    });
+    return agents;
+  }
+
+  function reset() {
+    state.t = 0;
+    state.jamOn = false;
+    state.live = true;
+    state.playingReplay = false;
+    state.agents = spawn();
+    state.inbox = [];
+    state.events = [];
+    state.snaps = [];
+    state.snapAcc = 0;
+    state.viewIndex = -1;
+    log('info', 'Vignette reset — 16 agents at FOB, links healthy.');
+    takeSnap();
+    syncChrome();
+  }
+
+  function selected() { return state.agents.filter(function (a) { return a.selected; }); }
+
+  function setFlight(id, additive) {
+    state.agents.forEach(function (a) {
+      if (!additive) a.selected = a.flight === id;
+      else if (a.flight === id) a.selected = true;
+    });
+    syncChrome();
+  }
+
+  function makeTask(kind, agent) {
+    var def = TASKS[kind];
+    var off = SLOTS[agent.slot];
+    if (kind === 'hold') {
+      return { kind: kind, name: def.name, wps: [{ x: agent.x, y: agent.y }], i: 0, loopFrom: -1, done: false };
+    }
+    var wps = def.wps.map(function (w) {
+      return { x: w.x + off.x, y: w.y + off.y };
+    });
+    return { kind: kind, name: def.name, wps: wps, i: 0, loopFrom: def.loopFrom, done: false };
+  }
+
+  function applyCmd(agent, cmd) {
+    if (cmd.type === 'abort') {
+      agent.task = { kind: 'hold', name: 'Aborted / hold', wps: [{ x: agent.x, y: agent.y }], i: 0, loopFrom: -1, done: false };
+      agent.autonomy = agent.link === 'lost';
+      return;
+    }
+    agent.task = cmd.task;
+    agent.autonomy = agent.link === 'lost';
+  }
+
+  function tryDeliver(agent, cmd, verb) {
+    var label = cmd.type === 'abort' ? 'ABORT' : (cmd.task ? cmd.task.name : 'order');
+    if (agent.link === 'lost') {
+      log('fail', agent.id + ': ' + verb + ' ' + label + ' — not delivered (lost contact). Last order continues.');
+      return;
+    }
+    if (agent.link === 'degraded') {
+      state.inbox.push({
+        agentId: agent.id, cmd: cmd, verb: verb,
+        deliverAt: state.t + DEGRADE_DELAY
+      });
+      log('warn', agent.id + ': ' + verb + ' ' + label + ' — queued (degraded link, ' + DEGRADE_DELAY.toFixed(2) + 's timeout).');
+      return;
+    }
+    applyCmd(agent, cmd);
+    log('ok', agent.id + ': ' + verb + ' ' + label + '.');
+  }
+
+  function issue(kind) {
+    if (!state.live) return;
+    var sel = selected();
+    if (!sel.length) return;
+    sel.forEach(function (a) {
+      var verb = a.task && a.task.kind !== 'hold' ? 'REASSIGN' : 'ASSIGN';
+      tryDeliver(a, { type: 'set', task: makeTask(kind, a) }, verb);
+    });
+    syncChrome();
+  }
+
+  function abortSelected() {
+    if (!state.live) return;
+    var sel = selected();
+    if (!sel.length) return;
+    sel.forEach(function (a) {
+      tryDeliver(a, { type: 'abort' }, 'ABORT');
+    });
+    syncChrome();
+  }
+
+  function setJam(on) {
+    if (!state.live) return;
+    state.jamOn = on;
+    log('info', on
+      ? 'Degrade / jam ON — sector is contested. Expect timeouts, autonomy fallback, lost-contact.'
+      : 'Degrade / jam OFF — links can recover after a short hold.');
+    syncChrome();
+  }
+
+  function log(sev, msg) {
+    state.events.push({ t: state.t, sev: sev, msg: msg });
+    renderLog();
+    renderAar();
+  }
+
+  function takeSnap() {
+    state.snaps.push({
+      t: state.t,
+      jamOn: state.jamOn,
+      agents: state.agents.map(function (a) {
+        return {
+          id: a.id, flight: a.flight, color: a.color,
+          x: a.x, y: a.y, heading: a.heading,
+          link: a.link, autonomy: a.autonomy,
+          taskName: a.task ? a.task.name : 'Idle',
+          lastFix: { x: a.lastFix.x, y: a.lastFix.y },
+          trail: a.trail.slice(-18),
+          selected: a.selected
+        };
+      })
+    });
+    if (state.snaps.length > MAX_SNAPS) state.snaps.shift();
+    var scrub = document.getElementById('scrub');
+    if (state.live) {
+      scrub.max = Math.max(0, state.snaps.length - 1);
+      scrub.value = scrub.max;
+    }
+  }
+
+  function viewAgents() {
+    if (state.live || state.viewIndex < 0 || !state.snaps[state.viewIndex]) return state.agents;
+    return state.snaps[state.viewIndex].agents;
+  }
+
+  function viewJam() {
+    if (state.live || state.viewIndex < 0 || !state.snaps[state.viewIndex]) return state.jamOn;
+    return state.snaps[state.viewIndex].jamOn;
+  }
+
+  function enterReplay(index) {
+    state.live = false;
+    state.playingReplay = false;
+    state.viewIndex = Math.max(0, Math.min(index, state.snaps.length - 1));
+    syncChrome();
+  }
+
+  function resumeLive() {
+    state.live = true;
+    state.playingReplay = false;
+    state.viewIndex = -1;
+    var scrub = document.getElementById('scrub');
+    scrub.value = scrub.max;
+    syncChrome();
+  }
+
+  function drainInbox() {
+    var keep = [];
+    state.inbox.forEach(function (item) {
+      if (item.deliverAt > state.t) { keep.push(item); return; }
+      var agent = state.agents.filter(function (a) { return a.id === item.agentId; })[0];
+      if (!agent) return;
+      var label = item.cmd.type === 'abort' ? 'ABORT' : item.cmd.task.name;
+      if (agent.link === 'lost') {
+        log('fail', agent.id + ': ' + item.verb + ' ' + label + ' — timed out, not delivered.');
+        return;
+      }
+      applyCmd(agent, item.cmd);
+      log('warn', agent.id + ': ' + item.verb + ' ' + label + ' — delivered late after degraded timeout.');
+    });
+    state.inbox = keep;
+  }
+
+  function updateLinks(dt) {
+    state.agents.forEach(function (a) {
+      var inJam = state.jamOn && dist(a, JAM) < JAM.r;
+      if (inJam) {
+        a.recoverTimer = 0;
+        a.jamTimer += dt;
+        if (a.link === 'healthy') {
+          a.link = 'degraded';
+          log('warn', a.id + ': link DEGRADED — inside jam sector.');
+        }
+        if (a.jamTimer >= LOST_AFTER && a.link !== 'lost') {
+          a.link = 'lost';
+          a.autonomy = !!a.task;
+          log('fail', a.id + ': LOST CONTACT — last C2 fix frozen; ' +
+            (a.task ? 'continuing last order (' + a.task.name + ').' : 'holding last intent.'));
+        }
+      } else {
+        a.jamTimer = 0;
+        if (a.link !== 'healthy') {
+          a.recoverTimer += dt;
+          if (a.recoverTimer >= RECOVER_AFTER) {
+            var was = a.link;
+            a.link = 'healthy';
+            a.autonomy = false;
+            log('ok', a.id + ': link restored (was ' + was + ').');
+          }
+        } else {
+          a.recoverTimer = 0;
+        }
+      }
+      if (a.link !== 'lost') {
+        a.lastFix.x = a.x;
+        a.lastFix.y = a.y;
+      }
+    });
+  }
+
+  function seek(agent, tx, ty, dt, slowR) {
+    var dx = tx - agent.x, dy = ty - agent.y;
+    var d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    var desired = Math.atan2(dy, dx);
+    agent.heading = lerpAngle(agent.heading, desired, 0.12);
+    var speed = d < (slowR || 6) ? 6.5 : 12;
+    agent.x += Math.cos(agent.heading) * speed * dt;
+    agent.y += Math.sin(agent.heading) * speed * dt;
+    return d;
+  }
+
+  function loiter(agent, cx, cy, dt) {
+    var ang = Math.atan2(agent.y - cy, agent.x - cx) + 1.6 * dt;
+    var r = 2.4;
+    var tx = cx + Math.cos(ang) * r;
+    var ty = cy + Math.sin(ang) * r;
+    seek(agent, tx, ty, dt, 3);
+  }
+
+  function tickPhysics(dt) {
+    state.agents.forEach(function (a) {
+      if (!a.task || !a.task.wps.length) {
+        loiter(a, a.homeX, a.homeY, dt);
+      } else if (a.task.kind === 'hold' || a.task.name.indexOf('Aborted') === 0) {
+        loiter(a, a.task.wps[0].x, a.task.wps[0].y, dt);
+      } else {
+        var wp = a.task.wps[a.task.i];
+        var d = seek(a, wp.x, wp.y, dt, 5);
+        if (d < 2.1) {
+          if (a.task.i < a.task.wps.length - 1) {
+            a.task.i += 1;
+          } else if (a.task.loopFrom >= 0) {
+            a.task.i = a.task.loopFrom;
+            if (!a.task.announced) {
+              a.task.announced = true;
+              log('ok', a.id + ': on station — ' + a.task.name + (a.autonomy ? ' (autonomy)' : '') + '.');
+            }
+          } else if (!a.task.done) {
+            a.task.done = true;
+            log('ok', a.id + ': completed ' + a.task.name + (a.autonomy ? ' under autonomy' : '') + '.');
+            if (a.task.kind === 'rtb') {
+              a.task = null;
+            } else {
+              a.task = { kind: 'hold', name: 'Hold (post-recon)', wps: [{ x: a.x, y: a.y }], i: 0, loopFrom: -1, done: false };
+            }
+          } else {
+            loiter(a, wp.x, wp.y, dt);
+          }
+        }
+      }
+      a.trail.push({ x: a.x, y: a.y });
+      if (a.trail.length > 22) a.trail.shift();
+    });
+  }
+
+  function step(dt) {
+    if (!state.live) return;
+    state.t += dt;
+    drainInbox();
+    updateLinks(dt);
+    tickPhysics(dt);
+    state.snapAcc += dt;
+    if (state.snapAcc >= SNAP_DT) {
+      state.snapAcc = 0;
+      takeSnap();
+    }
+  }
+
+  function worldFromEvent(ev) {
+    var rect = CANVAS.getBoundingClientRect();
+    var sx = (ev.clientX - rect.left) * (CANVAS.width / rect.width);
+    var sy = (ev.clientY - rect.top) * (CANVAS.height / rect.height);
+    var pad = 28;
+    return {
+      x: (sx - pad) / (CANVAS.width - pad * 2) * 100,
+      y: (sy - pad) / (CANVAS.height - pad * 2) * 100
+    };
+  }
+
+  function toScreen(x, y) {
+    var pad = 28;
+    return {
+      x: pad + (x / 100) * (CANVAS.width - pad * 2),
+      y: pad + (y / 100) * (CANVAS.height - pad * 2)
+    };
+  }
+
+  function pick(w) {
+    var best = null, bestD = 3.4;
+    viewAgents().forEach(function (a, i) {
+      var d = dist(a, w);
+      if (d < bestD) { bestD = d; best = state.live ? state.agents[i] : a; }
+    });
+    return best;
+  }
+
+  function linkColor(link) {
+    if (link === 'healthy') return '#4caf50';
+    if (link === 'degraded') return '#f0a040';
+    return '#e74c3c';
+  }
+
+  function draw() {
+    var w = CANVAS.width, h = CANVAS.height;
+    var ctx = CTX;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, w, h);
+
+    var jamOn = viewJam();
+    var agents = viewAgents();
+
+    // grid
+    ctx.strokeStyle = '#161616';
+    ctx.lineWidth = 1;
+    for (var g = 0; g <= 10; g++) {
+      var a = toScreen(g * 10, 0), b = toScreen(g * 10, 100);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      a = toScreen(0, g * 10); b = toScreen(100, g * 10);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+
+    function label(x, y, text, color) {
+      var p = toScreen(x, y);
+      ctx.fillStyle = color || '#555';
+      ctx.font = '700 11px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText(text, p.x, p.y);
+    }
+
+    // ridge
+    (function () {
+      var p = toScreen(50, 16);
+      ctx.fillStyle = '#15191e';
+      ctx.strokeStyle = '#2a3340';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 210, 28, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      label(22, 10, 'RIDGE / SURVEY', '#4a5560');
+    })();
+
+    // corridor
+    (function () {
+      var pts = [{ x: 26, y: 66 }, { x: 48, y: 46 }, { x: 64, y: 36 }, { x: 84, y: 24 }];
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      pts.forEach(function (pt, i) {
+        var s = toScreen(pt.x, pt.y);
+        if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      label(78, 20, 'CORRIDOR', '#4a4a4a');
+    })();
+
+    // FOB
+    (function () {
+      var p = toScreen(HOME.x, HOME.y);
+      ctx.fillStyle = '#1e2d40';
+      ctx.strokeStyle = '#5b9bd5';
+      ctx.strokeRect(p.x - 16, p.y - 12, 32, 24);
+      ctx.fillRect(p.x - 16, p.y - 12, 32, 24);
+      ctx.fillStyle = '#5b9bd5';
+      ctx.font = '700 10px "SF Mono", "Fira Code", monospace';
+      ctx.fillText('FOB', p.x - 11, p.y + 4);
+    })();
+
+    // jam sector
+    (function () {
+      var p = toScreen(JAM.x, JAM.y);
+      var pr = (JAM.r / 100) * (CANVAS.width - 56);
+      var pulse = jamOn ? 0.18 + 0.08 * Math.sin(performance.now() / 220) : 0.06;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, pr, 0, Math.PI * 2);
+      ctx.fillStyle = jamOn ? 'rgba(231,76,60,' + pulse + ')' : 'rgba(240,160,64,0.05)';
+      ctx.fill();
+      ctx.strokeStyle = jamOn ? '#e74c3c' : '#5a4030';
+      ctx.setLineDash(jamOn ? [] : [5, 5]);
+      ctx.lineWidth = jamOn ? 2 : 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = jamOn ? '#e74c3c' : '#664c30';
+      ctx.font = '700 11px "SF Mono", "Fira Code", monospace';
+      ctx.fillText(jamOn ? 'JAM ACTIVE' : 'JAM SECTOR', p.x - 34, p.y + 4);
+    })();
+
+    // trails + last-fix + agents
+    agents.forEach(function (a) {
+      if (a.trail && a.trail.length > 1) {
+        ctx.beginPath();
+        a.trail.forEach(function (pt, i) {
+          var s = toScreen(pt.x, pt.y);
+          if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+        });
+        ctx.strokeStyle = a.color + '55';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      if (a.link === 'lost' && dist(a, a.lastFix) > 3) {
+        var fix = toScreen(a.lastFix.x, a.lastFix.y);
+        ctx.strokeStyle = '#5b9bd5';
+        ctx.globalAlpha = 0.55;
+        ctx.strokeRect(fix.x - 5, fix.y - 5, 10, 10);
+        ctx.globalAlpha = 1;
+      }
+
+      var s = toScreen(a.x, a.y);
+      if (a.selected) {
+        ctx.strokeStyle = '#5b9bd5';
+        ctx.strokeRect(s.x - 11, s.y - 11, 22, 22);
+      }
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(a.heading);
+      ctx.fillStyle = a.color;
+      ctx.beginPath();
+      ctx.moveTo(8, 0); ctx.lineTo(-6, 5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = linkColor(a.link);
+      ctx.lineWidth = 1.6;
+      if (a.link === 'lost') ctx.setLineDash([2, 2]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#ddd';
+      ctx.font = '700 10px "SF Mono", "Fira Code", monospace';
+      ctx.fillText(a.id, s.x + 10, s.y - 8);
+      if (a.autonomy) {
+        ctx.fillStyle = '#f0a040';
+        ctx.fillText('AUTO', s.x + 10, s.y + 4);
+      }
+    });
+
+    if (jamOn) {
+      ctx.fillStyle = 'rgba(231,76,60,0.12)';
+      ctx.fillRect(0, 0, w, 28);
+      ctx.fillStyle = '#e74c3c';
+      ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText('CONTESTED LINK — autonomy fallback on lost-contact agents', 14, 18);
+    }
+    if (!state.live) {
+      ctx.fillStyle = 'rgba(240,160,64,0.14)';
+      ctx.fillRect(0, h - 26, w, 26);
+      ctx.fillStyle = '#f0a040';
+      ctx.font = '700 11px "SF Mono", "Fira Code", monospace';
+      var snap = state.snaps[state.viewIndex];
+      ctx.fillText('REPLAY  ' + (snap ? fmt(snap.t) : '--:--'), 14, h - 9);
+    }
+  }
+
+  function counts(agents) {
+    var c = { n: agents.length, ok: 0, deg: 0, lost: 0 };
+    agents.forEach(function (a) {
+      if (a.link === 'healthy') c.ok++;
+      else if (a.link === 'degraded') c.deg++;
+      else c.lost++;
+    });
+    return c;
+  }
+
+  function renderRoster() {
+    var root = document.getElementById('roster');
+    var agents = viewAgents();
+    root.innerHTML = agents.map(function (a) {
+      var cls = 'agent-row' + (a.selected ? ' sel' : '');
+      var b = a.link === 'healthy' ? 'ok' : a.link === 'degraded' ? 'warn' : 'bad';
+      var task = a.taskName || (a.task ? a.task.name : 'Idle');
+      return '<div class="' + cls + '" data-id="' + a.id + '">' +
+        '<span class="dot ' + b + '"></span>' +
+        '<span class="id">' + a.id + '</span>' +
+        '<span class="task">' + task + (a.autonomy ? ' · auto' : '') + '</span>' +
+        '<span class="badge ' + b + '">' + a.link + '</span></div>';
+    }).join('');
+  }
+
+  function renderLog() {
+    var root = document.getElementById('log');
+    if (!state.events.length) {
+      root.innerHTML = '<div class="log-empty">After-action events will list what was tasked and what failed.</div>';
+      return;
+    }
+    var tView = state.live ? state.t : (state.snaps[state.viewIndex] ? state.snaps[state.viewIndex].t : state.t);
+    var rows = state.events.slice().reverse().map(function (e) {
+      var on = !state.live && Math.abs(e.t - tView) < 0.2 ? ' on' : '';
+      return '<div class="log-row ' + e.sev + on + '"><span class="t">' + fmt(e.t) +
+        '</span><span class="msg">' + e.msg + '</span></div>';
+    }).join('');
+    root.innerHTML = rows;
+  }
+
+  function renderAar() {
+    var assigned = 0, reassigned = 0, aborted = 0, failed = 0, lost = 0, restored = 0;
+    state.events.forEach(function (e) {
+      if (e.msg.indexOf('ASSIGN ') === 0 || e.msg.indexOf(': ASSIGN') !== -1) assigned++;
+      if (e.msg.indexOf('REASSIGN') !== -1) reassigned++;
+      if (e.msg.indexOf('ABORT') !== -1 && e.msg.indexOf('not delivered') === -1 && e.msg.indexOf('timed out') === -1) aborted++;
+      if (e.msg.indexOf('not delivered') !== -1 || e.msg.indexOf('timed out') !== -1) failed++;
+      if (e.msg.indexOf('LOST CONTACT') !== -1) lost++;
+      if (e.msg.indexOf('link restored') !== -1) restored++;
+    });
+    var c = counts(viewAgents());
+    if (!state.events.length) {
+      document.getElementById('aar').textContent = 'No events yet. Task a flight to start the strip.';
+      return;
+    }
+    document.getElementById('aar').innerHTML =
+      '<strong>What was tasked / what failed.</strong> ' +
+      assigned + ' assign · ' + reassigned + ' reassign · ' + aborted + ' abort delivered · ' +
+      '<span style="color:#e74c3c">' + failed + ' not delivered</span> · ' +
+      lost + ' lost-contact events · ' + restored + ' restores. ' +
+      'Now: ' + c.ok + ' healthy / ' + c.deg + ' degraded / ' + c.lost + ' lost.';
+  }
+
+  function syncChrome() {
+    var agents = viewAgents();
+    var c = counts(agents);
+    document.getElementById('statN').textContent = c.n;
+    document.getElementById('statOk').textContent = c.ok;
+    document.getElementById('statDeg').textContent = c.deg;
+    document.getElementById('statLost').textContent = c.lost;
+    var mode = document.getElementById('modeTag');
+    mode.textContent = state.live ? 'Live' : 'Replay';
+    mode.className = 'mode-tag ' + (state.live ? 'live' : 'replay');
+    var jam = document.getElementById('jamTag');
+    var jamOn = viewJam();
+    jam.textContent = jamOn ? 'Link: contested' : 'Link: clear';
+    jam.className = 'mode-tag' + (jamOn ? ' jam' : '');
+    var jamBtn = document.getElementById('jamBtn');
+    jamBtn.textContent = state.jamOn ? 'Clear jam' : 'Degrade / jam';
+    jamBtn.className = state.jamOn ? 'danger' : 'warn';
+    jamBtn.disabled = !state.live;
+    document.getElementById('liveBtn').disabled = state.live;
+    document.getElementById('playBtn').textContent = state.playingReplay ? 'Pause' : 'Play';
+    document.getElementById('playBtn').disabled = state.snaps.length < 2;
+    var selN = agents.filter(function (a) { return a.selected; }).length;
+    document.getElementById('selCount').textContent = selN + ' selected' + (state.live ? '' : ' (replay)');
+    document.querySelectorAll('[data-task], #abortBtn').forEach(function (btn) {
+      btn.disabled = !state.live || selN === 0;
+    });
+    var tNow = state.live ? state.t : (state.snaps[state.viewIndex] ? state.snaps[state.viewIndex].t : 0);
+    var tMax = state.snaps.length ? state.snaps[state.snaps.length - 1].t : 0;
+    document.getElementById('timeLabel').textContent = fmt(tNow) + ' / ' + fmt(tMax);
+    renderRoster();
+    renderLog();
+    renderAar();
+  }
+
+  function bind() {
+    document.querySelectorAll('[data-flight]').forEach(function (btn) {
+      btn.addEventListener('click', function () { setFlight(btn.getAttribute('data-flight')); });
+    });
+    document.getElementById('selAll').addEventListener('click', function () {
+      state.agents.forEach(function (a) { a.selected = true; });
+      syncChrome();
+    });
+    document.getElementById('selNone').addEventListener('click', function () {
+      state.agents.forEach(function (a) { a.selected = false; });
+      syncChrome();
+    });
+    document.querySelectorAll('[data-task]').forEach(function (btn) {
+      btn.addEventListener('click', function () { issue(btn.getAttribute('data-task')); });
+    });
+    document.getElementById('abortBtn').addEventListener('click', abortSelected);
+    document.getElementById('jamBtn').addEventListener('click', function () { setJam(!state.jamOn); });
+    document.getElementById('resetBtn').addEventListener('click', reset);
+    document.getElementById('liveBtn').addEventListener('click', resumeLive);
+    document.getElementById('playBtn').addEventListener('click', function () {
+      if (!state.snaps.length) return;
+      if (state.live) enterReplay(0);
+      state.playingReplay = !state.playingReplay;
+      if (state.playingReplay && state.viewIndex >= state.snaps.length - 1) state.viewIndex = 0;
+      syncChrome();
+    });
+    document.getElementById('scrub').addEventListener('input', function (e) {
+      if (!state.snaps.length) return;
+      enterReplay(parseInt(e.target.value, 10) || 0);
+      state.playingReplay = false;
+      syncChrome();
+    });
+    document.getElementById('roster').addEventListener('click', function (e) {
+      var row = e.target.closest('[data-id]');
+      if (!row || !state.live) return;
+      var id = row.getAttribute('data-id');
+      state.agents.forEach(function (a) {
+        if (a.id === id) a.selected = !a.selected;
+        else if (!e.shiftKey) a.selected = false;
+      });
+      syncChrome();
+    });
+    CANVAS.addEventListener('click', function (e) {
+      if (!state.live) return;
+      var hit = pick(worldFromEvent(e));
+      if (!hit) {
+        if (!e.shiftKey) state.agents.forEach(function (a) { a.selected = false; });
+      } else {
+        state.agents.forEach(function (a) {
+          if (a.id === hit.id) a.selected = !a.selected;
+          else if (!e.shiftKey) a.selected = false;
+        });
+      }
+      syncChrome();
+    });
+  }
+
+  var last = performance.now();
+  var replayAcc = 0;
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (state.live) step(dt);
+    else if (state.playingReplay) {
+      replayAcc += dt;
+      if (replayAcc >= SNAP_DT) {
+        replayAcc = 0;
+        state.viewIndex += 1;
+        if (state.viewIndex >= state.snaps.length) {
+          state.viewIndex = state.snaps.length - 1;
+          state.playingReplay = false;
+        }
+        document.getElementById('scrub').value = String(state.viewIndex);
+        syncChrome();
+      }
+    }
+    draw();
+    if (state.live) {
+      var liveCounts = counts(state.agents);
+      document.getElementById('timeLabel').textContent =
+        fmt(state.t) + ' / ' + fmt(state.snaps.length ? state.snaps[state.snaps.length - 1].t : 0);
+      document.getElementById('statOk').textContent = liveCounts.ok;
+      document.getElementById('statDeg').textContent = liveCounts.deg;
+      document.getElementById('statLost').textContent = liveCounts.lost;
+      var jam = document.getElementById('jamTag');
+      jam.textContent = state.jamOn ? 'Link: contested' : 'Link: clear';
+      jam.className = 'mode-tag' + (state.jamOn ? ' jam' : '');
+      if (Math.floor(state.t * 4) !== Math.floor((state.t - dt) * 4)) renderRoster();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  bind();
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
