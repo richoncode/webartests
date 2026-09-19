@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dronscape — Supervisory Swarm Vignette (Track 1)</title>
+<title>Dronscape — San Martin Foothills (Track 1)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -21,7 +22,8 @@
   .page { max-width: 1080px; margin: 0 auto; }
 
   .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #5b9bd5; margin-bottom: 12px; }
-  h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .scenario-name { font-size: 16px; font-weight: 600; color: #ddd; margin-bottom: 10px; }
   .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 760px; margin-bottom: 20px; }
 
   .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 16px; background: #0d1620; max-width: 760px; }
@@ -76,13 +78,43 @@
     position: relative; background: #0a0a0a; border: 1px solid #262626;
     border-radius: 12px; overflow: hidden; height: 520px;
   }
-  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  #leafletMap { position: absolute; inset: 0; z-index: 1; }
+  canvas#map {
+    position: absolute; inset: 0; z-index: 2;
+    display: block; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .leaflet-container { background: #0a0a0a; font-family: inherit; }
+  .leaflet-control-attribution {
+    background: rgba(13, 13, 13, 0.78) !important;
+    color: #777 !important;
+    font-size: 10px !important;
+    max-width: 72%;
+    line-height: 1.35;
+  }
+  .leaflet-control-attribution a { color: #7ea9c9 !important; }
+  .leaflet-bar a {
+    background: #1a1a1a; color: #ccc; border-bottom: 1px solid #333;
+    width: 28px; height: 28px; line-height: 28px;
+  }
+  .leaflet-bar a:hover { background: #222; color: #fff; }
+  .leaflet-bar a.leaflet-disabled { opacity: 0.3; background: #1a1a1a; }
+  .leaflet-control-zoom { border: 1px solid #333 !important; border-radius: 6px; overflow: hidden; }
+  .map-ao-tag {
+    position: absolute; left: 10px; top: 10px; z-index: 3;
+    font-size: 11px; font-weight: 700; color: #ddd;
+    background: rgba(13, 13, 13, 0.78);
+    border: 1px solid #2a2a2a; border-radius: 8px;
+    padding: 5px 10px; pointer-events: none; max-width: 70%;
+  }
   .map-legend {
     display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
-    font-size: 11px; color: #666;
+    font-size: 11px; color: #666; align-items: center;
   }
   .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
   .swatch { width: 10px; height: 10px; border-radius: 50%; }
+  .basemap-toggle { margin-left: auto; display: flex; gap: 6px; }
+  .basemap-toggle button { padding: 4px 10px; font-size: 11px; }
 
   .panel h2, .replay h2 {
     font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
@@ -128,11 +160,14 @@
 
   .note { margin-top: 18px; font-size: 12.5px; color: #555; max-width: 760px; line-height: 1.6; }
   .note a { color: #7ea9c9; }
+  .attrib { margin-top: 10px; font-size: 11px; color: #4a4a4a; max-width: 760px; line-height: 1.55; }
+  .attrib a { color: #5a7a90; }
 
   @media (max-width: 880px) {
     .sim { grid-template-columns: 1fr; }
     .walk { grid-template-columns: 1fr; }
     .map-wrap { height: 400px; }
+    .basemap-toggle { margin-left: 0; }
   }
 </style>
 </head>
@@ -140,20 +175,24 @@
 <div class="page">
   <a class="back" href="./">← Back</a>
 
-  <p class="section-label">Interactive vignette · Track 1</p>
+  <p class="section-label">Interactive vignette · Track 1 · Demo scenario</p>
   <h1>Supervisory Swarm C2</h1>
-  <p class="subtitle">Sixteen agents. Mission-level tasking. A jam toggle. The swarm keeps the last order when the link dies — and the operator can see what broke.</p>
+  <p class="scenario-name">San Martin Foothills — contested corridor (demo)</p>
+  <p class="subtitle">Sixteen agents over public ranchland east of San Martin, CA. Mission-level tasking. A jam toggle. The swarm keeps the last order when the link dies — and the operator can see what broke.</p>
 
   <div class="callout">
     <strong>Thesis:</strong> Supervisors task a small swarm at mission level; under degraded communications the swarm still behaves, and the operator can see what broke.
   </div>
+  <div class="callout orange">
+    <strong>Demo scenario, not a real base.</strong> Fictional FOB / training-style layout on real public grassy ridges east of San Martin (Harvey Bear Ranch / Coyote Lake county parkland). Labels are invented. No military installation is depicted.
+  </div>
   <div class="callout green">
-    <strong>60-second walkthrough.</strong> Select Alpha → Survey ridge → flip <em>Degrade / jam</em> as they enter the orange sector → try Abort on a lost agent (command fails) → reassign the still-linked flights → scrub the after-action strip.
+    <strong>60-second walkthrough.</strong> Select Alpha → Survey ridge (northern grassy ridgeline) → flip <em>Degrade / jam</em> as they enter the orange sector on the corridor → try Abort on a lost agent (command fails) → reassign the still-linked flights → scrub the after-action strip.
   </div>
 
   <div class="walk">
-    <div class="walk-step"><div class="walk-n">01 · Task</div><p>Click a flight, then <strong>assign</strong> a mission. Agents leave the FOB as a group — you are not flying airframes.</p></div>
-    <div class="walk-step"><div class="walk-n">02 · Degrade</div><p>Flip <strong>jam</strong>. Inside the sector, links go degraded then lost. Last-order autonomy continues. New C2 may timeout or fail.</p></div>
+    <div class="walk-step"><div class="walk-n">01 · Task</div><p>Click a flight, then <strong>assign</strong> a mission. Agents leave the demo FOB as a group — you are not flying airframes.</p></div>
+    <div class="walk-step"><div class="walk-n">02 · Degrade</div><p>Flip <strong>jam</strong> on the contested corridor. Inside the sector, links go degraded then lost. Last-order autonomy continues. New C2 may timeout or fail.</p></div>
     <div class="walk-step"><div class="walk-n">03 · See what broke</div><p>Badges, the status strip, stale last-fix marks, and the <strong>replay log</strong> show tasked vs not-delivered.</p></div>
   </div>
 
@@ -171,13 +210,21 @@
 
   <div class="sim">
     <div class="map-card">
-      <div class="map-wrap"><canvas id="map" width="900" height="640"></canvas></div>
+      <div class="map-wrap">
+        <div id="leafletMap"></div>
+        <canvas id="map"></canvas>
+        <div class="map-ao-tag">San Martin Foothills — contested corridor (demo)</div>
+      </div>
       <div class="map-legend">
         <span><i class="swatch" style="background:#4caf50"></i> Healthy</span>
         <span><i class="swatch" style="background:#f0a040"></i> Degraded</span>
         <span><i class="swatch" style="background:#e74c3c"></i> Lost contact</span>
         <span><i class="swatch" style="background:#5b9bd5;border-radius:2px"></i> Last C2 fix (stale)</span>
-        <span>Click agents · Shift-click to add</span>
+        <span>Click agents · Shift-click to add · drag to pan</span>
+        <span class="basemap-toggle">
+          <button id="basemapSat" class="active">Satellite</button>
+          <button id="basemapOsm">Streets</button>
+        </span>
       </div>
     </div>
 
@@ -218,20 +265,94 @@
   </div>
 
   <p class="note">
-    Browser-native Track 1 vignette — placeholder kinematics, no backend, no firmware-in-the-loop.
+    Browser-native Track 1 vignette — placeholder kinematics on a real-world basemap, no backend, no firmware-in-the-loop.
     Taxonomy and later tracks: <a href="./">feature landscape</a> ·
     <a href="./dronescape-planning.html">simulator architecture planning</a>.
   </p>
+  <p class="attrib">
+    Map tiles: <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri World Imagery</a>
+    (Esri, Maxar, Earthstar Geographics, and the GIS User Community) ·
+    streets <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>.
+    Demo AO is public terrain near San Martin, CA — fictional FOB / training labels only.
+  </p>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 (function () {
   'use strict';
 
+  // Real public terrain: Harvey Bear / Coyote Lake grassy ridges,
+  // east of San Martin, CA (county parkland / open ranch — not a base).
+  // Shifted east of 37.08°N, 121.60°W to leave the town grid.
+  var AO = {
+    name: 'San Martin Foothills — contested corridor (demo)',
+    south: 37.0740,
+    north: 37.1000,
+    west: -121.5600,
+    east: -121.5240
+  };
+
+  var PLACES = {
+    fob: { lat: 37.0788, lng: -121.5552 },
+    jam: { lat: 37.0854, lng: -121.5478, rMeters: 560 },
+    ridgeOutline: [
+      { lat: 37.0896, lng: -121.5584 },
+      { lat: 37.0938, lng: -121.5536 },
+      { lat: 37.0964, lng: -121.5472 },
+      { lat: 37.0958, lng: -121.5404 },
+      { lat: 37.0922, lng: -121.5376 },
+      { lat: 37.0884, lng: -121.5428 },
+      { lat: 37.0870, lng: -121.5510 }
+    ],
+    survey: [
+      { lat: 37.0836, lng: -121.5504 },
+      { lat: 37.0878, lng: -121.5462 },
+      { lat: 37.0934, lng: -121.5484 },
+      { lat: 37.0938, lng: -121.5556 },
+      { lat: 37.0942, lng: -121.5408 }
+    ],
+    corridor: [
+      { lat: 37.0806, lng: -121.5532 },
+      { lat: 37.0848, lng: -121.5486 },
+      { lat: 37.0884, lng: -121.5440 },
+      { lat: 37.0922, lng: -121.5386 }
+    ]
+  };
+
   var CANVAS = document.getElementById('map');
   var CTX = CANVAS.getContext('2d');
-  var JAM = { x: 58, y: 36, r: 16 };
-  var HOME = { x: 16, y: 80 };
+  var MAP = null;
+  var LAYERS = { sat: null, osm: null };
+
+  function latLngToWorld(lat, lng) {
+    return {
+      x: (lng - AO.west) / (AO.east - AO.west) * 100,
+      y: (AO.north - lat) / (AO.north - AO.south) * 100
+    };
+  }
+  function worldToLatLng(x, y) {
+    return {
+      lat: AO.north - (y / 100) * (AO.north - AO.south),
+      lng: AO.west + (x / 100) * (AO.east - AO.west)
+    };
+  }
+  function metersToWorld(m) {
+    var mPerWorldY = ((AO.north - AO.south) * 111320) / 100;
+    return m / mPerWorldY;
+  }
+  function wpsFromLl(list) {
+    return list.map(function (p) { return latLngToWorld(p.lat, p.lng); });
+  }
+
+  var HOME = latLngToWorld(PLACES.fob.lat, PLACES.fob.lng);
+  var JAM = (function () {
+    var p = latLngToWorld(PLACES.jam.lat, PLACES.jam.lng);
+    return { x: p.x, y: p.y, r: metersToWorld(PLACES.jam.rMeters) };
+  })();
+  var RIDGE_OUTLINE = wpsFromLl(PLACES.ridgeOutline);
+  var CORRIDOR_LINE = wpsFromLl(PLACES.corridor);
+
   var FLIGHTS = [
     { id: 'A', name: 'Alpha', color: '#5b9bd5' },
     { id: 'B', name: 'Bravo', color: '#7eb8e0' },
@@ -245,12 +366,12 @@
   var TASKS = {
     survey: {
       name: 'Survey ridge',
-      wps: [{ x: 42, y: 54 }, { x: 56, y: 38 }, { x: 50, y: 18 }, { x: 30, y: 16 }, { x: 70, y: 16 }],
+      wps: wpsFromLl(PLACES.survey),
       loopFrom: 3
     },
     recon: {
       name: 'Recon corridor',
-      wps: [{ x: 30, y: 62 }, { x: 48, y: 46 }, { x: 64, y: 36 }, { x: 82, y: 26 }],
+      wps: CORRIDOR_LINE.slice(),
       loopFrom: -1
     },
     hold: { name: 'Hold station', wps: [], loopFrom: -1 },
@@ -283,14 +404,13 @@
     var d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
     return a + d * k;
   }
-  function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
   function spawn() {
     var agents = [];
     FLIGHTS.forEach(function (f, fi) {
       for (var i = 0; i < 4; i++) {
         var slot = SLOTS[i];
-        var x = HOME.x + 7 + fi * 7 + slot.x;
+        var x = HOME.x + 6 + fi * 6.2 + slot.x;
         var y = HOME.y - 2 + slot.y;
         agents.push({
           id: f.id + (i + 1),
@@ -312,6 +432,14 @@
     return agents;
   }
 
+  function fitAo(animate) {
+    if (!MAP) return;
+    MAP.fitBounds([[AO.south, AO.west], [AO.north, AO.east]], {
+      padding: [16, 16],
+      animate: !!animate
+    });
+  }
+
   function reset() {
     state.t = 0;
     state.jamOn = false;
@@ -323,8 +451,9 @@
     state.snaps = [];
     state.snapAcc = 0;
     state.viewIndex = -1;
-    log('info', 'Vignette reset — 16 agents at FOB, links healthy.');
+    log('info', 'Vignette reset — 16 agents at demo FOB, San Martin foothills, links healthy.');
     takeSnap();
+    fitAo(false);
     syncChrome();
   }
 
@@ -403,7 +532,7 @@
     if (!state.live) return;
     state.jamOn = on;
     log('info', on
-      ? 'Degrade / jam ON — sector is contested. Expect timeouts, autonomy fallback, lost-contact.'
+      ? 'Degrade / jam ON — corridor sector is contested. Expect timeouts, autonomy fallback, lost-contact.'
       : 'Degrade / jam OFF — links can recover after a short hold.');
     syncChrome();
   }
@@ -586,23 +715,17 @@
     }
   }
 
-  function worldFromEvent(ev) {
-    var rect = CANVAS.getBoundingClientRect();
-    var sx = (ev.clientX - rect.left) * (CANVAS.width / rect.width);
-    var sy = (ev.clientY - rect.top) * (CANVAS.height / rect.height);
-    var pad = 28;
-    return {
-      x: (sx - pad) / (CANVAS.width - pad * 2) * 100,
-      y: (sy - pad) / (CANVAS.height - pad * 2) * 100
-    };
+  function toScreen(x, y) {
+    if (!MAP) return { x: 0, y: 0 };
+    var ll = worldToLatLng(x, y);
+    var p = MAP.latLngToContainerPoint([ll.lat, ll.lng]);
+    return { x: p.x, y: p.y };
   }
 
-  function toScreen(x, y) {
-    var pad = 28;
-    return {
-      x: pad + (x / 100) * (CANVAS.width - pad * 2),
-      y: pad + (y / 100) * (CANVAS.height - pad * 2)
-    };
+  function worldRadiusPx(cx, cy, r) {
+    var a = toScreen(cx, cy);
+    var b = toScreen(cx + r, cy);
+    return Math.hypot(b.x - a.x, b.y - a.y) || 8;
   }
 
   function pick(w) {
@@ -620,91 +743,111 @@
     return '#e74c3c';
   }
 
+  function drawPath(ctx, pts, close) {
+    pts.forEach(function (pt, i) {
+      var s = toScreen(pt.x, pt.y);
+      if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+    });
+    if (close) ctx.closePath();
+  }
+
   function draw() {
-    var w = CANVAS.width, h = CANVAS.height;
+    if (!MAP) return;
+    var wrap = CANVAS.parentNode;
+    var w = wrap.clientWidth, h = wrap.clientHeight;
     var ctx = CTX;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, w, h);
 
     var jamOn = viewJam();
     var agents = viewAgents();
 
-    // grid
-    ctx.strokeStyle = '#161616';
-    ctx.lineWidth = 1;
-    for (var g = 0; g <= 10; g++) {
-      var a = toScreen(g * 10, 0), b = toScreen(g * 10, 100);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      a = toScreen(0, g * 10); b = toScreen(100, g * 10);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-
-    function label(x, y, text, color) {
+    function label(x, y, text, color, dx, dy) {
       var p = toScreen(x, y);
-      ctx.fillStyle = color || '#555';
+      ctx.fillStyle = color || '#f2f2f2';
       ctx.font = '700 11px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.fillText(text, p.x, p.y);
+      ctx.shadowColor = 'rgba(0,0,0,0.75)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(text, p.x + (dx || 0), p.y + (dy || 0));
+      ctx.shadowBlur = 0;
     }
 
-    // ridge
+    // AO bounds
     (function () {
-      var p = toScreen(50, 16);
-      ctx.fillStyle = '#15191e';
-      ctx.strokeStyle = '#2a3340';
+      var corners = [
+        { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }
+      ];
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, 210, 28, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-      label(22, 10, 'RIDGE / SURVEY', '#4a5560');
-    })();
-
-    // corridor
-    (function () {
-      var pts = [{ x: 26, y: 66 }, { x: 48, y: 46 }, { x: 64, y: 36 }, { x: 84, y: 24 }];
-      ctx.strokeStyle = '#2a2a2a';
-      ctx.setLineDash([6, 5]);
-      ctx.beginPath();
-      pts.forEach(function (pt, i) {
-        var s = toScreen(pt.x, pt.y);
-        if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
-      });
+      drawPath(ctx, corners, true);
+      ctx.strokeStyle = 'rgba(91,155,213,0.35)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1;
       ctx.stroke();
       ctx.setLineDash([]);
-      label(78, 20, 'CORRIDOR', '#4a4a4a');
+    })();
+
+    // survey ridge
+    (function () {
+      ctx.beginPath();
+      drawPath(ctx, RIDGE_OUTLINE, true);
+      ctx.fillStyle = 'rgba(20, 28, 36, 0.28)';
+      ctx.strokeStyle = 'rgba(180, 200, 220, 0.65)';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      label(28, 10, 'SURVEY RIDGE', '#e8eef4', 0, 0);
+    })();
+
+    // recon corridor
+    (function () {
+      ctx.beginPath();
+      drawPath(ctx, CORRIDOR_LINE, false);
+      ctx.strokeStyle = 'rgba(240, 210, 120, 0.85)';
+      ctx.setLineDash([7, 5]);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      var last = CORRIDOR_LINE[CORRIDOR_LINE.length - 1];
+      label(last.x, last.y, 'RECON CORRIDOR', '#f6e7b0', 8, -8);
     })();
 
     // FOB
     (function () {
       var p = toScreen(HOME.x, HOME.y);
-      ctx.fillStyle = '#1e2d40';
+      ctx.fillStyle = 'rgba(30, 45, 64, 0.92)';
       ctx.strokeStyle = '#5b9bd5';
-      ctx.strokeRect(p.x - 16, p.y - 12, 32, 24);
-      ctx.fillRect(p.x - 16, p.y - 12, 32, 24);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(p.x - 18, p.y - 13, 36, 26);
+      ctx.fillRect(p.x - 18, p.y - 13, 36, 26);
       ctx.fillStyle = '#5b9bd5';
       ctx.font = '700 10px "SF Mono", "Fira Code", monospace';
-      ctx.fillText('FOB', p.x - 11, p.y + 4);
+      ctx.fillText('FOB', p.x - 11, p.y + 1);
+      ctx.fillStyle = '#9bb8d4';
+      ctx.font = '700 8px "SF Mono", "Fira Code", monospace';
+      ctx.fillText('DEMO', p.x - 13, p.y + 10);
     })();
 
     // jam sector
     (function () {
       var p = toScreen(JAM.x, JAM.y);
-      var pr = (JAM.r / 100) * (CANVAS.width - 56);
-      var pulse = jamOn ? 0.18 + 0.08 * Math.sin(performance.now() / 220) : 0.06;
+      var pr = worldRadiusPx(JAM.x, JAM.y, JAM.r);
+      var pulse = jamOn ? 0.22 + 0.08 * Math.sin(performance.now() / 220) : 0.08;
       ctx.beginPath();
       ctx.arc(p.x, p.y, pr, 0, Math.PI * 2);
-      ctx.fillStyle = jamOn ? 'rgba(231,76,60,' + pulse + ')' : 'rgba(240,160,64,0.05)';
+      ctx.fillStyle = jamOn ? 'rgba(231,76,60,' + pulse + ')' : 'rgba(240,160,64,0.10)';
       ctx.fill();
-      ctx.strokeStyle = jamOn ? '#e74c3c' : '#5a4030';
+      ctx.strokeStyle = jamOn ? '#e74c3c' : '#c4a06a';
       ctx.setLineDash(jamOn ? [] : [5, 5]);
-      ctx.lineWidth = jamOn ? 2 : 1;
+      ctx.lineWidth = jamOn ? 2 : 1.4;
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = jamOn ? '#e74c3c' : '#664c30';
+      ctx.fillStyle = jamOn ? '#ff6b5a' : '#f0d9a8';
       ctx.font = '700 11px "SF Mono", "Fira Code", monospace';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 4;
       ctx.fillText(jamOn ? 'JAM ACTIVE' : 'JAM SECTOR', p.x - 34, p.y + 4);
+      ctx.shadowBlur = 0;
     })();
 
-    // trails + last-fix + agents
     agents.forEach(function (a) {
       if (a.trail && a.trail.length > 1) {
         ctx.beginPath();
@@ -712,15 +855,15 @@
           var s = toScreen(pt.x, pt.y);
           if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
         });
-        ctx.strokeStyle = a.color + '55';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = a.color + 'aa';
+        ctx.lineWidth = 1.6;
         ctx.stroke();
       }
 
       if (a.link === 'lost' && dist(a, a.lastFix) > 3) {
         var fix = toScreen(a.lastFix.x, a.lastFix.y);
         ctx.strokeStyle = '#5b9bd5';
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.7;
         ctx.strokeRect(fix.x - 5, fix.y - 5, 10, 10);
         ctx.globalAlpha = 1;
       }
@@ -728,6 +871,7 @@
       var s = toScreen(a.x, a.y);
       if (a.selected) {
         ctx.strokeStyle = '#5b9bd5';
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(s.x - 11, s.y - 11, 22, 22);
       }
       ctx.save();
@@ -748,24 +892,27 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = '#ddd';
+      ctx.fillStyle = '#fff';
       ctx.font = '700 10px "SF Mono", "Fira Code", monospace';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 3;
       ctx.fillText(a.id, s.x + 10, s.y - 8);
       if (a.autonomy) {
         ctx.fillStyle = '#f0a040';
         ctx.fillText('AUTO', s.x + 10, s.y + 4);
       }
+      ctx.shadowBlur = 0;
     });
 
     if (jamOn) {
-      ctx.fillStyle = 'rgba(231,76,60,0.12)';
-      ctx.fillRect(0, 0, w, 28);
-      ctx.fillStyle = '#e74c3c';
+      ctx.fillStyle = 'rgba(231,76,60,0.16)';
+      ctx.fillRect(0, 40, w, 26);
+      ctx.fillStyle = '#ff8a7a';
       ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.fillText('CONTESTED LINK — autonomy fallback on lost-contact agents', 14, 18);
+      ctx.fillText('CONTESTED LINK — autonomy fallback on lost-contact agents', 14, 57);
     }
     if (!state.live) {
-      ctx.fillStyle = 'rgba(240,160,64,0.14)';
+      ctx.fillStyle = 'rgba(240,160,64,0.18)';
       ctx.fillRect(0, h - 26, w, 26);
       ctx.fillStyle = '#f0a040';
       ctx.font = '700 11px "SF Mono", "Fira Code", monospace';
@@ -871,6 +1018,75 @@
     renderAar();
   }
 
+  function handleMapClick(latlng, shiftKey) {
+    if (!state.live) return;
+    var w = latLngToWorld(latlng.lat, latlng.lng);
+    var hit = pick(w);
+    if (!hit) {
+      if (!shiftKey) state.agents.forEach(function (a) { a.selected = false; });
+    } else {
+      state.agents.forEach(function (a) {
+        if (a.id === hit.id) a.selected = !a.selected;
+        else if (!shiftKey) a.selected = false;
+      });
+    }
+    syncChrome();
+  }
+
+  function setBasemap(kind) {
+    if (!MAP) return;
+    if (kind === 'osm') {
+      if (MAP.hasLayer(LAYERS.sat)) MAP.removeLayer(LAYERS.sat);
+      if (!MAP.hasLayer(LAYERS.osm)) LAYERS.osm.addTo(MAP);
+    } else {
+      if (MAP.hasLayer(LAYERS.osm)) MAP.removeLayer(LAYERS.osm);
+      if (!MAP.hasLayer(LAYERS.sat)) LAYERS.sat.addTo(MAP);
+    }
+    document.getElementById('basemapSat').classList.toggle('active', kind !== 'osm');
+    document.getElementById('basemapOsm').classList.toggle('active', kind === 'osm');
+  }
+
+  function sizeCanvas() {
+    var wrap = CANVAS.parentNode;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = wrap.clientWidth;
+    var h = wrap.clientHeight;
+    CANVAS.width = Math.round(w * dpr);
+    CANVAS.height = Math.round(h * dpr);
+    CANVAS.style.width = w + 'px';
+    CANVAS.style.height = h + 'px';
+    CTX.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (MAP) MAP.invalidateSize();
+  }
+
+  function initMap() {
+    LAYERS.sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18,
+      attribution: 'Tiles © Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    });
+    LAYERS.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+
+    MAP = L.map('leafletMap', {
+      zoomControl: false,
+      attributionControl: true,
+      doubleClickZoom: false,
+      minZoom: 13,
+      maxZoom: 17,
+      maxBounds: [[AO.south - 0.012, AO.west - 0.018], [AO.north + 0.012, AO.east + 0.018]],
+      maxBoundsViscosity: 0.7
+    });
+    LAYERS.sat.addTo(MAP);
+    L.control.zoom({ position: 'topright' }).addTo(MAP);
+    fitAo(false);
+
+    MAP.on('click', function (e) {
+      handleMapClick(e.latlng, e.originalEvent && e.originalEvent.shiftKey);
+    });
+  }
+
   function bind() {
     document.querySelectorAll('[data-flight]').forEach(function (btn) {
       btn.addEventListener('click', function () { setFlight(btn.getAttribute('data-flight')); });
@@ -913,19 +1129,9 @@
       });
       syncChrome();
     });
-    CANVAS.addEventListener('click', function (e) {
-      if (!state.live) return;
-      var hit = pick(worldFromEvent(e));
-      if (!hit) {
-        if (!e.shiftKey) state.agents.forEach(function (a) { a.selected = false; });
-      } else {
-        state.agents.forEach(function (a) {
-          if (a.id === hit.id) a.selected = !a.selected;
-          else if (!e.shiftKey) a.selected = false;
-        });
-      }
-      syncChrome();
-    });
+    document.getElementById('basemapSat').addEventListener('click', function () { setBasemap('sat'); });
+    document.getElementById('basemapOsm').addEventListener('click', function () { setBasemap('osm'); });
+    window.addEventListener('resize', sizeCanvas);
   }
 
   var last = performance.now();
@@ -963,6 +1169,8 @@
     requestAnimationFrame(frame);
   }
 
+  initMap();
+  sizeCanvas();
   bind();
   reset();
   requestAnimationFrame(frame);
