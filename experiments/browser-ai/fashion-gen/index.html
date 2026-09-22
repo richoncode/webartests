@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fashion gen — Browser AI Lab</title>
+  <link rel="stylesheet" href="../shared/theme.css">
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="../">← Back</a>
+
+    <p class="section-label">Demo</p>
+    <h1>Fashion gen</h1>
+    <p class="subtitle">Train a tiny conditional VAE on Fashion-MNIST clothing in this tab, then generate a 28×28 grayscale sample for a class you pick. TensorFlow.js uses WebGPU when it can, otherwise WASM, WebGL, or CPU.</p>
+
+    <div id="cap-banner" class="banner" role="status" aria-live="polite">
+      <p class="banner-kicker">This browser</p>
+      <h2>Checking WebGPU…</h2>
+      <p>Looking for <code>navigator.gpu</code> and WebAssembly.</p>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Fashion gen sections">
+      <button type="button" role="tab" id="tab-train" data-tab="train" aria-selected="true" aria-controls="panel-train">Train</button>
+      <button type="button" role="tab" id="tab-samples" data-tab="samples" aria-selected="false" aria-controls="panel-samples" tabindex="-1">Samples</button>
+      <button type="button" role="tab" id="tab-dashboard" data-tab="dashboard" aria-selected="false" aria-controls="panel-dashboard" tabindex="-1">Dashboard</button>
+      <button type="button" role="tab" id="tab-perf" data-tab="perf" aria-selected="false" aria-controls="panel-perf" tabindex="-1">Perf Compare</button>
+      <button type="button" role="tab" id="tab-about" data-tab="about" aria-selected="false" aria-controls="panel-about" tabindex="-1">About</button>
+    </div>
+
+    <section id="panel-train" role="tabpanel" aria-labelledby="tab-train">
+      <div class="callout blue"><strong>All in the tab.</strong> The first run downloads Fashion-MNIST (about 4.4 MB of gzip) and caches 10,000 clothing images in IndexedDB. The network is a small dense VAE, so WASM can train it. Weights stay on this device.</div>
+      <form id="train-form" class="panel">
+        <div class="form-grid">
+          <label class="field">Model
+            <select id="model" name="model">
+              <option value="cvae" selected>Tiny conditional VAE</option>
+            </select>
+          </label>
+          <label class="field">Backend
+            <select id="backend" name="backend">
+              <option value="auto" selected>Auto</option>
+              <option value="webgpu">WebGPU</option>
+              <option value="wasm">WASM</option>
+              <option value="webgl">WebGL</option>
+              <option value="cpu">CPU</option>
+            </select>
+          </label>
+          <label class="field">Epochs
+            <input id="epochs" name="epochs" type="number" min="1" max="30" value="3">
+          </label>
+          <label class="field">Batch size
+            <input id="batch" name="batch" type="number" min="16" max="256" step="16" value="64">
+          </label>
+          <label class="field">Learning rate
+            <input id="lr" name="lr" type="number" min="0.0001" max="0.1" step="0.0001" value="0.001">
+          </label>
+        </div>
+        <p class="field-help" id="backend-note">Checking which backend this browser will use.</p>
+        <div class="btn-row">
+          <button class="primary" type="button" id="start" disabled>Start training</button>
+          <button type="button" id="stop" disabled>Stop</button>
+        </div>
+        <p class="status-line" id="train-status" role="status" aria-live="polite">Loading…</p>
+      </form>
+    </section>
+
+    <section id="panel-samples" role="tabpanel" aria-labelledby="tab-samples" hidden>
+      <div class="callout blue"><strong>28×28 grayscale.</strong> Pick a clothing class, or random, and decode samples from the prior. Class means use the zero latent vector, so they show the prototype the decoder has learned. A few epochs stay soft — this is a tiny VAE, not a photo model.</div>
+      <article class="panel">
+        <div class="form-grid">
+          <label class="field">Class
+            <select id="gen-class" name="class">
+              <option value="random" selected>Random class</option>
+              <option value="0">T-shirt/top</option>
+              <option value="1">Trouser</option>
+              <option value="2">Pullover</option>
+              <option value="3">Dress</option>
+              <option value="4">Coat</option>
+              <option value="5">Sandal</option>
+              <option value="6">Shirt</option>
+              <option value="7">Sneaker</option>
+              <option value="8">Bag</option>
+              <option value="9">Ankle boot</option>
+            </select>
+          </label>
+          <label class="field">Images
+            <input id="gen-count" name="count" type="number" min="4" max="32" step="1" value="16">
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="primary" type="button" id="generate" disabled>Generate</button>
+          <button type="button" id="class-means" disabled>Class means</button>
+          <button type="button" id="latent-walk" disabled>Latent walk</button>
+        </div>
+        <p class="status-line" id="sample-status" role="status" aria-live="polite">Train a model, or reload a saved one, to generate.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Generated samples</h2>
+        <p class="hint">A new draw from the unit normal, conditioned on the class. Generate again for a fresh set.</p>
+        <div class="sample-grid" id="sample-grid"><p class="hint">No samples yet.</p></div>
+      </article>
+
+      <article class="panel">
+        <h2>Class means</h2>
+        <p class="hint">Decode z = 0 for every class. Trousers, shoes, and bags should separate once reconstruction drops.</p>
+        <div class="sample-grid" id="mean-grid"><p class="hint">No class means yet.</p></div>
+      </article>
+
+      <article class="panel">
+        <h2>Latent walk</h2>
+        <p class="hint">Eight steps from one random code to another, for the class you picked. Random uses one class for the whole row.</p>
+        <div class="walk-row" id="walk-row"><p class="hint">No walk yet.</p></div>
+      </article>
+
+      <article class="panel">
+        <h2>From the set</h2>
+        <p class="hint">One real Fashion-MNIST image per class, from the cached pool.</p>
+        <div class="sample-grid" id="real-grid"><p class="hint">Waiting for the clothing images.</p></div>
+      </article>
+    </section>
+
+    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
+      <p class="status-line" id="dash-status" role="status" aria-live="polite">No training run yet.</p>
+      <div class="stats">
+        <div class="stat"><span>Epoch</span><strong id="stat-epoch">—</strong></div>
+        <div class="stat"><span>Total</span><strong id="stat-loss">—</strong></div>
+        <div class="stat"><span>Recon / px</span><strong id="stat-recon">—</strong></div>
+        <div class="stat"><span>KL</span><strong id="stat-kl">—</strong></div>
+        <div class="stat"><span>Samples/sec</span><strong id="stat-sps">—</strong></div>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>Reconstruction</h2>
+          <canvas class="chart" id="recon-chart" aria-label="Reconstruction loss by epoch"></canvas>
+        </article>
+        <article class="panel">
+          <h2>KL</h2>
+          <canvas class="chart" id="kl-chart" aria-label="KL divergence by epoch"></canvas>
+        </article>
+      </div>
+      <article class="panel" style="margin-top:16px">
+        <h2>Epochs</h2>
+        <p class="hint">Recon is mean per-pixel binary cross-entropy on 256 training images, using the latent mean. KL is the same probe. Total is the training objective, recon summed over pixels plus β times KL. β warms from 0.05 to 1 across epochs (0.25 when you train a single epoch).</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Epoch</th><th>Recon/px</th><th>KL</th><th>Total</th><th>β</th><th>Val total</th><th>Samples/sec</th><th>Backend</th></tr>
+            </thead>
+            <tbody id="epoch-body">
+              <tr class="empty"><td colspan="8">No epochs yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="panel-perf" role="tabpanel" aria-labelledby="tab-perf" hidden>
+      <div class="callout orange"><strong>Same work, each backend.</strong> <span id="perf-protocol">Fixed short protocol: one epoch on 256 images, then a timed generate.</span> Missing backends are skipped. Cancel stops after the current batch. The last table is kept in <code>localStorage['browser-ai.fashion-perf']</code>.</div>
+      <article class="panel">
+        <div class="btn-row" style="margin-top:0;margin-bottom:16px">
+          <button type="button" class="primary" id="run-perf" disabled>Run tests</button>
+          <button type="button" id="stop-perf" disabled>Cancel</button>
+        </div>
+        <p class="status-line" id="perf-status" role="status" aria-live="polite">No perf run yet.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Backend</th><th>Train wall</th><th>Samples/sec</th><th>Gen ms</th><th>Gens/sec</th><th>Loss</th><th>Status</th></tr>
+            </thead>
+            <tbody id="perf-body">
+              <tr class="empty"><td colspan="7">No results yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="hint" id="perf-saved"></p>
+      </article>
+    </section>
+
+    <section id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+      <article class="panel">
+        <h2>What this page does</h2>
+        <table class="spec">
+          <tr><td>Where it runs</td><td>Entirely in your browser. Nothing is uploaded. Training, sampling, and storage stay on this device.</td></tr>
+          <tr><td>Library</td><td>TensorFlow.js 4.22.0 from jsDelivr, same scripts as the MNIST demo. No npm install and no build step.</td></tr>
+          <tr><td>Backends</td><td>Auto tries WebGPU (when <code>navigator.gpu</code> returns an adapter), then WASM, then WebGL, then CPU. The model is dense, so WASM can train it. The banner names the backend TensorFlow.js actually started.</td></tr>
+          <tr><td>Data</td><td>Fashion-MNIST (Zalando): 28×28 grayscale clothing — T-shirt/top, trouser, pullover, dress, coat, sandal, shirt, sneaker, bag, ankle boot. The page fetches the official 10,000-image test split as gzip IDX from jsDelivr, with GitHub raw as a fallback, then caches it in IndexedDB (<code>browser-ai</code> / <code>fashion-mnist-10k-v1</code>). Training uses 4,000 images and validation 1,000, from a fixed shuffle. The 60,000-image training file is left on the server so the first visit stays small.</td></tr>
+          <tr><td>Model</td><td>Conditional VAE. Encoder: pixels concatenated with a 10-way class one-hot, 64 ReLU, then 8-d mean and log-variance. Decoder: latent code concatenated with the same one-hot, 64 ReLU, then 784 sigmoid pixels. About 104k parameters. Loss is Bernoulli reconstruction (binary cross-entropy, summed over pixels) plus β times KL to the unit normal. β is 0.25 for a one-epoch run and otherwise moves from 0.05 to 1. Optimizer is Adam.</td></tr>
+          <tr><td>Samples</td><td>Generate draws z from the unit normal and decodes it with the chosen class. Class means decode the zero vector once per class. Latent walk blends two prior samples in eight steps. Press Generate again for a new draw.</td></tr>
+          <tr><td>Perf</td><td>One epoch, 256 images, batch 32, Adam at 0.001, then 32 generated images timed after a 4-image warmup. WebGPU, WASM, WebGL, and CPU run only when this browser has them. Results land in <code>localStorage['browser-ai.fashion-perf']</code>. These runs do not replace the saved checkpoint.</td></tr>
+          <tr><td>Storage</td><td>Best validation checkpoint at <code>indexeddb://browser-ai-fashion-cvae-h64-z8-enc</code> and <code>indexeddb://browser-ai-fashion-cvae-h64-z8-dec</code>. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the lab hub.</td></tr>
+          <tr><td>Caveat</td><td>A few epochs on 4,000 images produces soft, class-tinted garments. It will not look like a catalog photo. WebGPU needs localhost or HTTPS. If a backend fails to start, Auto falls forward and the banner says which one took the job.</td></tr>
+        </table>
+      </article>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
