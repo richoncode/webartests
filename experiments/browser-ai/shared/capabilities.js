@@ -138,27 +138,36 @@ export function preferredBackendLabel(caps) {
 
 /**
  * Plain description the banner and MNIST backend note both render.
+ * `extras.activeLabel` is the TensorFlow.js backend that actually started.
  * @param {Awaited<ReturnType<typeof detectCapabilities>>} caps
+ * @param {{ activeLabel?: string, fellBack?: boolean, requestedLabel?: string }} [extras]
  */
-export function describeCapabilities(caps) {
+export function describeCapabilities(caps, extras = {}) {
   const gpu = classifyWebGPU({ hasGpu: caps.webgpu, hasAdapter: caps.webgpuAdapter });
   let detail;
   if (gpu.status === 'yes') {
     detail = caps.adapterLabel
-      ? `An adapter is available (${caps.adapterLabel}). Phase 1 training will prefer WebGPU over WASM.`
-      : 'An adapter is available. Phase 1 training will prefer WebGPU over WASM.';
+      ? `An adapter is available (${caps.adapterLabel}). Auto training tries WebGPU before WASM.`
+      : 'An adapter is available. Auto training tries WebGPU before WASM.';
   } else if (caps.webgpu) {
     detail = caps.secureContext
-      ? 'navigator.gpu is present, but no adapter was returned. The lab still loads; training will need the WASM fallback.'
+      ? 'navigator.gpu is present, but no adapter was returned. Training can still run on WASM.'
       : 'navigator.gpu is present, but this page is outside a secure context. WebGPU needs localhost or HTTPS.';
   } else if (!caps.secureContext) {
     detail = 'This page is outside a secure context. WebGPU needs localhost or HTTPS, and it is not available here.';
   } else if (caps.wasmSimd) {
-    detail = 'This browser has no WebGPU. WASM with SIMD is available as the Phase 1 fallback.';
+    detail = 'This browser has no WebGPU. Training can use WASM with SIMD.';
   } else if (caps.wasm) {
     detail = 'This browser has no WebGPU. WASM is available, without SIMD.';
   } else {
-    detail = 'This browser has no WebGPU and no WebAssembly, so the planned training loop cannot run here.';
+    detail = 'This browser has no WebGPU and no WebAssembly, so in-browser training cannot run here.';
+  }
+
+  if (extras.activeLabel) {
+    const lead = extras.fellBack
+      ? `TensorFlow.js is using ${extras.activeLabel} after ${extras.requestedLabel || 'the selected backend'} did not start.`
+      : `TensorFlow.js is using ${extras.activeLabel}.`;
+    detail = `${lead} ${detail}`;
   }
 
   const chips = [
@@ -176,6 +185,10 @@ export function describeCapabilities(caps) {
     },
   ];
 
+  if (extras.activeLabel) {
+    chips.unshift({ label: `TF.js ${extras.activeLabel}`, on: true });
+  }
+
   return {
     status: gpu.status,
     tone: gpu.tone,
@@ -188,12 +201,14 @@ export function describeCapabilities(caps) {
 }
 
 /** Fill a banner element. Sets data-webgpu="yes"|"no" for the page. */
-export function mountCapabilityBanner(root, caps) {
-  const view = describeCapabilities(caps);
+export function mountCapabilityBanner(root, caps, extras = {}) {
+  const view = describeCapabilities(caps, extras);
   root.classList.remove('green', 'yellow', 'red');
   root.classList.add('banner', view.tone);
   root.dataset.webgpu = view.status;
   root.dataset.tone = view.tone;
+  if (extras.activeBackend) root.dataset.activeBackend = extras.activeBackend;
+  else root.removeAttribute('data-active-backend');
   root.replaceChildren();
 
   const kicker = document.createElement('p');

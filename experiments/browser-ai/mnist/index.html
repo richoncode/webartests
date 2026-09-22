@@ -10,9 +10,9 @@
   <div class="page">
     <a class="back" href="../">← Back</a>
 
-    <p class="section-label">Demo · Phase 0</p>
+    <p class="section-label">Demo</p>
     <h1>MNIST</h1>
-    <p class="subtitle">A 28×28 digit lab: train a tiny net, watch loss, draw a digit, and queue batch configs. This page is the shell. Training starts in Phase 1.</p>
+    <p class="subtitle">Train a tiny network on handwritten digits entirely in this tab, then draw a digit and read the softmax. TensorFlow.js picks WebGPU when it can, otherwise WASM or WebGL.</p>
 
     <div id="cap-banner" class="banner" role="status" aria-live="polite">
       <p class="banner-kicker">This browser</p>
@@ -29,7 +29,7 @@
     </div>
 
     <section id="panel-train" role="tabpanel" aria-labelledby="tab-train">
-      <div class="callout orange"><strong>Phase 1 — coming.</strong> The training loop is not wired. The form is the layout that loop will use.</div>
+      <div class="callout blue"><strong>All in the tab.</strong> The first run downloads MNIST (about 11 MB) and caches the pixels in IndexedDB. Later runs start from that cache. Weights stay on this device.</div>
       <form id="train-form" class="panel">
         <div class="form-grid">
           <label class="field">Model preset
@@ -38,58 +38,61 @@
               <option value="small">Small CNN</option>
             </select>
           </label>
-          <label class="field">Backend <span class="stub">stub</span>
-            <select id="backend" name="backend" disabled>
+          <label class="field">Backend
+            <select id="backend" name="backend">
+              <option value="auto" selected>Auto</option>
               <option value="webgpu">WebGPU</option>
               <option value="wasm">WASM</option>
               <option value="webgl">WebGL</option>
-              <option value="cpu">CPU</option>
             </select>
           </label>
           <label class="field">Epochs
-            <input id="epochs" name="epochs" type="number" min="1" max="30" value="5">
+            <input id="epochs" name="epochs" type="number" min="1" max="30" value="3">
           </label>
           <label class="field">Batch size
             <input id="batch" name="batch" type="number" min="16" max="512" step="16" value="128">
           </label>
           <label class="field">Learning rate
-            <input id="lr" name="lr" type="number" min="0.0001" max="0.1" step="0.0001" value="0.01">
+            <input id="lr" name="lr" type="number" min="0.0001" max="0.1" step="0.0001" value="0.001">
           </label>
         </div>
-        <p class="field-help" id="backend-note">Checking which backend this browser would use.</p>
+        <p class="field-help" id="backend-note">Checking which backend this browser will use.</p>
         <div class="btn-row">
           <button class="primary" type="button" id="start" disabled>Start training</button>
           <button type="button" id="stop" disabled>Stop</button>
         </div>
+        <p class="status-line" id="train-status" role="status" aria-live="polite">Loading…</p>
       </form>
     </section>
 
     <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
+      <p class="status-line" id="dash-status" role="status" aria-live="polite">No training run yet.</p>
       <div class="stats">
-        <div class="stat"><span>Epoch</span><strong>—</strong></div>
-        <div class="stat"><span>Train loss</span><strong>—</strong></div>
-        <div class="stat"><span>Accuracy</span><strong>—</strong></div>
-        <div class="stat"><span>Samples/sec</span><strong>—</strong></div>
+        <div class="stat"><span>Epoch</span><strong id="stat-epoch">—</strong></div>
+        <div class="stat"><span>Train loss</span><strong id="stat-loss">—</strong></div>
+        <div class="stat"><span>Accuracy</span><strong id="stat-acc">—</strong></div>
+        <div class="stat"><span>Samples/sec</span><strong id="stat-sps">—</strong></div>
       </div>
       <div class="panel-grid">
         <article class="panel">
           <h2>Loss</h2>
-          <canvas class="chart" id="loss-chart" aria-label="Loss chart placeholder"></canvas>
+          <canvas class="chart" id="loss-chart" aria-label="Training loss by epoch"></canvas>
         </article>
         <article class="panel">
           <h2>Accuracy</h2>
-          <canvas class="chart" id="acc-chart" aria-label="Accuracy chart placeholder"></canvas>
+          <canvas class="chart" id="acc-chart" aria-label="Validation accuracy by epoch"></canvas>
         </article>
       </div>
       <article class="panel" style="margin-top:16px">
         <h2>Epochs</h2>
+        <p class="hint">Accuracy is validation accuracy on 2,000 held-out digits. Samples/sec is wall time for that epoch.</p>
         <div class="table-wrap">
           <table>
             <thead>
               <tr><th>Epoch</th><th>Loss</th><th>Accuracy</th><th>Samples/sec</th><th>Backend</th></tr>
             </thead>
-            <tbody>
-              <tr class="empty"><td colspan="5">No epochs yet. Phase 1 — coming.</td></tr>
+            <tbody id="epoch-body">
+              <tr class="empty"><td colspan="5">No epochs yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -97,37 +100,43 @@
     </section>
 
     <section id="panel-draw" role="tabpanel" aria-labelledby="tab-draw" hidden>
-      <div class="callout blue"><strong>Draw stage.</strong> A 280×280 canvas stands in for the white-on-black digit pad. Clear and Predict stay off until inference exists.</div>
+      <div class="callout blue"><strong>White on black.</strong> Draw a digit the way MNIST looks: a thick light stroke on a dark pad. Predict uses the best checkpoint from the last run, including one reloaded from IndexedDB.</div>
       <div class="draw-layout">
         <div>
-          <canvas class="stage" id="draw-stage" width="280" height="280" aria-label="Draw canvas placeholder"></canvas>
+          <canvas class="stage" id="draw-stage" width="280" height="280" aria-label="Draw a digit"></canvas>
           <div class="btn-row">
-            <button type="button" disabled>Clear</button>
-            <button class="primary" type="button" disabled>Predict</button>
+            <button type="button" id="clear-draw">Clear</button>
+            <button class="primary" type="button" id="predict" disabled>Predict</button>
           </div>
+          <p class="status-line" id="draw-status">Train a model, or reload a saved one, to predict.</p>
         </div>
         <article class="panel">
           <h2>Softmax</h2>
-          <p class="hint" style="margin-top:0;margin-bottom:14px">Class scores 0–9. Bars stay empty until a prediction runs.</p>
+          <p class="hint" id="top3">Top 3 shows up after Predict.</p>
           <div id="softmax"></div>
+          <div class="preview-block">
+            <h3>28×28 input</h3>
+            <p class="hint">Center-of-mass crop the model actually scores.</p>
+            <canvas class="preview" id="preview" width="28" height="28" aria-label="Preprocessed 28 by 28 digit"></canvas>
+          </div>
         </article>
       </div>
     </section>
 
     <section id="panel-batch" role="tabpanel" aria-labelledby="tab-batch" hidden>
-      <div class="callout orange"><strong>Phase 2.</strong> Configs will run one after another so two GPU jobs do not fight. The table is the comparison the page will fill.</div>
+      <div class="callout orange"><strong>One at a time.</strong> Three presets run back to back so two backends never share the GPU. Each finished config is a row here and a run on the lab hub.</div>
       <article class="panel">
         <div class="btn-row" style="margin-top:0;margin-bottom:16px">
-          <button type="button" class="primary" disabled>Add config</button>
-          <button type="button" disabled>Run queue</button>
+          <button type="button" class="primary" id="run-batch" disabled>Run queue</button>
+          <button type="button" id="stop-batch" disabled>Stop</button>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr><th>Backend</th><th>LR</th><th>Batch</th><th>Epochs</th><th>Model</th><th>Val acc</th><th>Status</th></tr>
             </thead>
-            <tbody>
-              <tr class="empty"><td colspan="7">No queued configs.</td></tr>
+            <tbody id="batch-body">
+              <tr class="empty"><td colspan="7">Loading presets…</td></tr>
             </tbody>
           </table>
         </div>
@@ -136,103 +145,21 @@
 
     <section id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
       <article class="panel">
-        <h2>What this demo will be</h2>
+        <h2>What this page does</h2>
         <table class="spec">
-          <tr><td>Data</td><td>MNIST digits, 28×28 grayscale, loaded from a public CDN and cached in the browser. The files are not vendored in this repo.</td></tr>
-          <tr><td>Model</td><td>Start with a tiny MLP or a small CNN. Presets are on the Train tab; neither is built yet.</td></tr>
-          <tr><td>Stack</td><td>TensorFlow.js from a CDN. Order: WebGPU, then WASM (SIMD if the probe passes), then WebGL, then CPU.</td></tr>
-          <tr><td>Draw</td><td>White strokes on black, downsampled and centered to 28×28, then a softmax over 0–9.</td></tr>
-          <tr><td>Storage</td><td>Best weights in IndexedDB. Run metadata in <code>localStorage['browser-ai.runs']</code>, shared with the lab hub.</td></tr>
-          <tr><td>Caveat</td><td>All of that is still ahead. This page only detects the browser and holds the layout.</td></tr>
+          <tr><td>Where it runs</td><td>Entirely in your browser. Nothing is uploaded. Training, inference, and storage stay on this device.</td></tr>
+          <tr><td>Library</td><td>TensorFlow.js 4.22.0 from jsDelivr. No npm install and no build step.</td></tr>
+          <tr><td>Backends</td><td>Auto tries WebGPU (when <code>navigator.gpu</code> returns an adapter), then WASM, then WebGL, then CPU. WASM loads the SIMD binary when the browser accepts it. The banner names the backend TensorFlow.js actually started.</td></tr>
+          <tr><td>Data</td><td>MNIST via the public TensorFlow.js sprite and label file (<code>storage.googleapis.com/learnjs-data/model-builder/</code>). The page keeps the first 12,000 training digits: 10,000 to train, 2,000 to validate. After the first download they live in IndexedDB (<code>browser-ai</code> / <code>mnist-sprite-12k-v1</code>).</td></tr>
+          <tr><td>Models</td><td>Tiny MLP: flatten, 64 ReLU, 10-way softmax. Small CNN: 3×3 conv (8), max-pool, 3×3 conv (16), max-pool, softmax. Optimizer is Adam. Loss is categorical cross-entropy. Pixels are scaled to 0–1.</td></tr>
+          <tr><td>Draw</td><td>White strokes on black. The ink box is scaled to 20px and shifted so its center of mass sits in the middle of a 28×28 frame, then scored with softmax.</td></tr>
+          <tr><td>Storage</td><td>Best validation checkpoint at <code>indexeddb://browser-ai-mnist</code>. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the hub Runs tab.</td></tr>
+          <tr><td>Caveat</td><td>A few epochs on 10,000 digits is a demo, not a leaderboard run. WebGPU needs localhost or HTTPS. If it fails, the picker falls back and the banner says which backend took the job.</td></tr>
         </table>
       </article>
     </section>
   </div>
 
-  <script type="module">
-    import { detectCapabilities, mountCapabilityBanner, preferredBackendLabel } from '../shared/capabilities.js';
-    import { initTabs } from '../shared/tabs.js';
-    import { redrawEmptyCharts } from '../shared/metrics.js';
-
-    const banner = document.getElementById('cap-banner');
-    const charts = [
-      { canvas: document.getElementById('loss-chart'), label: 'loss' },
-      { canvas: document.getElementById('acc-chart'), label: 'accuracy' },
-    ];
-
-    function paintCharts() {
-      requestAnimationFrame(() => redrawEmptyCharts(charts));
-    }
-
-    initTabs(document, {
-      onChange(id) {
-        if (id === 'dashboard') paintCharts();
-      },
-    });
-
-    const softmax = document.getElementById('softmax');
-    for (let digit = 0; digit <= 9; digit += 1) {
-      const row = document.createElement('div');
-      row.className = 'softmax-row';
-      const label = document.createElement('span');
-      label.textContent = String(digit);
-      const track = document.createElement('div');
-      track.className = 'bar';
-      track.appendChild(document.createElement('span'));
-      const score = document.createElement('span');
-      score.textContent = '—';
-      row.append(label, track, score);
-      softmax.appendChild(row);
-    }
-
-    const stage = document.getElementById('draw-stage');
-    const ctx = stage.getContext('2d');
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, 280, 280);
-    ctx.strokeStyle = '#1c1c1c';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 28; i += 1) {
-      const p = (i * 280) / 28 + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(p, 0);
-      ctx.lineTo(p, 280);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, p);
-      ctx.lineTo(280, p);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#555';
-    ctx.font = "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('280×280 draw stage', 140, 132);
-    ctx.fillStyle = '#3a3a3a';
-    ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText('Phase 1 — coming', 140, 154);
-
-    document.getElementById('train-form').addEventListener('submit', (event) => {
-      event.preventDefault();
-    });
-
-    window.addEventListener('resize', paintCharts);
-    if (!document.getElementById('panel-dashboard').hidden) paintCharts();
-
-    try {
-      const caps = await detectCapabilities();
-      const view = mountCapabilityBanner(banner, caps);
-      const backend = document.getElementById('backend');
-      if ([...backend.options].some((option) => option.value === caps.preferredBackend)) {
-        backend.value = caps.preferredBackend;
-      }
-      document.getElementById('backend-note').textContent =
-        `Detected preferred backend: ${preferredBackendLabel(caps)}. The picker stays disabled until Phase 1. ${view.headline}.`;
-    } catch (error) {
-      banner.classList.add('banner', 'red');
-      banner.dataset.webgpu = 'no';
-      banner.innerHTML = '<p class="banner-kicker">This browser</p><h2>WebGPU: no</h2><p>The capability check failed before it could finish.</p>';
-      console.error(error);
-    }
-  </script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

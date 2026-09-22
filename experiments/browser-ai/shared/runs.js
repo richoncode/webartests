@@ -1,4 +1,4 @@
-/** LocalStorage run history for the lab hub. Phase 0 only reads. */
+/** LocalStorage run history for the lab hub. Demos append; the hub reads. */
 
 export const RUNS_STORAGE_KEY = 'browser-ai.runs';
 
@@ -26,6 +26,20 @@ export function loadRuns(storage = globalThis.localStorage) {
   } catch {
     return { key, runs: [], status: 'invalid' };
   }
+}
+
+/**
+ * Prepend a run record. Invalid JSON is replaced with a one-item list.
+ * Keeps the newest 50 entries. The hub renders `name`, `backend`, `savedAt`, and `accuracy`.
+ * @param {Record<string, unknown>} run
+ */
+export function appendRun(run, storage = globalThis.localStorage) {
+  if (!storage) throw new Error('LocalStorage is unavailable');
+  const loaded = loadRuns(storage);
+  const prior = loaded.status === 'ready' || loaded.status === 'empty' ? loaded.runs : [];
+  const runs = [run, ...prior].slice(0, 50);
+  storage.setItem(RUNS_STORAGE_KEY, JSON.stringify(runs));
+  return { key: RUNS_STORAGE_KEY, runs, status: 'ready' };
 }
 
 function runTitle(run, index) {
@@ -80,13 +94,13 @@ export function mountRuns(root, result) {
 
   if (result.status === 'invalid') {
     heading.textContent = 'Saved runs could not be read';
-    copy.append('The value at ', key, ' is not a JSON list. Phase 1 will write run metadata here.');
+    copy.append('The value at ', key, ' is not a JSON list. The next finished training run replaces it with a list.');
   } else if (result.status === 'unavailable') {
     heading.textContent = 'LocalStorage is unavailable';
     copy.textContent = 'This browser blocked storage, so run history cannot be shown. Runs stay on this device either way.';
   } else {
     heading.textContent = 'No saved runs';
-    copy.append('Training history will live in this browser under ', key, '. The list stays empty until Phase 1 writes a run.');
+    copy.append('Training history lives in this browser under ', key, '. Finish a MNIST run and it shows up here.');
   }
 
   panel.append(label, heading, copy);
