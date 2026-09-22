@@ -1,6 +1,6 @@
 # Browser AI Lab
 
-Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js, draws a digit for inference, and writes the run into this browser.
+Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js and draws a digit. Fashion gen trains a tiny conditional VAE on Fashion-MNIST and samples clothing. Both write the run into this browser.
 
 ## Run locally
 
@@ -29,6 +29,17 @@ The **Perf Compare** tab runs one fixed protocol on WebGPU, WASM, WebGL, and CPU
 
 Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rate 0.001, on 10,000 training images and 2,000 validation images.
 
+## Fashion gen
+
+1. Open [the Fashion gen page](http://localhost:8080/experiments/browser-ai/fashion-gen/).
+2. Leave **Backend** on **Auto**. The model is dense, so WASM can train it.
+3. Press **Start training**. The first visit downloads the official 10,000-image Fashion-MNIST test split (about 4.4 MB of gzip) and caches it in IndexedDB. Training uses 4,000 images and validates on 1,000.
+4. Open **Dashboard** for reconstruction, KL, the training objective, and samples/sec. **Stop** ends the run after the current batch.
+5. Open **Samples**. Pick a class (or random) and press **Generate**. **Class means** decodes the zero latent vector for every garment. **Latent walk** blends two prior samples. A finished training run also fills the sample grid and the class means.
+6. Open **Perf Compare** and press **Run tests**. The fixed protocol is 1 epoch on 256 images, batch 32, learning rate 0.001, then 32 timed generations. Backends this browser does not have are skipped. The table is stored in `localStorage['browser-ai.fashion-perf']`.
+
+Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at learning rate 0.001. An epoch on WASM is about a second at this size, so the default run stays short and the samples start to look like garments.
+
 ## Browser
 
 - **Preferred:** current Chrome or Edge with WebGPU enabled. The hub banner turns green only when `navigator.gpu` returns an adapter.
@@ -45,14 +56,20 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 | `mnist/train.js` | Training loop, best-checkpoint save |
 | `mnist/perf.js` | Fixed-protocol backend compare |
 | `mnist/infer.js` | Draw canvas, 28×28 preprocess, softmax |
+| `fashion-gen/index.html` | Train, Samples, Dashboard, Perf Compare, About |
+| `fashion-gen/train.js` | Conditional VAE loop, recon + KL, best checkpoint |
+| `fashion-gen/generate.js` | Class-conditional decode, latent walk, timed generate |
 | `shared/capabilities.js` | `detectCapabilities()`, `mountCapabilityBanner()` |
 | `shared/runs.js` | Reads and appends `localStorage['browser-ai.runs']` |
 
 ## What stays on the device
 
 - IndexedDB database `browser-ai`, key `mnist-sprite-12k-v1`: cached MNIST pixels and labels.
-- TensorFlow.js model `indexeddb://browser-ai-mnist`: best validation checkpoint.
-- `localStorage['browser-ai.runs']`: a JSON list. Each MNIST entry has `name`, `demo`, `backend`, `savedAt`, `accuracy`, `loss`, `epochs`, `batchSize`, `learningRate`, `model`, `samplesPerSec`, and `durationMs`. The hub shows `name`, `backend`, `savedAt`, and `accuracy`.
-- `localStorage['browser-ai.mnist-perf']`: the last Perf Compare table (protocol, per-backend train and infer numbers). Not listed on the hub Runs tab.
+- IndexedDB database `browser-ai`, key `fashion-mnist-10k-v1`: cached Fashion-MNIST pixels and labels.
+- TensorFlow.js model `indexeddb://browser-ai-mnist`: best MNIST checkpoint.
+- TensorFlow.js models `indexeddb://browser-ai-fashion-cvae-h64-z8-enc` and `indexeddb://browser-ai-fashion-cvae-h64-z8-dec`: best Fashion VAE checkpoint.
+- `localStorage['browser-ai.runs']`: a JSON list. Each entry has `name`, `demo`, `backend`, `savedAt`, `loss`, `epochs`, `batchSize`, `learningRate`, `model`, `samplesPerSec`, and `durationMs`. MNIST entries also include `accuracy`. Fashion entries include `loss` when accuracy is absent. The hub shows `name`, `backend`, `savedAt`, and `accuracy` or `loss`.
+- `localStorage['browser-ai.mnist-perf']`: the last MNIST Perf Compare table (protocol, per-backend train and infer numbers). Not listed on the hub Runs tab.
+- `localStorage['browser-ai.fashion-perf']`: the last Fashion perf-compare table.
 
-No MNIST files are stored in the git repo. TensorFlow.js 4.22.0 is loaded from jsDelivr.
+No MNIST or Fashion-MNIST files are stored in the git repo. TensorFlow.js 4.22.0 is loaded from jsDelivr.

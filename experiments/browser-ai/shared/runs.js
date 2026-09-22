@@ -58,6 +58,7 @@ function runDetail(run) {
   if (record.backend) bits.push(String(record.backend));
   if (record.savedAt || record.timestamp) bits.push(String(record.savedAt || record.timestamp));
   if (record.accuracy != null) bits.push(`acc ${record.accuracy}`);
+  else if (record.loss != null) bits.push(`loss ${record.loss}`);
   return bits.length ? bits.join(' · ') : 'Saved run metadata';
 }
 
@@ -100,7 +101,7 @@ export function mountRuns(root, result) {
     copy.textContent = 'This browser blocked storage, so run history cannot be shown. Runs stay on this device either way.';
   } else {
     heading.textContent = 'No saved runs';
-    copy.append('Training history lives in this browser under ', key, '. Finish a MNIST run and it shows up here.');
+    copy.append('Training history lives in this browser under ', key, '. Finish a training run and it shows up here.');
   }
 
   panel.append(label, heading, copy);
