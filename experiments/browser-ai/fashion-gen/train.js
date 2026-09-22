@@ -187,6 +187,9 @@ async function prepare(config, hooks) {
   const data = await loadFashion(hooks.onDataProgress);
   const trainCount = Math.max(1, Math.min(config.trainCount || TRAIN_COUNT, TRAIN_COUNT));
   const valCount = Math.max(0, Math.min(config.valCount == null ? VAL_COUNT : config.valCount, VAL_COUNT));
+  if (TRAIN_COUNT + VAL_COUNT > data.labels.length) {
+    throw new Error('Train and validation counts exceed the Fashion-MNIST pool.');
+  }
   const split = splitPool(data.labels.length, TRAIN_COUNT, VAL_COUNT, 1);
   const trainIdx = split.train.slice(0, trainCount);
   const valIdx = split.val.slice(0, valCount);

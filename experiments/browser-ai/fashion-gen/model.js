@@ -1,24 +1,27 @@
 /**
  * Fashion-MNIST generators.
  *
- * cvae       Dense conditional VAE. Class one-hot is concatenated (WASM can train it).
+ * cvae       Dense class-embedding CVAE. Embedding is re-injected at every
+ *            stage, plus a zero-init class template (WASM can train it).
  * conv-cvae  Conv encoder + transposed-conv decoder, class embedding concatenated.
  * cdcgan     Conditional DCGAN: z=100, 7×7×256 generator, tanh, Adam β1 0.5.
  *
  * Checkpoints use a different IndexedDB key per model so they do not collide.
+ * Older dense keys (h64-z8) are not loaded.
  */
 
 import { IMAGE_PIXELS, IMAGE_SIZE, NUM_CLASSES } from './data.js';
 
-const DENSE_LATENT = 8;
-const DENSE_HIDDEN = 64;
+const DENSE_LATENT = 16;
+const DENSE_EMBED = 16;
+const DENSE_HIDDEN = 128;
 const CONV_LATENT = 32;
 const CONV_EMBED = 16;
 const GAN_LATENT = 100;
 const GAN_EMBED = 32;
 
-const DENSE_ENCODER_URL = 'indexeddb://browser-ai-fashion-cvae-h64-z8-enc';
-const DENSE_DECODER_URL = 'indexeddb://browser-ai-fashion-cvae-h64-z8-dec';
+const DENSE_ENCODER_URL = 'indexeddb://browser-ai-fashion-cvae-e16-h128-z16-enc';
+const DENSE_DECODER_URL = 'indexeddb://browser-ai-fashion-cvae-e16-h128-z16-dec';
 const CONV_ENCODER_URL = 'indexeddb://browser-ai-fashion-conv-cvae-z32-enc';
 const CONV_DECODER_URL = 'indexeddb://browser-ai-fashion-conv-cvae-z32-dec';
 const GAN_G_URL = 'indexeddb://browser-ai-fashion-cdcgan-z100-g';
@@ -27,17 +30,17 @@ const GAN_D_URL = 'indexeddb://browser-ai-fashion-cdcgan-z100-d';
 export const MODELS = {
   cvae: {
     id: 'cvae',
-    label: 'Dense CVAE (stable)',
+    label: 'Dense CVAE (class embedding)',
     family: 'vae',
     convTrain: false,
     latentDim: DENSE_LATENT,
     pixelRange: 'unit',
-    inputMode: 'flat',
+    inputMode: 'pair',
     spatial: false,
     beta1: 0.9,
     preset: { epochs: 8, batchSize: 64, lr: 0.001 },
     urls: { encoder: DENSE_ENCODER_URL, decoder: DENSE_DECODER_URL },
-    recipe: 'Best known here: 8 epochs, batch 64, Adam 1e-3, latent 8. The dense net is the one WASM can train.',
+    recipe: 'Best known here: 8 epochs, batch 64, Adam 1e-3, latent 16. The class embedding is concatenated at every dense layer, with a zero-init class template on the logits. WASM can train this net.',
   },
   'conv-cvae': {
     id: 'conv-cvae',
@@ -113,40 +116,71 @@ function attach(spec, parts) {
   return model;
 }
 
-function createDenseCvae(tf, spec) {
-  const encIn = tf.input({ shape: [IMAGE_PIXELS + NUM_CLASSES], name: 'encoder_input' });
-  const encHidden = tf.layers.dense({
-    units: DENSE_HIDDEN,
+function reluDense(tf, units, name) {
+  return tf.layers.dense({
+    units,
     activation: 'relu',
     kernelInitializer: 'glorotUniform',
-    name: 'enc_hidden',
-  }).apply(encIn);
-  const zMean = tf.layers.dense({
-    units: DENSE_LATENT,
-    kernelInitializer: 'glorotUniform',
-    name: 'z_mean',
-  }).apply(encHidden);
-  const zLogVar = tf.layers.dense({
-    units: DENSE_LATENT,
-    kernelInitializer: 'glorotUniform',
-    name: 'z_logvar',
-  }).apply(encHidden);
-  const encoder = tf.model({ inputs: encIn, outputs: [zMean, zLogVar], name: 'fashion_encoder' });
+    name,
+  });
+}
 
-  const decIn = tf.input({ shape: [DENSE_LATENT + NUM_CLASSES], name: 'decoder_input' });
-  const decHidden = tf.layers.dense({
-    units: DENSE_HIDDEN,
-    activation: 'relu',
+function linearDense(tf, units, name) {
+  return tf.layers.dense({
+    units,
     kernelInitializer: 'glorotUniform',
-    name: 'dec_hidden',
-  }).apply(decIn);
-  const recon = tf.layers.dense({
+    name,
+  });
+}
+
+function cat(tf, name, tensors) {
+  return tf.layers.concatenate({ axis: -1, name }).apply(tensors);
+}
+
+function createDenseCvae(tf, spec) {
+  const pixels = tf.input({ shape: [IMAGE_PIXELS], name: 'pixels' });
+  const oneHot = tf.input({ shape: [NUM_CLASSES], name: 'class_onehot' });
+  const encEmb = tf.layers.dense({
+    units: DENSE_EMBED,
+    useBias: false,
+    kernelInitializer: 'glorotUniform',
+    name: 'enc_embed',
+  }).apply(oneHot);
+  let h = reluDense(tf, DENSE_HIDDEN, 'enc_h1').apply(cat(tf, 'enc_cat1', [pixels, encEmb]));
+  h = reluDense(tf, DENSE_HIDDEN, 'enc_h2').apply(cat(tf, 'enc_cat2', [h, encEmb]));
+  const zMean = linearDense(tf, DENSE_LATENT, 'z_mean').apply(h);
+  const zLogVar = linearDense(tf, DENSE_LATENT, 'z_logvar').apply(h);
+  const encoder = tf.model({
+    inputs: [pixels, oneHot],
+    outputs: [zMean, zLogVar],
+    name: 'fashion_encoder',
+  });
+
+  const zIn = tf.input({ shape: [DENSE_LATENT], name: 'z' });
+  const decClass = tf.input({ shape: [NUM_CLASSES], name: 'dec_class_onehot' });
+  const decEmb = tf.layers.dense({
+    units: DENSE_EMBED,
+    useBias: false,
+    kernelInitializer: 'glorotUniform',
+    name: 'dec_embed',
+  }).apply(decClass);
+  let d = reluDense(tf, DENSE_HIDDEN, 'dec_h1').apply(cat(tf, 'dec_cat1', [zIn, decEmb]));
+  d = reluDense(tf, DENSE_HIDDEN, 'dec_h2').apply(cat(tf, 'dec_cat2', [d, decEmb]));
+  const logits = linearDense(tf, IMAGE_PIXELS, 'dec_logits').apply(cat(tf, 'dec_cat_out', [d, decEmb]));
+  const template = tf.layers.dense({
     units: IMAGE_PIXELS,
-    activation: 'sigmoid',
-    kernelInitializer: 'glorotUniform',
-    name: 'dec_out',
-  }).apply(decHidden);
-  const decoder = tf.model({ inputs: decIn, outputs: recon, name: 'fashion_decoder' });
+    useBias: false,
+    kernelInitializer: 'zeros',
+    name: 'class_template',
+  }).apply(decClass);
+  const recon = tf.layers.activation({ activation: 'sigmoid', name: 'dec_pixels' }).apply(
+    tf.layers.add({ name: 'dec_sum' }).apply([logits, template]),
+  );
+  const decoder = tf.model({
+    inputs: [zIn, decClass],
+    outputs: recon,
+    name: 'fashion_decoder',
+  });
   return attach(spec, { encoder, decoder });
 }
 
@@ -482,19 +516,22 @@ function shapesMatch(model, spec) {
   }
   const encIn = inputTails(model.encoder);
   const decIn = inputTails(model.decoder);
-  if (spec.inputMode === 'flat') {
-    return encIn.length === 1
-      && sameTail(encIn[0], [IMAGE_PIXELS + NUM_CLASSES])
-      && decIn.length === 1
-      && sameTail(decIn[0], [spec.latentDim + NUM_CLASSES]);
+  if (spec.spatial) {
+    return encIn.length === 2
+      && sameTail(encIn[0], [IMAGE_SIZE, IMAGE_SIZE, 1])
+      && sameTail(encIn[1], [NUM_CLASSES])
+      && decIn.length === 2
+      && sameTail(decIn[0], [spec.latentDim])
+      && sameTail(decIn[1], [NUM_CLASSES])
+      && sameTail(outputTail(model.decoder), [IMAGE_SIZE, IMAGE_SIZE, 1]);
   }
   return encIn.length === 2
-    && sameTail(encIn[0], [IMAGE_SIZE, IMAGE_SIZE, 1])
+    && sameTail(encIn[0], [IMAGE_PIXELS])
     && sameTail(encIn[1], [NUM_CLASSES])
     && decIn.length === 2
     && sameTail(decIn[0], [spec.latentDim])
     && sameTail(decIn[1], [NUM_CLASSES])
-    && sameTail(outputTail(model.decoder), [IMAGE_SIZE, IMAGE_SIZE, 1]);
+    && sameTail(outputTail(model.decoder), [IMAGE_PIXELS]);
 }
 
 export async function loadFashionModel(tf, id) {

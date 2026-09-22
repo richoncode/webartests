@@ -14,6 +14,7 @@ import {
   IMAGE_PIXELS,
   TRAIN_COUNT,
   VAL_COUNT,
+  classExampleIndices,
   loadFashion,
 } from './data.js';
 import { classMeans, generateBatch, latentWalk, paintGray } from './generate.js';
@@ -67,8 +68,7 @@ const klCanvas = document.getElementById('kl-chart');
 const sampleGrid = document.getElementById('sample-grid');
 const meanGrid = document.getElementById('mean-grid');
 const walkRow = document.getElementById('walk-row');
-const realGrid = document.getElementById('real-grid');
-const trustGrid = document.getElementById('trust-grid');
+const verifyGrid = document.getElementById('verify-grid');
 const samplesCallout = document.getElementById('samples-callout');
 const meansHint = document.getElementById('means-hint');
 const generatedHint = document.getElementById('generated-hint');
@@ -124,6 +124,7 @@ modelSelect.addEventListener('change', () => {
     .then(async () => {
       if (generation !== backendGeneration) return;
       await adoptSavedModel();
+      await showLoadedComparison();
       announceReady();
     })
     .catch((error) => {
@@ -191,6 +192,7 @@ runPerfBtn.addEventListener('click', () => {
     else setPerfStatus(`Perf compare finished for ${spec.label}. ${done} backend${done === 1 ? '' : 's'} completed.`, done ? 'ok' : '');
     await ensureBackend(backendSelect.value);
     await adoptSavedModel();
+    await showLoadedComparison();
   });
 });
 
@@ -205,6 +207,7 @@ backendSelect.addEventListener('change', () => {
     .then(async () => {
       if (generation !== backendGeneration) return;
       await adoptSavedModel();
+      await showLoadedComparison();
       announceReady();
     })
     .catch((error) => {
@@ -241,7 +244,7 @@ async function boot() {
 
   const dataPromise = loadFashion(onDataProgress).then((data) => {
     dataset = data;
-    paintReal(data);
+    if (!model) paintVerifyReals(data);
     return data;
   }).catch((error) => {
     console.error(error);
@@ -257,6 +260,8 @@ async function boot() {
     await ensureBackend(backendSelect.value);
     await adoptSavedModel();
     const data = dataset || await dataPromise;
+    if (data && model) await showLoadedComparison();
+    else if (data) paintVerifyReals(data);
     const cacheNote = data && data.fromCache
       ? 'Fashion-MNIST is cached in this browser.'
       : 'The first train downloads Fashion-MNIST (about 4.4 MB) if it is not cached yet.';
@@ -303,8 +308,8 @@ function syncFamilyChrome() {
   if (!charts.recon.length) charts.family = spec.family;
   if (samplesCallout) {
     samplesCallout.innerHTML = gan
-      ? '<strong>Noise plus a class.</strong> cDCGAN samples are tanh images, drawn as grayscale. Tiles captioned Generated come from the generator. Tiles captioned Real are Fashion-MNIST photos. The labels stay put so a sharp sample is not mistaken for the dataset.'
-      : '<strong>28×28 grayscale.</strong> Pick a clothing class, or random, and decode samples from the prior. Tiles captioned Generated come from the model. Tiles captioned Real are Fashion-MNIST photos. The conv VAE is sharper than the dense one, and both stay softer than the GAN.';
+      ? '<strong>Noise plus a class.</strong> The class menu starts on Trouser. cDCGAN samples are tanh images, drawn as grayscale. The strip pairs two real Fashion-MNIST images with samples conditioned on that same class.'
+      : '<strong>28×28 grayscale.</strong> The class menu starts on Trouser. Generate decodes that class, and the strip beside it shows two real Fashion-MNIST images with the same caption. The conv VAE is sharper than the dense one, and both stay softer than the GAN.';
   }
   if (generatedHint) {
     generatedHint.textContent = gan
@@ -447,14 +452,17 @@ async function finishResult(config, result) {
     ? `G ${formatLoss(result.gLoss)} · D ${formatLoss(result.dLoss)}`
     : `recon/px ${formatRecon(result.recon)} · KL ${formatKl(result.kl)}`;
   setStatus(`${lead} · ${result.presetName} · ${summary} · ${formatSps(result.samplesPerSec)} samples/sec · ${result.backend}.${cacheNote}${saveNote}`, result.saveError ? 'error' : 'ok');
-  setSampleStatus('Checkpoint ready. Generate a class, or compare real and generated.');
+  setSampleStatus('Checkpoint ready. Building the real vs generated check…');
   try {
+    if (!dataset) dataset = await loadFashion();
+    await showClassVerification(2);
     await showMeans();
-    await showGenerated(null, 16);
+    setGalleryHint(sampleGrid, 'Use Generate for a larger draw of the class selected above. The grid above pairs real Fashion-MNIST with samples conditioned on that class.');
+    if (tabs) tabs.show('samples');
     const quality = result.family === 'gan'
       ? `G ${formatLoss(result.gLoss)} · D ${formatLoss(result.dLoss)}`
       : `Recon/px ${formatRecon(result.recon)}`;
-    setSampleStatus(`Generated 16 random-class samples. Real vs generated shows Trouser and Sneaker. ${quality}.`, 'ok');
+    setSampleStatus(`Verification grid ready. Each generated image was conditioned on its caption. Two real Fashion-MNIST images of that class sit beside them. ${quality}.`, 'ok');
   } catch (error) {
     console.error(error);
     setSampleStatus(`Training finished, but sampling failed. ${errorText(error)}`, 'error');
@@ -681,42 +689,153 @@ async function showGenerated(classIndex, count) {
     pixels: batch.pixels,
     offset: index * IMAGE_PIXELS,
     gain: 255,
-    aria: `Generated ${CLASS_NAMES[cls]}`,
+    aria: `Generated ${CLASS_NAMES[cls]}, conditioned on ${CLASS_NAMES[cls]}`,
   })));
-  await showTrust(classIndex);
-  const name = classIndex == null ? 'random classes' : CLASS_NAMES[classIndex];
-  setSampleStatus(`Generated ${count} image${count === 1 ? '' : 's'} · ${name}. Real tiles are the dataset; generated tiles are the model.`, 'ok');
+  renderVerify(rowsFromBatch(batch));
+  if (classIndex == null) {
+    setSampleStatus(`Generated ${count} images. Each tile was conditioned on its caption (mixed classes). Real Fashion-MNIST of that class is shown beside those tiles.`, 'ok');
+    return;
+  }
+  const name = CLASS_NAMES[classIndex];
+  setSampleStatus(`Generated ${count} image${count === 1 ? '' : 's'} conditioned on ${name}. Two real ${name} images are shown beside them.`, 'ok');
 }
 
-async function showTrust(classIndex) {
+async function showLoadedComparison() {
   if (!dataset || !model) return;
-  const classes = classIndex == null ? [1, 7] : [classIndex];
+  await showClassVerification(2);
+  setSampleStatus(`Saved ${model.label} weights loaded. Each generated image was conditioned on its caption. Real Fashion-MNIST of that class sits beside it.`, 'ok');
+}
+
+async function showClassVerification(perClass) {
+  const classes = [];
+  for (let cls = 0; cls < CLASS_NAMES.length; cls += 1) {
+    for (let n = 0; n < perClass; n += 1) classes.push(cls);
+  }
   const batch = await generateBatch(getTf(), model, null, classes.length, { classes });
-  const tiles = [];
-  classes.forEach((cls, index) => {
-    const realIndex = dataset.labels.indexOf(cls);
-    if (realIndex >= 0) {
-      tiles.push({
-        label: `Real · ${CLASS_NAMES[cls]}`,
-        tone: 'tag-real',
-        kind: 'real',
-        pixels: dataset.images,
-        offset: realIndex * IMAGE_PIXELS,
-        gain: 1,
-        aria: `Real Fashion-MNIST ${CLASS_NAMES[cls]}`,
-      });
+  renderVerify(rowsFromBatch(batch));
+}
+
+function paintVerifyReals(data) {
+  const rows = [];
+  for (let cls = 0; cls < CLASS_NAMES.length; cls += 1) {
+    rows.push({
+      classIndex: cls,
+      realTiles: realTiles(data, cls, 2),
+      genTiles: [],
+    });
+  }
+  renderVerify(rows);
+}
+
+function realTiles(data, classIndex, count) {
+  if (!data) return [];
+  return classExampleIndices(data.labels, classIndex, count).map((index) => ({
+    label: `Real · ${CLASS_NAMES[classIndex]}`,
+    tone: 'tag-real',
+    kind: 'real',
+    pixels: data.images,
+    offset: index * IMAGE_PIXELS,
+    gain: 1,
+    aria: `Real ${CLASS_NAMES[classIndex]}`,
+  }));
+}
+
+function rowsFromBatch(batch) {
+  const groups = new Map();
+  const order = [];
+  for (let i = 0; i < batch.classes.length; i += 1) {
+    const cls = batch.classes[i];
+    if (!groups.has(cls)) {
+      groups.set(cls, []);
+      order.push(cls);
     }
-    tiles.push({
+    groups.get(cls).push(i);
+  }
+  order.sort((a, b) => a - b);
+  return order.map((cls) => ({
+    classIndex: cls,
+    realTiles: realTiles(dataset, cls, 2),
+    genTiles: groups.get(cls).map((index) => ({
       label: `Generated · ${CLASS_NAMES[cls]}`,
       tone: 'tag-gen',
       kind: 'gen',
       pixels: batch.pixels,
       offset: index * IMAGE_PIXELS,
       gain: 255,
-      aria: `Generated ${CLASS_NAMES[cls]}`,
-    });
-  });
-  renderGallery(trustGrid, tiles);
+      aria: `Generated ${CLASS_NAMES[cls]}, conditioned on ${CLASS_NAMES[cls]}`,
+    })),
+  }));
+}
+
+function renderVerify(rows) {
+  if (!verifyGrid) return;
+  verifyGrid.replaceChildren();
+  if (!rows.length) {
+    setGalleryHint(verifyGrid, 'No comparison yet.');
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'verify-list';
+  for (const row of rows) {
+    const name = CLASS_NAMES[row.classIndex];
+    const block = document.createElement('div');
+    block.className = 'verify-row';
+    const title = document.createElement('h3');
+    title.textContent = name;
+    const pair = document.createElement('div');
+    pair.className = 'verify-pair';
+    pair.append(
+      verifyColumn('Real', 'real', row.realTiles, 'No real images for this class.'),
+      verifyColumn(`Generated · conditioned on ${name}`, 'gen', row.genTiles, 'Generated images show up after you train.'),
+    );
+    block.append(title, pair);
+    list.appendChild(block);
+  }
+  verifyGrid.appendChild(list);
+}
+
+function verifyColumn(label, kind, tiles, emptyText) {
+  const col = document.createElement('div');
+  col.className = `verify-col ${kind}`;
+  const heading = document.createElement('p');
+  heading.className = `verify-label ${kind}`;
+  heading.textContent = label;
+  const grid = document.createElement('div');
+  grid.className = kind === 'real' ? 'verify-reals' : 'sample-grid';
+  if (!tiles.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = emptyText;
+    grid.appendChild(empty);
+  } else {
+    for (const item of tiles) appendSample(grid, item);
+  }
+  col.append(heading, grid);
+  return col;
+}
+
+function setGalleryHint(root, text) {
+  root.replaceChildren();
+  const empty = document.createElement('p');
+  empty.className = 'hint';
+  empty.textContent = text;
+  root.appendChild(empty);
+}
+
+function appendSample(root, item) {
+  const fig = document.createElement('figure');
+  fig.className = 'sample-cell';
+  if (item.kind) fig.classList.add(item.kind);
+  const canvas = document.createElement('canvas');
+  canvas.width = 28;
+  canvas.height = 28;
+  canvas.setAttribute('aria-label', item.aria || item.label);
+  paintGray(canvas, item.pixels, item.offset || 0, item.gain == null ? 255 : item.gain);
+  const cap = document.createElement('figcaption');
+  if (item.tone) cap.className = item.tone;
+  cap.textContent = item.label;
+  fig.append(canvas, cap);
+  root.appendChild(fig);
 }
 
 async function showMeans() {
@@ -751,48 +870,13 @@ async function showWalk() {
   setSampleStatus(`Latent walk · generated ${CLASS_NAMES[walk.classIndex]}.`, 'ok');
 }
 
-function paintReal(data) {
-  const tiles = [];
-  for (let cls = 0; cls < CLASS_NAMES.length; cls += 1) {
-    const index = data.labels.indexOf(cls);
-    if (index < 0) continue;
-    tiles.push({
-      label: `Real · ${CLASS_NAMES[cls]}`,
-      tone: 'tag-real',
-      kind: 'real',
-      pixels: data.images,
-      offset: index * IMAGE_PIXELS,
-      gain: 1,
-      aria: `Real Fashion-MNIST ${CLASS_NAMES[cls]}`,
-    });
-  }
-  renderGallery(realGrid, tiles);
-}
-
 function renderGallery(root, items) {
   root.replaceChildren();
   if (!items.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.textContent = 'No images yet.';
-    root.appendChild(empty);
+    setGalleryHint(root, 'No images yet.');
     return;
   }
-  for (const item of items) {
-    const fig = document.createElement('figure');
-    fig.className = 'sample-cell';
-    if (item.kind) fig.classList.add(item.kind);
-    const canvas = document.createElement('canvas');
-    canvas.width = 28;
-    canvas.height = 28;
-    canvas.setAttribute('aria-label', item.aria || item.label);
-    paintGray(canvas, item.pixels, item.offset || 0, item.gain == null ? 255 : item.gain);
-    const cap = document.createElement('figcaption');
-    if (item.tone) cap.className = item.tone;
-    cap.textContent = item.label;
-    fig.append(canvas, cap);
-    root.appendChild(fig);
-  }
+  for (const item of items) appendSample(root, item);
 }
 
 function renderPerf(payload) {

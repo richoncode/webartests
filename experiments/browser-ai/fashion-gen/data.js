@@ -1,8 +1,9 @@
 /**
  * Fashion-MNIST loader. Downloads the official 10,000-image test split as
  * gzip IDX (CORS-enabled CDNs) and caches the pixels in IndexedDB.
- * The 60,000-image training file is about 26 MB; this pool is about 4.4 MB
- * and is still the Zalando clothing set: 1,000 images of each class.
+ * The 60,000-image training file stays on the server. This pool is the
+ * Zalando set already fetched for the page: 1,000 images of each class.
+ * Training uses 9,000 of them and holds out 1,000 for validation.
  */
 
 import { splitPool } from '../mnist/data.js';
@@ -28,7 +29,7 @@ const CACHE_KEY = 'fashion-mnist-10k-v1';
 export const IMAGE_SIZE = 28;
 export const IMAGE_PIXELS = IMAGE_SIZE * IMAGE_SIZE;
 export const POOL_COUNT = 10000;
-export const TRAIN_COUNT = 4000;
+export const TRAIN_COUNT = 9000;
 export const VAL_COUNT = 1000;
 export const NUM_CLASSES = 10;
 
@@ -46,6 +47,17 @@ export const CLASS_NAMES = [
 ];
 
 export { splitPool };
+
+/** First `count` pool indices whose label is `classIndex`, in file order. */
+export function classExampleIndices(labels, classIndex, count) {
+  const found = [];
+  const target = classIndex | 0;
+  const limit = Math.max(0, count | 0);
+  for (let i = 0; i < labels.length && found.length < limit; i += 1) {
+    if (labels[i] === target) found.push(i);
+  }
+  return found;
+}
 
 let inflight = null;
 
