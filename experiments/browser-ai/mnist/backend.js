@@ -145,6 +145,27 @@ async function setAndReady(tf, name) {
 }
 
 /**
+ * Start exactly one backend. Does not fall through to another.
+ * @param {'webgpu'|'wasm'|'webgl'|'cpu'} name
+ * @returns {Promise<{ name: string, label: string, requested: string, fellBack: boolean, attempts: string[] }>}
+ */
+export async function trySetBackend(name) {
+  const tf = await loadTensorflow();
+  if (tf.wasm && typeof tf.wasm.setWasmPaths === 'function') {
+    tf.wasm.setWasmPaths(WASM_PATH);
+  }
+  const budget = name === 'webgpu' ? 15000 : 30000;
+  await withTimeout(setAndReady(tf, name), budget, name);
+  return {
+    name,
+    label: describeTfBackend(tf, name),
+    requested: name,
+    fellBack: false,
+    attempts: [],
+  };
+}
+
+/**
  * @returns {Promise<{ name: string, label: string, requested: string, fellBack: boolean, attempts: string[] }>}
  */
 export async function activateBackend(choice, caps) {

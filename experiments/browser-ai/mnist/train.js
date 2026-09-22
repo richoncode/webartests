@@ -39,19 +39,36 @@ function disposeSnapshots(snapshots) {
   for (const weight of snapshots) weight.dispose();
 }
 
+function resolveCount(value, fallback, max) {
+  if (value == null || value === '') return fallback;
+  const n = Math.floor(Number(value));
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error('Sample count must be a positive whole number.');
+  }
+  if (n > max) {
+    throw new Error(`Sample count ${n} exceeds the ${max} images available.`);
+  }
+  return n;
+}
+
 /**
- * @param {{ epochs: number, batchSize: number, lr: number, model: string, backendLabel?: string }} config
+ * @param {{ epochs: number, batchSize: number, lr: number, model: string, backendLabel?: string, trainCount?: number, valCount?: number, saveCheckpoint?: boolean, splitSeed?: number }} config
  * @param {{ onDataProgress?: Function, onBatch?: Function, onEpoch?: Function, shouldStop?: Function }} hooks
  */
 export async function trainMnist(config, hooks = {}) {
   const tf = getTf();
   const data = await loadMnist(hooks.onDataProgress);
-  const split = splitPool(data.images.length / IMAGE_PIXELS, TRAIN_COUNT, VAL_COUNT, 1);
+  const pool = data.images.length / IMAGE_PIXELS;
+  const trainCount = resolveCount(config.trainCount, Math.min(TRAIN_COUNT, pool - 1), pool - 1);
+  const valRoom = pool - trainCount;
+  const valCount = resolveCount(config.valCount, Math.min(VAL_COUNT, valRoom), valRoom);
+  const split = splitPool(pool, trainCount, valCount, config.splitSeed == null ? 1 : config.splitSeed);
   if (hooks.onDataProgress) hooks.onDataProgress({ phase: 'tensors' });
   const trainT = tensorsFrom(tf, data.images, data.labels, split.train);
   const valT = tensorsFrom(tf, data.images, data.labels, split.val);
-  const batchSize = Math.max(1, Math.min(config.batchSize, TRAIN_COUNT));
+  const batchSize = Math.max(1, Math.min(config.batchSize, trainCount));
   const epochs = config.epochs;
+  const saveCheckpoint = config.saveCheckpoint !== false;
   const started = performance.now();
 
   let model = createModel(tf, config.model);
@@ -67,11 +84,12 @@ export async function trainMnist(config, hooks = {}) {
   let lastLoss = null;
   let lastAcc = null;
   let lastSps = 0;
+  let trainSeconds = 0;
   let saveError = null;
   let diverged = false;
   let epochT0 = performance.now();
   let currentEpoch = 0;
-  const batches = Math.ceil(TRAIN_COUNT / batchSize);
+  const batches = Math.ceil(trainCount / batchSize);
 
   try {
     await model.fit(trainT.xs, trainT.ys, {
@@ -86,7 +104,7 @@ export async function trainMnist(config, hooks = {}) {
           if (hooks.shouldStop && hooks.shouldStop()) model.stopTraining = true;
         },
         async onBatchEnd(batch, logs) {
-          const done = Math.min(TRAIN_COUNT, (batch + 1) * batchSize);
+          const done = Math.min(trainCount, (batch + 1) * batchSize);
           const seconds = (performance.now() - epochT0) / 1000;
           const loss = readLog(logs, ['loss']);
           if (loss == null && logs && logs.loss != null && !Number.isFinite(logs.loss)) diverged = true;
@@ -118,7 +136,8 @@ export async function trainMnist(config, hooks = {}) {
           epochsRun += 1;
           lastLoss = loss;
           lastAcc = score;
-          lastSps = seconds > 0 ? TRAIN_COUNT / seconds : 0;
+          trainSeconds += seconds;
+          lastSps = seconds > 0 ? trainCount / seconds : 0;
           const row = {
             epoch: epoch + 1,
             epochs,
@@ -133,11 +152,13 @@ export async function trainMnist(config, hooks = {}) {
             bestScore = score;
             disposeSnapshots(bestSnapshots);
             bestSnapshots = snapshotWeights(model);
-            try {
-              await saveModel(model);
-            } catch (error) {
-              saveError = error;
-              console.warn('MNIST checkpoint save failed', error);
+            if (saveCheckpoint) {
+              try {
+                await saveModel(model);
+              } catch (error) {
+                saveError = error;
+                console.warn('MNIST checkpoint save failed', error);
+              }
             }
           }
           if (hooks.shouldStop && hooks.shouldStop()) model.stopTraining = true;
@@ -178,6 +199,8 @@ export async function trainMnist(config, hooks = {}) {
       loss: null,
       samplesPerSec: 0,
       batchSize,
+      trainSeconds: 0,
+      trainCount,
     };
   }
 
@@ -201,6 +224,8 @@ export async function trainMnist(config, hooks = {}) {
     loss: lastLoss,
     samplesPerSec: lastSps,
     batchSize,
+    trainSeconds,
+    trainCount,
     backend: config.backendLabel || tf.getBackend(),
   };
 }

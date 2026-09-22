@@ -4,6 +4,13 @@ import { appendRun } from '../shared/runs.js';
 import { initTabs } from '../shared/tabs.js';
 import { activateBackend, backendChoiceLabel, getTf, loadTensorflow } from './backend.js';
 import {
+  emptyPerfRows,
+  loadPerfResult,
+  protocolSummary,
+  runPerfSuite,
+  savePerfResult,
+} from './perf.js';
+import {
   attachDrawing,
   clearPreview,
   inkMass,
@@ -28,6 +35,12 @@ const startBtn = document.getElementById('start');
 const stopBtn = document.getElementById('stop');
 const stopBatchBtn = document.getElementById('stop-batch');
 const runBatchBtn = document.getElementById('run-batch');
+const runPerfBtn = document.getElementById('run-perf');
+const cancelPerfBtn = document.getElementById('cancel-perf');
+const perfStatus = document.getElementById('perf-status');
+const perfBody = document.getElementById('perf-body');
+const perfMeta = document.getElementById('perf-meta');
+const perfProtocol = document.getElementById('perf-protocol');
 const predictBtn = document.getElementById('predict');
 const clearBtn = document.getElementById('clear-draw');
 const epochBody = document.getElementById('epoch-body');
@@ -179,6 +192,70 @@ runBatchBtn.addEventListener('click', () => {
 
 stopBtn.addEventListener('click', requestStop);
 stopBatchBtn.addEventListener('click', requestStop);
+cancelPerfBtn.addEventListener('click', requestStop);
+
+const savedPerf = loadPerfResult();
+perfProtocol.textContent = protocolSummary();
+renderPerf(savedPerf && savedPerf.rows ? savedPerf.rows : emptyPerfRows());
+setPerfMeta(savedPerf);
+
+runPerfBtn.addEventListener('click', () => {
+  runJob('perf', async () => {
+    const previous = loadPerfResult();
+    if (model) {
+      try {
+        await saveModel(model);
+      } catch (error) {
+        console.warn(error);
+      }
+      model.dispose();
+      model = null;
+      syncButtons();
+    }
+    let outcome = null;
+    try {
+      outcome = await runPerfSuite({
+        caps,
+        shouldStop: () => stopFlag,
+        onStatus(text) { setPerfStatus(text); },
+        onBackend(info) { applyActive(info); },
+        onRow(rows) { renderPerf(rows); },
+      });
+    } catch (error) {
+      console.error(error);
+      renderPerf(previous && previous.rows ? previous.rows : emptyPerfRows());
+      setPerfMeta(previous);
+      setPerfStatus(errorText(error), 'error');
+      outcome = null;
+    }
+    if (outcome && !outcome.rows) {
+      setPerfStatus('Cancelled before the first backend.');
+    }
+    if (outcome && outcome.rows) {
+      const done = outcome.rows.filter((row) => row.available === true && Number.isFinite(row.trainWallS)).length;
+      const missing = outcome.rows.filter((row) => row.available === false).length;
+      const summary = outcome.cancelled
+        ? `Cancelled. ${done} backend${done === 1 ? '' : 's'} finished, ${missing} unavailable.`
+        : `Compare finished. ${done} backend${done === 1 ? '' : 's'} reported train and infer numbers. ${missing} unavailable.`;
+      try {
+        const saved = savePerfResult(outcome);
+        renderPerf(saved.rows);
+        setPerfMeta(saved);
+        setPerfStatus(summary, done ? 'ok' : '');
+      } catch (error) {
+        console.warn(error);
+        setPerfStatus(`${summary} This browser rejected the localStorage save.`, 'error');
+      }
+    }
+    try {
+      await ensureBackend(backendSelect.value);
+      await adoptSavedModel();
+    } catch (error) {
+      console.error(error);
+      setPerfStatus(`The compare finished, but restoring the train backend failed. ${errorText(error)}`, 'error');
+    }
+  });
+});
 
 backendSelect.addEventListener('change', () => {
   if (job || !tfReady) return;
@@ -240,6 +317,12 @@ async function boot() {
     console.error(error);
     setStatus(errorText(error), 'error');
     backendNote.textContent = 'TensorFlow.js did not start. Training stays disabled.';
+    setPerfStatus('TensorFlow.js did not start. Run tests stays disabled.', 'error');
+  }
+  if (tfReady) {
+    setPerfStatus(savedPerf
+      ? 'Showing the last compare. Run tests to measure this browser again.'
+      : 'Ready. Run tests times the tiny MLP on each backend.');
   }
   syncButtons();
 }
@@ -446,7 +529,8 @@ function runJob(kind, fn) {
 function requestStop() {
   if (!job) return;
   stopFlag = true;
-  setStatus('Stopping after the current batch…');
+  if (job === 'perf') setPerfStatus('Cancelling after the current step…');
+  else setStatus('Stopping after the current batch…');
 }
 
 async function predict() {
@@ -570,8 +654,10 @@ function syncButtons() {
   const busy = job !== null;
   startBtn.disabled = busy || !tfReady;
   runBatchBtn.disabled = busy || !tfReady;
+  runPerfBtn.disabled = busy || !tfReady;
   stopBtn.disabled = !busy;
   stopBatchBtn.disabled = !busy;
+  cancelPerfBtn.disabled = job !== 'perf';
   predictBtn.disabled = busy || !model;
   modelSelect.disabled = busy;
   backendSelect.disabled = busy;
@@ -591,6 +677,93 @@ function setStatus(text, kind) {
 function setDrawStatus(text, kind) {
   drawStatus.textContent = text;
   drawStatus.className = `status-line${kind ? ` ${kind}` : ''}`;
+}
+
+function setPerfStatus(text, kind) {
+  perfStatus.textContent = text;
+  perfStatus.className = `status-line${kind ? ` ${kind}` : ''}`;
+}
+
+function renderPerf(rows) {
+  const list = rows && rows.length ? rows : emptyPerfRows();
+  perfBody.replaceChildren();
+  for (const row of list) {
+    const tr = document.createElement('tr');
+    const values = [
+      row.label || backendChoiceLabel(row.backend),
+      availableLabel(row),
+      formatSeconds(row.trainWallS),
+      formatSps(row.samplesPerSec),
+      formatAcc(row.valAcc),
+      formatMs(row.inferMsP50),
+      formatRate(row.inferPerSec),
+    ];
+    values.forEach((text, index) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (index === 1) td.className = availableClass(row);
+      tr.appendChild(td);
+    });
+    const notes = document.createElement('td');
+    notes.className = row.available === false ? 'wrap status-failed' : 'wrap';
+    notes.textContent = row.notes || '';
+    tr.appendChild(notes);
+    perfBody.appendChild(tr);
+  }
+}
+
+function availableLabel(row) {
+  if (row.running) return 'Running';
+  if (row.available === true) return 'Yes';
+  if (row.available === false) return 'No';
+  return '—';
+}
+
+function availableClass(row) {
+  if (row.running) return 'status-running';
+  if (row.available === true) return 'status-done';
+  if (row.available === false) return 'status-failed';
+  return '';
+}
+
+function setPerfMeta(saved) {
+  if (!saved || !saved.savedAt) {
+    perfMeta.textContent = 'The table stays on this page until the next run. A finished compare is also kept in this browser under browser-ai.mnist-perf.';
+    return;
+  }
+  const when = formatWhen(saved.savedAt);
+  let text = when
+    ? `Last compare saved ${when} under browser-ai.mnist-perf.`
+    : 'Last compare saved in this browser under browser-ai.mnist-perf.';
+  const protocol = saved.protocol;
+  if (protocol && protocol.trainCount && protocol.inferBatch) {
+    text += ` That run used ${Number(protocol.trainCount).toLocaleString()} train images and an infer batch of ${protocol.inferBatch}.`;
+  }
+  perfMeta.textContent = text;
+}
+
+function formatWhen(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatSeconds(value) {
+  if (!Number.isFinite(value)) return '—';
+  return value < 10 ? value.toFixed(2) : value.toFixed(1);
+}
+
+function formatMs(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value >= 100) return value.toFixed(0);
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+function formatRate(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(Math.round(value));
 }
 
 function formatLoss(value) {
