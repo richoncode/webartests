@@ -67,7 +67,7 @@ function batchTensors(tf, data, indices) {
  * Total = recon + β · KL, averaged over the batch.
  */
 function lossParts(tf, encoder, decoder, xs, ys, beta, sample) {
-  const encoded = encoder.apply(tf.concat([xs, ys], 1));
+  const encoded = encoder.apply([xs, ys]);
   if (!Array.isArray(encoded)) {
     throw new Error('Encoder did not return mean and log-variance.');
   }
@@ -76,7 +76,7 @@ function lossParts(tf, encoder, decoder, xs, ys, beta, sample) {
   const z = sample
     ? zMean.add(zLogVar.mul(0.5).exp().mul(tf.randomNormal(zMean.shape)))
     : zMean;
-  const recon = decoder.apply(tf.concat([z, ys], 1));
+  const recon = decoder.apply([z, ys]);
   const p = recon.clipByValue(1e-6, 1 - 1e-6);
   const bce = xs.mul(p.log()).add(tf.sub(1, xs).mul(tf.sub(1, p).log())).neg();
   const reconPer = bce.sum(-1);
@@ -154,6 +154,9 @@ export async function trainFashion(config, hooks = {}) {
   const data = await loadFashion(hooks.onDataProgress);
   const trainCount = Math.max(1, Math.min(config.trainCount || TRAIN_COUNT, TRAIN_COUNT));
   const valCount = Math.max(0, Math.min(config.valCount == null ? VAL_COUNT : config.valCount, VAL_COUNT));
+  if (TRAIN_COUNT + VAL_COUNT > data.labels.length) {
+    throw new Error('Train and validation counts exceed the Fashion-MNIST pool.');
+  }
   const split = splitPool(data.labels.length, TRAIN_COUNT, VAL_COUNT, 1);
   const trainIdx = split.train.slice(0, trainCount);
   const valIdx = split.val.slice(0, valCount);
