@@ -69,6 +69,13 @@ async function loadAll() {
   if (globalThis.tf.wasm && typeof globalThis.tf.wasm.setWasmPaths === 'function') {
     globalThis.tf.wasm.setWasmPaths(WASM_PATH);
   }
+  // TF.js otherwise refuses a software GL context (failIfMajorPerformanceCaveat).
+  // Hardware GPUs still win getContext; this only lets SwiftShader join in.
+  try {
+    globalThis.tf.env().set('SOFTWARE_WEBGL_ENABLED', true);
+  } catch (error) {
+    console.warn('Could not allow software WebGL', error);
+  }
   return globalThis.tf;
 }
 
@@ -142,6 +149,27 @@ async function setAndReady(tf, name) {
   if (tf.getBackend() !== name) {
     throw new Error(`TensorFlow.js stayed on ${tf.getBackend()} instead of ${name}`);
   }
+}
+
+/**
+ * Start exactly one backend. Does not fall through to another.
+ * @param {'webgpu'|'wasm'|'webgl'|'cpu'} name
+ * @returns {Promise<{ name: string, label: string, requested: string, fellBack: boolean, attempts: string[] }>}
+ */
+export async function trySetBackend(name) {
+  const tf = await loadTensorflow();
+  if (tf.wasm && typeof tf.wasm.setWasmPaths === 'function') {
+    tf.wasm.setWasmPaths(WASM_PATH);
+  }
+  const budget = name === 'webgpu' ? 15000 : 30000;
+  await withTimeout(setAndReady(tf, name), budget, name);
+  return {
+    name,
+    label: describeTfBackend(tf, name),
+    requested: name,
+    fellBack: false,
+    attempts: [],
+  };
 }
 
 /**

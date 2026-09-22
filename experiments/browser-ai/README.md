@@ -25,13 +25,15 @@ Serve over HTTP. The pages load `shared/*.js` as ES modules, which do not run fr
 
 The **Batch** tab runs three short presets one after another (two learning rates on the tiny MLP, then the small CNN on WebGL) and fills the comparison table. TensorFlow.js WASM can train the MLP. It cannot train the CNN (`Conv2D` backprop is not in that backend), so a CNN run on Auto or WASM uses WebGL instead when WebGL exists.
 
+The **Perf Compare** tab runs one fixed protocol on WebGPU, WASM, WebGL, and CPU: one epoch of the tiny MLP on 512 training images (batch 64, 128 validation images), then 3 warmup and 8 timed forward passes of 32 images. **Run tests** walks the backends in that order and fills train wall, samples/sec, validation accuracy, median infer milliseconds, and inferences/sec. A backend that cannot start (for example no WebGPU adapter) is marked unavailable and the suite continues. **Cancel** stops after the current step. The last table is restored from `localStorage['browser-ai.mnist-perf']`. This compare does not overwrite the Draw & Infer checkpoint, and it always uses the tiny MLP so every backend trains the same Conv-free model.
+
 Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rate 0.001, on 10,000 training images and 2,000 validation images.
 
 ## Browser
 
 - **Preferred:** current Chrome or Edge with WebGPU enabled. The hub banner turns green only when `navigator.gpu` returns an adapter.
 - WebGPU needs a secure context: `localhost` or HTTPS. A plain `http://` LAN address will report WebGPU: no.
-- **Fallback:** WASM, with SIMD when TensorFlow.js loads `tfjs-backend-wasm-simd.wasm`. WebGL is next, then CPU. Auto follows that order, and the MNIST banner states the backend that actually started. WebGPU can be missing in CI; WASM or WebGL still trains.
+- **Fallback:** WASM, with SIMD when TensorFlow.js loads `tfjs-backend-wasm-simd.wasm`. WebGL is next, then CPU. Software WebGL is allowed, so a machine without a hardware GPU can still time that backend. Auto follows that order, and the MNIST banner states the backend that actually started. WebGPU can be missing in CI; WASM or WebGL still trains.
 - Firefox and Safari often have no WebGPU. The pages still load, and the banner says **WebGPU: no**.
 
 ## Pages
@@ -39,8 +41,9 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 | Path | What it is |
 | --- | --- |
 | `index.html` | Lab hub — Overview, Demos, Backends, Runs |
-| `mnist/index.html` | Train, Dashboard, Draw & Infer, Batch, About |
+| `mnist/index.html` | Train, Dashboard, Draw & Infer, Batch, Perf Compare, About |
 | `mnist/train.js` | Training loop, best-checkpoint save |
+| `mnist/perf.js` | Fixed-protocol backend compare |
 | `mnist/infer.js` | Draw canvas, 28×28 preprocess, softmax |
 | `shared/capabilities.js` | `detectCapabilities()`, `mountCapabilityBanner()` |
 | `shared/runs.js` | Reads and appends `localStorage['browser-ai.runs']` |
@@ -50,5 +53,6 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 - IndexedDB database `browser-ai`, key `mnist-sprite-12k-v1`: cached MNIST pixels and labels.
 - TensorFlow.js model `indexeddb://browser-ai-mnist`: best validation checkpoint.
 - `localStorage['browser-ai.runs']`: a JSON list. Each MNIST entry has `name`, `demo`, `backend`, `savedAt`, `accuracy`, `loss`, `epochs`, `batchSize`, `learningRate`, `model`, `samplesPerSec`, and `durationMs`. The hub shows `name`, `backend`, `savedAt`, and `accuracy`.
+- `localStorage['browser-ai.mnist-perf']`: the last Perf Compare table (protocol, per-backend train and infer numbers). Not listed on the hub Runs tab.
 
 No MNIST files are stored in the git repo. TensorFlow.js 4.22.0 is loaded from jsDelivr.

@@ -40,12 +40,26 @@ export function detectWasmSimd() {
   }
 }
 
+function releaseGl(gl) {
+  try {
+    const lose = gl && gl.getExtension && gl.getExtension('WEBGL_lose_context');
+    if (lose) lose.loseContext();
+  } catch {
+    /* The probe only needed to know the context exists. */
+  }
+}
+
 function detectWebGL() {
   if (typeof document === 'undefined') return { webgl: false, webgl2: false };
   try {
     const canvas = document.createElement('canvas');
-    if (canvas.getContext('webgl2')) return { webgl: true, webgl2: true };
+    const gl2 = canvas.getContext('webgl2');
+    if (gl2) {
+      releaseGl(gl2);
+      return { webgl: true, webgl2: true };
+    }
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    releaseGl(gl);
     return { webgl: !!gl, webgl2: false };
   } catch {
     return { webgl: false, webgl2: false };
