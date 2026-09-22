@@ -49,7 +49,7 @@ const drawing = attachDrawing(document.getElementById('draw-stage'));
 const queue = [
   { model: 'tiny', backend: 'auto', epochs: 1, batchSize: 128, lr: 0.001, status: 'Queued', valAcc: null, actualBackend: null, tone: '' },
   { model: 'tiny', backend: 'auto', epochs: 1, batchSize: 128, lr: 0.01, status: 'Queued', valAcc: null, actualBackend: null, tone: '' },
-  { model: 'small', backend: 'wasm', epochs: 1, batchSize: 64, lr: 0.001, status: 'Queued', valAcc: null, actualBackend: null, tone: '' },
+  { model: 'small', backend: 'webgl', epochs: 1, batchSize: 64, lr: 0.001, status: 'Queued', valAcc: null, actualBackend: null, tone: '' },
 ];
 
 let caps = null;
@@ -93,10 +93,16 @@ predictBtn.addEventListener('click', () => {
 startBtn.addEventListener('click', () => {
   runJob('train', async () => {
     const config = readForm();
+    const resolved = resolveTrainingBackend(config.backend, config.model);
+    config.backend = resolved.backend;
+    config.redirected = resolved.redirected;
     await ensureBackend(config.backend);
     config.backendLabel = active.label;
     beginSession();
-    setStatus(`Training ${presetLabel(config.model)} on ${active.label}…`);
+    const redirect = resolved.redirected
+      ? ' The small CNN is on WebGL because WASM has no Conv2D training kernel.'
+      : '';
+    setStatus(`Training ${presetLabel(config.model)} on ${active.label}…${redirect}`);
     const result = await trainMnist(config, hooks());
     await finishResult(config, result);
   });
@@ -122,7 +128,8 @@ runBatchBtn.addEventListener('click', () => {
       item.tone = 'status-running';
       renderQueue();
       try {
-        await ensureBackend(item.backend);
+        const resolved = resolveTrainingBackend(item.backend, item.model);
+        await ensureBackend(resolved.backend);
         item.actualBackend = active.label;
         const config = {
           model: item.model,
@@ -131,6 +138,7 @@ runBatchBtn.addEventListener('click', () => {
           batchSize: item.batchSize,
           lr: item.lr,
           backendLabel: active.label,
+          redirected: resolved.redirected,
         };
         beginSession();
         setStatus(`Batch ${i + 1}/${queue.length}: ${presetLabel(item.model)} · lr ${formatLr(item.lr)} · ${active.label}`);
@@ -291,9 +299,10 @@ async function finishResult(config, result, options = {}) {
   syncButtons();
   const cacheNote = result.fromCache ? 'MNIST cache hit.' : 'MNIST cached in IndexedDB.';
   const saveNote = result.saveError ? ' Weight save failed — predict still works until you leave the page.' : ' Best checkpoint saved.';
+  const redirectNote = config.redirected ? ' WASM cannot train this CNN, so the run used WebGL.' : '';
   const lead = result.stopped ? `Stopped after ${result.epochsRun} epoch${result.epochsRun === 1 ? '' : 's'}` : `Finished ${result.epochsRun} epoch${result.epochsRun === 1 ? '' : 's'}`;
   if (!options.quiet) {
-    setStatus(`${lead} · val acc ${formatAcc(result.valAcc)} · ${formatSps(result.samplesPerSec)} samples/sec · ${result.backend}. ${cacheNote}${saveNote}`, result.saveError ? 'error' : 'ok');
+    setStatus(`${lead} · val acc ${formatAcc(result.valAcc)} · ${formatSps(result.samplesPerSec)} samples/sec · ${result.backend}. ${cacheNote}${saveNote}${redirectNote}`, result.saveError ? 'error' : 'ok');
   }
   setDrawStatus('Checkpoint ready. Draw a white digit on the black pad and press Predict.');
   try {
@@ -362,6 +371,15 @@ function applyActive(next) {
   });
   const fallback = next.fellBack ? ` ${backendChoiceLabel(next.requested)} did not start, so this is the fallback.` : '';
   backendNote.textContent = `Active backend: ${next.label}.${fallback} Training uses 10,000 images and 2,000 validation images from MNIST.`;
+}
+
+function resolveTrainingBackend(choice, preset) {
+  const wasmWouldRun = choice === 'wasm' || (choice === 'auto' && active && active.name === 'wasm');
+  if (preset !== 'small' || !wasmWouldRun) return { backend: choice, redirected: false };
+  if (!caps.webgl) {
+    throw new Error('The small CNN cannot train on WASM. TensorFlow.js does not include Conv2D training kernels for that backend. Choose WebGL or WebGPU, or train the tiny MLP.');
+  }
+  return { backend: 'webgl', redirected: true };
 }
 
 function readForm() {

@@ -23,7 +23,7 @@ Serve over HTTP. The pages load `shared/*.js` as ES modules, which do not run fr
 5. Open **Draw & Infer**. Draw a thick white digit on the black pad, then **Predict**. The 28×28 preview is the centered crop the model scores.
 6. Refresh the [lab hub](http://localhost:8080/experiments/browser-ai/#runs). The finished run is listed from `localStorage['browser-ai.runs']`.
 
-The **Batch** tab runs three short presets one after another (two learning rates on the tiny MLP, then the small CNN on WASM) and fills the comparison table.
+The **Batch** tab runs three short presets one after another (two learning rates on the tiny MLP, then the small CNN on WebGL) and fills the comparison table. TensorFlow.js WASM can train the MLP. It cannot train the CNN (`Conv2D` backprop is not in that backend), so a CNN run on Auto or WASM uses WebGL instead when WebGL exists.
 
 Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rate 0.001, on 10,000 training images and 2,000 validation images.
 
