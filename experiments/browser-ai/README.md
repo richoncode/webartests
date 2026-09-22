@@ -38,7 +38,7 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 5. Open **Samples**. Pick a class (or random) and press **Generate**. **Class means** decodes the zero latent vector for every garment. **Latent walk** blends two prior samples. A finished training run also fills the sample grid and the class means.
 6. Open **Perf Compare** and press **Run tests**. The fixed protocol is 1 epoch on 256 images, batch 32, learning rate 0.001, then 32 timed generations. Backends this browser does not have are skipped. The table is stored in `localStorage['browser-ai.fashion-perf']`.
 
-Default train settings are the tiny conditional VAE, 3 epochs, batch 64, Adam at learning rate 0.001.
+Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at learning rate 0.001. An epoch on WASM is about a second at this size, so the default run stays short and the samples start to look like garments.
 
 ## Browser
 

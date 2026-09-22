@@ -164,7 +164,10 @@ export async function trainFashion(config, hooks = {}) {
 
   if (hooks.onDataProgress) hooks.onDataProgress({ phase: 'tensors' });
   const vae = createVae(tf);
-  const vars = vae.encoder.trainableWeights.concat(vae.decoder.trainableWeights);
+  // trainableWeights are LayerVariable wrappers. minimize() wants the inner Variable (.val).
+  const vars = vae.encoder.trainableWeights
+    .concat(vae.decoder.trainableWeights)
+    .map((weight) => weight.val || weight);
   if (!vars.length) {
     disposeVae(vae);
     throw new Error('The VAE has no trainable weights.');
