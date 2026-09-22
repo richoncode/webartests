@@ -1,6 +1,6 @@
 # Browser AI Lab
 
-Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js and draws a digit. Fashion gen trains a tiny conditional VAE on Fashion-MNIST and samples clothing. Both write the run into this browser.
+Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js and draws a digit. Fashion gen trains a class-embedding conditional VAE on Fashion-MNIST and samples clothing. Both write the run into this browser.
 
 ## Run locally
 
@@ -33,12 +33,12 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 
 1. Open [the Fashion gen page](http://localhost:8080/experiments/browser-ai/fashion-gen/).
 2. Leave **Backend** on **Auto**. The model is dense, so WASM can train it.
-3. Press **Start training**. The first visit downloads the official 10,000-image Fashion-MNIST test split (about 4.4 MB of gzip) and caches it in IndexedDB. Training uses 4,000 images and validates on 1,000.
+3. Press **Start training**. The first visit downloads the official 10,000-image Fashion-MNIST test split (about 4.4 MB of gzip) and caches it in IndexedDB. Training uses 9,000 images and validates on 1,000.
 4. Open **Dashboard** for reconstruction, KL, the training objective, and samples/sec. **Stop** ends the run after the current batch.
-5. Open **Samples**. Pick a class (or random) and press **Generate**. **Class means** decodes the zero latent vector for every garment. **Latent walk** blends two prior samples. A finished training run also fills the sample grid and the class means.
+5. Open **Samples**. The class menu starts on Trouser. Press **Generate** and compare those samples with two real trousers in the strip above. **Class means** decodes the zero latent vector for every garment. **Latent walk** blends two prior samples. The status line names the conditioned class. A finished training run opens Samples on a real-vs-generated grid for every class, plus the class means.
 6. Open **Perf Compare** and press **Run tests**. The fixed protocol is 1 epoch on 256 images, batch 32, learning rate 0.001, then 32 timed generations. Backends this browser does not have are skipped. The table is stored in `localStorage['browser-ai.fashion-perf']`.
 
-Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at learning rate 0.001. An epoch on WASM is about a second at this size, so the default run stays short and the samples start to look like garments.
+Default train settings are the class-embedding conditional VAE, 8 epochs, batch 64, Adam at learning rate 0.001. The model is dense, so WASM can train it. A short run stays soft, but the class template is why trousers and sneakers separate from shirts.
 
 ## Browser
 
@@ -67,7 +67,7 @@ Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at
 - IndexedDB database `browser-ai`, key `mnist-sprite-12k-v1`: cached MNIST pixels and labels.
 - IndexedDB database `browser-ai`, key `fashion-mnist-10k-v1`: cached Fashion-MNIST pixels and labels.
 - TensorFlow.js model `indexeddb://browser-ai-mnist`: best MNIST checkpoint.
-- TensorFlow.js models `indexeddb://browser-ai-fashion-cvae-h64-z8-enc` and `indexeddb://browser-ai-fashion-cvae-h64-z8-dec`: best Fashion VAE checkpoint.
+- TensorFlow.js models `indexeddb://browser-ai-fashion-cvae-e16-h128-z16-enc` and `indexeddb://browser-ai-fashion-cvae-e16-h128-z16-dec`: best Fashion VAE checkpoint. Older `h64-z8` keys are not loaded.
 - `localStorage['browser-ai.runs']`: a JSON list. Each entry has `name`, `demo`, `backend`, `savedAt`, `loss`, `epochs`, `batchSize`, `learningRate`, `model`, `samplesPerSec`, and `durationMs`. MNIST entries also include `accuracy`. Fashion entries include `loss` when accuracy is absent. The hub shows `name`, `backend`, `savedAt`, and `accuracy` or `loss`.
 - `localStorage['browser-ai.mnist-perf']`: the last MNIST Perf Compare table (protocol, per-backend train and infer numbers). Not listed on the hub Runs tab.
 - `localStorage['browser-ai.fashion-perf']`: the last Fashion perf-compare table.

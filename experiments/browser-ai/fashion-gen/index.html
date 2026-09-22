@@ -5,6 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fashion gen — Browser AI Lab</title>
   <link rel="stylesheet" href="../shared/theme.css">
+  <style>
+    .verify-list { display: flex; flex-direction: column; gap: 22px; margin-top: 16px; }
+    .verify-row h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .verify-pair {
+      display: grid;
+      grid-template-columns: minmax(168px, 220px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .verify-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .verify-label.gen { color: #5b9bd5; }
+    .verify-col.real {
+      border-right: 1px solid #2a2a2a;
+      padding-right: 14px;
+    }
+    .verify-col .sample-grid,
+    .verify-col .verify-reals { margin-top: 0; }
+    .verify-reals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    @media (max-width: 640px) {
+      .verify-pair { grid-template-columns: 1fr; }
+      .verify-col.real {
+        border-right: none;
+        border-bottom: 1px solid #2a2a2a;
+        padding-right: 0;
+        padding-bottom: 12px;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="page">
@@ -12,7 +51,7 @@
 
     <p class="section-label">Demo</p>
     <h1>Fashion gen</h1>
-    <p class="subtitle">Train a tiny conditional VAE on Fashion-MNIST clothing in this tab, then generate a 28×28 grayscale sample for a class you pick. TensorFlow.js uses WebGPU when it can, otherwise WASM, WebGL, or CPU.</p>
+    <p class="subtitle">Train a class-embedding conditional VAE on Fashion-MNIST clothing in this tab, then generate a 28×28 grayscale sample for a class you pick. Real images of that class sit beside the samples so the caption is the conditioning input, not a guess. TensorFlow.js uses WebGPU when it can, otherwise WASM, WebGL, or CPU.</p>
 
     <div id="cap-banner" class="banner" role="status" aria-live="polite">
       <p class="banner-kicker">This browser</p>
@@ -29,12 +68,12 @@
     </div>
 
     <section id="panel-train" role="tabpanel" aria-labelledby="tab-train">
-      <div class="callout blue"><strong>All in the tab.</strong> The first run downloads Fashion-MNIST (about 4.4 MB of gzip) and caches 10,000 clothing images in IndexedDB. The network is a small dense VAE, so WASM can train it. Weights stay on this device.</div>
+      <div class="callout blue"><strong>All in the tab.</strong> The first run downloads Fashion-MNIST (about 4.4 MB of gzip) and caches 10,000 clothing images in IndexedDB. Training uses 9,000 of them and holds out 1,000. The network is a dense VAE, so WASM can train it. Weights stay on this device.</div>
       <form id="train-form" class="panel">
         <div class="form-grid">
           <label class="field">Model
             <select id="model" name="model">
-              <option value="cvae" selected>Tiny conditional VAE</option>
+              <option value="cvae" selected>Class-embedding CVAE</option>
             </select>
           </label>
           <label class="field">Backend
@@ -67,14 +106,14 @@
     </section>
 
     <section id="panel-samples" role="tabpanel" aria-labelledby="tab-samples" hidden>
-      <div class="callout blue"><strong>28×28 grayscale.</strong> Pick a clothing class, or random, and decode samples from the prior. Class means use the zero latent vector, so they show the prototype the decoder has learned. A few epochs stay soft — this is a tiny VAE, not a photo model.</div>
+      <div class="callout blue"><strong>28×28 grayscale.</strong> The class menu defaults to Trouser. Generate decodes that class, and the strip beside it shows two real Fashion-MNIST images with the same caption. Class means use the zero latent vector. A short run stays soft — this is still a small dense VAE, not a photo model.</div>
       <article class="panel">
         <div class="form-grid">
           <label class="field">Class
             <select id="gen-class" name="class">
-              <option value="random" selected>Random class</option>
+              <option value="random">Random class</option>
               <option value="0">T-shirt/top</option>
-              <option value="1">Trouser</option>
+              <option value="1" selected>Trouser</option>
               <option value="2">Pullover</option>
               <option value="3">Dress</option>
               <option value="4">Coat</option>
@@ -98,27 +137,27 @@
       </article>
 
       <article class="panel">
+        <h2>Real vs generated</h2>
+        <p class="hint">Left: real Fashion-MNIST. Right: samples whose conditioning input is that same class. Captions use the official Zalando name. After training, every class is shown. Generate focuses the strip on the class you picked.</p>
+        <div id="verify-grid"><p class="hint">Waiting for the clothing images.</p></div>
+      </article>
+
+      <article class="panel">
         <h2>Generated samples</h2>
-        <p class="hint">A new draw from the unit normal, conditioned on the class. Generate again for a fresh set.</p>
+        <p class="hint">A new draw from the unit normal, conditioned on the class in the menu. The caption is that conditioning input. Generate again for a fresh set.</p>
         <div class="sample-grid" id="sample-grid"><p class="hint">No samples yet.</p></div>
       </article>
 
       <article class="panel">
         <h2>Class means</h2>
-        <p class="hint">Decode z = 0 for every class. Trousers, shoes, and bags should separate once reconstruction drops.</p>
+        <p class="hint">Decode z = 0 for every class. Each tile is conditioned on its caption. Trousers, sneakers, and bags should separate from shirts once reconstruction drops.</p>
         <div class="sample-grid" id="mean-grid"><p class="hint">No class means yet.</p></div>
       </article>
 
       <article class="panel">
         <h2>Latent walk</h2>
-        <p class="hint">Eight steps from one random code to another, for the class you picked. Random uses one class for the whole row.</p>
+        <p class="hint">Eight steps from one random code to another, for the class you picked. Random uses one class for the whole row, and the status line names it.</p>
         <div class="walk-row" id="walk-row"><p class="hint">No walk yet.</p></div>
-      </article>
-
-      <article class="panel">
-        <h2>From the set</h2>
-        <p class="hint">One real Fashion-MNIST image per class, from the cached pool.</p>
-        <div class="sample-grid" id="real-grid"><p class="hint">Waiting for the clothing images.</p></div>
       </article>
     </section>
 
@@ -186,12 +225,12 @@
           <tr><td>Where it runs</td><td>Entirely in your browser. Nothing is uploaded. Training, sampling, and storage stay on this device.</td></tr>
           <tr><td>Library</td><td>TensorFlow.js 4.22.0 from jsDelivr, same scripts as the MNIST demo. No npm install and no build step.</td></tr>
           <tr><td>Backends</td><td>Auto tries WebGPU (when <code>navigator.gpu</code> returns an adapter), then WASM, then WebGL, then CPU. The model is dense, so WASM can train it. The banner names the backend TensorFlow.js actually started.</td></tr>
-          <tr><td>Data</td><td>Fashion-MNIST (Zalando): 28×28 grayscale clothing — T-shirt/top, trouser, pullover, dress, coat, sandal, shirt, sneaker, bag, ankle boot. The page fetches the official 10,000-image test split as gzip IDX from jsDelivr, with GitHub raw as a fallback, then caches it in IndexedDB (<code>browser-ai</code> / <code>fashion-mnist-10k-v1</code>). Training uses 4,000 images and validation 1,000, from a fixed shuffle. The 60,000-image training file is left on the server so the first visit stays small.</td></tr>
-          <tr><td>Model</td><td>Conditional VAE. Encoder: pixels concatenated with a 10-way class one-hot, 64 ReLU, then 8-d mean and log-variance. Decoder: latent code concatenated with the same one-hot, 64 ReLU, then 784 sigmoid pixels. About 104k parameters. Loss is Bernoulli reconstruction (binary cross-entropy, summed over pixels) plus β times KL to the unit normal. β is 0.25 for a one-epoch run and otherwise moves from 0.05 to 1. Optimizer is Adam.</td></tr>
-          <tr><td>Samples</td><td>Generate draws z from the unit normal and decodes it with the chosen class. Class means decode the zero vector once per class. Latent walk blends two prior samples in eight steps. Press Generate again for a new draw.</td></tr>
+          <tr><td>Data</td><td>Fashion-MNIST (Zalando): 28×28 grayscale clothing — T-shirt/top, trouser, pullover, dress, coat, sandal, shirt, sneaker, bag, ankle boot, in that official order. The page fetches the official 10,000-image test split as gzip IDX from jsDelivr, with GitHub raw as a fallback, then caches it in IndexedDB (<code>browser-ai</code> / <code>fashion-mnist-10k-v1</code>). Training uses 9,000 images and validation 1,000, a fixed shuffle of the whole pool. The 60,000-image training file is left on the server so the first visit stays small.</td></tr>
+          <tr><td>Model</td><td>Conditional VAE, dense only, so WASM can train it. The class one-hot is projected to a 16-d embedding and concatenated into both hidden layers and the pixel logits. A zero-initialized template maps the one-hot straight onto those logits, so the class has a path that does not depend on z. Encoder: 784 pixels plus the embedding, two 128-unit ReLU layers, then 16-d mean and log-variance. Decoder: z plus the embedding, two 128-unit ReLU layers, then 784 sigmoid pixels. About 270k parameters. Loss is Bernoulli reconstruction (binary cross-entropy, summed over pixels) plus β times KL to the unit normal. β is 0.25 for a one-epoch run and otherwise moves from 0.05 to 1. Optimizer is Adam. Captions are this conditioning input, not a classifier score.</td></tr>
+          <tr><td>Samples</td><td>The class menu opens on Trouser. Generate draws z from the unit normal and decodes it conditioned on the chosen class. The real-vs-generated strip places two cached Fashion-MNIST images of that class beside the samples, with matching captions. A finished training run fills that strip for every class (two real, two generated) and the class means, instead of a random mix. Class means decode the zero vector once per class. Latent walk blends two prior samples in eight steps. The status line names the conditioned class. Press Generate again for a new draw.</td></tr>
           <tr><td>Perf</td><td>One epoch, 256 images, batch 32, Adam at 0.001, then 32 generated images timed after a 4-image warmup. WebGPU, WASM, WebGL, and CPU run only when this browser has them. Results land in <code>localStorage['browser-ai.fashion-perf']</code>. These runs do not replace the saved checkpoint.</td></tr>
-          <tr><td>Storage</td><td>Best validation checkpoint at <code>indexeddb://browser-ai-fashion-cvae-h64-z8-enc</code> and <code>indexeddb://browser-ai-fashion-cvae-h64-z8-dec</code>. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the lab hub.</td></tr>
-          <tr><td>Caveat</td><td>A few epochs on 4,000 images produces soft, class-tinted garments. It will not look like a catalog photo. WebGPU needs localhost or HTTPS. If a backend fails to start, Auto falls forward and the banner says which one took the job.</td></tr>
+          <tr><td>Storage</td><td>Best validation checkpoint at <code>indexeddb://browser-ai-fashion-cvae-e16-h128-z16-enc</code> and <code>indexeddb://browser-ai-fashion-cvae-e16-h128-z16-dec</code>. Older tiny checkpoints (<code>h64-z8</code>) are not loaded. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the lab hub.</td></tr>
+          <tr><td>Caveat</td><td>A few epochs still look soft next to the real tiles. Trousers, sneakers, and bags should read as those classes sooner than shirts, coats, and pullovers, which share a silhouette. It will not look like a catalog photo. The caption is the class the decoder was given. WebGPU needs localhost or HTTPS. If a backend fails to start, Auto falls forward and the banner says which one took the job.</td></tr>
         </table>
       </article>
     </section>

@@ -18,6 +18,22 @@ async function readRecon(recon) {
 }
 
 /**
+ * Decode one image per entry in `classes`. The class index is the
+ * conditioning input (official Zalando order), not a predicted label.
+ * @returns {Promise<{ pixels: Float32Array, classes: number[] }>}
+ */
+export async function generateForClasses(tf, decoder, classes) {
+  const list = classes.map((cls) => cls | 0);
+  const recon = tf.tidy(() => {
+    const z = tf.randomNormal([list.length, LATENT_DIM]);
+    const y = oneHot(tf, list);
+    return decoder.apply([z, y]);
+  });
+  const pixels = await readRecon(recon);
+  return { pixels, classes: list };
+}
+
+/**
  * @param {number|null} classIndex null draws a random class per image
  * @returns {Promise<{ pixels: Float32Array, classes: number[] }>}
  */
@@ -26,13 +42,7 @@ export async function generateBatch(tf, decoder, classIndex, count) {
   for (let i = 0; i < count; i += 1) {
     classes[i] = classIndex == null ? (Math.random() * NUM_CLASSES) | 0 : classIndex | 0;
   }
-  const recon = tf.tidy(() => {
-    const z = tf.randomNormal([count, LATENT_DIM]);
-    const y = oneHot(tf, classes);
-    return decoder.apply(tf.concat([z, y], 1));
-  });
-  const pixels = await readRecon(recon);
-  return { pixels, classes };
+  return generateForClasses(tf, decoder, classes);
 }
 
 /** Class prototype: decode the zero vector once per clothing class. */
@@ -41,7 +51,7 @@ export async function classMeans(tf, decoder) {
   const recon = tf.tidy(() => {
     const z = tf.zeros([NUM_CLASSES, LATENT_DIM]);
     const y = oneHot(tf, classes);
-    return decoder.apply(tf.concat([z, y], 1));
+    return decoder.apply([z, y]);
   });
   const pixels = await readRecon(recon);
   return { pixels, classes };
@@ -61,7 +71,7 @@ export async function latentWalk(tf, decoder, classIndex, steps = 8) {
     }
     const z = tf.concat(rows, 0);
     const y = oneHot(tf, classes);
-    return decoder.apply(tf.concat([z, y], 1));
+    return decoder.apply([z, y]);
   });
   const pixels = await readRecon(recon);
   return { pixels, classes, classIndex: cls };
