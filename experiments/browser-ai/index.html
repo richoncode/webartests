@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser AI Lab — webartests</title>
+  <link rel="stylesheet" href="shared/theme.css">
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="../">← Back</a>
+
+    <p class="section-label">Edge ML</p>
+    <h1>Browser AI Lab</h1>
+    <p class="subtitle">Train and infer in the tab. WebGPU when the browser allows it, WASM as the fallback. First demo is MNIST — the shell is here, the training loop is Phase 1.</p>
+
+    <div id="cap-banner" class="banner" role="status" aria-live="polite">
+      <p class="banner-kicker">This browser</p>
+      <h2>Checking WebGPU…</h2>
+      <p>Looking for <code>navigator.gpu</code> and WebAssembly.</p>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Lab sections">
+      <button type="button" role="tab" id="tab-overview" data-tab="overview" aria-selected="true" aria-controls="panel-overview">Overview</button>
+      <button type="button" role="tab" id="tab-demos" data-tab="demos" aria-selected="false" aria-controls="panel-demos" tabindex="-1">Demos</button>
+      <button type="button" role="tab" id="tab-backends" data-tab="backends" aria-selected="false" aria-controls="panel-backends" tabindex="-1">Backends</button>
+      <button type="button" role="tab" id="tab-runs" data-tab="runs" aria-selected="false" aria-controls="panel-runs" tabindex="-1">Runs</button>
+    </div>
+
+    <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="prose">
+        <p>This lab is a client-side place to watch a small model train, compare backends, and later draw a digit for inference. Nothing in Phase 0 uploads a dataset or starts a training loop.</p>
+        <p>The banner above is the capability check: green means a WebGPU adapter is ready, yellow means the API exists without an adapter, red means this browser has no WebGPU. WASM and WebGL show up as chips either way.</p>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <p class="section-label">Now</p>
+          <h2>Phase 0 — scaffold</h2>
+          <p class="hint">Hub, capability banner, and the MNIST page shell. Controls are laid out and explicitly stubbed.</p>
+        </article>
+        <article class="panel">
+          <p class="section-label">Next</p>
+          <h2>Phase 1 — MNIST</h2>
+          <p class="hint">TensorFlow.js from a CDN: train a tiny net, live loss, then draw a digit. Weights stay in the browser.</p>
+        </article>
+        <article class="panel">
+          <p class="section-label">Later</p>
+          <h2>Batch, then a second demo</h2>
+          <p class="hint">Sequential hyperparameter runs, then either another dataset or a smaller WebGPU microbenchmark.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-demos" role="tabpanel" aria-labelledby="tab-demos" hidden>
+      <div class="grid">
+        <a class="card" href="mnist/">
+          <div class="card-icon">🔢</div>
+          <h2>MNIST</h2>
+          <p>Train, dashboard, draw-and-infer, and batch tabs. The layout is live; training is marked Phase 1 — coming.</p>
+          <span class="tag">Shell · Phase 0</span>
+        </a>
+        <a class="card soon" aria-disabled="true">
+          <div class="card-icon">🖼️</div>
+          <h2>CIFAR-10</h2>
+          <p>Same shell, harder images. Not started.</p>
+          <span class="tag">Coming</span>
+        </a>
+        <a class="card soon" aria-disabled="true">
+          <div class="card-icon">✨</div>
+          <h2>Tiny transformer</h2>
+          <p>A small attention demo once MNIST training is solid.</p>
+          <span class="tag">Coming</span>
+        </a>
+        <a class="card soon" aria-disabled="true">
+          <div class="card-icon">🎙️</div>
+          <h2>Speech toy</h2>
+          <p>A short audio model, still only a slot on the hub.</p>
+          <span class="tag">Coming</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="panel-backends" role="tabpanel" aria-labelledby="tab-backends" hidden>
+      <div class="prose">
+        <p>Phase 1 will pick one stack — TensorFlow.js — and walk this order. The banner is the check those pages already share.</p>
+      </div>
+      <div class="stack">
+        <article class="panel">
+          <p class="section-label">Preferred</p>
+          <h2>WebGPU</h2>
+          <p class="hint">Chrome and Edge, in a secure context (<code>localhost</code> or HTTPS). Used when <code>navigator.gpu</code> returns an adapter. Fastest path for a tiny train loop, and the one the banner marks green.</p>
+        </article>
+        <article class="panel">
+          <p class="section-label">Fallback</p>
+          <h2>WASM, SIMD when present</h2>
+          <p class="hint">Runs where WebGPU does not. SIMD is detected with a small <code>WebAssembly.validate</code> probe and shown as its own chip. Slower than the GPU, still entirely in the tab.</p>
+        </article>
+        <article class="panel">
+          <p class="section-label">Last resort</p>
+          <h2>WebGL, then CPU</h2>
+          <p class="hint">WebGL2 (or WebGL 1) if WASM is missing. CPU is only the leftover when the page cannot see GPU or Wasm. The MNIST backend picker lists all four and stays disabled until training exists.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+      <div id="runs-root"></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { detectCapabilities, mountCapabilityBanner } from './shared/capabilities.js';
+    import { loadRuns, mountRuns } from './shared/runs.js';
+    import { initTabs } from './shared/tabs.js';
+
+    const banner = document.getElementById('cap-banner');
+    initTabs(document);
+    mountRuns(document.getElementById('runs-root'), loadRuns());
+
+    try {
+      const caps = await detectCapabilities();
+      mountCapabilityBanner(banner, caps);
+    } catch (error) {
+      banner.classList.add('banner', 'red');
+      banner.dataset.webgpu = 'no';
+      banner.innerHTML = '<p class="banner-kicker">This browser</p><h2>WebGPU: no</h2><p>The capability check failed before it could finish.</p>';
+      console.error(error);
+    }
+  </script>
+</body>
+</html>
