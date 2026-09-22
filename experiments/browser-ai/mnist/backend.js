@@ -69,6 +69,13 @@ async function loadAll() {
   if (globalThis.tf.wasm && typeof globalThis.tf.wasm.setWasmPaths === 'function') {
     globalThis.tf.wasm.setWasmPaths(WASM_PATH);
   }
+  // TF.js otherwise refuses a software GL context (failIfMajorPerformanceCaveat).
+  // Hardware GPUs still win getContext; this only lets SwiftShader join in.
+  try {
+    globalThis.tf.env().set('SOFTWARE_WEBGL_ENABLED', true);
+  } catch (error) {
+    console.warn('Could not allow software WebGL', error);
+  }
   return globalThis.tf;
 }
 

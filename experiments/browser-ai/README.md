@@ -33,7 +33,7 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 
 - **Preferred:** current Chrome or Edge with WebGPU enabled. The hub banner turns green only when `navigator.gpu` returns an adapter.
 - WebGPU needs a secure context: `localhost` or HTTPS. A plain `http://` LAN address will report WebGPU: no.
-- **Fallback:** WASM, with SIMD when TensorFlow.js loads `tfjs-backend-wasm-simd.wasm`. WebGL is next, then CPU. Auto follows that order, and the MNIST banner states the backend that actually started. WebGPU can be missing in CI; WASM or WebGL still trains.
+- **Fallback:** WASM, with SIMD when TensorFlow.js loads `tfjs-backend-wasm-simd.wasm`. WebGL is next, then CPU. Software WebGL is allowed, so a machine without a hardware GPU can still time that backend. Auto follows that order, and the MNIST banner states the backend that actually started. WebGPU can be missing in CI; WASM or WebGL still trains.
 - Firefox and Safari often have no WebGPU. The pages still load, and the banner says **WebGPU: no**.
 
 ## Pages
