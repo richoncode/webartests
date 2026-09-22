@@ -1,6 +1,6 @@
 # Browser AI Lab
 
-Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js and draws a digit. Fashion gen trains a tiny conditional VAE on Fashion-MNIST and samples clothing. Both write the run into this browser.
+Client-side training and inference. The hub checks WebGPU and WASM. The MNIST demo trains a tiny network with TensorFlow.js and draws a digit. Fashion gen trains a class-conditional Fashion-MNIST model (dense CVAE, conv CVAE, or cDCGAN) and samples clothing. Both write the run into this browser.
 
 ## Run locally
 
@@ -32,13 +32,14 @@ Default train settings are a tiny MLP, 3 epochs, batch 128, Adam at learning rat
 ## Fashion gen
 
 1. Open [the Fashion gen page](http://localhost:8080/experiments/browser-ai/fashion-gen/).
-2. Leave **Backend** on **Auto**. The model is dense, so WASM can train it.
-3. Press **Start training**. The first visit downloads the official 10,000-image Fashion-MNIST test split (about 4.4 MB of gzip) and caches it in IndexedDB. Training uses 4,000 images and validates on 1,000.
-4. Open **Dashboard** for reconstruction, KL, the training objective, and samples/sec. **Stop** ends the run after the current batch.
-5. Open **Samples**. Pick a class (or random) and press **Generate**. **Class means** decodes the zero latent vector for every garment. **Latent walk** blends two prior samples. A finished training run also fills the sample grid and the class means.
-6. Open **Perf Compare** and press **Run tests**. The fixed protocol is 1 epoch on 256 images, batch 32, learning rate 0.001, then 32 timed generations. Backends this browser does not have are skipped. The table is stored in `localStorage['browser-ai.fashion-perf']`.
+2. Pick a model. **Dense CVAE (stable)** trains on WASM. **Conv CVAE (sharper VAE)** and **cDCGAN (sharpest)** need WebGL, WebGPU, or CPU — TensorFlow.js WASM has no Conv2D training kernels, so Auto skips WASM for those two. Choosing WASM shows that status and moves the run.
+3. Press **Best known** (or switch models) to fill the recipe: dense is 8 epochs, batch 64, Adam 1e-3; conv CVAE is 50 epochs, batch 64, Adam 1e-3; cDCGAN is 50 epochs, batch 64, Adam 2e-4 with β1 0.5.
+4. Press **Start training**. The first visit downloads the official 10,000-image Fashion-MNIST test split (about 4.4 MB of gzip) and caches it in IndexedDB. Training uses 4,000 images and validates on 1,000.
+5. Open **Dashboard**. VAEs show reconstruction, KL, and the training objective. cDCGAN shows generator and discriminator loss. **Stop** ends the run after the current batch.
+6. Open **Samples**. Pick a class (or random) and press **Generate**. Captions say **Real** or **Generated**. The comparison row pairs them (Trouser and Sneaker when the class is random). **Class means** decodes the zero code. **Latent walk** blends two codes.
+7. Open **Perf Compare** and press **Run tests**. The sweep uses the selected model: 1 epoch on 256 images, batch 32, that model's learning rate, then 32 timed generations. Backends this browser does not have are skipped, and WASM is skipped for the conv models. Tables are stored per model.
 
-Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at learning rate 0.001. An epoch on WASM is about a second at this size, so the default run stays short and the samples start to look like garments.
+Checkpoints do not share a key: dense `browser-ai-fashion-cvae-h64-z8-*`, conv CVAE `browser-ai-fashion-conv-cvae-z32-*`, cDCGAN `browser-ai-fashion-cdcgan-z100-*`.
 
 ## Browser
 
@@ -57,8 +58,8 @@ Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at
 | `mnist/perf.js` | Fixed-protocol backend compare |
 | `mnist/infer.js` | Draw canvas, 28×28 preprocess, softmax |
 | `fashion-gen/index.html` | Train, Samples, Dashboard, Perf Compare, About |
-| `fashion-gen/train.js` | Conditional VAE loop, recon + KL, best checkpoint |
-| `fashion-gen/generate.js` | Class-conditional decode, latent walk, timed generate |
+| `fashion-gen/train.js` | Dense/conv CVAE loop, or alternating cDCGAN steps |
+| `fashion-gen/generate.js` | Class-conditional samples, real-vs-gen pixels, timed generate |
 | `shared/capabilities.js` | `detectCapabilities()`, `mountCapabilityBanner()` |
 | `shared/runs.js` | Reads and appends `localStorage['browser-ai.runs']` |
 
@@ -67,9 +68,9 @@ Default train settings are the tiny conditional VAE, 8 epochs, batch 64, Adam at
 - IndexedDB database `browser-ai`, key `mnist-sprite-12k-v1`: cached MNIST pixels and labels.
 - IndexedDB database `browser-ai`, key `fashion-mnist-10k-v1`: cached Fashion-MNIST pixels and labels.
 - TensorFlow.js model `indexeddb://browser-ai-mnist`: best MNIST checkpoint.
-- TensorFlow.js models `indexeddb://browser-ai-fashion-cvae-h64-z8-enc` and `indexeddb://browser-ai-fashion-cvae-h64-z8-dec`: best Fashion VAE checkpoint.
+- TensorFlow.js models `indexeddb://browser-ai-fashion-cvae-h64-z8-enc` and `…-dec`: dense CVAE. `indexeddb://browser-ai-fashion-conv-cvae-z32-enc` and `…-dec`: conv CVAE. `indexeddb://browser-ai-fashion-cdcgan-z100-g` and `…-d`: cDCGAN.
 - `localStorage['browser-ai.runs']`: a JSON list. Each entry has `name`, `demo`, `backend`, `savedAt`, `loss`, `epochs`, `batchSize`, `learningRate`, `model`, `samplesPerSec`, and `durationMs`. MNIST entries also include `accuracy`. Fashion entries include `loss` when accuracy is absent. The hub shows `name`, `backend`, `savedAt`, and `accuracy` or `loss`.
 - `localStorage['browser-ai.mnist-perf']`: the last MNIST Perf Compare table (protocol, per-backend train and infer numbers). Not listed on the hub Runs tab.
-- `localStorage['browser-ai.fashion-perf']`: the last Fashion perf-compare table.
+- `localStorage['browser-ai.fashion-perf']`: the last dense-CVAE perf table. Conv CVAE and cDCGAN use `browser-ai.fashion-perf.conv-cvae` and `browser-ai.fashion-perf.cdcgan`.
 
 No MNIST or Fashion-MNIST files are stored in the git repo. TensorFlow.js 4.22.0 is loaded from jsDelivr.

@@ -1,29 +1,42 @@
-/** Fixed short train + generate sweep across TensorFlow.js backends. */
+/** Fixed short train + generate sweep for the model selected in the form. */
 
-import { activateBackend, backendAvailable, backendChoiceLabel, getTf } from './backend.js';
+import { activateForModel, backendAvailable, backendChoiceLabel, getTf } from './backend.js';
 import { loadFashion } from './data.js';
 import { timeGeneration } from './generate.js';
-import { disposeVae } from './model.js';
+import { disposeFashionModel, getModelSpec } from './model.js';
 import { trainFashion } from './train.js';
 
 export const PERF_STORAGE_KEY = 'browser-ai.fashion-perf';
 
 export const PERF_BACKENDS = ['webgpu', 'wasm', 'webgl', 'cpu'];
 
-export const PERF_PROTOCOL = Object.freeze({
-  epochs: 1,
-  batchSize: 32,
-  lr: 0.001,
-  trainSamples: 256,
-  valSamples: 64,
-  genCount: 32,
-  warmupGens: 4,
-});
+export function perfStorageKey(modelId) {
+  if (!modelId || modelId === 'cvae') return PERF_STORAGE_KEY;
+  return `${PERF_STORAGE_KEY}.${modelId}`;
+}
 
-export function loadPerf(storage = globalThis.localStorage) {
+export function protocolFor(modelId) {
+  const spec = getModelSpec(modelId || 'cvae');
+  return Object.freeze({
+    epochs: 1,
+    batchSize: 32,
+    lr: spec.preset.lr,
+    trainSamples: 256,
+    valSamples: 64,
+    genCount: 32,
+    warmupGens: 4,
+    model: spec.id,
+    modelLabel: spec.label,
+    convTrain: spec.convTrain,
+  });
+}
+
+export const PERF_PROTOCOL = protocolFor('cvae');
+
+export function loadPerf(modelId = 'cvae', storage = globalThis.localStorage) {
   if (!storage) return null;
   try {
-    const raw = storage.getItem(PERF_STORAGE_KEY);
+    const raw = storage.getItem(perfStorageKey(modelId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.rows)) return null;
@@ -35,7 +48,7 @@ export function loadPerf(storage = globalThis.localStorage) {
 
 export function savePerf(payload, storage = globalThis.localStorage) {
   if (!storage) return;
-  storage.setItem(PERF_STORAGE_KEY, JSON.stringify(payload));
+  storage.setItem(perfStorageKey(payload && payload.model), JSON.stringify(payload));
 }
 
 function blankRow(name) {
@@ -51,6 +64,8 @@ function blankRow(name) {
     loss: null,
     recon: null,
     kl: null,
+    gLoss: null,
+    dLoss: null,
     error: null,
   };
 }
@@ -65,10 +80,12 @@ function cancelRest(rows, from) {
 }
 
 /**
- * @param {{ caps: object, shouldStop?: () => boolean, onUpdate?: (rows: object[]) => void, onStatus?: (text: string) => void }} options
+ * @param {{ model?: string, caps: object, shouldStop?: () => boolean, onUpdate?: (rows: object[]) => void, onStatus?: (text: string) => void }} options
  */
 export async function runPerfSweep(options) {
   const { caps, shouldStop, onUpdate, onStatus } = options;
+  const spec = getModelSpec(options.model || 'cvae');
+  const protocol = protocolFor(spec.id);
   const rows = PERF_BACKENDS.map(blankRow);
   const stop = () => !!(shouldStop && shouldStop());
   const publish = () => {
@@ -76,7 +93,7 @@ export async function runPerfSweep(options) {
   };
   publish();
 
-  if (onStatus) onStatus('Loading Fashion-MNIST before the timed runs…');
+  if (onStatus) onStatus(`Loading Fashion-MNIST before the ${spec.label} timed runs…`);
   await loadFashion((info) => {
     if (!onStatus || !info) return;
     if (info.phase === 'cache') onStatus('Fashion-MNIST is already in IndexedDB.');
@@ -87,7 +104,7 @@ export async function runPerfSweep(options) {
   if (stop()) {
     cancelRest(rows, 0);
     publish();
-    return finish(rows);
+    return finish(rows, spec, protocol);
   }
 
   for (let i = 0; i < rows.length; i += 1) {
@@ -97,6 +114,12 @@ export async function runPerfSweep(options) {
       break;
     }
     const row = rows[i];
+    if (spec.convTrain && row.backend === 'wasm') {
+      row.status = 'skipped';
+      row.statusText = 'Skipped · no Conv2D train';
+      publish();
+      continue;
+    }
     if (!backendAvailable(row.backend, caps)) {
       row.status = 'skipped';
       row.statusText = 'Skipped';
@@ -107,10 +130,10 @@ export async function runPerfSweep(options) {
     row.status = 'running';
     row.statusText = 'Starting…';
     publish();
-    let vae = null;
+    let trained = null;
     try {
-      if (onStatus) onStatus(`Perf · ${row.label}: starting the backend…`);
-      const active = await activateBackend(row.backend, caps);
+      if (onStatus) onStatus(`Perf · ${spec.label} · ${row.label}: starting the backend…`);
+      const active = await activateForModel(row.backend, caps, spec);
       if (active.name !== row.backend) {
         row.status = 'failed';
         row.statusText = 'Unavailable';
@@ -121,13 +144,14 @@ export async function runPerfSweep(options) {
       row.label = active.label;
       row.statusText = 'Training…';
       publish();
-      if (onStatus) onStatus(`Perf · ${active.label}: training ${PERF_PROTOCOL.trainSamples} images…`);
+      if (onStatus) onStatus(`Perf · ${active.label}: training ${protocol.trainSamples} images…`);
       const result = await trainFashion({
-        epochs: PERF_PROTOCOL.epochs,
-        batchSize: PERF_PROTOCOL.batchSize,
-        lr: PERF_PROTOCOL.lr,
-        trainCount: PERF_PROTOCOL.trainSamples,
-        valCount: PERF_PROTOCOL.valSamples,
+        model: spec.id,
+        epochs: protocol.epochs,
+        batchSize: protocol.batchSize,
+        lr: protocol.lr,
+        trainCount: protocol.trainSamples,
+        valCount: protocol.valSamples,
         backendLabel: active.label,
         save: false,
       }, {
@@ -137,8 +161,8 @@ export async function runPerfSweep(options) {
           publish();
         },
       });
-      vae = result.model;
-      if (!vae || result.epochsRun < 1) {
+      trained = result.model;
+      if (!trained || result.epochsRun < 1) {
         row.status = 'cancelled';
         row.statusText = 'Cancelled';
         publish();
@@ -149,6 +173,8 @@ export async function runPerfSweep(options) {
       row.loss = result.loss;
       row.recon = result.recon;
       row.kl = result.kl;
+      row.gLoss = result.gLoss;
+      row.dLoss = result.dLoss;
       if (stop()) {
         row.status = 'cancelled';
         row.statusText = 'Cancelled';
@@ -157,8 +183,8 @@ export async function runPerfSweep(options) {
       }
       row.statusText = 'Generating…';
       publish();
-      if (onStatus) onStatus(`Perf · ${active.label}: timing ${PERF_PROTOCOL.genCount} generated images…`);
-      const timed = await timeGeneration(getTf(), vae.decoder, PERF_PROTOCOL.genCount, PERF_PROTOCOL.warmupGens);
+      if (onStatus) onStatus(`Perf · ${active.label}: timing ${protocol.genCount} generated images…`);
+      const timed = await timeGeneration(getTf(), trained, protocol.genCount, protocol.warmupGens);
       row.genMs = timed.genMs;
       row.gensPerSec = timed.gensPerSec;
       row.status = 'done';
@@ -169,19 +195,22 @@ export async function runPerfSweep(options) {
       row.statusText = 'Failed';
       row.error = (error && error.message) ? String(error.message) : 'Backend run failed';
     } finally {
-      disposeVae(vae);
+      disposeFashionModel(trained);
     }
     publish();
-    finish(rows);
+    finish(rows, spec, protocol);
   }
 
-  return finish(rows);
+  return finish(rows, spec, protocol);
 }
 
-function finish(rows) {
+function finish(rows, spec, protocol) {
   const payload = {
     savedAt: new Date().toISOString(),
-    protocol: { ...PERF_PROTOCOL },
+    model: spec.id,
+    modelLabel: spec.label,
+    storageKey: perfStorageKey(spec.id),
+    protocol: { ...protocol },
     rows: rows.map((row) => ({ ...row })),
   };
   try {
