@@ -479,8 +479,8 @@ function readConfig(config) {
   const epochs = config.epochs;
   const batchSize = config.batchSize;
   const lr = config.lr;
-  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 30) {
-    throw new Error('Epochs must be a whole number from 1 to 30.');
+  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 200) {
+    throw new Error('Epochs must be a whole number from 1 to 200.');
   }
   if (!Number.isInteger(batchSize) || batchSize < 16 || batchSize > 512) {
     throw new Error('Batch size must be a whole number from 16 to 512.');

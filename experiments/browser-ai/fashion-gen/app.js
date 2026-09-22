@@ -351,8 +351,8 @@ function readForm() {
   const epochs = Number(epochsInput.value);
   const batchSize = Number(batchInput.value);
   const lr = Number(lrInput.value);
-  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 30) {
-    throw new Error('Epochs must be a whole number from 1 to 30.');
+  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 200) {
+    throw new Error('Epochs must be a whole number from 1 to 200.');
   }
   if (!Number.isInteger(batchSize) || batchSize < 16 || batchSize > 256) {
     throw new Error('Batch size must be a whole number from 16 to 256.');
