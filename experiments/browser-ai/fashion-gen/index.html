@@ -51,7 +51,7 @@
 
     <p class="section-label">Demo</p>
     <h1>Fashion gen</h1>
-    <p class="subtitle">Train a class-embedding conditional VAE on Fashion-MNIST clothing in this tab, then generate a 28×28 grayscale sample for a class you pick. Real images of that class sit beside the samples so the caption is the conditioning input, not a guess. TensorFlow.js uses WebGPU when it can, otherwise WASM, WebGL, or CPU.</p>
+    <p class="subtitle">Train a class-conditional Fashion-MNIST model in this tab — dense CVAE, convolutional CVAE, or cDCGAN — then generate a 28×28 grayscale garment. Conv models train on WebGL, WebGPU, or CPU. WASM can train the dense CVAE only.</p>
 
     <div id="cap-banner" class="banner" role="status" aria-live="polite">
       <p class="banner-kicker">This browser</p>
@@ -68,12 +68,14 @@
     </div>
 
     <section id="panel-train" role="tabpanel" aria-labelledby="tab-train">
-      <div class="callout blue"><strong>All in the tab.</strong> The first run downloads Fashion-MNIST (about 4.4 MB of gzip) and caches 10,000 clothing images in IndexedDB. Training uses 9,000 of them and holds out 1,000. The network is a dense VAE, so WASM can train it. Weights stay on this device.</div>
+      <div class="callout blue" id="train-callout"><strong>All in the tab.</strong> The first run downloads Fashion-MNIST (about 4.4 MB of gzip) and caches 10,000 clothing images in IndexedDB. Training uses 9,000 of them and holds out 1,000. Weights stay on this device. The dense CVAE can train on WASM. Conv CVAE and cDCGAN need WebGL, WebGPU, or CPU — TensorFlow.js WASM has no Conv2D training kernels.</div>
       <form id="train-form" class="panel">
         <div class="form-grid">
           <label class="field">Model
             <select id="model" name="model">
-              <option value="cvae" selected>Class-embedding CVAE</option>
+              <option value="cvae" selected>Dense CVAE (class embedding)</option>
+              <option value="conv-cvae">Conv CVAE (sharper VAE)</option>
+              <option value="cdcgan">cDCGAN (sharpest)</option>
             </select>
           </label>
           <label class="field">Backend
@@ -95,9 +97,10 @@
             <input id="lr" name="lr" type="number" min="0.0001" max="0.1" step="0.0001" value="0.001">
           </label>
         </div>
-        <p class="field-help" id="epochs-hint">Long runs can tie up this browser tab.</p>
+        <p class="field-help" id="epochs-hint">Best known here: 8 epochs, batch 64, Adam 1e-3, latent 16. The class embedding is concatenated at every dense layer, with a zero-init class template on the logits. WASM can train this net.</p>
         <p class="field-help" id="backend-note">Checking which backend this browser will use.</p>
         <div class="btn-row">
+          <button type="button" id="best-known">Best known</button>
           <button class="primary" type="button" id="start" disabled>Start training</button>
           <button type="button" id="stop" disabled>Stop</button>
         </div>
@@ -106,7 +109,7 @@
     </section>
 
     <section id="panel-samples" role="tabpanel" aria-labelledby="tab-samples" hidden>
-      <div class="callout blue"><strong>28×28 grayscale.</strong> The class menu defaults to Trouser. Generate decodes that class, and the strip beside it shows two real Fashion-MNIST images with the same caption. Class means use the zero latent vector. A short run stays soft — this is still a small dense VAE, not a photo model.</div>
+      <div class="callout blue" id="samples-callout"><strong>28×28 grayscale.</strong> The class menu starts on Trouser. Generate decodes that class, and the strip beside it shows two real Fashion-MNIST images with the same caption. The conv VAE is sharper than the dense one, and both stay softer than the GAN.</div>
       <article class="panel">
         <div class="form-grid">
           <label class="field">Class
@@ -144,19 +147,19 @@
 
       <article class="panel">
         <h2>Generated samples</h2>
-        <p class="hint">A new draw from the unit normal, conditioned on the class in the menu. The caption is that conditioning input. Generate again for a fresh set.</p>
+        <p class="hint" id="generated-hint">A new draw from the prior, conditioned on the class in the menu. The caption is that conditioning input. Generate again for a fresh set.</p>
         <div class="sample-grid" id="sample-grid"><p class="hint">No samples yet.</p></div>
       </article>
 
       <article class="panel">
         <h2>Class means</h2>
-        <p class="hint">Decode z = 0 for every class. Each tile is conditioned on its caption. Trousers, sneakers, and bags should separate from shirts once reconstruction drops.</p>
+        <p class="hint" id="means-hint">Decode z = 0 for every class. Captions say Zero code. These are generated prototypes, not photos.</p>
         <div class="sample-grid" id="mean-grid"><p class="hint">No class means yet.</p></div>
       </article>
 
       <article class="panel">
         <h2>Latent walk</h2>
-        <p class="hint">Eight steps from one random code to another, for the class you picked. Random uses one class for the whole row, and the status line names it.</p>
+        <p class="hint" id="walk-hint">Eight generated steps from one random code to another, for the class you picked. Random uses one class for the whole row.</p>
         <div class="walk-row" id="walk-row"><p class="hint">No walk yet.</p></div>
       </article>
     </section>
@@ -165,28 +168,37 @@
       <p class="status-line" id="dash-status" role="status" aria-live="polite">No training run yet.</p>
       <div class="stats">
         <div class="stat"><span>Epoch</span><strong id="stat-epoch">—</strong></div>
-        <div class="stat"><span>Total</span><strong id="stat-loss">—</strong></div>
-        <div class="stat"><span>Recon / px</span><strong id="stat-recon">—</strong></div>
-        <div class="stat"><span>KL</span><strong id="stat-kl">—</strong></div>
+        <div class="stat"><span id="label-loss">Total</span><strong id="stat-loss">—</strong></div>
+        <div class="stat"><span id="label-recon">Recon / px</span><strong id="stat-recon">—</strong></div>
+        <div class="stat"><span id="label-kl">KL</span><strong id="stat-kl">—</strong></div>
         <div class="stat"><span>Samples/sec</span><strong id="stat-sps">—</strong></div>
       </div>
       <div class="panel-grid">
         <article class="panel">
-          <h2>Reconstruction</h2>
+          <h2 id="recon-title">Reconstruction</h2>
           <canvas class="chart" id="recon-chart" aria-label="Reconstruction loss by epoch"></canvas>
         </article>
         <article class="panel">
-          <h2>KL</h2>
+          <h2 id="kl-title">KL</h2>
           <canvas class="chart" id="kl-chart" aria-label="KL divergence by epoch"></canvas>
         </article>
       </div>
       <article class="panel" style="margin-top:16px">
         <h2>Epochs</h2>
-        <p class="hint">Recon is mean per-pixel binary cross-entropy on 256 training images, using the latent mean. KL is the same probe. Total is the training objective, recon summed over pixels plus β times KL. β warms from 0.05 to 1 across epochs (0.25 when you train a single epoch).</p>
+        <p class="hint" id="epoch-hint">Recon is mean per-pixel binary cross-entropy on 256 training images, using the latent mean. KL is the same probe. Total is the training objective, recon summed over pixels plus β times KL. β warms from 0.05 to 1 across epochs (0.25 when you train a single epoch).</p>
         <div class="table-wrap">
-          <table>
+          <table id="epoch-table">
             <thead>
-              <tr><th>Epoch</th><th>Recon/px</th><th>KL</th><th>Total</th><th>β</th><th>Val total</th><th>Samples/sec</th><th>Backend</th></tr>
+              <tr>
+                <th>Epoch</th>
+                <th>Recon/px</th>
+                <th>KL</th>
+                <th>Total</th>
+                <th>β</th>
+                <th>Val total</th>
+                <th>Samples/sec</th>
+                <th>Backend</th>
+              </tr>
             </thead>
             <tbody id="epoch-body">
               <tr class="empty"><td colspan="8">No epochs yet.</td></tr>
@@ -197,7 +209,7 @@
     </section>
 
     <section id="panel-perf" role="tabpanel" aria-labelledby="tab-perf" hidden>
-      <div class="callout orange"><strong>Same work, each backend.</strong> <span id="perf-protocol">Fixed short protocol: one epoch on 256 images, then a timed generate.</span> Missing backends are skipped. Cancel stops after the current batch. The last table is kept in <code>localStorage['browser-ai.fashion-perf']</code>.</div>
+      <div class="callout orange"><strong>Same work, the selected model.</strong> <span id="perf-protocol">Fixed short protocol: one epoch on 256 images, then a timed generate.</span> Missing backends are skipped. Conv CVAE and cDCGAN skip WASM. Cancel stops after the current batch. Results are kept per model in localStorage.</div>
       <article class="panel">
         <div class="btn-row" style="margin-top:0;margin-bottom:16px">
           <button type="button" class="primary" id="run-perf" disabled>Run tests</button>
@@ -224,13 +236,16 @@
         <table class="spec">
           <tr><td>Where it runs</td><td>Entirely in your browser. Nothing is uploaded. Training, sampling, and storage stay on this device.</td></tr>
           <tr><td>Library</td><td>TensorFlow.js 4.22.0 from jsDelivr, same scripts as the MNIST demo. No npm install and no build step.</td></tr>
-          <tr><td>Backends</td><td>Auto tries WebGPU (when <code>navigator.gpu</code> returns an adapter), then WASM, then WebGL, then CPU. The model is dense, so WASM can train it. The banner names the backend TensorFlow.js actually started.</td></tr>
           <tr><td>Data</td><td>Fashion-MNIST (Zalando): 28×28 grayscale clothing — T-shirt/top, trouser, pullover, dress, coat, sandal, shirt, sneaker, bag, ankle boot, in that official order. The page fetches the official 10,000-image test split as gzip IDX from jsDelivr, with GitHub raw as a fallback, then caches it in IndexedDB (<code>browser-ai</code> / <code>fashion-mnist-10k-v1</code>). Training uses 9,000 images and validation 1,000, a fixed shuffle of the whole pool. The 60,000-image training file is left on the server so the first visit stays small.</td></tr>
-          <tr><td>Model</td><td>Conditional VAE, dense only, so WASM can train it. The class one-hot is projected to a 16-d embedding and concatenated into both hidden layers and the pixel logits. A zero-initialized template maps the one-hot straight onto those logits, so the class has a path that does not depend on z. Encoder: 784 pixels plus the embedding, two 128-unit ReLU layers, then 16-d mean and log-variance. Decoder: z plus the embedding, two 128-unit ReLU layers, then 784 sigmoid pixels. About 270k parameters. Loss is Bernoulli reconstruction (binary cross-entropy, summed over pixels) plus β times KL to the unit normal. β is 0.25 for a one-epoch run and otherwise moves from 0.05 to 1. Optimizer is Adam. Captions are this conditioning input, not a classifier score.</td></tr>
-          <tr><td>Samples</td><td>The class menu opens on Trouser. Generate draws z from the unit normal and decodes it conditioned on the chosen class. The real-vs-generated strip places two cached Fashion-MNIST images of that class beside the samples, with matching captions. A finished training run fills that strip for every class (two real, two generated) and the class means, instead of a random mix. Class means decode the zero vector once per class. Latent walk blends two prior samples in eight steps. The status line names the conditioned class. Press Generate again for a new draw.</td></tr>
-          <tr><td>Perf</td><td>One epoch, 256 images, batch 32, Adam at 0.001, then 32 generated images timed after a 4-image warmup. WebGPU, WASM, WebGL, and CPU run only when this browser has them. Results land in <code>localStorage['browser-ai.fashion-perf']</code>. These runs do not replace the saved checkpoint.</td></tr>
-          <tr><td>Storage</td><td>Best validation checkpoint at <code>indexeddb://browser-ai-fashion-cvae-e16-h128-z16-enc</code> and <code>indexeddb://browser-ai-fashion-cvae-e16-h128-z16-dec</code>. Older tiny checkpoints (<code>h64-z8</code>) are not loaded. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the lab hub.</td></tr>
-          <tr><td>Caveat</td><td>A few epochs still look soft next to the real tiles. Trousers, sneakers, and bags should read as those classes sooner than shirts, coats, and pullovers, which share a silhouette. It will not look like a catalog photo. The caption is the class the decoder was given. WebGPU needs localhost or HTTPS. If a backend fails to start, Auto falls forward and the banner says which one took the job.</td></tr>
+          <tr><td>Dense CVAE</td><td>The WASM-trainable default. The class one-hot is projected to a 16-d embedding and concatenated into both hidden layers and the pixel logits. A zero-initialized template maps the one-hot straight onto those logits, so the class has a path that does not depend on z. Encoder: 784 pixels plus the embedding, two 128-unit ReLU layers, then 16-d mean and log-variance. Decoder: z plus the embedding, two 128-unit ReLU layers, then 784 sigmoid pixels. About 269k parameters. Loss is Bernoulli reconstruction (binary cross-entropy, summed over pixels) plus β times KL to the unit normal. β is 0.25 for a one-epoch run and otherwise moves from 0.05 to 1. Adam at 1e-3. Best-known preset: 8 epochs, batch 64. Captions are this conditioning input, not a classifier score.</td></tr>
+          <tr><td>Conv CVAE</td><td>The sharper VAE. Three stride-2 convolutions (32, 64, 128) take 28×28 down to 4×4. Latent size is 32, inside the 16–32 range that keeps garment structure without a huge code. The decoder maps z to 7×7 and uses three Conv2DTranspose stages (stride 1, then 2, then 2) back to 28×28×1 with a sigmoid. A learned class embedding is concatenated onto the image and the encoder bottleneck, and onto z and the 7×7 map — the conditional-VAE concat pattern, not a bias add. About 448k parameters. Adam 1e-3, Bernoulli BCE, same β warmup. Best-known preset: 50 epochs (50–100 is the range this usually needs), batch 64. This follows the convolutional VAE practice (conv encoder, transposed-conv decoder, BCE) used for Fashion-MNIST-sized images.</td></tr>
+          <tr><td>cDCGAN</td><td>The sharpest option. Radford, Metz, and Chintala (DCGAN, 2015): Adam 2e-4, β1 0.5, latent noise 100. The generator is the 28×28 stack from the TensorFlow DCGAN tutorial — dense to 7×7×256, Conv2DTranspose, tanh in [−1, 1] — with batch norm in the generator. The discriminator is strided Conv2D, LeakyReLU 0.2, and dropout 0.3. Class conditioning follows Mirza and Osindero: a learned class embedding is concatenated into G (with z, and on the 7×7 map) and into D (as extra image channels, and again before the logit). About 3.1 million parameters. Training alternates one discriminator step and one generator step. Best-known preset: 50 epochs. This tab fills batch 64 so the browser stays within memory; the usual GPU recipe uses 128. Dashboard charts are G loss and D loss. Pixels are scaled to [−1, 1] for training and mapped back to grayscale for display.</td></tr>
+          <tr><td>Sharpness</td><td>A VAE trains with pixel-wise cross-entropy, which averages the garments that share a code, so edges stay soft. A GAN’s discriminator penalizes that blur. On Fashion-MNIST, that is why a DCGAN-style model is the usual route to sharp samples and why published FID comparisons put adversarial models ahead of VAEs. The conv CVAE sits between the dense VAE and the GAN: the convolutions keep spatial structure, and the likelihood term still softens it.</td></tr>
+          <tr><td>Backends</td><td>Auto for the dense CVAE tries WebGPU (when <code>navigator.gpu</code> returns an adapter), then WASM, then WebGL, then CPU. Conv CVAE and cDCGAN need convolution training kernels. TensorFlow.js WASM does not ship Conv2D or Conv2DTranspose gradients, so Auto for those models tries WebGPU, then WebGL, then CPU, and skips WASM. Choosing WASM shows a status and moves the run to WebGL, WebGPU, or CPU when one of those exists. CPU can train the conv models, slowly. The banner names the backend that actually started.</td></tr>
+          <tr><td>Samples</td><td>The class menu opens on Trouser. Generate draws a code from the unit normal and decodes it conditioned on the chosen class. cDCGAN uses that code as noise. The real-vs-generated strip places two cached Fashion-MNIST images of that class beside the samples, with matching captions. A finished training run fills that strip for every class (two real, two generated) and the class means. Class means decode the zero code once per class. Latent walk blends two codes in eight steps. The status line names the conditioned class.</td></tr>
+          <tr><td>Perf</td><td>One epoch of the selected model on 256 images, batch 32, that model’s learning rate, then 32 generated images timed after a 4-image warmup. WebGPU, WASM, WebGL, and CPU run only when this browser has them. WASM is skipped for Conv CVAE and cDCGAN. Results land in <code>localStorage['browser-ai.fashion-perf']</code> for the dense model and in <code>browser-ai.fashion-perf.conv-cvae</code> or <code>browser-ai.fashion-perf.cdcgan</code> for the others. These runs do not replace the saved checkpoint.</td></tr>
+          <tr><td>Storage</td><td>Separate IndexedDB checkpoints, so the three models do not overwrite each other. Dense: <code>indexeddb://browser-ai-fashion-cvae-e16-h128-z16-enc</code> and <code>…-dec</code>. Older dense checkpoints (<code>h64-z8</code>) are not loaded. Conv CVAE: <code>indexeddb://browser-ai-fashion-conv-cvae-z32-enc</code> and <code>…-dec</code>. cDCGAN: <code>indexeddb://browser-ai-fashion-cdcgan-z100-g</code> and <code>…-d</code>. Run metadata is appended to <code>localStorage['browser-ai.runs']</code> for the lab hub.</td></tr>
+          <tr><td>Caveat</td><td>These are 28×28 models, not catalog photos. The dense VAE looks soft after a short run. The conv VAE and the GAN need the longer preset, and the first conv batch spends time compiling kernels. WebGPU needs localhost or HTTPS. If a backend fails to start, Auto falls forward and the banner says which one took the job.</td></tr>
         </table>
       </article>
     </section>

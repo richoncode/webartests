@@ -2,7 +2,13 @@ import { detectCapabilities, mountCapabilityBanner } from '../shared/capabilitie
 import { drawSeriesChart } from '../shared/metrics.js';
 import { appendRun } from '../shared/runs.js';
 import { initTabs } from '../shared/tabs.js';
-import { activateBackend, backendChoiceLabel, getTf, loadTensorflow } from './backend.js';
+import {
+  activateForModel,
+  backendChoiceLabel,
+  getTf,
+  loadTensorflow,
+  planBackend,
+} from './backend.js';
 import {
   CLASS_NAMES,
   IMAGE_PIXELS,
@@ -11,10 +17,20 @@ import {
   classExampleIndices,
   loadFashion,
 } from './data.js';
-import { classMeans, generateBatch, generateForClasses, latentWalk, paintGray } from './generate.js';
-import { disposeVae, loadVae, presetLabel, saveVae } from './model.js';
-import { PERF_PROTOCOL, loadPerf, runPerfSweep } from './perf.js';
+import { classMeans, generateBatch, latentWalk, paintGray } from './generate.js';
+import {
+  disposeFashionModel,
+  getModelSpec,
+  loadFashionModel,
+  saveFashionModel,
+} from './model.js';
+import { loadPerf, protocolFor, runPerfSweep } from './perf.js';
 import { trainFashion } from './train.js';
+
+const VAE_HEAD = ['Epoch', 'Recon/px', 'KL', 'Total', 'β', 'Val total', 'Samples/sec', 'Backend'];
+const GAN_HEAD = ['Epoch', 'D loss', 'G loss', '—', '—', '—', 'Samples/sec', 'Backend'];
+const VAE_EPOCH_HINT = 'Recon is mean per-pixel binary cross-entropy on 256 training images, using the latent mean. KL is the same probe. Total is the training objective, recon summed over pixels plus β times KL. β warms from 0.05 to 1 across epochs (0.25 when you train a single epoch).';
+const GAN_EPOCH_HINT = 'G and D are the epoch-mean adversarial losses (sigmoid cross-entropy from logits). D scores real images against fakes. G wants D to call fakes real. Adam uses β1 0.5. There is no KL term.';
 
 const banner = document.getElementById('cap-banner');
 const backendNote = document.getElementById('backend-note');
@@ -27,8 +43,10 @@ const epochsInput = document.getElementById('epochs');
 const batchInput = document.getElementById('batch');
 const lrInput = document.getElementById('lr');
 const modelSelect = document.getElementById('model');
+const epochsHint = document.getElementById('epochs-hint');
 const startBtn = document.getElementById('start');
 const stopBtn = document.getElementById('stop');
+const presetBtn = document.getElementById('best-known');
 const generateBtn = document.getElementById('generate');
 const meansBtn = document.getElementById('class-means');
 const walkBtn = document.getElementById('latent-walk');
@@ -51,8 +69,12 @@ const sampleGrid = document.getElementById('sample-grid');
 const meanGrid = document.getElementById('mean-grid');
 const walkRow = document.getElementById('walk-row');
 const verifyGrid = document.getElementById('verify-grid');
+const samplesCallout = document.getElementById('samples-callout');
+const meansHint = document.getElementById('means-hint');
+const generatedHint = document.getElementById('generated-hint');
+const epochHint = document.getElementById('epoch-hint');
 
-const charts = { recon: [], kl: [] };
+const charts = { recon: [], kl: [], family: 'vae' };
 
 let caps = null;
 let active = null;
@@ -63,7 +85,7 @@ let stopFlag = false;
 let tfReady = false;
 let backendGeneration = 0;
 
-const tabs = initTabs(document, {
+initTabs(document, {
   onChange(id) {
     if (id === 'dashboard') paintCharts();
   },
@@ -73,20 +95,65 @@ document.getElementById('train-form').addEventListener('submit', (event) => {
   event.preventDefault();
 });
 
-protocolNote.textContent = `Fixed protocol: ${PERF_PROTOCOL.epochs} epoch, ${PERF_PROTOCOL.trainSamples} images, batch ${PERF_PROTOCOL.batchSize}, learning rate ${formatLr(PERF_PROTOCOL.lr)}, then ${PERF_PROTOCOL.genCount} generated images timed after a ${PERF_PROTOCOL.warmupGens}-image warmup.`;
-
+syncFamilyChrome();
+syncProtocolNote();
 resetEpochTable();
 paintCharts();
-renderPerf(loadPerf());
+renderPerf(loadPerf(modelSelect.value));
 window.addEventListener('resize', paintCharts);
+
+presetBtn.addEventListener('click', () => {
+  applyPreset(modelSelect.value, true);
+});
+
+modelSelect.addEventListener('change', () => {
+  if (job) return;
+  applyPreset(modelSelect.value, false);
+  const spec = currentSpec();
+  if (charts.family !== spec.family) beginSession();
+  syncFamilyChrome();
+  syncProtocolNote();
+  renderPerf(loadPerf(spec.id));
+  if (!tfReady) {
+    announceReady();
+    return;
+  }
+  const generation = ++backendGeneration;
+  syncButtons();
+  ensureBackend(backendSelect.value)
+    .then(async () => {
+      if (generation !== backendGeneration) return;
+      await adoptSavedModel();
+      await showLoadedComparison();
+      announceReady();
+    })
+    .catch((error) => {
+      console.error(error);
+      setStatus(errorText(error), 'error');
+    })
+    .finally(() => {
+      if (generation === backendGeneration) syncButtons();
+    });
+});
 
 startBtn.addEventListener('click', () => {
   runJob('train', async () => {
     const config = readForm();
-    await ensureBackend(config.backend);
+    const spec = getModelSpec(config.model);
+    const plan = await ensureBackend(config.backend);
+    if (model) {
+      disposeFashionModel(model);
+      model = null;
+      syncButtons();
+    }
     config.backendLabel = active.label;
     beginSession();
-    setStatus(`Training ${presetLabel()} on ${active.label}…`);
+    syncFamilyChrome();
+    const wasmNote = plan && plan.redirected
+      ? ` WASM cannot train this model (no Conv2D or Conv2DTranspose kernels), so this run is on ${active.label}.`
+      : '';
+    const compileNote = spec.convTrain ? ' The first batch compiles kernels.' : '';
+    setStatus(`Training ${spec.label} on ${active.label}…${wasmNote}${compileNote}`);
     const result = await trainFashion(config, hooks());
     await finishResult(config, result);
   });
@@ -109,9 +176,11 @@ walkBtn.addEventListener('click', () => {
 
 runPerfBtn.addEventListener('click', () => {
   runJob('perf', async () => {
+    const spec = currentSpec();
     perfSaved.textContent = '';
-    setPerfStatus('Starting the backend sweep…');
+    setPerfStatus(`Starting the ${spec.label} backend sweep…`);
     const payload = await runPerfSweep({
+      model: spec.id,
       caps,
       shouldStop: () => stopFlag,
       onUpdate: renderPerf,
@@ -120,24 +189,26 @@ runPerfBtn.addEventListener('click', () => {
     renderPerf(payload);
     const done = payload.rows.filter((row) => row.status === 'done').length;
     if (stopFlag) setPerfStatus('Perf compare cancelled. Partial results are saved in this browser.', done ? 'ok' : '');
-    else setPerfStatus(`Perf compare finished. ${done} backend${done === 1 ? '' : 's'} completed.`, done ? 'ok' : '');
+    else setPerfStatus(`Perf compare finished for ${spec.label}. ${done} backend${done === 1 ? '' : 's'} completed.`, done ? 'ok' : '');
     await ensureBackend(backendSelect.value);
     await adoptSavedModel();
+    await showLoadedComparison();
   });
 });
 
 backendSelect.addEventListener('change', () => {
-  if (job || !tfReady) return;
+  if (job || !tfReady) {
+    syncFamilyChrome();
+    return;
+  }
   const generation = ++backendGeneration;
-  backendSelect.disabled = true;
+  syncButtons();
   ensureBackend(backendSelect.value)
     .then(async () => {
       if (generation !== backendGeneration) return;
       await adoptSavedModel();
-      if (dataset && model) {
-        await showClassVerification(2);
-        setSampleStatus('Saved weights loaded. Each generated image was conditioned on its caption. Real Fashion-MNIST of that class sits beside it.', 'ok');
-      }
+      await showLoadedComparison();
+      announceReady();
     })
     .catch((error) => {
       console.error(error);
@@ -173,7 +244,7 @@ async function boot() {
 
   const dataPromise = loadFashion(onDataProgress).then((data) => {
     dataset = data;
-    paintVerifyReals(data);
+    if (!model) paintVerifyReals(data);
     return data;
   }).catch((error) => {
     console.error(error);
@@ -186,26 +257,92 @@ async function boot() {
   try {
     await loadTensorflow();
     tfReady = true;
-    active = await activateBackend(backendSelect.value, caps);
-    applyActive(active);
+    await ensureBackend(backendSelect.value);
     await adoptSavedModel();
     const data = dataset || await dataPromise;
+    if (data && model) await showLoadedComparison();
+    else if (data) paintVerifyReals(data);
     const cacheNote = data && data.fromCache
       ? 'Fashion-MNIST is cached in this browser.'
       : 'The first train downloads Fashion-MNIST (about 4.4 MB) if it is not cached yet.';
-    setStatus(model
-      ? `Saved weights loaded. Generate samples, or train again to replace them. ${cacheNote}`
-      : `Ready. ${cacheNote}`);
-    if (model && data) {
-      await showClassVerification(2);
-      setSampleStatus('Saved weights loaded. Each generated image was conditioned on its caption. Real Fashion-MNIST of that class sits beside it.', 'ok');
-    }
+    announceReady(cacheNote);
   } catch (error) {
     console.error(error);
     setStatus(errorText(error), 'error');
     backendNote.textContent = 'TensorFlow.js did not start. Training stays disabled.';
   }
   syncButtons();
+}
+
+function currentSpec() {
+  return getModelSpec(modelSelect.value || 'cvae');
+}
+
+function applyPreset(id, announce) {
+  const spec = getModelSpec(id);
+  epochsInput.value = String(spec.preset.epochs);
+  batchInput.value = String(spec.preset.batchSize);
+  lrInput.value = String(spec.preset.lr);
+  epochsHint.textContent = spec.recipe;
+  if (announce) {
+    setStatus(`Best-known settings for ${spec.label}: ${spec.preset.epochs} epochs, batch ${spec.preset.batchSize}, learning rate ${formatLr(spec.preset.lr)}.`);
+  }
+}
+
+function syncFamilyChrome() {
+  const spec = currentSpec();
+  const gan = spec.family === 'gan';
+  epochsHint.textContent = spec.recipe;
+  document.getElementById('label-loss').textContent = gan ? 'G loss' : 'Total';
+  document.getElementById('label-recon').textContent = gan ? 'D loss' : 'Recon / px';
+  document.getElementById('label-kl').textContent = gan ? 'β1' : 'KL';
+  document.getElementById('recon-title').textContent = gan ? 'Generator' : 'Reconstruction';
+  document.getElementById('kl-title').textContent = gan ? 'Discriminator' : 'KL';
+  epochHint.textContent = gan ? GAN_EPOCH_HINT : VAE_EPOCH_HINT;
+  const heads = document.querySelectorAll('#epoch-table thead th');
+  const labels = gan ? GAN_HEAD : VAE_HEAD;
+  heads.forEach((th, index) => {
+    th.textContent = labels[index] || '';
+  });
+  if (gan && !charts.recon.length) statKl.textContent = spec.beta1.toFixed(2);
+  if (!charts.recon.length) charts.family = spec.family;
+  if (samplesCallout) {
+    samplesCallout.innerHTML = gan
+      ? '<strong>Noise plus a class.</strong> The class menu starts on Trouser. cDCGAN samples are tanh images, drawn as grayscale. The strip pairs two real Fashion-MNIST images with samples conditioned on that same class.'
+      : '<strong>28×28 grayscale.</strong> The class menu starts on Trouser. Generate decodes that class, and the strip beside it shows two real Fashion-MNIST images with the same caption. The conv VAE is sharper than the dense one, and both stay softer than the GAN.';
+  }
+  if (generatedHint) {
+    generatedHint.textContent = gan
+      ? 'A new noise vector plus the class. Every caption says Generated. These are not dataset photos.'
+      : 'A new draw from the prior, conditioned on the class. Every caption says Generated. These are not dataset photos.';
+  }
+  if (meansHint) {
+    meansHint.textContent = gan
+      ? 'Decode the zero noise vector for every class. Captions say Zero code. These are generated, not photos.'
+      : 'Decode z = 0 for every class. Captions say Zero code. These are generated prototypes, not photos.';
+  }
+  paintCharts();
+}
+
+function syncProtocolNote() {
+  const spec = currentSpec();
+  const protocol = protocolFor(spec.id);
+  const skip = spec.convTrain ? ' WASM is skipped because it cannot train Conv2D or Conv2DTranspose.' : '';
+  protocolNote.textContent = `Fixed protocol for ${spec.label}: ${protocol.epochs} epoch, ${protocol.trainSamples} images, batch ${protocol.batchSize}, learning rate ${formatLr(protocol.lr)}, then ${protocol.genCount} generated images timed after a ${protocol.warmupGens}-image warmup.${skip}`;
+}
+
+function announceReady(cacheNote) {
+  const spec = currentSpec();
+  if (spec.convTrain && backendSelect.value === 'wasm') {
+    const where = active ? active.label : 'WebGL, WebGPU, or CPU';
+    setStatus(`WASM cannot train ${spec.label}. TensorFlow.js has no Conv2D or Conv2DTranspose training kernels on WASM. Auto skips WASM. Start uses ${where}.`, 'error');
+    return;
+  }
+  const loaded = model
+    ? `Saved ${spec.label} weights loaded.`
+    : `No saved ${spec.label} checkpoint yet.`;
+  const extra = cacheNote ? ` ${cacheNote}` : '';
+  setStatus(`${loaded} ${spec.recipe}${extra}`);
 }
 
 function hooks() {
@@ -223,31 +360,56 @@ function onDataProgress(info) {
   else if (info.phase === 'download') setStatus(`Downloading Fashion-MNIST… ${info.label || ''}`.trim());
   else if (info.phase === 'decode') setStatus('Unpacking Fashion-MNIST…');
   else if (info.phase === 'cache-write') setStatus('Caching Fashion-MNIST in IndexedDB…');
-  else if (info.phase === 'tensors') setStatus('Building the conditional VAE…');
+  else if (info.phase === 'tensors') setStatus(`Building ${currentSpec().label}…`);
 }
 
 function onBatch(info) {
   statEpoch.textContent = `${info.epoch} / ${info.epochs}`;
-  statLoss.textContent = formatLoss(info.loss);
   statSps.textContent = formatSps(info.samplesPerSec);
+  if (info.family === 'gan') {
+    statLoss.textContent = formatLoss(info.gLoss);
+    statRecon.textContent = formatLoss(info.dLoss);
+    statKl.textContent = '0.50';
+    setStatus(`Epoch ${info.epoch}/${info.epochs} · batch ${info.batch}/${info.batches} · G ${formatLoss(info.gLoss)} · D ${formatLoss(info.dLoss)} · ${formatSps(info.samplesPerSec)} samples/sec`);
+    return;
+  }
+  statLoss.textContent = formatLoss(info.loss);
   setStatus(`Epoch ${info.epoch}/${info.epochs} · batch ${info.batch}/${info.batches} · total ${formatLoss(info.loss)} · β ${formatBeta(info.beta)} · ${formatSps(info.samplesPerSec)} samples/sec`);
 }
 
 function recordEpoch(row) {
+  const gan = row.family === 'gan';
+  charts.family = gan ? 'gan' : 'vae';
   if (epochBody.querySelector('.empty')) epochBody.replaceChildren();
-  charts.recon.push(row.recon / IMAGE_PIXELS);
-  charts.kl.push(row.kl);
+  if (gan) {
+    charts.recon.push(row.gLoss);
+    charts.kl.push(row.dLoss);
+  } else {
+    charts.recon.push(row.recon / IMAGE_PIXELS);
+    charts.kl.push(row.kl);
+  }
   const tr = document.createElement('tr');
-  const cells = [
-    String(row.epoch),
-    formatRecon(row.recon),
-    formatKl(row.kl),
-    formatLoss(row.loss),
-    formatBeta(row.beta),
-    formatLoss(row.valLoss),
-    formatSps(row.samplesPerSec),
-    row.backend,
-  ];
+  const cells = gan
+    ? [
+      String(row.epoch),
+      formatLoss(row.dLoss),
+      formatLoss(row.gLoss),
+      '—',
+      '—',
+      '—',
+      formatSps(row.samplesPerSec),
+      row.backend,
+    ]
+    : [
+      String(row.epoch),
+      formatRecon(row.recon),
+      formatKl(row.kl),
+      formatLoss(row.loss),
+      formatBeta(row.beta),
+      formatLoss(row.valLoss),
+      formatSps(row.samplesPerSec),
+      row.backend,
+    ];
   for (const text of cells) {
     const td = document.createElement('td');
     td.textContent = text;
@@ -255,20 +417,28 @@ function recordEpoch(row) {
   }
   epochBody.appendChild(tr);
   statEpoch.textContent = `${row.epoch} / ${row.epochs}`;
-  statLoss.textContent = formatLoss(row.loss);
-  statRecon.textContent = formatRecon(row.recon);
-  statKl.textContent = formatKl(row.kl);
   statSps.textContent = formatSps(row.samplesPerSec);
-  setStatus(`Epoch ${row.epoch}/${row.epochs} done · recon/px ${formatRecon(row.recon)} · KL ${formatKl(row.kl)} · total ${formatLoss(row.loss)} · val ${formatLoss(row.valLoss)} · ${row.seconds.toFixed(1)}s`);
+  if (gan) {
+    statLoss.textContent = formatLoss(row.gLoss);
+    statRecon.textContent = formatLoss(row.dLoss);
+    statKl.textContent = '0.50';
+    setStatus(`Epoch ${row.epoch}/${row.epochs} done · G ${formatLoss(row.gLoss)} · D ${formatLoss(row.dLoss)} · ${row.seconds.toFixed(1)}s`);
+  } else {
+    statLoss.textContent = formatLoss(row.loss);
+    statRecon.textContent = formatRecon(row.recon);
+    statKl.textContent = formatKl(row.kl);
+    setStatus(`Epoch ${row.epoch}/${row.epochs} done · recon/px ${formatRecon(row.recon)} · KL ${formatKl(row.kl)} · total ${formatLoss(row.loss)} · val ${formatLoss(row.valLoss)} · ${row.seconds.toFixed(1)}s`);
+  }
   paintCharts();
 }
 
 async function finishResult(config, result) {
   if (!result || result.epochsRun < 1 || !result.model) {
     setStatus('Stopped before the first epoch finished. No run saved.');
+    await restoreCheckpoint();
     return;
   }
-  if (model && model !== result.model) disposeVae(model);
+  if (model && model !== result.model) disposeFashionModel(model);
   model = result.model;
   syncButtons();
   const cacheNote = result.fromCache ? ' Fashion-MNIST cache hit.' : ' Fashion-MNIST cached in IndexedDB.';
@@ -278,7 +448,10 @@ async function finishResult(config, result) {
   const lead = result.stopped
     ? `Stopped after ${result.epochsRun} epoch${result.epochsRun === 1 ? '' : 's'}`
     : `Finished ${result.epochsRun} epoch${result.epochsRun === 1 ? '' : 's'}`;
-  setStatus(`${lead} · recon/px ${formatRecon(result.recon)} · KL ${formatKl(result.kl)} · ${formatSps(result.samplesPerSec)} samples/sec · ${result.backend}.${cacheNote}${saveNote}`, result.saveError ? 'error' : 'ok');
+  const summary = result.family === 'gan'
+    ? `G ${formatLoss(result.gLoss)} · D ${formatLoss(result.dLoss)}`
+    : `recon/px ${formatRecon(result.recon)} · KL ${formatKl(result.kl)}`;
+  setStatus(`${lead} · ${result.presetName} · ${summary} · ${formatSps(result.samplesPerSec)} samples/sec · ${result.backend}.${cacheNote}${saveNote}`, result.saveError ? 'error' : 'ok');
   setSampleStatus('Checkpoint ready. Building the real vs generated check…');
   try {
     if (!dataset) dataset = await loadFashion();
@@ -286,83 +459,133 @@ async function finishResult(config, result) {
     await showMeans();
     setGalleryHint(sampleGrid, 'Use Generate for a larger draw of the class selected above. The grid above pairs real Fashion-MNIST with samples conditioned on that class.');
     if (tabs) tabs.show('samples');
-    setSampleStatus(`Verification grid ready. Each generated image was conditioned on its caption (${CLASS_NAMES.join(', ')}). Two real Fashion-MNIST images of that class sit beside them. Class means use z = 0. Recon/px ${formatRecon(result.recon)}.`, 'ok');
+    const quality = result.family === 'gan'
+      ? `G ${formatLoss(result.gLoss)} · D ${formatLoss(result.dLoss)}`
+      : `Recon/px ${formatRecon(result.recon)}`;
+    setSampleStatus(`Verification grid ready. Each generated image was conditioned on its caption. Two real Fashion-MNIST images of that class sit beside them. ${quality}.`, 'ok');
   } catch (error) {
     console.error(error);
     setSampleStatus(`Training finished, but sampling failed. ${errorText(error)}`, 'error');
   }
   try {
-    appendRun({
+    const run = {
       id: `fashion-${Date.now()}`,
-      name: `Fashion VAE · recon/px ${formatRecon(result.recon)}`,
+      name: result.family === 'gan'
+        ? `Fashion ${result.presetName} · G ${formatLoss(result.gLoss)}`
+        : `Fashion ${result.presetName} · recon/px ${formatRecon(result.recon)}`,
       demo: 'fashion-gen',
       backend: result.backend,
       savedAt: new Date().toISOString(),
-      loss: Number(result.loss.toFixed(2)),
-      recon: Number(formatRecon(result.recon)),
-      kl: Number(formatKl(result.kl)),
+      loss: Number.isFinite(result.loss) ? Number(formatLoss(result.loss)) : null,
       epochs: result.epochsRun,
       batchSize: result.batchSize,
       learningRate: config.lr,
-      model: 'cvae',
+      model: result.modelId,
       samplesPerSec: Math.round(result.samplesPerSec || 0),
       durationMs: Math.round(result.durationMs || 0),
       stopped: !!result.stopped,
-    });
+    };
+    if (result.family === 'gan') {
+      run.gLoss = Number(formatLoss(result.gLoss));
+      run.dLoss = Number(formatLoss(result.dLoss));
+    } else {
+      run.recon = Number(formatRecon(result.recon));
+      run.kl = Number(formatKl(result.kl));
+    }
+    appendRun(run);
   } catch (error) {
     console.warn('Could not write run history', error);
   }
 }
 
-async function ensureBackend(choice) {
-  const sameAuto = choice === 'auto' && active && active.requested === 'auto';
-  const sameExplicit = choice !== 'auto' && active && active.requested === choice && active.name === choice;
-  if (sameAuto || sameExplicit) return;
-  if (model) {
-    try {
-      await saveVae(model);
-    } catch (error) {
-      console.warn(error);
-    }
-    disposeVae(model);
-    model = null;
-    syncButtons();
+async function restoreCheckpoint() {
+  if (model) return;
+  try {
+    model = await loadFashionModel(getTf(), modelSelect.value || 'cvae');
+  } catch (error) {
+    console.warn(error);
   }
-  const next = await activateBackend(choice, caps);
-  applyActive(next);
-}
-
-async function adoptSavedModel() {
-  if (model) {
-    try {
-      await saveVae(model);
-    } catch (error) {
-      console.warn(error);
-    }
-    disposeVae(model);
-    model = null;
-  }
-  model = await loadVae(getTf());
-  if (model) setSampleStatus('Saved weights loaded. Generate a clothing class.');
   syncButtons();
 }
 
-function applyActive(next) {
+async function ensureBackend(choice) {
+  const spec = currentSpec();
+  const requested = choice || 'auto';
+  const plan = planBackend(requested, spec, caps);
+  const wasmBlocked = !!(spec.convTrain && active && active.name === 'wasm');
+  const sameAuto = requested === 'auto' && active && active.requested === 'auto' && !wasmBlocked;
+  const sameExplicit = requested !== 'auto' && active && !wasmBlocked && (
+    plan.redirected
+      ? active.redirectedFromWasm && active.name === plan.choice
+      : active.requested === requested && active.name === requested
+  );
+  if (sameAuto || sameExplicit) {
+    applyActive(active, plan);
+    return plan;
+  }
+  if (model) {
+    try {
+      await saveFashionModel(model);
+    } catch (error) {
+      console.warn(error);
+    }
+    disposeFashionModel(model);
+    model = null;
+    syncButtons();
+  }
+  const next = await activateForModel(plan.choice, caps, spec);
+  next.requested = requested;
+  next.redirectedFromWasm = !!plan.redirected;
+  if (plan.redirected) next.fellBack = true;
+  applyActive(next, plan);
+  return plan;
+}
+
+async function adoptSavedModel() {
+  const id = modelSelect.value || 'cvae';
+  if (model) {
+    try {
+      await saveFashionModel(model);
+    } catch (error) {
+      console.warn(error);
+    }
+    disposeFashionModel(model);
+    model = null;
+  }
+  model = await loadFashionModel(getTf(), id);
+  if (model) setSampleStatus(`Saved ${model.label} weights loaded. Generate a clothing class.`);
+  syncButtons();
+}
+
+function applyActive(next, plan) {
   active = next;
+  const spec = currentSpec();
   mountCapabilityBanner(banner, caps, {
     activeBackend: next.name,
     activeLabel: next.label,
     fellBack: next.fellBack,
     requestedLabel: backendChoiceLabel(next.requested),
   });
-  const fallback = next.fellBack ? ` ${backendChoiceLabel(next.requested)} did not start, so this is the fallback.` : '';
-  backendNote.textContent = `Active backend: ${next.label}.${fallback} Training uses ${TRAIN_COUNT.toLocaleString()} images and ${VAL_COUNT.toLocaleString()} validation images. The VAE is dense, so WASM can train it.`;
+  const fallback = next.fellBack && !next.redirectedFromWasm
+    ? ` ${backendChoiceLabel(next.requested)} did not start, so this is the fallback.`
+    : '';
+  const counts = `Training uses ${TRAIN_COUNT.toLocaleString()} images and ${VAL_COUNT.toLocaleString()} validation images.`;
+  if (spec.convTrain) {
+    const wasm = (plan && plan.redirected) || next.redirectedFromWasm
+      ? ` WASM cannot train ${spec.label}. TensorFlow.js has no Conv2D or Conv2DTranspose training kernels on WASM, so this is ${next.label}.`
+      : ' WASM cannot train Conv2D or Conv2DTranspose, so this model uses WebGL, WebGPU, or CPU. Auto skips WASM.';
+    backendNote.textContent = `Active backend: ${next.label}.${fallback}${wasm} ${counts}`;
+    return;
+  }
+  backendNote.textContent = `Active backend: ${next.label}.${fallback} The dense CVAE can train on WASM. ${counts}`;
 }
 
 function readForm() {
   const epochs = Number(epochsInput.value);
   const batchSize = Number(batchInput.value);
   const lr = Number(lrInput.value);
+  const modelId = modelSelect.value || 'cvae';
+  getModelSpec(modelId);
   if (!Number.isInteger(epochs) || epochs < 1 || epochs > 200) {
     throw new Error('Epochs must be a whole number from 1 to 200.');
   }
@@ -373,6 +596,7 @@ function readForm() {
     throw new Error('Learning rate must be between 0.0001 and 0.1.');
   }
   return {
+    model: modelId,
     epochs,
     batchSize,
     lr,
@@ -383,11 +607,12 @@ function readForm() {
 function beginSession() {
   charts.recon = [];
   charts.kl = [];
+  charts.family = currentSpec().family;
   resetEpochTable();
   statEpoch.textContent = '—';
   statLoss.textContent = '—';
   statRecon.textContent = '—';
-  statKl.textContent = '—';
+  statKl.textContent = charts.family === 'gan' ? currentSpec().beta1.toFixed(2) : '—';
   statSps.textContent = '—';
   paintCharts();
 }
@@ -399,10 +624,13 @@ function runJob(kind, fn) {
   syncButtons();
   Promise.resolve()
     .then(fn)
-    .catch((error) => {
+    .catch(async (error) => {
       console.error(error);
       if (kind === 'perf') setPerfStatus(errorText(error), 'error');
-      else setStatus(errorText(error), 'error');
+      else {
+        setStatus(errorText(error), 'error');
+        await restoreCheckpoint();
+      }
     })
     .finally(() => {
       job = null;
@@ -453,9 +681,11 @@ function onSampleError(error) {
 }
 
 async function showGenerated(classIndex, count) {
-  const batch = await generateBatch(getTf(), model.decoder, classIndex, count);
+  const batch = await generateBatch(getTf(), model, classIndex, count);
   renderGallery(sampleGrid, batch.classes.map((cls, index) => ({
     label: `Generated · ${CLASS_NAMES[cls]}`,
+    tone: 'tag-gen',
+    kind: 'gen',
     pixels: batch.pixels,
     offset: index * IMAGE_PIXELS,
     gain: 255,
@@ -470,38 +700,19 @@ async function showGenerated(classIndex, count) {
   setSampleStatus(`Generated ${count} image${count === 1 ? '' : 's'} conditioned on ${name}. Two real ${name} images are shown beside them.`, 'ok');
 }
 
+async function showLoadedComparison() {
+  if (!dataset || !model) return;
+  await showClassVerification(2);
+  setSampleStatus(`Saved ${model.label} weights loaded. Each generated image was conditioned on its caption. Real Fashion-MNIST of that class sits beside it.`, 'ok');
+}
+
 async function showClassVerification(perClass) {
   const classes = [];
   for (let cls = 0; cls < CLASS_NAMES.length; cls += 1) {
     for (let n = 0; n < perClass; n += 1) classes.push(cls);
   }
-  const batch = await generateForClasses(getTf(), model.decoder, classes);
+  const batch = await generateBatch(getTf(), model, null, classes.length, { classes });
   renderVerify(rowsFromBatch(batch));
-}
-
-async function showMeans() {
-  const batch = await classMeans(getTf(), model.decoder);
-  renderGallery(meanGrid, batch.classes.map((cls, index) => ({
-    label: `Mean · ${CLASS_NAMES[cls]}`,
-    pixels: batch.pixels,
-    offset: index * IMAGE_PIXELS,
-    gain: 255,
-    aria: `Class mean conditioned on ${CLASS_NAMES[cls]}`,
-  })));
-  setSampleStatus('Class means at z = 0. Each tile was conditioned on its caption.', 'ok');
-}
-
-async function showWalk() {
-  const picked = selectedClass();
-  const walk = await latentWalk(getTf(), model.decoder, picked, 8);
-  renderGallery(walkRow, walk.classes.map((cls, index) => ({
-    label: index === 0 ? 'start' : (index === walk.classes.length - 1 ? 'end' : `${index}`),
-    pixels: walk.pixels,
-    offset: index * IMAGE_PIXELS,
-    gain: 255,
-    aria: `${CLASS_NAMES[cls]} latent step ${index + 1}`,
-  })));
-  setSampleStatus(`Latent walk conditioned on ${CLASS_NAMES[walk.classIndex]}.`, 'ok');
 }
 
 function paintVerifyReals(data) {
@@ -520,6 +731,8 @@ function realTiles(data, classIndex, count) {
   if (!data) return [];
   return classExampleIndices(data.labels, classIndex, count).map((index) => ({
     label: `Real · ${CLASS_NAMES[classIndex]}`,
+    tone: 'tag-real',
+    kind: 'real',
     pixels: data.images,
     offset: index * IMAGE_PIXELS,
     gain: 1,
@@ -544,6 +757,8 @@ function rowsFromBatch(batch) {
     realTiles: realTiles(dataset, cls, 2),
     genTiles: groups.get(cls).map((index) => ({
       label: `Generated · ${CLASS_NAMES[cls]}`,
+      tone: 'tag-gen',
+      kind: 'gen',
       pixels: batch.pixels,
       offset: index * IMAGE_PIXELS,
       gain: 255,
@@ -553,12 +768,10 @@ function rowsFromBatch(batch) {
 }
 
 function renderVerify(rows) {
+  if (!verifyGrid) return;
   verifyGrid.replaceChildren();
   if (!rows.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.textContent = 'No comparison yet.';
-    verifyGrid.appendChild(empty);
+    setGalleryHint(verifyGrid, 'No comparison yet.');
     return;
   }
   const list = document.createElement('div');
@@ -612,15 +825,49 @@ function setGalleryHint(root, text) {
 function appendSample(root, item) {
   const fig = document.createElement('figure');
   fig.className = 'sample-cell';
+  if (item.kind) fig.classList.add(item.kind);
   const canvas = document.createElement('canvas');
   canvas.width = 28;
   canvas.height = 28;
   canvas.setAttribute('aria-label', item.aria || item.label);
   paintGray(canvas, item.pixels, item.offset || 0, item.gain == null ? 255 : item.gain);
   const cap = document.createElement('figcaption');
+  if (item.tone) cap.className = item.tone;
   cap.textContent = item.label;
   fig.append(canvas, cap);
   root.appendChild(fig);
+}
+
+async function showMeans() {
+  const batch = await classMeans(getTf(), model);
+  renderGallery(meanGrid, batch.classes.map((cls, index) => ({
+    label: `Zero code · ${CLASS_NAMES[cls]}`,
+    tone: 'tag-gen',
+    kind: 'gen',
+    pixels: batch.pixels,
+    offset: index * IMAGE_PIXELS,
+    gain: 255,
+    aria: `Generated zero-code ${CLASS_NAMES[cls]}`,
+  })));
+  const spec = currentSpec();
+  setSampleStatus(spec.family === 'gan'
+    ? 'Zero noise vector decoded for every class. These are generated, not photos.'
+    : 'Class means decoded at z = 0. These are generated, not photos.', 'ok');
+}
+
+async function showWalk() {
+  const picked = selectedClass();
+  const walk = await latentWalk(getTf(), model, picked, 8);
+  renderGallery(walkRow, walk.classes.map((cls, index) => ({
+    label: index === 0 ? 'Generated start' : (index === walk.classes.length - 1 ? 'Generated end' : `Generated ${index}`),
+    tone: 'tag-gen',
+    kind: 'gen',
+    pixels: walk.pixels,
+    offset: index * IMAGE_PIXELS,
+    gain: 255,
+    aria: `Generated ${CLASS_NAMES[cls]} latent step ${index + 1}`,
+  })));
+  setSampleStatus(`Latent walk · generated ${CLASS_NAMES[walk.classIndex]}.`, 'ok');
 }
 
 function renderGallery(root, items) {
@@ -637,6 +884,8 @@ function renderPerf(payload) {
     ? payload
     : (payload && Array.isArray(payload.rows) ? payload.rows : []);
   const savedAt = !Array.isArray(payload) && payload && payload.savedAt ? payload.savedAt : '';
+  const modelLabel = !Array.isArray(payload) && payload && payload.modelLabel ? payload.modelLabel : '';
+  const storageKey = !Array.isArray(payload) && payload && payload.storageKey ? payload.storageKey : '';
   perfBody.replaceChildren();
   if (!rows.length) {
     const tr = document.createElement('tr');
@@ -674,7 +923,10 @@ function renderPerf(payload) {
     tr.appendChild(status);
     perfBody.appendChild(tr);
   }
-  if (savedAt) perfSaved.textContent = `Last saved ${savedAt} in browser-ai.fashion-perf.`;
+  if (savedAt) {
+    const name = modelLabel ? `${modelLabel} · ` : '';
+    perfSaved.textContent = `Last saved ${savedAt} · ${name}${storageKey || 'browser-ai.fashion-perf'}.`;
+  }
 }
 
 function resetEpochTable() {
@@ -689,26 +941,30 @@ function resetEpochTable() {
 }
 
 function paintCharts() {
+  const gan = charts.family === 'gan';
   drawSeriesChart(reconCanvas, {
-    label: 'recon / px',
+    label: gan ? 'G loss' : 'recon / px',
     values: charts.recon,
     color: '#5b9bd5',
     yMin: 0,
     emptyMessage: 'No training run yet',
   });
   drawSeriesChart(klCanvas, {
-    label: 'KL',
+    label: gan ? 'D loss' : 'KL',
     values: charts.kl,
     color: '#f0a040',
     yMin: 0,
     emptyMessage: 'No training run yet',
   });
+  reconCanvas.setAttribute('aria-label', gan ? 'Generator loss by epoch' : 'Reconstruction loss by epoch');
+  klCanvas.setAttribute('aria-label', gan ? 'Discriminator loss by epoch' : 'KL divergence by epoch');
 }
 
 function syncButtons() {
   const busy = job !== null;
   startBtn.disabled = busy || !tfReady;
   runPerfBtn.disabled = busy || !tfReady;
+  presetBtn.disabled = busy;
   stopBtn.disabled = job !== 'train';
   stopPerfBtn.disabled = job !== 'perf';
   const canSample = !busy && !!model;
@@ -743,7 +999,9 @@ function setPerfStatus(text, kind) {
 }
 
 function formatLoss(value) {
-  return Number.isFinite(value) ? value.toFixed(1) : '—';
+  if (!Number.isFinite(value)) return '—';
+  if (Math.abs(value) < 20) return value.toFixed(3);
+  return value.toFixed(1);
 }
 
 function formatRecon(value) {
