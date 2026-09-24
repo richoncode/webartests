@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Green-Board Dashboard Design — webartests</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         font-size: 15px; line-height: 1.7; min-height: 100vh; padding: 60px 24px 80px; }
+  a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 640px; margin-bottom: 56px; }
+  .page { max-width: 880px; }
+
+  .section { margin-bottom: 64px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 4px; }
+  .section-name { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-desc { font-size: 14px; color: #666; margin-bottom: 28px; max-width: 620px; line-height: 1.6; }
+  .section-divider { border: none; border-top: 1px solid #1a1a1a; margin-bottom: 28px; }
+
+  p.body { color: #bbb; margin-bottom: 16px; max-width: 700px; }
+  p.body:last-child { margin-bottom: 0; }
+  strong { color: #fff; font-weight: 600; }
+  code { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; color: #5b9bd5; }
+
+  .callout { border-left: 3px solid #5b9bd5; border-radius: 0 6px 6px 0; padding: 12px 16px; font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 10px; }
+  .callout.blue  { background: #0d1620; border-color: #5b9bd5; }
+  .callout.green { background: #0a1a0a; border-color: #4caf50; }
+  .callout.orange{ background: #1a1200; border-color: #f0a040; }
+  .callout.red   { background: #1a0a0a; border-color: #e74c3c; }
+  .callout strong { color: #ccc; }
+
+  .spec-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .spec-table td, .spec-table th { padding: 10px 14px; border-bottom: 1px solid #161616; font-size: 13px; vertical-align: top; text-align: left; }
+  .spec-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #555; font-weight: 700; }
+  .spec-table td:first-child { color: #777; width: 200px; }
+  .spec-table td:last-child { color: #bbb; }
+  .spec-table tr:last-child td { border-bottom: none; }
+
+  /* ── The recipe ── */
+  .steps { counter-reset: step; list-style: none; }
+  .steps li { counter-increment: step; position: relative; padding-left: 44px; margin-bottom: 22px; color: #bbb; max-width: 700px; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 26px; height: 26px;
+    border-radius: 50%; background: #1a1a1a; border: 1px solid #2a2a2a; color: #5b9bd5;
+    font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .steps li strong { display: block; color: #fff; margin-bottom: 2px; }
+
+  .checklist { list-style: none; }
+  .checklist li { position: relative; padding-left: 26px; margin-bottom: 10px; color: #bbb; font-size: 14px; max-width: 700px; }
+  .checklist li::before { content: "✓"; position: absolute; left: 0; color: #4caf50; font-weight: 700; }
+
+  /* ── Live board ── */
+  .demo { background: #111; border: 1px solid #1e1e1e; border-radius: 12px; padding: 24px; margin-bottom: 14px; }
+  .demo-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .demo-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #444; margin-right: auto; }
+
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+  .tile { aspect-ratio: 1.45; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+          display: flex; align-items: flex-end; padding: 9px 10px; transition: transform .1s, filter .1s;
+          font-size: 11px; font-weight: 600; letter-spacing: 0.2px; }
+  .tile:hover { transform: translateY(-2px); filter: brightness(1.25); }
+  .tile.healthy  { background: #1d3527; border-color: #24402e; color: #4e7a5d; }
+  .tile.degraded { background: #f0a040; border-color: #ffc070; color: #3a2600; }
+  .tile.critical { background: #e74c3c; border-color: #ff7063; color: #3d0b06; }
+  .tile.selected { outline: 2px solid #5b9bd5; outline-offset: 2px; }
+  .board.labels-off .tile { font-size: 0; }
+
+  /* Context card — layer 2 */
+  .ctx { margin-top: 14px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; }
+  .ctx.hidden { display: none; }
+  .ctx-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .ctx-head h3 { font-size: 16px; font-weight: 600; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 20px; }
+  .badge.healthy  { color: #4caf50; background: #1a2a1a; border: 1px solid #4caf5044; }
+  .badge.degraded { color: #f0a040; background: #2a2000; border: 1px solid #f0a04044; }
+  .badge.critical { color: #e74c3c; background: #2a1010; border: 1px solid #e74c3c44; }
+  .signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .signal { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 10px 12px; }
+  .signal-name { font-size: 11px; color: #666; margin-bottom: 2px; }
+  .signal-val { font-family: 'SF Mono','Fira Code',monospace; font-size: 15px; color: #bbb; }
+  .signal.breach .signal-val { color: #e74c3c; }
+  .signal.warn .signal-val { color: #f0a040; }
+  .deep { margin-top: 14px; padding-top: 14px; border-top: 1px solid #222; font-family: 'SF Mono','Fira Code',monospace;
+          font-size: 12px; color: #777; line-height: 1.9; }
+  .deep.hidden { display: none; }
+
+  button { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 8px 18px; border-radius: 6px;
+           font-size: 13px; cursor: pointer; transition: background .1s, border-color .1s; font-family: inherit; }
+  button:hover { background: #222; border-color: #555; color: #fff; }
+  button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+  button.primary:hover { background: #243550; }
+  button.danger { background: #2a1010; border-color: #c0392b; color: #e74c3c; }
+  button.danger:hover { background: #3a1515; }
+
+  /* ── Prompt blocks ── */
+  .prompt { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+  .prompt-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #1a1a1a; }
+  .prompt-name { font-size: 13px; font-weight: 600; color: #ccc; margin-right: auto; }
+  .prompt-body { padding: 16px; font-family: 'SF Mono','Fira Code',monospace; font-size: 12.5px;
+                 line-height: 1.75; color: #bbb; white-space: pre-wrap; }
+  .copy { font-size: 11px; padding: 5px 12px; }
+  .copy.done { color: #4caf50; border-color: #4caf50; }
+
+  .vocab { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .vocab span { font-size: 12px; font-family: 'SF Mono','Fira Code',monospace; color: #5b9bd5;
+                background: #0a1520; border: 1px solid #1a3050; padding: 4px 10px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Back</a>
+
+<div class="page">
+  <h1>Green-Board Dashboard Design</h1>
+  <p class="subtitle">A recipe for dashboards that show deviation instead of data — and the prompts that make an AI build one.</p>
+
+  <!-- ── THE IDEA ── -->
+  <div class="section" id="idea">
+    <p class="section-title">The idea</p>
+    <h2 class="section-name">Suppress the normal</h2>
+    <hr class="section-divider">
+    <p class="body">Most dashboards answer <em>&ldquo;what are the numbers?&rdquo;</em> Nobody asks that. The operator asks <strong>&ldquo;is anything wrong, and where?&rdquo;</strong> — a yes/no question that a wall of line charts answers slowly and badly.</p>
+    <p class="body">A green board answers it in under a second from across the room. Healthy systems render as quiet, uniform, wordless green. Anything that breaks the pattern <em>is</em> the signal. You are not designing a display of data; you are designing a <strong>background the eye can ignore</strong>, so that the foreground means something.</p>
+    <div class="callout blue"><strong>The test that matters.</strong> Stand three metres back and squint. If you can still tell whether the system is healthy, the design works. If you have to walk closer and read, it does not.</div>
+  </div>
+
+  <!-- ── INGREDIENTS ── -->
+  <div class="section" id="layers">
+    <p class="section-title">Ingredients</p>
+    <h2 class="section-name">Three layers, in this order</h2>
+    <p class="section-desc">Each layer answers exactly one question and then stops. The operator descends only when the layer above gives them a reason to.</p>
+    <hr class="section-divider">
+    <table class="spec-table">
+      <tr><th>Layer</th><th>Answers</th><th>Contains</th></tr>
+      <tr><td><strong style="color:#4caf50">1 · The board</strong></td><td>Is anything wrong?</td>
+          <td>A uniform grid of solid status blocks, one per system boundary. No numbers, no sparklines, no motion.</td></tr>
+      <tr><td><strong style="color:#f0a040">2 · The context card</strong></td><td>What kind of wrong?</td>
+          <td>Opens on click. Three or four golden signals as key–value pairs. Nothing else. The board stays visible behind it.</td></tr>
+      <tr><td><strong style="color:#5b9bd5">3 · The detail plane</strong></td><td>Why?</td>
+          <td>Time series, logs, traces. Hidden by default; reachable only from layer 2.</td></tr>
+    </table>
+    <div class="callout green"><strong>The golden signals</strong> are latency, traffic, errors and saturation. Four is the budget for layer 2. A fifth tile is a request to think harder about which four.</div>
+  </div>
+
+  <!-- ── LIVE ── -->
+  <div class="section" id="demo">
+    <p class="section-title">Taste it</p>
+    <h2 class="section-name">The three layers, working</h2>
+    <p class="section-desc">Click any block to open layer 2. Break a service to watch the worst-case rule bubble a child failure up to its parent.</p>
+    <hr class="section-divider">
+
+    <div class="demo">
+      <div class="demo-head">
+        <span class="demo-label">Layer 1 — the board</span>
+        <button id="btnBreak" class="danger">Break a service</button>
+        <button id="btnHeal">Heal all</button>
+        <button id="btnLabels">Hide labels</button>
+      </div>
+      <div class="board" id="board"></div>
+
+      <div class="ctx hidden" id="ctx">
+        <div class="ctx-head">
+          <h3 id="ctxName"></h3>
+          <span class="badge" id="ctxBadge"></span>
+        </div>
+        <div class="signals" id="ctxSignals"></div>
+        <button class="primary" id="btnDeep">View deep-dive →</button>
+        <div class="deep hidden" id="ctxDeep"></div>
+      </div>
+    </div>
+    <div class="callout orange"><strong>Watch what your eye does.</strong> With labels hidden the board is almost unreadable as data and instantly readable as status. That asymmetry is the whole point — and it is why a green board is a poor report and an excellent alarm.</div>
+  </div>
+
+  <!-- ── RULES ── -->
+  <div class="section" id="rules">
+    <p class="section-title">Rules</p>
+    <h2 class="section-name">Three that never bend</h2>
+    <hr class="section-divider">
+    <p class="body"><strong>1 · Three states, never two.</strong> &ldquo;Up or down&rdquo; is a lie that hides every interesting failure. Model <strong>healthy</strong>, <strong>degraded</strong> and <strong>critical</strong>, and give degraded a real threshold rather than treating it as a softer kind of broken.</p>
+    <p class="body"><strong>2 · Worst case wins, recursively.</strong> A parent block inherits the worst state of any descendant. Four healthy children and one critical child make a critical parent. Averaging, or showing a percentage healthy, masks exactly the failure you built the board to catch.</p>
+    <p class="body"><strong>3 · Chromatic restraint.</strong> Healthy green is dark moss, not neon — low saturation, low contrast against the page, close to invisible. Amber and red are the only saturated colour on screen. Spend brightness only on the exception.</p>
+    <div class="callout red"><strong>The failure mode to design against</strong> is a board so loud when healthy that nobody looks at it when it changes. Every pixel of decoration you add to the normal state is borrowed from the alarm.</div>
+  </div>
+
+  <!-- ── METHOD ── -->
+  <div class="section" id="method">
+    <p class="section-title">Method</p>
+    <h2 class="section-name">Build it in this order</h2>
+    <p class="section-desc">Layout last. The order below keeps you from decorating something whose meaning is not settled.</p>
+    <hr class="section-divider">
+    <ol class="steps">
+      <li><strong>Name the boundaries</strong>List the things an operator would be paged about — &ldquo;Payment Gateway&rdquo;, not &ldquo;pod-7c&rdquo;. One block per boundary. If the list runs past about forty, you are one layer too deep.</li>
+      <li><strong>Write the thresholds before the UI</strong>For each boundary, state in one sentence what makes it degraded and what makes it critical. A board is only as honest as these numbers, and they are the part an AI cannot invent for you.</li>
+      <li><strong>Build the roll-up</strong>Model the tree, then write the recursive worst-case evaluation. Test it with one bad leaf and confirm the root turns red.</li>
+      <li><strong>Render layer 1 and stop</strong>Blocks, colour, nothing else. Resist the sparkline. Look at it from across the room before you go further.</li>
+      <li><strong>Add layer 2 as an overlay</strong>Four signals, one deep-dive link, board still visible behind. If it needs a scrollbar, it is layer 3.</li>
+      <li><strong>Link layer 3, do not design it</strong>It is your existing metrics tool. The value you added is that nobody opens it until the board says to.</li>
+    </ol>
+  </div>
+
+  <!-- ── PROMPTS ── -->
+  <div class="section" id="prompts">
+    <p class="section-title">Prompts</p>
+    <h2 class="section-name">Getting this out of an AI</h2>
+    <p class="section-desc">Ask for a chart and you get a chart. These ask for a system. Name the principle explicitly — the vocabulary does real work in the model's output.</p>
+    <hr class="section-divider">
+    <div class="vocab">
+      <span>Radical Suppression of Normalcy</span>
+      <span>Progressive Disclosure</span>
+      <span>Worst-Case Aggregation</span>
+      <span>Golden Signals</span>
+    </div>
+    <div style="height:24px"></div>
+
+    <div class="prompt">
+      <div class="prompt-head"><span class="prompt-name">1 · Build layer 1 — the board</span><button class="copy">Copy</button></div>
+      <div class="prompt-body">Act as a UI engineer building SRE dashboards. Design a system health overview that follows the Green-Board philosophy and Radical Suppression of Normalcy.
+
+Build a grid of uniform, flat status blocks, one per service boundary. When every metric is within threshold, each block is solid low-saturation green with zero text, zero charts and zero motion — the healthy state must be visually quiet enough to ignore. A block flips to high-contrast amber or red the instant a sub-metric breaches its warning or critical threshold.
+
+Constraints: no line charts, no scatter plots, no sparklines, no percentages in this view. Optimise for one thing — an operator spotting an anomaly from across the room in under a second.</div>
+    </div>
+
+    <div class="prompt">
+      <div class="prompt-head"><span class="prompt-name">2 · Build layer 2 — progressive disclosure</span><button class="copy">Copy</button></div>
+      <div class="prompt-body">Add the interaction model to the status grid, following Progressive Disclosure.
+
+Clicking a status block reveals an overlay context card showing exactly the four golden signals — latency, traffic, errors, saturation — as plain key–value pairs, with the breaching value visually marked. Nothing else goes on this card.
+
+The grid stays visible behind the card so systemic context is never lost. Put one prominent "View deep-dive" action at the bottom that navigates to granular time-series and logs. Dismissing the card returns to the board with no state lost.</div>
+    </div>
+
+    <div class="prompt">
+      <div class="prompt-head"><span class="prompt-name">3 · Build the state logic</span><button class="copy">Copy</button></div>
+      <div class="prompt-body">Write tool-agnostic state logic for a hierarchical monitoring dashboard.
+
+A parent service contains child components; each child evaluates live numeric metrics against a healthy / degraded / critical threshold set. Implement Worst-Case Aggregation: a parent recursively inherits the worst state of any descendant, so a single critical child makes the whole ancestry critical. Never average states and never report a percentage healthy — both mask the failure.
+
+Give me the state machine and the recursive evaluation as plain structures, no framework. Include the evaluation order and what happens when a metric is missing or stale — treat absent data as its own state, not as healthy.</div>
+    </div>
+
+    <div class="prompt">
+      <div class="prompt-head"><span class="prompt-name">4 · Improve a dashboard you already have</span><button class="copy">Copy</button></div>
+      <div class="prompt-body">Critique this dashboard against Green-Board principles. For each element, tell me which of the three layers it belongs to — at-a-glance status, context card, or deep-dive detail — and flag anything sitting in the wrong layer.
+
+Specifically identify: elements that display data when nothing is wrong and should be suppressed; any place a binary up/down state hides a degraded state; any aggregation that averages or counts rather than taking the worst case; and any use of saturated colour on a healthy element that would weaken a real alarm.
+
+Return a prioritised list of changes, highest signal-to-noise gain first. Do not add new metrics — the goal is to remove and restructure.</div>
+    </div>
+  </div>
+
+  <!-- ── DONENESS ── -->
+  <div class="section" id="checklist">
+    <p class="section-title">Doneness test</p>
+    <h2 class="section-name">Before you ship it</h2>
+    <hr class="section-divider">
+    <ul class="checklist">
+      <li>From three metres back, healthy and unhealthy are distinguishable without reading.</li>
+      <li>A fully healthy board contains no numbers at all.</li>
+      <li>One failing leaf turns every ancestor red, all the way to the top.</li>
+      <li>Degraded has its own threshold, written down, distinct from critical.</li>
+      <li>Missing or stale data shows as its own state and never as green.</li>
+      <li>Layer 2 fits on screen with no scrollbar and holds four signals at most.</li>
+      <li>Nothing on the board animates, blinks or refreshes visibly while healthy.</li>
+      <li>An operator can get from spotting a red block to a log line in two clicks.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+/* ── The model: a two-level tree. Parents own children; children own metrics. ── */
+const RANK = { healthy: 0, degraded: 1, critical: 2 };
+const SERVICES = [
+  { name: 'Payment GW',  children: ['authorize', 'capture', 'refund'] },
+  { name: 'Identity',    children: ['login', 'token', 'mfa'] },
+  { name: 'Catalog',     children: ['search', 'detail'] },
+  { name: 'Cart',        children: ['session', 'pricing'] },
+  { name: 'Checkout',    children: ['order', 'tax'] },
+  { name: 'Fulfilment',  children: ['pick', 'ship'] },
+  { name: 'Notify',      children: ['email', 'push'] },
+  { name: 'Ledger',      children: ['post', 'reconcile'] },
+  { name: 'Media CDN',   children: ['origin', 'edge'] },
+  { name: 'Search Idx',  children: ['ingest', 'query'] },
+  { name: 'Reporting',   children: ['etl', 'warehouse'] },
+  { name: 'Webhooks',    children: ['dispatch', 'retry'] }
+];
+
+/* Each child carries its own four signals, so the context card reads real numbers rather than placeholders. */
+const state = SERVICES.map((s, i) => ({
+  name: s.name,
+  children: s.children.map(c => ({ name: c, state: 'healthy', signals: signalsFor('healthy', i) }))
+}));
+
+function signalsFor(st, seed) {
+  /* dp matters: a healthy error rate rounded to one decimal reads as a flat 0, which is the one number
+     an operator must never be shown when the real value is 0.04. */
+  const jitter = (n, spread, dp) => (n + Math.sin(seed * 7.3 + n) * spread).toFixed(dp == null ? 1 : dp);
+  if (st === 'critical') return { Latency: jitter(880, 120) + ' ms', Traffic: jitter(410, 60) + ' rps',
+                                  Errors: jitter(11.4, 3) + ' %',  Saturation: jitter(96, 3) + ' %' };
+  if (st === 'degraded') return { Latency: jitter(240, 40) + ' ms', Traffic: jitter(520, 60) + ' rps',
+                                  Errors: jitter(1.8, 0.6) + ' %', Saturation: jitter(78, 6) + ' %' };
+  return { Latency: jitter(74, 14) + ' ms', Traffic: jitter(560, 80) + ' rps',
+           Errors: jitter(0.05, 0.03, 2) + ' %', Saturation: jitter(38, 9) + ' %' };
+}
+
+/* RULE 2 — worst case wins, recursively. Never average, never count. */
+const rollUp = node => node.children.reduce(
+  (worst, c) => RANK[c.state] > RANK[worst] ? c.state : worst, 'healthy');
+
+const board = document.getElementById('board');
+const ctx = document.getElementById('ctx');
+let selected = null;
+
+function render() {
+  board.innerHTML = '';
+  state.forEach((svc, i) => {
+    const st = rollUp(svc);
+    const tile = document.createElement('div');
+    tile.className = 'tile ' + st + (selected === i ? ' selected' : '');
+    tile.textContent = svc.name;
+    tile.title = svc.name + ' — ' + st;
+    tile.onclick = () => open(i);
+    board.appendChild(tile);
+  });
+  if (selected !== null) open(selected, true);
+}
+
+function open(i, keepDeep) {
+  selected = i;
+  const svc = state[i], st = rollUp(svc);
+  /* The card reports the worst child, because that is the one holding the parent's state. */
+  const worst = svc.children.reduce((a, b) => RANK[b.state] > RANK[a.state] ? b : a);
+  document.getElementById('ctxName').textContent = svc.name + ' › ' + worst.name;
+  const badge = document.getElementById('ctxBadge');
+  badge.className = 'badge ' + st;
+  badge.textContent = st;
+
+  const sig = document.getElementById('ctxSignals');
+  sig.innerHTML = '';
+  Object.entries(worst.signals).forEach(([k, v]) => {
+    const cls = st === 'critical' && (k === 'Errors' || k === 'Latency') ? ' breach'
+              : st === 'degraded' && (k === 'Errors' || k === 'Latency') ? ' warn' : '';
+    sig.insertAdjacentHTML('beforeend',
+      '<div class="signal' + cls + '"><div class="signal-name">' + k + '</div>' +
+      '<div class="signal-val">' + v + '</div></div>');
+  });
+
+  const deep = document.getElementById('ctxDeep');
+  deep.innerHTML = svc.children.map(c =>
+    '[' + c.state.toUpperCase().padEnd(8) + '] ' + svc.name.toLowerCase().replace(/ /g, '-') +
+    '/' + c.name + '  p99=' + c.signals.Latency + '  err=' + c.signals.Errors).join('<br>');
+  if (!keepDeep) deep.classList.add('hidden');
+  ctx.classList.remove('hidden');
+  render0();
+}
+
+/* Repaint tile selection without recursing back into open(). */
+function render0() {
+  [...board.children].forEach((t, i) => t.classList.toggle('selected', i === selected));
+}
+
+document.getElementById('btnDeep').onclick = () =>
+  document.getElementById('ctxDeep').classList.toggle('hidden');
+
+document.getElementById('btnBreak').onclick = () => {
+  const svc = state[Math.floor(Math.random() * state.length)];
+  const child = svc.children[Math.floor(Math.random() * svc.children.length)];
+  child.state = Math.random() < 0.45 ? 'critical' : 'degraded';
+  child.signals = signalsFor(child.state, svc.name.length);
+  render();
+};
+
+document.getElementById('btnHeal').onclick = () => {
+  state.forEach((svc, i) => svc.children.forEach(c => {
+    c.state = 'healthy';
+    c.signals = signalsFor('healthy', i);
+  }));
+  render();
+};
+
+document.getElementById('btnLabels').onclick = e => {
+  board.classList.toggle('labels-off');
+  e.target.textContent = board.classList.contains('labels-off') ? 'Show labels' : 'Hide labels';
+};
+
+/* Copy buttons on every prompt. */
+document.querySelectorAll('.prompt').forEach(p => {
+  const btn = p.querySelector('.copy');
+  btn.onclick = async () => {
+    try { await navigator.clipboard.writeText(p.querySelector('.prompt-body').innerText); }
+    catch (e) {
+      const r = document.createRange();
+      r.selectNodeContents(p.querySelector('.prompt-body'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      document.execCommand('copy'); s.removeAllRanges();
+    }
+    btn.textContent = 'Copied'; btn.classList.add('done');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1400);
+  };
+});
+
+render();
+</script>
+</body>
+</html>
