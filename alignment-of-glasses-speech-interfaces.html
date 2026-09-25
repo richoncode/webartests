@@ -83,6 +83,9 @@
   /* ── Comparison tables ── */
   .scroller { overflow-x: auto; border: 1px solid #1e1e1e; border-radius: 10px; margin-bottom: 14px;
               width: min(1180px, calc(100vw - 48px)); }
+  .scroller.narrow { width: 100%; }
+  table.cmp.states { min-width: 660px; }
+  table.cmp.states th[scope="row"] { width: 140px; }
   table.cmp { width: 100%; min-width: 1160px; table-layout: fixed; border-collapse: collapse; background: #111; }
   table.cmp th, table.cmp td { padding: 14px 16px; border-bottom: 1px solid #1a1a1a; font-size: 12.5px;
     vertical-align: top; text-align: left; line-height: 1.65; }
@@ -143,6 +146,8 @@
     <div class="toc-head">Part 1 · Interaction timelines</div>
     <a href="#timelines">All four platforms, both interactions</a>
     <a href="#timelines-read">How to read the diagrams</a>
+    <a href="#states">The state model both channels carry</a>
+    <a href="#channels">Which channel each vendor mandates</a>
     <div class="toc-head">Part 2 · Comparison</div>
     <a href="#table-a">Table A · Architecture and UI patterns</a>
     <a href="#table-b">Table B · Certification and OS constraints</a>
@@ -163,7 +168,45 @@
     <p class="section-desc">Two sequences per platform: a discrete command the user fires once, and a continuous listening state the user switches on. Each diagram splits the User, the Hardware/OS, and the App/Engine so you can see exactly which layer owns the microphone indicator and which layer ends the session.</p>
     <hr class="section-divider">
 
-    <p class="body" id="timelines-read">Each tab has one horizontal scrollbar shared by both of its diagrams, so they move together — they are drawn at full width rather than squeezed to fit. Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
+    <p class="body" id="timelines-read">Each tab has one horizontal scrollbar shared by both of its diagrams, so they move together — they are drawn at full width rather than squeezed to fit. <strong>Solid arrows into the UI state lane are visual state changes; dashed arrows to the User are what the user hears.</strong> Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
+
+    <h3 class="sub" id="states">The state model both channels carry</h3>
+    <p class="body">Every state below changes something the user can <em>see</em> and something the user can <em>hear</em>. No platform requires both, and no two platforms name the same one, so designing to the mandate alone produces an app that feels different on each device. Design the pair, then drop whichever channel a given device cannot carry.</p>
+
+    <div class="scroller narrow">
+    <table class="cmp states">
+      <thead>
+        <tr><th>State</th><th>Visual change</th><th>Audible change</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">idle</th><td>Affordance at rest. No transcript, no meter, no mic chrome of your own.</td><td>Silence.</td></tr>
+        <tr><th scope="row">armed</th><td>Affordance fills and gains a ring. Prompt names what the app is listening for.</td><td>Rising open earcon — short, once, never once per utterance in a continuous session.</td></tr>
+        <tr><th scope="row">listening</th><td>Meter or ring idles at the noise floor, so the user can tell live from frozen.</td><td>Silence. Room tone is the cue that the channel is open.</td></tr>
+        <tr><th scope="row">hearing</th><td>Meter tracks amplitude; volatile transcript streams in dim type to signal that it may still change.</td><td>Silence — never talk over the person who is talking.</td></tr>
+        <tr><th scope="row">interpreting</th><td>Transcript commits to solid type; the affordance shows progress.</td><td>Falling close earcon. The mic is shut and the user may speak freely again.</td></tr>
+        <tr><th scope="row">confirmed</th><td>The target element highlights <em>before</em> it changes, so the user sees which thing the words moved.</td><td>Confirm earcon, audibly distinct from the error tone.</td></tr>
+        <tr><th scope="row">muted</th><td>Badge becomes a struck-through mic and names who muted it — the user or the system.</td><td>Falling close earcon, identical to the one at interpreting, so mute is never mistaken for success.</td></tr>
+        <tr><th scope="row">failed</th><td>State turns amber or red, states the reason in words, and puts the retry action next to it.</td><td>Error tone. Never the confirm tone, never silence.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="body">Two states are easy to miss and cost the most when they are missing: <strong>listening</strong> has to look different from <strong>idle</strong> even though nothing has been said yet, and <strong>muted</strong> has to look different from <strong>confirmed</strong> even though both end with the mic closed.</p>
+
+    <h3 class="sub" id="channels">Which channel each vendor actually mandates</h3>
+    <div class="scroller narrow">
+    <table class="cmp states">
+      <thead>
+        <tr><th>Platform</th><th>The channel the vendor names</th><th>What that leaves you</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Apple</th><td>Either. 2.5.14 asks for &ldquo;a clear visual <em>and/or</em> audible indication when recording&rdquo;.<span class="tag-ver">doc</span></td><td>Both are individually optional, so review pressure alone will not make you build the pair. The OS indicator satisfies nothing on its own — it reports capture, not app state.</td></tr>
+        <tr><th scope="row">Android</th><td>Visual, and the OS draws it for you: the mic indicator plus the foreground-service notification.<span class="tag-ver">doc</span></td><td>No audible requirement at all. Every earcon is yours, which means nothing stops the app shipping silent — and a glanceable device is exactly where silence hurts.</td></tr>
+        <tr><th scope="row">Meta</th><td>Audible. &ldquo;Ensure transparent activation&rdquo; through <strong>earcons or conversational cues</strong>.<span class="tag-ver">doc</span></td><td>The visual state is entirely your design. On Ray-Ban Meta there is no display, so the audible channel is the only one there is.</td></tr>
+        <tr><th scope="row">Snap</th><td>Visual. Published lenses must &ldquo;display visuals indicating required actions upon activation&rdquo;.<span class="tag-ver">doc</span></td><td>Audio playback during mic capture is prohibited, so the audible channel is structurally unavailable until the mic closes. Every state change up to <em>interpreting</em> has to be carried visually.<span class="tag-ver">doc</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout orange"><strong>The trap.</strong> Meta names the audible cue, Snap forbids it while the mic is open, Android mandates neither, and Apple accepts one or the other. Build the pair once as a state machine, then let each platform suppress the channel it cannot carry — rather than designing four different feedback models and discovering at review that three of them are silent.</div>
 
     <div class="tabs">
       <button class="tab active" data-pane="apple">Apple · visionOS</button>
@@ -182,25 +225,31 @@
 sequenceDiagram
     autonumber
     actor U as User
-    participant OS as visionOS · Speech + AVFAudio
+    participant UI as App UI state
     participant A as App · SwiftUI/RealityKit
+    participant OS as visionOS · Speech + AVFAudio
     participant I as App Intents
     U->>A: Pinch and hold the Ask affordance
-    A->>OS: AVAudioSession playAndRecord, option duckOthers
-    A->>OS: AVAudioApplication.requestRecordPermission
+    A->>OS: AVAudioSession playAndRecord with duckOthers, then requestRecordPermission
+    A->>UI: idle to armed, affordance fills and gains a ring
+    A-->>U: Rising open earcon
     OS-->>U: System mic indicator lights, app cannot suppress it
-    A->>OS: SpeechTranscriber attached to SpeechAnalyzer input sequence
-    OS->>OS: On-device transcription, no network egress
-    OS-->>A: AsyncSequence of results, volatile then finalized
-    A-->>U: Live transcript on an attachment beside the button
+    A->>OS: SpeechTranscriber attached to a SpeechAnalyzer input sequence
+    A->>UI: armed to listening, ring idles at the noise floor
+    OS-->>A: Volatile results, on-device, no network egress
+    A->>UI: listening to hearing, transcript streams in dim type
     U->>A: Release the pinch
     A->>OS: analyzer.finalizeAndFinish
+    A->>UI: hearing to interpreting, transcript commits to solid type
+    A-->>U: Falling close earcon
     A->>I: Resolve to an AppIntent and perform it
     I-->>A: Intent result
-    A-->>U: Spatial confirmation plus a short earcon
+    A->>UI: interpreting to confirmed, the target highlights then updates
+    A-->>U: Confirm earcon, distinct from the error tone
     A->>OS: setActive false, notifyOthersOnDeactivation
     OS-->>U: Indicator clears, ducked audio restores
-    Note over A,OS: Guideline 2.5.14 wants explicit consent and a clear<br/>visual or audible indication whenever you record
+    A->>UI: confirmed to idle, affordance returns to rest
+    Note over A,OS: 2.5.14 accepts a visual and or audible indication,<br/>so either channel alone passes review. Pairing them<br/>is a design decision, not a compliance one
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — live dictation toggle</p>
@@ -208,23 +257,30 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant OS as visionOS · Speech + AVFAudio
+    participant UI as App UI state
     participant A as App
+    participant OS as visionOS · Speech + AVFAudio
     U->>A: Switch Live dictation on
     A-->>U: Consent sheet naming what is captured and where it goes
     A->>OS: AVAudioSession playAndRecord plus duckOthers
-    OS-->>U: Mic indicator stays lit for the whole session
-    OS-->>A: Other media ducks, mixing policy applied
-    A->>OS: Start SpeechAnalyzer with a long-running input sequence
+    A->>UI: idle to armed, session chip appears and stays up for the session
+    A-->>U: Rising open earcon, once for the session, not once per utterance
+    OS-->>U: Mic indicator stays lit until the toggle goes off
+    OS-->>A: Other media ducks
+    A->>UI: armed to listening, waveform idles at the noise floor
     loop While the toggle is on
         OS-->>A: Volatile results, low latency, may still change
-        A-->>U: Waveform plus rolling transcript
-        OS-->>A: Finalized result at each utterance boundary
-        A-->>U: Commit the finalized span, stop it moving
+        A->>UI: listening to hearing, waveform tracks amplitude
+        A-->>U: Silence while the user speaks, never talk over them
+        OS-->>A: Finalized result at the utterance boundary
+        A->>UI: hearing to listening, the span commits and stops moving
+        A-->>U: Soft commit tick, suppressible in settings
     end
-    Note over A,OS: No audio background mode means capture ends<br/>when the app loses foreground. Backgrounded listening<br/>reads as surreptitious recording under 2.5.14
+    Note over A,OS: No audio background mode, so capture ends when the app<br/>loses foreground. Backgrounded listening reads as<br/>surreptitious recording under 2.5.14
     U->>A: Switch off, reachable in one action at any time
     A->>OS: finalizeAndFinish then setActive false
+    A->>UI: listening to idle, chip and waveform clear
+    A-->>U: Falling close earcon
     OS-->>U: Indicator clears
 </pre></div>
       </div></div>
@@ -240,28 +296,35 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
+    participant UI as App UI state
     participant HW as Glasses · touchpad and mics
-    participant OS as Android XR
     participant A as App activity
+    participant OS as Android XR
     participant G as Gemini
     U->>HW: Touch and hold the touchpad, or speak the system wake word
     HW->>OS: Assistant activation
     OS-->>U: System mic privacy indicator in the status area
     alt App-scoped recognition
         A->>OS: checkSelfPermission RECORD_AUDIO
-        A->>OS: SpeechRecognizer.createOnDeviceSpeechRecognizer in onCreate
-        A->>OS: startListening with ACTION_RECOGNIZE_SPEECH and LANGUAGE_MODEL_FREE_FORM
+        A->>OS: createOnDeviceSpeechRecognizer in onCreate, then startListening
+        A->>UI: idle to armed, heads-up slot opens with a listening chip
+        A-->>U: Short open earcon
         OS-->>A: onReadyForSpeech then onBeginningOfSpeech
         OS-->>A: onPartialResults
-        A-->>U: Glanceable transcript in the heads-up slot
+        A->>UI: armed to hearing, partial transcript fills the slot
         OS-->>A: onResults with RESULTS_RECOGNITION and CONFIDENCE_SCORES
+        A->>UI: hearing to interpreting, transcript commits, chip shows progress
         OS-->>A: onEndOfSpeech, the recognizer stops itself
     else System-routed to the assistant
         OS->>G: Utterance
         G->>A: Function call into your declared app actions
+        A->>UI: idle to interpreting, the app shows what it was asked to do
     end
-    A-->>U: Confirmation card plus a short audio cue
+    A->>UI: interpreting to confirmed, the target card highlights then updates
+    A-->>U: Confirm earcon
+    A->>UI: confirmed to idle, slot collapses
     Note over OS,A: One shot only. A single startListening ends at<br/>onEndOfSpeech. Continuity is the app restarting it
+    Note over U,UI: Android mandates the visual channel at OS level and<br/>mandates no audible one at all, so every earcon here<br/>is yours to design and yours to keep consistent
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — live captions or dictation</p>
@@ -269,26 +332,34 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant OS as Android XR
+    participant UI as App UI state
     participant A as App
     participant S as Foreground service
+    participant OS as Android XR
     U->>A: Enable continuous dictation
     A->>OS: Request RECORD_AUDIO if not held
     A->>S: startForegroundService with type microphone
-    S->>OS: FOREGROUND_SERVICE_MICROPHONE plus manifest service type
-    Note over S,OS: Android 14 and later reject an untyped foreground<br/>service, and a mic service cannot be started from<br/>the background at all
-    OS-->>U: Persistent notification plus status-area mic indicator
+    S->>OS: FOREGROUND_SERVICE_MICROPHONE plus the manifest service type
+    Note over S,OS: Android 14 and later reject an untyped foreground service,<br/>and a mic service cannot be started from the background
+    OS-->>U: Persistent notification plus the status-area mic indicator
+    A->>UI: idle to listening, persistent caption rail opens
+    A-->>U: Rising open earcon, once for the session
     loop Until the user switches it off
         OS-->>A: onPartialResults
-        A-->>U: Rolling transcript, waveform, committed spans
+        A->>UI: listening to hearing, the caption grows in dim type
         OS-->>A: onEndOfSpeech after silence
+        A->>UI: hearing to listening, the line commits to solid type
         A->>OS: startListening again to keep the session alive
     end
     U->>OS: May hard-mute from the system mic toggle at any time
     OS-->>A: onError, capture stops regardless of app state
+    A->>UI: any state to muted, rail dims and names the system mute
+    A-->>U: Error tone, never the confirm tone
     U->>A: Switch off
     A->>OS: stopListening then destroy
     A->>S: stopForeground and stop the service
+    A->>UI: muted or listening to idle, rail closes
+    A-->>U: Falling close earcon
     OS-->>U: Notification and indicator clear
 </pre></div>
       </div></div>
@@ -304,24 +375,31 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant HW as Quest headset mics
-    participant OS as Meta Horizon OS
+    participant UI as App UI state
     participant A as App · Meta XR Voice SDK
+    participant OS as Meta Horizon OS
     participant W as Wit.ai NLU
     Note over U,A: No third-party wake word exists. The app must<br/>design its own activation event as the wakeup call
     U->>A: Press the activation affordance, button or hand gesture
     A->>OS: RECORD_AUDIO consent, prompted at app launch
     OS-->>U: System microphone state reflects capture
     A->>A: AppVoiceExperience.Activate
-    A-->>U: Mic earcon plus a visible listening state
+    A->>UI: idle to armed, affordance lights and a mic badge appears
+    A-->>U: Mic open earcon, the cue Meta names explicitly
     Note over A: Listening begins once audio passes a volume threshold
+    A->>UI: armed to listening, level meter idles
     A->>W: Stream captured audio for transcription and NLU
     W-->>A: Partial transcript
-    A-->>U: Live transcription so the user sees what was heard
+    A->>UI: listening to hearing, live transcript of what was heard
     W-->>A: Final transcript, intent and entities
     A->>A: Conduit binds the intent to a method
-    A-->>U: Confirm the understood option before acting on it
-    Note over A: Recording auto-stops after 2 s of silence<br/>or 20 s of total capture, whichever comes first
+    A->>UI: hearing to interpreting, transcript commits beside the matched option
+    A-->>U: Close earcon, then confirm the understood option before acting
+    A->>UI: interpreting to confirmed, the acted-on object highlights
+    A-->>U: Confirm earcon
+    A->>UI: confirmed to idle, badge clears
+    Note over A: Recording auto-stops after 2 s of silence or 20 s of<br/>total capture, whichever comes first
+    Note over U,UI: Meta names the audible channel and leaves the visual<br/>state to you. Snap does the reverse, so a shared design<br/>has to satisfy both at once
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — held-open mic, with the Ray-Ban fallback</p>
@@ -329,23 +407,29 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant OS as Horizon OS
+    participant UI as App UI state
     participant A as App · Voice SDK
+    participant OS as Horizon OS
     participant W as Wit.ai
     participant RB as Ray-Ban Meta path
     U->>A: Enable continuous listening in app settings
     A-->>U: Explain the capture, offer a mute that is always one action away
     A->>OS: Hold the mic open while the app is foreground
+    A->>UI: idle to listening, persistent mic badge and level meter
+    A-->>U: Rising open earcon, once for the session
     loop While enabled
         A->>W: Stream audio
         W-->>A: Partial then final transcripts
-        A-->>U: Live transcription panel and an always-visible mic state
+        A->>UI: listening to hearing, live transcription panel updates
         A->>A: Re-activate before the 20 s cap expires
+        A->>UI: hearing to listening, no earcon and no flicker on the seam
     end
-    Note over A,OS: The 20 s cap is per activation, so a continuous<br/>session is the app stitching activations together
+    Note over A,OS: The 20 s cap is per activation, so a continuous session is<br/>the app stitching activations together. The user must not<br/>be able to see or hear the seam
     U->>A: Mute
     A->>A: Deactivate, release the mic
-    Note over RB: On Ray-Ban Meta the toolkit exposes HFP with<br/>beamformed voice, or beta in-stream PCM at 16, 44.1<br/>or 48 kHz. No raw mic streams, no custom wake words,<br/>no access to the Hey Meta hot-word detector
+    A->>UI: listening to muted, badge becomes a struck-through mic
+    A-->>U: Falling close earcon
+    Note over RB: Ray-Ban Meta has no display, so the visual channel does not<br/>exist and the audible one carries the whole design. The<br/>toolkit gives HFP with beamformed voice or beta in-stream<br/>PCM at 16, 44.1 or 48 kHz. No raw mic streams, no custom<br/>wake words, no access to the Hey Meta hot-word detector
 </pre></div>
       </div></div>
     </div>
@@ -360,23 +444,29 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant HW as Spectacles · four microphones
-    participant OS as Snap OS
+    participant UI as Lens UI state
     participant L as Lens · Lens Studio
+    participant OS as Snap OS
     participant C as Snap speech service
     Note over L,OS: Mic permission is declared automatically by using<br/>AsrModule, VoiceMLModule or DialogModule
     U->>L: Look at the target and speak, or press to talk
     L->>OS: require LensStudio AsrModule
     OS-->>U: Snap OS reflects that the mic is capturing
+    L->>UI: idle to armed, prompt names what the lens is listening for
     L->>OS: startTranscribing with mode HighSpeed and silenceUntilTerminationMs
+    L->>UI: armed to listening, on-lens listening state
     OS->>C: Audio
     C-->>L: onTranscriptionUpdateEvent, isFinal false
-    L-->>U: On-lens text so the user sees the interpretation forming
+    L->>UI: listening to hearing, on-lens text so the user sees it forming
     C-->>L: onTranscriptionUpdateEvent, isFinal true after the silence window
+    L->>UI: hearing to interpreting, the text commits
     L->>L: Match the transcript to a lens action
-    L-->>U: Visual confirmation of the action taken
     L->>OS: stopTranscribing
-    Note over C: Error codes include NoInternet and Unauthenticated,<br/>so plan the offline path explicitly
+    L->>UI: interpreting to confirmed, the acted-on object reacts visibly
+    L-->>U: Confirm earcon, the first sound the lens may make
+    L->>UI: confirmed to idle, prompt clears
+    Note over C: Error codes include NoInternet and Unauthenticated,<br/>so give the offline path its own visible state
+    Note over U,UI: Snap requires visuals indicating the required actions on<br/>activation and forbids audio playback during capture, so<br/>every audible cue has to wait until the mic closes
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — rolling transcription</p>
@@ -384,21 +474,25 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant OS as Snap OS
+    participant UI as Lens UI state
     participant L as Lens
+    participant OS as Snap OS
     participant C as Snap speech service
     U->>L: Enable continuous transcription in the lens
-    L-->>U: Persistent on-lens listening state
+    L->>UI: idle to listening, persistent on-lens listening state
     L->>OS: startTranscribing with mode HighAccuracy
     loop Until the user disables it
         C-->>L: Rolling partial transcript
-        L-->>U: Live caption, committed fragment by fragment
+        L->>UI: listening to hearing, the caption grows
         Note over C,L: silenceUntilTerminationMs marks a fragment final
+        L->>UI: hearing to listening, the fragment commits and stops moving
     end
-    Note over L: Audio playback during mic capture is prohibited,<br/>so duck or suspend lens audio rather than mixing
-    Note over L,OS: A published lens may not combine sensitive user<br/>data with external connectivity. Remote Service<br/>Gateway is the documented exception
+    Note over L,UI: Audio playback during mic capture is prohibited, so the whole<br/>session is visual only. Duck or suspend lens audio rather<br/>than mixing it under capture, and carry every state change<br/>on the visual channel alone
     U->>L: Disable
     L->>OS: stopTranscribing
+    L->>UI: listening to idle, the caption rail clears
+    L-->>U: Falling close earcon, now that the mic is closed
+    Note over L,OS: A published lens may not combine sensitive user data with<br/>external connectivity. Remote Service Gateway is the<br/>documented exception
 </pre></div>
       </div></div>
     </div>
@@ -516,7 +610,7 @@ sequenceDiagram
     <p class="body">Four things separate these platforms, and none of them is the recognition quality.</p>
     <div class="callout blue"><strong>Who ends the session.</strong> Apple lets you hold the mic for as long as you hold the foreground. Android ends every utterance for you and makes you restart. Meta ends it at twenty seconds whether you like it or not. Snap ends fragments, not sessions. Build the session loop for the tightest one and the others are free.</div>
     <div class="callout orange"><strong>Where the audio goes.</strong> Apple's <code>SpeechAnalyzer</code> is on-device. Android's on-device recognizer is on-device, and Gemini is not. Meta's Voice SDK routes to Wit.ai. Snap's <code>AsrModule</code> returns a <code>NoInternet</code> error, which tells you where it runs. Egress is the difference between one consent line and a privacy-policy clause.</div>
-    <div class="callout green"><strong>What the user is told.</strong> Apple and Android draw the indicator for you and make it unsuppressible. Meta asks you to make the awareness yourself with an earcon. Snap requires visuals on activation. The only safe design draws its own listening state on all four.</div>
+    <div class="callout green"><strong>What the user is told, and on which channel.</strong> Apple and Android draw the capture indicator for you and make it unsuppressible — but an indicator reports the microphone, not the app’s state, and satisfies neither user. Beyond it the vendors split: Meta names the earcon, Snap names the visual and forbids audio while the mic is open, Android names neither. The only design that survives all four carries every state on both channels and lets the platform mute the one it cannot support. See <a class="ref" href="#states">the state model</a>.</div>
     <div class="callout red"><strong>What you are allowed to do with the transcript.</strong> This is Snap's sharpest edge — sensitive user data and external connectivity cannot be combined in a published lens, so the transcript cannot simply leave for your own backend. Apple's 5.1.2 (i) permits it with explicit disclosed permission. Meta wants the justification at review. Android wants it on the Data safety form.</div>
   </div>
 
