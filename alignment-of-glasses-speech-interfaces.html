@@ -168,29 +168,31 @@
     <p class="section-desc">Two sequences per platform: a discrete command the user fires once, and a continuous listening state the user switches on. Each diagram splits the User, the Hardware/OS, and the App/Engine so you can see exactly which layer owns the microphone indicator and which layer ends the session.</p>
     <hr class="section-divider">
 
-    <p class="body" id="timelines-read">Each tab has one horizontal scrollbar shared by both of its diagrams, so they move together — they are drawn at full width rather than squeezed to fit. <strong>Solid arrows into the UI state lane are visual state changes; dashed arrows to the User are what the user hears.</strong> Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
+    <p class="body" id="timelines-read">Each tab has one horizontal scrollbar shared by both of its diagrams, so they move together — they are drawn at full width rather than squeezed to fit. <strong>Solid arrows into the &ldquo;what the user sees&rdquo; lane are changes to the display; dashed arrows back to the User are what they hear.</strong> Both lanes are written as the user would describe them rather than as widgets to build. Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
+
+    <div class="callout blue" id="scope"><strong>Scope: the app stays in front of the user.</strong> Every timeline below runs with the app in the foreground and the user attending to it. Sending it behind something else changes continuous speech on all four platforms — capture can be cut mid-sentence, the session has to be resumed rather than restarted, and a partial transcript has to survive the gap. That recovery is real work and it is not drawn here. The background rules themselves are in <a class="ref" href="#table-b">Table B</a>.</div>
 
     <h3 class="sub" id="states">The state model both channels carry</h3>
-    <p class="body">Every state below changes something the user can <em>see</em> and something the user can <em>hear</em>. No platform requires both, and no two platforms name the same one, so designing to the mandate alone produces an app that feels different on each device. Design the pair, then drop whichever channel a given device cannot carry.</p>
+    <p class="body">Every state below changes something the user can <em>see</em> and something the user can <em>hear</em>. Both columns are written as the user would describe them, not as components to build — a meter that tracks amplitude is one way to do the <em>listening</em> row, but what the row actually asks for is that the person can tell the app is live rather than frozen. No platform requires both channels, and no two platforms name the same one, so designing to the mandate alone produces an app that feels different on each device. Design the pair, then drop whichever channel a given device cannot carry.</p>
 
     <div class="scroller narrow">
     <table class="cmp states">
       <thead>
-        <tr><th>State</th><th>Visual change</th><th>Audible change</th></tr>
+        <tr><th>State</th><th>What the user sees</th><th>What the user hears</th></tr>
       </thead>
       <tbody>
-        <tr><th scope="row">idle</th><td>Affordance at rest. No transcript, no meter, no mic chrome of your own.</td><td>Silence.</td></tr>
-        <tr><th scope="row">armed</th><td>Affordance fills and gains a ring. Prompt names what the app is listening for.</td><td>Rising open earcon — short, once, never once per utterance in a continuous session.</td></tr>
-        <tr><th scope="row">listening</th><td>Meter or ring idles at the noise floor, so the user can tell live from frozen.</td><td>Silence. Room tone is the cue that the channel is open.</td></tr>
-        <tr><th scope="row">hearing</th><td>Meter tracks amplitude; volatile transcript streams in dim type to signal that it may still change.</td><td>Silence — never talk over the person who is talking.</td></tr>
-        <tr><th scope="row">interpreting</th><td>Transcript commits to solid type; the affordance shows progress.</td><td>Falling close earcon. The mic is shut and the user may speak freely again.</td></tr>
-        <tr><th scope="row">confirmed</th><td>The target element highlights <em>before</em> it changes, so the user sees which thing the words moved.</td><td>Confirm earcon, audibly distinct from the error tone.</td></tr>
-        <tr><th scope="row">muted</th><td>Badge becomes a struck-through mic and names who muted it — the user or the system.</td><td>Falling close earcon, identical to the one at interpreting, so mute is never mistaken for success.</td></tr>
-        <tr><th scope="row">failed</th><td>State turns amber or red, states the reason in words, and puts the retry action next to it.</td><td>Error tone. Never the confirm tone, never silence.</td></tr>
+        <tr><th scope="row">idle</th><td>Nothing new. The app looks the way it did before they thought about speaking.</td><td>Nothing.</td></tr>
+        <tr><th scope="row">armed</th><td>Whatever they just acted on changes, and the app names what it is listening for.</td><td>A short tone as the microphone opens.</td></tr>
+        <tr><th scope="row">listening</th><td>Something responds to the room, so they can tell the app is live rather than frozen or crashed.</td><td>Nothing. The quiet is what tells them it is their turn.</td></tr>
+        <tr><th scope="row">hearing</th><td>Their own words appear as they say them, and look unfinished, so they know the app may still change its mind.</td><td>Nothing. The app does not speak over the person speaking to it.</td></tr>
+        <tr><th scope="row">interpreting</th><td>The words stop changing and settle. The app shows that it is working on them.</td><td>A short tone as the microphone closes, so they know they can stop talking.</td></tr>
+        <tr><th scope="row">confirmed</th><td>The thing the words acted on is pointed out <em>before</em> it changes, so they can see what moved and what did not.</td><td>The app says back what it did, in one short sentence.</td></tr>
+        <tr><th scope="row">muted</th><td>The app says it is not listening, and says who stopped it — them, or the system.</td><td>The same closing tone as before. Never the sound that means it worked.</td></tr>
+        <tr><th scope="row">failed</th><td>The app says what went wrong in plain words, with the way to try again next to it.</td><td>A sound clearly unlike the successful one, and the reason spoken aloud if the user has no display to read.</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="body">Two states are easy to miss and cost the most when they are missing: <strong>listening</strong> has to look different from <strong>idle</strong> even though nothing has been said yet, and <strong>muted</strong> has to look different from <strong>confirmed</strong> even though both end with the mic closed.</p>
+    <p class="body">Two of these are easy to skip and cost the most when they are missing. <strong>listening</strong> has to look different from <strong>idle</strong> even though nothing has been said yet — otherwise the user cannot tell a live app from a hung one, and starts repeating themselves. <strong>muted</strong> has to be unmistakable from <strong>confirmed</strong> even though both end with the microphone closed — otherwise they walk away believing something happened.</p>
 
     <h3 class="sub" id="channels">Which channel each vendor actually mandates</h3>
     <div class="scroller narrow">
@@ -225,30 +227,30 @@
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant A as App · SwiftUI/RealityKit
     participant OS as visionOS · Speech + AVFAudio
     participant I as App Intents
-    U->>A: Pinch and hold the Ask affordance
+    U->>A: Pinch and hold the Ask control
     A->>OS: AVAudioSession playAndRecord with duckOthers, then requestRecordPermission
-    A->>UI: idle to armed, affordance fills and gains a ring
-    A-->>U: Rising open earcon
+    A->>UI: idle to armed, the control changes and names what it is listening for
+    A-->>U: A short tone as the mic opens
     OS-->>U: System mic indicator lights, app cannot suppress it
     A->>OS: SpeechTranscriber attached to a SpeechAnalyzer input sequence
-    A->>UI: armed to listening, ring idles at the noise floor
+    A->>UI: armed to listening, something moves with the room so it reads as live
     OS-->>A: Volatile results, on-device, no network egress
-    A->>UI: listening to hearing, transcript streams in dim type
+    A->>UI: listening to hearing, their words appear as they say them, still unsettled
     U->>A: Release the pinch
     A->>OS: analyzer.finalizeAndFinish
-    A->>UI: hearing to interpreting, transcript commits to solid type
-    A-->>U: Falling close earcon
+    A->>UI: hearing to interpreting, the words stop changing and settle
+    A-->>U: A short tone as the mic closes, so they know to stop talking
     A->>I: Resolve to an AppIntent and perform it
     I-->>A: Intent result
-    A->>UI: interpreting to confirmed, the target highlights then updates
-    A-->>U: Confirm earcon, distinct from the error tone
+    A->>UI: interpreting to confirmed, the thing that changed is pointed out first
+    A-->>U: The app says back what it did, in one short sentence
     A->>OS: setActive false, notifyOthersOnDeactivation
     OS-->>U: Indicator clears, ducked audio restores
-    A->>UI: confirmed to idle, affordance returns to rest
+    A->>UI: confirmed to idle, the control returns to how it started
     Note over A,OS: 2.5.14 accepts a visual and or audible indication,<br/>so either channel alone passes review. Pairing them<br/>is a design decision, not a compliance one
 </pre></div>
 
@@ -257,30 +259,29 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant A as App
     participant OS as visionOS · Speech + AVFAudio
-    U->>A: Switch Live dictation on
+    U->>A: Turn Live dictation on
     A-->>U: Consent sheet naming what is captured and where it goes
     A->>OS: AVAudioSession playAndRecord plus duckOthers
-    A->>UI: idle to armed, session chip appears and stays up for the session
-    A-->>U: Rising open earcon, once for the session, not once per utterance
-    OS-->>U: Mic indicator stays lit until the toggle goes off
+    A->>UI: idle to armed, a place for the words opens and stays open
+    A-->>U: A short tone as the mic opens, once for the session, not once a sentence
+    OS-->>U: Mic indicator stays lit until they turn it off
     OS-->>A: Other media ducks
-    A->>UI: armed to listening, waveform idles at the noise floor
-    loop While the toggle is on
+    A->>UI: armed to listening, something moves with the room so it reads as live
+    loop While it is on and the app is in front of them
         OS-->>A: Volatile results, low latency, may still change
-        A->>UI: listening to hearing, waveform tracks amplitude
-        A-->>U: Silence while the user speaks, never talk over them
-        OS-->>A: Finalized result at the utterance boundary
-        A->>UI: hearing to listening, the span commits and stops moving
-        A-->>U: Soft commit tick, suppressible in settings
+        A->>UI: listening to hearing, their words appear as they say them
+        A-->>U: Nothing. The app does not speak over them
+        OS-->>A: Finalized result at the sentence boundary
+        A->>UI: hearing to listening, the sentence settles and stops changing
+        A-->>U: A quiet tick as the sentence settles, switchable off
     end
-    Note over A,OS: No audio background mode, so capture ends when the app<br/>loses foreground. Backgrounded listening reads as<br/>surreptitious recording under 2.5.14
-    U->>A: Switch off, reachable in one action at any time
+    U->>A: Turn it off, reachable in one action at any time
     A->>OS: finalizeAndFinish then setActive false
-    A->>UI: listening to idle, chip and waveform clear
-    A-->>U: Falling close earcon
+    A->>UI: listening to idle, the words area closes
+    A-->>U: A short tone as the mic closes
     OS-->>U: Indicator clears
 </pre></div>
       </div></div>
@@ -296,7 +297,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant HW as Glasses · touchpad and mics
     participant A as App activity
     participant OS as Android XR
@@ -307,24 +308,24 @@ sequenceDiagram
     alt App-scoped recognition
         A->>OS: checkSelfPermission RECORD_AUDIO
         A->>OS: createOnDeviceSpeechRecognizer in onCreate, then startListening
-        A->>UI: idle to armed, heads-up slot opens with a listening chip
-        A-->>U: Short open earcon
+        A->>UI: idle to armed, a small area opens and names what it wants to hear
+        A-->>U: A short tone as the mic opens
         OS-->>A: onReadyForSpeech then onBeginningOfSpeech
         OS-->>A: onPartialResults
-        A->>UI: armed to hearing, partial transcript fills the slot
+        A->>UI: armed to hearing, their words appear as they say them
         OS-->>A: onResults with RESULTS_RECOGNITION and CONFIDENCE_SCORES
-        A->>UI: hearing to interpreting, transcript commits, chip shows progress
+        A->>UI: hearing to interpreting, the words settle and the app shows it is working
         OS-->>A: onEndOfSpeech, the recognizer stops itself
     else System-routed to the assistant
         OS->>G: Utterance
         G->>A: Function call into your declared app actions
         A->>UI: idle to interpreting, the app shows what it was asked to do
     end
-    A->>UI: interpreting to confirmed, the target card highlights then updates
-    A-->>U: Confirm earcon
-    A->>UI: confirmed to idle, slot collapses
+    A->>UI: interpreting to confirmed, the thing that changed is pointed out first
+    A-->>U: The app says back what it did, in one short sentence
+    A->>UI: confirmed to idle, the area closes
     Note over OS,A: One shot only. A single startListening ends at<br/>onEndOfSpeech. Continuity is the app restarting it
-    Note over U,UI: Android mandates the visual channel at OS level and<br/>mandates no audible one at all, so every earcon here<br/>is yours to design and yours to keep consistent
+    Note over U,UI: Android mandates the visual channel at OS level and<br/>mandates no audible one at all, so everything the user<br/>hears here is yours to design and to keep consistent
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — live captions or dictation</p>
@@ -332,35 +333,31 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant A as App
-    participant S as Foreground service
     participant OS as Android XR
-    U->>A: Enable continuous dictation
-    A->>OS: Request RECORD_AUDIO if not held
-    A->>S: startForegroundService with type microphone
-    S->>OS: FOREGROUND_SERVICE_MICROPHONE plus the manifest service type
-    Note over S,OS: Android 14 and later reject an untyped foreground service,<br/>and a mic service cannot be started from the background
-    OS-->>U: Persistent notification plus the status-area mic indicator
-    A->>UI: idle to listening, persistent caption rail opens
-    A-->>U: Rising open earcon, once for the session
-    loop Until the user switches it off
+    U->>A: Turn on continuous dictation
+    A->>OS: Request RECORD_AUDIO if not already held
+    OS-->>U: System mic indicator appears and stays up
+    A->>UI: idle to listening, a place for the words opens and stays open
+    A-->>U: A short tone as the mic opens, once for the session
+    loop While it is on and the app is in front of them
         OS-->>A: onPartialResults
-        A->>UI: listening to hearing, the caption grows in dim type
+        A->>UI: listening to hearing, their words appear as they say them
         OS-->>A: onEndOfSpeech after silence
-        A->>UI: hearing to listening, the line commits to solid type
+        A->>UI: hearing to listening, the line settles and stops changing
         A->>OS: startListening again to keep the session alive
+        Note over A,UI: The restart has to be invisible. The user never sees<br/>a gap between one sentence and the next
     end
-    U->>OS: May hard-mute from the system mic toggle at any time
-    OS-->>A: onError, capture stops regardless of app state
-    A->>UI: any state to muted, rail dims and names the system mute
-    A-->>U: Error tone, never the confirm tone
-    U->>A: Switch off
+    U->>OS: May mute from the system mic control at any time
+    OS-->>A: onError, capture stops
+    A->>UI: any state to muted, the app says it stopped and says who stopped it
+    A-->>U: A tone that is clearly not the one that means success
+    U->>A: Turn it off
     A->>OS: stopListening then destroy
-    A->>S: stopForeground and stop the service
-    A->>UI: muted or listening to idle, rail closes
-    A-->>U: Falling close earcon
-    OS-->>U: Notification and indicator clear
+    A->>UI: muted or listening to idle, the words area closes
+    A-->>U: A short tone as the mic closes
+    Note over A,OS: Foreground only. Carrying this session on with the app<br/>behind something else needs a microphone foreground<br/>service and its own recovery path, not drawn here
 </pre></div>
       </div></div>
     </div>
@@ -375,31 +372,32 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant A as App · Meta XR Voice SDK
     participant OS as Meta Horizon OS
     participant W as Wit.ai NLU
     Note over U,A: No third-party wake word exists. The app must<br/>design its own activation event as the wakeup call
-    U->>A: Press the activation affordance, button or hand gesture
+    U->>A: Press the control, or make the hand gesture the app defines
     A->>OS: RECORD_AUDIO consent, prompted at app launch
     OS-->>U: System microphone state reflects capture
     A->>A: AppVoiceExperience.Activate
-    A->>UI: idle to armed, affordance lights and a mic badge appears
-    A-->>U: Mic open earcon, the cue Meta names explicitly
+    A->>UI: idle to armed, the control changes and names what it wants to hear
+    A-->>U: A short tone as the mic opens, the cue Meta names explicitly
     Note over A: Listening begins once audio passes a volume threshold
-    A->>UI: armed to listening, level meter idles
+    A->>UI: armed to listening, something moves with the room so it reads as live
     A->>W: Stream captured audio for transcription and NLU
     W-->>A: Partial transcript
-    A->>UI: listening to hearing, live transcript of what was heard
+    A->>UI: listening to hearing, their words appear as they say them
     W-->>A: Final transcript, intent and entities
     A->>A: Conduit binds the intent to a method
-    A->>UI: hearing to interpreting, transcript commits beside the matched option
-    A-->>U: Close earcon, then confirm the understood option before acting
-    A->>UI: interpreting to confirmed, the acted-on object highlights
-    A-->>U: Confirm earcon
-    A->>UI: confirmed to idle, badge clears
+    A->>UI: hearing to interpreting, the words settle beside the option they matched
+    A-->>U: A short tone as the mic closes, then the app says back what it understood
+    U->>A: Confirm, or correct it before anything happens
+    A->>UI: interpreting to confirmed, the thing that changed is pointed out first
+    A-->>U: The app says what it did, in one short sentence
+    A->>UI: confirmed to idle, the control returns to how it started
     Note over A: Recording auto-stops after 2 s of silence or 20 s of<br/>total capture, whichever comes first
-    Note over U,UI: Meta names the audible channel and leaves the visual<br/>state to you. Snap does the reverse, so a shared design<br/>has to satisfy both at once
+    Note over U,UI: Meta names the audible channel and leaves everything the<br/>user sees to you. Snap does the reverse, so a shared<br/>design has to satisfy both at once
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — held-open mic, with the Ray-Ban fallback</p>
@@ -407,29 +405,30 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as App UI state
+    participant UI as What the user sees
     participant A as App · Voice SDK
     participant OS as Horizon OS
     participant W as Wit.ai
     participant RB as Ray-Ban Meta path
-    U->>A: Enable continuous listening in app settings
+    U->>A: Turn on continuous listening in app settings
     A-->>U: Explain the capture, offer a mute that is always one action away
-    A->>OS: Hold the mic open while the app is foreground
-    A->>UI: idle to listening, persistent mic badge and level meter
-    A-->>U: Rising open earcon, once for the session
-    loop While enabled
+    A->>OS: Hold the mic open while the app is in front of them
+    A->>UI: idle to listening, a standing sign that the app is listening
+    A-->>U: A short tone as the mic opens, once for the session
+    loop While it is on and the app is in front of them
         A->>W: Stream audio
         W-->>A: Partial then final transcripts
-        A->>UI: listening to hearing, live transcription panel updates
+        A->>UI: listening to hearing, their words appear as they say them
         A->>A: Re-activate before the 20 s cap expires
-        A->>UI: hearing to listening, no earcon and no flicker on the seam
+        A->>UI: hearing to listening, the sentence settles
+        A-->>U: Nothing at the seam. No tone, no gap
     end
     Note over A,OS: The 20 s cap is per activation, so a continuous session is<br/>the app stitching activations together. The user must not<br/>be able to see or hear the seam
     U->>A: Mute
     A->>A: Deactivate, release the mic
-    A->>UI: listening to muted, badge becomes a struck-through mic
-    A-->>U: Falling close earcon
-    Note over RB: Ray-Ban Meta has no display, so the visual channel does not<br/>exist and the audible one carries the whole design. The<br/>toolkit gives HFP with beamformed voice or beta in-stream<br/>PCM at 16, 44.1 or 48 kHz. No raw mic streams, no custom<br/>wake words, no access to the Hey Meta hot-word detector
+    A->>UI: listening to muted, the sign says it is not listening and who stopped it
+    A-->>U: A short tone as the mic closes
+    Note over RB: Ray-Ban Meta has no display, so there is nothing for the<br/>user to see and everything has to be heard. The toolkit<br/>gives HFP with beamformed voice or beta in-stream PCM at<br/>16, 44.1 or 48 kHz. No raw mic streams, no custom wake<br/>words, no access to the Hey Meta hot-word detector
 </pre></div>
       </div></div>
     </div>
@@ -444,29 +443,29 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as Lens UI state
+    participant UI as What the user sees
     participant L as Lens · Lens Studio
     participant OS as Snap OS
     participant C as Snap speech service
     Note over L,OS: Mic permission is declared automatically by using<br/>AsrModule, VoiceMLModule or DialogModule
-    U->>L: Look at the target and speak, or press to talk
+    U->>L: Look at the thing and speak, or press to talk
     L->>OS: require LensStudio AsrModule
     OS-->>U: Snap OS reflects that the mic is capturing
-    L->>UI: idle to armed, prompt names what the lens is listening for
+    L->>UI: idle to armed, the lens names what it is listening for
     L->>OS: startTranscribing with mode HighSpeed and silenceUntilTerminationMs
-    L->>UI: armed to listening, on-lens listening state
+    L->>UI: armed to listening, something moves so it reads as live, not frozen
     OS->>C: Audio
     C-->>L: onTranscriptionUpdateEvent, isFinal false
-    L->>UI: listening to hearing, on-lens text so the user sees it forming
+    L->>UI: listening to hearing, their words appear as they say them
     C-->>L: onTranscriptionUpdateEvent, isFinal true after the silence window
-    L->>UI: hearing to interpreting, the text commits
+    L->>UI: hearing to interpreting, the words settle and stop changing
     L->>L: Match the transcript to a lens action
     L->>OS: stopTranscribing
-    L->>UI: interpreting to confirmed, the acted-on object reacts visibly
-    L-->>U: Confirm earcon, the first sound the lens may make
-    L->>UI: confirmed to idle, prompt clears
-    Note over C: Error codes include NoInternet and Unauthenticated,<br/>so give the offline path its own visible state
-    Note over U,UI: Snap requires visuals indicating the required actions on<br/>activation and forbids audio playback during capture, so<br/>every audible cue has to wait until the mic closes
+    L->>UI: interpreting to confirmed, the thing they spoke to reacts visibly
+    L-->>U: A short tone, the first sound the lens is allowed to make
+    L->>UI: confirmed to idle, the prompt clears
+    Note over C: Error codes include NoInternet and Unauthenticated, so<br/>being offline has to be something the user can see
+    Note over U,UI: Snap requires visuals naming the required actions on<br/>activation and forbids audio playback during capture, so<br/>nothing can be heard until the mic closes
 </pre></div>
 
       <p class="diagram-name">B · User-enabled continuous speech — rolling transcription</p>
@@ -474,24 +473,24 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor U as User
-    participant UI as Lens UI state
+    participant UI as What the user sees
     participant L as Lens
     participant OS as Snap OS
     participant C as Snap speech service
-    U->>L: Enable continuous transcription in the lens
-    L->>UI: idle to listening, persistent on-lens listening state
+    U->>L: Turn on continuous transcription in the lens
+    L->>UI: idle to listening, a standing sign that the lens is listening
     L->>OS: startTranscribing with mode HighAccuracy
-    loop Until the user disables it
+    loop While it is on and the lens is running
         C-->>L: Rolling partial transcript
-        L->>UI: listening to hearing, the caption grows
+        L->>UI: listening to hearing, their words appear as they say them
         Note over C,L: silenceUntilTerminationMs marks a fragment final
-        L->>UI: hearing to listening, the fragment commits and stops moving
+        L->>UI: hearing to listening, the fragment settles and stops changing
     end
-    Note over L,UI: Audio playback during mic capture is prohibited, so the whole<br/>session is visual only. Duck or suspend lens audio rather<br/>than mixing it under capture, and carry every state change<br/>on the visual channel alone
-    U->>L: Disable
+    Note over L,UI: Audio playback during mic capture is prohibited, so for the<br/>whole session there is nothing to hear. Every state change<br/>has to be carried by what the user can see
+    U->>L: Turn it off
     L->>OS: stopTranscribing
-    L->>UI: listening to idle, the caption rail clears
-    L-->>U: Falling close earcon, now that the mic is closed
+    L->>UI: listening to idle, the words area clears
+    L-->>U: A short tone as the mic closes, now that it is allowed
     Note over L,OS: A published lens may not combine sensitive user data with<br/>external connectivity. Remote Service Gateway is the<br/>documented exception
 </pre></div>
       </div></div>
@@ -530,7 +529,7 @@ sequenceDiagram
           <td>Pinch or tap on a visible affordance; gaze-plus-pinch on a control; Siri; Voice Control for gesture-equivalent commands; dictation from any text field, with dictation, spelling and command modes.<span class="tag-ver">doc</span></td>
           <td>Touch-and-hold on the glasses touchpad launches Gemini; system wake word; in-app button or gesture; physical buttons for camera and display. Hands, eyes, voice, keyboard, mouse, trackpad and 6DoF controllers are all first-class inputs.<span class="tag-ver">doc</span></td>
           <td>App-supplied only: a UI button, a controller press, a hand gesture, or any event the app defines. Voice SDK begins recording once captured audio passes a volume threshold after activation.<span class="tag-ver">doc</span></td>
-          <td>Lens-initiated <code>startTranscribing()</code> or <code>startListening()</code>; hand tracking and voice are the two Snap OS input modes. Press-to-talk is an app-level pattern, not a platform affordance.<span class="tag-est">est.</span></td>
+          <td>Lens-initiated <code>startTranscribing()</code> or <code>startListening()</code>; hand tracking and voice are the two Snap OS input modes. Press-to-talk is an app-level pattern, not something the platform provides.<span class="tag-est">est.</span></td>
         </tr>
         <tr>
           <th scope="row">Required app UI feedback</th>
