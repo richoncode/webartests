@@ -68,10 +68,16 @@
   .pane { display: none; }
   .pane.active { display: block; }
   .pane-note { font-size: 13px; color: #777; margin-bottom: 18px; max-width: 740px; }
-  .diagram-name { font-size: 13px; font-weight: 600; color: #ccc; margin: 26px 0 8px; }
+  /* Pinned to the left of the scrollport so the label still reads once the pair is scrolled. */
+  .diagram-name { font-size: 13px; font-weight: 600; color: #ccc; margin: 26px 0 8px;
+                  position: sticky; left: 0; width: max-content; }
   .diagram-name:first-of-type { margin-top: 0; }
-  .mmd { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 20px; overflow-x: auto; margin-bottom: 12px;
-         width: min(1180px, calc(100vw - 48px)); }
+  /* One horizontal scrollbar per tab, not one per diagram. The track sizes to the widest
+     diagram and both boxes stretch to it, so the pair moves together and their edges line up. */
+  .diagram-scroll { overflow-x: auto; width: min(1180px, calc(100vw - 48px)); }
+  .diagram-track { width: max-content; min-width: 100%; }
+  .mmd { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 20px; margin-bottom: 12px;
+         width: 100%; overflow: visible; }
   pre.mermaid { font-family: 'SF Mono','Fira Code',monospace; font-size: 11px; color: #555; white-space: pre; }
 
   /* ── Comparison tables ── */
@@ -108,7 +114,7 @@
   @media (max-width: 640px) {
     h1 { font-size: 26px; }
     table.cmp th[scope="row"] { width: 140px; }
-    .scroller, .mmd { width: calc(100vw - 48px); }
+    .scroller, .diagram-scroll { width: calc(100vw - 48px); }
   }
 </style>
 </head>
@@ -157,7 +163,7 @@
     <p class="section-desc">Two sequences per platform: a discrete command the user fires once, and a continuous listening state the user switches on. Each diagram splits the User, the Hardware/OS, and the App/Engine so you can see exactly which layer owns the microphone indicator and which layer ends the session.</p>
     <hr class="section-divider">
 
-    <p class="body" id="timelines-read">The diagrams scroll sideways — they are drawn at full width rather than squeezed to fit. Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
+    <p class="body" id="timelines-read">Each tab has one horizontal scrollbar shared by both of its diagrams, so they move together — they are drawn at full width rather than squeezed to fit. Read the <strong>Note</strong> bands as constraints rather than steps — they mark the point where the platform, not the app, decides what happens. The recurring pattern across all four: the app owns activation and feedback, the OS owns the indicator, and <em>nobody</em> lets a third-party app own the wake word.</p>
 
     <div class="tabs">
       <button class="tab active" data-pane="apple">Apple · visionOS</button>
@@ -170,6 +176,7 @@
     <div class="pane active" id="pane-apple">
       <p class="pane-note">visionOS 26 inherits the iOS Speech framework wholesale. <code>SpeechAnalyzer</code> and <code>SpeechTranscriber</code> ship on iOS, iPadOS, macOS, visionOS and tvOS 26 and run on-device; <code>SFSpeechRecognizer</code> remains the legacy path. There is no visionOS-only speech API, so the mobile rules are the rules.</p>
 
+      <div class="diagram-scroll"><div class="diagram-track">
       <p class="diagram-name">A · Discrete speech command — pinch-and-hold to talk</p>
       <div class="mmd"><pre class="mermaid">
 sequenceDiagram
@@ -220,12 +227,14 @@ sequenceDiagram
     A->>OS: finalizeAndFinish then setActive false
     OS-->>U: Indicator clears
 </pre></div>
+      </div></div>
     </div>
 
     <!-- ANDROID -->
     <div class="pane" id="pane-android">
       <p class="pane-note">Android XR publishes a real glasses ASR guide — <code>SpeechRecognizer.createOnDeviceSpeechRecognizer()</code> inside the projected activity — but it is silent on timeouts, indicators and ducking, so those rows fall back to Android mobile, where they are strictly specified.</p>
 
+      <div class="diagram-scroll"><div class="diagram-track">
       <p class="diagram-name">A · Discrete speech command — touchpad hold or system wake word</p>
       <div class="mmd"><pre class="mermaid">
 sequenceDiagram
@@ -282,12 +291,14 @@ sequenceDiagram
     A->>S: stopForeground and stop the service
     OS-->>U: Notification and indicator clear
 </pre></div>
+      </div></div>
     </div>
 
     <!-- META -->
     <div class="pane" id="pane-meta">
       <p class="pane-note">Meta is the only vendor that publishes hard numeric listening limits: Voice SDK stops after two seconds of silence or twenty seconds total. Ray-Ban Meta is a different world again — the Wearables Device Access Toolkit gives you HFP or beta in-stream PCM, and nothing else.</p>
 
+      <div class="diagram-scroll"><div class="diagram-track">
       <p class="diagram-name">A · Discrete speech command — app-supplied activation into Wit.ai</p>
       <div class="mmd"><pre class="mermaid">
 sequenceDiagram
@@ -336,12 +347,14 @@ sequenceDiagram
     A->>A: Deactivate, release the mic
     Note over RB: On Ray-Ban Meta the toolkit exposes HFP with<br/>beamformed voice, or beta in-stream PCM at 16, 44.1<br/>or 48 kHz. No raw mic streams, no custom wake words,<br/>no access to the Hey Meta hot-word detector
 </pre></div>
+      </div></div>
     </div>
 
     <!-- SNAP -->
     <div class="pane" id="pane-snap">
       <p class="pane-note">Snap split its stack: <code>VoiceMLModule</code> still serves Snapchat lenses, but it is no longer supported on Spectacles, which use <code>AsrModule</code> instead. The two have different language coverage, different callbacks and different failure modes, so a lens that targets both needs two code paths.</p>
 
+      <div class="diagram-scroll"><div class="diagram-track">
       <p class="diagram-name">A · Discrete speech command — AsrModule on Spectacles</p>
       <div class="mmd"><pre class="mermaid">
 sequenceDiagram
@@ -387,6 +400,7 @@ sequenceDiagram
     U->>L: Disable
     L->>OS: stopTranscribing
 </pre></div>
+      </div></div>
     </div>
   </div>
 
