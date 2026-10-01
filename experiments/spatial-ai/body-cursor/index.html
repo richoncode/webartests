@@ -251,8 +251,8 @@
         <input id="reach" type="range" min="0.42" max="1" step="0.01" value="0.80" aria-label="Reach along ray">
       </label>
       <label class="slider">
-        <span>Elbow pole <b id="elbow-val">down / out</b></span>
-        <input id="elbow" type="range" min="0" max="1" step="0.01" value="0.42" aria-label="Elbow pole">
+        <span>Elbow pole <b id="elbow-val">down</b></span>
+        <input id="elbow" type="range" min="0" max="1" step="0.01" value="0.22" aria-label="Elbow pole">
       </label>
       <div class="checks">
         <label><input id="phiz" type="checkbox"> PHIZ box</label>
@@ -347,7 +347,9 @@
     gallery.add(tilesGroup);
 
     const bodyRoot = new THREE.Group();
-    bodyRoot.position.set(0, 0, 0.38);
+    // Over the right shoulder: torso in the lower left, cropped by the frame.
+    bodyRoot.position.set(-0.58, -0.02, 0.28);
+    bodyRoot.scale.setScalar(0.68);
     scene.add(bodyRoot);
 
     const shoulderLocal = new THREE.Vector3(0.2, 1.4, 0.02);
@@ -375,9 +377,39 @@
     const hitPoint = new THREE.Vector3();
     const gesture = { id: null, moved: 0, x: 0, y: 0 };
 
-    const clay = new THREE.MeshStandardMaterial({ color: 0xe6ddd2, roughness: 0.72, metalness: 0.02 });
-    const hairMat = new THREE.MeshStandardMaterial({ color: 0x2a241f, roughness: 0.85 });
-    const jointMat = new THREE.MeshStandardMaterial({ color: 0xd4cbc0, roughness: 0.6, metalness: 0.02 });
+    function applyGhost(mat) {
+      mat.transparent = true;
+      mat.opacity = 0.42;
+      mat.depthWrite = true;
+      mat.depthTest = true;
+      mat.side = THREE.FrontSide;
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = 1;
+      mat.polygonOffsetUnits = 1;
+      // Body draws after the gallery and writes depth, so overlapping
+      // arm and torso shells keep a stable order instead of flickering.
+      mat.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <output_fragment>',
+          `#include <output_fragment>
+           float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.3);
+           gl_FragColor.rgb += vec3(0.78, 0.88, 1.0) * fres * 0.9;
+           gl_FragColor.a = mix(0.40, 0.92, fres);`
+        );
+      };
+      mat.customProgramCacheKey = () => 'ghost-fresnel-v1';
+    }
+
+    const clay = new THREE.MeshStandardMaterial({ color: 0xe4d9ce, roughness: 0.46, metalness: 0.04 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x2c2622, roughness: 0.62, metalness: 0.02 });
+    applyGhost(clay);
+    applyGhost(hairMat);
+
+    function asBody(mesh, order) {
+      mesh.renderOrder = order;
+      mesh.castShadow = false;
+      return mesh;
+    }
 
     function std(color, roughness, metalness) {
       return new THREE.MeshStandardMaterial({
@@ -523,9 +555,7 @@
       p2.position.set(-2.32, 0.5, -0.05);
       scene.add(p2);
 
-      addBox(scene, 2.35, 0.36, 0.42, 0, 0.2, -1.02, std(0x221c18, 0.62, 0.08));
-      addBox(scene, 0.28, 0.04, 0.22, -0.7, 0.4, -0.96, std(0x8d3a32, 0.7));
-      addBox(scene, 0.22, 0.035, 0.18, -0.68, 0.44, -0.94, std(0xd8d2c6, 0.8));
+      addBox(scene, 2.15, 0.28, 0.38, 0.15, 0.16, -1.08, std(0x221c18, 0.62, 0.08));
 
       const splash = canvasTex((g, w, h) => {
         const grd = g.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.48);
@@ -552,92 +582,59 @@
       tvLight.position.set(0, TV_Y, GALLERY_Z + 0.85);
       scene.add(tvLight);
 
-      const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(0.38, 28),
-        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false })
-      );
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.position.set(0, 0.015, 0.4);
-      scene.add(shadow);
+      // Cool rim from the screen, warm rim from the lamp side, so the torso separates from the room.
+      const rimCool = new THREE.DirectionalLight(0xd7e7ff, 1.35);
+      rimCool.position.set(0.4, 1.8, -2.4);
+      scene.add(rimCool);
+      const rimWarm = new THREE.DirectionalLight(0xffc49a, 0.55);
+      rimWarm.position.set(2.4, 1.6, 1.2);
+      scene.add(rimWarm);
     }
 
     function buildFigure() {
-      function capsule(r, len, mat) {
-        const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 12), mat);
-        bodyRoot.add(mesh);
-        return mesh;
-      }
-      const hips = capsule(0.13, 0.16, clay);
-      hips.position.set(0, 0.96, 0.02);
-      const chest = capsule(0.155, 0.2, clay);
-      chest.position.set(0, 1.26, 0);
-      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.08, 12), clay);
-      neck.position.set(0, 1.5, 0);
-      bodyRoot.add(neck);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.108, 20, 16), clay);
-      head.position.set(0, 1.64, -0.01);
-      bodyRoot.add(head);
-      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.112, 20, 16), hairMat);
-      hair.scale.set(1, 0.72, 0.95);
-      hair.position.set(0, 1.72, 0.01);
-      bodyRoot.add(hair);
-      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), clay);
-      nose.position.set(0.015, 1.62, -0.1);
-      bodyRoot.add(nose);
+      const chest = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.78, 12, 32), clay), 2);
+      chest.position.set(0, 0.98, 0.01);
+      const yoke = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.28, 10, 28), clay), 2);
+      yoke.rotation.z = Math.PI / 2;
+      yoke.position.set(0, 1.38, 0.02);
+      const neck = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.08, 8, 24), clay), 2);
+      neck.position.set(0, 1.55, 0.0);
+      const head = asBody(new THREE.Mesh(new THREE.SphereGeometry(0.108, 40, 32), clay), 2);
+      head.position.set(0, 1.69, -0.01);
+      const hair = asBody(new THREE.Mesh(new THREE.SphereGeometry(0.112, 40, 32), hairMat), 2);
+      hair.scale.set(1.02, 0.58, 0.96);
+      hair.position.set(0, 1.77, 0.01);
+      bodyRoot.add(chest, yoke, neck, head, hair);
 
-      const legMat = clay;
-      const hipL = new THREE.Vector3(-0.09, 0.86, 0.02);
-      const hipR = new THREE.Vector3(0.09, 0.86, 0.02);
-      const kneeL = new THREE.Vector3(-0.1, 0.46, 0.03);
-      const kneeR = new THREE.Vector3(0.11, 0.46, 0.03);
-      const ankleL = new THREE.Vector3(-0.1, 0.08, 0.0);
-      const ankleR = new THREE.Vector3(0.11, 0.08, 0.0);
-      [ [hipL, kneeL], [hipR, kneeR], [kneeL, ankleL], [kneeR, ankleR] ].forEach(([a, b]) => {
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), legMat);
-        bodyRoot.add(mesh);
-        placeCentered(mesh, a, b, 0.055);
-      });
-      addBox(bodyRoot, 0.1, 0.04, 0.18, -0.1, 0.04, -0.02, clay);
-      addBox(bodyRoot, 0.1, 0.04, 0.18, 0.11, 0.04, -0.02, clay);
+      const cap = asBody(new THREE.Mesh(new THREE.SphereGeometry(0.055, 28, 20), clay), 2);
+      cap.position.copy(shoulderLocal);
+      bodyRoot.add(cap);
 
+      // Left arm hangs beside the torso, down toward the bottom edge of the frame.
       const ls = new THREE.Vector3(-0.2, 1.4, 0.02);
-      const leDir = new THREE.Vector3(-0.14, -0.25, 0.05).normalize();
-      const le = ls.clone().addScaledVector(leDir, L1);
-      const lwDir = new THREE.Vector3(0.05, -0.24, 0.06).normalize();
-      const lw = le.clone().addScaledVector(lwDir, L2);
-      const leftUpper = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), clay);
-      const leftLower = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), clay);
+      const le = ls.clone().add(new THREE.Vector3(-0.08, -1, 0.12).normalize().multiplyScalar(L1));
+      const lw = le.clone().add(new THREE.Vector3(0.02, -1, 0.06).normalize().multiplyScalar(L2));
+      const leftUpper = makeLimb(0.044);
+      const leftLower = makeLimb(0.036);
       bodyRoot.add(leftUpper, leftLower);
-      placeCentered(leftUpper, ls, le, 0.048);
-      placeCentered(leftLower, le, lw, 0.04);
-      const lShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 12), jointMat);
-      lShoulder.position.copy(ls);
-      const lElbow = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 10), jointMat);
-      lElbow.position.copy(le);
-      const lHand = makeHand(false);
+      placeCapsule(leftUpper, ls, le);
+      placeCapsule(leftLower, le, lw);
+      const lHand = makeMitten();
       lHand.position.copy(lw);
-      lHand.rotation.x = -1.15;
-      bodyRoot.add(lShoulder, lElbow, lHand);
-
-      const rShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 12), jointMat);
-      rShoulder.position.copy(shoulderLocal);
-      bodyRoot.add(rShoulder);
+      lHand.rotation.x = -1.4;
+      bodyRoot.add(lHand);
     }
 
-    function makeHand(right) {
+    function makeMitten() {
       const hand = new THREE.Group();
-      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.074, 0.09, 0.028), clay);
-      palm.position.set(0, -0.01, -0.045);
-      hand.add(palm);
-      for (let i = 0; i < 4; i++) {
-        const finger = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.016, 0.055), clay);
-        finger.position.set(-0.024 + i * 0.016, 0.028, -0.085);
-        hand.add(finger);
-      }
-      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.014, 0.04), clay);
-      thumb.position.set(right ? 0.046 : -0.046, -0.01, -0.04);
-      thumb.rotation.y = right ? -0.6 : 0.6;
-      hand.add(thumb);
+      const palm = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.052, 8, 20), clay), 3);
+      palm.rotation.x = Math.PI / 2;
+      palm.position.set(0, -0.002, -0.05);
+      const thumb = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.02, 6, 14), clay), 3);
+      thumb.position.set(0.03, -0.01, -0.03);
+      thumb.rotation.set(0.35, -0.45, 0.9);
+      hand.add(palm, thumb);
+      hand.renderOrder = 3;
       return hand;
     }
 
@@ -646,23 +643,34 @@
     const limbMid = new THREE.Vector3();
     const limbQ = new THREE.Quaternion();
 
-    function placeCentered(mesh, a, b, radius) {
+    function placeCapsule(mesh, a, b) {
       limbDir.subVectors(b, a);
       const len = Math.max(limbDir.length(), 1e-4);
       limbMid.addVectors(a, b).multiplyScalar(0.5);
       mesh.position.copy(limbMid);
-      mesh.scale.set(radius, len, radius);
+      const q = Math.max(0.04, Math.round(len * 200) / 200);
+      if (mesh.userData.lenKey !== q) {
+        mesh.geometry.dispose();
+        mesh.geometry = new THREE.CapsuleGeometry(mesh.userData.radius, q, 8, 28);
+        mesh.userData.lenKey = q;
+      }
+      mesh.scale.set(1, 1, 1);
       limbDir.multiplyScalar(1 / len);
       limbQ.setFromUnitVectors(yAxis, limbDir);
       mesh.quaternion.copy(limbQ);
     }
 
-    const rightUpper = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), clay);
-    const rightLower = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), clay);
-    const rightElbow = new THREE.Mesh(new THREE.SphereGeometry(0.042, 12, 10), jointMat);
-    const rightWrist = new THREE.Mesh(new THREE.SphereGeometry(0.032, 12, 10), jointMat);
-    const rightHand = makeHand(true);
-    bodyRoot.add(rightUpper, rightLower, rightElbow, rightWrist, rightHand);
+    function makeLimb(radius) {
+      const mesh = asBody(new THREE.Mesh(new THREE.CapsuleGeometry(radius, 0.2, 8, 28), clay), 3);
+      mesh.userData.radius = radius;
+      mesh.userData.lenKey = -1;
+      return mesh;
+    }
+
+    const rightUpper = makeLimb(0.046);
+    const rightLower = makeLimb(0.038);
+    const rightHand = makeMitten();
+    bodyRoot.add(rightUpper, rightLower, rightHand);
 
     const ikDir = new THREE.Vector3();
     const ikPole = new THREE.Vector3();
@@ -904,17 +912,17 @@
       const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
       camera.aspect = aspect;
       if (aspect < 0.8) {
-        camera.fov = 48;
-        camera.position.set(0.28, 1.42, 2.72);
-        camera.lookAt(0.02, 1.12, -0.45);
+        camera.fov = 68;
+        camera.position.set(0.02, 1.28, 2.55);
+        camera.lookAt(0.0, 1.22, -0.9);
       } else if (aspect < 1.15) {
-        camera.fov = 40;
-        camera.position.set(0.42, 1.46, 2.35);
-        camera.lookAt(0.02, 1.12, -0.6);
-      } else {
         camera.fov = 33;
-        camera.position.set(0.18, 1.4, 2.22);
-        camera.lookAt(0.04, 1.08, -0.45);
+        camera.position.set(0.1, 1.38, 2.15);
+        camera.lookAt(0.02, 1.28, -0.9);
+      } else {
+        camera.fov = 30;
+        camera.position.set(0.12, 1.36, 2.05);
+        camera.lookAt(0.02, 1.28, -0.9);
       }
       camera.updateProjectionMatrix();
     }
@@ -1105,7 +1113,7 @@
         tile.scale.setScalar(next);
         tile.position.z = on ? 0.05 : 0;
         tile.material.uniforms.uHover.value = on ? 1 : 0;
-        tile.renderOrder = on ? 3 : 1;
+        tile.renderOrder = 1;
       }
 
       if (hoverIndex >= 0 && hoverIndex === dwellTile && !lightboxOpen && gesture.id != null) {
@@ -1138,10 +1146,8 @@
       poleScratch.copy(poleFrom(shoulderLocal, aimLocal, elbowAmount));
       solveTwoBone(shoulderLocal, targetLocal, poleScratch, L1, L2, elbowLocal, wristLocal);
 
-      placeCentered(rightUpper, shoulderLocal, elbowLocal, 0.05);
-      placeCentered(rightLower, elbowLocal, wristLocal, 0.04);
-      rightElbow.position.copy(elbowLocal);
-      rightWrist.position.copy(wristLocal);
+      placeCapsule(rightUpper, shoulderLocal, elbowLocal);
+      placeCapsule(rightLower, elbowLocal, wristLocal);
       rightHand.position.copy(wristLocal);
       wristWorld.copy(wristLocal);
       bodyRoot.localToWorld(wristWorld);
