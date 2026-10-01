@@ -81,18 +81,101 @@
       text-shadow: 0 1px 8px rgba(0,0,0,0.8);
     }
 
-    #tune {
+    #dock {
       position: fixed;
-      right: 16px;
-      bottom: 16px;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
       z-index: 5;
-      width: min(300px, calc(100vw - 24px));
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      gap: 12px;
+      pointer-events: none;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #modes, #tune { pointer-events: auto; touch-action: manipulation; }
+    #modes {
+      display: flex;
+      gap: 8px;
+      margin-right: auto;
+      margin-left: clamp(160px, 18vw, 280px);
+    }
+    .seg {
+      background: rgba(18, 18, 18, 0.88);
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 8px 8px 8px;
+      backdrop-filter: blur(8px);
+      min-width: 148px;
+    }
+    .seg-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #8a8a8a;
+      margin: 0 4px 6px;
+    }
+    .seg-track {
+      display: flex;
+      gap: 4px;
+    }
+    .seg-track button {
+      flex: 1;
+      min-height: 44px;
+      min-width: 64px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: #1a1a1a;
+      color: #ccc;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .seg-track button:hover { background: #222; color: #fff; }
+    .seg-track button[aria-checked="true"] {
+      background: #1e2d40;
+      border-color: #5b9bd5;
+      color: #5b9bd5;
+    }
+    #tune {
+      position: relative;
+      width: min(300px, 36vw);
       background: rgba(18, 18, 18, 0.88);
       border: 1px solid #2a2a2a;
       border-radius: 16px;
       padding: 14px 16px 12px;
       backdrop-filter: blur(8px);
-      touch-action: manipulation;
+    }
+    body.mode-phiz .ray-only { opacity: 0.38; }
+    #scroll-bar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 6px;
+      width: 200px;
+      background: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+      border-radius: 99px;
+      z-index: 6;
+      opacity: 0;
+      pointer-events: none;
+      overflow: hidden;
+      transition: opacity 0.45s ease;
+    }
+    #scroll-bar.on { opacity: 1; }
+    #scroll-thumb {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 25%;
+      background: #5b9bd5;
+      border-radius: 99px;
     }
     #tune h2 {
       font-size: 13px;
@@ -212,11 +295,22 @@
       line-height: 1.45;
     }
 
-    @media (max-width: 720px) {
+    @media (max-width: 900px) {
       .hud h1 { font-size: 22px; }
       .lede { display: none; }
       .kicker { margin-top: 8px; }
-      #tune { left: 10px; right: 10px; width: auto; bottom: 10px; padding: 10px 12px 8px; }
+      #dock {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 8px;
+      }
+      #modes { margin-left: 0; margin-right: 0; align-self: stretch; }
+      .seg { flex: 1; min-width: 0; padding: 6px; }
+      .seg-label { margin-bottom: 4px; }
+      #tune { width: auto; padding: 10px 12px 8px; }
       .hint { font-size: 11px; margin-bottom: 6px; }
       .slider { margin-bottom: 4px; }
     }
@@ -236,21 +330,40 @@
     <a class="back" href="../">← Back</a>
     <p class="kicker">Spatial AI · PHIZ</p>
     <h1>Body Cursor</h1>
-    <p class="lede">Right hand out in front of the body. The cursor lives on the gallery; the arm points along that ray.</p>
+    <p class="lede">Right hand in front of the body. Ray points along the cursor. PHIZ keeps the hand in a small zone and maps that zone onto the gallery.</p>
   </header>
 
+  <div id="scroll-bar" aria-hidden="true"><div id="scroll-thumb"></div></div>
+
+  <div id="dock">
+  <div id="modes">
+    <div class="seg" role="radiogroup" aria-label="Pointing mode">
+      <span class="seg-label">Pointing</span>
+      <div class="seg-track">
+        <button type="button" id="mode-ray" role="radio" aria-checked="true">Ray</button>
+        <button type="button" id="mode-phiz" role="radio" aria-checked="false">PHIZ</button>
+      </div>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="Scroll mode">
+      <span class="seg-label">Scroll</span>
+      <div class="seg-track">
+        <button type="button" id="mode-push" role="radio" aria-checked="true">Push</button>
+        <button type="button" id="mode-grab" role="radio" aria-checked="false">Grab</button>
+      </div>
+    </div>
+  </div>
   <aside id="tune">
     <div class="tune-head">
       <h2>Body cursor</h2>
       <button type="button" id="tune-toggle" aria-expanded="true">Hide</button>
     </div>
     <div class="tune-body">
-      <p class="hint">Move to aim. Hold either edge of the screen to scroll. Tap a photo to open it.</p>
-      <label class="slider">
+      <p class="hint" id="hint">Move to aim. Hold either edge of the screen to scroll. Tap a photo to open it.</p>
+      <label class="slider ray-only">
         <span>Reach along ray <b id="reach-val">0.80</b></span>
         <input id="reach" type="range" min="0.42" max="1" step="0.01" value="0.80" aria-label="Reach along ray">
       </label>
-      <label class="slider">
+      <label class="slider ray-only">
         <span>Elbow pole <b id="elbow-val">down</b></span>
         <input id="elbow" type="range" min="0" max="1" step="0.01" value="0.22" aria-label="Elbow pole">
       </label>
@@ -262,6 +375,7 @@
       <p class="credit">Landscapes from <a href="https://unsplash.com/license">Unsplash</a>, Unsplash License. Local 480×320 copies.</p>
     </div>
   </aside>
+  </div>
 
   <div id="lightbox" role="dialog" aria-modal="true" aria-label="Selected photo">
     <figure>
@@ -323,7 +437,14 @@
     const elbowVal = document.getElementById('elbow-val');
     const phizInput = document.getElementById('phiz');
     const guideInput = document.getElementById('guide');
+    const hintEl = document.getElementById('hint');
     const readout = document.getElementById('readout');
+    const scrollBar = document.getElementById('scroll-bar');
+    const scrollThumb = document.getElementById('scroll-thumb');
+    const modeRay = document.getElementById('mode-ray');
+    const modePhiz = document.getElementById('mode-phiz');
+    const modePush = document.getElementById('mode-push');
+    const modeGrab = document.getElementById('mode-grab');
     const lightbox = document.getElementById('lightbox');
     const lightImg = document.getElementById('light-img');
     const lightCap = document.getElementById('light-cap');
@@ -363,7 +484,15 @@
 
     let scroll = 0;
     let scrollTarget = 0;
+    let scrollVel = 0;
+    let grabScroll = 0;
+    let grabbing = false;
+    let scrollIdle = 10;
     const maxScroll = Math.max(0, ((COLS - 1) * PITCH_X + TILE_W - WINDOW_W) / 2);
+    let pointing = 'ray';
+    let scrollMode = 'push';
+    let savedGuide = true;
+    let savedPhiz = false;
     let reachRatio = Number(reachInput.value);
     let elbowAmount = Number(elbowInput.value);
     reachVal.textContent = reachRatio.toFixed(2);
@@ -375,7 +504,7 @@
     const raycaster = new THREE.Raycaster();
     const galleryPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -GALLERY_Z);
     const hitPoint = new THREE.Vector3();
-    const gesture = { id: null, moved: 0, x: 0, y: 0 };
+    const gesture = { id: null, moved: 0, x: 0, y: 0, scroll0: 0, lastWorldX: 0, lastT: 0 };
 
     function applyGhost(mat) {
       mat.transparent = true;
@@ -725,6 +854,153 @@
       return shoulder.clone().addScaledVector(ikBend, 0.65);
     }
 
+    // Neutral reach is a right angle at the elbow: the hand rests in front of
+    // the torso, a little to the right, around low-chest height. Touch maps
+    // into this zone as shoulder yaw/pitch plus a small flexion change.
+    const neutralDir = new THREE.Vector3(0.14, -0.70, -0.70).normalize();
+    const PHIZ_RADIUS = Math.sqrt(L1 * L1 + L2 * L2);
+    const phizQ = new THREE.Quaternion();
+    const phizQ2 = new THREE.Quaternion();
+    const phizAxis = new THREE.Vector3(1, 0, 0);
+    const phizPole = new THREE.Vector3();
+    const fingerAim = new THREE.Vector3();
+    const barA = new THREE.Vector3();
+    const barB = new THREE.Vector3();
+
+    function phizWrist(nx, ny, radius, out) {
+      const yaw = -nx * 0.24;
+      const pitch = ny * 0.18;
+      phizQ.setFromAxisAngle(yAxis, yaw);
+      phizQ2.setFromAxisAngle(phizAxis, pitch);
+      phizQ.multiply(phizQ2);
+      out.copy(neutralDir).applyQuaternion(phizQ).multiplyScalar(radius).add(shoulderLocal);
+      return out;
+    }
+
+    function buildPhizVolume() {
+      const pts = [];
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const shells = [PHIZ_RADIUS * 0.84, PHIZ_RADIUS * 1.14];
+      const nu = 4;
+      const nv = 3;
+      function put(i0, j0, r0, i1, j1, r1) {
+        const nx0 = i0 / nu * 2 - 1;
+        const ny0 = j0 / nv * 2 - 1;
+        const nx1 = i1 / nu * 2 - 1;
+        const ny1 = j1 / nv * 2 - 1;
+        phizWrist(nx0, ny0, r0, a);
+        phizWrist(nx1, ny1, r1, b);
+        pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      }
+      for (let s = 0; s < shells.length; s++) {
+        const r = shells[s];
+        for (let j = 0; j <= nv; j++) {
+          for (let i = 0; i < nu; i++) put(i, j, r, i + 1, j, r);
+        }
+        for (let i = 0; i <= nu; i++) {
+          for (let j = 0; j < nv; j++) put(i, j, r, i, j + 1, r);
+        }
+      }
+      for (let j = 0; j <= nv; j += nv) {
+        for (let i = 0; i <= nu; i += nu) put(i, j, shells[0], i, j, shells[1]);
+      }
+      phiz.geometry.dispose();
+      phiz.geometry = new THREE.BufferGeometry();
+      phiz.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    }
+
+    function hintFor() {
+      const point = pointing === 'phiz'
+        ? 'The hand stays in the zone. That spot drives the cursor.'
+        : 'Move to aim along the ray.';
+      const scroll = scrollMode === 'grab'
+        ? 'Drag the gallery sideways to scroll. A short tap still opens a photo.'
+        : 'Hold either edge to scroll.';
+      return point + ' ' + scroll;
+    }
+
+    function writeHash() {
+      const q = new URLSearchParams();
+      if (pointing !== 'ray') q.set('point', pointing);
+      if (scrollMode !== 'push') q.set('scroll', scrollMode);
+      const next = q.toString();
+      const base = location.pathname + location.search;
+      history.replaceState(null, '', next ? base + '#' + next : base);
+    }
+
+    function syncModeButtons() {
+      modeRay.setAttribute('aria-checked', pointing === 'ray' ? 'true' : 'false');
+      modePhiz.setAttribute('aria-checked', pointing === 'phiz' ? 'true' : 'false');
+      modePush.setAttribute('aria-checked', scrollMode === 'push' ? 'true' : 'false');
+      modeGrab.setAttribute('aria-checked', scrollMode === 'grab' ? 'true' : 'false');
+      document.body.classList.toggle('mode-phiz', pointing === 'phiz');
+      reachInput.disabled = pointing === 'phiz';
+      elbowInput.disabled = pointing === 'phiz';
+      guideInput.disabled = pointing === 'phiz';
+      phizInput.disabled = pointing === 'phiz';
+      if (pointing === 'phiz') phizInput.checked = true;
+      hintEl.textContent = hintFor();
+    }
+
+    function setPointing(mode) {
+      if (mode !== 'ray' && mode !== 'phiz') return;
+      if (pointing !== 'phiz' && mode === 'phiz') {
+        savedGuide = guideInput.checked;
+        savedPhiz = phizInput.checked;
+      }
+      if (pointing === 'phiz' && mode !== 'phiz') {
+        guideInput.checked = savedGuide;
+        phizInput.checked = savedPhiz;
+      }
+      pointing = mode;
+      syncModeButtons();
+      writeHash();
+    }
+
+    function setScrollMode(mode) {
+      if (mode !== 'push' && mode !== 'grab') return;
+      if (mode !== scrollMode) {
+        scrollVel = 0;
+        grabbing = false;
+        scrollTarget = THREE.MathUtils.clamp(scroll, -maxScroll, maxScroll);
+        grabScroll = scrollTarget;
+        scroll = scrollTarget;
+      }
+      scrollMode = mode;
+      syncModeButtons();
+      writeHash();
+    }
+
+    function readHash() {
+      const q = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const point = q.get('point');
+      const scr = q.get('scroll');
+      if (point === 'phiz' || point === 'ray') setPointing(point);
+      if (scr === 'grab' || scr === 'push') setScrollMode(scr);
+    }
+
+    modeRay.addEventListener('click', () => setPointing('ray'));
+    modePhiz.addEventListener('click', () => setPointing('phiz'));
+    modePush.addEventListener('click', () => setScrollMode('push'));
+    modeGrab.addEventListener('click', () => setScrollMode('grab'));
+    window.addEventListener('hashchange', readHash);
+
+    function rubberize(v) {
+      if (v < -maxScroll) {
+        const over = -maxScroll - v;
+        return -maxScroll - (1 - Math.exp(-over / 0.45)) * 0.28;
+      }
+      if (v > maxScroll) {
+        const over = v - maxScroll;
+        return maxScroll + (1 - Math.exp(-over / 0.45)) * 0.28;
+      }
+      return v;
+    }
+
+    let rawHitX = 0;
+    let rawInside = false;
+
     const TILE_VERT = `
       varying vec2 vUv;
       varying vec3 vWorld;
@@ -850,29 +1126,49 @@
       fragmentShader: CURSOR_FRAG,
     });
     const cursorRing = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), cursorMat);
-    const handIcon = canvasTex((g, w, h) => {
+    function paintHand(g, w, h, closed) {
       g.clearRect(0, 0, w, h);
       g.fillStyle = 'rgba(255,255,255,0.95)';
       g.strokeStyle = 'rgba(91,155,213,0.95)';
       g.lineWidth = 6;
+      g.lineJoin = 'round';
+      if (!closed) {
+        g.beginPath();
+        g.roundRect(46, 58, 52, 48, 16);
+        g.fill();
+        g.stroke();
+        for (let i = 0; i < 4; i++) {
+          g.beginPath();
+          g.roundRect(50 + i * 12, 22, 10, 42, 5);
+          g.fill();
+          g.stroke();
+        }
+        g.beginPath();
+        g.roundRect(28, 70, 22, 12, 6);
+        g.fill();
+        g.stroke();
+        return;
+      }
       g.beginPath();
-      g.roundRect(46, 58, 52, 48, 16);
+      g.roundRect(36, 52, 58, 46, 18);
       g.fill();
       g.stroke();
       for (let i = 0; i < 4; i++) {
         g.beginPath();
-        g.roundRect(50 + i * 12, 22, 10, 42, 5);
+        g.roundRect(42 + i * 13, 38, 11, 20, 6);
         g.fill();
         g.stroke();
       }
       g.beginPath();
-      g.roundRect(28, 70, 22, 12, 6);
+      g.ellipse(40, 78, 11, 8, -0.5, 0, Math.PI * 2);
       g.fill();
       g.stroke();
-    }, 128, 128);
+    }
+    const handOpen = canvasTex((g, w, h) => paintHand(g, w, h, false), 128, 128);
+    const handClosed = canvasTex((g, w, h) => paintHand(g, w, h, true), 128, 128);
     const cursorHand = new THREE.Mesh(
       new THREE.PlaneGeometry(0.055, 0.055),
-      new THREE.MeshBasicMaterial({ map: handIcon, transparent: true, depthWrite: false, fog: false })
+      new THREE.MeshBasicMaterial({ map: handOpen, transparent: true, depthWrite: false, fog: false })
     );
     cursorHand.position.z = 0.001;
     const cursorGroup = new THREE.Group();
@@ -889,12 +1185,13 @@
     scene.add(guide);
 
     const phiz = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(0.62, 0.7, 0.48)),
-      new THREE.LineBasicMaterial({ color: 0x5b9bd5, transparent: true, opacity: 0.55 })
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0x8ec4ef, transparent: true, opacity: 0.9, depthWrite: false, fog: false })
     );
-    phiz.position.set(0.16, 1.18, -0.22);
     phiz.visible = false;
+    phiz.renderOrder = 4;
     bodyRoot.add(phiz);
+    buildPhizVolume();
 
     const chevronMatL = new THREE.MeshBasicMaterial({ color: 0xe7f2ff, transparent: true, opacity: 0, depthWrite: false });
     const chevronMatR = chevronMatL.clone();
@@ -947,9 +1244,39 @@
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.ray.intersectPlane(galleryPlane, hitPoint);
       if (!hit) return false;
+      rawHitX = hitPoint.x;
+      rawInside = Math.abs(hitPoint.x) <= WINDOW_W * 0.5
+        && Math.abs(hitPoint.y - TV_Y) <= WINDOW_H * 0.5;
       out.copy(hitPoint);
       clampCursor(out);
       return true;
+    }
+
+    function setGrabCursor(closed) {
+      const next = closed ? handClosed : handOpen;
+      if (cursorHand.material.map !== next) {
+        cursorHand.material.map = next;
+        cursorHand.material.needsUpdate = true;
+      }
+    }
+
+    function placeScrollBar() {
+      barA.set(-WINDOW_W / 2, TV_Y + WINDOW_H / 2, GALLERY_Z);
+      barB.set(WINDOW_W / 2, TV_Y + WINDOW_H / 2, GALLERY_Z);
+      barA.project(camera);
+      barB.project(camera);
+      const x1 = (barA.x * 0.5 + 0.5) * window.innerWidth;
+      const x2 = (barB.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (1 - (barA.y * 0.5 + 0.5)) * window.innerHeight;
+      const left = Math.min(x1, x2);
+      const width = Math.max(40, Math.abs(x2 - x1));
+      scrollBar.style.transform = 'translate(' + left.toFixed(1) + 'px,' + (y - 10).toFixed(1) + 'px)';
+      scrollBar.style.width = width.toFixed(1) + 'px';
+      const contentW = maxScroll * 2 + WINDOW_W;
+      const t = (scroll + maxScroll) / contentW;
+      const tw = WINDOW_W / contentW;
+      scrollThumb.style.left = (t * 100).toFixed(2) + '%';
+      scrollThumb.style.width = (tw * 100).toFixed(2) + '%';
     }
 
     const originX = -((COLS - 1) * PITCH_X) / 2;
@@ -1019,6 +1346,18 @@
       if (event.target === lightbox) closePhoto();
     });
 
+    function applyGrab(worldX) {
+      const now = performance.now();
+      const dt = Math.max(0.008, (now - gesture.lastT) / 1000);
+      const dx = worldX - gesture.lastWorldX;
+      gesture.lastWorldX = worldX;
+      gesture.lastT = now;
+      grabScroll -= dx;
+      const next = rubberize(grabScroll);
+      scrollVel = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
+      scroll = next;
+    }
+
     const el = renderer.domElement;
     el.addEventListener('pointerdown', (event) => {
       if (lightboxOpen) return;
@@ -1027,7 +1366,15 @@
       gesture.moved = 0;
       gesture.x = event.clientX;
       gesture.y = event.clientY;
+      gesture.scroll0 = scroll;
       projectPointer(event.clientX, event.clientY, cursorTarget);
+      grabbing = scrollMode === 'grab' && rawInside;
+      if (grabbing) {
+        scrollVel = 0;
+        grabScroll = scroll;
+        gesture.lastWorldX = rawHitX;
+        gesture.lastT = performance.now();
+      }
       event.preventDefault();
     });
     el.addEventListener('pointermove', (event) => {
@@ -1039,20 +1386,33 @@
         gesture.x = event.clientX;
         gesture.y = event.clientY;
       }
-      projectPointer(event.clientX, event.clientY, cursorTarget);
+      if (!projectPointer(event.clientX, event.clientY, cursorTarget)) return;
+      if (grabbing && event.pointerId === gesture.id) applyGrab(rawHitX);
     });
     el.addEventListener('pointerup', (event) => {
       if (event.pointerId !== gesture.id) return;
       const tap = gesture.moved < 18;
+      const wasGrab = grabbing;
+      grabbing = false;
       gesture.id = null;
       if (tap && !lightboxOpen) {
+        if (wasGrab) {
+          scroll = gesture.scroll0;
+          grabScroll = scroll;
+          scrollVel = 0;
+          scrollTarget = THREE.MathUtils.clamp(scroll, -maxScroll, maxScroll);
+          tilesGroup.position.x = -scroll;
+        }
         projectPointer(event.clientX, event.clientY, cursorTarget);
         cursor.copy(cursorTarget);
         const idx = tileIndexAt(cursor.x, cursor.y);
         if (idx >= 0) openPhoto(idx);
+      } else if (wasGrab) {
+        const edge = scroll < -maxScroll ? -maxScroll : scroll > maxScroll ? maxScroll : null;
+        if (edge !== null) scrollVel = 0;
       }
     });
-    el.addEventListener('pointercancel', () => { gesture.id = null; });
+    el.addEventListener('pointercancel', () => { gesture.id = null; grabbing = false; scrollVel = 0; });
     el.addEventListener('lostpointercapture', () => { gesture.id = null; });
 
     window.addEventListener('keydown', (event) => {
@@ -1077,6 +1437,8 @@
     buildGallery();
     resize();
     bodyRoot.updateMatrixWorld(true);
+    readHash();
+    syncModeButtons();
 
     const clock = new THREE.Clock();
     const aimLocal = new THREE.Vector3();
@@ -1089,21 +1451,47 @@
       cursor.y = THREE.MathUtils.damp(cursor.y, cursorTarget.y, damp, dt);
       cursor.z = GALLERY_Z;
 
-      const edge = WINDOW_W * 0.2;
-      const leftRoom = cursor.x - (-WINDOW_W * 0.5);
-      const rightRoom = WINDOW_W * 0.5 - cursor.x;
       let push = 0;
-      if (!lightboxOpen) {
-        if (rightRoom < edge) push = (edge - rightRoom) / edge;
-        else if (leftRoom < edge) push = -((edge - leftRoom) / edge);
-        scrollTarget += push * 0.95 * dt;
-        scrollTarget = THREE.MathUtils.clamp(scrollTarget, -maxScroll, maxScroll);
+      let scrolling = false;
+      if (scrollMode === 'push') {
+        if (!lightboxOpen) {
+          const edge = WINDOW_W * 0.2;
+          const leftRoom = cursor.x - (-WINDOW_W * 0.5);
+          const rightRoom = WINDOW_W * 0.5 - cursor.x;
+          if (rightRoom < edge) push = (edge - rightRoom) / edge;
+          else if (leftRoom < edge) push = -((edge - leftRoom) / edge);
+          scrollTarget += push * 0.95 * dt;
+          scrollTarget = THREE.MathUtils.clamp(scrollTarget, -maxScroll, maxScroll);
+        }
+        scroll = THREE.MathUtils.damp(scroll, scrollTarget, reduceMotion ? 30 : 6, dt);
+        scrolling = Math.abs(push) > 0.02 || Math.abs(scroll - scrollTarget) > 0.004;
+      } else if (!grabbing) {
+        scroll += scrollVel * dt;
+        scrollVel *= Math.exp(-(reduceMotion ? 9 : 2.8) * dt);
+        const edgeHit = scroll < -maxScroll ? -maxScroll : scroll > maxScroll ? maxScroll : null;
+        if (edgeHit !== null) {
+          if ((edgeHit < 0 && scrollVel < 0) || (edgeHit > 0 && scrollVel > 0)) scrollVel = 0;
+          scroll += (edgeHit - scroll) * (1 - Math.exp(-12 * dt));
+          if (Math.abs(scroll - edgeHit) < 0.002) scroll = edgeHit;
+        }
+        if (Math.abs(scrollVel) < 0.02 && edgeHit === null) scrollVel = 0;
+        grabScroll = scroll;
+        scrollTarget = THREE.MathUtils.clamp(scroll, -maxScroll, maxScroll);
+        scrolling = Math.abs(scrollVel) > 0.02 || edgeHit !== null;
+      } else {
+        scrollTarget = THREE.MathUtils.clamp(scroll, -maxScroll, maxScroll);
+        scrolling = true;
       }
-      scroll = THREE.MathUtils.damp(scroll, scrollTarget, reduceMotion ? 30 : 6, dt);
       tilesGroup.position.x = -scroll;
+      if (scrolling) scrollIdle = 0;
+      else scrollIdle += dt;
+      scrollBar.classList.toggle('on', scrolling || scrollIdle < 0.7);
+      placeScrollBar();
 
-      chevronMatL.opacity = THREE.MathUtils.clamp((scrollTarget + maxScroll) / 0.25, 0, 1) * (push < -0.05 ? 0.85 : 0.28);
-      chevronMatR.opacity = THREE.MathUtils.clamp((maxScroll - scrollTarget) / 0.25, 0, 1) * (push > 0.05 ? 0.85 : 0.28);
+      const roomL = THREE.MathUtils.clamp((scrollTarget + maxScroll) / 0.25, 0, 1);
+      const roomR = THREE.MathUtils.clamp((maxScroll - scrollTarget) / 0.25, 0, 1);
+      chevronMatL.opacity = roomL * (push < -0.05 || scrollVel < -0.2 ? 0.85 : 0.28);
+      chevronMatR.opacity = roomR * (push > 0.05 || scrollVel > 0.2 ? 0.85 : 0.28);
 
       hoverIndex = tileIndexAt(cursor.x, cursor.y);
       for (let i = 0; i < tiles.length; i++) {
@@ -1116,52 +1504,75 @@
         tile.renderOrder = 1;
       }
 
-      if (hoverIndex >= 0 && hoverIndex === dwellTile && !lightboxOpen && gesture.id != null) {
+      const holdingStill = gesture.id != null && !(grabbing && gesture.moved >= 18);
+      if (hoverIndex >= 0 && hoverIndex === dwellTile && !lightboxOpen && holdingStill) {
         dwell += dt;
       } else {
         dwellTile = hoverIndex;
         dwell = 0;
       }
-      const prog = hoverIndex >= 0 && gesture.id != null ? Math.min(1, dwell / 1.05) : 0;
+      const prog = hoverIndex >= 0 && holdingStill ? Math.min(1, dwell / 1.05) : 0;
       cursorMat.uniforms.uProg.value = prog;
       cursorMat.uniforms.uHot.value = hoverIndex >= 0 ? 1 : 0;
       if (prog >= 1 && hoverIndex >= 0) openPhoto(hoverIndex);
 
       cursorGroup.position.set(cursor.x, cursor.y, GALLERY_Z + 0.035);
       const pulse = 1 + Math.sin(clock.elapsedTime * 3.2) * 0.03;
-      cursorGroup.scale.setScalar((hoverIndex >= 0 ? 1.12 : 1) * pulse);
+      cursorGroup.scale.setScalar((hoverIndex >= 0 ? 1.12 : 1) * pulse * (grabbing ? 1.08 : 1));
+      setGrabCursor(grabbing);
 
       bodyRoot.updateMatrixWorld(true);
       shoulderWorld.copy(shoulderLocal);
       bodyRoot.localToWorld(shoulderWorld);
-      cursorLocal.copy(cursor);
-      bodyRoot.worldToLocal(cursorLocal);
 
-      const used = THREE.MathUtils.clamp(reachRatio, 0.42, 1) * ARM_LEN * 0.995;
-      ikDir.subVectors(cursorLocal, shoulderLocal);
-      if (ikDir.lengthSq() < 1e-8) ikDir.set(0, 0, -1);
-      ikDir.normalize();
-      targetLocal.copy(shoulderLocal).addScaledVector(ikDir, used);
-      aimLocal.copy(cursorLocal);
-      poleScratch.copy(poleFrom(shoulderLocal, aimLocal, elbowAmount));
-      solveTwoBone(shoulderLocal, targetLocal, poleScratch, L1, L2, elbowLocal, wristLocal);
+      const nx = THREE.MathUtils.clamp(cursor.x / (WINDOW_W * 0.5 - 0.05), -1, 1);
+      const ny = THREE.MathUtils.clamp((cursor.y - TV_Y) / (WINDOW_H * 0.5 - 0.04), -1, 1);
+
+      if (pointing === 'phiz') {
+        const radius = PHIZ_RADIUS + ny * 0.02;
+        phizWrist(nx, ny, radius, targetLocal);
+        phizPole.set(shoulderLocal.x + 0.62, shoulderLocal.y - 0.28, shoulderLocal.z + 0.08);
+        solveTwoBone(shoulderLocal, targetLocal, phizPole, L1, L2, elbowLocal, wristLocal);
+        phiz.visible = true;
+        guide.visible = false;
+        readout.textContent = 'PHIZ  x ' + nx.toFixed(2) + '   y ' + ny.toFixed(2);
+      } else {
+        cursorLocal.copy(cursor);
+        bodyRoot.worldToLocal(cursorLocal);
+        const used = THREE.MathUtils.clamp(reachRatio, 0.42, 1) * ARM_LEN * 0.995;
+        ikDir.subVectors(cursorLocal, shoulderLocal);
+        if (ikDir.lengthSq() < 1e-8) ikDir.set(0, 0, -1);
+        ikDir.normalize();
+        targetLocal.copy(shoulderLocal).addScaledVector(ikDir, used);
+        aimLocal.copy(cursorLocal);
+        poleScratch.copy(poleFrom(shoulderLocal, aimLocal, elbowAmount));
+        solveTwoBone(shoulderLocal, targetLocal, poleScratch, L1, L2, elbowLocal, wristLocal);
+        phiz.visible = phizInput.checked;
+        guide.visible = guideInput.checked;
+      }
 
       placeCapsule(rightUpper, shoulderLocal, elbowLocal);
       placeCapsule(rightLower, elbowLocal, wristLocal);
       rightHand.position.copy(wristLocal);
       wristWorld.copy(wristLocal);
       bodyRoot.localToWorld(wristWorld);
-      rightHand.lookAt(cursor.x, cursor.y, cursor.z);
+      if (pointing === 'phiz') {
+        fingerAim.copy(wristWorld);
+        fingerAim.x += 0.02;
+        fingerAim.y -= 0.28;
+        fingerAim.z -= 0.12;
+        rightHand.lookAt(fingerAim);
+      } else {
+        rightHand.lookAt(cursor.x, cursor.y, cursor.z);
+        const gap = shoulderWorld.distanceTo(cursor);
+        const along = shoulderWorld.distanceTo(wristWorld) / Math.max(gap, 1e-4);
+        readout.textContent = 'Hand at ' + Math.round(along * 100) + '% of the way to the cursor';
+      }
 
       const attr = guide.geometry.attributes.position;
       attr.setXYZ(0, wristWorld.x, wristWorld.y, wristWorld.z);
       attr.setXYZ(1, cursor.x, cursor.y, cursor.z);
       attr.needsUpdate = true;
-      guide.visible = guideInput.checked;
-
-      const gap = shoulderWorld.distanceTo(cursor);
-      const along = shoulderWorld.distanceTo(wristWorld) / Math.max(gap, 1e-4);
-      readout.textContent = 'Hand at ' + Math.round(along * 100) + '% of the way to the cursor';
 
       renderer.render(scene, camera);
       requestAnimationFrame(tick);
