@@ -99,7 +99,7 @@
       display: flex;
       gap: 8px;
       margin-right: auto;
-      margin-left: clamp(160px, 18vw, 280px);
+      margin-left: clamp(340px, 38vw, 640px);
     }
     .seg {
       background: rgba(18, 18, 18, 0.88);
@@ -307,7 +307,12 @@
         align-items: stretch;
         gap: 8px;
       }
-      #modes { margin-left: 0; margin-right: 0; align-self: stretch; }
+      #modes {
+        margin-left: auto;
+        margin-right: 0;
+        align-self: flex-end;
+        width: min(250px, 66%);
+      }
       .seg { flex: 1; min-width: 0; padding: 6px; }
       .seg-label { margin-bottom: 4px; }
       #tune { width: auto; padding: 10px 12px 8px; }
@@ -330,7 +335,7 @@
     <a class="back" href="../">← Back</a>
     <p class="kicker">Spatial AI · PHIZ</p>
     <h1>Body Cursor</h1>
-    <p class="lede">Right hand in front of the body. Ray points along the cursor. PHIZ keeps the hand in a small zone and maps that zone onto the gallery.</p>
+    <p class="lede">Right hand in front of the body. Ray points along the cursor. PHIZ hangs the upper arm by the side and maps that small swing onto the gallery.</p>
   </header>
 
   <div id="scroll-bar" aria-hidden="true"><div id="scroll-thumb"></div></div>
@@ -469,7 +474,7 @@
 
     const bodyRoot = new THREE.Group();
     // Over the right shoulder: torso in the lower left, cropped by the frame.
-    bodyRoot.position.set(-0.58, -0.02, 0.28);
+    bodyRoot.position.set(-0.52, 0.30, 0.18);
     bodyRoot.scale.setScalar(0.68);
     scene.add(bodyRoot);
 
@@ -504,7 +509,10 @@
     const raycaster = new THREE.Raycaster();
     const galleryPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -GALLERY_Z);
     const hitPoint = new THREE.Vector3();
-    const gesture = { id: null, moved: 0, x: 0, y: 0, scroll0: 0, lastWorldX: 0, lastT: 0 };
+    const gesture = {
+      id: null, moved: 0, x: 0, y: 0, scroll0: 0, lastWorldX: 0, lastT: 0,
+      lastCursorX: 0, edgeVel: 0, edgeStamp: 0, edgeHeld: false,
+    };
 
     function applyGhost(mat) {
       mat.transparent = true;
@@ -854,56 +862,87 @@
       return shoulder.clone().addScaledVector(ikBend, 0.65);
     }
 
-    // Neutral reach is a right angle at the elbow: the hand rests in front of
-    // the torso, a little to the right, around low-chest height. Touch maps
-    // into this zone as shoulder yaw/pitch plus a small flexion change.
-    const neutralDir = new THREE.Vector3(0.14, -0.70, -0.70).normalize();
-    const PHIZ_RADIUS = Math.sqrt(L1 * L1 + L2 * L2);
+    // PHIZ neutral: upper arm hangs beside the ribs. The elbow is near a
+    // right angle, so the forearm points forward and the hand sits in front
+    // of the belly. Cursor X is humeral rotation (a horizontal arc around
+    // the elbow). Cursor Y is elbow flexion (the forearm rising and falling).
+    const PHIZ_ROT = 0.62;
+    const PHIZ_FLEX = 0.46;
+    const PHIZ_FLICK_MS = 200;
+    const phizUpper = new THREE.Vector3();
+    const phizFwd = new THREE.Vector3();
+    const phizHoriz = new THREE.Vector3();
+    const phizFore = new THREE.Vector3();
     const phizQ = new THREE.Quaternion();
-    const phizQ2 = new THREE.Quaternion();
-    const phizAxis = new THREE.Vector3(1, 0, 0);
-    const phizPole = new THREE.Vector3();
+    const phizElbow = new THREE.Vector3();
+    const phizWristPt = new THREE.Vector3();
     const fingerAim = new THREE.Vector3();
     const barA = new THREE.Vector3();
     const barB = new THREE.Vector3();
 
-    function phizWrist(nx, ny, radius, out) {
-      const yaw = -nx * 0.24;
-      const pitch = ny * 0.18;
-      phizQ.setFromAxisAngle(yAxis, yaw);
-      phizQ2.setFromAxisAngle(phizAxis, pitch);
-      phizQ.multiply(phizQ2);
-      out.copy(neutralDir).applyQuaternion(phizQ).multiplyScalar(radius).add(shoulderLocal);
-      return out;
+    function phizPose(nx, ny, outElbow, outWrist, radial) {
+      const turn = nx * PHIZ_ROT;
+      const flex = ny * PHIZ_FLEX;
+      phizUpper.set(0.22 + nx * 0.04, -1, -0.05 - ny * 0.02).normalize();
+      outElbow.copy(shoulderLocal).addScaledVector(phizUpper, L1);
+      phizFwd.set(0.16, 0, -1);
+      phizFwd.addScaledVector(phizUpper, -phizFwd.dot(phizUpper));
+      if (phizFwd.lengthSq() < 1e-8) phizFwd.set(1, 0, 0);
+      phizFwd.normalize();
+      phizQ.setFromAxisAngle(phizUpper, turn);
+      phizHoriz.copy(phizFwd).applyQuaternion(phizQ);
+      const c = Math.cos(flex);
+      const s = Math.sin(flex);
+      phizFore.copy(phizHoriz).multiplyScalar(c).addScaledVector(phizUpper, -s).normalize();
+      outWrist.copy(outElbow).addScaledVector(phizFore, L2);
+      if (radial) {
+        phizHoriz.copy(outWrist).sub(outElbow);
+        phizHoriz.y = 0;
+        if (phizHoriz.lengthSq() > 1e-8) {
+          phizHoriz.normalize().multiplyScalar(radial);
+          outWrist.add(phizHoriz);
+        }
+      }
     }
 
     function buildPhizVolume() {
       const pts = [];
       const a = new THREE.Vector3();
       const b = new THREE.Vector3();
-      const shells = [PHIZ_RADIUS * 0.84, PHIZ_RADIUS * 1.14];
-      const nu = 4;
-      const nv = 3;
-      function put(i0, j0, r0, i1, j1, r1) {
-        const nx0 = i0 / nu * 2 - 1;
-        const ny0 = j0 / nv * 2 - 1;
-        const nx1 = i1 / nu * 2 - 1;
-        const ny1 = j1 / nv * 2 - 1;
-        phizWrist(nx0, ny0, r0, a);
-        phizWrist(nx1, ny1, r1, b);
-        pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      const ea = new THREE.Vector3();
+      const eb = new THREE.Vector3();
+      const layers = [-0.035, 0.035];
+      const nu = 6;
+      const nv = 4;
+      function at(i, j, layer, elbow, wrist) {
+        phizPose(i / nu * 2 - 1, j / nv * 2 - 1, elbow, wrist, layer);
       }
-      for (let s = 0; s < shells.length; s++) {
-        const r = shells[s];
+      function seg(ax, ay, az, bx, by, bz) {
+        pts.push(ax, ay, az, bx, by, bz);
+      }
+      for (let layer = 0; layer < layers.length; layer++) {
+        const r = layers[layer];
         for (let j = 0; j <= nv; j++) {
-          for (let i = 0; i < nu; i++) put(i, j, r, i + 1, j, r);
+          for (let i = 0; i < nu; i++) {
+            at(i, j, r, ea, a);
+            at(i + 1, j, r, eb, b);
+            seg(a.x, a.y, a.z, b.x, b.y, b.z);
+          }
         }
         for (let i = 0; i <= nu; i++) {
-          for (let j = 0; j < nv; j++) put(i, j, r, i, j + 1, r);
+          for (let j = 0; j < nv; j++) {
+            at(i, j, r, ea, a);
+            at(i, j + 1, r, eb, b);
+            seg(a.x, a.y, a.z, b.x, b.y, b.z);
+          }
         }
       }
       for (let j = 0; j <= nv; j += nv) {
-        for (let i = 0; i <= nu; i += nu) put(i, j, shells[0], i, j, shells[1]);
+        for (let i = 0; i <= nu; i += nu) {
+          at(i, j, layers[0], ea, a);
+          at(i, j, layers[1], eb, b);
+          seg(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
       }
       phiz.geometry.dispose();
       phiz.geometry = new THREE.BufferGeometry();
@@ -912,7 +951,7 @@
 
     function hintFor() {
       const point = pointing === 'phiz'
-        ? 'The hand stays in the zone. That spot drives the cursor.'
+        ? 'Upper arm stays down. Turning it swings the hand; the elbow lifts it.'
         : 'Move to aim along the ray.';
       const scroll = scrollMode === 'grab'
         ? 'Drag the gallery sideways to scroll. A short tap still opens a photo.'
@@ -1349,12 +1388,30 @@
     function applyGrab(worldX) {
       const now = performance.now();
       const dt = Math.max(0.008, (now - gesture.lastT) / 1000);
-      const dx = worldX - gesture.lastWorldX;
-      gesture.lastWorldX = worldX;
       gesture.lastT = now;
+      let dx = worldX - gesture.lastWorldX;
+      gesture.lastWorldX = worldX;
+      if (pointing === 'phiz') {
+        const cursorDx = cursorTarget.x - gesture.lastCursorX;
+        gesture.lastCursorX = cursorTarget.x;
+        const half = WINDOW_W * 0.5 - 0.05;
+        const stuck = Math.abs(cursorDx) < 0.0008 && Math.abs(cursorTarget.x) >= half - 0.02;
+        if (stuck) {
+          if (!gesture.edgeHeld) {
+            gesture.edgeHeld = true;
+            gesture.edgeStamp = now;
+          }
+          scrollVel = 0;
+          return;
+        }
+        gesture.edgeHeld = false;
+        dx = cursorDx;
+      }
       grabScroll -= dx;
       const next = rubberize(grabScroll);
       scrollVel = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
+      gesture.edgeVel = scrollVel;
+      gesture.edgeStamp = now;
       scroll = next;
     }
 
@@ -1373,7 +1430,11 @@
         scrollVel = 0;
         grabScroll = scroll;
         gesture.lastWorldX = rawHitX;
-        gesture.lastT = performance.now();
+        gesture.lastCursorX = cursorTarget.x;
+        gesture.edgeHeld = false;
+        gesture.edgeVel = 0;
+        gesture.edgeStamp = performance.now();
+        gesture.lastT = gesture.edgeStamp;
       }
       event.preventDefault();
     });
@@ -1408,6 +1469,10 @@
         const idx = tileIndexAt(cursor.x, cursor.y);
         if (idx >= 0) openPhoto(idx);
       } else if (wasGrab) {
+        if (pointing === 'phiz') {
+          const age = performance.now() - gesture.edgeStamp;
+          scrollVel = age <= PHIZ_FLICK_MS ? gesture.edgeVel : 0;
+        }
         const edge = scroll < -maxScroll ? -maxScroll : scroll > maxScroll ? maxScroll : null;
         if (edge !== null) scrollVel = 0;
       }
@@ -1504,14 +1569,14 @@
         tile.renderOrder = 1;
       }
 
-      const holdingStill = gesture.id != null && !(grabbing && gesture.moved >= 18);
-      if (hoverIndex >= 0 && hoverIndex === dwellTile && !lightboxOpen && holdingStill) {
+      const allowDwell = pointing !== 'phiz' && !grabbing && !scrolling && gesture.id != null && gesture.moved < 18;
+      if (hoverIndex >= 0 && hoverIndex === dwellTile && !lightboxOpen && allowDwell) {
         dwell += dt;
       } else {
         dwellTile = hoverIndex;
         dwell = 0;
       }
-      const prog = hoverIndex >= 0 && holdingStill ? Math.min(1, dwell / 1.05) : 0;
+      const prog = hoverIndex >= 0 && allowDwell ? Math.min(1, dwell / 1.8) : 0;
       cursorMat.uniforms.uProg.value = prog;
       cursorMat.uniforms.uHot.value = hoverIndex >= 0 ? 1 : 0;
       if (prog >= 1 && hoverIndex >= 0) openPhoto(hoverIndex);
@@ -1529,13 +1594,12 @@
       const ny = THREE.MathUtils.clamp((cursor.y - TV_Y) / (WINDOW_H * 0.5 - 0.04), -1, 1);
 
       if (pointing === 'phiz') {
-        const radius = PHIZ_RADIUS + ny * 0.02;
-        phizWrist(nx, ny, radius, targetLocal);
-        phizPole.set(shoulderLocal.x + 0.62, shoulderLocal.y - 0.28, shoulderLocal.z + 0.08);
-        solveTwoBone(shoulderLocal, targetLocal, phizPole, L1, L2, elbowLocal, wristLocal);
+        phizPose(nx, ny, elbowLocal, wristLocal, 0);
         phiz.visible = true;
         guide.visible = false;
-        readout.textContent = 'PHIZ  x ' + nx.toFixed(2) + '   y ' + ny.toFixed(2);
+        const turn = Math.round(nx * PHIZ_ROT * 180 / Math.PI);
+        const flex = Math.round(90 + ny * PHIZ_FLEX * 180 / Math.PI);
+        readout.textContent = 'PHIZ  turn ' + turn + '°   elbow ' + flex + '°';
       } else {
         cursorLocal.copy(cursor);
         bodyRoot.worldToLocal(cursorLocal);
@@ -1557,10 +1621,8 @@
       wristWorld.copy(wristLocal);
       bodyRoot.localToWorld(wristWorld);
       if (pointing === 'phiz') {
-        fingerAim.copy(wristWorld);
-        fingerAim.x += 0.02;
-        fingerAim.y -= 0.28;
-        fingerAim.z -= 0.12;
+        fingerAim.copy(wristLocal).add(phizFore);
+        bodyRoot.localToWorld(fingerAim);
         rightHand.lookAt(fingerAim);
       } else {
         rightHand.lookAt(cursor.x, cursor.y, cursor.z);
