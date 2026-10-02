@@ -1,10 +1,13 @@
     const CLIP_W_EXPECT = 1920;
     const LOUPE = 168;
+    // Reference Sobel magnitude (luma 0..255). Same constant as EDGE_MAG_MIN in sr_train_lib.py.
+    const EDGE_SOBEL = 200;
     const TABS = [
       { id: 'universal', name: 'Browser universal', methods: ['nearest', 'bilinear', 'bicubic', 'lanczos', 'a4k-s'] },
       { id: 'shaders', name: 'Shader sharpeners', methods: ['fsr1', 'nis', 'cas', 'xbr', 'lanczos-unsharp'] },
       { id: 'neural', name: 'Neural (WebGPU)', methods: ['a4k-s', 'a4k-m', 'a4k-l', 'a4k-gan', 'a4k-vl'] },
-      { id: 'custom', name: 'Neural custom', methods: ['custom-0', 'custom-1', 'custom-2', 'custom-3', 'custom-4'] }
+      { id: 'custom', name: 'Neural custom', methods: ['custom-0', 'custom-1', 'custom-2', 'custom-3', 'custom-4'] },
+      { id: 'sharp', name: 'Sharp lines (exploring)', methods: ['sharp-wide', 'sharp-wide-rcas', 'sharp-edge', 'sharp-perc', 'sharp-edge-rcas'] }
     ];
     const METHODS = {
       nearest: { name: 'Nearest', hint: 'Point sample', kind: 'filter', cpu: true },
@@ -25,7 +28,12 @@
       'custom-1': { name: 'Football wide', hint: 'Deeper luma, later stream frames', kind: 'custom', slot: 1, preset: 'upscale-models/football-wide.json' },
       'custom-2': { name: 'Football RGB', hint: 'RGB residual, not bilinear chroma', kind: 'custom', slot: 2, preset: 'upscale-models/football-rgb.json' },
       'custom-3': { name: 'Football temporal', hint: 'Current + previous luma, no warp', kind: 'custom', slot: 3, preset: 'upscale-models/football-temporal.json' },
-      'custom-4': { name: 'Football distill', hint: 'Student of Anime4K CNN-M', kind: 'custom', slot: 4, preset: 'upscale-models/football-distill.json' }
+      'custom-4': { name: 'Football distill', hint: 'Student of Anime4K CNN-M', kind: 'custom', slot: 4, preset: 'upscale-models/football-distill.json' },
+      'sharp-wide': { name: 'Wide net', hint: 'Baseline, current weights', kind: 'custom', slot: 1, preset: 'upscale-models/football-wide.json' },
+      'sharp-wide-rcas': { name: 'Wide + RCAS', hint: 'FSR RCAS on the wide output', kind: 'custom-sharpen', slot: 1, preset: 'upscale-models/football-wide.json' },
+      'sharp-edge': { name: 'Sharp edges', hint: 'Edge-weighted loss, line-biased crops', kind: 'custom', slot: 5, preset: 'upscale-models/football-sharp.json' },
+      'sharp-perc': { name: 'Sharp perceptual', hint: 'HF + Sobel match + tiny patch GAN', kind: 'custom', slot: 6, preset: 'upscale-models/football-sharp-perc.json' },
+      'sharp-edge-rcas': { name: 'Sharp + RCAS', hint: 'Edge net, then FSR RCAS', kind: 'custom-sharpen', slot: 5, preset: 'upscale-models/football-sharp.json' }
     };
     const NET_FILES = {
       s: 'upscale-models/anime4k-s.json',
@@ -45,6 +53,7 @@
     let format = 'bgra8unorm';
     let hasTS = false;
     let scale = q.get('scale') === '4' ? 4 : 2;
+    let sharpStops = 0.2;
     let zoom = 4;
     let fullW = 0;
     let fullH = 0;
@@ -203,12 +212,18 @@
       return METHODS[panel.methodId] || null;
     }
 
+    function usesCustom(method) {
+      return !!method && (method.kind === 'custom' || method.kind === 'custom-sharpen');
+    }
+
     function hintFor(method) {
       if (!method) return '';
-      if (scale === 4 && (method.kind === 'a4k' || method.kind === 'custom' || method.kind === 'nis')) {
-        return method.hint + ' · x2 twice';
+      let hint = method.hint;
+      if (method.kind === 'custom-sharpen') hint += ' · ' + sharpStops.toFixed(2) + ' stops';
+      if (scale === 4 && (method.kind === 'a4k' || method.kind === 'custom' || method.kind === 'custom-sharpen' || method.kind === 'nis')) {
+        hint += ' · x2 twice';
       }
-      return method.hint;
+      return hint;
     }
 
     function selectTab(id, writeHash) {
@@ -251,7 +266,7 @@
           return;
         }
       }
-      if (method.kind === 'custom') {
+      if (usesCustom(method)) {
         const model = customModels[method.slot];
         if (!model) {
           panel.empty = true;
@@ -264,7 +279,9 @@
           markUnavailable(panel, model.error);
           return;
         }
-        panel.el.querySelector('h2').textContent = model.name || method.name;
+        if (!String(methodId).startsWith('sharp-')) {
+          panel.el.querySelector('h2').textContent = model.name || method.name;
+        }
       }
       panel.live = mode === 'gpu' || !!method.cpu;
     }
@@ -545,8 +562,18 @@
     `;
 
     const METRIC_WGSL = `
-      struct Params { blocks_x: u32, blocks_y: u32, full_w: u32, full_h: u32 }
-      struct Block { sse: f32, ssim: f32, n: f32, pad: f32 }
+      struct Params {
+        blocks_x: u32, blocks_y: u32, full_w: u32, full_h: u32,
+        edge_thresh: f32, pad0: f32, pad1: f32, pad2: f32
+      }
+      struct Block {
+        sse: f32, ssim: f32, n: f32, edge_sse: f32,
+        edge_n: f32, pad0: f32, pad1: f32, pad2: f32
+      }
+      struct Acc {
+        sse: f32, ssim: f32, n: f32, nb: f32,
+        edge_sse: f32, edge_n: f32, pad0: f32, pad1: f32
+      }
 
       @group(0) @binding(0) var ref_tex: texture_2d<f32>;
       @group(0) @binding(1) var test_tex: texture_2d<f32>;
@@ -557,24 +584,59 @@
         return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * 255.0;
       }
 
+      fn luma_at(tex: texture_2d<f32>, x: i32, y: i32) -> f32 {
+        let d = textureDimensions(tex);
+        let c = clamp(vec2<i32>(x, y), vec2<i32>(0), vec2<i32>(i32(d.x) - 1, i32(d.y) - 1));
+        return luma255(textureLoad(tex, c, 0).rgb);
+      }
+
+      fn sobel_of(s: ptr<function, array<f32, 100>>, lx: i32, ly: i32) -> f32 {
+        let cx = lx + 1;
+        let cy = ly + 1;
+        let a00 = (*s)[(cy - 1) * 10 + (cx - 1)];
+        let a10 = (*s)[(cy - 1) * 10 + cx];
+        let a20 = (*s)[(cy - 1) * 10 + (cx + 1)];
+        let a01 = (*s)[cy * 10 + (cx - 1)];
+        let a21 = (*s)[cy * 10 + (cx + 1)];
+        let a02 = (*s)[(cy + 1) * 10 + (cx - 1)];
+        let a12 = (*s)[(cy + 1) * 10 + cx];
+        let a22 = (*s)[(cy + 1) * 10 + (cx + 1)];
+        let gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
+        let gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
+        return sqrt(gx * gx + gy * gy);
+      }
+
       @compute @workgroup_size(8, 8)
       fn blocks_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (gid.x >= params.blocks_x || gid.y >= params.blocks_y) { return; }
-        let x0 = gid.x * 8u;
-        let y0 = gid.y * 8u;
+        let x0 = i32(gid.x * 8u);
+        let y0 = i32(gid.y * 8u);
+        var refL: array<f32, 100>;
+        var tstL: array<f32, 100>;
+        for (var yy: i32 = -1; yy <= 8; yy++) {
+          for (var xx: i32 = -1; xx <= 8; xx++) {
+            let i = (yy + 1) * 10 + (xx + 1);
+            refL[i] = luma_at(ref_tex, x0 + xx, y0 + yy);
+            tstL[i] = luma_at(test_tex, x0 + xx, y0 + yy);
+          }
+        }
         var sx = 0.0; var sy = 0.0; var sxx = 0.0; var syy = 0.0; var sxy = 0.0;
-        var sse = 0.0; var n = 0.0;
-        for (var y: u32 = 0u; y < 8u; y++) {
-          for (var x: u32 = 0u; x < 8u; x++) {
-            let px = x0 + x;
-            let py = y0 + y;
+        var sse = 0.0; var n = 0.0; var edge_sse = 0.0; var edge_n = 0.0;
+        for (var y: i32 = 0; y < 8; y++) {
+          for (var x: i32 = 0; x < 8; x++) {
+            let px = u32(x0 + x);
+            let py = u32(y0 + y);
             if (px >= params.full_w || py >= params.full_h) { continue; }
-            let a = luma255(textureLoad(ref_tex, vec2<i32>(i32(px), i32(py)), 0).rgb);
-            let b = luma255(textureLoad(test_tex, vec2<i32>(i32(px), i32(py)), 0).rgb);
+            let a = refL[(y + 1) * 10 + (x + 1)];
+            let b = tstL[(y + 1) * 10 + (x + 1)];
             sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
             let d = a - b;
             sse += d * d;
             n += 1.0;
+            if (sobel_of(&refL, x, y) >= params.edge_thresh) {
+              edge_sse += d * d;
+              edge_n += 1.0;
+            }
           }
         }
         let inv = 1.0 / max(n, 1.0);
@@ -589,37 +651,63 @@
         blocks[idx].sse = sse;
         blocks[idx].ssim = ssim;
         blocks[idx].n = n;
-        blocks[idx].pad = 0.0;
+        blocks[idx].edge_sse = edge_sse;
+        blocks[idx].edge_n = edge_n;
+        blocks[idx].pad0 = 0.0;
+        blocks[idx].pad1 = 0.0;
+        blocks[idx].pad2 = 0.0;
       }
 
       @group(1) @binding(0) var<storage, read> blocks_r: array<Block>;
-      @group(1) @binding(1) var<storage, read_write> partial: array<vec4<f32>>;
+      @group(1) @binding(1) var<storage, read_write> partial: array<Acc>;
       @group(1) @binding(2) var<uniform> params_r: Params;
 
       @compute @workgroup_size(256)
       fn reduce_partial(@builtin(global_invocation_id) gid: vec3<u32>) {
         let count = params_r.blocks_x * params_r.blocks_y;
         var sse = 0.0; var ssim = 0.0; var n = 0.0; var nb = 0.0;
+        var edge_sse = 0.0; var edge_n = 0.0;
         for (var i = gid.x; i < count; i += 256u) {
           sse += blocks_r[i].sse;
           ssim += blocks_r[i].ssim;
           n += blocks_r[i].n;
+          edge_sse += blocks_r[i].edge_sse;
+          edge_n += blocks_r[i].edge_n;
           nb += 1.0;
         }
-        partial[gid.x] = vec4<f32>(sse, ssim, n, nb);
+        partial[gid.x].sse = sse;
+        partial[gid.x].ssim = ssim;
+        partial[gid.x].n = n;
+        partial[gid.x].nb = nb;
+        partial[gid.x].edge_sse = edge_sse;
+        partial[gid.x].edge_n = edge_n;
+        partial[gid.x].pad0 = 0.0;
+        partial[gid.x].pad1 = 0.0;
       }
 
-      @group(2) @binding(0) var<storage, read> partial_in: array<vec4<f32>>;
-      @group(2) @binding(1) var<storage, read_write> result: array<vec4<f32>>;
+      @group(2) @binding(0) var<storage, read> partial_in: array<Acc>;
+      @group(2) @binding(1) var<storage, read_write> result: array<Acc>;
 
       @compute @workgroup_size(1)
       fn reduce_final() {
         var sse = 0.0; var ssim = 0.0; var n = 0.0; var nb = 0.0;
+        var edge_sse = 0.0; var edge_n = 0.0;
         for (var i = 0u; i < 256u; i++) {
-          let v = partial_in[i];
-          sse += v.x; ssim += v.y; n += v.z; nb += v.w;
+          sse += partial_in[i].sse;
+          ssim += partial_in[i].ssim;
+          n += partial_in[i].n;
+          nb += partial_in[i].nb;
+          edge_sse += partial_in[i].edge_sse;
+          edge_n += partial_in[i].edge_n;
         }
-        result[0] = vec4<f32>(sse, ssim, n, nb);
+        result[0].sse = sse;
+        result[0].ssim = ssim;
+        result[0].n = n;
+        result[0].nb = nb;
+        result[0].edge_sse = edge_sse;
+        result[0].edge_n = edge_n;
+        result[0].pad0 = 0.0;
+        result[0].pad1 = 0.0;
       }
     `;
 
@@ -691,24 +779,24 @@
       }
       metricBufs = metricBufs || {};
       metricBufs.blocks = device.createBuffer({
-        size: blocks * 16,
+        size: blocks * 32,
         usage: GPUBufferUsage.STORAGE
       });
       if (!metricBufs.partial) {
         metricBufs.partial = device.createBuffer({
-          size: 256 * 16,
+          size: 256 * 32,
           usage: GPUBufferUsage.STORAGE
         });
         metricBufs.result = device.createBuffer({
-          size: 16,
+          size: 32,
           usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         });
         metricBufs.params = device.createBuffer({
-          size: 16,
+          size: 32,
           usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
         metricBufs.staging = device.createBuffer({
-          size: 5 * 16,
+          size: 5 * 32,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
         metricBufs.scale = device.createBuffer({
@@ -821,7 +909,8 @@
         ['d2s', UPSCALE_KERNELS.a4kOut, 'd2s'],
         ['upconv', UPSCALE_KERNELS.a4kUp, 'upconv'],
         ['espcn', UPSCALE_KERNELS.espcn, 'conv'],
-        ['shuffle', UPSCALE_KERNELS.shuffle, 'shuffle']
+        ['shuffle', UPSCALE_KERNELS.shuffle, 'shuffle'],
+        ['rcasPost', UPSCALE_KERNELS.rcasPost, 'rcas_post']
       ];
       for (const [name, code, entry] of optional) {
         try {
@@ -845,6 +934,7 @@
       }
       metricBufs = metricBufs || {};
       metricBufs.xbrU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      metricBufs.rcasU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       await loadAnimeNets();
       await loadCustomPreset();
 
@@ -1048,13 +1138,13 @@
       } catch (err) {
         customModels[slot] = { error: err.message || String(err) };
       }
-      if (activeTab === 'custom') selectTab('custom', false);
+      if (activeTab === 'custom' || activeTab === 'sharp') selectTab(activeTab, false);
       else if (fullW) renderFrame();
     }
 
     async function loadCustomURL(panel, url) {
       const method = methodOf(panel);
-      if (!method || method.kind !== 'custom') return;
+      if (!usesCustom(method)) return;
       panel.timeEl.textContent = 'loading…';
       try {
         const res = await fetch(url);
@@ -1068,7 +1158,7 @@
 
     function readModelFile(panel, file) {
       const method = methodOf(panel);
-      if (!method || method.kind !== 'custom') return;
+      if (!usesCustom(method)) return;
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -1082,7 +1172,14 @@
     }
 
     async function loadCustomPreset() {
-      const jobs = Object.keys(METHODS).filter((id) => METHODS[id].kind === 'custom' && METHODS[id].preset);
+      const seen = new Set();
+      const jobs = [];
+      for (const id of Object.keys(METHODS)) {
+        const method = METHODS[id];
+        if (!usesCustom(method) || !method.preset || seen.has(method.slot)) continue;
+        seen.add(method.slot);
+        jobs.push(id);
+      }
       await Promise.all(jobs.map(async (id) => {
         const method = METHODS[id];
         try {
@@ -1285,6 +1382,7 @@
         : method.kind === 'xbr' ? ['xbr']
         : method.kind === 'nis' ? ['nis']
         : method.kind === 'custom' ? ['espcn', 'shuffle']
+        : method.kind === 'custom-sharpen' ? ['espcn', 'shuffle', 'rcasPost']
         : method.kind === 'a4k'
           ? ['conv3', 'relu1', 'relu2', 'conv1x1', 'd2s'].concat(method.net === 'gan-s' ? ['upconv'] : [])
           : [];
@@ -1308,10 +1406,12 @@
         const net = animeNets[method.net];
         return net ? animePassCount(net) : 0;
       }
-      if (method.kind === 'custom') {
+      if (method.kind === 'custom' || method.kind === 'custom-sharpen') {
         const model = customModels[method.slot];
         if (!model || model.error) return 0;
-        return (model.layers.length + 1) * (scale === 4 ? 2 : 1);
+        let n = (model.layers.length + 1) * (scale === 4 ? 2 : 1);
+        if (method.kind === 'custom-sharpen') n += 1;
+        return n;
       }
       return 0;
     }
@@ -1368,22 +1468,33 @@
         }
         return;
       }
-      if (method.kind === 'custom') {
+      if (method.kind === 'custom' || method.kind === 'custom-sharpen') {
         const model = customModels[method.slot];
         ensureEspcn(model.maxCh);
         const temporal = model.fromTex === 3;
         if (temporal) syncTemporalBefore(encoder);
         const prevLowTex = temporal ? prevLow : lowTex;
         const prevMidTex = temporal ? prevMid : midTex;
+        const finalTex = method.kind === 'custom-sharpen' ? scratchTex : dest;
         if (scale === 4) {
           runCustomOnce(encoder, model, lowTex, prevLowTex, midTex, nextStamp);
           if (temporal) syncTemporalMid(encoder);
-          runCustomOnce(encoder, model, midTex, prevMidTex || midTex, dest, nextStamp);
+          runCustomOnce(encoder, model, midTex, prevMidTex || midTex, finalTex, nextStamp);
         } else {
-          runCustomOnce(encoder, model, lowTex, prevLowTex, dest, nextStamp);
+          runCustomOnce(encoder, model, lowTex, prevLowTex, finalTex, nextStamp);
         }
         if (temporal) syncTemporalAfter(encoder);
+        if (method.kind === 'custom-sharpen') runRcasPost(encoder, scratchTex, dest, nextStamp());
       }
+    }
+
+    function runRcasPost(encoder, src, dest, timed) {
+      device.queue.writeBuffer(metricBufs.rcasU, 0, new Float32Array([sharpStops, 0, 0, 0]));
+      dispatch(encoder, pipelines.rcasPost, [
+        { binding: 0, resource: viewOf(src) },
+        { binding: 1, resource: viewOf(dest) },
+        { binding: 2, resource: { buffer: metricBufs.rcasU } }
+      ], Math.ceil(dest.width / 8), Math.ceil(dest.height / 8), 'rcas', timed);
     }
 
     function runNis(encoder, src, dest, timed) {
@@ -1485,7 +1596,15 @@
     function metricPasses(encoder, testTex, slot) {
       const bw = Math.ceil(fullW / 8);
       const bh = Math.ceil(fullH / 8);
-      device.queue.writeBuffer(metricBufs.params, 0, new Uint32Array([bw, bh, fullW, fullH]));
+      const paramBytes = new ArrayBuffer(32);
+      const paramU = new Uint32Array(paramBytes);
+      const paramF = new Float32Array(paramBytes);
+      paramU[0] = bw;
+      paramU[1] = bh;
+      paramU[2] = fullW;
+      paramU[3] = fullH;
+      paramF[4] = EDGE_SOBEL;
+      device.queue.writeBuffer(metricBufs.params, 0, paramBytes);
       const blockPass = encoder.beginComputePass();
       blockPass.setPipeline(pipelines.blocks);
       blockPass.setBindGroup(0, device.createBindGroup({
@@ -1524,23 +1643,31 @@
       }));
       fin.dispatchWorkgroups(1);
       fin.end();
-      encoder.copyBufferToBuffer(metricBufs.result, 0, metricBufs.staging, slot * 16, 16);
+      encoder.copyBufferToBuffer(metricBufs.result, 0, metricBufs.staging, slot * 32, 32);
     }
 
     function applyMetrics(floats) {
       for (let i = 0; i < 5; i++) {
         const panel = panels[i + 1];
         if (!panel.live) continue;
-        const sse = floats[i * 4];
-        const ssimSum = floats[i * 4 + 1];
-        const n = floats[i * 4 + 2];
-        const nb = floats[i * 4 + 3];
+        const sse = floats[i * 8];
+        const ssimSum = floats[i * 8 + 1];
+        const n = floats[i * 8 + 2];
+        const nb = floats[i * 8 + 3];
+        const edgeSse = floats[i * 8 + 4];
+        const edgeN = floats[i * 8 + 5];
         if (!n || !nb) continue;
         const mse = sse / n;
         const psnr = mse <= 1e-8 ? Infinity : 10 * Math.log10((255 * 255) / mse);
         const ssim = Math.max(0, Math.min(1, ssimSum / nb));
         const psnrText = psnr === Infinity ? '∞ dB' : psnr.toFixed(2) + ' dB';
-        panel.qualEl.textContent = 'PSNR ' + psnrText + ' · SSIM ' + ssim.toFixed(3);
+        let edgeText = '—';
+        if (edgeN > 0) {
+          const edgeMse = edgeSse / edgeN;
+          const edgePsnr = edgeMse <= 1e-8 ? Infinity : 10 * Math.log10((255 * 255) / edgeMse);
+          edgeText = edgePsnr === Infinity ? '∞ dB' : edgePsnr.toFixed(2) + ' dB';
+        }
+        panel.qualEl.textContent = 'PSNR ' + psnrText + ' · SSIM ' + ssim.toFixed(3) + ' · Edge ' + edgeText;
         panel.qualEl.classList.remove('dim');
       }
       const original = panels.find((p) => p.id === 'original');
@@ -1930,6 +2057,17 @@
         zoom = Number(zoomInput.value);
         document.getElementById('zoom-val').textContent = zoom + '×';
         if (hover) renderLoupesOnly();
+      });
+      const sharpInput = document.getElementById('sharpness');
+      sharpInput.addEventListener('input', () => {
+        sharpStops = Number(sharpInput.value);
+        document.getElementById('sharp-val').textContent = sharpStops.toFixed(2) + ' stops';
+        if (activeTab !== 'sharp') return;
+        for (const p of panels) {
+          const method = methodOf(p);
+          if (method) p.el.querySelector('.hint').textContent = hintFor(method);
+        }
+        renderFrame();
       });
       const scrub = document.getElementById('scrub');
       scrub.addEventListener('pointerdown', () => { scrubbing = true; video.pause(); });

@@ -28,6 +28,12 @@ a 20 fps extract starting at t=90. Both are top-eye 1920x1080:
     -f rawvideo -pix_fmt rgb24 /tmp/sr-data/temporal.rgb
 
 Needs ffmpeg and numpy. No PyTorch.
+
+train-football-sharp.py reweights the luma residual by the Sobel magnitude of
+the HR crop and draws most patches from high-gradient blocks. The demo clip
+stays held out. train-football-sharp-perc.py continues those weights with a
+Laplacian term, a Sobel-matching term, and a tiny 4→8→8→1 patch discriminator.
+There is no VGG and no Real-ESRGAN on this machine.
 """
 
 from __future__ import annotations
@@ -48,6 +54,12 @@ TEMPORAL_RGB = Path("/tmp/sr-data/temporal.rgb")
 
 LUMA = (0.2126, 0.7152, 0.0722)
 TAPS = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+# Reference-luma Sobel magnitude, in the same 0..255 units as page PSNR.
+# Chosen from the held-out frame at t=2.5 before any sharp-net training:
+# about 6% of pixels, and about 21% of the yard-number crop, so the mask
+# is the strong edges (lines, digits, player contours) rather than grass.
+EDGE_MAG_MIN = 200.0
+EDGE_GMS_C = 160.0
 
 
 def open_rgb(path, n, h=1080, w=1920):
@@ -243,6 +255,12 @@ def forward(layers, x):
 
 
 def backward(layers, caches, dy):
+    grads, _dx = backward_io(layers, caches, dy)
+    return grads
+
+
+def backward_io(layers, caches, dy):
+    """Weight gradients plus the gradient with respect to the network input."""
     grads = []
     for layer, (hin, cols, z) in zip(reversed(layers), reversed(caches)):
         if layer["act"] == "relu":
@@ -251,7 +269,7 @@ def backward(layers, caches, dy):
         grads.append((dw.astype(np.float32), db.astype(np.float32)))
         dy = dx
     grads.reverse()
-    return grads
+    return grads, dy
 
 
 def adam(layers, grads, mom, step, lr, b1=0.9, b2=0.999, eps=1e-8):
@@ -331,6 +349,83 @@ def rgb_psnr(ref_u8, test_u8):
     return float(10.0 * np.log10((255.0 ** 2) / max(mse, 1e-12)))
 
 
+def sobel_mag(y):
+    """Sobel magnitude. y is 2D. Matches the compare-page edge mask."""
+    y = np.asarray(y, np.float32)
+    p = np.pad(y, 1, mode="edge")
+    gx = (p[:-2, 2:] + 2 * p[1:-1, 2:] + p[2:, 2:]) - (p[:-2, :-2] + 2 * p[1:-1, :-2] + p[2:, :-2])
+    gy = (p[2:, :-2] + 2 * p[2:, 1:-1] + p[2:, 2:]) - (p[:-2, :-2] + 2 * p[:-2, 1:-1] + p[:-2, 2:])
+    return np.sqrt(gx * gx + gy * gy).astype(np.float32)
+
+
+def edge_metrics(ref_u8, test_u8, thresh=None):
+    """Edge PSNR and gradient-magnitude similarity on the reference edge mask.
+
+    The mask is reference pixels with Sobel magnitude >= EDGE_MAG_MIN (luma
+    in 0..255). Edge PSNR is luma SSE on that mask only. GMS is
+    (2*mr*mt + c) / (mr^2 + mt^2 + c) averaged on the same pixels, c=160.
+    Returns (edge_psnr, gms, mask_fraction).
+    """
+    thresh = EDGE_MAG_MIN if thresh is None else thresh
+    a = luma(ref_u8.astype(np.float32))
+    b = luma(test_u8.astype(np.float32))
+    mr = sobel_mag(a)
+    mt = sobel_mag(b)
+    mask = mr >= np.float32(thresh)
+    frac = float(mask.mean())
+    if int(mask.sum()) < 16:
+        return float("nan"), float("nan"), frac
+    mse = float(np.mean((a[mask] - b[mask]) ** 2))
+    psnr = float(10.0 * np.log10((255.0 ** 2) / max(mse, 1e-12)))
+    mrv = mr[mask]
+    mtv = mt[mask]
+    c = np.float32(EDGE_GMS_C)
+    gms = (2 * mrv * mtv + c) / (mrv * mrv + mtv * mtv + c)
+    return psnr, float(np.mean(gms)), frac
+
+
+def _prx_lo_rcp(a):
+    a = np.asarray(a, np.float32)
+    return (np.uint32(0x7EF07EBB) - a.view(np.uint32)).view(np.float32)
+
+
+def _prx_med_rcp(a):
+    a = np.asarray(a, np.float32)
+    b = (np.uint32(0x7EF19FFF) - a.view(np.uint32)).view(np.float32)
+    return (b * (-b * a + np.float32(2.0))).astype(np.float32)
+
+
+def rcas_u8(rgb_u8, stops=0.2):
+    """FSR 1 RCAS on an RGB uint8 image. stops is the published FsrRcasCon argument.
+
+    0 is the strongest sharpen, 2 is the mildest. The page slider defaults to
+    0.2, the same constant baked into the FSR 1 panel. Reciprocals are AMD's
+    published prx_lo_rcp / prx_med_rcp, matching UPSCALE_KERNELS.rcasPost.
+    The noise-detection term in that shader is unused (FSR_RCAS_DENOISE is off).
+    """
+    rgb = np.asarray(rgb_u8, np.float32) * np.float32(1.0 / 255.0)
+    p = np.pad(rgb, ((1, 1), (1, 1), (0, 0)), mode="edge")
+    b = p[:-2, 1:-1]
+    d = p[1:-1, :-2]
+    e = p[1:-1, 1:-1]
+    f = p[1:-1, 2:]
+    h = p[2:, 1:-1]
+    mn4 = np.minimum(np.minimum(np.minimum(b, d), f), h)
+    mx4 = np.maximum(np.maximum(np.maximum(b, d), f), h)
+    hit_min = np.minimum(mn4, e) * _prx_lo_rcp(np.float32(4.0) * mx4)
+    hit_max = (np.float32(1.0) - np.maximum(mx4, e)) * _prx_lo_rcp(np.float32(4.0) * mn4 + np.float32(-4.0))
+    lobe = np.maximum(-hit_min, hit_max)
+    lobe_max = np.max(lobe, axis=-1)
+    con = np.float32(np.exp2(-float(stops)))
+    lobe_lim = np.maximum(
+        np.float32(-(0.25 - (1.0 / 16.0))),
+        np.minimum(lobe_max, np.float32(0.0)),
+    ) * con
+    rcp_l = _prx_med_rcp(np.float32(4.0) * lobe_lim + np.float32(1.0))
+    pix = (lobe_lim[..., None] * (b + d + h + f) + e) * rcp_l[..., None]
+    return to_u8(pix)
+
+
 def apply_x2(layers, arch, lr_rgb, prev_rgb=None):
     """lr_rgb is quantized low-res RGB in 0..1. Returns full-res float RGB."""
     if arch == "espcn-rgb":
@@ -407,6 +502,209 @@ def sample_y_batch(frames, rng, batch, patch, two_scale=True):
         xs[i, 0] = luma(lr)
         ys[i] = unshuffle(residual)
     return xs, ys
+
+
+def build_edge_index(frames, block=64):
+    """Block gradient energy for line-biased crops. Returns (hot_idx, block)."""
+    n, h, w, _ = frames.shape
+    bh, bw = h // block, w // block
+    energy = np.empty((n, bh, bw), np.float32)
+    for i in range(n):
+        lum = luma(np.asarray(frames[i], np.float32))
+        g = np.zeros_like(lum)
+        g[:, 1:] += np.abs(lum[:, 1:] - lum[:, :-1])
+        g[1:, :] += np.abs(lum[1:, :] - lum[:-1, :])
+        energy[i] = g[: bh * block, : bw * block].reshape(bh, block, bw, block).mean(axis=(1, 3))
+    hot = energy >= np.percentile(energy, 75)
+    hot_idx = np.argwhere(hot)
+    if len(hot_idx) == 0:
+        hot_idx = np.argwhere(np.ones_like(energy, dtype=bool))
+    print(f"edge index: {len(hot_idx)} hot {block}px blocks of {energy.size}", flush=True)
+    return hot_idx, block
+
+
+def _crop_at(frames, fi, y0, x0, span):
+    crop = np.array(frames[fi, y0:y0 + span, x0:x0 + span], dtype=np.float32)
+    return crop * np.float32(1.0 / 255.0)
+
+
+def _edge_weight(hr_luma):
+    mag = sobel_mag(hr_luma)
+    w = np.float32(1.0) + np.float32(3.0) * mag / (np.float32(mag.mean()) + np.float32(1e-6))
+    w = np.minimum(w, np.float32(12.0))
+    w = w / (np.float32(w.mean()) + np.float32(1e-8))
+    return unshuffle(w.astype(np.float32))
+
+
+def sample_sharp_batch(frames, rng, batch, patch, hot_idx, block, two_scale=True, hot_prob=0.75):
+    """Y residual batch. Most crops come from high-gradient blocks (lines, digits)."""
+    n, h, w, _ = frames.shape
+    lr_p = patch // 2
+    xs = np.empty((batch, 1, lr_p, lr_p), np.float32)
+    ys = np.empty((batch, 4, lr_p, lr_p), np.float32)
+    weights = np.empty((batch, 4, lr_p, lr_p), np.float32)
+    for i in range(batch):
+        use_half = two_scale and rng.random() < 0.5
+        span = patch * (2 if use_half else 1)
+        if rng.random() < hot_prob:
+            fi, by, bx = (int(v) for v in hot_idx[int(rng.integers(0, len(hot_idx)))])
+            cy = by * block + int(rng.integers(0, block))
+            cx = bx * block + int(rng.integers(0, block))
+            y0 = int(np.clip(cy - span // 2, 0, h - span))
+            x0 = int(np.clip(cx - span // 2, 0, w - span))
+            hr = _crop_at(frames, fi, y0, x0, span)
+            if use_half:
+                hr = box_mean(hr, 2)
+            hr = _flip(hr, rng)
+        else:
+            hr = _sample_hr(frames, rng, patch, two_scale)
+        lr = quant01(box_mean(hr, 2))
+        residual = luma(hr) - luma(bilinear_up(lr, 2))
+        xs[i, 0] = luma(lr)
+        ys[i] = unshuffle(residual)
+        weights[i] = _edge_weight(luma(hr))
+    return xs, ys, weights
+
+
+def fit_weighted(layers, sample_fn, steps, sanity_fn=None, sanity_every=400, name="sharp"):
+    """MSE weighted per subpixel. sample_fn returns x, target, weight (mean weight ~1)."""
+    mom = zero_mom(layers)
+    t0 = time.time()
+    last = 0.0
+    for step in range(1, steps + 1):
+        x, target, weight = sample_fn()
+        pred, caches = forward(layers, x)
+        err = pred - target
+        last = float(np.mean(weight * err * err))
+        dy = (np.float32(2.0) / np.float32(err.size)) * weight * err
+        grads = backward(layers, caches, dy.astype(np.float32))
+        del caches, pred, err
+        adam(layers, grads, mom, step, lr_at(step, steps))
+        if step == 1 or step % 100 == 0 or step == steps:
+            print(f"{name} step {step:4d}/{steps}  wmse {last:.6f}  {time.time() - t0:.0f}s", flush=True)
+        if sanity_fn and (step % sanity_every == 0 or step == steps):
+            sanity_fn(step)
+    return last
+
+
+def _shuffle_n(pred):
+    n, _c, h, w = pred.shape
+    out = np.zeros((n, h * 2, w * 2), np.float32)
+    out[:, 0::2, 0::2] = pred[:, 0]
+    out[:, 0::2, 1::2] = pred[:, 1]
+    out[:, 1::2, 0::2] = pred[:, 2]
+    out[:, 1::2, 1::2] = pred[:, 3]
+    return out
+
+
+def _unshuffle_n(hr):
+    return np.stack([
+        hr[:, 0::2, 0::2],
+        hr[:, 0::2, 1::2],
+        hr[:, 1::2, 0::2],
+        hr[:, 1::2, 1::2],
+    ], axis=1).astype(np.float32)
+
+
+def _conv_k(img, k):
+    p = np.pad(img, ((0, 0), (1, 1), (1, 1)), mode="edge")
+    acc = np.zeros_like(img, dtype=np.float32)
+    h, w = img.shape[1], img.shape[2]
+    for ky in range(3):
+        for kx in range(3):
+            acc += np.float32(k[ky, kx]) * p[:, ky:ky + h, kx:kx + w]
+    return acc
+
+
+_SOBEL_X = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], np.float32)
+_SOBEL_Y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], np.float32)
+_LAP = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], np.float32)
+
+
+def _lap_grad(pred, target):
+    diff = _conv_k(_shuffle_n(pred) - _shuffle_n(target), _LAP)
+    n = diff.shape[0] * diff.shape[1] * diff.shape[2]
+    # Laplacian is symmetric, so it is its own adjoint.
+    g = (np.float32(2.0) / np.float32(n)) * _conv_k(diff, _LAP)
+    return _unshuffle_n(g)
+
+
+def _sobel_match_grad(pred, target):
+    hp = _shuffle_n(pred)
+    ht = _shuffle_n(target)
+    dx = _conv_k(hp, _SOBEL_X) - _conv_k(ht, _SOBEL_X)
+    dy = _conv_k(hp, _SOBEL_Y) - _conv_k(ht, _SOBEL_Y)
+    n = hp.size
+    # Adjoint of Sobel is the flipped kernel. Both kernels flip to their negation.
+    g = (np.float32(2.0) / np.float32(n)) * (
+        -_conv_k(dx, _SOBEL_X) - _conv_k(dy, _SOBEL_Y)
+    )
+    return _unshuffle_n(g)
+
+
+def _sigmoid(z):
+    z = np.clip(z, -20.0, 20.0)
+    return (1.0 / (1.0 + np.exp(-z))).astype(np.float32)
+
+
+def clone_layers(layers):
+    return [{"w": L["w"].copy(), "b": L["b"].copy(), "act": L["act"]} for L in layers]
+
+
+def fit_perceptual(layers, sample_fn, steps, rng, sanity_fn=None, sanity_every=300, name="perc",
+                   hf=0.25, sobel_w=0.35, adv=0.05):
+    """Continue an edge-weighted net with HF, Sobel-match, and a tiny patch GAN.
+
+    No PyTorch, so there is no VGG/LPIPS and no Real-ESRGAN discriminator.
+    The discriminator is a 4→8→8→1 conv net on the unshuffled luma residual.
+    Generator loss is edge-weighted MSE + Laplacian + Sobel match + a
+    non-saturating softplus term. Discriminator loss is softplus BCE.
+    """
+    d_layers = make_layers([(4, 8, "relu"), (8, 8, "relu"), (8, 1, "linear")], rng)
+    d_mom = zero_mom(d_layers)
+    g_mom = zero_mom(layers)
+    t0 = time.time()
+    last = 0.0
+    for step in range(1, steps + 1):
+        x, target, weight = sample_fn()
+        pred, caches = forward(layers, x)
+        err = pred - target
+        mse = float(np.mean(weight * err * err))
+        dy = (np.float32(2.0) / np.float32(err.size)) * weight * err
+        dy = dy + np.float32(hf) * _lap_grad(pred, target)
+        dy = dy + np.float32(sobel_w) * _sobel_match_grad(pred, target)
+
+        fake = np.array(pred, dtype=np.float32, copy=True)
+        logit_r, cache_r = forward(d_layers, target)
+        logit_f, cache_f = forward(d_layers, fake)
+        dy_r = (_sigmoid(logit_r) - np.float32(1.0)) / np.float32(logit_r.size)
+        dy_f = _sigmoid(logit_f) / np.float32(logit_f.size)
+        grads_r, _ = backward_io(d_layers, cache_r, dy_r.astype(np.float32))
+        grads_f, _ = backward_io(d_layers, cache_f, dy_f.astype(np.float32))
+        d_grads = [(gr[0] + gf[0], gr[1] + gf[1]) for gr, gf in zip(grads_r, grads_f)]
+        adam(d_layers, d_grads, d_mom, step, 2e-4)
+        del cache_r, cache_f
+
+        logit_g, cache_g = forward(d_layers, pred)
+        dy_g = (_sigmoid(logit_g) - np.float32(1.0)) / np.float32(logit_g.size)
+        _ggrads, dx = backward_io(d_layers, cache_g, dy_g.astype(np.float32))
+        dy = dy + np.float32(adv) * dx
+        del cache_g
+
+        grads = backward(layers, caches, dy.astype(np.float32))
+        del caches, pred
+        adam(layers, grads, g_mom, step, lr_at(step, steps, base=5e-4))
+        last = mse
+        if step == 1 or step % 100 == 0 or step == steps:
+            print(
+                f"{name} step {step:4d}/{steps}  wmse {mse:.6f}  "
+                f"D(real) {float(logit_r.mean()):+.3f}  D(fake) {float(logit_f.mean()):+.3f}  "
+                f"{time.time() - t0:.0f}s",
+                flush=True,
+            )
+        if sanity_fn and (step % sanity_every == 0 or step == steps):
+            sanity_fn(step)
+    return last
 
 
 def sample_rgb_batch(frames, rng, batch, patch, two_scale=True):

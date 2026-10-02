@@ -190,6 +190,40 @@ fn rcas(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+// FSR 1 RCAS as a post-pass. Same published filter as rcas above, with the
+// sharpness stops in a uniform (FsrRcasCon: 0 strongest, 2 mildest).
+// The FSR 1 panel keeps its baked 0.2 and does not read this uniform.
+UPSCALE_KERNELS.rcasPost = UPSCALE_KERNELS.common + `
+@group(0) @binding(0) var src_tex: texture_2d<f32>;
+@group(0) @binding(1) var dst_tex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(2) var<uniform> sharp: vec4<f32>;
+
+fn amd_luma_p(c: vec3<f32>) -> f32 { return c.b * 0.5 + (c.r * 0.5 + c.g); }
+
+@compute @workgroup_size(8, 8)
+fn rcas_post(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let out_d = textureDimensions(dst_tex);
+  if (gid.x >= out_d.x || gid.y >= out_d.y) { return; }
+  let sp = vec2<i32>(i32(gid.x), i32(gid.y));
+  let b = load_clamped(src_tex, sp + vec2<i32>(0, -1)).rgb;
+  let d = load_clamped(src_tex, sp + vec2<i32>(-1, 0)).rgb;
+  let e = load_clamped(src_tex, sp).rgb;
+  let f = load_clamped(src_tex, sp + vec2<i32>(1, 0)).rgb;
+  let h = load_clamped(src_tex, sp + vec2<i32>(0, 1)).rgb;
+  let mn4 = min(min(min(b, d), f), h);
+  let mx4 = max(max(max(b, d), f), h);
+  let hitMin = min(mn4, e) * prx_lo_rcp3(4.0 * mx4);
+  let peak = vec2<f32>(1.0, -4.0);
+  let hitMax = (vec3<f32>(peak.x) - max(mx4, e)) * prx_lo_rcp3(4.0 * mn4 + vec3<f32>(peak.y));
+  let lobeRGB = max(-hitMin, hitMax);
+  let con = exp2(-sharp.x);
+  let lobeLim = max(-(0.25 - (1.0 / 16.0)), min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * con;
+  let rcpL = prx_med_rcp(4.0 * lobeLim + 1.0);
+  let pix = (lobeLim * b + lobeLim * d + lobeLim * h + lobeLim * f + e) * rcpL;
+  textureStore(dst_tex, sp, vec4<f32>(sat3(pix), 1.0));
+}
+`;
+
 // AMD FidelityFX Contrast Adaptive Sharpening, non-scaling CasFilter() from ffx_cas.h.
 // Copyright (c) 2019-2021 Advanced Micro Devices, Inc. MIT License.
 // The page runs this on a bilinear upsample, which is the "CAS-sharpened bilinear" path
