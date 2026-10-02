@@ -52,7 +52,7 @@
       top: 16px;
       left: 18px;
       z-index: 4;
-      max-width: min(540px, calc(100vw - 260px));
+      max-width: min(780px, calc(100vw - 36px));
       pointer-events: none;
     }
     .hud a { pointer-events: auto; }
@@ -77,12 +77,13 @@
       color: #c8c8c8;
       font-size: 14px;
       line-height: 1.45;
-      max-width: 520px;
+      max-width: min(760px, calc(100vw - 40px));
+      white-space: pre-line;
       text-shadow: 0 1px 8px rgba(0,0,0,0.8);
     }
 
     /* Full-screen hit layer. Children opt back in. Desktop parks the mode
-       row beside the torque meter, above the gallery, and the tune chip
+       row beside the strain meter, above the gallery, and the tune chip
        below the panel. Phone stacks both under the figure. */
     #controls {
       position: fixed;
@@ -93,7 +94,7 @@
     #modes, #tune { pointer-events: auto; touch-action: manipulation; }
     #modes {
       position: absolute;
-      /* Beside the torque meter, in the band above the gallery. The meter
+      /* Beside the strain meter, in the band above the gallery. The meter
          is too tall to leave a 44px row under it and still clear the scrollbar. */
       top: 16px;
       right: calc(18px + min(220px, 36vw) + 12px);
@@ -447,15 +448,16 @@
     <a class="back" href="../">← Back</a>
     <p class="kicker">Spatial AI · PHIZ</p>
     <h1>Body Cursor</h1>
-    <p class="lede" id="tip" aria-live="polite">Ray · Push. Shoulder flexion and abduction aim the humerus along the ray; elbow flexion sets how far the wrist travels on that line. Holding the wrist at either panel edge — further abduction, or horizontal adduction toward the trunk — scrolls that way.</p>
+    <p class="lede" id="tip" aria-live="polite">Point your hand at a photo. The cursor follows the line from your shoulder.
+Hold the cursor at an edge to scroll.</p>
   </header>
 
   <div id="effort">
     <div class="effort-head">
-      <span>Glenohumeral torque</span>
+      <span>Arm strain</span>
       <b id="effort-label">Comfortable</b>
     </div>
-    <div class="effort-track" id="effort-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Comfortable" aria-label="Glenohumeral joint torque">
+    <div class="effort-track" id="effort-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Comfortable" aria-label="Arm strain">
       <div id="effort-fill"></div>
     </div>
   </div>
@@ -486,20 +488,20 @@
       <button type="button" id="tune-toggle" aria-expanded="false">Tune</button>
     </div>
     <div class="tune-body">
-      <p class="hint" id="hint">Wrist distance is measured along the ray from the glenohumeral joint. Elbow abduction moves the elbow away from the trunk.</p>
+      <p class="hint" id="hint">Hand along the line from your shoulder. Elbow direction sets where the elbow points.</p>
       <label class="slider ray-only">
-        <span>Wrist along ray <b id="reach-val">0.80</b></span>
-        <input id="reach" type="range" min="0.42" max="1" step="0.01" value="0.80" aria-label="Wrist distance along the ray">
+        <span>Hand along ray <b id="reach-val">0.80</b></span>
+        <input id="reach" type="range" min="0.42" max="1" step="0.01" value="0.80" aria-label="Hand along ray">
       </label>
       <label class="slider ray-only">
-        <span>Elbow abduction <b id="elbow-val">adducted</b></span>
-        <input id="elbow" type="range" min="0" max="1" step="0.01" value="0.22" aria-label="Elbow abduction">
+        <span>Elbow direction <b id="elbow-val">at your side</b></span>
+        <input id="elbow" type="range" min="0" max="1" step="0.01" value="0.22" aria-label="Elbow direction">
       </label>
       <div class="checks">
-        <label><input id="phiz" type="checkbox"> PHIZ zone</label>
+        <label><input id="phiz" type="checkbox"> Interaction zone</label>
         <label><input id="guide" type="checkbox" checked> Wrist guide</label>
       </div>
-      <p class="readout" id="readout">Wrist at — from the glenohumeral joint to the cursor</p>
+      <p class="readout" id="readout">Hand at — from your shoulder to the cursor</p>
       <p class="credit">Landscapes from <a href="https://unsplash.com/license">Unsplash</a>, Unsplash License. Local 480×320 copies.</p>
     </div>
   </aside>
@@ -1160,50 +1162,44 @@
 
     function rotationPhrase(nx) {
       const deg = Math.abs(Math.round(nx * PHIZ_ROT * 180 / Math.PI));
-      if (nx > 0.04) return 'glenohumeral external rotation ' + deg + '°';
-      if (nx < -0.04) return 'glenohumeral internal rotation ' + deg + '°';
-      return 'glenohumeral rotation neutral';
+      return 'Upper arm rotated ' + deg + '°';
     }
 
     function flexionPhrase(ny) {
       const flex = Math.round(90 + ny * PHIZ_FLEX * 180 / Math.PI);
-      return 'elbow flexion ' + flex + '°';
+      return 'elbow bent ' + flex + '°';
     }
 
     function extendedPhrase(poseX, poseY) {
       const pastX = Math.abs(poseX) > 1.02;
       const pastY = Math.abs(poseY) > 1.02;
-      if (!pastX && !pastY) return 'Extended PHIZ  ' + rotationPhrase(poseX) + ' · ' + flexionPhrase(poseY);
-      const bits = ['Extended PHIZ'];
-      if (poseX > 1.02) bits.push('shoulder abduction ' + poseX.toFixed(2) + '×');
-      else if (poseX < -1.02) bits.push('horizontal adduction ' + Math.abs(poseX).toFixed(2) + '×');
-      if (poseY > 1.02) bits.push('shoulder flexion ' + poseY.toFixed(2) + '×');
-      else if (poseY < -1.02) bits.push('shoulder extension ' + Math.abs(poseY).toFixed(2) + '×');
-      bits.push('elbow extension');
-      return bits.join('  ');
+      if (!pastX && !pastY) return rotationPhrase(poseX) + ', ' + flexionPhrase(poseY);
+      const bits = [];
+      if (poseX > 1.02) bits.push('Arm raised out to the side');
+      else if (poseX < -1.02) bits.push('Upper arm rotated toward your torso');
+      if (poseY > 1.02) bits.push(bits.length ? 'reaching forward' : 'Reaching forward');
+      bits.push('elbow straightened');
+      return bits.join(', ');
     }
 
+    const POINT_TIPS = {
+      ray: 'Point your hand at a photo. The cursor follows the line from your shoulder.',
+      phiz: 'Upper arm relaxed at your side. Rotate it to move left and right, and bend your elbow to move up and down.',
+      extended: 'Like Simple PHIZ, but reach past the edge to keep scrolling. Reach farther to scroll faster.',
+    };
+    const SCROLL_TIPS = {
+      push: 'Hold the cursor at an edge to scroll.',
+      grab: 'Grab and drag the gallery. Let go mid-drag to flick it.',
+    };
+
     function tipFor() {
-      const grab = scrollMode === 'grab';
-      if (pointing === 'phiz') {
-        return grab
-          ? 'Simple PHIZ · Grab. Glenohumeral external and internal rotation sweep the forearm, and elbow flexion lifts the wrist, inside the zone in front of the trunk. That rotation drags the gallery; a quick reversal at the edge flicks. A short tap still opens a photo.'
-          : 'Simple PHIZ · Push. The humerus stays adducted at the glenohumeral joint. External and internal rotation sweep the forearm across the panel; elbow flexion and extension raise and lower the wrist. End-range rotation, wrist held at either edge, scrolls that way.';
-      }
-      if (pointing === 'extended') {
-        return grab
-          ? 'Extended PHIZ · Grab. Glenohumeral rotation and elbow flexion move the wrist on the panel and drag the gallery. Past the edge, shoulder abduction and elbow extension keep the grab going, and further abduction scrolls faster. A short tap still opens a photo.'
-          : 'Extended PHIZ · Push. On the panel, glenohumeral rotation and elbow flexion aim the wrist. Past the edge the humerus abducts and flexes and the elbow extends. More shoulder abduction and elbow extension scroll faster.';
-      }
-      return grab
-        ? 'Ray · Grab. Shoulder flexion and abduction aim the humerus; elbow flexion places the wrist along the ray. Sideways translation of the wrist drags the gallery. A short tap still opens a photo.'
-        : 'Ray · Push. Shoulder flexion and abduction aim the humerus along the ray; elbow flexion sets how far the wrist travels on that line. Holding the wrist at either panel edge — further abduction, or horizontal adduction toward the trunk — scrolls that way.';
+      return POINT_TIPS[pointing] + '\n' + SCROLL_TIPS[scrollMode];
     }
 
     function panelHintFor() {
-      if (pointing === 'phiz') return 'Humerus adducted. Glenohumeral rotation and elbow flexion stay inside the PHIZ zone.';
-      if (pointing === 'extended') return 'Past the panel, shoulder abduction and elbow extension continue the reach.';
-      return 'Wrist distance is measured along the ray from the glenohumeral joint. Elbow abduction moves the elbow away from the trunk.';
+      if (pointing === 'phiz') return 'Upper arm relaxed at your side. Rotate it, and bend your elbow, inside the interaction zone.';
+      if (pointing === 'extended') return 'Reach past the edge to keep scrolling. Reach farther to scroll faster.';
+      return 'Hand along the line from your shoulder. Elbow direction sets where the elbow points.';
     }
 
     function writeHash() {
@@ -1733,9 +1729,9 @@
     }
 
     function elbowLabel(amount) {
-      if (amount < 0.34) return 'adducted';
-      if (amount > 0.66) return 'abducted';
-      return 'partial';
+      if (amount < 0.34) return 'at your side';
+      if (amount > 0.66) return 'out to the side';
+      return 'raising out';
     }
 
     reachInput.addEventListener('input', () => {
@@ -1977,7 +1973,7 @@
       effortLabel.textContent = word + ' · ' + pct + '%';
       effortLabel.style.color = color;
       effortMeter.setAttribute('aria-valuenow', String(pct));
-      effortMeter.setAttribute('aria-valuetext', 'Glenohumeral torque ' + word.toLowerCase());
+      effortMeter.setAttribute('aria-valuetext', 'Arm strain ' + word.toLowerCase());
     }
 
     function tick() {
@@ -2085,7 +2081,7 @@
         phiz.visible = true;
         phizExt.visible = false;
         guide.visible = false;
-        readout.textContent = 'Simple PHIZ  ' + rotationPhrase(nx) + ' · ' + flexionPhrase(ny);
+        readout.textContent = rotationPhrase(nx) + ', ' + flexionPhrase(ny);
       } else if (pointing === 'extended') {
         const poseX = reachSmX > 1 ? Math.max(nx, reachSmX) : reachSmX < -1 ? Math.min(nx, reachSmX) : nx;
         const poseY = reachSmY > 1 ? Math.max(ny, reachSmY) : reachSmY < -1 ? Math.min(ny, reachSmY) : ny;
@@ -2123,7 +2119,7 @@
         rightHand.lookAt(cursor.x, cursor.y, cursor.z);
         const gap = shoulderWorld.distanceTo(cursor);
         const along = shoulderWorld.distanceTo(wristWorld) / Math.max(gap, 1e-4);
-        readout.textContent = 'Wrist at ' + Math.round(along * 100) + '% from the glenohumeral joint to the cursor';
+        readout.textContent = 'Hand at ' + Math.round(along * 100) + '% from your shoulder to the cursor';
       }
 
       const effort = shoulderEffort();
