@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upscale Compare — Video Super Scaling</title>
+  <!-- Anime4K CNN-S x2 weights are MIT licensed, Copyright (c) 2019-2021 bloc97. -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 36px 24px 80px;
+    }
+    .page { max-width: 1140px; margin: 0 auto; }
+    a.back {
+      display: inline-block;
+      margin-bottom: 24px;
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    a.back:hover { color: #aaa; }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 760px;
+      margin-bottom: 22px;
+    }
+    .toolbar {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 16px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 16px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    button {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { background: #222; border-color: #555; color: #fff; }
+    button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+    button.primary:hover { background: #243550; }
+    button:disabled { opacity: 0.3; cursor: default; }
+    .group { display: flex; align-items: center; gap: 8px; }
+    .lbl {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #666;
+    }
+    input[type="range"] { accent-color: #5b9bd5; width: 110px; }
+    .time {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #bbb;
+      min-width: 64px;
+    }
+    #scrub { flex: 1; min-width: 140px; width: auto; }
+    .status {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #888;
+      min-height: 18px;
+      margin-bottom: 16px;
+    }
+    .status.bad { color: #e74c3c; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      min-width: 0;
+    }
+    .phead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .phead h2 { font-size: 15px; font-weight: 650; }
+    .hint { font-size: 11px; color: #666; }
+    .view {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .view canvas.main {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .loupe {
+      position: absolute;
+      width: 168px;
+      height: 168px;
+      border: 2px solid #5b9bd5;
+      border-radius: 8px;
+      overflow: hidden;
+      pointer-events: none;
+      display: none;
+      z-index: 2;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      background: #000;
+    }
+    .loupe canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .unavail {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+      background: rgba(13, 13, 13, 0.72);
+      color: #aaa;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .unavail.show { display: flex; }
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #8eb6db;
+    }
+    .stats .dim { color: #666; }
+    .callout {
+      margin-top: 22px;
+      background: #0d1620;
+      border-left: 3px solid #5b9bd5;
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.65;
+    }
+    .callout strong { color: #ccc; }
+    code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #bbb; }
+    #video-source {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="index.html">← Back</a>
+    <h1>Upscale Compare</h1>
+    <p class="subtitle">The clip is area-downsampled in the browser, then reconstructed to its original resolution. Hover any view to magnify that same spot in every panel. The loupe is nearest-neighbor zoom of each panel’s final pixels.</p>
+
+    <div class="toolbar">
+      <button type="button" id="play" class="primary">Play</button>
+      <button type="button" id="step-back" title="Previous frame">−1f</button>
+      <button type="button" id="step-fwd" title="Next frame">+1f</button>
+      <span class="time" id="cur-time">0:00.00</span>
+      <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub">
+      <span class="time" id="dur-time">0:00.00</span>
+      <div class="group">
+        <span class="lbl">Downscale</span>
+        <button type="button" id="scale-2" class="primary">2×</button>
+        <button type="button" id="scale-4">4×</button>
+      </div>
+      <div class="group">
+        <span class="lbl">Loupe</span>
+        <input id="zoom" type="range" min="2" max="8" step="1" value="4" aria-label="Magnifier zoom">
+        <span class="time" id="zoom-val">4×</span>
+      </div>
+    </div>
+    <div class="status" id="status">Loading clip…</div>
+    <div class="grid" id="grid"></div>
+
+    <div class="callout">
+      <strong>Clip.</strong> Top eye of the fixed red/green football stereo feed already used by this folder
+      (<code>streams.quintar.ai/kyle/20251207-red-green/8Mbps</code>).
+      <code>testdata/</code> only had stills, and that broadcast is HEVC 3840×4320, which desktop Chrome often will not decode.
+      This page plays a 6s H.264 1920×1080 excerpt of the top eye,
+      <code>testdata/red-green-top-eye.mp4</code>.
+      The learned panel is Anime4K v3.2 CNN-S (x2 residual, run twice at 4×), not the Laplacian stand-in in <code>slang-cnn-upscale.html</code>.
+      PSNR and SSIM are luma versus the original; SSIM uses 8×8 boxes.
+    </div>
+  </div>
+
+  <video id="video-source" playsinline muted loop preload="auto"></video>
+
+  <script>
+    const CLIP_W_EXPECT = 1920;
+    const LOUPE = 168;
+    const SPECS = [
+      { id: 'original', name: 'Original', hint: 'Ground truth', kind: 'ref' },
+      { id: 'nearest', name: 'Nearest', hint: 'Point sample', kind: 'filter' },
+      { id: 'bilinear', name: 'Bilinear', hint: '2×2 tent', kind: 'filter' },
+      { id: 'bicubic', name: 'Bicubic', hint: 'Catmull-Rom', kind: 'filter' },
+      { id: 'lanczos', name: 'Lanczos', hint: 'Radius-3 sinc', kind: 'filter' },
+      { id: 'anime4k', name: 'Anime4K CNN', hint: 'Learned x2 residual', kind: 'neural' }
+    ];
+
+    // Anime4K-v3.2 Upscale CNN x2 (S). Column-major mat4 lists, packed float32.
+    const W_B64 = {
+      conv1: '9tW7u4ViBD472mi9zkg/Phrm+rypFYM+0gxcPRQYUT7hO/U6Nyy7PJIpKL0GQ9A9AAAAAAAAAAAAAAAAAAAAAAEuGzwasAS+NqPEPT+aXz5Mg2I5DH9rvqpXcj6e59I+b0ayPNzWnDt/5QY8AD3ePQAAAAAAAAAAAAAAAAAAAADtdT28eHJCvrAEPT3XXTe93iIsPIdNh767G3M+iR41O0cS47ySbhG+L2aIvKbth70AAAAAAAAAAAAAAAAAAAAAYMlsPTL54b21j2c9pd6AvVUjDj4GmD++KvZ5Pp6rgb4uMVY7kJLYvBpdGDsNPaA4AAAAAAAAAAAAAAAAAAAAAEBy+77Xw+I+81vhvq/Q0r4rnGC/k+VHP1jli79j1Bi/SIQ8vtGUPT6aHfG9fBMvvgAAAAAAAAAAAAAAAAAAAACzstg9oSllvSGLDL0IU6S9XzEYPkmiHb4dQkG+wFaivuHKET16xYK7VnquPKtxUjwAAAAAAAAAAAAAAAAAAAAAY8UmvdL/g75nNLY9XQ/7vduxIb6WRAq/YX6XPoED1T20rl87curdvUHtODyeevO9AAAAAAAAAAAAAAAAAAAAAMuYoTuRqMI8fXGovdUM+D1yCSq9UlTlvE8DFr9BsI69VUuNvB1kuTsg6DA9W0thPQAAAAAAAAAAAAAAAAAAAAAKHMA+DvsiPmORdD33B0M+XeFPPxNSxD7q868+KV8HP/uuKT5Rfo49BL9lPKgwmT0AAAAAAAAAAAAAAAAAAAAAoDAsvLDsGby/FjU+ODDgPA==',
+      layers: [
+        'D7U0vCFGcD0IwcG9prWQvJk6uLwfQTw+ZE6Cu8WShL1tZq09XHjaPcc3qDjpIro94Q8LPrVtfzoLYPk9blCovXkEM75nH2w9SqepPts7rj2YAjC+peyuvTC3Fj1mFA6+rU/fvYCiQr4nZXi9bBMbvZpOFr19p6A9DC5NPIQIgLypeyQ+WrLQvXJgBj0QRmY9nKoevFlZrb1QrS4+o5HFvfd4ST56fRS+LbW/Pe2WkL6b51q+g2zOPfRUMr4QdzE+JLc0vX2Y07310809thX+PfIymD1gKZo+yFEzvqPRB76DvtC95y2gPdSHZb4Z1II+0xo3PnR7Dr7LPOE9m8rXutRqdr1CX4E97caZO+ldSr161w0+jeSLPf1hcL1aOie9fhvnO16CEr0k3eO9U2EgPX4ml73e5L+9eCM3PSU3xj0Vmpy8BNMdvj7G7DxcUVU+7N91O8Ecpj1Xb5k9LAk0vh5vgLzjNIU9w5a0PQswAL5NU8O9XcrsPN0TUr1pjV4989G7vvFAE73JAHq+wBIWvGP+RT5sRcu9l8WZPYINSbpPJSc/rRGDvvkISz5W9oY9MQeYve4+jb02qKU7o+B2vfIPkj5MF5S+NnG8PiLaVz4vFZG+XP8rPnf4sL21H9u9HcMkvvrZAz5w6yK+ROVqPfmkIj6uwa07zTilPXTnTj3meqm8t+9Uv4tt4z1Ucoc+A9ULPnDlwD5ghmO+vYSPvBwc5D6O02w/4HwkPo+/Hr+BUEY+ikePvXQ/gL6WrgM8vp80PuMNwj6Vlki+I2qmvG8hhj5Zn7g9CrJJPtYM0r5zJqq9FmSqvtqxZr630nw9/NcLvhYWBr4mraa7eFK2PWDgqDuOKWq98Pgkvt8wgT42Jza9rLT1PY6iFz7fWbC+WDWGvoP5YL5SfYs+cI9XPvnLor0uuoS9OixZvojPirt7klc9LRIlOkTAKT7j3qa+11r4PcUUfD0Al9e961MqPUeDwj3I18A9KXphvm4qb727XVS+fZdqPd5GSD5y44k7sA62vQCJTr44C0Q+7U2KvF+hWbx2r5o9+cp8vpAITDz7DIa9+hSEvERC8r6qQZE9NtK8PXxUBj49D5k9Fkz/Ox+hmT5pOT0+IAhvvlvyZT4ZEoe8Eg3MPRDmoT5JFiG+q4XEPS+MtDrHKPc+oO6PvZolQL6WHYa+tYvxvclzR7ybTRU/mBPpPUfhIr1j9aI+vIyCvi9ptzrAI8k+B2H4vpg+zL7Rh0O+QTyovY9EVb6Grag8Fbajups14b57OBM+CaPxPdHJDb4+r6C8TCyavm7UDD9Zha4+4EPNvqnWID5XpAU+shNUPXTrVD62gm8+xCprvrOXWr3xRcg+DR8HvSNvYD4V7Q84M8ODPgTJr76kyIA8iASJPtdpi73ZAho+tQ1yvoaapLvz8Au+W47oPmaDCb1rEa29TwRvvjgZWz1WRWA9vAcLvBwNe77wfDM+OdsLPiK2Kzx+s5w9PcjdvkdrAj67Ww0+DUwAPtpxnr6MshO+YxisPSsxeT7cpmo9f99FPGa+VTx49xs9LEvuvA==',
+        'h+0Tvc/Ijr17yJm9SF6DPEo4+D24P3s+jVE3PVOYU76vxvI8cvkdvpFn3jwX8VS+JEvQPRyUnz0PHyk/PTXtvj8tHz4W3B+9GKk9PZDjgL4fl429bh6ZPZifFDwmP7g9QOKHvo2syr7D32K+31VUPmPN2L2f94K73JA3ve93yj5JT627nyWcvBZcsb0CAbW8t9ilvYUZeLzZ+j2+NMGgvYXZJr5x0k2+N2+rvdmCvT7pQ7o9HLF+PtM6eT5dPTQ9zvEdP03ecj40+MG+05w/vzE7pTzLR52+ClyMP70UVL6rcsi++yeMvdSWhb0qmNQ9qMQFPaQCG77IdQM+9yhUvGCFe73JK428vpbfvahx5T3ctCY9LQ+evDD8rT3ojJS80aaTPRmlgzwyVDY+ml+3vVviIT6VVdI9tA4aPj8HH74dDnK+L4TpvoS19L2o7RW+bu7aPWdiADxS+/I9VSgGvnEPKb7xp5k951umPYi9CT5P2ps6gqNVPYR3qz0BGpG98knCPZUXJb38Obe7Z85EvReUmr1L3Gc9hDqvPDfqpj5nC1W+Z/TLvVGX8jz18RY8GK6Wvki5yr3hsOM+bRZlv7hBYb4A2Ci+mqXuvE5LOD6h5xg+uTvhPFzXYjtSPKS+T3o/PjrSFj7Psi+9B+WbvewTAD5SrRa+iooOvS4Aab5kY/q9XGnqPcuJiD3vbT8++CAfvubaKb4f/pg+1NQTv/kzsb6OvuQ9A2rWvn/ywj62DFo+UG/FPWiaAr7mX6S91MUIv7kbPr96EcS+INvZPtvK6z7vakk/opHZPaOaKL1oFQU/450FvyemFz41B9a+LXyLPTXbGr7xL0K9PPIGPkPrGj7cKE09EtK8PR0mOb4MDZI72H48vYgWBL517U8+b7dIPqgyPz392DI+ybHiPODXPD6XMYw9sjDnPUBtbr6aGAG/R5Q6PpfQtT4xgKe9GUMBPQj6nTwCQ1Q7gw5SvpiXXL35TTY+NC2GvpT2kj4hNgw8yg+sPRMX4ry4zTC8Gm2VvdP5h72ZIEo9rPcNvlrp1D2Ir6c94FYvvY5dlz2dv4c9dNEaPdtJszw0aFe8ziJlPoeQuT7B1gM+1t4bu2qSKj7Bioo9JJ++PaDZE77wJc291pUSO4koBT0YP1i9KGIWvIUqobwP2tq6u/Idvv6g5b316uK9lmVEPBaY8L3qfJk9jk4kPlSh8b2oNAQ+HExgPajXw72W60O9UxwPPbkE8j26Zxk9y3ESvlgb4LxXl1a99e3oPddsnT2B+yM8NZi8vABzcL0xjxu9tLp/vap0Br7aS0c9Z9BoPb9O3z3hN6C9wmYXPnPXbz3HL++9mGEPvmt0lz0xQck9KG6JveqZxLxlNry9SKPDPHgAAj1gEdc7lRoKvbBq9b1s8fY90c7YPGrzmb3i7569J6h3Pcpvlj3SkTw9eBRYPj4kib4rpBg+EcX1PAW6072exoc9Atclvq4cDL5o2sM9keEbPA6BG7zQ+Yk9264OvoH4Gz6DzpW901n7O0fo6jwD3mg8xn2ZPFGmKrskVU09mcVivQ==',
+        'BXmcPHRVabzv7Zg7HVAevdWV2j31ztU8ZR1vPAWqQrzVPYY7hZiXuyv+0ztWLjI8NuQKvXbvr71DAKE9IFufPCutPT0Le0u8B3X7O8pxLb0+6zQ8hzeLPLfRlLy/5oq8ppQHvrDekDxvKeK8VViPPUm06LwFpZA78paiO4OcNTxgw1Q+xzZ3vf48HDswUoO9zyYyvlANnjyYzca9oCelPdH0Jzx/ZY68MeoNPCknNLxTs2A+lLLsvWowFD4D+oy9hqr1vR5N9Lt81v68bvYivJ6H/Dv1A4g88O8GPTAohjzCZNI9oWQfPlpafL43xNs9ML+LvREnZj2gfiu8N98uPYVVbT3FQ4G9bb9mPlZdKr2k1am8Kg8BPPkWKj1CFc88rDL5PD/tzbxjl8c8gg/JvEAp8TyKEH68/UqnPYr+n70R6IW8stcrPeIH1b0zJEM9XrsNvfGRYbtwVyu8P/J4PFxOIr1YBPa8PjYkPpP4nTxfwHC9PzWHPNf1Hr6px5Q8KChePcx2ij2FVJy79m6OOyp2zb297Ke8xLEtPY7vlD3Em6A9aQOTPEzEtryZMle8uByAPOTUzL3dnNU9zZ1xPWWPpb0QpSE7vDtKvVrN+DzGqjk8nndwvMHRPjztNju8jtv/PSOyhz2iwzu9is8evM4+T7zWTpe9PwQQPIx2tTqaYLG8YEe3PvGzcz15O3U+OkIePiknzb2PTEO+sHDlvjPMIr3ghTk9dmdjPrTQ1jyIxMa9EPMPP+26q77Ci428Psitvm99jb5ETfK9xx6CvYJiVj7Imww+k6kJPiDfmD1pVHQ9Y029vpNjKD5D3b2+R76DPd83O768Oja9qEkOviDiW71quQu9vYLAvU7rGj6d15i97R0svZVMUDskDgo+FleevU6xND2DZWy+V5R3PQfCGb53duw6j1U/viUAkD6xlQo+7lipPcuOFr0m7hK+gZSYPNTqTr1bQWg9uTzKO046Qz0mnLS93x9uPh6hZbxDCaw9PsHxu+R9YT7dQf29bzdAO3ox0TrM7UQ6hIeHPHHCR7039Ve9/CwbPX6WTD30P348KtToPVJLHL0Bc1e8K2nivO+b3D0olSi9gefgPHGgMj2apD49F4vUO7eMCb05KLm8PJiUPMNmNbzV1ic8pVKivEqkML5MNic9cGEkvenmJTy7QKk8TewFO3NDMby8u4g8LS8nPOIRJz0hKoQ82DkIPbMgPDxInY28zC2VvbBL4725d1e+SrUSPJVsQj6t53s8/dpSvqIs7jyL6lY8056du4gj570Z71Q9byREPbAzxLzpDBQ9nnscvcGiVj0pT7w8M0aHPhjpeL1dgL29rp4BPS5HID6vYBu9eh5ou1fRZDzgtfQ8xxdiO8vaObywNbU8OUbhuyDFGDxnEyC9woCkPWAdUD1ekQ893SlQvmkigT0/47O8tPodPUsLZr4Fjwk9MAiru/le5zsUiYa9i/vwvFNHHjwEynu8sBCjPJec270afwu9+501vfmwiT7wfEG9pyjUvCqHlTtH0UU+zztju/GYl7tkn5e7R0y9uw=='
+      ]
+    };
+
+    const video = document.getElementById('video-source');
+    const grid = document.getElementById('grid');
+    const statusEl = document.getElementById('status');
+    const q = new URLSearchParams(location.search);
+
+    let mode = 'cpu';
+    let device = null;
+    let format = 'bgra8unorm';
+    let hasTS = false;
+    let scale = q.get('scale') === '4' ? 4 : 2;
+    let zoom = 4;
+    let fullW = 0;
+    let fullH = 0;
+    let hover = null;
+    let scrubbing = false;
+    let booted = false;
+    let watching = false;
+    let measuring = false;
+    let readInFlight = false;
+    let measureQueued = false;
+    let startApplied = false;
+    let frameSerial = 0;
+    let fpsStamp = performance.now();
+    let fpsCount = 0;
+    let presentFps = 0;
+    let metricsEnabled = true;
+    let gpuLabel = 'WebGPU';
+    let uploadCanvas = null;
+    let uploadCtx = null;
+    let srcTex = null;
+    let lowTex = null;
+    let midTex = null;
+    let featS = [null, null];
+    let featM = [null, null];
+    let outTex = {};
+    let generation = [];
+    let pipelines = null;
+    let weights = null;
+    let metricBufs = null;
+    let querySet = null;
+    let tsResolve = null;
+    let tsStaging = null;
+    let panels = [];
+
+    function b64f32(s) {
+      const bin = atob(s);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Float32Array(bytes.buffer);
+    }
+
+    function setStatus(text, bad) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('bad', !!bad);
+    }
+
+    function fmtTime(t) {
+      if (!Number.isFinite(t) || t < 0) t = 0;
+      const m = Math.floor(t / 60);
+      const s = t - m * 60;
+      return m + ':' + s.toFixed(2).padStart(5, '0');
+    }
+
+    function buildDOM() {
+      for (const spec of SPECS) {
+        const el = document.createElement('article');
+        el.className = 'panel';
+        el.innerHTML =
+          '<div class="phead"><h2></h2><span class="hint"></span></div>' +
+          '<div class="view"><canvas class="main"></canvas>' +
+          '<div class="loupe"><canvas></canvas></div>' +
+          '<div class="unavail"></div></div>' +
+          '<div class="stats"><span data-k="time">—</span><span data-k="quality" class="dim">—</span></div>';
+        el.querySelector('h2').textContent = spec.name;
+        el.querySelector('.hint').textContent = spec.hint;
+        grid.appendChild(el);
+        const view = el.querySelector('.view');
+        const loupe = el.querySelector('.loupe');
+        panels.push({
+          ...spec,
+          el,
+          view,
+          canvas: el.querySelector('canvas.main'),
+          loupe,
+          loupeCanvas: loupe.querySelector('canvas'),
+          timeEl: el.querySelector('[data-k="time"]'),
+          qualEl: el.querySelector('[data-k="quality"]'),
+          unavail: el.querySelector('.unavail'),
+          ctx: null,
+          lctx: null,
+          cpu: null,
+          lcpu: null
+        });
+      }
+    }
+
+    function markUnavailable(panel, message) {
+      panel.unavail.textContent = message;
+      panel.unavail.classList.add('show');
+      panel.timeEl.textContent = 'unavailable';
+      panel.qualEl.textContent = '—';
+    }
+
+    function clearUnavailable(panel) {
+      panel.unavail.classList.remove('show');
+    }
+
+    function weightBuffer(floats) {
+      const size = Math.max(16, Math.ceil(floats.byteLength / 16) * 16);
+      const buf = device.createBuffer({
+        size,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(buf, 0, floats);
+      return buf;
+    }
+
+    function shaderErr(module, label) {
+      return module.getCompilationInfo().then((info) => {
+        const errors = info.messages.filter((m) => m.type === 'error');
+        if (!errors.length) return;
+        throw new Error(label + ': ' + errors.map((e) => e.message).join('; '));
+      });
+    }
+
+    function makeConvWGSL(kind) {
+      const taps = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 0], [1, 1]];
+      let body = '';
+      if (kind === 'conv1') {
+        taps.forEach(([x, y], k) => {
+          body += `{
+            let s = textureLoad(src, clamp(id + vec2<i32>(${x}, ${y}), vec2<i32>(0), size - vec2<i32>(1)), 0);
+            result += mat_at(${k * 16}u) * s;
+          }`;
+        });
+        body += 'result += vec4<f32>(w[144u], w[145u], w[146u], w[147u]);';
+      } else {
+        taps.forEach(([x, y], k) => {
+          const pos = k * 32;
+          const neg = pos + 16;
+          body += `{
+            let s = textureLoad(src, clamp(id + vec2<i32>(${x}, ${y}), vec2<i32>(0), size - vec2<i32>(1)), 0);
+            let pos = max(s, vec4<f32>(0.0));
+            let neg = max(-s, vec4<f32>(0.0));
+            result += mat_at(${pos}u) * pos;
+            result += mat_at(${neg}u) * neg;
+          }`;
+        });
+        body += 'result += vec4<f32>(w[288u], w[289u], w[290u], w[291u]);';
+      }
+      return `
+        @group(0) @binding(0) var src: texture_2d<f32>;
+        @group(0) @binding(1) var dst: texture_storage_2d<rgba16float, write>;
+        @group(0) @binding(2) var<storage, read> w: array<f32>;
+
+        fn mat_at(base: u32) -> mat4x4<f32> {
+          return mat4x4<f32>(
+            w[base + 0u], w[base + 1u], w[base + 2u], w[base + 3u],
+            w[base + 4u], w[base + 5u], w[base + 6u], w[base + 7u],
+            w[base + 8u], w[base + 9u], w[base + 10u], w[base + 11u],
+            w[base + 12u], w[base + 13u], w[base + 14u], w[base + 15u]
+          );
+        }
+
+        @compute @workgroup_size(8, 8)
+        fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+          let size = vec2<i32>(i32(textureDimensions(dst).x), i32(textureDimensions(dst).y));
+          let id = vec2<i32>(i32(gid.x), i32(gid.y));
+          if (id.x >= size.x || id.y >= size.y) { return; }
+          var result = vec4<f32>(0.0);
+          ${body}
+          textureStore(dst, id, result);
+        }
+      `;
+    }
+
+    const DOWNSCALE_WGSL = `
+      struct Scale { value: u32, pad0: u32, pad1: u32, pad2: u32 }
+      @group(0) @binding(0) var src: texture_2d<f32>;
+      @group(0) @binding(1) var dst: texture_storage_2d<rgba8unorm, write>;
+      @group(0) @binding(2) var<uniform> scale_u: Scale;
+
+      @compute @workgroup_size(8, 8)
+      fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let low = vec2<i32>(i32(textureDimensions(dst).x), i32(textureDimensions(dst).y));
+        let id = vec2<i32>(i32(gid.x), i32(gid.y));
+        if (id.x >= low.x || id.y >= low.y) { return; }
+        let s = i32(scale_u.value);
+        var acc = vec4<f32>(0.0);
+        for (var y = 0; y < s; y++) {
+          for (var x = 0; x < s; x++) {
+            acc += textureLoad(src, id * s + vec2<i32>(x, y), 0);
+          }
+        }
+        textureStore(dst, id, acc / f32(s * s));
+      }
+    `;
+
+    const UPSCALE_WGSL = `
+      @group(0) @binding(0) var low_tex: texture_2d<f32>;
+      @group(0) @binding(1) var out_tex: texture_storage_2d<rgba8unorm, write>;
+
+      fn dims(t: texture_2d<f32>) -> vec2<i32> {
+        let d = textureDimensions(t);
+        return vec2<i32>(i32(d.x), i32(d.y));
+      }
+
+      fn at(t: texture_2d<f32>, p: vec2<i32>) -> vec4<f32> {
+        let d = dims(t);
+        return textureLoad(t, clamp(p, vec2<i32>(0), d - vec2<i32>(1)), 0);
+      }
+
+      fn sample_nearest(uv: vec2<f32>) -> vec4<f32> {
+        let d = dims(low_tex);
+        let p = uv * vec2<f32>(d);
+        return at(low_tex, vec2<i32>(i32(floor(p.x)), i32(floor(p.y))));
+      }
+
+      fn sample_bilinear(uv: vec2<f32>) -> vec4<f32> {
+        let d = vec2<f32>(dims(low_tex));
+        let p = uv * d - vec2<f32>(0.5);
+        let i = vec2<i32>(i32(floor(p.x)), i32(floor(p.y)));
+        let f = p - vec2<f32>(floor(p.x), floor(p.y));
+        let s00 = at(low_tex, i);
+        let s10 = at(low_tex, i + vec2<i32>(1, 0));
+        let s01 = at(low_tex, i + vec2<i32>(0, 1));
+        let s11 = at(low_tex, i + vec2<i32>(1, 1));
+        return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+      }
+
+      fn catmull(x: f32) -> f32 {
+        let a = abs(x);
+        if (a <= 1.0) { return ((1.5 * a) - 2.5) * a * a + 1.0; }
+        if (a < 2.0) { return (((-0.5 * a) + 2.5) * a - 4.0) * a + 2.0; }
+        return 0.0;
+      }
+
+      fn sample_bicubic(uv: vec2<f32>) -> vec4<f32> {
+        let d = vec2<f32>(dims(low_tex));
+        let p = uv * d - vec2<f32>(0.5);
+        let i = vec2<i32>(i32(floor(p.x)), i32(floor(p.y)));
+        let f = p - vec2<f32>(floor(p.x), floor(p.y));
+        var acc = vec4<f32>(0.0);
+        var wsum = 0.0;
+        for (var y = -1; y <= 2; y++) {
+          for (var x = -1; x <= 2; x++) {
+            let w = catmull(f.x - f32(x)) * catmull(f.y - f32(y));
+            acc += at(low_tex, i + vec2<i32>(x, y)) * w;
+            wsum += w;
+          }
+        }
+        return clamp(acc / max(wsum, 1e-4), vec4<f32>(0.0), vec4<f32>(1.0));
+      }
+
+      fn lanczos3(x: f32) -> f32 {
+        let a = abs(x);
+        if (a < 1e-5) { return 1.0; }
+        if (a >= 3.0) { return 0.0; }
+        let pi = 3.14159265359;
+        let pix = pi * a;
+        return sin(pix) * sin(pix / 3.0) / (pix * (pix / 3.0));
+      }
+
+      fn sample_lanczos(uv: vec2<f32>) -> vec4<f32> {
+        let d = vec2<f32>(dims(low_tex));
+        let p = uv * d - vec2<f32>(0.5);
+        let i = vec2<i32>(i32(floor(p.x)), i32(floor(p.y)));
+        let f = p - vec2<f32>(floor(p.x), floor(p.y));
+        var acc = vec4<f32>(0.0);
+        var wsum = 0.0;
+        for (var y = -2; y <= 3; y++) {
+          for (var x = -2; x <= 3; x++) {
+            let w = lanczos3(f.x - f32(x)) * lanczos3(f.y - f32(y));
+            acc += at(low_tex, i + vec2<i32>(x, y)) * w;
+            wsum += w;
+          }
+        }
+        return clamp(acc / max(wsum, 1e-4), vec4<f32>(0.0), vec4<f32>(1.0));
+      }
+
+      fn write_sample(id: vec3<u32>, color: vec4<f32>) {
+        let out_d = textureDimensions(out_tex);
+        if (id.x >= out_d.x || id.y >= out_d.y) { return; }
+        textureStore(out_tex, vec2<i32>(i32(id.x), i32(id.y)), vec4<f32>(color.rgb, 1.0));
+      }
+
+      fn uv_at(id: vec3<u32>) -> vec2<f32> {
+        let out_d = textureDimensions(out_tex);
+        return (vec2<f32>(f32(id.x), f32(id.y)) + vec2<f32>(0.5)) / vec2<f32>(f32(out_d.x), f32(out_d.y));
+      }
+
+      @compute @workgroup_size(8, 8)
+      fn nearest(@builtin(global_invocation_id) id: vec3<u32>) { write_sample(id, sample_nearest(uv_at(id))); }
+      @compute @workgroup_size(8, 8)
+      fn bilinear(@builtin(global_invocation_id) id: vec3<u32>) { write_sample(id, sample_bilinear(uv_at(id))); }
+      @compute @workgroup_size(8, 8)
+      fn bicubic(@builtin(global_invocation_id) id: vec3<u32>) { write_sample(id, sample_bicubic(uv_at(id))); }
+      @compute @workgroup_size(8, 8)
+      fn lanczos(@builtin(global_invocation_id) id: vec3<u32>) { write_sample(id, sample_lanczos(uv_at(id))); }
+    `;
+
+    const D2S_WGSL = `
+      @group(0) @binding(0) var color_tex: texture_2d<f32>;
+      @group(0) @binding(1) var feat_tex: texture_2d<f32>;
+      @group(0) @binding(2) var out_tex: texture_storage_2d<rgba8unorm, write>;
+
+      fn at(p: vec2<i32>) -> vec4<f32> {
+        let d = textureDimensions(color_tex);
+        let di = vec2<i32>(i32(d.x), i32(d.y));
+        return textureLoad(color_tex, clamp(p, vec2<i32>(0), di - vec2<i32>(1)), 0);
+      }
+
+      @compute @workgroup_size(8, 8)
+      fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let out_d = textureDimensions(out_tex);
+        if (gid.x >= out_d.x || gid.y >= out_d.y) { return; }
+        let x = i32(gid.x);
+        let y = i32(gid.y);
+        let feat_d = textureDimensions(feat_tex);
+        let lx = clamp(x / 2, 0, i32(feat_d.x) - 1);
+        let ly = clamp(y / 2, 0, i32(feat_d.y) - 1);
+        let ch = (y & 1) * 2 + (x & 1);
+        let residual = textureLoad(feat_tex, vec2<i32>(lx, ly), 0)[ch];
+        let uv = (vec2<f32>(f32(x), f32(y)) + vec2<f32>(0.5)) / vec2<f32>(f32(out_d.x), f32(out_d.y));
+        let cd = vec2<f32>(f32(textureDimensions(color_tex).x), f32(textureDimensions(color_tex).y));
+        let p = uv * cd - vec2<f32>(0.5);
+        let i = vec2<i32>(i32(floor(p.x)), i32(floor(p.y)));
+        let f = p - vec2<f32>(floor(p.x), floor(p.y));
+        let base = mix(mix(at(i), at(i + vec2<i32>(1, 0)), f.x), mix(at(i + vec2<i32>(0, 1)), at(i + vec2<i32>(1, 1)), f.x), f.y);
+        let rgb = clamp(base.rgb + vec3<f32>(residual), vec3<f32>(0.0), vec3<f32>(1.0));
+        textureStore(out_tex, vec2<i32>(x, y), vec4<f32>(rgb, 1.0));
+      }
+    `;
+
+    const PRESENT_WGSL = `
+      @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let x = select(-1.0, 1.0, (i & 1u) == 1u);
+        let y = select(1.0, -1.0, i >= 2u);
+        return vec4<f32>(x, y, 0.0, 1.0);
+      }
+      @group(0) @binding(0) var tex: texture_2d<f32>;
+      @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = textureDimensions(tex);
+        let x = u32(pos.x);
+        let y = u32(pos.y);
+        if (x >= d.x || y >= d.y) { discard; }
+        return textureLoad(tex, vec2<i32>(i32(x), i32(y)), 0);
+      }
+    `;
+
+    const LOUPE_WGSL = `
+      struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> }
+      struct Loupe { center: vec2<f32>, window: vec2<f32> }
+      @vertex fn vs(@builtin(vertex_index) i: u32) -> VSOut {
+        let x = select(-1.0, 1.0, (i & 1u) == 1u);
+        let y = select(1.0, -1.0, i >= 2u);
+        var o: VSOut;
+        o.pos = vec4<f32>(x, y, 0.0, 1.0);
+        o.uv = vec2<f32>(select(0.0, 1.0, (i & 1u) == 1u), select(0.0, 1.0, i >= 2u));
+        return o;
+      }
+      @group(0) @binding(0) var tex: texture_2d<f32>;
+      @group(0) @binding(1) var<uniform> loupe: Loupe;
+      @fragment fn fs(in: VSOut) -> @location(0) vec4<f32> {
+        let src = loupe.center + (in.uv - vec2<f32>(0.5)) * loupe.window;
+        let d = textureDimensions(tex);
+        let coord = clamp(vec2<i32>(i32(floor(src.x)), i32(floor(src.y))), vec2<i32>(0), vec2<i32>(i32(d.x) - 1, i32(d.y) - 1));
+        return textureLoad(tex, coord, 0);
+      }
+    `;
+
+    const METRIC_WGSL = `
+      struct Params { blocks_x: u32, blocks_y: u32, full_w: u32, full_h: u32 }
+      struct Block { sse: f32, ssim: f32, n: f32, pad: f32 }
+
+      @group(0) @binding(0) var ref_tex: texture_2d<f32>;
+      @group(0) @binding(1) var test_tex: texture_2d<f32>;
+      @group(0) @binding(2) var<storage, read_write> blocks: array<Block>;
+      @group(0) @binding(3) var<uniform> params: Params;
+
+      fn luma255(rgb: vec3<f32>) -> f32 {
+        return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * 255.0;
+      }
+
+      @compute @workgroup_size(8, 8)
+      fn blocks_main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        if (gid.x >= params.blocks_x || gid.y >= params.blocks_y) { return; }
+        let x0 = gid.x * 8u;
+        let y0 = gid.y * 8u;
+        var sx = 0.0; var sy = 0.0; var sxx = 0.0; var syy = 0.0; var sxy = 0.0;
+        var sse = 0.0; var n = 0.0;
+        for (var y: u32 = 0u; y < 8u; y++) {
+          for (var x: u32 = 0u; x < 8u; x++) {
+            let px = x0 + x;
+            let py = y0 + y;
+            if (px >= params.full_w || py >= params.full_h) { continue; }
+            let a = luma255(textureLoad(ref_tex, vec2<i32>(i32(px), i32(py)), 0).rgb);
+            let b = luma255(textureLoad(test_tex, vec2<i32>(i32(px), i32(py)), 0).rgb);
+            sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
+            let d = a - b;
+            sse += d * d;
+            n += 1.0;
+          }
+        }
+        let inv = 1.0 / max(n, 1.0);
+        let mx = sx * inv; let my = sy * inv;
+        let vx = max(sxx * inv - mx * mx, 0.0);
+        let vy = max(syy * inv - my * my, 0.0);
+        let cov = sxy * inv - mx * my;
+        let c1 = 6.5025;
+        let c2 = 58.5225;
+        let ssim = ((2.0 * mx * my + c1) * (2.0 * cov + c2)) / ((mx * mx + my * my + c1) * (vx + vy + c2));
+        let idx = gid.y * params.blocks_x + gid.x;
+        blocks[idx].sse = sse;
+        blocks[idx].ssim = ssim;
+        blocks[idx].n = n;
+        blocks[idx].pad = 0.0;
+      }
+
+      @group(1) @binding(0) var<storage, read> blocks_r: array<Block>;
+      @group(1) @binding(1) var<storage, read_write> partial: array<vec4<f32>>;
+      @group(1) @binding(2) var<uniform> params_r: Params;
+
+      @compute @workgroup_size(256)
+      fn reduce_partial(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let count = params_r.blocks_x * params_r.blocks_y;
+        var sse = 0.0; var ssim = 0.0; var n = 0.0; var nb = 0.0;
+        for (var i = gid.x; i < count; i += 256u) {
+          sse += blocks_r[i].sse;
+          ssim += blocks_r[i].ssim;
+          n += blocks_r[i].n;
+          nb += 1.0;
+        }
+        partial[gid.x] = vec4<f32>(sse, ssim, n, nb);
+      }
+
+      @group(2) @binding(0) var<storage, read> partial_in: array<vec4<f32>>;
+      @group(2) @binding(1) var<storage, read_write> result: array<vec4<f32>>;
+
+      @compute @workgroup_size(1)
+      fn reduce_final() {
+        var sse = 0.0; var ssim = 0.0; var n = 0.0; var nb = 0.0;
+        for (var i = 0u; i < 256u; i++) {
+          let v = partial_in[i];
+          sse += v.x; ssim += v.y; n += v.z; nb += v.w;
+        }
+        result[0] = vec4<f32>(sse, ssim, n, nb);
+      }
+    `;
+
+    function track(tex) {
+      generation.push(tex);
+      return tex;
+    }
+
+    function tex2d(w, h, formatName, extra) {
+      return track(device.createTexture({
+        size: [w, h],
+        format: formatName,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | (extra || 0)
+      }));
+    }
+
+    function allocTargets() {
+      const retire = generation;
+      generation = [];
+      const lowW = Math.floor(fullW / scale);
+      const lowH = Math.floor(fullH / scale);
+      const midW = Math.floor(fullW / 2);
+      const midH = Math.floor(fullH / 2);
+      srcTex = track(device.createTexture({
+        size: [fullW, fullH],
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
+      }));
+      lowTex = tex2d(lowW, lowH, 'rgba8unorm');
+      midTex = scale === 4 ? tex2d(midW, midH, 'rgba8unorm') : null;
+      featS = [tex2d(lowW, lowH, 'rgba16float'), tex2d(lowW, lowH, 'rgba16float')];
+      featM = scale === 4
+        ? [tex2d(midW, midH, 'rgba16float'), tex2d(midW, midH, 'rgba16float')]
+        : [null, null];
+      outTex = {};
+      for (const spec of SPECS) {
+        if (spec.id === 'original') continue;
+        outTex[spec.id] = tex2d(fullW, fullH, 'rgba8unorm', GPUTextureUsage.COPY_SRC);
+      }
+      uploadCanvas.width = fullW;
+      uploadCanvas.height = fullH;
+      for (const p of panels) {
+        p.canvas.width = fullW;
+        p.canvas.height = fullH;
+        p.ctx.configure({ device, format, alphaMode: 'opaque' });
+      }
+      const blocks = Math.ceil(fullW / 8) * Math.ceil(fullH / 8);
+      if (metricBufs) {
+        metricBufs.blocks.destroy();
+      }
+      metricBufs = metricBufs || {};
+      metricBufs.blocks = device.createBuffer({
+        size: blocks * 16,
+        usage: GPUBufferUsage.STORAGE
+      });
+      if (!metricBufs.partial) {
+        metricBufs.partial = device.createBuffer({
+          size: 256 * 16,
+          usage: GPUBufferUsage.STORAGE
+        });
+        metricBufs.result = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        });
+        metricBufs.params = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        metricBufs.staging = device.createBuffer({
+          size: 5 * 16,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+        });
+        metricBufs.scale = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        metricBufs.loupe = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+      }
+      device.queue.writeBuffer(metricBufs.scale, 0, new Uint32Array([scale, 0, 0, 0]));
+      device.queue.onSubmittedWorkDone().then(() => {
+        for (const t of retire) t.destroy();
+      }).catch(() => {});
+      const lowLabel = lowW + '×' + lowH;
+      setStatus(gpuLabel + ' · ' + fullW + '×' + fullH + ' → ' + lowLabel + ' → ' + fullW + '×' + fullH + ' · loupe ' + zoom + '×');
+    }
+
+    async function initGPU() {
+      if (!navigator.gpu) return false;
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      if (!adapter) return false;
+      const required = [];
+      if (adapter.features.has('timestamp-query')) required.push('timestamp-query');
+      device = await adapter.requestDevice({ requiredFeatures: required });
+      hasTS = required.includes('timestamp-query');
+      window.__gpuLost = null;
+      device.lost.then((infoLost) => {
+        window.__gpuLost = { reason: infoLost.reason, message: infoLost.message };
+      }).catch((err) => {
+        window.__gpuLost = { reason: 'lost-rejected', message: String(err && err.message || err) };
+      });
+      format = navigator.gpu.getPreferredCanvasFormat();
+      const info = adapter.info || {};
+      gpuLabel = info.description || info.device || 'WebGPU';
+      device.lost.then((infoLost) => {
+        if (infoLost.reason !== 'destroyed') setStatus('WebGPU device lost: ' + infoLost.message, true);
+      }).catch(() => {});
+      device.addEventListener('uncapturederror', (ev) => {
+        setStatus(ev.error.message, true);
+      });
+
+      for (const p of panels) {
+        p.ctx = p.canvas.getContext('webgpu');
+        p.lctx = p.loupeCanvas.getContext('webgpu');
+        p.loupeCanvas.width = LOUPE;
+        p.loupeCanvas.height = LOUPE;
+        if (!p.ctx || !p.lctx) return false;
+        p.lctx.configure({ device, format, alphaMode: 'opaque' });
+      }
+
+      uploadCanvas = document.createElement('canvas');
+      uploadCtx = uploadCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+
+      const conv1f = b64f32(W_B64.conv1);
+      const layerf = W_B64.layers.map(b64f32);
+      if (conv1f.length !== 148 || layerf.some((a) => a.length !== 292)) {
+        throw new Error('Anime4K weight table has an unexpected size.');
+      }
+      weights = {
+        conv1: weightBuffer(conv1f),
+        layers: layerf.map(weightBuffer)
+      };
+
+      const modules = {
+        down: device.createShaderModule({ code: DOWNSCALE_WGSL }),
+        up: device.createShaderModule({ code: UPSCALE_WGSL }),
+        conv1: device.createShaderModule({ code: makeConvWGSL('conv1') }),
+        conv: device.createShaderModule({ code: makeConvWGSL('relu') }),
+        d2s: device.createShaderModule({ code: D2S_WGSL }),
+        present: device.createShaderModule({ code: PRESENT_WGSL }),
+        loupe: device.createShaderModule({ code: LOUPE_WGSL }),
+        metric: device.createShaderModule({ code: METRIC_WGSL })
+      };
+      await Promise.all([
+        shaderErr(modules.down, 'downsample'),
+        shaderErr(modules.up, 'upscale'),
+        shaderErr(modules.conv1, 'conv1'),
+        shaderErr(modules.conv, 'conv'),
+        shaderErr(modules.d2s, 'depth-to-space'),
+        shaderErr(modules.present, 'present'),
+        shaderErr(modules.loupe, 'loupe'),
+        shaderErr(modules.metric, 'metrics')
+      ]);
+
+      const compute = (module, entry) => device.createComputePipeline({
+        layout: 'auto',
+        compute: { module, entryPoint: entry }
+      });
+      pipelines = {
+        down: compute(modules.down, 'main'),
+        nearest: compute(modules.up, 'nearest'),
+        bilinear: compute(modules.up, 'bilinear'),
+        bicubic: compute(modules.up, 'bicubic'),
+        lanczos: compute(modules.up, 'lanczos'),
+        conv1: compute(modules.conv1, 'main'),
+        conv: compute(modules.conv, 'main'),
+        d2s: compute(modules.d2s, 'main'),
+        present: device.createRenderPipeline({
+          layout: 'auto',
+          vertex: { module: modules.present, entryPoint: 'vs' },
+          fragment: { module: modules.present, entryPoint: 'fs', targets: [{ format }] },
+          primitive: { topology: 'triangle-strip' }
+        }),
+        loupe: device.createRenderPipeline({
+          layout: 'auto',
+          vertex: { module: modules.loupe, entryPoint: 'vs' },
+          fragment: { module: modules.loupe, entryPoint: 'fs', targets: [{ format }] },
+          primitive: { topology: 'triangle-strip' }
+        }),
+        blocks: compute(modules.metric, 'blocks_main'),
+        reducePartial: compute(modules.metric, 'reduce_partial'),
+        reduceFinal: compute(modules.metric, 'reduce_final')
+      };
+
+      if (hasTS) {
+        querySet = device.createQuerySet({ type: 'timestamp', count: 64 });
+        tsResolve = device.createBuffer({ size: 64 * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+        tsStaging = device.createBuffer({ size: 64 * 8, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      }
+      return true;
+    }
+
+    function initCPU() {
+      mode = 'cpu';
+      for (const p of panels) {
+        if (p.kind === 'neural' || p.id === 'bicubic' || p.id === 'lanczos') {
+          markUnavailable(p, 'Needs WebGPU. This browser has no WebGPU adapter, so this panel is off.');
+          continue;
+        }
+        p.cpu = p.canvas.getContext('2d', { alpha: false });
+        p.lcpu = p.loupeCanvas.getContext('2d', { alpha: false });
+        p.loupeCanvas.width = LOUPE;
+        p.loupeCanvas.height = LOUPE;
+      }
+      uploadCanvas = document.createElement('canvas');
+      uploadCtx = uploadCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      setStatus('WebGPU unavailable. Showing original, nearest, and bilinear on the CPU. Bicubic, Lanczos, and Anime4K need WebGPU.', true);
+    }
+
+    function sourceSize() {
+      const stacked = video.videoHeight > video.videoWidth;
+      const srcW = video.videoWidth;
+      const srcH = stacked ? (video.videoHeight >> 1) : video.videoHeight;
+      return { w: srcW & ~3, h: srcH & ~3, stacked };
+    }
+
+    function ensureSize() {
+      if (video.readyState < 2) return false;
+      const { w, h } = sourceSize();
+      if (w < 16 || h < 16) return false;
+      if (w !== fullW || h !== fullH || (mode === 'gpu' && !srcTex)) {
+        fullW = w;
+        fullH = h;
+        if (mode === 'gpu') allocTargets();
+        else {
+          uploadCanvas.width = fullW;
+          uploadCanvas.height = fullH;
+          for (const p of panels) {
+            if (!p.cpu) continue;
+            p.canvas.width = fullW;
+            p.canvas.height = fullH;
+          }
+        }
+      }
+      return true;
+    }
+
+    function captureSource() {
+      const { w, h } = sourceSize();
+      if (uploadCanvas.width !== w) uploadCanvas.width = w;
+      if (uploadCanvas.height !== h) uploadCanvas.height = h;
+      uploadCtx.drawImage(video, 0, 0, w, h, 0, 0, w, h);
+    }
+
+    function writeSource() {
+      const img = uploadCtx.getImageData(0, 0, fullW, fullH);
+      const unpadded = fullW * 4;
+      const bytesPerRow = Math.ceil(unpadded / 256) * 256;
+      let data = img.data;
+      if (bytesPerRow !== unpadded) {
+        const padded = new Uint8Array(bytesPerRow * fullH);
+        for (let y = 0; y < fullH; y++) {
+          padded.set(img.data.subarray(y * unpadded, (y + 1) * unpadded), y * bytesPerRow);
+        }
+        data = padded;
+      }
+      device.queue.writeTexture(
+        { texture: srcTex },
+        data,
+        { bytesPerRow, rowsPerImage: fullH },
+        { width: fullW, height: fullH }
+      );
+    }
+
+    function dispatch(encoder, pipeline, entries, groupsX, groupsY, label, timed) {
+      const pass = encoder.beginComputePass(timed || {});
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries
+      }));
+      pass.dispatchWorkgroups(groupsX, groupsY);
+      pass.end();
+      return label;
+    }
+
+    function viewOf(tex) { return tex.createView(); }
+
+    function convChain(encoder, colorTex, f0, f1, timedFor) {
+      const gw = Math.ceil(colorTex.width / 8);
+      const gh = Math.ceil(colorTex.height / 8);
+      const run = (pipeline, src, dst, wbuf, label) => {
+        dispatch(encoder, pipeline, [
+          { binding: 0, resource: viewOf(src) },
+          { binding: 1, resource: viewOf(dst) },
+          { binding: 2, resource: { buffer: wbuf } }
+        ], gw, gh, label, timedFor(label));
+      };
+      run(pipelines.conv1, colorTex, f0, weights.conv1, 'nn');
+      run(pipelines.conv, f0, f1, weights.layers[0], 'nn');
+      run(pipelines.conv, f1, f0, weights.layers[1], 'nn');
+      run(pipelines.conv, f0, f1, weights.layers[2], 'nn');
+      return f1;
+    }
+
+    function d2s(encoder, colorTex, featTex, dest, timed) {
+      dispatch(encoder, pipelines.d2s, [
+        { binding: 0, resource: viewOf(colorTex) },
+        { binding: 1, resource: viewOf(featTex) },
+        { binding: 2, resource: viewOf(dest) }
+      ], Math.ceil(dest.width / 8), Math.ceil(dest.height / 8), 'nn', timed);
+    }
+
+    function present(encoder, ctx, tex) {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: ctx.getCurrentTexture().createView(),
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 }
+        }]
+      });
+      pass.setPipeline(pipelines.present);
+      pass.setBindGroup(0, device.createBindGroup({
+        layout: pipelines.present.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: viewOf(tex) }]
+      }));
+      pass.draw(4);
+      pass.end();
+    }
+
+    function loupeWindow() {
+      const span = Math.max(4, Math.round(LOUPE / zoom));
+      return span;
+    }
+
+    function writeLoupeUniform() {
+      if (!hover) return;
+      const span = loupeWindow();
+      const cx = Math.floor(hover.u * fullW) + 0.5;
+      const cy = Math.floor(hover.v * fullH) + 0.5;
+      device.queue.writeBuffer(metricBufs.loupe, 0, new Float32Array([cx, cy, span, span]));
+    }
+
+    function drawLoupes(encoder) {
+      if (!hover || !srcTex) return;
+      writeLoupeUniform();
+      const texFor = (p) => (p.id === 'original' ? srcTex : outTex[p.id]);
+      for (const p of panels) {
+        const tex = texFor(p);
+        if (!tex || !p.lctx) continue;
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: p.lctx.getCurrentTexture().createView(),
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: { r: 0, g: 0, b: 0, a: 1 }
+          }]
+        });
+        pass.setPipeline(pipelines.loupe);
+        pass.setBindGroup(0, device.createBindGroup({
+          layout: pipelines.loupe.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: viewOf(tex) },
+            { binding: 1, resource: { buffer: metricBufs.loupe } }
+          ]
+        }));
+        pass.draw(4);
+        pass.end();
+        p.loupe.style.display = 'block';
+      }
+    }
+
+    function positionLoupes() {
+      for (const p of panels) {
+        if (!hover) {
+          p.loupe.style.display = 'none';
+          continue;
+        }
+        const vw = p.view.clientWidth;
+        const vh = p.view.clientHeight;
+        p.loupe.style.display = 'block';
+        p.loupe.style.left = (hover.u * vw - LOUPE / 2) + 'px';
+        p.loupe.style.top = (hover.v * vh - LOUPE / 2) + 'px';
+      }
+    }
+
+    function metricPasses(encoder, testTex, slot) {
+      const bw = Math.ceil(fullW / 8);
+      const bh = Math.ceil(fullH / 8);
+      device.queue.writeBuffer(metricBufs.params, 0, new Uint32Array([bw, bh, fullW, fullH]));
+      const blockPass = encoder.beginComputePass();
+      blockPass.setPipeline(pipelines.blocks);
+      blockPass.setBindGroup(0, device.createBindGroup({
+        layout: pipelines.blocks.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: viewOf(srcTex) },
+          { binding: 1, resource: viewOf(testTex) },
+          { binding: 2, resource: { buffer: metricBufs.blocks } },
+          { binding: 3, resource: { buffer: metricBufs.params } }
+        ]
+      }));
+      blockPass.dispatchWorkgroups(Math.ceil(bw / 8), Math.ceil(bh / 8));
+      blockPass.end();
+
+      const partial = encoder.beginComputePass();
+      partial.setPipeline(pipelines.reducePartial);
+      partial.setBindGroup(1, device.createBindGroup({
+        layout: pipelines.reducePartial.getBindGroupLayout(1),
+        entries: [
+          { binding: 0, resource: { buffer: metricBufs.blocks } },
+          { binding: 1, resource: { buffer: metricBufs.partial } },
+          { binding: 2, resource: { buffer: metricBufs.params } }
+        ]
+      }));
+      partial.dispatchWorkgroups(1);
+      partial.end();
+
+      const fin = encoder.beginComputePass();
+      fin.setPipeline(pipelines.reduceFinal);
+      fin.setBindGroup(2, device.createBindGroup({
+        layout: pipelines.reduceFinal.getBindGroupLayout(2),
+        entries: [
+          { binding: 0, resource: { buffer: metricBufs.partial } },
+          { binding: 1, resource: { buffer: metricBufs.result } }
+        ]
+      }));
+      fin.dispatchWorkgroups(1);
+      fin.end();
+      encoder.copyBufferToBuffer(metricBufs.result, 0, metricBufs.staging, slot * 16, 16);
+    }
+
+    function applyMetrics(floats) {
+      const order = ['nearest', 'bilinear', 'bicubic', 'lanczos', 'anime4k'];
+      order.forEach((id, i) => {
+        const sse = floats[i * 4];
+        const ssimSum = floats[i * 4 + 1];
+        const n = floats[i * 4 + 2];
+        const nb = floats[i * 4 + 3];
+        const panel = panels.find((p) => p.id === id);
+        if (!panel || !n || !nb) return;
+        const mse = sse / n;
+        const psnr = mse <= 1e-8 ? Infinity : 10 * Math.log10((255 * 255) / mse);
+        const ssim = Math.max(0, Math.min(1, ssimSum / nb));
+        const psnrText = psnr === Infinity ? '∞ dB' : psnr.toFixed(2) + ' dB';
+        panel.qualEl.textContent = 'PSNR ' + psnrText + ' · SSIM ' + ssim.toFixed(3);
+        panel.qualEl.classList.remove('dim');
+      });
+      const original = panels.find((p) => p.id === 'original');
+      original.qualEl.textContent = 'reference';
+      original.qualEl.classList.remove('dim');
+    }
+
+    function applyTimes(pairs) {
+      const sums = {};
+      for (const pair of pairs) {
+        const ms = Number(pair.dt) / 1e6;
+        if (!Number.isFinite(ms) || ms < 0) continue;
+        sums[pair.label] = (sums[pair.label] || 0) + ms;
+      }
+      for (const p of panels) {
+        const ms = p.id === 'original' ? null : sums[p.id === 'anime4k' ? 'nn' : p.id];
+        if (ms == null) {
+          if (p.id === 'original') p.timeEl.textContent = presentFps ? (presentFps.toFixed(0) + ' fps view') : 'source';
+          continue;
+        }
+        p.timeEl.textContent = ms.toFixed(2) + ' ms · ' + (1000 / Math.max(ms, 0.01)).toFixed(0) + ' fps';
+      }
+      const down = sums.down;
+      const head = gpuLabel + ' · ' + fullW + '×' + fullH + ' → ' + Math.floor(fullW / scale) + '×' + Math.floor(fullH / scale) +
+        ' → ' + fullW + '×' + fullH + ' · loupe ' + zoom + '×';
+      const extra = down != null ? ' · downsample ' + down.toFixed(2) + ' ms' : '';
+      const fps = presentFps ? ' · ' + presentFps.toFixed(0) + ' fps' : '';
+      setStatus(head + extra + fps);
+    }
+
+    function finishRead(labels, tsCount, doMetrics) {
+      if (readInFlight) return;
+      readInFlight = true;
+      device.queue.onSubmittedWorkDone().then(async () => {
+        let tsMapped = false;
+        let metricMapped = false;
+        try {
+          if (tsCount && tsStaging) {
+            await tsStaging.mapAsync(GPUMapMode.READ);
+            tsMapped = true;
+            const raw = new BigUint64Array(tsStaging.getMappedRange()).slice(0, tsCount);
+            tsStaging.unmap();
+            tsMapped = false;
+            const pairs = [];
+            for (let i = 0; i < tsCount; i += 2) {
+              const dt = raw[i + 1] - raw[i];
+              if (dt < 0n) continue;
+              pairs.push({ label: labels[i / 2], dt });
+            }
+            applyTimes(pairs);
+          }
+          if (doMetrics && metricBufs && metricBufs.staging) {
+            await metricBufs.staging.mapAsync(GPUMapMode.READ);
+            metricMapped = true;
+            const floats = new Float32Array(metricBufs.staging.getMappedRange()).slice();
+            metricBufs.staging.unmap();
+            metricMapped = false;
+            applyMetrics(floats);
+          }
+        } catch (err) {
+          if (tsMapped) tsStaging.unmap();
+          if (metricMapped) metricBufs.staging.unmap();
+          setStatus(err.message || String(err), true);
+        } finally {
+          readInFlight = false;
+          if (measureQueued && video.paused) {
+            measureQueued = false;
+            renderFrame();
+          }
+        }
+      }).catch((err) => {
+        readInFlight = false;
+        setStatus(err.message || String(err), true);
+      });
+    }
+
+    let tsLabels = [];
+
+    function renderGPU() {
+      captureSource();
+      writeSource();
+      const lowW = Math.floor(fullW / scale);
+      const lowH = Math.floor(fullH / scale);
+      const wantMeasure = metricsEnabled && !readInFlight && (video.paused || (frameSerial % 8) === 0);
+      measuring = wantMeasure;
+      if (!wantMeasure && video.paused && metricsEnabled) measureQueued = true;
+      tsLabels = [];
+      let tsCount = 0;
+      const timedFor = (label) => {
+        if (!measuring || !hasTS) return {};
+        const begin = tsCount;
+        tsCount += 2;
+        tsLabels.push(label);
+        return { timestampWrites: { querySet, beginningOfPassWriteIndex: begin, endOfPassWriteIndex: begin + 1 } };
+      };
+
+      const encoder = device.createCommandEncoder();
+      dispatch(encoder, pipelines.down, [
+        { binding: 0, resource: viewOf(srcTex) },
+        { binding: 1, resource: viewOf(lowTex) },
+        { binding: 2, resource: { buffer: metricBufs.scale } }
+      ], Math.ceil(lowW / 8), Math.ceil(lowH / 8), 'down', timedFor('down'));
+
+      for (const id of ['nearest', 'bilinear', 'bicubic', 'lanczos']) {
+        dispatch(encoder, pipelines[id], [
+          { binding: 0, resource: viewOf(lowTex) },
+          { binding: 1, resource: viewOf(outTex[id]) }
+        ], Math.ceil(fullW / 8), Math.ceil(fullH / 8), id, timedFor(id));
+      }
+
+      if (scale === 2) {
+        const feat = convChain(encoder, lowTex, featS[0], featS[1], timedFor);
+        d2s(encoder, lowTex, feat, outTex.anime4k, timedFor('nn'));
+      } else {
+        const feat1 = convChain(encoder, lowTex, featS[0], featS[1], timedFor);
+        d2s(encoder, lowTex, feat1, midTex, timedFor('nn'));
+        const feat2 = convChain(encoder, midTex, featM[0], featM[1], timedFor);
+        d2s(encoder, midTex, feat2, outTex.anime4k, timedFor('nn'));
+      }
+
+      const doMetrics = measuring && metricsEnabled;
+      if (doMetrics) {
+        ['nearest', 'bilinear', 'bicubic', 'lanczos', 'anime4k'].forEach((id, i) => {
+          metricPasses(encoder, outTex[id], i);
+        });
+      }
+
+      present(encoder, panels[0].ctx, srcTex);
+      for (const p of panels) {
+        if (p.id === 'original') continue;
+        present(encoder, p.ctx, outTex[p.id]);
+      }
+      if (hover) drawLoupes(encoder);
+
+      if (measuring && hasTS && tsCount) {
+        encoder.resolveQuerySet(querySet, 0, tsCount, tsResolve, 0);
+        encoder.copyBufferToBuffer(tsResolve, 0, tsStaging, 0, tsCount * 8);
+      }
+
+      device.pushErrorScope('validation');
+      let command = null;
+      try {
+        command = encoder.finish();
+      } catch (err) {
+        device.popErrorScope().catch(() => {});
+        throw err;
+      }
+      device.queue.submit([command]);
+      device.popErrorScope().then((err) => {
+        if (!err) return;
+        window.__gpuErrors = window.__gpuErrors || [];
+        window.__gpuErrors.push(err.message);
+        if (hasTS && /timestamp|query/i.test(err.message)) {
+          hasTS = false;
+          setStatus('GPU timers are off on this device. ' + err.message, true);
+          renderFrame();
+          return;
+        }
+        if (/metric|ssim|block/i.test(err.message)) metricsEnabled = false;
+        setStatus(err.message, true);
+      }).catch((err) => {
+        window.__gpuErrors = window.__gpuErrors || [];
+        window.__gpuErrors.push(String(err && err.message || err));
+      });
+      if (measuring && (hasTS || doMetrics)) finishRead(tsLabels.slice(), hasTS ? tsCount : 0, doMetrics);
+      if (!hasTS) {
+        for (const p of panels) {
+          if (p.id === 'original') p.timeEl.textContent = presentFps ? (presentFps.toFixed(0) + ' fps view') : 'source';
+          else p.timeEl.textContent = 'GPU timer off';
+        }
+      }
+    }
+
+    function renderCPU() {
+      captureSource();
+      const lowW = Math.floor(fullW / scale);
+      const lowH = Math.floor(fullH / scale);
+      const small = uploadCanvas;
+      // Rebuild a box-downscaled bitmap in a side canvas.
+      if (!renderCPU.small) {
+        renderCPU.small = document.createElement('canvas');
+        renderCPU.sctx = renderCPU.small.getContext('2d', { alpha: false });
+      }
+      const sc = renderCPU.small;
+      if (sc.width !== lowW || sc.height !== lowH) {
+        sc.width = lowW;
+        sc.height = lowH;
+      }
+      const src = uploadCtx.getImageData(0, 0, fullW, fullH).data;
+      const low = renderCPU.sctx.createImageData(lowW, lowH);
+      const area = scale * scale;
+      for (let y = 0; y < lowH; y++) {
+        for (let x = 0; x < lowW; x++) {
+          let r = 0, g = 0, b = 0;
+          for (let oy = 0; oy < scale; oy++) {
+            for (let ox = 0; ox < scale; ox++) {
+              const si = ((y * scale + oy) * fullW + (x * scale + ox)) * 4;
+              r += src[si]; g += src[si + 1]; b += src[si + 2];
+            }
+          }
+          const di = (y * lowW + x) * 4;
+          low.data[di] = r / area;
+          low.data[di + 1] = g / area;
+          low.data[di + 2] = b / area;
+          low.data[di + 3] = 255;
+        }
+      }
+      renderCPU.sctx.putImageData(low, 0, 0);
+      const original = panels.find((p) => p.id === 'original');
+      original.cpu.drawImage(uploadCanvas, 0, 0);
+      original.timeEl.textContent = 'source';
+      original.qualEl.textContent = 'reference';
+      for (const id of ['nearest', 'bilinear']) {
+        const p = panels.find((item) => item.id === id);
+        p.cpu.imageSmoothingEnabled = id === 'bilinear';
+        p.cpu.imageSmoothingQuality = 'low';
+        p.cpu.drawImage(sc, 0, 0, fullW, fullH);
+        p.timeEl.textContent = 'CPU';
+      }
+      if (hover) drawLoupesCPU();
+    }
+
+    function drawLoupesCPU() {
+      if (!hover) return;
+      const span = loupeWindow();
+      const sx = Math.floor(hover.u * fullW) + 0.5 - span / 2;
+      const sy = Math.floor(hover.v * fullH) + 0.5 - span / 2;
+      for (const p of panels) {
+        if (!p.lcpu || !p.cpu) continue;
+        p.lcpu.imageSmoothingEnabled = false;
+        p.lcpu.clearRect(0, 0, LOUPE, LOUPE);
+        p.lcpu.drawImage(p.canvas, sx, sy, span, span, 0, 0, LOUPE, LOUPE);
+        p.loupe.style.display = 'block';
+      }
+    }
+
+    function renderLoupesOnly() {
+      if (!hover || !fullW) return;
+      positionLoupes();
+      if (mode === 'cpu') {
+        drawLoupesCPU();
+        return;
+      }
+      if (!srcTex || !pipelines) return;
+      const encoder = device.createCommandEncoder();
+      drawLoupes(encoder);
+      device.queue.submit([encoder.finish()]);
+    }
+
+    function renderFrame() {
+      if (!booted || !ensureSize()) return;
+      frameSerial++;
+      if (!video.paused) {
+        fpsCount++;
+        const now = performance.now();
+        if (now - fpsStamp > 500) {
+          presentFps = fpsCount * 1000 / (now - fpsStamp);
+          fpsCount = 0;
+          fpsStamp = now;
+        }
+      }
+      try {
+        if (mode === 'gpu') renderGPU();
+        else renderCPU();
+      } catch (err) {
+        setStatus(err.message || String(err), true);
+      }
+    }
+
+    function setHover(next) {
+      hover = next;
+      positionLoupes();
+      if (!next) return;
+      if (video.paused) renderLoupesOnly();
+    }
+
+    function updatePlayButton() {
+      document.getElementById('play').textContent = video.paused ? 'Play' : 'Pause';
+    }
+
+    function watchFrames() {
+      if (watching) return;
+      watching = true;
+      const tick = () => {
+        if (video.paused) { watching = false; return; }
+        renderFrame();
+        if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(tick);
+        else requestAnimationFrame(tick);
+      };
+      if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(tick);
+      else requestAnimationFrame(tick);
+    }
+
+    function togglePlay() {
+      if (video.paused) {
+        video.play().then(() => { updatePlayButton(); watchFrames(); }).catch((err) => {
+          setStatus(err.message || 'Playback was blocked.', true);
+        });
+      } else {
+        video.pause();
+      }
+    }
+
+    function clipDuration() {
+      if (Number.isFinite(video.duration) && video.duration > 0 && video.seekable.length && video.seekable.end(0) > 0) {
+        return video.seekable.end(video.seekable.length - 1);
+      }
+      if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
+      return 0;
+    }
+
+    function applyStartTime() {
+      if (startApplied) return false;
+      const start = Number(q.get('t'));
+      const dur = clipDuration();
+      if (!Number.isFinite(start) || start <= 0 || dur <= 0) return false;
+      if (video.seekable.length && video.seekable.end(0) <= 0) return false;
+      startApplied = true;
+      video.currentTime = Math.min(start, Math.max(dur - 0.001, 0));
+      return true;
+    }
+
+    async function loadClip() {
+      const res = await fetch('testdata/red-green-top-eye.mp4');
+      if (!res.ok) throw new Error('Could not load testdata/red-green-top-eye.mp4 (' + res.status + ').');
+      const blob = await res.blob();
+      video.src = URL.createObjectURL(blob);
+    }
+
+    function stepFrame(dir) {
+      video.pause();
+      const dur = clipDuration();
+      const next = Math.max(video.currentTime + dir / 60, 0);
+      video.currentTime = dur ? Math.min(next, Math.max(dur - 0.001, 0)) : next;
+    }
+
+    function setScale(next) {
+      scale = next;
+      document.getElementById('scale-2').classList.toggle('primary', scale === 2);
+      document.getElementById('scale-4').classList.toggle('primary', scale === 4);
+      const neural = panels.find((p) => p.id === 'anime4k');
+      neural.hint = scale === 4 ? 'Learned x2, twice' : 'Learned x2 residual';
+      neural.el.querySelector('.hint').textContent = neural.hint;
+      if (mode === 'gpu' && fullW) allocTargets();
+      renderFrame();
+    }
+
+    function wireUI() {
+      document.getElementById('play').addEventListener('click', togglePlay);
+      document.getElementById('step-back').addEventListener('click', () => stepFrame(-1));
+      document.getElementById('step-fwd').addEventListener('click', () => stepFrame(1));
+      document.getElementById('scale-2').addEventListener('click', () => setScale(2));
+      document.getElementById('scale-4').addEventListener('click', () => setScale(4));
+      const zoomInput = document.getElementById('zoom');
+      zoomInput.addEventListener('input', () => {
+        zoom = Number(zoomInput.value);
+        document.getElementById('zoom-val').textContent = zoom + '×';
+        if (hover) renderLoupesOnly();
+      });
+      const scrub = document.getElementById('scrub');
+      scrub.addEventListener('pointerdown', () => { scrubbing = true; video.pause(); });
+      scrub.addEventListener('input', () => {
+        const dur = clipDuration();
+        if (!dur) return;
+        video.currentTime = (Number(scrub.value) / 1000) * dur;
+        document.getElementById('cur-time').textContent = fmtTime(video.currentTime);
+      });
+      window.addEventListener('pointerup', () => { scrubbing = false; });
+      video.addEventListener('timeupdate', () => {
+        document.getElementById('cur-time').textContent = fmtTime(video.currentTime);
+        if (!scrubbing && video.duration) {
+          scrub.value = String(Math.round(1000 * video.currentTime / video.duration));
+        }
+      });
+      video.addEventListener('durationchange', () => {
+        document.getElementById('dur-time').textContent = fmtTime(video.duration);
+      });
+      video.addEventListener('loadeddata', () => {
+        document.getElementById('dur-time').textContent = fmtTime(video.duration);
+        if (!applyStartTime()) renderFrame();
+        if (q.get('play') === '1') togglePlay();
+      });
+      video.addEventListener('seeked', () => renderFrame());
+      video.addEventListener('play', () => { updatePlayButton(); watchFrames(); });
+      video.addEventListener('pause', () => { updatePlayButton(); renderFrame(); });
+      video.addEventListener('error', () => {
+        setStatus('Could not load testdata/red-green-top-eye.mp4.', true);
+      });
+      grid.addEventListener('pointermove', (ev) => {
+        const view = ev.target.closest('.view');
+        if (!view) { setHover(null); return; }
+        const rect = view.getBoundingClientRect();
+        const u = (ev.clientX - rect.left) / rect.width;
+        const v = (ev.clientY - rect.top) / rect.height;
+        if (u < 0 || v < 0 || u > 1 || v > 1) { setHover(null); return; }
+        setHover({ u, v });
+      });
+      grid.addEventListener('pointerleave', () => setHover(null));
+      window.addEventListener('keydown', (ev) => {
+        if (ev.code !== 'Space' || ev.target !== document.body) return;
+        ev.preventDefault();
+        togglePlay();
+      });
+      window.addEventListener('resize', () => { if (hover) positionLoupes(); });
+    }
+
+    async function main() {
+      buildDOM();
+      wireUI();
+      document.getElementById('scale-2').classList.toggle('primary', scale === 2);
+      document.getElementById('scale-4').classList.toggle('primary', scale === 4);
+      try {
+        const [, ok] = await Promise.all([
+          loadClip(),
+          initGPU()
+        ]);
+        if (ok) mode = 'gpu';
+        else initCPU();
+      } catch (err) {
+        setStatus(err.message || String(err), true);
+        if (!device) initCPU();
+      }
+      booted = true;
+      if (video.readyState >= 2) {
+        document.getElementById('dur-time').textContent = fmtTime(video.duration);
+        if (!applyStartTime()) renderFrame();
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
