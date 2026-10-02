@@ -851,14 +851,16 @@ fn upconv(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// webartests-sr-v1 ESPCN-style Y network. See upscale-models/train-football-sr.py.
+// webartests-sr-v1 ESPCN. from_tex: 0 activation buffer, 1 luma, 2 RGB, 3 current+previous luma.
+// espcn-y (from_tex 1) is the original path. See upscale-models/sr_train_lib.py.
 UPSCALE_KERNELS.espcn = `
 struct EspcnU { width: u32, height: u32, in_ch: u32, out_ch: u32, act: u32, from_tex: u32, pad0: u32, pad1: u32 }
 @group(0) @binding(0) var src_tex: texture_2d<f32>;
-@group(0) @binding(1) var<storage, read> in_act: array<f32>;
-@group(0) @binding(2) var<storage, read_write> out_act: array<f32>;
-@group(0) @binding(3) var<storage, read> w: array<f32>;
-@group(0) @binding(4) var<uniform> uinfo: EspcnU;
+@group(0) @binding(1) var prev_tex: texture_2d<f32>;
+@group(0) @binding(2) var<storage, read> in_act: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_act: array<f32>;
+@group(0) @binding(4) var<storage, read> w: array<f32>;
+@group(0) @binding(5) var<uniform> uinfo: EspcnU;
 
 fn luma_of(rgb: vec3<f32>) -> f32 { return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)); }
 fn load_in(ic: u32, x: i32, y: i32) -> f32 {
@@ -866,6 +868,16 @@ fn load_in(ic: u32, x: i32, y: i32) -> f32 {
   let yy = clamp(y, 0, i32(uinfo.height) - 1);
   if (uinfo.from_tex == 1u) {
     return luma_of(textureLoad(src_tex, vec2<i32>(xx, yy), 0).rgb);
+  }
+  if (uinfo.from_tex == 2u) {
+    let rgb = textureLoad(src_tex, vec2<i32>(xx, yy), 0).rgb;
+    if (ic == 0u) { return rgb.r; }
+    if (ic == 1u) { return rgb.g; }
+    return rgb.b;
+  }
+  if (uinfo.from_tex == 3u) {
+    if (ic == 0u) { return luma_of(textureLoad(src_tex, vec2<i32>(xx, yy), 0).rgb); }
+    return luma_of(textureLoad(prev_tex, vec2<i32>(xx, yy), 0).rgb);
   }
   return in_act[(u32(yy) * uinfo.width + u32(xx)) * uinfo.in_ch + ic];
 }
@@ -894,7 +906,7 @@ fn conv(@builtin(global_invocation_id) gid: vec3<u32>) {
 `;
 
 UPSCALE_KERNELS.shuffle = `
-struct ShufU { out_w: u32, out_h: u32, low_w: u32, low_h: u32 }
+struct ShufU { out_w: u32, out_h: u32, low_w: u32, low_h: u32, mode: u32, stride: u32, pad0: u32, pad1: u32 }
 @group(0) @binding(0) var color_tex: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read> act: array<f32>;
 @group(0) @binding(2) var out_tex: texture_storage_2d<rgba8unorm, write>;
@@ -909,16 +921,25 @@ fn at_color(p: vec2<i32>) -> vec4<f32> {
 @compute @workgroup_size(8, 8)
 fn shuffle(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (gid.x >= shuf.out_w || gid.y >= shuf.out_h) { return; }
-  let ch = (gid.y & 1u) * 2u + (gid.x & 1u);
+  let sub = (gid.y & 1u) * 2u + (gid.x & 1u);
   let lx = min(gid.x >> 1u, shuf.low_w - 1u);
   let ly = min(gid.y >> 1u, shuf.low_h - 1u);
-  let residual = act[(ly * shuf.low_w + lx) * 4u + ch];
+  let base_i = (ly * shuf.low_w + lx) * shuf.stride;
   let uv = (vec2<f32>(f32(gid.x), f32(gid.y)) + vec2<f32>(0.5)) / vec2<f32>(f32(shuf.out_w), f32(shuf.out_h));
   let cd = vec2<f32>(f32(textureDimensions(color_tex).x), f32(textureDimensions(color_tex).y));
   let p = uv * cd - vec2<f32>(0.5);
   let i = vec2<i32>(i32(floor(p.x)), i32(floor(p.y)));
   let f = p - vec2<f32>(floor(p.x), floor(p.y));
   let base = mix(mix(at_color(i), at_color(i + vec2<i32>(1, 0)), f.x), mix(at_color(i + vec2<i32>(0, 1)), at_color(i + vec2<i32>(1, 1)), f.x), f.y);
+  if (shuf.mode == 1u) {
+    let rr = act[base_i + sub];
+    let gg = act[base_i + 4u + sub];
+    let bb = act[base_i + 8u + sub];
+    let rgb = clamp(base.rgb + vec3<f32>(rr, gg, bb), vec3<f32>(0.0), vec3<f32>(1.0));
+    textureStore(out_tex, vec2<i32>(i32(gid.x), i32(gid.y)), vec4<f32>(rgb, 1.0));
+    return;
+  }
+  let residual = act[base_i + sub];
   let y = luma_of(base.rgb);
   let cb = (base.b - y) / 1.8556;
   let cr = (base.r - y) / 1.5748;

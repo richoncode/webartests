@@ -21,11 +21,11 @@
       'a4k-l': { name: 'Anime4K CNN-L', hint: 'v3.2 x2 RGB', kind: 'a4k', net: 'l' },
       'a4k-gan': { name: 'Anime4K GAN-S', hint: 'v4.1 x2', kind: 'a4k', net: 'gan-s' },
       'a4k-vl': { name: 'Anime4K CNN-VL', hint: 'v3.2 x2, heaviest', kind: 'a4k', net: 'vl' },
-      'custom-0': { name: 'Football ESPCN', hint: 'Trained on this clip', kind: 'custom', slot: 0, preset: 'upscale-models/football-espcn.json' },
-      'custom-1': { name: 'Custom 2', hint: 'Load model', kind: 'custom', slot: 1 },
-      'custom-2': { name: 'Custom 3', hint: 'Load model', kind: 'custom', slot: 2 },
-      'custom-3': { name: 'Custom 4', hint: 'Load model', kind: 'custom', slot: 3 },
-      'custom-4': { name: 'Custom 5', hint: 'Load model', kind: 'custom', slot: 4 }
+      'custom-0': { name: 'Football ESPCN', hint: 'Tiny luma, trained on this clip', kind: 'custom', slot: 0, preset: 'upscale-models/football-espcn.json' },
+      'custom-1': { name: 'Football wide', hint: 'Deeper luma, later stream frames', kind: 'custom', slot: 1, preset: 'upscale-models/football-wide.json' },
+      'custom-2': { name: 'Football RGB', hint: 'RGB residual, not bilinear chroma', kind: 'custom', slot: 2, preset: 'upscale-models/football-rgb.json' },
+      'custom-3': { name: 'Football temporal', hint: 'Current + previous luma, no warp', kind: 'custom', slot: 3, preset: 'upscale-models/football-temporal.json' },
+      'custom-4': { name: 'Football distill', hint: 'Student of Anime4K CNN-M', kind: 'custom', slot: 4, preset: 'upscale-models/football-distill.json' }
     };
     const NET_FILES = {
       s: 'upscale-models/anime4k-s.json',
@@ -90,6 +90,16 @@
     let uCursor = {};
     let espcnBuf = [null, null];
     let espcnBytes = 0;
+    let prevLow = null;
+    let recentLow = null;
+    let prevMid = null;
+    let recentMid = null;
+    let temporalTime = null;
+    let recentLowReady = false;
+    let recentMidReady = false;
+    let temporalSynced = false;
+    let temporalRepeat = false;
+    let temporalSeedMid = false;
 
     function b64f32(s) {
       const bin = atob(s);
@@ -119,7 +129,7 @@
         '<div class="loupe"><canvas></canvas></div>' +
         '<div class="unavail"></div>' +
         '<div class="loader"><strong>Load model</strong>' +
-        '<p>Drop a webartests-sr-v1 JSON file, or paste a URL. Empty slots stay empty.</p>' +
+        '<p>Drop a webartests-sr-v1 JSON file, or paste a URL, to replace the preset.</p>' +
         '<input type="url" placeholder="https://…/model.json" aria-label="Model URL">' +
         '<div class="row"><button type="button" data-act="url">Load URL</button>' +
         '<button type="button" data-act="file">Choose file</button></div>' +
@@ -638,8 +648,17 @@
         format: 'rgba8unorm',
         usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
       }));
-      lowTex = tex2d(lowW, lowH, 'rgba8unorm');
-      midTex = scale === 4 ? tex2d(midW, midH, 'rgba8unorm') : null;
+      const copyUse = GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
+      lowTex = tex2d(lowW, lowH, 'rgba8unorm', GPUTextureUsage.COPY_SRC);
+      midTex = scale === 4 ? tex2d(midW, midH, 'rgba8unorm', GPUTextureUsage.COPY_SRC) : null;
+      prevLow = tex2d(lowW, lowH, 'rgba8unorm', copyUse);
+      recentLow = tex2d(lowW, lowH, 'rgba8unorm', copyUse);
+      prevMid = scale === 4 ? tex2d(midW, midH, 'rgba8unorm', copyUse) : null;
+      recentMid = scale === 4 ? tex2d(midW, midH, 'rgba8unorm', copyUse) : null;
+      temporalTime = null;
+      recentLowReady = false;
+      recentMidReady = false;
+      temporalSynced = false;
       scratchTex = tex2d(fullW, fullH, 'rgba8unorm');
       slotTex = [0, 1, 2, 3, 4].map(() => tex2d(fullW, fullH, 'rgba8unorm'));
       featLow = Array.from({ length: FEAT_POOL }, () => tex2d(lowW, lowH, 'rgba16float'));
@@ -653,7 +672,12 @@
           usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
         });
       }
-      ensureEspcn(16);
+      let espcnCh = 16;
+      Object.keys(customModels).forEach((key) => {
+        const model = customModels[key];
+        if (model && model.maxCh) espcnCh = Math.max(espcnCh, model.maxCh);
+      });
+      ensureEspcn(espcnCh);
       uploadCanvas.width = fullW;
       uploadCanvas.height = fullH;
       for (const p of panels) {
@@ -810,7 +834,7 @@
         conv1: uniformPool(64),
         d2s: uniformPool(16),
         espcn: uniformPool(48, 32),
-        shuf: uniformPool(12)
+        shuf: uniformPool(16, 32)
       };
       for (const key of Object.keys(uPool)) uCursor[key] = 0;
       if (pipelines.nis && typeof NIS_COEF_SCALE !== 'undefined') {
@@ -967,18 +991,25 @@
       }));
     }
 
+    const CUSTOM_ARCH = {
+      'espcn-y': { inn: 1, out: 4, fromTex: 1, shufMode: 0, stride: 4 },
+      'espcn-rgb': { inn: 3, out: 12, fromTex: 2, shufMode: 1, stride: 12 },
+      'espcn-y2': { inn: 2, out: 4, fromTex: 3, shufMode: 0, stride: 4 }
+    };
+
     function parseCustom(doc) {
       if (!doc || doc.format !== 'webartests-sr-v1') throw new Error('Expected format webartests-sr-v1.');
-      if (doc.arch !== 'espcn-y' || doc.scale !== 2 || doc.residual !== true) {
-        throw new Error('This loader runs espcn-y scale-2 residual models.');
+      const spec = CUSTOM_ARCH[doc.arch];
+      if (!spec || doc.scale !== 2 || doc.residual !== true) {
+        throw new Error('This loader runs espcn-y, espcn-rgb, and espcn-y2 scale-2 residual models.');
       }
       if (!Array.isArray(doc.layers) || !doc.layers.length) throw new Error('Model has no layers.');
-      let expectIn = 1;
-      let maxCh = 1;
+      let expectIn = spec.inn;
+      let maxCh = spec.inn;
       const layers = doc.layers.map((layer, i) => {
         if (layer.k !== 3) throw new Error('Only 3×3 convolutions are supported.');
         if (layer.in !== expectIn) throw new Error('Layer ' + (i + 1) + ' input channels do not match.');
-        if (layer.out > 32) throw new Error('More than 32 channels is not supported.');
+        if (layer.out > 48) throw new Error('More than 48 channels is not supported.');
         const n = layer.out * layer.in * 9;
         if (!layer.weight || layer.weight.length !== n || !layer.bias || layer.bias.length !== layer.out) {
           throw new Error('Layer ' + (i + 1) + ' weight or bias length is wrong.');
@@ -994,9 +1025,19 @@
         floats.set(layer.bias, n);
         return { in: layer.in, out: layer.out, act, buf: weightBuffer(floats) };
       });
-      if (layers[0].in !== 1) throw new Error('The first layer must take one luma channel.');
-      if (layers[layers.length - 1].out !== 4) throw new Error('The last layer must output 4 channels for an x2 pixel shuffle.');
-      return { name: doc.name || 'Custom model', layers, maxCh };
+      if (layers[0].in !== spec.inn) throw new Error('The first layer input channels do not match this arch.');
+      if (layers[layers.length - 1].out !== spec.out) {
+        throw new Error('The last layer must output ' + spec.out + ' channels for an x2 pixel shuffle.');
+      }
+      return {
+        name: doc.name || 'Custom model',
+        layers,
+        maxCh,
+        arch: doc.arch,
+        fromTex: spec.fromTex,
+        shufMode: spec.shufMode,
+        stride: spec.stride
+      };
     }
 
     async function installCustom(slot, doc) {
@@ -1041,15 +1082,17 @@
     }
 
     async function loadCustomPreset() {
-      const preset = METHODS['custom-0'].preset;
-      try {
-        const res = await fetch(preset);
-        if (!res.ok) throw new Error(preset + ' HTTP ' + res.status);
-        const model = parseCustom(await res.json());
-        customModels[0] = model;
-      } catch (err) {
-        customModels[0] = { error: err.message || String(err) };
-      }
+      const jobs = Object.keys(METHODS).filter((id) => METHODS[id].kind === 'custom' && METHODS[id].preset);
+      await Promise.all(jobs.map(async (id) => {
+        const method = METHODS[id];
+        try {
+          const res = await fetch(method.preset);
+          if (!res.ok) throw new Error(method.preset + ' HTTP ' + res.status);
+          customModels[method.slot] = parseCustom(await res.json());
+        } catch (err) {
+          customModels[method.slot] = { error: err.message || String(err) };
+        }
+      }));
     }
 
     function animePassCount(net) {
@@ -1154,21 +1197,65 @@
       }
     }
 
-    function runCustomOnce(encoder, model, colorTex, dest, nextStamp) {
-      let fromTex = 1;
+    function copyTex(encoder, src, dst) {
+      encoder.copyTextureToTexture(
+        { texture: src },
+        { texture: dst },
+        [src.width, src.height, 1]
+      );
+    }
+
+    function syncTemporalBefore(encoder) {
+      if (temporalSynced) return;
+      temporalSynced = true;
+      const t = video.currentTime;
+      const same = temporalTime !== null && Math.abs(t - temporalTime) < 1e-4;
+      temporalRepeat = same;
+      if (same) return;
+      const backward = temporalTime !== null && t < temporalTime - 1e-4;
+      if (backward || !recentLowReady) {
+        copyTex(encoder, lowTex, prevLow);
+        temporalSeedMid = true;
+      } else {
+        copyTex(encoder, recentLow, prevLow);
+        temporalSeedMid = !(scale === 4 && recentMidReady && prevMid && recentMid);
+        if (!temporalSeedMid) copyTex(encoder, recentMid, prevMid);
+      }
+    }
+
+    function syncTemporalMid(encoder) {
+      if (temporalRepeat || !temporalSeedMid || !midTex || !prevMid) return;
+      copyTex(encoder, midTex, prevMid);
+    }
+
+    function syncTemporalAfter(encoder) {
+      if (temporalRepeat) return;
+      copyTex(encoder, lowTex, recentLow);
+      recentLowReady = true;
+      if (scale === 4 && midTex && recentMid) {
+        copyTex(encoder, midTex, recentMid);
+        recentMidReady = true;
+      }
+      temporalTime = video.currentTime;
+    }
+
+    function runCustomOnce(encoder, model, colorTex, prevTex, dest, nextStamp) {
+      let fromTex = model.fromTex || 1;
       let readBuf = espcnBuf[0];
       let writeBuf = espcnBuf[1];
       const w = colorTex.width;
       const h = colorTex.height;
+      const prevView = viewOf(prevTex || colorTex);
       for (const layer of model.layers) {
         const u = takeU('espcn');
         device.queue.writeBuffer(u, 0, new Uint32Array([w, h, layer.in, layer.out, layer.act, fromTex, 0, 0]));
         dispatch(encoder, pipelines.espcn, [
           { binding: 0, resource: viewOf(colorTex) },
-          { binding: 1, resource: { buffer: readBuf } },
-          { binding: 2, resource: { buffer: writeBuf } },
-          { binding: 3, resource: { buffer: layer.buf } },
-          { binding: 4, resource: { buffer: u } }
+          { binding: 1, resource: prevView },
+          { binding: 2, resource: { buffer: readBuf } },
+          { binding: 3, resource: { buffer: writeBuf } },
+          { binding: 4, resource: { buffer: layer.buf } },
+          { binding: 5, resource: { buffer: u } }
         ], Math.ceil(w / 8), Math.ceil(h / 8), 'custom', nextStamp());
         fromTex = 0;
         const swap = readBuf;
@@ -1177,7 +1264,9 @@
       }
       const last = readBuf;
       const su = takeU('shuf');
-      device.queue.writeBuffer(su, 0, new Uint32Array([dest.width, dest.height, w, h]));
+      device.queue.writeBuffer(su, 0, new Uint32Array([
+        dest.width, dest.height, w, h, model.shufMode || 0, model.stride || 4, 0, 0
+      ]));
       dispatch(encoder, pipelines.shuffle, [
         { binding: 0, resource: viewOf(colorTex) },
         { binding: 1, resource: { buffer: last } },
@@ -1282,12 +1371,18 @@
       if (method.kind === 'custom') {
         const model = customModels[method.slot];
         ensureEspcn(model.maxCh);
+        const temporal = model.fromTex === 3;
+        if (temporal) syncTemporalBefore(encoder);
+        const prevLowTex = temporal ? prevLow : lowTex;
+        const prevMidTex = temporal ? prevMid : midTex;
         if (scale === 4) {
-          runCustomOnce(encoder, model, lowTex, midTex, nextStamp);
-          runCustomOnce(encoder, model, midTex, dest, nextStamp);
+          runCustomOnce(encoder, model, lowTex, prevLowTex, midTex, nextStamp);
+          if (temporal) syncTemporalMid(encoder);
+          runCustomOnce(encoder, model, midTex, prevMidTex || midTex, dest, nextStamp);
         } else {
-          runCustomOnce(encoder, model, lowTex, dest, nextStamp);
+          runCustomOnce(encoder, model, lowTex, prevLowTex, dest, nextStamp);
         }
+        if (temporal) syncTemporalAfter(encoder);
       }
     }
 
@@ -1531,6 +1626,7 @@
 
     function renderGPU() {
       const gen = ++frameGen;
+      temporalSynced = false;
       captureSource();
       writeSource();
       const lowW = Math.floor(fullW / scale);

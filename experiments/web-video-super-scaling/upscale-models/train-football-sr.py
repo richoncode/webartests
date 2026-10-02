@@ -4,7 +4,10 @@
 The compare page's "Neural custom" tab loads the JSON this script writes.
 It is a real trained model, not a relabel of Anime4K or a classical filter.
 
-Architecture (format "webartests-sr-v1", arch "espcn-y", scale 2):
+Architecture (format "webartests-sr-v1", arch "espcn-y", scale 2).
+The same format also accepts arch "espcn-rgb" and "espcn-y2"; those nets
+are trained by the sibling scripts and documented in sr_train_lib.py.
+This file still writes the original tiny luma model:
   input  : luma Y in [0, 1], one channel
   conv 3x3, 1 -> 8, ReLU
   conv 3x3, 8 -> 8, ReLU
