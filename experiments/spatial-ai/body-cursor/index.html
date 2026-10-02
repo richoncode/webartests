@@ -635,7 +635,9 @@ Hold the cursor at an edge to scroll.</p>
     let scrollMode = 'push';
     let reachNX = 0.26 / EDGE_X;
     let reachNY = 0;
-    let fatigue = 0;
+    // Set on a mode change so the next frame solves the new pose at the
+    // current pointer instead of easing out of the previous skeleton.
+    let snapPose = false;
     let savedGuide = true;
     let savedPhiz = false;
     let reachRatio = Number(reachInput.value);
@@ -1246,6 +1248,8 @@ Hold the cursor at an edge to scroll.</p>
       pointing = mode;
       if (pointerClient) projectPointer(pointerClient.x, pointerClient.y, cursorTarget);
       else if (mode !== 'extended') clampCursor(cursorTarget);
+      cursor.copy(cursorTarget);
+      snapPose = true;
       syncModeButtons();
       writeHash();
     }
@@ -1958,13 +1962,11 @@ Hold the cursor at an edge to scroll.</p>
     let reachSmX = reachNX;
     let reachSmY = reachNY;
 
-    // Shoulder effort. Gravity's moment is the horizontal lever arm of the
-    // upper-arm and forearm centers of mass, divided by half an arm length
-    // so a straight horizontal reach lands near 1. Raising the upper arm
-    // adds cost even when that lever arm shrinks (the hand is over the
-    // joint). Below the comfort band, fatigue recovers. Above it, fatigue
-    // builds for as long as the pose is held.
-    const EFFORT_COMFORT = 0.32;
+    // Shoulder effort from the pose that was just solved. Gravity's moment
+    // is the horizontal lever arm of the upper-arm and forearm centers of
+    // mass, divided by half an arm length so a straight horizontal reach
+    // lands near 1. Raising the upper arm adds cost even when that lever
+    // arm shrinks (the hand is over the joint). Nothing else is remembered.
     function shoulderEffort() {
       const sx = shoulderLocal.x;
       const sy = shoulderLocal.y;
@@ -2000,9 +2002,19 @@ Hold the cursor at an edge to scroll.</p>
       effortMeter.setAttribute('aria-valuetext', 'Arm strain ' + word.toLowerCase());
     }
 
+    // Shown meter only. The pose value itself is not filtered.
+    const STRAIN_TAU = 0.2;
+    let strainShown = null;
+
     function tick() {
       const dt = Math.min(clock.getDelta(), 0.05);
       const damp = reduceMotion ? 40 : 12;
+      if (snapPose) {
+        reachSmX = reachNX;
+        reachSmY = reachNY;
+        cursor.copy(cursorTarget);
+        snapPose = false;
+      }
       reachSmX = THREE.MathUtils.damp(reachSmX, reachNX, damp, dt);
       reachSmY = THREE.MathUtils.damp(reachSmY, reachNY, damp, dt);
       if (pointing === 'extended') {
@@ -2159,10 +2171,9 @@ Hold the cursor at an edge to scroll.</p>
       }
 
       const effort = shoulderEffort();
-      if (effort > EFFORT_COMFORT) fatigue += (effort - EFFORT_COMFORT) * dt * 0.18;
-      else fatigue -= (EFFORT_COMFORT - effort) * dt * 0.35;
-      fatigue = THREE.MathUtils.clamp(fatigue, 0, 1);
-      paintEffort(effort * 0.82 + fatigue * 0.5);
+      if (strainShown == null) strainShown = effort;
+      else strainShown += (effort - strainShown) * (1 - Math.exp(-dt / STRAIN_TAU));
+      paintEffort(strainShown);
 
       bodyRoot.updateMatrixWorld(true);
       if (hoverIndex >= 0) {
