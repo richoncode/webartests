@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Countermeasure · Step 1 prototype (scouts + fog)</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<title>Countermeasure · Training Exercise 1: Eyes Up</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="step1.css">
 </head>
 <body>
 <header class="top">
   <a class="back" href="../index.html">← Game plan</a>
-  <div class="title"><b>Countermeasure</b> <span>Step 1 prototype · scouts + fog</span></div>
+  <div class="title"><b>Countermeasure</b> <span id="exTitle">Training Exercise 1: Eyes Up</span></div>
   <div class="spacer"></div>
   <div class="pill">Time <b id="hudTime">08:00</b></div>
   <div class="pill">Score <b id="hudScore">0</b></div>
   <div class="pill">Found <b id="hudFound">0/0</b></div>
   <div class="pill">Explored <b id="hudExplored">0%</b></div>
-  <div class="pill" id="hudPause">▶ Running</div>
+  <div class="pill" id="hudPause">■ Ready</div>
 </header>
 <main class="app">
   <section class="mapwrap" id="mapwrap">
     <div id="leafletMap"></div>
     <canvas id="fx"></canvas>
-    <div class="aotag">Kestrel Ridge · demo area (fictional scenario on real terrain)</div>
-    <div class="toast" id="toast"></div>
+    <div class="aotag">Kestrel Ridge · training area (fictional scenario on real terrain)</div>
+    <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo" class="toastbtn">Undo</button></div>
   </section>
   <aside class="panel">
     <div class="sec">
@@ -37,19 +37,27 @@
       </div>
     </div>
     <div class="sec">
-      <div class="lbl">Scouts <span class="hint">1 / 2 / 3 to select · A = all</span></div>
+      <div class="lbl">Scouts <span class="hint">1 / 2 / 3 select · A all</span></div>
       <div id="drones"></div>
-      <div class="row"><button id="retBtn" class="warn">Return selected</button><button id="allBtn">Select all</button></div>
+      <div class="row">
+        <button id="undoBtn" title="Ctrl+Z or Backspace">↶ Undo route</button>
+        <button id="popBtn" title="Delete">Remove last waypoint</button>
+      </div>
+      <div class="row">
+        <button id="retBtn" class="warn" title="R">Return selected</button>
+        <button id="allBtn" title="A">Select all</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="homeDefault" checked> Finish routes at home (default for new runs and all scouts)</label>
     </div>
     <div class="sec help">
-      <div class="lbl">How to play</div>
-      <ul>
-        <li><b>Click</b> a scout to select it. <b>Click</b> the map to move. <b>Shift-click</b> to queue waypoints.</li>
-        <li>Scouts reveal a ~300 m circle. Areas you've seen stay <b>grey</b>: terrain remembered, enemies not shown.</li>
-        <li>Beyond the dashed <b>link ring</b> a scout stops reporting. It finishes its last order, then flies home.</li>
-        <li>Batteries last ~6 min. A scout parked on the launch pad recharges. Empty battery = scout lost.</li>
-        <li>Find all hidden contacts before 8:00. <b>Space</b> pauses; you can give orders while paused.</li>
-      </ul>
+      <div class="lbl" id="objLbl">Exercise 1 · objectives</div>
+      <ul class="obj" id="objList"></ul>
+      <div class="lbl" style="margin-top:10px">Controls</div>
+      <ul id="ctlList"></ul>
+    </div>
+    <div class="sec">
+      <div class="lbl">Training exercises</div>
+      <ol class="exlist" id="exList"></ol>
     </div>
     <div class="sec">
       <div class="row"><button id="exportBtn">Export telemetry (JSON)</button></div>
@@ -60,17 +68,21 @@
 
 <div class="overlay" id="startOv">
   <div class="card">
-    <div class="tag">Step 1 · playtest build</div>
-    <h1>Eyes in the Sky</h1>
-    <p>Three scout drones, one launch pad, eight minutes. Somewhere on the ridge are <b id="startCount">6–8</b> hostile contacts: fixed sites and two patrolling vehicles. Find as many as you can.</p>
-    <p class="muted">Black = never scouted. Grey = seen before (terrain remembered, enemies hidden). Clear = what your linked scouts see right now. Patrols leave a faded last-seen mark.</p>
-    <div class="row"><button class="primary big" id="startBtn">Start mission</button></div>
+    <div class="tag" id="brTag">Training Exercise 1 of 6</div>
+    <h1 id="brTitle">Eyes Up</h1>
+    <p id="brText"></p>
+    <div class="lbl">Objective</div>
+    <ul class="obj" id="brObj"></ul>
+    <div class="lbl">Controls</div>
+    <ul class="ctl" id="brCtl"></ul>
+    <div class="row"><button class="primary big" id="startBtn">Start exercise</button></div>
+    <ol class="exlist small" id="brEx"></ol>
   </div>
 </div>
 
 <div class="overlay hidden" id="endOv">
   <div class="card wide">
-    <div class="tag" id="endReason">Mission over</div>
+    <div class="tag" id="endReason">Exercise over</div>
     <h1>Score <span id="endScore">0</span></h1>
     <table class="score" id="scoreTable"></table>
     <div class="finds" id="findList"></div>
@@ -79,8 +91,8 @@
       <div class="q"><div>2. Did the grey memory (explored areas, last-seen marks) help?</div><div class="rate" data-q="greyHelped"></div></div>
       <div class="q"><div>3. What did you want to do that you couldn't?</div><textarea id="q3" rows="2" placeholder="Optional"></textarea></div>
     </div>
-    <div class="row"><button class="primary big" id="replayBtn">Replay (new layout)</button><button id="exportBtn2">Export telemetry (JSON)</button></div>
-    <div class="tiny">Answers and run stats are saved in this browser only (localStorage) until you export them.</div>
+    <div class="row"><button class="primary big" id="replayBtn">Retry Exercise 1 (new layout)</button><button id="exportBtn2">Export telemetry (JSON)</button></div>
+    <div class="tiny">Answers and run stats stay in this browser (localStorage) until you export them.</div>
   </div>
 </div>
 
