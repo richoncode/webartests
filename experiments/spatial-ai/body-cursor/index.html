@@ -646,6 +646,7 @@ Hold the cursor at an edge to scroll.</p>
     let dwell = 0;
     let lightboxOpen = false;
     const pointer = new THREE.Vector2();
+    let pointerClient = null;
     const raycaster = new THREE.Raycaster();
     const galleryPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -GALLERY_Z);
     const hitPoint = new THREE.Vector3();
@@ -1045,8 +1046,8 @@ Hold the cursor at an edge to scroll.</p>
     }
 
     // Extended PHIZ matches Simple PHIZ inside the panel (|n| <= 1). Past the
-    // edge the upper arm lifts out and the elbow opens, so the hand keeps
-    // traveling after the cursor has stuck to the bezel.
+    // edge the upper arm lifts out and the elbow opens, and the cursor keeps
+    // traveling with that reach, past the gallery and off the viewport.
     const extDir = new THREE.Vector3();
     const extElbow = new THREE.Vector3();
     const extWrist = new THREE.Vector3();
@@ -1243,6 +1244,8 @@ Hold the cursor at an edge to scroll.</p>
         phizInput.checked = savedPhiz;
       }
       pointing = mode;
+      if (pointerClient) projectPointer(pointerClient.x, pointerClient.y, cursorTarget);
+      else if (mode !== 'extended') clampCursor(cursorTarget);
       syncModeButtons();
       writeHash();
     }
@@ -1469,6 +1472,11 @@ Hold the cursor at an edge to scroll.</p>
     // groupOrder is sorted before each mesh renderOrder. Keep the group at 0
     // so the ring's own renderOrder (above the body) actually takes effect.
     cursorGroup.renderOrder = 0;
+    // The Extended PHIZ cursor is allowed past the gallery and off the
+    // viewport. Leave clipping to the canvas; don't drop the sprite early.
+    cursorGroup.frustumCulled = false;
+    cursorRing.frustumCulled = false;
+    cursorHand.frustumCulled = false;
     scene.add(cursorGroup);
 
     const guideGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
@@ -1608,9 +1616,10 @@ Hold the cursor at an edge to scroll.</p>
       ndcEdge.top = ndcProj.y;
     }
 
-    // Inside the panel, reach follows the clamped cursor (|n| <= 1). Past the
-    // panel, the rest of the viewport stretches out to EXT_MAX so the arm and
-    // the scroll rate still have somewhere to go.
+    // Ray and Simple PHIZ clamp the cursor to the gallery. This maps a pointer
+    // past that edge out to EXT_MAX so a held reach still has a rate. Extended
+    // PHIZ does not use it: the cursor itself keeps going, and reach is how
+    // far that cursor is past the edge.
     function axisReach(ndc, negEdge, posEdge, cursorNorm) {
       const pos = THREE.MathUtils.clamp(posEdge, 0.2, 0.92);
       const neg = THREE.MathUtils.clamp(negEdge, -0.92, -0.2);
@@ -1626,6 +1635,7 @@ Hold the cursor at an edge to scroll.</p>
     }
 
     function projectPointer(clientX, clientY, out) {
+      pointerClient = { x: clientX, y: clientY };
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
@@ -1636,10 +1646,18 @@ Hold the cursor at an edge to scroll.</p>
       rawInside = Math.abs(hitPoint.x) <= WINDOW_W * 0.5
         && Math.abs(hitPoint.y - TV_Y) <= WINDOW_H * 0.5;
       out.copy(hitPoint);
-      clampCursor(out);
-      refreshGalleryNdc();
-      reachNX = axisReach(pointer.x, ndcEdge.left, ndcEdge.right, out.x / EDGE_X);
-      reachNY = axisReach(pointer.y, ndcEdge.bottom, ndcEdge.top, (out.y - TV_Y) / EDGE_Y);
+      if (pointing === 'extended') {
+        // Follow the pointer on the gallery plane. The gallery edge is not a
+        // clamp; the viewport clips whatever leaves the window.
+        out.z = GALLERY_Z;
+        reachNX = out.x / EDGE_X;
+        reachNY = (out.y - TV_Y) / EDGE_Y;
+      } else {
+        clampCursor(out);
+        refreshGalleryNdc();
+        reachNX = axisReach(pointer.x, ndcEdge.left, ndcEdge.right, out.x / EDGE_X);
+        reachNY = axisReach(pointer.y, ndcEdge.bottom, ndcEdge.top, (out.y - TV_Y) / EDGE_Y);
+      }
       return true;
     }
 
@@ -1905,8 +1923,14 @@ Hold the cursor at an edge to scroll.</p>
           clampCursor(cursorTarget);
           reach = horizontal ? cursorTarget.x / EDGE_X : (cursorTarget.y - TV_Y) / EDGE_Y;
         }
-        if (horizontal) reachNX = reach;
-        else reachNY = reach;
+        if (horizontal) {
+          reachNX = reach;
+          cursorTarget.x = reach * EDGE_X;
+        } else {
+          reachNY = reach;
+          cursorTarget.y = TV_Y + reach * EDGE_Y;
+        }
+        cursorTarget.z = GALLERY_Z;
       } else if (event.key === 'ArrowLeft') cursorTarget.x -= step;
       else if (event.key === 'ArrowRight') cursorTarget.x += step;
       else if (event.key === 'ArrowUp') cursorTarget.y += step;
@@ -1915,7 +1939,7 @@ Hold the cursor at an edge to scroll.</p>
         const idx = tileIndexAt(cursor.x, cursor.y);
         if (idx >= 0) openPhoto(idx);
       } else return;
-      clampCursor(cursorTarget);
+      if (pointing !== 'extended') clampCursor(cursorTarget);
       event.preventDefault();
     });
     window.addEventListener('resize', resize);
@@ -1979,19 +2003,31 @@ Hold the cursor at an edge to scroll.</p>
     function tick() {
       const dt = Math.min(clock.getDelta(), 0.05);
       const damp = reduceMotion ? 40 : 12;
-      cursor.x = THREE.MathUtils.damp(cursor.x, cursorTarget.x, damp, dt);
-      cursor.y = THREE.MathUtils.damp(cursor.y, cursorTarget.y, damp, dt);
-      cursor.z = GALLERY_Z;
       reachSmX = THREE.MathUtils.damp(reachSmX, reachNX, damp, dt);
       reachSmY = THREE.MathUtils.damp(reachSmY, reachNY, damp, dt);
+      if (pointing === 'extended') {
+        // The cursor is the PHIZ aim, including past the gallery edge.
+        cursor.x = reachSmX * EDGE_X;
+        cursor.y = TV_Y + reachSmY * EDGE_Y;
+      } else {
+        cursor.x = THREE.MathUtils.damp(cursor.x, cursorTarget.x, damp, dt);
+        cursor.y = THREE.MathUtils.damp(cursor.y, cursorTarget.y, damp, dt);
+      }
+      cursor.z = GALLERY_Z;
 
       let push = 0;
       let scrolling = false;
       if (scrollMode === 'push') {
         if (!lightboxOpen) {
           const edge = WINDOW_W * 0.2;
-          const leftRoom = cursor.x - (-WINDOW_W * 0.5);
-          const rightRoom = WINDOW_W * 0.5 - cursor.x;
+          // Extended PHIZ keeps moving the cursor past the gallery. The
+          // near-edge push stays at the value it has on that edge, and the
+          // extra speed is how far past the edge the cursor has gone.
+          const pushX = pointing === 'extended'
+            ? THREE.MathUtils.clamp(cursor.x, -EDGE_X, EDGE_X)
+            : cursor.x;
+          const leftRoom = pushX - (-WINDOW_W * 0.5);
+          const rightRoom = WINDOW_W * 0.5 - pushX;
           if (rightRoom < edge) push = (edge - rightRoom) / edge;
           else if (leftRoom < edge) push = -((edge - leftRoom) / edge);
           if (pointing === 'extended') {
