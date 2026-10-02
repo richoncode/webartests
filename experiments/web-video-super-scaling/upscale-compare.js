@@ -1103,13 +1103,14 @@
           }
         } else if (op.op === 'conv1') {
           const chunks = Math.ceil(op.srcs.length / 4);
+          const paired = op.srcs.length % 2 === 0 && op.srcs.every((name, i) => i % 2 === 0 || name === op.srcs[i - 1] + '1');
           let prev = null;
           for (let c = 0; c < chunks; c++) {
             const last = c === chunks - 1;
             const dst = last ? claim(op.dst) : accPair[c % 2];
             const read = c === 0 ? dummyTex : prev;
             const u = takeU('conv1');
-            const flags = (c > 0 ? 1 : 0) | (last ? 2 : 0);
+            const flags = (c > 0 ? 1 : 0) | (last ? 2 : 0) | (paired ? 4 : 0);
             device.queue.writeBuffer(u, 0, new Uint32Array([
               Math.min(4, op.srcs.length - c * 4),
               c * 4 * 32,
@@ -1475,19 +1476,21 @@
       setStatus(head + extra + fps);
     }
 
-    function finishRead(labels, tsCount, doMetrics) {
+    function finishRead(labels, tsCount, doMetrics, gen) {
       if (readInFlight) return;
       readInFlight = true;
       device.queue.onSubmittedWorkDone().then(async () => {
         let tsMapped = false;
         let metricMapped = false;
         try {
+          if (gen !== frameGen) return;
           if (tsCount && tsStaging) {
             await tsStaging.mapAsync(GPUMapMode.READ);
             tsMapped = true;
             const raw = new BigUint64Array(tsStaging.getMappedRange()).slice(0, tsCount);
             tsStaging.unmap();
             tsMapped = false;
+            if (gen !== frameGen) return;
             const pairs = [];
             for (let i = 0; i < tsCount; i += 2) {
               const dt = raw[i + 1] - raw[i];
@@ -1497,11 +1500,13 @@
             applyTimes(pairs);
           }
           if (doMetrics && metricBufs && metricBufs.staging) {
+            if (gen !== frameGen) return;
             await metricBufs.staging.mapAsync(GPUMapMode.READ);
             metricMapped = true;
             const floats = new Float32Array(metricBufs.staging.getMappedRange()).slice();
             metricBufs.staging.unmap();
             metricMapped = false;
+            if (gen !== frameGen) return;
             applyMetrics(floats);
           }
         } catch (err) {
@@ -1522,8 +1527,10 @@
     }
 
     let tsLabels = [];
+    let frameGen = 0;
 
     function renderGPU() {
+      const gen = ++frameGen;
       captureSource();
       writeSource();
       const lowW = Math.floor(fullW / scale);
@@ -1632,7 +1639,7 @@
         window.__gpuErrors = window.__gpuErrors || [];
         window.__gpuErrors.push(String(err && err.message || err));
       });
-      if (measuring && (hasTS || doMetrics)) finishRead(tsLabels.slice(), hasTS ? tsCount : 0, doMetrics);
+      if (measuring && (hasTS || doMetrics)) finishRead(tsLabels.slice(), hasTS ? tsCount : 0, doMetrics, gen);
       if (!hasTS) {
         for (const p of panels) {
           if (p.id === 'original') p.timeEl.textContent = presentFps ? (presentFps.toFixed(0) + ' fps view') : 'source';

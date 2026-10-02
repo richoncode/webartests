@@ -13,6 +13,9 @@ fn prx_med_rcp(a: f32) -> f32 {
 fn prx_lo_rsq(a: f32) -> f32 { return bitcast<f32>(0x5f347d74u - (bitcast<u32>(a) >> 1u)); }
 fn prx_lo_sqrt(a: f32) -> f32 { return bitcast<f32>((bitcast<u32>(a) >> 1u) + 0x1fbc4639u); }
 fn satf(a: f32) -> f32 { return clamp(a, 0.0, 1.0); }
+fn prx_lo_rcp3(a: vec3<f32>) -> vec3<f32> {
+  return vec3<f32>(prx_lo_rcp(a.x), prx_lo_rcp(a.y), prx_lo_rcp(a.z));
+}
 fn sat3(c: vec3<f32>) -> vec3<f32> { return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)); }
 fn tex_size(t: texture_2d<f32>) -> vec2<i32> {
   let d = textureDimensions(t);
@@ -174,9 +177,9 @@ fn rcas(@builtin(global_invocation_id) gid: vec3<u32>) {
   nz = -0.5 * nz + 1.0;
   let mn4 = min(min(min(b, d), f), h);
   let mx4 = max(max(max(b, d), f), h);
-  let hitMin = min(mn4, e) * prx_lo_rcp(4.0 * mx4);
+  let hitMin = min(mn4, e) * prx_lo_rcp3(4.0 * mx4);
   let peak = vec2<f32>(1.0, -4.0);
-  let hitMax = (vec3<f32>(peak.x) - max(mx4, e)) * prx_lo_rcp(4.0 * mn4 + vec3<f32>(peak.y));
+  let hitMax = (vec3<f32>(peak.x) - max(mx4, e)) * prx_lo_rcp3(4.0 * mn4 + vec3<f32>(peak.y));
   let lobeRGB = max(-hitMin, hitMax);
   // Sharpness 0.2 stops (FsrRcasCon). Denoise path is the published FSR_RCAS_DENOISE option, left off.
   let con = exp2(-0.2);
@@ -699,7 +702,7 @@ UPSCALE_KERNELS.a4kConv1 = `
 @group(0) @binding(5) var dst: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(6) var<storage, read> w: array<f32>;
 struct Conv1U { count: u32, w_base: u32, bias_base: u32, flags: u32 }
-@group(0) @binding(7) var<uniform> meta: Conv1U;
+@group(0) @binding(7) var<uniform> uinfo: Conv1U;
 
 fn mat_at(base: u32) -> mat4x4<f32> {
   return mat4x4<f32>(
@@ -709,8 +712,8 @@ fn mat_at(base: u32) -> mat4x4<f32> {
     w[base + 12u], w[base + 13u], w[base + 14u], w[base + 15u]
   );
 }
-fn conv_pair(s: vec4<f32>, base: u32) -> vec4<f32> {
-  return mat_at(base) * max(s, vec4<f32>(0.0)) + mat_at(base + 16u) * max(-s, vec4<f32>(0.0));
+fn conv_pair(s: vec4<f32>, pos_base: u32, neg_base: u32) -> vec4<f32> {
+  return mat_at(pos_base) * max(s, vec4<f32>(0.0)) + mat_at(neg_base) * max(-s, vec4<f32>(0.0));
 }
 
 @compute @workgroup_size(8, 8)
@@ -719,13 +722,25 @@ fn conv1(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = vec2<i32>(i32(gid.x), i32(gid.y));
   if (id.x >= size.x || id.y >= size.y) { return; }
   var result = vec4<f32>(0.0);
-  if ((meta.flags & 1u) == 1u) { result = textureLoad(acc_in, id, 0); }
-  if (meta.count > 0u) { result += conv_pair(textureLoad(t0, id, 0), meta.w_base); }
-  if (meta.count > 1u) { result += conv_pair(textureLoad(t1, id, 0), meta.w_base + 32u); }
-  if (meta.count > 2u) { result += conv_pair(textureLoad(t2, id, 0), meta.w_base + 64u); }
-  if (meta.count > 3u) { result += conv_pair(textureLoad(t3, id, 0), meta.w_base + 96u); }
-  if ((meta.flags & 2u) == 2u) {
-    result += vec4<f32>(w[meta.bias_base], w[meta.bias_base + 1u], w[meta.bias_base + 2u], w[meta.bias_base + 3u]);
+  if ((uinfo.flags & 1u) == 1u) { result = textureLoad(acc_in, id, 0); }
+  // flags bit 2: GLSL lists a texture pair as pos0, pos1, neg0, neg1.
+  // Otherwise each texture is pos then neg (CNN-M / GAN-S).
+  let paired = (uinfo.flags & 4u) == 4u;
+  let b = uinfo.w_base;
+  if (uinfo.count > 0u) {
+    result += conv_pair(textureLoad(t0, id, 0), b, select(b + 16u, b + 32u, paired));
+  }
+  if (uinfo.count > 1u) {
+    result += conv_pair(textureLoad(t1, id, 0), select(b + 32u, b + 16u, paired), select(b + 48u, b + 48u, paired));
+  }
+  if (uinfo.count > 2u) {
+    result += conv_pair(textureLoad(t2, id, 0), select(b + 64u, b + 64u, paired), select(b + 80u, b + 96u, paired));
+  }
+  if (uinfo.count > 3u) {
+    result += conv_pair(textureLoad(t3, id, 0), select(b + 96u, b + 80u, paired), select(b + 112u, b + 112u, paired));
+  }
+  if ((uinfo.flags & 2u) == 2u) {
+    result += vec4<f32>(w[uinfo.bias_base], w[uinfo.bias_base + 1u], w[uinfo.bias_base + 2u], w[uinfo.bias_base + 3u]);
   }
   textureStore(dst, id, result);
 }
@@ -843,37 +858,37 @@ struct EspcnU { width: u32, height: u32, in_ch: u32, out_ch: u32, act: u32, from
 @group(0) @binding(1) var<storage, read> in_act: array<f32>;
 @group(0) @binding(2) var<storage, read_write> out_act: array<f32>;
 @group(0) @binding(3) var<storage, read> w: array<f32>;
-@group(0) @binding(4) var<uniform> meta: EspcnU;
+@group(0) @binding(4) var<uniform> uinfo: EspcnU;
 
 fn luma_of(rgb: vec3<f32>) -> f32 { return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)); }
 fn load_in(ic: u32, x: i32, y: i32) -> f32 {
-  let xx = clamp(x, 0, i32(meta.width) - 1);
-  let yy = clamp(y, 0, i32(meta.height) - 1);
-  if (meta.from_tex == 1u) {
+  let xx = clamp(x, 0, i32(uinfo.width) - 1);
+  let yy = clamp(y, 0, i32(uinfo.height) - 1);
+  if (uinfo.from_tex == 1u) {
     return luma_of(textureLoad(src_tex, vec2<i32>(xx, yy), 0).rgb);
   }
-  return in_act[(u32(yy) * meta.width + u32(xx)) * meta.in_ch + ic];
+  return in_act[(u32(yy) * uinfo.width + u32(xx)) * uinfo.in_ch + ic];
 }
 
 @compute @workgroup_size(8, 8)
 fn conv(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= meta.width || gid.y >= meta.height) { return; }
+  if (gid.x >= uinfo.width || gid.y >= uinfo.height) { return; }
   let x = i32(gid.x);
   let y = i32(gid.y);
-  let bias_base = meta.out_ch * meta.in_ch * 9u;
-  for (var oc: u32 = 0u; oc < meta.out_ch; oc++) {
+  let bias_base = uinfo.out_ch * uinfo.in_ch * 9u;
+  for (var oc: u32 = 0u; oc < uinfo.out_ch; oc++) {
     var acc = w[bias_base + oc];
-    for (var ic: u32 = 0u; ic < meta.in_ch; ic++) {
+    for (var ic: u32 = 0u; ic < uinfo.in_ch; ic++) {
       for (var ky: i32 = 0; ky < 3; ky++) {
         for (var kx: i32 = 0; kx < 3; kx++) {
           let s = load_in(ic, x + kx - 1, y + ky - 1);
-          let wi = ((oc * meta.in_ch + ic) * 9u) + u32(ky) * 3u + u32(kx);
+          let wi = ((oc * uinfo.in_ch + ic) * 9u) + u32(ky) * 3u + u32(kx);
           acc += s * w[wi];
         }
       }
     }
-    if (meta.act == 1u) { acc = max(acc, 0.0); }
-    out_act[(gid.y * meta.width + gid.x) * meta.out_ch + oc] = acc;
+    if (uinfo.act == 1u) { acc = max(acc, 0.0); }
+    out_act[(gid.y * uinfo.width + gid.x) * uinfo.out_ch + oc] = acc;
   }
 }
 `;
