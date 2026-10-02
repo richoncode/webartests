@@ -649,7 +649,7 @@
     const hitPoint = new THREE.Vector3();
     const gesture = {
       id: null, moved: 0, x: 0, y: 0, scroll0: 0, lastWorldX: 0, lastT: 0,
-      lastCursorX: 0, edgeVel: 0, edgeStamp: 0, edgeHeld: false,
+      lastCursorX: 0, lastReach: 0, releaseVel: 0, moving: false, stillFor: 0,
     };
 
     function applyGhost(mat) {
@@ -680,11 +680,9 @@
     applyGhost(clay);
     applyGhost(hairMat);
 
-    const bodyMeshes = [];
     function asBody(mesh, order) {
       mesh.renderOrder = order;
       mesh.castShadow = false;
-      bodyMeshes.push(mesh);
       return mesh;
     }
 
@@ -1008,7 +1006,6 @@
     // the elbow). Cursor Y is elbow flexion (the forearm rising and falling).
     const PHIZ_ROT = 0.62;
     const PHIZ_FLEX = 0.46;
-    const PHIZ_FLICK_MS = 200;
     const phizUpper = new THREE.Vector3();
     const phizFwd = new THREE.Vector3();
     const phizHoriz = new THREE.Vector3();
@@ -1320,9 +1317,7 @@
         float inset = smoothstep(0.0, 0.045, vUv.x) * smoothstep(0.0, 0.045, vUv.y)
           * smoothstep(0.0, 0.045, 1.0 - vUv.x) * smoothstep(0.0, 0.045, 1.0 - vUv.y);
         col *= mix(0.62, 1.0, inset);
-        float rim = (1.0 - inset) * uHover;
-        col += rim * vec3(0.55, 0.82, 1.0);
-        col += uHover * 0.12;
+        col += vec3(0.03, 0.045, 0.06) * uHover;
         float d = abs(vWorld.x);
         float alpha = 1.0 - smoothstep(uHalf - uFade, uHalf, d);
         if (alpha < 0.015) discard;
@@ -1508,14 +1503,34 @@
     bodyRoot.add(phizExt);
     buildVolume(extendedPhizPose, EXT_MAX, phizExt);
 
+    // Screen-pixel outline. uPx is UV per CSS pixel, so the stroke stays the
+    // same width when a tile scales up or sits nearer the fade.
+    const FRAME_VERT = `
+      varying vec2 vUv;
+      varying vec3 vWorld;
+      void main() {
+        vUv = uv;
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `;
     const FRAME_FRAG = `
       varying vec2 vUv;
+      varying vec3 vWorld;
+      uniform vec2 uPx;
+      uniform float uHalf;
+      uniform float uFade;
       void main() {
-        vec2 p = abs(vUv * 2.0 - 1.0);
-        float border = max(p.x, p.y);
-        float a = smoothstep(0.80, 0.88, border) * smoothstep(1.0, 0.93, border);
-        if (a < 0.04) discard;
-        gl_FragColor = vec4(0.86, 0.94, 1.0, a);
+        vec2 dist = min(vUv, 1.0 - vUv) / max(uPx, vec2(1.0e-4));
+        float d = min(dist.x, dist.y);
+        float core = 1.0 - smoothstep(1.05, 2.15, d);
+        float glow = (1.0 - smoothstep(1.5, 4.8, d)) * 0.34;
+        float a = max(core * 0.88, glow);
+        float fade = 1.0 - smoothstep(uHalf - uFade, uHalf, abs(vWorld.x));
+        a *= fade;
+        if (a < 0.03) discard;
+        gl_FragColor = vec4(0.74, 0.88, 1.0, a);
       }
     `;
     const selectFrame = new THREE.Mesh(
@@ -1525,7 +1540,12 @@
         depthWrite: false,
         depthTest: false,
         fog: false,
-        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        uniforms: {
+          uPx: { value: new THREE.Vector2(0.01, 0.01) },
+          uHalf: { value: WINDOW_W * 0.5 },
+          uFade: { value: FADE },
+        },
+        vertexShader: FRAME_VERT,
         fragmentShader: FRAME_FRAG,
       })
     );
@@ -1742,12 +1762,21 @@
       if (event.target === lightbox) closePhoto();
     });
 
+    function rememberGrabVelocity(inst) {
+      gesture.releaseVel += (inst - gesture.releaseVel) * 0.65;
+      gesture.moving = true;
+      gesture.stillFor = 0;
+    }
+
     function applyGrab(worldX) {
       const now = performance.now();
       const dt = Math.max(0.008, (now - gesture.lastT) / 1000);
       gesture.lastT = now;
-      let dx = worldX - gesture.lastWorldX;
+      const dx = worldX - gesture.lastWorldX;
       gesture.lastWorldX = worldX;
+      const reachDelta = Math.abs(reachNX - gesture.lastReach);
+      gesture.lastReach = reachNX;
+
       if (pointing === 'extended') {
         const overR = Math.max(0, reachNX - 1);
         const overL = Math.max(0, -reachNX - 1);
@@ -1756,37 +1785,42 @@
           const dir = overR >= overL ? 1 : -1;
           grabScroll -= dir * reachScrollRate(mag) * dt;
           const next = rubberize(grabScroll);
-          scrollVel = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
-          gesture.edgeVel = scrollVel;
-          gesture.edgeStamp = now;
-          gesture.edgeHeld = true;
-          gesture.lastCursorX = cursorTarget.x;
+          const inst = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
+          scrollVel = inst;
           scroll = next;
+          gesture.lastCursorX = cursorTarget.x;
+          // A held reach scrolls while the button is down. Only a hand that
+          // is still moving stores that speed for the release.
+          if (Math.abs(dx) > 0.0015 || reachDelta > 0.015) rememberGrabVelocity(inst);
           return;
         }
       }
+
+      let drag = dx;
       if (pointing === 'phiz' || pointing === 'extended') {
         const cursorDx = cursorTarget.x - gesture.lastCursorX;
         gesture.lastCursorX = cursorTarget.x;
         const half = EDGE_X;
         const stuck = Math.abs(cursorDx) < 0.0008 && Math.abs(cursorTarget.x) >= half - 0.02;
         if (stuck) {
-          if (!gesture.edgeHeld) {
-            gesture.edgeHeld = true;
-            gesture.edgeStamp = now;
-          }
+          // The cursor stays on the screen edge, so the strip does not follow
+          // a hand that keeps traveling past it.
           scrollVel = 0;
           return;
         }
-        gesture.edgeHeld = false;
-        dx = cursorDx;
+        drag = cursorDx;
       }
-      grabScroll -= dx;
+
+      if (Math.abs(drag) < 0.0008) {
+        scrollVel = 0;
+        return;
+      }
+      grabScroll -= drag;
       const next = rubberize(grabScroll);
-      scrollVel = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
-      gesture.edgeVel = scrollVel;
-      gesture.edgeStamp = now;
+      const inst = THREE.MathUtils.clamp((next - scroll) / dt, -7, 7);
+      scrollVel = inst;
       scroll = next;
+      rememberGrabVelocity(inst);
     }
 
     const el = renderer.domElement;
@@ -1805,10 +1839,11 @@
         grabScroll = scroll;
         gesture.lastWorldX = rawHitX;
         gesture.lastCursorX = cursorTarget.x;
-        gesture.edgeHeld = false;
-        gesture.edgeVel = 0;
-        gesture.edgeStamp = performance.now();
-        gesture.lastT = gesture.edgeStamp;
+        gesture.lastReach = reachNX;
+        gesture.releaseVel = 0;
+        gesture.moving = false;
+        gesture.stillFor = 0;
+        gesture.lastT = performance.now();
       }
       event.preventDefault();
     });
@@ -1843,15 +1878,10 @@
         const idx = tileIndexAt(cursor.x, cursor.y);
         if (idx >= 0) openPhoto(idx);
       } else if (wasGrab) {
-        if (pointing === 'phiz' || pointing === 'extended') {
-          if (pointing === 'extended' && gesture.edgeHeld) scrollVel = 0;
-          else {
-            const age = performance.now() - gesture.edgeStamp;
-            scrollVel = age <= PHIZ_FLICK_MS ? gesture.edgeVel : 0;
-          }
-        }
+        scrollVel = gesture.releaseVel;
+        if (Math.abs(scrollVel) < 0.05) scrollVel = 0;
         const edge = scroll < -maxScroll ? -maxScroll : scroll > maxScroll ? maxScroll : null;
-        if (edge !== null) scrollVel = 0;
+        if (edge !== null && ((edge < 0 && scrollVel < 0) || (edge > 0 && scrollVel > 0))) scrollVel = 0;
       }
     });
     el.addEventListener('pointercancel', () => { gesture.id = null; grabbing = false; scrollVel = 0; });
@@ -1907,9 +1937,6 @@
     const poleScratch = new THREE.Vector3();
     let reachSmX = reachNX;
     let reachSmY = reachNY;
-    const occRay = new THREE.Raycaster();
-    const occDir = new THREE.Vector3();
-    const occPoint = new THREE.Vector3();
 
     // Shoulder effort. Gravity's moment is the horizontal lever arm of the
     // upper-arm and forearm centers of mass, divided by half an arm length
@@ -1951,35 +1978,6 @@
       effortLabel.style.color = color;
       effortMeter.setAttribute('aria-valuenow', String(pct));
       effortMeter.setAttribute('aria-valuetext', 'Glenohumeral torque ' + word.toLowerCase());
-    }
-    function pointBlocked(point) {
-      occDir.subVectors(point, camera.position);
-      const dist = occDir.length();
-      if (dist < 1e-3) return false;
-      occDir.multiplyScalar(1 / dist);
-      occRay.set(camera.position, occDir);
-      occRay.near = 0.02;
-      occRay.far = dist - 0.04;
-      return occRay.intersectObjects(bodyMeshes, false).length > 0;
-    }
-    function tileBlocked(tile) {
-      const s = tile.scale.x;
-      const spots = [
-        [0, 0],
-        [-TILE_W * 0.42 * s, -TILE_H * 0.42 * s],
-        [TILE_W * 0.42 * s, -TILE_H * 0.42 * s],
-        [-TILE_W * 0.42 * s, TILE_H * 0.42 * s],
-        [TILE_W * 0.42 * s, TILE_H * 0.42 * s],
-      ];
-      for (let i = 0; i < spots.length; i++) {
-        occPoint.set(
-          tile.position.x + tilesGroup.position.x + spots[i][0],
-          tile.position.y + TV_Y + spots[i][1],
-          GALLERY_Z + 0.02
-        );
-        if (pointBlocked(occPoint)) return true;
-      }
-      return false;
     }
 
     function tick() {
@@ -2027,6 +2025,14 @@
       } else {
         scrollTarget = THREE.MathUtils.clamp(scroll, -maxScroll, maxScroll);
         scrolling = true;
+        if (gesture.moving) {
+          gesture.stillFor = 0;
+        } else {
+          gesture.stillFor += dt;
+          gesture.releaseVel *= Math.exp(-(reduceMotion ? 22 : 14) * dt);
+          if (gesture.stillFor > 0.16 || Math.abs(gesture.releaseVel) < 0.05) gesture.releaseVel = 0;
+        }
+        gesture.moving = false;
       }
       tilesGroup.position.x = -scroll;
       if (scrolling) scrollIdle = 0;
@@ -2127,7 +2133,7 @@
       paintEffort(effort * 0.82 + fatigue * 0.5);
 
       bodyRoot.updateMatrixWorld(true);
-      if (hoverIndex >= 0 && tileBlocked(tiles[hoverIndex])) {
+      if (hoverIndex >= 0) {
         const tile = tiles[hoverIndex];
         selectFrame.visible = true;
         selectFrame.position.set(
@@ -2136,6 +2142,13 @@
           GALLERY_Z + 0.06
         );
         selectFrame.scale.set(tile.scale.x, tile.scale.y, 1);
+        const dist = Math.abs(camera.position.z - (GALLERY_Z + 0.06));
+        const worldPerPx = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * dist / Math.max(window.innerHeight, 1);
+        const s = Math.max(tile.scale.x, 0.2);
+        selectFrame.material.uniforms.uPx.value.set(
+          worldPerPx / (TILE_W * s),
+          worldPerPx / (TILE_H * s)
+        );
       } else {
         selectFrame.visible = false;
       }
