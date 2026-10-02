@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upscale Compare — Video Super Scaling</title>
+  <!-- Anime4K CNN-S x2 weights are MIT licensed, Copyright (c) 2019-2021 bloc97. -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 36px 24px 80px;
+    }
+    .page { max-width: 1140px; margin: 0 auto; }
+    a.back {
+      display: inline-block;
+      margin-bottom: 24px;
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    a.back:hover { color: #aaa; }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 760px;
+      margin-bottom: 22px;
+    }
+    .toolbar {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 16px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 16px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    button {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { background: #222; border-color: #555; color: #fff; }
+    button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+    button.primary:hover { background: #243550; }
+    button:disabled { opacity: 0.3; cursor: default; }
+    .group { display: flex; align-items: center; gap: 8px; }
+    .lbl {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #666;
+    }
+    input[type="range"] { accent-color: #5b9bd5; width: 110px; }
+    .time {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #bbb;
+      min-width: 64px;
+    }
+    #scrub { flex: 1; min-width: 140px; width: auto; }
+    .status {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #888;
+      min-height: 18px;
+      margin-bottom: 16px;
+    }
+    .status.bad { color: #e74c3c; }
+    .tabrow {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+    .tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .tabbar button { border-radius: 999px; }
+    .tabbar button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      min-width: 0;
+    }
+    .phead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .phead h2 { font-size: 15px; font-weight: 650; }
+    .hint { font-size: 11px; color: #666; }
+    .view {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .view canvas.main {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .loupe {
+      position: absolute;
+      width: 168px;
+      height: 168px;
+      border: 2px solid #5b9bd5;
+      border-radius: 8px;
+      overflow: hidden;
+      pointer-events: none;
+      display: none;
+      z-index: 2;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      background: #000;
+    }
+    .loupe canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .unavail {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+      background: rgba(13, 13, 13, 0.72);
+      color: #aaa;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .unavail.show { display: flex; }
+    .loader {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      background: rgba(13, 13, 13, 0.88);
+      text-align: center;
+      z-index: 3;
+    }
+    .loader.show { display: flex; }
+    .loader strong { font-size: 14px; font-weight: 650; }
+    .loader p { color: #888; font-size: 12px; line-height: 1.45; max-width: 240px; }
+    .loader input[type="url"] {
+      width: min(220px, 100%);
+      background: #111;
+      border: 1px solid #333;
+      color: #ddd;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: 12px 'SF Mono', 'Fira Code', monospace;
+    }
+    .loader .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 2px 8px;
+      margin-top: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #8eb6db;
+    }
+    .stats [data-k="quality"] { flex: 1 0 100%; line-height: 1.35; }
+    #sharp-val { min-width: 78px; }
+    .stats .dim { color: #666; }
+    .callout {
+      margin-top: 22px;
+      background: #0d1620;
+      border-left: 3px solid #5b9bd5;
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.65;
+    }
+    .callout strong { color: #ccc; }
+    code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #bbb; }
+    #video-source {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="index.html">← Back</a>
+    <h1>Upscale Compare</h1>
+    <p class="subtitle">The clip is area-downsampled in the browser, then reconstructed to its original resolution. Hover any view to magnify that same spot in every panel. The loupe is nearest-neighbor zoom of each panel’s final pixels.</p>
+
+    <div class="toolbar">
+      <button type="button" id="play" class="primary">Play</button>
+      <button type="button" id="step-back" title="Previous frame">−1f</button>
+      <button type="button" id="step-fwd" title="Next frame">+1f</button>
+      <span class="time" id="cur-time">0:00.00</span>
+      <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub">
+      <span class="time" id="dur-time">0:00.00</span>
+      <div class="group">
+        <span class="lbl">Downscale</span>
+        <button type="button" id="scale-2" class="primary">2×</button>
+        <button type="button" id="scale-4">4×</button>
+      </div>
+      <div class="group">
+        <span class="lbl">Loupe</span>
+        <input id="zoom" type="range" min="2" max="8" step="1" value="4" aria-label="Magnifier zoom">
+        <span class="time" id="zoom-val">4×</span>
+      </div>
+      <div class="group">
+        <span class="lbl">RCAS</span>
+        <input id="sharpness" type="range" min="0" max="2" step="0.05" value="0.2" aria-label="RCAS sharpness in stops">
+        <span class="time" id="sharp-val">0.20 stops</span>
+      </div>
+    </div>
+    <div class="status" id="status">Loading clip…</div>
+    <div class="tabrow">
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Upscaler sets"></div>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <div class="callout">
+      <strong>Clip.</strong> Top eye of the fixed red/green football stereo feed already used by this folder
+      (<code>streams.quintar.ai/kyle/20251207-red-green/8Mbps</code>).
+      <code>testdata/</code> only had stills, and that broadcast is HEVC 3840×4320, which desktop Chrome often will not decode.
+      This page plays a 6s H.264 1920×1080 excerpt of the top eye,
+      <code>testdata/red-green-top-eye.mp4</code>.
+      Tabs switch the five upscaled panels. The original, magnifier, downscale factor, and playback stay put.
+      Browser universal is the classical set plus Anime4K CNN-S. Shader sharpeners are FSR 1 (EASU+RCAS), NVIDIA Image Scaling, CAS on bilinear, Hyllian xBR-lv2, and Lanczos plus an unsharp mask.
+      Neural (WebGPU) is Anime4K CNN-S, M, L, GAN-S, and CNN-VL, each an x2 network run twice at 4×.
+      Neural custom ships five <code>webartests-sr-v1</code> nets (see <code>upscale-models/</code>).
+      Football ESPCN-tiny is the short luma net trained on this clip.
+      Football wide is a deeper luma ESPCN trained longer on later frames of the same broadcast; this 6s clip is held out.
+      Football RGB predicts an RGB residual so jersey colors and field lines are not left to bilinear chroma.
+      Football temporal reads the current and previous luma, with no motion warp. A repeated timestamp keeps the same previous frame.
+      Football distill is a smaller student of Anime4K CNN-M. Real-ESRGAN was not run; the training script says why.
+      Drop a JSON file on a panel to replace that preset. Older <code>espcn-y</code> files still load. <code>espcn-rgb</code> and <code>espcn-y2</code> are the added arch values.
+      Sharp lines (exploring) keeps that wide net as the baseline and does not replace it.
+      Wide + RCAS and Sharp + RCAS run FSR 1 RCAS on the network output. The RCAS slider is in stops: 0 is the strongest, 2 is the mildest, and 0.20 matches the FSR 1 panel. The other panels ignore it.
+      Sharp edges is the same 1-16-16-16-4 luma net trained with Sobel-weighted error and crops drawn from high-gradient blocks on later stream frames. This clip is held out.
+      Sharp perceptual continues those weights with a Laplacian term, a Sobel-matching term, and a 4→8→8→1 patch discriminator. Real-ESRGAN and VGG were not run; there is no PyTorch on the training machine.
+      PSNR and SSIM are luma versus the original; SSIM uses 8×8 boxes.
+      Edge is luma PSNR on pixels whose reference Sobel magnitude is at least 200, so a blurry line is not rewarded the way full-frame PSNR rewards it.
+      The hash remembers the tab.
+    </div>
+  </div>
+
+  <video id="video-source" playsinline muted loop preload="auto"></video>
+
+  <script src="nis-coef.js"></script>
+  <script src="upscale-kernels.js"></script>
+  <script src="upscale-compare.js"></script>
+
+</body>
+</html>
