@@ -35,6 +35,108 @@
       'sharp-perc': { name: 'Sharp perceptual', hint: 'HF + Sobel match + tiny patch GAN', kind: 'custom', slot: 6, preset: 'upscale-models/football-sharp-perc.json' },
       'sharp-edge-rcas': { name: 'Sharp + RCAS', hint: 'Edge net, then FSR RCAS', kind: 'custom-sharpen', slot: 5, preset: 'upscale-models/football-sharp.json' }
     };
+    // Headset tags are a static judgment for one 2× pass, not a device measurement.
+    // xr/ar: 'yes' filled, 'mid' outlined, 'no' omitted.
+    // MAC figures are multiply-accumulates per low-resolution pixel for one 2× pass.
+    const METHOD_NOTES = {
+      nearest: {
+        xr: 'yes', ar: 'yes',
+        theory: 'Nearest neighbor copies the one source pixel closest to each output pixel. It does not blend neighbors, so edges stay hard and the blocks of the low-resolution grid stay visible. The cost is a single texture fetch, which is what a headset compositor already does when it shows a texture at its own size.'
+      },
+      bilinear: {
+        xr: 'yes', ar: 'yes',
+        theory: 'Bilinear blends the four source pixels around the sample point, using the fractional position as the weights. It is the ordinary hardware texture filter, so a fullscreen quad pays for it inside the sampler. Edges soften because every output pixel is an average of its neighbors.'
+      },
+      bicubic: {
+        xr: 'yes', ar: 'mid',
+        theory: 'Catmull-Rom looks at a 4×4 neighborhood and fits a cubic through the samples, sixteen fetches per output pixel. The cubic is allowed to overshoot, which puts a little contrast back on edges that bilinear blurs. It is still a fixed filter, not a learned model. On AR glasses that extra fullscreen shader is only plausible as the main pass.'
+      },
+      lanczos: {
+        xr: 'yes', ar: 'no',
+        theory: 'Lanczos-3 weights a 6×6 window with a windowed sinc, thirty-six fetches per output pixel. The negative side lobes sharpen edges more than a cubic, and they can ring as light and dark bands beside a hard step. It is a standard video-player filter: comfortable on an XR-class GPU, too much sustained fullscreen work for a sub-watt glasses GPU specified for sparse content.'
+      },
+      'lanczos-unsharp': {
+        xr: 'yes', ar: 'no',
+        theory: 'This panel upscales with Lanczos-3, then runs a 3×3 unsharp mask. The mask blurs that result, subtracts the blur from the Lanczos image, and adds 0.6 of the difference back, which raises local contrast. The mask does not invent detail the Lanczos pass missed. It adds a second fullscreen pass on top of the thirty-six-tap filter.'
+      },
+      fsr1: {
+        xr: 'yes', ar: 'no',
+        theory: 'FSR 1 is two AMD shaders. EASU upscales from a 12-pixel neighborhood: it estimates an edge direction and blends samples along that direction so a diagonal does not become a staircase. RCAS then sharpens with a 5-tap contrast-adaptive filter, and this panel uses 0.2 sharpness stops. Qualcomm’s XR2 briefs name Game Super Resolution for this class of pass; the AR1 GPU is specified for sparse overlays, not a dense 12-tap upscaler.'
+      },
+      nis: {
+        xr: 'yes', ar: 'no',
+        theory: 'NVIDIA Image Scaling upscales luma with a 6×6 directional kernel and four overlapping 4×4 windows that estimate edge direction. The kernel is a Lanczos-style filter, scaled along the edge, plus a limited unsharp term so halos stay bounded. Chroma on this page is bilinear. The work is a single video-shader pass, in the same league as Lanczos, not a neural net.'
+      },
+      cas: {
+        xr: 'yes', ar: 'mid',
+        theory: 'Contrast Adaptive Sharpening is AMD’s 5-tap sharpener, not an upscaler. This panel first stretches the image with bilinear, then CAS raises contrast only where the local cross has room before clipping. Sharpness here is 0.5, the diagonal-aware CAS path is off, and flat areas stay quieter than a fixed unsharp mask. The extra pass is small on an XR GPU and only a maybe on AR glasses.'
+      },
+      xbr: {
+        xr: 'mid', ar: 'no',
+        theory: 'xBR-lv2 is Hyllian’s pixel-art rule filter, using the CORNER_C and SMOOTH_TIPS defaults. It compares a wide neighborhood and, when the rules say a corner should be round, blends along the diagonal instead of leaving a stair. This port does 21 bilinear lookups per output pixel, which is a heavy, branchy post-process. The rules were written for sprites; on a photo they still run, but they are not a model of a camera.'
+      },
+      'a4k-s': {
+        xr: 'mid', ar: 'no',
+        theory: 'Anime4K CNN-S is a small published network (bloc97, MIT) that upscales 2×. A few 3×3 convolutions run on four-channel feature maps, with the ReLU written as separate filters on the positive and negative parts, and the result is added to a bilinear base. One 2× pass is about 1,056 multiply-accumulates per low-resolution pixel, including that gather. At 4× the same network runs twice, and the graph is not a Hexagon QNN model.'
+      },
+      'a4k-m': {
+        xr: 'no', ar: 'no',
+        theory: 'Anime4K CNN-M is the same luma-residual idea as CNN-S, with more 3×3 layers and a 1×1 mix at the end. One 2× pass is about 2,144 multiply-accumulates per low-resolution pixel. It is the teacher for the distilled football net on the Neural custom tab. At a headset eye buffer that cost is most of a 90 Hz frame even before the game or the video decoder’s GPU work, so it is left untagged.'
+      },
+      'a4k-l': {
+        xr: 'no', ar: 'no',
+        theory: 'Anime4K CNN-L keeps a residual for red, green, and blue, not luma alone, and its 3×3 layers read two feature maps at once. One 2× pass is about 4,368 multiply-accumulates per low-resolution pixel. Depth-to-space only rearranges those features onto the high-resolution grid and adds them to bilinear. The color path is why it costs more than CNN-M, and why it does not fit the XR frame budget used here.'
+      },
+      'a4k-gan': {
+        xr: 'no', ar: 'no',
+        theory: 'Anime4K GAN-S is a larger published network trained as a GAN. Most layers still run on the low-resolution grid, but the last 3×3 runs on the already upscaled image, so that layer is counted per output pixel. The whole 2× pass is about 6,064 multiply-accumulates per low-resolution pixel. The weights are the published ones, not a model trained on this clip.'
+      },
+      'a4k-vl': {
+        xr: 'no', ar: 'no',
+        theory: 'Anime4K CNN-VL is the heaviest preset on this page: wide 3×3 layers, three 1×1 mixes, and a color residual, then depth-to-space. One 2× pass is about 8,592 multiply-accumulates per low-resolution pixel. That is several times a 90 Hz eye budget under the MAC-rate assumption in the legend, before counting both eyes or the rest of the frame.'
+      },
+      'custom-0': {
+        xr: 'mid', ar: 'no',
+        theory: 'ESPCN predicts a block of output pixels from each source pixel, then a shuffle spreads that block into the 2×2 high-resolution cell and the residual is added to bilinear. This tiny luma net is 1→8→8→4 channels, 936 multiply-accumulates per low-resolution pixel. It was trained on this same clip, so its score is not a holdout, and chroma stays bilinear. The graph is a WebGPU shader, not a Qualcomm QNN model.'
+      },
+      'custom-1': {
+        xr: 'no', ar: 'no',
+        theory: 'Football wide is the same ESPCN layout with more channels: 1→16→16→16→4, 5,328 multiply-accumulates per low-resolution pixel. It was trained on later frames of the broadcast, and this 6-second clip was held out. Chroma is still bilinear. The activation maps for a ~2K eye are large enough that bandwidth, not just the multiply count, argues against calling it a 90 Hz pass.'
+      },
+      'custom-2': {
+        xr: 'no', ar: 'no',
+        theory: 'Football RGB predicts a residual for each color channel, 3→12→12→12, 2,916 multiply-accumulates per low-resolution pixel, so jersey colors are not left to bilinear chroma. The last layer shuffles into a 2×2 block per channel and adds it to bilinear. It was trained on later frames; this clip is held out. The cost sits past the XR frame slice used for the tags.'
+      },
+      'custom-3': {
+        xr: 'no', ar: 'no',
+        theory: 'Football temporal reads the current luma and the previous frame’s luma as two channels, with no motion warp. The shape is 2→12→12→4, 1,944 multiply-accumulates per low-resolution pixel. If the clock does not move, it reuses the same previous frame. It cannot see across a cut any better than a single frame, and a second full-resolution luma read adds bandwidth the tag budget does not have.'
+      },
+      'custom-4': {
+        xr: 'mid', ar: 'no',
+        theory: 'Football distill is a smaller student, 1→8→4, 360 multiply-accumulates per low-resolution pixel, trained to copy the luma residual of Anime4K CNN-M. Real-ESRGAN was not the teacher. It is cheaper than CNN-M and a bit less accurate on the holdout. Even at that size it is still a dense neural pass, not a sampler, and it has not been compiled for the Hexagon NPU.'
+      },
+      'sharp-wide': {
+        xr: 'no', ar: 'no',
+        theory: 'This is the same wide luma ESPCN as on the Neural custom tab, 5,328 multiply-accumulates per low-resolution pixel. It is repeated here so the sharper variants have the unchanged weights beside them. Training did not change for this panel. The headset tag matches the wide net: too many MACs, and too much activation traffic, for the 90 Hz eye budget.'
+      },
+      'sharp-wide-rcas': {
+        xr: 'no', ar: 'no',
+        theory: 'The wide net runs first, then FSR 1 RCAS sharpens its output. RCAS is the same 5-tap contrast-adaptive filter as on the FSR panel; the slider sets the strength in stops, where 0 is strongest and 2 is mildest. The network weights are unchanged. Five extra taps do not move a 5,328-MAC net into the XR budget.'
+      },
+      'sharp-edge': {
+        xr: 'no', ar: 'no',
+        theory: 'Sharp edges uses the same 1→16→16→16→4 luma net, 5,328 multiply-accumulates, trained with extra weight on pixels where the reference Sobel gradient is large and with crops drawn from those blocks. The aim is cleaner yard lines and numbers. Full-frame PSNR can drop when the loss stops treating every pixel equally. The tag follows the architecture, not the loss.'
+      },
+      'sharp-perc': {
+        xr: 'no', ar: 'no',
+        theory: 'Sharp perceptual continues the edge-weighted weights with a Laplacian term, a match to the reference Sobel map, and a tiny 4→8→8→1 patch discriminator. There is no VGG network and no Real-ESRGAN in that run. The adversarial term can raise local contrast and lower SSIM. The forward pass is still the 5,328-MAC ESPCN; the discriminator is training-only and does not run on the headset.'
+      },
+      'sharp-edge-rcas': {
+        xr: 'no', ar: 'no',
+        theory: 'The edge-weighted net runs, then the same RCAS post-pass as Wide + RCAS. RCAS can ring, or thin a line the network already sharpened. The slider is shared with the other RCAS panel. As with Wide + RCAS, the 5-tap sharpener does not change the verdict on the 5,328-MAC net underneath.'
+      }
+    };
+    const ORIGINAL_THEORY = 'This is the untouched frame from the clip, shown at full resolution. The other panels see a box-downscaled copy and try to rebuild this picture. It is the reference for PSNR, SSIM, and the edge metric, not an upscaler, so it has no headset tag.';
     const NET_FILES = {
       s: 'upscale-models/anime4k-s.json',
       m: 'upscale-models/anime4k-m.json',
@@ -133,7 +235,8 @@
       const el = document.createElement('article');
       el.className = 'panel';
       el.innerHTML =
-        '<div class="phead"><h2></h2><span class="hint"></span></div>' +
+        '<div class="phead"><div class="titlewrap" tabindex="0"><h2></h2><div class="tip" role="tooltip"></div></div><div class="ptags"></div></div>' +
+        '<p class="hint"></p>' +
         '<div class="view"><canvas class="main"></canvas>' +
         '<div class="loupe"><canvas></canvas></div>' +
         '<div class="unavail"></div>' +
@@ -146,6 +249,8 @@
         '<div class="stats"><span data-k="time">—</span><span data-k="quality" class="dim">—</span></div>';
       el.querySelector('h2').textContent = spec.name;
       el.querySelector('.hint').textContent = spec.hint;
+      el.querySelector('.tip').textContent = spec.theory || '';
+      paintTags(el, spec.qc || null);
       grid.appendChild(el);
       const view = el.querySelector('.view');
       const loupe = el.querySelector('.loupe');
@@ -173,7 +278,7 @@
     }
 
     function buildDOM() {
-      panels.push(makePanel({ id: 'original', name: 'Original', hint: 'Ground truth', kind: 'ref' }));
+      panels.push(makePanel({ id: 'original', name: 'Original', hint: 'Ground truth', kind: 'ref', theory: ORIGINAL_THEORY }));
       for (let i = 0; i < 5; i++) panels.push(makePanel({ id: 'slot-' + i, name: '—', hint: '', kind: 'slot' }));
       const bar = document.getElementById('tabbar');
       for (const tab of TABS) {
@@ -242,11 +347,31 @@
       else if (mode === 'cpu' && fullW) renderFrame();
     }
 
+    function paintTags(el, note) {
+      const box = el.querySelector('.ptags');
+      if (!box) return;
+      box.replaceChildren();
+      if (!note) return;
+      const add = (cls, label) => {
+        const s = document.createElement('span');
+        s.className = 'tag ' + cls;
+        s.textContent = label;
+        box.appendChild(s);
+      };
+      if (note.xr === 'yes') add('xr', 'QC XR');
+      else if (note.xr === 'mid') add('xr mid', 'QC XR');
+      if (note.ar === 'yes') add('ar', 'QC AR');
+      else if (note.ar === 'mid') add('ar mid', 'QC AR');
+    }
+
     function bindSlot(panel, methodId) {
       const method = METHODS[methodId];
+      const note = METHOD_NOTES[methodId];
       panel.methodId = methodId;
       panel.kind = method.kind;
       panel.el.querySelector('h2').textContent = method.name;
+      panel.el.querySelector('.tip').textContent = note ? note.theory : '';
+      paintTags(panel.el, note);
       panel.el.querySelector('.hint').textContent = hintFor(method);
       panel.timeEl.textContent = '—';
       panel.qualEl.textContent = '—';
