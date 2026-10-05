@@ -36,7 +36,7 @@
       'sharp-edge-rcas': { name: 'Sharp + RCAS', hint: 'Edge net, then FSR RCAS', kind: 'custom-sharpen', slot: 5, preset: 'upscale-models/football-sharp.json' }
     };
     // Headset tags are a static judgment for one 2× pass, not a device measurement.
-    // xr/ar: 'yes' filled, 'mid' outlined, 'no' omitted.
+    // xr/ar: 'yes' filled, 'mid' outlined, 'no' dashed "not viable" chip.
     // MAC figures are multiply-accumulates per low-resolution pixel for one 2× pass.
     const METHOD_NOTES = {
       nearest: {
@@ -81,7 +81,7 @@
       },
       'a4k-m': {
         xr: 'no', ar: 'no',
-        theory: 'Anime4K CNN-M is the same luma-residual idea as CNN-S, with more 3×3 layers and a 1×1 mix at the end. One 2× pass is about 2,144 multiply-accumulates per low-resolution pixel. It is the teacher for the distilled football net on the Neural custom tab. At a headset eye buffer that cost is most of a 90 Hz frame even before the game or the video decoder’s GPU work, so it is left untagged.'
+        theory: 'Anime4K CNN-M is the same luma-residual idea as CNN-S, with more 3×3 layers and a 1×1 mix at the end. One 2× pass is about 2,144 multiply-accumulates per low-resolution pixel. It is the teacher for the distilled football net on the Neural custom tab. At a headset eye buffer that cost is most of a 90 Hz frame even before the game or the video decoder’s GPU work, so both classes are marked not viable.'
       },
       'a4k-l': {
         xr: 'no', ar: 'no',
@@ -136,7 +136,46 @@
         theory: 'The edge-weighted net runs, then the same RCAS post-pass as Wide + RCAS. RCAS can ring, or thin a line the network already sharpened. The slider is shared with the other RCAS panel. As with Wide + RCAS, the 5-tap sharpener does not change the verdict on the 5,328-MAC net underneath.'
       }
     };
-    const ORIGINAL_THEORY = 'This is the untouched frame from the clip, shown at full resolution. The other panels see a box-downscaled copy and try to rebuild this picture. It is the reference for PSNR, SSIM, and the edge metric, not an upscaler, so it has no headset tag.';
+    const ORIGINAL_THEORY = 'This is the untouched frame from the clip, shown at full resolution. The other panels see a box-downscaled copy and try to rebuild this picture. It is the reference for PSNR, SSIM, and the edge metric, not an upscaler, so its chip is N/A.';
+    // Factors for the #viability table. ms cells for macs are filled in fillViability().
+    // XR low grid 1100×1200, AR low grid 640×640, unofficial 0.25e12 MAC/s.
+    const XR_LOW_PIX = 1100 * 1200;
+    const AR_LOW_PIX = 640 * 640;
+    const UNOFFICIAL_MAC_S = 0.25e12;
+    const FETCH_MS = 'n/a, fetches';
+    const SHADER_SCALE = 'Same output size at 2× and 4×.';
+    const NET_SCALE = '4× is two passes, about 1.25× the MACs.';
+    const NET_PATH = 'GPU compute here. NPU would need a QNN export.';
+    const NET_PORT = 'WebGPU graph only. Not Hexagon-portable as shipped.';
+    const XR_PWR = 'XR2-class GPU. The brief prints no watts.';
+    const AR_PWR = 'AR1 sparse GPU, SoC under about 1 W.';
+    const QUAL_UNUSED = 'Not used for the tag.';
+    const VIABILITY_ROWS = [
+      { name: 'Original', where: 'Every tab', ref: true, cost: 'Reference frame', xrMs: 'n/a', arMs: 'n/a', power: 'Not an upscaler.', path: 'Displayed as stored.', port: 'n/a', bandwidth: 'The full frame, once.', scale: 'n/a', quality: 'The reference for PSNR, SSIM, and edge PSNR.' },
+      { name: 'Nearest', where: 'Browser universal', id: 'nearest', cost: '1 fetch / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: 'Sampler. Fits XR and the AR power class.', path: 'Texture sampler.', port: 'Fixed function. Not WebGPU-specific.', bandwidth: 'One texel.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'Bilinear', where: 'Browser universal', id: 'bilinear', cost: '4 fetches / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: 'Hardware filter. Fits XR and the AR power class.', path: 'Texture sampler.', port: 'Fixed function. Not WebGPU-specific.', bandwidth: '2×2 block, cached.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'Catmull-Rom', where: 'Browser universal', id: 'bicubic', cost: '16 fetches / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' ' + AR_PWR + ' Fullscreen cubic is only the main pass on glasses.', path: 'GPU fragment shader.', port: 'Portable as a shader. AR limit is power, not the API.', bandwidth: '4×4 window.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'Lanczos-3', where: 'Browser universal', id: 'lanczos', cost: '36 fetches / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Too dense for the AR sparse-GPU budget.', path: 'GPU fragment shader.', port: 'Portable as a shader on XR. Not an AR glasses pass.', bandwidth: '6×6 window, good reuse.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'Lanczos + unsharp', where: 'Shader sharpeners', id: 'lanczos-unsharp', cost: '36 fetches, then a 3×3 mask', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Second pass still too dense for AR.', path: 'Two GPU passes.', port: 'Portable as shaders on XR. Not an AR glasses pass.', bandwidth: '6×6, then a 3×3.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'FSR 1 EASU + RCAS', where: 'Shader sharpeners', id: 'fsr1', cost: '12 fetches, then 5', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Same class as Game Super Resolution. Too dense for AR.', path: 'Two GPU passes.', port: 'Portable as shaders on XR. Not an AR glasses pass.', bandwidth: '12-pixel neighborhood, then a cross.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'NVIDIA Image Scaling', where: 'Shader sharpeners', id: 'nis', cost: '6×6 plus four 4×4 windows', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Too dense for AR.', path: 'GPU shader, luma. Chroma is bilinear.', port: 'Portable as a shader on XR. Not an AR glasses pass.', bandwidth: 'Wide luma window, overlapping edge maps.', scale: '4× runs the scaler twice on this page.', quality: QUAL_UNUSED },
+      { name: 'CAS on bilinear', where: 'Shader sharpeners', id: 'cas', cost: '4 fetches, then a 5-tap cross', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' ' + AR_PWR + ' The extra cross is only the main pass on glasses.', path: 'Sampler, then a GPU sharpen.', port: 'Portable as a shader. AR limit is power.', bandwidth: 'Bilinear block plus a 5-tap cross.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
+      { name: 'xBR-lv2', where: 'Shader sharpeners', id: 'xbr', cost: '21 bilinear lookups / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Heavy enough to be a large slice. Not an AR pass.', path: 'Branchy GPU shader.', port: 'Portable as a shader. Occupancy is the XR limit.', bandwidth: '21 filtered lookups, weak reuse.', scale: SHADER_SCALE, quality: 'Written for sprites. Not used for the tag.' },
+      { name: 'Anime4K CNN-S', where: 'Browser universal, Neural', id: 'a4k-s', macs: 1056, power: XR_PWR + ' A large slice of 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Small vec4 maps. Still a full-frame read and write.', scale: NET_SCALE, quality: 'Published weights. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-M', where: 'Neural', id: 'a4k-m', macs: 2144, power: XR_PWR + ' About the whole 90 Hz frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'More layers than CNN-S, same vec4 packing.', scale: NET_SCALE, quality: 'Teacher for the distill net. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-L', where: 'Neural', id: 'a4k-l', macs: 4368, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Two feature maps per 3×3, plus a color residual.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Anime4K GAN-S', where: 'Neural', id: 'a4k-gan', macs: 6064, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Last 3×3 runs on the upscaled grid.', scale: NET_SCALE, quality: 'Published GAN weights. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-VL', where: 'Neural', id: 'a4k-vl', macs: 8592, power: XR_PWR + ' Several frames. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Widest Anime4K preset on the page.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Football ESPCN-tiny', where: 'Neural custom', id: 'custom-0', macs: 936, power: XR_PWR + ' A large slice of 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→8→4. Small maps, full-frame traffic.', scale: NET_SCALE, quality: 'Trained on this clip, so the score is not a holdout. ' + QUAL_UNUSED },
+      { name: 'Football wide', where: 'Neural custom, Sharp lines', id: 'custom-1', macs: 5328, power: XR_PWR + ' Well past 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'A 16-channel fp16 map at 1100×1200 is about 42 MB, larger than the brief’s 8 MB cache.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
+      { name: 'Football RGB', where: 'Neural custom', id: 'custom-2', macs: 2916, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Three-channel residual, 12-wide maps.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
+      { name: 'Football temporal', where: 'Neural custom', id: 'custom-3', macs: 1944, power: XR_PWR + ' Most of the 90 Hz frame, plus a second luma read. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Current and previous luma, no warp.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Football distill', where: 'Neural custom', id: 'custom-4', macs: 360, power: XR_PWR + ' Smallest net here, still a dense pass. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→4. Lightest activation traffic of the nets.', scale: NET_SCALE, quality: 'Student of CNN-M, a bit behind the tiny net. ' + QUAL_UNUSED },
+      { name: 'Wide + RCAS', where: 'Sharp lines', id: 'sharp-wide-rcas', macs: 5328, power: XR_PWR + ' The 5-tap RCAS does not pull 5,328 MACs into the frame. ' + AR_PWR, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus wide. ' + QUAL_UNUSED },
+      { name: 'Sharp edges', where: 'Sharp lines', id: 'sharp-edge', macs: 5328, power: XR_PWR + ' Same architecture as Football wide. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide.', scale: NET_SCALE, quality: 'About +0.15 dB edge and −0.2 dB PSNR versus wide at 2×. 4× edge is within 0.1 dB. ' + QUAL_UNUSED },
+      { name: 'Sharp perceptual', where: 'Sharp lines', id: 'sharp-perc', macs: 5328, power: XR_PWR + ' Same architecture as Football wide. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps. The discriminator is training-only.', scale: NET_SCALE, quality: '2× SSIM about 0.87 and 4× about 0.64. ' + QUAL_UNUSED },
+      { name: 'Sharp + RCAS', where: 'Sharp lines', id: 'sharp-edge-rcas', macs: 5328, power: XR_PWR + ' RCAS does not change the 5,328-MAC verdict. ' + AR_PWR, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus the edge net. ' + QUAL_UNUSED }
+    ];
     const NET_FILES = {
       s: 'upscale-models/anime4k-s.json',
       m: 'upscale-models/anime4k-m.json',
@@ -250,7 +289,7 @@
       el.querySelector('h2').textContent = spec.name;
       el.querySelector('.hint').textContent = spec.hint;
       el.querySelector('.tip').textContent = spec.theory || '';
-      paintTags(el, spec.qc || null);
+      paintTags(el, spec.kind === 'ref' ? { ref: true } : null);
       grid.appendChild(el);
       const view = el.querySelector('.view');
       const loupe = el.querySelector('.loupe');
@@ -289,6 +328,7 @@
         btn.addEventListener('click', () => selectTab(tab.id, true));
         bar.appendChild(btn);
       }
+      fillViability();
       for (const panel of panels) {
         if (!panel.loader) continue;
         panel.view.addEventListener('dragover', (ev) => { ev.preventDefault(); });
@@ -358,10 +398,57 @@
         s.textContent = label;
         box.appendChild(s);
       };
+      if (note.ref) {
+        add('na', 'N/A');
+        return;
+      }
       if (note.xr === 'yes') add('xr', 'QC XR');
       else if (note.xr === 'mid') add('xr mid', 'QC XR');
+      else add('xr no', 'XR —');
       if (note.ar === 'yes') add('ar', 'QC AR');
       else if (note.ar === 'mid') add('ar mid', 'QC AR');
+      else add('ar no', 'AR —');
+    }
+
+    function unofficialMs(macs, pixels) {
+      const ms = macs * pixels / UNOFFICIAL_MAC_S * 1000;
+      return (ms >= 10 ? ms.toFixed(0) : ms.toFixed(1)) + ' ms';
+    }
+
+    function fillViability() {
+      const body = document.getElementById('viability-body');
+      if (!body) return;
+      body.replaceChildren();
+      for (const row of VIABILITY_ROWS) {
+        const note = row.ref ? { ref: true } : METHOD_NOTES[row.id];
+        const tr = document.createElement('tr');
+        const tagCell = document.createElement('td');
+        const holder = document.createElement('div');
+        holder.innerHTML = '<div class="ptags"></div>';
+        paintTags(holder, note);
+        tagCell.appendChild(holder.firstChild);
+        const nameCell = document.createElement('td');
+        nameCell.textContent = row.name;
+        const where = document.createElement('div');
+        where.className = 'where';
+        where.textContent = row.where;
+        nameCell.appendChild(where);
+        const cells = [
+          row.macs ? row.macs.toLocaleString('en-US') + ' MACs / low-res px' : row.cost,
+          row.macs ? unofficialMs(row.macs, XR_LOW_PIX) : row.xrMs,
+          row.macs ? unofficialMs(row.macs, AR_LOW_PIX) : row.arMs,
+          row.power, row.path, row.port, row.bandwidth, row.scale, row.quality
+        ];
+        tr.appendChild(tagCell);
+        tr.appendChild(nameCell);
+        cells.forEach((text, i) => {
+          const td = document.createElement('td');
+          if (i < 2) td.className = 'num';
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      }
     }
 
     function bindSlot(panel, methodId) {
