@@ -218,7 +218,48 @@
     .viability tr:last-child td { border-bottom: 0; }
     .viability .where { color: #666; font-size: 11px; margin-top: 2px; }
     .viability td.num { font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; }
+    .viability td.timing {
+      white-space: pre-line;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      max-width: 280px;
+    }
     .viability .ptags { max-width: none; justify-content: flex-start; padding-top: 0; }
+    .viability .assumptions a { color: #5b9bd5; text-decoration: none; }
+    .viability .assumptions a:hover { text-decoration: underline; }
+    .estimate {
+      margin-top: 16px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 20px 22px 22px;
+      max-width: 920px;
+    }
+    .estimate h3 { font-size: 15px; font-weight: 650; margin-bottom: 8px; }
+    .estimate p { color: #888; font-size: 13px; line-height: 1.55; margin-bottom: 12px; }
+    .estimate .fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin-bottom: 12px; }
+    .estimate label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #888; letter-spacing: 0.3px; }
+    .estimate label.bias { flex-direction: row; align-items: center; gap: 8px; padding-bottom: 8px; font-size: 13px; color: #ccc; }
+    .estimate input[type="number"],
+    .estimate textarea {
+      background: #111;
+      border: 1px solid #333;
+      color: #ddd;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: 12px 'SF Mono', 'Fira Code', monospace;
+    }
+    .estimate input[type="number"] { width: 96px; }
+    .estimate textarea { width: min(420px, 100%); min-height: 88px; resize: vertical; }
+    .estimate #estimate-out {
+      margin-top: 12px;
+      white-space: pre-line;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #8eb6db;
+    }
     .view {
       position: relative;
       aspect-ratio: 16 / 9;
@@ -373,7 +414,9 @@
       <p>
         Every panel shows a chip. Filled is a small slice of the frame. Outlined is a large slice, or the main fullscreen pass. A dashed <strong>XR —</strong> or <strong>AR —</strong> means that class does not fit. <strong>N/A</strong> is the reference frame, not an upscaler.
         <strong>QC XR</strong> is Snapdragon XR2 Gen 2 / XR2+ Gen 2 class (Quest 3, Galaxy XR): one eye, one 2× pass into the brief’s 2.2K×2.4K render target at 90&nbsp;Hz.
+        Neural XR chips use 30% of a third-party 3.1&nbsp;TFLOPS FP32 peak for the XR2 Gen 2 Adreno. The Qualcomm brief does not publish that FLOPS number.
         <strong>QC AR</strong> is Snapdragon AR1 / AR1+ / AR2 glasses: 1280×1280 at 60&nbsp;Hz, sparse GPU, SoC power under about 1&nbsp;W.
+        The NPU column is advisory until a QNN export exists.
         4× is two passes (~1.25× the MACs) and does not retag.
       </p>
     </div>
@@ -403,7 +446,7 @@
       Edge is luma PSNR on pixels whose reference Sobel magnitude is at least 200, so a blurry line is not rewarded the way full-frame PSNR rewards it.
       The hash remembers the tab.
       Hover a panel title for a short description of that method.
-      The headset tags are an estimate from public Qualcomm product briefs and each method’s tap or MAC count, not a run on a Quest or a pair of glasses.
+      The headset tags are an estimate from public Qualcomm product briefs, a third-party 3.1&nbsp;TFLOPS GPU figure, and each method’s tap or MAC count, not a run on a Quest or a pair of glasses. Neural XR times use 30% of that peak. See the section below.
       Every technique shows a chip, including the ones that do not fit.
     </div>
 
@@ -412,9 +455,10 @@
       <p class="assumptions">
         One row per technique. Tags are an estimate for one eye and one 2× pass, not a measurement on a headset.
         <strong>QC XR</strong> uses the Snapdragon XR2 Gen 2 and XR2+ Gen 2 brief line “Render: 2.2K × 2.4K @ 90 FPS”, read here as 2200×2400 (11.1&nbsp;ms). The low-resolution grid is 1100×1200.
-        <strong>QC AR</strong> uses the AR1 brief: binocular 1280×1280 at 60&nbsp;Hz, an Adreno GPU specified for sparse content, and a whole-chip budget under about 1&nbsp;W as reported by The Verge. The briefs themselves do not print watts.
-        Qualcomm does not publish GPU TFLOPS, NPU TOPS, or memory bandwidth in GB/s for these parts.
-        Neural milliseconds divide multiply-accumulates by an unofficial sustained 0.25 trillion MAC/s. That rate is a derated phone-class guess, not a Qualcomm specification. The AR column uses the same guess so the arithmetic is visible. It does not mean an AR1 GPU can sustain it.
+        <strong>QC AR</strong> uses the AR1 brief: binocular 1280×1280 at 60&nbsp;Hz, an Adreno GPU specified for sparse content, and a whole-chip budget under about 1&nbsp;W as reported by The Verge. The briefs themselves do not print watts. AR1 is not the 3.1&nbsp;TFLOPS GPU, so neural AR tags stay not viable. The AR column shows what an XR2-class GPU would take at 1280² only so the arithmetic is visible.
+        Qualcomm’s <a href="https://docs.qualcomm.com/doc/87-73689-1/87-73689-1_REV_A_Snapdragon_XR2_Gen_2_Platform_Product_Brief.pdf">XR2 Gen 2 brief (87-73689-1 Rev A)</a> does not publish GPU TFLOPS or Hexagon TOPS. A <a href="https://github.com/azhirnov/cpu-gpu-arch/blob/main/gpu/Adreno-700.md">third-party Adreno 700 note</a> lists XR2 Gen 2 (Adreno 740) at about 3.1&nbsp;TFLOPS FP32, and <a href="https://gadgetversus.com/processor/qualcomm-snapdragon-xr2-gen-2-specs/">gadgetversus</a> lists 3,100&nbsp;GFLOPS. One MAC is two FLOPs, so the peak used here is 1.55 trillion MAC/s.
+        Neural XR tags divide MACs by 30% of that peak, inside a stated 20–40% utilization band, because a sustained shader rarely hits peak. Viable is at most 2.0&nbsp;ms. Marginal is at most half of 11.1&nbsp;ms (5.55&nbsp;ms). Each neural cell also shows the peak time, the 20–40% range, and the previous unofficial 0.25 trillion MAC/s figure, marked “was”.
+        The NPU column, “if QNN on Hexagon”, uses phone proxies: Snapdragon 8 Gen 2 about 26&nbsp;TOPS INT8 and 8 Gen 3 about 34&nbsp;TOPS INT8 (<a href="https://en.wikipedia.org/wiki/Qualcomm_Hexagon">Wikipedia’s Hexagon table</a>). Qualcomm’s <a href="https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-8-Gen-2-Product-Brief.pdf">8 Gen 2 brief</a> prints a 4.35× Hexagon gain and the <a href="https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/images/company/news-media/media-center/press-kits/snapdragon-summit-2023/documents/Snapdragon8Gen3_%20ProductBrief.pdf">8 Gen 3 brief</a> prints a 98% faster Hexagon; neither brief prints those TOPS numbers. INT8 TOPS are counted as two ops per MAC, with the same 30% derate. XR2 Hexagon TOPS are unpublished. These times are not measured on headset silicon and do not set tags.
         A 4× reconstruct on this page is two 2× passes and about 1.25× the MACs, because the first pass runs on a quarter-resolution grid. Shader rows are costed in texture fetches, not MACs. Edge PSNR and SSIM did not set any tag.
       </p>
       <div class="tablewrap">
@@ -424,8 +468,9 @@
               <th>Tags</th>
               <th>Technique</th>
               <th>Cost</th>
-              <th>XR ms/eye</th>
-              <th>AR ms/eye</th>
+              <th>XR GPU ms/eye</th>
+              <th>NPU if QNN</th>
+              <th>AR ms note</th>
               <th>Power</th>
               <th>Path</th>
               <th>Portability</th>
@@ -437,6 +482,73 @@
           <tbody id="viability-body"></tbody>
         </table>
       </div>
+    </section>
+
+    <section class="viability" id="cost-model">
+      <h2>Portable cost model</h2>
+      <p class="assumptions">
+        Score another conv net from its layers and its weights and biases (W&amp;B).
+        <strong>MACs</strong> ≈ Σ over conv layers of (H × W × Cin × Cout × K × K).
+        Optional bias adds are Σ (H × W × Cout). They are off by default so the count matches the MAC/pixel figures above, which leave bias out.
+        Weights are that same Cin × Cout × K × K sum. Biases are Cout per layer. W&amp;B is weights + biases.
+        <strong>time (seconds)</strong> = MACs / (device MAC/s × utilization).
+        For the XR GPU tags, device MAC/s is 1.55×10¹² and the tag utilization is 0.30.
+        Anime4K’s ReLU is a positive/negative pair, so the plain formula under-counts unless those 3×3s are doubled, and the depth-to-space gather is extra MACs with no weights. GAN-S’s last 3×3 runs on the 2× grid (2,304 MACs per low-res pixel).
+      </p>
+      <p class="assumptions">
+        <strong>Worked example, Football ESPCN-tiny.</strong>
+        Layers 1→8, 8→8, 8→4, all k=3:
+        1×8×9 + 8×8×9 + 8×4×9 = 72 + 576 + 288 = 936 weights.
+        Biases 8+8+4 = 20, so W&amp;B = 956.
+        MACs per low-res pixel = 936.
+        At 1100×1200 that is 0.80&nbsp;ms at the 1.55&nbsp;T MAC/s peak and 2.66&nbsp;ms at 30%, which is marginal on QC XR.
+        A plain four-layer 4→4 k3 stack would be 576 MACs; Anime4K CNN-S is 1,056 because three of those 3×3s are doubled for the pos/neg split and the depth-to-space gather adds 48.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Technique</th>
+              <th>Layers</th>
+              <th>Shape</th>
+              <th>Weights</th>
+              <th>Biases</th>
+              <th>W&amp;B</th>
+              <th>MACs/low px</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="cost-model-body"></tbody>
+        </table>
+      </div>
+      <form class="estimate" id="net-estimate">
+        <h3>Estimate a new net</h3>
+        <p>One layer per line: Cin, Cout, K. The form below is the tiny net. It does not set QC AR, and it does not use the phone NPU proxy.</p>
+        <div class="fields">
+          <label>Height
+            <input type="number" name="h" min="1" step="1" value="1100">
+          </label>
+          <label>Width
+            <input type="number" name="w" min="1" step="1" value="1200">
+          </label>
+          <label>Utilization
+            <input type="number" name="util" min="0.01" max="1" step="0.05" value="0.30">
+          </label>
+          <label class="bias">
+            <input type="checkbox" name="bias">
+            Include bias adds
+          </label>
+        </div>
+        <label>Layers
+          <textarea name="layers" aria-label="Layers as Cin Cout K">1 8 3
+8 8 3
+8 4 3</textarea>
+        </label>
+        <div class="fields" style="margin-top: 12px; margin-bottom: 0;">
+          <button type="submit" class="primary">Score net</button>
+        </div>
+        <div id="estimate-out"></div>
+      </form>
     </section>
   </div>
 

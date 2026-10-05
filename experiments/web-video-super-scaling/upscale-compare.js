@@ -108,12 +108,12 @@
         theory: 'Football RGB predicts a residual for each color channel, 3→12→12→12, 2,916 multiply-accumulates per low-resolution pixel, so jersey colors are not left to bilinear chroma. The last layer shuffles into a 2×2 block per channel and adds it to bilinear. It was trained on later frames; this clip is held out. The cost sits past the XR frame slice used for the tags.'
       },
       'custom-3': {
-        xr: 'no', ar: 'no',
-        theory: 'Football temporal reads the current luma and the previous frame’s luma as two channels, with no motion warp. The shape is 2→12→12→4, 1,944 multiply-accumulates per low-resolution pixel. If the clock does not move, it reuses the same previous frame. It cannot see across a cut any better than a single frame, and a second full-resolution luma read adds bandwidth the tag budget does not have.'
+        xr: 'mid', ar: 'no',
+        theory: 'Football temporal reads the current luma and the previous frame’s luma as two channels, with no motion warp. The shape is 2→12→12→4, 1,944 multiply-accumulates per low-resolution pixel. If the clock does not move, it reuses the same previous frame. At 30% of the third-party XR2 GPU peak that is about half of a 90 Hz frame for one eye, so the XR chip is marginal, and it still has no QNN export for the glasses.'
       },
       'custom-4': {
-        xr: 'mid', ar: 'no',
-        theory: 'Football distill is a smaller student, 1→8→4, 360 multiply-accumulates per low-resolution pixel, trained to copy the luma residual of Anime4K CNN-M. Real-ESRGAN was not the teacher. It is cheaper than CNN-M and a bit less accurate on the holdout. Even at that size it is still a dense neural pass, not a sampler, and it has not been compiled for the Hexagon NPU.'
+        xr: 'yes', ar: 'no',
+        theory: 'Football distill is a smaller student, 1→8→4, 360 multiply-accumulates per low-resolution pixel, trained to copy the luma residual of Anime4K CNN-M. Real-ESRGAN was not the teacher. It is cheaper than CNN-M and a bit less accurate on the holdout. At 30% of the third-party XR2 GPU peak that is about 1 ms for one eye, so the XR chip is filled, but there is still no QNN export, so the glasses chip stays not viable.'
       },
       'sharp-wide': {
         xr: 'no', ar: 'no',
@@ -137,16 +137,24 @@
       }
     };
     const ORIGINAL_THEORY = 'This is the untouched frame from the clip, shown at full resolution. The other panels see a box-downscaled copy and try to rebuild this picture. It is the reference for PSNR, SSIM, and the edge metric, not an upscaler, so its chip is N/A.';
-    // Factors for the #viability table. ms cells for macs are filled in fillViability().
-    // XR low grid 1100×1200, AR low grid 640×640, unofficial 0.25e12 MAC/s.
+    // Factors for the #viability table. Neural milliseconds are filled in fillViability().
+    // XR low grid 1100×1200. AR low grid 640×640 is only an XR2-rate hypothetical.
+    // Third-party Adreno XR2 Gen 2 figure: 3.1 TFLOPS FP32. 1 MAC = 2 FLOPs.
+    // Qualcomm's XR brief does not publish FLOPS. Tags use 30% of that peak.
     const XR_LOW_PIX = 1100 * 1200;
     const AR_LOW_PIX = 640 * 640;
-    const UNOFFICIAL_MAC_S = 0.25e12;
+    const GPU_FP32_TFLOPS = 3.1;
+    const GPU_PEAK_MAC_S = GPU_FP32_TFLOPS * 1e12 / 2;
+    const TAG_UTIL = 0.30;
+    const OLD_MAC_S = 0.25e12;
+    const NPU_GEN2_TOPS = 26;
+    const NPU_GEN3_TOPS = 34;
     const FETCH_MS = 'n/a, fetches';
     const SHADER_SCALE = 'Same output size at 2× and 4×.';
     const NET_SCALE = '4× is two passes, about 1.25× the MACs.';
-    const NET_PATH = 'GPU compute here. NPU would need a QNN export.';
+    const NET_PATH = 'GPU compute here. The NPU column is only if this were quantized QNN.';
     const NET_PORT = 'WebGPU graph only. Not Hexagon-portable as shipped.';
+    const NET_POWER = 'XR tag uses 30% of the third-party 3.1 TFLOPS peak, not the phone NPU proxy. AR1 is not that GPU.';
     const XR_PWR = 'XR2-class GPU. The brief prints no watts.';
     const AR_PWR = 'AR1 sparse GPU, SoC under about 1 W.';
     const QUAL_UNUSED = 'Not used for the tag.';
@@ -161,20 +169,34 @@
       { name: 'NVIDIA Image Scaling', where: 'Shader sharpeners', id: 'nis', cost: '6×6 plus four 4×4 windows', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Too dense for AR.', path: 'GPU shader, luma. Chroma is bilinear.', port: 'Portable as a shader on XR. Not an AR glasses pass.', bandwidth: 'Wide luma window, overlapping edge maps.', scale: '4× runs the scaler twice on this page.', quality: QUAL_UNUSED },
       { name: 'CAS on bilinear', where: 'Shader sharpeners', id: 'cas', cost: '4 fetches, then a 5-tap cross', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' ' + AR_PWR + ' The extra cross is only the main pass on glasses.', path: 'Sampler, then a GPU sharpen.', port: 'Portable as a shader. AR limit is power.', bandwidth: 'Bilinear block plus a 5-tap cross.', scale: SHADER_SCALE, quality: QUAL_UNUSED },
       { name: 'xBR-lv2', where: 'Shader sharpeners', id: 'xbr', cost: '21 bilinear lookups / output px', xrMs: FETCH_MS, arMs: FETCH_MS, power: XR_PWR + ' Heavy enough to be a large slice. Not an AR pass.', path: 'Branchy GPU shader.', port: 'Portable as a shader. Occupancy is the XR limit.', bandwidth: '21 filtered lookups, weak reuse.', scale: SHADER_SCALE, quality: 'Written for sprites. Not used for the tag.' },
-      { name: 'Anime4K CNN-S', where: 'Browser universal, Neural', id: 'a4k-s', macs: 1056, power: XR_PWR + ' A large slice of 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Small vec4 maps. Still a full-frame read and write.', scale: NET_SCALE, quality: 'Published weights. ' + QUAL_UNUSED },
-      { name: 'Anime4K CNN-M', where: 'Neural', id: 'a4k-m', macs: 2144, power: XR_PWR + ' About the whole 90 Hz frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'More layers than CNN-S, same vec4 packing.', scale: NET_SCALE, quality: 'Teacher for the distill net. ' + QUAL_UNUSED },
-      { name: 'Anime4K CNN-L', where: 'Neural', id: 'a4k-l', macs: 4368, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Two feature maps per 3×3, plus a color residual.', scale: NET_SCALE, quality: QUAL_UNUSED },
-      { name: 'Anime4K GAN-S', where: 'Neural', id: 'a4k-gan', macs: 6064, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Last 3×3 runs on the upscaled grid.', scale: NET_SCALE, quality: 'Published GAN weights. ' + QUAL_UNUSED },
-      { name: 'Anime4K CNN-VL', where: 'Neural', id: 'a4k-vl', macs: 8592, power: XR_PWR + ' Several frames. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Widest Anime4K preset on the page.', scale: NET_SCALE, quality: QUAL_UNUSED },
-      { name: 'Football ESPCN-tiny', where: 'Neural custom', id: 'custom-0', macs: 936, power: XR_PWR + ' A large slice of 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→8→4. Small maps, full-frame traffic.', scale: NET_SCALE, quality: 'Trained on this clip, so the score is not a holdout. ' + QUAL_UNUSED },
-      { name: 'Football wide', where: 'Neural custom, Sharp lines', id: 'custom-1', macs: 5328, power: XR_PWR + ' Well past 11.1 ms. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'A 16-channel fp16 map at 1100×1200 is about 42 MB, larger than the brief’s 8 MB cache.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
-      { name: 'Football RGB', where: 'Neural custom', id: 'custom-2', macs: 2916, power: XR_PWR + ' Past the frame. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Three-channel residual, 12-wide maps.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
-      { name: 'Football temporal', where: 'Neural custom', id: 'custom-3', macs: 1944, power: XR_PWR + ' Most of the 90 Hz frame, plus a second luma read. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Current and previous luma, no warp.', scale: NET_SCALE, quality: QUAL_UNUSED },
-      { name: 'Football distill', where: 'Neural custom', id: 'custom-4', macs: 360, power: XR_PWR + ' Smallest net here, still a dense pass. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→4. Lightest activation traffic of the nets.', scale: NET_SCALE, quality: 'Student of CNN-M, a bit behind the tiny net. ' + QUAL_UNUSED },
-      { name: 'Wide + RCAS', where: 'Sharp lines', id: 'sharp-wide-rcas', macs: 5328, power: XR_PWR + ' The 5-tap RCAS does not pull 5,328 MACs into the frame. ' + AR_PWR, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus wide. ' + QUAL_UNUSED },
-      { name: 'Sharp edges', where: 'Sharp lines', id: 'sharp-edge', macs: 5328, power: XR_PWR + ' Same architecture as Football wide. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide.', scale: NET_SCALE, quality: 'About +0.15 dB edge and −0.2 dB PSNR versus wide at 2×. 4× edge is within 0.1 dB. ' + QUAL_UNUSED },
-      { name: 'Sharp perceptual', where: 'Sharp lines', id: 'sharp-perc', macs: 5328, power: XR_PWR + ' Same architecture as Football wide. ' + AR_PWR, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps. The discriminator is training-only.', scale: NET_SCALE, quality: '2× SSIM about 0.87 and 4× about 0.64. ' + QUAL_UNUSED },
-      { name: 'Sharp + RCAS', where: 'Sharp lines', id: 'sharp-edge-rcas', macs: 5328, power: XR_PWR + ' RCAS does not change the 5,328-MAC verdict. ' + AR_PWR, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus the edge net. ' + QUAL_UNUSED }
+      { name: 'Anime4K CNN-S', where: 'Browser universal, Neural', id: 'a4k-s', macs: 1056, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Small vec4 maps. Still a full-frame read and write.', scale: NET_SCALE, quality: 'Published weights. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-M', where: 'Neural', id: 'a4k-m', macs: 2144, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'More layers than CNN-S, same vec4 packing.', scale: NET_SCALE, quality: 'Teacher for the distill net. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-L', where: 'Neural', id: 'a4k-l', macs: 4368, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Two feature maps per 3×3, plus a color residual.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Anime4K GAN-S', where: 'Neural', id: 'a4k-gan', macs: 6064, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Last 3×3 runs on the upscaled grid.', scale: NET_SCALE, quality: 'Published GAN weights. ' + QUAL_UNUSED },
+      { name: 'Anime4K CNN-VL', where: 'Neural', id: 'a4k-vl', macs: 8592, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Widest Anime4K preset on the page.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Football ESPCN-tiny', where: 'Neural custom', id: 'custom-0', macs: 936, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→8→4. Small maps, full-frame traffic.', scale: NET_SCALE, quality: 'Trained on this clip, so the score is not a holdout. ' + QUAL_UNUSED },
+      { name: 'Football wide', where: 'Neural custom, Sharp lines', id: 'custom-1', macs: 5328, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'A 16-channel fp16 map at 1100×1200 is about 42 MB, larger than the brief’s 8 MB cache.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
+      { name: 'Football RGB', where: 'Neural custom', id: 'custom-2', macs: 2916, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Three-channel residual, 12-wide maps.', scale: NET_SCALE, quality: 'Holdout clip. ' + QUAL_UNUSED },
+      { name: 'Football temporal', where: 'Neural custom', id: 'custom-3', macs: 1944, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Current and previous luma, no warp.', scale: NET_SCALE, quality: QUAL_UNUSED },
+      { name: 'Football distill', where: 'Neural custom', id: 'custom-4', macs: 360, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: '1→8→4. Lightest activation traffic of the nets.', scale: NET_SCALE, quality: 'Student of CNN-M, a bit behind the tiny net. ' + QUAL_UNUSED },
+      { name: 'Wide + RCAS', where: 'Sharp lines', id: 'sharp-wide-rcas', macs: 5328, power: NET_POWER, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus wide. ' + QUAL_UNUSED },
+      { name: 'Sharp edges', where: 'Sharp lines', id: 'sharp-edge', macs: 5328, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps as Football wide.', scale: NET_SCALE, quality: 'About +0.15 dB edge and −0.2 dB PSNR versus wide at 2×. 4× edge is within 0.1 dB. ' + QUAL_UNUSED },
+      { name: 'Sharp perceptual', where: 'Sharp lines', id: 'sharp-perc', macs: 5328, power: NET_POWER, path: NET_PATH, port: NET_PORT, bandwidth: 'Same 16-channel maps. The discriminator is training-only.', scale: NET_SCALE, quality: '2× SSIM about 0.87 and 4× about 0.64. ' + QUAL_UNUSED },
+      { name: 'Sharp + RCAS', where: 'Sharp lines', id: 'sharp-edge-rcas', macs: 5328, power: NET_POWER, path: NET_PATH + ' Then RCAS on the GPU.', port: NET_PORT, bandwidth: 'Same 16-channel maps, plus a 5-tap read.', scale: NET_SCALE + ' RCAS is one extra pass.', quality: 'RCAS at 0.2 stops lowered edge PSNR versus the edge net. ' + QUAL_UNUSED }
+    ];
+    // Plain conv stacks use MACs = Σ Cin×Cout×K×K per low-res pixel. Biases are Cout each.
+    // Anime4K ReLU is a positive/negative pair, so those 3×3s are counted twice. Floats below include biases.
+    const COST_MODELS = [
+      { name: 'Football distill', layers: '2', shape: '1→8→4, k=3', weights: 360, biases: 12, macs: 360, note: 'Plain stack. Bias adds left out of the MAC count.' },
+      { name: 'Football ESPCN-tiny', layers: '3', shape: '1→8→8→4, k=3', weights: 936, biases: 20, macs: 936, note: 'Worked example in the form below.' },
+      { name: 'Football temporal', layers: '3', shape: '2→12→12→4, k=3', weights: 1944, biases: 28, macs: 1944, note: 'Second input is the previous luma.' },
+      { name: 'Football RGB', layers: '3', shape: '3→12→12→12, k=3', weights: 2916, biases: 36, macs: 2916, note: 'Last layer is the 2×2 shuffle, 12 channels.' },
+      { name: 'Wide, sharp, perceptual, +RCAS', layers: '4', shape: '1→16→16→16→4, k=3', weights: 5328, biases: 52, macs: 5328, note: 'RCAS adds a 5-tap shader, not weights. Discriminator is training-only.' },
+      { name: 'Anime4K CNN-S', layers: '4 conv + d2s', shape: 'vec4 4→4 k3, then 3× pos/neg 4→4 k3', weights: 1008, biases: 16, macs: 1056, note: 'Pos/neg split doubles three 3×3s. d2s gather is 48 MACs and 0 weights.' },
+      { name: 'Anime4K CNN-M', layers: '8 conv + d2s', shape: 'CNN-S plus 3 more pos/neg 3×3 and a 1×1 of 7 maps', weights: 2096, biases: 32, macs: 2144, note: '1×1 mix is 224 weights plus 4 bias. File floats are 2,128.' },
+      { name: 'Anime4K CNN-L', layers: '9 conv + d2s', shape: 'two 4→4 k3, then 7× two-map pos/neg k3', weights: 4320, biases: 36, macs: 4368, note: 'Each two-map stage is 576 MACs. File floats 4,356.' },
+      { name: 'Anime4K GAN-S', layers: '16 conv + upconv', shape: 'vec4 3×3 and 1×1 stack, last 3×3 on the 2× grid', weights: 4336, biases: 68, macs: 6064, note: 'Upconv is 2,304 MACs per low-res pixel because it runs at output size. File floats 4,404.' },
+      { name: 'Anime4K CNN-VL', layers: '17 conv + d2s', shape: 'wide two-map 3×3s plus three 1×1 mixes', weights: 8544, biases: 68, macs: 8592, note: 'File floats 8,612, including the three 1×1 bias vectors.' }
     ];
     const NET_FILES = {
       s: 'upscale-models/anime4k-s.json',
@@ -329,6 +351,8 @@
         bar.appendChild(btn);
       }
       fillViability();
+      fillCostModel();
+      wireEstimate();
       for (const panel of panels) {
         if (!panel.loader) continue;
         panel.view.addEventListener('dragover', (ev) => { ev.preventDefault(); });
@@ -410,9 +434,52 @@
       else add('ar no', 'AR —');
     }
 
-    function unofficialMs(macs, pixels) {
-      const ms = macs * pixels / UNOFFICIAL_MAC_S * 1000;
-      return (ms >= 10 ? ms.toFixed(0) : ms.toFixed(1)) + ' ms';
+    function fmtMs(ms) {
+      return (ms >= 10 ? ms.toFixed(1) : ms.toFixed(2)) + ' ms';
+    }
+
+    function msAt(macs, pixels, macPerS) {
+      return macs * pixels / macPerS * 1000;
+    }
+
+    function xrLevel(ms) {
+      if (ms <= 2) return 'yes';
+      if (ms <= 11.1 / 2) return 'mid';
+      return 'no';
+    }
+
+    function rowForMethod(methodId) {
+      const id = methodId === 'sharp-wide' ? 'custom-1' : methodId;
+      return VIABILITY_ROWS.find((row) => row.id === id) || null;
+    }
+
+    function tagFor(methodId) {
+      const note = METHOD_NOTES[methodId];
+      if (!note) return null;
+      const row = rowForMethod(methodId);
+      if (!row || !row.macs) return note;
+      const ms = msAt(row.macs, XR_LOW_PIX, GPU_PEAK_MAC_S * TAG_UTIL);
+      return Object.assign({}, note, { xr: xrLevel(ms), ar: 'no' });
+    }
+
+    function xrTiming(macs) {
+      const peak = msAt(macs, XR_LOW_PIX, GPU_PEAK_MAC_S);
+      const at30 = peak / TAG_UTIL;
+      const at20 = peak / 0.20;
+      const at40 = peak / 0.40;
+      const old = msAt(macs, XR_LOW_PIX, OLD_MAC_S);
+      return fmtMs(at30) + ' @ 30%\npeak ' + fmtMs(peak) + ' · 20–40% ' + fmtMs(at40) + '–' + fmtMs(at20) + '\nwas ' + fmtMs(old) + ' @ 0.25 TMAC/s';
+    }
+
+    function arTiming(macs) {
+      const at30 = msAt(macs, AR_LOW_PIX, GPU_PEAK_MAC_S * TAG_UTIL);
+      return fmtMs(at30) + ' if an XR2-class GPU ran this at 1280² @ 30%.\nAR1 is not that GPU. This number does not set the AR tag.';
+    }
+
+    function npuTiming(macs) {
+      const gen2 = msAt(macs, XR_LOW_PIX, NPU_GEN2_TOPS * 1e12 / 2 * TAG_UTIL);
+      const gen3 = msAt(macs, XR_LOW_PIX, NPU_GEN3_TOPS * 1e12 / 2 * TAG_UTIL);
+      return '8 Gen 2 ' + fmtMs(gen2) + '\n8 Gen 3 ' + fmtMs(gen3) + '\n@ 30% of phone INT8 peak. Not headset silicon.';
     }
 
     function fillViability() {
@@ -420,7 +487,7 @@
       if (!body) return;
       body.replaceChildren();
       for (const row of VIABILITY_ROWS) {
-        const note = row.ref ? { ref: true } : METHOD_NOTES[row.id];
+        const note = row.ref ? { ref: true } : tagFor(row.id);
         const tr = document.createElement('tr');
         const tagCell = document.createElement('td');
         const holder = document.createElement('div');
@@ -434,16 +501,39 @@
         where.textContent = row.where;
         nameCell.appendChild(where);
         const cells = [
-          row.macs ? row.macs.toLocaleString('en-US') + ' MACs / low-res px' : row.cost,
-          row.macs ? unofficialMs(row.macs, XR_LOW_PIX) : row.xrMs,
-          row.macs ? unofficialMs(row.macs, AR_LOW_PIX) : row.arMs,
-          row.power, row.path, row.port, row.bandwidth, row.scale, row.quality
+          { text: row.macs ? row.macs.toLocaleString('en-US') + ' MACs / low-res px' : row.cost, cls: 'num' },
+          { text: row.macs ? xrTiming(row.macs) : row.xrMs, cls: 'timing' },
+          { text: row.macs ? npuTiming(row.macs) : 'n/a', cls: 'timing' },
+          { text: row.macs ? arTiming(row.macs) : row.arMs, cls: 'timing' },
+          { text: row.power },
+          { text: row.path },
+          { text: row.port },
+          { text: row.bandwidth },
+          { text: row.scale },
+          { text: row.quality }
         ];
         tr.appendChild(tagCell);
         tr.appendChild(nameCell);
-        cells.forEach((text, i) => {
+        cells.forEach((cell) => {
           const td = document.createElement('td');
-          if (i < 2) td.className = 'num';
+          if (cell.cls) td.className = cell.cls;
+          td.textContent = cell.text;
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      }
+    }
+
+    function fillCostModel() {
+      const body = document.getElementById('cost-model-body');
+      if (!body) return;
+      body.replaceChildren();
+      for (const row of COST_MODELS) {
+        const tr = document.createElement('tr');
+        const wb = row.weights + row.biases;
+        [row.name, row.layers, row.shape, row.weights.toLocaleString('en-US'), row.biases.toLocaleString('en-US'), wb.toLocaleString('en-US'), row.macs.toLocaleString('en-US'), row.note].forEach((text, i) => {
+          const td = document.createElement('td');
+          if (i >= 3 && i <= 6) td.className = 'num';
           td.textContent = text;
           tr.appendChild(td);
         });
@@ -451,9 +541,67 @@
       }
     }
 
+    function scoreLayers(layers, height, width, util, includeBias) {
+      let perPixel = 0;
+      let weights = 0;
+      let biases = 0;
+      layers.forEach((layer) => {
+        const spatial = layer.cin * layer.cout * layer.k * layer.k;
+        perPixel += spatial;
+        weights += spatial;
+        biases += layer.cout;
+        if (includeBias) perPixel += layer.cout;
+      });
+      const macs = perPixel * height * width;
+      const peakMs = macs / GPU_PEAK_MAC_S * 1000;
+      const derated = peakMs / util;
+      return { perPixel, macs, weights, biases, peakMs, derated, level: xrLevel(derated) };
+    }
+
+    function wireEstimate() {
+      const form = document.getElementById('net-estimate');
+      if (!form) return;
+      const out = document.getElementById('estimate-out');
+      const run = () => {
+        const height = Number(form.querySelector('[name="h"]').value);
+        const width = Number(form.querySelector('[name="w"]').value);
+        const util = Number(form.querySelector('[name="util"]').value);
+        const includeBias = form.querySelector('[name="bias"]').checked;
+        let layers;
+        try {
+          layers = form.querySelector('[name="layers"]').value.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+            const parts = line.split(/[\s,]+/).map(Number);
+            if (parts.length < 3 || parts.slice(0, 3).some((n) => !(n > 0))) {
+              throw new Error('Each line needs Cin, Cout, and K, all greater than 0.');
+            }
+            return { cin: parts[0], cout: parts[1], k: parts[2] };
+          });
+          if (!layers.length) throw new Error('Add at least one layer.');
+          if (!(height > 0 && width > 0 && util > 0 && util <= 1)) throw new Error('Height, width, and utilization must be positive, and utilization at most 1.');
+        } catch (err) {
+          out.textContent = err.message;
+          return;
+        }
+        const scored = scoreLayers(layers, height, width, util, includeBias);
+        const level = scored.level === 'yes' ? 'viable' : scored.level === 'mid' ? 'marginal' : 'not viable';
+        out.textContent =
+          scored.perPixel.toLocaleString('en-US') + ' MACs / low-res pixel' +
+          (includeBias ? ' (bias adds included)' : ' (bias adds left out)') +
+          '\n' + scored.macs.toLocaleString('en-US') + ' MACs / eye at ' + height + '×' + width +
+          '\nweights ' + scored.weights.toLocaleString('en-US') + ' + biases ' + scored.biases.toLocaleString('en-US') +
+          ' = ' + (scored.weights + scored.biases).toLocaleString('en-US') + ' W&B' +
+          '\npeak ' + fmtMs(scored.peakMs) + ' · at ' + Math.round(util * 100) + '% ' + fmtMs(scored.derated) +
+          '\nQC XR from that derated time: ' + level +
+          '\nQC AR is not set here. AR1 is not the 3.1 TFLOPS GPU, and this form does not export QNN.';
+      };
+      form.addEventListener('submit', (ev) => { ev.preventDefault(); run(); });
+      form.addEventListener('input', run);
+      run();
+    }
+
     function bindSlot(panel, methodId) {
       const method = METHODS[methodId];
-      const note = METHOD_NOTES[methodId];
+      const note = tagFor(methodId);
       panel.methodId = methodId;
       panel.kind = method.kind;
       panel.el.querySelector('h2').textContent = method.name;
