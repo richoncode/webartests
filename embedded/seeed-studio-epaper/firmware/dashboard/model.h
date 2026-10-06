@@ -39,12 +39,15 @@ struct Model {
   // forecast strip, index 0 is today
   DayForecast days[5];
 
-  // today's hourly cloud cover, index = hour of day. A launch is only worth
-  // showing if the sky is clear at lift-off, which a single daily weather code
-  // cannot answer: today came back as code 3 (overcast) while the current code
-  // was 0 (clear).
-  uint8_t cloudPct[24];
-  bool    haveCloud;
+  // hourly cloud cover for today and tomorrow, index = hours since local
+  // midnight today (24 + hour for tomorrow, as Open-Meteo lays it out). A
+  // launch is only worth showing if the sky is clear at lift-off, which a
+  // single daily weather code cannot answer: today came back as code 3
+  // (overcast) while the current code was 0 (clear). The launch window runs
+  // to noon tomorrow, hence 48 rather than 24.
+  uint8_t cloudPct[48];
+  uint8_t cloudHours;           // how many of cloudPct are real, 0, 24 or 48
+  bool    haveCloud;            // at least today's 24
 
   // bands
   bool     eventToday;
@@ -59,6 +62,7 @@ struct Model {
   char  launchDrift[18];        // "drifts right", or empty
   char  launchBooster[40];      // "LZ-4 return, booms" | "droneship" | "expended"
   char  launchTime[12];
+  char  launchDay[4];           // "THU" when lift-off is tomorrow, else empty
   char  launchPrep[16];         // "out by 6:24"
   int   launchChance;           // 0-99, or 0 when nothing is shown
 
@@ -111,7 +115,7 @@ struct Model {
     mix(&eventToday, sizeof eventToday); mix(&eventKind, sizeof eventKind); str(eventName);
     mix(&bins, sizeof bins);
     mix(&launchTonight, sizeof launchTonight);
-    str(launchName); str(launchDrift); str(launchBooster); str(launchTime); str(launchPrep);
+    str(launchName); str(launchDrift); str(launchBooster); str(launchTime); str(launchDay); str(launchPrep);
     mix(&launchChance, sizeof launchChance);
     mix(&quoteIdx, sizeof quoteIdx);
     mix(&filterDay, sizeof filterDay);
