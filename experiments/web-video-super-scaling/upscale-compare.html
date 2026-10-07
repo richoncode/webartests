@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upscale Compare — Video Super Scaling</title>
+  <!-- Anime4K CNN-S x2 weights are MIT licensed, Copyright (c) 2019-2021 bloc97. -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 36px 24px 80px;
+    }
+    .page { max-width: 1140px; margin: 0 auto; }
+    a.back {
+      display: inline-block;
+      margin-bottom: 24px;
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    a.back:hover { color: #aaa; }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 760px;
+      margin-bottom: 22px;
+    }
+    .toolbar {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 16px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 16px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    button {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { background: #222; border-color: #555; color: #fff; }
+    button.primary { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+    button.primary:hover { background: #243550; }
+    button:disabled { opacity: 0.3; cursor: default; }
+    .group { display: flex; align-items: center; gap: 8px; }
+    .lbl {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #666;
+    }
+    input[type="range"] { accent-color: #5b9bd5; width: 110px; }
+    .time {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #bbb;
+      min-width: 64px;
+    }
+    #scrub { flex: 1; min-width: 140px; width: auto; }
+    .status {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #888;
+      min-height: 18px;
+      margin-bottom: 16px;
+    }
+    .status.bad { color: #e74c3c; }
+    .tabrow {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+    .tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .tabbar button { border-radius: 999px; }
+    .tabbar button.active { background: #1e2d40; border-color: #5b9bd5; color: #5b9bd5; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      position: relative;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      min-width: 0;
+    }
+    .panel:hover { z-index: 4; }
+    .phead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 2px; }
+    .titlewrap { position: relative; min-width: 0; }
+    .phead h2 { font-size: 15px; font-weight: 650; cursor: help; }
+    .tip {
+      display: none;
+      position: absolute;
+      z-index: 5;
+      left: 0;
+      top: calc(100% + 6px);
+      width: 280px;
+      max-width: 70vw;
+      background: #141414;
+      border: 1px solid #3a3a3a;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #ddd;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.5;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+      pointer-events: none;
+    }
+    .titlewrap:hover .tip,
+    .titlewrap:focus-within .tip { display: block; }
+    .ptags { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; justify-content: flex-end; padding-top: 2px; max-width: 148px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag.xr { background: #e74c3c; border-color: #e74c3c; color: #1a0505; }
+    .tag.xr.mid { background: transparent; color: #e74c3c; }
+    .tag.xr.no { background: transparent; color: #e74c3c; border-color: #e74c3c; border-style: dashed; opacity: 0.55; }
+    .tag.ar { background: #5b9bd5; border-color: #5b9bd5; color: #061018; }
+    .tag.ar.mid { background: transparent; color: #5b9bd5; }
+    .tag.ar.no { background: transparent; color: #5b9bd5; border-color: #5b9bd5; border-style: dashed; opacity: 0.55; }
+    .tag.na { background: transparent; color: #aaa; border-color: #555; }
+    .hint { display: block; font-size: 11px; color: #666; margin-bottom: 8px; }
+    .legend {
+      margin: 0 0 14px;
+      color: #888;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .legend-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px 18px;
+      flex-wrap: wrap;
+    }
+    .legend-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+    a.legend-more {
+      margin-left: auto;
+      color: #5b9bd5;
+      font-size: 13px;
+      font-weight: 650;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    a.legend-more:hover { color: #8eb6db; text-decoration: underline; }
+    .legend p { margin: 8px 0 0; max-width: 920px; }
+    .legend strong { color: #ccc; font-weight: 650; }
+    .viability { margin-top: 28px; scroll-margin-top: 16px; }
+    .viability h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
+    .viability .assumptions { color: #888; font-size: 13px; line-height: 1.65; max-width: 920px; margin-bottom: 14px; }
+    .viability strong { color: #ccc; font-weight: 650; }
+    .tablewrap {
+      overflow-x: auto;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      background: #141414;
+    }
+    .viability table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 12px; }
+    .viability th, .viability td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #2a2a2a;
+      vertical-align: top;
+      color: #ccc;
+      max-width: 220px;
+    }
+    .viability th {
+      color: #888;
+      font-size: 11px;
+      font-weight: 650;
+      background: #1a1a1a;
+      position: sticky;
+      top: 0;
+    }
+    .viability tr:last-child td { border-bottom: 0; }
+    .viability .where { color: #666; font-size: 11px; margin-top: 2px; }
+    .viability td.num { font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; }
+    .viability td.timing {
+      white-space: pre-line;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      max-width: 280px;
+    }
+    .viability .ptags { max-width: none; justify-content: flex-start; padding-top: 0; }
+    .viability .assumptions a { color: #5b9bd5; text-decoration: none; }
+    .viability .assumptions a:hover { text-decoration: underline; }
+    .estimate {
+      margin-top: 16px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 20px 22px 22px;
+      max-width: 920px;
+    }
+    .estimate h3 { font-size: 15px; font-weight: 650; margin-bottom: 8px; }
+    .estimate p { color: #888; font-size: 13px; line-height: 1.55; margin-bottom: 12px; }
+    .estimate .fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin-bottom: 12px; }
+    .estimate label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #888; letter-spacing: 0.3px; }
+    .estimate label.bias { flex-direction: row; align-items: center; gap: 8px; padding-bottom: 8px; font-size: 13px; color: #ccc; }
+    .estimate input[type="number"],
+    .estimate textarea {
+      background: #111;
+      border: 1px solid #333;
+      color: #ddd;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: 12px 'SF Mono', 'Fira Code', monospace;
+    }
+    .estimate input[type="number"] { width: 96px; }
+    .estimate textarea { width: min(420px, 100%); min-height: 88px; resize: vertical; }
+    .estimate #estimate-out {
+      margin-top: 12px;
+      white-space: pre-line;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #8eb6db;
+    }
+    .view {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .view canvas.main {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .loupe {
+      position: absolute;
+      width: 168px;
+      height: 168px;
+      border: 2px solid #5b9bd5;
+      border-radius: 8px;
+      overflow: hidden;
+      pointer-events: none;
+      display: none;
+      z-index: 2;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      background: #000;
+    }
+    .loupe canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .unavail {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+      background: rgba(13, 13, 13, 0.72);
+      color: #aaa;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .unavail.show { display: flex; }
+    .loader {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      background: rgba(13, 13, 13, 0.88);
+      text-align: center;
+      z-index: 3;
+    }
+    .loader.show { display: flex; }
+    .loader strong { font-size: 14px; font-weight: 650; }
+    .loader p { color: #888; font-size: 12px; line-height: 1.45; max-width: 240px; }
+    .loader input[type="url"] {
+      width: min(220px, 100%);
+      background: #111;
+      border: 1px solid #333;
+      color: #ddd;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: 12px 'SF Mono', 'Fira Code', monospace;
+    }
+    .loader .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 2px 8px;
+      margin-top: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: #8eb6db;
+    }
+    .stats [data-k="quality"] { flex: 1 0 100%; line-height: 1.35; }
+    #sharp-val { min-width: 78px; }
+    .stats .dim { color: #666; }
+    .callout {
+      margin-top: 22px;
+      background: #0d1620;
+      border-left: 3px solid #5b9bd5;
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.65;
+    }
+    .callout strong { color: #ccc; }
+    code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #bbb; }
+    #video-source {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a class="back" href="index.html">← Back</a>
+    <h1>Upscale Compare</h1>
+    <p class="subtitle">The clip is area-downsampled in the browser, then reconstructed to its original resolution. Hover any view to magnify that same spot in every panel. The loupe is nearest-neighbor zoom of each panel’s final pixels.</p>
+
+    <div class="toolbar">
+      <button type="button" id="play" class="primary">Play</button>
+      <button type="button" id="step-back" title="Previous frame">−1f</button>
+      <button type="button" id="step-fwd" title="Next frame">+1f</button>
+      <span class="time" id="cur-time">0:00.00</span>
+      <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub">
+      <span class="time" id="dur-time">0:00.00</span>
+      <div class="group">
+        <span class="lbl">Downscale</span>
+        <button type="button" id="scale-2" class="primary">2×</button>
+        <button type="button" id="scale-4">4×</button>
+      </div>
+      <div class="group">
+        <span class="lbl">Loupe</span>
+        <input id="zoom" type="range" min="2" max="8" step="1" value="4" aria-label="Magnifier zoom">
+        <span class="time" id="zoom-val">4×</span>
+      </div>
+      <div class="group">
+        <span class="lbl">RCAS</span>
+        <input id="sharpness" type="range" min="0" max="2" step="0.05" value="0.2" aria-label="RCAS sharpness in stops">
+        <span class="time" id="sharp-val">0.20 stops</span>
+      </div>
+    </div>
+    <div class="status" id="status">Loading clip…</div>
+    <div class="tabrow">
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Upscaler sets"></div>
+    </div>
+    <div class="legend" id="qc-legend">
+      <div class="legend-bar">
+        <div class="legend-keys">
+          <span class="tag xr">QC XR</span> viable
+          <span class="tag xr mid">QC XR</span> marginal
+          <span class="tag xr no">XR —</span> not viable
+          <span class="tag ar">QC AR</span> viable
+          <span class="tag ar mid">QC AR</span> marginal
+          <span class="tag ar no">AR —</span> not viable
+          <span class="tag na">N/A</span> reference
+        </div>
+        <a class="legend-more" href="#viability">How tags are decided</a>
+      </div>
+      <p>
+        Every panel shows a chip. Filled is a small slice of the frame. Outlined is a large slice, or the main fullscreen pass. A dashed <strong>XR —</strong> or <strong>AR —</strong> means that class does not fit. <strong>N/A</strong> is the reference frame, not an upscaler.
+        <strong>QC XR</strong> is Snapdragon XR2 Gen 2 / XR2+ Gen 2 class (Quest 3, Galaxy XR): one eye, one 2× pass into the brief’s 2.2K×2.4K render target at 90&nbsp;Hz.
+        Neural XR chips use 30% of a third-party 3.1&nbsp;TFLOPS FP32 peak for the XR2 Gen 2 Adreno. The Qualcomm brief does not publish that FLOPS number.
+        <strong>QC AR</strong> is Snapdragon AR1 / AR1+ / AR2 glasses: 1280×1280 at 60&nbsp;Hz, sparse GPU, SoC power under about 1&nbsp;W.
+        The NPU column is advisory until a QNN export exists.
+        4× is two passes (~1.25× the MACs) and does not retag.
+      </p>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <div class="callout">
+      <strong>Clip.</strong> Top eye of the fixed red/green football stereo feed already used by this folder
+      (<code>streams.quintar.ai/kyle/20251207-red-green/8Mbps</code>).
+      <code>testdata/</code> only had stills, and that broadcast is HEVC 3840×4320, which desktop Chrome often will not decode.
+      This page plays a 6s H.264 1920×1080 excerpt of the top eye,
+      <code>testdata/red-green-top-eye.mp4</code>.
+      Tabs switch the five upscaled panels. The original, magnifier, downscale factor, and playback stay put.
+      Browser universal is the classical set plus Anime4K CNN-S. Shader sharpeners are FSR 1 (EASU+RCAS), NVIDIA Image Scaling, CAS on bilinear, Hyllian xBR-lv2, and Lanczos plus an unsharp mask.
+      Neural (WebGPU) is Anime4K CNN-S, M, L, GAN-S, and CNN-VL, each an x2 network run twice at 4×.
+      Neural custom ships five <code>webartests-sr-v1</code> nets (see <code>upscale-models/</code>).
+      Football ESPCN-tiny is the short luma net trained on this clip.
+      Football wide is a deeper luma ESPCN trained longer on later frames of the same broadcast; this 6s clip is held out.
+      Football RGB predicts an RGB residual so jersey colors and field lines are not left to bilinear chroma.
+      Football temporal reads the current and previous luma, with no motion warp. A repeated timestamp keeps the same previous frame.
+      Football distill is a smaller student of Anime4K CNN-M. Real-ESRGAN was not run; the training script says why.
+      Drop a JSON file on a panel to replace that preset. Older <code>espcn-y</code> files still load. <code>espcn-rgb</code> and <code>espcn-y2</code> are the added arch values.
+      Sharp lines (exploring) keeps that wide net as the baseline and does not replace it.
+      Wide + RCAS and Sharp + RCAS run FSR 1 RCAS on the network output. The RCAS slider is in stops: 0 is the strongest, 2 is the mildest, and 0.20 matches the FSR 1 panel. The other panels ignore it.
+      Sharp edges is the same 1-16-16-16-4 luma net trained with Sobel-weighted error and crops drawn from high-gradient blocks on later stream frames. This clip is held out.
+      Sharp perceptual continues those weights with a Laplacian term, a Sobel-matching term, and a 4→8→8→1 patch discriminator. Real-ESRGAN and VGG were not run; there is no PyTorch on the training machine.
+      PSNR and SSIM are luma versus the original; SSIM uses 8×8 boxes.
+      Edge is luma PSNR on pixels whose reference Sobel magnitude is at least 200, so a blurry line is not rewarded the way full-frame PSNR rewards it.
+      The hash remembers the tab.
+      Hover a panel title for a short description of that method.
+      The headset tags are an estimate from public Qualcomm product briefs, a third-party 3.1&nbsp;TFLOPS GPU figure, and each method’s tap or MAC count, not a run on a Quest or a pair of glasses. Neural XR times use 30% of that peak. See the section below.
+      Every technique shows a chip, including the ones that do not fit.
+    </div>
+
+    <section class="viability" id="viability">
+      <h2>How tags are decided</h2>
+      <p class="assumptions">
+        One row per technique. Tags are an estimate for one eye and one 2× pass, not a measurement on a headset.
+        <strong>QC XR</strong> uses the Snapdragon XR2 Gen 2 and XR2+ Gen 2 brief line “Render: 2.2K × 2.4K @ 90 FPS”, read here as 2200×2400 (11.1&nbsp;ms). The low-resolution grid is 1100×1200.
+        <strong>QC AR</strong> uses the AR1 brief: binocular 1280×1280 at 60&nbsp;Hz, an Adreno GPU specified for sparse content, and a whole-chip budget under about 1&nbsp;W as reported by The Verge. The briefs themselves do not print watts. AR1 is not the 3.1&nbsp;TFLOPS GPU, so neural AR tags stay not viable. The AR column shows what an XR2-class GPU would take at 1280² only so the arithmetic is visible.
+        Qualcomm’s <a href="https://docs.qualcomm.com/doc/87-73689-1/87-73689-1_REV_A_Snapdragon_XR2_Gen_2_Platform_Product_Brief.pdf">XR2 Gen 2 brief (87-73689-1 Rev A)</a> does not publish GPU TFLOPS or Hexagon TOPS. A <a href="https://github.com/azhirnov/cpu-gpu-arch/blob/main/gpu/Adreno-700.md">third-party Adreno 700 note</a> lists XR2 Gen 2 (Adreno 740) at about 3.1&nbsp;TFLOPS FP32, and <a href="https://gadgetversus.com/processor/qualcomm-snapdragon-xr2-gen-2-specs/">gadgetversus</a> lists 3,100&nbsp;GFLOPS. One MAC is two FLOPs, so the peak used here is 1.55 trillion MAC/s.
+        Neural XR tags divide MACs by 30% of that peak, inside a stated 20–40% utilization band, because a sustained shader rarely hits peak. Viable is at most 2.0&nbsp;ms. Marginal is at most half of 11.1&nbsp;ms (5.55&nbsp;ms). Each neural cell also shows the peak time, the 20–40% range, and the previous unofficial 0.25 trillion MAC/s figure, marked “was”.
+        The NPU column, “if QNN on Hexagon”, uses phone proxies: Snapdragon 8 Gen 2 about 26&nbsp;TOPS INT8 and 8 Gen 3 about 34&nbsp;TOPS INT8 (<a href="https://en.wikipedia.org/wiki/Qualcomm_Hexagon">Wikipedia’s Hexagon table</a>). Qualcomm’s <a href="https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-8-Gen-2-Product-Brief.pdf">8 Gen 2 brief</a> prints a 4.35× Hexagon gain and the <a href="https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/images/company/news-media/media-center/press-kits/snapdragon-summit-2023/documents/Snapdragon8Gen3_%20ProductBrief.pdf">8 Gen 3 brief</a> prints a 98% faster Hexagon; neither brief prints those TOPS numbers. INT8 TOPS are counted as two ops per MAC, with the same 30% derate. XR2 Hexagon TOPS are unpublished. These times are not measured on headset silicon and do not set tags.
+        A 4× reconstruct on this page is two 2× passes and about 1.25× the MACs, because the first pass runs on a quarter-resolution grid. Shader rows are costed in texture fetches, not MACs. Edge PSNR and SSIM did not set any tag.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tags</th>
+              <th>Technique</th>
+              <th>Cost</th>
+              <th>XR GPU ms/eye</th>
+              <th>NPU if QNN</th>
+              <th>AR ms note</th>
+              <th>Power</th>
+              <th>Path</th>
+              <th>Portability</th>
+              <th>Bandwidth</th>
+              <th>2× vs 4×</th>
+              <th>Quality</th>
+            </tr>
+          </thead>
+          <tbody id="viability-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="viability" id="cost-model">
+      <h2>Portable cost model</h2>
+      <p class="assumptions">
+        Score another conv net from its layers and its weights and biases (W&amp;B).
+        <strong>MACs</strong> ≈ Σ over conv layers of (H × W × Cin × Cout × K × K).
+        Optional bias adds are Σ (H × W × Cout). They are off by default so the count matches the MAC/pixel figures above, which leave bias out.
+        Weights are that same Cin × Cout × K × K sum. Biases are Cout per layer. W&amp;B is weights + biases.
+        <strong>time (seconds)</strong> = MACs / (device MAC/s × utilization).
+        For the XR GPU tags, device MAC/s is 1.55×10¹² and the tag utilization is 0.30.
+        Anime4K’s ReLU is a positive/negative pair, so the plain formula under-counts unless those 3×3s are doubled, and the depth-to-space gather is extra MACs with no weights. GAN-S’s last 3×3 runs on the 2× grid (2,304 MACs per low-res pixel).
+      </p>
+      <p class="assumptions">
+        <strong>Worked example, Football ESPCN-tiny.</strong>
+        Layers 1→8, 8→8, 8→4, all k=3:
+        1×8×9 + 8×8×9 + 8×4×9 = 72 + 576 + 288 = 936 weights.
+        Biases 8+8+4 = 20, so W&amp;B = 956.
+        MACs per low-res pixel = 936.
+        At 1100×1200 that is 0.80&nbsp;ms at the 1.55&nbsp;T MAC/s peak and 2.66&nbsp;ms at 30%, which is marginal on QC XR.
+        A plain four-layer 4→4 k3 stack would be 576 MACs; Anime4K CNN-S is 1,056 because three of those 3×3s are doubled for the pos/neg split and the depth-to-space gather adds 48.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Technique</th>
+              <th>Layers</th>
+              <th>Shape</th>
+              <th>Weights</th>
+              <th>Biases</th>
+              <th>W&amp;B</th>
+              <th>MACs/low px</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="cost-model-body"></tbody>
+        </table>
+      </div>
+      <form class="estimate" id="net-estimate">
+        <h3>Estimate a new net</h3>
+        <p>One layer per line: Cin, Cout, K. The form below is the tiny net. It does not set QC AR, and it does not use the phone NPU proxy.</p>
+        <div class="fields">
+          <label>Height
+            <input type="number" name="h" min="1" step="1" value="1100">
+          </label>
+          <label>Width
+            <input type="number" name="w" min="1" step="1" value="1200">
+          </label>
+          <label>Utilization
+            <input type="number" name="util" min="0.01" max="1" step="0.05" value="0.30">
+          </label>
+          <label class="bias">
+            <input type="checkbox" name="bias">
+            Include bias adds
+          </label>
+        </div>
+        <label>Layers
+          <textarea name="layers" aria-label="Layers as Cin Cout K">1 8 3
+8 8 3
+8 4 3</textarea>
+        </label>
+        <div class="fields" style="margin-top: 12px; margin-bottom: 0;">
+          <button type="submit" class="primary">Score net</button>
+        </div>
+        <div id="estimate-out"></div>
+      </form>
+    </section>
+  </div>
+
+  <video id="video-source" playsinline muted loop preload="auto"></video>
+
+  <script src="nis-coef.js"></script>
+  <script src="upscale-kernels.js"></script>
+  <script src="upscale-compare.js"></script>
+
+</body>
+</html>
