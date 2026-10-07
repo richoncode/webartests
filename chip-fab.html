@@ -98,7 +98,7 @@
         }
 
         .card-title {
-            font-size: 1.2rem;
+            font-size: 1.25rem;
             margin: 0 0 20px 0;
             font-weight: bold;
             display: flex;
@@ -168,7 +168,7 @@
         }
 
         .calculator-results {
-            flex: 1.5;
+            flex: 1.6;
             background-color: rgba(255, 255, 255, 0.01);
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -228,12 +228,44 @@
             text-transform: uppercase;
         }
 
-        /* Chart Canvas Wrapper */
+        /* Dual Chart Layout */
+        .charts-row {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        @media (min-width: 900px) {
+            .charts-row {
+                flex-direction: row;
+            }
+        }
+
+        .chart-box {
+            flex: 1;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .chart-title-lbl {
+            font-size: 0.9rem;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+            margin: 0 0 15px 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .chart-container {
             position: relative;
-            height: 350px;
+            height: 320px;
             width: 100%;
-            margin-top: 25px;
         }
 
         /* Highlights & Takeaways Section */
@@ -426,6 +458,10 @@
                             <input type="number" id="defect-rate" class="input-field" value="0.08" min="0.01" max="1.0" step="0.01">
                         </div>
                         <div class="input-group">
+                            <label class="input-label" for="chip-asp">Average Chip Selling Price (ASP $)</label>
+                            <input type="number" id="chip-asp" class="input-field" value="12.00" min="1" max="500" step="1.00">
+                        </div>
+                        <div class="input-group">
                             <label class="input-label" for="elec-cost">Electricity Cost per kWh ($)</label>
                             <input type="number" id="elec-cost" class="input-field" value="0.12" min="0.01" max="0.50" step="0.01">
                         </div>
@@ -494,9 +530,23 @@
                             </div>
                         </div>
 
-                        <!-- Live Cost vs. Benefit Chart -->
-                        <div class="chart-container">
-                            <canvas id="tcoChart"></canvas>
+                        <!-- Dual Charts Display Row -->
+                        <div class="charts-row">
+                            <!-- Chart 1: Cost vs Benefit Over Time -->
+                            <div class="chart-box">
+                                <h4 class="chart-title-lbl">TCO vs. Generated Value ($M)</h4>
+                                <div class="chart-container">
+                                    <canvas id="valChart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Chart 2: Amortized Cost Per Chip -->
+                            <div class="chart-box">
+                                <h4 class="chart-title-lbl">Amortized Cost Per Usable Chip ($)</h4>
+                                <div class="chart-container">
+                                    <canvas id="cpcChart"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -504,12 +554,17 @@
                 <!-- Strategic Commentary Box -->
                 <div class="takeaway-box">
                     <div class="takeaway-title">
-                        💡 Key Strategic Insight: "Cleanroom Space & Supply Chain Resilience"
+                        💡 Business Advisor & Financial Analysis Note
                     </div>
-                    <p style="margin: 0;">
-                        This simulation proves the profound footprint advantage of **Canon's Nanoimprint Lithography (NIL)**. Because each Canon FPA-1200NZ2C tool is compact (~20 $m^2$), a fab can install a parallelized **Canon Tool Cluster in less than half the floor space of a single ASML EUV tool**, while matching or exceeding the exact same monthly wafer throughput! 
+                    <p style="margin: 0; font-size: 0.9rem; line-height: 1.6;">
+                        <strong>Why standard TCO lines look "flat":</strong> In advanced lithography, **CapEx completely dominates OpEx**. Because a single ASML High-NA tool costs a massive $380M, but its annual operating electricity cost is only ~$1.5M, the slope of a simple cost line over 5 years is statistically flat. It represents a horizontal "spend barrier."
                         <br/><br/>
-                        Furthermore, the **Supply Chain Lead Time** represents a major strategic shift: ASML can only produce 5-10 High-NA EUV tools per year because of hyper-specialized Zeiss mirrors and Trumpf laser components. Conversely, because Canon's mechanical stamping NIL uses standard optical lithography mechanics without extreme plasma lasers, **Canon can manufacture 10x more tools per year**, allowing semiconductor fabricators to scale up cleanrooms and output years ahead of traditional EUV fabs!
+                        <strong>The True Business Metrics:</strong> 
+                        To capture the actual financial value of these systems, we have integrated two critical semiconductor CFO metrics:
+                        <br/>
+                        1.  <strong>Setup Lead Time Delay</strong> (ASML High-NA: 24 mos, Low-NA: 12 mos, Canon NIL: 3 mos): During this setup window, the system produces **zero chips** while incurring fixed costs. This creates a massive Time-to-Market penalty for ASML, allowing the Canon cluster to achieve positive ROI years ahead of EUV.
+                        <br/>
+                        2.  <strong>Amortized Cost Per Chip (CPC)</strong>: This is the absolute cost to print each individual usable die. At inception (Year 1), the CPC for ASML High-NA is astronomically high ($10.00+ per chip) due to the low early volume and high CapEx. As production ramps up, the CPC drops. Due to the low starting CapEx, the **Canon NIL Cluster achieves a CPC under $0.50 within its first year**, providing a spectacular margin buffer for DRAM, NAND, and optical foundries!
                     </p>
                 </div>
             </div>
@@ -521,6 +576,7 @@
         const monthlyWafersInput = document.getElementById('monthly-wafers');
         const dieSizeInput = document.getElementById('die-size');
         const defectRateInput = document.getElementById('defect-rate');
+        const chipAspInput = document.getElementById('chip-asp');
         const elecCostInput = document.getElementById('elec-cost');
         const yearsInput = document.getElementById('projected-years');
 
@@ -537,7 +593,8 @@
         const canonChipsVal = document.getElementById('canon-chips-val');
         const canonSpaceVal = document.getElementById('canon-space-val');
 
-        let tcoChart = null;
+        let valChart = null;
+        let cpcChart = null;
 
         function formatMoney(amount) {
             if (amount >= 1000000) {
@@ -557,116 +614,123 @@
             const monthlyWafers = parseFloat(monthlyWafersInput.value) || 25000;
             const dieSize = parseFloat(dieSizeInput.value) || 100; // in mm²
             const defectRate = parseFloat(defectRateInput.value) || 0.08; // defects per cm²
+            const chipAsp = parseFloat(chipAspInput.value) || 12.00; // average selling price
             const elecCost = parseFloat(elecCostInput.value) || 0.12;
             const years = parseInt(yearsInput.value) || 5;
 
-            // 1. Chip Yield Calculation using standard Murphy's Model
-            // Wafer area (300mm wafer) = pi * (15cm)^2 = 706.8 cm²
-            const waferAreaCm2 = 706.8;
+            // 1. Chip Yield Calculation (Murphy's Model)
+            const waferAreaCm2 = 706.8; // 300mm wafer
             const dieSizeCm2 = dieSize / 100;
             const potentialDiesPerWafer = Math.floor(waferAreaCm2 / dieSizeCm2);
-            
-            // Murphy's yield model: Yield = ((1 - exp(-D*A)) / (D*A))^2
             const DA = defectRate * dieSizeCm2;
             const yieldFactor = Math.pow((1 - Math.exp(-DA)) / (DA), 2);
             const usableChipsPerWafer = Math.floor(potentialDiesPerWafer * yieldFactor);
 
-            // 2. Throughput / Equipment Counts needed
-            // Operating 24/7/365 (~730 hours/month)
-            const hoursPerMonth = 730;
-            
-            // ASML Low-NA (NXE:3800E) = 220 WPH, Monthly capacity: 220 * 730 = 160,600 wafers
+            // 2. Setup Lead Times (in Months)
+            const nxeDelay = 12;
+            const exeDelay = 24;
+            const canonDelay = 3;
+
+            // 3. Equipment Count Calculations
             const nxeToolsNeeded = Math.ceil(monthlyWafers / 160600);
-            
-            // ASML High-NA (EXE:5200) = 200 WPH, Monthly capacity: 200 * 730 = 146,000 wafers
             const exeToolsNeeded = Math.ceil(monthlyWafers / 146000);
-            
-            // Canon NIL (FPA-1200NZ2C) = 90 WPH, Monthly capacity: 90 * 730 = 65,700 wafers
             const canonToolsNeeded = Math.ceil(monthlyWafers / 65700);
 
-            // 3. Update Text Values
-            nxeCapexVal.innerText = formatMoney(180000000 * nxeToolsNeeded);
+            // 4. Initial CapEx
+            const nxeCapex = 180000000 * nxeToolsNeeded;
+            const exeCapex = 380000000 * exeToolsNeeded;
+            const canonCapex = 18000000 * canonToolsNeeded;
+
+            nxeCapexVal.innerText = formatMoney(nxeCapex);
             nxeSpaceVal.innerText = `${150 * nxeToolsNeeded} m²`;
 
-            exeCapexVal.innerText = formatMoney(380000000 * exeToolsNeeded);
+            exeCapexVal.innerText = formatMoney(exeCapex);
             exeSpaceVal.innerText = `${200 * exeToolsNeeded} m²`;
 
             canonClusterTitle.innerText = `Canon Cluster (${canonToolsNeeded}x Tools)`;
-            canonCapexVal.innerText = formatMoney(18000000 * canonToolsNeeded);
+            canonCapexVal.innerText = formatMoney(canonCapex);
             canonSpaceVal.innerText = `${20 * canonToolsNeeded} m²`;
 
-            const totalWafersNXE = monthlyWafers * 12 * years * nxeToolsNeeded; // Total run wafers
-            const totalChipsNXE = totalWafersNXE * usableChipsPerWafer;
+            // Helper to get production output over Months considering setup delays
+            function getProducedChips(months, delay, tools) {
+                const effectiveMonths = Math.max(0, months - delay);
+                return effectiveMonths * monthlyWafers * usableChipsPerWafer;
+            }
+
+            // Update result cards with total chips produced over selected years
+            const totalMonths = years * 12;
+            const totalChipsNXE = getProducedChips(totalMonths, nxeDelay, nxeToolsNeeded);
             nxeChipsVal.innerText = formatChips(totalChipsNXE);
 
-            const totalWafersEXE = monthlyWafers * 12 * years * exeToolsNeeded;
-            const totalChipsEXE = totalWafersEXE * usableChipsPerWafer;
+            const totalChipsEXE = getProducedChips(totalMonths, exeDelay, exeToolsNeeded);
             exeChipsVal.innerText = formatChips(totalChipsEXE);
 
-            const totalWafersCanon = monthlyWafers * 12 * years * canonToolsNeeded;
-            const totalChipsCanon = totalWafersCanon * usableChipsPerWafer;
+            const totalChipsCanon = getProducedChips(totalMonths, canonDelay, canonToolsNeeded);
             canonChipsVal.innerText = formatChips(totalChipsCanon);
 
-            // 4. Chart Data Generation
+            // 5. Generate Chart Datasets Year-by-Year
             const labels = [];
-            const nxeCosts = [];
-            const exeCosts = [];
-            const canonCosts = [];
+            const nxeTCO = [];
+            const exeTCO = [];
+            const canonTCO = [];
 
-            // Electricity constants
+            const nxeRevenue = [];
+            const exeRevenue = [];
+            const canonRevenue = [];
+
+            const nxeCPC = [];
+            const exeCPC = [];
+            const canonCPC = [];
+
             const nxePower = 1000 * nxeToolsNeeded; // in kW
             const exePower = 1400 * exeToolsNeeded;
             const canonPower = 100 * canonToolsNeeded;
 
-            const nxeInitialCapex = 180000000 * nxeToolsNeeded;
-            const exeInitialCapex = 380000000 * exeToolsNeeded;
-            const canonInitialCapex = 18000000 * canonToolsNeeded;
+            for (let y = 0; y <= years; y++) {
+                labels.push(`Year ${y}`);
+                const m = y * 12; // elapsed months
+                const hoursRun = 8760 * y;
 
-            for (let i = 0; i <= years; i++) {
-                labels.push(`Year ${i}`);
-                
-                // Cumulative TCO = CapEx + (Power * Hours/Year * Years * ElectricityCost)
-                const hoursRun = 8760 * i;
-                nxeCosts.push((nxeInitialCapex + (nxePower * hoursRun * elecCost)) / 1000000);
-                exeCosts.push((exeInitialCapex + (exePower * hoursRun * elecCost)) / 1000000);
-                canonCosts.push((canonInitialCapex + (canonPower * hoursRun * elecCost)) / 1000000);
+                // TCO (CapEx + electricity)
+                const nxeCostSum = nxeCapex + (nxePower * hoursRun * elecCost);
+                const exeCostSum = exeCapex + (exePower * hoursRun * elecCost);
+                const canonCostSum = canonCapex + (canonPower * hoursRun * elecCost);
+
+                nxeTCO.push(nxeCostSum / 1000000);
+                exeTCO.push(exeCostSum / 1000000);
+                canonTCO.push(canonCostSum / 1000000);
+
+                // Revenue (ASP * Usable Chips)
+                const chipsNXE = getProducedChips(m, nxeDelay, nxeToolsNeeded);
+                const chipsEXE = getProducedChips(m, exeDelay, exeToolsNeeded);
+                const chipsCanon = getProducedChips(m, canonDelay, canonToolsNeeded);
+
+                nxeRevenue.push((chipsNXE * chipAsp) / 1000000);
+                exeRevenue.push((chipsEXE * chipAsp) / 1000000);
+                canonRevenue.push((chipsCanon * chipAsp) / 1000000);
+
+                // Cost Per Chip (CPC) Amortization
+                nxeCPC.push(chipsNXE > 0 ? (nxeCostSum / chipsNXE) : (nxeCostSum / 1000000)); // Avoid division by zero
+                exeCPC.push(chipsEXE > 0 ? (exeCostSum / chipsEXE) : (exeCostSum / 1000000));
+                canonCPC.push(chipsCanon > 0 ? (canonCostSum / chipsCanon) : (canonCostSum / 1000000));
             }
 
-            // 5. Update/Render Chart.js Plot
-            if (tcoChart) {
-                tcoChart.destroy();
-            }
-
-            const ctx = document.getElementById('tcoChart').getContext('2d');
-            tcoChart = new Chart(ctx, {
+            // 6. Render Chart 1: Value Crossover & Break-Even ($M)
+            if (valChart) { valChart.destroy(); }
+            const ctxVal = document.getElementById('valChart').getContext('2d');
+            valChart = new Chart(ctxVal, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        {
-                            label: 'ASML NXE:3800E (Low-NA)',
-                            data: nxeCosts,
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            borderWidth: 2.5,
-                            tension: 0.1
-                        },
-                        {
-                            label: 'ASML EXE:5200 (High-NA)',
-                            data: exeCosts,
-                            borderColor: '#5b9bd5',
-                            backgroundColor: 'rgba(91, 155, 213, 0.1)',
-                            borderWidth: 2.5,
-                            tension: 0.1
-                        },
-                        {
-                            label: `Canon Cluster (${canonToolsNeeded}x NIL Tools)`,
-                            data: canonCosts,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            borderWidth: 2.5,
-                            tension: 0.1
-                        }
+                        { label: 'NXE Cost', data: nxeTCO, borderColor: '#3b82f6', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5 },
+                        { label: 'NXE Value', data: nxeRevenue, borderColor: '#3b82f6', tension: 0.1, borderWidth: 2.5 },
+                        
+                        { label: 'EXE Cost', data: exeTCO, borderColor: '#5b9bd5', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5 },
+                        { label: 'EXE Value', data: exeRevenue, borderColor: '#5b9bd5', tension: 0.1, borderWidth: 2.5 },
+
+                        { label: 'Canon Cost', data: canonTCO, borderColor: '#10b981', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5 },
+                        { label: 'Canon Value', data: canonRevenue, borderColor: '#10b981', tension: 0.1, borderWidth: 2.5 }
                     ]
                 },
                 options: {
@@ -675,25 +739,43 @@
                     scales: {
                         y: {
                             grid: { color: '#222' },
-                            ticks: { 
-                                color: '#aaa',
-                                callback: function(value) { return '$' + value + 'M'; }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Cumulative TCO (CapEx + OpEx in USD)',
-                                color: '#888'
-                            }
+                            ticks: { color: '#aaa', callback: function(value) { return '$' + value + 'M'; } },
+                            title: { display: true, text: 'USD Millions', color: '#888' }
                         },
-                        x: {
-                            grid: { color: '#222' },
-                            ticks: { color: '#aaa' }
-                        }
+                        x: { grid: { color: '#222' }, ticks: { color: '#aaa' } }
                     },
                     plugins: {
-                        legend: {
-                            labels: { color: '#fff', font: { family: 'monospace' } }
-                        }
+                        legend: { labels: { color: '#fff', font: { family: 'monospace', size: 9 } } }
+                    }
+                }
+            });
+
+            // 7. Render Chart 2: Amortized Cost Per Chip ($)
+            if (cpcChart) { cpcChart.destroy(); }
+            const ctxCpc = document.getElementById('cpcChart').getContext('2d');
+            cpcChart = new Chart(ctxCpc, {
+                type: 'line',
+                data: {
+                    labels: labels.slice(1), // Exclude Year 0 since CPC is undefined/infinite before production
+                    datasets: [
+                        { label: 'ASML NXE:3800E', data: nxeCPC.slice(1), borderColor: '#3b82f6', tension: 0.1, borderWidth: 2 },
+                        { label: 'ASML EXE:5200', data: exeCPC.slice(1), borderColor: '#5b9bd5', tension: 0.1, borderWidth: 2 },
+                        { label: 'Canon Cluster', data: canonCPC.slice(1), borderColor: '#10b981', tension: 0.1, borderWidth: 2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            grid: { color: '#222' },
+                            ticks: { color: '#aaa', callback: function(value) { return '$' + value.toFixed(2); } },
+                            title: { display: true, text: 'Amortized Cost Per Chip (USD)', color: '#888' }
+                        },
+                        x: { grid: { color: '#222' }, ticks: { color: '#aaa' } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#fff', font: { family: 'monospace', size: 9 } } }
                     }
                 }
             });
@@ -703,6 +785,7 @@
         monthlyWafersInput.addEventListener('input', calculateTCO);
         dieSizeInput.addEventListener('input', calculateTCO);
         defectRateInput.addEventListener('input', calculateTCO);
+        chipAspInput.addEventListener('input', calculateTCO);
         elecCostInput.addEventListener('input', calculateTCO);
         yearsInput.addEventListener('input', calculateTCO);
 
