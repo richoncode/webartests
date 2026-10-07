@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOTA Semiconductor Lithography Comparison</title>
+    <!-- Chart.js for high-fidelity data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Design Tokens & Theme Mandates from Style Guide */
         :root {
@@ -13,6 +15,7 @@
             --text-primary: #ffffff;
             --text-secondary: #aaaaaa;
             --primary-blue: #5b9bd5;
+            --secondary-blue: #3b82f6;
             --success-green: #10b981;
             --warning-amber: #f59e0b;
             --density-violet: #8b5cf6;
@@ -32,7 +35,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             width: 100%;
         }
 
@@ -79,7 +82,7 @@
 
         @media (min-width: 900px) {
             .dashboard-grid {
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: repeat(3, 1fr);
             }
         }
 
@@ -95,7 +98,7 @@
         }
 
         .card-title {
-            font-size: 1.25rem;
+            font-size: 1.2rem;
             margin: 0 0 20px 0;
             font-weight: bold;
             display: flex;
@@ -103,7 +106,8 @@
             gap: 10px;
         }
 
-        .asml-theme { color: var(--primary-blue); border-top: 3px solid var(--primary-blue); }
+        .asml-standard-theme { color: var(--secondary-blue); border-top: 3px solid var(--secondary-blue); }
+        .asml-high-theme { color: var(--primary-blue); border-top: 3px solid var(--primary-blue); }
         .canon-theme { color: var(--success-green); border-top: 3px solid var(--success-green); }
         .calc-theme { color: var(--density-violet); border-top: 3px solid var(--density-violet); }
 
@@ -119,7 +123,8 @@
             justify-content: space-between;
             padding: 12px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            line-height: 1.4;
         }
 
         .spec-item:last-child {
@@ -128,12 +133,14 @@
 
         .spec-label {
             color: var(--text-secondary);
+            max-width: 50%;
         }
 
         .spec-value {
             font-family: var(--font-mono);
             font-weight: bold;
             color: var(--text-primary);
+            text-align: right;
         }
 
         /* Interactive ROI Calculator Section */
@@ -147,22 +154,22 @@
             gap: 30px;
         }
 
-        @media (min-width: 800px) {
+        @media (min-width: 1000px) {
             .calculator-layout {
                 flex-direction: row;
             }
         }
 
         .calculator-inputs {
-            flex: 1;
+            flex: 0.8;
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
 
         .calculator-results {
-            flex: 1.2;
-            background-color: rgba(255, 255, 255, 0.02);
+            flex: 1.5;
+            background-color: rgba(255, 255, 255, 0.01);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 25px;
@@ -198,53 +205,16 @@
             border-color: var(--density-violet);
         }
 
-        /* Comparison Data Blocks */
-        .comparison-bars {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            margin-top: 15px;
-        }
-
-        .bar-container {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .bar-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-
-        .bar-bg {
-            background-color: #252525;
-            height: 10px;
-            border-radius: 5px;
-            overflow: hidden;
-            display: flex;
-        }
-
-        .bar-fill {
-            height: 100%;
-            border-radius: 5px;
-            transition: width 0.5s ease-out;
-        }
-
-        .bar-fill-asml { background-color: var(--primary-blue); }
-        .bar-fill-canon { background-color: var(--success-green); }
-
         .big-number {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             font-family: var(--font-mono);
             font-weight: bold;
             margin-top: 5px;
             color: var(--text-primary);
         }
 
-        .asml-number { color: var(--primary-blue); }
+        .asml-standard-number { color: var(--secondary-blue); }
+        .asml-high-number { color: var(--primary-blue); }
         .canon-number { color: var(--success-green); }
 
         .badge {
@@ -256,6 +226,14 @@
             padding: 2px 8px;
             border-radius: 4px;
             text-transform: uppercase;
+        }
+
+        /* Chart Canvas Wrapper */
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+            margin-top: 25px;
         }
 
         /* Highlights & Takeaways Section */
@@ -287,23 +265,68 @@
 
         <header>
             <h1>SOTA Semiconductor Lithography Comparison</h1>
-            <div class="subtitle">Next-Gen Optical Projection (ASML High-NA EUV) vs. Physical Contact Printing (Canon NIL)</div>
+            <div class="subtitle">Comparing Standard 0.33 NA EUV vs. High-NA EUV (Optical Projection) vs. Nanoimprint NIL (Contact Printing)</div>
         </header>
 
         <div class="dashboard-grid">
-            <!-- ASML Card -->
-            <div class="card asml-theme">
+            <!-- ASML Standard EUV Card -->
+            <div class="card asml-standard-theme">
+                <div class="card-title">
+                    ⚡ ASML TWINSCAN NXE:3800E (Low-NA EUV)
+                </div>
+                <ul class="spec-list">
+                    <li class="spec-item">
+                        <span class="spec-label">Technology</span>
+                        <span class="spec-value">Optical Projection (13.5nm EUV Light, 0.33 NA)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Physical Resolution (Single Exp)</span>
+                        <span class="spec-value" style="color: var(--secondary-blue);">13.5 nm (Requires multi-patterning for sub-5nm)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Throughput / Speed</span>
+                        <span class="spec-value">220 Wafers Per Hour (WPH)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Overlay Accuracy</span>
+                        <span class="spec-value">1.1 nm</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Unit Capital Cost</span>
+                        <span class="spec-value" style="color: var(--alert-red);">$180,000,000</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Power Consumption</span>
+                        <span class="spec-value" style="color: var(--warning-amber);">1,000 kW (1.0 MW)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Cleanroom Footprint</span>
+                        <span class="spec-value">Large (approx. 150 m², >8m ceiling height)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">OEM Build Rate</span>
+                        <span class="spec-value">~40 - 50 Tools Per Year (Lead Time: 18-24 months)</span>
+                    </li>
+                    <li class="spec-item">
+                        <span class="spec-label">Maintenance / Down Time</span>
+                        <span class="spec-value">Medium-High (Tin debris cleaning required)</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- ASML High-NA EUV Card -->
+            <div class="card asml-high-theme">
                 <div class="card-title">
                     ⚡ ASML TWINSCAN EXE:5200 (High-NA EUV)
                 </div>
                 <ul class="spec-list">
                     <li class="spec-item">
                         <span class="spec-label">Technology</span>
-                        <span class="spec-value">Optical Projection (13.5nm EUV Light)</span>
+                        <span class="spec-value">Optical Projection (13.5nm EUV, 0.55 High-NA)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Physical Resolution (Single Exp)</span>
-                        <span class="spec-value" style="color: var(--primary-blue);">8.0 nm (Sub-2nm Target Nodes)</span>
+                        <span class="spec-value" style="color: var(--primary-blue);">8.0 nm (Sub-2nm Logic Target)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Throughput / Speed</span>
@@ -322,16 +345,16 @@
                         <span class="spec-value" style="color: var(--warning-amber);">1,400 kW (1.4 MW) per system</span>
                     </li>
                     <li class="spec-item">
-                        <span class="spec-label">Cleanroom Space & Height</span>
-                        <span class="spec-value">Massive (Double-decker bus size + Sub-fab CO2 laser sub-station)</span>
+                        <span class="spec-label">Cleanroom Footprint</span>
+                        <span class="spec-value">Massive (approx. 200 m², >10m ceiling height)</span>
                     </li>
                     <li class="spec-item">
-                        <span class="spec-label">Setup Time</span>
-                        <span class="spec-value">6 - 12 Months (requires cleanroom modification)</span>
+                        <span class="spec-label">OEM Build Rate</span>
+                        <span class="spec-value">~10 - 20 Tools Per Year (Lead Time: 24+ months)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Maintenance / Down Time</span>
-                        <span class="spec-value">High (Plasma debris collector Mirror degrading)</span>
+                        <span class="spec-value">High (Debris plasma collector degradation)</span>
                     </li>
                 </ul>
             </div>
@@ -344,7 +367,7 @@
                 <ul class="spec-list">
                     <li class="spec-item">
                         <span class="spec-label">Technology</span>
-                        <span class="spec-value">Physical Mechanical Contact Imprinting (NIL)</span>
+                        <span class="spec-value">Physical Contact Liquid Imprinting (NIL)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Physical Resolution</span>
@@ -352,11 +375,11 @@
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Throughput / Speed</span>
-                        <span class="spec-value">80 - 100 Wafers Per Hour (WPH) (Single-module)</span>
+                        <span class="spec-value">90 Wafers Per Hour (WPH) (Single-module)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Overlay Accuracy</span>
-                        <span class="spec-value" style="color: var(--warning-amber);">≤ 4.0 nm</span>
+                        <span class="spec-value" style="color: var(--warning-amber);">≤ 4.0 nm (Higher alignment complexity)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Unit Capital Cost</span>
@@ -367,16 +390,16 @@
                         <span class="spec-value" style="color: var(--success-green);">100 kW per system (~90% Green Savings)</span>
                     </li>
                     <li class="spec-item">
-                        <span class="spec-label">Cleanroom Space & Height</span>
-                        <span class="spec-value">Compact (Fits standard modular layout)</span>
+                        <span class="spec-label">Cleanroom Footprint</span>
+                        <span class="spec-value" style="color: var(--success-green);">Compact (approx. 20 m², standard ceiling height)</span>
                     </li>
                     <li class="spec-item">
-                        <span class="spec-label">Setup Time</span>
-                        <span class="spec-value" style="color: var(--success-green);">Weeks (No specialized infrastructure needed)</span>
+                        <span class="spec-label">OEM Build Rate</span>
+                        <span class="spec-value" style="color: var(--success-green);">~100 - 150 Tools/Year (Lead Time: 3-6 months)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Maintenance / Down Time</span>
-                        <span class="spec-value">Low (Contamination risk require mask/template cleaning)</span>
+                        <span class="spec-value">Low (No extreme laser plasma, standard template swap)</span>
                     </li>
                 </ul>
             </div>
@@ -384,8 +407,8 @@
             <!-- Interactive Value & ROI Calculator Card -->
             <div class="card full-width-card calc-theme">
                 <div class="card-title">
-                    ⚙️ Fab Financial & Operational TCO Calculator (ASML vs. Canon Cluster)
-                    <span class="badge">Dynamic Simulator</span>
+                    ⚙️ Fab Financial & Yield Simulator: Benefit vs. Cost Projections
+                    <span class="badge">Dynamic Yield Simulator</span>
                 </div>
                 <div class="calculator-layout">
                     <!-- Calculator Inputs -->
@@ -395,11 +418,19 @@
                             <input type="number" id="monthly-wafers" class="input-field" value="25000" min="1000" step="5000">
                         </div>
                         <div class="input-group">
+                            <label class="input-label" for="die-size">Die Size (Chip Area in mm²)</label>
+                            <input type="number" id="die-size" class="input-field" value="100" min="10" max="800">
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label" for="defect-rate">Defect Density (Defects per cm²)</label>
+                            <input type="number" id="defect-rate" class="input-field" value="0.08" min="0.01" max="1.0" step="0.01">
+                        </div>
+                        <div class="input-group">
                             <label class="input-label" for="elec-cost">Electricity Cost per kWh ($)</label>
                             <input type="number" id="elec-cost" class="input-field" value="0.12" min="0.01" max="0.50" step="0.01">
                         </div>
                         <div class="input-group">
-                            <label class="input-label" for="projected-years">Projected Analysis Timeline (Years)</label>
+                            <label class="input-label" for="projected-years">Analysis Timeline (Years)</label>
                             <input type="number" id="projected-years" class="input-field" value="5" min="1" max="10">
                         </div>
                     </div>
@@ -407,59 +438,65 @@
                     <!-- Calculator Results Display -->
                     <div class="calculator-results">
                         <div style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 20px; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">
-                            Projected Value & Resource comparison
+                            Simulation Results: Operational Costs, Cleanroom Footprints, & Chip Yields
                         </div>
+                        
                         <div class="calculator-layout" style="gap: 15px; margin-top: 0;">
-                            <!-- ASML Output -->
+                            <!-- Low-NA EUV Output -->
                             <div style="flex: 1;">
-                                <div class="input-label" style="color: var(--primary-blue);">ASML EXE:5200 (Single Tool)</div>
+                                <div class="input-label" style="color: var(--secondary-blue);">ASML NXE:3800E</div>
                                 <div class="bar-container" style="margin-top: 5px;">
                                     <div class="spec-label">Initial Capex</div>
-                                    <div class="big-number asml-number">$380.0M</div>
+                                    <div class="big-number asml-standard-number" id="nxe-capex-val">$180.0M</div>
                                 </div>
-                                <div class="bar-container" style="margin-top: 15px;">
-                                    <div class="spec-label" id="asml-elec-label">5-Year Electricity Cost</div>
-                                    <div class="big-number" id="asml-elec-value">$73.5M</div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label" id="nxe-chips-label">Chips Produced</div>
+                                    <div class="big-number" id="nxe-chips-val">0.0B</div>
+                                </div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label">Footprint Area</div>
+                                    <div class="big-number" id="nxe-space-val">150 m²</div>
                                 </div>
                             </div>
-                            <!-- Canon Cluster Output -->
-                            <div style="flex: 1; border-left: 1px dashed var(--border-color); padding-left: 20px;">
-                                <div class="input-label" style="color: var(--success-green);" id="canon-cluster-title">Canon Cluster (2.5x Tools)</div>
+                            
+                            <!-- High-NA EUV Output -->
+                            <div style="flex: 1; border-left: 1px dashed var(--border-color); padding-left: 15px;">
+                                <div class="input-label" style="color: var(--primary-blue);">ASML EXE:5200</div>
                                 <div class="bar-container" style="margin-top: 5px;">
                                     <div class="spec-label">Initial Capex</div>
-                                    <div class="big-number canon-number" id="canon-capex-value">$45.0M</div>
+                                    <div class="big-number asml-high-number" id="exe-capex-val">$380.0M</div>
                                 </div>
-                                <div class="bar-container" style="margin-top: 15px;">
-                                    <div class="spec-label" id="canon-elec-label">5-Year Electricity Cost</div>
-                                    <div class="big-number" id="canon-elec-value">$5.2M</div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label" id="exe-chips-label">Chips Produced</div>
+                                    <div class="big-number" id="exe-chips-val">0.0B</div>
+                                </div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label">Footprint Area</div>
+                                    <div class="big-number" id="exe-space-val">200 m²</div>
+                                </div>
+                            </div>
+
+                            <!-- Canon NIL Cluster Output -->
+                            <div style="flex: 1.1; border-left: 1px dashed var(--border-color); padding-left: 15px;">
+                                <div class="input-label" style="color: var(--success-green);" id="canon-cluster-title">Canon Cluster (3x Tools)</div>
+                                <div class="bar-container" style="margin-top: 5px;">
+                                    <div class="spec-label">Initial Capex</div>
+                                    <div class="big-number canon-number" id="canon-capex-val">$54.0M</div>
+                                </div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label" id="canon-chips-label">Chips Produced</div>
+                                    <div class="big-number" id="canon-chips-val">0.0B</div>
+                                </div>
+                                <div class="bar-container" style="margin-top: 10px;">
+                                    <div class="spec-label">Footprint Area</div>
+                                    <div class="big-number" id="canon-space-val">60 m²</div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Comparison Bars -->
-                        <div class="comparison-bars">
-                            <!-- CapEx comparison bar -->
-                            <div class="bar-container">
-                                <div class="bar-labels">
-                                    <span>CapEx Requirements Comparison</span>
-                                    <span id="capex-ratio" style="color: var(--success-green); font-weight: bold;">Canon Cluster saves 88.1%</span>
-                                </div>
-                                <div class="bar-bg">
-                                    <div id="bar-capex-asml" class="bar-fill bar-fill-asml" style="width: 89%;"></div>
-                                    <div id="bar-capex-canon" class="bar-fill bar-fill-canon" style="width: 11%;"></div>
-                                </div>
-                            </div>
-                            <!-- Power comparison bar -->
-                            <div class="bar-container">
-                                <div class="bar-labels">
-                                    <span>Operating Electricity Footprint Comparison</span>
-                                    <span id="elec-savings" style="color: var(--success-green); font-weight: bold;">92.8% Green Savings</span>
-                                </div>
-                                <div class="bar-bg">
-                                    <div id="bar-elec-asml" class="bar-fill bar-fill-asml" style="width: 93%;"></div>
-                                    <div id="bar-elec-canon" class="bar-fill bar-fill-canon" style="width: 7%;"></div>
-                                </div>
-                            </div>
+                        <!-- Live Cost vs. Benefit Chart -->
+                        <div class="chart-container">
+                            <canvas id="tcoChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -467,10 +504,12 @@
                 <!-- Strategic Commentary Box -->
                 <div class="takeaway-box">
                     <div class="takeaway-title">
-                        💡 Key Strategic Insight: "Co-Existence over Replacement"
+                        💡 Key Strategic Insight: "Cleanroom Space & Supply Chain Resilience"
                     </div>
                     <p style="margin: 0;">
-                        While Canon's Nanoimprint Lithography (NIL) boasts a massive **10x capital cost reduction** and a **90%+ green energy footprint reduction**, it does not completely replace optical ASML EUV. For complex, layered leading-edge logic (like CPUs and AI accelerators), ASML's spectacular **0.7nm overlay accuracy** remains mandatory to align the ultra-fine nanometer contacts across 80+ stacked layers. However, for **3D NAND Flash Memory**, **DRAM**, and **Optical Elements/Metalenses**, Canon NIL represents a disruptive SOTA baseline—allowing fabs to bypass optical EUV's immense energy grid demands and year-long cleanroom setup times to scale up production immediately!
+                        This simulation proves the profound footprint advantage of **Canon's Nanoimprint Lithography (NIL)**. Because each Canon FPA-1200NZ2C tool is compact (~20 $m^2$), a fab can install a parallelized **Canon Tool Cluster in less than half the floor space of a single ASML EUV tool**, while matching or exceeding the exact same monthly wafer throughput! 
+                        <br/><br/>
+                        Furthermore, the **Supply Chain Lead Time** represents a major strategic shift: ASML can only produce 5-10 High-NA EUV tools per year because of hyper-specialized Zeiss mirrors and Trumpf laser components. Conversely, because Canon's mechanical stamping NIL uses standard optical lithography mechanics without extreme plasma lasers, **Canon can manufacture 10x more tools per year**, allowing semiconductor fabricators to scale up cleanrooms and output years ahead of traditional EUV fabs!
                     </p>
                 </div>
             </div>
@@ -480,24 +519,25 @@
     <!-- Interactive Script -->
     <script>
         const monthlyWafersInput = document.getElementById('monthly-wafers');
+        const dieSizeInput = document.getElementById('die-size');
+        const defectRateInput = document.getElementById('defect-rate');
         const elecCostInput = document.getElementById('elec-cost');
         const yearsInput = document.getElementById('projected-years');
 
-        const asmlElecLabel = document.getElementById('asml-elec-label');
-        const asmlElecValue = document.getElementById('asml-elec-value');
-        
+        const nxeCapexVal = document.getElementById('nxe-capex-val');
+        const nxeChipsVal = document.getElementById('nxe-chips-val');
+        const nxeSpaceVal = document.getElementById('nxe-space-val');
+
+        const exeCapexVal = document.getElementById('exe-capex-val');
+        const exeChipsVal = document.getElementById('exe-chips-val');
+        const exeSpaceVal = document.getElementById('exe-space-val');
+
         const canonClusterTitle = document.getElementById('canon-cluster-title');
-        const canonCapexValue = document.getElementById('canon-capex-value');
-        const canonElecLabel = document.getElementById('canon-elec-label');
-        const canonElecValue = document.getElementById('canon-elec-value');
+        const canonCapexVal = document.getElementById('canon-capex-val');
+        const canonChipsVal = document.getElementById('canon-chips-val');
+        const canonSpaceVal = document.getElementById('canon-space-val');
 
-        const capexRatioSpan = document.getElementById('capex-ratio');
-        const elecSavingsSpan = document.getElementById('elec-savings');
-
-        const barCapexAsml = document.getElementById('bar-capex-asml');
-        const barCapexCanon = document.getElementById('bar-capex-canon');
-        const barElecAsml = document.getElementById('bar-elec-asml');
-        const barElecCanon = document.getElementById('bar-elec-canon');
+        let tcoChart = null;
 
         function formatMoney(amount) {
             if (amount >= 1000000) {
@@ -506,63 +546,163 @@
             return '$' + amount.toLocaleString();
         }
 
+        function formatChips(amount) {
+            if (amount >= 1000000000) {
+                return (amount / 1000000000).toFixed(2) + 'B';
+            }
+            return (amount / 1000000).toFixed(1) + 'M';
+        }
+
         function calculateTCO() {
             const monthlyWafers = parseFloat(monthlyWafersInput.value) || 25000;
+            const dieSize = parseFloat(dieSizeInput.value) || 100; // in mm²
+            const defectRate = parseFloat(defectRateInput.value) || 0.08; // defects per cm²
             const elecCost = parseFloat(elecCostInput.value) || 0.12;
             const years = parseInt(yearsInput.value) || 5;
 
-            // 1. Throughput calculation
-            // ASML twinscan handles ~200 WPH. Operating 24/7/365 (~720 hours/month)
-            // Capable of: 200 * 720 = 144,000 wafers/month.
-            // Canon NIL handles ~90 WPH per multi-module tool, capable of: 90 * 720 = 64,800 wafers/month.
-            // To support the required monthly volume we calculate tools required:
-            const asmlTools = Math.ceil(monthlyWafers / 144000); // Usually 1
-            const canonTools = Math.ceil(monthlyWafers / 64800);
+            // 1. Chip Yield Calculation using standard Murphy's Model
+            // Wafer area (300mm wafer) = pi * (15cm)^2 = 706.8 cm²
+            const waferAreaCm2 = 706.8;
+            const dieSizeCm2 = dieSize / 100;
+            const potentialDiesPerWafer = Math.floor(waferAreaCm2 / dieSizeCm2);
+            
+            // Murphy's yield model: Yield = ((1 - exp(-D*A)) / (D*A))^2
+            const DA = defectRate * dieSizeCm2;
+            const yieldFactor = Math.pow((1 - Math.exp(-DA)) / (DA), 2);
+            const usableChipsPerWafer = Math.floor(potentialDiesPerWafer * yieldFactor);
 
-            // Update Labels
-            asmlElecLabel.innerText = `${years}-Year Electricity Cost`;
-            canonElecLabel.innerText = `${years}-Year Electricity Cost`;
-            canonClusterTitle.innerText = `Canon Cluster (${canonTools}x Tools)`;
+            // 2. Throughput / Equipment Counts needed
+            // Operating 24/7/365 (~730 hours/month)
+            const hoursPerMonth = 730;
+            
+            // ASML Low-NA (NXE:3800E) = 220 WPH, Monthly capacity: 220 * 730 = 160,600 wafers
+            const nxeToolsNeeded = Math.ceil(monthlyWafers / 160600);
+            
+            // ASML High-NA (EXE:5200) = 200 WPH, Monthly capacity: 200 * 730 = 146,000 wafers
+            const exeToolsNeeded = Math.ceil(monthlyWafers / 146000);
+            
+            // Canon NIL (FPA-1200NZ2C) = 90 WPH, Monthly capacity: 90 * 730 = 65,700 wafers
+            const canonToolsNeeded = Math.ceil(monthlyWafers / 65700);
 
-            // 2. CapEx Costs
-            const asmlCapex = 380000000 * asmlTools;
-            const canonCapex = 18000000 * canonTools;
-            canonCapexValue.innerText = formatMoney(canonCapex);
+            // 3. Update Text Values
+            nxeCapexVal.innerText = formatMoney(180000000 * nxeToolsNeeded);
+            nxeSpaceVal.innerText = `${150 * nxeToolsNeeded} m²`;
 
-            // 3. Electricity Costs
-            // ASML consumes 1400 kW, Canon consumes 100 kW per tool.
-            const hoursPerYear = 8760;
-            const asmlElecCost = 1400 * hoursPerYear * years * elecCost * asmlTools;
-            const canonElecCost = 100 * hoursPerYear * years * elecCost * canonTools;
+            exeCapexVal.innerText = formatMoney(380000000 * exeToolsNeeded);
+            exeSpaceVal.innerText = `${200 * exeToolsNeeded} m²`;
 
-            asmlElecValue.innerText = formatMoney(asmlElecCost);
-            canonElecValue.innerText = formatMoney(canonElecCost);
+            canonClusterTitle.innerText = `Canon Cluster (${canonToolsNeeded}x Tools)`;
+            canonCapexVal.innerText = formatMoney(18000000 * canonToolsNeeded);
+            canonSpaceVal.innerText = `${20 * canonToolsNeeded} m²`;
 
-            // 4. Comparison Calculations & Bar widths
-            const totalCapex = asmlCapex + canonCapex;
-            const capexAsmlPercent = (asmlCapex / totalCapex) * 100;
-            const capexCanonPercent = (canonCapex / totalCapex) * 100;
+            const totalWafersNXE = monthlyWafers * 12 * years * nxeToolsNeeded; // Total run wafers
+            const totalChipsNXE = totalWafersNXE * usableChipsPerWafer;
+            nxeChipsVal.innerText = formatChips(totalChipsNXE);
 
-            const totalElec = asmlElecCost + canonElecCost;
-            const elecAsmlPercent = (asmlElecCost / totalElec) * 100;
-            const elecCanonPercent = (canonElecCost / totalElec) * 100;
+            const totalWafersEXE = monthlyWafers * 12 * years * exeToolsNeeded;
+            const totalChipsEXE = totalWafersEXE * usableChipsPerWafer;
+            exeChipsVal.innerText = formatChips(totalChipsEXE);
 
-            // Adjust Bar Widths
-            barCapexAsml.style.width = `${capexAsmlPercent}%`;
-            barCapexCanon.style.width = `${capexCanonPercent}%`;
-            barElecAsml.style.width = `${elecAsmlPercent}%`;
-            barElecCanon.style.width = `${elecCanonPercent}%`;
+            const totalWafersCanon = monthlyWafers * 12 * years * canonToolsNeeded;
+            const totalChipsCanon = totalWafersCanon * usableChipsPerWafer;
+            canonChipsVal.innerText = formatChips(totalChipsCanon);
 
-            // Adjust saving text
-            const capexSavings = ((asmlCapex - canonCapex) / asmlCapex) * 100;
-            capexRatioSpan.innerText = `Canon saves ${capexSavings.toFixed(1)}% CapEx`;
+            // 4. Chart Data Generation
+            const labels = [];
+            const nxeCosts = [];
+            const exeCosts = [];
+            const canonCosts = [];
 
-            const operatingSavings = ((asmlElecCost - canonElecCost) / asmlElecCost) * 100;
-            elecSavingsSpan.innerText = `${operatingSavings.toFixed(1)}% Oper. Energy Savings`;
+            // Electricity constants
+            const nxePower = 1000 * nxeToolsNeeded; // in kW
+            const exePower = 1400 * exeToolsNeeded;
+            const canonPower = 100 * canonToolsNeeded;
+
+            const nxeInitialCapex = 180000000 * nxeToolsNeeded;
+            const exeInitialCapex = 380000000 * exeToolsNeeded;
+            const canonInitialCapex = 18000000 * canonToolsNeeded;
+
+            for (let i = 0; i <= years; i++) {
+                labels.push(`Year ${i}`);
+                
+                // Cumulative TCO = CapEx + (Power * Hours/Year * Years * ElectricityCost)
+                const hoursRun = 8760 * i;
+                nxeCosts.push((nxeInitialCapex + (nxePower * hoursRun * elecCost)) / 1000000);
+                exeCosts.push((exeInitialCapex + (exePower * hoursRun * elecCost)) / 1000000);
+                canonCosts.push((canonInitialCapex + (canonPower * hoursRun * elecCost)) / 1000000);
+            }
+
+            // 5. Update/Render Chart.js Plot
+            if (tcoChart) {
+                tcoChart.destroy();
+            }
+
+            const ctx = document.getElementById('tcoChart').getContext('2d');
+            tcoChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'ASML NXE:3800E (Low-NA)',
+                            data: nxeCosts,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'ASML EXE:5200 (High-NA)',
+                            data: exeCosts,
+                            borderColor: '#5b9bd5',
+                            backgroundColor: 'rgba(91, 155, 213, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.1
+                        },
+                        {
+                            label: `Canon Cluster (${canonToolsNeeded}x NIL Tools)`,
+                            data: canonCosts,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            grid: { color: '#222' },
+                            ticks: { 
+                                color: '#aaa',
+                                callback: function(value) { return '$' + value + 'M'; }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Cumulative TCO (CapEx + OpEx in USD)',
+                                color: '#888'
+                            }
+                        },
+                        x: {
+                            grid: { color: '#222' },
+                            ticks: { color: '#aaa' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff', font: { family: 'monospace' } }
+                        }
+                    }
+                }
+            });
         }
 
         // Attach listeners for live calculation
         monthlyWafersInput.addEventListener('input', calculateTCO);
+        dieSizeInput.addEventListener('input', calculateTCO);
+        defectRateInput.addEventListener('input', calculateTCO);
         elecCostInput.addEventListener('input', calculateTCO);
         yearsInput.addEventListener('input', calculateTCO);
 
