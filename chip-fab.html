@@ -366,7 +366,7 @@
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Physical Resolution (Single Exp)</span>
-                        <span class="spec-value" style="color: var(--primary-blue);">8.0 nm (Sub-2nm Logic Target)</span>
+                        <span class="spec-value" style="color: var(--primary-blue);">8.0 nm (Sub-2nm Target Logic)</span>
                     </li>
                     <li class="spec-item">
                         <span class="spec-label">Throughput / Speed</span>
@@ -460,8 +460,36 @@
                 </ul>
             </div>
 
+            <!-- NEW CARD: Cleanroom Facility Scale-Out Simulator -->
+            <div class="card full-width-card calc-theme" style="border-top: 3px solid var(--density-violet); color: var(--density-violet);">
+                <div class="card-title">
+                    🏭 Cleanroom Facility Scale-Out Simulator (Standard 2,000 m² Fab)
+                    <span class="badge" style="background-color: rgba(139, 92, 246, 0.15); color: var(--density-violet);">Density & Velocity Ramp</span>
+                </div>
+                <p style="margin: 0 0 20px 0; font-size: 0.95rem; line-height: 1.5; color: var(--text-secondary);">
+                    This simulator models the <strong>aggressive but realistic build-out</strong> of a standard 2,000 m² high-end cleanroom facility. Due to different tool footprints (including clearance/buffer requirements) and severe supply chain build limits, the velocity at which you can scale up your tool fleet and start outputting usable chips is dramatically different across systems.
+                </p>
+                <div class="charts-row" style="margin-top: 15px;">
+                    <!-- Chart 3: Active Tools Installed -->
+                    <div class="chart-box">
+                        <h4 class="chart-title-lbl">Active Tool Fleet Size (Ramp Velocity over 5 Years)</h4>
+                        <div class="chart-container">
+                            <canvas id="fleetChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Chart 4: Monthly Chip Output of Facility -->
+                    <div class="chart-box">
+                        <h4 class="chart-title-lbl">Facility Monthly Chip Output (Millions of Usable Dies/Month)</h4>
+                        <div class="chart-container">
+                            <canvas id="outputChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Interactive Value & ROI Calculator Card -->
-            <div class="card full-width-card calc-theme">
+            <div class="card full-width-card calc-theme" style="border-top: 3px solid var(--density-violet); color: var(--density-violet);">
                 <div class="card-title">
                     ⚙️ Fab Financial & Yield Simulator: Benefit vs. Cost Projections
                     <span class="badge">Dynamic Yield Simulator</span>
@@ -558,7 +586,7 @@
                         <div class="charts-row">
                             <!-- Chart 1: Cost vs Benefit Over Time -->
                             <div class="chart-box">
-                                <h4 class="chart-title-lbl">TCO vs. Generated Value ($M)</h4>
+                                <h4 class="chart-title-lbl">Cumulative TCO vs. Generated Value ($M)</h4>
                                 <div class="chart-container">
                                     <canvas id="valChart"></canvas>
                                 </div>
@@ -619,6 +647,8 @@
 
         let valChart = null;
         let cpcChart = null;
+        let fleetChart = null;
+        let outputChart = null;
 
         function formatMoney(amount) {
             if (amount >= 1000000) {
@@ -738,6 +768,118 @@
                 exeCPC.push(chipsEXE > 0 ? (exeCostSum / chipsEXE) : (exeCostSum / 1000000));
                 canonCPC.push(chipsCanon > 0 ? (canonCostSum / chipsCanon) : (canonCostSum / 1000000));
             }
+
+            // ========================================================
+            // 2,000 m² CLEANROOM FACILITY SCALE-OUT SIMULATOR LOGIC
+            // ========================================================
+            const fleetLabels = [];
+            
+            // Maximum density limits in a 2,000 m² cleanroom (including clearance/service buffers)
+            const maxNXE = 8;   // 250 m² virtual footprint per tool
+            const maxEXE = 6;   // 300 m² virtual footprint per tool
+            const maxCanon = 50; // 40 m² virtual footprint per tool
+
+            const fleetNXE = [];
+            const fleetEXE = [];
+            const fleetCanon = [];
+
+            const outputNXE = [];
+            const outputEXE = [];
+            const outputCanon = [];
+
+            // Low-NA monthly capacity per tool = 220 WPH * 730 hours = 160,600 wafers
+            const capacityNXEPerTool = 160600 * usableChipsPerWafer / 1000000; // in Millions
+            // High-NA monthly capacity per tool = 200 WPH * 730 hours = 146,000 wafers
+            const capacityEXEPerTool = 146000 * usableChipsPerWafer / 1000000;
+            // Canon NIL monthly capacity per tool = 90 WPH * 730 hours = 65,700 wafers
+            const capacityCanonPerTool = 65700 * usableChipsPerWafer / 1000000;
+
+            const monthsLimit = years * 12;
+            for (let m = 0; m <= monthsLimit; m++) {
+                // Generate labels every 3 months to keep the X-axis clean
+                if (m % 3 === 0 || m === monthsLimit) {
+                    fleetLabels.push(`M${m}`);
+                }
+
+                // 1. Tool Build-Out (Installation step-functions)
+                // NXE (Low-NA): 18 mos delivery + 6 mos install = Month 24 first tool. Then +1 tool every 6 months.
+                let toolsNXE = 0;
+                if (m >= 24) {
+                    toolsNXE = Math.min(maxNXE, Math.floor((m - 24) / 6) + 1);
+                }
+                
+                // EXE (High-NA): 24 mos delivery + 9 mos install = Month 33 first tool. Then +1 tool every 12 months.
+                let toolsEXE = 0;
+                if (m >= 33) {
+                    toolsEXE = Math.min(maxEXE, Math.floor((m - 33) / 12) + 1);
+                }
+
+                // Canon NIL: 4 mos delivery + 1 mo install = Month 5 first tool. Then +4 tools every month.
+                let toolsCanon = 0;
+                if (m >= 5) {
+                    toolsCanon = Math.min(maxCanon, Math.floor((m - 5) / 1) * 4 + 1);
+                }
+
+                // Append fleet sizes
+                if (m % 3 === 0 || m === monthsLimit) {
+                    fleetNXE.push(toolsNXE);
+                    fleetEXE.push(toolsEXE);
+                    fleetCanon.push(toolsCanon);
+
+                    // 2. Monthly Chip Production Rates (Active Tools * Capacity Per Tool)
+                    outputNXE.push(toolsNXE * capacityNXEPerTool);
+                    outputEXE.push(toolsEXE * capacityEXEPerTool);
+                    outputCanon.push(toolsCanon * capacityCanonPerTool);
+                }
+            }
+
+            // Render/Update Chart 3: Active Tool Fleet Size
+            if (fleetChart) { fleetChart.destroy(); }
+            const ctxFleet = document.getElementById('fleetChart').getContext('2d');
+            fleetChart = new Chart(ctxFleet, {
+                type: 'line',
+                data: {
+                    labels: fleetLabels,
+                    datasets: [
+                        { label: 'ASML NXE:3800E (Low-NA)', data: fleetNXE, borderColor: '#3b82f6', borderWidth: 2, tension: 0.1, stepped: true },
+                        { label: 'ASML EXE:5200 (High-NA)', data: fleetEXE, borderColor: '#5b9bd5', borderWidth: 2, tension: 0.1, stepped: true },
+                        { label: 'Canon FPA-1200NZ2C (NIL)', data: fleetCanon, borderColor: '#10b981', borderWidth: 2, tension: 0.1, stepped: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: '#222' }, ticks: { color: '#aaa' }, title: { display: true, text: 'Active Systems in Fab', color: '#888' } },
+                        x: { grid: { color: '#222' }, ticks: { color: '#aaa', font: { size: 9 } } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff', font: { family: 'monospace', size: 9 } } } }
+                }
+            });
+
+            // Render/Update Chart 4: Facility Monthly Chip Output
+            if (outputChart) { outputChart.destroy(); }
+            const ctxOutput = document.getElementById('outputChart').getContext('2d');
+            outputChart = new Chart(ctxOutput, {
+                type: 'line',
+                data: {
+                    labels: fleetLabels,
+                    datasets: [
+                        { label: 'ASML NXE:3800E (Low-NA)', data: outputNXE, borderColor: '#3b82f6', borderWidth: 2.5, tension: 0.2 },
+                        { label: 'ASML EXE:5200 (High-NA)', data: outputEXE, borderColor: '#5b9bd5', borderWidth: 2.5, tension: 0.2 },
+                        { label: 'Canon FPA-1200NZ2C (NIL)', data: outputCanon, borderColor: '#10b981', borderWidth: 2.5, tension: 0.2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: '#222' }, ticks: { color: '#aaa' }, title: { display: true, text: 'Monthly Output (Millions of Chips)', color: '#888' } },
+                        x: { grid: { color: '#222' }, ticks: { color: '#aaa', font: { size: 9 } } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff', font: { family: 'monospace', size: 9 } } } }
+                }
+            });
 
             // 6. Render Chart 1: Value Crossover & Break-Even ($M)
             if (valChart) { valChart.destroy(); }
