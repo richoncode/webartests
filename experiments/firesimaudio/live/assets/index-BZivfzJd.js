@@ -1,1 +1,0 @@
-import"./modulepreload-polyfill-P2Xu9kJm.js";import{i as e,n as t,t as n}from"./voice-B24BYgkD.js";var r=new n,i=.7,a=()=>r.setControls(e(i)),o=document.querySelector(`#audio`);if(!o)throw Error(`Missing #audio.`);t(o,{voice:r,level:i,hint:`Level is the energy. At zero the roar and the crackle decay and then stop.`,onLevel:e=>{i=e,a()}}),a();
