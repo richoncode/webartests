@@ -44,21 +44,53 @@
     .brand { margin-right: auto; min-width: 0; }
     .brand h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.02em; line-height: 1.2; }
     .brand .section-label { margin: 0 0 2px; }
-    .prompts {
-      display: flex; flex-wrap: wrap; gap: 8px;
-      margin-top: 12px; max-width: 980px;
+    .try-label {
+      margin: 12px 0 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #9a9a9a;
     }
-    .prompts button {
-      max-width: 340px;
-      white-space: normal; text-align: left;
+    .prompt-rail { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 860px; }
+    .prompt-viewport { position: relative; flex: 1; min-width: 0; }
+    .prompts {
+      display: flex; flex-wrap: nowrap; gap: 8px;
+      overflow-x: auto; scrollbar-width: none;
+      scroll-behavior: smooth;
+      padding: 2px 0 4px;
+    }
+    .prompts::-webkit-scrollbar { display: none; }
+    .prompts button.prompt-chip {
+      flex: 0 0 auto; max-width: none;
+      white-space: nowrap; text-align: left;
       line-height: 1.35; font-size: 12.5px;
       padding: 8px 12px; border-radius: 999px;
       background: rgba(13,13,13,0.72);
       border-color: #333; color: #ddd;
       backdrop-filter: blur(8px);
+      display: inline-flex; align-items: center; gap: 8px;
     }
-    .prompts button[aria-pressed="true"] {
+    .prompts button.prompt-chip[aria-pressed="true"] {
       background: #1e2d40; border-color: #5b9bd5; color: #fff;
+    }
+    .chip-x {
+      display: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #0d0d0d; color: #fff;
+      font-size: 14px; line-height: 16px; text-align: center;
+      flex: 0 0 auto;
+    }
+    .prompts button.prompt-chip[aria-pressed="true"] .chip-x { display: inline-block; }
+    .prompt-fade {
+      position: absolute; top: 0; bottom: 4px; width: 28px;
+      pointer-events: none; z-index: 1;
+    }
+    .prompt-fade[hidden], .chip-nav[hidden] { display: none !important; }
+    .prompt-fade.left { left: 0; background: linear-gradient(90deg, #0d0d0d 10%, rgba(13,13,13,0)); }
+    .prompt-fade.right { right: 0; background: linear-gradient(270deg, #0d0d0d 10%, rgba(13,13,13,0)); }
+    .chip-nav {
+      flex: 0 0 32px; width: 32px; height: 32px; min-height: 32px;
+      padding: 0; border-radius: 50%;
+      font-size: 18px; line-height: 1;
+      background: #1a1a1a; border-color: #333; color: #ccc;
     }
 
     .hud-bottom { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
@@ -80,10 +112,12 @@
       box-shadow: 0 16px 50px rgba(0,0,0,0.45);
     }
     .tool-card {
-      top: 132px; right: 18px; width: min(340px, calc(100% - 36px));
+      top: 148px; right: 18px; width: min(340px, calc(100% - 36px));
       padding: 14px 14px 10px;
-      max-height: min(460px, calc(100dvh - 220px));
+      max-height: min(420px, calc(100dvh - 240px));
       overflow: auto;
+      background: #111111;
+      z-index: 5;
     }
     .tool-card[hidden], .tip[hidden] { display: none; }
     .tool-kicker { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #5b9bd5; margin: 0 0 4px; }
@@ -145,11 +179,14 @@
 
     @media (max-width: 700px) {
       .hero { min-height: 100dvh; }
-      .prompts { flex-wrap: nowrap; overflow-x: auto; max-width: none; margin-right: -18px; padding-bottom: 4px; scrollbar-width: none; }
-      .prompts button { white-space: nowrap; max-width: none; flex: 0 0 auto; }
       .honest { text-align: left; }
-      .tool-card { top: auto; bottom: 108px; right: 12px; left: 12px; width: auto; max-height: 42dvh; }
+      .tool-card, .tool-card.sheet {
+        top: auto; right: 10px; left: 10px; width: auto;
+        max-height: min(220px, 32dvh);
+        border-radius: 16px 16px 12px 12px;
+      }
       .brand h1 { font-size: 16px; }
+      .hud { padding: 14px 12px 12px; }
     }
   </style>
 </head>
@@ -167,7 +204,16 @@
             </div>
             <a class="btn primary" href="?poster=1">Post image</a>
           </div>
-          <div class="prompts" id="prompts" role="toolbar" aria-label="Example prompts from the Hugging Face MCP docs"></div>
+          <p class="try-label" id="try-label">Try a prompt</p>
+          <div class="prompt-rail">
+            <button type="button" class="chip-nav prev" id="chip-prev" aria-label="Show previous prompts" hidden>‹</button>
+            <div class="prompt-viewport">
+              <div class="prompt-fade left" id="fade-left" hidden></div>
+              <div class="prompts" id="prompts" role="toolbar" aria-label="Example prompts from the Hugging Face MCP docs"></div>
+              <div class="prompt-fade right" id="fade-right" hidden></div>
+            </div>
+            <button type="button" class="chip-nav next" id="chip-next" aria-label="Show more prompts" hidden>›</button>
+          </div>
         </div>
         <div class="hud-bottom" id="hud-bottom">
           <div class="legend" aria-hidden="true">
@@ -456,7 +502,7 @@
       app.pinned = null;
       hideTip();
       toolCard.hidden = true;
-      document.querySelectorAll(".prompts button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+      syncChips();
       app.source = source;
       var counts = { model: 0, dataset: 0, space: 0 };
       app.base.forEach(function (n) { counts[n.type] = (counts[n.type] || 0) + 1; });
@@ -476,7 +522,41 @@
       ];
     }
     function toScreen(nx, ny, rect) {
-      return [rect.x + nx * rect.w, rect.y + ny * rect.h];
+      var vx = rect.vx == null ? 0 : rect.vx;
+      var vy = rect.vy == null ? 0 : rect.vy;
+      var vw = rect.vw == null ? 1 : rect.vw;
+      var vh = rect.vh == null ? 1 : rect.vh;
+      return [
+        rect.x + ((nx - vx) / vw) * rect.w,
+        rect.y + ((ny - vy) / vh) * rect.h
+      ];
+    }
+    function insideClip(x, y, clip) {
+      if (!clip) return true;
+      return x >= clip.x && y >= clip.y && x <= clip.x + clip.w && y <= clip.y + clip.h;
+    }
+    function mobileLayout() { return window.innerWidth <= 700; }
+    function placeCard() {
+      if (toolCard.hidden) return;
+      var hero = document.getElementById("hero").getBoundingClientRect();
+      var sheet = mobileLayout();
+      toolCard.classList.toggle("sheet", sheet);
+      if (sheet) {
+        var br = hudBottom.getBoundingClientRect();
+        var gap = Math.max(12, hero.bottom - br.top + 8);
+        toolCard.style.top = "auto";
+        toolCard.style.bottom = gap + "px";
+        toolCard.style.left = "10px";
+        toolCard.style.right = "10px";
+        toolCard.style.width = "auto";
+      } else {
+        var tr = hudTop.getBoundingClientRect();
+        toolCard.style.bottom = "auto";
+        toolCard.style.top = Math.max(12, tr.bottom - hero.top + 10) + "px";
+        toolCard.style.left = "auto";
+        toolCard.style.right = "18px";
+        toolCard.style.width = "min(340px, calc(100% - 36px))";
+      }
     }
 
     function liveRect() {
@@ -490,7 +570,39 @@
       }
       var w = sky.clientWidth || window.innerWidth;
       var h = sky.clientHeight || window.innerHeight;
-      return { x: 18, y: top, w: Math.max(40, w - 36), h: Math.max(40, h - top - bottom), W: w, H: h };
+      var rect = { x: 12, y: top, w: Math.max(40, w - 24), h: Math.max(40, h - top - bottom), W: w, H: h, vx: 0, vy: 0, vw: 1, vh: 1 };
+      if (!toolCard.hidden) {
+        placeCard();
+        var box = toolCard.getBoundingClientRect();
+        if (box.width > 0 && box.height > 0) {
+          if (mobileLayout()) {
+            var limit = Math.max(top + 96, box.top - cr.top - 10);
+            rect.h = Math.max(96, limit - rect.y);
+          } else {
+            var right = Math.max(rect.x + 120, box.left - cr.left - 12);
+            rect.w = Math.max(120, right - rect.x);
+          }
+        }
+      }
+      rect.clip = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+      if (app.prompt && app.matches.length) {
+        var xs = [AX], ys = [AY];
+        app.matches.forEach(function (n) { xs.push(n.hx); ys.push(n.hy); });
+        var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+        var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+        var padX = Math.max(0.06, 64 / rect.w);
+        var padY = Math.max(0.06, 72 / rect.h);
+        minX -= padX; maxX += padX; minY -= padY; maxY += padY;
+        var bw = Math.max(0.34, maxX - minX);
+        var bh = Math.max(0.34, maxY - minY);
+        var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+        var cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+        rect.vx = cx - bw / 2;
+        rect.vy = cy - bh / 2;
+        rect.vw = bw;
+        rect.vh = bh;
+      }
+      return rect;
     }
 
     function resizeSky() {
@@ -533,8 +645,15 @@
         n.sr = radiusOf(n) * (n.match ? 1.45 : 1);
         if (n.match) n.sr = Math.max(n.sr, 8);
       });
+      ctx.save();
+      if (rect.clip) {
+        ctx.beginPath();
+        ctx.rect(rect.clip.x, rect.clip.y, rect.clip.w, rect.clip.h);
+        ctx.clip();
+      }
       if (active) {
         app.matches.forEach(function (n) {
+          if (!insideClip(agent[0], agent[1], rect.clip) || !insideClip(n.sx, n.sy, rect.clip)) return;
           ctx.globalAlpha = 0.55;
           ctx.strokeStyle = COLOR[n.type] || "#d6ecff";
           ctx.lineWidth = 1.6;
@@ -549,6 +668,7 @@
       app.nodes.forEach(function (n) {
         (n.links || []).forEach(function (m) {
           if (!m.sx && m.sx !== 0) return;
+          if (!insideClip(n.sx, n.sy, rect.clip) || !insideClip(m.sx, m.sy, rect.clip)) return;
           var hot = n.match && m.match;
           var warm = n.match || m.match;
           ctx.globalAlpha = opts.poster ? 0.22 : (active ? (hot ? 0.75 : warm ? 0.35 : 0.045) : 0.2);
@@ -608,11 +728,13 @@
           ctx.lineTo(x, y);
           ctx.stroke();
           ctx.globalAlpha = 1;
+          if (!insideClip(x, y, rect.clip)) return;
           var hs = 36;
           ctx.drawImage(sprite("agent", true), x - hs / 2, y - hs / 2, hs, hs);
         });
         ctx.globalAlpha = 1;
       }
+      ctx.restore();
 
       var vignette = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.28, w / 2, h / 2, Math.max(w, h) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
@@ -703,6 +825,12 @@
           var n = app.nodes[0];
           sky.dataset.sample = Math.round(n.sx) + "," + Math.round(n.sy);
         }
+        var agentPt = toScreen(AX, AY, rect);
+        sky.dataset.agent = Math.round(agentPt[0]) + "," + Math.round(agentPt[1]);
+        sky.dataset.matches = app.matches.map(function (m) {
+          return Math.round(m.sx) + "," + Math.round(m.sy);
+        }).join(" ");
+        sky.dataset.view = Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.w) + "," + Math.round(rect.h);
       }
       if (!posterMode) requestAnimationFrame(frame);
     }
@@ -828,6 +956,15 @@
       }
     }
 
+    function syncChips() {
+      document.querySelectorAll(".prompts button.prompt-chip").forEach(function (b) {
+        var on = !!(app.prompt && b.getAttribute("data-prompt") === app.prompt.id);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        var text = b.querySelector(".chip-text").textContent;
+        b.setAttribute("aria-label", on ? ("Clear prompt: " + text) : text);
+      });
+    }
+
     function clearPrompt() {
       app.token++;
       app.prompt = null;
@@ -836,7 +973,8 @@
       app.base.forEach(function (n) { n.match = false; });
       app.nodes = app.base;
       toolCard.hidden = true;
-      document.querySelectorAll(".prompts button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+      toolCard.classList.remove("sheet");
+      syncChips();
     }
 
     function applySearch(prompt, rows) {
@@ -865,6 +1003,7 @@
         return { node: n, start: now + i * 150, dur: 980 };
       });
       renderCard(prompt, matches, "ready");
+      placeCard();
     }
 
     async function fetchSearch(prompt) {
@@ -899,10 +1038,13 @@
       app.prompt = prompt;
       app.pinned = null;
       hideTip();
-      document.querySelectorAll(".prompts button").forEach(function (b) {
-        b.setAttribute("aria-pressed", b.getAttribute("data-prompt") === prompt.id ? "true" : "false");
-      });
+      app.matches = [];
+      app.pulses = [];
+      syncChips();
+      var activeChip = document.querySelector('.prompts button[data-prompt="' + prompt.id + '"]');
+      if (activeChip) revealChip(activeChip);
       renderCard(prompt, [], "loading");
+      placeCard();
       var rows = null;
       try {
         rows = await fetchSearch(prompt);
@@ -913,19 +1055,85 @@
       applySearch(prompt, rows);
     }
 
+    function revealChip(chip) {
+      var el = document.getElementById("prompts");
+      var left = chip.offsetLeft;
+      var right = left + chip.offsetWidth;
+      if (left < el.scrollLeft) el.scrollTo({ left: Math.max(0, left - 8), behavior: "smooth" });
+      else if (right > el.scrollLeft + el.clientWidth) el.scrollTo({ left: right - el.clientWidth + 8, behavior: "smooth" });
+    }
+
+    function updateChipNav() {
+      var el = document.getElementById("prompts");
+      if (!el) return;
+      var overflow = el.scrollWidth > el.clientWidth + 4;
+      var atStart = el.scrollLeft <= 2;
+      var atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+      document.getElementById("chip-prev").hidden = !overflow || atStart;
+      document.getElementById("chip-next").hidden = !overflow || atEnd;
+      document.getElementById("fade-left").hidden = !overflow || atStart;
+      document.getElementById("fade-right").hidden = !overflow || atEnd;
+    }
+
+    function scrollChips(dir) {
+      var el = document.getElementById("prompts");
+      el.scrollBy({ left: dir * Math.max(140, Math.round(el.clientWidth * 0.72)), behavior: reduceMotion ? "auto" : "smooth" });
+    }
+
+    var chipNudging = false;
+    function nudgeChips() {
+      if (reduceMotion || posterMode) return;
+      var el = document.getElementById("prompts");
+      if (!el || el.scrollWidth <= el.clientWidth + 4 || el.scrollLeft > 1) return;
+      var distance = Math.min(36, el.scrollWidth - el.clientWidth);
+      var start = performance.now();
+      chipNudging = true;
+      function step(now) {
+        if (el.dataset.userScrolled === "1") { chipNudging = false; return; }
+        var u = Math.min(1, (now - start) / 720);
+        el.scrollLeft = distance * Math.sin(u * Math.PI);
+        updateChipNav();
+        if (u < 1) requestAnimationFrame(step);
+        else chipNudging = false;
+      }
+      requestAnimationFrame(step);
+    }
+
     function mountPrompts() {
       var bar = document.getElementById("prompts");
       PROMPTS.forEach(function (p) {
         var b = document.createElement("button");
         b.type = "button";
-        b.textContent = p.text;
+        b.className = "prompt-chip";
         b.setAttribute("data-prompt", p.id);
         b.setAttribute("aria-pressed", "false");
-        b.addEventListener("click", function () {
-          if (app.prompt && app.prompt.id === p.id) clearPrompt();
+        b.setAttribute("aria-label", p.text);
+        var text = document.createElement("span");
+        text.className = "chip-text";
+        text.textContent = p.text;
+        var close = document.createElement("span");
+        close.className = "chip-x";
+        close.setAttribute("aria-hidden", "true");
+        close.textContent = "×";
+        b.appendChild(text);
+        b.appendChild(close);
+        b.addEventListener("click", function (event) {
+          var clearing = event.target.classList && event.target.classList.contains("chip-x");
+          if (clearing || (app.prompt && app.prompt.id === p.id)) clearPrompt();
           else runPrompt(p);
         });
         bar.appendChild(b);
+      });
+      bar.addEventListener("scroll", function () {
+        if (!chipNudging && bar.scrollLeft > 2) bar.dataset.userScrolled = "1";
+        updateChipNav();
+      }, { passive: true });
+      document.getElementById("chip-prev").addEventListener("click", function () { scrollChips(-1); });
+      document.getElementById("chip-next").addEventListener("click", function () { scrollChips(1); });
+      window.addEventListener("resize", updateChipNav);
+      requestAnimationFrame(function () {
+        updateChipNav();
+        window.setTimeout(nudgeChips, 280);
       });
     }
 
