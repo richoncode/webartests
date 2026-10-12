@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Hugging Face MCP — #MCPMonday</title>
+  <meta name="description" content="A live constellation of the Hugging Face Hub: what the Hugging Face MCP server lets an agent search and call.">
+  <meta property="og:title" content="Your agent, inside the Hugging Face Hub">
+  <meta property="og:description" content="A visualization of the Hugging Face MCP server: trending models, datasets, and Spaces, and the prompts an agent can run.">
+  <meta property="og:image" content="https://richoncode.github.io/webartests/mcpmondays/huggingface/post-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://richoncode.github.io/webartests/mcpmondays/huggingface/post-image.png">
+  <link rel="stylesheet" href="../../shared/css/main.css">
+  <script>
+    if (new URLSearchParams(location.search).get("poster") === "1") {
+      document.documentElement.classList.add("poster-mode");
+    }
+  </script>
+  <style>
+    body { padding: 0; background: #0d0d0d; overflow-x: hidden; }
+    a.back { color: #555; text-decoration: none; font-size: 14px; }
+    a.back:hover { color: #aaa; }
+    button:focus-visible, a:focus-visible { outline: 2px solid #5b9bd5; outline-offset: 2px; }
+
+    .hero { position: relative; height: 100dvh; min-height: 560px; background: #0d0d0d; }
+    canvas.sky {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      background: #0d0d0d; border: 0; border-radius: 0;
+      display: block; touch-action: pan-y;
+    }
+    .hud {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 18px 18px 16px;
+      pointer-events: none;
+    }
+    .hud-top, .hud-bottom { pointer-events: auto; }
+    .top-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .brand { margin-right: auto; min-width: 0; }
+    .brand h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.02em; line-height: 1.2; }
+    .brand .section-label { margin: 0 0 2px; }
+    .prompts {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 12px; max-width: 980px;
+    }
+    .prompts button {
+      max-width: 340px;
+      white-space: normal; text-align: left;
+      line-height: 1.35; font-size: 12.5px;
+      padding: 8px 12px; border-radius: 999px;
+      background: rgba(13,13,13,0.72);
+      border-color: #333; color: #ddd;
+      backdrop-filter: blur(8px);
+    }
+    .prompts button[aria-pressed="true"] {
+      background: #1e2d40; border-color: #5b9bd5; color: #fff;
+    }
+
+    .hud-bottom { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 12px; color: #aaa; }
+    .lg { display: inline-flex; align-items: center; gap: 6px; }
+    .lg i { width: 8px; height: 8px; border-radius: 50%; display: block; box-shadow: 0 0 8px currentColor; }
+    .lg.model { color: #5b9bd5; } .lg.model i { background: #5b9bd5; }
+    .lg.dataset { color: #4caf50; } .lg.dataset i { background: #4caf50; }
+    .lg.space { color: #f0a040; } .lg.space i { background: #f0a040; }
+    #source-label { color: #666; }
+    .honest { margin: 0; max-width: 560px; color: #888; font-size: 12px; line-height: 1.45; text-align: right; }
+
+    .tool-card, .tip {
+      position: absolute; z-index: 3;
+      background: rgba(17,17,17,0.92);
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 16px 50px rgba(0,0,0,0.45);
+    }
+    .tool-card {
+      top: 132px; right: 18px; width: min(340px, calc(100% - 36px));
+      padding: 14px 14px 10px;
+      max-height: min(460px, calc(100dvh - 220px));
+      overflow: auto;
+    }
+    .tool-card[hidden], .tip[hidden] { display: none; }
+    .tool-kicker { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #5b9bd5; margin: 0 0 4px; }
+    .tool-card h2 { font-size: 16px; margin: 0 0 6px; }
+    .tool-card h2 code, .tip code { font-size: 13px; color: #fff; background: transparent; border: 0; padding: 0; }
+    .tool-detail, .tool-prompt { margin: 0 0 10px; max-width: none; color: #aaa; font-size: 12.5px; line-height: 1.45; }
+    .tool-prompt { color: #ddd; }
+    .result {
+      display: block; text-decoration: none; color: inherit;
+      padding: 8px 8px; margin: 0 -8px;
+      border-top: 1px solid #222; border-radius: 8px;
+    }
+    .result:hover { background: #1a1a1a; }
+    .result-name { display: block; color: #fff; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+    .result-meta { display: block; color: #888; font-size: 11px; margin-top: 2px; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+    .tip { padding: 10px 12px 12px; width: min(280px, calc(100% - 24px)); pointer-events: auto; }
+    .tip strong { display: block; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; margin-bottom: 4px; }
+    .tip p { margin: 0; max-width: none; color: #888; font-size: 12px; line-height: 1.4; }
+    .tip a { color: #7eb6e0; font-size: 12px; text-decoration: none; border-bottom: 1px solid #2a3a4a; }
+    .tip a:hover { color: #fff; border-bottom-color: #5b9bd5; }
+
+    .sheet { max-width: 800px; margin: 0 auto; padding: 60px 24px 80px; }
+    .sheet .section { margin-bottom: 42px; }
+    .lede { color: #aaa; font-size: 15px; line-height: 1.65; max-width: 680px; }
+    a.inline { color: #7eb6e0; text-decoration: none; border-bottom: 1px solid #2a3a4a; }
+    a.inline:hover { color: #fff; border-bottom-color: #5b9bd5; }
+    .snippet { background: #111; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; margin: 14px 0; max-width: 680px; }
+    .snippet-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 16px; border-bottom: 1px solid #222; }
+    .snippet-name { font-family: var(--font-mono); font-size: 12px; color: #888; }
+    .snippet pre { margin: 0; padding: 16px; overflow-x: auto; color: #ddd; font-size: 13px; line-height: 1.55; white-space: pre; }
+    .note { font-size: 13px; color: #888; max-width: 680px; }
+    .note code, p code { font-size: 12px; color: #ddd; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+    button.copy-btn { font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; padding: 8px 12px; min-height: 32px; }
+    button.copy-btn.done { color: #4caf50; border-color: #4caf50; background: #142218; }
+    .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .tool { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 18px 18px 16px; }
+    .tool h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #fff; }
+    .tool p { margin: 0; max-width: none; font-size: 13px; color: #888; line-height: 1.5; }
+    .sources { list-style: none; max-width: 680px; }
+    .sources li { padding: 10px 0; border-bottom: 1px solid #1e1e1e; font-size: 14px; color: #888; }
+    .sources li:first-child { border-top: 1px solid #1e1e1e; }
+    .placeholder { border: 1px dashed #333; border-radius: 16px; background: #111; padding: 28px 22px; max-width: 680px; }
+    .placeholder p { margin-bottom: 6px; }
+    .placeholder .soon { color: #666; font-size: 13px; margin: 0; }
+
+    html.poster-mode body { padding: 28px 24px 64px; }
+    html.poster-mode #view-live { display: none; }
+    html:not(.poster-mode) #view-poster { display: none; }
+    .poster-wrap { max-width: 860px; margin: 0 auto; }
+    .poster-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 16px; }
+    .poster-bar .spacer { flex: 1; }
+    canvas.poster {
+      width: min(100%, 760px); height: auto;
+      background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 16px;
+    }
+    .poster-note { color: #888; font-size: 13px; max-width: 680px; margin-top: 12px; }
+
+    @media (max-width: 700px) {
+      .hero { min-height: 100dvh; }
+      .prompts { flex-wrap: nowrap; overflow-x: auto; max-width: none; margin-right: -18px; padding-bottom: 4px; scrollbar-width: none; }
+      .prompts button { white-space: nowrap; max-width: none; flex: 0 0 auto; }
+      .honest { text-align: left; }
+      .tool-card { top: auto; bottom: 108px; right: 12px; left: 12px; width: auto; max-height: 42dvh; }
+      .brand h1 { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="view-live">
+    <section class="hero" id="hero">
+      <canvas class="sky" id="sky" aria-label="Trending Hugging Face models, datasets, and Spaces"></canvas>
+      <div class="hud">
+        <div class="hud-top" id="hud-top">
+          <div class="top-row">
+            <a class="back" href="../">← Back</a>
+            <div class="brand">
+              <p class="section-label">#MCPMonday</p>
+              <h1>Hugging Face</h1>
+            </div>
+            <a class="btn primary" href="?poster=1">Post image</a>
+          </div>
+          <div class="prompts" id="prompts" role="toolbar" aria-label="Example prompts from the Hugging Face MCP docs"></div>
+        </div>
+        <div class="hud-bottom" id="hud-bottom">
+          <div class="legend" aria-hidden="true">
+            <span class="lg model"><i></i>Models</span>
+            <span class="lg dataset"><i></i>Datasets</span>
+            <span class="lg space"><i></i>Spaces</span>
+            <span id="source-label">Loading the Hub…</span>
+          </div>
+          <p class="honest">A visualization of what the Hugging Face MCP server lets an agent do. This page reads the public Hub API. It does not call the MCP server.</p>
+        </div>
+      </div>
+      <aside class="tool-card" id="tool-card" hidden></aside>
+      <aside class="tip" id="tip" hidden></aside>
+    </section>
+
+    <div class="sheet">
+      <section class="section" id="connect">
+        <p class="section-label">Connect</p>
+        <h2>One endpoint</h2>
+        <p class="lede">The hosted server is <a class="inline" href="https://huggingface.co/mcp">huggingface.co/mcp</a>. Open <a class="inline" href="https://huggingface.co/settings/mcp">huggingface.co/settings/mcp</a> while logged in, pick a client (Cursor, VS Code, Claude, and others), and paste the snippet that page generates. The docs say to use that page rather than writing config by hand. The public setup page’s OAuth URL is <code>https://huggingface.co/mcp?login</code>. Manual Cursor config with a read token:</p>
+        <div class="snippet">
+          <div class="snippet-bar">
+            <span class="snippet-name">mcp.json</span>
+            <button class="copy-btn" type="button" data-copy-target="#mcp-json">Copy</button>
+          </div>
+          <pre id="mcp-json">{
+  "mcpServers": {
+    "huggingface": {
+      "url": "https://huggingface.co/mcp",
+      "headers": {
+        "Authorization": "Bearer &lt;HF_TOKEN&gt;"
+      }
+    }
+  }
+}</pre>
+        </div>
+        <p class="note">Replace <code>&lt;HF_TOKEN&gt;</code> with a Hugging Face read token. That manual block is the one shown on <a class="inline" href="https://huggingface.co/mcp">huggingface.co/mcp</a> for Cursor.</p>
+      </section>
+
+      <section class="section" id="tools">
+        <p class="section-label">Catalog</p>
+        <h2>Tools at a glance</h2>
+        <p>Names as the docs list them. Extra tools are turned on from the MCP settings page. Experimental tools are added from time to time.</p>
+        <div class="tool-grid">
+          <article class="tool">
+            <h3><code>hf_fs</code></h3>
+            <p>Navigate the Hub, including semantic searches of Documents and Spaces. The docs say most Hub tasks can be done with this built-in tool.</p>
+          </article>
+          <article class="tool">
+            <h3>Contribute Repos</h3>
+            <p>Create and write files to those created repositories.</p>
+          </article>
+          <article class="tool">
+            <h3>Sandboxes</h3>
+            <p>Create and use Sandboxes: includes Sandbox file management.</p>
+          </article>
+          <article class="tool">
+            <h3>Run and Manage Jobs</h3>
+            <p>Run, monitor, and schedule jobs on Hugging Face infrastructure.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="sources">
+        <p class="section-label">Sources</p>
+        <h2>Hugging Face’s pages</h2>
+        <ul class="sources">
+          <li><a class="inline" href="https://huggingface.co/docs/hub/agents-mcp">Hugging Face MCP Server</a> — what it does, prompts, and built-in tools</li>
+          <li><a class="inline" href="https://huggingface.co/mcp">huggingface.co/mcp</a> — hosted endpoint and client setup</li>
+          <li><a class="inline" href="https://huggingface.co/settings/mcp">MCP settings</a> — client snippet, Spaces, and extra tools</li>
+        </ul>
+      </section>
+
+      <section class="section" id="richards-results">
+        <p class="section-label">From this series</p>
+        <h2>Richard's results</h2>
+        <div class="placeholder">
+          <p><strong>Coming soon.</strong></p>
+          <p class="soon">Richard will add what he tries himself. Nothing here yet.</p>
+        </div>
+        <!--
+          RICHARD'S RESULTS
+          Replace the placeholder above with results Richard produces himself.
+          Do not invent example outputs.
+        -->
+      </section>
+    </div>
+  </div>
+
+  <div id="view-poster">
+    <div class="poster-wrap">
+      <a class="back" href="../">← Back</a>
+      <p class="section-label">#MCPMonday</p>
+      <h1>Post image</h1>
+      <div class="poster-bar">
+        <button type="button" class="size-btn" data-size="square">1200×1200</button>
+        <button type="button" class="size-btn" data-size="wide">1200×627</button>
+        <span class="spacer"></span>
+        <button type="button" class="primary" id="download-png">Download PNG</button>
+        <a class="btn" href="./">Live view</a>
+      </div>
+      <canvas class="poster" id="poster" width="1200" height="1200" aria-label="Post image: Your agent, inside the Hugging Face Hub"></canvas>
+      <p class="poster-note">The square is the image for the post. The wide frame is the same constellation at 1200×627. Both are drawn from Hub repos, not from an MCP call.</p>
+    </div>
+  </div>
+
+  <script>
+    var PROMPTS = [
+      {
+        id: "qwen",
+        text: "Search Hugging Face models for Qwen 3.6 Quantizations.",
+        kind: "builtin",
+        tool: "hf_fs",
+        detail: "Built-in tool. It lets an assistant navigate the Hub, including semantic searches of Documents and Spaces.",
+        type: "model",
+        q: "Qwen 3.6",
+        endpoint: "models"
+      },
+      {
+        id: "transcribe",
+        text: "Find a Space that can transcribe audio files.",
+        kind: "builtin",
+        tool: "hf_fs",
+        detail: "Built-in tool. It lets an assistant navigate the Hub, including semantic searches of Documents and Spaces.",
+        type: "space",
+        q: "transcribe",
+        endpoint: "spaces"
+      },
+      {
+        id: "weather",
+        text: "Show datasets about weather time\u2011series.",
+        kind: "builtin",
+        tool: "hf_fs",
+        detail: "Built-in tool. It lets an assistant navigate the Hub, including semantic searches of Documents and Spaces.",
+        type: "dataset",
+        q: "weather time-series",
+        endpoint: "datasets"
+      },
+      {
+        id: "ghibli",
+        text: "Create a 1024 x 1024 image of a cat ghibli style.",
+        kind: "space",
+        tool: "Community Gradio Space",
+        detail: "The docs do not name a built-in tool for this prompt. They describe running community tools via MCP-compatible Gradio apps hosted on Spaces. These rows are Spaces the Hub search returns. This page does not generate the image.",
+        type: "space",
+        q: "ghibli",
+        endpoint: "spaces"
+      }
+    ];
+
+    var COLOR = { model: "#5b9bd5", dataset: "#4caf50", space: "#f0a040" };
+    var RGB = { model: "91,155,213", dataset: "76,175,80", space: "240,160,64" };
+    var AX = 0.5, AY = 0.48;
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var posterMode = document.documentElement.classList.contains("poster-mode");
+
+    var sky = document.getElementById("sky");
+    var poster = document.getElementById("poster");
+    var skyCtx = sky.getContext("2d", { alpha: false });
+    var posterCtx = poster.getContext("2d", { alpha: false });
+    var hudTop = document.getElementById("hud-top");
+    var hudBottom = document.getElementById("hud-bottom");
+    var toolCard = document.getElementById("tool-card");
+    var tip = document.getElementById("tip");
+    var sourceLabel = document.getElementById("source-label");
+
+    var app = {
+      base: [],
+      nodes: [],
+      snapshot: null,
+      prompt: null,
+      matches: [],
+      pulses: [],
+      token: 0,
+      pinned: null,
+      wMin: 0,
+      wMax: 1,
+      sprites: {},
+      posterSize: "square",
+      source: ""
+    };
+
+    function hash(s) {
+      var h = 2166136261;
+      for (var i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+    function compact(n) {
+      n = n || 0;
+      if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace(/\.0$/, "") + "M";
+      if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+      return String(n);
+    }
+    function pretty(task) { return String(task || "other").replace(/-/g, " "); }
+    function keyOf(n) { return n.type + "/" + n.id; }
+    function hrefFor(n) {
+      if (n.type === "dataset") return "https://hf.co/datasets/" + n.id;
+      if (n.type === "space") return "https://hf.co/spaces/" + n.id;
+      return "https://hf.co/" + n.id;
+    }
+    function weightOf(n) {
+      return Math.log10((n.likes || 0) + (n.downloads || 0) / 80 + 10);
+    }
+    function radiusOf(n) {
+      var span = (app.wMax - app.wMin) || 1;
+      var t = (n.weight - app.wMin) / span;
+      return 3.4 + clamp(t, 0, 1) * 8.6;
+    }
+
+    function sprite(kind, hot) {
+      var id = kind + (hot ? "-hot" : "");
+      if (app.sprites[id]) return app.sprites[id];
+      var rgb = kind === "agent" ? "214,232,255" : (RGB[kind] || RGB.model);
+      var s = 160;
+      var c = document.createElement("canvas");
+      c.width = c.height = s;
+      var g = c.getContext("2d");
+      var mid = s / 2;
+      var grd = g.createRadialGradient(mid, mid, 0, mid, mid, mid);
+      grd.addColorStop(0, "rgba(255,255,255," + (hot ? 0.95 : 0.8) + ")");
+      grd.addColorStop(0.07, "rgba(" + rgb + "," + (hot ? 0.95 : 0.72) + ")");
+      grd.addColorStop(0.2, "rgba(" + rgb + ",0.38)");
+      grd.addColorStop(0.48, "rgba(" + rgb + ",0.1)");
+      grd.addColorStop(1, "rgba(" + rgb + ",0)");
+      g.fillStyle = grd;
+      g.fillRect(0, 0, s, s);
+      app.sprites[id] = c;
+      return c;
+    }
+
+    function layout(nodes) {
+      var groups = new Map();
+      nodes.forEach(function (n) {
+        var key = n.type + ":" + (n.task || "other");
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(n);
+        n.links = [];
+        n.ephemeral = false;
+        n.match = false;
+      });
+      var entries = Array.from(groups.entries()).sort(function (a, b) { return b[1].length - a[1].length; });
+      entries.forEach(function (entry, i) {
+        var key = entry[0];
+        var members = entry[1];
+        var ang = i * 2.399963229728653 + (hash(key) % 100) / 140;
+        var ring = 0.2 + (i % 4) * 0.078;
+        var gx = AX + Math.cos(ang) * ring;
+        var gy = AY + Math.sin(ang) * ring * 0.86;
+        var spread = 0.028 + Math.sqrt(members.length) * 0.015;
+        members.forEach(function (n, j) {
+          var a = j * 2.399963229728653 + (hash(keyOf(n)) % 50) / 200;
+          var r = spread * Math.sqrt((j + 0.35) / members.length);
+          n.hx = clamp(gx + Math.cos(a) * r, 0.05, 0.95);
+          n.hy = clamp(gy + Math.sin(a) * r, 0.05, 0.95);
+          n.phase = (hash(keyOf(n)) % 1000) / 1000 * Math.PI * 2;
+          if (j > 0) n.links.push(members[j - 1]);
+          if (j > 4) n.links.push(members[j - 5]);
+        });
+      });
+      var wMin = Infinity, wMax = -Infinity;
+      nodes.forEach(function (n) {
+        n.weight = weightOf(n);
+        if (n.weight < wMin) wMin = n.weight;
+        if (n.weight > wMax) wMax = n.weight;
+      });
+      app.wMin = wMin;
+      app.wMax = wMax === wMin ? wMin + 1 : wMax;
+    }
+
+    function setBase(nodes, source) {
+      app.base = nodes.map(function (n) {
+        return {
+          id: n.id, type: n.type, likes: n.likes || 0, downloads: n.downloads || 0,
+          task: n.task || "other"
+        };
+      });
+      layout(app.base);
+      app.nodes = app.base;
+      app.matches = [];
+      app.pulses = [];
+      app.prompt = null;
+      app.pinned = null;
+      hideTip();
+      toolCard.hidden = true;
+      document.querySelectorAll(".prompts button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+      app.source = source;
+      var counts = { model: 0, dataset: 0, space: 0 };
+      app.base.forEach(function (n) { counts[n.type] = (counts[n.type] || 0) + 1; });
+      sourceLabel.textContent = (source === "live" ? "Live Hub API" : "Saved Hub snapshot") +
+        " · " + counts.model + " models · " + counts.dataset + " datasets · " + counts.space + " spaces";
+      document.documentElement.dataset.ready = source;
+      document.documentElement.dataset.nodes = String(app.base.length);
+      if (posterMode) drawPoster();
+    }
+
+    function normPos(n, t) {
+      var wob = reduceMotion || posterMode ? 0 : 0.008;
+      var tt = reduceMotion ? 1.6 : t;
+      return [
+        n.hx + Math.sin(tt * 0.37 + n.phase) * wob,
+        n.hy + Math.cos(tt * 0.29 + n.phase * 1.7) * wob * 0.85
+      ];
+    }
+    function toScreen(nx, ny, rect) {
+      return [rect.x + nx * rect.w, rect.y + ny * rect.h];
+    }
+
+    function liveRect() {
+      var cr = sky.getBoundingClientRect();
+      var top = 150, bottom = 72;
+      if (hudTop && hudBottom && cr.height) {
+        var tr = hudTop.getBoundingClientRect();
+        var br = hudBottom.getBoundingClientRect();
+        top = Math.max(0, tr.bottom - cr.top) + 10;
+        bottom = Math.max(48, cr.bottom - br.top) + 8;
+      }
+      var w = sky.clientWidth || window.innerWidth;
+      var h = sky.clientHeight || window.innerHeight;
+      return { x: 18, y: top, w: Math.max(40, w - 36), h: Math.max(40, h - top - bottom), W: w, H: h };
+    }
+
+    function resizeSky() {
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var w = sky.clientWidth || window.innerWidth;
+      var h = sky.clientHeight || window.innerHeight;
+      var bw = Math.max(1, Math.round(w * dpr));
+      var bh = Math.max(1, Math.round(h * dpr));
+      if (sky.width !== bw || sky.height !== bh) {
+        sky.width = bw;
+        sky.height = bh;
+      }
+      skyCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawField(ctx, rect, t, opts) {
+      var w = rect.W, h = rect.H;
+      ctx.fillStyle = "#0d0d0d";
+      ctx.fillRect(0, 0, w, h);
+      var clouds = [
+        [w * 0.28, h * 0.32, Math.max(w, h) * 0.48, "91,155,213", 0.18],
+        [w * 0.74, h * 0.46, Math.max(w, h) * 0.42, "240,160,64", 0.12],
+        [w * 0.46, h * 0.78, Math.max(w, h) * 0.4, "76,175,80", 0.1]
+      ];
+      clouds.forEach(function (c) {
+        var g = ctx.createRadialGradient(c[0], c[1], 0, c[0], c[1], c[2]);
+        g.addColorStop(0, "rgba(" + c[3] + "," + c[4] + ")");
+        g.addColorStop(1, "rgba(" + c[3] + ",0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+      });
+
+      var agent = toScreen(AX, AY, rect);
+      var active = !opts.poster && !!app.prompt;
+
+      ctx.lineWidth = 1;
+      app.nodes.forEach(function (n) {
+        var p = toScreen(normPos(n, t)[0], normPos(n, t)[1], rect);
+        n.sx = p[0]; n.sy = p[1];
+        n.sr = radiusOf(n) * (n.match ? 1.45 : 1);
+        if (n.match) n.sr = Math.max(n.sr, 8);
+      });
+      if (active) {
+        app.matches.forEach(function (n) {
+          ctx.globalAlpha = 0.55;
+          ctx.strokeStyle = COLOR[n.type] || "#d6ecff";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(agent[0], agent[1]);
+          ctx.lineTo(n.sx, n.sy);
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
+      }
+      app.nodes.forEach(function (n) {
+        (n.links || []).forEach(function (m) {
+          if (!m.sx && m.sx !== 0) return;
+          var hot = n.match && m.match;
+          var warm = n.match || m.match;
+          ctx.globalAlpha = opts.poster ? 0.22 : (active ? (hot ? 0.75 : warm ? 0.35 : 0.045) : 0.2);
+          ctx.strokeStyle = COLOR[n.type] || "#5b9bd5";
+          ctx.beginPath();
+          ctx.moveTo(n.sx, n.sy);
+          ctx.lineTo(m.sx, m.sy);
+          ctx.stroke();
+        });
+      });
+      ctx.globalAlpha = 1;
+
+      var order = app.nodes.slice().sort(function (a, b) {
+        return (a.match === b.match ? a.sr - b.sr : (a.match ? 1 : -1));
+      });
+      order.forEach(function (n) {
+        var dim = active && !n.match;
+        ctx.globalAlpha = dim ? 0.2 : 1;
+        var sp = sprite(n.type, !!n.match);
+        var size = n.sr * (n.match ? 9.2 : 7.4);
+        ctx.drawImage(sp, n.sx - size / 2, n.sy - size / 2, size, size);
+      });
+      ctx.globalAlpha = 1;
+
+      if (!opts.poster && !reduceMotion && !active) {
+        var cyc = (t % 3.4) / 3.4;
+        ctx.beginPath();
+        ctx.arc(agent[0], agent[1], 10 + cyc * 78, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(91,155,213," + ((1 - cyc) * 0.35).toFixed(3) + ")";
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+      }
+
+      var asize = Math.min(rect.w, rect.h) * 0.14;
+      ctx.drawImage(sprite("agent", true), agent[0] - asize / 2, agent[1] - asize / 2, asize, asize);
+      if (!opts.poster) {
+        ctx.font = "600 11px sans-serif";
+        ctx.fillStyle = "rgba(214,232,255,0.85)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText("agent", agent[0], agent[1] + 14);
+      }
+
+      if (!opts.poster) {
+        var now = performance.now();
+        app.pulses.forEach(function (p) {
+          var u = (now - p.start) / p.dur;
+          if (u < 0 || u > 1 || !p.node.sx && p.node.sx !== 0) return;
+          var e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+          var x = agent[0] + (p.node.sx - agent[0]) * e;
+          var y = agent[1] + (p.node.sy - agent[1]) * e;
+          ctx.globalAlpha = 0.9 * (1 - u * 0.25);
+          ctx.strokeStyle = "#f4fbff";
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(agent[0], agent[1]);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          var hs = 36;
+          ctx.drawImage(sprite("agent", true), x - hs / 2, y - hs / 2, hs, hs);
+        });
+        ctx.globalAlpha = 1;
+      }
+
+      var vignette = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.28, w / 2, h / 2, Math.max(w, h) * 0.72);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, w, h);
+      return agent;
+    }
+
+    function drawPoster() {
+      var square = app.posterSize !== "wide";
+      var w = 1200;
+      var h = square ? 1200 : 627;
+      if (poster.width !== w) poster.width = w;
+      if (poster.height !== h) poster.height = h;
+      var ctx = posterCtx;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      var rect = square
+        ? { x: w * 0.07, y: h * 0.1, w: w * 0.86, h: h * 0.58, W: w, H: h }
+        : { x: w * 0.36, y: h * 0.08, w: w * 0.58, h: h * 0.84, W: w, H: h };
+      drawField(ctx, rect, 2.2, { poster: true });
+
+      if (square) {
+        var fade = ctx.createLinearGradient(0, h * 0.68, 0, h);
+        fade.addColorStop(0, "rgba(13,13,13,0)");
+        fade.addColorStop(0.45, "rgba(13,13,13,0.55)");
+        fade.addColorStop(1, "rgba(13,13,13,0.94)");
+        ctx.fillStyle = fade;
+        ctx.fillRect(0, h * 0.68, w, h * 0.32);
+      } else {
+        var scrim = ctx.createLinearGradient(0, 0, w * 0.5, 0);
+        scrim.addColorStop(0, "rgba(13,13,13,0.92)");
+        scrim.addColorStop(1, "rgba(13,13,13,0)");
+        ctx.fillStyle = scrim;
+        ctx.fillRect(0, 0, w * 0.5, h);
+      }
+
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#5b9bd5";
+      ctx.font = "700 18px sans-serif";
+      var tag = "#MCPMonday";
+      var tagX = square ? 72 : 56;
+      var tagY = square ? 78 : 86;
+      ctx.fillText(tag, tagX, tagY);
+
+      var titleA = "Your agent,";
+      var titleB = "inside the Hugging Face Hub";
+      var maxW = square ? w - 144 : 430;
+      var size = square ? 68 : 46;
+      ctx.fillStyle = "#fff";
+      while (size > 28) {
+        ctx.font = "bold " + size + "px sans-serif";
+        if (ctx.measureText(titleB).width <= maxW && ctx.measureText(titleA).width <= maxW) break;
+        size -= 2;
+      }
+      if (square) {
+        var baseY = h - 148;
+        ctx.fillText(titleA, 72, baseY);
+        ctx.fillText(titleB, 72, baseY + size + 8);
+      } else {
+        ctx.fillText(titleA, 56, h / 2 - 6);
+        ctx.fillText(titleB, 56, h / 2 + size + 4);
+      }
+
+      ctx.font = "600 16px sans-serif";
+      var legend = [["#5b9bd5", "Models"], ["#4caf50", "Datasets"], ["#f0a040", "Spaces"]];
+      var lx = square ? 72 : 56;
+      var ly = square ? h - 64 : h - 78;
+      legend.forEach(function (item, i) {
+        var x = lx + i * 150;
+        ctx.beginPath();
+        ctx.fillStyle = item[0];
+        ctx.arc(x + 6, ly - 5, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#c8c8c8";
+        ctx.fillText(item[1], x + 20, ly);
+      });
+      poster.dataset.drawn = "1";
+    }
+
+    function frame(t) {
+      if (!posterMode) {
+        resizeSky();
+        var rect = liveRect();
+        drawField(skyCtx, rect, t / 1000, { poster: false });
+        if (app.nodes.length) {
+          var n = app.nodes[0];
+          sky.dataset.sample = Math.round(n.sx) + "," + Math.round(n.sy);
+        }
+      }
+      if (!posterMode) requestAnimationFrame(frame);
+    }
+
+    function hideTip() { tip.hidden = true; tip.innerHTML = ""; }
+
+    function showTip(n) {
+      if (!n) { if (!app.pinned) hideTip(); return; }
+      tip.hidden = false;
+      tip.innerHTML = "";
+      var title = document.createElement("strong");
+      title.textContent = n.id;
+      var meta = document.createElement("p");
+      var bits = [n.type === "model" ? "Model" : n.type === "dataset" ? "Dataset" : "Space", pretty(n.task), compact(n.likes) + " likes"];
+      if (n.downloads) bits.push(compact(n.downloads) + " downloads");
+      meta.textContent = bits.join(" · ");
+      var link = document.createElement("a");
+      link.href = hrefFor(n);
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Open on Hugging Face";
+      tip.appendChild(title);
+      tip.appendChild(meta);
+      tip.appendChild(link);
+      var left = n.sx + 14;
+      var top = n.sy - 8;
+      var bounds = sky.getBoundingClientRect();
+      if (left + 280 > bounds.width) left = n.sx - 290;
+      if (top + 110 > bounds.height) top = bounds.height - 120;
+      tip.style.left = Math.max(8, left) + "px";
+      tip.style.top = Math.max(8, top) + "px";
+    }
+
+    function hit(clientX, clientY) {
+      var b = sky.getBoundingClientRect();
+      var x = clientX - b.left;
+      var y = clientY - b.top;
+      var found = null;
+      var best = 1e9;
+      app.nodes.forEach(function (n) {
+        var dx = x - n.sx, dy = y - n.sy;
+        var reach = n.sr + 8;
+        var d = dx * dx + dy * dy;
+        if (d <= reach * reach && d < best) { best = d; found = n; }
+      });
+      return found;
+    }
+
+    function renderCard(prompt, rows, state) {
+      toolCard.hidden = false;
+      toolCard.innerHTML = "";
+      var kicker = document.createElement("p");
+      kicker.className = "tool-kicker";
+      kicker.textContent = prompt.kind === "builtin" ? "MCP tool" : "From the docs";
+      var heading = document.createElement("h2");
+      if (prompt.kind === "builtin") {
+        var code = document.createElement("code");
+        code.textContent = prompt.tool;
+        heading.appendChild(code);
+      } else {
+        heading.textContent = prompt.tool;
+      }
+      var quote = document.createElement("p");
+      quote.className = "tool-prompt";
+      quote.textContent = prompt.text;
+      var detail = document.createElement("p");
+      detail.className = "tool-detail";
+      detail.textContent = state === "loading" ? "Searching the public Hub API…" : prompt.detail;
+      toolCard.appendChild(kicker);
+      toolCard.appendChild(heading);
+      toolCard.appendChild(quote);
+      toolCard.appendChild(detail);
+      if (state === "loading") return;
+      if (!rows.length) {
+        var empty = document.createElement("p");
+        empty.className = "tool-detail";
+        empty.textContent = "The Hub search returned no matches.";
+        toolCard.appendChild(empty);
+        return;
+      }
+      rows.forEach(function (n) {
+        var a = document.createElement("a");
+        a.className = "result";
+        a.href = hrefFor(n);
+        a.target = "_blank";
+        a.rel = "noopener";
+        var name = document.createElement("span");
+        name.className = "result-name";
+        var dot = document.createElement("i");
+        dot.className = "dot";
+        dot.style.background = COLOR[n.type] || "#5b9bd5";
+        name.appendChild(dot);
+        name.appendChild(document.createTextNode(n.id));
+        var meta = document.createElement("span");
+        meta.className = "result-meta";
+        var metaBits = [compact(n.likes) + " likes"];
+        if (n.downloads) metaBits.push(compact(n.downloads) + " downloads");
+        meta.textContent = metaBits.join(" · ");
+        a.appendChild(name);
+        a.appendChild(meta);
+        toolCard.appendChild(a);
+      });
+    }
+
+    function placeExtra(n, mates, i) {
+      n.weight = weightOf(n);
+      n.phase = (hash(keyOf(n)) % 1000) / 1000 * Math.PI * 2;
+      n.links = [];
+      n.ephemeral = true;
+      if (mates.length) {
+        var x = 0, y = 0;
+        mates.forEach(function (m) { x += m.hx; y += m.hy; });
+        x /= mates.length; y /= mates.length;
+        var a = i * 2.399963229728653;
+        var r = 0.04 + (i % 3) * 0.016;
+        n.hx = clamp(x + Math.cos(a) * r, 0.05, 0.95);
+        n.hy = clamp(y + Math.sin(a) * r, 0.05, 0.95);
+        n.links.push(mates[i % mates.length]);
+      } else {
+        var ang = -Math.PI / 2 + i * 1.2;
+        n.hx = clamp(AX + Math.cos(ang) * 0.18, 0.08, 0.92);
+        n.hy = clamp(AY + Math.sin(ang) * 0.16, 0.1, 0.9);
+      }
+    }
+
+    function clearPrompt() {
+      app.token++;
+      app.prompt = null;
+      app.matches = [];
+      app.pulses = [];
+      app.base.forEach(function (n) { n.match = false; });
+      app.nodes = app.base;
+      toolCard.hidden = true;
+      document.querySelectorAll(".prompts button").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
+    }
+
+    function applySearch(prompt, rows) {
+      var index = new Map(app.base.map(function (n) { return [keyOf(n), n]; }));
+      app.base.forEach(function (n) { n.match = false; });
+      var matches = [];
+      var extras = [];
+      rows.forEach(function (row) {
+        var hit = index.get(keyOf(row));
+        if (!hit) {
+          hit = {
+            id: row.id, type: row.type, likes: row.likes || 0, downloads: row.downloads || 0,
+            task: row.task || "other"
+          };
+          var mates = app.base.filter(function (b) { return b.type === hit.type && b.task === hit.task; });
+          placeExtra(hit, mates, extras.length);
+          extras.push(hit);
+        }
+        hit.match = true;
+        matches.push(hit);
+      });
+      app.nodes = app.base.concat(extras);
+      app.matches = matches;
+      var now = performance.now();
+      app.pulses = matches.map(function (n, i) {
+        return { node: n, start: now + i * 150, dur: 980 };
+      });
+      renderCard(prompt, matches, "ready");
+    }
+
+    async function fetchSearch(prompt) {
+      var url = "https://huggingface.co/api/" + prompt.endpoint + "?search=" + encodeURIComponent(prompt.q) + "&limit=6";
+      var res = await fetch(url);
+      if (!res.ok) throw new Error("search failed");
+      var data = await res.json();
+      if (!Array.isArray(data)) throw new Error("search shape");
+      return data.filter(function (item) { return item && item.id && !item.private; }).map(function (item) {
+        var task = "other";
+        if (prompt.type === "model") task = item.pipeline_tag || "other";
+        else if (prompt.type === "space") task = item.sdk || "space";
+        else {
+          var tags = item.tags || [];
+          for (var i = 0; i < tags.length; i++) {
+            if (String(tags[i]).indexOf("modality:") === 0) { task = String(tags[i]).split(":")[1]; break; }
+            if (String(tags[i]).indexOf("task_categories:") === 0) task = String(tags[i]).split(":")[1];
+          }
+        }
+        return {
+          id: item.id,
+          type: prompt.type,
+          likes: item.likes || 0,
+          downloads: item.downloads || 0,
+          task: task
+        };
+      });
+    }
+
+    async function runPrompt(prompt) {
+      var my = ++app.token;
+      app.prompt = prompt;
+      app.pinned = null;
+      hideTip();
+      document.querySelectorAll(".prompts button").forEach(function (b) {
+        b.setAttribute("aria-pressed", b.getAttribute("data-prompt") === prompt.id ? "true" : "false");
+      });
+      renderCard(prompt, [], "loading");
+      var rows = null;
+      try {
+        rows = await fetchSearch(prompt);
+      } catch (err) {
+        rows = (app.snapshot && app.snapshot.prompts && app.snapshot.prompts[prompt.id]) || [];
+      }
+      if (my !== app.token) return;
+      applySearch(prompt, rows);
+    }
+
+    function mountPrompts() {
+      var bar = document.getElementById("prompts");
+      PROMPTS.forEach(function (p) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = p.text;
+        b.setAttribute("data-prompt", p.id);
+        b.setAttribute("aria-pressed", "false");
+        b.addEventListener("click", function () {
+          if (app.prompt && app.prompt.id === p.id) clearPrompt();
+          else runPrompt(p);
+        });
+        bar.appendChild(b);
+      });
+    }
+
+    function normalizeList(items, type, taskOf) {
+      return (items || []).filter(function (item) { return item && item.id && !item.private; }).map(function (item) {
+        return {
+          id: item.id,
+          type: type,
+          likes: item.likes || 0,
+          downloads: item.downloads || 0,
+          task: taskOf(item)
+        };
+      });
+    }
+
+    async function load() {
+      try {
+        var res = await fetch("snapshot.json");
+        if (!res.ok) throw new Error("snapshot");
+        app.snapshot = await res.json();
+        setBase(app.snapshot.nodes || [], "snapshot");
+      } catch (err) {
+        sourceLabel.textContent = "Waiting for the Hub API…";
+      }
+      try {
+        var results = await Promise.all([
+          fetch("https://huggingface.co/api/models?sort=trendingScore&limit=48").then(function (r) { return r.json(); }),
+          fetch("https://huggingface.co/api/datasets?sort=trendingScore&limit=28").then(function (r) { return r.json(); }),
+          fetch("https://huggingface.co/api/spaces?sort=trendingScore&limit=28").then(function (r) { return r.json(); })
+        ]);
+        var models = normalizeList(results[0], "model", function (m) { return m.pipeline_tag || "other"; });
+        var datasets = normalizeList(results[1], "dataset", function (d) {
+          var tags = d.tags || [];
+          for (var i = 0; i < tags.length; i++) {
+            if (String(tags[i]).indexOf("modality:") === 0) return String(tags[i]).split(":")[1];
+          }
+          for (var j = 0; j < tags.length; j++) {
+            if (String(tags[j]).indexOf("task_categories:") === 0) return String(tags[j]).split(":")[1];
+          }
+          return "other";
+        });
+        var spaces = normalizeList(results[2], "space", function (s) { return s.sdk || "space"; });
+        var live = models.concat(datasets, spaces);
+        if (live.length >= 20 && !app.prompt) setBase(live, "live");
+      } catch (err) {
+        if (!app.base.length) sourceLabel.textContent = "Hub data is unavailable.";
+      }
+    }
+
+    mountPrompts();
+    if (!posterMode) {
+      sky.addEventListener("pointermove", function (e) {
+        if (e.pointerType === "touch" || app.pinned) return;
+        showTip(hit(e.clientX, e.clientY));
+      });
+      sky.addEventListener("pointerleave", function () { if (!app.pinned) hideTip(); });
+      var down = null;
+      sky.addEventListener("pointerdown", function (e) { down = { x: e.clientX, y: e.clientY }; });
+      sky.addEventListener("pointerup", function (e) {
+        if (!down) return;
+        var dx = e.clientX - down.x, dy = e.clientY - down.y;
+        down = null;
+        if (dx * dx + dy * dy > 16) return;
+        var n = hit(e.clientX, e.clientY);
+        if (!n) { app.pinned = null; hideTip(); return; }
+        app.pinned = n;
+        showTip(n);
+      });
+      requestAnimationFrame(frame);
+      window.addEventListener("resize", function () { sky.dataset.sample = ""; });
+    } else {
+      var params = new URLSearchParams(location.search);
+      app.posterSize = params.get("size") === "wide" ? "wide" : "square";
+      document.querySelectorAll(".size-btn").forEach(function (btn) {
+        btn.classList.toggle("primary", btn.getAttribute("data-size") === app.posterSize);
+        btn.addEventListener("click", function () {
+          app.posterSize = btn.getAttribute("data-size");
+          document.querySelectorAll(".size-btn").forEach(function (b) {
+            b.classList.toggle("primary", b === btn);
+          });
+          drawPoster();
+        });
+      });
+      document.getElementById("download-png").addEventListener("click", function () {
+        poster.toBlob(function (blob) {
+          if (!blob) return;
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = app.posterSize === "wide" ? "huggingface-mcp-1200x627.png" : "huggingface-mcp-1200.png";
+          a.click();
+          URL.revokeObjectURL(a.href);
+        });
+      });
+    }
+
+    document.querySelectorAll(".copy-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = document.querySelector(btn.getAttribute("data-copy-target"));
+        if (!target) return;
+        var text = target.textContent.replace(/^\n/, "").replace(/\n$/, "");
+        var done = function () {
+          var previous = btn.textContent;
+          btn.textContent = "Copied";
+          btn.classList.add("done");
+          window.setTimeout(function () {
+            btn.textContent = previous;
+            btn.classList.remove("done");
+          }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () { window.prompt("Copy this text:", text); });
+          return;
+        }
+        window.prompt("Copy this text:", text);
+      });
+    });
+
+    load();
+  </script>
+</body>
+</html>
