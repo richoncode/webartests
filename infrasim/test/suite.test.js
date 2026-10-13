@@ -259,9 +259,16 @@ test('read and write lanes are parallel, and M5 Pro Fusion stays idle', () => {
   const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
   assert.match(ui, /Fusion · idle/);
   assert.match(ui, /Idle on purpose/);
+  assert.match(ui, /vlabel:true/);
   assert.match(ui, /LANE_OFFSET=4/);
   assert.match(ui, /drawLayerPulse/);
   assert.match(ui, /drawCpuHandoff/);
+  assert.match(ui, /syncMemCards/);
+  assert.match(ui, /holds: weights/);
+  const css = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
+  assert.match(css, /writing-mode:vertical-rl/);
+  assert.match(css, /\.srows\{flex:none;width:104px/);
+  assert.match(css, /\.memcard\{/);
 });
 
 test('derived parameter totals stay near the published safetensors counts', () => {

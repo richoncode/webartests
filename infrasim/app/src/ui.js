@@ -69,8 +69,9 @@ function slcCaption(c){
 function layApple(c){
   const memShort=(c.memType||'').replace('Unified ','');
   const nm=clamp(Math.round(c.bw/150),2,8), nl=Math.ceil(nm/2), nr=nm-nl, mems=[];
-  const stack=(n,x)=>{const gap=4,h=(240-(n-1)*gap)/n,first=mems.length;for(let i=0;i<n;i++)mems.push({x,y:12+i*(h+gap),w:58,h,label:i===0?memShort:'',sub:i===0&&n>1?'':'',left:x<300});return first;};
-  stack(nl,10); if(nr)stack(nr,552);
+  const mw=76;
+  const stack=(n,x)=>{const gap=4,h=(240-(n-1)*gap)/n;for(let i=0;i<n;i++)mems.push({x,y:12+i*(h+gap),w:mw,h,label:memShort,sub:'',left:x<300,stats:true});};
+  stack(nl,8); if(nr)stack(nr,CW-8-mw);
   const cap=slcCaption(c);
   // Label band on top, dot lane underneath. Height is the same for every Apple chip.
   const slc={x:92,y:8,w:436,h:36,labelBand:20,label:cap.label,tag:cap.tag,sub:''};
@@ -78,15 +79,13 @@ function layApple(c){
   const dies=c.dies||1, top=slc.y+slc.h+6, bot=258, frames=[], blocks=[], extra=[], links=[], cells=[];
   if(dies===1)frames.push({x:92,y:top,w:436,h:bot-top});
   else if(dies===2){
-    frames.push({x:92,y:top,w:212,h:bot-top},{x:316,y:top,w:212,h:bot-top});
+    // Gap between the dies is empty of cores. The vertical badge lives only in that gap.
+    const gapW=22, span=436, dw=(span-gapW)/2, x0=92;
+    frames.push({x:x0,y:top,w:dw,h:bot-top},{x:x0+dw+gapW,y:top,w:dw,h:bot-top});
     const idle=!(c.ic>0);
     const name=/ultra/i.test(c.id||'')?'UltraFusion':'Fusion';
-    const bh=bot-top-80, by=top+40;
-    links.push({x:304,y:by,w:12,h:bh,label:'',vert:true,idle});
-    // Horizontal badge: the 12px bar is too narrow for a rotated label to stay readable.
-    const pw=168, ph=18;
     const label=idle?(name==='Fusion'?'Fusion · idle':'UltraFusion · idle'):name;
-    links.push({x:310-pw/2,y:by+bh/2-ph/2,w:pw,h:ph,label,pill:true,idle});
+    links.push({x:x0+dw,y:top+6,w:gapW,h:bot-top-12,label,vert:true,vlabel:true,idle});
   }
   else{const hh=(bot-top-8)/2;frames.push({x:92,y:top,w:212,h:hh},{x:316,y:top,w:212,h:hh},{x:92,y:top+hh+8,w:212,h:hh},{x:316,y:top+hh+8,w:212,h:hh});
     links.push({x:304,y:top+10,w:12,h:2*hh+8-20,label:'',vert:true,idle:!(c.ic>0)},{x:112,y:top+hh,w:396,h:8,label:'',vert:false,idle:!(c.ic>0)},{x:230,y:top+hh-3,w:160,h:14,label:'UltraFusion >4.4 TB/s',pill:true,idle:!(c.ic>0)});}
@@ -153,8 +152,47 @@ function mkSide(key){
 }
 let sides=[];
 function sizeCanvas(cv,cssW,cssH){const d=window.devicePixelRatio||1;cv.style.height=cssH+'px';cv.width=Math.round(cssW*d);cv.height=Math.round(cssH*d);return d;}
+function labelPx(str){
+  const c=labelPx._c||(labelPx._c=document.createElement('span'));
+  if(!c.isConnected){
+    c.style.cssText='position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font:10px/15px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0;margin:0';
+    document.body.appendChild(c);
+  }
+  c.textContent=str;
+  return Math.ceil(c.offsetWidth);
+}
+// Fixed width for the strip's right labels. Full words when the panel can hold them; FF when it cannot.
+function textWidth(el){
+  const r=document.createRange();
+  r.selectNodeContents(el);
+  return Math.ceil(r.getBoundingClientRect().width);
+}
+function fitStripLabels(){
+  const boxes=[...document.querySelectorAll('.srows')];
+  if(!boxes.length)return;
+  const measure=word=>{
+    let need=0;
+    for(const box of boxes){
+      box.style.width='180px';
+      const ffn=box.querySelector('[data-part="ffn"]');
+      if(ffn.textContent!==word)ffn.textContent=word;
+      const attn=box.querySelector('[data-part="attn"]');
+      need=Math.max(need, textWidth(ffn), textWidth(attn));
+    }
+    return need+4;
+  };
+  let word='feed-forward', need=measure(word);
+  for(const box of boxes){
+    const panel=box.closest('.panel'), layer=box.parentElement.querySelector('.slayer');
+    const room=panel.clientWidth-20-(layer?layer.offsetWidth:48)-8;
+    if(room-need<100)word='FF';
+  }
+  if(word==='FF')need=measure('FF');
+  for(const box of boxes)box.style.width=need+'px';
+}
 function resizeAll(){
   const narrow=window.innerWidth<=900;
+  fitStripLabels();
   for(const s of sides){const w=Math.max(200,s.cv.parentElement.clientWidth-20),hh=Math.min(w*CH/CW,narrow?260:196);s.dpr=sizeCanvas(s.cv,w,hh);s.sc=Math.min(hh/CH,w/CW);s.offx=(w-CW*s.sc)/2;s.offy=(hh-CH*s.sc)/2;const used=(s.layerBtn?s.layerBtn.offsetWidth:48)+(s.rowLabs?s.rowLabs.offsetWidth:84)+8;const cw=Math.max(80,(s.stripwrap?s.stripwrap.clientWidth:w)-used);sizeCanvas(s.st,cw,30);s.st.style.width=cw+'px';s.stW=cw;}
   const rw=Math.max(200,$('roof').parentElement.clientWidth-20);sizeCanvas($('roof'),rw,narrow?150:128);
 }
@@ -455,7 +493,7 @@ function drawSide(s,tm){
   // memory
   const busy=0.25+0.75*mu*(0.8+0.2*Math.sin(tm*5));
   for(const m of L.mems){ctx.fillStyle='rgba(251,191,36,'+(0.10+0.28*busy*oomDim)+')';ctx.strokeStyle='rgba(251,191,36,'+(0.35+0.5*mu)+')';rr(ctx,m.x,m.y,m.w,m.h,5);ctx.fill();ctx.stroke();
-    if(m.label){ctx.fillStyle='#fde68a';txt(ctx,m.label,m.x+m.w/2,m.y+11,m.w-4,sc);if(m.sub){ctx.fillStyle='#b99a4a';txt(ctx,m.sub,m.x+m.w/2,m.y+24,m.w-4,sc);}}}
+    if(m.label&&!m.stats){ctx.fillStyle='#fde68a';txt(ctx,m.label,m.x+m.w/2,m.y+11,m.w-4,sc);if(m.sub){ctx.fillStyle='#b99a4a';txt(ctx,m.sub,m.x+m.w/2,m.y+24,m.w-4,sc);}}}
   // caches
   for(const k of L.caches){ctx.fillStyle='rgba(34,211,238,'+(0.08+0.14*mu*oomDim)+')';ctx.strokeStyle='rgba(34,211,238,'+(0.3+0.4*mu)+')';rr(ctx,k.x,k.y,k.w,k.h,5);ctx.fill();ctx.stroke();
     if(k.labelBand)paintSlcLabel(ctx,k);
@@ -465,7 +503,7 @@ function drawSide(s,tm){
     if(k.pill)continue;
     if(k.idle){ctx.fillStyle='rgba(148,163,184,0.12)';ctx.strokeStyle='rgba(148,163,184,0.8)';ctx.setLineDash([3,3]);rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();ctx.setLineDash([]);}
     else{ctx.fillStyle='rgba(244,114,182,0.14)';ctx.strokeStyle='rgba(244,114,182,.35)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();}
-    if(k.label&&k.vert){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=k.idle?'#e2e8f0':'#fbcfe8';txt(ctx,k.label,0,0.5,k.h-8,sc);ctx.restore();}}
+    if(k.label&&k.vert&&!k.vlabel){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=k.idle?'#e2e8f0':'#fbcfe8';txt(ctx,k.label,0,0.5,k.h-8,sc);ctx.restore();}}
   syncFuseHit(s);
   // extra blocks. Neural Engine lights only on a documented ANE step.
   const live=aneLive(s), stepUnit=live&&live.parts[cur.part]&&live.parts[cur.part].unit;
@@ -526,6 +564,7 @@ function drawSide(s,tm){
     ctx.fillStyle=k.idle?'#e2e8f0':'#fbcfe8';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2+0.5,k.w-8,sc);
   }
   syncSlcLabel(s);
+  syncMemCards(s);
   // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
   const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
   const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
@@ -899,9 +938,80 @@ function sourceBits(keys){
   const html=list.map(s=>/^https?:/.test(s.url||'')?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.title)+'</a>':esc(s.title)+(s.url?' ('+esc(s.url)+')':'')).join('; ');
   return {list,html};
 }
+function shareGB(total,n,i){
+  const cents=Math.round(Number(total)*100), base=Math.floor(cents/n), extra=cents-base*n;
+  return (base+(i<extra?1:0))/100;
+}
+function fmtGB(v){
+  const x=Math.round(Number(v)*100)/100;
+  if(Math.abs(x-Math.round(x))<0.001)return String(Math.round(x));
+  if(Math.abs(x)>=10)return x.toFixed(1);
+  return x.toFixed(2);
+}
+function syncMemCards(s){
+  const mems=(s.layout&&s.layout.mems)||[];
+  if(!s.memCards)s.memCards=[];
+  const show=mems.filter(m=>m.stats);
+  for(let i=show.length;i<s.memCards.length;i++)s.memCards[i].style.display='none';
+  if(!show.length||!s.chip||!s.res)return;
+  const bl=1,bt=1,bw=s.cv.width/s.dpr||1,bh=s.cv.height/s.dpr||1;
+  const scaleX=s.cv.clientWidth/bw, scaleY=s.cv.clientHeight/bh;
+  const N=Math.max(1,s.res.N||1);
+  const capTotal=s.chip.cap, wChip=s.res.weightGB/N, kvChip=s.res.kvGB/N;
+  const specs=s.chip.raw.specs||{};
+  const n=show.length;
+  show.forEach((m,i)=>{
+    let el=s.memCards[i];
+    if(!el){el=document.createElement('div');el.className='memcard';s.root.appendChild(el);s.memCards[i]=el;}
+    const left=s.cv.offsetLeft+bl+(s.offx+m.x*s.sc)*scaleX;
+    const top=s.cv.offsetTop+bt+(s.offy+m.y*s.sc)*scaleY;
+    const w=(m.w*s.sc)*scaleX, h=(m.h*s.sc)*scaleY;
+    const pos=left.toFixed(1)+','+top.toFixed(1)+','+w.toFixed(1)+','+h.toFixed(1);
+    if(el.dataset.pos!==pos){
+      el.dataset.pos=pos;
+      el.style.left=left.toFixed(1)+'px';
+      el.style.top=top.toFixed(1)+'px';
+      el.style.width=w.toFixed(1)+'px';
+      el.style.height=h.toFixed(1)+'px';
+    }
+    el.style.display='flex';
+    const cap=shareGB(capTotal,n,i), wg=shareGB(wChip,n,i), kg=shareGB(kvChip,n,i);
+    const capSp=specs.cap||{}, useSp=specs.usable||{}, bwSp=specs.bw||{};
+    const usePct=Math.round((useSp.v==null?s.chip.usable:useSp.v)*100);
+    const den=Math.max(capTotal, wChip+kvChip)||1;
+    const wp=Math.min(100,100*wChip/den), kp=Math.min(100-wp,100*kvChip/den);
+    const mark=Math.min(100,100*(capTotal*s.chip.usable)/den);
+    const sig=[s.chip.id,n,i,fmtGB(cap),usePct,fmtGB(bwSp.v==null?s.chip.bw:bwSp.v),fmtGB(wg),fmtGB(kg),wp.toFixed(1),kp.toFixed(1),mark.toFixed(1),s.res.oom?1:0,m.label].join('|');
+    if(el.dataset.sig===sig)return;
+    el.dataset.sig=sig;
+    const capNote=(capSp.note?capSp.note+' ':'')+'This block draws '+fmtGB(cap)+' GB, an equal share of '+fmtGB(capTotal)+' GB. The blocks are one pool.';
+    const bwNote=(bwSp.note?bwSp.note+' ':'')+'Package bandwidth, shown on every block. Not a per-block rate.';
+    const hold='holds: weights '+fmtGB(wg)+' GB + KV '+fmtGB(kg)+' GB. Equal share of this chip (weights '+fmtGB(wChip)+' GB + KV '+fmtGB(kvChip)+' GB).';
+    const line=(cls,inner)=>'<div class="ml '+cls+'">'+inner+'</div>';
+    const holdBtn=txt=>'<button type="button" class="ml tall ml-hold" data-link="note:fit" data-kind="fit" data-side="'+s.key+'" aria-label="'+esc(hold)+'">'+esc(txt)+'</button>';
+    const items=[
+      {hh:11, html:line('ml-type', esc(m.label||'memory'))},
+      {hh:11, html:line('ml-cap', '<span class="mn">'+fmtGB(cap)+' GB</span>'+tagBtn(capSp.tag||'U',{spec:'Memory capacity',src:capSp.src||[],note:capNote}))},
+      {hh:22, html:line('tall ml-use', '<span class="mn">usable '+usePct+'%</span>'+tagBtn(useSp.tag||'A',{spec:'Usable fraction of memory',src:useSp.src||[],note:useSp.note||'Share of capacity the model may use.'}))},
+      {hh:22, html:line('tall ml-bw', '<span class="mn">'+fmtGB(bwSp.v==null?s.chip.bw:bwSp.v)+' GB/s</span>'+tagBtn(bwSp.tag||'V',{spec:'Memory bandwidth',src:bwSp.src||[],note:bwNote}))},
+      {hh:11, html:line('ml-hold', 'holds:')},
+      {hh:22, html:holdBtn('weights '+fmtGB(wg)+' GB')},
+      {hh:22, html:holdBtn('+ KV '+fmtGB(kg)+' GB')}
+    ];
+    const barH=8, pad=4;
+    let used=pad, html='';
+    for(const it of items){
+      if(used+it.hh>h-2)break;
+      html+=it.html; used+=it.hh;
+    }
+    if(used+barH<=h+1)html+='<div class="mfill'+(s.res.oom?' bad':'')+'" aria-hidden="true"><i class="mw" style="width:'+wp.toFixed(1)+'%"></i><i class="mkv" style="left:'+wp.toFixed(1)+'%;width:'+kp.toFixed(1)+'%"></i><i class="mu" style="left:'+mark.toFixed(1)+'%"></i></div>';
+    el.innerHTML=html;
+    el.setAttribute('aria-label', (m.label||'Memory')+' block '+(i+1)+' of '+n+'. '+fmtGB(cap)+' GB capacity, usable '+usePct+'%. Bandwidth '+fmtGB(bwSp.v==null?s.chip.bw:bwSp.v)+' GB/s. '+hold);
+  });
+}
 function syncFuseHit(s){
   const links=(s.layout&&s.layout.links)||[];
-  const k=links.find(x=>x.pill)||links.find(x=>x.vert)||null;
+  const k=links.find(x=>x.vlabel)||links.find(x=>x.pill)||links.find(x=>x.vert)||null;
   let el=s.fuseHit;
   if(!k||!s.chip){if(el)el.style.display='none';return;}
   if(!el){el=document.createElement('button');el.type='button';el.className='fusehit';el.dataset.link='note:fuse';el.dataset.kind='fuse';s.root.appendChild(el);s.fuseHit=el;}
@@ -909,12 +1019,21 @@ function syncFuseHit(s){
   const scaleX=s.cv.clientWidth/bw, scaleY=s.cv.clientHeight/bh;
   const left=s.cv.offsetLeft+bl+(s.offx+k.x*s.sc)*scaleX;
   const top=s.cv.offsetTop+bt+(s.offy+k.y*s.sc)*scaleY;
-  const w=Math.max(18,(k.w*s.sc)*scaleX), h=Math.max(18,(k.h*s.sc)*scaleY);
-  el.style.left=(left-(w-(k.w*s.sc)*scaleX)/2).toFixed(1)+'px';
+  const rawW=(k.w*s.sc)*scaleX, rawH=(k.h*s.sc)*scaleY;
+  const w=k.vlabel?rawW:Math.max(18,rawW), h=k.vlabel?rawH:Math.max(18,rawH);
+  el.style.left=left.toFixed(1)+'px';
   el.style.top=top.toFixed(1)+'px';
   el.style.width=w.toFixed(1)+'px';
   el.style.height=h.toFixed(1)+'px';
-  el.style.display='block';
+  el.style.display='flex';
+  el.classList.toggle('vlab', !!k.vlabel);
+  if(k.vlabel){
+    if(el.textContent!==k.label)el.textContent=k.label;
+    let fs=Math.max(7, Math.floor(w-2));
+    el.style.fontSize=fs+'px';
+    let guard=0;
+    while(guard++<8 && fs>7 && el.scrollHeight>el.clientHeight+1){fs-=1;el.style.fontSize=fs+'px';}
+  }else if(el.textContent){el.textContent='';el.style.fontSize='';}
   const al='Fusion is idle. Two dies are published; a die-to-die bandwidth is not, so this model sends no bytes across the link and tok/s is unchanged.';
   if(el.getAttribute('aria-label')!==al)el.setAttribute('aria-label',al);
 }
