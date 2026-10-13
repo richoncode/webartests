@@ -12,13 +12,16 @@ const PRECS = {
   int4: { label:'INT4 (weight-only)', w:0.5156, kv:2 }   // 4.125 bits: 4-bit + fp16 scale per group of 128 (assumed layout)
 };
 // Global assumptions (all adjustable in the UI drawer). Units and meaning are listed in ASSUME_META.
-const DEFAULT_ASSUME = { linkEff:0.7, alphaUs:8, actTraffic:3, int4BwFactor:0.85 };
+const DEFAULT_ASSUME = { linkEff:0.7, alphaUs:8, actTraffic:3, int4BwFactor:0.85, sampleUs:200 };
 const ASSUME_META = {
   linkEff:     { label:'Interconnect efficiency', min:0.3, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'U', help:'Fraction of the published link bandwidth an all-reduce actually achieves.' },
   alphaUs:     { label:'All-reduce latency (us)', min:0,   max:30, step:1,    fmt:v=>v.toFixed(0), tag:'U', help:'Fixed launch/latency cost added to each all-reduce.' },
   actTraffic:  { label:'Activation traffic (x)',  min:1,   max:6,  step:0.5,  fmt:v=>v.toFixed(1), tag:'U', help:'Activation bytes read+written per token per segment, as a multiple of one hidden-state vector.' },
-  int4BwFactor:{ label:'INT4 bandwidth factor',   min:0.5, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'A', help:'Extra bandwidth loss from dequantizing INT4 weights. 0.85 matches llama.cpp Q4_0 vs F16 decode on M5-class chips (Q4_0 reads 0.74-0.91 of the F16 effective bandwidth in the llama.cpp thread).' }
+  int4BwFactor:{ label:'INT4 bandwidth factor',   min:0.5, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'A', help:'Extra bandwidth loss from dequantizing INT4 weights. 0.85 matches llama.cpp Q4_0 vs F16 decode on M5-class chips (Q4_0 reads 0.74-0.91 of the F16 effective bandwidth in the llama.cpp thread).' },
+  sampleUs:    { label:'Token sample (µs)',       min:0,   max:5000, step:10, fmt:v=>v.toFixed(0), tag:'U', help:'Assumed CPU time to turn LM-head logits into the next token id. It is not part of the tok/s roofline. The on-screen gap uses this share of the step, and is at least 8% so the token return stays visible.' }
 };
+// Drawn share of one on-screen token used for CPU sampling plus the token returning to layer 1.
+const AR_VIS_FLOOR = 0.08;
 
 // ---- data helpers -------------------------------------------------------
 function specV(raw, k, dflt) { const s = raw.specs && raw.specs[k]; return s && s.v != null ? s.v : (dflt == null ? null : dflt); }
@@ -231,9 +234,31 @@ function flowScale(effGBs, refGBs) {
 }
 // One clock for both panels. wallSeconds is how long the slower chip's step takes
 // on screen; every other chip takes wallSeconds * (its model time / that slower time).
+// Shift a polyline onto a parallel lane. Positive dist is to the left of travel.
+function offsetPolyline(pts, dist) {
+  if (!pts || pts.length < 2 || !dist) return (pts || []).map(p => ({ x: p.x, y: p.y }));
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    let dx = 0, dy = 0, n = 0;
+    if (i > 0) { const sx = pts[i].x - pts[i - 1].x, sy = pts[i].y - pts[i - 1].y, len = Math.hypot(sx, sy) || 1; dx += -sy / len; dy += sx / len; n++; }
+    if (i < pts.length - 1) { const sx = pts[i + 1].x - pts[i].x, sy = pts[i + 1].y - pts[i].y, len = Math.hypot(sx, sy) || 1; dx += -sy / len; dy += sx / len; n++; }
+    const len = Math.hypot(dx, dy) || 1;
+    out.push({ x: pts[i].x + dist * dx / len, y: pts[i].y + dist * dy / len });
+  }
+  return out;
+}
 function animSeconds(modelSeconds, slowestModelSeconds, wallSeconds) {
   const slow = slowestModelSeconds > 0 ? slowestModelSeconds : 1;
   return modelSeconds * ((wallSeconds > 0 ? wallSeconds : 1) / slow);
+}
+
+// CPU sample after the LM head. Not added to estimate().total: tok/s stays the memory/compute step.
+// truth is sample / (step + sample). drawn is at least AR_VIS_FLOOR so the return stays visible.
+function arGap(stepSeconds, sampleUs) {
+  const sec = Math.max(0, Number(sampleUs) || 0) * 1e-6;
+  const step = stepSeconds > 0 ? stepSeconds : 0;
+  const truth = sec / Math.max(1e-12, step + sec);
+  return { sec, truth, drawn: Math.max(truth, AR_VIS_FLOOR) };
 }
 
 function fmtByte(b) {
@@ -262,5 +287,5 @@ function kvTraffic(m0, prec, phase, B, L) {
 
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
   flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState,
-  flowScale, animSeconds, kvTraffic, fmtByte, aneGate, aneToggle };
+  flowScale, animSeconds, offsetPolyline, arGap, AR_VIS_FLOOR, kvTraffic, fmtByte, aneGate, aneToggle };
 });

@@ -77,17 +77,27 @@ function layApple(c){
   const laneY=slc.y+slc.labelBand+(slc.h-slc.labelBand)/2;
   const dies=c.dies||1, top=slc.y+slc.h+6, bot=258, frames=[], blocks=[], extra=[], links=[], cells=[];
   if(dies===1)frames.push({x:92,y:top,w:436,h:bot-top});
-  else if(dies===2){frames.push({x:92,y:top,w:212,h:bot-top},{x:316,y:top,w:212,h:bot-top});links.push({x:304,y:top+40,w:12,h:bot-top-80,label:'Fusion',vert:true});}
+  else if(dies===2){
+    frames.push({x:92,y:top,w:212,h:bot-top},{x:316,y:top,w:212,h:bot-top});
+    const idle=!(c.ic>0);
+    const name=/ultra/i.test(c.id||'')?'UltraFusion':'Fusion';
+    const bh=bot-top-80, by=top+40;
+    links.push({x:304,y:by,w:12,h:bh,label:'',vert:true,idle});
+    // Horizontal badge: the 12px bar is too narrow for a rotated label to stay readable.
+    const pw=168, ph=18;
+    const label=idle?(name==='Fusion'?'Fusion · idle':'UltraFusion · idle'):name;
+    links.push({x:310-pw/2,y:by+bh/2-ph/2,w:pw,h:ph,label,pill:true,idle});
+  }
   else{const hh=(bot-top-8)/2;frames.push({x:92,y:top,w:212,h:hh},{x:316,y:top,w:212,h:hh},{x:92,y:top+hh+8,w:212,h:hh},{x:316,y:top+hh+8,w:212,h:hh});
-    links.push({x:304,y:top+10,w:12,h:2*hh+8-20,label:'',vert:true},{x:112,y:top+hh,w:396,h:8,label:'',vert:false},{x:230,y:top+hh-3,w:160,h:14,label:'UltraFusion >4.4 TB/s',pill:true});}
+    links.push({x:304,y:top+10,w:12,h:2*hh+8-20,label:'',vert:true,idle:!(c.ic>0)},{x:112,y:top+hh,w:396,h:8,label:'',vert:false,idle:!(c.ic>0)},{x:230,y:top+hh-3,w:160,h:14,label:'UltraFusion >4.4 TB/s',pill:true,idle:!(c.ic>0)});}
   const perDie=Math.ceil(c.units/dies);let left=c.units;
   frames.forEach((f,fi)=>{
     const n=Math.min(perDie,left);left-=n;
     let gx,gy,gw,gh;
     if(dies===1){gx=f.x+8;gy=f.y+16;gw=f.w-94;gh=f.h-24;
-      const cpu={x:f.x+f.w-78,y:f.y+18,w:70,h:(f.h-30)/2-2,label:'CPU',kind:'blk'},ne={x:f.x+f.w-78,y:f.y+18+(f.h-30)/2+2,w:70,h:(f.h-30)/2-2,label:'Neural Eng.',kind:'blk'};extra.push(cpu,ne);}
+      const cpu={x:f.x+f.w-78,y:f.y+18,w:70,h:(f.h-30)/2-2,label:'CPU',kind:'blk',f:fi},ne={x:f.x+f.w-78,y:f.y+18+(f.h-30)/2+2,w:70,h:(f.h-30)/2-2,label:'Neural Eng.',kind:'blk',f:fi};extra.push(cpu,ne);}
     else{gx=f.x+8;gy=f.y+15;gw=f.w-16;gh=f.h-(dies===2?52:44);
-      const by=f.y+f.h-(dies===2?30:25),bh=dies===2?24:19;extra.push({x:f.x+8,y:by,w:90,h:bh,label:'CPU',kind:'blk'},{x:f.x+106,y:by,w:90,h:bh,label:'Neural Eng.',kind:'blk'});}
+      const by=f.y+f.h-(dies===2?30:25),bh=dies===2?24:19;extra.push({x:f.x+8,y:by,w:90,h:bh,label:'CPU',kind:'blk',f:fi},{x:f.x+106,y:by,w:90,h:bh,label:'Neural Eng.',kind:'blk',f:fi});}
     const cols=Math.max(1,Math.round(Math.sqrt(n*gw/gh)));
     const g=grid(n,gx,gy,gw,gh,cols,2,dies===1?46:34,dies===1?40:30);
     g.cells.forEach(cl=>{cl.f=fi;cells.push(cl);});
@@ -285,7 +295,7 @@ function recompute(noHash){
   const sl=WALL/tmax, slowed=sl>=1;
   $('slowdir').textContent=slowed?'slowed':'sped up';
   $('slown').textContent=Math.round(slowed?sl:1/sl).toLocaleString();
-  a.tAnim=b.tAnim=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;
+  a.tAnim=b.tAnim=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;a.ar=b.ar=null;
   drawRoof();
   paintAne();
   if(!noHash)writeHash();
@@ -343,17 +353,99 @@ function aneLive(s){
   const g=E.aneGate(R.m,s.chip,S.prec,S.L);
   return g.ok?g:null;
 }
+const DISPATCH_SHARE=0.045;
 function curSeg(s){
+  if(s.ar==='sample'||s.ar==='back'||s.ar==='dispatch')return {seg:s.ar==='dispatch'?s.res.segA:s.res.segH,layer:s.ar==='dispatch'?0:s.res.n,part:s.ar,frac:s.arFrac||0};
   const r=s.res,pair=r.segA.t+r.segM.t,x=s.prog*r.total;
   if(s.done||x>=r.n*pair)return {seg:r.segH,layer:r.n,part:'head',frac:1};
-  const li=Math.floor(x/pair),rem=x-li*pair;
-  return rem<r.segA.t?{seg:r.segA,layer:li,part:'attn'}:{seg:r.segM,layer:li,part:'mlp'};
+  const li=Math.min(r.n-1,Math.floor(x/pair)),rem=x-li*pair;
+  if(rem<r.segA.t)return {seg:r.segA,layer:li,part:'attn',frac:r.segA.t?rem/r.segA.t:1};
+  return {seg:r.segM,layer:li,part:'mlp',frac:r.segM.t?(rem-r.segA.t)/r.segM.t:1};
+}
+function applyAr(s,cyc,decode){
+  const tail=E.arGap(s.res.total,ASSUME.sampleUs).drawn, head=DISPATCH_SHARE;
+  const setTail=g=>{s.prog=1;s.done=false;s.ar=g<0.45?'sample':'back';s.arFrac=g<0.45?g/0.45:(g-0.45)/0.55;s.arGap=g;};
+  if(!decode){
+    const gap=tail/(1-tail);
+    if(cyc<head){s.prog=0;s.done=false;s.ar='dispatch';s.arFrac=cyc/head;s.arGap=0;return;}
+    if(cyc<1){s.prog=(cyc-head)/(1-head);s.ar=null;s.done=false;return;}
+    if(cyc<1+gap){setTail((cyc-1)/gap);return;}
+    s.prog=1;s.done=true;s.ar=null;s.steps=1;return;
+  }
+  if(cyc<head){s.prog=0;s.done=false;s.ar='dispatch';s.arFrac=cyc/head;s.arGap=0;return;}
+  if(cyc>=1-tail){setTail((cyc-(1-tail))/tail);return;}
+  s.prog=(cyc-head)/(1-head-tail);s.ar=null;s.done=false;
+}
+function polyAt(pts,t){
+  if(!pts||!pts.length)return null;
+  if(pts.length===1)return pts[0];
+  const lens=[];let tot=0;
+  for(let i=0;i<pts.length-1;i++){const l=Math.hypot(pts[i+1].x-pts[i].x,pts[i+1].y-pts[i].y);lens.push(l);tot+=l;}
+  let d=clamp(t,0,1)*tot;
+  for(let i=0;i<lens.length;i++){
+    if(d<=lens[i]||i===lens.length-1){const u=lens[i]?clamp(d/lens[i],0,1):1;return {x:lerp(pts[i].x,pts[i+1].x,u),y:lerp(pts[i].y,pts[i+1].y,u)};}
+    d-=lens[i];
+  }
+  return pts[pts.length-1];
+}
+function cpuPaths(L,toGpu){
+  const cpus=(L.extraBlk||[]).filter(b=>/^CPU/.test(b.label||''));
+  const cells=L.cells||[];
+  if(!cpus.length||!cells.length)return [];
+  const slc=(L.caches||[])[0];
+  return cpus.map(cpu=>{
+    const gpu=cells.find(cl=>cl.f!=null&&cl.f===cpu.f)||cells[0];
+    const pts=[{x:cx(cpu),y:cy(cpu)}];
+    // Stay on this die. The SLC midpoint sits on the Fusion gap, and that link carries no bytes.
+    if(slc){
+      const laneY=slc.labelBand?slc.y+slc.labelBand+(slc.h-slc.labelBand)/2:cy(slc);
+      const laneX=Math.max(slc.x+12,Math.min(slc.x+slc.w-12,cx(cpu)));
+      pts.push({x:laneX,y:laneY});
+    }
+    pts.push({x:cx(gpu),y:cy(gpu)});
+    return toGpu?pts:pts.slice().reverse();
+  });
+}
+function drawCpuHandoff(ctx,s,cur){
+  if(cur.part!=='dispatch'&&cur.part!=='sample')return;
+  const paths=cpuPaths(s.layout,cur.part==='dispatch');
+  ctx.fillStyle='#93c5fd';
+  for(const pts of paths){
+    for(let i=0;i<3;i++){
+      const p=polyAt(pts,(cur.frac||0)-i*0.18);
+      if(!p)continue;
+      ctx.beginPath();ctx.arc(p.x,p.y,2.4,0,6.283);ctx.fill();
+    }
+  }
+}
+function drawLayerPulse(ctx,s,cur){
+  if(s.done||cur.layer<=0||(cur.part!=='attn'&&cur.part!=='mlp'))return;
+  const L=s.layout,cells=L.cells||[];
+  if(cells.length<2)return;
+  const r=s.res,pair=r.segA.t+r.segM.t,x=s.prog*r.total;
+  const frac=pair>0?clamp((x-cur.layer*pair)/pair,0,1):1;
+  const a=cells[cur.layer%cells.length];
+  const allowCross=!!(s.chip&&s.chip.ic>0);
+  let b=null,bd=1e9;
+  for(const o of cells){
+    if(o===a)continue;
+    if(!allowCross&&a.f!=null&&o.f!=null&&o.f!==a.f)continue;
+    const d=Math.hypot(cx(o)-cx(a),cy(o)-cy(a));
+    if(d>0&&d<bd){bd=d;b=o;}
+  }
+  if(!b)return;
+  const x0=cx(a),y0=cy(a),x1=cx(b),y1=cy(b),px=lerp(x0,x1,frac),py=lerp(y0,y1,frac);
+  ctx.strokeStyle='rgba(196,181,253,0.95)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(px,py);ctx.stroke();ctx.lineWidth=1;
+  ctx.fillStyle='#c4b5fd';ctx.beginPath();ctx.arc(px,py,6,0,6.283);ctx.fill();
+  ctx.fillStyle='#1e1b4b';ctx.beginPath();ctx.arc(px,py,2.2,0,6.283);ctx.fill();
 }
 function drawSide(s,tm){
   const ctx=s.cx,L=s.layout,r=s.res,c=s.chip,cur=curSeg(s),sg=cur.seg,sc=s.sc;
   const core=Math.max(sg.tc,sg.tm)||1e-12;
+  const arWait=cur.part==='sample'||cur.part==='back';
+  const cpuPhase=cur.part==='sample'||cur.part==='dispatch';
   let cu=clamp(sg.tc/core,0,1),mu=clamp(sg.tm/core,0,1);
-  if(s.done){cu=0.03;mu=0.03;}
+  if(s.done||arWait||cur.part==='dispatch'){cu=0.03;mu=0.03;}
   const oomDim=r.oom?0.55:1;
   ctx.setTransform(s.dpr*sc,0,0,s.dpr*sc,s.dpr*s.offx,s.dpr*s.offy);
   ctx.clearRect(-s.offx/sc,-s.offy/sc,CW+2*s.offx/sc,CH+2*s.offy/sc);
@@ -370,9 +462,10 @@ function drawSide(s,tm){
     else{ctx.fillStyle='#a5f3fc';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2-(k.sub?5:0),k.w-4,sc);if(k.sub){ctx.fillStyle='#5aa8b5';txt(ctx,k.sub,k.x+k.w/2,k.y+k.h/2+8,k.w-4,sc);}}}
   // die links (Fusion / UltraFusion)
   for(const k of (L.links||[])){
-    if(k.pill){ctx.fillStyle='#0d1424';ctx.strokeStyle='rgba(244,114,182,.7)';rr(ctx,k.x,k.y,k.w,k.h,7);ctx.fill();ctx.stroke();ctx.fillStyle='#fbcfe8';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2+0.5,k.w-6,sc);continue;}
-    ctx.fillStyle='rgba(244,114,182,0.14)';ctx.strokeStyle='rgba(244,114,182,.35)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();
-    if(k.label&&k.vert){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#fbcfe8';txt(ctx,k.label,0,0.5,k.h-6,sc);ctx.restore();}}
+    if(k.pill)continue;
+    if(k.idle){ctx.fillStyle='rgba(148,163,184,0.12)';ctx.strokeStyle='rgba(148,163,184,0.8)';ctx.setLineDash([3,3]);rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();ctx.setLineDash([]);}
+    else{ctx.fillStyle='rgba(244,114,182,0.14)';ctx.strokeStyle='rgba(244,114,182,.35)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();}
+    if(k.label&&k.vert){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=k.idle?'#e2e8f0':'#fbcfe8';txt(ctx,k.label,0,0.5,k.h-8,sc);ctx.restore();}}
   syncFuseHit(s);
   // extra blocks. Neural Engine lights only on a documented ANE step.
   const live=aneLive(s), stepUnit=live&&live.parts[cur.part]&&live.parts[cur.part].unit;
@@ -381,10 +474,12 @@ function drawSide(s,tm){
   for(const b of (L.extraBlk||[])){
     const isNe=/^Neural/.test(b.label||'');
     ctx.fillStyle='#141c2e';ctx.strokeStyle='#2c3a57';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.stroke();
+    const cpuOn=cpuPhase&&/^CPU/.test(b.label||'');
     if(isNe&&aneStep){const g=0.45+0.2*Math.sin(tm*4);ctx.fillStyle='rgba(244,114,182,'+g.toFixed(3)+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.strokeStyle='rgba(244,114,182,.9)';ctx.stroke();}
+    else if(cpuOn){const g=0.78+0.22*Math.sin(tm*8);ctx.fillStyle='rgba(147,197,253,'+g.toFixed(3)+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.strokeStyle='#eff6ff';ctx.lineWidth=1.6;ctx.stroke();ctx.lineWidth=1;}
     else if(!live&&b.flash>0.02){ctx.fillStyle='rgba(52,211,153,'+(b.flash*0.4)+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();}
     b.flash=(b.flash||0)*0.92;
-    ctx.fillStyle=isNe&&aneStep?'#fce7f3':'#7f8fae';txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2,b.w-4,sc);
+    ctx.fillStyle=cpuOn?'#0b1220':(isNe&&aneStep?'#fce7f3':'#7f8fae');txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2,b.w-4,sc);
   }
   // interconnect
   const commGlow=clamp(sg.t>0?sg.comm/sg.t:0,0,1);
@@ -413,8 +508,9 @@ function drawSide(s,tm){
       const ix=cl.w*0.24,iy=cl.h*0.24,nb=clamp(0.12+0.95*act*(0.6+0.4*Math.sin(tm*(3+8*act)+s.ph[i]*1.7)),0,1)*oomDim;
       ctx.fillStyle='rgba(224,247,255,'+nb.toFixed(3)+')';ctx.fillRect(cl.x+ix,cl.y+iy,cl.w-2*ix,cl.h-2*iy);
       ctx.strokeStyle='rgba(165,243,252,0.55)';ctx.lineWidth=0.6;ctx.strokeRect(cl.x+ix,cl.y+iy,cl.w-2*ix,cl.h-2*iy);}
-    if(act<0.5&&!s.done&&!aneStep){ctx.strokeStyle='rgba(251,191,36,'+(0.18+0.12*Math.sin(tm*4+i))+')';ctx.lineWidth=0.5;ctx.strokeRect(cl.x,cl.y,cl.w,cl.h);}
+    if(act<0.5&&!s.done&&!aneStep&&!arWait&&cur.part!=='dispatch'){ctx.strokeStyle='rgba(251,191,36,'+(0.18+0.12*Math.sin(tm*4+i))+')';ctx.lineWidth=0.5;ctx.strokeRect(cl.x,cl.y,cl.w,cl.h);}
   });
+  drawLayerPulse(ctx,s,cur);
   // particles
   for(const p of s.parts){
     const f=p.d/p.total;let rem=p.d,seg=0;while(seg<p.lens.length-1&&rem>p.lens[seg]){rem-=p.lens[seg];seg++;}
@@ -423,6 +519,12 @@ function drawSide(s,tm){
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
   for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k);
+  drawCpuHandoff(ctx,s,cur);
+  for(const k of (L.links||[])){
+    if(!k.pill)continue;
+    ctx.fillStyle='#0d1424';ctx.strokeStyle=k.idle?'rgba(203,213,225,.95)':'rgba(244,114,182,.7)';ctx.lineWidth=1.4;rr(ctx,k.x,k.y,k.w,k.h,7);ctx.fill();ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle=k.idle?'#e2e8f0':'#fbcfe8';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2+0.5,k.w-8,sc);
+  }
   syncSlcLabel(s);
   // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
   const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
@@ -430,10 +532,14 @@ function drawSide(s,tm){
   const cause=s.root.querySelector('.st-cause-txt'),causePct=s.root.querySelector('.st-cause-pct'),causeTail=s.root.querySelector('.st-cause-tail');
   let badgeText,phraseText,pctText,causeText,causePctText,causeTailText,mc;
   if(r.oom){badgeText='OOM';phraseText='weights + KV do not fit';pctText='';causeText='would not run';causePctText='';causeTailText='';mc='#fca5a5';}
+  else if(arWait){badgeText='WAIT';phraseText='waiting on previous token';pctText=Math.round((s.arGap||0)*100)+'%';causeText=cur.part==='sample'?'CPU sampling the next token':'token returns to layer 1';causePctText='';causeTailText='';mc='#93c5fd';}
   else if(s.done){badgeText='DONE';phraseText='done in '+fmtT(r.total);pctText='';causeText='waiting for the other chip';causePctText='';causeTailText='';mc='#8493ab';}
   else if(sg.tm>=sg.tc){badgeText='STALL';phraseText=c.unitName+'s idle ~';pctText=Math.round((1-cu)*100)+'%';causeText='waiting on memory · memory busy';causePctText='100%';causeTailText='';mc='#fbbf24';}
   else {badgeText='COMPUTE';phraseText=c.unitName+'s busy ~';pctText=Math.round(cu*100)+'%';causeText='memory busy';causePctText=Math.round(mu*100)+'%';causeTailText='· headroom';mc='#34d399';}
   put(badge,badgeText);put(phrase,phraseText);put(pct,pctText);put(cause,causeText);put(causePct,causePctText);put(causeTail,causeTailText);
+  const row=s.root.querySelector('.st-row');
+  if(arWait){row.dataset.link='note:ar';row.dataset.kind='ar';row.dataset.side=s.key;if(!row.getAttribute('aria-label'))row.setAttribute('aria-label','waiting on previous token. Each token depends on the previous one.');}
+  else if(row.dataset.kind==='ar'){delete row.dataset.link;delete row.dataset.kind;delete row.dataset.side;row.removeAttribute('aria-label');}
   badge.classList.toggle('dim', badgeText==='STALL' && (tm*2.2)%2>=1.3);
   s.root.querySelector('.st-row').style.color=mc;
   const linkName=s.root.querySelector('.st-link-name'),linkPct=s.root.querySelector('.st-link-pct');
@@ -455,12 +561,13 @@ function drawStrip(s,cur,tm){
   const ctx=s.sx,W=s.stW,H=30,r=s.res,d=s.sx.canvas.width/W;
   ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
   const n=r.n,lmW=22,gap=3,bw=Math.max(1,(W-lmW-gap)/n),live=aneLive(s);
-  const num=(s.done||cur.part==='head')?n:(cur.layer+1);
+  const afterLm=s.done||cur.part==='head'||cur.part==='sample'||cur.part==='back';
+  const num=afterLm?n:(cur.layer+1);
   const lab=num+'/'+n;
   if(s.lnum&&s.lnum.textContent!==lab)s.lnum.textContent=lab;
   const cA=r.segA.bound==='mem'?'251,191,36':'52,211,153',cM=r.segM.bound==='mem'?'251,191,36':'52,211,153',cH=r.segH.bound==='mem'?'251,191,36':'52,211,153';
   for(let i=0;i<n;i++){
-    const past=s.done||i<cur.layer||cur.part==='head',now=!s.done&&i===cur.layer&&cur.part!=='head';
+    const past=afterLm||i<cur.layer,now=!s.done&&i===cur.layer&&(cur.part==='attn'||cur.part==='mlp');
     const x=i*bw;
     ctx.fillStyle='rgba('+cA+','+(past?0.95:(now&&cur.part==='attn'?1:0.28))+')';ctx.fillRect(x,3,Math.max(1,bw-1),11);
     ctx.fillStyle='rgba('+cM+','+(past?0.95:(now&&cur.part==='mlp'?1:0.28))+')';ctx.fillRect(x,16,Math.max(1,bw-1),11);
@@ -473,16 +580,23 @@ function drawStrip(s,cur,tm){
   }
   const xh=n*bw+gap,boxW=Math.max(12,Math.min(lmW-2,W-xh));
   const headNow=!s.done&&cur.part==='head';
-  ctx.fillStyle='rgba('+cH+','+((s.done||cur.part==='head')?1:0.28)+')';ctx.fillRect(xh,3,boxW,24);
+  ctx.fillStyle='rgba('+cH+','+(afterLm?1:0.28)+')';ctx.fillRect(xh,3,boxW,24);
   if(live){ctx.fillStyle=(live.parts.head&&live.parts.head.unit==='ane')?'#f472b6':'#60a5fa';ctx.fillRect(xh,3,3,24);}
   ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='10px system-ui,sans-serif';ctx.fillText('LM',xh+boxW/2,15);
   if(headNow){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(xh-0.5,1.5,boxW+1,26);}
-  // One violet mark carries the hidden state from the previous layer into this one, along the seam.
-  if(!s.done&&cur.part!=='head'&&cur.layer>0){
+  // Violet pulse carries the hidden state from the previous layer column into this one.
+  if(!s.done&&(cur.part==='attn'||cur.part==='mlp')&&cur.layer>0){
     const pair=r.segA.t+r.segM.t, x=s.prog*r.total, frac=pair>0?clamp((x-cur.layer*pair)/pair,0,1):1;
-    const x0=(cur.layer-1)*bw+Math.max(1,bw-1)/2, x1=cur.layer*bw+Math.max(1,bw-1)/2, xh=lerp(x0,x1,frac);
-    ctx.fillStyle='#c4b5fd';ctx.fillRect(Math.min(x0,xh),14,Math.max(2,Math.abs(xh-x0)),2);
-    ctx.beginPath();ctx.arc(xh,15,2.3,0,6.283);ctx.fill();
+    const x0=(cur.layer-1)*bw+bw/2, x1=cur.layer*bw+bw/2, px=lerp(x0,x1,frac);
+    ctx.strokeStyle='#c4b5fd';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x0,15);ctx.lineTo(px,15);ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle='#c4b5fd';ctx.beginPath();ctx.arc(px,15,5.5,0,6.283);ctx.fill();
+    ctx.strokeStyle='#f5f3ff';ctx.lineWidth=1.2;ctx.stroke();
+  }
+  // Chosen token travels from the LM cell back to layer 1 before the next token starts.
+  if(!s.done&&cur.part==='back'){
+    const xFrom=xh+boxW/2, xTo=Math.max(1,bw-1)/2, x=lerp(xFrom,xTo,cur.frac||0);
+    ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(x,15,3.4,0,6.283);ctx.fill();
+    ctx.strokeStyle='#0a0e16';ctx.lineWidth=1;ctx.stroke();
   }
   syncLmHit(s,xh,boxW);
 }
@@ -566,7 +680,7 @@ function effGBs(s){
   const bwEff=Math.min(1,e.bw*(S.prec==='int4'?ASSUME.int4BwFactor:1));
   return s.chip.bw*bwEff;
 }
-const DOT_SPEED_CAP=4, DOT_BASE_V=180, DOT_BASE_RATE=32;
+const DOT_SPEED_CAP=4, DOT_BASE_V=180, DOT_BASE_RATE=32, LANE_OFFSET=4;
 // True KV-write share is ~1e-5 of a weight read. Floor the drawn share so the path stays visible.
 const KV_DRAW_FLOOR=0.045;
 function kvDrawShare(){
@@ -579,7 +693,8 @@ function spawn(s,n,out){
   if(out){for(const p of s.parts)if(p.out)have++;}
   for(let i=0;i<n&&(out?have<48:s.parts.length<700);i++){
     const rt=s.layout.route();
-    const pts=out?rt.pts.slice().reverse():rt.pts,lens=[];let tot=0;
+    const shifted=E.offsetPolyline(rt.pts,out?LANE_OFFSET:-LANE_OFFSET);
+    const pts=out?shifted.slice().reverse():shifted,lens=[];let tot=0;
     for(let k=0;k<pts.length-1;k++){const l=Math.hypot(pts[k+1].x-pts[k].x,pts[k+1].y-pts[k].y);lens.push(l);tot+=l;}
     s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:out?-1:rt.ci,blk:rt.blk,out:!!out,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
     if(out)have++;
@@ -594,15 +709,15 @@ function step(dt){
     for(const s of sides){
       s.tAnim=(s.tAnim||0)+dt*S.spd;
       const x=s.tAnim/Math.max(1e-9,E.animSeconds(s.res.total,tmax,WALL));
-      if(decode){s.steps=Math.floor(x);s.prog=x-Math.floor(x);s.done=false;}
-      else{s.prog=Math.min(1,x);s.done=x>=1;s.steps=s.done?1:0;}
+      if(decode){s.steps=Math.floor(x);applyAr(s,x-Math.floor(x),true);}
+      else applyAr(s,x,false);
     }
   }
   for(const s of sides){
     if(!playing)continue;
-    const cur=curSeg(s),sg=cur.seg,core=Math.max(sg.tc,sg.tm)||1e-12,mu=s.done?0:clamp(sg.tm/core,0,1);
+    const cur=curSeg(s),sg=cur.seg,core=Math.max(sg.tc,sg.tm)||1e-12,waiting=cur.part==='sample'||cur.part==='back'||cur.part==='dispatch',mu=s.done||waiting?0:clamp(sg.tm/core,0,1);
     s.effGBs=effGBs(s);s.flowK=E.flowScale(s.effGBs,ref);
-    const busy=s.done?0:(0.2+0.8*mu)*(s.res.oom?0.45:1);
+    const busy=s.done||waiting?0:(0.2+0.8*mu)*(s.res.oom?0.45:1);
     s.acc+=dt*S.spd*DOT_BASE_RATE*s.flowK*busy;const k=Math.floor(s.acc);s.acc-=k;if(k>0)spawn(s,k);
     s.accOut=(s.accOut||0)+dt*S.spd*DOT_BASE_RATE*s.flowK*busy*kvDrawShare();const ko=Math.floor(s.accOut);s.accOut-=ko;if(ko>0)spawn(s,ko,true);
     for(const p of s.parts){p.d+=p.v*dt*S.spd;if(p.d>=p.total&&!p.hit){p.hit=true;if(p.ci>=0)s.flash[p.ci]=1;else if(p.blk)p.blk.flash=1;}}
@@ -645,7 +760,7 @@ const FORMULAS=[
 '',
 '  segment time = max( FLOPs / (peak TFLOPS * MFU),  bytes / (BW * eta) ) + comm',
 '  eta = bandwidth efficiency (x int4BwFactor for INT4)       peak = FP8 rate only if the chip has one, else FP16',
-'  step = layers*(attn + mlp) + head',
+'  step = layers*(attn + mlp) + head     (CPU token sample is not in this step)',
 '  decode: tok/s per user = 1/step, aggregate = B/step      prefill: time to first token = step',
 '  OOM when weights + B*L*KV bytes > capacity * usable fraction * N',
 '',
@@ -744,7 +859,7 @@ function specTip(k){
     'note:range':'Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.',
     'note:na':'Bright cells are doing math. Dim amber cells, with STALL, are waiting on memory. On M5-generation Apple GPUs the bright inner square is the Neural Accelerator, the matrix unit in each GPU core.',
     'note:fp8':'On Apple GPUs, FP8 stores weights in 8 bits and runs the matmul in 16-bit, because those GPUs have no native 8-bit math.',
-    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Rose dots are KV cache writes, GPU back to memory. A violet mark on the strip hands the hidden state to the next layer. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth. The panel legend states the real KV-write size against the weight read.',
+    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Rose dots are KV cache writes on a parallel lane, GPU through the cache back to memory. A violet pulse hands the hidden state to the next layer. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth. The panel legend states the real KV-write size against the weight read.',
     'note:layer':'The word layer stays on the left of the grid. The number under it is the layer now running, out of this model\'s layers, in a fixed-width slot. A white outline marks that column.',
     'note:attn':'Attention is the top row of every column. The word stays attention. Amber means that half is waiting on memory. Green means it is limited by compute.',
     'note:ffn':'Feed-forward (MLP) is the bottom row of every column. The word stays feed-forward. Amber means that half is waiting on memory. Green means it is limited by compute.',
@@ -753,6 +868,7 @@ function specTip(k){
     'note:assume':'Formulas, efficiency factors, sliders, sensitivity, chip spec sources.',
     'note:copy':'Copy a link that restores these exact settings.',
     'note:gpu':'GPU compute time per token = FLOPs/token / (peak TFLOPS × eff). It is far smaller than memory read time, so memory sets the speed.',
+    'note:ar':'Each token depends on the previous one. After the LM head the CPU samples the next id, then that token returns to layer 1. At batch 1 the full weights are read again for every token. Batching and speculative decoding amortize that read. The sample time is assumed and is not part of tok/s.',
     'xref:roofline':'Horizontal axis: FLOPs per byte moved. Vertical axis: achievable TFLOPS. The slope is the bandwidth limit, the flat top is the compute limit, and the ridge is where they meet.',
     'xref:verdict':'Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.'
   })[k]||k;
@@ -799,7 +915,7 @@ function syncFuseHit(s){
   el.style.width=w.toFixed(1)+'px';
   el.style.height=h.toFixed(1)+'px';
   el.style.display='block';
-  const al='Die-to-die link, idle. The speed math does not send bytes across it, so tok/s is unchanged.';
+  const al='Fusion is idle. Two dies are published; a die-to-die bandwidth is not, so this model sends no bytes across the link and tok/s is unchanged.';
   if(el.getAttribute('aria-label')!==al)el.setAttribute('aria-label',al);
 }
 function fusePopHtml(chip){
@@ -808,8 +924,8 @@ function fusePopHtml(chip){
   const nodeBits=sourceBits(node.src||[]);
   const icBits=sourceBits(ic.src||[]);
   const dies=chip.dies||1;
-  let h='<p><b>Idle on purpose.</b> This bar is the die-to-die link. The speed math does not send bytes across it, so there is no traffic to animate.</p>';
-  h+='<p>All-reduce time is added only when more than one chip is used and a link bandwidth is set. Interconnect in this model is '+esc(ic.v==null?'not recorded':String(ic.v))+', so the link adds 0 s and tok/s does not change. No bytes-per-token figure is recorded for this bar.</p>';
+  let h='<p><b>Idle on purpose.</b> This bar is the die-to-die link. No die-to-die bandwidth is in the speed math, so cross-die weight reads and activation handoff are not animated. tok/s does not change.</p>';
+  h+='<p>All-reduce time is added only when more than one chip is used and a link bandwidth is set. Interconnect in this model is '+esc(ic.v==null?'not recorded':String(ic.v))+' '+tagBtn(ic.tag||'U',{spec:'Die-to-die bandwidth',note:ic.note||'Not modelled.'})+' so the link adds 0 s. No bytes-per-token figure is recorded for this bar.</p>';
   h+='<p><b>'+dies+' die'+(dies===1?'':'s')+'.</b> '+(node.tag==='V'?'Verified: ':(node.tag==='A'?'Approximate: ':'Assumed: '))+esc(node.v||'die count not recorded')+(node.note?'. '+node.note:'')+(nodeBits.list.length?'':' No recorded source.')+'</p>';
   if(nodeBits.html)h+='<p>'+nodeBits.html+'</p>';
   h+='<p><b>Link bandwidth used by the model:</b> '+esc(ic.v==null?'not recorded':String(ic.v))+'. '+(ic.tag==='V'?'Verified: ':(ic.tag==='A'?'Approximate: ':'Assumed: '))+(ic.note||'not modelled.')+(icBits.list.length?'':' No recorded source.')+'</p>';
@@ -1039,6 +1155,17 @@ function gpuPopHtml(sideKey){
   else h+='<p>GPU compute time ('+fmtT(sec)+') is longer than memory read time ('+fmtT(memSec)+'), so compute sets the speed.</p>';
   return h;
 }
+function arPopHtml(side){
+  const s=sides.find(x=>x.key===side)||sides[0];
+  const g=E.arGap(s&&s.res?s.res.total:0,ASSUME.sampleUs);
+  const per=g.truth>0?Math.round(1/g.truth).toLocaleString():'—';
+  const B=S.B_;
+  let h='<p><b>Waiting on the previous token.</b> Decode picks one token, then layer 1 of the next token can start. Layers of two tokens do not overlap.</p>';
+  h+='<p>After the LM head, the CPU samples the next id. That time is assumed '+tagBtn('U',{spec:'Token sample',note:'Assumed CPU time. No measured sample latency is recorded for this model.'})+' '+ASSUME.sampleUs+' µs ('+fmtT(g.sec)+'), about 1 in '+per+' of this step. It is not included in tok/s. The drawn gap is '+(g.drawn*100).toFixed(0)+'% of the on-screen token'+(g.drawn>g.truth+1e-9?' so the return stays visible. The true share is smaller.':'.')+'</p>';
+  h+='<p>At batch 1 the chip re-reads the full weights for every token, because the next token cannot start until this one is chosen. Batch '+B+' reads those weights once for '+B+' token'+(B===1?'':'s')+'.</p>';
+  h+='<p>Speculative decoding drafts several tokens and checks them against one weight read, so the same dependency costs less per accepted token.</p>';
+  return h;
+}
 function refreshKvLegend(){
   const t=E.kvTraffic(R.m,S.prec,S.phase,S.B_,S.L);
   document.querySelectorAll('.kvrate').forEach(el=>{if(el.textContent!==t.legend)el.textContent=t.legend;});
@@ -1050,7 +1177,7 @@ function kvPopHtml(){
   h+='<p>2 &times; '+m.kvHeads+' &times; '+m.headDim+' &times; '+t.kvBytes+' B = '+t.perLayer.toLocaleString()+' bytes ('+E.fmtByte(t.perLayer)+' per layer). &times; '+m.layers+' layers = <b>'+E.fmtByte(t.perTok)+'</b> per token.</p>';
   h+='<p>Inbound weight read is the parameter store, '+E.fmtByte(t.weightStep)+', read once per step. Spread over '+t.tokens.toLocaleString()+' token'+(t.tokens===1?'':'s')+', that is <b>'+E.fmtByte(t.weightPerTok)+'/token</b>. '+t.legend+'.</p>';
   h+='<p>True share of the weight read: 1 in '+Math.round(1/Math.max(t.ratio,1e-12)).toLocaleString()+'.</p>';
-  h+='<p>Rose dots travel GPU &rarr; memory. '+(floored?('They are drawn at '+(KV_DRAW_FLOOR*100).toFixed(1)+'% of the inbound dot rate so the path stays visible. The true share is far smaller.'):('They are drawn at the true share, '+(drawn*100).toFixed(1)+'% of the inbound dots.'))+'</p>';
+  h+='<p>Rose dots travel GPU &rarr; System Level Cache &rarr; memory, on a lane beside the gold inbound reads. The two directions do not share a line. '+(floored?('They are drawn at '+(KV_DRAW_FLOOR*100).toFixed(1)+'% of the inbound dot rate so the path stays visible. The true share is far smaller.'):('They are drawn at the true share, '+(drawn*100).toFixed(1)+'% of the inbound dots.'))+'</p>';
   h+='<p>The violet mark on the strip is the hidden state handed to the next layer: '+m.h.toLocaleString()+' &times; 2 bytes = '+E.fmtByte(t.hidden)+'. One mark, not a memory-bus stream. Activation width is the model&rsquo;s 2-byte hidden state.</p>';
   if(S.prec==='int4')h+='<p>INT4 is weight-only here. KV values stay '+t.kvBytes+' bytes.</p>';
   return h;
@@ -1067,6 +1194,7 @@ function showSrcPop(el){
   else if(el.dataset&&el.dataset.kind==='strip')html=paragraphs(specTip('note:'+(el.dataset.part||'layer')));
   else if(el.dataset&&el.dataset.kind==='gpu')html=gpuPopHtml(el.dataset.side||'A');
   else if(el.dataset&&el.dataset.kind==='kv')html=kvPopHtml();
+  else if(el.dataset&&el.dataset.kind==='ar')html=arPopHtml(el.dataset.side||'A');
   else if(el.matches&&el.matches('button.tg'))html=badgePopHtml(el);
   else html=tipHtml(el);
   if(el.dataset&&el.dataset.extra&&html.indexOf(el.dataset.extra.slice(0,48))<0)html+=paragraphs(el.dataset.extra);
