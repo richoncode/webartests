@@ -65,12 +65,11 @@ test('known System Level Cache sizes keep their tags', () => {
   assert.match(l2('m5max-40').v, /not published/i);
 });
 
-test('built page wires one data-link highlight handler', () => {
+test('built page wires one in-place data-link highlight', () => {
   const html = fs.readFileSync(path.join(root, 'app/infrasim.html'), 'utf8');
-  assert.match(html, /id="tagtip"/);
-  assert.match(html, /id="tagscrim"/);
-  assert.match(html, /id="taglines"/);
   assert.match(html, /function bindLinks/);
+  assert.match(html, /classList\.toggle\('lk'/);
+  assert.doesNotMatch(html, /id="tagtip"|id="tagscrim"|id="taglines"|id="taghalos"/);
   for (const id of ['tag:V', 'tag:A', 'tag:U', 'xref:roofline', 'xref:verdict', 'note:nolink', 'note:range', 'note:na', 'note:fp8', 'note:arch']) {
     assert.ok(html.includes('data-link="' + id + '"'), id);
   }
