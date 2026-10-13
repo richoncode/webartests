@@ -65,6 +65,15 @@ test('known System Level Cache sizes keep their tags', () => {
   assert.match(l2('m5max-40').v, /not published/i);
 });
 
+test('built page wires spec-tag hover links', () => {
+  const html = fs.readFileSync(path.join(root, 'app/infrasim.html'), 'utf8');
+  assert.match(html, /id="tagtip"/);
+  assert.match(html, /id="tagscrim"/);
+  assert.match(html, /id="taghalos"/);
+  assert.match(html, /function tagBtn/);
+  assert.match(html, /button type="button" class="tg V" data-tag="V"/);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {

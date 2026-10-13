@@ -136,7 +136,7 @@ function mkSide(key){
   side.root=p;side.cv=p.querySelector('canvas.cv');side.st=p.querySelector('canvas.strip');
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
-  side.pills.addEventListener('click',ev=>{const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
+  side.pills.addEventListener('click',ev=>{if(ev.target.closest('button.tg'))return;const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
   return side;
 }
 let sides=[];
@@ -170,17 +170,20 @@ function renderPills(s){
   const chip=s.chip,sp=chip.raw.specs;
   const keys=['fp16','fp8','bw','cap','units','node','announced'].filter(k=>sp[k]&&!(k==='fp8'&&sp[k].v==null));
   const eff=effSpec(chip);
-  s.pills.innerHTML=keys.map(k=>'<button class="pill'+(s.sel===k?' sel':'')+'" data-k="'+k+'" title="'+esc(specLabel(k,chip)+': '+specVal(k,sp[k])+' ['+sp[k].tag+'] - click for source')+'"><span class="tg '+sp[k].tag+'">'+sp[k].tag+'</span><span class="txt">'+esc(pillText(k,chip,sp[k]))+'</span></button>').join('')+
-   '<button class="pill'+(s.sel==='eff'?' sel':'')+'" data-k="eff" title="Efficiency factors - click for details"><span class="tg '+eff.tag+'">'+eff.tag+'</span><span class="txt">eff '+esc(eff.v)+'</span></button>';
+  const pill=(k,tag,text,spec,src,note)=>'<div class="pill'+(s.sel===k?' sel':'')+'" data-k="'+k+'">'+tagBtn(tag,{spec:spec,src:src,note:note})+'<span class="txt">'+esc(text)+'</span></div>';
+  s.pills.innerHTML=keys.map(k=>pill(k,sp[k].tag,pillText(k,chip,sp[k]),specLabel(k,chip),sp[k].src,sp[k].note)).join('')+
+   pill('eff',eff.tag,'eff '+eff.v,'Efficiency factors',eff.src,eff.note);
   const rib=s.root.querySelector('.ribbon'); rib.classList.toggle('on', chip.status==='speculative'); rib.setAttribute('aria-hidden', chip.status==='speculative'?'false':'true');
+  refreshTagLink();
 }
 function renderPillDetail(s){
   const chip=s.chip,sp=s.sel==='eff'?effSpec(chip):chip.raw.specs[s.sel];
   s.root.querySelectorAll('.pill').forEach(b=>b.classList.toggle('sel',b.dataset.k===s.sel));
-  if(!s.sel||!sp){s.pdetail.className='pdetail';s.pdetail.innerHTML='';return;}
+  if(!s.sel||!sp){s.pdetail.className='pdetail';s.pdetail.innerHTML='';refreshTagLink();return;}
   const label=s.sel==='eff'?'Efficiency factors (MFU prefill / MFU decode / bandwidth)':specLabel(s.sel,chip);
   s.pdetail.className='pdetail on';
-  s.pdetail.innerHTML='<b>'+esc(label)+':</b> '+esc(s.sel==='eff'?sp.v:specVal(s.sel,sp))+' <span class="tg '+sp.tag+'" style="display:inline-flex">'+sp.tag+'</span> <span class="tiny">'+({V:'verified vendor source',A:'approximate / derived / third-party',U:'assumed'}[sp.tag])+'</span><br>'+esc(sp.note||'')+'<br><span class="tiny">Source: '+srcLinks(sp.src)+'</span>';
+  s.pdetail.innerHTML='<b>'+esc(label)+':</b> '+esc(s.sel==='eff'?sp.v:specVal(s.sel,sp))+' '+tagBtn(sp.tag,{spec:label,src:sp.src,note:sp.note})+' <span class="tiny">'+({V:'verified vendor source',A:'approximate / derived / third-party',U:'assumed'}[sp.tag])+'</span><br>'+esc(sp.note||'')+'<br><span class="tiny">Source: '+srcLinks(sp.src)+'</span>';
+  refreshTagLink();
 }
 
 // ---------------------------------------------------------------- compute + DOM update
@@ -278,29 +281,42 @@ function recompute(noHash){
 
 // ---------------------------------------------------------------- drawing
 function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-const TAG_COLOR={V:'#22c55e',A:'#f59e0b',U:'#94a3b8'};
-function paintSlcLabel(ctx,k,sc){
+function paintSlcLabel(ctx,k){
   if(!k.labelBand)return;
   ctx.save();
   rr(ctx,k.x,k.y,k.w,k.h,5);ctx.clip();
   ctx.fillStyle='#0b1520';
   ctx.fillRect(k.x,k.y,k.w,k.labelBand);
-  const fs=Math.max(11,8.5/Math.max(sc,0.3));
-  ctx.font='600 '+fs+'px system-ui,sans-serif';
-  ctx.textBaseline='middle';ctx.textAlign='left';
-  const tagR=k.tag?7:0, gap=k.tag?6:0;
-  let tw=ctx.measureText(k.label).width, use=fs;
-  const maxW=k.w-16-tagR*2-gap;
-  if(tw>maxW){use=fs*maxW/tw;ctx.font='600 '+use+'px system-ui,sans-serif';tw=ctx.measureText(k.label).width;}
-  const total=tw+gap+tagR*2, x=k.x+(k.w-total)/2, y=k.y+k.labelBand/2;
-  ctx.fillStyle='#a5f3fc';ctx.fillText(k.label,x,y);
-  if(k.tag){
-    const cx=x+tw+gap+tagR;
-    ctx.beginPath();ctx.arc(cx,y,tagR,0,6.283);ctx.fillStyle=TAG_COLOR[k.tag]||TAG_COLOR.U;ctx.fill();
-    ctx.fillStyle='#07101e';ctx.font='800 9px system-ui,sans-serif';ctx.textAlign='center';
-    ctx.fillText(k.tag,cx,y+0.4);
-  }
   ctx.restore();
+}
+function syncSlcLabel(s){
+  const k=(s.layout&&s.layout.caches||[]).find(c=>c.labelBand);
+  let el=s.slcLabel;
+  if(!el){el=document.createElement('div');el.className='slc-label';el.style.display='none';s.root.appendChild(el);s.slcLabel=el;}
+  if(!k||!s.chip){el.style.display='none';return;}
+  const sp=(s.chip.raw&&s.chip.raw.specs&&s.chip.raw.specs.l2)||{};
+  const bl=1,bt=1,bw=s.cv.width/s.dpr||1,bh=s.cv.height/s.dpr||1;
+  const scaleX=s.cv.clientWidth/bw, scaleY=s.cv.clientHeight/bh;
+  const left=s.cv.offsetLeft+bl+(s.offx+k.x*s.sc)*scaleX;
+  const top=s.cv.offsetTop+bt+(s.offy+k.y*s.sc)*scaleY;
+  const w=(k.w*s.sc)*scaleX, h=(k.labelBand*s.sc)*scaleY;
+  const tagPx=k.tag?Math.max(11,Math.min(window.innerWidth<=900?17:15,h-1)):0;
+  const sig=(s.chip.id||'')+'|'+(k.tag||'')+'|'+k.label+'|'+tagPx.toFixed(1);
+  if(el.dataset.sig!==sig){
+    el.dataset.sig=sig;
+    el.innerHTML='<span class="slc-txt">'+esc(k.label)+'</span>'+(k.tag?tagBtn(k.tag,{spec:'On-chip cache',src:sp.src||[],note:sp.note||''}):'');
+    const b=el.querySelector('button.tg');
+    if(b){
+      b.style.width=tagPx.toFixed(1)+'px'; b.style.height=tagPx.toFixed(1)+'px';
+      b.style.fontSize=Math.max(8,Math.round(tagPx*0.56))+'px';
+      b.setAttribute('aria-label', k.label+' — '+(TAGS[k.tag]||k.tag));
+    }
+    refreshTagLink();
+  }
+  el.style.fontSize=Math.max(8,Math.min(12,h-3)).toFixed(1)+'px';
+  el.style.left=left.toFixed(1)+'px'; el.style.top=top.toFixed(1)+'px';
+  el.style.width=w.toFixed(1)+'px'; el.style.height=h.toFixed(1)+'px';
+  el.style.display='flex';
 }
 // draw text centered/left-aligned; shrink to fit maxW, skip if it cannot fit above minPx (in screen px)
 function txt(ctx,str,x,y,maxW,sc,align){
@@ -332,7 +348,7 @@ function drawSide(s,tm){
     if(m.label){ctx.fillStyle='#fde68a';txt(ctx,m.label,m.x+m.w/2,m.y+11,m.w-4,sc);if(m.sub){ctx.fillStyle='#b99a4a';txt(ctx,m.sub,m.x+m.w/2,m.y+24,m.w-4,sc);}}}
   // caches
   for(const k of L.caches){ctx.fillStyle='rgba(34,211,238,'+(0.08+0.14*mu*oomDim)+')';ctx.strokeStyle='rgba(34,211,238,'+(0.3+0.4*mu)+')';rr(ctx,k.x,k.y,k.w,k.h,5);ctx.fill();ctx.stroke();
-    if(k.labelBand)paintSlcLabel(ctx,k,sc);
+    if(k.labelBand)paintSlcLabel(ctx,k);
     else{ctx.fillStyle='#a5f3fc';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2-(k.sub?5:0),k.w-4,sc);if(k.sub){ctx.fillStyle='#5aa8b5';txt(ctx,k.sub,k.x+k.w/2,k.y+k.h/2+8,k.w-4,sc);}}}
   // die links (Fusion / UltraFusion)
   for(const k of (L.links||[])){
@@ -372,7 +388,8 @@ function drawSide(s,tm){
     ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
-  for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k,sc);
+  for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k);
+  syncSlcLabel(s);
   // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
   const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
   const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
@@ -517,12 +534,12 @@ function renderDrawer(){
   let h='<div class="dnote">Everything below is an <b>assumption or a fitted factor</b>, not a measurement. Move a slider to see how sensitive the result is; the link in your address bar updates so you can share the exact settings.</div>';
   h+='<h4>Formulas (exactly as implemented)</h4><pre class="formulas">'+esc(FORMULAS)+'</pre>';
   h+='<h4>Global factors</h4>';
-  for(const k of Object.keys(E.ASSUME_META)){const m=E.ASSUME_META[k];h+=sliderRow('g_'+k,m.label,m.min,m.max,m.step,ASSUME[k],m.fmt,ASSUME[k]!==E.DEFAULT_ASSUME[k],m.tag)+'<div class="shelp">'+esc(m.help)+' Default '+m.fmt(E.DEFAULT_ASSUME[k])+'.</div>';}
+  for(const k of Object.keys(E.ASSUME_META)){const m=E.ASSUME_META[k];h+=sliderRow('g_'+k,m.label,m.min,m.max,m.step,ASSUME[k],m.fmt,ASSUME[k]!==E.DEFAULT_ASSUME[k],m.tag,{note:m.help})+'<div class="shelp">'+esc(m.help)+' Default '+m.fmt(E.DEFAULT_ASSUME[k])+'.</div>';}
   for(const side of ['A','B']){
     const c=chipById(S[side]),e=effNow(side),d=c.eff,raw=c.raw.eff;
     h+='<h4><span class="dot" style="background:'+(side==='A'?'var(--A)':'var(--B)')+'"></span>Chip '+side+': '+esc(c.name)+' efficiency</h4>';
     for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth eff.']])
-      h+=sliderRow('e'+side+'_'+k,lab,0.05,1,0.01,e[k],v=>v.toFixed(2),Math.abs(e[k]-d[k])>1e-9,raw[k].tag)+'<div class="shelp">Default '+d[k].toFixed(2)+' ['+raw[k].tag+']: '+esc(raw[k].note||'')+'</div>';
+      h+=sliderRow('e'+side+'_'+k,lab,0.05,1,0.01,e[k],v=>v.toFixed(2),Math.abs(e[k]-d[k])>1e-9,raw[k].tag,{src:raw[k].src,note:raw[k].note})+'<div class="shelp">Default '+d[k].toFixed(2)+' ['+raw[k].tag+']: '+esc(raw[k].note||'')+'</div>';
     h+='<button class="hbtn" data-reset="'+side+'">Reset chip '+side+' to defaults</button>';
   }
   h+='<p><button class="hbtn" id="resetAll">Reset all assumptions</button></p>';
@@ -532,9 +549,11 @@ function renderDrawer(){
   body.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{S['eff'+b.dataset.reset]=null;recompute();renderDrawer();});
   $('resetAll').onclick=()=>{S.effA=S.effB=null;ASSUME=Object.assign({},E.DEFAULT_ASSUME);S.assume=null;recompute();renderDrawer();};
   renderSens();
+  refreshTagLink();
 }
-function sliderRow(id,label,min,max,step,val,fmt,chg,tag){
-  return '<div class="srow'+(chg?' chg':'')+'"><span title="tag '+tag+'"><span class="tg '+tag+'" style="width:13px;height:13px;font-size:8px;vertical-align:-2px">'+tag+'</span> '+esc(label)+'</span><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'" aria-label="'+esc(label)+'"><span class="sv" id="'+id+'_v">'+fmt(val)+'</span></div>';
+function sliderRow(id,label,min,max,step,val,fmt,chg,tag,meta){
+  meta=meta||{};
+  return '<div class="srow'+(chg?' chg':'')+'"><span>'+tagBtn(tag,{spec:label,src:meta.src||[],note:meta.note||'',style:'width:13px;height:13px;font-size:8px'})+' '+esc(label)+'</span><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'" aria-label="'+esc(label)+'"><span class="sv" id="'+id+'_v">'+fmt(val)+'</span></div>';
 }
 function onSlider(ev){
   const id=ev.target.id,v=+ev.target.value;let m;
@@ -556,18 +575,127 @@ function renderSens(){
   box.innerHTML=h;
 }
 function specsHTML(){
-  let h='<div class="legend"><span><span class="tg V">V</span> verified: vendor-published</span><span><span class="tg A">A</span> approximate / derived / third-party</span><span><span class="tg U">U</span> assumed</span></div>';
+  let h='<div class="legend"><span>'+tagBtn('V')+' verified: vendor-published</span><span>'+tagBtn('A')+' approximate / derived / third-party</span><span>'+tagBtn('U')+' assumed</span></div>';
   h+='<div class="dnote">Data source: '+esc(DATASRC)+'. Apple never publishes GPU TFLOPS, so those rows are never tagged V. No chip in this data set is a speculative projection: M6 and M5 Ultra were announced by Apple on 2026-08-25 (the app supports a "speculative" status and ribbon for future unannounced chips).</div>';
   for(const s of sides){
     const c=s.chip;
     h+='<h4><span class="dot" style="background:'+(s.key==='A'?'var(--A)':'var(--B)')+'"></span>Chip '+s.key+': '+esc(c.name)+(c.status==='speculative'?' <b style="color:#f87171">[SPECULATIVE PROJECTION]</b>':'')+'</h4><table class="spectbl">';
     const keys=SPEC_ORDER.concat(['maxTP']).filter(k=>c.raw.specs[k]);
-    for(const k of keys){const sp=c.raw.specs[k];h+='<tr><td>'+esc(specLabel(k,c))+'</td><td><span class="tg '+sp.tag+'">'+sp.tag+'</span> <b>'+esc(specVal(k,sp))+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
-    for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth efficiency']]){const sp=c.raw.eff[k];h+='<tr><td>'+lab+'</td><td><span class="tg '+sp.tag+'">'+sp.tag+'</span> <b>'+sp.v+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
+    for(const k of keys){const sp=c.raw.specs[k];h+='<tr><td>'+esc(specLabel(k,c))+'</td><td>'+tagBtn(sp.tag,{spec:specLabel(k,c),src:sp.src,note:sp.note})+' <b>'+esc(specVal(k,sp))+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
+    for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth efficiency']]){const sp=c.raw.eff[k];h+='<tr><td>'+lab+'</td><td>'+tagBtn(sp.tag,{spec:lab,src:sp.src,note:sp.note})+' <b>'+sp.v+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
     if(c.notes)h+='<tr><td>Notes</td><td>'+esc(c.notes)+'</td></tr>';
     h+='</table>';
   }
   return h;
+}
+
+// ---------------------------------------------------------------- spec tag links (same letter lights up everywhere; popup is fixed so it cannot shift layout)
+let tagLock=null, tagAnchor=null, tagHover=false, tipHot=false, hideT=0, touchAt=0;
+function tagBtn(tag,meta){
+  meta=meta||{};
+  if(!tag)return '';
+  const src=Array.isArray(meta.src)?meta.src.filter(Boolean).join(','):(meta.src||'');
+  const spec=meta.spec||'', note=meta.note||'';
+  const al=(spec?spec+' — ':'')+(TAGS[tag]||('tag '+tag));
+  const st=meta.style?' style="'+meta.style+'"':'';
+  return '<button type="button" class="tg '+tag+'" data-tag="'+tag+'" data-spec="'+esc(spec)+'" data-src="'+esc(src)+'" data-note="'+esc(note)+'" aria-label="'+esc(al)+'"'+st+'>'+tag+'</button>';
+}
+function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected;}
+function visTag(el){
+  if(!el||!el.isConnected)return false;
+  const r=el.getBoundingClientRect();
+  if(r.width<2||r.height<2)return false;
+  const cx=r.left+r.width/2, cy=r.top+r.height/2;
+  for(let n=el;n&&n!==document.documentElement;n=n.parentElement){
+    const cs=getComputedStyle(n);
+    if(cs.display==='none'||cs.visibility==='hidden')return false;
+    if(/hidden|auto|scroll|clip/.test(cs.overflow+cs.overflowX+cs.overflowY)){
+      const b=n.getBoundingClientRect();
+      if(cx<b.left-1||cx>b.right+1||cy<b.top-1||cy>b.bottom+1)return false;
+    }
+  }
+  return true;
+}
+function paintTagLink(){
+  const scrim=$('tagscrim'), tip=$('tagtip'), box=$('taghalos');
+  if(!scrim||!tip||!box)return;
+  document.querySelectorAll('button.tg[aria-describedby]').forEach(b=>b.removeAttribute('aria-describedby'));
+  if(!tagShown()){scrim.classList.remove('on');tip.classList.remove('on');tip.innerHTML='';box.replaceChildren();return;}
+  const letter=tagAnchor.dataset.tag;
+  tagAnchor.setAttribute('aria-describedby','tagtip');
+  box.replaceChildren();
+  document.querySelectorAll('button.tg').forEach(b=>{
+    if(b.dataset.tag!==letter||!visTag(b))return;
+    const r=b.getBoundingClientRect(), pad=3, h=document.createElement('div');
+    h.className='taghalo '+letter; h.textContent=letter;
+    h.style.left=(r.left-pad)+'px'; h.style.top=(r.top-pad)+'px';
+    h.style.width=(r.width+pad*2)+'px'; h.style.height=(r.height+pad*2)+'px';
+    h.style.fontSize=Math.max(8,Math.round(r.height*0.56))+'px';
+    box.appendChild(h);
+  });
+  scrim.classList.add('on');
+  const spec=tagAnchor.dataset.spec||'', note=tagAnchor.dataset.note||'';
+  const keys=(tagAnchor.dataset.src||'').split(',').map(s=>s.trim()).filter(Boolean);
+  let html='<div class="tm"><span class="tg '+letter+'">'+letter+'</span><span>'+esc(TAGS[letter]||letter)+'</span></div>';
+  if(spec) html+='<div class="tspec">'+esc(spec)+'</div>';
+  if(spec||keys.length) html+='<div class="tsrc">Source: '+srcLinks(keys)+'</div>';
+  if(note) html+='<div class="tnote">'+esc(note)+'</div>';
+  tip.innerHTML=html; tip.classList.add('on');
+  const r=tagAnchor.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight, m=8;
+  let left=r.left+r.width/2-tw/2, top=r.bottom+m;
+  if(top+th>innerHeight-m) top=Math.max(m, r.top-th-m);
+  if(left+tw>innerWidth-m) left=innerWidth-tw-m;
+  if(left<m) left=m;
+  tip.style.left=Math.round(left)+'px'; tip.style.top=Math.round(top)+'px';
+}
+function refreshTagLink(){if(tagAnchor&&!tagAnchor.isConnected)clearTagLink();else if(tagShown())paintTagLink();}
+function showTag(el,lock){
+  if(!el||!el.dataset||!el.dataset.tag)return;
+  clearTimeout(hideT); tagAnchor=el;
+  if(lock) tagLock=el.dataset.tag; else tagHover=true;
+  paintTagLink();
+}
+function scheduleHide(){
+  clearTimeout(hideT);
+  hideT=setTimeout(()=>{
+    if(tagLock||tipHot)return;
+    const a=document.activeElement;
+    if(a&&a.closest&&(a.closest('button.tg')||a.closest('#tagtip')))return;
+    tagHover=false; if(!tagLock) tagAnchor=null; paintTagLink();
+  },160);
+}
+function clearTagLink(){clearTimeout(hideT);tagLock=null;tagHover=false;tagAnchor=null;tipHot=false;paintTagLink();}
+function bindTagLink(){
+  document.addEventListener('pointerover',ev=>{
+    if(ev.pointerType==='touch'||performance.now()-touchAt<700)return;
+    const t=ev.target.closest&&ev.target.closest('button.tg');
+    if(t) showTag(t,false);
+  });
+  document.addEventListener('pointerout',ev=>{
+    if(ev.pointerType&&ev.pointerType!=='mouse')return;
+    const t=ev.target.closest&&ev.target.closest('button.tg');
+    if(!t)return;
+    const to=ev.relatedTarget;
+    if(to&&to.closest&&(to.closest('button.tg')||to.closest('#tagtip')))return;
+    scheduleHide();
+  });
+  document.addEventListener('pointerdown',ev=>{
+    const t=ev.target.closest&&ev.target.closest('button.tg');
+    const inTip=ev.target.closest&&ev.target.closest('#tagtip');
+    if(ev.pointerType==='touch'){
+      touchAt=performance.now();
+      if(t){ev.preventDefault(); if(tagLock&&tagAnchor===t) clearTagLink(); else showTag(t,true);}
+      else if(!inTip) clearTagLink();
+      return;
+    }
+    if(!t&&!inTip&&tagLock) clearTagLink();
+  });
+  document.addEventListener('focusin',ev=>{const t=ev.target.closest&&ev.target.closest('button.tg'); if(t) showTag(t,false);});
+  document.addEventListener('focusout',()=>scheduleHide());
+  const tip=$('tagtip');
+  tip.addEventListener('pointerenter',()=>{tipHot=true;clearTimeout(hideT);});
+  tip.addEventListener('pointerleave',()=>{tipHot=false;scheduleHide();});
+  document.addEventListener('scroll',()=>{if(tagShown())paintTagLink();},true);
 }
 
 // ---------------------------------------------------------------- controls + init
@@ -608,11 +736,17 @@ function init(data){
   $('tabAssume').onclick=()=>{drawerTab='assume';renderDrawer();};
   $('tabSpecs').onclick=()=>{drawerTab='specs';renderDrawer();};
   $('dclose').onclick=closeDrawer;$('backdrop').onclick=closeDrawer;
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape')return;
+    if(tagShown()||tagLock){clearTagLink();const a=document.activeElement;if(a&&a.closest&&a.closest('button.tg, #tagtip'))a.blur();}
+    closeDrawer();
+  });
   $('copyBtn').onclick=()=>{writeHash();const url=location.href,done=()=>{$('copyBtn').textContent='Copied';setTimeout(()=>$('copyBtn').textContent='Copy link',1400);};
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,()=>{fallbackCopy(url);done();});else{fallbackCopy(url);done();}};
   window.addEventListener('hashchange',()=>{const cur=E.encodeState(S,Object.fromEntries(CHIPS.map(c=>[c.id,c])));if('#'+cur===location.hash)return;applyHash();recompute(true);if($('drawer').classList.contains('open'))renderDrawer();});
-  window.addEventListener('resize',()=>{resizeAll();drawRoof();});
+  window.addEventListener('resize',()=>{resizeAll();drawRoof();requestAnimationFrame(()=>{if(tagShown())paintTagLink();});});
+  bindTagLink();
+  document.querySelectorAll('button.tg[data-tag]').forEach(b=>{if(!b.getAttribute('aria-label'))b.setAttribute('aria-label',TAGS[b.dataset.tag]||b.dataset.tag);});
   $('datasrc').textContent=DATASRC;
   resizeAll();recompute(true);writeHash();
   window.__infrasim={get S(){return S;},sides,step,recompute,E,CHIPS,MODELS,get ASSUME(){return ASSUME;},openDrawer,closeDrawer,DATASRC};
