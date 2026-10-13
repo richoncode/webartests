@@ -6,6 +6,7 @@ const OPTS = {
   day: ['1','2','6'],
   cond: ['clear','partly','cloud','rain','fog'],
   lch: ['none','green','yellow','blue','hidden','landing'],
+  trn: ['','mid','high'],
   quote: ['0','1','2'],
   filt: ['','0','1','2'],
   evt: ['', "cake|RICHARD'S BIRTHDAY", 'eagle|CALIFORNIA WILDLIFE DAY'],
@@ -35,8 +36,8 @@ function run(state) {
   if (!nodes.gtable.innerHTML.includes('forecast')) throw new Error('geometry table missing forecast');
   // The band is no longer optional: every combination must put something there.
   const band = nodes.panel.innerHTML;
-  if (!band.includes('class="box lch') && !band.includes('class="box quote'))
-    throw new Error('band drew neither a launch nor a quote');
+  if (!band.includes('class="box lch') && !band.includes('class="box quote') && !band.includes('class="box train'))
+    throw new Error('band drew neither a launch, a train, nor a quote');
   // The sources strip is always there, and always the last 18 px of the panel.
   const sr = /src (\d+),(\d+),(\d+),(\d+)/.exec(band);
   if (!sr) throw new Error('no source strip');
@@ -53,7 +54,7 @@ function run(state) {
 // Walk the tour by clicking Next, which is the only way to be sure every named
 // state renders — the sweep above can only reach states the controls can hold.
 function walkTour() {
-  const nodes = run({ day: '2', cond: 'clear', lch: 'none', quote: '0', evt: '',
+  const nodes = run({ day: '2', cond: 'clear', lch: 'none', trn: '', quote: '0', evt: '',
                       aqi: '30', bat: '78', filt: '', days: 'ok', grid: 'off' });
   const next = nodes.next && nodes.next.listeners.click;
   if (!next) throw new Error('no Next button, or it has no click handler');
@@ -71,9 +72,10 @@ function walkTour() {
   console.log(`tour walks ${seen.size} named states, every one of them renders`);
 }
 for (const day of OPTS.day) for (const cond of OPTS.cond) for (const lch of OPTS.lch)
+  for (const trn of OPTS.trn)
   for (const quote of OPTS.quote) for (const evt of OPTS.evt) for (const aqi of OPTS.aqi)
     for (const bat of OPTS.bat) for (const days of OPTS.days) for (const filt of OPTS.filt) {
-      const st = {day, cond, lch, quote, evt, aqi, bat, filt, days, grid: 'off'};
+      const st = {day, cond, lch, trn, quote, evt, aqi, bat, filt, days, grid: 'off'};
       try { run(st); }
       catch (e) { console.log('FAILED', st, '->', e.message); process.exit(1); }
     }

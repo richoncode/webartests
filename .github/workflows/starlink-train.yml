@@ -1,0 +1,66 @@
+name: Starlink train
+
+# Predicts which fresh Starlink trains are visible from San Martin and commits
+# the result to the file GitHub Pages serves. The firmware only fetches that
+# file. Scheduled workflows run from the default branch, so this starts
+# publishing after it is merged to main.
+on:
+  schedule:
+    # Every three hours, off the top of the hour.
+    - cron: "20 */3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "embedded/seeed-studio-epaper/tools/starlink_train.py"
+      - "embedded/seeed-studio-epaper/tools/requirements-starlink.txt"
+      - ".github/workflows/starlink-train.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: starlink-train
+  cancel-in-progress: false
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: embedded/seeed-studio-epaper/tools/requirements-starlink.txt
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/skyfield-data
+          key: skyfield-de421-v1
+
+      - name: Install
+        run: pip install -r embedded/seeed-studio-epaper/tools/requirements-starlink.txt
+
+      - name: Self-test
+        run: python3 embedded/seeed-studio-epaper/tools/starlink_train.py --self-test
+
+      - name: Predict
+        env:
+          # Optional. Used only when CelesTrak SupGP fails. Never printed.
+          SPACETRACK_IDENTITY: ${{ secrets.SPACETRACK_IDENTITY }}
+          SPACETRACK_PASSWORD: ${{ secrets.SPACETRACK_PASSWORD }}
+        run: python3 embedded/seeed-studio-epaper/tools/starlink_train.py --out embedded/seeed-studio-epaper/data/starlink.json
+
+      - name: Publish to Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add embedded/seeed-studio-epaper/data/starlink.json
+          if git diff --cached --quiet; then
+            echo "passes unchanged"
+          else
+            git commit -m "Update Starlink train passes"
+            git push
+          fi

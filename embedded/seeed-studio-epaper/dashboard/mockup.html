@@ -102,6 +102,12 @@
   .bin-txt { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
   .bin-sub { font-size: 13px; font-weight: 700; opacity: 0.9; margin-left: auto; }
   .lch { background: var(--blue); color: var(--paper); padding: 0 22px; display: flex; align-items: center; gap: 12px; }
+  .train { background: var(--yellow); color: var(--ink); padding: 0 22px; display: flex; align-items: center; gap: 12px; }
+  .half.lch, .half.train { padding: 0 14px; gap: 8px; }
+  .half .lch-txt { font-size: 15px; }
+  .half .lch-sub { font-size: 12px; }
+  .half .lch-time { font-size: 16px; width: auto; }
+  .half .chance { font-size: 22px; min-width: 0; }
   .lch-txt { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800; letter-spacing: -0.3px; }
   .lch-sub { font-size: 12px; font-weight: 700; opacity: 0.92; margin-top: 2px; }
   .lch-mid { margin-left: auto; display: flex; align-items: center; gap: 14px; }
@@ -163,6 +169,12 @@
       <option value="hidden">Launch 9% — below the floor, quote shows</option>
       <option value="landing">Launch 64% + LZ-4 landing</option>
     </select>
+    <label for="trn">Train</label>
+    <select id="trn">
+      <option value="" selected>No train</option>
+      <option value="mid">Train 42° — NW &gt; SE, ~24</option>
+      <option value="high">Train 68° — W &gt; E, ~40</option>
+    </select>
     <label for="quote">Quote</label>
     <select id="quote">
       <option value="0" selected>Short — Marcus Aurelius</option>
@@ -207,7 +219,7 @@
   <div class="tour"><span class="what" id="livenote" style="color:#6f6f6f"></span>
   </div>
 
-  <p class="note">Today is the first column of the forecast strip, so today's high, low and precipitation come from the same array as the other four days — no second request and no chance of "today" disagreeing between two places. The band is always occupied: a launch when its chance clears <b>5%</b>, and the quote of the day otherwise. Cloud no longer gates it — cloud is a term in the chance, and the floor decides. The strip absorbs whatever height the bands leave.</p>
+  <p class="note">Today is the first column of the forecast strip, so today's high, low and precipitation come from the same array as the other four days — no second request and no chance of "today" disagreeing between two places. The band is always occupied: a launch when its chance clears <b>5%</b>, a Starlink train when one is published for the night, and the quote of the day otherwise. A train and a launch share that one row, so the forecast strip does not give up the height its columns need. Cloud no longer gates a launch — cloud is a term in the chance, and the floor decides.</p>
 
   <div class="frame">
     <div class="panel" id="panel"></div>
@@ -235,7 +247,7 @@
   var FC_PITCH = 160, FC_COLW = 156, FC_N = 5;
   var CELLS = [[0,280],[284,220],[508,292]];   // peak | sun | air
 
-  function layout(showEvt, showBin, showLch) {
+  function layout(showEvt, showBin, showLch, showTrn) {
     var L = {};
     L.header  = [0, 0, W, HEADER_H];
     L.keyline = [0, HEADER_H, W, KEYLINE_H];
@@ -258,7 +270,21 @@
     // The band always draws something now — a launch worth seeing, or the line
     // of the day — so its height comes off the strip on every day, not just
     // launch days.
-    L.launch = [0, bb - LCH_H, W, LCH_H]; bb -= LCH_H + RULE; L.lchRule = [0, bb, W, RULE];
+    // The row stays one band tall. A train takes it, or shares it with a launch
+    // the way an event and the bins share theirs. The strip does not move.
+    var bandY = bb - LCH_H;
+    L.lchRule = [0, bandY - RULE, W, RULE];
+    bb = bandY - RULE;
+    L.sharedBand = !!(showLch && showTrn);
+    if (L.sharedBand) {
+      L.launch = [0, bandY, HALF_W, LCH_H];
+      L.trainRule = [HALF_W, bandY, RULE, LCH_H];
+      L.train = [HALF_W + RULE, bandY, HALF_W, LCH_H];
+    } else if (showTrn) {
+      L.train = [0, bandY, W, LCH_H];
+    } else {
+      L.launch = [0, bandY, W, LCH_H];
+    }
     L.sharedRow = showEvt && showBin;
     if (L.sharedRow) {
       var y = bb - EVT_H;
@@ -336,6 +362,22 @@
   // being told "probably not, but it is up there at 6:29" is the point of the
   // band. Only the genuinely pointless ones — daylight, or overcast — fall out.
   var LCH_SHOW_MIN = 5, LCH_GREEN = 55, LCH_YELLOW = 30;
+  // Same thresholds the firmware uses. 40 degrees is high enough to go outside;
+  // anything from the file's 10 degree floor up to that is yellow.
+  var TRAIN_GREEN_EL = 40;
+  var TRAINS = {
+    mid:  {el:42, from:'NW', to:'SE', n:24, time:'8:42 PM', day:''},
+    high: {el:68, from:'W',  to:'E',  n:40, time:'9:05 PM', day:''}
+  };
+  function trainBg(el) { return el >= TRAIN_GREEN_EL ? P.green : P.yellow; }
+  function trainFg(el) { return el >= TRAIN_GREEN_EL ? P.paper : P.ink; }
+  function trainDots(fill) {
+    return '<svg width="30" height="30" viewBox="0 0 32 30">' +
+      '<circle cx="5" cy="24" r="3" fill="' + fill + '"/>' +
+      '<circle cx="13" cy="18" r="3" fill="' + fill + '"/>' +
+      '<circle cx="21" cy="12" r="3.2" fill="' + fill + '"/>' +
+      '<circle cx="28" cy="6" r="4" fill="' + fill + '"/></svg>';
+  }
 
   // The water filter is changed on the first Sunday of the month, and the badge
   // runs Sunday to Tuesday. The colour counts the days down rather than grading
@@ -471,7 +513,7 @@
   // Every distinct state the panel can be in, in an order that walks one
   // feature at a time. The point is to see them all without hunting through
   // nine controls for the combination that produces each.
-  var BASE = {day:'2', cond:'clear', lch:'none', quote:'0', evt:'', aqi:'30',
+  var BASE = {day:'2', cond:'clear', lch:'none', trn:'', quote:'0', evt:'', aqi:'30',
               bat:'78', filt:'', days:'ok', grid:'off'};
   var TOUR = [
     ['quiet day: quote, no other bands',      {day:'6'}],
@@ -482,6 +524,9 @@
     ['launch 35% - a Vulcan, booster expended', {lch:'yellow'}],
     ['launch 18% - a Firefly, probably not',  {lch:'blue'}],
     ['launch 9% - under the floor, quote wins',{lch:'hidden'}],
+    ['starlink train 42 deg, NW to SE',       {lch:'none', trn:'mid'}],
+    ['starlink train 68 deg, overhead',       {lch:'none', trn:'high'}],
+    ['launch and train share the band',       {lch:'green', trn:'mid'}],
     ['launch 35% but cloudy - chance falls to 12%', {lch:'yellow', cond:'cloud'}],
     ['Monday: bins out tonight',              {day:'1'}],
     ['Tuesday: bring bins in',                {day:'2'}],
@@ -490,6 +535,7 @@
     ['wildlife day - the eagle icon',         {day:'6', evt:'eagle|CALIFORNIA WILDLIFE DAY'}],
     ['event + bins share one row',            {day:'1', evt:"cake|RHONDA'S BIRTHDAY"}],
     ['event + bins + launch: the tightest layout', {day:'1', evt:"cake|TORI'S BIRTHDAY", lch:'green'}],
+    ['event + bins + launch + train',         {day:'1', evt:"cake|TORI'S BIRTHDAY", lch:'green', trn:'mid'}],
     ['water filter day 1 - Sunday, green',    {filt:'0'}],
     ['water filter day 2 - Monday, yellow',   {filt:'1', day:'1'}],
     ['water filter day 3 - Tuesday, red',     {filt:'2', day:'2'}],
@@ -734,7 +780,9 @@
     var chance = LIVE ? LIVE.chance
                : (Lc ? (w.clearSky ? Lc.chance : Math.round(Lc.chance * 0.35)) : 0);
     var showLch = Lc !== null && chance >= LCH_SHOW_MIN;
-    var L = layout(showEvt, showBin, true);
+    var Tr = LIVE ? null : (TRAINS[$('trn').value] || null);
+    var showTrn = !!Tr;
+    var L = layout(showEvt, showBin, showLch, showTrn);
     var today = fc[0], hot = today[2] >= 90;
 
     var band = aqi <= 50 ? ['GOOD', P.green, 0] : aqi <= 100 ? ['MODERATE', P.yellow, 1] : ['SMOKE', P.red, 2];
@@ -811,17 +859,28 @@
                                                       : 'collected today · off the curb by dark') + '</div>', 'bins');
     }
     h += box('hrule', L.lchRule, '', 'lchRule');
-    if (showLch) {
+    function rocketSvg(bi, bc) {
+      return '<svg width="30" height="30" viewBox="0 0 48 48">' +
+        '<path d="M24 3c7 7 10 16 10 25l-4 6H18l-4-6c0-9 3-18 10-25z" fill="' + bi + '"/>' +
+        '<circle cx="24" cy="19" r="4.5" fill="' + bc + '"/>' +
+        '<path d="M14 30l-5 8h9zM34 30l5 8h-9z" fill="' + bi + '"/>' +
+        '<path d="M20 40c1 4 2 5 4 6 2-1 3-2 4-6z" fill="' + bi + '" opacity="0.65"/></svg>';
+    }
+    if (showLch && L.sharedBand) {
+      var bcH = bandColour(chance), biH = bandInk(chance);
+      h += box('lch half', L.launch,
+        rocketSvg(biH, bcH) +
+        '<div style="min-width:0"><div class="lch-txt">' + Lc.txt + '</div>' +
+        '<div class="lch-sub">' + (Lc.day ? Lc.day + ' ' : '') + Lc.time + ' ' + (Lc.ampm || 'PM') +
+          ' · ' + chance + '%</div></div>',
+        'launch', 'background:' + bcH + ';color:' + biH);
+    } else if (showLch) {
       var bc = bandColour(chance), bi = bandInk(chance);
       // The rocket takes the band's own ink. Drawn in paper it disappeared
       // against yellow, and the panel has no outline colour that works on all
       // three bands.
       h += box('lch', L.launch,
-        '<svg width="30" height="30" viewBox="0 0 48 48">' +
-          '<path d="M24 3c7 7 10 16 10 25l-4 6H18l-4-6c0-9 3-18 10-25z" fill="' + bi + '"/>' +
-          '<circle cx="24" cy="19" r="4.5" fill="' + bc + '"/>' +
-          '<path d="M14 30l-5 8h9zM34 30l5 8h-9z" fill="' + bi + '"/>' +
-          '<path d="M20 40c1 4 2 5 4 6 2-1 3-2 4-6z" fill="' + bi + '" opacity="0.65"/></svg>' +
+        rocketSvg(bi, bc) +
         '<div style="min-width:0"><div class="lch-txt">' + Lc.txt + '</div>' +
         '<div class="lch-sub">' + Lc.sub + '</div></div>' +
         '<div class="lch-mid">' +
@@ -831,7 +890,28 @@
           '<div class="lch-time">' + Lc.time + ' ' + (Lc.ampm || 'PM') +
             '<div class="lch-tz">' + (Lc.day ? 'chance ' + Lc.day : 'chance tonight') + '</div></div>' +
         '</div>', 'launch', 'background:' + bc + ';color:' + bi);
-    } else {
+    }
+    if (showTrn) {
+      var tBg = trainBg(Tr.el), tFg = trainFg(Tr.el);
+      var tRect = L.train;
+      var tHalf = L.sharedBand ? ' half' : '';
+      if (L.sharedBand) h += box('vrule', L.trainRule, '', 'trainRule');
+      var tSub = L.sharedBand
+        ? ((Tr.day ? Tr.day + ' ' : '') + Tr.time + ' · ' + Tr.from + ' &gt; ' + Tr.to + ' · ~' + Tr.n)
+        : (Tr.from + ' &gt; ' + Tr.to + ' · ~' + Tr.n);
+      var tMain = L.sharedBand
+        ? '<div style="min-width:0;flex:1"><div style="display:flex;justify-content:space-between;align-items:baseline">' +
+          '<div class="lch-txt">STARLINK TRAIN</div><div class="chance">' + Tr.el + '°</div></div>' +
+          '<div class="lch-sub">' + tSub + '</div></div>'
+        : '<div style="min-width:0"><div class="lch-txt">STARLINK TRAIN</div>' +
+          '<div class="lch-sub">' + tSub + '</div></div>' +
+          '<div class="lch-mid"><div class="chance">' + Tr.el + '°</div>' +
+          '<div class="lch-time">' + Tr.time +
+            '<div class="lch-tz">PT' + (Tr.day ? ' ' + Tr.day : '') + '</div></div></div>';
+      h += box('train' + tHalf, tRect, trainDots(tFg) + tMain, 'train',
+               'background:' + tBg + ';color:' + tFg);
+    }
+    if (!showLch && !showTrn) {
       var Q = quoteOverride ? {q: quoteOverride[0], who: quoteOverride[1],
                                size: quoteOverride[0].length > 52 ? 13 : 17}
                             : (QUOTES[+$('quote').value] || QUOTES[0]);
@@ -848,14 +928,14 @@
         '<div class="run-l" style="color:' + runCol + '">' + runwayL + '</div></div>' +
       filterBadge(filtOverride), 'footer');
 
-    h += box('src', L.src, 'open-meteo · air quality · thespacedevs · two wakes a day', 'src');
+    h += box('src', L.src, 'open-meteo · thespacedevs · celestrak · two wakes a day', 'src');
 
     var panel = $('panel');
     panel.innerHTML = h;
     panel.className = 'panel' + ($('grid').value === 'on' ? ' grid' : '');
     $('batval').textContent = pct + '%';
 
-    var order = ['header','keyline','peak','cell1Rule','sun','cell2Rule','air','detailRule','forecast','bandRule','event','evtBinRule','bins','lchRule','launch','footRule','footer','src'];
+    var order = ['header','keyline','peak','cell1Rule','sun','cell2Rule','air','detailRule','forecast','bandRule','event','evtBinRule','bins','lchRule','launch','trainRule','train','footRule','footer','src'];
     var rows = '<tr><th>Box</th><th>x</th><th>y</th><th>w</th><th>h</th></tr>';
     order.forEach(function (k) {
       var r = L[k];
@@ -877,7 +957,7 @@
     if (e.key === 'ArrowRight') { applyTour(tourAt + 1); e.preventDefault(); }
   });
 
-  ['day','cond','lch','quote','evt','aqi','bat','filt','days','grid'].forEach(function (id) {
+  ['day','cond','lch','trn','quote','evt','aqi','bat','filt','days','grid'].forEach(function (id) {
     $(id).addEventListener('input', render); $(id).addEventListener('change', render);
   });
   // Land on the first tour state, so the counter and its description are
@@ -885,7 +965,18 @@
   applyTour(0);
   // #today in the address bar loads today's real data straight away. Not
   // "#live": that matches the button's own id and the browser scrolls to it.
+  // The train hashes open the new band without walking the tour.
   if (location.hash === '#today') loadLive();
+  else if (location.hash === '#train' || location.hash === '#train-high' || location.hash === '#train-launch') {
+    var preset = location.hash === '#train-high' ? {lch:'none', trn:'high', day:'6'}
+               : location.hash === '#train-launch' ? {lch:'green', trn:'mid', day:'6'}
+               : {lch:'none', trn:'mid', day:'6'};
+    var want = {};
+    for (var k in BASE) want[k] = BASE[k];
+    for (var k2 in preset) want[k2] = preset[k2];
+    for (var id in want) { var el = $(id); if (el) el.value = want[id]; }
+    render();
+  }
 })();
 </script>
 </body>

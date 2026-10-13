@@ -38,8 +38,9 @@ struct Rect { int16_t x, y, w, h; };
 
 struct Layout {
   Rect header, keyline, peak, cell1Rule, sun, cell2Rule, air, detailRule;
-  Rect forecast, bandRule, event, evtBinRule, bins, lchRule, launch, footRule, footer, src;
-  bool showEvent, showBins, showLaunch, sharedRow;
+  Rect forecast, bandRule, event, evtBinRule, bins, lchRule, launch, trainRule, train;
+  Rect footRule, footer, src;
+  bool showEvent, showBins, showLaunch, showTrain, sharedRow, sharedBand;
 
   Rect fcCol(int i) const {
     return { (int16_t)(i * FC_PITCH), forecast.y,
@@ -51,13 +52,16 @@ struct Layout {
 };
 
 // Mirrors layout() in the mockup exactly, including the order the bands stack
-// upward from the footer.
-inline Layout computeLayout(bool showEvent, bool showBins, bool showLaunch) {
+// upward from the footer. A train does not add a row: it takes the launch
+// band, or shares that band with a launch. The forecast strip stays put.
+inline Layout computeLayout(bool showEvent, bool showBins, bool showLaunch, bool showTrain) {
   Layout L{};
   L.showEvent = showEvent;
   L.showBins = showBins;
   L.showLaunch = showLaunch;
+  L.showTrain = showTrain;
   L.sharedRow = showEvent && showBins;
+  L.sharedBand = showLaunch && showTrain;
 
   L.header  = { 0, 0, PANEL_W, HEADER_H };
   L.keyline = { 0, HEADER_H, PANEL_W, KEYLINE_H };
@@ -83,7 +87,16 @@ inline Layout computeLayout(bool showEvent, bool showBins, bool showLaunch) {
   L.launch  = { 0, (int16_t)(bb - LCH_H), PANEL_W, LCH_H };
   bb -= LCH_H + RULE;
   L.lchRule = { 0, bb, PANEL_W, RULE };
-  (void)showLaunch;
+  // The row stays one band tall. A train and a launch split it the way an
+  // event and the bins split theirs, so the forecast never gives up the
+  // 104 px its columns need.
+  if (L.sharedBand) {
+    L.trainRule = { HALF_W, L.launch.y, RULE, LCH_H };
+    L.train = { (int16_t)(HALF_W + RULE), L.launch.y, HALF_W, LCH_H };
+    L.launch.w = HALF_W;
+  } else if (showTrain) {
+    L.train = L.launch;
+  }
   if (L.sharedRow) {
     const int16_t y = bb - EVT_H;
     L.event      = { 0, y, HALF_W, EVT_H };

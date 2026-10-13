@@ -1,7 +1,8 @@
 // Morning dashboard for the Seeed reTerminal E1002.
 //
-// Wakes on a timer or the right white button, fetches forecast, air quality and
-// Vandenberg launches, and repaints ONLY if something it draws has changed. A
+// Wakes on a timer or the right white button, fetches forecast, air quality,
+// Vandenberg launches and the published Starlink-train file, and repaints ONLY
+// if something it draws has changed. A
 // full refresh takes 15-20 s and flickers hard, so an unchanged panel is left
 // alone and the wake costs nothing but a few seconds of radio.
 //
@@ -225,12 +226,14 @@ void setup() {
     gotWeather = fetchers::weather(m);
     gotAir     = fetchers::airQuality(m);
     fetchers::launches(m);
+    fetchers::starlink(m);
   }
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  Serial.printf("  fetch: weather %s, air %s, launch %s, bins %s\n",
+  Serial.printf("  fetch: weather %s, air %s, launch %s, train %s, bins %s\n",
                 gotWeather ? "ok" : "FAILED", gotAir ? "ok" : "FAILED",
                 m.launchTonight ? "band" : "none",
+                m.trainVisible ? "band" : "none",
                 m.bins == BIN_OUT ? "out tonight" : m.bins == BIN_IN ? "bring in" : "no");
 
   // The runway needs a real wall clock: anchoring it before NTP is what put the

@@ -163,6 +163,78 @@ Three things about this board that the wiki does not make obvious:
 Verified with esp32 core 3.3.11, Seeed_GFX 2.0.3 and ArduinoJson 7.4.3: the dashboard builds to
 1,145,691 bytes, 9.1% of the 12 MB `app0` slot.
 
+## Starlink train alert
+
+The panel grows a band when a Starlink batch launched in the last ten days is still
+clustered, and a pass of that train is visible from San Martin between dusk and
+sunrise. The band gives the local time (PT), the max elevation, and the compass
+point it rises from and sets toward (`NW > SE` — the panel font has no arrow).
+At 40° and above the band is green; from the 10° floor up to that it is yellow.
+If nothing qualifies, the band is absent and the quote of the day keeps the row.
+A train and a Vandenberg launch share that one row, so the forecast strip does
+not lose the height its columns need.
+
+The device does not run SGP4. `.github/workflows/starlink-train.yml` runs every
+three hours, and on demand, and writes
+`embedded/seeed-studio-epaper/data/starlink.json`. GitHub Pages serves it at
+`https://richoncode.github.io/webartests/embedded/seeed-studio-epaper/data/starlink.json`.
+The sketch fetches that file once per wake (`STARLINK_HOST` / `STARLINK_PATH` in
+`firmware/dashboard/config.h`) and keeps the pass in RTC memory until the pass
+ends, so a failed GET does not wipe a train it already knows. The observer is
+37.085 N, 121.61 W, 90 m, `America/Los_Angeles` — a few hundred meters from the
+weather point, which does not move a 10° elevation.
+
+A pass has to clear all of these, applied in `tools/starlink_train.py`:
+
+- the launch is at most 10 days old
+- at least five satellites, and at least half of the ones with elements, still
+  lie within 40° of argument of latitude
+- during the next 30 hours the sun at San Martin is below −6°, the satellite is
+  in sunlight, and the train reaches at least 10° elevation, with at least
+  three of the cluster doing so
+
+### Elements
+
+CelesTrak's legacy TLE and GP queries answer `No GP data found` for anything
+catalogued after the 5-digit NORAD number ran out on 11 July 2026. The public
+`last-30-days` group and the older supplemental GP rows stop being useful for a
+launch that flew this month. The keyless source that still works is CelesTrak
+**supplemental GP**, CSV, file `starlink`:
+
+`https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=starlink&FORMAT=csv`
+
+Those rows are SpaceX ephemerides (`DATA_SOURCE` `SpaceX-E`) and they carry
+catalog numbers 100000 and up. Launch dates come from Launch Library 2, with
+CelesTrak SATCAT as the check for a designator Launch Library has not filled in
+yet. A launch a few hours old often has a designator in the ephemeris before
+either catalog lists it; the script pairs that with the undesignated Starlink
+launch, or with the element epoch when the catalog row is still missing.
+
+If the SupGP download fails, the script tries Space-Track. That login is
+optional while CelesTrak answers. The workflow reads two repository secrets and
+never prints them:
+
+| Secret | What it is |
+|---|---|
+| `SPACETRACK_IDENTITY` | Space-Track username or email |
+| `SPACETRACK_PASSWORD` | Space-Track password |
+
+Richard only needs to add those if CelesTrak SupGP starts refusing the job.
+Neither value belongs in the repo. `secrets.h` on the device is still only the
+Wi-Fi password, and it stays gitignored.
+
+The action commits `starlink.json` only when the passes actually change, and
+only from `main`, which is the branch Pages builds. Until this lands on `main`
+the URL 404s and the panel shows no train, which is the same as an empty file.
+
+A reflash is needed once. `LAYOUT_VERSION` is 9, so the first wake after
+flashing repaints even if the weather has not changed.
+
+Compiled after this change with esp32 core 3.3.12, Seeed_GFX 2.0.3 and
+ArduinoJson 7.4.3, FQBN `esp32:esp32:esp32s3:FlashSize=32M,PSRAM=opi,PartitionScheme=custom,UploadSpeed=115200`:
+the sketch uses 1,194,479 bytes. The core reports that as 7% of a 16 MB slot;
+the factory `app0` slot is 12 MB.
+
 ## Firmware backups
 
 `firmware-backup/` holds full-flash images alongside a `.sha256` checksum and a `.manifest.txt`

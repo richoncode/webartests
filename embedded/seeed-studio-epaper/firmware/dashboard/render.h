@@ -34,7 +34,7 @@ public:
   explicit Renderer(EPaper &d) : g(d) {}
 
   void draw(const Model &m) {
-    Layout L = computeLayout(m.eventToday, m.bins != BIN_NONE, m.launchTonight);
+    Layout L = computeLayout(m.eventToday, m.bins != BIN_NONE, m.launchTonight, m.trainVisible);
     g.fillScreen(C_PAPER);
 
     drawHeader(L, m);
@@ -51,10 +51,21 @@ public:
     if (m.eventToday) drawEvent(L, m);
     if (m.bins != BIN_NONE) drawBins(L, m);
     if (L.sharedRow) rule(L.evtBinRule);
-    // The band always carries something: a launch worth standing outside for,
-    // or the line of the day.
+    // The band always carries something. A train takes it over from the quote,
+    // and shares it with a launch rather than stacking a second row — the
+    // forecast strip cannot spare the height.
     rule(L.lchRule);
-    if (m.launchTonight) drawLaunch(L, m); else drawQuote(L, m);
+    if (L.sharedBand) {
+      drawLaunch(L.launch, m, true);
+      rule(L.trainRule);
+      drawTrain(L.train, m, true);
+    } else if (m.launchTonight) {
+      drawLaunch(L.launch, m, false);
+    } else if (m.trainVisible) {
+      drawTrain(L.train, m, false);
+    } else {
+      drawQuote(L, m);
+    }
 
     rule(L.footRule);
     drawFooter(L, m);
@@ -273,8 +284,15 @@ private:
     g.fillRect(x + 9, y, 8, 3, C_PAPER);
   }
 
-  void drawLaunch(const Layout &L, const Model &m) {
-    const Rect &r = L.launch;
+  void fitInto(char *s, const GFXfont *f, int16_t avail) {
+    if (avail < 8) { s[0] = '\0'; return; }
+    if (widthOf(s, f) <= avail) return;
+    size_t n = strlen(s);
+    while (n > 0 && widthOf(s, f) > avail) s[--n] = '\0';
+    while (n > 0 && s[n - 1] == ' ') s[--n] = '\0';
+  }
+
+  void drawLaunch(const Rect &r, const Model &m, bool half) {
     // The colour says the same thing as the number, so the band reads from
     // across the room and up close. Green and blue take paper, yellow takes ink
     // — the pairing the SUN cell and the bin band already use.
@@ -283,6 +301,28 @@ private:
     uint16_t fg = m.launchChance >= LAUNCH_YELLOW_PCT && m.launchChance < LAUNCH_GREEN_PCT
                 ? C_INK : C_PAPER;
     g.fillRect(r.x, r.y, r.w, r.h, bg);
+
+    if (half) {
+      // Half the row: the mission, then the clock and the chance. The drift
+      // and the booster stay on the full-width band, where there is room.
+      const int16_t PAD = 14, ICON_W = 36;
+      const int16_t nameX = r.x + PAD + ICON_W;
+      const int16_t avail = r.x + r.w - PAD - nameX;
+      drawRocket(r.x + PAD, r.y + (r.h - 30) / 2, fg, bg);
+      char name[52];
+      snprintf(name, sizeof(name), "%s", m.launchName);
+      const GFXfont *nf = widthOf(name, F_BODY) <= avail ? F_BODY : F_TINY;
+      fitInto(name, nf, avail);
+      text(name, nameX, r.y + 8, nf, fg);
+      char sub[48];
+      if (m.launchDay[0])
+        snprintf(sub, sizeof(sub), "%s %s  %d%%", m.launchDay, m.launchTime, m.launchChance);
+      else
+        snprintf(sub, sizeof(sub), "%s  %d%%", m.launchTime, m.launchChance);
+      fitInto(sub, F_TINY, avail);
+      text(sub, nameX, r.y + 32, F_TINY, fg);
+      return;
+    }
 
     // Three columns with reserved widths: the rocket, the mission, and the
     // chance beside the clock.
@@ -340,6 +380,70 @@ private:
     }
     text(when, r.x + r.w - PAD, r.y + (tf == F_MID ? 6 : 10), tf, fg, TR_DATUM);
     text(caption, r.x + r.w - PAD, r.y + 38, F_TINY, fg, TR_DATUM);
+  }
+
+  // Same columns as a launch: the string of lights, where it travels, the
+  // elevation where the chance would be, and the local time. "NW > SE" is
+  // rise then set — the panel font has no arrow glyph.
+  void drawTrain(const Rect &r, const Model &m, bool half) {
+    uint16_t bg = m.trainEl >= TRAIN_GREEN_EL ? C_GREEN : C_YELLOW;
+    uint16_t fg = m.trainEl >= TRAIN_GREEN_EL ? C_PAPER : C_INK;
+    g.fillRect(r.x, r.y, r.w, r.h, bg);
+
+    const int16_t PAD = half ? 14 : 22;
+    const int16_t ICON_W = 40;
+    const int16_t nameX = r.x + PAD + ICON_W;
+    drawTrainIcon(r.x + PAD, r.y + (r.h - 30) / 2, fg);
+
+    if (half) {
+      // Elevation stays, at the smaller size: it is the number the row is for.
+      const int16_t tw = tempWidth(m.trainEl, F_BODY);
+      const int16_t avail = r.x + r.w - PAD - nameX - tw - 8;
+      char name[20];
+      snprintf(name, sizeof(name), "STARLINK TRAIN");
+      const GFXfont *nf = widthOf(name, F_BODY) <= avail ? F_BODY : F_TINY;
+      fitInto(name, nf, avail);
+      text(name, nameX, r.y + 8, nf, fg);
+      drawTemp(m.trainEl, r.x + r.w - PAD - tw, r.y + 6, F_BODY, fg);
+      char sub[48];
+      if (m.trainDay[0])
+        snprintf(sub, sizeof(sub), "%s %s  %s > %s  ~%d",
+                 m.trainDay, m.trainTime, m.trainFrom, m.trainTo, m.trainCount);
+      else
+        snprintf(sub, sizeof(sub), "%s  %s > %s  ~%d",
+                 m.trainTime, m.trainFrom, m.trainTo, m.trainCount);
+      fitInto(sub, F_TINY, r.x + r.w - PAD - nameX);
+      text(sub, nameX, r.y + 32, F_TINY, fg);
+      return;
+    }
+
+    const int16_t TIME_W = 160, EL_W = 110;
+    const int16_t nameAvail = (r.x + r.w - PAD - TIME_W - EL_W) - nameX - 8;
+    const GFXfont *nf = widthOf("STARLINK TRAIN", F_MID) <= nameAvail ? F_MID : F_BODY;
+    text("STARLINK TRAIN", nameX, r.y + (nf == F_MID ? 6 : 10), nf, fg);
+    char sub[40];
+    snprintf(sub, sizeof(sub), "%s > %s - ~%d", m.trainFrom, m.trainTo, m.trainCount);
+    text(sub, nameX, r.y + 34, F_TINY, fg);
+
+    int16_t elRight = r.x + r.w - PAD - TIME_W;
+    int16_t tw = tempWidth(m.trainEl, F_BIG);
+    drawTemp(m.trainEl, elRight - tw, r.y + 4, F_BIG, fg);
+
+    const int16_t TIME_FIT = TIME_W - 8;
+    const GFXfont *tf = widthOf(m.trainTime, F_MID) <= TIME_FIT ? F_MID : F_BODY;
+    char caption[16];
+    if (m.trainDay[0]) snprintf(caption, sizeof(caption), "PT %s", m.trainDay);
+    else               snprintf(caption, sizeof(caption), "PT");
+    text(m.trainTime, r.x + r.w - PAD, r.y + (tf == F_MID ? 6 : 10), tf, fg, TR_DATUM);
+    text(caption, r.x + r.w - PAD, r.y + 38, F_TINY, fg, TR_DATUM);
+  }
+
+  // Four lights in a rising line. Drawn in the band's own ink, like the rocket.
+  void drawTrainIcon(int16_t x, int16_t y, uint16_t ink) {
+    static const int8_t dx[] = {4, 12, 20, 28};
+    static const int8_t dy[] = {22, 16, 10, 4};
+    static const int8_t rr[] = {3, 3, 3, 4};
+    for (int i = 0; i < 4; i++) g.fillCircle(x + dx[i], y + dy[i], rr[i], ink);
   }
 
   // Paper and ink where a launch band is a slab of colour, with one stripe of
@@ -436,7 +540,7 @@ private:
   // of the footer.
   void drawSources(const Layout &L) {
     const Rect &r = L.src;
-    text("open-meteo - air quality - thespacedevs - two wakes a day",
+    text("open-meteo - thespacedevs - celestrak - two wakes a day",
          r.x + r.w - 22, r.y + 2, F_TINY, C_INK, TR_DATUM);
   }
 
