@@ -243,6 +243,27 @@ test('CPU sample sits after the LM head and does not change tok/s', () => {
   assert.equal(E.ASSUME_META.sampleUs.tag, 'U');
 });
 
+test('read and write lanes are parallel, and M5 Pro Fusion stays idle', () => {
+  const pts = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }];
+  const inn = E.offsetPolyline(pts, -4);
+  const out = E.offsetPolyline(pts, 4);
+  assert.ok(Math.abs(inn[0].y - out[0].y) > 6);
+  assert.ok(Math.abs(inn[2].x - out[2].x) > 6);
+  const chips = readJson('data/chips.json');
+  const pro = chips.chips.find(c => c.id === 'm5pro-18');
+  assert.equal(pro.specs.ic.v, 0);
+  assert.equal(pro.specs.ic.tag, 'U');
+  assert.match(pro.specs.ic.note, /Not modelled/);
+  assert.ok(pro.specs.node.src.includes('apple-m5pm'));
+  assert.match(chips.sources['apple-m5pm'].title, /Apple newsroom: M5 Pro and M5 Max/);
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  assert.match(ui, /Fusion · idle/);
+  assert.match(ui, /Idle on purpose/);
+  assert.match(ui, /LANE_OFFSET=4/);
+  assert.match(ui, /drawLayerPulse/);
+  assert.match(ui, /drawCpuHandoff/);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {

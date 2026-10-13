@@ -234,6 +234,19 @@ function flowScale(effGBs, refGBs) {
 }
 // One clock for both panels. wallSeconds is how long the slower chip's step takes
 // on screen; every other chip takes wallSeconds * (its model time / that slower time).
+// Shift a polyline onto a parallel lane. Positive dist is to the left of travel.
+function offsetPolyline(pts, dist) {
+  if (!pts || pts.length < 2 || !dist) return (pts || []).map(p => ({ x: p.x, y: p.y }));
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    let dx = 0, dy = 0, n = 0;
+    if (i > 0) { const sx = pts[i].x - pts[i - 1].x, sy = pts[i].y - pts[i - 1].y, len = Math.hypot(sx, sy) || 1; dx += -sy / len; dy += sx / len; n++; }
+    if (i < pts.length - 1) { const sx = pts[i + 1].x - pts[i].x, sy = pts[i + 1].y - pts[i].y, len = Math.hypot(sx, sy) || 1; dx += -sy / len; dy += sx / len; n++; }
+    const len = Math.hypot(dx, dy) || 1;
+    out.push({ x: pts[i].x + dist * dx / len, y: pts[i].y + dist * dy / len });
+  }
+  return out;
+}
 function animSeconds(modelSeconds, slowestModelSeconds, wallSeconds) {
   const slow = slowestModelSeconds > 0 ? slowestModelSeconds : 1;
   return modelSeconds * ((wallSeconds > 0 ? wallSeconds : 1) / slow);
@@ -274,5 +287,5 @@ function kvTraffic(m0, prec, phase, B, L) {
 
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
   flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState,
-  flowScale, animSeconds, arGap, AR_VIS_FLOOR, kvTraffic, fmtByte, aneGate, aneToggle };
+  flowScale, animSeconds, offsetPolyline, arGap, AR_VIS_FLOOR, kvTraffic, fmtByte, aneGate, aneToggle };
 });
