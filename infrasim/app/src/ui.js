@@ -111,7 +111,8 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas><div class="status"><span class="st"></span><span class="ic"></span></div><div class="chipnote"></div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas>'+
+   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><span class="st-link-name">no multi-chip link modeled</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote"></div>'+
    '<div class="stats"><div class="resultslot">'+
    '<div class="rview final"><div class="l"><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
    '<div class="bars">'+
@@ -336,16 +337,23 @@ function drawSide(s,tm){
     ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
-  // HTML status line (readable at any size)
-  let msg,mc;
-  if(r.oom){msg='X OOM: weights + KV do not fit, would not run';mc='#fca5a5';}
-  else if(s.done){msg='done in '+fmtT(r.total)+' - waiting for the other chip';mc='#8493ab';}
-  else if(sg.tm>=sg.tc){const stall=Math.round((1-cu)*100);msg=((tm*2.2)%2<1.3?'STALL ':'')+c.unitName+'s idle ~'+stall+'% waiting on memory | memory busy 100%';mc='#fbbf24';}
-  else {msg='COMPUTE-BOUND: '+c.unitName+'s ~'+Math.round(cu*100)+'% busy | memory busy '+Math.round(mu*100)+'% (headroom)';mc='#34d399';}
-  const stEl=s.root.querySelector('.st'),icEl=s.root.querySelector('.status .ic');
-  if(stEl._m!==msg){stEl._m=msg;stEl.textContent=msg;stEl.style.color=mc;}
-  const icm=(c.ic?c.icName+' '+c.ic+' GB/s':'no multi-chip link modeled')+(commGlow>0.05?'  '+Math.round(commGlow*100)+'% of step':'');
-  if(icEl._m!==icm){icEl._m=icm;icEl.textContent=icm;icEl.style.color=commGlow>0.05?'#f472b6':'';}
+  // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
+  const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
+  const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
+  const cause=s.root.querySelector('.st-cause-txt'),causePct=s.root.querySelector('.st-cause-pct'),causeTail=s.root.querySelector('.st-cause-tail');
+  let badgeText,phraseText,pctText,causeText,causePctText,causeTailText,mc;
+  if(r.oom){badgeText='OOM';phraseText='weights + KV do not fit';pctText='';causeText='would not run';causePctText='';causeTailText='';mc='#fca5a5';}
+  else if(s.done){badgeText='DONE';phraseText='done in '+fmtT(r.total);pctText='';causeText='waiting for the other chip';causePctText='';causeTailText='';mc='#8493ab';}
+  else if(sg.tm>=sg.tc){badgeText='STALL';phraseText=c.unitName+'s idle ~';pctText=Math.round((1-cu)*100)+'%';causeText='waiting on memory · memory busy';causePctText='100%';causeTailText='';mc='#fbbf24';}
+  else {badgeText='COMPUTE';phraseText=c.unitName+'s busy ~';pctText=Math.round(cu*100)+'%';causeText='memory busy';causePctText=Math.round(mu*100)+'%';causeTailText='· headroom';mc='#34d399';}
+  put(badge,badgeText);put(phrase,phraseText);put(pct,pctText);put(cause,causeText);put(causePct,causePctText);put(causeTail,causeTailText);
+  badge.classList.toggle('dim', badgeText==='STALL' && (tm*2.2)%2>=1.3);
+  s.root.querySelector('.st-row').style.color=mc;
+  const linkName=s.root.querySelector('.st-link-name'),linkPct=s.root.querySelector('.st-link-pct');
+  put(linkName, c.ic ? c.icName+' '+c.ic+' GB/s' : 'no multi-chip link modeled');
+  const showComm=commGlow>0.05;
+  put(linkPct, showComm ? Math.round(commGlow*100)+'% of step' : '100% of step');
+  linkPct.classList.toggle('on', showComm);
   drawStrip(s,cur,tm);
 }
 function drawStrip(s,cur,tm){
