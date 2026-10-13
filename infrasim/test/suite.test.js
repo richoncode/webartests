@@ -271,6 +271,20 @@ test('read and write lanes are parallel, and M5 Pro Fusion stays idle', () => {
   assert.match(css, /\.memcard\{/);
 });
 
+test('the chip name opens one layout popout and part names can mark the diagram', () => {
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
+  assert.match(ui, /data-kind="layout"/);
+  assert.match(ui, /function layoutPopHtml/);
+  assert.match(ui, /Key difference vs the other panel/);
+  assert.match(ui, /data-hl="/);
+  assert.match(ui, /className='parthl'/);
+  assert.match(css, /\.layhead\{position:sticky/);
+  assert.match(css, /\.parthl\{position:absolute/);
+  assert.match(css, /\.ptitle \.cname\{/);
+  assert.doesNotMatch(ui, /<b><\/b>/);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {
