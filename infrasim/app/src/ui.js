@@ -1322,6 +1322,8 @@ function markSpec(k,sp,spec){
   return tagMark(sp.tag||'U')+' <b>'+esc(specVal(k,sp))+'</b>'+(note?'. '+esc(note):'.')+nosrc+(bits.html?' '+bits.html:'');
 }
 function dieSpec(c){
+  const explicit=c.raw.specs&&c.raw.specs.dies;
+  if(explicit&&explicit.v!=null)return explicit;
   const node=(c.raw.specs&&c.raw.specs.node)||{};
   const text=String(node.v||'');
   const n=c.dies||1;
@@ -1333,12 +1335,19 @@ function fuseWord(c){return /ultra/i.test(c.id||'')?'UltraFusion':'Fusion';}
 function layoutDie(c,L){
   const sp=c.raw.specs||{};
   if(c.arch==='nvidia'){
-    return 'Drawn as '+partName('one GPU die','die')+' holding '+partName(c.units+' '+c.unitName+'s','sm')+'. '+tagMark(dieSpec(c).tag)+' '+esc(dieSpec(c).note)+' No recorded source for the die count. '+markSpec('node',sp.node,'Process');
+    const d=dieSpec(c);
+    const count=sp.dies&&sp.dies.v!=null
+      ? markSpec('dies',d,'Die count')
+      : tagMark(d.tag)+' '+esc(d.note)+' No recorded source for the die count.';
+    return 'Drawn as '+partName('one GPU die','die')+' holding '+partName(c.units+' '+c.unitName+'s','sm')+'. '+count+' '+markSpec('node',sp.node,'Process');
   }
   if(c.arch==='amd'){
     const iod=(L.blocks||[]).filter(b=>b.hl==='iod').length;
     const xcd=(L.blocks||[]).filter(b=>b.hl==='xcd').length;
-    return 'Drawn as '+partName(iod+' I/O dies','iod')+' with '+partName(xcd+' XCDs','xcd')+' on them. '+tagMark('U')+' The I/O die count is the diagram. This record does not publish it. No recorded source. The XCD count is the CU line. '+markSpec('units',sp.units,'CUs')+' '+markSpec('node',sp.node,'Process');
+    const count=sp.iods&&sp.iods.v!=null
+      ? markSpec('iods',sp.iods,'I/O dies')
+      : tagMark('U')+' The I/O die count is the diagram. This record does not publish it. No recorded source.';
+    return 'Drawn as '+partName(iod+' I/O dies','iod')+' with '+partName(xcd+' XCDs','xcd')+' on them. '+count+' The XCD count is the CU line. '+markSpec('units',sp.units,'CUs')+' '+markSpec('node',sp.node,'Process');
   }
   if(c.arch==='apple'){
     const n=c.dies||1;
