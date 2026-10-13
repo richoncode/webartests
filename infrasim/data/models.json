@@ -1,6 +1,6 @@
 {
  "schema": 2,
- "note": "Configs copied from the Hugging Face config.json of each model; paramsHF is the safetensors total from the HF API, used only by tests.",
+ "note": "Configs copied from the Hugging Face config.json of each model; paramsHF is the safetensors total from the HF API, used only by tests. ane is the Neural Engine record for the toggle. aneOutside lists real paths that are not rows here, so their tok/s are not applied to these models.",
  "models": [
   {
    "id": "llama3-8b",
@@ -18,7 +18,19 @@
    "k": 1,
    "maxPos": 8192,
    "paramsHF": 8030261248,
-   "note": "Official meta-llama repo is gated; config and parameter total (safetensors) read from the NousResearch mirror, which matches the values recorded earlier."
+   "note": "Official meta-llama repo is gated; config and parameter total (safetensors) read from the NousResearch mirror, which matches the values recorded earlier.",
+   "ane": {
+    "viable": false,
+    "tag": "A",
+    "src": [
+     "anemll"
+    ],
+    "maxContext": null,
+    "precisions": [],
+    "why": "No documented Neural Engine path for this model/size. Anemll's LLaMA path is Llama 3.1 and 3.2, 1B and 8B, context 512–2048, and its test script converts meta-llama/Llama-3.2-8B-Instruct. This row is Meta-Llama-3-8B, a different checkpoint.",
+    "parts": {},
+    "benchmarks": []
+   }
   },
   {
    "id": "llama3-70b",
@@ -36,7 +48,19 @@
    "k": 1,
    "maxPos": 8192,
    "paramsHF": 70553706496,
-   "note": "Official meta-llama repo is gated; config and parameter total (safetensors) read from the NousResearch mirror, which matches the values recorded earlier."
+   "note": "Official meta-llama repo is gated; config and parameter total (safetensors) read from the NousResearch mirror, which matches the values recorded earlier.",
+   "ane": {
+    "viable": false,
+    "tag": "A",
+    "src": [
+     "anemll"
+    ],
+    "maxContext": null,
+    "precisions": [],
+    "why": "No documented Neural Engine path for this model/size. Anemll's LLaMA sizes stop at 8B.",
+    "parts": {},
+    "benchmarks": []
+   }
   },
   {
    "id": "mixtral",
@@ -54,7 +78,20 @@
    "k": 2,
    "maxPos": 32768,
    "paramsHF": 46702792704,
-   "note": ""
+   "note": "",
+   "ane": {
+    "viable": false,
+    "tag": "A",
+    "src": [
+     "anemll",
+     "coreai-models"
+    ],
+    "maxContext": null,
+    "precisions": [],
+    "why": "No documented Neural Engine path for this model/size. Anemll lists Mistral-family support as not available yet. Apple's coreai-models repo has a Mixtral conversion test and names Mixtral in its GPU authoring notes. Neither source publishes a Neural Engine placement or a tok/s figure for Mixtral 8x7B.",
+    "parts": {},
+    "benchmarks": []
+   }
   },
   {
    "id": "qwen3-8b",
@@ -72,7 +109,65 @@
    "k": 1,
    "maxPos": 40960,
    "paramsHF": 8190735360,
-   "note": "Dense; untied embeddings; context 40,960 in config."
+   "note": "Dense; untied embeddings; context 40,960 in config.",
+   "ane": {
+    "viable": true,
+    "tag": "A",
+    "src": [
+     "anemll"
+    ],
+    "maxContext": 4096,
+    "precisions": [
+     "fp16"
+    ],
+    "precWhy": "No documented Neural Engine path for this precision. Anemll runs the Neural Engine in FP16, with LUT4 palettization on the feed-forward and LUT6 on the LM head. FP8, and INT4 in this tool (weight-only dequant to FP16), are not that path.",
+    "ctxWhy": "Documented Anemll context for Qwen 3 is 512–4096. This context is longer. Anemll does not document an 8K or 16K Neural Engine path yet.",
+    "why": "",
+    "contextNote": "Anemll lists Qwen 3 at 0.6B, 1.7B, and 8B, context 512–4096, chunked and monolithic, status stable. Recommended context is 512–1024. A shorter context stays inside that window.",
+    "ramNote": "Anemll recommends 32GB+ RAM for 8B models. That is a recommendation, not a hard stop in this tool.",
+    "benchNote": "No published tok/s for Qwen3-8B on the Neural Engine is recorded. The number shown is the unified-memory bandwidth roofline, not a measurement.",
+    "parts": {
+     "embed": {
+      "unit": "cpu",
+      "tag": "A",
+      "src": [
+       "anemll",
+       "coreml-llm",
+       "ml-ane-transformers"
+      ],
+      "note": "Embeddings are split out of the Neural Engine chunk. CoreML-LLM drops embed_tokens from the chunk because the gather is an integer op, which the Neural Engine does not run. In Apple's DistilBERT reference, 4 of 606 ops are the embedding lookup and those run on the CPU. That reference is not this LLM."
+     },
+     "attn": {
+      "unit": "gpu",
+      "tag": "A",
+      "src": [
+       "coreml-llm",
+       "coreai-ne-rules",
+       "ml-ane-transformers",
+       "coremltools-faq"
+      ],
+      "note": "QKV matmuls can stay on the Neural Engine if they are rewritten as 1×1 convolutions. This step is badged as the GPU fallback because the documented leftovers sit here: RoPE index/gather and other integer ops fall off onto CPU or GPU, and an fp32 op falls back to GPU/CPU. Native softmax was rejected on earlier Neural Engine systems, so converters decompose it into max, subtract, exp, sum, and divide; a later Mac probe found native softmax the same speed, so softmax is not given its own GPU step. Large or dynamic KV shapes are capped by the published context window. coremltools keeps flexible shapes on the Neural Engine for EnumeratedShapes (up to 128); a fully dynamic reshape can leave it."
+     },
+     "mlp": {
+      "unit": "ane",
+      "tag": "A",
+      "src": [
+       "anemll",
+       "coreai-ne-rules"
+      ],
+      "note": "Anemll puts the feed-forward on the Neural Engine as LUT4 and chunks it to fit. Palettization is a native Neural Engine compression. Anemll notes LUT4 quality is fairly low because the Neural Engine lacks block quantization."
+     },
+     "head": {
+      "unit": "ane",
+      "tag": "A",
+      "src": [
+       "anemll"
+      ],
+      "note": "Anemll uses LUT6 on the LM head. An optional in-model argmax keeps the full logit tensor from being copied off the Neural Engine."
+     }
+    },
+    "benchmarks": []
+   }
   },
   {
    "id": "qwen3-30b-a3b",
@@ -90,7 +185,72 @@
    "k": 8,
    "maxPos": 40960,
    "paramsHF": 30532122624,
-   "note": "MoE: 128 experts, top-8, every layer; ffn is the per-expert intermediate size (moe_intermediate_size 768). Attention width heads x head_dim = 4096, larger than hidden 2048."
+   "note": "MoE: 128 experts, top-8, every layer; ffn is the per-expert intermediate size (moe_intermediate_size 768). Attention width heads x head_dim = 4096, larger than hidden 2048.",
+   "ane": {
+    "viable": false,
+    "tag": "A",
+    "src": [
+     "anemll",
+     "coreai-models"
+    ],
+    "maxContext": null,
+    "precisions": [],
+    "why": "No documented Neural Engine path for this model/size. Anemll's Qwen 3 sizes stop at 8B. coreai-models names Qwen3-MoE in its GPU authoring notes and does not publish a Neural Engine tok/s for Qwen3-30B-A3B.",
+    "parts": {},
+    "benchmarks": []
+   }
+  }
+ ],
+ "aneOutside": [
+  {
+   "id": "apple-foundation-on-device",
+   "name": "Apple Foundation on-device model",
+   "viable": true,
+   "inList": false,
+   "tag": "V",
+   "src": [
+    "apple-fm-2024",
+    "apple-fm-2025",
+    "apple-fm-2025-report"
+   ],
+   "note": "Not an InfraSim row, so the toggle cannot target it. About 3B parameters, run on the Neural Engine. 2024: grouped-query attention, shared embeddings, mixed 2-bit and 4-bit palettization averaging about 3.7 bits per weight, and an efficient KV-cache update on the neural engines. 2025: the on-device model is still about 3B, KV caches of block 2 are shared with the last layer of block 1 (37.5% less KV memory), and weights use 2-bit quantization-aware training. No context-window number from those pages is copied here.",
+   "benchmarks": [
+    {
+     "toks": 30,
+     "unit": "tok/s",
+     "device": "iPhone 15 Pro",
+     "tag": "V",
+     "src": [
+      "apple-fm-2024"
+     ],
+     "note": "2024 post: about 0.6 ms time-to-first-token per prompt token, and 30 tok/s before token speculation. The 2025 update does not republish that rate. It is not an M5 Pro or M6 figure and is not applied to any chip here."
+    }
+   ]
+  },
+  {
+   "id": "whisper",
+   "name": "Whisper large v3 / large v3 turbo",
+   "viable": false,
+   "inList": false,
+   "tag": "V",
+   "src": [
+    "coreai-models"
+   ],
+   "note": "Not an InfraSim row. coreai-models exports openai/whisper-large-v3-turbo (809M) and openai/whisper-large-v3 (1.54B) to Core AI. That export page does not say the graph runs on the Neural Engine and does not give a tok/s figure, so this is not an ANE path in this tool.",
+   "benchmarks": []
+  },
+  {
+   "id": "ml-ane-distilbert",
+   "name": "ml-ane-transformers DistilBERT",
+   "viable": false,
+   "inList": false,
+   "tag": "V",
+   "src": [
+    "ml-ane-transformers",
+    "apple-neural-engine"
+   ],
+   "note": "Apple's reference is DistilBERT at sequence length 128 or 512, not these LLMs. The repo's \"up to 10× faster and 14× lower peak memory\" is against a baseline transformer for that small model. It is not applied here. Four of 606 ops in that example, the embedding lookup, run on the CPU.",
+   "benchmarks": []
   }
  ]
 }
