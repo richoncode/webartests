@@ -110,10 +110,18 @@ const LAY={nvidia:layNvidia,amd:layAmd,apple:layApple,tpu:layTpu};
 function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
-  p.innerHTML='<div class="ribbon" hidden>SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc"></em></div>'+
+  p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
    '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas><div class="status"><span class="st"></span><span class="ic"></span></div><div class="chipnote"></div>'+
-   '<div class="stats"><div class="l"><span class="badge"></span><div class="big"></div><div class="sub s1"></div><div class="rng"><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
-   '<div class="bars"></div></div>';
+   '<div class="stats"><div class="resultslot">'+
+   '<div class="rview final"><div class="l"><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
+   '<div class="bars">'+
+   '<div class="brow compute"><span class="lab">compute</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
+   '<div class="brow memory"><span class="lab">memory</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
+   '<div class="brow comm off"><span class="lab">comm</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
+   '</div></div>'+
+   '<div class="rview run"><div class="runlab">Time to generate 1 token</div><div class="runbig"><span class="n run-t">0.00 ms</span></div><div class="runspd">speed <span class="n run-s">0.0</span> tok/s</div></div>'+
+   '<div class="rview oom"><div class="oombox"><b>OUT OF MEMORY</b><span>Weights and KV cache do not fit, so this chip would not run. Figures below are hypothetical.</span></div></div>'+
+   '</div><div class="capwrap"><div class="captrack"></div><div class="cap-txt"></div></div></div>';
   side.root=p;side.cv=p.querySelector('canvas.cv');side.st=p.querySelector('canvas.strip');
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
@@ -153,7 +161,7 @@ function renderPills(s){
   const eff=effSpec(chip);
   s.pills.innerHTML=keys.map(k=>'<button class="pill'+(s.sel===k?' sel':'')+'" data-k="'+k+'" title="'+esc(specLabel(k,chip)+': '+specVal(k,sp[k])+' ['+sp[k].tag+'] - click for source')+'"><span class="tg '+sp[k].tag+'">'+sp[k].tag+'</span><span class="txt">'+esc(pillText(k,chip,sp[k]))+'</span></button>').join('')+
    '<button class="pill'+(s.sel==='eff'?' sel':'')+'" data-k="eff" title="Efficiency factors - click for details"><span class="tg '+eff.tag+'">'+eff.tag+'</span><span class="txt">eff '+esc(eff.v)+'</span></button>';
-  s.root.querySelector('.ribbon').hidden=chip.status!=='speculative';
+  const rib=s.root.querySelector('.ribbon'); rib.classList.toggle('on', chip.status==='speculative'); rib.setAttribute('aria-hidden', chip.status==='speculative'?'false':'true');
 }
 function renderPillDetail(s){
   const chip=s.chip,sp=s.sel==='eff'?effSpec(chip):chip.raw.specs[s.sel];
@@ -191,14 +199,16 @@ function recompute(noHash){
     rootEl.querySelector('.ptitle b').textContent=c.name+(r.N>1?'  x'+r.N:'');
     const bd=rootEl.querySelector('.badge');
     const cls=r.oom?'oom':r.bound;bd.className='badge '+cls;
-    bd.textContent=r.oom?'OUT OF MEMORY':(r.bound==='mem'?'MEMORY-BOUND':r.bound==='comp'?'COMPUTE-BOUND':'INTERCONNECT-LIMITED')+' ('+Math.round((r.bound==='comm'?r.commShare:(r.bound==='mem'?r.memShare:1-r.memShare))*100)+'%)';
+    const pct=Math.round((r.bound==='comm'?r.commShare:(r.bound==='mem'?r.memShare:1-r.memShare))*100);
+    bd.querySelector('.bd-name').textContent=r.oom?'OUT OF MEMORY':(r.bound==='mem'?'MEMORY-BOUND':r.bound==='comp'?'COMPUTE-BOUND':'INTERCONNECT-LIMITED');
+    bd.querySelector('.bd-pct').textContent=r.oom?'': '('+pct+'%)';
     const big=rootEl.querySelector('.big'),s1=rootEl.querySelector('.s1'),rt=rootEl.querySelector('.rt');
-    const hyp=r.oom?'<small> (hypothetical)</small>':'';
+    big.querySelector('.hyp').classList.toggle('on', !!r.oom);
     const g=s.rng;
-    if(r.decode){big.innerHTML=fmtN(r.tokUser)+' <small>tok/s/user</small>'+hyp;
+    if(r.decode){big.querySelector('.n').textContent=fmtN(r.tokUser); big.querySelector('.unit').textContent='tok/s/user';
       s1.textContent='batch '+S.B_+': '+fmtN(r.tokAgg)+' tok/s aggregate | step '+fmtT(r.total);
       rt.textContent='range '+fmtN(g.worst)+'\u2013'+fmtN(g.best)+' tok/s | ceiling '+fmtN(s.ceil.tokUser);}
-    else{big.innerHTML=fmtT(r.ttft)+' <small>to first token</small>'+hyp;
+    else{big.querySelector('.n').textContent=fmtT(r.ttft); big.querySelector('.unit').textContent='to first token';
       s1.textContent='prefill '+fmtN(r.prefTput)+' tok/s | '+(S.B_*S.L).toLocaleString()+' tokens';
       rt.textContent='range '+fmtT(g.best)+'\u2013'+fmtT(g.worst)+' | ceiling '+fmtT(s.ceil.ttft);}
     // range bar on a "speed" axis (higher = faster): value / ceiling
@@ -207,14 +217,18 @@ function recompute(noHash){
     const rb=rootEl.querySelector('.rband'),rm=rootEl.querySelector('.rmid'),rc=rootEl.querySelector('.rceil');
     rb.style.left=(xl*100)+'%';rb.style.width=Math.max(0.5,(xh-xl)*100)+'%';rm.style.left='calc('+(xm*100)+'% - 1px)';rc.style.left='calc(100% - 1px)';
     rt.title=rootEl.querySelector('.rtrack').title='Estimate range: every efficiency factor x0.8 to x1.2 (capped at 1), shown as the blue band. White tick: central estimate. Dashed amber: peak-spec ceiling (efficiency 100%).';
-    const bar=(lab,v,col,txt)=>'<div class="brow"><span class="lab">'+lab+'</span><div class="track"><div class="fill" style="width:'+(100*v/maxT).toFixed(1)+'%;background:'+col+'"></div></div><span class="num">'+txt+'</span></div>';
+    const setBar=(key,v,col,txt,show)=>{const row=rootEl.querySelector('.brow.'+key); row.classList.toggle('off',!show); const fill=row.querySelector('.fill'); fill.style.width=(100*v/maxT).toFixed(1)+'%'; fill.style.background=col; row.querySelector('.num').textContent=txt;};
+    setBar('compute',r.sumTc,'var(--comp)',fmtT(r.sumTc),true);
+    setBar('memory',r.sumTm,'var(--mem)',fmtT(r.sumTm),true);
+    setBar('comm',r.sumComm,'var(--comm)',fmtT(r.sumComm),r.N>1);
     const den=Math.max(r.capGB,r.weightGB+r.kvGB), wp=100*r.weightGB/den, kp=100*r.kvGB/den, mk=100*r.usableGB/den;
-    rootEl.querySelector('.bars').innerHTML=
-      bar('compute',r.sumTc,'var(--comp)',fmtT(r.sumTc))+bar('memory',r.sumTm,'var(--mem)',fmtT(r.sumTm))+
-      (r.N>1?bar('comm',r.sumComm,'var(--comm)',fmtT(r.sumComm)):'')+
-      '<div class="capwrap"><div class="captrack'+(r.oom?' bad':'')+'"><div class="fill" style="width:'+wp.toFixed(1)+'%;background:#3b82f6"></div><div class="fill" style="width:'+kp.toFixed(2)+'%;background:#22d3ee"></div>'+
-      '<div style="position:absolute;left:'+mk.toFixed(1)+'%;top:0;bottom:0;border-left:2px dashed #94a3b8"></div></div>'+
-      '<div class="cap-txt'+(r.oom?' bad':'')+'">'+(r.oom?'DOES NOT FIT: ':'fits: ')+'weights '+r.weightGB.toFixed(1)+' GB + KV '+r.kvGB.toFixed(2)+' GB vs '+r.usableGB.toFixed(0)+' GB usable of '+r.capGB+' GB</div></div>';
+    const track=rootEl.querySelector('.captrack');
+    track.classList.toggle('bad', !!r.oom);
+    track.innerHTML='<div class="fill" style="width:'+wp.toFixed(1)+'%;background:#3b82f6"></div><div class="fill" style="width:'+kp.toFixed(2)+'%;background:#22d3ee"></div>'+
+      '<div style="position:absolute;left:'+mk.toFixed(1)+'%;top:0;bottom:0;border-left:2px dashed #94a3b8"></div>';
+    const cap=rootEl.querySelector('.cap-txt');
+    cap.classList.toggle('bad', !!r.oom);
+    cap.textContent=(r.oom?'DOES NOT FIT: ':'fits: ')+'weights '+r.weightGB.toFixed(1)+' GB + KV '+r.kvGB.toFixed(2)+' GB vs '+r.usableGB.toFixed(0)+' GB usable of '+r.capGB+' GB';
   });
   // verdict
   const warn=[];
@@ -234,7 +248,9 @@ function recompute(noHash){
   $('bval').textContent=S.B_;$('lval').textContent=S.L.toLocaleString()+' tok';
   $('llabel').textContent=S.phase==='decode'?'Context so far':'Prompt length';
   const tmax=Math.max(a.res.total,b.res.total);
-  const sl=WALL/tmax; $('slowmo').textContent='animation '+(sl>=1?'slowed ~'+Math.round(sl).toLocaleString()+'x':'sped up ~'+Math.round(1/sl).toLocaleString()+'x')+'; relative speeds are to scale';
+  const sl=WALL/tmax, slowed=sl>=1;
+  $('slowdir').textContent=slowed?'slowed':'sped up';
+  $('slown').textContent=Math.round(slowed?sl:1/sl).toLocaleString();
   cyc=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;
   drawRoof();
   if(!noHash)writeHash();
@@ -394,7 +410,19 @@ function step(dt){
     for(const p of s.parts){p.d+=p.v*dt*S.spd;if(p.d>=p.total&&!p.hit){p.hit=true;if(p.ci>=0)s.flash[p.ci]=1;else if(p.blk)p.blk.flash=1;}}
     s.parts=s.parts.filter(p=>p.d<p.total);
   }
-  for(const s of sides){const el=s.root.querySelector('.tokc'),t=decode?'tokens in window: '+(s.steps||0):'';if(el.textContent!==t)el.textContent=t;el.style.display=t?'':'none';}
+  for(const s of sides){
+    const el=s.root.querySelector('.tokc'), n=el.querySelector('.tokc-n'), txt=String(s.steps||0);
+    el.classList.toggle('on', decode); el.setAttribute('aria-hidden', decode?'false':'true');
+    if(n.textContent!==txt) n.textContent=txt;
+    const running=S.phase==='prefill' && !s.res.oom && !s.done;
+    s.root.classList.toggle('running', running);
+    if(running){
+      const elapsed=s.prog*s.res.total, te=s.root.querySelector('.run-t'), ts=fmtT(elapsed);
+      if(te.textContent!==ts) te.textContent=ts;
+      const spd=elapsed>1e-9?(S.B_*S.L*Math.min(1,s.prog))/elapsed:0, se=s.root.querySelector('.run-s'), ss=fmtN(spd);
+      if(se.textContent!==ss) se.textContent=ss;
+    }
+  }
 }
 function frame(now){
   const dt=Math.min(0.05,(now-last)/1000);last=now;step(dt);
