@@ -66,6 +66,17 @@ struct Model {
   char  launchPrep[16];         // "out by 6:24"
   int   launchChance;           // 0-99, or 0 when nothing is shown
 
+  // A Starlink train from a launch in the last ten days, when one is visible
+  // between dusk and sunrise. Nothing here means the quote keeps the band.
+  // The device does not compute the pass; it reads the one Pages published.
+  bool  trainVisible;
+  int   trainEl;                // max elevation, degrees
+  int   trainCount;             // how many of the string clear the horizon
+  char  trainFrom[4];           // compass it rises from, "NW"
+  char  trainTo[4];             // compass it sets toward, "SE"
+  char  trainTime[12];          // "8:42 PM", local
+  char  trainDay[4];            // weekday when the peak is not today, else empty
+
   // The band falls back to a line of the day. The index is enough: the text
   // lives in quotes.h and never changes between builds.
   int   quoteIdx;
@@ -117,6 +128,10 @@ struct Model {
     mix(&launchTonight, sizeof launchTonight);
     str(launchName); str(launchDrift); str(launchBooster); str(launchTime); str(launchDay); str(launchPrep);
     mix(&launchChance, sizeof launchChance);
+    mix(&trainVisible, sizeof trainVisible);
+    mix(&trainEl, sizeof trainEl);
+    mix(&trainCount, sizeof trainCount);
+    str(trainFrom); str(trainTo); str(trainTime); str(trainDay);
     mix(&quoteIdx, sizeof quoteIdx);
     mix(&filterDay, sizeof filterDay);
     // Both are drawn exactly, so both are hashed exactly. Bucketing them let the

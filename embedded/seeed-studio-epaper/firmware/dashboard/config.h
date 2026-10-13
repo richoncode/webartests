@@ -36,7 +36,7 @@
 // data, not the layout, so without it a firmware update that moves everything
 // around finds the same hash, skips the repaint, and leaves the old arrangement
 // on the glass until something in the weather happens to change.
-#define LAYOUT_VERSION      8
+#define LAYOUT_VERSION      9
 
 // The water filter is changed on the first Sunday of the month, and the badge
 // stands for three days: Sunday green, Monday yellow, Tuesday red. The colour
@@ -148,3 +148,16 @@
 // rocket.launcher_stage[].landing — location "LZ-4" is the Vandenberg pad and
 // is worth calling out separately from a droneship recovery.
 #define LANDING_PAD_HINT         "LZ-4"
+
+// ── Starlink train ───────────────────────────────────────────────────────────
+// Orbital elements are not fetched on the device. A GitHub Action runs
+// Skyfield every three hours and publishes the next 30 hours of passes here.
+// The file is a few hundred bytes. GitHub Pages serves it from main:
+//   https://richoncode.github.io/webartests/embedded/seeed-studio-epaper/data/starlink.json
+// Observer is San Martin, 37.085 N, 121.61 W. A pass is already filtered to
+// sun below -6 degrees, satellite sunlit, max elevation at least 10 degrees.
+#define STARLINK_HOST            "richoncode.github.io"
+#define STARLINK_PATH            "/webartests/embedded/seeed-studio-epaper/data/starlink.json"
+// Green once the string climbs this high; below it, and still at least 10,
+// the band is yellow. Same pairing as a launch: green means go outside.
+#define TRAIN_GREEN_EL           40

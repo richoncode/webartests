@@ -7,7 +7,7 @@
 #include "config.h"
 #include "calendar.h"
 
-static const int TEST_MODE_COUNT = 7;
+static const int TEST_MODE_COUNT = 8;
 
 inline void fillDay(DayForecast &d, const char *label, int code, int hi, int lo, int pp) {
   snprintf(d.label, sizeof(d.label), "%s", label);
@@ -90,6 +90,16 @@ inline void loadTestFrame(Model &m, int mode) {
       snprintf(m.launchTime, sizeof(m.launchTime), "1:16 AM");
       snprintf(m.launchDay,  sizeof(m.launchDay),  "TUE");
       snprintf(m.launchPrep, sizeof(m.launchPrep), "out by 1:11");
+      break;
+
+    case 8:   // a Starlink train in the launch band's place — quote yields
+      m.launchTonight = false;
+      m.trainVisible = true;
+      m.trainEl = 42;
+      m.trainCount = 24;
+      snprintf(m.trainFrom, sizeof(m.trainFrom), "NW");
+      snprintf(m.trainTo,   sizeof(m.trainTo),   "SE");
+      snprintf(m.trainTime, sizeof(m.trainTime), "8:42 PM");
       break;
   }
   snprintf(m.asOf, sizeof(m.asOf), "TEST MODE %d - not live data", mode);

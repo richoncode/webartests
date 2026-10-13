@@ -472,4 +472,117 @@ inline bool launches(Model &m) {
   return true;
 }
 
+// The Pages file is the whole prediction: a handful of passes, already
+// filtered. This only picks the soonest one that has not ended and turns its
+// UTC peak into a Pacific clock time. A failed GET keeps the cached pass
+// until that pass ends, so a button press during a 429 does not wipe the band.
+struct TrainCache {
+  uint32_t magic;
+  time_t endUtc;
+  int el;
+  int count;
+  char from[4], to[4], time[12], day[4];
+};
+static const uint32_t TRAIN_CACHE_MAGIC = 0x54524E31; // 'TRN1'
+RTC_DATA_ATTR TrainCache rtcTrain;
+
+inline bool parseUtcIso(const char *iso, time_t *out) {
+  if (!iso || strlen(iso) < 19) return false;
+  struct tm g{};
+  if (!strptime(iso, "%Y-%m-%dT%H:%M:%S", &g)) return false;
+  *out = utcFromTm(g);
+  return true;
+}
+
+inline void trainCacheToModel(Model &m) {
+  m.trainVisible = true;
+  m.trainEl = rtcTrain.el;
+  m.trainCount = rtcTrain.count;
+  snprintf(m.trainFrom, sizeof(m.trainFrom), "%s", rtcTrain.from);
+  snprintf(m.trainTo,   sizeof(m.trainTo),   "%s", rtcTrain.to);
+  snprintf(m.trainTime, sizeof(m.trainTime), "%s", rtcTrain.time);
+  snprintf(m.trainDay,  sizeof(m.trainDay),  "%s", rtcTrain.day);
+}
+
+inline bool trainCacheUsable(time_t now) {
+  return rtcTrain.magic == TRAIN_CACHE_MAGIC && now < rtcTrain.endUtc;
+}
+
+inline bool starlink(Model &m) {
+  m.trainVisible = false;
+  time_t nowT = time(nullptr);
+
+  JsonDocument filter;
+  filter["passes"][0]["peak"] = true;
+  filter["passes"][0]["end"] = true;
+  filter["passes"][0]["maxEl"] = true;
+  filter["passes"][0]["from"] = true;
+  filter["passes"][0]["to"] = true;
+  filter["passes"][0]["count"] = true;
+
+  JsonDocument doc;
+  if (!httpGetJson(STARLINK_HOST, STARLINK_PATH, doc, &filter)) {
+    if (trainCacheUsable(nowT)) {
+      trainCacheToModel(m);
+      Serial.println("  train: pages refused, showing the pass already known");
+      return true;
+    }
+    return false;
+  }
+
+  bool found = false;
+  time_t bestPeak = 0, peakUtc = 0, endUtc = 0;
+  int el = 0, count = 0;
+  char from[4] = "", to[4] = "";
+  JsonArrayConst passes = doc["passes"];
+  if (!passes.isNull()) {
+    for (JsonObjectConst p : passes) {
+      time_t peak, end;
+      if (!parseUtcIso(p["peak"] | "", &peak) || !parseUtcIso(p["end"] | "", &end)) continue;
+      if (end <= nowT) continue;
+      if (found && peak >= bestPeak) continue;
+      const char *fromS = p["from"] | "";
+      const char *toS = p["to"] | "";
+      if (!fromS[0] || !toS[0]) continue;
+      found = true;
+      bestPeak = peak;
+      peakUtc = peak;
+      endUtc = end;
+      el = p["maxEl"] | 0;
+      count = p["count"] | 0;
+      snprintf(from, sizeof(from), "%.3s", fromS);
+      snprintf(to, sizeof(to), "%.3s", toS);
+    }
+  }
+
+  if (!found || el < 10 || count < 1) {
+    rtcTrain.magic = 0;
+    return true;
+  }
+
+  struct tm local; localtime_r(&peakUtc, &local);
+  struct tm lt; localtime_r(&nowT, &lt);
+  const bool otherDay = local.tm_yday != lt.tm_yday || local.tm_year != lt.tm_year;
+  int minutes = local.tm_hour * 60 + local.tm_min;
+  char hhmm[10]; formatClock(minutes, hhmm, sizeof(hhmm), false);
+
+  m.trainVisible = true;
+  m.trainEl = el;
+  m.trainCount = count;
+  snprintf(m.trainFrom, sizeof(m.trainFrom), "%s", from);
+  snprintf(m.trainTo,   sizeof(m.trainTo),   "%s", to);
+  snprintf(m.trainTime, sizeof(m.trainTime), "%s %s", hhmm, minutes / 60 < 12 ? "AM" : "PM");
+  snprintf(m.trainDay,  sizeof(m.trainDay),  "%s", otherDay ? weekdayShort(local.tm_wday) : "");
+
+  rtcTrain.magic = TRAIN_CACHE_MAGIC;
+  rtcTrain.endUtc = endUtc;
+  rtcTrain.el = el;
+  rtcTrain.count = count;
+  snprintf(rtcTrain.from, sizeof(rtcTrain.from), "%s", m.trainFrom);
+  snprintf(rtcTrain.to,   sizeof(rtcTrain.to),   "%s", m.trainTo);
+  snprintf(rtcTrain.time, sizeof(rtcTrain.time), "%s", m.trainTime);
+  snprintf(rtcTrain.day,  sizeof(rtcTrain.day),  "%s", m.trainDay);
+  return true;
+}
+
 }  // namespace fetchers
