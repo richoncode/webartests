@@ -174,7 +174,15 @@ function renderPillDetail(s){
 
 // ---------------------------------------------------------------- compute + DOM update
 let R={};
-const chipById=id=>CHIPS.find(c=>c.id===id), modelById=id=>E.deriveModel(MODELS.find(m=>m.id===id));
+const chipById=id=>CHIPS.find(c=>c.id===(E.resolveChipId(CHIPS,id)||id)), modelById=id=>E.deriveModel(MODELS.find(m=>m.id===id));
+function chipMenuLabel(c){
+  const cpu=c.raw&&c.raw.specs&&c.raw.specs.cpu&&c.raw.specs.cpu.v;
+  const head=cpu&&String(cpu).match(/^(\d+-core CPU)/);
+  const family=String(c.short||'').replace(/\s+\d+C$/,'');
+  const spec=c.status==='speculative'?' (speculative)':'';
+  if(head&&c.units&&family!==c.short)return family+' ('+head[1]+' / '+c.units+'-core GPU)'+spec;
+  return c.vendor+' '+c.short+spec;
+}
 function opts(extra){return Object.assign({prec:S.prec,B:S.B_,L:S.L,phase:S.phase,N:S.tp},extra||{});}
 function effOf(key){return S['eff'+key]||null;}
 function writeHash(){
@@ -533,11 +541,14 @@ function applyHash(){
 function init(data){
   const cd=data.chips,md=data.models;
   SOURCES=cd.sources||{};TAGS=cd.tagLegend||{};
+  const aliases=Object.assign({},cd.aliases||{});
+  for(const raw of cd.chips){if(raw.aliasOf)aliases[raw.id]=raw.aliasOf;else if(aliases[raw.id])raw.aliasOf=aliases[raw.id];}
   CHIPS=cd.chips.map(E.flattenChip);MODELS=md.models;
+  const menu=CHIPS.filter(c=>!c.aliasOf);
   sides=[mkSide('A'),mkSide('B')];
   fillSelect($('model'),MODELS.map(m=>[m.id,m.name]),'');
-  fillSelect($('chipA'),CHIPS.map(c=>[c.id,c.vendor+' '+c.short+(c.status==='speculative'?' (speculative)':'')]),'');
-  fillSelect($('chipB'),CHIPS.map(c=>[c.id,c.vendor+' '+c.short+(c.status==='speculative'?' (speculative)':'')]),'');
+  fillSelect($('chipA'),menu.map(c=>[c.id,chipMenuLabel(c)]),'');
+  fillSelect($('chipB'),menu.map(c=>[c.id,chipMenuLabel(c)]),'');
   fillSelect($('prec'),Object.keys(PRECS).map(k=>[k,PRECS[k].label.replace(' (weight-only)',' (W-only)')]),'');
   applyHash();
   const ch=(id,fn)=>$(id).addEventListener('change',e=>{fn(e.target.value);recompute();});
