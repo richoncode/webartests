@@ -120,7 +120,7 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><div class="docrate">dot rate ∝ memory bandwidth</div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><div class="docrate" data-link="note:kv" data-kind="kv" aria-label="Gold dots are inbound reads. Rose dots are KV cache writes from the GPU back to memory. Violet is the hidden state handed to the next layer. The text is the real KV-write size against the weight read."><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#fb7185"></span><span class="kvrate">KV write</span><span class="dot" style="background:#c4b5fd"></span></div>'+
    '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here." aria-label="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth.">4</button><span class="st-link-name" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.">all-reduce 0 s</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth on one scale for both panels. dot rate ∝ memory bandwidth."></div>'+
    '<div class="stats"><div class="resultslot">'+
    '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link." aria-label="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div>'+'<div class="sub s1"><span class="s1a"></span><button type="button" class="s1b" data-link="note:ane" data-kind="ane" data-side="'+key+'"></button></div>'+'<div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%." aria-label="Blue band: efficiency from ×0.8 to ×1.2. White tick: central estimate. Dashed line: peak specs.">3</button><div class="rt" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."></div><div class="rtrack" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
@@ -277,6 +277,7 @@ function recompute(noHash){
     '<p class="sub">Model '+esc(R.m.name)+': '+(R.m.total/1e9).toFixed(1)+'B params ('+(R.m.active/1e9).toFixed(1)+'B active/token), KV cache '+(R.m.kvPerTok*PRECS[S.prec].kv/1024).toFixed(0)+' KB/token.</p>'+
     '<p class="sub" data-link="spec:ai" data-tip="'+esc(specTip('ai'))+'">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte. '+mark('xref:roofline','R',specTip('xref:roofline'))+'</p>'+
     warn.map(w=>'<p class="sub" style="color:#fbbf24"'+(w.link?' data-link="'+w.link+'" data-tip="'+esc(specTip(w.link))+'"':'')+'>'+(w.link?mark(w.link,w.link==='note:fp8'?'F':w.link==='note:na'?'2':'4',specTip(w.link))+' ':'')+'Note: '+esc(w.text)+(w.tag?' '+tagBtn(w.tag,{spec:'Matrix compute',note:w.text}):'')+'</p>').join('');
+  refreshKvLegend();
   refreshTagLink();
   $('bval').textContent=S.B_;$('lval').textContent=S.L.toLocaleString()+' tok';
   $('llabel').textContent=S.phase==='decode'?'Context so far':'Prompt length';
@@ -418,7 +419,7 @@ function drawSide(s,tm){
   for(const p of s.parts){
     const f=p.d/p.total;let rem=p.d,seg=0;while(seg<p.lens.length-1&&rem>p.lens[seg]){rem-=p.lens[seg];seg++;}
     const a=p.pts[seg],bb=p.pts[seg+1],t=p.lens[seg]?clamp(rem/p.lens[seg],0,1):1,x=lerp(a.x,bb.x,t),y=lerp(a.y,bb.y,t);
-    ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
+    ctx.fillStyle=p.out?'rgba(251,113,133,.95)':(f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)'));
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
   for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k);
@@ -476,6 +477,13 @@ function drawStrip(s,cur,tm){
   if(live){ctx.fillStyle=(live.parts.head&&live.parts.head.unit==='ane')?'#f472b6':'#60a5fa';ctx.fillRect(xh,3,3,24);}
   ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='10px system-ui,sans-serif';ctx.fillText('LM',xh+boxW/2,15);
   if(headNow){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(xh-0.5,1.5,boxW+1,26);}
+  // One violet mark carries the hidden state from the previous layer into this one, along the seam.
+  if(!s.done&&cur.part!=='head'&&cur.layer>0){
+    const pair=r.segA.t+r.segM.t, x=s.prog*r.total, frac=pair>0?clamp((x-cur.layer*pair)/pair,0,1):1;
+    const x0=(cur.layer-1)*bw+Math.max(1,bw-1)/2, x1=cur.layer*bw+Math.max(1,bw-1)/2, xh=lerp(x0,x1,frac);
+    ctx.fillStyle='#c4b5fd';ctx.fillRect(Math.min(x0,xh),14,Math.max(2,Math.abs(xh-x0)),2);
+    ctx.beginPath();ctx.arc(xh,15,2.3,0,6.283);ctx.fill();
+  }
   syncLmHit(s,xh,boxW);
 }
 function phaseRes(s,phase){
@@ -559,12 +567,22 @@ function effGBs(s){
   return s.chip.bw*bwEff;
 }
 const DOT_SPEED_CAP=4, DOT_BASE_V=180, DOT_BASE_RATE=32;
-function spawn(s,n){
+// True KV-write share is ~1e-5 of a weight read. Floor the drawn share so the path stays visible.
+const KV_DRAW_FLOOR=0.045;
+function kvDrawShare(){
+  const t=E.kvTraffic(R.m,S.prec,S.phase,S.B_,S.L);
+  return Math.max(t.ratio,KV_DRAW_FLOOR);
+}
+function spawn(s,n,out){
   const speedK=Math.min(s.flowK||1,DOT_SPEED_CAP);
-  for(let i=0;i<n&&s.parts.length<700;i++){
-    const rt=s.layout.route();const pts=rt.pts,lens=[];let tot=0;
+  let have=0;
+  if(out){for(const p of s.parts)if(p.out)have++;}
+  for(let i=0;i<n&&(out?have<48:s.parts.length<700);i++){
+    const rt=s.layout.route();
+    const pts=out?rt.pts.slice().reverse():rt.pts,lens=[];let tot=0;
     for(let k=0;k<pts.length-1;k++){const l=Math.hypot(pts[k+1].x-pts[k].x,pts[k+1].y-pts[k].y);lens.push(l);tot+=l;}
-    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:rt.ci,blk:rt.blk,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
+    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:out?-1:rt.ci,blk:rt.blk,out:!!out,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
+    if(out)have++;
   }
 }
 let last=performance.now(),clock=0,playing=true;
@@ -586,6 +604,7 @@ function step(dt){
     s.effGBs=effGBs(s);s.flowK=E.flowScale(s.effGBs,ref);
     const busy=s.done?0:(0.2+0.8*mu)*(s.res.oom?0.45:1);
     s.acc+=dt*S.spd*DOT_BASE_RATE*s.flowK*busy;const k=Math.floor(s.acc);s.acc-=k;if(k>0)spawn(s,k);
+    s.accOut=(s.accOut||0)+dt*S.spd*DOT_BASE_RATE*s.flowK*busy*kvDrawShare();const ko=Math.floor(s.accOut);s.accOut-=ko;if(ko>0)spawn(s,ko,true);
     for(const p of s.parts){p.d+=p.v*dt*S.spd;if(p.d>=p.total&&!p.hit){p.hit=true;if(p.ci>=0)s.flash[p.ci]=1;else if(p.blk)p.blk.flash=1;}}
     s.parts=s.parts.filter(p=>p.d<p.total);
   }
@@ -725,7 +744,7 @@ function specTip(k){
     'note:range':'Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.',
     'note:na':'Bright cells are doing math. Dim amber cells, with STALL, are waiting on memory. On M5-generation Apple GPUs the bright inner square is the Neural Accelerator, the matrix unit in each GPU core.',
     'note:fp8':'On Apple GPUs, FP8 stores weights in 8 bits and runs the matmul in 16-bit, because those GPUs have no native 8-bit math.',
-    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth.',
+    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Rose dots are KV cache writes, GPU back to memory. A violet mark on the strip hands the hidden state to the next layer. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth. The panel legend states the real KV-write size against the weight read.',
     'note:layer':'The word layer stays on the left of the grid. The number under it is the layer now running, out of this model\'s layers, in a fixed-width slot. A white outline marks that column.',
     'note:attn':'Attention is the top row of every column. The word stays attention. Amber means that half is waiting on memory. Green means it is limited by compute.',
     'note:ffn':'Feed-forward (MLP) is the bottom row of every column. The word stays feed-forward. Amber means that half is waiting on memory. Green means it is limited by compute.',
@@ -1020,6 +1039,22 @@ function gpuPopHtml(sideKey){
   else h+='<p>GPU compute time ('+fmtT(sec)+') is longer than memory read time ('+fmtT(memSec)+'), so compute sets the speed.</p>';
   return h;
 }
+function refreshKvLegend(){
+  const t=E.kvTraffic(R.m,S.prec,S.phase,S.B_,S.L);
+  document.querySelectorAll('.kvrate').forEach(el=>{if(el.textContent!==t.legend)el.textContent=t.legend;});
+}
+function kvPopHtml(){
+  const m=R.m,t=E.kvTraffic(m,S.prec,S.phase,S.B_,S.L);
+  const drawn=kvDrawShare(),floored=t.ratio<KV_DRAW_FLOOR;
+  let h='<p><b>KV write</b> per layer = 2 &times; kv heads &times; head dim &times; bytes.</p>';
+  h+='<p>2 &times; '+m.kvHeads+' &times; '+m.headDim+' &times; '+t.kvBytes+' B = '+t.perLayer.toLocaleString()+' bytes ('+E.fmtByte(t.perLayer)+' per layer). &times; '+m.layers+' layers = <b>'+E.fmtByte(t.perTok)+'</b> per token.</p>';
+  h+='<p>Inbound weight read is the parameter store, '+E.fmtByte(t.weightStep)+', read once per step. Spread over '+t.tokens.toLocaleString()+' token'+(t.tokens===1?'':'s')+', that is <b>'+E.fmtByte(t.weightPerTok)+'/token</b>. '+t.legend+'.</p>';
+  h+='<p>True share of the weight read: 1 in '+Math.round(1/Math.max(t.ratio,1e-12)).toLocaleString()+'.</p>';
+  h+='<p>Rose dots travel GPU &rarr; memory. '+(floored?('They are drawn at '+(KV_DRAW_FLOOR*100).toFixed(1)+'% of the inbound dot rate so the path stays visible. The true share is far smaller.'):('They are drawn at the true share, '+(drawn*100).toFixed(1)+'% of the inbound dots.'))+'</p>';
+  h+='<p>The violet mark on the strip is the hidden state handed to the next layer: '+m.h.toLocaleString()+' &times; 2 bytes = '+E.fmtByte(t.hidden)+'. One mark, not a memory-bus stream. Activation width is the model&rsquo;s 2-byte hidden state.</p>';
+  if(S.prec==='int4')h+='<p>INT4 is weight-only here. KV values stay '+t.kvBytes+' bytes.</p>';
+  return h;
+}
 function showSrcPop(el){
   const pop=$('srcpop');
   if(!pop||!el)return;
@@ -1031,6 +1066,7 @@ function showSrcPop(el){
   else if(el.dataset&&el.dataset.kind==='ane')html=anePopHtml(el);
   else if(el.dataset&&el.dataset.kind==='strip')html=paragraphs(specTip('note:'+(el.dataset.part||'layer')));
   else if(el.dataset&&el.dataset.kind==='gpu')html=gpuPopHtml(el.dataset.side||'A');
+  else if(el.dataset&&el.dataset.kind==='kv')html=kvPopHtml();
   else if(el.matches&&el.matches('button.tg'))html=badgePopHtml(el);
   else html=tipHtml(el);
   if(el.dataset&&el.dataset.extra&&html.indexOf(el.dataset.extra.slice(0,48))<0)html+=paragraphs(el.dataset.extra);

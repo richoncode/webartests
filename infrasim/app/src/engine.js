@@ -236,7 +236,31 @@ function animSeconds(modelSeconds, slowestModelSeconds, wallSeconds) {
   return modelSeconds * ((wallSeconds > 0 ? wallSeconds : 1) / slow);
 }
 
+function fmtByte(b) {
+  if (!(b > 0)) return '0 B';
+  if (b >= 1e9) return (b / 1e9).toFixed(2).replace(/0$/, '').replace(/\.0$/, '') + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(2).replace(/0$/, '').replace(/\.0$/, '') + ' MB';
+  if (b >= 1024) return (b / 1024).toFixed(b >= 10240 ? 0 : 1).replace(/\.0$/, '') + ' KB';
+  return Math.round(b) + ' B';
+}
+
+// KV cache write for one new token: each layer stores K and V,
+// 2 × kv heads × head dim × bytes. Weight bytes are the parameters,
+// read once per step, so per token that total is divided by the tokens in the step.
+function kvTraffic(m0, prec, phase, B, L) {
+  const m = m0 && m0.kvPerTok != null ? m0 : deriveModel(m0);
+  const P = PRECS[prec] || PRECS.fp16;
+  const perLayer = 2 * m.kvHeads * m.headDim * P.kv;
+  const perTok = m.layers * perLayer;
+  const tokens = (phase === 'decode' ? 1 : Math.max(1, L || 1)) * Math.max(1, B || 1);
+  const weightStep = m.total * P.w;
+  const weightPerTok = weightStep / tokens;
+  const ratio = weightPerTok > 0 ? perTok / weightPerTok : 0;
+  const legend = 'KV write ~' + fmtByte(perTok) + '/token vs weights ' + fmtByte(weightPerTok) + '/token';
+  return { perLayer, perTok, weightPerTok, weightStep, tokens, ratio, kvBytes: P.kv, wBytes: P.w, legend, hidden: m.h * 2 };
+}
+
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
   flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState,
-  flowScale, animSeconds, aneGate, aneToggle };
+  flowScale, animSeconds, kvTraffic, fmtByte, aneGate, aneToggle };
 });

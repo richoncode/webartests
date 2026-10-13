@@ -195,6 +195,28 @@ test('one popout holds former title text, and the strip labels stay put', () => 
   assert.doesNotMatch(ui, /'MLP'/);
 });
 
+test('KV writes are 2 x kv heads x head dim x bytes, and the legend states the weight-read ratio', () => {
+  const models = readJson('data/models.json');
+  const m = E.deriveModel(models.models.find(x => x.id === 'qwen3-8b'));
+  const t = E.kvTraffic(m, 'fp8', 'decode', 1, 4096);
+  assert.equal(t.perLayer, 2 * 8 * 128 * 1);
+  assert.equal(t.perTok, 36 * t.perLayer);
+  assert.equal(t.perTok, 73728);
+  assert.ok(Math.abs(t.weightPerTok - m.total) < 1);
+  assert.ok(t.ratio < 1e-4);
+  assert.equal(t.legend, 'KV write ~72 KB/token vs weights 8.19 GB/token');
+  assert.equal(t.hidden, m.h * 2);
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
+  const tpl = fs.readFileSync(path.join(root, 'app/src/template.html'), 'utf8');
+  assert.match(ui, /KV_DRAW_FLOOR=0\.045/);
+  assert.match(ui, /rgba\(251,113,133/);
+  assert.match(ui, /slice\(\)\.reverse\(\)/);
+  assert.match(ui, /#c4b5fd/);
+  assert.match(tpl, /#fb7185/);
+  assert.match(css, /\.docrate\{height:14px/);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {
