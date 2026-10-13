@@ -38,23 +38,24 @@ function grid(n,x,y,w,h,cols,gap,maxW,maxH){
 const cx=r=>r.x+r.w/2, cy=r=>r.y+r.h/2;
 function layNvidia(c){
   const mems=[],caches=[];
-  for(let i=0;i<5;i++)mems.push({x:12,y:14+i*48,w:64,h:40,label:i===0?c.memType:'',sub:i===0?c.cap+' GB':''});
-  caches.push({x:104,y:14,w:76,h:114,label:'L2',sub:'50 MB'},{x:104,y:134,w:76,h:114,label:'L2',sub:'(2 partitions)'});
+  for(let i=0;i<5;i++)mems.push({x:12,y:14+i*48,w:64,h:40,label:i===0?c.memType:'',sub:i===0?c.cap+' GB':'',hl:'mem'});
+  caches.push({x:104,y:14,w:76,h:114,label:'L2',sub:'50 MB',hl:'l2'},{x:104,y:134,w:76,h:114,label:'L2',sub:'(2 partitions)',hl:'l2'});
   const g=grid(c.units,212,12,330,238,12,3);
-  const ic={x:556,y:96,w:52,h:70,label:'NVLink',sub:'900 GB/s'};
+  g.cells.forEach(cl=>{cl.hl='sm';});
+  const ic={x:556,y:96,w:52,h:70,label:'NVLink',sub:'900 GB/s',hl:'ic'};
   const route=()=>{const i=Math.floor(Math.random()*g.cells.length),cell=g.cells[i],s=Math.min(4,Math.floor(cell.r*5/g.rows)),m=mems[s];
     return {ci:i,pts:[{x:m.x+m.w,y:cy(m)},{x:caches[0].x,y:cy(m)},{x:caches[0].x+caches[0].w,y:cy(cell)},{x:cell.x-2,y:cy(cell)},{x:cx(cell),y:cy(cell)}]};};
-  return {arch:'nvidia',mems,caches,cells:g.cells,blocks:[{x:206,y:6,w:342,h:250,label:'GPU die: '+c.units+' SMs (each with 256 KB L1/shared + tensor cores)',lx:210,ly:5,frame:true}],ic,route,
+  return {arch:'nvidia',mems,caches,cells:g.cells,blocks:[{x:206,y:6,w:342,h:250,label:'GPU die: '+c.units+' SMs (each with 256 KB L1/shared + tensor cores)',lx:210,ly:5,frame:true,hl:'die'}],ic,route,
     note:'HBM feeds a shared L2, then SMs with their own fast L1/shared memory and tensor cores.'};
 }
 function layAmd(c){
   const mems=[],caches=[],cells=[],blocks=[];
   for(let q=0;q<4;q++){const x0=10+(q%2)*302,y0=6+Math.floor(q/2)*124;
-    blocks.push({x:x0,y:y0,w:292,h:118,label:'IOD '+(q+1),lx:x0+250,ly:y0+9,frame:true});
-    for(let j=0;j<2;j++)mems.push({x:x0+5,y:y0+8+j*54,w:40,h:50,label:j===0&&q===0?c.memType:'HBM',sub:''});
-    caches.push({x:x0+52,y:y0+8,w:32,h:104,label:'IF$',sub:q===0?'256MB':''});
-    for(let j=0;j<2;j++){const b={x:x0+94,y:y0+8+j*54,w:190,h:50,label:'XCD 38 CU, 4 MB L2'};blocks.push(Object.assign({lx:b.x+4,ly:b.y+9},b));
-      const g=grid(38,b.x+5,b.y+15,180,30,19,1.5);g.cells.forEach(cl=>{cl.q=q;cl.j=j;cl.blk=b;cells.push(cl);});}}
+    blocks.push({x:x0,y:y0,w:292,h:118,label:'IOD '+(q+1),lx:x0+250,ly:y0+9,frame:true,hl:'iod'});
+    for(let j=0;j<2;j++)mems.push({x:x0+5,y:y0+8+j*54,w:40,h:50,label:j===0&&q===0?c.memType:'HBM',sub:'',hl:'mem'});
+    caches.push({x:x0+52,y:y0+8,w:32,h:104,label:'IF$',sub:q===0?'256MB':'',hl:'if'});
+    for(let j=0;j<2;j++){const b={x:x0+94,y:y0+8+j*54,w:190,h:50,label:'XCD 38 CU, 4 MB L2',hl:'xcd'};blocks.push(Object.assign({lx:b.x+4,ly:b.y+9},b));
+      const g=grid(38,b.x+5,b.y+15,180,30,19,1.5);g.cells.forEach(cl=>{cl.q=q;cl.j=j;cl.blk=b;cl.hl='cu';cells.push(cl);});}}
   const route=()=>{const i=Math.floor(Math.random()*cells.length),cell=cells[i],q=cell.q,m=mems[q*2+Math.floor(Math.random()*2)],ca=caches[q];
     return {ci:i,pts:[{x:m.x+m.w,y:cy(m)},{x:cx(ca),y:cy(m)},{x:cell.blk.x-2,y:cy(cell.blk)},{x:cx(cell),y:cy(cell)}]};};
   return {arch:'amd',mems,caches,cells,blocks,ic:null,route,note:'Chiplets: HBM on I/O dies with a big Infinity Cache; compute dies (XCDs) read through it.'};
@@ -70,11 +71,11 @@ function layApple(c){
   const memShort=(c.memType||'').replace('Unified ','');
   const nm=clamp(Math.round(c.bw/150),2,8), nl=Math.ceil(nm/2), nr=nm-nl, mems=[];
   const mw=76;
-  const stack=(n,x)=>{const gap=4,h=(240-(n-1)*gap)/n;for(let i=0;i<n;i++)mems.push({x,y:12+i*(h+gap),w:mw,h,label:memShort,sub:'',left:x<300,stats:true});};
+  const stack=(n,x)=>{const gap=4,h=(240-(n-1)*gap)/n;for(let i=0;i<n;i++)mems.push({x,y:12+i*(h+gap),w:mw,h,label:memShort,sub:'',left:x<300,stats:true,hl:'mem'});};
   stack(nl,8); if(nr)stack(nr,CW-8-mw);
   const cap=slcCaption(c);
   // Label band on top, dot lane underneath. Height is the same for every Apple chip.
-  const slc={x:92,y:8,w:436,h:36,labelBand:20,label:cap.label,tag:cap.tag,sub:''};
+  const slc={x:92,y:8,w:436,h:36,labelBand:20,label:cap.label,tag:cap.tag,sub:'',hl:'slc'};
   const laneY=slc.y+slc.labelBand+(slc.h-slc.labelBand)/2;
   const dies=c.dies||1, top=slc.y+slc.h+6, bot=258, frames=[], blocks=[], extra=[], links=[], cells=[];
   if(dies===1)frames.push({x:92,y:top,w:436,h:bot-top});
@@ -85,22 +86,22 @@ function layApple(c){
     const idle=!(c.ic>0);
     const name=/ultra/i.test(c.id||'')?'UltraFusion':'Fusion';
     const label=idle?(name==='Fusion'?'Fusion · idle':'UltraFusion · idle'):name;
-    links.push({x:x0+dw,y:top+6,w:gapW,h:bot-top-12,label,vert:true,vlabel:true,idle});
+    links.push({x:x0+dw,y:top+6,w:gapW,h:bot-top-12,label,vert:true,vlabel:true,idle,hl:'fuse'});
   }
   else{const hh=(bot-top-8)/2;frames.push({x:92,y:top,w:212,h:hh},{x:316,y:top,w:212,h:hh},{x:92,y:top+hh+8,w:212,h:hh},{x:316,y:top+hh+8,w:212,h:hh});
-    links.push({x:304,y:top+10,w:12,h:2*hh+8-20,label:'',vert:true,idle:!(c.ic>0)},{x:112,y:top+hh,w:396,h:8,label:'',vert:false,idle:!(c.ic>0)},{x:230,y:top+hh-3,w:160,h:14,label:'UltraFusion >4.4 TB/s',pill:true,idle:!(c.ic>0)});}
+    links.push({x:304,y:top+10,w:12,h:2*hh+8-20,label:'',vert:true,idle:!(c.ic>0),hl:'fuse'},{x:112,y:top+hh,w:396,h:8,label:'',vert:false,idle:!(c.ic>0),hl:'fuse'},{x:230,y:top+hh-3,w:160,h:14,label:'UltraFusion >4.4 TB/s',pill:true,idle:!(c.ic>0),hl:'fuse'});}
   const perDie=Math.ceil(c.units/dies);let left=c.units;
   frames.forEach((f,fi)=>{
     const n=Math.min(perDie,left);left-=n;
     let gx,gy,gw,gh;
     if(dies===1){gx=f.x+8;gy=f.y+16;gw=f.w-94;gh=f.h-24;
-      const cpu={x:f.x+f.w-78,y:f.y+18,w:70,h:(f.h-30)/2-2,label:'CPU',kind:'blk',f:fi},ne={x:f.x+f.w-78,y:f.y+18+(f.h-30)/2+2,w:70,h:(f.h-30)/2-2,label:'Neural Eng.',kind:'blk',f:fi};extra.push(cpu,ne);}
+      const cpu={x:f.x+f.w-78,y:f.y+18,w:70,h:(f.h-30)/2-2,label:'CPU',kind:'blk',f:fi,hl:'cpu'},ne={x:f.x+f.w-78,y:f.y+18+(f.h-30)/2+2,w:70,h:(f.h-30)/2-2,label:'Neural Eng.',kind:'blk',f:fi,hl:'ne'};extra.push(cpu,ne);}
     else{gx=f.x+8;gy=f.y+15;gw=f.w-16;gh=f.h-(dies===2?52:44);
-      const by=f.y+f.h-(dies===2?30:25),bh=dies===2?24:19;extra.push({x:f.x+8,y:by,w:90,h:bh,label:'CPU',kind:'blk',f:fi},{x:f.x+106,y:by,w:90,h:bh,label:'Neural Eng.',kind:'blk',f:fi});}
+      const by=f.y+f.h-(dies===2?30:25),bh=dies===2?24:19;extra.push({x:f.x+8,y:by,w:90,h:bh,label:'CPU',kind:'blk',f:fi,hl:'cpu'},{x:f.x+106,y:by,w:90,h:bh,label:'Neural Eng.',kind:'blk',f:fi,hl:'ne'});}
     const cols=Math.max(1,Math.round(Math.sqrt(n*gw/gh)));
     const g=grid(n,gx,gy,gw,gh,cols,2,dies===1?46:34,dies===1?40:30);
-    g.cells.forEach(cl=>{cl.f=fi;cells.push(cl);});
-    blocks.push({x:f.x,y:f.y,w:f.w,h:f.h,label:dies===1?'one SoC die: CPU + GPU + Neural Engine on one memory pool':'die '+(fi+1)+' of '+dies,lx:f.x+6,ly:f.y+8,frame:true});
+    g.cells.forEach(cl=>{cl.f=fi;cl.hl='gpu';cells.push(cl);});
+    blocks.push({x:f.x,y:f.y,w:f.w,h:f.h,label:dies===1?'one SoC die: CPU + GPU + Neural Engine on one memory pool':'die '+(fi+1)+' of '+dies,lx:f.x+6,ly:f.y+8,frame:true,hl:'die'});
   });
   const route=()=>{const m=mems[Math.floor(Math.random()*mems.length)],ex=m.left?m.x+m.w:m.x,rail=m.left?88:532;
     const i=Math.floor(Math.random()*cells.length),cell=cells[i];
@@ -111,15 +112,16 @@ function layApple(c){
     noteLong:(na?'Each GPU core has a Neural Accelerator (matrix unit), drawn as the bright inner square. ':'No per-core matrix unit: matrix math runs on the GPU shader ALUs. ')+'Unified memory: no CPU-GPU copy. The number of memory blocks drawn is scaled to bandwidth; it is not a package count. The Neural Engine uses that same memory. It lights only while Run on Neural Engine is on and the current step is one the documented path places there.'};
 }
 function layTpu(c){
-  const mems=[{x:12,y:14,w:56,h:236,label:c.memType,sub:c.cap+' GB'}];
-  const vmem={x:104,y:14,w:60,h:236,label:'VMEM',sub:'on-chip'};
+  const mems=[{x:12,y:14,w:56,h:236,label:c.memType,sub:c.cap+' GB',hl:'mem'}];
+  const vmem={x:104,y:14,w:60,h:236,label:'VMEM',sub:'on-chip',hl:'vmem'};
   const m1=grid(64,214,18,150,104,8,3), m2=grid(64,214,142,150,104,8,3);
   const cells=m1.cells.concat(m2.cells);
-  const vec={x:396,y:18,w:96,h:104,label:'Vector unit',kind:'blk'}, sca={x:396,y:142,w:96,h:46,label:'Scalar unit',kind:'blk'};
-  const ic={x:512,y:60,w:96,h:130,label:'ICI',sub:'4 ports, 800 GB/s'};
+  cells.forEach(cl=>{cl.hl='mxu';});
+  const vec={x:396,y:18,w:96,h:104,label:'Vector unit',kind:'blk',hl:'vec'}, sca={x:396,y:142,w:96,h:46,label:'Scalar unit',kind:'blk',hl:'sca'};
+  const ic={x:512,y:60,w:96,h:130,label:'ICI',sub:'4 ports, 800 GB/s',hl:'ic'};
   const route=()=>{const i=Math.floor(Math.random()*cells.length),cell=cells[i];
     return {ci:i,pts:[{x:68,y:cy(cell)},{x:vmem.x+vmem.w/2,y:cy(cell)},{x:cell.x-6,y:cy(cell)},{x:cx(cell),y:cy(cell)}]};};
-  return {arch:'tpu',mems,caches:[vmem],cells,blocks:[{x:206,y:10,w:166,h:116,label:'MXU 1 (systolic array)',lx:210,ly:9,frame:true},{x:206,y:134,w:166,h:116,label:'MXU 2 (systolic array)',lx:210,ly:133,frame:true},vec,sca],ic,route,extraBlk:[vec,sca],tpu:true,
+  return {arch:'tpu',mems,caches:[vmem],cells,blocks:[{x:206,y:10,w:166,h:116,label:'MXU 1 (systolic array)',lx:210,ly:9,frame:true,hl:'mxu'},{x:206,y:134,w:166,h:116,label:'MXU 2 (systolic array)',lx:210,ly:133,frame:true,hl:'mxu'},vec,sca],ic,route,extraBlk:[vec,sca],tpu:true,
     note:'Compiler fuses the graph; data streams through the systolic arrays.'};
 }
 const LAY={nvidia:layNvidia,amd:layAmd,apple:layApple,tpu:layTpu};
@@ -128,7 +130,7 @@ const LAY={nvidia:layNvidia,amd:layAmd,apple:layApple,tpu:layTpu};
 function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
-  p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
+  p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><button type="button" class="cname" data-link="note:layout:'+key+'" data-kind="layout" data-side="'+key+'"></button><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
    '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><div class="docrate" data-link="note:kv" data-kind="kv" aria-label="Gold dots are inbound reads. Rose dots are KV cache writes from the GPU back to memory. Violet is the hidden state handed to the next layer. The text is the real KV-write size against the weight read."><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#fb7185"></span><span class="kvrate">KV write</span><span class="dot" style="background:#c4b5fd"></span></div>'+
    '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here." aria-label="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth.">4</button><span class="st-link-name" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.">all-reduce 0 s</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth on one scale for both panels. dot rate ∝ memory bandwidth."></div>'+
    '<div class="stats"><div class="resultslot">'+
@@ -272,7 +274,10 @@ function recompute(noHash){
   sides.forEach(s=>{
     const r=s.res,c=s.chip,rootEl=s.root;
     rootEl.classList.toggle('oomp',r.oom);
-    rootEl.querySelector('.ptitle b').textContent=c.name+(r.N>1?'  x'+r.N:'');
+    const nameEl=rootEl.querySelector('.cname'), name=c.name+(r.N>1?'  x'+r.N:'');
+    if(nameEl.textContent!==name)nameEl.textContent=name;
+    const nameAl='Layout of '+name+'. Dies, compute units, cache, memory, and interconnect, each fact badged from the chip record.';
+    if(nameEl.getAttribute('aria-label')!==nameAl)nameEl.setAttribute('aria-label',nameAl);
     const bd=rootEl.querySelector('.badge');
     const cls=r.oom?'oom':r.bound;bd.className='badge '+cls;
     const pct=Math.round((r.bound==='comm'?r.commShare:(r.bound==='mem'?r.memShare:1-r.memShare))*100);
@@ -565,6 +570,7 @@ function drawSide(s,tm){
   }
   syncSlcLabel(s);
   syncMemCards(s);
+  syncPartHl(s);
   // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
   const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
   const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
@@ -903,6 +909,7 @@ function specTip(k){
     'note:attn':'Attention is the top row of every column. The word stays attention. Amber means that half is waiting on memory. Green means it is limited by compute.',
     'note:ffn':'Feed-forward (MLP) is the bottom row of every column. The word stays feed-forward. Amber means that half is waiting on memory. Green means it is limited by compute.',
     'note:lm':'LM head, once per step, after the layers. Amber means it is waiting on memory. Green means it is limited by compute.',
+    'note:layout':'How this chip is drawn: dies or chiplets, compute units, cache, memory, and the interconnect. Each figure is badged from the chip record.',
     'note:est':'Analytical roofline-style estimates. Specs are tagged V/A/U; efficiency factors are assumptions or fits.',
     'note:assume':'Formulas, efficiency factors, sliders, sensitivity, chip spec sources.',
     'note:copy':'Copy a link that restores these exact settings.',
@@ -1194,7 +1201,10 @@ function hideSrcPop(){
   if(!pop)return;
   pop.hidden=true;
   pop.innerHTML='';
+  pop.classList.remove('layout');
   delete pop.dataset.owner;
+  delete pop.dataset.side;
+  clearPartHl();
 }
 function paragraphs(text){
   return String(text||'').split(/\n\n+/).map(s=>s.trim()).filter(Boolean).map(s=>'<p>'+esc(s)+'</p>').join('');
@@ -1301,12 +1311,229 @@ function kvPopHtml(){
   if(S.prec==='int4')h+='<p>INT4 is weight-only here. KV values stay '+t.kvBytes+' bytes.</p>';
   return h;
 }
+let partHl={side:null,key:''};
+function tagMark(tag){return '<span class="tg '+(tag||'U')+'">'+(tag||'U')+'</span>';}
+function partName(text,key){return '<button type="button" class="hlname" data-hl="'+esc(key)+'">'+esc(text)+'</button>';}
+function markSpec(k,sp,spec){
+  if(!sp||sp.v==null||sp.v==='')return tagMark('U')+' not recorded. No recorded source.';
+  const bits=sourceBits(sp.src||[]);
+  const note=firstSentence(sp.note||'');
+  const nosrc=bits.list.length?'':' No recorded source.';
+  return tagMark(sp.tag||'U')+' <b>'+esc(specVal(k,sp))+'</b>'+(note?'. '+esc(note):'.')+nosrc+(bits.html?' '+bits.html:'');
+}
+function dieSpec(c){
+  const node=(c.raw.specs&&c.raw.specs.node)||{};
+  const text=String(node.v||'');
+  const n=c.dies||1;
+  const stated=(n>=2&&/\b(two|2|four|4)\b/i.test(text)&&/die/i.test(text))||(n===1&&/\b(one|single|1)\s+die/i.test(text));
+  if(stated)return {v:n,tag:node.tag||'V',src:node.src||[],note:'Stated in the process line.'};
+  return {v:n,tag:'U',src:[],note:'Die count is how the diagram is drawn. The process line does not state it.'};
+}
+function fuseWord(c){return /ultra/i.test(c.id||'')?'UltraFusion':'Fusion';}
+function layoutDie(c,L){
+  const sp=c.raw.specs||{};
+  if(c.arch==='nvidia'){
+    return 'Drawn as '+partName('one GPU die','die')+' holding '+partName(c.units+' '+c.unitName+'s','sm')+'. '+tagMark(dieSpec(c).tag)+' '+esc(dieSpec(c).note)+' No recorded source for the die count. '+markSpec('node',sp.node,'Process');
+  }
+  if(c.arch==='amd'){
+    const iod=(L.blocks||[]).filter(b=>b.hl==='iod').length;
+    const xcd=(L.blocks||[]).filter(b=>b.hl==='xcd').length;
+    return 'Drawn as '+partName(iod+' I/O dies','iod')+' with '+partName(xcd+' XCDs','xcd')+' on them. '+tagMark('U')+' The I/O die count is the diagram. This record does not publish it. No recorded source. The XCD count is the CU line. '+markSpec('units',sp.units,'CUs')+' '+markSpec('node',sp.node,'Process');
+  }
+  if(c.arch==='apple'){
+    const n=c.dies||1;
+    const word=n===1?'one SoC die':n+' dies';
+    const d=dieSpec(c);
+    let h='Drawn as '+partName(word,'die')+'. ';
+    if(n>1)h+='A '+partName(fuseWord(c),'fuse')+' bar sits in the gap between them. ';
+    h+=markSpec('dies',d,'Die count')+' '+markSpec('node',sp.node,'Process / packaging');
+    return h;
+  }
+  return 'Drawn as one TensorCore with '+partName((c.units||2)+' MXUs','mxu')+'. '+markSpec('units',sp.units,'MXUs')+' '+markSpec('node',sp.node,'Process');
+}
+function layoutCompute(c){
+  const sp=c.raw.specs||{};
+  if(c.arch==='nvidia')return 'Each '+partName('SM','sm')+' is one cell, and the cell is where the tensor cores sit. '+markSpec('units',sp.units,'SMs')+' '+partName('L1/shared','sm')+' is inside that same cell.';
+  if(c.arch==='amd')return 'Each '+partName('XCD','xcd')+' holds a grid of '+partName('CUs','cu')+'. '+markSpec('units',sp.units,'CUs')+' '+tagMark('U')+' This record does not publish a matrix-unit count inside a CU. No recorded source.';
+  if(c.arch==='apple'){
+    let h=partName(c.units+' '+c.unitName+'s','gpu')+' fill the die. '+markSpec('units',sp.units,'GPU cores');
+    if(c.matrix)h+=' Each core draws a bright inner square, the '+partName('Neural Accelerator','gpu')+' (its matrix unit). '+markSpec('fp16',sp.fp16,'Matrix compute');
+    else h+=' No per-core matrix unit is drawn. Matrix math runs on the shader ALUs. '+markSpec('fp16',sp.fp16,'GPU compute');
+    if(sp.cpu)h+=' '+partName('CPU','cpu')+' is the block under the cores. '+markSpec('cpu',sp.cpu,'CPU');
+    if(sp.neural)h+=' '+partName('Neural Engine','ne')+' is the block beside it. '+markSpec('neural',sp.neural,'Neural Engine');
+    return h;
+  }
+  return partName('MXUs','mxu')+' are the systolic arrays. '+markSpec('units',sp.units,'MXUs')+' Also drawn: a '+partName('vector unit','vec')+' and a '+partName('scalar unit','sca')+'. '+tagMark('U')+' No separate vector or scalar rate is recorded. No recorded source.';
+}
+function layoutCache(c,L){
+  const sp=c.raw.specs||{};
+  if(c.arch==='nvidia'){
+    const n=(L.caches||[]).length;
+    return partName('L2','l2')+' is drawn as '+n+' boxes between memory and the SMs. '+markSpec('l2',sp.l2,'On-chip cache')+' The box count is the diagram. '+tagMark('U')+' No recorded source for a partition count.';
+  }
+  if(c.arch==='amd')return partName('Infinity Cache','if')+' is drawn on each I/O die. Each XCD label carries its L2. '+markSpec('l2',sp.l2,'On-chip cache');
+  if(c.arch==='apple')return partName('System Level Cache','slc')+' is the band above the dies, one pool for the package. '+markSpec('l2',sp.l2,'On-chip cache');
+  return partName('VMEM','vmem')+' is the on-chip block between memory and the arrays. '+markSpec('l2',sp.l2,'On-chip memory');
+}
+function layoutMem(c,L){
+  const sp=c.raw.specs||{};
+  const n=(L.mems||[]).length;
+  let h=partName(c.memType||'memory','mem')+'. '+markSpec('cap',sp.cap,'Memory capacity')+' '+markSpec('bw',sp.bw,'Memory bandwidth')+' '+markSpec('usable',sp.usable,'Usable fraction')+' ';
+  if(c.arch==='nvidia')h+='The '+n+' blocks attach along the left edge and feed '+partName('L2','l2')+', which feeds the SMs. '+tagMark('U')+' The block count is a schematic, not a published stack count. No recorded source.';
+  else if(c.arch==='amd')h+='HBM is drawn on the I/O dies ('+n+' blocks). The XCDs read through '+partName('Infinity Cache','if')+'. '+tagMark('U')+' The block count is the diagram, not a published stack count. No recorded source.';
+  else if(c.arch==='apple')h+='The '+n+' blocks are one unified pool, drawn on both sides of the dies and read through the '+partName('System Level Cache','slc')+'. '+tagMark('U')+' Block count is scaled from bandwidth. It is not a package count. No recorded source.';
+  else h+='One '+partName('memory block','mem')+' feeds '+partName('VMEM','vmem')+', then the arrays.';
+  return h;
+}
+function layoutIc(c,s){
+  const sp=c.raw.specs||{};
+  const name=c.icName||'';
+  let h;
+  if(c.arch==='nvidia')h=partName(name||'NVLink','ic')+' is the block on the right of the die. '+markSpec('ic',sp.ic,'Interconnect');
+  else if(c.arch==='amd')h=partName(name||'Infinity Fabric','iod xcd')+' joins the chiplets. It is not a separate box, so the dies light together. '+markSpec('ic',sp.ic,'Interconnect');
+  else if(c.arch==='tpu')h=partName(name||'ICI','ic')+' is the block on the right. '+markSpec('ic',sp.ic,'Interconnect');
+  else if((c.dies||1)>1){
+    h=partName(fuseWord(c),'fuse')+' is the bar between the dies. '+markSpec('node',sp.node,'Packaging')+' The bandwidth this model uses is '+markSpec('ic',sp.ic,'Die-to-die bandwidth');
+    if(!(c.ic>0))h+=' The bar stays idle, and tok/s does not change.';
+  }else h='No die-to-die bar is drawn on a single die. '+markSpec('ic',sp.ic,'Interconnect');
+  if(s.res&&s.res.N>1)h+=' This run places '+s.res.N+' packages. The diagram still shows one.';
+  return h;
+}
+function diffRatio(a,b){
+  const x=Math.abs(Number(a)), y=Math.abs(Number(b));
+  if(!(x>0)||!(y>0))return 0;
+  return Math.max(x,y)/Math.min(x,y);
+}
+function layoutDiff(mine,other){
+  const c=mine.chip, o=other&&other.chip;
+  if(!o)return 'The other panel has no chip.';
+  const rows=[];
+  const pushNum=(k,label)=>{
+    const as=k==='dies'?dieSpec(c):c.raw.specs[k], bs=k==='dies'?dieSpec(o):o.raw.specs[k];
+    if(!as||as.v==null||!bs||bs.v==null)return;
+    if(typeof as.v!=='number'||typeof bs.v!=='number')return;
+    if(k==='ic'&&!(as.v>0)&&!(bs.v>0))return;
+    if(k==='units'&&c.unitName!==o.unitName)return;
+    rows.push({k,label,ratio:diffRatio(as.v,bs.v),as,bs});
+  };
+  pushNum('cap','memory capacity');
+  pushNum('bw','memory bandwidth');
+  pushNum('units',c.unitName+' count');
+  pushNum('ic','interconnect');
+  if(c.arch==='apple'&&o.arch==='apple'&&c.raw.dies&&o.raw.dies)pushNum('dies','die count');
+  if(!rows.length)return esc(chipShort(c))+' and '+esc(chipShort(o))+' share no numeric spec to compare.';
+  rows.sort((a,b)=>b.ratio-a.ratio);
+  let pick=rows[0];
+  const die=rows.find(r=>r.k==='dies');
+  if(die&&die.ratio>1.01&&die.ratio>=pick.ratio*0.85)pick=die;
+  const who='panel '+other.key+' ('+esc(chipShort(o))+')';
+  if(pick.ratio<1.05){
+    if(c.memType&&o.memType&&c.memType!==o.memType)return 'Compared specs are within 5%. Memory type differs: '+esc(c.memType)+' vs '+esc(o.memType)+'.';
+    return esc(chipShort(c))+' and '+who+' match on capacity, bandwidth, and interconnect.';
+  }
+  const times=pick.ratio>=10?pick.ratio.toFixed(0):pick.ratio.toFixed(1);
+  const brief=(k,sp)=>{const bits=sourceBits((sp&&sp.src)||[]);return tagMark((sp&&sp.tag)||'U')+' <b>'+esc(specVal(k,sp))+'</b>'+(bits.html?' '+bits.html:' No recorded source.');};
+  let h=pick.label+' is '+brief(pick.k,pick.as)+' vs '+who+' '+brief(pick.k,pick.bs)+' ('+times+'×).';
+  if(c.memType&&o.memType&&c.memType!==o.memType)h+=' Memory type is '+esc(c.memType)+' vs '+esc(o.memType)+'.';
+  return h;
+}
+function layoutPopHtml(sideKey){
+  const s=sides.find(x=>x.key===sideKey);
+  if(!s||!s.chip||!s.layout)return '<p>No chip.</p>';
+  const other=sides.find(x=>x.key!==sideKey);
+  const c=s.chip;
+  const head='<div class="layhead"><b>'+esc(c.name)+'</b><span class="layleg">Layout as drawn. '+tagMark('V')+' verified '+tagMark('A')+' approximate '+tagMark('U')+' assumed. A part name marks that part on this panel.</span></div>';
+  const body='<div class="laybody">'+
+    '<p><b>Dies and chiplets.</b> '+layoutDie(c,s.layout)+'</p>'+
+    '<p><b>Compute.</b> '+layoutCompute(c)+'</p>'+
+    '<p><b>Cache.</b> '+layoutCache(c,s.layout)+'</p>'+
+    '<p><b>Memory.</b> '+layoutMem(c,s.layout)+'</p>'+
+    '<p><b>Interconnect.</b> '+layoutIc(c,s)+'</p>'+
+    '<p><b>Key difference vs the other panel.</b> '+layoutDiff(s,other)+'</p>'+
+    '</div>';
+  return head+body;
+}
+function hlRects(L,key){
+  const keys=String(key||'').split(/\s+/).filter(Boolean);
+  const hit=p=>p&&keys.indexOf(p.hl)>=0;
+  const boxes=[];
+  const pull=arr=>{(arr||[]).forEach(p=>{if(hit(p))boxes.push(p);});};
+  pull(L.mems);pull(L.caches);pull(L.blocks);pull(L.extraBlk);pull(L.links);
+  if(L.ic&&hit(L.ic))boxes.push(L.ic);
+  const cells=(L.cells||[]).filter(hit);
+  const out=boxes.map(p=>({x:p.x,y:p.y,w:p.w,h:p.h}));
+  if(cells.length){
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    cells.forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x+p.w);y1=Math.max(y1,p.y+p.h);});
+    out.push({x:x0,y:y0,w:x1-x0,h:y1-y0});
+  }
+  return out;
+}
+function syncPartHl(s){
+  const on=partHl.side===s.key&&partHl.key&&s.layout;
+  const rects=on?hlRects(s.layout,partHl.key):[];
+  if(!s.hlEls)s.hlEls=[];
+  for(let i=rects.length;i<s.hlEls.length;i++)s.hlEls[i].style.display='none';
+  if(!rects.length||!s.cv)return;
+  const bl=1,bt=1,bw=s.cv.width/s.dpr||1,bh=s.cv.height/s.dpr||1;
+  const scaleX=s.cv.clientWidth/bw, scaleY=s.cv.clientHeight/bh;
+  rects.forEach((m,i)=>{
+    let el=s.hlEls[i];
+    if(!el){el=document.createElement('div');el.className='parthl';s.root.appendChild(el);s.hlEls[i]=el;}
+    const left=s.cv.offsetLeft+bl+(s.offx+m.x*s.sc)*scaleX;
+    const top=s.cv.offsetTop+bt+(s.offy+m.y*s.sc)*scaleY;
+    el.style.display='block';
+    el.style.left=left.toFixed(1)+'px';
+    el.style.top=top.toFixed(1)+'px';
+    el.style.width=((m.w*s.sc)*scaleX).toFixed(1)+'px';
+    el.style.height=((m.h*s.sc)*scaleY).toFixed(1)+'px';
+  });
+}
+function showPartHl(side,key){
+  partHl={side:side,key:key||''};
+  document.querySelectorAll('#srcpop .hlname').forEach(n=>n.classList.toggle('on',n.dataset.hl===key));
+  sides.forEach(syncPartHl);
+}
+function clearPartHl(){
+  if(!partHl.key&&!partHl.side)return;
+  partHl={side:null,key:''};
+  document.querySelectorAll('#srcpop .hlname').forEach(n=>n.classList.remove('on'));
+  if(typeof sides!=='undefined')sides.forEach(syncPartHl);
+}
+function placeLayoutPop(pop,el){
+  const panel=el.closest('.panel');
+  const cv=panel?panel.querySelector('.cv').getBoundingClientRect():el.getBoundingClientRect();
+  const anchor=el.getBoundingClientRect();
+  const pw=pop.offsetWidth, ph=pop.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, gap=8;
+  const clampL=left=>Math.min(Math.max(8,left),Math.max(8,vw-pw-8));
+  const spots=[
+    {left:clampL(cv.left),top:cv.bottom+gap},
+    {left:clampL(cv.right-pw),top:cv.bottom+gap},
+    {left:clampL(anchor.left),top:anchor.top-ph-gap},
+    {left:8,top:8},
+    {left:clampL(vw-pw-8),top:8}
+  ];
+  const box=s=>({left:s.left,top:s.top,right:s.left+pw,bottom:s.top+ph});
+  const onScreen=s=>s.top>=8&&s.left>=8&&s.top+ph<=vh-8&&s.left+pw<=vw-8;
+  let pick=spots.find(s=>onScreen(s)&&!rectsOverlap(box(s),cv)&&!rectsOverlap(box(s),anchor));
+  if(!pick)pick=spots.find(s=>onScreen(s)&&!rectsOverlap(box(s),cv));
+  if(!pick)pick=spots.find(onScreen);
+  if(!pick)pick={left:clampL(cv.left),top:Math.max(8,Math.min(cv.bottom+gap,vh-ph-8))};
+  pop.style.left=Math.round(pick.left)+'px';
+  pop.style.top=Math.round(pick.top)+'px';
+}
 function showSrcPop(el){
   const pop=$('srcpop');
   if(!pop||!el)return;
   absorbTitle(el);
   let html='';
-  if(el.dataset&&el.dataset.kind==='fuse'){const chip=chipFromEl(el);html=chip?fusePopHtml(chip):'<p>Idle on purpose. Die-to-die traffic is not in the speed math.</p>';}
+  const layout=el.dataset&&el.dataset.kind==='layout';
+  clearPartHl();
+  pop.classList.toggle('layout',!!layout);
+  if(layout)pop.dataset.side=el.dataset.side||'A';
+  else delete pop.dataset.side;
+  if(layout)html=layoutPopHtml(el.dataset.side||'A');
+  else if(el.dataset&&el.dataset.kind==='fuse'){const chip=chipFromEl(el);html=chip?fusePopHtml(chip):'<p>Idle on purpose. Die-to-die traffic is not in the speed math.</p>';}
   else if(el.dataset&&el.dataset.kind==='fit')html=fitPopHtml(el.dataset.side||'A');
   else if(el.dataset&&el.dataset.kind==='roof')html=roofPopHtml();
   else if(el.dataset&&el.dataset.kind==='ane')html=anePopHtml(el);
@@ -1322,7 +1549,8 @@ function showSrcPop(el){
   pop.dataset.owner=el.dataset.link||'tip';
   pop.hidden=false;
   pop.style.visibility='hidden';
-  placePop(pop,el);
+  if(pop.classList.contains('layout'))placeLayoutPop(pop,el);
+  else placePop(pop,el);
   pop.style.visibility='visible';
 }
 function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected&&tagAnchor.dataset.link;}
@@ -1375,9 +1603,22 @@ function bindLinks(){
     scheduleHide();
   });
   document.addEventListener('pointerover',ev=>{
-    if(ev.target.closest&&ev.target.closest('#srcpop'))clearTimeout(hideT);
+    const pop=ev.target.closest&&ev.target.closest('#srcpop');
+    if(pop)clearTimeout(hideT);
+    const n=ev.target.closest&&ev.target.closest('#srcpop [data-hl]');
+    if(n&&pop)showPartHl(pop.dataset.side,n.dataset.hl);
+  });
+  document.addEventListener('pointerout',ev=>{
+    if(ev.pointerType&&ev.pointerType!=='mouse')return;
+    const n=ev.target.closest&&ev.target.closest('#srcpop [data-hl]');
+    if(!n)return;
+    const to=ev.relatedTarget;
+    if(to&&to.closest&&to.closest('#srcpop [data-hl]'))return;
+    clearPartHl();
   });
   document.addEventListener('pointerdown',ev=>{
+    const hl=ev.target.closest&&ev.target.closest('#srcpop [data-hl]');
+    if(hl){showPartHl(hl.closest('#srcpop').dataset.side,hl.dataset.hl);return;}
     if(ev.target.closest&&ev.target.closest('#srcpop'))return;
     const t=linkTarget(ev.target);
     if(ev.pointerType==='touch'){
