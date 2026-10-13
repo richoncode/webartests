@@ -367,7 +367,13 @@
     var COLOR = { model: "#5b9bd5", dataset: "#4caf50", space: "#f0a040" };
     var RGB = { model: "91,155,213", dataset: "76,175,80", space: "240,160,64" };
     var AX = 0.5, AY = 0.48;
-    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    var reduceMotion = motionQuery.matches;
+    if (motionQuery.addEventListener) {
+      motionQuery.addEventListener("change", function () { reduceMotion = motionQuery.matches; });
+    }
+    var FLY_MS = 680;
+    var FLY_REDUCED_MS = 100;
     var posterMode = document.documentElement.classList.contains("poster-mode");
 
     var sky = document.getElementById("sky");
@@ -559,7 +565,7 @@
       }
     }
 
-    function liveRect() {
+    function layoutRect() {
       var cr = sky.getBoundingClientRect();
       var top = 150, bottom = 72;
       if (hudTop && hudBottom && cr.height) {
@@ -570,7 +576,7 @@
       }
       var w = sky.clientWidth || window.innerWidth;
       var h = sky.clientHeight || window.innerHeight;
-      var rect = { x: 12, y: top, w: Math.max(40, w - 24), h: Math.max(40, h - top - bottom), W: w, H: h, vx: 0, vy: 0, vw: 1, vh: 1 };
+      var rect = { x: 12, y: top, w: Math.max(40, w - 24), h: Math.max(40, h - top - bottom), W: w, H: h };
       if (!toolCard.hidden) {
         placeCard();
         var box = toolCard.getBoundingClientRect();
@@ -584,25 +590,190 @@
           }
         }
       }
-      rect.clip = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
-      if (app.prompt && app.matches.length) {
-        var xs = [AX], ys = [AY];
-        app.matches.forEach(function (n) { xs.push(n.hx); ys.push(n.hy); });
-        var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-        var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-        var padX = Math.max(0.06, 64 / rect.w);
-        var padY = Math.max(0.06, 72 / rect.h);
-        minX -= padX; maxX += padX; minY -= padY; maxY += padY;
-        var bw = Math.max(0.34, maxX - minX);
-        var bh = Math.max(0.34, maxY - minY);
-        var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
-        var cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
-        rect.vx = cx - bw / 2;
-        rect.vy = cy - bh / 2;
-        rect.vw = bw;
-        rect.vh = bh;
-      }
       return rect;
+    }
+
+    function flyMs() { return reduceMotion ? FLY_REDUCED_MS : FLY_MS; }
+    function easeInOutCubic(u) {
+      return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+    }
+    function identityCam() { return { vx: 0, vy: 0, vw: 1, vh: 1 }; }
+    function nearCam(a, b) {
+      return Math.abs(a.vx - b.vx) < 0.002 && Math.abs(a.vy - b.vy) < 0.002 &&
+        Math.abs(a.vw - b.vw) < 0.002 && Math.abs(a.vh - b.vh) < 0.002;
+    }
+    function nearView(a, b, eps) {
+      var e = eps || 3;
+      return Math.abs(a.x - b.x) < e && Math.abs(a.y - b.y) < e &&
+        Math.abs(a.w - b.w) < e && Math.abs(a.h - b.h) < e;
+    }
+    function framePoints(pts, minSpan, rect) {
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pts.forEach(function (p) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+      var cx = (minX + maxX) / 2;
+      var cy = (minY + maxY) / 2;
+      var padX = Math.max(0.06, 64 / Math.max(rect.w, 1));
+      var padY = Math.max(0.06, 72 / Math.max(rect.h, 1));
+      var bw = Math.max(minSpan, (maxX - minX) + padX * 2);
+      var bh = Math.max(minSpan, (maxY - minY) + padY * 2);
+      return { vx: cx - bw / 2, vy: cy - bh / 2, vw: bw, vh: bh };
+    }
+    function desiredCamera(rect) {
+      if (app.pinned && isFinite(app.pinned.hx)) {
+        var pts = [{ x: app.pinned.hx, y: app.pinned.hy }];
+        if (app.prompt) pts.push({ x: AX, y: AY });
+        return framePoints(pts, app.prompt ? 0.28 : 0.2, rect);
+      }
+      if (app.prompt && app.matches.length) {
+        var mpts = [{ x: AX, y: AY }];
+        app.matches.forEach(function (n) { mpts.push({ x: n.hx, y: n.hy }); });
+        return framePoints(mpts, 0.34, rect);
+      }
+      if (app.prompt) return null;
+      return identityCam();
+    }
+
+    var cam = { vx: 0, vy: 0, vw: 1, vh: 1, from: null, to: null, t0: 0, dur: FLY_MS, animating: false, user: false, flyId: 0 };
+    var view = { x: 12, y: 150, w: 300, h: 400, from: null, to: null, t0: 0, dur: FLY_MS, animating: false, ready: false };
+    var wheelGoal = null;
+    var camKey = "";
+    var camLayout = { w: 0, h: 0 };
+
+    function focusKey() {
+      var id = app.pinned ? app.pinned.type + ":" + app.pinned.id : "";
+      var pid = app.prompt ? app.prompt.id : "";
+      var mids = app.matches.map(function (n) { return n.type + ":" + n.id; }).join("|");
+      return pid + "#" + id + "#" + mids;
+    }
+
+    function captureCam() {
+      if (!cam.animating || !cam.from || !cam.to) return { vx: cam.vx, vy: cam.vy, vw: cam.vw, vh: cam.vh };
+      var u = (performance.now() - cam.t0) / cam.dur;
+      if (u <= 0) return { vx: cam.from.vx, vy: cam.from.vy, vw: cam.from.vw, vh: cam.from.vh };
+      if (u >= 1) return { vx: cam.to.vx, vy: cam.to.vy, vw: cam.to.vw, vh: cam.to.vh };
+      var e = easeInOutCubic(u);
+      return {
+        vx: cam.from.vx + (cam.to.vx - cam.from.vx) * e,
+        vy: cam.from.vy + (cam.to.vy - cam.from.vy) * e,
+        vw: cam.from.vw + (cam.to.vw - cam.from.vw) * e,
+        vh: cam.from.vh + (cam.to.vh - cam.from.vh) * e
+      };
+    }
+    function captureView() {
+      if (!view.animating || !view.from || !view.to) return { x: view.x, y: view.y, w: view.w, h: view.h };
+      var u = (performance.now() - view.t0) / view.dur;
+      if (u <= 0) return { x: view.from.x, y: view.from.y, w: view.from.w, h: view.from.h };
+      if (u >= 1) return { x: view.to.x, y: view.to.y, w: view.to.w, h: view.to.h };
+      var e = easeInOutCubic(u);
+      return {
+        x: view.from.x + (view.to.x - view.from.x) * e,
+        y: view.from.y + (view.to.y - view.from.y) * e,
+        w: view.from.w + (view.to.w - view.from.w) * e,
+        h: view.from.h + (view.to.h - view.from.h) * e
+      };
+    }
+    function flyCam(target) {
+      if (cam.animating && cam.to && nearCam(cam.to, target)) return;
+      var from = captureCam();
+      if (!cam.animating && nearCam(from, target)) {
+        cam.vx = target.vx; cam.vy = target.vy; cam.vw = target.vw; cam.vh = target.vh;
+        return;
+      }
+      cam.from = from;
+      cam.to = { vx: target.vx, vy: target.vy, vw: target.vw, vh: target.vh };
+      cam.t0 = performance.now();
+      cam.dur = flyMs();
+      cam.animating = true;
+      cam.flyId += 1;
+      wheelGoal = null;
+      cam.vx = from.vx; cam.vy = from.vy; cam.vw = from.vw; cam.vh = from.vh;
+    }
+    function flyView(layout) {
+      var target = { x: layout.x, y: layout.y, w: layout.w, h: layout.h };
+      if (view.animating && view.to && nearView(view.to, target, 8)) return;
+      var from = captureView();
+      if (!view.animating && nearView(from, target, 6)) {
+        view.x = target.x; view.y = target.y; view.w = target.w; view.h = target.h;
+        return;
+      }
+      view.from = from;
+      view.to = target;
+      view.t0 = performance.now();
+      view.dur = flyMs();
+      view.animating = true;
+      view.x = from.x; view.y = from.y; view.w = from.w; view.h = from.h;
+    }
+    function stepCam() {
+      if (!cam.animating) return;
+      var pose = captureCam();
+      cam.vx = pose.vx; cam.vy = pose.vy; cam.vw = pose.vw; cam.vh = pose.vh;
+      if ((performance.now() - cam.t0) >= cam.dur) {
+        cam.vx = cam.to.vx; cam.vy = cam.to.vy; cam.vw = cam.to.vw; cam.vh = cam.to.vh;
+        cam.animating = false;
+      }
+    }
+    function stepView() {
+      if (!view.animating) return;
+      var pose = captureView();
+      view.x = pose.x; view.y = pose.y; view.w = pose.w; view.h = pose.h;
+      if ((performance.now() - view.t0) >= view.dur) {
+        view.x = view.to.x; view.y = view.to.y; view.w = view.to.w; view.h = view.to.h;
+        view.animating = false;
+      }
+    }
+    function stepWheel(dt) {
+      if (!wheelGoal) return;
+      var tau = reduceMotion ? 36 : 90;
+      var k = 1 - Math.exp(-Math.min(64, Math.max(0, dt)) / tau);
+      cam.vx += (wheelGoal.vx - cam.vx) * k;
+      cam.vy += (wheelGoal.vy - cam.vy) * k;
+      cam.vw += (wheelGoal.vw - cam.vw) * k;
+      cam.vh += (wheelGoal.vh - cam.vh) * k;
+      if (nearCam(cam, wheelGoal)) {
+        cam.vx = wheelGoal.vx; cam.vy = wheelGoal.vy; cam.vw = wheelGoal.vw; cam.vh = wheelGoal.vh;
+        wheelGoal = null;
+      }
+    }
+    function followAuto() {
+      cam.user = false;
+      wheelGoal = null;
+    }
+    function holdCam() {
+      var pose = captureCam();
+      cam.vx = pose.vx; cam.vy = pose.vy; cam.vw = pose.vw; cam.vh = pose.vh;
+      cam.animating = false;
+      wheelGoal = null;
+    }
+    function shownRect() { return { x: view.x, y: view.y, w: view.w, h: view.h }; }
+    function limitedZoom(base, rect, sx, sy, factor) {
+      var rw = rect.w || 1, rh = rect.h || 1;
+      var lo = 0.08, hi = 1;
+      var minScale = Math.max(base.vw / hi, base.vh / hi);
+      var maxScale = Math.min(base.vw / lo, base.vh / lo);
+      var scale = clamp(factor, minScale, maxScale);
+      if (!isFinite(scale) || scale <= 0) scale = 1;
+      var vw = base.vw / scale;
+      var vh = base.vh / scale;
+      var nx = base.vx + ((sx - rect.x) / rw) * base.vw;
+      var ny = base.vy + ((sy - rect.y) / rh) * base.vh;
+      return {
+        vx: clamp(nx - ((sx - rect.x) / rw) * vw, -0.85, 1.45),
+        vy: clamp(ny - ((sy - rect.y) / rh) * vh, -0.85, 1.45),
+        vw: vw,
+        vh: vh
+      };
+    }
+    function takeGesture() {
+      var pose = captureCam();
+      cam.vx = pose.vx; cam.vy = pose.vy; cam.vw = pose.vw; cam.vh = pose.vh;
+      cam.animating = false;
+      cam.user = true;
+      wheelGoal = null;
     }
 
     function resizeSky() {
@@ -816,26 +987,106 @@
       poster.dataset.drawn = "1";
     }
 
+    var lastFrame = 0;
     function frame(t) {
       if (!posterMode) {
+        var dt = lastFrame ? Math.min(64, t - lastFrame) : 16;
+        lastFrame = t;
         resizeSky();
-        var rect = liveRect();
+        var layout = layoutRect();
+        if (!view.ready) {
+          view.x = layout.x; view.y = layout.y; view.w = layout.w; view.h = layout.h;
+          view.ready = true;
+          var seed = desiredCamera(layout) || identityCam();
+          cam.vx = seed.vx; cam.vy = seed.vy; cam.vw = seed.vw; cam.vh = seed.vh;
+        } else {
+          flyView(layout);
+          stepView();
+          if (wheelGoal) stepWheel(dt);
+          else {
+            if (!cam.user) {
+              var want = desiredCamera(layout);
+              if (want) {
+                var key = focusKey();
+                var shifted = Math.abs(layout.w - camLayout.w) > 24 || Math.abs(layout.h - camLayout.h) > 24;
+                if (key !== camKey || (shifted && !cam.animating)) {
+                  camKey = key;
+                  camLayout.w = layout.w;
+                  camLayout.h = layout.h;
+                  flyCam(want);
+                }
+              }
+            }
+            if (cam.animating) stepCam();
+          }
+        }
+        var rect = {
+          x: view.x, y: view.y, w: view.w, h: view.h, W: layout.W, H: layout.H,
+          vx: cam.vx, vy: cam.vy, vw: cam.vw, vh: cam.vh,
+          clip: { x: layout.x, y: layout.y, w: layout.w, h: layout.h }
+        };
         drawField(skyCtx, rect, t / 1000, { poster: false });
+        if (app.pinned) positionTip(app.pinned);
         if (app.nodes.length) {
           var n = app.nodes[0];
           sky.dataset.sample = Math.round(n.sx) + "," + Math.round(n.sy);
         }
+        var open = "";
+        app.nodes.forEach(function (node) {
+          if (open) return;
+          if (node.sx > rect.clip.x + 28 && node.sy > rect.clip.y + 28 &&
+              node.sx < rect.clip.x + rect.clip.w - 28 && node.sy < rect.clip.y + rect.clip.h - 28) {
+            open = Math.round(node.sx) + "," + Math.round(node.sy);
+          }
+        });
+        sky.dataset.open = open;
         var agentPt = toScreen(AX, AY, rect);
+        var empty = "";
+        for (var gy = 0; gy < 6 && !empty; gy++) {
+          for (var gx = 0; gx < 5 && !empty; gx++) {
+            var px = rect.clip.x + rect.clip.w * (gx + 0.5) / 5;
+            var py = rect.clip.y + rect.clip.h * (gy + 0.5) / 6;
+            var taken = false;
+            for (var ni = 0; ni < app.nodes.length; ni++) {
+              var nd = app.nodes[ni];
+              var ddx = px - nd.sx, ddy = py - nd.sy;
+              var reach = (nd.sr || 6) + 16;
+              if (ddx * ddx + ddy * ddy < reach * reach) { taken = true; break; }
+            }
+            if (!taken) empty = Math.round(px) + "," + Math.round(py);
+          }
+        }
+        sky.dataset.empty = empty;
         sky.dataset.agent = Math.round(agentPt[0]) + "," + Math.round(agentPt[1]);
         sky.dataset.matches = app.matches.map(function (m) {
           return Math.round(m.sx) + "," + Math.round(m.sy);
         }).join(" ");
         sky.dataset.view = Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.w) + "," + Math.round(rect.h);
+        sky.dataset.clip = Math.round(rect.clip.x) + "," + Math.round(rect.clip.y) + "," + Math.round(rect.clip.w) + "," + Math.round(rect.clip.h);
+        sky.dataset.vx = cam.vx.toFixed(4);
+        sky.dataset.vy = cam.vy.toFixed(4);
+        sky.dataset.vw = cam.vw.toFixed(4);
+        sky.dataset.vh = cam.vh.toFixed(4);
+        sky.dataset.anim = (cam.animating || view.animating || wheelGoal) ? "1" : "0";
+        sky.dataset.fly = String(cam.flyId);
+        sky.dataset.user = cam.user ? "1" : "0";
+        document.documentElement.dataset.flyMs = String(flyMs());
       }
       if (!posterMode) requestAnimationFrame(frame);
     }
 
     function hideTip() { tip.hidden = true; tip.innerHTML = ""; }
+
+    function positionTip(n) {
+      if (!n || tip.hidden || n.sx == null) return;
+      var left = n.sx + 14;
+      var top = n.sy - 8;
+      var bounds = sky.getBoundingClientRect();
+      if (left + 280 > bounds.width) left = n.sx - 290;
+      if (top + 110 > bounds.height) top = bounds.height - 120;
+      tip.style.left = Math.max(8, left) + "px";
+      tip.style.top = Math.max(8, top) + "px";
+    }
 
     function showTip(n) {
       if (!n) { if (!app.pinned) hideTip(); return; }
@@ -855,13 +1106,7 @@
       tip.appendChild(title);
       tip.appendChild(meta);
       tip.appendChild(link);
-      var left = n.sx + 14;
-      var top = n.sy - 8;
-      var bounds = sky.getBoundingClientRect();
-      if (left + 280 > bounds.width) left = n.sx - 290;
-      if (top + 110 > bounds.height) top = bounds.height - 120;
-      tip.style.left = Math.max(8, left) + "px";
-      tip.style.top = Math.max(8, top) + "px";
+      positionTip(n);
     }
 
     function hit(clientX, clientY) {
@@ -975,6 +1220,7 @@
       toolCard.hidden = true;
       toolCard.classList.remove("sheet");
       syncChips();
+      followAuto();
     }
 
     function applySearch(prompt, rows) {
@@ -1004,6 +1250,7 @@
       });
       renderCard(prompt, matches, "ready");
       placeCard();
+      followAuto();
     }
 
     async function fetchSearch(prompt) {
@@ -1040,6 +1287,7 @@
       hideTip();
       app.matches = [];
       app.pulses = [];
+      holdCam();
       syncChips();
       var activeChip = document.querySelector('.prompts button[data-prompt="' + prompt.id + '"]');
       if (activeChip) revealChip(activeChip);
@@ -1185,23 +1433,133 @@
 
     mountPrompts();
     if (!posterMode) {
-      sky.addEventListener("pointermove", function (e) {
-        if (e.pointerType === "touch" || app.pinned) return;
-        showTip(hit(e.clientX, e.clientY));
+      var pointers = new Map();
+      var pinch = null;
+      var press = null;
+
+      function localOf(clientX, clientY) {
+        var b = sky.getBoundingClientRect();
+        return [clientX - b.left, clientY - b.top];
+      }
+      function applyPinch() {
+        var pts = Array.from(pointers.values());
+        if (pts.length < 2 || !pinch) return;
+        var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        var s0 = localOf(pinch.mid0.x, pinch.mid0.y);
+        var s1 = localOf(mid.x, mid.y);
+        var zoomed = limitedZoom(pinch.cam, pinch.rect, s0[0], s0[1], d / pinch.d0);
+        var rw = pinch.rect.w || 1, rh = pinch.rect.h || 1;
+        cam.vx = zoomed.vx - ((s1[0] - s0[0]) / rw) * zoomed.vw;
+        cam.vy = zoomed.vy - ((s1[1] - s0[1]) / rh) * zoomed.vh;
+        cam.vw = zoomed.vw;
+        cam.vh = zoomed.vh;
+        cam.user = true;
+        cam.animating = false;
+        wheelGoal = null;
+      }
+
+      sky.addEventListener("wheel", function (e) {
+        var dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 16;
+        else if (e.deltaMode === 2) dy *= Math.max(1, view.h);
+        if (!dy) return;
+        var factor = Math.exp(-dy * 0.0015);
+        var pt = localOf(e.clientX, e.clientY);
+        var base = wheelGoal || captureCam();
+        var next = limitedZoom(base, shownRect(), pt[0], pt[1], factor);
+        if (factor < 1 && nearCam(next, base)) return;
+        e.preventDefault();
+        if (!wheelGoal) {
+          var pose = captureCam();
+          cam.vx = pose.vx; cam.vy = pose.vy; cam.vw = pose.vw; cam.vh = pose.vh;
+          cam.animating = false;
+        }
+        cam.user = true;
+        wheelGoal = next;
+      }, { passive: false });
+
+      sky.addEventListener("pointerdown", function (e) {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (e.pointerType !== "touch") {
+          try { sky.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        }
+        if (pointers.size >= 2) {
+          var pts = Array.from(pointers.values());
+          pointers.forEach(function (_, id) {
+            try { sky.setPointerCapture(id); } catch (err) { /* ignore */ }
+          });
+          takeGesture();
+          pinch = {
+            d0: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+            mid0: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 },
+            cam: { vx: cam.vx, vy: cam.vy, vw: cam.vw, vh: cam.vh },
+            rect: shownRect()
+          };
+          press = null;
+          applyPinch();
+        } else {
+          press = { id: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType, moved: false, cam: null, rect: null };
+        }
       });
-      sky.addEventListener("pointerleave", function () { if (!app.pinned) hideTip(); });
-      var down = null;
-      sky.addEventListener("pointerdown", function (e) { down = { x: e.clientX, y: e.clientY }; });
+
+      sky.addEventListener("pointermove", function (e) {
+        if (!pointers.has(e.pointerId)) {
+          if (e.pointerType === "touch" || app.pinned) return;
+          showTip(hit(e.clientX, e.clientY));
+          return;
+        }
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size >= 2 && pinch) {
+          if (e.cancelable) e.preventDefault();
+          applyPinch();
+          return;
+        }
+        if (!press || press.id !== e.pointerId || press.type === "touch") return;
+        var dx = e.clientX - press.x, dy = e.clientY - press.y;
+        if (!press.moved && dx * dx + dy * dy > 36) {
+          press.moved = true;
+          takeGesture();
+          press.cam = { vx: cam.vx, vy: cam.vy, vw: cam.vw, vh: cam.vh };
+          press.rect = shownRect();
+        }
+        if (press.moved && press.cam) {
+          var rw = press.rect.w || 1, rh = press.rect.h || 1;
+          cam.vx = clamp(press.cam.vx - (dx / rw) * press.cam.vw, -0.85, 1.45);
+          cam.vy = clamp(press.cam.vy - (dy / rh) * press.cam.vh, -0.85, 1.45);
+          cam.vw = press.cam.vw;
+          cam.vh = press.cam.vh;
+        }
+      }, { passive: false });
+
       sky.addEventListener("pointerup", function (e) {
-        if (!down) return;
-        var dx = e.clientX - down.x, dy = e.clientY - down.y;
-        down = null;
-        if (dx * dx + dy * dy > 16) return;
+        pointers.delete(e.pointerId);
+        if (pinch && pointers.size < 2) {
+          pinch = null;
+          press = null;
+          return;
+        }
+        if (!press || press.id !== e.pointerId) return;
+        var dx = e.clientX - press.x, dy = e.clientY - press.y;
+        var moved = press.moved || dx * dx + dy * dy > 36;
+        press = null;
+        if (moved) return;
         var n = hit(e.clientX, e.clientY);
-        if (!n) { app.pinned = null; hideTip(); return; }
+        if (!n) {
+          if (app.pinned) { app.pinned = null; hideTip(); followAuto(); }
+          return;
+        }
         app.pinned = n;
         showTip(n);
+        followAuto();
       });
+      sky.addEventListener("pointercancel", function (e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinch = null;
+        if (press && press.id === e.pointerId) press = null;
+      });
+      sky.addEventListener("pointerleave", function () { if (!app.pinned) hideTip(); });
       requestAnimationFrame(frame);
       window.addEventListener("resize", function () { sky.dataset.sample = ""; });
     } else {
