@@ -70,9 +70,23 @@ input[type=range]{width:92px;accent-color:#60a5fa}
 canvas{display:block;width:100%}
 .cv{background:#0a0f1a;border:1px solid var(--line);border-radius:8px;margin-top:5px}
 .strip{margin-top:3px}
-.status{font-size:11px;font-weight:700;height:34px;margin-top:3px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;overflow:hidden;flex:none;font-variant-numeric:tabular-nums}
-.status .st{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.status .ic{flex:none;max-width:46%;font-weight:500;color:#5b6b86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{height:48px;margin-top:3px;display:flex;flex-direction:column;overflow:hidden;flex:none;font-size:11px;font-weight:700;line-height:16px;font-variant-numeric:tabular-nums}
+.st-row,.st-cause,.st-link{height:16px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.st-row{display:flex;align-items:baseline;gap:6px;min-width:0}
+.st-badge{flex:none;display:inline-block;width:9ch;white-space:nowrap;overflow:hidden;letter-spacing:.3px}
+.st-badge.dim{opacity:0}
+.st-main{display:flex;align-items:baseline;min-width:0;flex:1}
+.st-phrase{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-pct,.st-cause-pct{flex:none;display:inline-block;width:5ch;text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}
+.st-pct:empty,.st-cause-pct:empty{width:0}
+.st-cause{display:flex;align-items:baseline;gap:4px;min-width:0;font-weight:600;color:#c8d3e8}
+.st-cause-txt,.st-cause-tail{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-cause-txt{flex:0 1 auto}
+.st-cause-tail{flex:1 1 auto}
+.st-link{display:flex;align-items:baseline;gap:8px;min-width:0;font-weight:500;color:#5b6b86}
+.st-link-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-link-pct{flex:none;width:12ch;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;visibility:hidden}
+.st-link-pct.on{visibility:visible;color:#f472b6}
 .chipnote{font-size:10.5px;color:#7f8fae;height:16px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
 .stats{margin-top:3px;flex:none}
 .resultslot{position:relative}
@@ -193,7 +207,7 @@ pre.formulas{overflow-x:auto;background:#080d17;border:1px solid #1f2a40;border-
   .ptitle b{max-width:100%}
   .ptitle span{flex-basis:100%;white-space:normal;order:3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .tokc{margin-left:auto}
-  .status{height:54px}
+  .status{height:48px}
   .big{font-size:21px}
   .ribbon{top:12px;right:-40px;font-size:9px}
 }
@@ -566,7 +580,8 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas><div class="status"><span class="st"></span><span class="ic"></span></div><div class="chipnote"></div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas>'+
+   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><span class="st-link-name">no multi-chip link modeled</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote"></div>'+
    '<div class="stats"><div class="resultslot">'+
    '<div class="rview final"><div class="l"><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
    '<div class="bars">'+
@@ -791,16 +806,23 @@ function drawSide(s,tm){
     ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
-  // HTML status line (readable at any size)
-  let msg,mc;
-  if(r.oom){msg='X OOM: weights + KV do not fit, would not run';mc='#fca5a5';}
-  else if(s.done){msg='done in '+fmtT(r.total)+' - waiting for the other chip';mc='#8493ab';}
-  else if(sg.tm>=sg.tc){const stall=Math.round((1-cu)*100);msg=((tm*2.2)%2<1.3?'STALL ':'')+c.unitName+'s idle ~'+stall+'% waiting on memory | memory busy 100%';mc='#fbbf24';}
-  else {msg='COMPUTE-BOUND: '+c.unitName+'s ~'+Math.round(cu*100)+'% busy | memory busy '+Math.round(mu*100)+'% (headroom)';mc='#34d399';}
-  const stEl=s.root.querySelector('.st'),icEl=s.root.querySelector('.status .ic');
-  if(stEl._m!==msg){stEl._m=msg;stEl.textContent=msg;stEl.style.color=mc;}
-  const icm=(c.ic?c.icName+' '+c.ic+' GB/s':'no multi-chip link modeled')+(commGlow>0.05?'  '+Math.round(commGlow*100)+'% of step':'');
-  if(icEl._m!==icm){icEl._m=icm;icEl.textContent=icm;icEl.style.color=commGlow>0.05?'#f472b6':'';}
+  // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
+  const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
+  const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
+  const cause=s.root.querySelector('.st-cause-txt'),causePct=s.root.querySelector('.st-cause-pct'),causeTail=s.root.querySelector('.st-cause-tail');
+  let badgeText,phraseText,pctText,causeText,causePctText,causeTailText,mc;
+  if(r.oom){badgeText='OOM';phraseText='weights + KV do not fit';pctText='';causeText='would not run';causePctText='';causeTailText='';mc='#fca5a5';}
+  else if(s.done){badgeText='DONE';phraseText='done in '+fmtT(r.total);pctText='';causeText='waiting for the other chip';causePctText='';causeTailText='';mc='#8493ab';}
+  else if(sg.tm>=sg.tc){badgeText='STALL';phraseText=c.unitName+'s idle ~';pctText=Math.round((1-cu)*100)+'%';causeText='waiting on memory · memory busy';causePctText='100%';causeTailText='';mc='#fbbf24';}
+  else {badgeText='COMPUTE';phraseText=c.unitName+'s busy ~';pctText=Math.round(cu*100)+'%';causeText='memory busy';causePctText=Math.round(mu*100)+'%';causeTailText='· headroom';mc='#34d399';}
+  put(badge,badgeText);put(phrase,phraseText);put(pct,pctText);put(cause,causeText);put(causePct,causePctText);put(causeTail,causeTailText);
+  badge.classList.toggle('dim', badgeText==='STALL' && (tm*2.2)%2>=1.3);
+  s.root.querySelector('.st-row').style.color=mc;
+  const linkName=s.root.querySelector('.st-link-name'),linkPct=s.root.querySelector('.st-link-pct');
+  put(linkName, c.ic ? c.icName+' '+c.ic+' GB/s' : 'no multi-chip link modeled');
+  const showComm=commGlow>0.05;
+  put(linkPct, showComm ? Math.round(commGlow*100)+'% of step' : '100% of step');
+  linkPct.classList.toggle('on', showComm);
   drawStrip(s,cur,tm);
 }
 function drawStrip(s,cur,tm){
