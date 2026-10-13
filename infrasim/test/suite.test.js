@@ -271,6 +271,39 @@ test('read and write lanes are parallel, and M5 Pro Fusion stays idle', () => {
   assert.match(css, /\.memcard\{/);
 });
 
+test('H100 and MI300X die counts cite the publications that state them', () => {
+  const chips = readJson('data/chips.json');
+  const src = chips.sources;
+  assert.match(src['nv-h100-wp'].title, /H100 Tensor Core GPU Architecture whitepaper/);
+  assert.match(src['nv-h100-wp'].url, /^https:\/\/resources\.nvidia\.com\//);
+  assert.match(src['amd-cdna3'].title, /CDNA 3 architecture white paper/);
+  assert.match(src['amd-cdna3'].url, /^https:\/\/www\.amd\.com\/.*cdna-3-white-paper\.pdf$/);
+  assert.match(src['amd-mi300x-part'].title, /MI300X GPU partitioning overview/);
+  assert.match(src['amd-mi300x-part'].url, /^https:\/\/instinct\.docs\.amd\.com\//);
+  const h100 = chips.chips.find(c => c.id === 'h100');
+  assert.equal(h100.specs.dies.v, 1);
+  assert.equal(h100.specs.dies.tag, 'V');
+  assert.ok(h100.specs.dies.src.includes('nv-hopper') && h100.specs.dies.src.includes('nv-h100-wp'));
+  assert.match(h100.specs.dies.note, /814 mm/);
+  assert.doesNotMatch(h100.specs.dies.note, /monolithic/i);
+  const h200 = chips.chips.find(c => c.id === 'h200');
+  assert.equal(h200.specs.dies, undefined);
+  const mi = chips.chips.find(c => c.id === 'mi300x');
+  assert.equal(mi.specs.iods.v, 4);
+  assert.equal(mi.specs.iods.tag, 'V');
+  assert.ok(mi.specs.iods.src.includes('amd-cdna3') && mi.specs.iods.src.includes('amd-mi300x-part'));
+  assert.equal(mi.dies, undefined);
+  const m6 = chips.chips.find(c => c.id === 'm6');
+  assert.equal(m6.dies, 1);
+  assert.equal(m6.specs.dies.v, 1);
+  assert.equal(m6.specs.dies.tag, 'U');
+  assert.match(m6.specs.dies.note, /does not state an M6 die count/);
+  assert.ok(m6.specs.dies.src.includes('apple-m6-m5ultra'));
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  assert.match(ui, /No recorded source for the die count/);
+  assert.match(ui, /sp\.iods/);
+});
+
 test('the chip name opens one layout popout and part names can mark the diagram', () => {
   const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
