@@ -121,10 +121,10 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas>'+
-   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="Multi-chip link on both chips. The status row says when none is modeled." aria-label="Footnote: multi-chip link">4</button><span class="st-link-name" data-link="note:nolink" data-tip="Multi-chip link on both chips. The status row says when none is modeled.">no multi-chip link modeled</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="How this chip is drawn. The same note is in How to read this."></div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas><div class="docrate">dot rate ∝ memory bandwidth</div>'+
+   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here." aria-label="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth.">4</button><span class="st-link-name" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.">all-reduce 0 s</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth on one scale for both panels. dot rate ∝ memory bandwidth."></div>'+
    '<div class="stats"><div class="resultslot">'+
-   '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="See what differs and why." aria-label="See what differs and why">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Estimate range on both chips, and the how-to line." aria-label="Footnote: estimate range">3</button><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
+   '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link." aria-label="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%." aria-label="Blue band: efficiency from ×0.8 to ×1.2. White tick: central estimate. Dashed line: peak specs.">3</button><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
    '<div class="bars">'+
    '<div class="brow compute"><span class="lab">compute</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
    '<div class="brow memory"><span class="lab">memory</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
@@ -132,7 +132,7 @@ function mkSide(key){
    '</div></div>'+
    '<div class="rview run"><div class="runlab">Time to generate 1 token</div><div class="runbig"><span class="n run-t">0.00 ms</span></div><div class="runspd">speed <span class="n run-s">0.0</span> tok/s</div></div>'+
    '<div class="rview oom"><div class="oombox"><b>OUT OF MEMORY</b><span>Weights and KV cache do not fit, so this chip would not run. Figures below are hypothetical.</span></div></div>'+
-   '</div><div class="capwrap"><div class="captrack"></div><div class="cap-txt"></div></div></div>';
+   '</div><div class="capwrap"><div class="captrack"></div><button type="button" class="cap-txt" data-link="note:fit" data-kind="fit" data-side="'+key+'"></button></div></div>';
   side.root=p;side.cv=p.querySelector('canvas.cv');side.st=p.querySelector('canvas.strip');
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
@@ -171,9 +171,9 @@ function renderPills(s){
   const chip=s.chip,sp=chip.raw.specs;
   const keys=['fp16','fp8','bw','cap','units','node','announced'].filter(k=>sp[k]&&!(k==='fp8'&&sp[k].v==null));
   const eff=effSpec(chip);
-  const pill=(k,tag,text,spec,src,note)=>'<div class="pill'+(s.sel===k?' sel':'')+'" tabindex="0" data-k="'+k+'" data-link="spec:'+k+'" data-tip="'+esc(specTip(k))+'">'+tagBtn(tag,{spec:spec,src:src,note:note})+'<span class="txt">'+esc(text)+'</span></div>';
+  const pill=(k,tag,text,spec,src,note,kind)=>'<div class="pill'+(s.sel===k?' sel':'')+'" tabindex="0" data-k="'+k+'" data-link="spec:'+k+'" data-tip="'+esc(specTip(k))+'">'+tagBtn(tag,{spec:spec,src:src,note:note,kind:kind})+'<span class="txt">'+esc(text)+'</span></div>';
   s.pills.innerHTML=keys.map(k=>pill(k,sp[k].tag,pillText(k,chip,sp[k]),specLabel(k,chip),sp[k].src,sp[k].note)).join('')+
-   pill('eff',eff.tag,'eff '+eff.v,'Efficiency factors',eff.src,eff.note);
+   pill('eff',eff.tag,'eff '+eff.v,'Efficiency factors',eff.src,eff.note,'eff');
   const rib=s.root.querySelector('.ribbon'); rib.classList.toggle('on', chip.status==='speculative'); rib.setAttribute('aria-hidden', chip.status==='speculative'?'false':'true');
   refreshTagLink();
 }
@@ -185,7 +185,7 @@ function renderPillDetail(s){
   s.pdetail.className='pdetail on';
   s.pdetail.dataset.link='spec:'+s.sel;
   s.pdetail.dataset.tip=specTip(s.sel);
-  s.pdetail.innerHTML='<b>'+esc(label)+':</b> '+esc(s.sel==='eff'?sp.v:specVal(s.sel,sp))+' '+tagBtn(sp.tag,{spec:label,src:sp.src,note:sp.note})+' <span class="tiny">'+({V:'verified vendor source',A:'approximate / derived / third-party',U:'assumed'}[sp.tag])+'</span><br>'+esc(sp.note||'')+'<br><span class="tiny">Source: '+srcLinks(sp.src)+'</span>';
+  s.pdetail.innerHTML='<b>'+esc(label)+':</b> '+esc(s.sel==='eff'?sp.v:specVal(s.sel,sp))+' '+tagBtn(sp.tag,{spec:label,src:sp.src,note:sp.note,kind:s.sel==='eff'?'eff':''})+' <span class="tiny">'+({V:'published figure',A:'approximate / derived / third-party',U:'assumed'}[sp.tag])+'</span><br>'+esc(sp.note||'')+'<br><span class="tiny">Source: '+srcLinks(sp.src)+'</span>';
   refreshTagLink();
 }
 
@@ -240,8 +240,8 @@ function recompute(noHash){
     const sp=v=>r.decode?v:1/v, cs=sp(r.decode?s.ceil.tokUser:s.ceil.ttft);
     const xl=clamp(sp(g.worst)/cs,0,1),xh=clamp(sp(g.best)/cs,0,1),xm=clamp(sp(r.decode?r.tokUser:r.ttft)/cs,0,1);
     const rb=rootEl.querySelector('.rband'),rm=rootEl.querySelector('.rmid'),rc=rootEl.querySelector('.rceil');
-    rb.style.left=(xl*100)+'%';rb.style.width=Math.max(0.5,(xh-xl)*100)+'%';rm.style.left='calc('+(xm*100)+'% - 1px)';rc.style.left='calc(100% - 1px)';
-    rt.title=rootEl.querySelector('.rtrack').title='Estimate range: every efficiency factor x0.8 to x1.2 (capped at 1), shown as the blue band. White tick: central estimate. Dashed amber: peak-spec ceiling (efficiency 100%).';
+    rb.style.left=(xl*100)+'%';rb.style.width=Math.max(0.5,(xh-xl)*100)+'%';rm.style.left='calc('+(xm*100)+'% - 1px)';rc.style.left='calc(100% - 4px)';
+    rt.title=rootEl.querySelector('.rtrack').title='Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.';
     const setBar=(key,v,col,txt,show)=>{const row=rootEl.querySelector('.brow.'+key); row.classList.toggle('off',!show); const fill=row.querySelector('.fill'); fill.style.width=(100*v/maxT).toFixed(1)+'%'; fill.style.background=col; row.querySelector('.num').textContent=txt;};
     setBar('compute',r.sumTc,'var(--comp)',fmtT(r.sumTc),true);
     setBar('memory',r.sumTm,'var(--mem)',fmtT(r.sumTm),true);
@@ -254,11 +254,12 @@ function recompute(noHash){
     const cap=rootEl.querySelector('.cap-txt');
     cap.classList.toggle('bad', !!r.oom);
     cap.textContent=(r.oom?'DOES NOT FIT: ':'fits: ')+'weights '+r.weightGB.toFixed(1)+' GB + KV '+r.kvGB.toFixed(2)+' GB vs '+r.usableGB.toFixed(0)+' GB usable of '+r.capGB+' GB';
+    cap.setAttribute('aria-label', cap.textContent);
   });
   // verdict
   const warn=[];
-  if(S.tp>1&&sides.some(s=>s.chip.maxTP===1))warn.push({link:'note:nolink',text:'Apple chips have no multi-chip link in this model, so they run as 1 chip.'});
-  if(S.prec==='fp8'&&sides.some(s=>!s.chip.fp8))warn.push({link:'note:fp8',text:'Apple GPUs have no native FP8 math: 8-bit weights, 16-bit compute.'});
+  if(S.tp>1&&sides.some(s=>s.chip.maxTP===1))warn.push({link:'note:nolink',text:'This chip has no NVLink-style link, so tensor parallel stays at 1 and the whole model has to fit in that one chip.'});
+  if(S.prec==='fp8'&&sides.some(s=>!s.chip.fp8))warn.push({link:'note:fp8',text:'Apple GPUs have no native 8-bit math: weights stay 8-bit and the matmul runs in 16-bit.'});
   if(S.prec==='int4')warn.push({text:'INT4 is weight-only (dequantize to FP16 for math).'});
   if(S.L>R.m.maxPos)warn.push({text:'Context exceeds the base model\'s trained length ('+R.m.maxPos.toLocaleString()+'); capacity math still applies.'});
   const mx=sides.map(s=>s.chip.matrix);
@@ -268,7 +269,7 @@ function recompute(noHash){
     warn.push({text:'Apple efficiency factors for M4/M3 chips were fitted to a 2023 llama.cpp build and the M5-generation ones to a 2026 build, so decode gaps between the generations are somewhat inflated.'});
   $('vtxt').innerHTML='<p class="why">'+esc(E.explain(a.res,b.res,a.chip,b.chip,o))+'</p>'+
     '<p class="sub">Model '+esc(R.m.name)+': '+(R.m.total/1e9).toFixed(1)+'B params ('+(R.m.active/1e9).toFixed(1)+'B active/token), KV cache '+(R.m.kvPerTok*PRECS[S.prec].kv/1024).toFixed(0)+' KB/token.</p>'+
-    '<p class="sub" data-link="spec:ai" data-tip="'+esc(specTip('ai'))+'">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte. '+mark('xref:roofline','R','See the roofline chart. The same marker is on the chart heading.')+'</p>'+
+    '<p class="sub" data-link="spec:ai" data-tip="'+esc(specTip('ai'))+'">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte. '+mark('xref:roofline','R',specTip('xref:roofline'))+'</p>'+
     warn.map(w=>'<p class="sub" style="color:#fbbf24"'+(w.link?' data-link="'+w.link+'" data-tip="'+esc(specTip(w.link))+'"':'')+'>'+(w.link?mark(w.link,w.link==='note:fp8'?'F':w.link==='note:na'?'2':'4',specTip(w.link))+' ':'')+'Note: '+esc(w.text)+(w.tag?' '+tagBtn(w.tag,{spec:'Matrix compute',note:w.text}):'')+'</p>').join('');
   refreshTagLink();
   $('bval').textContent=S.B_;$('lval').textContent=S.L.toLocaleString()+' tok';
@@ -277,7 +278,7 @@ function recompute(noHash){
   const sl=WALL/tmax, slowed=sl>=1;
   $('slowdir').textContent=slowed?'slowed':'sped up';
   $('slown').textContent=Math.round(slowed?sl:1/sl).toLocaleString();
-  cyc=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;
+  a.tAnim=b.tAnim=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;
   drawRoof();
   if(!noHash)writeHash();
   if($('drawer').classList.contains('open'))renderSens();
@@ -357,8 +358,9 @@ function drawSide(s,tm){
   // die links (Fusion / UltraFusion)
   for(const k of (L.links||[])){
     if(k.pill){ctx.fillStyle='#0d1424';ctx.strokeStyle='rgba(244,114,182,.7)';rr(ctx,k.x,k.y,k.w,k.h,7);ctx.fill();ctx.stroke();ctx.fillStyle='#fbcfe8';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2+0.5,k.w-6,sc);continue;}
-    ctx.fillStyle='rgba(244,114,182,'+(0.12+0.18*mu)+')';ctx.strokeStyle='rgba(244,114,182,.55)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();
+    ctx.fillStyle='rgba(244,114,182,0.14)';ctx.strokeStyle='rgba(244,114,182,.35)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();
     if(k.label&&k.vert){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#fbcfe8';txt(ctx,k.label,0,0.5,k.h-6,sc);ctx.restore();}}
+  syncFuseHit(s);
   // extra blocks
   for(const b of (L.extraBlk||[])){ctx.fillStyle='#141c2e';ctx.strokeStyle='#2c3a57';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.stroke();ctx.fillStyle='#7f8fae';txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2,b.w-4,sc);
     if(b.flash>0.02){ctx.fillStyle='rgba(52,211,153,'+b.flash*0.4+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();}b.flash=(b.flash||0)*0.92;}
@@ -407,7 +409,7 @@ function drawSide(s,tm){
   badge.classList.toggle('dim', badgeText==='STALL' && (tm*2.2)%2>=1.3);
   s.root.querySelector('.st-row').style.color=mc;
   const linkName=s.root.querySelector('.st-link-name'),linkPct=s.root.querySelector('.st-link-pct');
-  put(linkName, c.ic ? c.icName+' '+c.ic+' GB/s' : 'no multi-chip link modeled');
+  put(linkName, c.ic ? c.icName+' '+c.ic+' GB/s' : 'all-reduce 0 s');
   const showComm=commGlow>0.05;
   put(linkPct, showComm ? Math.round(commGlow*100)+'% of step' : '100% of step');
   linkPct.classList.toggle('on', showComm);
@@ -431,76 +433,104 @@ function drawStrip(s,cur,tm){
   const xh=x0+n*bw+3;ctx.fillStyle='rgba('+cH+','+((s.done||cur.part==='head')?1:0.28)+')';ctx.fillRect(xh,3,20,24);
   ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.fillText('LM',xh+10,15);
 }
-function spreadMarks(items){
-  for(let n=0;n<8;n++){let moved=false;
-    for(let i=0;i<items.length;i++)for(let j=0;j<i;j++){
-      const dx=items[i].x-items[j].x, dy=items[i].y-items[j].y;
-      if(dx*dx+dy*dy<18*18){items[i].x+=12;items[i].y+=6;moved=true;}
-    }
-    if(!moved)break;
-  }
+function phaseRes(s,phase){
+  if(!!s.res.decode===(phase==='decode'))return s.res;
+  return E.estimate(R.m,s.chip,opts({phase,eff:effOf(s.key)||undefined}),ASSUME);
 }
-function syncRoofMarks(items){
-  spreadMarks(items);
-  let layer=$('roofmarks');
-  if(!layer){layer=document.createElement('div');layer.id='roofmarks';$('roofline').appendChild(layer);}
-  const cv=$('roof');
-  layer.style.left=cv.offsetLeft+'px';layer.style.top=cv.offsetTop+'px';
-  layer.style.width=cv.offsetWidth+'px';layer.style.height=cv.offsetHeight+'px';
-  const sig=items.map(it=>it.link+'/'+it.label).join('|');
-  if(layer.dataset.sig!==sig){
-    layer.dataset.sig=sig;
-    layer.innerHTML=items.map(it=>'<button type="button" class="mk roofmk" data-link="'+it.link+'" data-tip="'+esc(it.tip)+'" title="'+esc(it.tip)+'" aria-label="'+esc(it.tip+' '+it.label)+'">'+esc(it.label)+'</button>').join('');
-    refreshTagLink();
-  }
-  const bl=1,bt=1;
-  [...layer.children].forEach((b,i)=>{const it=items[i];if(!it)return;b.style.left=(bl+it.x-7.5)+'px';b.style.top=(bt+it.y-7.5)+'px';b.style.background=it.color;});
-  if(tagShown())paintTagLink();
-}
+function chipShort(c){return String(c.short||c.name||'').replace(/\s+\d+C$/,'');}
+// Attainable TFLOPS on the published roof: min(peak TFLOPS, (GB/s ÷ 1000) × FLOP/byte).
+function roofTF(peakTF,bwGBs,ai){return Math.min(peakTF,(bwGBs/1000)*ai);}
 function drawRoof(){
   const cv=$('roof'),ctx=cv.getContext('2d'),d=cv.width/(cv.clientWidth||1),W=cv.clientWidth,H=cv.clientHeight;
-  const marks=[];
   ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
-  const ml=38,mr=8,mt=8,mb=24,x0=Math.log10(0.5),x1=Math.log10(30000),y0=Math.log10(0.5),y1=Math.log10(4000);
-  const X=v=>ml+(Math.log10(v)-x0)/(x1-x0)*(W-ml-mr),Y=v=>H-mb-(Math.log10(v)-y0)/(y1-y0)*(H-mt-mb);
+  const ml=38,mr=8,mt=16,mb=22,xMin=0.5,xMax=30000,yMin=0.05,yMax=4000,x0=Math.log10(xMin),x1=Math.log10(xMax),y0=Math.log10(yMin),y1=Math.log10(yMax);
+  const X=v=>ml+(Math.log10(Math.max(v,1e-6))-x0)/(x1-x0)*(W-ml-mr),Y=v=>H-mb-(Math.log10(Math.max(v,1e-6))-y0)/(y1-y0)*(H-mt-mb);
   ctx.font='9.5px system-ui,sans-serif';ctx.textBaseline='middle';ctx.strokeStyle='#1b2539';ctx.lineWidth=1;
-  for(let e=0;e<=4;e++){const v=Math.pow(10,e);ctx.beginPath();ctx.moveTo(X(Math.max(v,0.5)),mt);ctx.lineTo(X(Math.max(v,0.5)),H-mb);ctx.stroke();ctx.fillStyle='#6b7a96';ctx.textAlign='center';ctx.fillText(v>=1000?(v/1000)+'k':v,X(v),H-mb+9);}
-  for(let e=0;e<=3;e++){const v=Math.pow(10,e);ctx.beginPath();ctx.moveTo(ml,Y(v));ctx.lineTo(W-mr,Y(v));ctx.stroke();ctx.fillStyle='#6b7a96';ctx.textAlign='right';ctx.fillText(v>=1000?(v/1000)+'k':v,ml-4,Y(v));}
-  ctx.fillStyle='#6b7a96';ctx.textAlign='center';ctx.fillText('arithmetic intensity (FLOP/byte)',(W+ml)/2,H-4);
+  for(let e=0;e<=4;e++){const v=Math.pow(10,e);ctx.beginPath();ctx.moveTo(X(Math.max(v,xMin)),mt);ctx.lineTo(X(Math.max(v,xMin)),H-mb);ctx.stroke();ctx.fillStyle='#6b7a96';ctx.textAlign='center';ctx.fillText(v>=1000?(v/1000)+'k':v,X(v),H-mb+9);}
+  for(let e=-1;e<=3;e++){const v=Math.pow(10,e);ctx.beginPath();ctx.moveTo(ml,Y(v));ctx.lineTo(W-mr,Y(v));ctx.stroke();ctx.fillStyle='#6b7a96';ctx.textAlign='right';ctx.fillText(v>=1000?(v/1000)+'k':v<1?v.toFixed(1):String(v),ml-4,Y(v));}
+  ctx.fillStyle='#6b7a96';ctx.textAlign='center';ctx.fillText('FLOP/byte',(W+ml)/2,H-3);
   ctx.save();ctx.translate(9,(H-mb+mt)/2);ctx.rotate(-Math.PI/2);ctx.fillText('TFLOPS',0,0);ctx.restore();
+  const dots=[];
+  if(!sides.length||!sides[0].res)return;
   sides.forEach(s=>{
-    const c=s.chip,pk=s.res.peakTF,bw=c.bw/1000;
+    const c=s.chip,pk=s.res.peakTF,bw=c.bw;
     ctx.strokeStyle=s.color;ctx.lineWidth=1.8;ctx.beginPath();let first=true;
-    for(let i=0;i<=80;i++){const ai=Math.pow(10,lerp(x0,x1,i/80)),y=Math.min(pk,bw*ai);if(y<0.5)continue;const px=X(ai),py=Y(y);if(first){ctx.moveTo(px,py);first=false;}else ctx.lineTo(px,py);}ctx.stroke();
-    const rx=X(s.res.ridge);ctx.setLineDash([3,3]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(rx,Y(pk));ctx.lineTo(rx,H-mb);ctx.stroke();ctx.setLineDash([]);
-    const ox=X(clamp(s.res.AI,0.5,30000)),oy=Y(clamp(s.res.achTF,0.5,4000));
-    const peakLink=(S.prec==='fp8'&&c.fp8)?'spec:fp8':'spec:fp16';
-    const bai=Math.max(0.8,s.res.ridge/6), bx=X(bai), by=Y(Math.max(0.5,Math.min(pk,bw*bai)));
-    marks.push({link:'spec:ai',tip:specTip('ai'),label:s.key,x:ox,y:oy,color:s.res.oom?'#7f1d1d':s.color});
-    marks.push({link:peakLink,tip:specTip(peakLink.slice(5)),label:s.key,x:rx,y:Y(Math.max(0.5,pk)),color:s.color});
-    marks.push({link:'spec:bw',tip:specTip('bw'),label:s.key,x:bx,y:by,color:s.color});
+    for(let i=0;i<=80;i++){const ai=Math.pow(10,lerp(x0,x1,i/80)),y=roofTF(pk,bw,ai);if(y<yMin)continue;const px=X(ai),py=Y(y);if(first){ctx.moveTo(px,py);first=false;}else ctx.lineTo(px,py);}ctx.stroke();
+    const rx=X(s.res.ridge);ctx.setLineDash([3,3]);ctx.lineWidth=1;ctx.strokeStyle=s.color;ctx.beginPath();ctx.moveTo(rx,Y(Math.max(yMin,pk)));ctx.lineTo(rx,H-mb);ctx.stroke();ctx.setLineDash([]);
+    const put=(name,ai,tf)=>{
+      const x=X(clamp(ai,xMin,xMax)), y=Y(clamp(tf,yMin,yMax));
+      dots.push({name,x,y,ai,tf,color:s.color,key:s.key});
+    };
+    for(const phase of ['decode','prefill']){const r=phaseRes(s,phase);put(phase,r.AI,roofTF(pk,bw,r.AI));}
+    put('ridge',s.res.ridge,pk);
   });
-  ctx.fillStyle='#8493ab';ctx.textAlign='left';ctx.fillText(W<340?'solid: roof | dashed: ridge | chip: workload':'solid: chip roof (peak spec) | dashed: ridge | chip: workload, peak, bandwidth',ml+4,mt+4);
-  syncRoofMarks(marks);
+  const ridges=sides.map(s=>X(clamp(s.res.ridge,0.5,30000)));
+  const leftR=Math.min(...ridges), rightR=Math.max(...ridges);
+  ctx.font='10px system-ui,sans-serif';ctx.fillStyle='#6b7a96';ctx.textAlign='center';
+  const memX=ml+(leftR-ml)*0.45, compX=rightR+(W-mr-rightR)*0.55;
+  if(leftR-ml>52)ctx.fillText('memory-bound',memX,mt+8);
+  if(W-mr-rightR>64)ctx.fillText('compute-bound',compX,mt+8);
+  const placed=[];
+  ctx.font='10px system-ui,sans-serif';
+  for(const dot of dots){
+    const tw=ctx.measureText(dot.name).width;
+    const cands=[{dx:8,dy:-11,align:'left'},{dx:8,dy:11,align:'left'},{dx:-8,dy:-11,align:'right'},{dx:-8,dy:11,align:'right'},{dx:8,dy:0,align:'left'},{dx:-8,dy:0,align:'right'}];
+    let pick=cands[0];
+    for(const c of cands){
+      const lx=dot.x+c.dx, ly=dot.y+c.dy;
+      const L=c.align==='left'?lx:lx-tw, R=L+tw, T=ly-6, B=ly+6;
+      const inside=L>=ml-2&&R<=W-2&&T>=mt&&B<=H-mb+2;
+      const hit=placed.some(p=>!(R<p.l-2||L>p.r+2||B<p.t-2||T>p.b+2));
+      const onDot=dots.some(o=>o!==dot&&Math.hypot((L+R)/2-o.x,(T+B)/2-o.y)<11);
+      if(inside&&!hit&&!onDot){pick=c;break;}
+    }
+    const lx=dot.x+pick.dx, ly=dot.y+pick.dy;
+    const L=pick.align==='left'?lx:lx-tw;
+    placed.push({l:L,r:L+tw,t:ly-6,b:ly+6});
+    dot.lx=lx;dot.ly=ly;dot.align=pick.align;
+  }
+  for(const dot of dots){
+    ctx.strokeStyle=dot.color;ctx.globalAlpha=0.75;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(dot.x,dot.y);ctx.lineTo(dot.lx,dot.ly);ctx.stroke();ctx.globalAlpha=1;
+  }
+  for(const dot of dots){
+    ctx.beginPath();ctx.arc(dot.x,dot.y,3.1,0,6.2832);
+    ctx.fillStyle=dot.color;ctx.fill();
+    ctx.lineWidth=1;ctx.strokeStyle='#0a0f1a';ctx.stroke();
+    ctx.fillStyle=dot.color;ctx.textAlign=dot.align;ctx.textBaseline='middle';ctx.fillText(dot.name,dot.lx,dot.ly);
+  }
+  const key=$('roofkey');
+  if(key){
+    const chipBits=sides.map(s=>'<span class="rk" style="color:'+s.color+'"><i class="dt"></i>'+s.key+' = '+esc(chipShort(s.chip))+'</span>').join('');
+    const html=chipBits+'<span class="rk"><i class="ln"></i>line = max achievable</span><span class="rk"><i class="ds"></i>dashed = ridge point (where compute becomes the limit)</span><span class="rk"><i class="dt"></i>dots = this workload</span>';
+    if(key.dataset.html!==html){key.dataset.html=html;key.innerHTML=html;}
+  }
+  window.__roofPts=dots.map(d=>({key:d.key,name:d.name,x:d.x,y:d.y,ai:d.ai,tf:d.tf}));
 }
 
 // ---------------------------------------------------------------- animation loop
+function effGBs(s){
+  const e=Object.assign({},s.chip.eff,effOf(s.key)||{});
+  const bwEff=Math.min(1,e.bw*(S.prec==='int4'?ASSUME.int4BwFactor:1));
+  return s.chip.bw*bwEff;
+}
+const DOT_SPEED_CAP=4, DOT_BASE_V=180, DOT_BASE_RATE=32;
 function spawn(s,n){
+  const speedK=Math.min(s.flowK||1,DOT_SPEED_CAP);
   for(let i=0;i<n&&s.parts.length<700;i++){
     const rt=s.layout.route();const pts=rt.pts,lens=[];let tot=0;
     for(let k=0;k<pts.length-1;k++){const l=Math.hypot(pts[k+1].x-pts[k].x,pts[k+1].y-pts[k].y);lens.push(l);tot+=l;}
-    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:rt.ci,blk:rt.blk,v:170+Math.random()*30});
+    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:rt.ci,blk:rt.blk,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
   }
 }
-let last=performance.now(),clock=0,cyc=0,playing=true;
+let last=performance.now(),clock=0,playing=true;
 function step(dt){
   clock+=dt;
   const tmax=Math.max(sides[0].res.total,sides[1].res.total),decode=S.phase==='decode';
+  const flows=sides.map(effGBs), ref=Math.min(...flows.filter(v=>v>0))||1;
   if(playing){
-    cyc+=dt*S.spd/WALL;
-    if(cyc>=(decode?1:1.15))cyc=0;
     for(const s of sides){
-      const x=cyc*tmax/s.res.total;
+      s.tAnim=(s.tAnim||0)+dt*S.spd;
+      const x=s.tAnim/Math.max(1e-9,E.animSeconds(s.res.total,tmax,WALL));
       if(decode){s.steps=Math.floor(x);s.prog=x-Math.floor(x);s.done=false;}
       else{s.prog=Math.min(1,x);s.done=x>=1;s.steps=s.done?1:0;}
     }
@@ -508,9 +538,9 @@ function step(dt){
   for(const s of sides){
     if(!playing)continue;
     const cur=curSeg(s),sg=cur.seg,core=Math.max(sg.tc,sg.tm)||1e-12,mu=s.done?0:clamp(sg.tm/core,0,1);
-    const bwUsed=s.chip.bw*s.chip.eff.bw*mu*(s.res.N);
-    const frac=s.done?0:clamp(0.06+0.94*Math.pow(bwUsed/5400,0.75),0,1)*(s.res.oom?0.6:1);
-    s.acc+=dt*S.spd*210*frac;const k=Math.floor(s.acc);s.acc-=k;if(k>0)spawn(s,k);
+    s.effGBs=effGBs(s);s.flowK=E.flowScale(s.effGBs,ref);
+    const busy=s.done?0:(0.2+0.8*mu)*(s.res.oom?0.45:1);
+    s.acc+=dt*S.spd*DOT_BASE_RATE*s.flowK*busy;const k=Math.floor(s.acc);s.acc-=k;if(k>0)spawn(s,k);
     for(const p of s.parts){p.d+=p.v*dt*S.spd;if(p.d>=p.total&&!p.hit){p.hit=true;if(p.ci>=0)s.flash[p.ci]=1;else if(p.blk)p.blk.flash=1;}}
     s.parts=s.parts.filter(p=>p.d<p.total);
   }
@@ -611,7 +641,7 @@ function renderSens(){
   box.innerHTML=h;
 }
 function specsHTML(){
-  let h='<div class="legend"><span class="leg" data-link="tag:V" data-tip="'+esc(specTip('tag:V'))+'">'+tagBtn('V')+' verified: vendor-published</span><span class="leg" data-link="tag:A" data-tip="'+esc(specTip('tag:A'))+'">'+tagBtn('A')+' approximate / derived / third-party</span><span class="leg" data-link="tag:U" data-tip="'+esc(specTip('tag:U'))+'">'+tagBtn('U')+' assumed</span></div>';
+  let h='<div class="legend"><span class="leg" data-link="tag:V" data-tip="'+esc(specTip('tag:V'))+'">'+tagBtn('V')+' verified: published figure</span><span class="leg" data-link="tag:A" data-tip="'+esc(specTip('tag:A'))+'">'+tagBtn('A')+' approximate / derived / third-party</span><span class="leg" data-link="tag:U" data-tip="'+esc(specTip('tag:U'))+'">'+tagBtn('U')+' assumed</span></div>';
   h+='<div class="dnote">Data source: '+esc(DATASRC)+'. Apple never publishes GPU TFLOPS, so those rows are never tagged V. No chip in this data set is a speculative projection: M6 and M5 Ultra were announced by Apple on 2026-08-25 (the app supports a "speculative" status and ribbon for future unannounced chips).</div>';
   for(const s of sides){
     const c=s.chip;
@@ -626,48 +656,204 @@ function specsHTML(){
 }
 
 // ---------------------------------------------------------------- one highlight handler for every data-link group
-let tagLock=null, tagAnchor=null, tagHover=false, hideT=0, touchAt=0;
+let tagLock=null, tagAnchor=null, tagHover=false, hideT=0, touchAt=-1e9;
 function specTip(k){
   return ({
-    fp16:'FP16 compute on both chips, and the peak of each roofline.',
-    fp8:'FP8 compute on both chips, and the peak of each roofline when FP8 is the rate in use.',
-    bw:'Memory bandwidth on both chips, and the slope of each roofline.',
-    cap:'Memory capacity on both chips.',
-    units:'Compute-unit counts on both chips.',
-    node:'Process node on both chips.',
-    l2:'On-chip cache on both chips.',
-    neural:'Neural Engine on both chips.',
-    ic:'Interconnect on both chips.',
-    usable:'Usable memory fraction on both chips.',
-    announced:'Announcement on both chips.',
-    maxTP:'Maximum chip count in this tool, on both chips.',
-    eff:'Efficiency factors on both chips.',
-    ai:'Arithmetic intensity of this workload, the chips on the roofline.',
-    'tag:V':'Verified: published by the vendor (source named). Every V badge and its legend entry.',
-    'tag:A':'Approximate: derived arithmetic or third-party measurement. Every A badge and its legend entry.',
-    'tag:U':'Assumed: modelling choice, not a sourced number. Every U badge and its legend entry.',
-    'note:nolink':'Multi-chip link on both chips, and the how-to note. The status row says when none is modeled.',
-    'note:range':'Estimate range on both chips, and the how-to line.',
-    'note:na':'Neural Accelerator: the how-to line and the note under What differs.',
-    'note:fp8':'FP8 without native 8-bit math: the precision control, the how-to line, and the note under What differs.',
-    'note:arch':'How each chip is drawn, and the particle line in How to read this.',
-    'xref:roofline':'See the roofline chart.',
-    'xref:verdict':'See what differs and why.'
+    fp16:'FP16 dense matrix throughput, in TFLOPS. It is the flat top of the roofline and the compute rate of a step.',
+    fp8:'FP8 / 8-bit matrix throughput, in TFLOPS. It replaces the FP16 peak when this precision is selected. Empty means the chip has no native 8-bit math.',
+    bw:'Memory bandwidth in GB/s. It is the slant of the roofline. When a step is memory-bound, tokens per second scale with it.',
+    cap:'Memory capacity in GB. Weights plus the KV cache have to fit in the usable share of this.',
+    units:'How many compute units the diagram draws: GPU cores, SMs, CUs, or MXUs.',
+    node:'Manufacturing process. The speed math does not use it.',
+    l2:'On-chip cache. On Apple chips this is the System Level Cache drawn above the GPU.',
+    neural:'Neural Engine core count. This GPU decode path does not run the model on it.',
+    ic:'Chip-to-chip link bandwidth. Zero means there is no NVLink-style link and the chip runs alone.',
+    usable:'Share of capacity the model may use for weights and the KV cache. The rest is left for the OS and the GPU.',
+    announced:'Announcement date. The speed math does not use it.',
+    maxTP:'Most chips this comparison will place side by side. A single-package chip stays at 1.',
+    eff:'Three factors, in order: prefill MFU, decode MFU, bandwidth efficiency. The badge says what each number scales.',
+    ai:'Arithmetic intensity is FLOPs divided by bytes moved. Left of the ridge the step is memory-bound; right of it, compute-bound.',
+    'tag:V':'Verified: a published figure. Each chip badge names that publication.',
+    'tag:A':'Approximate: derived or measured. Each chip badge names the derivation and the source.',
+    'tag:U':'Assumed: a modelling choice. Each chip badge says what is assumed, and says when no source is recorded.',
+    'note:nolink':'One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.',
+    'note:range':'Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.',
+    'note:na':'Bright cells are doing math. Dim amber cells, with STALL, are waiting on memory. On M5-generation Apple GPUs the bright inner square is the Neural Accelerator, the matrix unit in each GPU core.',
+    'note:fp8':'On Apple GPUs, FP8 stores weights in 8 bits and runs the matmul in 16-bit, because those GPUs have no native 8-bit math.',
+    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth.',
+    'xref:roofline':'Horizontal axis: FLOPs per byte moved. Vertical axis: achievable TFLOPS. The slope is the bandwidth limit, the flat top is the compute limit, and the ridge is where they meet.',
+    'xref:verdict':'Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.'
   })[k]||k;
 }
 function mark(link,label,tip){
   const t=tip||label;
-  return '<button type="button" class="mk" data-link="'+link+'" data-tip="'+esc(t)+'" title="'+esc(t)+'" aria-label="'+esc(t)+'">'+label+'</button>';
+  return '<button type="button" class="mk" data-link="'+link+'" data-tip="'+esc(t)+'" aria-label="'+esc(t)+'">'+label+'</button>';
 }
 function tagBtn(tag,meta){
   meta=meta||{};
   if(!tag)return '';
   const src=Array.isArray(meta.src)?meta.src.filter(Boolean).join(','):(meta.src||'');
-  const spec=meta.spec||'', note=meta.note||'';
-  const al=(spec?spec+' — ':'')+(TAGS[tag]||('tag '+tag));
+  const spec=meta.spec||'', note=meta.note||'', kind=meta.kind||'';
+  const al=kind==='eff'
+    ? 'Efficiency factors. Prefill MFU, decode MFU, and bandwidth efficiency: what each number scales, and whether a source is recorded.'
+    : (spec?spec+'. ':'')+(note?note+' ':'')+(src?'Source '+src+'.':'No recorded source.');
   const st=meta.style?' style="'+meta.style+'"':'';
-  const tip=specTip('tag:'+tag);
-  return '<button type="button" class="tg '+tag+'" data-link="tag:'+tag+'" data-tag="'+tag+'" data-spec="'+esc(spec)+'" data-src="'+esc(src)+'" data-note="'+esc(note)+'" data-tip="'+esc(tip)+'" title="'+esc(al)+'" aria-label="'+esc(al)+'"'+st+'>'+tag+'</button>';
+  return '<button type="button" class="tg '+tag+'" data-link="tag:'+tag+'" data-tag="'+tag+'" data-kind="'+esc(kind)+'" data-spec="'+esc(spec)+'" data-src="'+esc(src)+'" data-note="'+esc(note)+'" aria-label="'+esc(al)+'"'+st+'>'+tag+'</button>';
+}
+function firstSentence(s){
+  const t=String(s||'').trim();
+  if(!t)return '';
+  const m=t.match(/^[\s\S]*?[.!?](?:\s|$)/);
+  return (m?m[0]:t).trim();
+}
+function sourceBits(keys){
+  const list=(keys||[]).map(k=>SOURCES[k]).filter(Boolean);
+  const html=list.map(s=>/^https?:/.test(s.url||'')?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.title)+'</a>':esc(s.title)+(s.url?' ('+esc(s.url)+')':'')).join('; ');
+  return {list,html};
+}
+function syncFuseHit(s){
+  const links=(s.layout&&s.layout.links)||[];
+  const k=links.find(x=>x.pill)||links.find(x=>x.vert)||null;
+  let el=s.fuseHit;
+  if(!k||!s.chip){if(el)el.style.display='none';return;}
+  if(!el){el=document.createElement('button');el.type='button';el.className='fusehit';el.dataset.link='note:fuse';el.dataset.kind='fuse';s.root.appendChild(el);s.fuseHit=el;}
+  const bl=1,bt=1,bw=s.cv.width/s.dpr||1,bh=s.cv.height/s.dpr||1;
+  const scaleX=s.cv.clientWidth/bw, scaleY=s.cv.clientHeight/bh;
+  const left=s.cv.offsetLeft+bl+(s.offx+k.x*s.sc)*scaleX;
+  const top=s.cv.offsetTop+bt+(s.offy+k.y*s.sc)*scaleY;
+  const w=Math.max(18,(k.w*s.sc)*scaleX), h=Math.max(18,(k.h*s.sc)*scaleY);
+  el.style.left=(left-(w-(k.w*s.sc)*scaleX)/2).toFixed(1)+'px';
+  el.style.top=top.toFixed(1)+'px';
+  el.style.width=w.toFixed(1)+'px';
+  el.style.height=h.toFixed(1)+'px';
+  el.style.display='block';
+  const al='Die-to-die link, idle. The speed math does not send bytes across it, so tok/s is unchanged.';
+  if(el.getAttribute('aria-label')!==al)el.setAttribute('aria-label',al);
+}
+function fusePopHtml(chip){
+  const node=(chip.raw.specs&&chip.raw.specs.node)||{};
+  const ic=(chip.raw.specs&&chip.raw.specs.ic)||{};
+  const nodeBits=sourceBits(node.src||[]);
+  const icBits=sourceBits(ic.src||[]);
+  const dies=chip.dies||1;
+  let h='<p><b>Idle on purpose.</b> This bar is the die-to-die link. The speed math does not send bytes across it, so there is no traffic to animate.</p>';
+  h+='<p>All-reduce time is added only when more than one chip is used and a link bandwidth is set. Interconnect in this model is '+esc(ic.v==null?'not recorded':String(ic.v))+', so the link adds 0 s and tok/s does not change. No bytes-per-token figure is recorded for this bar.</p>';
+  h+='<p><b>'+dies+' die'+(dies===1?'':'s')+'.</b> '+(node.tag==='V'?'Verified: ':(node.tag==='A'?'Approximate: ':'Assumed: '))+esc(node.v||'die count not recorded')+(node.note?'. '+node.note:'')+(nodeBits.list.length?'':' No recorded source.')+'</p>';
+  if(nodeBits.html)h+='<p>'+nodeBits.html+'</p>';
+  h+='<p><b>Link bandwidth used by the model:</b> '+esc(ic.v==null?'not recorded':String(ic.v))+'. '+(ic.tag==='V'?'Verified: ':(ic.tag==='A'?'Approximate: ':'Assumed: '))+(ic.note||'not modelled.')+(icBits.list.length?'':' No recorded source.')+'</p>';
+  if(icBits.html)h+='<p>'+icBits.html+'</p>';
+  if(/TB\/s|GB\/s/.test(String(node.v)+' '+String(node.note)))h+='<p>A rate appears in the die description above. This model does not apply it. Interconnect stays at the value in the spec, so that rate does not change tok/s.</p>';
+  return h;
+}
+function chipFromEl(el){
+  const panel=el&&el.closest&&el.closest('.panel');
+  if(!panel)return null;
+  const s=sides.find(x=>x.root===panel);
+  return s&&s.chip;
+}
+function effPopHtml(chip){
+  const e=chip.raw.eff;
+  const rows=[
+    ['prefill MFU', e.mfuP, 'Scales peak FLOPS during prefill: rate = peak × '+e.mfuP.v+'. Compute-bound tokens per second scale with it. A memory-bound step ignores it.'],
+    ['decode MFU', e.mfuD, 'Scales peak FLOPS during decode: rate = peak × '+e.mfuD.v+'. A memory-bound decode keeps tokens per second on the bandwidth line, so this factor does not change them unless compute time exceeds memory time.'],
+    ['bandwidth efficiency', e.bw, 'Scales published GB/s: bytes/s = bandwidth × '+e.bw.v+'. Memory-bound tokens per second (the usual decode) scale with it: tok/s ≈ (bandwidth × '+e.bw.v+') / bytes per token. INT4 also multiplies bandwidth by the INT4 factor.']
+  ];
+  let h='<p><b>'+e.mfuP.v+' / '+e.mfuD.v+' / '+e.bw.v+'</b> prefill MFU, decode MFU, bandwidth efficiency.</p>';
+  h+='<p class="eq">step = max(FLOPs / (peak × MFU), bytes / (bandwidth × bw eff))<br>decode tok/s = 1 / step</p>';
+  for(const [lab,sp,scales] of rows){
+    const bits=sourceBits(sp.src||[]);
+    const lead=sp.tag==='U'?'Assumed':'Approximate';
+    const why=firstSentence(sp.note)||'no further detail is recorded.';
+    const nosrc=bits.list.length?'':' No recorded source.';
+    h+='<p><b>'+sp.v+' '+esc(lab)+'.</b> '+esc(scales)+'</p>';
+    h+='<p>'+esc(lead+': '+why+nosrc)+'</p>';
+    if(bits.html)h+='<p>'+bits.html+'</p>';
+  }
+  const assumed=rows.filter(r=>r[1].tag==='U').map(r=>r[0]);
+  if(assumed.length)h+='<p>The badge is U because '+esc(assumed.join(' and '))+(assumed.length>1?' are':' is')+' an assumption. A factor with a named measurement is marked on its own line.</p>';
+  return h;
+}
+function badgePopHtml(el){
+  if(el.dataset.kind==='eff'){
+    const chip=chipFromEl(el);
+    if(chip&&chip.raw&&chip.raw.eff)return effPopHtml(chip);
+  }
+  const tag=el.dataset.tag||'';
+  const spec=el.dataset.spec||'';
+  const note=el.dataset.note||'';
+  const keys=(el.dataset.src||'').split(',').filter(Boolean);
+  const bits=sourceBits(keys);
+  if(!spec&&!note)return '<p>'+esc(specTip('tag:'+tag))+'</p>';
+  let body;
+  if(tag==='V')body='Verified: '+(bits.list.length?bits.list.map(s=>s.title).join('; ')+'.':'no recorded source for this figure.')+(note?' '+note:'');
+  else if(tag==='A')body='Approximate: '+(note||'derived or measured figure.')+(bits.list.length?'':' No recorded source.');
+  else body='Assumed: '+(note||'a modelling choice.')+(bits.list.length?'':' No recorded source.');
+  return '<p><b>'+esc(spec|| (tag==='V'?'Verified':tag==='A'?'Approximate':'Assumed'))+'</b></p><p>'+esc(body)+'</p>'+(bits.html?'<p>'+bits.html+'</p>':'');
+}
+function specCite(label,sp){
+  if(!sp)return '';
+  const bits=sourceBits(sp.src||[]);
+  const lead=sp.tag==='V'?'Verified':sp.tag==='A'?'Approximate':'Assumed';
+  return '<p><b>'+esc(label)+' '+esc(sp.v==null?'not recorded':String(sp.v))+'.</b> '+esc(lead)+': '+esc(firstSentence(sp.note)||'no further detail is recorded.')+(bits.list.length?'':' No recorded source.')+(bits.html?' '+bits.html:'')+'</p>';
+}
+function fitPopHtml(sideKey){
+  const s=sides.find(x=>x.key===sideKey);
+  if(!s||!s.res)return '<p>Weights and the KV cache have to fit in usable memory.</p>';
+  const r=s.res,m=r.m,c=s.chip,P=PRECS[S.prec],sp=(c.raw.specs&&c.raw.specs.usable)||{};
+  const wB=P.w,kvB=P.kv,pct=Math.round(c.usable*100);
+  let h='<p><b>Weights</b> = parameters × bytes per parameter, for the precision selected now ('+esc(P.label)+').</p>';
+  h+='<p class="eq">'+Math.round(m.total).toLocaleString('en-US')+' params × '+wB+' byte'+(wB===1?'':'s')+' = '+r.weightGB.toFixed(1)+' GB</p>';
+  h+='<p><b>KV cache</b> = 2 × layers × kv heads × head dim × bytes × batch × context.</p>';
+  h+='<p class="eq">2 × '+m.layers+' × '+m.kvHeads+' × '+m.headDim+' × '+kvB+' × '+S.B_+' × '+S.L.toLocaleString('en-US')+' = '+r.kvGB.toFixed(2)+' GB</p>';
+  h+='<p>That is '+m.kvPerTok.toLocaleString('en-US')+' KV elements per token. KV bytes are '+kvB+' per element'+(S.prec==='int4'?' (INT4 keeps the cache at 16-bit)':'')+'.</p>';
+  h+=specCite('Usable fraction',Object.assign({},sp,{v:sp.v}));
+  h+='<p>'+pct+'% of '+r.capGB+' GB is '+r.usableGB.toFixed(0)+' GB usable.</p>';
+  h+='<p>'+(r.oom?'Weights plus the KV cache are larger than that usable share, so this chip would not run. The tok/s figures are hypothetical.':'Weights plus the KV cache fit in that usable share, so this chip can hold the model and the cache.')+'</p>';
+  return h;
+}
+function roofPopHtml(){
+  let h='<p><b>How to read this chart.</b> The horizontal axis is arithmetic intensity: FLOPs per byte moved. The vertical axis is achievable TFLOPS. Both scales are logarithmic.</p>';
+  h+='<p>The sloping line is the memory-bandwidth limit: TFLOPS = published GB/s ÷ 1000 × FLOP/byte. The flat top is the compute limit, the peak TFLOPS for this precision. The ridge is the crossover. Left of the ridge a step is memory-bound. Right of it, compute-bound.</p>';
+  h+='<p>A dot is this workload, drawn on that line at its intensity. Decode reads the weights again for every token and does little math per byte, so it sits on the slope. Prefill reuses each weight across the prompt, so its intensity is higher.</p>';
+  for(const s of sides){
+    const dec=phaseRes(s,'decode'),pre=phaseRes(s,'prefill'),ridge=s.res.ridge,pk=s.res.peakTF;
+    const sit=ai=>ai<ridge?'on the memory slope, left of the ridge':'on the compute flat, right of the ridge';
+    const aiFmt=x=>x>=100?x.toFixed(0):x>=10?x.toFixed(1):x.toFixed(2);
+    h+='<p><b>'+s.key+' '+esc(chipShort(s.chip))+'.</b> Decode '+aiFmt(dec.AI)+' FLOP/byte, '+sit(dec.AI)+'. Prefill '+aiFmt(pre.AI)+' FLOP/byte, '+sit(pre.AI)+'. Ridge '+aiFmt(ridge)+' FLOP/byte at '+aiFmt(pk)+' TFLOPS.</p>';
+    h+=specCite('Memory bandwidth',s.chip.raw.specs.bw);
+    const pkKey=(S.prec==='fp8'&&s.chip.fp8)?'fp8':'fp16';
+    h+=specCite(pkKey==='fp8'?'FP8 peak compute':'FP16 peak compute',s.chip.raw.specs[pkKey]);
+    if(S.prec==='fp8'&&!s.chip.fp8)h+='<p>No FP8 rate is recorded for this chip, so the flat top is the FP16 peak. On Apple GPUs the matmul stays 16-bit.</p>';
+  }
+  return h;
+}
+function hideSrcPop(){
+  const pop=$('srcpop');
+  if(!pop)return;
+  pop.hidden=true;
+  pop.innerHTML='';
+}
+function showSrcPop(el){
+  const pop=$('srcpop');
+  if(!pop||!el)return;
+  let html='';
+  if(el.dataset&&el.dataset.kind==='fuse'){const chip=chipFromEl(el);html=chip?fusePopHtml(chip):'<p>Idle on purpose. Die-to-die traffic is not in the speed math.</p>';}
+  else if(el.dataset&&el.dataset.kind==='fit')html=fitPopHtml(el.dataset.side||'A');
+  else if(el.dataset&&el.dataset.kind==='roof')html=roofPopHtml();
+  else if(el.matches&&el.matches('button.tg'))html=badgePopHtml(el);
+  else html='<p>'+esc(el.dataset.tip||el.getAttribute('aria-label')||'')+'</p>';
+  if(!html||html==='<p></p>'){hideSrcPop();return;}
+  pop.innerHTML=html;
+  pop.hidden=false;
+  pop.style.visibility='hidden';
+  const r=el.getBoundingClientRect();
+  const pw=pop.offsetWidth, ph=pop.offsetHeight;
+  let left=Math.min(Math.max(8,r.left), window.innerWidth-pw-8);
+  let top=r.bottom+6;
+  if(top+ph>window.innerHeight-8)top=Math.max(8,r.top-ph-6);
+  pop.style.left=left+'px';
+  pop.style.top=top+'px';
+  pop.style.visibility='visible';
 }
 function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected&&tagAnchor.dataset.link;}
 function linkHidden(el){
@@ -685,19 +871,13 @@ function paintTagLink(){
   });
 }
 function refreshTagLink(){if(tagAnchor&&!tagAnchor.isConnected)clearTagLink();else if(tagShown())paintTagLink();}
-function armMarkers(root){
-  (root||document).querySelectorAll('button.mk,button.tg').forEach(el=>{
-    if(el.title)return;
-    const tip=el.dataset.tip||el.getAttribute('aria-label')||'';
-    if(tip)el.title=tip;
-  });
-}
+function armMarkers(){}
 function showTag(el,lock){
   if(!el||!el.dataset||!el.dataset.link)return;
   clearTimeout(hideT); tagAnchor=el;
   if(lock) tagLock=el.dataset.link; else tagHover=true;
-  if(el.matches('button.mk,button.tg'))armMarkers(el.parentElement||document);
   paintTagLink();
+  showSrcPop(el);
 }
 function scheduleHide(){
   clearTimeout(hideT);
@@ -705,10 +885,10 @@ function scheduleHide(){
     if(tagLock)return;
     const a=document.activeElement;
     if(a&&a.closest&&a.closest('[data-link]'))return;
-    tagHover=false; if(!tagLock) tagAnchor=null; paintTagLink();
+    tagHover=false; if(!tagLock){tagAnchor=null;hideSrcPop();} paintTagLink();
   },180);
 }
-function clearTagLink(){clearTimeout(hideT);tagLock=null;tagHover=false;tagAnchor=null;paintTagLink();}
+function clearTagLink(){clearTimeout(hideT);tagLock=null;tagHover=false;tagAnchor=null;paintTagLink();hideSrcPop();}
 function linkTarget(node){return node&&node.closest&&node.closest('[data-link]');}
 function bindLinks(){
   document.addEventListener('pointerover',ev=>{
@@ -719,10 +899,14 @@ function bindLinks(){
     if(ev.pointerType&&ev.pointerType!=='mouse')return;
     if(!linkTarget(ev.target))return;
     const to=ev.relatedTarget;
-    if(to&&to.closest&&to.closest('[data-link]'))return;
+    if(to&&to.closest&&(to.closest('[data-link]')||to.closest('#srcpop')))return;
     scheduleHide();
   });
+  document.addEventListener('pointerover',ev=>{
+    if(ev.target.closest&&ev.target.closest('#srcpop'))clearTimeout(hideT);
+  });
   document.addEventListener('pointerdown',ev=>{
+    if(ev.target.closest&&ev.target.closest('#srcpop'))return;
     const t=linkTarget(ev.target);
     if(ev.pointerType==='touch'){
       touchAt=performance.now();
@@ -782,7 +966,7 @@ function init(data){
   $('copyBtn').onclick=()=>{writeHash();const url=location.href,done=()=>{$('copyBtn').textContent='Copied';setTimeout(()=>$('copyBtn').textContent='Copy link',1400);};
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,()=>{fallbackCopy(url);done();});else{fallbackCopy(url);done();}};
   window.addEventListener('hashchange',()=>{const cur=E.encodeState(S,Object.fromEntries(CHIPS.map(c=>[c.id,c])));if('#'+cur===location.hash)return;applyHash();recompute(true);if($('drawer').classList.contains('open'))renderDrawer();});
-  window.addEventListener('resize',()=>{resizeAll();drawRoof();requestAnimationFrame(()=>{if(tagShown())paintTagLink();});});
+  window.addEventListener('resize',()=>{resizeAll();drawRoof();requestAnimationFrame(()=>{if(tagShown()){paintTagLink();showSrcPop(tagAnchor);}});});
   bindLinks();
   armMarkers();
   document.querySelectorAll('[data-link]').forEach(b=>{if(!b.getAttribute('aria-label')&&b.dataset.tip)b.setAttribute('aria-label',b.dataset.tip);});

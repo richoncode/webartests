@@ -65,6 +65,15 @@ test('known System Level Cache sizes keep their tags', () => {
   assert.match(l2('m5max-40').v, /not published/i);
 });
 
+test('footnotes say what the mark means, not where else it appears', () => {
+  const src = ['app/src/template.html', 'app/src/ui.js'].map(f => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  assert.match(src, /all-reduce time in the step is 0 s/);
+  assert.match(src, /Idle on purpose/);
+  assert.doesNotMatch(src, /same marker|explained here|published by the vendor|verified vendor|how-to line|how-to note/i);
+  assert.match(src, /decode tok\/s = 1 \/ step/);
+  assert.match(src, /No recorded source/);
+});
+
 test('built page wires one in-place data-link highlight', () => {
   const html = fs.readFileSync(path.join(root, 'app/infrasim.html'), 'utf8');
   assert.match(html, /function bindLinks/);
@@ -73,6 +82,25 @@ test('built page wires one in-place data-link highlight', () => {
   for (const id of ['tag:V', 'tag:A', 'tag:U', 'xref:roofline', 'xref:verdict', 'note:nolink', 'note:range', 'note:na', 'note:fp8', 'note:arch']) {
     assert.ok(html.includes('data-link="' + id + '"'), id);
   }
+});
+
+test('dot flow and stepper share one scale, and panel chrome states the rate', () => {
+  const src = ['app/src/ui.js', 'app/src/template.html', 'app/src/styles.css'].map(f => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  const m5 = 307 * 0.92, m6 = 170 * 0.9;
+  const ratio = E.flowScale(m5, m6);
+  assert.ok(Math.abs(ratio - m5 / m6) < 1e-12);
+  assert.ok(ratio > 1.8 && ratio < 1.9, 'M5 Pro effective GB/s should be about 1.8x M6, got ' + ratio);
+  const slow = 0.08, fast = slow / ratio;
+  assert.ok(Math.abs(E.animSeconds(fast, slow, 8) / E.animSeconds(slow, slow, 8) - fast / slow) < 1e-12);
+  assert.match(src, /dot rate ∝ memory bandwidth/);
+  assert.match(src, /position:\s*sticky/);
+  assert.match(src, /memory-bound/);
+  assert.match(src, /compute-bound/);
+  assert.match(src, /line = max achievable/);
+  assert.match(src, /dashed = ridge point \(where compute becomes the limit\)/);
+  assert.match(src, /dots = this workload/);
+  assert.match(src, /parameters × bytes per parameter/);
+  assert.match(src, /2 × layers × kv heads × head dim/);
 });
 
 test('derived parameter totals stay near the published safetensors counts', () => {

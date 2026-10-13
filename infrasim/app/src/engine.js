@@ -14,7 +14,7 @@ const PRECS = {
 // Global assumptions (all adjustable in the UI drawer). Units and meaning are listed in ASSUME_META.
 const DEFAULT_ASSUME = { linkEff:0.7, alphaUs:8, actTraffic:3, int4BwFactor:0.85 };
 const ASSUME_META = {
-  linkEff:     { label:'Interconnect efficiency', min:0.3, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'U', help:'Fraction of the vendor link bandwidth an all-reduce actually achieves.' },
+  linkEff:     { label:'Interconnect efficiency', min:0.3, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'U', help:'Fraction of the published link bandwidth an all-reduce actually achieves.' },
   alphaUs:     { label:'All-reduce latency (us)', min:0,   max:30, step:1,    fmt:v=>v.toFixed(0), tag:'U', help:'Fixed launch/latency cost added to each all-reduce.' },
   actTraffic:  { label:'Activation traffic (x)',  min:1,   max:6,  step:0.5,  fmt:v=>v.toFixed(1), tag:'U', help:'Activation bytes read+written per token per segment, as a multiple of one hidden-state vector.' },
   int4BwFactor:{ label:'INT4 bandwidth factor',   min:0.5, max:1,  step:0.05, fmt:v=>v.toFixed(2), tag:'A', help:'Extra bandwidth loss from dequantizing INT4 weights. 0.85 matches llama.cpp Q4_0 vs F16 decode on M5-class chips (Q4_0 reads 0.74-0.91 of the F16 effective bandwidth in the llama.cpp thread).' }
@@ -191,6 +191,20 @@ function decodeState(hash, chips, models) {
   return S;
 }
 
+// Shared visual scale: 1 means refGBs. Both panels divide by the same reference
+// (the slower chip), so the ratio of the results is the ratio of effective GB/s.
+function flowScale(effGBs, refGBs) {
+  const ref = refGBs > 0 ? refGBs : 1;
+  return (effGBs > 0 ? effGBs : 0) / ref;
+}
+// One clock for both panels. wallSeconds is how long the slower chip's step takes
+// on screen; every other chip takes wallSeconds * (its model time / that slower time).
+function animSeconds(modelSeconds, slowestModelSeconds, wallSeconds) {
+  const slow = slowestModelSeconds > 0 ? slowestModelSeconds : 1;
+  return modelSeconds * ((wallSeconds > 0 ? wallSeconds : 1) / slow);
+}
+
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
-  flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState };
+  flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState,
+  flowScale, animSeconds };
 });
