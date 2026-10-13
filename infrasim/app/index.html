@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InfraSim - architecture-level AI execution simulator (estimates, not benchmarks)</title>
+<meta property="og:title" content="InfraSim — Apple M5 Pro vs Apple M6">
+<meta property="og:image" content="https://richoncode.github.io/webartests/infrasim/post-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="InfraSim comparing Apple M5 Pro and Apple M6">
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+<header>
+  <h1>InfraSim<small>how the same model runs on different chips</small></h1>
+  <span class="estbadge" title="Analytical roofline-style estimates. Specs are tagged V/A/U; efficiency factors are assumptions or fits.">ESTIMATES - not benchmark results</span>
+  <span class="sp"></span>
+  <span class="tiny" id="slowmo">animation <span id="slowdir">slowed</span> ~<span id="slown">1</span>x; relative speeds are to scale</span>
+  <button class="hbtn" id="assumeBtn" title="Formulas, efficiency factors, sliders, sensitivity, chip spec sources">Assumptions &amp; specs</button>
+  <button class="hbtn" id="copyBtn" title="Copy a link that restores these exact settings">Copy link</button>
+</header>
+
+<section id="controls">
+  <div class="ctl"><label for="model">Model</label><select id="model"></select></div>
+  <div class="ctl cA"><label for="chipA">Chip A</label><select id="chipA"></select></div>
+  <div class="ctl cB"><label for="chipB">Chip B</label><select id="chipB"></select></div>
+  <div class="ctl"><label>Phase</label><div class="seg" id="phase"><button data-v="prefill">Prefill</button><button data-v="decode" class="on">Decode</button></div></div>
+  <div class="ctl"><label for="prec">Precision</label><select id="prec"></select></div>
+  <div class="ctl"><label for="tp">Chips (TP)</label><select id="tp"><option>1</option><option>2</option><option>4</option><option>8</option></select></div>
+  <div class="ctl bat"><label for="batch"><span class="lbl">Batch size</span><span class="val" id="bval"></span></label><input type="range" id="batch" min="0" max="8" step="1" value="0"></div>
+  <div class="ctl ctx"><label for="ctx"><span class="lbl" id="llabel">Context length</span><span class="val" id="lval"></span></label><input type="range" id="ctx" min="0" max="8" step="1" value="5"></div>
+  <div class="ctl"><label for="spd">Speed</label><select id="spd"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select></div>
+  <div class="ctl"><label>&nbsp;</label><button id="play">Pause</button></div>
+</section>
+
+<main id="panels">
+  <section class="panel A" id="pA"></section>
+  <section class="panel B" id="pB"></section>
+</main>
+
+<section id="bottom">
+  <div class="box" id="roofline"><h3>Roofline (log-log)</h3><canvas id="roof" style="height:150px"></canvas></div>
+  <div class="box" id="verdict"><h3>What differs and why</h3><div id="vtxt"></div></div>
+  <div class="box how"><h3>How to read this</h3>
+    <ul>
+      <li><span class="dot" style="background:#fbbf24"></span><b>Particles</b> are bytes moving memory &rarr; cache &rarr; compute. Density tracks <i>achieved</i> bandwidth (compressed scale, so slow chips are still visible).</li>
+      <li><span class="dot" style="background:#34d399"></span><b>Bright compute cells</b> = busy. <b>Dim amber cells + STALL</b> = units waiting on memory. The bright inner square on Apple M5-generation cores is the Neural Accelerator.</li>
+      <li><b>Layer strip</b>: each layer has an attention (top) and MLP (bottom) half, amber if memory-bound, green if compute-bound.</li>
+      <li><span class="tg V">V</span><span class="tg A">A</span><span class="tg U">U</span> <b>Spec badges</b>: verified vendor number, approximate/derived/third-party, or assumed. Click a badge for the source.</li>
+      <li><b>Range bar</b>: blue = estimate range (efficiency &plusmn;20%), white = central estimate, dashed = peak-spec ceiling.</li>
+      <li>Apple memory blocks are scaled to bandwidth, not to a package count.</li>
+    </ul>
+  </div>
+</section>
+<div class="foot">Estimates from an analytical model, not benchmark results. Data: <span id="datasrc"></span>. <span class="tg V" style="width:13px;height:13px;font-size:8px">V</span> verified <span class="tg A" style="width:13px;height:13px;font-size:8px">A</span> approximate <span class="tg U" style="width:13px;height:13px;font-size:8px">U</span> assumed. Sources and factors: Assumptions &amp; specs.</div>
+
+<div id="backdrop"></div>
+<aside id="drawer" aria-label="Assumptions and chip specs">
+  <div id="dhead"><b>Assumptions &amp; specs</b>
+    <span class="tabs"><button id="tabAssume" class="on">Assumptions</button><button id="tabSpecs">Chip specs</button><button id="dclose" aria-label="Close">&times;</button></span></div>
+  <div id="dbody"></div>
+</aside>
+<noscript>InfraSim needs JavaScript (vanilla JS, no dependencies, no network calls).</noscript>
+<script src="inline-data.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>

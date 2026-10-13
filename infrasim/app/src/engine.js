@@ -27,12 +27,24 @@ function flattenChip(raw) {
   return {
     id: raw.id, name: raw.name, short: raw.short, vendor: raw.vendor, arch: raw.arch, caption: raw.caption,
     unitName: raw.unitName, icName: raw.icName, memType: raw.memType, status: raw.status || 'announced',
-    dies: raw.dies || 1, matrix: !!raw.matrix, notes: raw.notes || '',
+    dies: raw.dies || 1, matrix: !!raw.matrix, notes: raw.notes || '', aliasOf: raw.aliasOf || null,
     fp16: specV(raw,'fp16'), fp8: specV(raw,'fp8'), bw: specV(raw,'bw'), cap: specV(raw,'cap'),
     usable: specV(raw,'usable',0.9), ic: specV(raw,'ic',0), maxTP: specV(raw,'maxTP',1), units: specV(raw,'units',1),
     eff: { mfuP: raw.eff.mfuP.v, mfuD: raw.eff.mfuD.v, bw: raw.eff.bw.v },
     raw: raw
   };
+}
+// Follow aliasOf (m5pro -> m5pro-18, m5max -> m5max-40) to the chip that owns the specs.
+function resolveChipId(chips, id) {
+  if (!id || !chips) return null;
+  let cur = id;
+  for (let n = 0; n < 8; n++) {
+    const c = chips.find(x => x.id === cur);
+    if (!c) return null;
+    if (!c.aliasOf) return cur;
+    cur = c.aliasOf;
+  }
+  return cur;
 }
 function deriveModel(m) {
   const kvd = m.kvHeads*m.headDim, dAttn = m.heads*m.headDim;
@@ -159,9 +171,10 @@ function decodeState(hash, chips, models) {
   const S = Object.assign({}, DEFAULT_STATE);
   const p = new URLSearchParams(String(hash||'').replace(/^#/, ''));
   const has = (arr, id) => arr.some(x => x.id === id);
+  const pickChip = (key, fallback) => resolveChipId(chips, p.get(key)) || resolveChipId(chips, fallback) || fallback;
   if (has(models, p.get('m'))) S.model = p.get('m');
-  if (has(chips, p.get('a'))) S.A = p.get('a');
-  if (has(chips, p.get('b'))) S.B = p.get('b');
+  S.A = pickChip('a', S.A);
+  S.B = pickChip('b', S.B);
   if (['prefill','decode'].includes(p.get('ph'))) S.phase = p.get('ph');
   if (PRECS[p.get('p')]) S.prec = p.get('p');
   const tp = +p.get('tp'); if ([1,2,4,8].includes(tp)) S.tp = tp;
@@ -179,5 +192,5 @@ function decodeState(hash, chips, models) {
 }
 
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
-  flattenChip, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState };
+  flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState };
 });
