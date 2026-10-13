@@ -217,6 +217,32 @@ test('KV writes are 2 x kv heads x head dim x bytes, and the legend states the w
   assert.match(css, /\.docrate\{height:14px/);
 });
 
+test('CPU sample sits after the LM head and does not change tok/s', () => {
+  const models = readJson('data/models.json');
+  const chips = readJson('data/chips.json');
+  const m = E.deriveModel(models.models.find(x => x.id === 'qwen3-8b'));
+  const pro = chips.chips.map(E.flattenChip).find(c => c.id === 'm5pro-18');
+  const o = { phase:'decode', prec:'fp8', B:1, L:4096, N:1 };
+  const a = E.estimate(m, pro, o, E.DEFAULT_ASSUME);
+  const b = E.estimate(m, pro, o, Object.assign({}, E.DEFAULT_ASSUME, { sampleUs: 5000 }));
+  assert.equal(a.tokUser, b.tokUser);
+  assert.equal(a.total, b.total);
+  const g = E.arGap(a.total, 200);
+  assert.ok(Math.abs(g.sec - 200e-6) < 1e-12);
+  assert.ok(g.truth < 0.02);
+  assert.equal(g.drawn, E.AR_VIS_FLOOR);
+  const tall = E.arGap(a.total, 5000);
+  assert.ok(tall.truth > E.AR_VIS_FLOOR);
+  assert.equal(tall.drawn, tall.truth);
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  assert.match(ui, /waiting on previous token/);
+  assert.match(ui, /token returns to layer 1/);
+  assert.match(ui, /Speculative decoding/);
+  assert.match(ui, /part==='back'/);
+  assert.match(E.ASSUME_META.sampleUs.help, /not part of the tok\/s/);
+  assert.equal(E.ASSUME_META.sampleUs.tag, 'U');
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {
