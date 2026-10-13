@@ -9,7 +9,7 @@ const fmtT=s=>s>=1?s.toFixed(2)+' s':(s>=0.01?(s*1000).toFixed(1):(s*1000).toFix
 const fmtN=(x,d=1)=>x>=1000?Math.round(x).toLocaleString('en-US'):x.toFixed(x>=100?0:d);
 const CW=620, CH=266, WALL=8;
 const BATCHES=E.BATCHES, CTXS=E.CTXS, PRECS=E.PRECS;
-let CHIPS=[], MODELS=[], RAW={}, SOURCES={}, TAGS={}, DATASRC='';
+let CHIPS=[], MODELS=[], ANE_OUT=[], RAW={}, SOURCES={}, TAGS={}, DATASRC='';
 let S=null;                    // state (see E.DEFAULT_STATE)
 let ASSUME=Object.assign({},E.DEFAULT_ASSUME);
 
@@ -94,13 +94,12 @@ function layApple(c){
     blocks.push({x:f.x,y:f.y,w:f.w,h:f.h,label:dies===1?'one SoC die: CPU + GPU + Neural Engine on one memory pool':'die '+(fi+1)+' of '+dies,lx:f.x+6,ly:f.y+8,frame:true});
   });
   const route=()=>{const m=mems[Math.floor(Math.random()*mems.length)],ex=m.left?m.x+m.w:m.x,rail=m.left?88:532;
-    if(Math.random()<0.08){const t=extra[Math.floor(Math.random()*extra.length)];return {ci:-1,blk:t,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:laneY},{x:cx(t),y:laneY},{x:cx(t),y:cy(t)}]};}
     const i=Math.floor(Math.random()*cells.length),cell=cells[i];
     return {ci:i,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:laneY},{x:cx(cell),y:laneY},{x:cx(cell),y:cy(cell)}]};};
   const na=c.matrix;
   return {arch:'apple',mems,caches:[slc],cells,blocks,links,ic:null,route,extraBlk:extra,na,
     note:(na?'Inner bright square in each GPU core = Neural Accelerator (matrix unit). ':'No per-core matrix unit: matrix math runs on shader ALUs. ')+'One unified memory pool.',
-    noteLong:(na?'Each GPU core has a Neural Accelerator (matrix unit), drawn as the bright inner square. ':'No per-core matrix unit: matrix math runs on the GPU shader ALUs. ')+'Unified memory: no CPU-GPU copy. The number of memory blocks drawn is scaled to bandwidth; it is not a package count. The Neural Engine is not used for LLM inference by llama.cpp/MLX, so it is drawn idle.'};
+    noteLong:(na?'Each GPU core has a Neural Accelerator (matrix unit), drawn as the bright inner square. ':'No per-core matrix unit: matrix math runs on the GPU shader ALUs. ')+'Unified memory: no CPU-GPU copy. The number of memory blocks drawn is scaled to bandwidth; it is not a package count. The Neural Engine uses that same memory. It lights only while Run on Neural Engine is on and the current step is one the documented path places there.'};
 }
 function layTpu(c){
   const mems=[{x:12,y:14,w:56,h:236,label:c.memType,sub:c.cap+' GB'}];
@@ -121,19 +120,21 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas><div class="docrate">dot rate ∝ memory bandwidth</div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><div class="docrate" data-link="note:kv" data-kind="kv" aria-label="Gold dots are inbound reads. Rose dots are KV cache writes from the GPU back to memory. Violet is the hidden state handed to the next layer. The text is the real KV-write size against the weight read."><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#fb7185"></span><span class="kvrate">KV write</span><span class="dot" style="background:#c4b5fd"></span></div>'+
    '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here." aria-label="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth.">4</button><span class="st-link-name" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.">all-reduce 0 s</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth on one scale for both panels. dot rate ∝ memory bandwidth."></div>'+
    '<div class="stats"><div class="resultslot">'+
-   '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link." aria-label="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%." aria-label="Blue band: efficiency from ×0.8 to ×1.2. White tick: central estimate. Dashed line: peak specs.">3</button><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
+   '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link." aria-label="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div>'+'<div class="sub s1"><span class="s1a"></span><button type="button" class="s1b" data-link="note:ane" data-kind="ane" data-side="'+key+'"></button></div>'+'<div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%." aria-label="Blue band: efficiency from ×0.8 to ×1.2. White tick: central estimate. Dashed line: peak specs.">3</button><div class="rt" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."></div><div class="rtrack" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
    '<div class="bars">'+
-   '<div class="brow compute"><span class="lab">compute</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
-   '<div class="brow memory"><span class="lab">memory</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
+   '<div class="brow compute" data-link="note:gpu" data-kind="gpu" data-side="'+key+'" aria-label="GPU compute time per token is FLOPs per token divided by peak TFLOPS times efficiency."><span class="lab">GPU compute</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
+   '<div class="brow memory"><span class="lab">memory read</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
    '<div class="brow comm off"><span class="lab">comm</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
    '</div></div>'+
    '<div class="rview run"><div class="runlab">Time to generate 1 token</div><div class="runbig"><span class="n run-t">0.00 ms</span></div><div class="runspd">speed <span class="n run-s">0.0</span> tok/s</div></div>'+
    '<div class="rview oom"><div class="oombox"><b>OUT OF MEMORY</b><span>Weights and KV cache do not fit, so this chip would not run. Figures below are hypothetical.</span></div></div>'+
    '</div><div class="capwrap"><div class="captrack"></div><button type="button" class="cap-txt" data-link="note:fit" data-kind="fit" data-side="'+key+'"></button></div></div>';
-  side.root=p;side.cv=p.querySelector('canvas.cv');side.st=p.querySelector('canvas.strip');
+  side.root=p;side.cv=p.querySelector('canvas.cv');side.stripwrap=p.querySelector('.stripwrap');side.st=p.querySelector('canvas.strip');
+  side.layerBtn=p.querySelector('.slayer');side.lnum=p.querySelector('.slayer .sn');side.rowLabs=p.querySelector('.srows');
+  const lm=document.createElement('button');lm.type='button';lm.className='lmhit';lm.dataset.link='note:lm';lm.dataset.kind='strip';lm.dataset.part='lm';lm.setAttribute('aria-label','LM head, drawn once after the layers.');side.stripwrap.appendChild(lm);side.lmHit=lm;
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
   side.pills.addEventListener('click',ev=>{if(ev.target.closest('button'))return;const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
@@ -144,7 +145,7 @@ let sides=[];
 function sizeCanvas(cv,cssW,cssH){const d=window.devicePixelRatio||1;cv.style.height=cssH+'px';cv.width=Math.round(cssW*d);cv.height=Math.round(cssH*d);return d;}
 function resizeAll(){
   const narrow=window.innerWidth<=900;
-  for(const s of sides){const w=Math.max(200,s.cv.parentElement.clientWidth-20),hh=Math.min(w*CH/CW,narrow?260:196);s.dpr=sizeCanvas(s.cv,w,hh);s.sc=Math.min(hh/CH,w/CW);s.offx=(w-CW*s.sc)/2;s.offy=(hh-CH*s.sc)/2;sizeCanvas(s.st,w,30);s.stW=w;}
+  for(const s of sides){const w=Math.max(200,s.cv.parentElement.clientWidth-20),hh=Math.min(w*CH/CW,narrow?260:196);s.dpr=sizeCanvas(s.cv,w,hh);s.sc=Math.min(hh/CH,w/CW);s.offx=(w-CW*s.sc)/2;s.offy=(hh-CH*s.sc)/2;const used=(s.layerBtn?s.layerBtn.offsetWidth:48)+(s.rowLabs?s.rowLabs.offsetWidth:84)+8;const cw=Math.max(80,(s.stripwrap?s.stripwrap.clientWidth:w)-used);sizeCanvas(s.st,cw,30);s.st.style.width=cw+'px';s.stW=cw;}
   const rw=Math.max(200,$('roof').parentElement.clientWidth-20);sizeCanvas($('roof'),rw,narrow?150:128);
 }
 
@@ -214,8 +215,10 @@ function recompute(noHash){
     const o=opts({eff:effOf(s.key)||undefined});
     s.rng=E.estimateRange(m,c,o,ASSUME); s.res=s.rng.mid; s.ceil=s.rng.ceil;
     if(s.chipId!==c.id){s.chipId=c.id;s.layout=LAY[c.arch](c);s.flash=new Float32Array(s.layout.cells.length);s.ph=Array.from(s.layout.cells,()=>Math.random()*6.28);s.parts=[];s.sel=null;
-      s.root.querySelector('.ptitle span').textContent=c.caption;renderPills(s);renderPillDetail(s);const cn=s.root.querySelector('.chipnote');cn.textContent=s.layout.note||'';cn.title=s.layout.noteLong||s.layout.note||'';}
+      s.root.querySelector('.ptitle span').textContent=c.caption;renderPills(s);renderPillDetail(s);const cn=s.root.querySelector('.chipnote');const note=s.layout.note||'',long=s.layout.noteLong||'';cn.textContent=note;cn.dataset.extra=long&&long!==note?long:'';cn.removeAttribute('title');cn.setAttribute('aria-label',note+(long&&long!==note?'. '+long:''));}
   });
+  const aneT=E.aneToggle(R.m,sides.map(s=>s.chip),S.prec,S.L);
+  if(!aneT.ok)S.ane=false;
   const [a,b]=sides, maxT=Math.max(...sides.flatMap(s=>[s.res.sumTc,s.res.sumTm,s.res.sumComm,s.res.total]));
   const o=opts();
   sides.forEach(s=>{
@@ -227,7 +230,7 @@ function recompute(noHash){
     const pct=Math.round((r.bound==='comm'?r.commShare:(r.bound==='mem'?r.memShare:1-r.memShare))*100);
     bd.querySelector('.bd-name').textContent=r.oom?'OUT OF MEMORY':(r.bound==='mem'?'MEMORY-BOUND':r.bound==='comp'?'COMPUTE-BOUND':'INTERCONNECT-LIMITED');
     bd.querySelector('.bd-pct').textContent=r.oom?'': '('+pct+'%)';
-    const big=rootEl.querySelector('.big'),s1=rootEl.querySelector('.s1'),rt=rootEl.querySelector('.rt');
+    const big=rootEl.querySelector('.big'),s1=rootEl.querySelector('.s1a'),s1b=rootEl.querySelector('.s1b'),rt=rootEl.querySelector('.rt');
     big.querySelector('.hyp').classList.toggle('on', !!r.oom);
     const g=s.rng;
     if(r.decode){big.querySelector('.n').textContent=fmtN(r.tokUser); big.querySelector('.unit').textContent='tok/s/user';
@@ -236,12 +239,15 @@ function recompute(noHash){
     else{big.querySelector('.n').textContent=fmtT(r.ttft); big.querySelector('.unit').textContent='to first token';
       s1.textContent='prefill '+fmtN(r.prefTput)+' tok/s | '+(S.B_*S.L).toLocaleString()+' tokens';
       rt.textContent='range '+fmtT(g.best)+'\u2013'+fmtT(g.worst)+' | ceiling '+fmtT(s.ceil.ttft);}
+    const gAne=E.aneGate(R.m,c,S.prec,S.L);
+    const aneNote=S.ane&&gAne.ok?'Bandwidth roofline, same unified memory. No published Neural Engine tok/s.':(S.ane?'GPU. '+gAne.reason:'');
+    s1b.textContent=aneNote;s1b.classList.toggle('on',!!aneNote);s1b.setAttribute('aria-label',aneNote||'Neural Engine');
     // range bar on a "speed" axis (higher = faster): value / ceiling
     const sp=v=>r.decode?v:1/v, cs=sp(r.decode?s.ceil.tokUser:s.ceil.ttft);
     const xl=clamp(sp(g.worst)/cs,0,1),xh=clamp(sp(g.best)/cs,0,1),xm=clamp(sp(r.decode?r.tokUser:r.ttft)/cs,0,1);
     const rb=rootEl.querySelector('.rband'),rm=rootEl.querySelector('.rmid'),rc=rootEl.querySelector('.rceil');
     rb.style.left=(xl*100)+'%';rb.style.width=Math.max(0.5,(xh-xl)*100)+'%';rm.style.left='calc('+(xm*100)+'% - 1px)';rc.style.left='calc(100% - 4px)';
-    rt.title=rootEl.querySelector('.rtrack').title='Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.';
+    rt.removeAttribute('title');rootEl.querySelector('.rtrack').removeAttribute('title');
     const setBar=(key,v,col,txt,show)=>{const row=rootEl.querySelector('.brow.'+key); row.classList.toggle('off',!show); const fill=row.querySelector('.fill'); fill.style.width=(100*v/maxT).toFixed(1)+'%'; fill.style.background=col; row.querySelector('.num').textContent=txt;};
     setBar('compute',r.sumTc,'var(--comp)',fmtT(r.sumTc),true);
     setBar('memory',r.sumTm,'var(--mem)',fmtT(r.sumTm),true);
@@ -271,6 +277,7 @@ function recompute(noHash){
     '<p class="sub">Model '+esc(R.m.name)+': '+(R.m.total/1e9).toFixed(1)+'B params ('+(R.m.active/1e9).toFixed(1)+'B active/token), KV cache '+(R.m.kvPerTok*PRECS[S.prec].kv/1024).toFixed(0)+' KB/token.</p>'+
     '<p class="sub" data-link="spec:ai" data-tip="'+esc(specTip('ai'))+'">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte. '+mark('xref:roofline','R',specTip('xref:roofline'))+'</p>'+
     warn.map(w=>'<p class="sub" style="color:#fbbf24"'+(w.link?' data-link="'+w.link+'" data-tip="'+esc(specTip(w.link))+'"':'')+'>'+(w.link?mark(w.link,w.link==='note:fp8'?'F':w.link==='note:na'?'2':'4',specTip(w.link))+' ':'')+'Note: '+esc(w.text)+(w.tag?' '+tagBtn(w.tag,{spec:'Matrix compute',note:w.text}):'')+'</p>').join('');
+  refreshKvLegend();
   refreshTagLink();
   $('bval').textContent=S.B_;$('lval').textContent=S.L.toLocaleString()+' tok';
   $('llabel').textContent=S.phase==='decode'?'Context so far':'Prompt length';
@@ -280,6 +287,7 @@ function recompute(noHash){
   $('slown').textContent=Math.round(slowed?sl:1/sl).toLocaleString();
   a.tAnim=b.tAnim=0;a.prog=b.prog=0;a.done=b.done=false;a.steps=b.steps=0;
   drawRoof();
+  paintAne();
   if(!noHash)writeHash();
   if($('drawer').classList.contains('open'))renderSens();
 }
@@ -330,6 +338,11 @@ function txt(ctx,str,x,y,maxW,sc,align){
   if(w>maxW){fs=fs*maxW/w;if(fs*sc<6.2)return;ctx.font=fs+'px system-ui,sans-serif';}
   ctx.textAlign=align||'center';ctx.fillText(str,x,y);
 }
+function aneLive(s){
+  if(!S||!S.ane||!R.m||!s||!s.chip)return null;
+  const g=E.aneGate(R.m,s.chip,S.prec,S.L);
+  return g.ok?g:null;
+}
 function curSeg(s){
   const r=s.res,pair=r.segA.t+r.segM.t,x=s.prog*r.total;
   if(s.done||x>=r.n*pair)return {seg:r.segH,layer:r.n,part:'head',frac:1};
@@ -361,19 +374,34 @@ function drawSide(s,tm){
     ctx.fillStyle='rgba(244,114,182,0.14)';ctx.strokeStyle='rgba(244,114,182,.35)';rr(ctx,k.x,k.y,k.w,k.h,3);ctx.fill();ctx.stroke();
     if(k.label&&k.vert){ctx.save();ctx.translate(k.x+k.w/2,k.y+k.h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#fbcfe8';txt(ctx,k.label,0,0.5,k.h-6,sc);ctx.restore();}}
   syncFuseHit(s);
-  // extra blocks
-  for(const b of (L.extraBlk||[])){ctx.fillStyle='#141c2e';ctx.strokeStyle='#2c3a57';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.stroke();ctx.fillStyle='#7f8fae';txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2,b.w-4,sc);
-    if(b.flash>0.02){ctx.fillStyle='rgba(52,211,153,'+b.flash*0.4+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();}b.flash=(b.flash||0)*0.92;}
+  // extra blocks. Neural Engine lights only on a documented ANE step.
+  const live=aneLive(s), stepUnit=live&&live.parts[cur.part]&&live.parts[cur.part].unit;
+  const aneStep=!!(live&&stepUnit==='ane'&&!s.done);
+  const gpuStep=!!(live&&stepUnit==='gpu'&&!s.done);
+  for(const b of (L.extraBlk||[])){
+    const isNe=/^Neural/.test(b.label||'');
+    ctx.fillStyle='#141c2e';ctx.strokeStyle='#2c3a57';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.stroke();
+    if(isNe&&aneStep){const g=0.45+0.2*Math.sin(tm*4);ctx.fillStyle='rgba(244,114,182,'+g.toFixed(3)+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();ctx.strokeStyle='rgba(244,114,182,.9)';ctx.stroke();}
+    else if(!live&&b.flash>0.02){ctx.fillStyle='rgba(52,211,153,'+(b.flash*0.4)+')';rr(ctx,b.x,b.y,b.w,b.h,5);ctx.fill();}
+    b.flash=(b.flash||0)*0.92;
+    ctx.fillStyle=isNe&&aneStep?'#fce7f3':'#7f8fae';txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2,b.w-4,sc);
+  }
   // interconnect
   const commGlow=clamp(sg.t>0?sg.comm/sg.t:0,0,1);
   if(L.ic){const b=L.ic;ctx.fillStyle='rgba(244,114,182,'+(0.07+0.5*commGlow)+')';ctx.strokeStyle='rgba(244,114,182,'+(0.4+0.5*commGlow)+')';rr(ctx,b.x,b.y,b.w,b.h,6);ctx.fill();ctx.stroke();
     ctx.fillStyle='#fbcfe8';txt(ctx,b.label,b.x+b.w/2,b.y+b.h/2-6,b.w-4,sc);ctx.fillStyle='#b9769b';txt(ctx,b.sub,b.x+b.w/2,b.y+b.h/2+8,b.w-4,sc);
     if(L.arch==='tpu'){ctx.strokeStyle='rgba(244,114,182,.6)';[[560,60,560,38],[560,190,560,212],[512,125,492,125],[608,125,616,125]].forEach(l=>{ctx.beginPath();ctx.moveTo(l[0],l[1]);ctx.lineTo(l[2],l[3]);ctx.stroke();});}}
   // compute cells
-  const act=s.done?0.03:Math.max(0.04,cu);
+  const act=aneStep?0.04:(s.done?0.03:Math.max(0.04,cu));
   const col=(()=>{const t=clamp((act-0.12)/0.6,0,1);return [lerp(251,52,t),lerp(191,211,t),lerp(36,153,t)].map(Math.round);})();
   const wavespeed=2+7*act;
   L.cells.forEach((cl,i)=>{
+    if(gpuStep){
+      const gb=0.62+0.22*Math.sin(tm*3+s.ph[i]);
+      ctx.fillStyle='rgba(96,165,250,'+gb.toFixed(3)+')';ctx.fillRect(cl.x,cl.y,cl.w,cl.h);
+      if(L.na&&cl.w>=6&&cl.h>=6){const ix=cl.w*0.24,iy=cl.h*0.24;ctx.fillStyle='rgba(224,247,255,0.9)';ctx.fillRect(cl.x+ix,cl.y+iy,cl.w-2*ix,cl.h-2*iy);}
+      return;
+    }
     let b;
     if(L.tpu){const wv=0.5+0.5*Math.sin((cl.r+cl.c)*0.9-tm*wavespeed);b=0.10+0.9*act*wv;}
     else b=0.10+0.9*act*(0.55+0.45*Math.sin(tm*(2.5+7*act)+s.ph[i]));
@@ -381,17 +409,17 @@ function drawSide(s,tm){
     s.flash[i]*=0.9;
     ctx.fillStyle='rgba('+col[0]+','+col[1]+','+col[2]+','+b.toFixed(3)+')';
     ctx.fillRect(cl.x,cl.y,cl.w,cl.h);
-    if(L.na&&cl.w>=6&&cl.h>=6){ // Neural Accelerator: inner matrix-unit square, lights up only when matrix work is the limiter
+    if(L.na&&!aneStep&&cl.w>=6&&cl.h>=6){ // Neural Accelerator: inner matrix-unit square, lights up only when matrix work is the limiter
       const ix=cl.w*0.24,iy=cl.h*0.24,nb=clamp(0.12+0.95*act*(0.6+0.4*Math.sin(tm*(3+8*act)+s.ph[i]*1.7)),0,1)*oomDim;
       ctx.fillStyle='rgba(224,247,255,'+nb.toFixed(3)+')';ctx.fillRect(cl.x+ix,cl.y+iy,cl.w-2*ix,cl.h-2*iy);
       ctx.strokeStyle='rgba(165,243,252,0.55)';ctx.lineWidth=0.6;ctx.strokeRect(cl.x+ix,cl.y+iy,cl.w-2*ix,cl.h-2*iy);}
-    if(act<0.5&&!s.done){ctx.strokeStyle='rgba(251,191,36,'+(0.18+0.12*Math.sin(tm*4+i))+')';ctx.lineWidth=0.5;ctx.strokeRect(cl.x,cl.y,cl.w,cl.h);}
+    if(act<0.5&&!s.done&&!aneStep){ctx.strokeStyle='rgba(251,191,36,'+(0.18+0.12*Math.sin(tm*4+i))+')';ctx.lineWidth=0.5;ctx.strokeRect(cl.x,cl.y,cl.w,cl.h);}
   });
   // particles
   for(const p of s.parts){
     const f=p.d/p.total;let rem=p.d,seg=0;while(seg<p.lens.length-1&&rem>p.lens[seg]){rem-=p.lens[seg];seg++;}
     const a=p.pts[seg],bb=p.pts[seg+1],t=p.lens[seg]?clamp(rem/p.lens[seg],0,1):1,x=lerp(a.x,bb.x,t),y=lerp(a.y,bb.y,t);
-    ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
+    ctx.fillStyle=p.out?'rgba(251,113,133,.95)':(f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)'));
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
   for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k);
@@ -415,23 +443,48 @@ function drawSide(s,tm){
   linkPct.classList.toggle('on', showComm);
   drawStrip(s,cur,tm);
 }
+function syncLmHit(s,x,w){
+  const el=s.lmHit;if(!el)return;
+  const scale=s.st.clientWidth/Math.max(1,s.stW||1);
+  el.style.left=(s.st.offsetLeft+x*scale).toFixed(1)+'px';
+  el.style.top=(s.st.offsetTop+3).toFixed(1)+'px';
+  el.style.width=Math.max(16,w*scale).toFixed(1)+'px';
+  el.style.height='24px';
+}
 function drawStrip(s,cur,tm){
   const ctx=s.sx,W=s.stW,H=30,r=s.res,d=s.sx.canvas.width/W;
   ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
-  const n=r.n,x0=64,bw=(W-x0-30)/n;
-  ctx.font='10px system-ui,sans-serif';ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#8493ab';
-  ctx.fillText(s.done?'layers done':(cur.part==='head'?'LM head':'layer '+(cur.layer+1)+'/'+n),2,9);
-  ctx.fillStyle='#5b6b86';ctx.fillText(s.done?'':(cur.part==='head'?'':cur.part==='attn'?'attention':'MLP'),2,22);
+  const n=r.n,lmW=22,gap=3,bw=Math.max(1,(W-lmW-gap)/n),live=aneLive(s);
+  const num=(s.done||cur.part==='head')?n:(cur.layer+1);
+  const lab=num+'/'+n;
+  if(s.lnum&&s.lnum.textContent!==lab)s.lnum.textContent=lab;
   const cA=r.segA.bound==='mem'?'251,191,36':'52,211,153',cM=r.segM.bound==='mem'?'251,191,36':'52,211,153',cH=r.segH.bound==='mem'?'251,191,36':'52,211,153';
   for(let i=0;i<n;i++){
     const past=s.done||i<cur.layer||cur.part==='head',now=!s.done&&i===cur.layer&&cur.part!=='head';
-    const x=x0+i*bw;
+    const x=i*bw;
     ctx.fillStyle='rgba('+cA+','+(past?0.95:(now&&cur.part==='attn'?1:0.28))+')';ctx.fillRect(x,3,Math.max(1,bw-1),11);
     ctx.fillStyle='rgba('+cM+','+(past?0.95:(now&&cur.part==='mlp'?1:0.28))+')';ctx.fillRect(x,16,Math.max(1,bw-1),11);
+    if(live){
+      const bar=u=>ctx.fillStyle=(u==='ane'?'#f472b6':'#60a5fa');
+      bar(live.parts.attn&&live.parts.attn.unit);ctx.fillRect(x,3,Math.min(3,Math.max(1,bw-1)),11);
+      bar(live.parts.mlp&&live.parts.mlp.unit);ctx.fillRect(x,16,Math.min(3,Math.max(1,bw-1)),11);
+    }
     if(now){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(x-0.5,1.5,bw+0.5,26);}
   }
-  const xh=x0+n*bw+3;ctx.fillStyle='rgba('+cH+','+((s.done||cur.part==='head')?1:0.28)+')';ctx.fillRect(xh,3,20,24);
-  ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.fillText('LM',xh+10,15);
+  const xh=n*bw+gap,boxW=Math.max(12,Math.min(lmW-2,W-xh));
+  const headNow=!s.done&&cur.part==='head';
+  ctx.fillStyle='rgba('+cH+','+((s.done||cur.part==='head')?1:0.28)+')';ctx.fillRect(xh,3,boxW,24);
+  if(live){ctx.fillStyle=(live.parts.head&&live.parts.head.unit==='ane')?'#f472b6':'#60a5fa';ctx.fillRect(xh,3,3,24);}
+  ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='10px system-ui,sans-serif';ctx.fillText('LM',xh+boxW/2,15);
+  if(headNow){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(xh-0.5,1.5,boxW+1,26);}
+  // One violet mark carries the hidden state from the previous layer into this one, along the seam.
+  if(!s.done&&cur.part!=='head'&&cur.layer>0){
+    const pair=r.segA.t+r.segM.t, x=s.prog*r.total, frac=pair>0?clamp((x-cur.layer*pair)/pair,0,1):1;
+    const x0=(cur.layer-1)*bw+Math.max(1,bw-1)/2, x1=cur.layer*bw+Math.max(1,bw-1)/2, xh=lerp(x0,x1,frac);
+    ctx.fillStyle='#c4b5fd';ctx.fillRect(Math.min(x0,xh),14,Math.max(2,Math.abs(xh-x0)),2);
+    ctx.beginPath();ctx.arc(xh,15,2.3,0,6.283);ctx.fill();
+  }
+  syncLmHit(s,xh,boxW);
 }
 function phaseRes(s,phase){
   if(!!s.res.decode===(phase==='decode'))return s.res;
@@ -514,12 +567,22 @@ function effGBs(s){
   return s.chip.bw*bwEff;
 }
 const DOT_SPEED_CAP=4, DOT_BASE_V=180, DOT_BASE_RATE=32;
-function spawn(s,n){
+// True KV-write share is ~1e-5 of a weight read. Floor the drawn share so the path stays visible.
+const KV_DRAW_FLOOR=0.045;
+function kvDrawShare(){
+  const t=E.kvTraffic(R.m,S.prec,S.phase,S.B_,S.L);
+  return Math.max(t.ratio,KV_DRAW_FLOOR);
+}
+function spawn(s,n,out){
   const speedK=Math.min(s.flowK||1,DOT_SPEED_CAP);
-  for(let i=0;i<n&&s.parts.length<700;i++){
-    const rt=s.layout.route();const pts=rt.pts,lens=[];let tot=0;
+  let have=0;
+  if(out){for(const p of s.parts)if(p.out)have++;}
+  for(let i=0;i<n&&(out?have<48:s.parts.length<700);i++){
+    const rt=s.layout.route();
+    const pts=out?rt.pts.slice().reverse():rt.pts,lens=[];let tot=0;
     for(let k=0;k<pts.length-1;k++){const l=Math.hypot(pts[k+1].x-pts[k].x,pts[k+1].y-pts[k].y);lens.push(l);tot+=l;}
-    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:rt.ci,blk:rt.blk,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
+    s.parts.push({pts,lens,total:tot,d:-Math.random()*8,ci:out?-1:rt.ci,blk:rt.blk,out:!!out,v:DOT_BASE_V*(0.92+Math.random()*0.16)*speedK});
+    if(out)have++;
   }
 }
 let last=performance.now(),clock=0,playing=true;
@@ -541,6 +604,7 @@ function step(dt){
     s.effGBs=effGBs(s);s.flowK=E.flowScale(s.effGBs,ref);
     const busy=s.done?0:(0.2+0.8*mu)*(s.res.oom?0.45:1);
     s.acc+=dt*S.spd*DOT_BASE_RATE*s.flowK*busy;const k=Math.floor(s.acc);s.acc-=k;if(k>0)spawn(s,k);
+    s.accOut=(s.accOut||0)+dt*S.spd*DOT_BASE_RATE*s.flowK*busy*kvDrawShare();const ko=Math.floor(s.accOut);s.accOut-=ko;if(ko>0)spawn(s,ko,true);
     for(const p of s.parts){p.d+=p.v*dt*S.spd;if(p.d>=p.total&&!p.hit){p.hit=true;if(p.ci>=0)s.flash[p.ci]=1;else if(p.blk)p.blk.flash=1;}}
     s.parts=s.parts.filter(p=>p.d<p.total);
   }
@@ -666,7 +730,7 @@ function specTip(k){
     units:'How many compute units the diagram draws: GPU cores, SMs, CUs, or MXUs.',
     node:'Manufacturing process. The speed math does not use it.',
     l2:'On-chip cache. On Apple chips this is the System Level Cache drawn above the GPU.',
-    neural:'Neural Engine core count. This GPU decode path does not run the model on it.',
+    neural:'Neural Engine core count. No separate memory bus or peak TFLOPS is published. It lights only when Run on Neural Engine is on for a documented model.',
     ic:'Chip-to-chip link bandwidth. Zero means there is no NVLink-style link and the chip runs alone.',
     usable:'Share of capacity the model may use for weights and the KV cache. The rest is left for the OS and the GPU.',
     announced:'Announcement date. The speed math does not use it.',
@@ -680,7 +744,15 @@ function specTip(k){
     'note:range':'Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%.',
     'note:na':'Bright cells are doing math. Dim amber cells, with STALL, are waiting on memory. On M5-generation Apple GPUs the bright inner square is the Neural Accelerator, the matrix unit in each GPU core.',
     'note:fp8':'On Apple GPUs, FP8 stores weights in 8 bits and runs the matmul in 16-bit, because those GPUs have no native 8-bit math.',
-    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth.',
+    'note:arch':'Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Rose dots are KV cache writes, GPU back to memory. A violet mark on the strip hands the hidden state to the next layer. Dot speed and dots per second scale with effective bandwidth (published GB/s times bandwidth efficiency) on one scale for both panels. dot rate ∝ memory bandwidth. The panel legend states the real KV-write size against the weight read.',
+    'note:layer':'The word layer stays on the left of the grid. The number under it is the layer now running, out of this model\'s layers, in a fixed-width slot. A white outline marks that column.',
+    'note:attn':'Attention is the top row of every column. The word stays attention. Amber means that half is waiting on memory. Green means it is limited by compute.',
+    'note:ffn':'Feed-forward (MLP) is the bottom row of every column. The word stays feed-forward. Amber means that half is waiting on memory. Green means it is limited by compute.',
+    'note:lm':'LM head, once per step, after the layers. Amber means it is waiting on memory. Green means it is limited by compute.',
+    'note:est':'Analytical roofline-style estimates. Specs are tagged V/A/U; efficiency factors are assumptions or fits.',
+    'note:assume':'Formulas, efficiency factors, sliders, sensitivity, chip spec sources.',
+    'note:copy':'Copy a link that restores these exact settings.',
+    'note:gpu':'GPU compute time per token = FLOPs/token / (peak TFLOPS × eff). It is far smaller than memory read time, so memory sets the speed.',
     'xref:roofline':'Horizontal axis: FLOPs per byte moved. Vertical axis: achievable TFLOPS. The slope is the bandwidth limit, the flat top is the compute limit, and the ridge is where they meet.',
     'xref:verdict':'Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.'
   })[k]||k;
@@ -825,6 +897,61 @@ function roofPopHtml(){
     h+=specCite(pkKey==='fp8'?'FP8 peak compute':'FP16 peak compute',s.chip.raw.specs[pkKey]);
     if(S.prec==='fp8'&&!s.chip.fp8)h+='<p>No FP8 rate is recorded for this chip, so the flat top is the FP16 peak. On Apple GPUs the matmul stays 16-bit.</p>';
   }
+  if(S.ane){
+    const live=sides.filter(s=>E.aneGate(R.m,s.chip,S.prec,S.L).ok);
+    h+='<p><b>Neural Engine, same bus.</b> '+(live.length?'Run on Neural Engine is on for '+live.map(s=>s.key+' '+chipShort(s.chip)).join(' and ')+'. ':'')+'The lines do not move and tokens per second do not change. The Neural Engine has no separate memory bandwidth in the spec, so the slope stays the published unified-memory GB/s. No Neural Engine peak TFLOPS is published, so the flat top stays the GPU peak. No published Neural Engine tok/s for this model is recorded, so none is plotted.</p>';
+  }
+  return h;
+}
+function anePopHtml(el){
+  const m=R.m,a=m&&m.ane,t=E.aneToggle(m,sides.map(s=>s.chip),S.prec,S.L);
+  const sideKey=el&&el.dataset&&el.dataset.side;
+  const s=sideKey&&sides.find(x=>x.key===sideKey);
+  let h='';
+  if(!t.ok)h+='<p><b>Run on Neural Engine is unavailable.</b> '+esc(t.reason)+'</p>';
+  else if(!S.ane)h+='<p><b>Run on Neural Engine is off.</b> The GPU path is drawn. Turning it on does not change tokens per second.</p>';
+  else h+='<p><b>Run on Neural Engine is on.</b> Tokens per second stay on the unified-memory bandwidth roofline. No published Neural Engine tok/s for this model is recorded, so none is shown.</p>';
+  if(a){
+    const lead=a.tag==='V'?'Verified. ':a.tag==='A'?'Approximate. ':'Assumed. ';
+    const body=a.viable?(a.contextNote||''): (a.why||'');
+    if(body && body!==t.reason)h+='<p>'+lead+esc(body)+'</p>';
+    if(a.ramNote)h+='<p>'+esc(a.ramNote)+'</p>';
+    if(a.benchNote && S.ane)h+='<p>'+esc(a.benchNote)+'</p>';
+    const bits=sourceBits(a.src||[]);
+    if(bits.html)h+='<p>'+bits.html+'</p>';
+    const names={embed:'Embeddings',attn:'Attention',mlp:'Feed-forward',head:'LM head'};
+    for(const k of ['embed','attn','mlp','head']){
+      const part=a.parts&&a.parts[k]; if(!part)continue;
+      const unit=part.unit==='ane'?'Neural Engine':part.unit==='gpu'?'GPU fallback':'CPU';
+      const pb=sourceBits(part.src||[]);
+      const plead=part.tag==='V'?'Verified. ':part.tag==='A'?'Approximate. ':'Assumed. ';
+      h+='<p><b>'+names[k]+': '+unit+'.</b> '+plead+esc(part.note||'')+(pb.list.length?'':' No recorded source.')+'</p>';
+      if(pb.html)h+='<p>'+pb.html+'</p>';
+    }
+    if(Array.isArray(a.benchmarks))for(const b of a.benchmarks){
+      const bb=sourceBits(b.src||[]);
+      h+='<p><b>Published '+esc(String(b.toks))+' '+esc(b.unit||'tok/s')+'</b> on '+esc(b.device||'the measured device')+'. '+esc(b.note||'')+'</p>';
+      if(bb.html)h+='<p>'+bb.html+'</p>';
+    }
+  }
+  h+='<p>The Neural Engine uses the same unified memory as the GPU. The roofline slope stays the published bandwidth. No Neural Engine peak TFLOPS is published, so the flat top stays the GPU peak.</p>';
+  if(s){
+    const g=E.aneGate(m,s.chip,S.prec,S.L);
+    h+='<p><b>'+s.key+' '+esc(chipShort(s.chip))+'.</b> '+(S.ane&&g.ok?'This panel follows the Neural Engine steps. Pink N marks the Neural Engine. Blue G marks the GPU fallback.':('This panel stays on the GPU. '+(g.ok?'The toggle is off.':g.reason)))+'</p>';
+  } else if(ANE_OUT.length){
+    h+='<p><b>Not in this model list.</b> Recorded so their numbers are not copied onto these rows.</p>';
+    for(const o of ANE_OUT){
+      const bits=sourceBits(o.src||[]);
+      const lead=o.tag==='V'?'Verified. ':o.tag==='A'?'Approximate. ':'Assumed. ';
+      h+='<p><b>'+esc(o.name)+'.</b> '+lead+esc(o.note||'')+'</p>';
+      if(Array.isArray(o.benchmarks))for(const b of o.benchmarks){
+        const bb=sourceBits(b.src||[]);
+        h+='<p><b>Published '+esc(String(b.toks))+' '+esc(b.unit||'tok/s')+'</b> on '+esc(b.device||'the measured device')+'. '+esc(b.note||'')+'</p>';
+        if(bb.html)h+='<p>'+bb.html+'</p>';
+      }
+      if(bits.html)h+='<p>'+bits.html+'</p>';
+    }
+  }
   return h;
 }
 function hideSrcPop(){
@@ -832,27 +959,123 @@ function hideSrcPop(){
   if(!pop)return;
   pop.hidden=true;
   pop.innerHTML='';
+  delete pop.dataset.owner;
+}
+function paragraphs(text){
+  return String(text||'').split(/\n\n+/).map(s=>s.trim()).filter(Boolean).map(s=>'<p>'+esc(s)+'</p>').join('');
+}
+function absorbTitle(el){
+  if(!el||!el.getAttribute)return;
+  const t=el.getAttribute('title');
+  if(!t)return;
+  if(!el.dataset.extra)el.dataset.extra=t;
+  else if(el.dataset.extra.indexOf(t)<0)el.dataset.extra+='\n\n'+t;
+  if(!el.getAttribute('aria-label'))el.setAttribute('aria-label',t);
+  el.removeAttribute('title');
+}
+function tipHtml(el){
+  const tip=el.dataset.tip||specTip(el.dataset.link||'')||'';
+  const extra=el.dataset.extra||'';
+  const html=paragraphs([tip,extra].filter(Boolean).join('\n\n'));
+  if(html)return html;
+  const al=el.getAttribute('aria-label')||'';
+  return al?'<p>'+esc(al)+'</p>':'';
+}
+function rectsOverlap(a,b){
+  return !(a.right<=b.left+0.5||a.left>=b.right-0.5||a.bottom<=b.top+0.5||a.top>=b.bottom-0.5);
+}
+function placePop(pop,el){
+  const r=el.getBoundingClientRect();
+  const pw=pop.offsetWidth, ph=pop.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, gap=8;
+  const obstacles=[{left:r.left,top:r.top,right:r.right,bottom:r.bottom}];
+  document.querySelectorAll('.pdetail.on').forEach(n=>{
+    const b=n.getBoundingClientRect();
+    if(b.width>2&&b.height>2)obstacles.push(b);
+  });
+  const candidates=[
+    {left:r.left,top:r.bottom+gap},
+    {left:r.right-pw,top:r.bottom+gap},
+    {left:r.left,top:r.top-ph-gap},
+    {left:r.right-pw,top:r.top-ph-gap},
+    {left:r.right+gap,top:r.top},
+    {left:r.left-pw-gap,top:r.top}
+  ];
+  const fits=c=>{
+    const box={left:c.left,top:c.top,right:c.left+pw,bottom:c.top+ph};
+    if(box.left<8||box.top<8||box.right>vw-8||box.bottom>vh-8)return false;
+    return !obstacles.some(o=>rectsOverlap(box,o));
+  };
+  let pick=candidates.find(fits);
+  if(!pick){
+    let left=Math.min(Math.max(8,r.left),Math.max(8,vw-pw-8));
+    let top=r.bottom+gap;
+    if(top+ph>vh-8)top=r.top-ph-gap;
+    if(top<8)top=Math.min(Math.max(8,r.top),Math.max(8,vh-ph-8));
+    const box={left,top,right:left+pw,bottom:top+ph};
+    if(rectsOverlap(box,obstacles[0])){
+      if(vw-r.right>=r.left)left=Math.min(vw-pw-8,r.right+gap);
+      else left=Math.max(8,r.left-pw-gap);
+      top=Math.min(Math.max(8,r.top),Math.max(8,vh-ph-8));
+    }
+    pick={left,top};
+  }
+  pop.style.left=Math.round(pick.left)+'px';
+  pop.style.top=Math.round(pick.top)+'px';
+}
+function gpuPopHtml(sideKey){
+  const s=sides.find(x=>x.key===sideKey);
+  if(!s||!s.res||!s.chip)return '<p><b>GPU compute time per token</b> = FLOPs/token / (peak TFLOPS × eff).</p>';
+  const r=s.res,c=s.chip,T=Math.max(1,r.decode?S.B_:S.B_*S.L);
+  const flops=r.F/T,e=Object.assign({},c.eff,effOf(s.key)||{}),mfu=r.decode?e.mfuD:e.mfuP,peak=r.peakTF;
+  const sec=flops/(peak*1e12*Math.max(1e-9,mfu)),memSec=r.sumTm/T;
+  const pkKey=(S.prec==='fp8'&&c.raw.specs.fp8&&c.raw.specs.fp8.v!=null)?'fp8':'fp16';
+  const pk=c.raw.specs[pkKey],units=c.raw.specs.units;
+  const effName=r.decode?'decode MFU':'prefill MFU';
+  let h='<p><b>GPU compute time per token</b> = FLOPs/token / (peak TFLOPS × eff).</p>';
+  h+='<p class="eq">'+Math.round(flops).toLocaleString('en-US')+' FLOPs/token / ('+peak+' × '+mfu+') = '+fmtT(sec)+'</p>';
+  h+='<p>'+esc(String(units.v))+' '+esc(c.unitName)+'s '+tagBtn(units.tag,{spec:specLabel('units',c),src:units.src,note:units.note})+' Peak '+esc(specVal(pkKey,pk))+' '+tagBtn(pk.tag,{spec:specLabel(pkKey,c),src:pk.src,note:pk.note})+' eff is the '+effName+', '+mfu+'.</p>';
+  if(sec*4<memSec)h+='<p>GPU compute time ('+fmtT(sec)+') is far smaller than memory read time ('+fmtT(memSec)+'), so memory sets the speed.</p>';
+  else if(sec<memSec)h+='<p>GPU compute time ('+fmtT(sec)+') is smaller than memory read time ('+fmtT(memSec)+'), so memory sets the speed.</p>';
+  else h+='<p>GPU compute time ('+fmtT(sec)+') is longer than memory read time ('+fmtT(memSec)+'), so compute sets the speed.</p>';
+  return h;
+}
+function refreshKvLegend(){
+  const t=E.kvTraffic(R.m,S.prec,S.phase,S.B_,S.L);
+  document.querySelectorAll('.kvrate').forEach(el=>{if(el.textContent!==t.legend)el.textContent=t.legend;});
+}
+function kvPopHtml(){
+  const m=R.m,t=E.kvTraffic(m,S.prec,S.phase,S.B_,S.L);
+  const drawn=kvDrawShare(),floored=t.ratio<KV_DRAW_FLOOR;
+  let h='<p><b>KV write</b> per layer = 2 &times; kv heads &times; head dim &times; bytes.</p>';
+  h+='<p>2 &times; '+m.kvHeads+' &times; '+m.headDim+' &times; '+t.kvBytes+' B = '+t.perLayer.toLocaleString()+' bytes ('+E.fmtByte(t.perLayer)+' per layer). &times; '+m.layers+' layers = <b>'+E.fmtByte(t.perTok)+'</b> per token.</p>';
+  h+='<p>Inbound weight read is the parameter store, '+E.fmtByte(t.weightStep)+', read once per step. Spread over '+t.tokens.toLocaleString()+' token'+(t.tokens===1?'':'s')+', that is <b>'+E.fmtByte(t.weightPerTok)+'/token</b>. '+t.legend+'.</p>';
+  h+='<p>True share of the weight read: 1 in '+Math.round(1/Math.max(t.ratio,1e-12)).toLocaleString()+'.</p>';
+  h+='<p>Rose dots travel GPU &rarr; memory. '+(floored?('They are drawn at '+(KV_DRAW_FLOOR*100).toFixed(1)+'% of the inbound dot rate so the path stays visible. The true share is far smaller.'):('They are drawn at the true share, '+(drawn*100).toFixed(1)+'% of the inbound dots.'))+'</p>';
+  h+='<p>The violet mark on the strip is the hidden state handed to the next layer: '+m.h.toLocaleString()+' &times; 2 bytes = '+E.fmtByte(t.hidden)+'. One mark, not a memory-bus stream. Activation width is the model&rsquo;s 2-byte hidden state.</p>';
+  if(S.prec==='int4')h+='<p>INT4 is weight-only here. KV values stay '+t.kvBytes+' bytes.</p>';
+  return h;
 }
 function showSrcPop(el){
   const pop=$('srcpop');
   if(!pop||!el)return;
+  absorbTitle(el);
   let html='';
   if(el.dataset&&el.dataset.kind==='fuse'){const chip=chipFromEl(el);html=chip?fusePopHtml(chip):'<p>Idle on purpose. Die-to-die traffic is not in the speed math.</p>';}
   else if(el.dataset&&el.dataset.kind==='fit')html=fitPopHtml(el.dataset.side||'A');
   else if(el.dataset&&el.dataset.kind==='roof')html=roofPopHtml();
+  else if(el.dataset&&el.dataset.kind==='ane')html=anePopHtml(el);
+  else if(el.dataset&&el.dataset.kind==='strip')html=paragraphs(specTip('note:'+(el.dataset.part||'layer')));
+  else if(el.dataset&&el.dataset.kind==='gpu')html=gpuPopHtml(el.dataset.side||'A');
+  else if(el.dataset&&el.dataset.kind==='kv')html=kvPopHtml();
   else if(el.matches&&el.matches('button.tg'))html=badgePopHtml(el);
-  else html='<p>'+esc(el.dataset.tip||el.getAttribute('aria-label')||'')+'</p>';
+  else html=tipHtml(el);
+  if(el.dataset&&el.dataset.extra&&html.indexOf(el.dataset.extra.slice(0,48))<0)html+=paragraphs(el.dataset.extra);
   if(!html||html==='<p></p>'){hideSrcPop();return;}
   pop.innerHTML=html;
+  pop.dataset.owner=el.dataset.link||'tip';
   pop.hidden=false;
   pop.style.visibility='hidden';
-  const r=el.getBoundingClientRect();
-  const pw=pop.offsetWidth, ph=pop.offsetHeight;
-  let left=Math.min(Math.max(8,r.left), window.innerWidth-pw-8);
-  let top=r.bottom+6;
-  if(top+ph>window.innerHeight-8)top=Math.max(8,r.top-ph-6);
-  pop.style.left=left+'px';
-  pop.style.top=top+'px';
+  placePop(pop,el);
   pop.style.visibility='visible';
 }
 function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected&&tagAnchor.dataset.link;}
@@ -897,7 +1120,9 @@ function bindLinks(){
   });
   document.addEventListener('pointerout',ev=>{
     if(ev.pointerType&&ev.pointerType!=='mouse')return;
-    if(!linkTarget(ev.target))return;
+    const fromLink=linkTarget(ev.target);
+    const fromPop=ev.target.closest&&ev.target.closest('#srcpop');
+    if(!fromLink&&!fromPop)return;
     const to=ev.relatedTarget;
     if(to&&to.closest&&(to.closest('[data-link]')||to.closest('#srcpop')))return;
     scheduleHide();
@@ -921,6 +1146,18 @@ function bindLinks(){
 }
 
 // ---------------------------------------------------------------- controls + init
+function paintAne(){
+  const btn=$('ane'); if(!btn||!R.m)return;
+  const t=E.aneToggle(R.m,sides.map(s=>s.chip),S.prec,S.L);
+  if(S.ane&&!t.ok)S.ane=false;
+  const on=!!(S.ane&&t.ok);
+  btn.classList.toggle('on',on);
+  btn.classList.toggle('off',!t.ok);
+  btn.setAttribute('aria-disabled',t.ok?'false':'true');
+  const tip=t.ok?(on?'On. Feed-forward and the LM head use the Neural Engine. Attention is the GPU fallback. Tokens per second stay on the unified-memory bandwidth roofline.':'Off. Turn on to mark Neural Engine steps. Tokens per second do not change: same unified memory.'):t.reason;
+  btn.dataset.tip=tip;
+  btn.setAttribute('aria-label','Run on Neural Engine. '+tip);
+}
 function fillSelect(el,items,val){el.innerHTML=items.map(i=>'<option value="'+i[0]+'">'+esc(i[1])+'</option>').join('');el.value=val;}
 function syncControls(){
   $('model').value=S.model;$('chipA').value=S.A;$('chipB').value=S.B;$('prec').value=S.prec;$('tp').value=String(S.tp);$('spd').value=String(S.spd);
@@ -937,7 +1174,7 @@ function init(data){
   SOURCES=cd.sources||{};TAGS=cd.tagLegend||{};
   const aliases=Object.assign({},cd.aliases||{});
   for(const raw of cd.chips){if(raw.aliasOf)aliases[raw.id]=raw.aliasOf;else if(aliases[raw.id])raw.aliasOf=aliases[raw.id];}
-  CHIPS=cd.chips.map(E.flattenChip);MODELS=md.models;
+  CHIPS=cd.chips.map(E.flattenChip);MODELS=md.models;ANE_OUT=md.aneOutside||[];
   const menu=CHIPS.filter(c=>!c.aliasOf);
   sides=[mkSide('A'),mkSide('B')];
   fillSelect($('model'),MODELS.map(m=>[m.id,m.name]),'');
@@ -954,6 +1191,7 @@ function init(data){
   $('phase').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.phase=b.dataset.v;
     if(S.phase==='prefill'&&CTXS.indexOf(S.L)>5)S.L=CTXS[4];syncControls();recompute();});
   $('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play';$('play').classList.toggle('paused',!playing);};
+  $('ane').onclick=()=>{const t=E.aneToggle(R.m,sides.map(s=>s.chip),S.prec,S.L);if(!t.ok)return;S.ane=!S.ane;recompute();};
   $('assumeBtn').onclick=()=>openDrawer('assume');
   $('tabAssume').onclick=()=>{drawerTab='assume';renderDrawer();};
   $('tabSpecs').onclick=()=>{drawerTab='specs';renderDrawer();};
@@ -968,6 +1206,7 @@ function init(data){
   window.addEventListener('hashchange',()=>{const cur=E.encodeState(S,Object.fromEntries(CHIPS.map(c=>[c.id,c])));if('#'+cur===location.hash)return;applyHash();recompute(true);if($('drawer').classList.contains('open'))renderDrawer();});
   window.addEventListener('resize',()=>{resizeAll();drawRoof();requestAnimationFrame(()=>{if(tagShown()){paintTagLink();showSrcPop(tagAnchor);}});});
   bindLinks();
+  document.querySelectorAll('[title]').forEach(absorbTitle);
   armMarkers();
   document.querySelectorAll('[data-link]').forEach(b=>{if(!b.getAttribute('aria-label')&&b.dataset.tip)b.setAttribute('aria-label',b.dataset.tip);});
   $('datasrc').textContent=DATASRC;

@@ -153,7 +153,31 @@ function explain(a, b, ca, cb, o) {
 
 // ---- share-state URL hash ----------------------------------------------
 const BATCHES = [1,2,4,8,16,32,64,128,256], CTXS = [128,256,512,1024,2048,4096,8192,16384,32768];
-const DEFAULT_STATE = { model:'qwen3-8b', A:'m5pro', B:'m6', phase:'decode', prec:'fp8', tp:1, B_:1, L:4096, spd:1, effA:null, effB:null, assume:null };
+const DEFAULT_STATE = { model:'qwen3-8b', A:'m5pro', B:'m6', phase:'decode', prec:'fp8', tp:1, B_:1, L:4096, spd:1, effA:null, effB:null, assume:null, ane:false };
+// Neural Engine gate. Does not change estimate(): the bus is still chip.bw.
+function aneGate(model, chip, prec, L) {
+  const a = model && model.ane;
+  const fail = (reason) => ({ ok:false, reason, parts:null, tag:a && a.tag, src:(a && a.src) || [] });
+  if (!a || !a.viable) return fail((a && a.why) || 'No documented Neural Engine path for this model/size.');
+  if (a.precisions && a.precisions.indexOf(prec) < 0) return fail(a.precWhy || 'No documented Neural Engine path for this precision.');
+  if (a.maxContext && L > a.maxContext) return fail(a.ctxWhy || ('Documented Neural Engine context for this model stops at ' + a.maxContext + '.'));
+  if (!chip || chip.arch !== 'apple') return fail('This chip has no Neural Engine.');
+  const neural = chip.raw && chip.raw.specs && chip.raw.specs.neural;
+  if (!neural || neural.v == null || neural.v === '') return fail('Neural Engine core count is not recorded for this chip.');
+  return { ok:true, reason:'', parts:a.parts || {}, tag:a.tag, src:a.src || [], record:a };
+}
+function aneToggle(model, chips, prec, L) {
+  const list = chips && chips.length ? chips : [null];
+  const gates = list.map(c => aneGate(model, c, prec, L));
+  const ok = gates.some(g => g.ok);
+  let reason = '';
+  if (!ok) {
+    const reasons = [];
+    gates.forEach(g => { if (g.reason && reasons.indexOf(g.reason) < 0) reasons.push(g.reason); });
+    reason = reasons.join(' ') || 'No documented Neural Engine path for this model/size.';
+  }
+  return { ok, reason, gates };
+}
 const r3 = x => String(Math.round(x*1000)/1000);
 // Encode only what differs from defaults for the optional overrides; always include the main controls.
 function encodeState(S, chipsById) {
@@ -165,6 +189,7 @@ function encodeState(S, chipsById) {
   const ea = effStr(S.effA, chipsById && chipsById[S.A]), eb = effStr(S.effB, chipsById && chipsById[S.B]);
   if (ea) p.set('ea', ea); if (eb) p.set('eb', eb);
   if (S.assume) { const d = DEFAULT_ASSUME, k = Object.keys(d); if (k.some(x => S.assume[x] !== d[x])) p.set('g', k.map(x => r3(S.assume[x])).join(',')); }
+  if (S.ane) p.set('ane', '1');
   return p.toString();
 }
 function decodeState(hash, chips, models) {
@@ -188,6 +213,13 @@ function decodeState(hash, chips, models) {
   const g = p.get('g');
   if (g) { const a = g.split(',').map(Number), k = Object.keys(DEFAULT_ASSUME);
     if (a.length === k.length && a.every(Number.isFinite)) { S.assume = {}; k.forEach((x,i) => { const mt = ASSUME_META[x]; S.assume[x] = Math.min(mt.max, Math.max(mt.min, a[i])); }); } }
+  S.ane = p.get('ane') === '1';
+  if (S.ane) {
+    const model = (models || []).find(m => m.id === S.model);
+    const byId = {};
+    (chips || []).forEach(c => { byId[c.id] = c; });
+    if (!aneToggle(model, [byId[S.A], byId[S.B]], S.prec, S.L).ok) S.ane = false;
+  }
   return S;
 }
 
@@ -204,7 +236,31 @@ function animSeconds(modelSeconds, slowestModelSeconds, wallSeconds) {
   return modelSeconds * ((wallSeconds > 0 ? wallSeconds : 1) / slow);
 }
 
+function fmtByte(b) {
+  if (!(b > 0)) return '0 B';
+  if (b >= 1e9) return (b / 1e9).toFixed(2).replace(/0$/, '').replace(/\.0$/, '') + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(2).replace(/0$/, '').replace(/\.0$/, '') + ' MB';
+  if (b >= 1024) return (b / 1024).toFixed(b >= 10240 ? 0 : 1).replace(/\.0$/, '') + ' KB';
+  return Math.round(b) + ' B';
+}
+
+// KV cache write for one new token: each layer stores K and V,
+// 2 × kv heads × head dim × bytes. Weight bytes are the parameters,
+// read once per step, so per token that total is divided by the tokens in the step.
+function kvTraffic(m0, prec, phase, B, L) {
+  const m = m0 && m0.kvPerTok != null ? m0 : deriveModel(m0);
+  const P = PRECS[prec] || PRECS.fp16;
+  const perLayer = 2 * m.kvHeads * m.headDim * P.kv;
+  const perTok = m.layers * perLayer;
+  const tokens = (phase === 'decode' ? 1 : Math.max(1, L || 1)) * Math.max(1, B || 1);
+  const weightStep = m.total * P.w;
+  const weightPerTok = weightStep / tokens;
+  const ratio = weightPerTok > 0 ? perTok / weightPerTok : 0;
+  const legend = 'KV write ~' + fmtByte(perTok) + '/token vs weights ' + fmtByte(weightPerTok) + '/token';
+  return { perLayer, perTok, weightPerTok, weightStep, tokens, ratio, kvBytes: P.kv, wBytes: P.w, legend, hidden: m.h * 2 };
+}
+
 return { PRECS, DEFAULT_ASSUME, ASSUME_META, RANGE_SPREAD, BATCHES, CTXS, DEFAULT_STATE,
   flattenChip, resolveChipId, deriveModel, chipRate, estimate, estimateRange, sensitivity, explain, encodeState, decodeState,
-  flowScale, animSeconds };
+  flowScale, animSeconds, kvTraffic, fmtByte, aneGate, aneToggle };
 });
