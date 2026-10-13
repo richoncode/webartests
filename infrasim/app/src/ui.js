@@ -122,9 +122,9 @@ function mkSide(key){
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><b></b><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
    '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><canvas class="strip"></canvas>'+
-   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><span class="st-link-name">no multi-chip link modeled</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote"></div>'+
+   '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="Multi-chip link on both chips. The status row says when none is modeled." aria-label="Footnote: multi-chip link">4</button><span class="st-link-name" data-link="note:nolink" data-tip="Multi-chip link on both chips. The status row says when none is modeled.">no multi-chip link modeled</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="How this chip is drawn. The same note is in How to read this."></div>'+
    '<div class="stats"><div class="resultslot">'+
-   '<div class="rview final"><div class="l"><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
+   '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="See what differs and why." aria-label="See what differs and why">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div><div class="sub s1"></div><div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Estimate range on both chips, and the how-to line." aria-label="Footnote: estimate range">3</button><div class="rt"></div><div class="rtrack"><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
    '<div class="bars">'+
    '<div class="brow compute"><span class="lab">compute</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
    '<div class="brow memory"><span class="lab">memory</span><div class="track"><div class="fill"></div></div><span class="num">0.00 ms</span></div>'+
@@ -136,7 +136,8 @@ function mkSide(key){
   side.root=p;side.cv=p.querySelector('canvas.cv');side.st=p.querySelector('canvas.strip');
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
-  side.pills.addEventListener('click',ev=>{if(ev.target.closest('button.tg'))return;const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
+  side.pills.addEventListener('click',ev=>{if(ev.target.closest('button'))return;const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
+  side.pills.addEventListener('keydown',ev=>{if(ev.target.closest('button'))return;if(ev.key!=='Enter'&&ev.key!==' ')return;ev.preventDefault();const b=ev.target.closest('.pill');if(!b)return;const k=b.dataset.k;side.sel=side.sel===k?null:k;renderPillDetail(side);});
   return side;
 }
 let sides=[];
@@ -170,7 +171,7 @@ function renderPills(s){
   const chip=s.chip,sp=chip.raw.specs;
   const keys=['fp16','fp8','bw','cap','units','node','announced'].filter(k=>sp[k]&&!(k==='fp8'&&sp[k].v==null));
   const eff=effSpec(chip);
-  const pill=(k,tag,text,spec,src,note)=>'<div class="pill'+(s.sel===k?' sel':'')+'" data-k="'+k+'">'+tagBtn(tag,{spec:spec,src:src,note:note})+'<span class="txt">'+esc(text)+'</span></div>';
+  const pill=(k,tag,text,spec,src,note)=>'<div class="pill'+(s.sel===k?' sel':'')+'" tabindex="0" data-k="'+k+'" data-link="spec:'+k+'" data-tip="'+esc(specTip(k))+'">'+tagBtn(tag,{spec:spec,src:src,note:note})+'<span class="txt">'+esc(text)+'</span></div>';
   s.pills.innerHTML=keys.map(k=>pill(k,sp[k].tag,pillText(k,chip,sp[k]),specLabel(k,chip),sp[k].src,sp[k].note)).join('')+
    pill('eff',eff.tag,'eff '+eff.v,'Efficiency factors',eff.src,eff.note);
   const rib=s.root.querySelector('.ribbon'); rib.classList.toggle('on', chip.status==='speculative'); rib.setAttribute('aria-hidden', chip.status==='speculative'?'false':'true');
@@ -179,9 +180,11 @@ function renderPills(s){
 function renderPillDetail(s){
   const chip=s.chip,sp=s.sel==='eff'?effSpec(chip):chip.raw.specs[s.sel];
   s.root.querySelectorAll('.pill').forEach(b=>b.classList.toggle('sel',b.dataset.k===s.sel));
-  if(!s.sel||!sp){s.pdetail.className='pdetail';s.pdetail.innerHTML='';refreshTagLink();return;}
+  if(!s.sel||!sp){s.pdetail.className='pdetail';s.pdetail.innerHTML='';delete s.pdetail.dataset.link;refreshTagLink();return;}
   const label=s.sel==='eff'?'Efficiency factors (MFU prefill / MFU decode / bandwidth)':specLabel(s.sel,chip);
   s.pdetail.className='pdetail on';
+  s.pdetail.dataset.link='spec:'+s.sel;
+  s.pdetail.dataset.tip=specTip(s.sel);
   s.pdetail.innerHTML='<b>'+esc(label)+':</b> '+esc(s.sel==='eff'?sp.v:specVal(s.sel,sp))+' '+tagBtn(sp.tag,{spec:label,src:sp.src,note:sp.note})+' <span class="tiny">'+({V:'verified vendor source',A:'approximate / derived / third-party',U:'assumed'}[sp.tag])+'</span><br>'+esc(sp.note||'')+'<br><span class="tiny">Source: '+srcLinks(sp.src)+'</span>';
   refreshTagLink();
 }
@@ -254,19 +257,20 @@ function recompute(noHash){
   });
   // verdict
   const warn=[];
-  if(S.tp>1&&sides.some(s=>s.chip.maxTP===1))warn.push('Apple chips have no multi-chip link in this model, so they run as 1 chip.');
-  if(S.prec==='fp8'&&sides.some(s=>!s.chip.fp8))warn.push('Apple GPUs have no native FP8 math: 8-bit weights, 16-bit compute.');
-  if(S.prec==='int4')warn.push('INT4 is weight-only (dequantize to FP16 for math).');
-  if(S.L>R.m.maxPos)warn.push('Context exceeds the base model\'s trained length ('+R.m.maxPos.toLocaleString()+'); capacity math still applies.');
+  if(S.tp>1&&sides.some(s=>s.chip.maxTP===1))warn.push({link:'note:nolink',text:'Apple chips have no multi-chip link in this model, so they run as 1 chip.'});
+  if(S.prec==='fp8'&&sides.some(s=>!s.chip.fp8))warn.push({link:'note:fp8',text:'Apple GPUs have no native FP8 math: 8-bit weights, 16-bit compute.'});
+  if(S.prec==='int4')warn.push({text:'INT4 is weight-only (dequantize to FP16 for math).'});
+  if(S.L>R.m.maxPos)warn.push({text:'Context exceeds the base model\'s trained length ('+R.m.maxPos.toLocaleString()+'); capacity math still applies.'});
   const mx=sides.map(s=>s.chip.matrix);
   if(sides.some(s=>s.chip.arch==='apple')&&(mx[0]!==mx[1]||sides.every(s=>s.chip.matrix)))
-    warn.push('M5-generation GPU cores each have a Neural Accelerator (matrix unit): it raises compute-bound prefill, while decode stays set by memory bandwidth. Apple publishes only relative AI-compute gains, so these chips\' TFLOPS are third-party-derived (tag A).');
+    warn.push({link:'note:na',text:'M5-generation GPU cores each have a Neural Accelerator (matrix unit): it raises compute-bound prefill, while decode stays set by memory bandwidth. Apple publishes only relative AI-compute gains, so these chips\' TFLOPS are third-party-derived.',tag:'A'});
   if(sides.every(s=>s.chip.arch==='apple')&&sides[0].chip.matrix!==sides[1].chip.matrix)
-    warn.push('Apple efficiency factors for M4/M3 chips were fitted to a 2023 llama.cpp build and the M5-generation ones to a 2026 build, so decode gaps between the generations are somewhat inflated.');
-  $('vtxt').innerHTML='<p class="why">'+E.explain(a.res,b.res,a.chip,b.chip,o)+'</p>'+
-    '<p class="sub">Model '+R.m.name+': '+(R.m.total/1e9).toFixed(1)+'B params ('+(R.m.active/1e9).toFixed(1)+'B active/token), KV cache '+(R.m.kvPerTok*PRECS[S.prec].kv/1024).toFixed(0)+' KB/token.</p>'+
-    '<p class="sub">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte.</p>'+
-    warn.map(w=>'<p class="sub" style="color:#fbbf24">Note: '+w+'</p>').join('');
+    warn.push({text:'Apple efficiency factors for M4/M3 chips were fitted to a 2023 llama.cpp build and the M5-generation ones to a 2026 build, so decode gaps between the generations are somewhat inflated.'});
+  $('vtxt').innerHTML='<p class="why">'+esc(E.explain(a.res,b.res,a.chip,b.chip,o))+'</p>'+
+    '<p class="sub">Model '+esc(R.m.name)+': '+(R.m.total/1e9).toFixed(1)+'B params ('+(R.m.active/1e9).toFixed(1)+'B active/token), KV cache '+(R.m.kvPerTok*PRECS[S.prec].kv/1024).toFixed(0)+' KB/token.</p>'+
+    '<p class="sub" data-link="spec:ai" data-tip="'+esc(specTip('ai'))+'">Arithmetic intensity this phase: A '+fmtN(a.res.AI)+' | B '+fmtN(b.res.AI)+' FLOP/byte. Ridge point: A '+fmtN(a.res.ridge)+' | B '+fmtN(b.res.ridge)+' FLOP/byte. '+mark('xref:roofline','R','See the roofline chart. The same marker is on the chart heading.')+'</p>'+
+    warn.map(w=>'<p class="sub" style="color:#fbbf24"'+(w.link?' data-link="'+w.link+'" data-tip="'+esc(specTip(w.link))+'"':'')+'>'+(w.link?mark(w.link,w.link==='note:fp8'?'F':w.link==='note:na'?'2':'4',specTip(w.link))+' ':'')+'Note: '+esc(w.text)+(w.tag?' '+tagBtn(w.tag,{spec:'Matrix compute',note:w.text}):'')+'</p>').join('');
+  refreshTagLink();
   $('bval').textContent=S.B_;$('lval').textContent=S.L.toLocaleString()+' tok';
   $('llabel').textContent=S.phase==='decode'?'Context so far':'Prompt length';
   const tmax=Math.max(a.res.total,b.res.total);
@@ -300,17 +304,17 @@ function syncSlcLabel(s){
   const left=s.cv.offsetLeft+bl+(s.offx+k.x*s.sc)*scaleX;
   const top=s.cv.offsetTop+bt+(s.offy+k.y*s.sc)*scaleY;
   const w=(k.w*s.sc)*scaleX, h=(k.labelBand*s.sc)*scaleY;
-  const tagPx=k.tag?Math.max(11,Math.min(window.innerWidth<=900?17:15,h-1)):0;
+  const tagPx=Math.max(11,Math.min(15,h-1));
   const sig=(s.chip.id||'')+'|'+(k.tag||'')+'|'+k.label+'|'+tagPx.toFixed(1);
   if(el.dataset.sig!==sig){
     el.dataset.sig=sig;
-    el.innerHTML='<span class="slc-txt">'+esc(k.label)+'</span>'+(k.tag?tagBtn(k.tag,{spec:'On-chip cache',src:sp.src||[],note:sp.note||''}):'');
-    const b=el.querySelector('button.tg');
-    if(b){
+    el.innerHTML='<span class="slc-txt" data-link="spec:l2" data-tip="'+esc(specTip('l2'))+'">'+esc(k.label)+'</span>'+(k.tag?tagBtn(k.tag,{spec:'On-chip cache',src:sp.src||[],note:sp.note||''}):'')+mark('spec:l2','•',specTip('l2'));
+    el.querySelectorAll('button.tg,button.mk').forEach(b=>{
       b.style.width=tagPx.toFixed(1)+'px'; b.style.height=tagPx.toFixed(1)+'px';
       b.style.fontSize=Math.max(8,Math.round(tagPx*0.56))+'px';
-      b.setAttribute('aria-label', k.label+' — '+(TAGS[k.tag]||k.tag));
-    }
+    });
+    const b=el.querySelector('button.tg');
+    if(b) b.setAttribute('aria-label', k.label+' — '+(TAGS[k.tag]||k.tag));
     refreshTagLink();
   }
   el.style.fontSize=Math.max(8,Math.min(12,h-3)).toFixed(1)+'px';
@@ -427,8 +431,35 @@ function drawStrip(s,cur,tm){
   const xh=x0+n*bw+3;ctx.fillStyle='rgba('+cH+','+((s.done||cur.part==='head')?1:0.28)+')';ctx.fillRect(xh,3,20,24);
   ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.fillText('LM',xh+10,15);
 }
+function spreadMarks(items){
+  for(let n=0;n<8;n++){let moved=false;
+    for(let i=0;i<items.length;i++)for(let j=0;j<i;j++){
+      const dx=items[i].x-items[j].x, dy=items[i].y-items[j].y;
+      if(dx*dx+dy*dy<18*18){items[i].x+=12;items[i].y+=6;moved=true;}
+    }
+    if(!moved)break;
+  }
+}
+function syncRoofMarks(items){
+  spreadMarks(items);
+  let layer=$('roofmarks');
+  if(!layer){layer=document.createElement('div');layer.id='roofmarks';$('roofline').appendChild(layer);}
+  const cv=$('roof');
+  layer.style.left=cv.offsetLeft+'px';layer.style.top=cv.offsetTop+'px';
+  layer.style.width=cv.offsetWidth+'px';layer.style.height=cv.offsetHeight+'px';
+  const sig=items.map(it=>it.link+'/'+it.label).join('|');
+  if(layer.dataset.sig!==sig){
+    layer.dataset.sig=sig;
+    layer.innerHTML=items.map(it=>'<button type="button" class="mk roofmk" data-link="'+it.link+'" data-tip="'+esc(it.tip)+'" aria-label="'+esc(it.tip+' '+it.label)+'">'+esc(it.label)+'</button>').join('');
+    refreshTagLink();
+  }
+  const bl=1,bt=1;
+  [...layer.children].forEach((b,i)=>{const it=items[i];if(!it)return;b.style.left=(bl+it.x-7.5)+'px';b.style.top=(bt+it.y-7.5)+'px';b.style.background=it.color;});
+  if(tagShown())paintTagLink();
+}
 function drawRoof(){
   const cv=$('roof'),ctx=cv.getContext('2d'),d=cv.width/(cv.clientWidth||1),W=cv.clientWidth,H=cv.clientHeight;
+  const marks=[];
   ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
   const ml=38,mr=8,mt=8,mb=24,x0=Math.log10(0.5),x1=Math.log10(30000),y0=Math.log10(0.5),y1=Math.log10(4000);
   const X=v=>ml+(Math.log10(v)-x0)/(x1-x0)*(W-ml-mr),Y=v=>H-mb-(Math.log10(v)-y0)/(y1-y0)*(H-mt-mb);
@@ -443,10 +474,14 @@ function drawRoof(){
     for(let i=0;i<=80;i++){const ai=Math.pow(10,lerp(x0,x1,i/80)),y=Math.min(pk,bw*ai);if(y<0.5)continue;const px=X(ai),py=Y(y);if(first){ctx.moveTo(px,py);first=false;}else ctx.lineTo(px,py);}ctx.stroke();
     const rx=X(s.res.ridge);ctx.setLineDash([3,3]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(rx,Y(pk));ctx.lineTo(rx,H-mb);ctx.stroke();ctx.setLineDash([]);
     const ox=X(clamp(s.res.AI,0.5,30000)),oy=Y(clamp(s.res.achTF,0.5,4000));
-    ctx.fillStyle=s.res.oom?'#7f1d1d':s.color;ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(ox,oy,6,0,6.283);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 9px system-ui';ctx.fillText(s.key,ox,oy+0.5);ctx.font='9.5px system-ui,sans-serif';
+    const peakLink=(S.prec==='fp8'&&c.fp8)?'spec:fp8':'spec:fp16';
+    const bai=Math.max(0.8,s.res.ridge/6), bx=X(bai), by=Y(Math.max(0.5,Math.min(pk,bw*bai)));
+    marks.push({link:'spec:ai',tip:specTip('ai'),label:s.key,x:ox,y:oy,color:s.res.oom?'#7f1d1d':s.color});
+    marks.push({link:peakLink,tip:specTip(peakLink.slice(5)),label:s.key,x:rx,y:Y(Math.max(0.5,pk)),color:s.color});
+    marks.push({link:'spec:bw',tip:specTip('bw'),label:s.key,x:bx,y:by,color:s.color});
   });
-  ctx.fillStyle='#8493ab';ctx.textAlign='left';ctx.fillText(W<340?'solid: roof | dashed: ridge | dot: workload':'solid: chip roof (peak spec) | dashed: ridge | dot: this workload',ml+4,mt+4);
+  ctx.fillStyle='#8493ab';ctx.textAlign='left';ctx.fillText(W<340?'solid: roof | dashed: ridge | chip: workload':'solid: chip roof (peak spec) | dashed: ridge | chip: workload, peak, bandwidth',ml+4,mt+4);
+  syncRoofMarks(marks);
 }
 
 // ---------------------------------------------------------------- animation loop
@@ -530,7 +565,7 @@ function effNow(side){const c=chipById(S[side]);return Object.assign({},c.eff,ef
 function renderDrawer(){
   $('tabAssume').classList.toggle('on',drawerTab==='assume');$('tabSpecs').classList.toggle('on',drawerTab==='specs');
   const body=$('dbody');
-  if(drawerTab==='specs'){body.innerHTML=specsHTML();return;}
+  if(drawerTab==='specs'){body.innerHTML=specsHTML();refreshTagLink();return;}
   let h='<div class="dnote">Everything below is an <b>assumption or a fitted factor</b>, not a measurement. Move a slider to see how sensitive the result is; the link in your address bar updates so you can share the exact settings.</div>';
   h+='<h4>Formulas (exactly as implemented)</h4><pre class="formulas">'+esc(FORMULAS)+'</pre>';
   h+='<h4>Global factors</h4>';
@@ -539,7 +574,7 @@ function renderDrawer(){
     const c=chipById(S[side]),e=effNow(side),d=c.eff,raw=c.raw.eff;
     h+='<h4><span class="dot" style="background:'+(side==='A'?'var(--A)':'var(--B)')+'"></span>Chip '+side+': '+esc(c.name)+' efficiency</h4>';
     for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth eff.']])
-      h+=sliderRow('e'+side+'_'+k,lab,0.05,1,0.01,e[k],v=>v.toFixed(2),Math.abs(e[k]-d[k])>1e-9,raw[k].tag,{src:raw[k].src,note:raw[k].note})+'<div class="shelp">Default '+d[k].toFixed(2)+' ['+raw[k].tag+']: '+esc(raw[k].note||'')+'</div>';
+      h+=sliderRow('e'+side+'_'+k,lab,0.05,1,0.01,e[k],v=>v.toFixed(2),Math.abs(e[k]-d[k])>1e-9,raw[k].tag,{src:raw[k].src,note:raw[k].note,link:'spec:eff',tip:specTip('eff')})+'<div class="shelp">Default '+d[k].toFixed(2)+' ['+raw[k].tag+']: '+esc(raw[k].note||'')+'</div>';
     h+='<button class="hbtn" data-reset="'+side+'">Reset chip '+side+' to defaults</button>';
   }
   h+='<p><button class="hbtn" id="resetAll">Reset all assumptions</button></p>';
@@ -553,7 +588,8 @@ function renderDrawer(){
 }
 function sliderRow(id,label,min,max,step,val,fmt,chg,tag,meta){
   meta=meta||{};
-  return '<div class="srow'+(chg?' chg':'')+'"><span>'+tagBtn(tag,{spec:label,src:meta.src||[],note:meta.note||'',style:'width:13px;height:13px;font-size:8px'})+' '+esc(label)+'</span><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'" aria-label="'+esc(label)+'"><span class="sv" id="'+id+'_v">'+fmt(val)+'</span></div>';
+  const lk=meta.link?' data-link="'+meta.link+'" data-tip="'+esc(meta.tip||'')+'"':'';
+  return '<div class="srow'+(chg?' chg':'')+'"'+lk+'><span>'+tagBtn(tag,{spec:label,src:meta.src||[],note:meta.note||'',style:'width:13px;height:13px;font-size:8px'})+' '+esc(label)+'</span><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'" aria-label="'+esc(label)+'"><span class="sv" id="'+id+'_v">'+fmt(val)+'</span></div>';
 }
 function onSlider(ev){
   const id=ev.target.id,v=+ev.target.value;let m;
@@ -575,22 +611,53 @@ function renderSens(){
   box.innerHTML=h;
 }
 function specsHTML(){
-  let h='<div class="legend"><span>'+tagBtn('V')+' verified: vendor-published</span><span>'+tagBtn('A')+' approximate / derived / third-party</span><span>'+tagBtn('U')+' assumed</span></div>';
+  let h='<div class="legend"><span class="leg" data-link="tag:V" data-tip="'+esc(specTip('tag:V'))+'">'+tagBtn('V')+' verified: vendor-published</span><span class="leg" data-link="tag:A" data-tip="'+esc(specTip('tag:A'))+'">'+tagBtn('A')+' approximate / derived / third-party</span><span class="leg" data-link="tag:U" data-tip="'+esc(specTip('tag:U'))+'">'+tagBtn('U')+' assumed</span></div>';
   h+='<div class="dnote">Data source: '+esc(DATASRC)+'. Apple never publishes GPU TFLOPS, so those rows are never tagged V. No chip in this data set is a speculative projection: M6 and M5 Ultra were announced by Apple on 2026-08-25 (the app supports a "speculative" status and ribbon for future unannounced chips).</div>';
   for(const s of sides){
     const c=s.chip;
     h+='<h4><span class="dot" style="background:'+(s.key==='A'?'var(--A)':'var(--B)')+'"></span>Chip '+s.key+': '+esc(c.name)+(c.status==='speculative'?' <b style="color:#f87171">[SPECULATIVE PROJECTION]</b>':'')+'</h4><table class="spectbl">';
     const keys=SPEC_ORDER.concat(['maxTP']).filter(k=>c.raw.specs[k]);
-    for(const k of keys){const sp=c.raw.specs[k];h+='<tr><td>'+esc(specLabel(k,c))+'</td><td>'+tagBtn(sp.tag,{spec:specLabel(k,c),src:sp.src,note:sp.note})+' <b>'+esc(specVal(k,sp))+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
-    for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth efficiency']]){const sp=c.raw.eff[k];h+='<tr><td>'+lab+'</td><td>'+tagBtn(sp.tag,{spec:lab,src:sp.src,note:sp.note})+' <b>'+sp.v+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
+    for(const k of keys){const sp=c.raw.specs[k];h+='<tr data-link="spec:'+k+'" data-tip="'+esc(specTip(k))+'"><td>'+mark('spec:'+k,'•',specTip(k))+' '+esc(specLabel(k,c))+'</td><td>'+tagBtn(sp.tag,{spec:specLabel(k,c),src:sp.src,note:sp.note})+' <b>'+esc(specVal(k,sp))+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
+    for(const [k,lab] of [['mfuP','MFU prefill'],['mfuD','MFU decode'],['bw','Bandwidth efficiency']]){const sp=c.raw.eff[k];h+='<tr data-link="spec:eff" data-tip="'+esc(specTip('eff'))+'"><td>'+mark('spec:eff','•',specTip('eff'))+' '+lab+'</td><td>'+tagBtn(sp.tag,{spec:lab,src:sp.src,note:sp.note})+' <b>'+sp.v+'</b><br>'+esc(sp.note||'')+'<br><span class="tiny">'+srcLinks(sp.src)+'</span></td></tr>';}
     if(c.notes)h+='<tr><td>Notes</td><td>'+esc(c.notes)+'</td></tr>';
     h+='</table>';
   }
   return h;
 }
 
-// ---------------------------------------------------------------- spec tag links (same letter lights up everywhere; popup is fixed so it cannot shift layout)
+// ---------------------------------------------------------------- one highlight handler for every data-link group
 let tagLock=null, tagAnchor=null, tagHover=false, tipHot=false, hideT=0, touchAt=0;
+function specTip(k){
+  return ({
+    fp16:'FP16 compute on both chips, and the peak of each roofline.',
+    fp8:'FP8 compute on both chips, and the peak of each roofline when FP8 is the rate in use.',
+    bw:'Memory bandwidth on both chips, and the slope of each roofline.',
+    cap:'Memory capacity on both chips.',
+    units:'Compute-unit counts on both chips.',
+    node:'Process node on both chips.',
+    l2:'On-chip cache on both chips.',
+    neural:'Neural Engine on both chips.',
+    ic:'Interconnect on both chips.',
+    usable:'Usable memory fraction on both chips.',
+    announced:'Announcement on both chips.',
+    maxTP:'Maximum chip count in this tool, on both chips.',
+    eff:'Efficiency factors on both chips.',
+    ai:'Arithmetic intensity of this workload, the chips on the roofline.',
+    'tag:V':'Verified: published by the vendor (source named). Every V badge and its legend entry.',
+    'tag:A':'Approximate: derived arithmetic or third-party measurement. Every A badge and its legend entry.',
+    'tag:U':'Assumed: modelling choice, not a sourced number. Every U badge and its legend entry.',
+    'note:nolink':'Multi-chip link on both chips, and the how-to note. The status row says when none is modeled.',
+    'note:range':'Estimate range on both chips, and the how-to line.',
+    'note:na':'Neural Accelerator: the how-to line and the note under What differs.',
+    'note:fp8':'FP8 without native 8-bit math: the precision control, the how-to line, and the note under What differs.',
+    'note:arch':'How each chip is drawn, and the particle line in How to read this.',
+    'xref:roofline':'See the roofline chart.',
+    'xref:verdict':'See what differs and why.'
+  })[k]||k;
+}
+function mark(link,label,tip){
+  return '<button type="button" class="mk" data-link="'+link+'" data-tip="'+esc(tip||'')+'" aria-label="'+esc(tip||label)+'">'+label+'</button>';
+}
 function tagBtn(tag,meta){
   meta=meta||{};
   if(!tag)return '';
@@ -598,9 +665,9 @@ function tagBtn(tag,meta){
   const spec=meta.spec||'', note=meta.note||'';
   const al=(spec?spec+' — ':'')+(TAGS[tag]||('tag '+tag));
   const st=meta.style?' style="'+meta.style+'"':'';
-  return '<button type="button" class="tg '+tag+'" data-tag="'+tag+'" data-spec="'+esc(spec)+'" data-src="'+esc(src)+'" data-note="'+esc(note)+'" aria-label="'+esc(al)+'"'+st+'>'+tag+'</button>';
+  return '<button type="button" class="tg '+tag+'" data-link="tag:'+tag+'" data-tag="'+tag+'" data-spec="'+esc(spec)+'" data-src="'+esc(src)+'" data-note="'+esc(note)+'" data-tip="'+esc(specTip('tag:'+tag))+'" aria-label="'+esc(al)+'"'+st+'>'+tag+'</button>';
 }
-function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected;}
+function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected&&tagAnchor.dataset.link;}
 function visTag(el){
   if(!el||!el.isConnected)return false;
   const r=el.getBoundingClientRect();
@@ -616,30 +683,77 @@ function visTag(el){
   }
   return true;
 }
+function linkMembers(link){return [...document.querySelectorAll('[data-link]')].filter(el=>el.dataset.link===link&&visTag(el));}
+let revealScroll=false;
+function revealMembers(link){
+  revealScroll=true;
+  document.querySelectorAll('[data-link]').forEach(el=>{
+    if(el.dataset.link!==link)return;
+    for(let n=el;n&&n!==document.body;n=n.parentElement){
+      const cs=getComputedStyle(n);
+      if(cs.display==='none'||cs.visibility==='hidden')return;
+      if((cs.overflowY==='auto'||cs.overflowY==='scroll')&&n.scrollHeight>n.clientHeight+1){
+        const er=el.getBoundingClientRect(), br=n.getBoundingClientRect();
+        if(er.bottom>br.bottom-1)n.scrollTop+=er.bottom-br.bottom+8;
+        else if(er.top<br.top+1)n.scrollTop-=br.top-er.top+8;
+      }
+    }
+  });
+  revealScroll=false;
+}
 function paintTagLink(){
-  const scrim=$('tagscrim'), tip=$('tagtip'), box=$('taghalos');
+  const scrim=$('tagscrim'), tip=$('tagtip'), box=$('taghalos'), svg=$('taglines');
   if(!scrim||!tip||!box)return;
-  document.querySelectorAll('button.tg[aria-describedby]').forEach(b=>b.removeAttribute('aria-describedby'));
-  if(!tagShown()){scrim.classList.remove('on');tip.classList.remove('on');tip.innerHTML='';box.replaceChildren();return;}
-  const letter=tagAnchor.dataset.tag;
-  tagAnchor.setAttribute('aria-describedby','tagtip');
+  if(tagShown())revealMembers(tagAnchor.dataset.link);
+  document.querySelectorAll('[data-link][aria-describedby]').forEach(b=>b.removeAttribute('aria-describedby'));
+  if(!tagShown()){scrim.classList.remove('on');tip.classList.remove('on');tip.innerHTML='';box.replaceChildren();if(svg){svg.classList.remove('on');svg.innerHTML='';}return;}
+  const link=tagAnchor.dataset.link;
+  if(tagAnchor.matches('button'))tagAnchor.setAttribute('aria-describedby','tagtip');
+  const els=linkMembers(link);
   box.replaceChildren();
-  document.querySelectorAll('button.tg').forEach(b=>{
-    if(b.dataset.tag!==letter||!visTag(b))return;
-    const r=b.getBoundingClientRect(), pad=3, h=document.createElement('div');
-    h.className='taghalo '+letter; h.textContent=letter;
-    h.style.left=(r.left-pad)+'px'; h.style.top=(r.top-pad)+'px';
-    h.style.width=(r.width+pad*2)+'px'; h.style.height=(r.height+pad*2)+'px';
-    h.style.fontSize=Math.max(8,Math.round(r.height*0.56))+'px';
+  const round=[], blocks=[];
+  els.forEach(el=>((el.matches('.tg, .mk'))?round:blocks).push(el));
+  blocks.concat(round).forEach(el=>{
+    const r=el.getBoundingClientRect(), pad=3, h=document.createElement('div');
+    if(el.matches('.tg, .mk')){
+      const letter=(el.textContent||'').trim().slice(0,2)||'•';
+      h.className='taghalo'+(el.classList.contains('tg')?' '+([...el.classList].find(c=>c==='V'||c==='A'||c==='U')||''):' mk');
+      h.textContent=letter;
+      h.style.left=(r.left-pad)+'px'; h.style.top=(r.top-pad)+'px';
+      h.style.width=(r.width+pad*2)+'px'; h.style.height=(r.height+pad*2)+'px';
+      h.style.fontSize=Math.max(8,Math.round(r.height*0.56))+'px';
+      if(el.classList.contains('roofmk')){h.style.background=getComputedStyle(el).backgroundColor;h.style.color='#07101e';}
+    }else{
+      h.className='taghalo block';
+      h.textContent=(el.innerText||'').replace(/\s+/g,' ').trim().slice(0,180);
+      h.style.left=(r.left-2)+'px'; h.style.top=(r.top-2)+'px';
+      h.style.width=Math.max(24,r.width+4)+'px'; h.style.height=Math.max(16,r.height+4)+'px';
+      h.style.borderRadius=el.classList.contains('pill')?'999px':'8px';
+    }
     box.appendChild(h);
   });
+  if(svg){
+    const draw=els.length>=2&&els.length<=12&&!link.startsWith('tag:');
+    svg.classList.toggle('on',draw);
+    if(draw){
+      svg.setAttribute('width',String(innerWidth));svg.setAttribute('height',String(innerHeight));
+      const a=tagAnchor.getBoundingClientRect(), ax=a.left+a.width/2, ay=a.top+a.height/2;
+      svg.innerHTML=els.map(el=>{const r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;if(Math.hypot(x-ax,y-ay)<12)return '';return '<line x1="'+ax.toFixed(1)+'" y1="'+ay.toFixed(1)+'" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'"></line>';}).join('');
+    }else svg.innerHTML='';
+  }
   scrim.classList.add('on');
-  const spec=tagAnchor.dataset.spec||'', note=tagAnchor.dataset.note||'';
-  const keys=(tagAnchor.dataset.src||'').split(',').map(s=>s.trim()).filter(Boolean);
-  let html='<div class="tm"><span class="tg '+letter+'">'+letter+'</span><span>'+esc(TAGS[letter]||letter)+'</span></div>';
-  if(spec) html+='<div class="tspec">'+esc(spec)+'</div>';
-  if(spec||keys.length) html+='<div class="tsrc">Source: '+srcLinks(keys)+'</div>';
-  if(note) html+='<div class="tnote">'+esc(note)+'</div>';
+  let html;
+  if(link.startsWith('tag:')){
+    const letter=link.slice(4), spec=tagAnchor.dataset.spec||'', note=tagAnchor.dataset.note||'';
+    const keys=(tagAnchor.dataset.src||'').split(',').map(s=>s.trim()).filter(Boolean);
+    html='<div class="tm"><span class="tg '+letter+'">'+letter+'</span><span>'+esc(TAGS[letter]||letter)+'</span></div>';
+    if(spec) html+='<div class="tspec">'+esc(spec)+'</div>';
+    if(spec||keys.length) html+='<div class="tsrc">Source: '+srcLinks(keys)+'</div>';
+    if(note) html+='<div class="tnote">'+esc(note)+'</div>';
+  }else{
+    const glyph=tagAnchor.matches('.mk,.tg')?(tagAnchor.textContent||'•').trim().slice(0,2):'•';
+    html='<div class="tm"><span class="mk">'+esc(glyph)+'</span><span>'+esc(tagAnchor.dataset.tip||specTip(link))+'</span></div>';
+  }
   tip.innerHTML=html; tip.classList.add('on');
   const r=tagAnchor.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight, m=8;
   let left=r.left+r.width/2-tw/2, top=r.bottom+m;
@@ -650,9 +764,9 @@ function paintTagLink(){
 }
 function refreshTagLink(){if(tagAnchor&&!tagAnchor.isConnected)clearTagLink();else if(tagShown())paintTagLink();}
 function showTag(el,lock){
-  if(!el||!el.dataset||!el.dataset.tag)return;
+  if(!el||!el.dataset||!el.dataset.link)return;
   clearTimeout(hideT); tagAnchor=el;
-  if(lock) tagLock=el.dataset.tag; else tagHover=true;
+  if(lock) tagLock=el.dataset.link; else tagHover=true;
   paintTagLink();
 }
 function scheduleHide(){
@@ -660,42 +774,41 @@ function scheduleHide(){
   hideT=setTimeout(()=>{
     if(tagLock||tipHot)return;
     const a=document.activeElement;
-    if(a&&a.closest&&(a.closest('button.tg')||a.closest('#tagtip')))return;
+    if(a&&a.closest&&(a.closest('[data-link]')||a.closest('#tagtip')))return;
     tagHover=false; if(!tagLock) tagAnchor=null; paintTagLink();
-  },160);
+  },180);
 }
 function clearTagLink(){clearTimeout(hideT);tagLock=null;tagHover=false;tagAnchor=null;tipHot=false;paintTagLink();}
-function bindTagLink(){
+function linkTarget(node){return node&&node.closest&&node.closest('[data-link]');}
+function bindLinks(){
   document.addEventListener('pointerover',ev=>{
     if(ev.pointerType==='touch'||performance.now()-touchAt<700)return;
-    const t=ev.target.closest&&ev.target.closest('button.tg');
-    if(t) showTag(t,false);
+    const t=linkTarget(ev.target); if(t) showTag(t,false);
   });
   document.addEventListener('pointerout',ev=>{
     if(ev.pointerType&&ev.pointerType!=='mouse')return;
-    const t=ev.target.closest&&ev.target.closest('button.tg');
-    if(!t)return;
+    if(!linkTarget(ev.target))return;
     const to=ev.relatedTarget;
-    if(to&&to.closest&&(to.closest('button.tg')||to.closest('#tagtip')))return;
+    if(to&&to.closest&&(to.closest('[data-link]')||to.closest('#tagtip')))return;
     scheduleHide();
   });
   document.addEventListener('pointerdown',ev=>{
-    const t=ev.target.closest&&ev.target.closest('button.tg');
+    const t=linkTarget(ev.target);
     const inTip=ev.target.closest&&ev.target.closest('#tagtip');
     if(ev.pointerType==='touch'){
       touchAt=performance.now();
-      if(t){ev.preventDefault(); if(tagLock&&tagAnchor===t) clearTagLink(); else showTag(t,true);}
+      if(t){if(t.closest('button'))ev.preventDefault(); if(tagLock&&tagAnchor===t) clearTagLink(); else showTag(t,true);}
       else if(!inTip) clearTagLink();
       return;
     }
     if(!t&&!inTip&&tagLock) clearTagLink();
   });
-  document.addEventListener('focusin',ev=>{const t=ev.target.closest&&ev.target.closest('button.tg'); if(t) showTag(t,false);});
+  document.addEventListener('focusin',ev=>{const t=linkTarget(ev.target); if(t) showTag(t,false);});
   document.addEventListener('focusout',()=>scheduleHide());
   const tip=$('tagtip');
   tip.addEventListener('pointerenter',()=>{tipHot=true;clearTimeout(hideT);});
   tip.addEventListener('pointerleave',()=>{tipHot=false;scheduleHide();});
-  document.addEventListener('scroll',()=>{if(tagShown())paintTagLink();},true);
+  document.addEventListener('scroll',()=>{if(revealScroll)return;if(tagShown())paintTagLink();},true);
 }
 
 // ---------------------------------------------------------------- controls + init
@@ -738,15 +851,15 @@ function init(data){
   $('dclose').onclick=closeDrawer;$('backdrop').onclick=closeDrawer;
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape')return;
-    if(tagShown()||tagLock){clearTagLink();const a=document.activeElement;if(a&&a.closest&&a.closest('button.tg, #tagtip'))a.blur();}
+    if(tagShown()||tagLock){clearTagLink();const a=document.activeElement;if(a&&a.closest&&a.closest('[data-link], #tagtip'))a.blur();}
     closeDrawer();
   });
   $('copyBtn').onclick=()=>{writeHash();const url=location.href,done=()=>{$('copyBtn').textContent='Copied';setTimeout(()=>$('copyBtn').textContent='Copy link',1400);};
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,()=>{fallbackCopy(url);done();});else{fallbackCopy(url);done();}};
   window.addEventListener('hashchange',()=>{const cur=E.encodeState(S,Object.fromEntries(CHIPS.map(c=>[c.id,c])));if('#'+cur===location.hash)return;applyHash();recompute(true);if($('drawer').classList.contains('open'))renderDrawer();});
   window.addEventListener('resize',()=>{resizeAll();drawRoof();requestAnimationFrame(()=>{if(tagShown())paintTagLink();});});
-  bindTagLink();
-  document.querySelectorAll('button.tg[data-tag]').forEach(b=>{if(!b.getAttribute('aria-label'))b.setAttribute('aria-label',TAGS[b.dataset.tag]||b.dataset.tag);});
+  bindLinks();
+  document.querySelectorAll('[data-link]').forEach(b=>{if(!b.getAttribute('aria-label')&&b.dataset.tip)b.setAttribute('aria-label',b.dataset.tip);});
   $('datasrc').textContent=DATASRC;
   resizeAll();recompute(true);writeHash();
   window.__infrasim={get S(){return S;},sides,step,recompute,E,CHIPS,MODELS,get ASSUME(){return ASSUME;},openDrawer,closeDrawer,DATASRC};
