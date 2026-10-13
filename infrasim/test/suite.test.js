@@ -172,6 +172,29 @@ test('Neural Engine gate follows the documented path and does not change tok/s',
   assert.match(found.benchmarks[0].note, /not applied/);
 });
 
+test('one popout holds former title text, and the strip labels stay put', () => {
+  const files = ['app/src/template.html', 'app/src/ui.js', 'app/src/styles.css', 'app/infrasim.html', 'app/index.html', 'index.html'];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(root, f), 'utf8');
+    assert.doesNotMatch(src, /\stitle\s*=/, f + ' still has a title attribute');
+    assert.doesNotMatch(src, /\.title\s*=/, f + ' still assigns title');
+  }
+  const ui = fs.readFileSync(path.join(root, 'app/src/ui.js'), 'utf8');
+  const tpl = fs.readFileSync(path.join(root, 'app/src/template.html'), 'utf8');
+  assert.match(ui, /Neural Accelerator/);
+  assert.match(ui, /function placePop/);
+  assert.match(ui, /Feed-forward \(MLP\)/);
+  assert.match(ui, /GPU compute/);
+  assert.match(ui, /memory read/);
+  assert.match(ui, /FLOPs\/token \/ \(peak TFLOPS × eff\)/);
+  assert.match(ui, /class="sw">layer</);
+  assert.match(ui, />attention</);
+  assert.match(ui, />feed-forward</);
+  assert.doesNotMatch(tpl, /MLP/);
+  assert.doesNotMatch(ui, /fillText\([^)]*MLP/);
+  assert.doesNotMatch(ui, /'MLP'/);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {
