@@ -55,6 +55,16 @@ test('m5pro resolves to the 18-core M5 Pro and m5max to the 40-core M5 Max', () 
   assert.equal(alias.aliasOf, 'm5pro-18');
 });
 
+test('known System Level Cache sizes keep their tags', () => {
+  const chips = readJson('data/chips.json');
+  const l2 = id => chips.chips.find(c => c.id === id).specs.l2;
+  assert.deepEqual({ v: l2('m6').v, tag: l2('m6').tag }, { v: '16 MB', tag: 'A' });
+  assert.ok(l2('m6').src.includes('appleinsider-m6-die') && l2('m6').src.includes('macworld-m6'));
+  for (const id of ['m5pro-15', 'm5pro-18']) assert.deepEqual({ v: l2(id).v, tag: l2(id).tag }, { v: '24 MB', tag: 'U' });
+  assert.equal(l2('m5').v.includes('MB') || l2('m5').v.includes('MiB'), true);
+  assert.match(l2('m5max-40').v, /not published/i);
+});
+
 test('derived parameter totals stay near the published safetensors counts', () => {
   const models = readJson('data/models.json');
   for (const m of models.models) {
