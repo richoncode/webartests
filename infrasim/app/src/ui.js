@@ -59,13 +59,23 @@ function layAmd(c){
     return {ci:i,pts:[{x:m.x+m.w,y:cy(m)},{x:cx(ca),y:cy(m)},{x:cell.blk.x-2,y:cy(cell.blk)},{x:cx(cell),y:cy(cell)}]};};
   return {arch:'amd',mems,caches,cells,blocks,ic:null,route,note:'Chiplets: HBM on I/O dies with a big Infinity Cache; compute dies (XCDs) read through it.'};
 }
+function slcCaption(c){
+  const sp=c.raw&&c.raw.specs&&c.raw.specs.l2;
+  if(!sp||sp.v==null)return {label:'System Level Cache (size not published)',tag:null};
+  const m=String(sp.v).match(/(\d+(?:\s*-\s*\d+)?)\s*(?:MB|MiB)\b/i);
+  if(!m)return {label:'System Level Cache (size not published)',tag:sp.tag||null};
+  return {label:'System Level Cache · '+m[1].replace(/\s+/g,'')+' MB',tag:sp.tag||null};
+}
 function layApple(c){
   const memShort=(c.memType||'').replace('Unified ','');
   const nm=clamp(Math.round(c.bw/150),2,8), nl=Math.ceil(nm/2), nr=nm-nl, mems=[];
   const stack=(n,x)=>{const gap=4,h=(240-(n-1)*gap)/n,first=mems.length;for(let i=0;i<n;i++)mems.push({x,y:12+i*(h+gap),w:58,h,label:i===0?memShort:'',sub:i===0&&n>1?'':'',left:x<300});return first;};
   stack(nl,10); if(nr)stack(nr,552);
-  const slc={x:92,y:12,w:436,h:22,label:'System Level Cache (size not published)',sub:''};
-  const dies=c.dies||1, top=42, bot=258, frames=[], blocks=[], extra=[], links=[], cells=[];
+  const cap=slcCaption(c);
+  // Label band on top, dot lane underneath. Height is the same for every Apple chip.
+  const slc={x:92,y:8,w:436,h:36,labelBand:20,label:cap.label,tag:cap.tag,sub:''};
+  const laneY=slc.y+slc.labelBand+(slc.h-slc.labelBand)/2;
+  const dies=c.dies||1, top=slc.y+slc.h+6, bot=258, frames=[], blocks=[], extra=[], links=[], cells=[];
   if(dies===1)frames.push({x:92,y:top,w:436,h:bot-top});
   else if(dies===2){frames.push({x:92,y:top,w:212,h:bot-top},{x:316,y:top,w:212,h:bot-top});links.push({x:304,y:top+40,w:12,h:bot-top-80,label:'Fusion',vert:true});}
   else{const hh=(bot-top-8)/2;frames.push({x:92,y:top,w:212,h:hh},{x:316,y:top,w:212,h:hh},{x:92,y:top+hh+8,w:212,h:hh},{x:316,y:top+hh+8,w:212,h:hh});
@@ -84,9 +94,9 @@ function layApple(c){
     blocks.push({x:f.x,y:f.y,w:f.w,h:f.h,label:dies===1?'one SoC die: CPU + GPU + Neural Engine on one memory pool':'die '+(fi+1)+' of '+dies,lx:f.x+6,ly:f.y+8,frame:true});
   });
   const route=()=>{const m=mems[Math.floor(Math.random()*mems.length)],ex=m.left?m.x+m.w:m.x,rail=m.left?88:532;
-    if(Math.random()<0.08){const t=extra[Math.floor(Math.random()*extra.length)];return {ci:-1,blk:t,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:23},{x:cx(t),y:23},{x:cx(t),y:cy(t)}]};}
+    if(Math.random()<0.08){const t=extra[Math.floor(Math.random()*extra.length)];return {ci:-1,blk:t,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:laneY},{x:cx(t),y:laneY},{x:cx(t),y:cy(t)}]};}
     const i=Math.floor(Math.random()*cells.length),cell=cells[i];
-    return {ci:i,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:23},{x:cx(cell),y:23},{x:cx(cell),y:cy(cell)}]};};
+    return {ci:i,pts:[{x:ex,y:cy(m)},{x:rail,y:cy(m)},{x:rail,y:laneY},{x:cx(cell),y:laneY},{x:cx(cell),y:cy(cell)}]};};
   const na=c.matrix;
   return {arch:'apple',mems,caches:[slc],cells,blocks,links,ic:null,route,extraBlk:extra,na,
     note:(na?'Inner bright square in each GPU core = Neural Accelerator (matrix unit). ':'No per-core matrix unit: matrix math runs on shader ALUs. ')+'One unified memory pool.',
@@ -268,6 +278,30 @@ function recompute(noHash){
 
 // ---------------------------------------------------------------- drawing
 function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+const TAG_COLOR={V:'#22c55e',A:'#f59e0b',U:'#94a3b8'};
+function paintSlcLabel(ctx,k,sc){
+  if(!k.labelBand)return;
+  ctx.save();
+  rr(ctx,k.x,k.y,k.w,k.h,5);ctx.clip();
+  ctx.fillStyle='#0b1520';
+  ctx.fillRect(k.x,k.y,k.w,k.labelBand);
+  const fs=Math.max(11,8.5/Math.max(sc,0.3));
+  ctx.font='600 '+fs+'px system-ui,sans-serif';
+  ctx.textBaseline='middle';ctx.textAlign='left';
+  const tagR=k.tag?7:0, gap=k.tag?6:0;
+  let tw=ctx.measureText(k.label).width, use=fs;
+  const maxW=k.w-16-tagR*2-gap;
+  if(tw>maxW){use=fs*maxW/tw;ctx.font='600 '+use+'px system-ui,sans-serif';tw=ctx.measureText(k.label).width;}
+  const total=tw+gap+tagR*2, x=k.x+(k.w-total)/2, y=k.y+k.labelBand/2;
+  ctx.fillStyle='#a5f3fc';ctx.fillText(k.label,x,y);
+  if(k.tag){
+    const cx=x+tw+gap+tagR;
+    ctx.beginPath();ctx.arc(cx,y,tagR,0,6.283);ctx.fillStyle=TAG_COLOR[k.tag]||TAG_COLOR.U;ctx.fill();
+    ctx.fillStyle='#07101e';ctx.font='800 9px system-ui,sans-serif';ctx.textAlign='center';
+    ctx.fillText(k.tag,cx,y+0.4);
+  }
+  ctx.restore();
+}
 // draw text centered/left-aligned; shrink to fit maxW, skip if it cannot fit above minPx (in screen px)
 function txt(ctx,str,x,y,maxW,sc,align){
   if(!str)return;const base=Math.max(9.5,8.5/Math.max(sc,0.3));let fs=base;
@@ -298,7 +332,8 @@ function drawSide(s,tm){
     if(m.label){ctx.fillStyle='#fde68a';txt(ctx,m.label,m.x+m.w/2,m.y+11,m.w-4,sc);if(m.sub){ctx.fillStyle='#b99a4a';txt(ctx,m.sub,m.x+m.w/2,m.y+24,m.w-4,sc);}}}
   // caches
   for(const k of L.caches){ctx.fillStyle='rgba(34,211,238,'+(0.08+0.14*mu*oomDim)+')';ctx.strokeStyle='rgba(34,211,238,'+(0.3+0.4*mu)+')';rr(ctx,k.x,k.y,k.w,k.h,5);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#a5f3fc';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2-(k.sub?5:0),k.w-4,sc);if(k.sub){ctx.fillStyle='#5aa8b5';txt(ctx,k.sub,k.x+k.w/2,k.y+k.h/2+8,k.w-4,sc);}}
+    if(k.labelBand)paintSlcLabel(ctx,k,sc);
+    else{ctx.fillStyle='#a5f3fc';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2-(k.sub?5:0),k.w-4,sc);if(k.sub){ctx.fillStyle='#5aa8b5';txt(ctx,k.sub,k.x+k.w/2,k.y+k.h/2+8,k.w-4,sc);}}}
   // die links (Fusion / UltraFusion)
   for(const k of (L.links||[])){
     if(k.pill){ctx.fillStyle='#0d1424';ctx.strokeStyle='rgba(244,114,182,.7)';rr(ctx,k.x,k.y,k.w,k.h,7);ctx.fill();ctx.stroke();ctx.fillStyle='#fbcfe8';txt(ctx,k.label,k.x+k.w/2,k.y+k.h/2+0.5,k.w-6,sc);continue;}
@@ -337,6 +372,7 @@ function drawSide(s,tm){
     ctx.fillStyle=f<0.28?'rgba(251,191,36,.95)':(f<0.62?'rgba(103,232,249,.95)':'rgba(190,255,225,.95)');
     ctx.globalAlpha=r.oom?0.45:1;ctx.beginPath();ctx.arc(x,y,1.7/Math.max(0.6,sc*1.2)+0.6,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }
+  for(const k of L.caches) if(k.labelBand)paintSlcLabel(ctx,k,sc);
   // Fixed status rows. The badge blinks with opacity so the phrase never shifts, and the link note stays on its own row.
   const put=(el,v)=>{if(el.textContent!==v)el.textContent=v;};
   const badge=s.root.querySelector('.st-badge'),phrase=s.root.querySelector('.st-phrase'),pct=s.root.querySelector('.st-pct');
