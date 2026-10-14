@@ -1196,15 +1196,13 @@ function placePop(pop,el){
   const below=Math.max(0,vh-r.bottom-margin), above=Math.max(0,r.top-margin);
   const cap=Math.min(pop.classList.contains('layout')?440:320, Math.floor(vh*0.72));
   const flip=below<160&&above>below;
-  const maxH=Math.max(96, Math.min(cap, flip?above:below));
+  const maxH=Math.max(96, Math.min(cap, (flip?above:below)-2));
   scroll.style.maxHeight=maxH+'px';
   const ph=pop.offsetHeight;
   let left=r.left;
   if(left+pw>vw-margin)left=Math.max(margin,vw-margin-pw);
   if(left<margin)left=margin;
-  let top=flip?r.top-ph:r.bottom;
-  if(!flip&&top+ph>vh-margin)top=Math.max(margin,vh-margin-ph);
-  if(flip&&top<margin)top=margin;
+  const top=flip?Math.max(margin, r.top-ph):r.bottom;
   pop.classList.toggle('above',flip);
   pop.style.left=Math.round(left)+'px';
   pop.style.top=Math.round(top)+'px';
@@ -1613,10 +1611,18 @@ function bindLinks(){
     clearPartHl();
   });
   document.addEventListener('pointerdown',ev=>{
-    const hl=ev.target.closest&&ev.target.closest('#srcpop [data-hl]');
+    let node=ev.target;
+    const bridge=node.closest&&node.closest('.popbridge');
+    if(bridge){
+      bridge.style.pointerEvents='none';
+      const under=document.elementFromPoint(ev.clientX,ev.clientY);
+      bridge.style.pointerEvents='';
+      if(under)node=under;
+    }
+    const hl=node.closest&&node.closest('#srcpop [data-hl]');
     if(hl){showPartHl(hl.closest('#srcpop').dataset.side,hl.dataset.hl);return;}
-    if(ev.target.closest&&ev.target.closest('#srcpop'))return;
-    const t=linkTarget(ev.target);
+    if(node.closest&&node.closest('#srcpop'))return;
+    const t=linkTarget(node);
     if(ev.pointerType==='touch'){
       touchAt=performance.now();
       if(t){if(t.closest('button'))ev.preventDefault(); showTag(t,true);}
@@ -1628,7 +1634,11 @@ function bindLinks(){
   });
   document.addEventListener('focusin',ev=>{const t=linkTarget(ev.target); if(t) showTag(t,false);});
   document.addEventListener('focusout',()=>scheduleHide());
-  window.addEventListener('scroll',()=>{if(tagShown()&&tagAnchor)placePop($('srcpop'),tagAnchor);},true);
+  window.addEventListener('scroll',ev=>{
+    const t=ev.target;
+    if(t&&t.closest&&t.closest('#srcpop'))return;
+    if(tagShown()&&tagAnchor)placePop($('srcpop'),tagAnchor);
+  },true);
 }
 
 // ---------------------------------------------------------------- controls + init
