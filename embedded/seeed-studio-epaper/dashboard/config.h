@@ -89,7 +89,12 @@
 // climbs into sunlight — the twilight effect. Show a launch when ALL hold:
 //   1. the local sky is clear or nearly so          (WX_CLEAR_MAX_CLOUD_PCT)
 //   2. lift-off falls after sunset or before sunrise (dusk margin below)
-//   3. lift-off is today, local time
+//   3. lift-off is between now and noon tomorrow, local time
+//
+// Rule 3 used to be "today, local time", which never showed a pre-dawn launch:
+// the evening wake skipped it as tomorrow's, and by the 06:00 wake it had
+// flown. The firmware applies this on every wake (06:00, 18:00, and the button).
+#define LAUNCH_CUTOFF_HOUR       12   // consider launches until this hour tomorrow
 #define WX_CLEAR_MAX_CLOUD_PCT   35
 #define LAUNCH_DUSK_MARGIN_MIN   15   // count from sunset minus this
 // Best viewing runs from sunset to about 90 min after; flag those as prime.
