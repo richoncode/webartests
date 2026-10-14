@@ -131,7 +131,7 @@ function mkSide(key){
   const side={key,color:key==='A'?'#60a5fa':'#c084fc',prog:0,done:false,parts:[],acc:0,flash:null,ph:null,layout:null,chipId:null,sel:null};
   const p=$('p'+key);
   p.innerHTML='<div class="ribbon" aria-hidden="true">SPECULATIVE PROJECTION</div><div class="ptitle"><button type="button" class="cname" data-link="note:layout:'+key+'" data-kind="layout" data-side="'+key+'"></button><span></span><em class="tokc" aria-hidden="true">tokens in window: <span class="tokc-n">0</span></em></div>'+
-   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><div class="docrate" data-link="note:kv" data-kind="kv" aria-label="Gold dots are inbound reads. Rose dots are KV cache writes from the GPU back to memory. Violet is the hidden state handed to the next layer. The text is the real KV-write size against the weight read."><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#fb7185"></span><span class="kvrate">KV write</span><span class="dot" style="background:#c4b5fd"></span></div>'+
+   '<div class="pills"></div><div class="pdetail"></div><canvas class="cv"></canvas><div class="stripwrap"><div class="slab"><button type="button" class="slayer" data-link="note:layer" data-kind="strip" data-part="layer" aria-label="Layer index. The word layer stays put. The number is the layer now running, out of the model layers."><span class="sw">layer</span><span class="sn">1/1</span></button><span class="srows"><button type="button" class="srow" data-link="note:attn" data-kind="strip" data-part="attn" aria-label="Attention, the top row of each layer.">attention</button><button type="button" class="srow" data-link="note:ffn" data-kind="strip" data-part="ffn" aria-label="Feed-forward, the bottom row of each layer.">feed-forward</button></span></div><canvas class="strip" aria-label="Layer strip. Attention on top, feed-forward below, LM head at the end."></canvas></div><div class="docrate" data-link="note:kv" data-kind="kv" aria-label="Gold dots are inbound reads. Rose dots are KV cache writes from the GPU back to memory. Violet is the hidden state handed to the next layer. The text is the real KV-write size against the weight read."><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#fb7185"></span><span class="kvrate">KV write</span><span class="dot" style="background:#c4b5fd"></span></div>'+
    '<div class="status"><div class="st-row"><span class="st-badge">STALL</span><span class="st-main"><span class="st-phrase"></span><span class="st-pct">100%</span></span></div><div class="st-cause"><span class="st-cause-txt"></span><span class="st-cause-pct">100%</span><span class="st-cause-tail"></span></div><div class="st-link"><button type="button" class="mk" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here." aria-label="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth.">4</button><span class="st-link-name" data-link="note:nolink" data-tip="One package: all-reduce time in the step is 0 s, so tok/s comes only from this chip\'s compute and memory bandwidth. The model is not split, so weights and the KV cache have to fit here.">all-reduce 0 s</span><span class="st-link-pct">100% of step</span></div></div><div class="chipnote" data-link="note:arch" data-tip="Gold dots are bytes moving from memory, through the on-chip cache, into a compute unit. Dot speed and dots per second scale with effective bandwidth on one scale for both panels. dot rate ∝ memory bandwidth."></div>'+
    '<div class="stats"><div class="resultslot">'+
    '<div class="rview final"><div class="l"><button type="button" class="mk seev" data-link="xref:verdict" data-tip="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link." aria-label="Which chip finishes the step sooner, and whether the gap comes from memory bandwidth, peak compute, or the chip-to-chip link.">W</button><span class="badge"><span class="bd-name"></span><span class="bd-pct"></span></span><div class="big"><span class="n">0</span><small class="unit"></small><small class="hyp"> (hypothetical)</small></div>'+'<div class="sub s1"><span class="s1a"></span><button type="button" class="s1b" data-link="note:ane" data-kind="ane" data-side="'+key+'"></button></div>'+'<div class="rng"><button type="button" class="mk" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%." aria-label="Blue band: efficiency from ×0.8 to ×1.2. White tick: central estimate. Dashed line: peak specs.">3</button><div class="rt" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."></div><div class="rtrack" data-link="note:range" data-tip="Blue band: efficiency from ×0.8 to ×1.2, capped at 1. White tick: the central estimate. Amber dashes: peak specs with every efficiency at 100%."><div class="rband"></div><div class="rmid"></div><div class="rceil"></div></div></div></div>'+
@@ -144,7 +144,7 @@ function mkSide(key){
    '<div class="rview oom"><div class="oombox"><b>OUT OF MEMORY</b><span>Weights and KV cache do not fit, so this chip would not run. Figures below are hypothetical.</span></div></div>'+
    '</div><div class="capwrap"><div class="captrack"></div><button type="button" class="cap-txt" data-link="note:fit" data-kind="fit" data-side="'+key+'"></button></div></div>';
   side.root=p;side.cv=p.querySelector('canvas.cv');side.stripwrap=p.querySelector('.stripwrap');side.st=p.querySelector('canvas.strip');
-  side.layerBtn=p.querySelector('.slayer');side.lnum=p.querySelector('.slayer .sn');side.rowLabs=p.querySelector('.srows');
+  side.slab=p.querySelector('.slab');side.lnum=p.querySelector('.slayer .sn');
   const lm=document.createElement('button');lm.type='button';lm.className='lmhit';lm.dataset.link='note:lm';lm.dataset.kind='strip';lm.dataset.part='lm';lm.setAttribute('aria-label','LM head, drawn once after the layers.');side.stripwrap.appendChild(lm);side.lmHit=lm;
   side.cx=side.cv.getContext('2d');side.sx=side.st.getContext('2d');
   side.pills=p.querySelector('.pills');side.pdetail=p.querySelector('.pdetail');
@@ -154,48 +154,9 @@ function mkSide(key){
 }
 let sides=[];
 function sizeCanvas(cv,cssW,cssH){const d=window.devicePixelRatio||1;cv.style.height=cssH+'px';cv.width=Math.round(cssW*d);cv.height=Math.round(cssH*d);return d;}
-function labelPx(str){
-  const c=labelPx._c||(labelPx._c=document.createElement('span'));
-  if(!c.isConnected){
-    c.style.cssText='position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font:10px/15px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0;margin:0';
-    document.body.appendChild(c);
-  }
-  c.textContent=str;
-  return Math.ceil(c.offsetWidth);
-}
-// Fixed width for the strip's right labels. Full words when the panel can hold them; FF when it cannot.
-function textWidth(el){
-  const r=document.createRange();
-  r.selectNodeContents(el);
-  return Math.ceil(r.getBoundingClientRect().width);
-}
-function fitStripLabels(){
-  const boxes=[...document.querySelectorAll('.srows')];
-  if(!boxes.length)return;
-  const measure=word=>{
-    let need=0;
-    for(const box of boxes){
-      box.style.width='180px';
-      const ffn=box.querySelector('[data-part="ffn"]');
-      if(ffn.textContent!==word)ffn.textContent=word;
-      const attn=box.querySelector('[data-part="attn"]');
-      need=Math.max(need, textWidth(ffn), textWidth(attn));
-    }
-    return need+4;
-  };
-  let word='feed-forward', need=measure(word);
-  for(const box of boxes){
-    const panel=box.closest('.panel'), layer=box.parentElement.querySelector('.slayer');
-    const room=panel.clientWidth-20-(layer?layer.offsetWidth:48)-8;
-    if(room-need<100)word='FF';
-  }
-  if(word==='FF')need=measure('FF');
-  for(const box of boxes)box.style.width=need+'px';
-}
 function resizeAll(){
   const narrow=window.innerWidth<=900;
-  fitStripLabels();
-  for(const s of sides){const w=Math.max(200,s.cv.parentElement.clientWidth-20),hh=Math.min(w*CH/CW,narrow?260:196);s.dpr=sizeCanvas(s.cv,w,hh);s.sc=Math.min(hh/CH,w/CW);s.offx=(w-CW*s.sc)/2;s.offy=(hh-CH*s.sc)/2;const used=(s.layerBtn?s.layerBtn.offsetWidth:48)+(s.rowLabs?s.rowLabs.offsetWidth:84)+8;const cw=Math.max(80,(s.stripwrap?s.stripwrap.clientWidth:w)-used);sizeCanvas(s.st,cw,30);s.st.style.width=cw+'px';s.stW=cw;}
+  for(const s of sides){const w=Math.max(200,s.cv.parentElement.clientWidth-20),hh=Math.min(w*CH/CW,narrow?260:196);s.dpr=sizeCanvas(s.cv,w,hh);s.sc=Math.min(hh/CH,w/CW);s.offx=(w-CW*s.sc)/2;s.offy=(hh-CH*s.sc)/2;const used=(s.slab?s.slab.offsetWidth:112)+8;const cw=Math.max(80,(s.stripwrap?s.stripwrap.clientWidth:w)-used);sizeCanvas(s.st,cw,44);s.st.style.width=cw+'px';s.stW=cw;}
   const rw=Math.max(200,$('roof').parentElement.clientWidth-20);sizeCanvas($('roof'),rw,narrow?150:128);
 }
 
@@ -598,12 +559,13 @@ function syncLmHit(s,x,w){
   const el=s.lmHit;if(!el)return;
   const scale=s.st.clientWidth/Math.max(1,s.stW||1);
   el.style.left=(s.st.offsetLeft+x*scale).toFixed(1)+'px';
-  el.style.top=(s.st.offsetTop+3).toFixed(1)+'px';
+  el.style.top=s.st.offsetTop+'px';
   el.style.width=Math.max(16,w*scale).toFixed(1)+'px';
-  el.style.height='24px';
+  el.style.height=s.st.clientHeight+'px';
 }
 function drawStrip(s,cur,tm){
-  const ctx=s.sx,W=s.stW,H=30,r=s.res,d=s.sx.canvas.width/W;
+  const ctx=s.sx,W=s.stW,H=44,r=s.res,d=s.sx.canvas.width/W;
+  const mid=H/2,barH=16,yA=3,yM=mid+3;
   ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
   const n=r.n,lmW=22,gap=3,bw=Math.max(1,(W-lmW-gap)/n),live=aneLive(s);
   const afterLm=s.done||cur.part==='head'||cur.part==='sample'||cur.part==='back';
@@ -614,33 +576,33 @@ function drawStrip(s,cur,tm){
   for(let i=0;i<n;i++){
     const past=afterLm||i<cur.layer,now=!s.done&&i===cur.layer&&(cur.part==='attn'||cur.part==='mlp');
     const x=i*bw;
-    ctx.fillStyle='rgba('+cA+','+(past?0.95:(now&&cur.part==='attn'?1:0.28))+')';ctx.fillRect(x,3,Math.max(1,bw-1),11);
-    ctx.fillStyle='rgba('+cM+','+(past?0.95:(now&&cur.part==='mlp'?1:0.28))+')';ctx.fillRect(x,16,Math.max(1,bw-1),11);
+    ctx.fillStyle='rgba('+cA+','+(past?0.95:(now&&cur.part==='attn'?1:0.28))+')';ctx.fillRect(x,yA,Math.max(1,bw-1),barH);
+    ctx.fillStyle='rgba('+cM+','+(past?0.95:(now&&cur.part==='mlp'?1:0.28))+')';ctx.fillRect(x,yM,Math.max(1,bw-1),barH);
     if(live){
       const bar=u=>ctx.fillStyle=(u==='ane'?'#f472b6':'#60a5fa');
-      bar(live.parts.attn&&live.parts.attn.unit);ctx.fillRect(x,3,Math.min(3,Math.max(1,bw-1)),11);
-      bar(live.parts.mlp&&live.parts.mlp.unit);ctx.fillRect(x,16,Math.min(3,Math.max(1,bw-1)),11);
+      bar(live.parts.attn&&live.parts.attn.unit);ctx.fillRect(x,yA,Math.min(3,Math.max(1,bw-1)),barH);
+      bar(live.parts.mlp&&live.parts.mlp.unit);ctx.fillRect(x,yM,Math.min(3,Math.max(1,bw-1)),barH);
     }
-    if(now){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(x-0.5,1.5,bw+0.5,26);}
+    if(now){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(x-0.5,1,bw+0.5,H-2);}
   }
   const xh=n*bw+gap,boxW=Math.max(12,Math.min(lmW-2,W-xh));
   const headNow=!s.done&&cur.part==='head';
-  ctx.fillStyle='rgba('+cH+','+(afterLm?1:0.28)+')';ctx.fillRect(xh,3,boxW,24);
-  if(live){ctx.fillStyle=(live.parts.head&&live.parts.head.unit==='ane')?'#f472b6':'#60a5fa';ctx.fillRect(xh,3,3,24);}
-  ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='10px system-ui,sans-serif';ctx.fillText('LM',xh+boxW/2,15);
-  if(headNow){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(xh-0.5,1.5,boxW+1,26);}
+  ctx.fillStyle='rgba('+cH+','+(afterLm?1:0.28)+')';ctx.fillRect(xh,yA,boxW,H-6);
+  if(live){ctx.fillStyle=(live.parts.head&&live.parts.head.unit==='ane')?'#f472b6':'#60a5fa';ctx.fillRect(xh,yA,3,H-6);}
+  ctx.fillStyle='#0a0e16';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='11px system-ui,sans-serif';ctx.fillText('LM',xh+boxW/2,mid);
+  if(headNow){ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.strokeRect(xh-0.5,1,boxW+1,H-2);}
   // Violet pulse carries the hidden state from the previous layer column into this one.
   if(!s.done&&(cur.part==='attn'||cur.part==='mlp')&&cur.layer>0){
     const pair=r.segA.t+r.segM.t, x=s.prog*r.total, frac=pair>0?clamp((x-cur.layer*pair)/pair,0,1):1;
     const x0=(cur.layer-1)*bw+bw/2, x1=cur.layer*bw+bw/2, px=lerp(x0,x1,frac);
-    ctx.strokeStyle='#c4b5fd';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x0,15);ctx.lineTo(px,15);ctx.stroke();ctx.lineWidth=1;
-    ctx.fillStyle='#c4b5fd';ctx.beginPath();ctx.arc(px,15,5.5,0,6.283);ctx.fill();
+    ctx.strokeStyle='#c4b5fd';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x0,mid);ctx.lineTo(px,mid);ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle='#c4b5fd';ctx.beginPath();ctx.arc(px,mid,5.5,0,6.283);ctx.fill();
     ctx.strokeStyle='#f5f3ff';ctx.lineWidth=1.2;ctx.stroke();
   }
   // Chosen token travels from the LM cell back to layer 1 before the next token starts.
   if(!s.done&&cur.part==='back'){
     const xFrom=xh+boxW/2, xTo=Math.max(1,bw-1)/2, x=lerp(xFrom,xTo,cur.frac||0);
-    ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(x,15,3.4,0,6.283);ctx.fill();
+    ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(x,mid,3.4,0,6.283);ctx.fill();
     ctx.strokeStyle='#0a0e16';ctx.lineWidth=1;ctx.stroke();
   }
   syncLmHit(s,xh,boxW);
@@ -1226,46 +1188,26 @@ function tipHtml(el){
   const al=el.getAttribute('aria-label')||'';
   return al?'<p>'+esc(al)+'</p>':'';
 }
-function rectsOverlap(a,b){
-  return !(a.right<=b.left+0.5||a.left>=b.right-0.5||a.bottom<=b.top+0.5||a.top>=b.bottom-0.5);
-}
 function placePop(pop,el){
   const r=el.getBoundingClientRect();
-  const pw=pop.offsetWidth, ph=pop.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, gap=8;
-  const obstacles=[{left:r.left,top:r.top,right:r.right,bottom:r.bottom}];
-  document.querySelectorAll('.pdetail.on').forEach(n=>{
-    const b=n.getBoundingClientRect();
-    if(b.width>2&&b.height>2)obstacles.push(b);
-  });
-  const candidates=[
-    {left:r.left,top:r.bottom+gap},
-    {left:r.right-pw,top:r.bottom+gap},
-    {left:r.left,top:r.top-ph-gap},
-    {left:r.right-pw,top:r.top-ph-gap},
-    {left:r.right+gap,top:r.top},
-    {left:r.left-pw-gap,top:r.top}
-  ];
-  const fits=c=>{
-    const box={left:c.left,top:c.top,right:c.left+pw,bottom:c.top+ph};
-    if(box.left<8||box.top<8||box.right>vw-8||box.bottom>vh-8)return false;
-    return !obstacles.some(o=>rectsOverlap(box,o));
-  };
-  let pick=candidates.find(fits);
-  if(!pick){
-    let left=Math.min(Math.max(8,r.left),Math.max(8,vw-pw-8));
-    let top=r.bottom+gap;
-    if(top+ph>vh-8)top=r.top-ph-gap;
-    if(top<8)top=Math.min(Math.max(8,r.top),Math.max(8,vh-ph-8));
-    const box={left,top,right:left+pw,bottom:top+ph};
-    if(rectsOverlap(box,obstacles[0])){
-      if(vw-r.right>=r.left)left=Math.min(vw-pw-8,r.right+gap);
-      else left=Math.max(8,r.left-pw-gap);
-      top=Math.min(Math.max(8,r.top),Math.max(8,vh-ph-8));
-    }
-    pick={left,top};
-  }
-  pop.style.left=Math.round(pick.left)+'px';
-  pop.style.top=Math.round(pick.top)+'px';
+  const scroll=pop.querySelector('.popscroll')||pop;
+  const vw=window.innerWidth, vh=window.innerHeight, margin=8;
+  const pw=pop.offsetWidth||Math.min(380,vw-margin*2);
+  const below=Math.max(0,vh-r.bottom-margin), above=Math.max(0,r.top-margin);
+  const cap=Math.min(pop.classList.contains('layout')?440:320, Math.floor(vh*0.72));
+  const flip=below<160&&above>below;
+  const maxH=Math.max(96, Math.min(cap, flip?above:below));
+  scroll.style.maxHeight=maxH+'px';
+  const ph=pop.offsetHeight;
+  let left=r.left;
+  if(left+pw>vw-margin)left=Math.max(margin,vw-margin-pw);
+  if(left<margin)left=margin;
+  let top=flip?r.top-ph:r.bottom;
+  if(!flip&&top+ph>vh-margin)top=Math.max(margin,vh-margin-ph);
+  if(flip&&top<margin)top=margin;
+  pop.classList.toggle('above',flip);
+  pop.style.left=Math.round(left)+'px';
+  pop.style.top=Math.round(top)+'px';
 }
 function gpuPopHtml(sideKey){
   const s=sides.find(x=>x.key===sideKey);
@@ -1314,12 +1256,19 @@ function kvPopHtml(){
 let partHl={side:null,key:''};
 function tagMark(tag){return '<span class="tg '+(tag||'U')+'">'+(tag||'U')+'</span>';}
 function partName(text,key){return '<button type="button" class="hlname" data-hl="'+esc(key)+'">'+esc(text)+'</button>';}
-function markSpec(k,sp,spec){
-  if(!sp||sp.v==null||sp.v==='')return tagMark('U')+' not recorded. No recorded source.';
+function fact(html,tag){
+  return '<div class="fact"><div class="factxt">'+html+'</div>'+(tag?tagMark(tag):'')+'</div>';
+}
+function specFact(k,sp,label){
+  if(!sp||sp.v==null||sp.v==='')return fact('<b>'+esc(label)+'.</b> Not recorded. No recorded source.','U');
   const bits=sourceBits(sp.src||[]);
   const note=firstSentence(sp.note||'');
   const nosrc=bits.list.length?'':' No recorded source.';
-  return tagMark(sp.tag||'U')+' <b>'+esc(specVal(k,sp))+'</b>'+(note?'. '+esc(note):'.')+nosrc+(bits.html?' '+bits.html:'');
+  return fact('<b>'+esc(label)+'.</b> '+esc(specVal(k,sp))+(note?' '+esc(note):'')+nosrc+(bits.html?' '+bits.html:''),sp.tag||'U');
+}
+function laySec(title,facts,cls){
+  const rows=(Array.isArray(facts)?facts:[facts]).filter(Boolean).join('');
+  return '<section class="laysec'+(cls?' '+cls:'')+'"><h3 class="layh">'+esc(title)+'</h3>'+rows+'</section>';
 }
 function dieSpec(c){
   const explicit=c.raw.specs&&c.raw.specs.dies;
@@ -1336,77 +1285,130 @@ function layoutDie(c,L){
   const sp=c.raw.specs||{};
   if(c.arch==='nvidia'){
     const d=dieSpec(c);
-    const count=sp.dies&&sp.dies.v!=null
-      ? markSpec('dies',d,'Die count')
-      : tagMark(d.tag)+' '+esc(d.note)+' No recorded source for the die count.';
-    return 'Drawn as '+partName('one GPU die','die')+' holding '+partName(c.units+' '+c.unitName+'s','sm')+'. '+count+' '+markSpec('node',sp.node,'Process');
+    const rows=[fact('Drawn as '+partName('one GPU die','die')+' holding '+partName(c.units+' '+c.unitName+'s','sm')+'.')];
+    if(sp.dies&&sp.dies.v!=null)rows.push(specFact('dies',d,'Die count'));
+    else rows.push(fact(esc(d.note)+' No recorded source for the die count.',d.tag||'U'));
+    rows.push(specFact('node',sp.node,'Process'));
+    return rows;
   }
   if(c.arch==='amd'){
     const iod=(L.blocks||[]).filter(b=>b.hl==='iod').length;
     const xcd=(L.blocks||[]).filter(b=>b.hl==='xcd').length;
-    const count=sp.iods&&sp.iods.v!=null
-      ? markSpec('iods',sp.iods,'I/O dies')
-      : tagMark('U')+' The I/O die count is the diagram. This record does not publish it. No recorded source.';
-    return 'Drawn as '+partName(iod+' I/O dies','iod')+' with '+partName(xcd+' XCDs','xcd')+' on them. '+count+' The XCD count is the CU line. '+markSpec('units',sp.units,'CUs')+' '+markSpec('node',sp.node,'Process');
+    const rows=[fact('Drawn as '+partName(iod+' I/O dies','iod')+' with '+partName(xcd+' XCDs','xcd')+' on them.')];
+    if(sp.iods&&sp.iods.v!=null)rows.push(specFact('iods',sp.iods,'I/O dies'));
+    else rows.push(fact('The I/O die count is the diagram. This record does not publish it. No recorded source.','U'));
+    rows.push(specFact('units',sp.units,'CUs'));
+    rows.push(specFact('node',sp.node,'Process'));
+    return rows;
   }
   if(c.arch==='apple'){
     const n=c.dies||1;
     const word=n===1?'one SoC die':n+' dies';
     const d=dieSpec(c);
-    let h='Drawn as '+partName(word,'die')+'. ';
-    if(n>1)h+='A '+partName(fuseWord(c),'fuse')+' bar sits in the gap between them. ';
-    h+=markSpec('dies',d,'Die count')+' '+markSpec('node',sp.node,'Process / packaging');
-    return h;
+    const rows=[fact('Drawn as '+partName(word,'die')+'.')];
+    if(n>1)rows.push(fact('A '+partName(fuseWord(c),'fuse')+' bar sits in the gap between the dies.'));
+    rows.push(specFact('dies',d,'Die count'));
+    rows.push(specFact('node',sp.node,'Process'));
+    return rows;
   }
-  return 'Drawn as one TensorCore with '+partName((c.units||2)+' MXUs','mxu')+'. '+markSpec('units',sp.units,'MXUs')+' '+markSpec('node',sp.node,'Process');
+  return [
+    fact('Drawn as one TensorCore with '+partName((c.units||2)+' MXUs','mxu')+'.'),
+    specFact('units',sp.units,'MXUs'),
+    specFact('node',sp.node,'Process')
+  ];
 }
 function layoutCompute(c){
   const sp=c.raw.specs||{};
-  if(c.arch==='nvidia')return 'Each '+partName('SM','sm')+' is one cell, and the cell is where the tensor cores sit. '+markSpec('units',sp.units,'SMs')+' '+partName('L1/shared','sm')+' is inside that same cell.';
-  if(c.arch==='amd')return 'Each '+partName('XCD','xcd')+' holds a grid of '+partName('CUs','cu')+'. '+markSpec('units',sp.units,'CUs')+' '+tagMark('U')+' This record does not publish a matrix-unit count inside a CU. No recorded source.';
+  if(c.arch==='nvidia')return [
+    fact('Each '+partName('SM','sm')+' is one cell. The tensor cores sit in that cell.'),
+    specFact('units',sp.units,'SMs'),
+    fact(partName('L1/shared','sm')+' is inside that same cell.')
+  ];
+  if(c.arch==='amd')return [
+    fact('Each '+partName('XCD','xcd')+' holds a grid of '+partName('CUs','cu')+'.'),
+    specFact('units',sp.units,'CUs'),
+    fact('This record does not publish a matrix-unit count inside a CU. No recorded source.','U')
+  ];
   if(c.arch==='apple'){
-    let h=partName(c.units+' '+c.unitName+'s','gpu')+' fill the die. '+markSpec('units',sp.units,'GPU cores');
-    if(c.matrix)h+=' Each core draws a bright inner square, the '+partName('Neural Accelerator','gpu')+' (its matrix unit). '+markSpec('fp16',sp.fp16,'Matrix compute');
-    else h+=' No per-core matrix unit is drawn. Matrix math runs on the shader ALUs. '+markSpec('fp16',sp.fp16,'GPU compute');
-    if(sp.cpu)h+=' '+partName('CPU','cpu')+' is the block under the cores. '+markSpec('cpu',sp.cpu,'CPU');
-    if(sp.neural)h+=' '+partName('Neural Engine','ne')+' is the block beside it. '+markSpec('neural',sp.neural,'Neural Engine');
-    return h;
+    const rows=[
+      fact(partName(c.units+' '+c.unitName+'s','gpu')+' fill the die.'),
+      specFact('units',sp.units,'GPU cores')
+    ];
+    if(c.matrix){
+      rows.push(fact('Each core draws a bright inner square, the '+partName('Neural Accelerator','gpu')+'.'));
+      rows.push(specFact('fp16',sp.fp16,'Matrix compute'));
+    }else{
+      rows.push(fact('No per-core matrix unit is drawn. Matrix math runs on the shader ALUs.'));
+      rows.push(specFact('fp16',sp.fp16,'GPU compute'));
+    }
+    if(sp.cpu){
+      rows.push(fact(partName('CPU','cpu')+' is the block under the cores.'));
+      rows.push(specFact('cpu',sp.cpu,'CPU'));
+    }
+    if(sp.neural){
+      rows.push(fact(partName('Neural Engine','ne')+' is the block beside the CPU.'));
+      rows.push(specFact('neural',sp.neural,'Neural Engine'));
+    }
+    return rows;
   }
-  return partName('MXUs','mxu')+' are the systolic arrays. '+markSpec('units',sp.units,'MXUs')+' Also drawn: a '+partName('vector unit','vec')+' and a '+partName('scalar unit','sca')+'. '+tagMark('U')+' No separate vector or scalar rate is recorded. No recorded source.';
+  return [
+    fact(partName('MXUs','mxu')+' are the systolic arrays.'),
+    specFact('units',sp.units,'MXUs'),
+    fact('Also drawn: a '+partName('vector unit','vec')+' and a '+partName('scalar unit','sca')+'.'),
+    fact('No separate vector or scalar rate is recorded. No recorded source.','U')
+  ];
 }
 function layoutCache(c,L){
   const sp=c.raw.specs||{};
   if(c.arch==='nvidia'){
     const n=(L.caches||[]).length;
-    return partName('L2','l2')+' is drawn as '+n+' boxes between memory and the SMs. '+markSpec('l2',sp.l2,'On-chip cache')+' The box count is the diagram. '+tagMark('U')+' No recorded source for a partition count.';
+    return [
+      fact(partName('L2','l2')+' is drawn as '+n+' boxes between memory and the SMs.'),
+      specFact('l2',sp.l2,'On-chip cache'),
+      fact('The box count is the diagram. No recorded source for a partition count.','U')
+    ];
   }
-  if(c.arch==='amd')return partName('Infinity Cache','if')+' is drawn on each I/O die. Each XCD label carries its L2. '+markSpec('l2',sp.l2,'On-chip cache');
-  if(c.arch==='apple')return partName('System Level Cache','slc')+' is the band above the dies, one pool for the package. '+markSpec('l2',sp.l2,'On-chip cache');
-  return partName('VMEM','vmem')+' is the on-chip block between memory and the arrays. '+markSpec('l2',sp.l2,'On-chip memory');
+  if(c.arch==='amd')return [
+    fact(partName('Infinity Cache','if')+' is drawn on each I/O die. Each XCD label carries its L2.'),
+    specFact('l2',sp.l2,'On-chip cache')
+  ];
+  if(c.arch==='apple')return [
+    fact(partName('System Level Cache','slc')+' is the band above the dies, one pool for the package.'),
+    specFact('l2',sp.l2,'On-chip cache')
+  ];
+  return [
+    fact(partName('VMEM','vmem')+' is the on-chip block between memory and the arrays.'),
+    specFact('l2',sp.l2,'On-chip memory')
+  ];
 }
 function layoutMem(c,L){
   const sp=c.raw.specs||{};
   const n=(L.mems||[]).length;
-  let h=partName(c.memType||'memory','mem')+'. '+markSpec('cap',sp.cap,'Memory capacity')+' '+markSpec('bw',sp.bw,'Memory bandwidth')+' '+markSpec('usable',sp.usable,'Usable fraction')+' ';
-  if(c.arch==='nvidia')h+='The '+n+' blocks attach along the left edge and feed '+partName('L2','l2')+', which feeds the SMs. '+tagMark('U')+' The block count is a schematic, not a published stack count. No recorded source.';
-  else if(c.arch==='amd')h+='HBM is drawn on the I/O dies ('+n+' blocks). The XCDs read through '+partName('Infinity Cache','if')+'. '+tagMark('U')+' The block count is the diagram, not a published stack count. No recorded source.';
-  else if(c.arch==='apple')h+='The '+n+' blocks are one unified pool, drawn on both sides of the dies and read through the '+partName('System Level Cache','slc')+'. '+tagMark('U')+' Block count is scaled from bandwidth. It is not a package count. No recorded source.';
-  else h+='One '+partName('memory block','mem')+' feeds '+partName('VMEM','vmem')+', then the arrays.';
-  return h;
+  const rows=[
+    fact('Type: '+partName(c.memType||'memory','mem')+'.'),
+    specFact('cap',sp.cap,'Memory capacity'),
+    specFact('bw',sp.bw,'Memory bandwidth'),
+    specFact('usable',sp.usable,'Usable fraction')
+  ];
+  if(c.arch==='nvidia')rows.push(fact('The '+n+' blocks attach along the left edge and feed '+partName('L2','l2')+', which feeds the SMs.'),fact('The block count is a schematic, not a published stack count. No recorded source.','U'));
+  else if(c.arch==='amd')rows.push(fact('HBM is drawn on the I/O dies ('+n+' blocks). The XCDs read through '+partName('Infinity Cache','if')+'.'),fact('The block count is the diagram, not a published stack count. No recorded source.','U'));
+  else if(c.arch==='apple')rows.push(fact('The '+n+' blocks are one unified pool, drawn on both sides of the dies and read through the '+partName('System Level Cache','slc')+'.'),fact('Block count is scaled from bandwidth. It is not a package count. No recorded source.','U'));
+  else rows.push(fact('One '+partName('memory block','mem')+' feeds '+partName('VMEM','vmem')+', then the arrays.'));
+  return rows;
 }
 function layoutIc(c,s){
   const sp=c.raw.specs||{};
   const name=c.icName||'';
-  let h;
-  if(c.arch==='nvidia')h=partName(name||'NVLink','ic')+' is the block on the right of the die. '+markSpec('ic',sp.ic,'Interconnect');
-  else if(c.arch==='amd')h=partName(name||'Infinity Fabric','iod xcd')+' joins the chiplets. It is not a separate box, so the dies light together. '+markSpec('ic',sp.ic,'Interconnect');
-  else if(c.arch==='tpu')h=partName(name||'ICI','ic')+' is the block on the right. '+markSpec('ic',sp.ic,'Interconnect');
+  let rows;
+  if(c.arch==='nvidia')rows=[fact(partName(name||'NVLink','ic')+' is the block on the right of the die.'),specFact('ic',sp.ic,'Interconnect')];
+  else if(c.arch==='amd')rows=[fact(partName(name||'Infinity Fabric','iod xcd')+' joins the chiplets. It is not a separate box, so the dies light together.'),specFact('ic',sp.ic,'Interconnect')];
+  else if(c.arch==='tpu')rows=[fact(partName(name||'ICI','ic')+' is the block on the right.'),specFact('ic',sp.ic,'Interconnect')];
   else if((c.dies||1)>1){
-    h=partName(fuseWord(c),'fuse')+' is the bar between the dies. '+markSpec('node',sp.node,'Packaging')+' The bandwidth this model uses is '+markSpec('ic',sp.ic,'Die-to-die bandwidth');
-    if(!(c.ic>0))h+=' The bar stays idle, and tok/s does not change.';
-  }else h='No die-to-die bar is drawn on a single die. '+markSpec('ic',sp.ic,'Interconnect');
-  if(s.res&&s.res.N>1)h+=' This run places '+s.res.N+' packages. The diagram still shows one.';
-  return h;
+    rows=[fact(partName(fuseWord(c),'fuse')+' is the bar between the dies.'),specFact('node',sp.node,'Packaging'),specFact('ic',sp.ic,'Die-to-die bandwidth')];
+    if(!(c.ic>0))rows.push(fact('The bar stays idle, and tok/s does not change.'));
+  }else rows=[fact('No die-to-die bar is drawn on a single die.'),specFact('ic',sp.ic,'Interconnect')];
+  if(s.res&&s.res.N>1)rows.push(fact('This run places '+s.res.N+' packages. The diagram still shows one.'));
+  return rows;
 }
 function diffRatio(a,b){
   const x=Math.abs(Number(a)), y=Math.abs(Number(b));
@@ -1430,21 +1432,28 @@ function layoutDiff(mine,other){
   pushNum('units',c.unitName+' count');
   pushNum('ic','interconnect');
   if(c.arch==='apple'&&o.arch==='apple'&&c.raw.dies&&o.raw.dies)pushNum('dies','die count');
-  if(!rows.length)return esc(chipShort(c))+' and '+esc(chipShort(o))+' share no numeric spec to compare.';
+  if(!rows.length)return [fact(esc(chipShort(c))+' and '+esc(chipShort(o))+' share no numeric spec to compare.')];
   rows.sort((a,b)=>b.ratio-a.ratio);
   let pick=rows[0];
   const die=rows.find(r=>r.k==='dies');
   if(die&&die.ratio>1.01&&die.ratio>=pick.ratio*0.85)pick=die;
-  const who='panel '+other.key+' ('+esc(chipShort(o))+')';
+  const who='panel '+other.key+' ('+chipShort(o)+')';
   if(pick.ratio<1.05){
-    if(c.memType&&o.memType&&c.memType!==o.memType)return 'Compared specs are within 5%. Memory type differs: '+esc(c.memType)+' vs '+esc(o.memType)+'.';
-    return esc(chipShort(c))+' and '+who+' match on capacity, bandwidth, and interconnect.';
+    if(c.memType&&o.memType&&c.memType!==o.memType)return [fact('Compared specs are within 5%.'),fact('Memory type differs: '+esc(c.memType)+' vs '+esc(o.memType)+'.')];
+    return [fact(esc(chipShort(c))+' and '+esc(who)+' match on capacity, bandwidth, and interconnect.')];
   }
   const times=pick.ratio>=10?pick.ratio.toFixed(0):pick.ratio.toFixed(1);
-  const brief=(k,sp)=>{const bits=sourceBits((sp&&sp.src)||[]);return tagMark((sp&&sp.tag)||'U')+' <b>'+esc(specVal(k,sp))+'</b>'+(bits.html?' '+bits.html:' No recorded source.');};
-  let h=pick.label+' is '+brief(pick.k,pick.as)+' vs '+who+' '+brief(pick.k,pick.bs)+' ('+times+'×).';
-  if(c.memType&&o.memType&&c.memType!==o.memType)h+=' Memory type is '+esc(c.memType)+' vs '+esc(o.memType)+'.';
-  return h;
+  const line=(sp,name)=>{
+    const bits=sourceBits((sp&&sp.src)||[]);
+    return fact('<b>'+esc(name)+'.</b> '+esc(specVal(pick.k,sp))+(bits.html?' '+bits.html:' No recorded source.'),(sp&&sp.tag)||'U');
+  };
+  const out=[
+    fact('<b>'+esc(pick.label)+'</b> differs by '+times+'×.'),
+    line(pick.as,chipShort(c)),
+    line(pick.bs,'Panel '+other.key+' · '+chipShort(o))
+  ];
+  if(c.memType&&o.memType&&c.memType!==o.memType)out.push(fact('Memory type is '+esc(c.memType)+' vs '+esc(o.memType)+'.'));
+  return out;
 }
 function layoutPopHtml(sideKey){
   const s=sides.find(x=>x.key===sideKey);
@@ -1453,12 +1462,12 @@ function layoutPopHtml(sideKey){
   const c=s.chip;
   const head='<div class="layhead"><b>'+esc(c.name)+'</b><span class="layleg">Layout as drawn. '+tagMark('V')+' verified '+tagMark('A')+' approximate '+tagMark('U')+' assumed. A part name marks that part on this panel.</span></div>';
   const body='<div class="laybody">'+
-    '<p><b>Dies and chiplets.</b> '+layoutDie(c,s.layout)+'</p>'+
-    '<p><b>Compute.</b> '+layoutCompute(c)+'</p>'+
-    '<p><b>Cache.</b> '+layoutCache(c,s.layout)+'</p>'+
-    '<p><b>Memory.</b> '+layoutMem(c,s.layout)+'</p>'+
-    '<p><b>Interconnect.</b> '+layoutIc(c,s)+'</p>'+
-    '<p><b>Key difference vs the other panel.</b> '+layoutDiff(s,other)+'</p>'+
+    laySec('Key difference vs the other panel',layoutDiff(s,other),'laydiff')+
+    laySec('Dies',layoutDie(c,s.layout))+
+    laySec('Compute',layoutCompute(c))+
+    laySec('Cache',layoutCache(c,s.layout))+
+    laySec('Memory',layoutMem(c,s.layout))+
+    laySec('Interconnect',layoutIc(c,s))+
     '</div>';
   return head+body;
 }
@@ -1509,28 +1518,6 @@ function clearPartHl(){
   document.querySelectorAll('#srcpop .hlname').forEach(n=>n.classList.remove('on'));
   if(typeof sides!=='undefined')sides.forEach(syncPartHl);
 }
-function placeLayoutPop(pop,el){
-  const panel=el.closest('.panel');
-  const cv=panel?panel.querySelector('.cv').getBoundingClientRect():el.getBoundingClientRect();
-  const anchor=el.getBoundingClientRect();
-  const pw=pop.offsetWidth, ph=pop.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, gap=8;
-  const clampL=left=>Math.min(Math.max(8,left),Math.max(8,vw-pw-8));
-  const spots=[
-    {left:clampL(cv.left),top:cv.bottom+gap},
-    {left:clampL(cv.right-pw),top:cv.bottom+gap},
-    {left:clampL(anchor.left),top:anchor.top-ph-gap},
-    {left:8,top:8},
-    {left:clampL(vw-pw-8),top:8}
-  ];
-  const box=s=>({left:s.left,top:s.top,right:s.left+pw,bottom:s.top+ph});
-  const onScreen=s=>s.top>=8&&s.left>=8&&s.top+ph<=vh-8&&s.left+pw<=vw-8;
-  let pick=spots.find(s=>onScreen(s)&&!rectsOverlap(box(s),cv)&&!rectsOverlap(box(s),anchor));
-  if(!pick)pick=spots.find(s=>onScreen(s)&&!rectsOverlap(box(s),cv));
-  if(!pick)pick=spots.find(onScreen);
-  if(!pick)pick={left:clampL(cv.left),top:Math.max(8,Math.min(cv.bottom+gap,vh-ph-8))};
-  pop.style.left=Math.round(pick.left)+'px';
-  pop.style.top=Math.round(pick.top)+'px';
-}
 function showSrcPop(el){
   const pop=$('srcpop');
   if(!pop||!el)return;
@@ -1554,12 +1541,11 @@ function showSrcPop(el){
   else html=tipHtml(el);
   if(el.dataset&&el.dataset.extra&&html.indexOf(el.dataset.extra.slice(0,48))<0)html+=paragraphs(el.dataset.extra);
   if(!html||html==='<p></p>'){hideSrcPop();return;}
-  pop.innerHTML=html;
+  pop.innerHTML='<div class="popbridge" aria-hidden="true"></div><div class="popscroll">'+html+'</div>';
   pop.dataset.owner=el.dataset.link||'tip';
   pop.hidden=false;
   pop.style.visibility='hidden';
-  if(pop.classList.contains('layout'))placeLayoutPop(pop,el);
-  else placePop(pop,el);
+  placePop(pop,el);
   pop.style.visibility='visible';
 }
 function tagShown(){return !!(tagLock||tagHover)&&tagAnchor&&tagAnchor.isConnected&&tagAnchor.dataset.link;}
@@ -1581,8 +1567,9 @@ function refreshTagLink(){if(tagAnchor&&!tagAnchor.isConnected)clearTagLink();el
 function armMarkers(){}
 function showTag(el,lock){
   if(!el||!el.dataset||!el.dataset.link)return;
+  if(tagLock&&!lock)return;
   clearTimeout(hideT); tagAnchor=el;
-  if(lock) tagLock=el.dataset.link; else tagHover=true;
+  if(lock){tagLock=el.dataset.link; tagHover=false;} else tagHover=true;
   paintTagLink();
   showSrcPop(el);
 }
@@ -1593,7 +1580,7 @@ function scheduleHide(){
     const a=document.activeElement;
     if(a&&a.closest&&a.closest('[data-link]'))return;
     tagHover=false; if(!tagLock){tagAnchor=null;hideSrcPop();} paintTagLink();
-  },180);
+  },250);
 }
 function clearTagLink(){clearTimeout(hideT);tagLock=null;tagHover=false;tagAnchor=null;paintTagLink();hideSrcPop();}
 function linkTarget(node){return node&&node.closest&&node.closest('[data-link]');}
@@ -1632,14 +1619,16 @@ function bindLinks(){
     const t=linkTarget(ev.target);
     if(ev.pointerType==='touch'){
       touchAt=performance.now();
-      if(t){if(t.closest('button'))ev.preventDefault(); if(tagLock&&tagAnchor===t) clearTagLink(); else showTag(t,true);}
+      if(t){if(t.closest('button'))ev.preventDefault(); showTag(t,true);}
       else clearTagLink();
       return;
     }
-    if(!t&&tagLock) clearTagLink();
+    if(t) showTag(t,true);
+    else if(tagLock) clearTagLink();
   });
   document.addEventListener('focusin',ev=>{const t=linkTarget(ev.target); if(t) showTag(t,false);});
   document.addEventListener('focusout',()=>scheduleHide());
+  window.addEventListener('scroll',()=>{if(tagShown()&&tagAnchor)placePop($('srcpop'),tagAnchor);},true);
 }
 
 // ---------------------------------------------------------------- controls + init

@@ -267,7 +267,8 @@ test('read and write lanes are parallel, and M5 Pro Fusion stays idle', () => {
   assert.match(ui, /holds: weights/);
   const css = fs.readFileSync(path.join(root, 'app/src/styles.css'), 'utf8');
   assert.match(css, /writing-mode:vertical-rl/);
-  assert.match(css, /\.srows\{flex:none;width:104px/);
+  assert.match(css, /\.slab\{flex:none;width:112px/);
+  assert.match(css, /\.stripwrap\{[^}]*height:66px/);
   assert.match(css, /\.memcard\{/);
 });
 
@@ -310,6 +311,19 @@ test('the chip name opens one layout popout and part names can mark the diagram'
   assert.match(ui, /data-kind="layout"/);
   assert.match(ui, /function layoutPopHtml/);
   assert.match(ui, /Key difference vs the other panel/);
+  assert.ok(ui.indexOf("laySec('Key difference vs the other panel'") < ui.indexOf("laySec('Dies'"));
+  assert.match(ui, /laySec\('Compute'/);
+  assert.match(ui, /laySec\('Cache'/);
+  assert.match(ui, /laySec\('Memory'/);
+  assert.match(ui, /laySec\('Interconnect'/);
+  assert.match(ui, /class="fact"/);
+  assert.match(ui, /class="slab"/);
+  assert.ok(ui.indexOf('class="slab"') < ui.indexOf('canvas class="strip"'));
+  assert.match(ui, /popbridge/);
+  assert.match(ui, /},250\)/);
+  assert.match(ui, /showTag\(t,true\)/);
+  assert.match(css, /\.popbridge\{position:absolute/);
+  assert.match(css, /\.fact\{display:flex/);
   assert.match(ui, /data-hl="/);
   assert.match(ui, /className='parthl'/);
   assert.match(css, /\.layhead\{position:sticky/);
