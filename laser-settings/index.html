@@ -17,12 +17,13 @@
     }
     a.back { display: inline-block; margin-bottom: 40px; color: #555; text-decoration: none; font-size: 14px; }
     a.back:hover { color: #aaa; }
-    .page { max-width: 1180px; margin: 0 auto; }
+    .page { max-width: none; margin: 0 auto; }
+    .subtitle, .meta, .callout, .testlog .section-desc { max-width: 880px; }
     .kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #5b9bd5; margin-bottom: 6px; }
     h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
     h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-    .subtitle { color: #888; font-size: 15px; line-height: 1.6; max-width: 760px; margin-bottom: 8px; }
-    .meta { color: #666; font-size: 13px; line-height: 1.6; max-width: 760px; margin-bottom: 28px; }
+    .subtitle { color: #888; font-size: 15px; line-height: 1.6; margin-bottom: 8px; }
+    .meta { color: #666; font-size: 13px; line-height: 1.6; margin-bottom: 28px; }
     .meta a { color: #5b9bd5; text-decoration: none; }
     .meta a:hover { color: #8fc5ff; }
     code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #bbb; }
@@ -118,19 +119,19 @@
     .summary { color: #888; font-size: 13px; margin-bottom: 8px; }
     .status-line { color: #5b9bd5; font-size: 13px; min-height: 1.4em; margin-bottom: 12px; }
 
+    /* Horizontal scroll only. No fixed height, so this box never gets its own vertical scrollbar. */
     .table-wrap {
       background: #1a1a1a;
       border: 1px solid #2a2a2a;
       border-radius: 16px;
-      overflow: auto;
-      max-height: 70vh;
+      overflow-x: auto;
+      overflow-y: clip;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1280px; }
+    table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
     caption { caption-side: bottom; text-align: left; padding: 10px 14px 12px; color: #555; font-size: 12px; }
+    thead { position: relative; z-index: 2; }
+    thead.is-pinned th { box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35); }
     th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
       background: #161616;
       text-align: left;
       border-bottom: 1px solid #2a2a2a;
@@ -160,11 +161,16 @@
       text-transform: uppercase;
       padding: 12px 10px;
     }
-    td { padding: 12px 10px; border-bottom: 1px solid #222; vertical-align: top; color: #ddd; }
+    td { padding: 10px 12px; border-bottom: 1px solid #222; vertical-align: top; color: #ddd; }
     tr:last-child td { border-bottom: none; }
-    td.material { color: #fff; font-weight: 600; min-width: 200px; }
-    td.notes, td.source, td.date { color: #999; max-width: 280px; }
-    td.num { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; white-space: nowrap; }
+    th.short, td.short { width: 1%; white-space: nowrap; }
+    td.material { color: #fff; font-weight: 600; }
+    td.material .cell { width: 32rem; }
+    td.source { color: #bbb; }
+    td.source .cell { width: 24rem; }
+    td.notes { color: #999; line-height: 1.45; }
+    td.notes .cell { width: 42rem; }
+    td.num { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
     td.actions { white-space: nowrap; }
     td.actions button { margin-right: 6px; }
     tr.tested td:first-child { box-shadow: inset 3px 0 0 #4caf50; }
@@ -180,8 +186,8 @@
 
     .testlog { margin-top: 36px; }
     .testlog h2 { font-size: 22px; margin-bottom: 6px; }
-    .testlog .section-desc { color: #666; font-size: 14px; margin-bottom: 14px; max-width: 640px; }
-    .testlog table { min-width: 720px; }
+    .testlog .section-desc { color: #666; font-size: 14px; margin-bottom: 14px; }
+    .testlog table { width: max-content; min-width: 100%; }
 
     .overlay {
       position: fixed;
@@ -265,9 +271,9 @@
     <p class="summary" id="summary"></p>
     <p class="status-line" id="status-line" aria-live="polite"></p>
 
-    <div class="table-wrap">
+    <div class="table-wrap" id="settings-table">
       <table>
-        <caption>Scroll sideways for thickness, focus, air assist, machine, source, date, and notes. Click a column heading to sort. Unknowns sort last.</caption>
+        <caption>Click a column heading to sort. Scroll the table sideways for the rest of the columns. Unknowns sort last.</caption>
         <thead id="thead"></thead>
         <tbody id="tbody">
           <tr class="empty-row"><td>Loading settings…</td></tr>
@@ -332,6 +338,10 @@
       { key: 'notes', label: 'Notes', type: 'textarea', wide: true }
     ];
     var DISPLAY_KEYS = ['status', 'material', 'operation', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
+    var SHORT_KEYS = {
+      status: 1, operation: 1, laser: 1, powerPct: 1, speedMmS: 1, passes: 1,
+      linesPerCm: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
+    };
     var TEST_LOG_FIELDS = [
       { key: 'date', label: 'Date' },
       { key: 'material', label: 'Material' },
@@ -595,14 +605,41 @@
         counts['Unverified (from Hub)'] + ' unverified';
     }
 
+    function cellClass(key) {
+      var field = fieldByKey(key);
+      var name = key === 'material' ? 'material' : (field && field.numeric ? 'num' : key);
+      if (SHORT_KEYS[key]) name += ' short';
+      return name;
+    }
+
+    function cellHtml(className, inner) {
+      if (className === 'material' || className === 'source' || className === 'notes') {
+        return '<td class="' + className + '"><div class="cell">' + inner + '</div></td>';
+      }
+      return '<td class="' + className + '">' + inner + '</td>';
+    }
+
+    /* The table scroller is horizontal only, so a CSS sticky header cannot pin to the page.
+       Shift the header down with the page scroll instead, and keep it inside the table. */
+    function pinHeader() {
+      var wrap = document.getElementById('settings-table');
+      var thead = document.getElementById('thead');
+      if (!wrap || !thead) return;
+      var top = wrap.getBoundingClientRect().top;
+      var maxShift = Math.max(0, wrap.clientHeight - thead.offsetHeight);
+      var shift = top < 0 ? Math.min(-top, maxShift) : 0;
+      thead.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+      thead.classList.toggle('is-pinned', shift > 0);
+    }
+
     function renderTable() {
       var head = '<tr>' + DISPLAY_KEYS.map(function (key) {
         var field = fieldByKey(key);
         var arrow = '';
         if (state.sortKey === key) arrow = state.sortDir < 0 ? ' ▼' : ' ▲';
-        return '<th scope="col"><button type="button" class="sort" data-sort="' + esc(key) + '">' +
+        return '<th scope="col" class="' + (SHORT_KEYS[key] ? 'short' : '') + '"><button type="button" class="sort" data-sort="' + esc(key) + '">' +
           esc(field.label) + arrow + '</button></th>';
-      }).join('') + '<th scope="col"><span class="col-label">Actions</span></th></tr>';
+      }).join('') + '<th scope="col" class="short"><span class="col-label">Actions</span></th></tr>';
       document.getElementById('thead').innerHTML = head;
 
       var rows = visibleRows();
@@ -613,20 +650,20 @@
         body = rows.map(function (row) {
           var cls = STATUS_CLASS[row.status] || 'neutral';
           var cells = DISPLAY_KEYS.map(function (key) {
-            var field = fieldByKey(key);
-            if (key === 'status') {
-              return '<td><span class="badge ' + cls + '">' + esc(row.status) + '</span></td>';
-            }
-            var className = key === 'material' ? 'material' : (field.numeric ? 'num' : key);
-            return '<td class="' + className + '">' + renderValue(row[key]) + '</td>';
+            var className = cellClass(key);
+            var inner = key === 'status'
+              ? '<span class="badge ' + cls + '">' + esc(row.status) + '</span>'
+              : renderValue(row[key]);
+            return cellHtml(className, inner);
           }).join('');
           return '<tr class="' + cls + '" data-id="' + esc(row.id) + '" data-status="' + esc(row.status) + '">' +
             cells +
-            '<td class="actions"><button type="button" class="small" data-action="edit" data-id="' + esc(row.id) + '">Edit</button>' +
+            '<td class="actions short"><button type="button" class="small" data-action="edit" data-id="' + esc(row.id) + '">Edit</button>' +
             '<button type="button" class="small danger" data-action="delete" data-id="' + esc(row.id) + '">Delete</button></td></tr>';
         }).join('');
       }
       document.getElementById('tbody').innerHTML = body;
+      pinHeader();
     }
 
     function render() {
@@ -903,6 +940,8 @@
         if (!document.getElementById('confirm').hidden) { closeConfirm(); return; }
         if (!document.getElementById('editor').hidden) closeEditor();
       });
+      window.addEventListener('scroll', pinHeader, { passive: true });
+      window.addEventListener('resize', pinHeader);
     }
 
     function readDraft() {
