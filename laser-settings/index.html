@@ -325,6 +325,9 @@
       { key: 'attributes', label: 'Attributes', wide: true, hint: 'Qualifiers not covered by Material/Object: brand, color, finish, species. Use — if none.' },
       { key: 'thickness', label: 'Thickness' },
       { key: 'operation', label: 'Operation' },
+      { key: 'mode', label: 'Mode', hint: 'Bitmap (image/photo) or Vector (shapes, cuts, scores). ? if not stated.' },
+      { key: 'bitmapMode', label: 'Bitmap mode', hint: 'Dithering/algorithm, e.g. Jarvis, Grayscale. Bitmap rows only.' },
+      { key: 'dotDuration', label: 'Dot duration', hint: 'As given in the source; unit not stated. Bitmap rows only.' },
       { key: 'operationGroup', label: 'Op group', hint: 'Engrave, Cut, Score, Mark/Color, Clean, Emboss/Deep engrave, Other or ?' },
       { key: 'laser', label: 'Laser', wide: true, hint: '455 nm blue diode or 1064 nm IR, only when the source names it. Leave blank if it does not.' },
       { key: 'powerPct', label: 'Power %', numeric: true },
@@ -340,7 +343,14 @@
       { key: 'notes', label: 'Notes', type: 'textarea', wide: true },
       { key: 'material', label: 'Original text', wide: true, hint: 'Source wording, kept for traceability. Searchable, not shown in the table.' }
     ];
-    var DISPLAY_KEYS = ['status', 'baseMaterial', 'object', 'attributes', 'operation', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
+    var OPTIONAL_KEYS = ['bitmapMode', 'dotDuration'];
+    function displayKeys() {
+      return DISPLAY_KEYS.filter(function (k) {
+        if (OPTIONAL_KEYS.indexOf(k) === -1) return true;
+        return state.doc && state.doc.settings.some(function (r) { return r[k] && r[k] !== '?'; });
+      });
+    }
+    var DISPLAY_KEYS = ['status', 'baseMaterial', 'object', 'attributes', 'operation', 'mode', 'bitmapMode', 'dotDuration', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
     var SHORT_KEYS = {
       status: 1, operation: 1, laser: 1, powerPct: 1, speedMmS: 1, passes: 1,
       linesPerCm: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
@@ -505,6 +515,7 @@
       { key: 'laser', label: 'Laser' },
       { key: 'baseMaterial', label: 'Material' },
       { key: 'object', label: 'Object' },
+      { key: 'mode', label: 'Mode' },
       { key: 'operationGroup', label: 'Operation' },
       { key: 'status', label: 'Status' }
     ];
@@ -527,7 +538,7 @@
     }
     function defaultFilters() {
       // machine: list of ON values; laser/status: list of OFF values (new values default on)
-      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { laser: null, baseMaterial: null, object: null } };
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { laser: null, baseMaterial: null, object: null, mode: null } };
     }
     function loadFilters() {
       try {
@@ -540,7 +551,8 @@
           f.single = {
             laser: typeof sg.laser === 'string' ? sg.laser : null,
             baseMaterial: typeof sg.baseMaterial === 'string' ? sg.baseMaterial : null,
-            object: typeof sg.object === 'string' ? sg.object : null
+            object: typeof sg.object === 'string' ? sg.object : null,
+            mode: typeof sg.mode === 'string' ? sg.mode : null
           };
           f.laserOff = []; f.baseMaterialOff = [];
           return f;
@@ -551,7 +563,7 @@
     function saveFilters() {
       try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filters)); } catch (e) {}
     }
-    var SINGLE = ['laser', 'baseMaterial', 'object'];
+    var SINGLE = ['laser', 'baseMaterial', 'object', 'mode'];
     function isSingle(key) { return SINGLE.indexOf(key) !== -1; }
     function isOn(key, v) {
       var f = state.filters;
@@ -578,7 +590,7 @@
         if (vals.indexOf(v) === -1) vals.push(v);
       });
       var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : key === 'status' ? ['Tested', 'Community', 'Unverified'] :
-        key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
+        key === 'mode' ? ['Bitmap', 'Vector', '?'] : key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
       if (key === 'baseMaterial' || key === 'object') {
         var cnt = {};
         state.doc.settings.forEach(function (r) { var v = rowValue(r, key); cnt[v] = (cnt[v] || 0) + 1; });
@@ -726,7 +738,8 @@
     }
 
     function renderTable() {
-      var head = '<tr>' + DISPLAY_KEYS.map(function (key) {
+      var KEYS = displayKeys();
+      var head = '<tr>' + KEYS.map(function (key) {
         var field = fieldByKey(key);
         var arrow = '';
         if (state.sortKey === key) arrow = state.sortDir < 0 ? ' ▼' : ' ▲';
@@ -738,11 +751,11 @@
       var rows = visibleRows();
       var body;
       if (!rows.length) {
-        body = '<tr class="empty-row"><td colspan="' + (DISPLAY_KEYS.length + 1) + '">No rows match these filters.</td></tr>';
+        body = '<tr class="empty-row"><td colspan="' + (KEYS.length + 1) + '">No rows match these filters.</td></tr>';
       } else {
         body = rows.map(function (row) {
           var cls = STATUS_CLASS[row.status] || 'neutral';
-          var cells = DISPLAY_KEYS.map(function (key) {
+          var cells = KEYS.map(function (key) {
             var className = cellClass(key);
             var inner = key === 'status'
               ? '<span class="badge ' + cls + '">' + esc(row.status) + '</span>'
