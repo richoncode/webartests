@@ -257,7 +257,7 @@
     <div class="toolbar">
       <label class="field grow">
         <span class="lbl">Material</span>
-        <input id="filter-material" type="search" placeholder="Filter by material" autocomplete="off">
+        <input id="filter-material" type="search" placeholder="Search material or object" autocomplete="off">
       </label>
       <div class="toolbar-actions">
         <button type="button" class="primary" id="add-row">Add setting</button>
@@ -322,7 +322,10 @@
     var FIELDS = [
       { key: 'material', label: 'Material', wide: true },
       { key: 'thickness', label: 'Thickness' },
+      { key: 'baseMaterial', label: 'Base material', hint: 'Normalized category, e.g. Brass, Wood/Plywood, Acrylic. ? if unclear.' },
+      { key: 'object', label: 'Object', hint: 'The item, e.g. Coin, Tumbler, Card. ? if none named.' },
       { key: 'operation', label: 'Operation' },
+      { key: 'operationGroup', label: 'Op group', hint: 'Engrave, Cut, Score, Mark/Color, Clean, Emboss/Deep engrave, Other or ?' },
       { key: 'laser', label: 'Laser', wide: true, hint: '455 nm blue diode or 1064 nm IR, only when the source names it. Leave blank if it does not.' },
       { key: 'powerPct', label: 'Power %', numeric: true },
       { key: 'speedMmS', label: 'Speed (mm/s)', numeric: true },
@@ -336,7 +339,7 @@
       { key: 'date', label: 'Date' },
       { key: 'notes', label: 'Notes', type: 'textarea', wide: true }
     ];
-    var DISPLAY_KEYS = ['status', 'material', 'operation', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
+    var DISPLAY_KEYS = ['status', 'material', 'baseMaterial', 'object', 'operation', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
     var SHORT_KEYS = {
       status: 1, operation: 1, laser: 1, powerPct: 1, speedMmS: 1, passes: 1,
       linesPerCm: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
@@ -478,7 +481,7 @@
       var rows = state.doc.settings.filter(function (row) {
         if (!chipPass(row)) return false;
         var q = state.material.trim().toLowerCase();
-        if (q && String(row.material).toLowerCase().indexOf(q) === -1) return false;
+        if (q && (String(row.material) + ' ' + String(row.object) + ' ' + String(row.baseMaterial)).toLowerCase().indexOf(q) === -1) return false;
         return true;
       });
       if (state.sortKey) {
@@ -499,6 +502,8 @@
     var GROUPS = [
       { key: 'machine', label: 'Machine' },
       { key: 'laser', label: 'Laser' },
+      { key: 'baseMaterial', label: 'Base' },
+      { key: 'operationGroup', label: 'Operation' },
       { key: 'status', label: 'Status' }
     ];
     function laserCat(v) {
@@ -520,12 +525,16 @@
     }
     function defaultFilters() {
       // machine: list of ON values; laser/status: list of OFF values (new values default on)
-      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'] };
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [] };
     }
     function loadFilters() {
       try {
         var f = JSON.parse(localStorage.getItem(FILTER_KEY));
-        if (f && Array.isArray(f.machineOn) && Array.isArray(f.laserOff) && Array.isArray(f.statusOff)) return f;
+        if (f && Array.isArray(f.machineOn) && Array.isArray(f.laserOff) && Array.isArray(f.statusOff)) {
+          if (!Array.isArray(f.baseMaterialOff)) f.baseMaterialOff = [];
+          if (!Array.isArray(f.operationGroupOff)) f.operationGroupOff = [];
+          return f;
+        }
       } catch (e) {}
       return defaultFilters();
     }
@@ -554,7 +563,13 @@
         var v = rowValue(row, key);
         if (vals.indexOf(v) === -1) vals.push(v);
       });
-      var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : ['Tested', 'Community', 'Unverified'];
+      var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : key === 'status' ? ['Tested', 'Community', 'Unverified'] :
+        key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
+      if (key === 'baseMaterial') {
+        var cnt = {};
+        state.doc.settings.forEach(function (r) { var v = rowValue(r, key); cnt[v] = (cnt[v] || 0) + 1; });
+        return vals.sort(function (a, b) { return (a === '?') - (b === '?') || (a === 'Other') - (b === 'Other') || cnt[b] - cnt[a] || String(a).localeCompare(String(b)); });
+      }
       vals.sort(function (a, b) {
         var ia = order.indexOf(a), ib = order.indexOf(b);
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || String(a).localeCompare(String(b));
