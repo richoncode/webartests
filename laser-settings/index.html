@@ -77,6 +77,16 @@
     input:focus, select:focus, textarea:focus { outline: none; border-color: #5b9bd5; }
     textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
     select { cursor: pointer; }
+    .chip-groups { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+    .chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .chip-group .lbl { min-width: 64px; color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .chip { background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 999px; padding: 5px 11px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .chip:hover { border-color: #555; }
+    .chip.active { background: #1e2d40; border-color: #5b9bd5; color: #fff; }
+    .chip .n { color: #888; margin-left: 4px; font-size: 11px; }
+    .chip.active .n { color: #9cc3e8; }
+    .chip.quick { background: transparent; border-style: dashed; color: #888; padding: 4px 9px; font-size: 12px; }
+    @media (max-width: 600px) { .chip-group .lbl { width: 100%; } .chip { padding: 6px 10px; } }
     .hint { font-size: 12px; color: #666; line-height: 1.45; }
     .toggle {
       display: inline-flex;
@@ -249,18 +259,6 @@
         <span class="lbl">Material</span>
         <input id="filter-material" type="search" placeholder="Filter by material" autocomplete="off">
       </label>
-      <label class="field">
-        <span class="lbl">Laser</span>
-        <select id="filter-laser"></select>
-      </label>
-      <label class="field">
-        <span class="lbl">Status</span>
-        <select id="filter-status"></select>
-      </label>
-      <label class="toggle">
-        <input type="checkbox" id="hide-unverified">
-        <span>Hide unverified</span>
-      </label>
       <div class="toolbar-actions">
         <button type="button" class="primary" id="add-row">Add setting</button>
         <button type="button" id="export-json">Export JSON</button>
@@ -268,6 +266,7 @@
         <button type="button" id="discard" disabled>Discard draft</button>
       </div>
     </div>
+    <div class="chip-groups" id="chip-groups"></div>
     <p class="summary" id="summary"></p>
     <p class="status-line" id="status-line" aria-live="polite"></p>
 
@@ -357,9 +356,7 @@
       dirty: false,
       savedAt: null,
       material: '',
-      laser: '',
-      status: '',
-      hideUnverified: false,
+      filters: null,
       sortKey: null,
       sortDir: 1,
       editingId: undefined,
@@ -479,9 +476,7 @@
     function visibleRows() {
       if (!state.doc) return [];
       var rows = state.doc.settings.filter(function (row) {
-        if (state.hideUnverified && row.status === 'Unverified (from Hub)') return false;
-        if (state.status && row.status !== state.status) return false;
-        if (state.laser && row.laser !== state.laser) return false;
+        if (!chipPass(row)) return false;
         var q = state.material.trim().toLowerCase();
         if (q && String(row.material).toLowerCase().indexOf(q) === -1) return false;
         return true;
@@ -500,33 +495,87 @@
       document.getElementById('status-line').textContent = message || '';
     }
 
-    function fillSelect(select, options, current) {
-      select.innerHTML = options.map(function (opt) {
-        return '<option value="' + esc(opt.value) + '">' + esc(opt.label) + '</option>';
-      }).join('');
-      select.value = current;
-      if (select.value !== current) select.value = '';
+    var FILTER_KEY = 'laser-settings-filters-v1';
+    var GROUPS = [
+      { key: 'machine', label: 'Machine' },
+      { key: 'laser', label: 'Laser' },
+      { key: 'status', label: 'Status' }
+    ];
+    function laserCat(v) {
+      var s = String(v || '').toLowerCase();
+      if (s.indexOf('blue') !== -1 || s.indexOf('455') !== -1) return 'Blue diode';
+      if (s.indexOf('fiber') !== -1) return 'Fiber';
+      if (s.indexOf('1064') !== -1 || s.indexOf('ir') === 0 || s.indexOf('infrared') !== -1) return 'IR';
+      if (s.indexOf('co2') !== -1) return 'CO2';
+      if (s.indexOf('uv') !== -1) return 'UV';
+      return 'Unknown';
     }
-
-    function syncFilterOptions() {
-      var lasers = [];
-      var extras = [];
+    var LASER_ORDER = ['Blue diode', 'IR', 'Fiber', 'CO2', 'UV', 'Unknown'];
+    var MACHINE_ORDER = ['xTool F2', 'xTool F2 Ultra', 'xTool F2 Ultra UV', 'xTool F1', 'xTool F1 Ultra', 'xTool P2/P2S', 'xTool P3'];
+    function rowValue(row, key) {
+      if (key === 'laser') return laserCat(row.laser);
+      if (key === 'machine') return (!row.machine || row.machine === '?') ? 'Other / ?' : row.machine;
+      if (key === 'status') return row.status === 'Unverified (from Hub)' ? 'Unverified' : row.status;
+      return row[key];
+    }
+    function defaultFilters() {
+      // machine: list of ON values; laser/status: list of OFF values (new values default on)
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'] };
+    }
+    function loadFilters() {
+      try {
+        var f = JSON.parse(localStorage.getItem(FILTER_KEY));
+        if (f && Array.isArray(f.machineOn) && Array.isArray(f.laserOff) && Array.isArray(f.statusOff)) return f;
+      } catch (e) {}
+      return defaultFilters();
+    }
+    function saveFilters() {
+      try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filters)); } catch (e) {}
+    }
+    function isOn(key, v) {
+      var f = state.filters;
+      if (key === 'machine') return f.machineOn.indexOf(v) !== -1;
+      return f[key + 'Off'].indexOf(v) === -1;
+    }
+    function setOn(key, v, on) {
+      var f = state.filters;
+      var list = key === 'machine' ? f.machineOn : f[key + 'Off'];
+      var want = key === 'machine' ? on : !on;
+      var i = list.indexOf(v);
+      if (want && i === -1) list.push(v);
+      if (!want && i !== -1) list.splice(i, 1);
+    }
+    function chipPass(row) {
+      return GROUPS.every(function (g) { return isOn(g.key, rowValue(row, g.key)); });
+    }
+    function groupValues(key) {
+      var vals = [];
       state.doc.settings.forEach(function (row) {
-        if (lasers.indexOf(row.laser) === -1) lasers.push(row.laser);
-        if (STATUSES.indexOf(row.status) === -1 && extras.indexOf(row.status) === -1) extras.push(row.status);
+        var v = rowValue(row, key);
+        if (vals.indexOf(v) === -1) vals.push(v);
       });
-      lasers.sort(function (a, b) { return compareWithUnknownsLast({ laser: a }, { laser: b }, 'laser', 1); });
-      var laserOptions = [{ value: '', label: 'All lasers' }].concat(lasers.map(function (v) {
-        return { value: v, label: v };
-      }));
-      var statusOptions = [{ value: '', label: 'All statuses' }].concat(STATUSES.concat(extras).map(function (v) {
-        return { value: v, label: v };
-      }));
-      fillSelect(document.getElementById('filter-laser'), laserOptions, state.laser);
-      fillSelect(document.getElementById('filter-status'), statusOptions, state.status);
-      if (!state.laser) state.laser = '';
-      if (document.getElementById('filter-laser').value !== state.laser) state.laser = '';
-      if (document.getElementById('filter-status').value !== state.status) state.status = '';
+      var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : ['Tested', 'Community', 'Unverified'];
+      vals.sort(function (a, b) {
+        var ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || String(a).localeCompare(String(b));
+      });
+      return vals;
+    }
+    function syncFilterOptions() {
+      if (!state.filters) state.filters = loadFilters();
+      var html = GROUPS.map(function (g) {
+        var counts = {};
+        state.doc.settings.forEach(function (row) { var v = rowValue(row, g.key); counts[v] = (counts[v] || 0) + 1; });
+        var chips = groupValues(g.key).map(function (v) {
+          var on = isOn(g.key, v);
+          return '<button type="button" class="chip' + (on ? ' active' : '') + '" aria-pressed="' + on + '" data-group="' + g.key + '" data-value="' + esc(v) + '">' +
+            esc(v.replace(/^xTool /, '')) + '<span class="n">' + counts[v] + '</span></button>';
+        }).join('');
+        return '<div class="chip-group" role="group" aria-label="' + g.label + '"><span class="lbl">' + g.label + '</span>' + chips +
+          '<button type="button" class="chip quick" data-group="' + g.key + '" data-all="1">All</button>' +
+          '<button type="button" class="chip quick" data-group="' + g.key + '" data-all="0">None</button></div>';
+      }).join('');
+      document.getElementById('chip-groups').innerHTML = html;
     }
 
     function renderIntro() {
@@ -761,11 +810,9 @@
       closeEditor();
       if (isNew) {
         state.material = '';
-        state.laser = '';
-        state.status = '';
-        state.hideUnverified = false;
         document.getElementById('filter-material').value = '';
-        document.getElementById('hide-unverified').checked = false;
+        var added = state.doc.settings[state.doc.settings.length - 1];
+        if (added) { GROUPS.forEach(function (g) { setOn(g.key, rowValue(added, g.key), true); }); saveFilters(); }
       }
       persist();
       setStatus(state.dirty
@@ -801,12 +848,8 @@
         state.dirty = false;
         state.savedAt = null;
         state.material = '';
-        state.laser = '';
-        state.status = '';
-        state.hideUnverified = false;
         state.sortKey = null;
         document.getElementById('filter-material').value = '';
-        document.getElementById('hide-unverified').checked = false;
         syncFilterOptions();
         render();
         setStatus('Draft discarded. Showing the published file.');
@@ -873,21 +916,19 @@
         renderSummary();
         renderTable();
       });
-      document.getElementById('filter-laser').addEventListener('change', function (e) {
-        if (!state.doc) return;
-        state.laser = e.target.value;
-        renderSummary();
-        renderTable();
-      });
-      document.getElementById('filter-status').addEventListener('change', function (e) {
-        if (!state.doc) return;
-        state.status = e.target.value;
-        renderSummary();
-        renderTable();
-      });
-      document.getElementById('hide-unverified').addEventListener('change', function (e) {
-        if (!state.doc) return;
-        state.hideUnverified = e.target.checked;
+      document.getElementById('chip-groups').addEventListener('click', function (e) {
+        var btn = e.target.closest('button.chip');
+        if (!btn || !state.doc) return;
+        var key = btn.getAttribute('data-group');
+        if (btn.hasAttribute('data-all')) {
+          var on = btn.getAttribute('data-all') === '1';
+          groupValues(key).forEach(function (v) { setOn(key, v, on); });
+        } else {
+          var v = btn.getAttribute('data-value');
+          setOn(key, v, !isOn(key, v));
+        }
+        saveFilters();
+        syncFilterOptions();
         renderSummary();
         renderTable();
       });
