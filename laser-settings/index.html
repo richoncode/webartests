@@ -320,9 +320,9 @@
       'Unverified (from Hub)': 'unverified'
     };
     var FIELDS = [
-      { key: 'material', label: 'Material', wide: true },
+      { key: 'material', label: 'Description', wide: true },
       { key: 'thickness', label: 'Thickness' },
-      { key: 'baseMaterial', label: 'Base material', hint: 'Normalized category, e.g. Brass, Wood/Plywood, Acrylic. ? if unclear.' },
+      { key: 'baseMaterial', label: 'Material', hint: 'Normalized category, e.g. Brass, Wood/Plywood, Acrylic. ? if unclear.' },
       { key: 'object', label: 'Object', hint: 'The item, e.g. Coin, Tumbler, Card. ? if none named.' },
       { key: 'operation', label: 'Operation' },
       { key: 'operationGroup', label: 'Op group', hint: 'Engrave, Cut, Score, Mark/Color, Clean, Emboss/Deep engrave, Other or ?' },
@@ -502,7 +502,7 @@
     var GROUPS = [
       { key: 'machine', label: 'Machine' },
       { key: 'laser', label: 'Laser' },
-      { key: 'baseMaterial', label: 'Base' },
+      { key: 'baseMaterial', label: 'Material' },
       { key: 'operationGroup', label: 'Operation' },
       { key: 'status', label: 'Status' }
     ];
@@ -525,7 +525,7 @@
     }
     function defaultFilters() {
       // machine: list of ON values; laser/status: list of OFF values (new values default on)
-      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [] };
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { laser: null, baseMaterial: null } };
     }
     function loadFilters() {
       try {
@@ -533,6 +533,13 @@
         if (f && Array.isArray(f.machineOn) && Array.isArray(f.laserOff) && Array.isArray(f.statusOff)) {
           if (!Array.isArray(f.baseMaterialOff)) f.baseMaterialOff = [];
           if (!Array.isArray(f.operationGroupOff)) f.operationGroupOff = [];
+          // Material and Laser are single-select now; older multi-select state falls back to All.
+          var sg = f.single && typeof f.single === 'object' ? f.single : {};
+          f.single = {
+            laser: typeof sg.laser === 'string' ? sg.laser : null,
+            baseMaterial: typeof sg.baseMaterial === 'string' ? sg.baseMaterial : null
+          };
+          f.laserOff = []; f.baseMaterialOff = [];
           return f;
         }
       } catch (e) {}
@@ -541,13 +548,17 @@
     function saveFilters() {
       try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filters)); } catch (e) {}
     }
+    var SINGLE = ['laser', 'baseMaterial'];
+    function isSingle(key) { return SINGLE.indexOf(key) !== -1; }
     function isOn(key, v) {
       var f = state.filters;
+      if (isSingle(key)) return f.single[key] === null || f.single[key] === v;
       if (key === 'machine') return f.machineOn.indexOf(v) !== -1;
       return f[key + 'Off'].indexOf(v) === -1;
     }
     function setOn(key, v, on) {
       var f = state.filters;
+      if (isSingle(key)) { if (on && !isOn(key, v)) f.single[key] = null; return; }
       var list = key === 'machine' ? f.machineOn : f[key + 'Off'];
       var want = key === 'machine' ? on : !on;
       var i = list.indexOf(v);
@@ -582,10 +593,15 @@
         var counts = {};
         state.doc.settings.forEach(function (row) { var v = rowValue(row, g.key); counts[v] = (counts[v] || 0) + 1; });
         var chips = groupValues(g.key).map(function (v) {
-          var on = isOn(g.key, v);
+          var on = isSingle(g.key) ? state.filters.single[g.key] === v : isOn(g.key, v);
           return '<button type="button" class="chip' + (on ? ' active' : '') + '" aria-pressed="' + on + '" data-group="' + g.key + '" data-value="' + esc(v) + '">' +
             esc(v.replace(/^xTool /, '')) + '<span class="n">' + counts[v] + '</span></button>';
         }).join('');
+        if (isSingle(g.key)) {
+          var all = state.filters.single[g.key] === null;
+          return '<div class="chip-group" role="radiogroup" aria-label="' + g.label + '"><span class="lbl">' + g.label + '</span>' +
+            '<button type="button" class="chip' + (all ? ' active' : '') + '" aria-pressed="' + all + '" data-group="' + g.key + '" data-all="1">All<span class="n">' + state.doc.settings.length + '</span></button>' + chips + '</div>';
+        }
         return '<div class="chip-group" role="group" aria-label="' + g.label + '"><span class="lbl">' + g.label + '</span>' + chips +
           '<button type="button" class="chip quick" data-group="' + g.key + '" data-all="1">All</button>' +
           '<button type="button" class="chip quick" data-group="' + g.key + '" data-all="0">None</button></div>';
@@ -935,7 +951,10 @@
         var btn = e.target.closest('button.chip');
         if (!btn || !state.doc) return;
         var key = btn.getAttribute('data-group');
-        if (btn.hasAttribute('data-all')) {
+        if (isSingle(key)) {
+          var val = btn.hasAttribute('data-all') ? null : btn.getAttribute('data-value');
+          state.filters.single[key] = state.filters.single[key] === val ? null : val;
+        } else if (btn.hasAttribute('data-all')) {
           var on = btn.getAttribute('data-all') === '1';
           groupValues(key).forEach(function (v) { setOn(key, v, on); });
         } else {
