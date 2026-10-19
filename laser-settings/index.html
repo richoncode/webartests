@@ -333,7 +333,7 @@
       { key: 'airAssist', label: 'Air assist' },
       { key: 'machine', label: 'Machine', wide: true, hint: 'Only when the source names a machine. The xTool F2 default is not copied in for you.' },
       { key: 'status', label: 'Status', type: 'status', wide: true },
-      { key: 'source', label: 'Source', wide: true, hint: 'Where the numbers came from. For a community report, include the poster name.' },
+      { key: 'source', label: 'Source', wide: true, hint: 'Generic source only (e.g. Community post). No names, handles, groups or links.' },
       { key: 'date', label: 'Date' },
       { key: 'notes', label: 'Notes', type: 'textarea', wide: true }
     ];
@@ -682,7 +682,7 @@
         state.savedAt = null;
       } else {
         state.savedAt = new Date().toISOString();
-        localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: state.savedAt, document: state.doc }));
+        localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: state.savedAt, base: docSignature(published), document: state.doc }));
         state.dirty = true;
       }
       syncFilterOptions();
@@ -969,7 +969,12 @@
         var draft = readDraft();
         if (draft) {
           var draftDoc = normalizeDoc(draft.document);
-          if (docSignature(draftDoc) !== docSignature(published)) {
+          if (draft.base !== docSignature(published)) {
+            // Published data changed since this draft was made (or draft predates tracking): drop it.
+            localStorage.removeItem(LS_KEY);
+            state.doc = published;
+            state.staleDraftDropped = true;
+          } else if (docSignature(draftDoc) !== docSignature(published)) {
             state.doc = draftDoc;
             state.dirty = true;
             state.savedAt = draft.savedAt || null;
@@ -982,6 +987,7 @@
         }
         syncFilterOptions();
         render();
+        if (state.staleDraftDropped) setStatus('Published data was updated, so an older local draft was discarded.');
       } catch (err) {
         var banner = document.getElementById('error-banner');
         banner.hidden = false;
