@@ -504,6 +504,7 @@
       { key: 'machine', label: 'Machine' },
       { key: 'laser', label: 'Laser' },
       { key: 'baseMaterial', label: 'Material' },
+      { key: 'object', label: 'Object' },
       { key: 'operationGroup', label: 'Operation' },
       { key: 'status', label: 'Status' }
     ];
@@ -526,7 +527,7 @@
     }
     function defaultFilters() {
       // machine: list of ON values; laser/status: list of OFF values (new values default on)
-      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { laser: null, baseMaterial: null } };
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { laser: null, baseMaterial: null, object: null } };
     }
     function loadFilters() {
       try {
@@ -538,7 +539,8 @@
           var sg = f.single && typeof f.single === 'object' ? f.single : {};
           f.single = {
             laser: typeof sg.laser === 'string' ? sg.laser : null,
-            baseMaterial: typeof sg.baseMaterial === 'string' ? sg.baseMaterial : null
+            baseMaterial: typeof sg.baseMaterial === 'string' ? sg.baseMaterial : null,
+            object: typeof sg.object === 'string' ? sg.object : null
           };
           f.laserOff = []; f.baseMaterialOff = [];
           return f;
@@ -549,7 +551,7 @@
     function saveFilters() {
       try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filters)); } catch (e) {}
     }
-    var SINGLE = ['laser', 'baseMaterial'];
+    var SINGLE = ['laser', 'baseMaterial', 'object'];
     function isSingle(key) { return SINGLE.indexOf(key) !== -1; }
     function isOn(key, v) {
       var f = state.filters;
@@ -577,7 +579,7 @@
       });
       var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : key === 'status' ? ['Tested', 'Community', 'Unverified'] :
         key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
-      if (key === 'baseMaterial') {
+      if (key === 'baseMaterial' || key === 'object') {
         var cnt = {};
         state.doc.settings.forEach(function (r) { var v = rowValue(r, key); cnt[v] = (cnt[v] || 0) + 1; });
         return vals.sort(function (a, b) { return (a === '?') - (b === '?') || (a === 'Other') - (b === 'Other') || cnt[b] - cnt[a] || String(a).localeCompare(String(b)); });
@@ -593,11 +595,21 @@
       var html = GROUPS.map(function (g) {
         var counts = {};
         state.doc.settings.forEach(function (row) { var v = rowValue(row, g.key); counts[v] = (counts[v] || 0) + 1; });
-        var chips = groupValues(g.key).map(function (v) {
+        var vals = groupValues(g.key), hiddenCount = 0, OBJ_LIMIT = 12;
+        if (g.key === 'object' && !state.moreObjects && vals.length > OBJ_LIMIT + 2) {
+          var sel = state.filters.single.object;
+          var shown = vals.filter(function (v, i) { return i < OBJ_LIMIT || v === sel || v === '?'; });
+          hiddenCount = vals.length - shown.length;
+          vals = shown;
+        }
+        var chips = vals.map(function (v) {
           var on = isSingle(g.key) ? state.filters.single[g.key] === v : isOn(g.key, v);
           return '<button type="button" class="chip' + (on ? ' active' : '') + '" aria-pressed="' + on + '" data-group="' + g.key + '" data-value="' + esc(v) + '">' +
-            esc(v.replace(/^xTool /, '')) + '<span class="n">' + counts[v] + '</span></button>';
+            esc(g.key === 'object' && v === '?' ? 'None / stock' : v.replace(/^xTool /, '')) + '<span class="n">' + counts[v] + '</span></button>';
         }).join('');
+        if (g.key === 'object' && (hiddenCount || state.moreObjects)) {
+          chips += '<button type="button" class="chip quick" data-more="1">' + (hiddenCount ? 'More… (+' + hiddenCount + ')' : 'Less') + '</button>';
+        }
         if (isSingle(g.key)) {
           var all = state.filters.single[g.key] === null;
           return '<div class="chip-group" role="radiogroup" aria-label="' + g.label + '"><span class="lbl">' + g.label + '</span>' +
@@ -951,6 +963,7 @@
       document.getElementById('chip-groups').addEventListener('click', function (e) {
         var btn = e.target.closest('button.chip');
         if (!btn || !state.doc) return;
+        if (btn.hasAttribute('data-more')) { state.moreObjects = !state.moreObjects; syncFilterOptions(); return; }
         var key = btn.getAttribute('data-group');
         if (isSingle(key)) {
           var val = btn.hasAttribute('data-all') ? null : btn.getAttribute('data-value');
