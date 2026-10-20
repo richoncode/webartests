@@ -175,6 +175,7 @@
     tr:last-child td { border-bottom: none; }
     th.short, td.short { width: 1%; white-space: nowrap; }
     td.material { color: #fff; font-weight: 600; }
+    .audit-flag { display: inline-block; white-space: nowrap; color: #f0a040; background: #2a2412; border: 1px solid #f0a04066; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
     td.material .cell { width: 22rem; }
     td.source { color: #bbb; }
     td.source .cell { width: 24rem; }
@@ -354,6 +355,7 @@
       { key: 'airAssist', label: 'Air assist' },
       { key: 'result', label: 'Result', hint: 'Resulting color/finish, e.g. White, Black, Pink.' },
       { key: 'notes', label: 'Notes', type: 'textarea', wide: true },
+      { key: 'audit', label: 'Audit', hint: 'Short flag naming what needs checking, e.g. "DPI/LPC units?". Leave blank if OK.' },
       { key: 'machine', label: 'Machine', wide: true, hint: 'Only when the source names a machine. The xTool F2 default is not copied in for you.' },
       { key: 'status', label: 'Status', type: 'status', wide: true },
       { key: 'source', label: 'Source', wide: true, hint: 'Generic source only (e.g. Community post). No names, handles, groups or links.' },
@@ -369,7 +371,7 @@
         return rows.some(function (r) { return !isEmptyVal(valueOf(r, k)); });
       });
     }
-    var DISPLAY_KEYS = ['baseMaterial', 'object', 'attributes', 'thickness', 'laser', 'operation', 'mode', 'setup', 'processing', 'bitmapMode', 'dotDuration', 'powerPct', 'speedMmS', 'passes', 'res', 'frequency', 'frequencyKHz', 'pulseWidth', 'angleDeg', 'crossHatch', 'wobble', 'layers', 'zDescend', 'zStepMm', 'zStepEvery', 'invert', 'focus', 'lens', 'airAssist', 'result', 'notes', 'machine', 'status', 'source', 'date'];
+    var DISPLAY_KEYS = ['baseMaterial', 'object', 'attributes', 'thickness', 'laser', 'operation', 'mode', 'setup', 'processing', 'bitmapMode', 'dotDuration', 'powerPct', 'speedMmS', 'passes', 'res', 'frequency', 'frequencyKHz', 'pulseWidth', 'angleDeg', 'crossHatch', 'wobble', 'layers', 'zDescend', 'zStepMm', 'zStepEvery', 'invert', 'focus', 'lens', 'airAssist', 'result', 'notes', 'audit', 'machine', 'status', 'source', 'date'];
     var SHORT_KEYS = {
       status: 1, operation: 1, laser: 1, powerPct: 1, speedMmS: 1, passes: 1,
       res: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
@@ -553,6 +555,7 @@
       { key: 'object', label: 'Object' },
       { key: 'mode', label: 'Mode' },
       { key: 'setup', label: 'Setup' },
+      { key: 'audit', label: 'Audit' },
       { key: 'operationGroup', label: 'Operation' },
       { key: 'status', label: 'Status' }
     ];
@@ -568,6 +571,7 @@
     var LASER_ORDER = ['Blue diode', 'IR', 'Fiber', 'CO2', 'UV', 'Unknown'];
     var MACHINE_ORDER = ['xTool F2', 'xTool F2 Ultra', 'xTool F2 Ultra UV', 'xTool F1', 'xTool F1 Ultra', 'xTool P2/P2S', 'xTool P3'];
     function rowValue(row, key) {
+      if (key === 'audit') return isEmptyVal(row.audit) ? 'OK' : 'Needs audit';
       if (key === 'laser') return laserCat(row.laser);
       if (key === 'machine') return (!row.machine || row.machine === '?') ? 'Other / ?' : row.machine;
       if (key === 'status') return row.status === 'Unverified (from Hub)' ? 'Unverified' : row.status;
@@ -575,7 +579,7 @@
     }
     function defaultFilters() {
       // machine: list of ON values; laser/status: list of OFF values (new values default on)
-      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { machine: 'xTool F2', laser: null, baseMaterial: null, object: null, mode: null, setup: null } };
+      return { machineOn: ['xTool F2'], laserOff: [], statusOff: ['Unverified'], baseMaterialOff: [], operationGroupOff: [], single: { machine: 'xTool F2', laser: null, baseMaterial: null, object: null, mode: null, setup: null, audit: null } };
     }
     function loadFilters() {
       try {
@@ -594,7 +598,8 @@
             baseMaterial: typeof sg.baseMaterial === 'string' ? sg.baseMaterial : null,
             object: typeof sg.object === 'string' ? sg.object : null,
             mode: typeof sg.mode === 'string' ? sg.mode : null,
-            setup: typeof sg.setup === 'string' ? sg.setup : null
+            setup: typeof sg.setup === 'string' ? sg.setup : null,
+            audit: typeof sg.audit === 'string' ? sg.audit : null
           };
           f.laserOff = []; f.baseMaterialOff = [];
           return f;
@@ -605,7 +610,7 @@
     function saveFilters() {
       try { localStorage.setItem(FILTER_KEY, JSON.stringify(state.filters)); } catch (e) {}
     }
-    var SINGLE = ['machine', 'laser', 'baseMaterial', 'object', 'mode', 'setup'];
+    var SINGLE = ['machine', 'laser', 'baseMaterial', 'object', 'mode', 'setup', 'audit'];
     function isSingle(key) { return SINGLE.indexOf(key) !== -1; }
     function isOn(key, v) {
       var f = state.filters;
@@ -632,7 +637,7 @@
         if (vals.indexOf(v) === -1) vals.push(v);
       });
       var order = key === 'machine' ? MACHINE_ORDER.concat(['Other / ?']) : key === 'laser' ? LASER_ORDER : key === 'status' ? ['Tested', 'Community', 'Unverified'] :
-        key === 'mode' ? ['Bitmap', 'Vector', '?'] : key === 'setup' ? ['Flat', 'Rotary', 'Jig', '?'] : key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
+        key === 'mode' ? ['Bitmap', 'Vector', '?'] : key === 'setup' ? ['Flat', 'Rotary', 'Jig', '?'] : key === 'audit' ? ['Needs audit', 'OK'] : key === 'operationGroup' ? ['Engrave', 'Cut', 'Score', 'Mark/Color', 'Clean', 'Emboss/Deep engrave', 'Other', '?'] : [];
       if (key === 'baseMaterial' || key === 'object') {
         var cnt = {};
         state.doc.settings.forEach(function (r) { var v = rowValue(r, key); cnt[v] = (cnt[v] || 0) + 1; });
@@ -801,6 +806,7 @@
             var className = cellClass(key);
             var inner = key === 'status'
               ? '<span class="badge ' + cls + '">' + esc(row.status) + '</span>'
+              : key === 'audit' ? (isEmptyVal(row.audit) ? '' : '<span class="audit-flag">' + esc(row.audit) + '</span>')
               : renderValue(valueOf(row, key));
             return cellHtml(className, inner);
           }).join('');
