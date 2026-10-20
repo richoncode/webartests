@@ -334,7 +334,8 @@
       { key: 'powerPct', label: 'Power %', numeric: true },
       { key: 'speedMmS', label: 'Speed (mm/s)', numeric: true },
       { key: 'passes', label: 'Passes', numeric: true },
-      { key: 'linesPerCm', label: 'Lines/cm', numeric: true },
+      { key: 'lpcm', label: 'LPCM', numeric: true, type: 'res' },
+      { key: 'dpi', label: 'DPI', numeric: true, type: 'resHidden' },
       { key: 'focus', label: 'Focus' },
       { key: 'airAssist', label: 'Air assist' },
       { key: 'machine', label: 'Machine', wide: true, hint: 'Only when the source names a machine. The xTool F2 default is not copied in for you.' },
@@ -351,10 +352,10 @@
         return state.doc && state.doc.settings.some(function (r) { return r[k] && r[k] !== '?'; });
       });
     }
-    var DISPLAY_KEYS = ['status', 'baseMaterial', 'object', 'attributes', 'operation', 'mode', 'setup', 'bitmapMode', 'dotDuration', 'laser', 'powerPct', 'speedMmS', 'passes', 'linesPerCm', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
+    var DISPLAY_KEYS = ['status', 'baseMaterial', 'object', 'attributes', 'operation', 'mode', 'setup', 'bitmapMode', 'dotDuration', 'laser', 'powerPct', 'speedMmS', 'passes', 'res', 'thickness', 'focus', 'airAssist', 'machine', 'source', 'date', 'notes'];
     var SHORT_KEYS = {
       status: 1, operation: 1, laser: 1, powerPct: 1, speedMmS: 1, passes: 1,
-      linesPerCm: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
+      res: 1, thickness: 1, focus: 1, airAssist: 1, machine: 1, date: 1
     };
     var TEST_LOG_FIELDS = [
       { key: 'date', label: 'Date' },
@@ -384,7 +385,19 @@
       });
     }
 
+    var RES_FIELD = { key: 'res', label: 'LPCM / DPI', numeric: true };
+    function resInfo(row) {
+      if (row.dpi && row.dpi !== '?') return { v: row.dpi, unit: 'dpi', rank: 1 };
+      if (row.lpcm && row.lpcm !== '?') return { v: row.lpcm, unit: 'lpcm', rank: 0 };
+      return null;
+    }
+    function valueOf(row, key) {
+      if (key !== 'res') return row[key];
+      var r = resInfo(row);
+      return r ? r.v + ' ' + r.unit : '?';
+    }
     function fieldByKey(key) {
+      if (key === 'res') return RES_FIELD;
       for (var i = 0; i < FIELDS.length; i++) if (FIELDS[i].key === key) return FIELDS[i];
       return null;
     }
@@ -466,6 +479,11 @@
     }
 
     function compareRows(a, b, key) {
+      if (key === 'res') {
+        var ra = resInfo(a), rb = resInfo(b);
+        if (ra.rank !== rb.rank) return ra.rank - rb.rank;
+        return (parseFloat(ra.v) || 0) - (parseFloat(rb.v) || 0);
+      }
       var va = a[key];
       var vb = b[key];
       var field = fieldByKey(key);
@@ -479,8 +497,8 @@
     }
 
     function compareWithUnknownsLast(a, b, key, dir) {
-      var ua = isUnknownValue(a[key]);
-      var ub = isUnknownValue(b[key]);
+      var ua = isUnknownValue(valueOf(a, key));
+      var ub = isUnknownValue(valueOf(b, key));
       if (ua || ub) {
         if (ua && ub) return 0;
         return ua ? 1 : -1;
@@ -762,7 +780,7 @@
             var className = cellClass(key);
             var inner = key === 'status'
               ? '<span class="badge ' + cls + '">' + esc(row.status) + '</span>'
-              : renderValue(row[key]);
+              : renderValue(valueOf(row, key));
             return cellHtml(className, inner);
           }).join('');
           return '<tr class="' + cls + '" data-id="' + esc(row.id) + '" data-status="' + esc(row.status) + '">' +
@@ -808,6 +826,13 @@
             '</select></label>';
         }
         var hint = f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '';
+        if (f.type === 'resHidden') return '';
+        if (f.type === 'res') {
+          return '<label class="field"><span class="lbl">LPCM / DPI</span><span style="display:flex;gap:6px">' +
+            '<input id="f-resval" type="text" inputmode="decimal" autocomplete="off" placeholder="?" style="flex:1;min-width:0">' +
+            '<select id="f-resunit" style="width:auto"><option value="lpcm">lpcm</option><option value="dpi">dpi</option></select></span>' +
+            '<span class="hint">Bitmap uses DPI; vector fill uses lines/cm. Enter the unit the source gave.</span></label>';
+        }
         if (f.type === 'textarea') {
           return '<label class="field wide"><span class="lbl">' + esc(f.label) + '</span>' +
             '<textarea id="f-' + f.key + '" autocomplete="off" placeholder="?"></textarea>' + hint + '</label>';
@@ -829,6 +854,10 @@
         if (!el) return;
         el.value = row ? (row[f.key] == null ? '' : row[f.key]) : '';
       });
+      var ri = row ? resInfo(row) : null;
+      document.getElementById('f-resval').value = ri ? ri.v : '';
+      document.getElementById('f-resunit').value = ri ? ri.unit : (row && row.mode === 'Bitmap' ? 'dpi' : 'lpcm');
+      state.resUnitTouched = !!ri;
       document.getElementById('editor').hidden = false;
       var first = document.getElementById('f-baseMaterial');
       if (first) first.focus();
@@ -850,6 +879,11 @@
       var values = { id: state.editingId || newId() };
       FIELDS.forEach(function (f) {
         if (f.type === 'status') values[f.key] = status;
+        else if (f.type === 'res' || f.type === 'resHidden') {
+          var rv = clean(document.getElementById('f-resval').value);
+          var unit = document.getElementById('f-resunit').value;
+          values[f.key] = (f.key === unit) ? rv : '?';
+        }
         else values[f.key] = clean(document.getElementById('f-' + f.key).value);
       });
       var isNew = !state.editingId;
@@ -1023,6 +1057,11 @@
         openEditor(null);
       });
       document.getElementById('editor-form').addEventListener('submit', saveEditor);
+      document.getElementById('f-resunit').addEventListener('change', function () { state.resUnitTouched = true; });
+      document.getElementById('f-mode').addEventListener('input', function (e) {
+        if (state.resUnitTouched) return;
+        document.getElementById('f-resunit').value = /^bitmap$/i.test(e.target.value.trim()) ? 'dpi' : 'lpcm';
+      });
       document.getElementById('editor-cancel').addEventListener('click', closeEditor);
       document.getElementById('export-json').addEventListener('click', function () {
         if (!state.doc) return;
