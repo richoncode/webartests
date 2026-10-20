@@ -1,0 +1,34 @@
+kit.score(function (S, T) {
+  var TT = window.TT, i, AV = 10;
+  function answer(t) { S.fx('chime', t, { vel: AV, gain: -4 }); }
+  for (i = 0; i < 9; i++) S.fx('tick', T.hook + 0.5 + i * 0.38, { vel: 30, pitch: i % 3 });
+  for (i = 0; i < 5; i++) S.fx('tick', T.hook + 3.85 + i * 0.38, { vel: 16 });
+  S.fx('whoosh', T.hook + 4.3, { dur: 0.5, vel: 30 });
+  answer(T.hook + 5.7);
+  for (i = 0; i < 9; i++) S.fx('tick', T.hook + 7.8 + i * 0.38, { vel: 30, pitch: i % 3 });
+  S.fx('whoosh', T.hook + 9.7, { dur: 0.5, vel: 42 });
+  answer(T.hook + 12.59);
+  S.fx('whoosh', T.wait + 1.9, { dur: 0.5, vel: 28 });
+  for (i = 0; i < 7; i++) S.fx('tick', T.wait + 1.9 + i * 0.3, { vel: 26 });
+  var I = TT.idea;
+  for (i = 0; i < 9; i++) S.fx('tick', T.idea + I.w0 + i * I.step, { vel: 30, pitch: i % 3 });
+  S.fx('whoosh', T.idea + I.w0 + (I.pulseAt - 1) * I.step + 0.2, { dur: 0.6, vel: 40 });
+  var G = TT.guess;
+  for (i = 0; i < 16; i++) S.fx('tick', T.guess + G.w0 + i * G.step, { vel: 30, pitch: i % 3 });
+  for (i = 0; i < 3; i++) S.fx('whoosh', T.guess + G.w0 + G.launch[i] * G.step + 0.15, { dur: 0.5, vel: 38 });
+  S.fx('whoosh', T.analogy + 1.8, { dur: 0.7, vel: 30 });
+  S.fx('thud', T.result + TT.result[0], { vel: 62 });
+  S.fx('thud', T.result + TT.result[1], { vel: 70 });
+  S.fx('thud', T.twist + TT.twist[0], { vel: 62 });
+  S.fx('thud', T.twist + TT.twist[1], { vel: 70 });
+  var AN = TT.ans;
+  answer(T.wait + AN.wait);
+  answer(T.idea + AN.idea);
+  answer(T.guess + AN.guess);
+  answer(T.analogy + AN.analogy);
+  answer(T.cache + AN.cache);
+  answer(T.result + AN.result[0]);
+  answer(T.result + AN.result[1]);
+  answer(T.tradeoff + 3.9);
+  S.master({ gain: -6, fadeOut: 1 });
+});
