@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Games &amp; Apps Admin Tracker</title>
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--fg:#e6e8ee;--mut:#9aa3b2;--acc:#6cb6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px}.mut{color:var(--mut)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+input,select,textarea,button{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:1100px}
+th,td{border-bottom:1px solid var(--line);padding:8px;vertical-align:top;text-align:left}
+th{background:var(--panel);cursor:pointer;white-space:nowrap;position:sticky;top:0}
+td textarea,td input,td select{width:100%}
+a{color:var(--acc)}.pill{padding:2px 8px;border-radius:10px;font-size:12px;background:#263040}
+.s-shipped{background:#1f4d2e}.s-building{background:#4d421f}.s-designing{background:#2a3a5c}.s-paused{background:#444}.s-killed{background:#5c2626}
+details{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:20px}
+summary{cursor:pointer;font-weight:600}
+</style></head><body>
+<h1>Games &amp; Apps — Admin Tracker</h1>
+<div class="mut">Effort tracker for app &amp; game ideas. Edits save to this browser (localStorage); use Export/Import to move data or paste into the SEED array.</div>
+
+<div class="bar">
+<input id="q" placeholder="Search…">
+<select id="fStatus"></select><select id="fType"></select>
+<button id="add">+ Add idea</button><button id="exp">Export JSON</button>
+<button id="impBtn">Import JSON</button><input type="file" id="imp" accept=".json" hidden>
+<button id="reset" title="Discard local edits, reload seed data">Reset to seed</button>
+</div>
+<div class="wrap"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+
+<details open><summary>Making small apps &amp; games pay — strategy notes</summary>
+<p>Judged one at a time, a small app/game is usually a lottery ticket (indie report: median ~$169/mo across 5,079 Stripe-verified Indie Hackers projects; ~5% of new apps reach $10K in two years per RevenueCat 2025). People who make it work don't rely on single apps:</p>
+<ol>
+<li><b>Portfolio of cheap bets:</b> ship 10–20 tiny things a year, kill losers in weeks, double down on traction.</li>
+<li><b>Audience first:</b> build logs/videos/posts make the app marketing; money comes from consulting, sponsors, courses, roles.</li>
+<li><b>Niches that pay:</b> tools for people who earn money with them can charge $20–100/mo; consumer competes with free.</li>
+<li><b>Reuse one engine for many products:</b> templates, asset packs, SDKs, B2B licensing (fits Quest/WebXR + spatial audio).</li>
+<li><b>Count indirect income:</b> a playable demo can land consulting, talks, roles.</li>
+</ol>
+<p><b>Takeaway:</b> treat Perfect Fit and Chip Tycoon as public portfolio pieces and test balloons; ship fast, post on LinkedIn, double down only on whatever pulls people in.</p>
+</details>
+
+<script>
+// ---- Edit columns here: add an object to SCHEMA to add a column ----
+const STATUSES=["idea","designing","building","shipped","paused","killed"];
+const TYPES=["game","app","tool","hardware"];
+const SCHEMA=[
+ {key:"idea",label:"Idea",kind:"textarea"},
+ {key:"type",label:"Type",kind:"select",options:TYPES},
+ {key:"platform",label:"Platform",kind:"text"},
+ {key:"status",label:"Status",kind:"select",options:STATUSES},
+ {key:"next",label:"Next step",kind:"textarea"},
+ {key:"results",label:"Results / metrics",kind:"textarea"},
+ {key:"effort",label:"Effort spent",kind:"text"},
+ {key:"links",label:"Links",kind:"links"},
+ {key:"updated",label:"Updated",kind:"date"}
+];
+// ---- Seed data: edit freely ----
+const SEED=[
+ {id:"perfect-fit",idea:"Perfect Fit — woodworking joint-marking puzzle",type:"game",platform:"mobile web",status:"building",next:"Review cloud-agent PR in webartests",results:"",effort:"",links:"https://github.com/richoncode/webartests/pulls",updated:"2026-10-21"},
+ {id:"chip-tycoon",idea:"Chip Tycoon — AI chip supply-chain race tycoon",type:"game",platform:"mobile web",status:"designing",next:"Review design doc",results:"",effort:"",links:"https://nvidianews.nvidia.com/news/nvidia-and-supply-chain-partners-expand-capacity-to-accelerate-ai-infrastructure-buildout",updated:"2026-10-21"},
+ {id:"muddleandmix",idea:"MuddleAndMix — cocktail bar inventory & recipes",type:"app",platform:"web",status:"shipped",next:"Planning only; production tests shelved 2026-10-19",results:"Live at muddleandmix.bar; business plan written",effort:"",links:"https://muddleandmix.bar https://richoncode.github.io/webartests/muddleandmix/",updated:"2026-10-19"},
+ {id:"laser-hub",idea:"Laser Settings Hub",type:"tool",platform:"web",status:"shipped",next:"",results:"Experimental, live on Cloud Run",effort:"",links:"",updated:"2026-09-22"},
+ {id:"cooking",idea:"Cooking companion — Instant Pot, health restrictions, adapts to inventory",type:"app",platform:"",status:"idea",next:"Wait on MuddleAndMix pattern",results:"",effort:"",links:"",updated:"2026-10-21"}
+];
+const LS="webartests-games-admin-v1";
+let rows=load(), sortKey="updated", sortDir=-1, editing=null;
+function load(){try{const s=JSON.parse(localStorage.getItem(LS));if(Array.isArray(s))return s}catch(e){}return structuredClone(SEED)}
+function save(){localStorage.setItem(LS,JSON.stringify(rows))}
+const $=id=>document.getElementById(id), esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function opts(el,label,list){el.innerHTML=`<option value="">${label}: all</option>`+list.map(v=>`<option>${v}</option>`).join("")}
+opts($("fStatus"),"Status",STATUSES);opts($("fType"),"Type",TYPES);
+function head(){$("th").innerHTML="<tr>"+SCHEMA.map(c=>`<th data-k="${c.key}">${c.label}${sortKey===c.key?(sortDir>0?" ▲":" ▼"):""}</th>`).join("")+"<th></th></tr>";
+ document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=sortKey===k?-sortDir:1;sortKey=k;render()})}
+function cell(c,v){if(c.kind==="links")return String(v||"").split(/\s+/).filter(Boolean).map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//,"").slice(0,40))}</a>`).join("<br>");
+ if(c.key==="status")return `<span class="pill s-${esc(v)}">${esc(v)}</span>`;return esc(v).replace(/\n/g,"<br>")}
+function input(c,v){const n=`data-f="${c.key}"`;
+ if(c.kind==="select")return `<select ${n}>${c.options.map(o=>`<option${o===v?" selected":""}>${o}</option>`).join("")}</select>`;
+ if(c.kind==="textarea"||c.kind==="links")return `<textarea ${n} rows="3">${esc(v)}</textarea>`;
+ return `<input ${n} type="${c.kind==="date"?"date":"text"}" value="${esc(v)}">`}
+function render(){head();const q=$("q").value.toLowerCase(),fs=$("fStatus").value,ft=$("fType").value;
+ const list=rows.filter(r=>(!fs||r.status===fs)&&(!ft||r.type===ft)&&(!q||SCHEMA.some(c=>String(r[c.key]||"").toLowerCase().includes(q))))
+  .sort((a,b)=>String(a[sortKey]||"").localeCompare(String(b[sortKey]||""),undefined,{numeric:true})*sortDir);
+ $("tb").innerHTML=list.map(r=>r.id===editing
+  ?`<tr data-id="${r.id}">${SCHEMA.map(c=>`<td>${input(c,r[c.key])}</td>`).join("")}<td><button data-a="save">Save</button> <button data-a="cancel">Cancel</button> <button data-a="del">Delete</button></td></tr>`
+  :`<tr data-id="${r.id}">${SCHEMA.map(c=>`<td>${cell(c,r[c.key])}</td>`).join("")}<td><button data-a="edit">Edit</button></td></tr>`).join("")
+  ||`<tr><td colspan="${SCHEMA.length+1}" class="mut">No matching ideas.</td></tr>`}
+$("tb").onclick=e=>{const a=e.target.dataset.a;if(!a)return;const tr=e.target.closest("tr"),id=tr.dataset.id,r=rows.find(x=>x.id===id);
+ if(a==="edit")editing=id;
+ if(a==="cancel"){if(r._new)rows=rows.filter(x=>x!==r);editing=null}
+ if(a==="save"){tr.querySelectorAll("[data-f]").forEach(el=>r[el.dataset.f]=el.value);delete r._new;r.updated=r.updated||new Date().toISOString().slice(0,10);editing=null;save()}
+ if(a==="del"&&confirm("Delete this idea?")){rows=rows.filter(x=>x!==r);editing=null;save()}
+ render()};
+$("add").onclick=()=>{const r={id:"i"+Date.now(),_new:true,status:"idea",type:"app",updated:new Date().toISOString().slice(0,10)};rows.unshift(r);editing=r.id;$("fStatus").value=$("fType").value=$("q").value="";render()};
+["q","fStatus","fType"].forEach(id=>$(id).oninput=render);
+$("exp").onclick=()=>{const b=new Blob([JSON.stringify(rows,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="ideas-tracker.json";a.click()};
+$("impBtn").onclick=()=>$("imp").click();
+$("imp").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d))throw 0;rows=d.map(r=>({id:r.id||"i"+Math.random().toString(36).slice(2),...r}));save();render()}catch(_){alert("Invalid JSON file")}e.target.value=""};
+$("reset").onclick=()=>{if(confirm("Discard local edits and reload seed data?")){localStorage.removeItem(LS);rows=structuredClone(SEED);render()}};
+render();
+</script></body></html>
