@@ -22,8 +22,8 @@ a{color:var(--acc)}
 .call{font:11px/1.35 var(--mono);background:#0a1220d9;border:1px solid #1d3550;border-left:3px solid var(--acc);border-radius:8px;padding:7px 9px;opacity:0;transform:translateY(8px);transition:.35s}
 .call.on{opacity:1;transform:none}.call b{color:var(--acc)}.call .r{color:#9fe6a0}
 .hud{position:absolute;left:0;right:0;bottom:0;padding:10px 14px max(14px,env(safe-area-inset-bottom));background:linear-gradient(#05070c00,#05070cf2 35%)}
-.gauges{display:flex;gap:18px;font:600 22px var(--mono)}.gauges span{display:block;font:500 10px var(--mono);color:var(--dim);letter-spacing:.1em}
-#step{font-size:14px;color:var(--fg);margin:6px 0 10px;min-height:19px}
+.gauges{display:flex;gap:14px;font:600 20px var(--mono)}.gauges span{display:block;font:500 10px var(--mono);color:var(--dim);letter-spacing:.1em}
+#msg{font-size:13px;color:#ffb86b;min-height:0}#step{font-size:14px;color:var(--fg);margin:6px 0 10px;min-height:19px}
 .presets{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .presets button{flex:0 0 auto;background:#0f1a2b;color:var(--fg);border:1px solid #24405f;border-radius:999px;padding:8px 12px;font-size:13px}
 .presets button.sel{border-color:var(--acc);color:var(--acc)}
@@ -43,10 +43,10 @@ form button{background:var(--acc);color:#001;border:0;border-radius:10px;padding
     <div class="req"><small>Request to the agent</small><span id="reqtext"></span></div></div>
   <div id="calls"></div>
   <div class="hud">
-    <div class="gauges"><div><span>DIST LEFT</span><b id="dist">–</b></div><div><span>ETA</span><b id="eta">–</b></div><div><span>HEADING</span><b id="hdg">–</b></div></div>
-    <div id="step"></div>
+    <div class="gauges"><div><span>DIST LEFT</span><b id="dist">–</b></div><div><span>ETA</span><b id="eta">–</b></div><div><span>HEADING</span><b id="hdg">–</b></div><div><span>PLAYBACK</span><b id="mult">–</b></div></div>
+    <div id="msg"></div><div id="step"></div>
     <div class="presets" id="presets"></div>
-    <form id="ask"><input id="q" placeholder="Type a request, e.g. Coit Tower to Twin Peaks" autocomplete="off"><button>Go</button></form>
+    <form id="ask"><input id="q" placeholder="Type a request, e.g. take me to Gilroy" autocomplete="off"><button>Go</button></form>
   </div>
 </section>
 
@@ -54,9 +54,9 @@ form button{background:var(--acc);color:#001;border:0;border-radius:10px;padding
   <h2>What you just watched</h2>
   <p>A plain request goes to an agent connected to the official <a href="https://github.com/mapbox/mcp-server">Mapbox MCP server</a>. The agent calls <code>search_and_geocode_tool</code> once for each place, then <code>directions_tool</code> with the two coordinates and any exclusions. The route then plays as a night chase-camera drive in the Mapbox Standard style, which includes lane markings, turn arrows, crosswalks and 3D buildings by default.</p>
   <h2>What is live and what is precomputed</h2>
-  <p><span class="tag">precomputed</span> The routes for the preset requests were fetched at build time from the Mapbox Search Box and Directions APIs, which are the APIs those two tools wrap. The tool-call cards show the real tool names and argument shapes, filled with the values used for that build.</p>
-  <p><span class="tag">not on this page</span> No language model runs here. A typed request is matched to the closest preset by keywords. In a real agent, the model reads your words and picks the tools and arguments itself.</p>
-  <p><span class="tag">live</span> The map, 3D city, lighting and camera are rendered live in your browser by Mapbox GL JS.</p>
+  <p><span class="tag">precomputed</span> The three preset drives were fetched at build time from the Mapbox Search Box and Directions APIs, which are the APIs those two tools wrap.</p>
+  <p><span class="tag">live</span> A typed request calls the same two APIs from your browser: Search Box forward search for the place, with proximity set to the car's current position, then Directions from where the car is now. The cards show the tool names with the arguments actually used. The map, 3D city, lighting and camera are also rendered live by Mapbox GL JS.</p>
+  <p><span class="tag">not on this page</span> No language model runs here. Typed text is parsed with simple rules: phrases like “take me to” are stripped, “from X to Y” sets both ends, and “avoiding motorways” or “no tolls” becomes the exclude value. In a real agent, the model reads your words and picks the tools and arguments itself. Long routes play back faster, and the HUD shows the speed-up.</p>
   <h2>Connect the server</h2>
   <p>Mapbox runs a hosted endpoint at <code>https://mcp.mapbox.com/mcp</code>, or you can run it locally with Node or Docker. Either way it needs a Mapbox access token (a free account works).</p>
 <pre>{
@@ -82,10 +82,11 @@ form button{background:var(--acc);color:#001;border:0;border-radius:10px;padding
 <script>
 const fmtD=m=>m>=1000?(m/1000).toFixed(1)+' km':Math.round(m)+' m';
 const fmtT=s=>Math.max(0,Math.round(s/60))+' min';
-let DATA=[],cur=null,raf=null,map=null;
+let DATA=[],cur=null,raf=null,map=null,carPos=null;
 const $=id=>document.getElementById(id);
 
 function callCards(r){
+  if(r.live) return r.cards;
   const c=x=>x.toFixed(4);
   const dirArgs={coordinates:[{longitude:+c(r.origin.longitude),latitude:+c(r.origin.latitude)},{longitude:+c(r.destination.longitude),latitude:+c(r.destination.latitude)}],routing_profile:"mapbox/driving",geometries:"geojson"};
   if(r.exclude){const ps=r.exclude.split(',');dirArgs.exclude=ps.length>2?ps.slice(0,2).join(',')+`, … ${ps.length-2} more points`:r.exclude}
@@ -109,19 +110,63 @@ function play(r){
   setTimeout(()=>[...$('calls').children].forEach(el=>el.classList.remove('on')),9000);
   const cs=r.coords,L=lineLen(cs),total=L[L.length-1];
   map.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:cs}});
-  const speed=Math.max(60,total/45); // m per second of playback, ~45 s max
+  const speed=Math.max(60,total/50); // aim ~50 s playback, scaled by route length
+  $('mult').textContent='×'+Math.max(1,Math.round(speed/(total/r.duration_s)));
   let t0=null,hd=brg(cs[0],cs[Math.min(5,cs.length-1)]);
   const tick=ts=>{
     if(!t0)t0=ts;const d=Math.min(total,(ts-t0)/1000*speed);
     const p=at(cs,L,d),ahead=at(cs,L,Math.min(total,d+40));
     let target=brg(p,ahead);let dh=((target-hd+540)%360)-180;hd=(hd+dh*0.06+360)%360;
-    map.getSource('car').setData({type:'Point',coordinates:p});
+    carPos=p;map.getSource('car').setData({type:'Point',coordinates:p});
     map.getSource('trail').setData({type:'Feature',geometry:{type:'LineString',coordinates:cs.slice(0,L.findIndex(x=>x>=d)+1).concat([p])}});
-    map.jumpTo({center:p,bearing:hd,pitch:60,zoom:16.9,padding:{top:300,bottom:0,left:0,right:0}});
+    map.jumpTo({center:p,bearing:hd,pitch:60,zoom:total>30000?15.2:16.9,padding:{top:300,bottom:0,left:0,right:0}});
     const left=total-d;$('dist').textContent=fmtD(left);$('eta').textContent=fmtT(r.duration_s*left/total);$('hdg').textContent=Math.round(hd)+'°';
-    const si=Math.min(r.steps.length-1,Math.floor(d/total*r.steps.length));$('step').textContent=r.steps[si]||'';
+    const si=r.stepEnds?Math.min(r.steps.length-1,r.stepEnds.findIndex(e=>e*total/r.distance_m>d)):Math.min(r.steps.length-1,Math.floor(d/total*r.steps.length));$('step').textContent=r.steps[si]||'';
     if(d<total)raf=requestAnimationFrame(tick);else $('step').textContent='Arrived: '+r.destination.name;
   };raf=requestAnimationFrame(tick);
+}
+
+const T=()=>window.MAPBOX_PUBLIC_TOKEN;
+function parseReq(txt){
+  let t=' '+txt.trim().replace(/[.?!]+$/,'')+' ',exclude=[];
+  t=t.replace(/\b(avoid(?:ing)?|no|without|staying off(?: the)?)\s+(motorways?|freeways?|highways?|tolls?)(\s+(and|or)\s+(motorways?|freeways?|highways?|tolls?))?/gi,(m)=>{if(/motor|free|high/i.test(m))exclude.push('motorway');if(/toll/i.test(m))exclude.push('toll');return ' '});
+  t=t.replace(/^\s*(please\s+)?(take me|drive me|drive|go|navigate|get me|head|route me)(\s+(over|up|down))?\s+/i,' ').trim();
+  let from=null,to=t;const m=t.match(/^from\s+(.+?)\s+to\s+(.+)$/i);
+  if(m){from=m[1];to=m[2]}else to=t.replace(/^to\s+/i,'');
+  return {from,to:to.replace(/[,\s]+$/,''),exclude:[...new Set(exclude)].join(',')};
+}
+async function geocode(q,prox){
+  const u=`https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}&proximity=${prox[0].toFixed(5)},${prox[1].toFixed(5)}&limit=1&access_token=${T()}`;
+  const j=await (await fetch(u)).json();const f=j.features&&j.features[0];
+  if(!f) throw new Error(`No place found for “${q}”.`);
+  return {name:f.properties.name,longitude:f.geometry.coordinates[0],latitude:f.geometry.coordinates[1]};
+}
+const r5=x=>+x.toFixed(5);
+async function liveRequest(txt){
+  $('msg').textContent='';
+  const q=parseReq(txt);
+  if(!q.to){$('msg').textContent='Couldn’t find a destination in that request. Try “take me to Gilroy”.';return}
+  const here=carPos||[map.getCenter().lng,map.getCenter().lat];
+  const prox={longitude:r5(here[0]),latitude:r5(here[1])};
+  cancelAnimationFrame(raf);
+  $('reqtext').textContent=txt;$('step').textContent='Calling Mapbox…';
+  const cards=[];
+  try{
+    let origin;
+    if(q.from){origin=await geocode(q.from,here);cards.push(`<b>search_and_geocode_tool</b>(${JSON.stringify({q:q.from,proximity:prox})})<br><span class="r">→ ${origin.name}</span>`)}
+    else origin={name:'current position',longitude:here[0],latitude:here[1]};
+    const dest=await geocode(q.to,[origin.longitude,origin.latitude]);
+    cards.push(`<b>search_and_geocode_tool</b>(${JSON.stringify({q:q.to,proximity:q.from?{longitude:r5(origin.longitude),latitude:r5(origin.latitude)}:prox})})<br><span class="r">→ ${dest.name}</span>`);
+    let u=`https://api.mapbox.com/directions/v5/mapbox/driving/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?geometries=geojson&overview=full&steps=true&access_token=${T()}`;
+    if(q.exclude)u+='&exclude='+encodeURIComponent(q.exclude);
+    const d=await (await fetch(u)).json();
+    if(!d.routes||!d.routes.length) throw new Error(d.message||'No drivable route found.');
+    const rt=d.routes[0];
+    const args={coordinates:[{longitude:r5(origin.longitude),latitude:r5(origin.latitude)},{longitude:r5(dest.longitude),latitude:r5(dest.latitude)}],routing_profile:'mapbox/driving',geometries:'geojson'};
+    if(q.exclude)args.exclude=q.exclude;
+    cards.push(`<b>directions_tool</b>(${JSON.stringify(args).replace(/,/g,', ')})<br><span class="r">→ ${fmtD(rt.distance)}, ${fmtT(rt.duration)} · live</span>`);
+    play({live:true,id:'live',prompt:txt,cards,destination:dest,coords:rt.geometry.coordinates,distance_m:rt.distance,duration_s:rt.duration,steps:rt.legs.flatMap(l=>l.steps.map(s=>s.maneuver.instruction)),stepEnds:(a=>{let c=0;return a.map(x=>c+=x)})(rt.legs.flatMap(l=>l.steps.map(s=>s.distance)))});
+  }catch(e){$('step').textContent='';$('msg').textContent='Request failed: '+e.message;}
 }
 function matchPreset(q){q=q.toLowerCase();let best=DATA[0],bs=-1;for(const r of DATA){const w=(r.prompt+' '+r.from+' '+r.to).toLowerCase().split(/\W+/);const s=q.split(/\W+/).filter(x=>x.length>3&&w.includes(x)).length;if(s>bs){bs=s;best=r}}return best}
 
@@ -130,7 +175,7 @@ function matchPreset(q){q=q.toLowerCase();let best=DATA[0],bs=-1;for(const r of 
   DATA=(await (await fetch('routes.json')).json()).routes;
   $('presets').innerHTML=DATA.map(r=>`<button data-id="${r.id}">${r.label}</button>`).join('');
   $('presets').onclick=e=>{const b=e.target.closest('button');if(b)play(DATA.find(r=>r.id===b.dataset.id))};
-  $('ask').onsubmit=e=>{e.preventDefault();const r=matchPreset($('q').value);play({...r,prompt:$('q').value||r.prompt})};
+  $('ask').onsubmit=e=>{e.preventDefault();const v=$('q').value.trim();if(v)liveRequest(v)};
   mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
   const s=DATA[0].coords[0];
   map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/standard',config:{basemap:{lightPreset:'night',showPointOfInterestLabels:false}},center:s,zoom:16.9,pitch:60,interactive:false,attributionControl:true});
