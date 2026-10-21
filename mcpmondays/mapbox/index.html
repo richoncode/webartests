@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mapbox MCP: plain request to a 3D night drive · #MCPMonday</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.js"></script>
+<script src="config.js"></script>
+<style>
+:root{--bg:#05070c;--fg:#e8eef6;--dim:#8a96a8;--acc:#36e2ff;--acc2:#ff4fd8;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans)}
+a{color:var(--acc)}
+#stage{position:relative;height:100svh;min-height:560px;overflow:hidden}
+#map{position:absolute;inset:0}
+#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;background:radial-gradient(#0d1830,#05070c);color:var(--dim);font-size:15px;line-height:1.5}
+.top{position:absolute;left:0;right:0;top:0;padding:max(12px,env(safe-area-inset-top)) 14px 10px;background:linear-gradient(#05070cee,#05070c00)}
+.back{font-size:13px;color:var(--dim);text-decoration:none}
+.req{margin-top:8px;font-size:17px;font-weight:600;line-height:1.3}
+.req small{display:block;font:500 11px var(--mono);color:var(--acc);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+#calls{position:absolute;left:10px;right:10px;bottom:150px;display:flex;flex-direction:column;gap:6px}
+.call{font:12px/1.35 var(--mono);background:#0a1220d9;border:1px solid #1d3550;border-left:3px solid var(--acc);border-radius:8px;padding:7px 9px;opacity:0;transform:translateY(8px);transition:.35s}
+.call.on{opacity:1;transform:none}.call b{color:var(--acc)}.call .r{color:#9fe6a0}
+.hud{position:absolute;left:0;right:0;bottom:0;padding:10px 14px max(14px,env(safe-area-inset-bottom));background:linear-gradient(#05070c00,#05070cf2 35%)}
+.gauges{display:flex;gap:18px;font:600 22px var(--mono)}.gauges span{display:block;font:500 10px var(--mono);color:var(--dim);letter-spacing:.1em}
+#step{font-size:14px;color:var(--fg);margin:6px 0 10px;min-height:19px}
+.presets{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.presets button{flex:0 0 auto;background:#0f1a2b;color:var(--fg);border:1px solid #24405f;border-radius:999px;padding:8px 12px;font-size:13px}
+.presets button.sel{border-color:var(--acc);color:var(--acc)}
+form{display:flex;gap:6px;margin-top:8px}form input{flex:1;min-width:0;background:#0b1422;border:1px solid #24405f;border-radius:10px;color:var(--fg);padding:10px;font-size:15px}
+form button{background:var(--acc);color:#001;border:0;border-radius:10px;padding:0 14px;font-weight:700}
+.doc{max-width:680px;margin:0 auto;padding:28px 18px 60px;line-height:1.6;font-size:15px}
+.doc h2{font-size:18px;margin:26px 0 8px}.doc code{font:13px var(--mono);color:var(--acc)}
+.doc pre{background:#0b1422;border:1px solid #1d3550;border-radius:8px;padding:10px;overflow-x:auto;font:12px var(--mono)}
+.tag{display:inline-block;font:11px var(--mono);padding:2px 6px;border-radius:4px;background:#13233a;color:var(--dim)}
+</style>
+</head>
+<body>
+<section id="stage">
+  <div id="map"></div>
+  <div id="notoken">This page needs a public Mapbox token in <code>config.js</code> before the map can render.</div>
+  <div class="top"><a class="back" href="../">← #MCPMonday</a>
+    <div class="req"><small>Request to the agent</small><span id="reqtext"></span></div></div>
+  <div id="calls"></div>
+  <div class="hud">
+    <div class="gauges"><div><span>DIST LEFT</span><b id="dist">–</b></div><div><span>ETA</span><b id="eta">–</b></div><div><span>HEADING</span><b id="hdg">–</b></div></div>
+    <div id="step"></div>
+    <div class="presets" id="presets"></div>
+    <form id="ask"><input id="q" placeholder="Type a request, e.g. Coit Tower to Twin Peaks" autocomplete="off"><button>Go</button></form>
+  </div>
+</section>
+
+<main class="doc">
+  <h2>What you just watched</h2>
+  <p>A plain request goes to an agent connected to the official <a href="https://github.com/mapbox/mcp-server">Mapbox MCP server</a>. The agent calls <code>search_and_geocode_tool</code> once for each place, then <code>directions_tool</code> with the two coordinates and any exclusions. The route then plays as a night chase-camera drive in the Mapbox Standard style, which includes lane markings, turn arrows, crosswalks and 3D buildings by default.</p>
+  <h2>What is live and what is precomputed</h2>
+  <p><span class="tag">precomputed</span> The routes for the preset requests were fetched at build time from the Mapbox Search Box and Directions APIs, which are the APIs those two tools wrap. The tool-call cards show the real tool names and argument shapes, filled with the values used for that build.</p>
+  <p><span class="tag">not on this page</span> No language model runs here. A typed request is matched to the closest preset by keywords. In a real agent, the model reads your words and picks the tools and arguments itself.</p>
+  <p><span class="tag">live</span> The map, 3D city, lighting and camera are rendered live in your browser by Mapbox GL JS.</p>
+  <h2>Connect the server</h2>
+  <p>Mapbox runs a hosted endpoint at <code>https://mcp.mapbox.com/mcp</code>, or you can run it locally with Node or Docker. Either way it needs a Mapbox access token (a free account works).</p>
+<pre>{
+  "mcpServers": {
+    "mapbox": {
+      "command": "npx",
+      "args": ["-y", "@mapbox/mcp-server"],
+      "env": { "MAPBOX_ACCESS_TOKEN": "YOUR_TOKEN" }
+    }
+  }
+}</pre>
+  <h2>Other tools in the server</h2>
+  <p>Besides search and directions, it has <code>reverse_geocode_tool</code>, <code>category_search_tool</code>, <code>place_details_tool</code>, <code>ground_location_tool</code>, <code>isochrone_tool</code>, <code>matrix_tool</code>, <code>optimization_tool</code>, <code>map_matching_tool</code>, <code>static_map_image_tool</code> and <code>render_map_tool</code>, which draws results on a live map inside clients that support MCP Apps. A set of offline geometry tools (<code>distance_tool</code>, <code>buffer_tool</code>, <code>bbox_tool</code> and others) runs without calling any Mapbox API.</p>
+  <h2>Prompts to try in your own agent</h2>
+  <ul>
+    <li>Drive me from the Ferry Building to Oracle Park, avoiding the Embarcadero.</li>
+    <li>What can I reach by car from Union Square in 10 minutes? Show it on a map.</li>
+    <li>Find the fastest order to visit Coit Tower, Lombard Street and the Palace of Fine Arts.</li>
+  </ul>
+  <p style="color:var(--dim);font-size:13px">Inspired by Will W.'s night drive along the Embarcadero in standard Mapbox GL JS.</p>
+</main>
+
+<script>
+const fmtD=m=>m>=1000?(m/1000).toFixed(1)+' km':Math.round(m)+' m';
+const fmtT=s=>Math.max(0,Math.round(s/60))+' min';
+let DATA=[],cur=null,raf=null,map=null;
+const $=id=>document.getElementById(id);
+
+function callCards(r){
+  const c=x=>x.toFixed(4);
+  const dirArgs={coordinates:[{longitude:+c(r.origin.longitude),latitude:+c(r.origin.latitude)},{longitude:+c(r.destination.longitude),latitude:+c(r.destination.latitude)}],routing_profile:"mapbox/driving",geometries:"geojson"};
+  if(r.exclude) dirArgs.exclude=r.exclude;
+  return [
+    `<b>search_and_geocode_tool</b>({"q":"${r.from}","proximity":{"longitude":-122.4194,"latitude":37.7749}})<br><span class="r">→ ${r.origin.name}</span>`,
+    `<b>search_and_geocode_tool</b>({"q":"${r.to}","proximity":{"longitude":-122.4194,"latitude":37.7749}})<br><span class="r">→ ${r.destination.name}</span>`,
+    `<b>directions_tool</b>(${JSON.stringify(dirArgs).replace(/,/g,', ')})<br><span class="r">→ ${fmtD(r.distance_m)}, ${fmtT(r.duration_s)}</span>`
+  ];
+}
+function lineLen(cs){let L=[0];for(let i=1;i<cs.length;i++)L.push(L[i-1]+hav(cs[i-1],cs[i]));return L}
+function hav(a,b){const R=6371e3,t=Math.PI/180,dl=(b[1]-a[1])*t,dg=(b[0]-a[0])*t,x=Math.sin(dl/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dg/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function at(cs,L,d){let i=1;while(i<L.length-1&&L[i]<d)i++;const f=(d-L[i-1])/((L[i]-L[i-1])||1);return[cs[i-1][0]+(cs[i][0]-cs[i-1][0])*f,cs[i-1][1]+(cs[i][1]-cs[i-1][1])*f]}
+function brg(a,b){const t=Math.PI/180,y=Math.sin((b[0]-a[0])*t)*Math.cos(b[1]*t),x=Math.cos(a[1]*t)*Math.sin(b[1]*t)-Math.sin(a[1]*t)*Math.cos(b[1]*t)*Math.cos((b[0]-a[0])*t);return(Math.atan2(y,x)/t+360)%360}
+
+function play(r){
+  cur=r;cancelAnimationFrame(raf);
+  $('reqtext').textContent=r.prompt;
+  document.querySelectorAll('.presets button').forEach(b=>b.classList.toggle('sel',b.dataset.id===r.id));
+  const cards=callCards(r);$('calls').innerHTML=cards.map(h=>`<div class="call">${h}</div>`).join('');
+  [...$('calls').children].forEach((el,i)=>setTimeout(()=>el.classList.add('on'),250+i*550));
+  setTimeout(()=>[...$('calls').children].forEach(el=>el.classList.remove('on')),7000);
+  const cs=r.coords,L=lineLen(cs),total=L[L.length-1];
+  map.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:cs}});
+  const speed=Math.max(60,total/45); // m per second of playback, ~45 s max
+  let t0=null,hd=brg(cs[0],cs[Math.min(5,cs.length-1)]);
+  const tick=ts=>{
+    if(!t0)t0=ts;const d=Math.min(total,(ts-t0)/1000*speed);
+    const p=at(cs,L,d),ahead=at(cs,L,Math.min(total,d+40));
+    let target=brg(p,ahead);let dh=((target-hd+540)%360)-180;hd=(hd+dh*0.06+360)%360;
+    map.getSource('car').setData({type:'Point',coordinates:p});
+    map.getSource('trail').setData({type:'Feature',geometry:{type:'LineString',coordinates:cs.slice(0,L.findIndex(x=>x>=d)+1).concat([p])}});
+    map.jumpTo({center:p,bearing:hd,pitch:72,zoom:18.1});
+    const left=total-d;$('dist').textContent=fmtD(left);$('eta').textContent=fmtT(r.duration_s*left/total);$('hdg').textContent=Math.round(hd)+'°';
+    const si=Math.min(r.steps.length-1,Math.floor(d/total*r.steps.length));$('step').textContent=r.steps[si]||'';
+    if(d<total)raf=requestAnimationFrame(tick);else $('step').textContent='Arrived: '+r.destination.name;
+  };raf=requestAnimationFrame(tick);
+}
+function matchPreset(q){q=q.toLowerCase();let best=DATA[0],bs=-1;for(const r of DATA){const w=(r.prompt+' '+r.from+' '+r.to).toLowerCase().split(/\W+/);const s=q.split(/\W+/).filter(x=>x.length>3&&w.includes(x)).length;if(s>bs){bs=s;best=r}}return best}
+
+(async()=>{
+  if(!window.MAPBOX_PUBLIC_TOKEN){$('notoken').style.display='flex';return}
+  DATA=(await (await fetch('routes.json')).json()).routes;
+  $('presets').innerHTML=DATA.map(r=>`<button data-id="${r.id}">${r.label}</button>`).join('');
+  $('presets').onclick=e=>{const b=e.target.closest('button');if(b)play(DATA.find(r=>r.id===b.dataset.id))};
+  $('ask').onsubmit=e=>{e.preventDefault();const r=matchPreset($('q').value);play({...r,prompt:$('q').value||r.prompt})};
+  mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
+  const s=DATA[0].coords[0];
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/standard',config:{basemap:{lightPreset:'night',showPointOfInterestLabels:false}},center:s,zoom:18,pitch:72,interactive:false,attributionControl:true});
+  map.on('style.load',()=>{
+    map.addSource('route',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addSource('trail',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addSource('car',{type:'geojson',data:{type:'Point',coordinates:s}});
+    map.addLayer({id:'route',type:'line',source:'route',slot:'middle',paint:{'line-color':'#36e2ff','line-width':6,'line-opacity':.35,'line-emissive-strength':1}});
+    map.addLayer({id:'trail',type:'line',source:'trail',slot:'middle',paint:{'line-color':'#ff4fd8','line-width':7,'line-emissive-strength':1}});
+    map.addLayer({id:'car-glow',type:'circle',source:'car',slot:'top',paint:{'circle-radius':22,'circle-color':'#36e2ff','circle-opacity':.25,'circle-blur':1,'circle-emissive-strength':1}});
+    map.addLayer({id:'car',type:'circle',source:'car',slot:'top',paint:{'circle-radius':8,'circle-color':'#fff','circle-stroke-color':'#36e2ff','circle-stroke-width':3,'circle-emissive-strength':1}});
+    play(DATA[0]);
+  });
+})();
+</script>
+</body>
+</html>
