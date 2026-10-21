@@ -7,7 +7,7 @@ const SF = {longitude:-122.4194, latitude:37.7749};
 const presets = JSON.parse(fs.readFileSync(new URL('./presets.json', import.meta.url)));
 async function geocode(q){
   const u=`https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}&proximity=${SF.longitude},${SF.latitude}&limit=1&access_token=${T}`;
-  const j=await (await fetch(u)).json(); const f=j.features[0];
+  let j;for(let k=0;k<4;k++){j=await (await fetch(u)).json();if(j.features&&j.features.length)break;console.error('retry',q,JSON.stringify(j).slice(0,120));await new Promise(r=>setTimeout(r,1500))} const f=j.features[0];
   return {name:f.properties.name, full:f.properties.full_address||f.properties.place_formatted, longitude:f.geometry.coordinates[0], latitude:f.geometry.coordinates[1]};
 }
 const out=[];
