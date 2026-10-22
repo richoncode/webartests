@@ -51,13 +51,14 @@
   function loadSave() {
     try {
       var raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return { sound: true, coach: false, best: {} };
+      if (!raw) return { v: 2, sound: true, coach: false, best: {} };
       var parsed = JSON.parse(raw);
-      parsed.best = parsed.best || {};
+      parsed.best = (parsed.v === 2 && parsed.best) || {};
+      parsed.v = 2;
       if (typeof parsed.sound !== 'boolean') parsed.sound = true;
       return parsed;
     } catch (err) {
-      return { sound: true, coach: false, best: {} };
+      return { v: 2, sound: true, coach: false, best: {} };
     }
   }
 
@@ -485,6 +486,7 @@
     var html = '<h2>Perfect Fit</h2><p class="lede">Mark the work the way a shop does. Each level is a run of tool steps — seat, set, lock, mark, cut. Nothing snaps to the answer.</p>';
     PF.levels.forEach(function (lv, i) {
       var best = save.best[lv.id];
+      if (!best || typeof best.gap !== 'number' || typeof best.stars !== 'number') best = null;
       var stars = best ? '★★★'.slice(0, best.stars) + '☆☆☆'.slice(best.stars) : '☆☆☆';
       var gap = best ? best.gap.toFixed(1) + ' mm' : 'not cut';
       html += '<button type="button" class="level" data-level="' + i + '">' +
