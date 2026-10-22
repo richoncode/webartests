@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saving Look Inside the Book · v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;800&family=Instrument+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ---- player chrome (not part of the film) ---- */
+html,body{margin:0;height:100%;background:#111;color:#ddd;font:14px system-ui,sans-serif}
+#wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px}
+#frame{position:relative;overflow:hidden;background:#070B1A}
+#stage{position:absolute;left:0;top:0;width:1080px;height:1350px;overflow:hidden;transform-origin:0 0;
+  --display:"Archivo",system-ui,sans-serif;--sans:"Instrument Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
+#bar{display:flex;gap:10px;align-items:center;width:min(90vw,540px)}#bar input{flex:1}#bar button{min-width:64px}
+/* ---- film: base.css ---- */
+#stage { --ground:#070B1A; --main:#00B4FF; --second:#F4F8FF; --accent:#FFB000; color:var(--second); font-family:var(--sans, system-ui, sans-serif) } .ground { position:absolute; inset:0; background-color:var(--ground); background-image:linear-gradient(color-mix(in srgb, var(--main) 13%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--main) 13%, transparent) 1px, transparent 1px); background-size:54px 54px }
+.words { position:absolute; margin:0; display:flex; flex-direction:column; gap:22px } .words > * { margin:0 } .line { font-family:var(--display, var(--sans, system-ui, sans-serif)); font-size:84px; line-height:1.02; font-weight:800; letter-spacing:-0.015em } .sub { font-size:42px; line-height:1.28; color:color-mix(in srgb, var(--second) 80%, var(--ground)) }
+.lbl { font-family:var(--mono, ui-monospace, monospace); font-size:24px; letter-spacing:.06em; fill:color-mix(in srgb, var(--second) 78%, var(--ground)) } .band { position:absolute; left:0; top:0; width:100%; height:var(--bandh,420px); background:var(--ground); transition:none; border-bottom:2px solid color-mix(in srgb, var(--main) 35%, transparent) }
+.node { fill:color-mix(in srgb, var(--ground) 80%, var(--main)); stroke:var(--main); stroke-width:2.5 } .led { fill:var(--main) } .slot { fill:color-mix(in srgb, var(--ground) 62%, var(--main)) } .dead .node { stroke:color-mix(in srgb, var(--second) 22%, var(--ground)); fill:color-mix(in srgb, var(--ground) 92%, var(--second)) } .dead .led, .dead .slot { fill:color-mix(in srgb, var(--second) 14%, var(--ground)) }
+.pg { fill:var(--second); stroke:var(--main); stroke-width:1.5 } .hot { fill:var(--accent) } .wire { stroke:var(--main); stroke-width:4; fill:none } .wire-dim { stroke:color-mix(in srgb, var(--main) 55%, var(--ground)); stroke-width:3; fill:none; stroke-dasharray:10 10 }
+.big { font-family:var(--display, var(--sans, system-ui, sans-serif)); font-weight:800; fill:var(--second) } .bk-ln { fill:color-mix(in srgb, var(--ground) 30%, var(--second)) } .chip { fill:color-mix(in srgb, var(--ground) 82%, var(--accent)); stroke:var(--accent); stroke-width:2.5 }
+</style></head><body>
+<div id="wrap"><div id="frame"><div id="stage"></div></div>
+<div id="bar"><button id="play">Pause</button><input id="scrub" type="range" min="0" max="36" step="0.01" value="0"><span id="tc">0.00s</span></div></div>
+<script>
+/* =========================================================================
+   Minimal stand-in for the Claude Motion "kit" runtime — only what this film uses.
+   Everything on screen is a pure function of time t (0–30 s), 1080×1350 @ 60fps.
+   The original also had a synthesized score (see src/score.js); not reproduced here.
+   ========================================================================= */
+
+const W=1080,H=1350,DUR=36;
+const clamp01=x=>Math.max(0,Math.min(1,x)), clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p, seg=(t,a,b)=>clamp01((t-a)/(b-a));
+const eo=x=>1-Math.pow(1-clamp01(x),3), ei=x=>Math.pow(clamp01(x),3);
+const eio=x=>{x=clamp01(x);return x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;};
+const eob=(x,o=1.4)=>{x=clamp01(x);const c3=o+1;return 1+c3*Math.pow(x-1,3)+o*Math.pow(x-1,2);};
+const spring=x=>{x=clamp01(x);return x>=1?1:1-Math.exp(-6*x)*Math.cos(4*Math.PI*x);};
+const rng=seed=>{let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};};
+class Camera{constructor(el){this.el=el;this.keys=[];}
+ set(k){this.keys=k;}
+ _held(k,t){const d=k.drift||[0,0,0],dt=Math.max(0,t-k.t);return{cx:k.cx+d[0]*dt,cy:k.cy+d[1]*dt,z:k.z*Math.exp(d[2]*dt)};}
+ at(t){const K=this.keys;if(t<=K[0].t)return this._held(K[0],K[0].t);
+  for(let i=0;i<K.length-1;i++){const A=K[i],B=K[i+1],s=B.from??A.t+(A.hold||0);
+   if(t<B.t){if(t<=s||B.cut)return this._held(A,t);const p=(B.ease||eio)(seg(t,s,B.t)),a=this._held(A,s);
+    return{cx:lerp(a.cx,B.cx,p),cy:lerp(a.cy,B.cy,p),z:Math.exp(lerp(Math.log(a.z),Math.log(B.z),p))};}}
+  return this._held(K[K.length-1],t);}
+ apply(t){const c=this.state=this.at(t);this.el.style.transform=`translate(${W/2-c.cx*c.z}px,${H/2-c.cy*c.z}px) scale(${c.z})`;}}
+const TextFx={fadeFromRight(el,t,t0,{stagger=.11,dur=.5,dx=26}={}){
+  if(!el._w){el._w=el.textContent.split(/(\s+)/).map(w=>{if(/^\s+$/.test(w))return document.createTextNode(w);const s=document.createElement('span');s.textContent=w;s.style.display='inline-block';return s;});el.textContent='';el._w.forEach(n=>el.append(n));el._w=el._w.filter(n=>n.nodeType===1);}
+  el._w.forEach((s,i)=>{const p=eo(seg(t,t0+i*stagger,t0+i*stagger+dur));s.style.opacity=p;s.style.transform=`translateX(${dx*(1-p)}px)`;});
+  return t0+(el._w.length-1)*stagger+dur;}};
+const scenes=[];
+const kit={W,H,clamp01,clamp,lerp,seg,eo,ei,eio,eob,spring,rng,Camera,TextFx,
+ stage:document.getElementById('stage'),
+ h(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content;},
+ scene(id,def){scenes.push(def);}, scenes(){return scenes;}};
+
+/* ---- film: scene-flow.js (original, unchanged; block-scoped) ---- */
+{
+const { seg, eo, ei, eio, eob, lerp, clamp01, rng, spring, TextFx } = kit;
+const DEAD = [[10, 9.2], [21, 10.1], [35, 11.0]];
+const CAPS = [[1.0, 3.9], [4.4, 8.4], [8.8, 12.2], [12.6, 16.6], [17.0, 20.6], [21.0, 23.5], [24.0, 99]];
+const LINES = [
+  ["Amazon's Look Inside the Book.", "Every page you flip is a scanned image."],
+  ["Behind it: over 50 aging servers.", "500 million pages. 80 TB. No backups."],
+  ["Every few weeks, a server died.", "Its pages died with it. Getting them back meant rescanning books."],
+  ["So I moved everything to S3.", "Dozens of servers pushing at once. I checked every image."],
+  ["S3 couldn't keep up.", "I was filling it faster than AWS could add machines, so we throttled it together."],
+  ["Then I built the replacement.", "EC2 and S3."],
+  ["80% of the code is diagnostics.", "It finds, fixes and reports failures."]
+];
+const CHIPS = [['detect', 96, 3100], ['recover', 96, 3164], ['log', 96, 3228], ['alert', 814, 3132], ['reset', 814, 3196]];
+function q(a, b, c, p) { return (1 - p) * (1 - p) * a + 2 * (1 - p) * p * b + p * p * c; }
+function ph(t) { return t < 18.4 ? 0.55 * t : 0.55 * 18.4 + 0.2 * (t - 18.4); }
+function node(x, y, w, h) {
+  let s = '<rect class="node" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="7"/>';
+  const sh = (h - 24) / 3;
+  for (let i = 0; i < 3; i++) { const yy = y + 12 + i * sh; s += '<rect class="slot" x="' + (x + 10) + '" y="' + yy.toFixed(1) + '" width="' + (w - 34) + '" height="' + (sh - 6).toFixed(1) + '" rx="3"/><circle class="led" cx="' + (x + w - 13) + '" cy="' + (yy + sh / 2 - 3).toFixed(1) + '" r="4.5"/>'; }
+  return s;
+}
+const PG = (c) => '<g class="' + c + '" style="opacity:0"><path class="pg" transform="translate(-10 -13)" d="M0 0 H14 L20 6 V26 H0 Z"/></g>';
+function lines(x0, y0) { let s = ''; for (let k = 0; k < 11; k++) s += '<rect class="bk-ln" x="' + (x0 + 30) + '" y="' + (y0 + 40 + k * 36) + '" width="' + (k % 4 === 3 ? 170 : 260) + '" height="10" rx="5"/>'; return s; }
+const PAGE = (x, y) => '<rect x="' + x + '" y="' + y + '" width="320" height="480" rx="6" style="fill:var(--second);stroke:color-mix(in srgb, var(--ground) 20%, var(--second));stroke-width:2"/>' + lines(x, y);
+kit.scene('flow', {
+  init(kit) {
+    let w = '<path class="wire-dim" d="M540 1006 V1290"/>' +
+      '<g class="fl-book">' + PAGE(540, 520) +
+      '<g class="fl-flip" style="transform-origin:540px 760px;opacity:0">' + PAGE(540, 520) + '</g>' +
+      '<g class="fl-cov" style="transform-origin:540px 760px"><rect class="fl-covr" x="540" y="514" width="322" height="492" rx="10" style="fill:var(--main)"/>' +
+      '<g class="fl-covt"><rect x="580" y="580" width="240" height="28" rx="6" style="fill:var(--second)"/><rect x="580" y="624" width="170" height="16" rx="6" style="fill:color-mix(in srgb, var(--second) 70%, var(--main))"/><rect x="580" y="930" width="64" height="12" rx="6" style="fill:var(--accent)"/></g>' +
+      '<g class="fl-covi" style="opacity:0">' + lines(540, 520) + '</g></g></g>';
+    for (let i = 0; i < 48; i++) w += '<g class="fl-n">' + node(100 + (i % 8) * 110, 1300 + Math.floor(i / 8) * 100, 86, 82) + '</g>';
+    w += '<g class="fl-wa" style="opacity:0">';
+    for (let c = 0; c < 8; c++) { const x = 143 + c * 110; w += '<path class="wire-dim" d="M' + x + ' 1882 Q ' + x + ' 2060 540 2150"/>'; }
+    w += '</g><path class="wire fl-wb" d="M540 2330 V2544" style="opacity:0"/><path class="wire fl-wc" d="M540 2856 V3100" style="opacity:0"/><path class="wire fl-wd" d="M540 3280 V3614" style="opacity:0"/>' +
+      '<g class="fl-arc" style="opacity:0;transform-origin:540px 2240px"><rect class="node" x="340" y="2150" width="400" height="180" rx="14" style="stroke-width:3"/>' +
+      '<text class="lbl" x="366" y="2210" style="fill:var(--second);font-size:34px">ARCHIVER</text><text class="lbl" x="366" y="2258" style="font-size:26px">parallel push + verify</text><text class="lbl" x="366" y="2298" style="font-size:26px">resume after crash</text></g>' +
+      '<g class="fl-s3" style="opacity:0;transform-origin:540px 2700px"><path class="node" d="M390 2580 V2820 A150 36 0 0 0 690 2820 V2580" style="stroke-width:3"/><ellipse class="node" cx="540" cy="2580" rx="150" ry="36" style="stroke-width:3"/>' +
+      '<text class="big" x="540" y="2735" text-anchor="middle" style="font-size:76px">S3</text><rect class="slot" x="440" y="2780" width="200" height="14" rx="7"/><rect class="fl-bar" x="440" y="2780" width="6" height="14" rx="7" style="fill:var(--accent)"/></g>' +
+      '<g class="fl-g" style="opacity:0"><path d="M800 2440 A80 80 0 0 1 960 2440" style="fill:none;stroke:color-mix(in srgb, var(--main) 30%, var(--ground));stroke-width:14;stroke-linecap:round"/>' +
+      '<path class="fl-gf" d="M800 2440 A80 80 0 0 1 960 2440" pathLength="100" style="fill:none;stroke:var(--main);stroke-width:14;stroke-linecap:round"/><path d="M941.3 2388.6 A80 80 0 0 1 960 2440" style="fill:none;stroke:var(--accent);stroke-width:14;stroke-linecap:round"/>' +
+      '<g class="fl-nd" style="transform-origin:880px 2440px"><line x1="880" y1="2440" x2="880" y2="2372" style="stroke:var(--second);stroke-width:5;stroke-linecap:round"/><circle cx="880" cy="2440" r="8" style="fill:var(--second)"/></g>' +
+      '<text class="lbl" x="880" y="2482" text-anchor="middle" style="font-size:30px">INGEST RATE</text><text class="fl-rd" x="880" y="2530" text-anchor="middle" style="font-family:var(--mono, ui-monospace, monospace);font-size:34px;font-weight:700;letter-spacing:.06em">FLAT OUT</text></g>' +
+      '<g class="fl-ec" style="opacity:0;transform-origin:540px 3190px"><rect class="node" x="290" y="3100" width="500" height="180" rx="16" style="stroke-width:3"/>' +
+      '<text class="lbl" x="322" y="3150" style="fill:var(--main);font-size:34px">EC2</text><text class="big" x="322" y="3212" style="font-size:48px">Page-image</text><text class="big" x="322" y="3262" style="font-size:48px">service</text></g>';
+    CHIPS.forEach(([c, x, y]) => { w += '<g class="fl-ch" style="opacity:0"><rect class="chip" x="' + x + '" y="' + y + '" width="170" height="52" rx="12"/><text class="lbl" x="' + (x + 85) + '" y="' + (y + 34) + '" text-anchor="middle" style="font-size:32px;fill:var(--second)">' + c + '</text></g>'; });
+    w += '<g class="fl-dl" style="opacity:0"><text class="lbl" x="1000" y="3340" text-anchor="end" style="fill:var(--accent)">80% OF THE CODE</text><text class="lbl" x="1000" y="3374" text-anchor="end" style="fill:var(--accent)">IS DIAGNOSTICS</text></g>' +
+      '<g class="fl-book2" style="opacity:0">' + PAGE(220, 3620) + PAGE(540, 3620) + '<g class="fl-flip2" style="transform-origin:540px 3860px">' + PAGE(540, 3620) + '</g></g>' +
+      '<circle class="fl-dot hot" r="10" cx="540" style="opacity:0"/>';
+    for (let j = 0; j < 24; j++) w += PG('fl-pa');
+    for (let j = 0; j < 5; j++) w += PG('fl-pb');
+    for (let j = 0; j < 6; j++) w += PG('fl-pu');
+    const R = rng(11); this.sc = [];
+    for (let j = 0; j < 30; j++) { const a = Math.PI * (0.15 + R() * 0.7); this.sc.push({ dx: Math.cos(a) * (90 + R() * 160), dy: 80 + R() * 200, rot: (R() - 0.5) * 300, dl: R() * 0.4 }); w += PG('fl-ps'); }
+    let caps = '';
+    LINES.forEach(([L, S], i) => { caps += '<div class="words fl-cap" style="left:72px;top:74px;width:936px">' + (i === 0 ? '<p class="lbl" style="font-size:28px;letter-spacing:.16em;color:var(--accent)">AMAZON</p>' : '') + '<h2 class="line">' + L + '</h2>' + (i === 6 && 0 ? '<div class="fl-ul" style="height:10px;width:300px;border-radius:5px;background:var(--accent);transform-origin:0 50%"></div>' : '') + '<p class="sub">' + S + '</p></div>'; });
+    kit.stage.append(kit.h('<div class="ground"><div class="fl-cam" style="position:absolute;left:0;top:0;width:1080px;height:4400px;transform-origin:0 0"><svg viewBox="0 0 1080 4400" width="1080" height="4400" style="position:absolute;inset:0;overflow:visible">' + w + '</svg></div><div class="band"></div>' + caps + '<p class="lbl fl-fn" style="position:absolute;left:72px;bottom:56px;margin:0;font-size:24px;color:color-mix(in srgb, var(--second) 65%, var(--ground));opacity:0">Created with Claude Motion</p></div>'));
+    const $ = (s) => kit.stage.querySelector(s), $$ = (s) => [...kit.stage.querySelectorAll(s)];
+    this.cam = new kit.Camera($('.fl-cam'));
+    this.cam.set([
+      { t: 0, cx: 540, cy: 560, z: 1, hold: 4.2, drift: [0, 3, 0.004] },
+      { t: 5.6, cx: 540, cy: 1400, z: 1, hold: 6.6, drift: [0, 2, 0.004] },
+      { t: 13.6, cx: 540, cy: 2075, z: 0.8, hold: 2.8, drift: [0, 4, 0.003] },
+      { t: 17.4, cx: 540, cy: 2300, z: 1, hold: 3.4, drift: [0, 2, 0.003] },
+      { t: 22.0, cx: 540, cy: 2780, z: 0.95, hold: 3.4, drift: [0, 3, 0.003] },
+      { t: 26.8, cx: 540, cy: 3660, z: 1, hold: 4, drift: [0, 4, 0.004] }
+    ]);
+    this.nodes = $$('.fl-n'); this.pa = $$('.fl-pa'); this.pb = $$('.fl-pb'); this.pu = $$('.fl-pu'); this.ps = $$('.fl-ps');
+    ['book', 'flip', 'cov', 'covr', 'covt', 'covi', 'wa', 'wb', 'wc', 'wd', 'arc', 's3', 'g', 'ec', 'dl', 'dot', 'nd', 'gf', 'rd', 'bar', 'book2', 'flip2'].forEach(k => this[k] = $('.fl-' + k));
+    this.ch = $$('.fl-ch').map(e => e.style);
+    this.caps = $$('.fl-cap').map(e => ({ st: e.style, line: e.querySelector('.line'), sub: e.querySelector('.sub').style }));
+  },
+  render(T) {
+    const t = T < 2.6 ? 1.0 : Math.min(26.6, 1.0 + (T - 2.6) * 0.88);
+    this.cam.apply(t);
+    this.caps.forEach((c, i) => {
+      const [a, b] = CAPS[i], o = ei(seg(t, b, b + 0.35));
+      c.st.opacity = 1 - o; c.st.transform = 'translateX(' + (-30 * o) + 'px)';
+      TextFx.fadeFromRight(c.line, t, a);
+      const sp = eo(seg(t, a + 0.6, a + 1.1)); c.sub.opacity = sp; c.sub.transform = 'translateX(' + lerp(26, 0, sp) + 'px)';
+    });
+    
+    const op = eio(seg(t, 0.5, 1.3)), s = Math.cos(Math.PI * op);
+    this.book.style.transform = 'translateX(' + (-160 * (1 - op)).toFixed(1) + 'px)';
+    this.cov.style.transform = 'scaleX(' + s.toFixed(3) + ')';
+    this.covr.style.fill = s < 0 ? 'var(--second)' : 'var(--main)';
+    this.covt.style.opacity = s < 0 ? 0 : 1; this.covi.style.opacity = s < 0 ? 1 : 0;
+    const fs = t >= 1.6 && t < 4.0 ? ((t - 1.6) / 0.8) % 1 : -1;
+    this.flip.style.opacity = fs < 0 ? 0 : 1;
+    this.flip.style.transform = 'scaleX(' + Math.cos(Math.PI * eio(Math.min(1, Math.max(0, fs) * 1.25))).toFixed(3) + ')';
+    const b2 = seg(t, 25.6, 26.4);
+    this.book2.style.opacity = eo(b2);
+    this.book2.style.transform = 'translateY(' + lerp(30, 0, eo(b2)) + 'px)';
+    const f2 = t >= 26.4 ? ((t - 26.4) / 0.9) % 1 : 0;
+    this.flip2.style.transform = 'scaleX(' + Math.cos(Math.PI * eio(Math.min(1, f2 * 1.25))).toFixed(3) + ')';
+    DEAD.forEach(([i, td], k) => {
+      this.nodes[i].setAttribute('class', 'fl-n' + (t > td ? ' dead' : ''));
+      const cx = 143 + (i % 8) * 110, cy = 1300 + Math.floor(i / 8) * 100 + 30;
+      for (let j = 0; j < 10; j++) {
+        const d = this.sc[k * 10 + j], el = this.ps[k * 10 + j], p = seg(t, td + d.dl, td + d.dl + 1.4);
+        el.setAttribute('transform', 'translate(' + (cx + d.dx * eo(p) * (j % 2 ? 1 : -1)).toFixed(1) + ' ' + (cy + d.dy * eio(p) - Math.sin(p * Math.PI) * 90).toFixed(1) + ') rotate(' + (d.rot * p).toFixed(1) + ')');
+        el.style.opacity = p <= 0 ? 0 : 1 - ei(seg(p, 0.45, 1));
+      }
+    });
+    this.dot.style.opacity = (t > 4.0 && t < 5.6) || (t > 21.8 && t < 25.4) ? 1 : 0;
+    if (t < 10) this.dot.setAttribute('cy', lerp(1006, 1290, eio(seg(t, 4.0, 5.5))).toFixed(1));
+    else { const cp = ((t - 21.8) / 1.2) % 1; this.dot.setAttribute('cy', (cp < 0.5 ? lerp(2860, 3100, cp * 2) : lerp(3100, 2860, (cp - 0.5) * 2)).toFixed(1)); }
+    const pop = (el, a) => { const p = seg(t, a, a + 0.5); el.style.opacity = clamp01(p * 2); el.style.transform = 'scale(' + lerp(0.85, 1, eob(p, 1.6)) + ')'; };
+    pop(this.arc, 12.8); pop(this.s3, 13.1); pop(this.ec, 21.2);
+    this.wa.style.opacity = eo(seg(t, 12.6, 13.2));
+    this.wb.style.opacity = eo(seg(t, 13.0, 13.4));
+    this.wc.style.opacity = eo(seg(t, 20.8, 21.3));
+    this.wd.style.opacity = eo(seg(t, 25.4, 25.9));
+    const P = ph(t), on = eo(seg(t, 13.0, 13.4)) * (1 - seg(t, 25.4, 26.0));
+    this.pa.forEach((el, j) => {
+      const c = Math.floor(j / 3), x = 143 + c * 110, p = (P + (j % 3) / 3 + c * 0.137) % 1;
+      el.setAttribute('transform', 'translate(' + q(x, x, 540, p).toFixed(1) + ' ' + q(1882, 2060, 2150, p).toFixed(1) + ')');
+      el.style.opacity = on * Math.min(1, p * 8, (1 - p) * 8);
+    });
+    this.pb.forEach((el, j) => {
+      const p = (P * 1.3 + j / 5) % 1;
+      el.setAttribute('transform', 'translate(540 ' + lerp(2330, 2544, p).toFixed(1) + ')');
+      el.style.opacity = on * Math.min(1, p * 8, (1 - p) * 8);
+    });
+    const dn = eo(seg(t, 25.6, 26.2));
+    this.pu.forEach((el, j) => {
+      const p = (t * 0.55 + j / 6) % 1;
+      el.setAttribute('transform', 'translate(540 ' + lerp(3290, 3610, p).toFixed(1) + ')');
+      el.style.opacity = dn * Math.min(1, p * 8, (1 - p) * 8);
+    });
+    this.bar.setAttribute('width', (200 * lerp(0.03, 0.92, eio(seg(t, 13, 25)))).toFixed(1));
+    this.g.style.opacity = eo(seg(t, 16.8, 17.3)) * (1 - seg(t, 20.6, 21.2));
+    const wob = Math.sin(t * 9) * 2.5 * seg(t, 17.6, 17.8) * (1 - seg(t, 17.9, 18.2));
+    const ang = lerp(-80, 74, eo(seg(t, 16.9, 17.6))) + wob + (12 - 74) * spring(seg(t, 18.0, 19.0));
+    this.nd.style.transform = 'rotate(' + ang.toFixed(2) + 'deg)';
+    this.gf.setAttribute('stroke-dasharray', ((ang + 90) / 180 * 100).toFixed(2) + ' 100');
+    const fl = t < 18.4;
+    this.rd.textContent = fl ? 'FLAT OUT' : 'THROTTLED';
+    this.rd.style.fill = fl ? 'var(--accent)' : 'var(--main)';
+    this.rd.style.opacity = Math.min(1, Math.abs(seg(t, 18.2, 18.6) - 0.5) * 2);
+    this.ch.forEach((st, i) => { const p = seg(t, 22.2 + i * 0.22, 22.6 + i * 0.22); st.opacity = eo(p); st.transform = 'translateY(' + lerp(16, 0, eob(p, 1.5)) + 'px)'; });
+    this.dl.style.opacity = 0;
+  },
+});
+}
+
+/* ---- v2 overlays: hook (0-2.9 s) and ending (31-36 s) ---- */
+{
+const { seg, eo, ei, eio, lerp, clamp01 } = kit;
+const tl = (x,y,w) => '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="11" rx="5" style="fill:#C9CED8"/>';
+function pageSvg(x){ let s='<rect x="'+x+'" y="0" width="380" height="540" rx="4" style="fill:#FBFAF6;stroke:#D7D3C8;stroke-width:2"/>'; for(let k=0;k<13;k++) s+=tl(x+34,60+k*34,(k%5===4)?180:312); s+='<text x="'+(x+190)+'" y="520" text-anchor="middle" style="font:22px var(--sans);fill:#8A8F99">'+(x<500?'14':'15')+'</text>'; return s; }
+function spread(cls){ return '<div class="'+cls+'" style="position:absolute;left:90px;top:560px;width:900px;height:720px;border-radius:18px;background:#1B2236;border:2px solid #2E3A5A;overflow:hidden">'+
+ '<div style="height:84px;display:flex;align-items:center;gap:18px;padding:0 28px;background:#222B44">'+
+ '<span style="font:700 30px var(--sans);color:#0F1424;background:var(--accent);padding:8px 22px;border-radius:999px">Read sample</span>'+
+ '<span style="font:28px var(--sans);color:#AEB6C8">Look inside</span><span style="margin-left:auto;font:700 40px var(--sans);color:#AEB6C8">‹ ›</span></div>'+
+ '<svg viewBox="0 0 900 636" width="900" height="636" style="display:block"><g transform="translate(40 50)">'+pageSvg(30)+pageSvg(410)+
+ '<g class="v2-flip" style="transform-origin:410px 270px">'+pageSvg(410)+'</g><line x1="410" y1="0" x2="410" y2="540" style="stroke:#B9B4A8;stroke-width:3"/></g></svg></div>'; }
+kit.scene('v2', {
+ init(kit){
+  kit.stage.append(kit.h(
+   '<div class="v2-hook ground" style="z-index:5">'+spread('v2-sp')+
+   '<div class="words" style="left:72px;top:70px;width:936px"><p class="lbl" style="font-size:30px;letter-spacing:.16em;color:var(--accent)">AMAZON · LOOK INSIDE THE BOOK</p>'+
+   '<h2 class="line">500 million pages, one reboot from gone.</h2><p class="sub">A BIOS setting that wiped the disks on reboot.</p></div></div>'+
+   '<div class="v2-end ground" style="z-index:5;opacity:0">'+spread('v2-sp')+
+   '<div class="words" style="left:72px;top:70px;width:936px"><h2 class="line">Still serving pages today.</h2>'+
+   '<div class="v2-ul" style="height:10px;width:300px;border-radius:5px;background:var(--accent);transform-origin:0 50%"></div>'+
+   '<p class="sub" style="font-family:var(--mono);font-size:40px;color:var(--accent)">0785238921.01.S001.JUMBOXXX.jpg</p>'+
+   '<p class="sub" style="font-size:40px">The same page names, live in Read sample.</p></div>'+
+   '<p class="lbl" style="position:absolute;left:72px;bottom:22px;margin:0;font-size:24px;color:color-mix(in srgb, var(--second) 65%, var(--ground))">Created with Claude Motion</p></div>'));
+  this.hook=kit.stage.querySelector('.v2-hook'); this.end=kit.stage.querySelector('.v2-end');
+  this.flips=[...kit.stage.querySelectorAll('.v2-flip')]; this.ul=kit.stage.querySelector('.v2-ul');
+ },
+ render(t){
+  this.hook.style.opacity = 1 - eio(seg(t, 2.6, 3.0));
+  this.hook.style.display = t > 3.0 ? 'none' : '';
+  const e = eio(seg(t, 31.0, 31.5)); this.end.style.opacity = e; this.end.style.display = e <= 0 ? 'none' : '';
+  // page flip: hook flips at 0.6-1.4; ending flips at 32.6-33.4 and settles flat (matches frame 0)
+  const fp = (a) => { const p = seg(t, a, a + 0.8); return p <= 0 || p >= 1 ? 1 : Math.cos(Math.PI * eio(p)); };
+  const v = t < 10 ? fp(0.6) : fp(32.6);
+  this.flips.forEach(f => f.style.transform = 'scaleX(' + Math.abs(v).toFixed(3) + ')');
+  this.ul.style.transform = 'scaleX(' + eo(seg(t, 31.4, 31.9)) + ')';
+ }
+});
+}
+/* ---- runner ---- */
+const CUT=kit.scenes();CUT.forEach(s=>s.init(kit));
+const frame=document.getElementById('frame'),stage=kit.stage;
+function fit(){const s=Math.min(innerWidth*.95/W,(innerHeight-70)/H);frame.style.width=W*s+'px';frame.style.height=H*s+'px';stage.style.transform=`scale(${s})`;}
+addEventListener('resize',fit);fit();
+let t=0,playing=true,last=performance.now();
+const scrub=document.getElementById('scrub'),tc=document.getElementById('tc'),btn=document.getElementById('play');
+function draw(){CUT.forEach(s=>s.render(t));scrub.value=t;tc.textContent=t.toFixed(2)+'s';}
+function loop(now){if(playing){t+=(now-last)/1000;if(t>DUR)t=0;draw();}last=now;requestAnimationFrame(loop);}
+btn.onclick=()=>{playing=!playing;btn.textContent=playing?'Pause':'Play';};
+scrub.oninput=()=>{t=+scrub.value;playing=false;btn.textContent='Play';draw();};
+window.renderAt=x=>{playing=false;t=x;draw();};
+if(location.hash==='#render'){playing=false;document.getElementById('bar').style.display='none';document.body.style.background='#070B1A';frame.style.width=W+'px';frame.style.height=H+'px';stage.style.transform='none';removeEventListener('resize',fit);document.getElementById('wrap').style.cssText='display:block';}
+document.fonts.ready.then(()=>{draw();requestAnimationFrame(loop);});
+</script></body></html>
