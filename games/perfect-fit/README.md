@@ -1,6 +1,6 @@
 # Perfect Fit
 
-A short touch game about scribing a joint instead of measuring it. Two pieces meet with a gap. You use the mating piece as the template, mark a line, cut it, and score how tightly they close.
+A phone-sized shop game about marking a joint instead of measuring it. Every level is an ordered list of tool steps: pick, seat, set, lock, mark, cut. Tools seat on real edges, rims, and fences. Nothing snaps to the right answer, and a sloppy step stays in the work.
 
 ## Play
 
@@ -10,44 +10,48 @@ From the repo root:
 python3 -m http.server 8080
 ```
 
-Open `http://localhost:8080/games/perfect-fit/`. On GitHub Pages the same path is served under the site root (`/webartests/games/perfect-fit/`). Everything is relative — no build step and no external assets.
+Open `http://localhost:8080/games/perfect-fit/`. On GitHub Pages the same path is served under the site root. There is no build step and no external asset.
 
 The games list is `games/index.html`.
 
-## How a joint is marked
+`node games/perfect-fit/engine.js` checks every level: a full hint walk closes the gap, hints cost the stars, a short knife and a short compass carry into the score, and a careful butt joint with no hint earns three stars.
 
-- **Square** — drag sideways. The blade stays 90° to the fence. Slide until it covers the other board’s end. It clicks when it seats.
-- **Straightedge** — drag the bar, or either end handle, until it lies on the miter.
-- **Washer** — slide the ring along the curve. The pencil in the hole scribes the cut. Lift off and that stretch stays proud.
-- **Trace** — click the straightedge onto every face of a stepped, peaked, or zigzag edge.
+## How a mark is made
 
-Then **Cut the line**. The saw throws shavings, the offcut drops, and the piece slides home. The score is the leftover gap: average distance from your cut to the mating edge, shown in millimetres and as a tightness percent.
+- **Restart** puts the current level back on step 1 and counts as another try.
+- **Hint** does the single next correct step. Press it again to walk the whole job. Each hint adds to the score and drops a star.
+- The checklist is the job. The line under the title is the geometry, not a measurement.
+- Compass openings and bevels have no numeric readout. You match them by eye, against a wall, a rim, or a line you already drew.
+- After the cut, the score is the leftover gap in millimetres, plus a penalty for extra tries, hints, and tools that missed their reference. Replay names the step that opened the gap.
 
-| Stars | Fit |
+| Stars | What it takes |
 | --- | --- |
-| ★★★ Hairline | 96% and up |
-| ★★ Tight | 84% |
-| ★ Fair | 66% |
+| ★★★ | A hairline gap on the first try, with no hints |
+| ★★ | A small score, and at most one hint |
+| ★ | The joint still closes, hints included until they run out |
 
-Best fit and stars are stored in `localStorage` under `perfect-fit-v1`.
+Best gap, score, and stars are stored in `localStorage` under `perfect-fit-v2`.
 
 ## Levels
 
-1. Butt joint — square, with a short tutorial
-2. Inside corner — the room is not 45°
-3. Curved wall — washer scribe
-4. Stepped miter — trace each face
-5. Three-way truss — both cheeks of the king post
-6. Zigzag miter
-7. Ogee profile
-8. Live edge
+1. **Butt Joint** — tutorial. Seat a square on the edge and knife. The blade stays square because the stock is seated, not because the joint pulls it.
+2. **Compass Scribe** — shim the panel level, lock the compass on the widest gap, trace the wall with the legs level, back-bevel, and cut. The compass slides the wall sideways by one fixed opening.
+3. **Tick Stick** — tick every corner of an alcove onto a sheet, carry the sheet, and replay the ticks onto a board.
+4. **Bisect the Corner** — two equal offcuts cross on the bisector of an out-of-square corner. A sliding bevel carries that line to the saw.
+5. **Cope the Corner** — an inside miter reveals the molding profile; the coping saw follows it. This replaces the old ogee trace.
+6. **Find the Center** — a square’s corner on the rim marks a diameter. Two diameters cross at the center.
+7. **Hexagon** — the compass that strikes the circle steps the radius off six times.
+8. **Octagon** — diagonals find the center; the compass opening from a corner to that center marks the chamfers.
+9. **Stone Scribe** — hard mode. The same compass scribe, on a jagged stone wall.
+
+Stepped Miter, Three-Way Truss, and Zigzag Miter are gone. They were not real marking jobs.
 
 ## Phone
 
-Portrait layout, large handles, and `touch-action: none` on the playfield so the page doesn’t scroll or rubber-band while you drag. Pointer events cover a mouse, a finger, and a pen. `navigator.vibrate` fires on the seat, the saw, and the close when the browser allows it (Android Chrome; iOS ignores it). Sound is synthesized in the Web Audio API.
+Portrait layout, large targets, and `touch-action: none` on the bench so the page does not scroll while you drag. Pointer events cover a mouse, a finger, and a pen. Sound is a few tones from the Web Audio API.
 
-Add it to the home screen from the browser share sheet. `manifest.json` plus the PNG icons are enough; there is no service worker, so a refresh always loads the current files.
+Add it to the home screen from the browser share sheet. `manifest.json` plus the PNG icons are enough; there is no service worker.
 
 ## Code
 
-`engine.js` is the geometry and scoring (no DOM). `node engine.js` checks every level: a blank mark scores poorly, a perfect mark scores a hairline, the stock contains the ideal cut, and a perfect piece doesn’t overlap its mate. `game.js` is input, wood, and animation. Wood grain, the bench, and the icons are drawn in code.
+`engine.js` is the geometry, the step list, seating, hints, and the score. It does not touch the DOM. `game.js` is input and drawing: pencil lines, compass legs, the bevel blade, and the square.

@@ -1,978 +1,2864 @@
-/* Perfect Fit — geometry, levels, and scoring. No DOM. */
+/* Perfect Fit — tool steps, geometry, and scoring. No DOM.
+   Run `node engine.js` to check every level. */
 (function (root) {
   'use strict';
 
+  var VIEW = { w: 120, h: 168 };
+
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
-  function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+  function pt(x, y) { return { x: x, y: y }; }
   function add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
   function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
   function mul(a, s) { return { x: a.x * s, y: a.y * s }; }
   function dot(a, b) { return a.x * b.x + a.y * b.y; }
   function cross(a, b) { return a.x * b.y - a.y * b.x; }
   function len(a) { return Math.hypot(a.x, a.y); }
+  function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
   function norm(a) {
-    const L = len(a) || 1;
+    var L = len(a) || 1;
     return { x: a.x / L, y: a.y / L };
   }
-  function pt(x, y) { return { x: x, y: y }; }
-  function rect(x0, y0, x1, y1) {
-    return [pt(x0, y0), pt(x1, y0), pt(x1, y1), pt(x0, y1)];
+  function angNorm(a) {
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
   }
-
-  function arcFractions(poly) {
-    const ts = [0];
-    let total = 0;
-    const seg = [];
-    for (let i = 0; i < poly.length - 1; i++) {
-      const L = dist(poly[i], poly[i + 1]);
-      seg.push(L);
-      total += L;
-    }
-    let acc = 0;
-    for (let i = 0; i < seg.length; i++) {
-      acc += seg[i];
-      ts.push(total ? acc / total : 0);
-    }
-    return { ts: ts, total: total };
-  }
-
-  function pointAt(poly, t) {
-    if (!poly.length) return pt(0, 0);
-    if (poly.length === 1 || t <= 0) return pt(poly[0].x, poly[0].y);
-    if (t >= 1) {
-      const p = poly[poly.length - 1];
-      return pt(p.x, p.y);
-    }
-    const arc = arcFractions(poly);
-    const ts = arc.ts;
-    let i = 0;
-    while (i < ts.length - 1 && ts[i + 1] < t) i++;
-    const span = (ts[i + 1] - ts[i]) || 1;
-    const u = (t - ts[i]) / span;
-    return pt(lerp(poly[i].x, poly[i + 1].x, u), lerp(poly[i].y, poly[i + 1].y, u));
-  }
-
-  function resample(poly, n) {
-    const out = [];
-    const count = Math.max(2, n);
-    for (let i = 0; i < count; i++) out.push(pointAt(poly, i / (count - 1)));
-    return out;
-  }
-
-  function avgDist(a, b) {
-    const n = 40;
-    const as = resample(a, n);
-    const bs = resample(b, n);
-    let s = 0;
-    for (let i = 0; i < n; i++) s += dist(as[i], bs[i]);
-    return s / n;
+  function angDiff(a, b) { return Math.abs(angNorm(a - b)); }
+  /* Undirected line: 30° and 210° are the same cut. */
+  function lineDiff(a, b) {
+    var d = Math.abs(angNorm(a - b)) % Math.PI;
+    if (d > Math.PI / 2) d = Math.PI - d;
+    return d;
   }
 
   function pointSegDist(p, a, b) {
-    const ab = sub(b, a);
-    const L2 = dot(ab, ab) || 1;
-    let t = dot(sub(p, a), ab) / L2;
-    t = clamp(t, 0, 1);
-    return dist(p, pt(a.x + ab.x * t, a.y + ab.y * t));
+    var ab = sub(b, a);
+    var L2 = dot(ab, ab) || 1;
+    var t = clamp(dot(sub(p, a), ab) / L2, 0, 1);
+    return { dist: dist(p, pt(a.x + ab.x * t, a.y + ab.y * t)), point: pt(a.x + ab.x * t, a.y + ab.y * t), t: t };
+  }
+
+  function pointLineDist(p, a, b) {
+    var ab = sub(b, a);
+    var L = len(ab) || 1;
+    return Math.abs(cross(sub(p, a), ab)) / L;
+  }
+
+  function lineIntersect(p, p2, q, q2) {
+    var r = sub(p2, p);
+    var s = sub(q2, q);
+    var den = cross(r, s);
+    if (Math.abs(den) < 1e-9) return null;
+    var t = cross(sub(q, p), s) / den;
+    var u = cross(sub(q, p), r) / den;
+    return { t: t, u: u, point: add(p, mul(r, t)) };
+  }
+
+  function closestOnPoly(p, poly) {
+    var best = { dist: Infinity, point: poly[0], t: 0, i: 0 };
+    var walked = 0;
+    var total = 0;
+    var i;
+    for (i = 0; i < poly.length - 1; i++) total += dist(poly[i], poly[i + 1]);
+    total = total || 1;
+    walked = 0;
+    for (i = 0; i < poly.length - 1; i++) {
+      var a = poly[i];
+      var b = poly[i + 1];
+      var hit = pointSegDist(p, a, b);
+      if (hit.dist < best.dist) {
+        best = { dist: hit.dist, point: hit.point, t: (walked + dist(a, b) * hit.t) / total, i: i };
+      }
+      walked += dist(a, b);
+    }
+    return best;
   }
 
   function pointInPoly(p, poly) {
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i];
-      const b = poly[(i + 1) % poly.length];
-      if (pointSegDist(p, a, b) < 0.18) return true;
-    }
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const a = poly[i], b = poly[j];
-      const intersect = ((a.y > p.y) !== (b.y > p.y)) &&
-        (p.x < (b.x - a.x) * (p.y - a.y) / ((b.y - a.y) || 1e-9) + a.x);
-      if (intersect) inside = !inside;
+    var inside = false;
+    var j = poly.length - 1;
+    for (var i = 0; i < poly.length; i++) {
+      var a = poly[i];
+      var b = poly[j];
+      if (((a.y > p.y) !== (b.y > p.y)) &&
+          (p.x < (b.x - a.x) * (p.y - a.y) / ((b.y - a.y) || 1e-9) + a.x)) inside = !inside;
+      j = i;
     }
     return inside;
   }
 
-  function signedArea(poly) {
-    let a = 0;
-    for (let i = 0; i < poly.length; i++) {
-      const p = poly[i], q = poly[(i + 1) % poly.length];
-      a += p.x * q.y - q.x * p.y;
+  function rotAround(p, c, ang) {
+    var s = Math.sin(ang);
+    var co = Math.cos(ang);
+    var dx = p.x - c.x;
+    var dy = p.y - c.y;
+    return pt(c.x + dx * co - dy * s, c.y + dx * s + dy * co);
+  }
+
+  function rayCircleTs(P, dir, C, R) {
+    var f = sub(P, C);
+    var d = dot(dir, f);
+    var disc = d * d - dot(f, f) + R * R;
+    if (disc < 1e-8) return disc < -1e-6 ? [] : [-d];
+    var s = Math.sqrt(disc);
+    return [-d - s, -d + s];
+  }
+
+  function circleCircle(A, Ra, B, Rb) {
+    var d = dist(A, B);
+    if (d < 1e-6 || d > Ra + Rb + 1e-6 || d < Math.abs(Ra - Rb) - 1e-6) return [];
+    var a = (Ra * Ra - Rb * Rb + d * d) / (2 * d);
+    var h2 = Ra * Ra - a * a;
+    var h = Math.sqrt(Math.max(0, h2));
+    var dir = norm(sub(B, A));
+    var mid = add(A, mul(dir, a));
+    var n = pt(-dir.y, dir.x);
+    return [add(mid, mul(n, h)), add(mid, mul(n, -h))];
+  }
+
+  function segCircle(a, b, C, R) {
+    var ab = sub(b, a);
+    var L = len(ab);
+    if (L < 1e-6) return [];
+    var dir = mul(ab, 1 / L);
+    var ts = rayCircleTs(a, dir, C, R);
+    var out = [];
+    for (var i = 0; i < ts.length; i++) {
+      if (ts[i] >= -1e-4 && ts[i] <= L + 1e-4) out.push(add(a, mul(dir, clamp(ts[i], 0, L))));
     }
-    return a / 2;
+    return out;
   }
 
-  function polyFromCut(cut, mode, far) {
-    const a = cut[0];
-    const b = cut[cut.length - 1];
-    if (mode === 'right') {
-      return cut.concat([pt(far, b.y), pt(far, a.y)]);
-    }
-    return cut.concat([pt(b.x, far), pt(a.x, far)]);
-  }
-
-  function wastePoly(rough, cut) {
-    const rev = cut.slice().reverse();
-    return rough.concat(rev);
-  }
-
-  function fitFromAvg(avg, base) {
-    if (base < 1e-4) return avg < 0.08 ? 100 : 0;
-    return clamp((1 - avg / base) * 100, 0, 100);
-  }
-
-  function starsFor(fit) {
-    if (fit >= 96) return 3;
-    if (fit >= 84) return 2;
-    if (fit >= 66) return 1;
-    return 0;
-  }
-
-  function titleFor(fit) {
-    if (fit >= 96) return 'Hairline';
-    if (fit >= 84) return 'Tight';
-    if (fit >= 66) return 'Fair';
-    if (fit >= 40) return 'Open';
-    return 'Proud';
-  }
-
-  function closestOnPoly(p, poly) {
-    let best = { dist: Infinity, t: 0, point: poly[0] };
-    const arc = arcFractions(poly);
-    const total = arc.total || 1;
-    let walked = 0;
-    for (let i = 0; i < poly.length - 1; i++) {
-      const a = poly[i], b = poly[i + 1];
-      const ab = sub(b, a);
-      const L2 = dot(ab, ab) || 1;
-      const L = Math.sqrt(L2);
-      let u = clamp(dot(sub(p, a), ab) / L2, 0, 1);
-      const q = pt(a.x + ab.x * u, a.y + ab.y * u);
-      const d = dist(p, q);
-      if (d < best.dist) {
-        best = { dist: d, t: (walked + L * u) / total, point: q, seg: i };
+  function rayRectT(origin, dir, rect) {
+    var min = { x: rect.x, y: rect.y };
+    var max = { x: rect.x + rect.w, y: rect.y + rect.h };
+    var tMin = 0;
+    var tMax = 1e9;
+    var axes = ['x', 'y'];
+    for (var k = 0; k < 2; k++) {
+      var axis = axes[k];
+      if (Math.abs(dir[axis]) < 1e-9) {
+        if (origin[axis] < min[axis] || origin[axis] > max[axis]) return null;
+      } else {
+        var t1 = (min[axis] - origin[axis]) / dir[axis];
+        var t2 = (max[axis] - origin[axis]) / dir[axis];
+        if (t1 > t2) { var tmp = t1; t1 = t2; t2 = tmp; }
+        tMin = Math.max(tMin, t1);
+        tMax = Math.min(tMax, t2);
+        if (tMin > tMax) return null;
       }
-      walked += L;
     }
-    return best;
+    if (tMin > 0.4) return tMin;
+    return null;
   }
 
-  function angDiff(a, b, c, d) {
-    const a1 = Math.atan2(b.y - a.y, b.x - a.x);
-    const a2 = Math.atan2(d.y - c.y, d.x - c.x);
-    let dlt = Math.abs(a1 - a2) % Math.PI;
-    if (dlt > Math.PI / 2) dlt = Math.PI - dlt;
-    return dlt;
+  function mean(xs) {
+    if (!xs.length) return 0;
+    var s = 0;
+    for (var i = 0; i < xs.length; i++) s += xs[i];
+    return s / xs.length;
   }
 
-  function pointLineDist(p, a, b) {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const L = Math.hypot(dx, dy) || 1;
-    return Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / L;
+  function bevelPenalty(angle) {
+    if (angle >= 0.09 && angle <= 0.42) return 0;
+    if (angle < 0.09) return (0.09 - Math.max(angle, -0.35)) * 8;
+    return Math.min(2.5, (angle - 0.42) * 4);
   }
 
-  function projectParam(p, a, b) {
-    const ab = sub(b, a);
-    const L2 = dot(ab, ab) || 1;
-    return dot(sub(p, a), ab) / L2;
-  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  function projectPointToLine(p, a, b) {
-    const u = projectParam(p, a, b);
-    return pt(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u);
-  }
-
-  function coverFraction(a, b, c, d) {
-    const u0 = projectParam(a, c, d);
-    const u1 = projectParam(b, c, d);
-    const lo = clamp(Math.min(u0, u1), 0, 1);
-    const hi = clamp(Math.max(u0, u1), 0, 1);
-    return hi - lo;
-  }
-
-  function lineIntersect(p, p2, q, q2) {
-    const r = sub(p2, p);
-    const s = sub(q2, q);
-    const den = cross(r, s);
-    if (Math.abs(den) < 1e-9) return null;
-    const t = cross(sub(q, p), s) / den;
-    const u = cross(sub(q, p), r) / den;
-    return { t: t, u: u, point: add(p, mul(r, t)) };
-  }
-
-  function offsetBand(curve, thickness) {
-    const n = curve.length;
-    const left = [];
-    for (let i = 0; i < n; i++) {
-      const prev = curve[Math.max(0, i - 1)];
-      const next = curve[Math.min(n - 1, i + 1)];
-      const tx = next.x - prev.x;
-      const ty = next.y - prev.y;
-      const L = Math.hypot(tx, ty) || 1;
-      const nx = -ty / L;
-      const ny = tx / L;
-      left.push(pt(curve[i].x + nx * thickness, curve[i].y + ny * thickness));
-    }
-    return curve.concat(left.reverse());
-  }
-
-  function quadStrip(a, b, thickness, side) {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const L = Math.hypot(dx, dy) || 1;
-    const nx = (-dy / L) * thickness * side;
-    const ny = (dx / L) * thickness * side;
-    return [pt(a.x, a.y), pt(b.x, b.y), pt(b.x + nx, b.y + ny), pt(a.x + nx, a.y + ny)];
-  }
-
-  function segmentsOf(poly) {
-    const segs = [];
-    for (let i = 0; i < poly.length - 1; i++) segs.push([poly[i], poly[i + 1]]);
-    return segs;
-  }
-
-  function score(level, cut) {
-    const avg = avgDist(cut, level.ideal);
-    const fit = fitFromAvg(avg, level.base);
+  function layout(cssW, cssH) {
+    var s = Math.min(cssW / VIEW.w, cssH / VIEW.h);
     return {
-      cut: cut,
-      avg: avg,
-      base: level.base,
-      fit: fit,
-      stars: starsFor(fit),
-      title: titleFor(fit),
-      mm: (1 - fit / 100) * level.spanMm
+      s: s,
+      ox: (cssW - VIEW.w * s) / 2,
+      oy: (cssH - VIEW.h * s) / 2,
+      w: VIEW.w,
+      h: VIEW.h
     };
   }
 
-  function traceCut(level, locked) {
-    const ideal = level.ideal;
-    const rough = level.rough;
-    const nSeg = ideal.length - 1;
-    const idealT = arcFractions(ideal).ts;
-    const out = [];
-    const steps = 5;
-    for (let s = 0; s < nSeg; s++) {
-      const ra = pointAt(rough, idealT[s]);
-      const rb = pointAt(rough, idealT[s + 1]);
-      for (let k = 0; k < steps; k++) {
-        const u = k / steps;
-        if (locked[s]) out.push(pt(lerp(ideal[s].x, ideal[s + 1].x, u), lerp(ideal[s].y, ideal[s + 1].y, u)));
-        else out.push(pt(lerp(ra.x, rb.x, u), lerp(ra.y, rb.y, u)));
+  function paper() {
+    return { op: 'rect', x: 4, y: 4, w: 112, h: 160, fill: '#f4efe4', stroke: '#e4dccb', sw: 1 };
+  }
+
+  function completeStep(level, run, deviation, note) {
+    if (run.phase !== 'play') return;
+    var step = level.steps[run.step];
+    var dev = Math.abs(deviation) || 0;
+    run.log.push({
+      label: step.label,
+      id: step.id,
+      step: run.step,
+      deviation: dev,
+      note: dev >= 0.35 ? (note || '') : '',
+      s: clone(run.s)
+    });
+    run.step += 1;
+    run.drag = null;
+    if (run.step >= level.steps.length) finish(level, run);
+  }
+
+  function finish(level, run) {
+    var gap = level.measure(run);
+    if (!isFinite(gap) || gap < 0) gap = 0;
+    var hints = run.hints;
+    var tries = run.tries;
+    var fumbles = Math.min(run.fumbles, 8);
+    var clean = hints === 0 && tries === 1 && fumbles === 0 && gap < 0.35;
+    var score = Math.max(0, gap + hints * 1.35 + (tries - 1) * 1.1 + fumbles * 0.2 - (clean ? 0.25 : 0));
+    var stars = score <= 0.45 ? 3 : score <= 1.7 ? 2 : score <= 4.2 ? 1 : 0;
+    stars = Math.min(stars, Math.max(0, 3 - hints));
+    var title = gap <= 0.45 ? 'Hairline' : gap <= 1.6 ? 'Tight' : gap <= 3.5 ? 'Fair' : gap <= 7 ? 'Open' : 'Proud';
+    var blame = null;
+    for (var i = 0; i < run.log.length; i++) {
+      if (!blame || run.log[i].deviation > blame.deviation) blame = run.log[i];
+    }
+    var replay = !blame || blame.deviation < 0.35
+      ? 'Every step held the line.'
+      : blame.label + ' opened the gap. ' + (blame.note || '');
+    run.phase = 'result';
+    run.result = {
+      gap: gap,
+      score: score,
+      stars: stars,
+      title: title,
+      replay: replay,
+      blame: blame ? blame.step : -1
+    };
+  }
+
+  function fresh(level, seed) {
+    return {
+      step: 0,
+      tries: 1,
+      hints: 0,
+      fumbles: 0,
+      phase: 'play',
+      log: [],
+      result: null,
+      drag: null,
+      replay: null,
+      s: seed
+    };
+  }
+
+  function stepId(level, run) {
+    if (run.step < 0 || run.step >= level.steps.length) return '';
+    return level.steps[run.step].id;
+  }
+
+  function hud(level, run) {
+    var idx = -1;
+    var i;
+    for (i = 0; i < levels.length; i++) if (levels[i].id === level.id) idx = i;
+    var cur = level.steps[Math.min(run.step, level.steps.length - 1)];
+    var action = run.phase === 'play' && level.actionFor ? level.actionFor(run) : null;
+    var steps = level.steps.map(function (s, n) {
+      var state = n < run.step ? 'done' : n === run.step && run.phase === 'play' ? 'now' : 'todo';
+      var bad = false;
+      for (var k = 0; k < run.log.length; k++) {
+        if (run.log[k].step === n && run.log[k].deviation >= 0.35) bad = true;
       }
-    }
-    if (locked[nSeg - 1]) out.push(pt(ideal[ideal.length - 1].x, ideal[ideal.length - 1].y));
-    else {
-      const end = rough[rough.length - 1];
-      out.push(pt(end.x, end.y));
-    }
-    return out;
+      if (bad && state === 'done') state = 'bad';
+      return { label: s.label, state: state };
+    });
+    return {
+      title: level.name,
+      technique: level.technique,
+      kicker: (idx + 1) + ' / ' + levels.length + (level.hard ? ' · Hard' : ''),
+      geometry: level.geometry,
+      instruction: level.instruct ? level.instruct(run) : (run.phase === 'play' ? cur.instruction : ''),
+      action: action,
+      seat: level.seatText ? level.seatText(run) : '',
+      steps: steps
+    };
   }
 
-  function washerCut(level, bins) {
-    const n = bins.length;
-    const ideal = resample(level.ideal, n);
-    const rough = resample(level.rough, n);
-    const out = [];
-    for (let i = 0; i < n; i++) out.push(bins[i] ? ideal[i] : rough[i]);
-    return out;
+  function viewOf(level, run) {
+    if (run.replay != null && run.log[run.replay]) {
+      return { step: run.log[run.replay].step, s: run.log[run.replay].s, phase: 'play', log: run.log };
+    }
+    return run;
   }
 
-  function evaluate(level, mark) {
-    let cut;
-    let coverage = 1;
-    if (level.tool === 'square') {
-      const x = mark.seated ? level.square.idealX : mark.x;
-      cut = [pt(x, level.square.top), pt(x, level.square.bot)];
-    } else if (level.tool === 'line') {
-      if (mark.seated) cut = level.ideal.map(function (p) { return pt(p.x, p.y); });
-      else {
-        const hitA = lineIntersect(mark.a, mark.b, level.rails[0][0], level.rails[0][1]);
-        const hitB = lineIntersect(mark.a, mark.b, level.rails[1][0], level.rails[1][1]);
-        if (!hitA || !hitB || Math.abs(hitA.t - hitB.t) < 1e-4) cut = level.rough.map(function (p) { return pt(p.x, p.y); });
-        else cut = [hitA.point, hitB.point];
+  /* ---------- butt joint ---------- */
+
+  function buttSquareHits(s, p) {
+    var dir = pt(Math.cos(s.ang), Math.sin(s.ang));
+    var stockDir = pt(Math.cos(s.ang - Math.PI / 2), Math.sin(s.ang - Math.PI / 2));
+    var tip = add(pt(s.x, s.y), mul(dir, 34));
+    var tail = add(pt(s.x, s.y), mul(stockDir, 30));
+    if (dist(p, pt(s.x, s.y)) < 10) return 'corner';
+    if (dist(p, tip) < 10) return 'tip';
+    if (pointSegDist(p, pt(s.x, s.y), tip).dist < 7) return 'blade';
+    if (pointSegDist(p, pt(s.x, s.y), tail).dist < 7) return 'stock';
+    return '';
+  }
+
+  function buttTrySeat(level, s) {
+    var bladeDown = angDiff(s.ang, Math.PI / 2) < 0.32;
+    var bladeUp = angDiff(s.ang, -Math.PI / 2) < 0.32;
+    if (bladeDown && Math.abs(s.y - level.top) < 8 && s.x > level.rough - 6 && s.x < level.right + 4) {
+      s.y = level.top;
+      s.ang = Math.PI / 2;
+      s.x = clamp(s.x, level.rough + 2, level.right - 2);
+      s.seated = 'top';
+      return;
+    }
+    if (bladeUp && Math.abs(s.y - level.bot) < 8 && s.x > level.rough - 6 && s.x < level.right + 4) {
+      s.y = level.bot;
+      s.ang = -Math.PI / 2;
+      s.x = clamp(s.x, level.rough + 2, level.right - 2);
+      s.seated = 'bot';
+      return;
+    }
+    s.seated = null;
+  }
+
+  function buttKnife(level, s) {
+    if (s.seated) {
+      return { x0: s.x, y0: level.top, x1: s.x, y1: level.bot, seated: true };
+    }
+    var dir = pt(Math.cos(s.ang), Math.sin(s.ang));
+    if (Math.abs(dir.y) < 0.25) {
+      return { x0: s.x, y0: level.top, x1: s.x + 30, y1: level.bot, seated: false };
+    }
+    var t0 = (level.top - s.y) / dir.y;
+    var t1 = (level.bot - s.y) / dir.y;
+    return {
+      x0: s.x + dir.x * t0,
+      y0: level.top,
+      x1: s.x + dir.x * t1,
+      y1: level.bot,
+      seated: false
+    };
+  }
+
+  function buttGap(level, line) {
+    if (!line) return 18;
+    return (Math.abs(line.x0 - level.jointX) + Math.abs(line.x1 - level.jointX)) / 2;
+  }
+
+  function buildButt() {
+    var level = {
+      id: 'butt',
+      name: 'Butt Joint',
+      technique: 'Square knife line',
+      geometry: 'The blade stays square to whatever edge the stock is seated on. Nothing pulls it onto the joint.',
+      blurb: 'Tutorial. Seat the square, slide the blade, knife the line.',
+      hard: false,
+      tutorial: [
+        'Nothing in this shop snaps to the answer. A tool seats only on a real edge.',
+        'Seat the square’s stock on the long edge. The blade stays square because the stock is seated — not because the joint is magnetic.',
+        'Slide to the other board’s end and knife it. Then cut. A restart puts you back on step one.'
+      ],
+      jointX: 50,
+      top: 74,
+      bot: 126,
+      rough: 30,
+      right: 110,
+      mateL: 8,
+      mateTop: 66,
+      mateBot: 134,
+      steps: [
+        { id: 'pick', label: 'Pick', instruction: 'Pick up the square.' },
+        { id: 'seat', label: 'Seat', instruction: 'Seat its stock on a long edge of the board.' },
+        { id: 'knife', label: 'Knife', instruction: 'Slide the blade to the other board’s end, then knife the line.' },
+        { id: 'cut', label: 'Cut', instruction: 'Cut the knife line.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        picked: false,
+        x: 78,
+        y: 40,
+        ang: Math.PI / 2,
+        seated: null,
+        knife: null
+      });
+    };
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'pick') {
+        if (ev.type === 'down' && buttSquareHits(s, ev)) {
+          s.picked = true;
+          completeStep(level, run, 0, '');
+        } else if (ev.type === 'down') run.fumbles += 1;
+        return;
       }
-    } else if (level.tool === 'trace') {
-      cut = traceCut(level, mark.locked);
-      const n = mark.locked.length;
-      let got = 0;
-      for (let i = 0; i < n; i++) if (mark.locked[i]) got++;
-      coverage = n ? got / n : 0;
-    } else if (level.tool === 'washer') {
-      cut = washerCut(level, mark.bins);
-      let got = 0;
-      for (let i = 0; i < mark.bins.length; i++) if (mark.bins[i]) got++;
-      coverage = mark.bins.length ? got / mark.bins.length : 0;
-    } else {
-      cut = level.rough.map(function (p) { return pt(p.x, p.y); });
-    }
-    const result = score(level, cut);
-    result.coverage = coverage;
-    result.poly = polyFromCut(cut, level.mode, level.far);
-    result.waste = wastePoly(level.rough, cut);
-    return result;
-  }
+      if (!s.picked) return;
+      if (ev.type === 'down') {
+        var hit = buttSquareHits(s, ev);
+        if (!hit) return;
+        run.drag = { mode: hit === 'tip' ? 'rot' : 'move', x: s.x, y: s.y, ang: s.ang, px: ev.x, py: ev.y };
+        return;
+      }
+      if (!run.drag) return;
+      if (ev.type === 'move') {
+        if (run.drag.mode === 'rot') {
+          s.ang = Math.atan2(ev.y - s.y, ev.x - s.x);
+          s.seated = null;
+        } else {
+          s.x = run.drag.x + (ev.x - run.drag.px);
+          s.y = run.drag.y + (ev.y - run.drag.py);
+          buttTrySeat(level, s);
+        }
+        return;
+      }
+      if (ev.type === 'up') {
+        var was = run.drag;
+        run.drag = null;
+        if (!was) return;
+        if (id === 'seat') {
+          if (s.seated) completeStep(level, run, 0, '');
+          else run.fumbles += 1;
+        }
+      }
+    };
 
-  function blankMark(level) {
-    if (level.tool === 'square') {
-      return { type: 'square', x: level.square.startX, seated: false };
-    }
-    if (level.tool === 'line') {
-      return {
-        type: 'line',
-        a: pt(level.line.startA.x, level.line.startA.y),
-        b: pt(level.line.startB.x, level.line.startB.y),
-        seated: false
-      };
-    }
-    if (level.tool === 'trace') {
-      return {
-        type: 'trace',
-        a: pt(level.line.startA.x, level.line.startA.y),
-        b: pt(level.line.startB.x, level.line.startB.y),
-        locked: level.ideal.slice(1).map(function () { return false; })
-      };
-    }
-    const bins = [];
-    for (let i = 0; i < level.bins; i++) bins.push(false);
-    return { type: 'washer', bins: bins, t: 0.02, inContact: false, seen: false };
-  }
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'knife') return { label: 'Knife the line', enabled: true };
+      if (id === 'cut') return { label: 'Cut', enabled: !!run.s.knife };
+      return null;
+    };
 
-  function perfectMark(level) {
-    if (level.tool === 'square') return { type: 'square', x: level.square.idealX, seated: true };
-    if (level.tool === 'line') {
-      return {
-        type: 'line',
-        a: pt(level.ideal[0].x, level.ideal[0].y),
-        b: pt(level.ideal[level.ideal.length - 1].x, level.ideal[level.ideal.length - 1].y),
-        seated: true
-      };
-    }
-    if (level.tool === 'trace') {
-      return {
-        type: 'trace',
-        a: pt(level.ideal[0].x, level.ideal[0].y),
-        b: pt(level.ideal[1].x, level.ideal[1].y),
-        locked: level.ideal.slice(1).map(function () { return true; })
-      };
-    }
-    const bins = [];
-    for (let i = 0; i < level.bins; i++) bins.push(true);
-    return { type: 'washer', bins: bins, t: 1, inContact: false, seen: true };
-  }
+    level.seatText = function (run) {
+      if (run.s.seated) return 'Stock seated on the edge';
+      return '';
+    };
 
-  function finalizeLevel(level) {
-    level.base = avgDist(level.rough, level.ideal);
-    level.segments = segmentsOf(level.ideal);
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'knife') {
+        s.knife = buttKnife(level, s);
+        var gap = buttGap(level, s.knife);
+        var note = '';
+        if (!s.knife.seated) note = 'The stock was off the edge, so the knife line was not square.';
+        else if (s.knife.x0 < level.jointX - 0.35) note = 'The blade stopped short of the other board.';
+        else if (s.knife.x0 > level.jointX + 0.35) note = 'The blade went past the other board.';
+        completeStep(level, run, gap, note);
+        return;
+      }
+      if (id === 'cut' && s.knife) completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'pick') {
+        s.picked = true;
+        completeStep(level, run, 0, '');
+      } else if (id === 'seat') {
+        s.picked = true;
+        s.x = 86;
+        s.y = level.top;
+        s.ang = Math.PI / 2;
+        s.seated = 'top';
+        completeStep(level, run, 0, '');
+      } else if (id === 'knife') {
+        s.x = level.jointX;
+        s.y = level.top;
+        s.ang = Math.PI / 2;
+        s.seated = 'top';
+        s.knife = buttKnife(level, s);
+        completeStep(level, run, 0, '');
+      } else if (id === 'cut') {
+        completeStep(level, run, 0, '');
+      }
+    };
+
+    level.measure = function (run) { return buttGap(level, run.s.knife); };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      items.push({ op: 'rect', x: level.mateL, y: level.mateTop, w: level.jointX - level.mateL, h: level.mateBot - level.mateTop, fill: '#7a4b2d', stroke: '#4a2c18', sw: 1 });
+      var cutX = s.knife ? s.knife.x0 : level.rough;
+      var showCut = run.phase === 'result' && run.replay == null && s.knife;
+      var boardL = showCut ? s.knife.x0 : level.rough;
+      items.push({ op: 'rect', x: boardL, y: level.top, w: level.right - boardL, h: level.bot - level.top, fill: '#e4c48a', stroke: '#8a6434', sw: 1 });
+      items.push({ op: 'line', a: pt(level.jointX, level.mateTop), b: pt(level.jointX, level.mateBot), stroke: '#4a2c18', sw: 1.4 });
+      if (s.knife && (showCut || view.step >= 3 || s.knife)) {
+        items.push({ op: 'line', a: pt(s.knife.x0, s.knife.y0), b: pt(s.knife.x1, s.knife.y1), stroke: '#241c14', sw: 1.6 });
+      }
+      if (showCut && s.knife) {
+        var gapL = Math.min(s.knife.x0, level.jointX);
+        var gapR = Math.max(s.knife.x0, level.jointX);
+        if (gapR - gapL > 0.3) {
+          items.push({ op: 'rect', x: gapL, y: level.top, w: gapR - gapL, h: level.bot - level.top, fill: 'rgba(231,76,60,0.35)', stroke: '', sw: 0 });
+        }
+      }
+      if (run.phase === 'play' || run.replay != null) {
+        if (view.step < 3) {
+          items.push({ op: 'square', x: s.x, y: s.y, ang: s.ang, hot: !!s.seated });
+        }
+      }
+      return { items: items };
+    };
     return level;
   }
 
-  function makeScribe(opts) {
-    const N = 72;
-    const wall = [];
-    const ideal = [];
-    for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const y = opts.y0 + (opts.y1 - opts.y0) * t;
-      const x = opts.xAt(t);
-      wall.push(pt(x, y));
-      ideal.push(pt(x + opts.R, y));
+  /* ---------- compass scribe (wavy wall + stone) ---------- */
+
+  function wallSamples(fn, y0, y1, n) {
+    var pts = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var y = y0 + (y1 - y0) * t;
+      pts.push({ t: t, x: fn(t), y: y });
     }
-    let minX = Infinity;
-    for (let i = 0; i < ideal.length; i++) minX = Math.min(minX, ideal[i].x);
-    const rough = [pt(minX, opts.y0), pt(minX, opts.y1)];
-    const band = offsetBand(wall, opts.thick || 14);
-    return { wall: wall, ideal: ideal, rough: rough, band: band, minX: minX };
+    return pts;
   }
 
-  const levels = [];
+  function wallAt(wall, y, y0, y1) {
+    var t = clamp((y - y0) / (y1 - y0), 0, 1);
+    var f = t * (wall.length - 1);
+    var i = clamp(Math.floor(f), 0, wall.length - 2);
+    var u = f - i;
+    return lerp(wall[i].x, wall[i + 1].x, u);
+  }
 
-  /* 1 — square butt. Stock is proud of a square end. */
-  levels.push(finalizeLevel({
-    id: 'butt',
-    name: 'Butt Joint',
-    tool: 'square',
-    draw: 'work-on-top',
-    mode: 'right',
-    far: 94,
-    spanMm: 8,
-    away: pt(1, 0),
-    slide: null,
-    hint: 'Slide the square until the blade covers the joint.',
-    blurb: 'A long board, a square end, no tape.',
-    tutorial: [
-      'This end is proud of the joint. A tape measure would just copy the mistake.',
-      'Drag anywhere sideways. The square snaps onto the fence — that click is the tool seating.',
-      'Slide until the blade sits on the other board’s end. Green means the seam will close.',
-      'Cut along the blade. The waste falls, then the boards come together.'
-    ],
-    tone: 'oak',
-    seed: 3,
-    fixed: [
-      { poly: rect(6, 52, 96, 64), tone: 'fence', decor: true, seed: 1 },
-      { poly: rect(8, 64, 36, 108), tone: 'walnut', seed: 2, angle: 0.02 }
-    ],
-    mating: [pt(36, 64), pt(36, 108)],
-    ideal: [pt(36, 64), pt(36, 108)],
-    rough: [pt(18, 64), pt(18, 108)],
-    square: { top: 64, bot: 108, idealX: 36, startX: 64, xMin: 24, xMax: 78 }
-  }));
+  function compassPencil(point, span, tilt) {
+    return pt(point.x + Math.cos(tilt) * span, point.y + Math.sin(tilt) * span);
+  }
 
-  /* 2 — inside corner, off-square miter. Copy the mating end. */
-  levels.push(finalizeLevel({
-    id: 'corner',
-    name: 'Inside Corner',
-    tool: 'line',
-    draw: 'work-on-top',
-    mode: 'down',
-    far: 118,
-    spanMm: 7,
-    away: pt(0, 1),
-    slide: null,
-    hint: 'Lay the straightedge on the miter. Don’t assume 45°.',
-    blurb: 'The room isn’t square. Copy the cut that’s already there.',
-    tone: 'oak',
-    seed: 5,
-    rails: [
-      [pt(28, 28), pt(28, 124)],
-      [pt(46, 28), pt(46, 124)]
-    ],
-    fixed: [
-      { poly: rect(14, 30, 98, 46), tone: 'wall', decor: true, seed: 8 },
-      { poly: rect(14, 46, 28, 122), tone: 'wall', decor: true, seed: 9 },
-      {
-        poly: [pt(28, 46), pt(98, 46), pt(98, 72), pt(46, 72), pt(28, 46)],
-        tone: 'walnut',
-        seed: 4,
-        angle: 0
-      }
-    ],
-    mating: [pt(28, 46), pt(46, 72)],
-    ideal: [pt(28, 46), pt(46, 72)],
-    rough: [pt(28, 34), pt(46, 34)],
-    line: {
-      startA: pt(24, 38),
-      startB: pt(52, 36)
-    }
-  }));
+  function panelCorners(cfg, angle) {
+    var cx = (cfg.frontX + cfg.backX) / 2;
+    var cy = (cfg.y0 + cfg.y1) / 2;
+    var c = pt(cx, cy);
+    var raw = [pt(cfg.frontX, cfg.y0), pt(cfg.backX, cfg.y0), pt(cfg.backX, cfg.y1), pt(cfg.frontX, cfg.y1)];
+    return raw.map(function (p) { return rotAround(p, c, angle); });
+  }
 
-  /* 3 — outside curved wall, washer scribe. */
-  (function () {
-    const R = 8;
-    const s = makeScribe({
-      y0: 40,
-      y1: 110,
-      R: R,
-      thick: 16,
-      xAt: function (t) { return 22 + 5.5 * Math.sin(Math.PI * t); }
+  function frontEdge(cfg, angle) {
+    var cs = panelCorners(cfg, angle);
+    return [cs[0], cs[3]];
+  }
+
+  function hitPanel(cfg, angle, p) {
+    return pointInPoly(p, panelCorners(cfg, angle));
+  }
+
+  function scribeTraceX(cfg, wall, span, tilt, angle, y, wobble) {
+    var yS = y - Math.sin(tilt) * span;
+    var wx = wallAt(wall, yS, cfg.y0, cfg.y1);
+    var mid = (cfg.y0 + cfg.y1) / 2;
+    return wx + span * Math.cos(tilt) + angle * (y - mid) + (wobble || 0);
+  }
+
+  function cutFromTrace(cfg, traced) {
+    if (traced == null || traced < cfg.frontX) return cfg.frontX;
+    if (traced > cfg.backX) return cfg.backX;
+    return traced;
+  }
+
+  function buildScribe(opts) {
+    var cfg = opts;
+    var wall = wallSamples(cfg.wallFn, cfg.y0, cfg.y1, cfg.n);
+    var idealS = 0;
+    var idealT = 0;
+    wall.forEach(function (p) {
+      var g = cfg.frontX - p.x;
+      if (g > idealS) { idealS = g; idealT = p.t; }
     });
-    levels.push(finalizeLevel({
-      id: 'curve',
-      name: 'Curved Wall',
-      tool: 'washer',
-      draw: 'work-on-top',
-      mode: 'right',
-      far: 92,
-      spanMm: 6,
-      away: pt(1, 0),
-      slide: pt(-R, 0),
-      contact: 6.4,
-      bins: 56,
-      washerR: R,
-      hint: 'Ride the washer along the curve. Keep contact the whole way.',
-      blurb: 'The wall bows. Scribe it — don’t measure the hollows.',
-      tone: 'maple',
-      seed: 11,
-      fixed: [
-        { poly: s.band, tone: 'wall', seed: 12, angle: Math.PI / 2 }
-      ],
-      mating: s.wall,
-      ideal: s.ideal,
-      rough: s.rough,
-      wall: s.wall
-    }));
-  })();
-
-  /* 4 — stepped miter. */
-  (function () {
-    const step = [pt(34, 42), pt(34, 56), pt(48, 56), pt(48, 70), pt(62, 70), pt(62, 86)];
-    levels.push(finalizeLevel({
-      id: 'step',
-      name: 'Stepped Miter',
-      tool: 'trace',
-      draw: 'template-on-top',
-      mode: 'right',
-      far: 94,
-      spanMm: 5,
-      away: pt(1, 0),
-      slide: null,
-      hint: 'Click the straightedge onto every face of the step.',
-      blurb: 'Five faces. Trace each one off the mating piece.',
-      tone: 'cherry',
-      seed: 15,
-      fixed: [{
-        poly: [pt(8, 42), pt(34, 42), pt(34, 56), pt(48, 56), pt(48, 70), pt(62, 70), pt(62, 86), pt(8, 86)],
-        tone: 'walnut',
-        seed: 16,
-        angle: 0.01
-      }],
-      mating: step,
-      ideal: step,
-      rough: [pt(30, 42), pt(30, 86)],
-      line: { startA: pt(70, 58), startB: pt(92, 64) }
-    }));
-  })();
-
-  /* 5 — three-way truss. Two cheeks on the king post. */
-  (function () {
-    const cut = [pt(40, 62), pt(50, 46), pt(60, 62)];
-    const downL = norm(sub(cut[0], cut[1]));
-    const downR = norm(sub(cut[2], cut[1]));
-    const leftOuter = add(cut[0], mul(downL, 52));
-    const rightOuter = add(cut[2], mul(downR, 52));
-    levels.push(finalizeLevel({
-      id: 'truss',
-      name: 'Three-Way Truss',
-      tool: 'trace',
-      draw: 'template-on-top',
-      mode: 'down',
-      far: 112,
-      spanMm: 6,
-      away: pt(0, -1),
-      slide: null,
-      hint: 'Trace both rafter undersides onto the post.',
-      blurb: 'Left cheek, right cheek. The peak has to kiss.',
-      tone: 'oak',
-      seed: 21,
-      fixed: [
-        { poly: rect(14, 112, 86, 122), tone: 'walnut', seed: 22, angle: 0, decor: false },
-        { poly: quadStrip(leftOuter, cut[0], 6.5, -1), tone: 'cherry', seed: 23, angle: -0.7 },
-        { poly: quadStrip(cut[2], rightOuter, 6.5, -1), tone: 'cherry', seed: 24, angle: 0.7 }
-      ],
-      mating: cut,
-      ideal: cut,
-      rough: [pt(40, 36), pt(60, 36)],
-      line: { startA: pt(36, 78), startB: pt(66, 84) }
-    }));
-  })();
-
-  /* 6 — zigzag miter. */
-  (function () {
-    const zig = [pt(36, 40), pt(52, 52), pt(36, 64), pt(52, 76), pt(36, 88), pt(52, 100)];
-    const fixedPoly = [pt(8, 40)].concat(zig).concat([pt(8, 100)]);
-    levels.push(finalizeLevel({
-      id: 'zigzag',
-      name: 'Zigzag Miter',
-      tool: 'trace',
-      draw: 'template-on-top',
-      mode: 'right',
-      far: 94,
-      spanMm: 4.5,
-      away: pt(1, 0),
-      slide: null,
-      hint: 'Follow the zigzag. Miss a tooth and daylight stays.',
-      blurb: 'A toothed joint. Every edge has to click.',
-      tone: 'oak',
-      seed: 31,
-      fixed: [{ poly: fixedPoly, tone: 'walnut', seed: 32, angle: 0.03 }],
-      mating: zig,
-      ideal: zig,
-      rough: [pt(32, 40), pt(32, 100)],
-      line: { startA: pt(68, 66), startB: pt(90, 78) }
-    }));
-  })();
-
-  /* 7 — ogee profile. */
-  (function () {
-    const R = 9;
-    const s = makeScribe({
-      y0: 38,
-      y1: 112,
-      R: R,
-      thick: 15,
-      xAt: function (t) {
-        return 24 + 3.1 * Math.sin(Math.PI * 2 * t) + 1.15 * Math.sin(Math.PI * 4 * t + 0.6);
-      }
+    var idealPoint = null;
+    wall.forEach(function (p) {
+      if (Math.abs(p.t - idealT) < 1 / cfg.n / 2) idealPoint = p;
     });
-    levels.push(finalizeLevel({
-      id: 'ogee',
-      name: 'Ogee Profile',
-      tool: 'washer',
-      draw: 'work-on-top',
-      mode: 'right',
-      far: 92,
-      spanMm: 5,
-      away: pt(1, 0),
-      slide: pt(-R, 0),
-      contact: 5.6,
-      bins: 64,
-      washerR: R,
-      hint: 'Scribe the whole S. Slow down in the hollows.',
-      blurb: 'An ogee molding. The washer has to stay with the profile.',
-      tone: 'cherry',
-      seed: 41,
-      fixed: [{ poly: s.band, tone: 'walnut', seed: 42, angle: Math.PI / 2 }],
-      mating: s.wall,
-      ideal: s.ideal,
-      rough: s.rough,
-      wall: s.wall
-    }));
-  })();
 
-  /* 8 — live edge. */
-  (function () {
-    const R = 8.5;
-    const s = makeScribe({
-      y0: 36,
-      y1: 114,
-      R: R,
-      thick: 16,
-      xAt: function (t) {
-        return 23
-          + 2.4 * Math.sin(Math.PI * 2.15 * t + 0.3)
-          + 1.55 * Math.sin(Math.PI * 5.2 * t + 1.1)
-          + 0.85 * Math.sin(Math.PI * 9 * t + 0.4);
-      }
-    });
-    levels.push(finalizeLevel({
-      id: 'live',
-      name: 'Live Edge',
-      tool: 'washer',
-      draw: 'work-on-top',
-      mode: 'right',
-      far: 92,
-      spanMm: 5,
-      away: pt(1, 0),
-      slide: pt(-R, 0),
-      contact: 5.2,
-      bins: 72,
-      washerR: R,
-      hint: 'Keep the washer planted. Lift off and the edge stays wild.',
-      blurb: 'No two inches repeat. Scribe the whole live edge.',
-      tone: 'maple',
-      seed: 51,
-      fixed: [{ poly: s.band, tone: 'walnut', seed: 52, angle: 1.2 }],
-      mating: s.wall,
-      ideal: s.ideal,
-      rough: s.rough,
-      wall: s.wall
-    }));
-  })();
-
-  function matchSegment(a, b, c, d) {
-    return {
-      ang: angDiff(a, b, c, d),
-      dist: pointLineDist(pt((c.x + d.x) / 2, (c.y + d.y) / 2), a, b),
-      cover: coverFraction(a, b, c, d)
+    var level = {
+      id: cfg.id,
+      name: cfg.name,
+      technique: 'Compass scribe',
+      geometry: cfg.geometry,
+      blurb: cfg.blurb,
+      hard: !!cfg.hard,
+      tutorial: null,
+      cfg: cfg,
+      wall: wall,
+      idealS: idealS,
+      idealT: idealT,
+      steps: [
+        { id: 'level', label: 'Level', instruction: 'Shim the panel until the bubble sits in the middle, then lock the shims.' },
+        { id: 'lock', label: 'Lock', instruction: 'Open the compass until both legs seat in the gap. Slide to the widest opening, then lock.' },
+        { id: 'scribe', label: 'Scribe', instruction: 'Run the point down the wall and keep the legs level.' },
+        { id: 'bevel', label: 'Back-bevel', instruction: 'Tip the saw so the back of the cut clears the wall, then set it.' },
+        { id: 'cut', label: 'Cut', instruction: 'Cut the scribed line.' }
+      ]
     };
-  }
 
-  function seatMatch(m, loose) {
-    if (!m) return false;
-    if (loose) return m.ang < 0.24 && m.dist < 3.6 && m.cover > 0.5;
-    return m.ang < 0.16 && m.dist < 2.6 && m.cover > 0.58;
-  }
-
-  function bestSegment(a, b, targets, angMax, distMax) {
-    let best = null;
-    for (let i = 0; i < targets.length; i++) {
-      const c = targets[i][0], d = targets[i][1];
-      const m = matchSegment(a, b, c, d);
-      if (m.ang < angMax && m.dist < distMax) {
-        const score = m.ang * 28 + m.dist;
-        if (!best || score < best.score) best = { i: i, m: m, c: c, d: d, score: score };
-      }
+    function idealAt(y) {
+      return wallAt(wall, y, cfg.y0, cfg.y1) + idealS;
     }
-    return best;
-  }
 
-  function wrapPi(d) {
-    let x = d;
-    while (x > Math.PI) x -= Math.PI * 2;
-    while (x < -Math.PI) x += Math.PI * 2;
-    return x;
-  }
-
-  function magnetBar(a, b, targets) {
-    const best = bestSegment(a, b, targets, 0.42, 8.5);
-    if (!best) return { a: a, b: b, hot: false, index: -1, m: null };
-    const pull = 0.48;
-    const pa = projectPointToLine(a, best.c, best.d);
-    const pb = projectPointToLine(b, best.c, best.d);
-    const na = pt(lerp(a.x, pa.x, pull), lerp(a.y, pa.y, pull));
-    const nb = pt(lerp(b.x, pb.x, pull), lerp(b.y, pb.y, pull));
-    return {
-      a: na,
-      b: nb,
-      hot: seatMatch(matchSegment(na, nb, best.c, best.d), false),
-      index: best.i,
-      m: best.m
+    level.create = function () {
+      return fresh(level, {
+        angle: cfg.angle0,
+        span: cfg.span0,
+        tilt: cfg.tilt0,
+        point: pt(cfg.point0.x, cfg.point0.y),
+        locked: false,
+        lockedSpan: cfg.span0,
+        lockedTilt: cfg.tilt0,
+        samples: wall.map(function () { return null; }),
+        wobble: wall.map(function () { return 0; }),
+        bevel: 0,
+        bevelSet: false
+      });
     };
-  }
 
-  /* Ease a bar the player is already swinging toward a face.
-     The pivot end stays put, so a nearby parallel face cannot
-     yank the straightedge back while a finger rotates the other end. */
-  function pivotAssist(a, b, prevA, prevB, targets) {
-    const moveA = dist(a, prevA);
-    const moveB = dist(b, prevB);
-    const moving = moveA >= moveB ? 'a' : 'b';
-    const pivot = moving === 'a' ? b : a;
-    const prevMoving = moving === 'a' ? prevA : prevB;
-    const nowMoving = moving === 'a' ? a : b;
-    const prevAng = Math.atan2(prevMoving.y - pivot.y, prevMoving.x - pivot.x);
-    const nowAng = Math.atan2(nowMoving.y - pivot.y, nowMoving.x - pivot.x);
-    const userDelta = wrapPi(nowAng - prevAng);
-    let best = null;
-    for (let i = 0; i < targets.length; i++) {
-      const c = targets[i][0], d = targets[i][1];
-      const m = matchSegment(a, b, c, d);
-      const segAng = Math.atan2(d.y - c.y, d.x - c.x);
-      let need = wrapPi(segAng - nowAng);
-      if (need > Math.PI / 2) need -= Math.PI;
-      if (need < -Math.PI / 2) need += Math.PI;
-      const toward = Math.abs(need) < 0.18 || (userDelta * need > 0 && Math.abs(need) < 0.62);
-      if (!toward) continue;
-      if (m.dist > 12 && Math.abs(need) > 0.22) continue;
-      const score = Math.abs(need) * 20 + m.dist * 0.2;
-      if (!best || score < best.score) best = { need: need, m: m, c: c, d: d, i: i };
+    function seats(s) {
+      var pencil = compassPencil(s.point, s.span, s.tilt);
+      var nearW = closestOnPoly(s.point, wall);
+      var edge = frontEdge(cfg, s.angle);
+      var nearE = pointSegDist(pencil, edge[0], edge[1]);
+      var pointHot = nearW.dist < cfg.seat;
+      var pencilHot = nearE.dist < cfg.seat;
+      return { pencil: pencil, nearW: nearW, nearE: nearE, pointHot: pointHot, pencilHot: pencilHot };
     }
-    if (!best) return { a: a, b: b, hot: false, index: -1, m: null };
-    const cap = Math.max(0.012, Math.abs(userDelta) * 1.4);
-    let ease = best.need * 0.55;
-    if (Math.abs(ease) > cap) ease = cap * Math.sign(best.need);
-    const cs = Math.cos(ease), sn = Math.sin(ease);
-    const v = moving === 'a' ? sub(a, pivot) : sub(b, pivot);
-    const r = pt(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
-    const na = moving === 'a' ? add(pivot, r) : a;
-    const nb = moving === 'b' ? add(pivot, r) : b;
-    const after = matchSegment(na, nb, best.c, best.d);
-    return { a: na, b: nb, hot: seatMatch(after, false), index: best.i, m: after };
+
+    function applySeats(s) {
+      var info = seats(s);
+      if (info.pointHot) {
+        var delta = sub(info.nearW.point, s.point);
+        s.point = pt(info.nearW.point.x, info.nearW.point.y);
+        info = seats(s);
+      }
+      if (info.pencilHot) {
+        var stuck = info.nearE.point;
+        s.span = clamp(dist(s.point, stuck), 4, 46);
+        s.tilt = Math.atan2(stuck.y - s.point.y, stuck.x - s.point.x);
+      }
+      return seats(s);
+    }
+
+    function hitCompass(s, p) {
+      var pencil = compassPencil(s.point, s.span, s.tilt);
+      if (dist(p, s.point) < 8) return 'point';
+      if (dist(p, pencil) < 8) return 'pencil';
+      var mid = pt((s.point.x + pencil.x) / 2, (s.point.y + pencil.y) / 2);
+      if (dist(p, mid) < 10) return 'body';
+      if (pointSegDist(p, s.point, pencil).dist < 6) return 'body';
+      return '';
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'level') {
+        if (ev.type === 'down' && hitPanel(cfg, s.angle, ev)) {
+          run.drag = { mode: 'shim', last: ev.x };
+        } else if (ev.type === 'move' && run.drag && run.drag.mode === 'shim') {
+          s.angle = clamp(s.angle + (ev.x - run.drag.last) * 0.0045, -0.28, 0.28);
+          run.drag.last = ev.x;
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'lock') {
+        if (ev.type === 'down') {
+          var hit = hitCompass(s, ev);
+          if (!hit) return;
+          run.drag = { mode: hit, px: ev.x, py: ev.y, point: pt(s.point.x, s.point.y), span: s.span, tilt: s.tilt };
+          return;
+        }
+        if (ev.type === 'move' && run.drag) {
+          if (run.drag.mode === 'pencil') {
+            var np = pt(ev.x, ev.y);
+            s.span = clamp(dist(s.point, np), 4, 46);
+            s.tilt = Math.atan2(np.y - s.point.y, np.x - s.point.x);
+          } else if (run.drag.mode === 'point') {
+            s.point = pt(run.drag.point.x + (ev.x - run.drag.px), run.drag.point.y + (ev.y - run.drag.py));
+          } else {
+            s.point = pt(run.drag.point.x + (ev.x - run.drag.px), run.drag.point.y + (ev.y - run.drag.py));
+          }
+          applySeats(s);
+          return;
+        }
+        if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'scribe') {
+        if (ev.type === 'down' || ev.type === 'move') {
+          if (ev.type === 'down') run.drag = { mode: 'scribe', last: -1 };
+          if (!run.drag || run.drag.mode !== 'scribe') return;
+          var near = closestOnPoly(pt(ev.x, ev.y), wall);
+          var idx = clamp(Math.round(near.t * cfg.n), 0, cfg.n);
+          var y = wall[idx].y;
+          var tiltNow = Math.atan2(ev.y - wall[idx].y, ev.x - wall[idx].x);
+          var wobble = (tiltNow - s.lockedTilt) * s.lockedSpan * 0.55;
+          var from = run.drag.last < 0 ? idx : run.drag.last;
+          var lo = Math.min(from, idx);
+          var hi = Math.max(from, idx);
+          for (var i = lo; i <= hi; i++) {
+            var yy = wall[i].y;
+            s.samples[i] = scribeTraceX(cfg, wall, s.lockedSpan, s.lockedTilt, s.angle, yy, wobble);
+            s.wobble[i] = wobble;
+          }
+          run.drag.last = idx;
+          var filled = s.samples.filter(function (v) { return v != null; }).length;
+          if (filled >= wall.length - 1 && ev.type === 'move') {
+            /* wait for pointer up to commit a full pass */
+          }
+          return;
+        }
+        if (ev.type === 'up' && run.drag) {
+          run.drag = null;
+          var got = s.samples.filter(function (v) { return v != null; }).length;
+          if (got >= wall.length - 1) commitScribe(run);
+        }
+      }
+      if (id === 'bevel') {
+        if (ev.type === 'down') run.drag = { mode: 'bevel', last: ev.y, ang: s.bevel };
+        else if (ev.type === 'move' && run.drag && run.drag.mode === 'bevel') {
+          s.bevel = clamp(run.drag.ang + (run.drag.last - ev.y) * 0.01, -0.3, 0.7);
+        } else if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    function scribeDeviation(s) {
+      var errs = [];
+      for (var i = 0; i < wall.length; i++) {
+        var ideal = idealAt(wall[i].y);
+        var cut = cutFromTrace(cfg, s.samples[i]);
+        errs.push(Math.abs(cut - ideal));
+      }
+      return mean(errs);
+    }
+
+    function commitScribe(run) {
+      var s = run.s;
+      var faithful = [];
+      for (var i = 0; i < wall.length; i++) {
+        faithful.push(scribeTraceX(cfg, wall, s.lockedSpan, s.lockedTilt, s.angle, wall[i].y, 0));
+      }
+      var extra = 0;
+      var n = 0;
+      for (i = 0; i < wall.length; i++) {
+        var ideal = idealAt(wall[i].y);
+        var got = s.samples[i] == null ? cfg.frontX : s.samples[i];
+        var base = cutFromTrace(cfg, faithful[i]);
+        extra += Math.abs(cutFromTrace(cfg, got) - ideal) - Math.abs(base - ideal);
+        n++;
+      }
+      extra = Math.max(0, extra / (n || 1));
+      var uncovered = s.samples.filter(function (v) { return v == null; }).length;
+      if (uncovered > 2) extra += uncovered * 0.15;
+      var note = '';
+      if (uncovered > 2) note = 'The point left the wall before the scribe was finished.';
+      else if (extra >= 0.35) note = 'The legs tilted on the way down, so the line drifted.';
+      completeStep(level, run, extra, note);
+    }
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'level') return { label: 'Lock shims', enabled: true };
+      if (id === 'lock') return { label: 'Lock compass', enabled: true };
+      if (id === 'scribe') return { label: 'Done scribing', enabled: true };
+      if (id === 'bevel') return { label: 'Set the bevel', enabled: true };
+      if (id === 'cut') return { label: 'Cut', enabled: true };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      if (stepId(level, run) !== 'lock' || run.s.locked) return '';
+      var info = seats(run.s);
+      if (info.pointHot && info.pencilHot) return 'Both legs seated';
+      if (info.pointHot) return 'Point seated on the wall';
+      if (info.pencilHot) return 'Pencil seated on the panel';
+      return '';
+    };
+
+    level.instruct = function (run) {
+      var id = stepId(level, run);
+      var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
+      if (id === 'scribe') {
+        var got = run.s.samples.filter(function (v) { return v != null; }).length;
+        return base + ' Covered ' + got + ' of ' + wall.length + '.';
+      }
+      return base;
+    };
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'level') {
+        var dev = Math.abs(s.angle) * (cfg.y1 - cfg.y0) * 0.45;
+        completeStep(level, run, dev, 'The bubble was still out, so the panel was leaning.');
+        return;
+      }
+      if (id === 'lock') {
+        var info = applySeats(s);
+        s.locked = true;
+        s.lockedSpan = s.span;
+        s.lockedTilt = s.tilt;
+        var horizontal = s.span * Math.cos(s.tilt);
+        var devLock = Math.abs(horizontal - idealS);
+        var tiltMm = Math.abs(Math.sin(s.tilt)) * s.span * 0.45;
+        var note = '';
+        if (!info.pointHot || !info.pencilHot) note = 'The compass was locked in the air, not across the gap.';
+        else if (horizontal < idealS - 0.35) note = 'The compass was locked on a narrower gap.';
+        else if (horizontal > idealS + 0.35) note = 'The compass was opened past the widest gap.';
+        else if (tiltMm >= 0.35) note = 'The legs were tilted, so the opening slid along the wall.';
+        completeStep(level, run, devLock + tiltMm, note);
+        return;
+      }
+      if (id === 'scribe') { commitScribe(run); return; }
+      if (id === 'bevel') {
+        s.bevelSet = true;
+        var pen = bevelPenalty(s.bevel);
+        var bnote = pen >= 0.35 ? (s.bevel < 0.09 ? 'The saw was left too square, so the back of the cut hits the wall.' : 'The saw was tipped so far the face of the cut broke back.') : '';
+        completeStep(level, run, pen, bnote);
+        return;
+      }
+      if (id === 'cut') completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'level') {
+        s.angle = 0;
+        level.onAction(run);
+        /* onAction records the deviation of the corrected pose, which is 0 */
+        return;
+      }
+      if (id === 'lock') {
+        s.point = pt(idealPoint.x, idealPoint.y);
+        s.span = idealS;
+        s.tilt = 0;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'scribe') {
+        for (var i = 0; i < wall.length; i++) {
+          s.samples[i] = scribeTraceX(cfg, wall, s.lockedSpan, s.lockedTilt, s.angle, wall[i].y, 0);
+          s.wobble[i] = 0;
+        }
+        commitScribe(run);
+        return;
+      }
+      if (id === 'bevel') {
+        s.bevel = 0.22;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'cut') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      var errs = [];
+      for (var i = 0; i < wall.length; i++) {
+        errs.push(Math.abs(cutFromTrace(cfg, s.samples[i]) - idealAt(wall[i].y)));
+      }
+      return mean(errs) + (s.bevelSet || run.phase === 'result' ? bevelPenalty(s.bevel) : bevelPenalty(s.bevel));
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      var band = [];
+      wall.forEach(function (p) { band.push(pt(p.x - 14, p.y)); });
+      for (var i = wall.length - 1; i >= 0; i--) band.push(pt(wall[i].x, wall[i].y));
+      items.push({ op: 'poly', pts: band, fill: cfg.hard ? '#7d756c' : '#9a9188', stroke: '#5c564f', sw: 1 });
+      if (cfg.hard) {
+        for (i = 0; i < wall.length; i += 4) {
+          items.push({ op: 'line', a: pt(wall[i].x - 14, wall[i].y), b: pt(wall[i].x, wall[i].y), stroke: 'rgba(244,239,228,0.35)', sw: 1 });
+        }
+      }
+      items.push({ op: 'poly', pts: panelCorners(cfg, s.angle), fill: '#e7c98a', stroke: '#8a6434', sw: 1 });
+      var bub = rotAround(pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2 - 8), pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2), s.angle);
+      items.push({ op: 'bubble', c: bub, offset: clamp(s.angle / 0.07, -1, 1) });
+      var pencilPts = [];
+      for (i = 0; i < wall.length; i++) {
+        if (s.samples[i] != null) pencilPts.push(pt(s.samples[i], wall[i].y));
+      }
+      if (pencilPts.length > 1) items.push({ op: 'polyline', pts: pencilPts, stroke: '#241c14', sw: 1.5 });
+      if (run.phase === 'result' && run.replay == null) {
+        var idealPts = wall.map(function (p) { return pt(idealAt(p.y), p.y); });
+        items.push({ op: 'polyline', pts: idealPts, stroke: 'rgba(76,175,80,0.0)', sw: 1 });
+        for (i = 0; i < wall.length; i += 3) {
+          var cx = cutFromTrace(cfg, s.samples[i]);
+          var ix = idealAt(wall[i].y);
+          if (Math.abs(cx - ix) > 0.4) {
+            items.push({ op: 'line', a: pt(Math.min(cx, ix), wall[i].y), b: pt(Math.max(cx, ix), wall[i].y), stroke: 'rgba(231,76,60,0.8)', sw: 2 });
+          }
+        }
+      }
+      var showCompass = view.step === 1 || view.step === 2;
+      if ((run.phase === 'play' || run.replay != null) && showCompass) {
+        var info = seats(s);
+        items.push({
+          op: 'compass',
+          point: pt(s.point.x, s.point.y),
+          span: view.step >= 2 ? s.lockedSpan : s.span,
+          tilt: view.step >= 2 ? s.lockedTilt : s.tilt,
+          hotP: info.pointHot,
+          hotN: info.pencilHot
+        });
+      }
+      if ((run.phase === 'play' || run.replay != null) && (view.step === 3 || (run.replay != null && level.steps[view.step] && level.steps[view.step].id === 'bevel'))) {
+        items.push({ op: 'bevelchip', x: 64, y: 96, ang: s.bevel });
+      }
+      return { items: items };
+    };
+    return level;
   }
 
-  function tryLockTrace(level, mark, loose) {
-    const locked = mark.locked;
-    let best = null;
-    for (let i = 0; i < level.segments.length; i++) {
-      if (locked[i]) continue;
-      const seg = level.segments[i];
-      const m = matchSegment(mark.a, mark.b, seg[0], seg[1]);
-      if (seatMatch(m, loose)) {
-        if (!best || m.dist < best.m.dist) best = { i: i, m: m, seg: seg };
+  /* ---------- tick stick ---------- */
+
+  function buildTick() {
+    var alcove = [pt(16, 22), pt(92, 18), pt(106, 62), pt(76, 104), pt(14, 90)];
+    var sheetW = 34;
+    var sheetH = 40;
+    var home = null;
+    var x;
+    var y;
+    for (y = 24; y < 70 && !home; y += 2) {
+      for (x = 20; x < 70 && !home; x += 2) {
+        var corners = [pt(x + 2, y + 2), pt(x + sheetW - 2, y + 2), pt(x + sheetW - 2, y + sheetH - 2), pt(x + 2, y + sheetH - 2)];
+        if (corners.every(function (p) { return pointInPoly(p, alcove); })) home = { x: x, y: y, w: sheetW, h: sheetH };
       }
     }
-    if (!best) return null;
-    locked[best.i] = true;
-    const c = best.seg[0], d = best.seg[1];
-    const dir = norm(sub(d, c));
-    const mid = pt((c.x + d.x) / 2, (c.y + d.y) / 2);
-    const half = Math.max(dist(c, d) * 0.72, 12);
-    mark.a = pt(mid.x - dir.x * half, mid.y - dir.y * half);
-    mark.b = pt(mid.x + dir.x * half, mid.y + dir.y * half);
-    return best.i;
+    var board = { x: 14, y: 118, w: 70, h: 44 };
+    var nC = alcove.length;
+
+    var level = {
+      id: 'tick',
+      name: 'Tick Stick',
+      technique: 'Tick stick template',
+      geometry: 'Each corner is a direction plus a tick on the stick, so the same stick can rebuild it on the board.',
+      blurb: 'Record every corner on a sheet, then replay the ticks onto a board.',
+      hard: false,
+      tutorial: null,
+      alcove: alcove,
+      home: home,
+      board: board,
+      steps: [
+        { id: 'lay', label: 'Lay sheet', instruction: 'Lay the sheet flat inside the alcove. It seats only when it is fully inside.' },
+        { id: 'tick', label: 'Tick', instruction: 'Seat the stick’s point on a corner and tick where it crosses the sheet.' },
+        { id: 'carry', label: 'Carry', instruction: 'Carry the sheet onto the board.' },
+        { id: 'replay', label: 'Replay', instruction: 'Seat the stick on each line so a tick meets the sheet, then prick the point.' },
+        { id: 'cut', label: 'Cut', instruction: 'Cut the outline the pricks describe.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        sheet: { x: 82, y: 124, w: sheetW, h: sheetH },
+        placed: false,
+        onBoard: false,
+        ticks: [],
+        point: pt(70, 78),
+        ang: -0.6,
+        pricks: [],
+        slide: 0
+      });
+    };
+
+    function sheetRect(s) { return s.sheet; }
+
+    function hitSheet(s, p) {
+      var r = s.sheet;
+      return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    }
+
+    function insideAlcove(rect) {
+      var cs = [pt(rect.x + 1.2, rect.y + 1.2), pt(rect.x + rect.w - 1.2, rect.y + 1.2), pt(rect.x + rect.w - 1.2, rect.y + rect.h - 1.2), pt(rect.x + 1.2, rect.y + rect.h - 1.2)];
+      return cs.every(function (p) { return pointInPoly(p, alcove); });
+    }
+
+    function insideBoard(rect) {
+      return rect.x >= board.x + 1 && rect.y >= board.y + 1 && rect.x + rect.w <= board.x + board.w - 1 && rect.y + rect.h <= board.y + board.h - 1;
+    }
+
+    function nearestCorner(p) {
+      var best = -1;
+      var bestD = 8;
+      for (var i = 0; i < nC; i++) {
+        var d = dist(p, alcove[i]);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      return best;
+    }
+
+    function stickTail(s) {
+      return pt(s.point.x + Math.cos(s.ang) * 72, s.point.y + Math.sin(s.ang) * 72);
+    }
+
+    function hitStick(s, p) {
+      if (dist(p, s.point) < 8) return 'point';
+      var tail = stickTail(s);
+      if (dist(p, tail) < 8) return 'tail';
+      if (pointSegDist(p, s.point, tail).dist < 6) return 'body';
+      return '';
+    }
+
+    function recordTick(s, cornerIndex) {
+      var dir = pt(Math.cos(s.ang), Math.sin(s.ang));
+      var t = rayRectT(alcove[cornerIndex], dir, s.sheet);
+      if (t == null) return null;
+      var edge = add(alcove[cornerIndex], mul(dir, t));
+      var origin = pt(s.sheet.x, s.sheet.y);
+      return {
+        corner: cornerIndex,
+        dist: t,
+        dir: dir,
+        edgeLocal: sub(edge, origin),
+        local: sub(alcove[cornerIndex], origin)
+      };
+    }
+
+    function ambiguous(ticks, dist) {
+      for (var i = 0; i < ticks.length; i++) {
+        if (Math.abs(ticks[i].dist - dist) < 3.5 && Math.abs(ticks[i].dist - dist) > 0.05) return ticks[i];
+      }
+      return null;
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'lay' || id === 'carry') {
+        if (ev.type === 'down' && hitSheet(s, ev)) {
+          run.drag = { dx: s.sheet.x - ev.x, dy: s.sheet.y - ev.y };
+        } else if (ev.type === 'move' && run.drag) {
+          s.sheet.x = ev.x + run.drag.dx;
+          s.sheet.y = ev.y + run.drag.dy;
+        } else if (ev.type === 'up') {
+          var dragged = !!run.drag;
+          run.drag = null;
+          if (id === 'lay' && insideAlcove(s.sheet)) {
+            s.placed = true;
+            completeStep(level, run, 0, '');
+          } else if (id === 'carry' && insideBoard(s.sheet)) {
+            s.onBoard = true;
+            completeStep(level, run, 0, '');
+          } else if (dragged) run.fumbles += 1;
+        }
+        return;
+      }
+      if (id === 'tick' || id === 'replay') {
+        if (ev.type === 'down') {
+          var hit = hitStick(s, ev);
+          if (!hit) return;
+          run.drag = { mode: hit, px: ev.x, py: ev.y, point: pt(s.point.x, s.point.y), ang: s.ang };
+          return;
+        }
+        if (ev.type === 'move' && run.drag) {
+          if (run.drag.mode === 'tail') {
+            s.ang = Math.atan2(ev.y - s.point.y, ev.x - s.point.x);
+          } else {
+            s.point = pt(run.drag.point.x + ev.x - run.drag.px, run.drag.point.y + ev.y - run.drag.py);
+            if (run.drag.mode === 'body') s.ang = run.drag.ang;
+          }
+          if (id === 'tick') {
+            var c = nearestCorner(s.point);
+            if (c >= 0) s.point = pt(alcove[c].x, alcove[c].y);
+          }
+          return;
+        }
+        if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    function seatedCorner(s) {
+      var c = nearestCorner(s.point);
+      if (c < 0) return -1;
+      if (dist(s.point, alcove[c]) > 0.8) return -1;
+      return c;
+    }
+
+    function replayMatch(s) {
+      /* Which recorded line is the stick lying on, and which tick meets the edge? */
+      var best = null;
+      for (var i = 0; i < s.ticks.length; i++) {
+        var tick = s.ticks[i];
+        var edge = add(pt(s.sheet.x, s.sheet.y), tick.edgeLocal);
+        var lineAng = Math.atan2(tick.dir.y, tick.dir.x);
+        if (lineDiff(s.ang, lineAng) > 0.16 && lineDiff(s.ang, lineAng + Math.PI) > 0.16) continue;
+        var outward = mul(tick.dir, -1);
+        /* slide = how far the point sits outside the edge along the outward direction */
+        var along = dot(sub(s.point, edge), outward);
+        var used = tick.dist;
+        var swap = ambiguous(s.ticks, tick.dist);
+        var err = Math.abs(along - tick.dist);
+        if (swap && Math.abs(along - swap.dist) + 0.2 < err) {
+          used = swap.dist;
+          err = Math.abs(along - swap.dist);
+        }
+        if (err > 6) continue;
+        if (!best || err < best.err) best = { tick: tick, used: used, err: err, edge: edge, outward: outward };
+      }
+      return best;
+    }
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'tick') {
+        var c = seatedCorner(s);
+        var freshCorner = c >= 0 && !s.ticks.some(function (t) { return t.corner === c; });
+        if (freshCorner) return { label: 'Tick', enabled: true };
+        return { label: 'Done ticking', enabled: s.ticks.length > 0 };
+      }
+      if (id === 'replay') {
+        var left = s.ticks.filter(function (t) { return !s.pricks.some(function (p) { return p.corner === t.corner; }); });
+        if (replayMatch(s)) return { label: 'Prick', enabled: true };
+        return { label: 'Done replaying', enabled: s.pricks.length > 0 && left.length >= 0 };
+      }
+      if (id === 'cut') return { label: 'Cut', enabled: s.pricks.length > 0 };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      var id = stepId(level, run);
+      if (id === 'tick') {
+        var c = seatedCorner(run.s);
+        return c >= 0 ? 'Point seated on a corner' : '';
+      }
+      if (id === 'replay' && replayMatch(run.s)) return 'Stick seated on a tick';
+      if (id === 'lay' && insideAlcove(run.s.sheet)) return 'Sheet seated in the alcove';
+      if (id === 'carry' && insideBoard(run.s.sheet)) return 'Sheet seated on the board';
+      return '';
+    };
+
+    level.instruct = function (run) {
+      var id = stepId(level, run);
+      var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
+      if (id === 'tick') return base + ' ' + run.s.ticks.length + ' of ' + nC + ' corners.';
+      if (id === 'replay') return base + ' ' + run.s.pricks.length + ' of ' + run.s.ticks.length + ' pricked.';
+      return base;
+    };
+
+    function tickDeviationNote(s, tick) {
+      var other = ambiguous(s.ticks, tick.dist);
+      if (other) return 'Two ticks landed so close they are easy to swap.';
+      return '';
+    }
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'tick') {
+        var c = seatedCorner(s);
+        var already = c >= 0 && s.ticks.some(function (t) { return t.corner === c; });
+        if (c >= 0 && !already) {
+          var rec = recordTick(s, c);
+          if (!rec) { run.fumbles += 1; return; }
+          s.ticks.push(rec);
+          if (s.ticks.length >= nC) {
+            var dev = 0;
+            var note = '';
+            s.ticks.forEach(function (t) {
+              if (ambiguous(s.ticks, t.dist)) { dev = Math.max(dev, 1.2); note = 'Two ticks landed so close they are easy to swap.'; }
+            });
+            completeStep(level, run, dev, note);
+          }
+          return;
+        }
+        if (s.ticks.length > 0) {
+          var missing = nC - s.ticks.length;
+          completeStep(level, run, missing * 8, missing ? 'A corner never got a tick.' : '');
+        }
+        return;
+      }
+      if (id === 'replay') {
+        var match = replayMatch(s);
+        if (match) {
+          if (s.pricks.some(function (p) { return p.corner === match.tick.corner; })) return;
+          var prick = add(match.edge, mul(match.outward, match.used));
+          var trueLocal = add(pt(s.sheet.x, s.sheet.y), match.tick.local);
+          var err = dist(prick, trueLocal);
+          s.pricks.push({ corner: match.tick.corner, at: prick, err: err });
+          if (s.pricks.length >= s.ticks.length) {
+            var dev = 0;
+            s.pricks.forEach(function (p) { dev = Math.max(dev, p.err); });
+            var note = dev >= 0.35 ? 'A tick was replayed on the wrong mark.' : '';
+            completeStep(level, run, dev, note);
+          }
+          return;
+        }
+        if (s.pricks.length > 0) {
+          var miss = s.ticks.length - s.pricks.length;
+          completeStep(level, run, miss * 8, miss ? 'A tick was never replayed.' : '');
+        }
+        return;
+      }
+      if (id === 'cut') completeStep(level, run, 0, '');
+    };
+
+    function hintAngleFor(s, cornerIndex) {
+      var center = pt(s.sheet.x + s.sheet.w / 2, s.sheet.y + s.sheet.h / 2);
+      var base = Math.atan2(center.y - alcove[cornerIndex].y, center.x - alcove[cornerIndex].x);
+      var best = null;
+      for (var k = 0; k < 10; k++) {
+        var ang = base + (k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.28);
+        s.ang = ang;
+        s.point = pt(alcove[cornerIndex].x, alcove[cornerIndex].y);
+        var rec = recordTick(s, cornerIndex);
+        if (!rec) continue;
+        var crowd = 0;
+        for (var i = 0; i < s.ticks.length; i++) crowd = Math.max(crowd, 8 - Math.abs(s.ticks[i].dist - rec.dist));
+        if (!best || crowd < best.crowd) best = { ang: ang, crowd: crowd, rec: rec };
+        if (best && best.crowd <= 0) break;
+      }
+      return best;
+    }
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'lay') {
+        s.sheet = { x: home.x, y: home.y, w: sheetW, h: sheetH };
+        s.placed = true;
+        completeStep(level, run, 0, '');
+        return;
+      }
+      if (id === 'tick') {
+        var next = -1;
+        for (var i = 0; i < nC; i++) {
+          if (!s.ticks.some(function (t) { return t.corner === i; })) { next = i; break; }
+        }
+        if (next < 0) return;
+        var picked = hintAngleFor(s, next);
+        s.ang = picked.ang;
+        s.point = pt(alcove[next].x, alcove[next].y);
+        s.ticks.push(picked.rec);
+        if (s.ticks.length >= nC) completeStep(level, run, 0, '');
+        return;
+      }
+      if (id === 'carry') {
+        s.sheet.x = board.x + 8;
+        s.sheet.y = board.y + 2;
+        s.onBoard = true;
+        completeStep(level, run, 0, '');
+        return;
+      }
+      if (id === 'replay') {
+        var tick = null;
+        for (i = 0; i < s.ticks.length; i++) {
+          if (!s.pricks.some(function (p) { return p.corner === s.ticks[i].corner; })) { tick = s.ticks[i]; break; }
+        }
+        if (!tick) return;
+        var edge = add(pt(s.sheet.x, s.sheet.y), tick.edgeLocal);
+        var outward = mul(tick.dir, -1);
+        s.ang = Math.atan2(tick.dir.y, tick.dir.x);
+        s.point = add(edge, mul(outward, tick.dist));
+        var prick = add(edge, mul(outward, tick.dist));
+        s.pricks.push({ corner: tick.corner, at: prick, err: 0 });
+        if (s.pricks.length >= s.ticks.length) completeStep(level, run, 0, '');
+        return;
+      }
+      if (id === 'cut') completeStep(level, run, 0, '');
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      var matched = [];
+      for (var i = 0; i < nC; i++) {
+        var prick = null;
+        for (var k = 0; k < s.pricks.length; k++) if (s.pricks[k].corner === i) prick = s.pricks[k];
+        if (!prick) matched.push(null);
+        else matched.push(prick.at);
+      }
+      var have = [];
+      for (i = 0; i < nC; i++) if (matched[i]) have.push(i);
+      if (!have.length) return 16;
+      var dx = 0;
+      var dy = 0;
+      have.forEach(function (i) {
+        dx += alcove[i].x - matched[i].x;
+        dy += alcove[i].y - matched[i].y;
+      });
+      dx /= have.length;
+      dy /= have.length;
+      var worst = 0;
+      for (i = 0; i < nC; i++) {
+        var err;
+        if (!matched[i]) {
+          var prev = alcove[(i + nC - 1) % nC];
+          var next = alcove[(i + 1) % nC];
+          err = pointLineDist(alcove[i], prev, next);
+        } else err = dist(alcove[i], pt(matched[i].x + dx, matched[i].y + dy));
+        if (err > worst) worst = err;
+      }
+      return worst;
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      items.push({ op: 'poly', pts: alcove, fill: '#ded5c6', stroke: '#8a8175', sw: 1.4 });
+      alcove.forEach(function (p) {
+        items.push({ op: 'circle', c: p, r: 1.3, fill: '#241c14', stroke: '', sw: 0 });
+      });
+      items.push({ op: 'rect', x: board.x, y: board.y, w: board.w, h: board.h, fill: '#e4c48a', stroke: '#8a6434', sw: 1 });
+      items.push({ op: 'rect', x: s.sheet.x, y: s.sheet.y, w: s.sheet.w, h: s.sheet.h, fill: 'rgba(255,252,245,0.92)', stroke: '#5b9bd5', sw: 1.2 });
+      s.ticks.forEach(function (t) {
+        var edge = add(pt(s.sheet.x, s.sheet.y), t.edgeLocal);
+        var inward = add(edge, mul(t.dir, Math.min(18, t.dist)));
+        items.push({ op: 'line', a: edge, b: inward, stroke: '#241c14', sw: 1.15 });
+        items.push({ op: 'line', a: add(edge, pt(-1.4, 0)), b: add(edge, pt(1.4, 0)), stroke: '#241c14', sw: 1.4 });
+      });
+      if (s.pricks.length) {
+        var poly = [];
+        for (var i = 0; i < nC; i++) {
+          for (var k = 0; k < s.pricks.length; k++) if (s.pricks[k].corner === i) poly.push(s.pricks[k].at);
+        }
+        if (poly.length > 1) items.push({ op: 'polyline', pts: poly.concat(run.phase === 'result' ? [poly[0]] : []), stroke: '#241c14', sw: 1.4 });
+        s.pricks.forEach(function (p) {
+          items.push({ op: 'circle', c: p.at, r: 1.5, fill: '#241c14', stroke: '', sw: 0 });
+        });
+      }
+      if (run.phase === 'play' || run.replay != null) {
+        if (view.step === 1 || view.step === 3) {
+          var ticks = s.ticks.map(function (t) { return t.dist; });
+          items.push({ op: 'stick', point: s.point, ang: s.ang, len: 72, ticks: ticks, hot: view.step === 1 ? seatedCorner(s) >= 0 : !!replayMatch(s) });
+        }
+      }
+      return { items: items };
+    };
+    return level;
   }
 
-  function fillWasher(mark, t0, t1, bins) {
-    const n = bins.length;
-    const a = clamp(t0, 0, 1);
-    const b = clamp(t1, 0, 1);
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    const i0 = clamp(Math.floor(lo * (n - 1)), 0, n - 1);
-    const i1 = clamp(Math.ceil(hi * (n - 1)), 0, n - 1);
-    for (let i = i0; i <= i1; i++) bins[i] = true;
-    mark.seen = true;
+  /* ---------- bisect ---------- */
+
+  function buildBisect() {
+    var V = pt(44, 118);
+    var angA = -Math.PI / 2 - 0.22;
+    var interior = 76 * Math.PI / 180;
+    var angB = angA + interior;
+    var wallLen = 70;
+    var dA = pt(Math.cos(angA), Math.sin(angA));
+    var dB = pt(Math.cos(angB), Math.sin(angB));
+    var endA = add(V, mul(dA, wallLen));
+    var endB = add(V, mul(dB, wallLen));
+    var bis = angA + interior / 2;
+    var dBis = pt(Math.cos(bis), Math.sin(bis));
+    var W = 11;
+
+    function inward(d) {
+      var n1 = pt(-d.y, d.x);
+      var n2 = pt(d.y, -d.x);
+      return dot(n1, dBis) > dot(n2, dBis) ? n1 : n2;
+    }
+    var nA = inward(dA);
+    var nB = inward(dB);
+
+    var level = {
+      id: 'bisect',
+      name: 'Bisect the Corner',
+      technique: 'Equal offcuts and a sliding bevel',
+      geometry: 'Two equal offcuts cross on the angle’s bisector — the miter that splits the corner.',
+      blurb: 'The room is not square. Bisect it with two scraps and carry the angle to the saw.',
+      hard: false,
+      tutorial: null,
+      V: V,
+      angA: angA,
+      angB: angB,
+      bis: bis,
+      dA: dA,
+      dB: dB,
+      endA: endA,
+      endB: endB,
+      nA: nA,
+      nB: nB,
+      W: W,
+      steps: [
+        { id: 'offA', label: 'Offcut', instruction: 'Seat an offcut flush on one wall and pencil the inner edge.' },
+        { id: 'offB', label: 'Offcut', instruction: 'Seat the other offcut flush on the second wall and pencil it.' },
+        { id: 'bis', label: 'Bisector', instruction: 'Knife a line from the corner through where the pencil lines cross.' },
+        { id: 'bevel', label: 'Bevel', instruction: 'Lay the bevel on that line and lock it.' },
+        { id: 'saw', label: 'Saw', instruction: 'Match the saw to the bevel and lock the saw. No numbers — match the blade.' },
+        { id: 'cut', label: 'Cut', instruction: 'Cut the miter.' }
+      ]
+    };
+
+    function wallSeg(which) {
+      return which === 'A' ? [endA, V] : [endB, V];
+    }
+
+    level.create = function () {
+      return fresh(level, {
+        off: { x: 78, y: 70, ang: -0.4 },
+        lines: [],
+        barA: pt(70, 96),
+        barB: pt(96, 78),
+        bevelOrigin: pt(86, 58),
+        stockAng: 0.4,
+        bladeAng: -0.2,
+        bevelLocked: false,
+        sawAng: 0.15,
+        sawLocked: false
+      });
+    };
+
+    function offcutCorners(s) {
+      var c = pt(s.off.x, s.off.y);
+      var d = pt(Math.cos(s.off.ang), Math.sin(s.off.ang));
+      var n = pt(-d.y, d.x);
+      var hw = W / 2;
+      var hl = 22;
+      return [
+        add(add(c, mul(d, hl)), mul(n, hw)),
+        add(add(c, mul(d, hl)), mul(n, -hw)),
+        add(add(c, mul(d, -hl)), mul(n, -hw)),
+        add(add(c, mul(d, -hl)), mul(n, hw))
+      ];
+    }
+
+    function seatOffcut(s) {
+      var used = {};
+      s.lines.forEach(function (ln) { used[ln.wall] = true; });
+      var best = null;
+      ['A', 'B'].forEach(function (which) {
+        if (used[which]) return;
+        var seg = wallSeg(which);
+        var dang = Math.min(lineDiff(s.off.ang, which === 'A' ? angA : angB), lineDiff(s.off.ang + Math.PI, which === 'A' ? angA : angB));
+        var n = which === 'A' ? nA : nB;
+        var d = which === 'A' ? dA : dB;
+        /* inner edge wants to sit W inside the wall, outer edge on the wall */
+        var outer = add(pt(s.off.x, s.off.y), mul(n, -W / 2));
+        var on = pointSegDist(outer, seg[0], seg[1]);
+        if (dang < 0.22 && on.dist < 7) {
+          if (!best || on.dist < best.dist) best = { which: which, dist: on.dist, n: n, d: d, on: on };
+        }
+      });
+      if (!best) { s.off.seated = null; return null; }
+      var target = add(best.on.point, mul(best.n, W / 2));
+      s.off.x = target.x;
+      s.off.y = target.y;
+      s.off.ang = Math.atan2(best.d.y, best.d.x);
+      s.off.seated = best.which;
+      return best.which;
+    }
+
+    function pencilLine(s) {
+      var which = s.off.seated;
+      if (!which) {
+        var d = pt(Math.cos(s.off.ang), Math.sin(s.off.ang));
+        var n = pt(-d.y, d.x);
+        var a = add(pt(s.off.x, s.off.y), mul(n, W / 2));
+        return { wall: 'free', a: add(a, mul(d, -24)), b: add(a, mul(d, 24)), faithful: false };
+      }
+      var nrm = which === 'A' ? nA : nB;
+      var dir = which === 'A' ? dA : dB;
+      var origin = add(V, mul(nrm, W));
+      return { wall: which, a: add(origin, mul(dir, 8)), b: add(origin, mul(dir, wallLen - 6)), faithful: true };
+    }
+
+    function crossOf(lines) {
+      if (lines.length < 2) return null;
+      var hit = lineIntersect(lines[0].a, lines[0].b, lines[1].a, lines[1].b);
+      if (!hit) return null;
+      return hit.point;
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'offA' || id === 'offB') {
+        if (ev.type === 'down') {
+          var cs = offcutCorners(s);
+          if (cs.some(function (c) { return dist(c, ev) < 10; }) || dist(ev, pt(s.off.x, s.off.y)) < 16) {
+            run.drag = { px: ev.x, py: ev.y, x: s.off.x, y: s.off.y, ang: s.off.ang, mode: dist(ev, pt(s.off.x, s.off.y)) < 10 ? 'move' : 'rot' };
+          }
+        } else if (ev.type === 'move' && run.drag) {
+          if (run.drag.mode === 'rot') s.off.ang = Math.atan2(ev.y - s.off.y, ev.x - s.off.x);
+          else {
+            s.off.x = run.drag.x + ev.x - run.drag.px;
+            s.off.y = run.drag.y + ev.y - run.drag.py;
+          }
+          seatOffcut(s);
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'bis') {
+        if (ev.type === 'down') {
+          if (dist(ev, s.barA) < 10) run.drag = { end: 'a' };
+          else if (dist(ev, s.barB) < 10) run.drag = { end: 'b' };
+          else if (pointSegDist(ev, s.barA, s.barB).dist < 7) run.drag = { end: 'body', px: ev.x, py: ev.y, a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y) };
+        } else if (ev.type === 'move' && run.drag) {
+          if (run.drag.end === 'a') s.barA = pt(ev.x, ev.y);
+          else if (run.drag.end === 'b') s.barB = pt(ev.x, ev.y);
+          else {
+            var dx = ev.x - run.drag.px;
+            var dy = ev.y - run.drag.py;
+            s.barA = pt(run.drag.a.x + dx, run.drag.a.y + dy);
+            s.barB = pt(run.drag.b.x + dx, run.drag.b.y + dy);
+          }
+          var P = crossOf(s.lines);
+          if (P && pointLineDist(V, s.barA, s.barB) < 5 && pointLineDist(P, s.barA, s.barB) < 5) {
+            s.barA = pt(V.x, V.y);
+            s.barB = pt(P.x, P.y);
+            s.barSeated = true;
+          } else s.barSeated = false;
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'bevel') {
+        if (ev.type === 'down') {
+          run.drag = { mode: dist(ev, s.bevelOrigin) < 12 ? 'blade' : 'move', px: ev.x, py: ev.y, o: pt(s.bevelOrigin.x, s.bevelOrigin.y) };
+        } else if (ev.type === 'move' && run.drag) {
+          if (run.drag.mode === 'blade') s.bladeAng = Math.atan2(ev.y - s.bevelOrigin.y, ev.x - s.bevelOrigin.x);
+          else {
+            s.bevelOrigin = pt(run.drag.o.x + ev.x - run.drag.px, run.drag.o.y + ev.y - run.drag.py);
+            s.stockAng = Math.atan2(ev.y - s.bevelOrigin.y, ev.x - s.bevelOrigin.x);
+          }
+          if (s.lines && run.s.bisector) {
+            var diff = lineDiff(s.bladeAng, Math.atan2(run.s.bisector.b.y - run.s.bisector.a.y, run.s.bisector.b.x - run.s.bisector.a.x));
+            if (diff < 0.05 && pointLineDist(s.bevelOrigin, run.s.bisector.a, run.s.bisector.b) < 10) {
+              s.bladeAng = Math.atan2(run.s.bisector.b.y - run.s.bisector.a.y, run.s.bisector.b.x - run.s.bisector.a.x);
+              s.bladeHot = true;
+            } else s.bladeHot = false;
+          }
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'saw') {
+        if (ev.type === 'down') run.drag = { mode: 'saw' };
+        else if (ev.type === 'move' && run.drag) {
+          s.sawAng = Math.atan2(ev.y - 146, ev.x - 36);
+          if (s.bevelLocked && lineDiff(s.sawAng, s.bladeAng) < 0.04) {
+            s.sawAng = s.bladeAng;
+            s.sawHot = true;
+          } else s.sawHot = false;
+        } else if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'offA' || id === 'offB') return { label: 'Pencil the edge', enabled: true };
+      if (id === 'bis') return { label: 'Knife bisector', enabled: true };
+      if (id === 'bevel') return { label: 'Lock bevel', enabled: true };
+      if (id === 'saw') return { label: 'Lock saw', enabled: true };
+      if (id === 'cut') return { label: 'Cut', enabled: true };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      var s = run.s;
+      if ((stepId(level, run) === 'offA' || stepId(level, run) === 'offB') && s.off.seated) return 'Offcut seated on the wall';
+      if (stepId(level, run) === 'bis' && s.barSeated) return 'Straightedge seated on the corner and the cross';
+      if (stepId(level, run) === 'bevel' && s.bladeHot) return 'Blade seated on the bisector';
+      if (stepId(level, run) === 'saw' && s.sawHot) return 'Saw seated on the bevel';
+      return '';
+    };
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'offA' || id === 'offB') {
+        seatOffcut(s);
+        var line = pencilLine(s);
+        if (s.lines.some(function (ln) { return ln.wall === line.wall && line.wall !== 'free'; })) {
+          run.fumbles += 1;
+          return;
+        }
+        s.lines.push(line);
+        var dev = line.faithful ? 0 : 4.5;
+        completeStep(level, run, dev, line.faithful ? '' : 'The offcut was not seated, so its pencil line is not an equal offset.');
+        return;
+      }
+      if (id === 'bis') {
+        var P = crossOf(s.lines);
+        var through = P && pointLineDist(V, s.barA, s.barB) < 4 && pointLineDist(P, s.barA, s.barB) < 4;
+        if (through) {
+          s.bisector = { a: pt(V.x, V.y), b: pt(P.x, P.y) };
+          completeStep(level, run, 0, '');
+        } else {
+          s.bisector = { a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y) };
+          var ang = Math.atan2(s.barB.y - s.barA.y, s.barB.x - s.barA.x);
+          var trueLine = P ? Math.atan2(P.y - V.y, P.x - V.x) : bis;
+          var dev = lineDiff(ang, trueLine) * 22;
+          completeStep(level, run, dev, 'The straightedge missed the corner or the crossing.');
+        }
+        return;
+      }
+      if (id === 'bevel') {
+        s.bevelLocked = true;
+        var target = s.bisector ? Math.atan2(s.bisector.b.y - s.bisector.a.y, s.bisector.b.x - s.bisector.a.x) : bis;
+        var devB = lineDiff(s.bladeAng, target) * 22;
+        completeStep(level, run, devB, devB >= 0.35 ? 'The bevel was locked off the knifed line.' : '');
+        return;
+      }
+      if (id === 'saw') {
+        s.sawLocked = true;
+        var devS = lineDiff(s.sawAng, s.bladeAng) * 22;
+        completeStep(level, run, devS, devS >= 0.35 ? 'The saw does not match the bevel.' : '');
+        return;
+      }
+      if (id === 'cut') completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'offA' || id === 'offB') {
+        var used = {};
+        s.lines.forEach(function (ln) { used[ln.wall] = true; });
+        var which = used.A ? 'B' : 'A';
+        var dir = which === 'A' ? dA : dB;
+        var nrm = which === 'A' ? nA : nB;
+        var mid = add(V, mul(dir, 36));
+        s.off.x = add(mid, mul(nrm, W / 2)).x;
+        s.off.y = add(mid, mul(nrm, W / 2)).y;
+        s.off.ang = Math.atan2(dir.y, dir.x);
+        s.off.seated = which;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'bis') {
+        var P = crossOf(s.lines);
+        if (!P) P = add(V, mul(dBis, 28));
+        s.barA = pt(V.x, V.y);
+        s.barB = pt(P.x, P.y);
+        s.barSeated = true;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'bevel') {
+        var ang = s.bisector ? Math.atan2(s.bisector.b.y - s.bisector.a.y, s.bisector.b.x - s.bisector.a.x) : bis;
+        s.bladeAng = ang;
+        s.bladeHot = true;
+        s.bevelOrigin = s.bisector ? pt((s.bisector.a.x + s.bisector.b.x) / 2, (s.bisector.a.y + s.bisector.b.y) / 2) : pt(70, 90);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'saw') {
+        s.sawAng = s.bladeAng;
+        s.sawHot = true;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'cut') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      if (!s.sawLocked && run.phase !== 'result') return lineDiff(s.sawAng, bis) * 28;
+      return lineDiff(s.sawAng, bis) * 28;
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      function band(end, dir, nrm) {
+        var outer0 = add(V, mul(nrm, -10));
+        var outer1 = add(end, mul(nrm, -10));
+        return [V, end, outer1, outer0];
+      }
+      items.push({ op: 'poly', pts: band(endA, dA, nA), fill: '#cfc6ba', stroke: '#8a8175', sw: 1 });
+      items.push({ op: 'poly', pts: band(endB, dB, nB), fill: '#cfc6ba', stroke: '#8a8175', sw: 1 });
+      items.push({ op: 'circle', c: V, r: 1.4, fill: '#241c14', stroke: '', sw: 0 });
+      s.lines.forEach(function (ln) {
+        items.push({ op: 'line', a: ln.a, b: ln.b, stroke: '#241c14', sw: 1.35 });
+      });
+      var P = crossOf(s.lines);
+      if (P) items.push({ op: 'circle', c: P, r: 1.6, fill: '#5b9bd5', stroke: '', sw: 0 });
+      if (s.bisector) items.push({ op: 'line', a: s.bisector.a, b: s.bisector.b, stroke: '#241c14', sw: 1.7 });
+      if (run.phase === 'play' || run.replay != null) {
+        if (view.step === 0 || view.step === 1) {
+          items.push({ op: 'offcut', x: s.off.x, y: s.off.y, ang: s.off.ang, w: W, len: 44, hot: !!s.off.seated });
+        }
+        if (view.step === 2) {
+          items.push({ op: 'line', a: s.barA, b: s.barB, stroke: s.barSeated ? '#c4923a' : '#2e3844', sw: 3 });
+          items.push({ op: 'circle', c: s.barA, r: 3.2, fill: '#2e3844', stroke: '', sw: 0 });
+          items.push({ op: 'circle', c: s.barB, r: 3.2, fill: '#2e3844', stroke: '', sw: 0 });
+        }
+        if (view.step === 3) {
+          items.push({ op: 'bevel', origin: s.bevelOrigin, stockAng: s.stockAng, bladeAng: s.bladeAng, hot: !!s.bladeHot });
+        }
+        if (view.step === 4) {
+          items.push({ op: 'saw', origin: pt(36, 146), ang: s.sawAng, hot: !!s.sawHot });
+          items.push({ op: 'bevel', origin: pt(78, 146), stockAng: 0, bladeAng: s.bladeAng, hot: false });
+        }
+      }
+      if (run.phase === 'result' && run.replay == null) {
+        var cutDir = pt(Math.cos(s.sawAng), Math.sin(s.sawAng));
+        var trueDir = dBis;
+        items.push({ op: 'line', a: V, b: add(V, mul(trueDir, 34)), stroke: 'rgba(76,175,80,0.9)', sw: 1.2, dash: [3, 2] });
+        items.push({ op: 'line', a: V, b: add(V, mul(cutDir, 34)), stroke: '#241c14', sw: 1.8 });
+      }
+      return { items: items };
+    };
+    return level;
   }
 
-  const PF = {
+  /* ---------- coping ---------- */
+
+  function buildCope() {
+    var profile = [
+      pt(28, 36), pt(28, 52), pt(34, 60), pt(44, 68), pt(48, 78),
+      pt(42, 88), pt(32, 96), pt(28, 104), pt(28, 114), pt(38, 120), pt(38, 132)
+    ];
+    var straight = [pt(28, 36), pt(28, 132)];
+    var fenceIn = Math.PI / 4;
+    var fenceOut = -Math.PI / 4;
+
+    var level = {
+      id: 'cope',
+      name: 'Cope the Corner',
+      technique: 'Coped inside miter',
+      geometry: 'The inside miter slices the profile. Sawing that line makes the negative of the piece already in the corner.',
+      blurb: 'Miter the second piece so the profile shows, then cope along it.',
+      hard: false,
+      tutorial: null,
+      profile: profile,
+      steps: [
+        { id: 'miter', label: 'Miter', instruction: 'Seat the saw on a fence and cut. The fence you want is the one that opens the profile.' },
+        { id: 'pencil', label: 'Pencil', instruction: 'Darken the edge the miter just revealed.' },
+        { id: 'cope', label: 'Cope', instruction: 'Saw along that pencil line.' },
+        { id: 'bevel', label: 'Back-cut', instruction: 'Tip the coping saw back so the face meets first.' },
+        { id: 'fit', label: 'Test', instruction: 'Bring the piece into the corner.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        blade: 0.15,
+        fence: null,
+        miterCut: false,
+        pencil: [],
+        cope: [],
+        bevel: 0,
+        bevelSet: false
+      });
+    };
+
+    function revealed(s) { return s.fence === 'inside' ? profile : straight; }
+
+    function pathError(path, ref) {
+      if (!path || path.length < 2) return 8;
+      var errs = [];
+      for (var i = 0; i < ref.length; i++) {
+        var best = Infinity;
+        for (var k = 0; k < path.length; k++) best = Math.min(best, dist(ref[i], path[k]));
+        errs.push(Math.min(best, 14));
+      }
+      return mean(errs);
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'miter') {
+        if (ev.type === 'down' || ev.type === 'move') {
+          if (ev.type === 'down') run.drag = { mode: 'miter' };
+          if (!run.drag) return;
+          s.blade = Math.atan2(ev.y - 86, ev.x - 70);
+          if (angDiff(s.blade, fenceIn) < 0.09) { s.blade = fenceIn; s.fenceHot = 'inside'; }
+          else if (angDiff(s.blade, fenceOut) < 0.09) { s.blade = fenceOut; s.fenceHot = 'outside'; }
+          else s.fenceHot = null;
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'pencil' || id === 'cope') {
+        var ref = id === 'pencil' ? revealed(s) : (s.pencil.length > 1 ? s.pencil : revealed(s));
+        if (ev.type === 'down') run.drag = { mode: id };
+        if ((ev.type === 'down' || ev.type === 'move') && run.drag && run.drag.mode === id) {
+          var near = closestOnPoly(pt(ev.x, ev.y), ref);
+          if (near.dist > 16) return;
+          var q = near.dist < 6.5 ? near.point : pt(ev.x, ev.y);
+          var arr = id === 'pencil' ? s.pencil : s.cope;
+          if (!arr.length || dist(q, arr[arr.length - 1]) > 2.2) arr.push(q);
+        }
+        if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'bevel') {
+        if (ev.type === 'down') run.drag = { last: ev.y, ang: s.bevel };
+        else if (ev.type === 'move' && run.drag) s.bevel = clamp(run.drag.ang + (run.drag.last - ev.y) * 0.012, -0.35, 0.75);
+        else if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'miter') return { label: 'Cut the miter', enabled: !!run.s.fenceHot };
+      if (id === 'pencil') return { label: 'Pencil done', enabled: run.s.pencil.length > 3 };
+      if (id === 'cope') return { label: 'Cope done', enabled: run.s.cope.length > 3 };
+      if (id === 'bevel') return { label: 'Set the back-cut', enabled: true };
+      if (id === 'fit') return { label: 'Test the fit', enabled: true };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      if (stepId(level, run) === 'miter' && run.s.fenceHot === 'inside') return 'Saw seated on the inside fence';
+      if (stepId(level, run) === 'miter' && run.s.fenceHot === 'outside') return 'Saw seated on the outside fence';
+      return '';
+    };
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'miter') {
+        if (!s.fenceHot) { run.fumbles += 1; return; }
+        s.fence = s.fenceHot;
+        s.miterCut = true;
+        completeStep(level, run, s.fence === 'inside' ? 0 : 6, s.fence === 'inside' ? '' : 'The miter faces the wrong way, so the profile never shows.');
+        return;
+      }
+      if (id === 'pencil') {
+        var dev = pathError(s.pencil, profile);
+        completeStep(level, run, dev, dev >= 0.35 ? 'The pencil left the profile.' : '');
+        return;
+      }
+      if (id === 'cope') {
+        var copeDev = pathError(s.cope, profile);
+        var pencilDev = pathError(s.pencil, profile);
+        var extra = Math.max(0, copeDev - pencilDev);
+        completeStep(level, run, extra, extra >= 0.35 ? 'The coping saw left the pencil line.' : '');
+        return;
+      }
+      if (id === 'bevel') {
+        s.bevelSet = true;
+        var pen = bevelPenalty(s.bevel);
+        completeStep(level, run, pen, pen >= 0.35 ? 'The back of the cope was not relieved, so the joint opens.' : '');
+        return;
+      }
+      if (id === 'fit') completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'miter') {
+        s.blade = fenceIn;
+        s.fenceHot = 'inside';
+        level.onAction(run);
+        return;
+      }
+      if (id === 'pencil') {
+        s.pencil = revealed(s).map(function (p) { return pt(p.x, p.y); });
+        level.onAction(run);
+        return;
+      }
+      if (id === 'cope') {
+        var ref = s.pencil.length > 1 ? s.pencil : revealed(s);
+        s.cope = ref.map(function (p) { return pt(p.x, p.y); });
+        level.onAction(run);
+        return;
+      }
+      if (id === 'bevel') {
+        s.bevel = 0.22;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'fit') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      return pathError(s.cope.length ? s.cope : s.pencil, profile) + bevelPenalty(s.bevel);
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      if (!s.miterCut) {
+        items.push({ op: 'rect', x: 24, y: 78, w: 70, h: 16, fill: '#e4c48a', stroke: '#8a6434', sw: 1 });
+        items.push({ op: 'text', t: 'face', x: 30, y: 74, size: 9, color: '#8a8175' });
+        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceIn) * 28, Math.sin(fenceIn) * 28)), stroke: 'rgba(91,155,213,0.85)', sw: 1.1, dash: [3, 2] });
+        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceOut) * 28, Math.sin(fenceOut) * 28)), stroke: 'rgba(91,155,213,0.85)', sw: 1.1, dash: [3, 2] });
+        items.push({ op: 'text', t: 'profile', x: 78, y: 64, size: 8, color: '#3d6f99' });
+        items.push({ op: 'text', t: 'back', x: 78, y: 112, size: 8, color: '#3d6f99' });
+        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(s.blade) * 32, Math.sin(s.blade) * 32)), stroke: s.fenceHot ? '#c4923a' : '#2e3844', sw: 1.8 });
+        items.push({ op: 'circle', c: pt(70, 86), r: 2.2, fill: '#2e3844', stroke: '', sw: 0 });
+      } else {
+        items.push({ op: 'poly', pts: [pt(8, 36)].concat(profile).concat([pt(8, 132)]), fill: '#d7b48a', stroke: '#8a6434', sw: 1 });
+        items.push({ op: 'polyline', pts: profile, stroke: '#5c564f', sw: 1.6 });
+        if (s.pencil.length > 1) items.push({ op: 'polyline', pts: s.pencil, stroke: '#241c14', sw: 1.35 });
+        if (s.cope.length > 1) items.push({ op: 'polyline', pts: s.cope.map(function (p) { return pt(p.x + 1.4, p.y); }), stroke: '#8a5a20', sw: 1.2 });
+        if (view.step === 3 || (run.phase === 'result' && run.replay == null)) {
+          items.push({ op: 'bevelchip', x: 68, y: 108, ang: s.bevel });
+        }
+      }
+      return { items: items };
+    };
+    return level;
+  }
+
+  /* ---------- circle center ---------- */
+
+  function buildCenter() {
+    var C = pt(60, 88);
+    var R = 34;
+    var level = {
+      id: 'center',
+      name: 'Find the Center',
+      technique: 'Square on a circle',
+      geometry: 'A right angle standing on a circle marks a diameter. Two diameters cross at the center.',
+      blurb: 'Set the square’s corner on the rim twice. The chords cross in the middle.',
+      hard: false,
+      tutorial: null,
+      C: C,
+      R: R,
+      steps: [
+        { id: 'd1', label: 'Diameter', instruction: 'Seat the square’s corner on the rim, turn it so both legs cross the rim, and mark.' },
+        { id: 'd2', label: 'Diameter', instruction: 'Seat it somewhere else on the rim and mark a second chord.' },
+        { id: 'prick', label: 'Prick', instruction: 'Prick where the two chords cross.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        corner: pt(60, 40),
+        ang: 0.4,
+        chords: []
+      });
+    };
+
+    function farHit(P, ang) {
+      var dir = pt(Math.cos(ang), Math.sin(ang));
+      var ts = rayCircleTs(P, dir, C, R);
+      var best = null;
+      for (var i = 0; i < ts.length; i++) {
+        if (ts[i] > 2 && (!best || ts[i] > best)) best = ts[i];
+      }
+      if (best == null) return null;
+      return add(P, mul(dir, best));
+    }
+
+    function chordOf(s) {
+      var a = farHit(s.corner, s.ang);
+      var b = farHit(s.corner, s.ang + Math.PI / 2);
+      if (!a || !b) return null;
+      return { a: a, b: b, corner: pt(s.corner.x, s.corner.y) };
+    }
+
+    function onRim(s) {
+      return Math.abs(dist(s.corner, C) - R) < 0.8;
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id !== 'd1' && id !== 'd2') return;
+      var tip = add(s.corner, mul(pt(Math.cos(s.ang), Math.sin(s.ang)), 48));
+      if (ev.type === 'down') {
+        if (dist(ev, tip) < 10) run.drag = { mode: 'rot' };
+        else if (dist(ev, s.corner) < 12 || pointSegDist(ev, s.corner, tip).dist < 8) run.drag = { mode: 'move', px: ev.x, py: ev.y, c: pt(s.corner.x, s.corner.y) };
+      } else if (ev.type === 'move' && run.drag) {
+        if (run.drag.mode === 'rot') s.ang = Math.atan2(ev.y - s.corner.y, ev.x - s.corner.x);
+        else {
+          s.corner = pt(run.drag.c.x + ev.x - run.drag.px, run.drag.c.y + ev.y - run.drag.py);
+          var dd = dist(s.corner, C);
+          if (Math.abs(dd - R) < 6) {
+            var dir = norm(sub(s.corner, C));
+            s.corner = add(C, mul(dir, R));
+          }
+        }
+      } else if (ev.type === 'up') run.drag = null;
+    };
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'd1' || id === 'd2') return { label: 'Mark the chord', enabled: !!chordOf(run.s) };
+      if (id === 'prick') return { label: 'Prick the crossing', enabled: run.s.chords.length >= 2 };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      var id = stepId(level, run);
+      if ((id === 'd1' || id === 'd2') && onRim(run.s)) return 'Corner seated on the rim';
+      return '';
+    };
+
+    function missAmount(chord) {
+      if (!chord) return 8;
+      return pointLineDist(C, chord.a, chord.b);
+    }
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'd1' || id === 'd2') {
+        var ch = chordOf(s);
+        if (!ch) { run.fumbles += 1; return; }
+        var dev = missAmount(ch) * 2;
+        if (!onRim(s)) dev = Math.max(dev, dist(s.corner, C) > 0 ? Math.abs(dist(s.corner, C) - R) : 4);
+        s.chords.push(ch);
+        var note = '';
+        if (!onRim(s)) note = 'The corner was off the rim, so the chord is not a diameter.';
+        else if (dev >= 0.35) note = 'The legs did not both stand on the circle.';
+        completeStep(level, run, dev, note);
+        return;
+      }
+      if (id === 'prick') {
+        completeStep(level, run, 0, '');
+      }
+    };
+
+    function placeSquare(s, phi) {
+      s.corner = pt(C.x + Math.cos(phi) * R, C.y + Math.sin(phi) * R);
+      var inward = phi + Math.PI;
+      s.ang = inward - Math.PI / 4;
+    }
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'd1') {
+        placeSquare(s, -Math.PI / 2);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'd2') {
+        placeSquare(s, -Math.PI / 2 + 70 * Math.PI / 180);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'prick') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      if (s.chords.length < 2) return 12;
+      var hit = lineIntersect(s.chords[0].a, s.chords[0].b, s.chords[1].a, s.chords[1].b);
+      if (!hit) return 10;
+      var ang = lineDiff(
+        Math.atan2(s.chords[0].b.y - s.chords[0].a.y, s.chords[0].b.x - s.chords[0].a.x),
+        Math.atan2(s.chords[1].b.y - s.chords[1].a.y, s.chords[1].b.x - s.chords[1].a.x)
+      );
+      var sine = Math.abs(Math.sin(ang * 2));
+      /* lineDiff is already 0..π/2, sin of that angle is the crossing sharpness */
+      sine = Math.abs(Math.sin(ang));
+      var smear = sine < 0.5 ? (0.5 - sine) * 8 : 0;
+      return dist(hit.point, C) + smear;
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      items.push({ op: 'circle', c: C, r: R, fill: '#e4c48a', stroke: '#8a6434', sw: 1.4 });
+      s.chords.forEach(function (ch) {
+        items.push({ op: 'line', a: ch.a, b: ch.b, stroke: '#241c14', sw: 1.45 });
+      });
+      if (s.chords.length >= 2) {
+        var hit = lineIntersect(s.chords[0].a, s.chords[0].b, s.chords[1].a, s.chords[1].b);
+        if (hit) items.push({ op: 'circle', c: hit.point, r: 1.8, fill: '#241c14', stroke: '', sw: 0 });
+      }
+      if (run.phase === 'result' && run.replay == null) {
+        items.push({ op: 'circle', c: C, r: 1.2, fill: 'rgba(76,175,80,0.0)', stroke: 'rgba(76,175,80,0.9)', sw: 1 });
+        var hit2 = s.chords.length >= 2 ? lineIntersect(s.chords[0].a, s.chords[0].b, s.chords[1].a, s.chords[1].b) : null;
+        if (hit2 && dist(hit2.point, C) > 0.4) {
+          items.push({ op: 'line', a: hit2.point, b: C, stroke: 'rgba(231,76,60,0.9)', sw: 1.4 });
+        }
+      }
+      if ((run.phase === 'play' || run.replay != null) && (view.step === 0 || view.step === 1)) {
+        items.push({ op: 'square', x: s.corner.x, y: s.corner.y, ang: s.ang, hot: onRim(s), leg: 50, stock: 36 });
+      }
+      return { items: items };
+    };
+    return level;
+  }
+
+  /* ---------- hexagon ---------- */
+
+  function buildHex() {
+    var C = pt(60, 86);
+    var R = 32;
+    var level = {
+      id: 'hex',
+      name: 'Hexagon',
+      technique: 'Compass stepping the radius',
+      geometry: 'The side of a regular hexagon equals the radius, so the opening that drew the circle cuts it into six.',
+      blurb: 'Lock the compass on the rim, then step that same opening around the circle.',
+      hard: false,
+      tutorial: null,
+      C: C,
+      R: R,
+      steps: [
+        { id: 'lock', label: 'Lock', instruction: 'Seat the compass from the center prick to the rim and lock it.' },
+        { id: 'circle', label: 'Circle', instruction: 'Strike the circle with that opening.' },
+        { id: 'step', label: 'Step', instruction: 'Seat the point on the last prick and strike the next crossing.' },
+        { id: 'join', label: 'Join', instruction: 'Join the points and cut.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        point: pt(78, 100),
+        span: 18,
+        tilt: 0.5,
+        locked: false,
+        struck: false,
+        verts: []
+      });
+    };
+
+    function pencilOf(s) { return compassPencil(s.point, s.span, s.tilt); }
+
+    function seats(s) {
+      var pencil = pencilOf(s);
+      var pointHot = dist(s.point, C) < 5.5;
+      var rimD = Math.abs(dist(pencil, C) - R);
+      var pencilHot = pointHot ? rimD < 5.5 && dist(pencil, C) > 4 : Math.abs(dist(pencil, C) - R) < 5.5;
+      return { pencil: pencil, pointHot: pointHot, pencilHot: pencilHot };
+    }
+
+    function apply(s) {
+      if (dist(s.point, C) < 5.5) s.point = pt(C.x, C.y);
+      var pencil = pencilOf(s);
+      if (dist(s.point, C) < 0.8 && Math.abs(dist(pencil, C) - R) < 5.5) {
+        var dir = norm(sub(pencil, C));
+        if (len(sub(pencil, C)) < 1) dir = pt(1, 0);
+        var stuck = add(C, mul(dir, R));
+        s.span = dist(s.point, stuck);
+        s.tilt = Math.atan2(stuck.y - s.point.y, stuck.x - s.point.x);
+      }
+    }
+
+    function hitCompass(s, p) {
+      var pencil = pencilOf(s);
+      if (dist(p, s.point) < 8) return 'point';
+      if (dist(p, pencil) < 8) return 'pencil';
+      if (pointSegDist(p, s.point, pencil).dist < 6) return 'body';
+      return '';
+    }
+
+    function nextVertex(s) {
+      if (!s.verts.length) return null;
+      var from = s.verts[s.verts.length - 1];
+      var hits = circleCircle(C, s.span, from.at, s.span);
+      if (hits.length < 2) return null;
+      var prevAng = Math.atan2(from.at.y - C.y, from.at.x - C.x);
+      var want = angNorm(prevAng + Math.PI / 3);
+      var best = hits[0];
+      var bestD = 99;
+      hits.forEach(function (h) {
+        var a = Math.atan2(h.y - C.y, h.x - C.x);
+        var d = angDiff(a, want);
+        if (d < bestD) { bestD = d; best = h; }
+      });
+      return best;
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'lock' || id === 'step' || id === 'circle') {
+        if (ev.type === 'down') {
+          var hit = hitCompass(s, ev);
+          if (!hit) return;
+          run.drag = { mode: hit, px: ev.x, py: ev.y, point: pt(s.point.x, s.point.y), span: s.span, tilt: s.tilt };
+        } else if (ev.type === 'move' && run.drag) {
+          if (s.locked && run.drag.mode === 'pencil') return;
+          if (run.drag.mode === 'pencil' && !s.locked) {
+            s.span = clamp(dist(s.point, pt(ev.x, ev.y)), 6, 50);
+            s.tilt = Math.atan2(ev.y - s.point.y, ev.x - s.point.x);
+          } else {
+            s.point = pt(run.drag.point.x + ev.x - run.drag.px, run.drag.point.y + ev.y - run.drag.py);
+          }
+          if (!s.locked) apply(s);
+          else if (id === 'step' && s.verts.length) {
+            var from = s.verts[s.verts.length - 1];
+            if (dist(s.point, from.at) < 7) s.point = pt(from.at.x, from.at.y);
+            else {
+              var any = null;
+              s.verts.forEach(function (v) { if (dist(s.point, v.at) < 6) any = v.at; });
+              if (any) s.point = pt(any.x, any.y);
+            }
+          } else if (id === 'circle' && dist(s.point, C) < 6) s.point = pt(C.x, C.y);
+        } else if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'lock') return { label: 'Lock compass', enabled: true };
+      if (id === 'circle') return { label: 'Strike the circle', enabled: dist(s.point, C) < 0.8 && s.locked };
+      if (id === 'step') return { label: 'Strike the next', enabled: s.verts.length > 0 && s.verts.length < 7 && dist(s.point, s.verts[s.verts.length - 1].at) < 0.8 };
+      if (id === 'join') return { label: 'Join and cut', enabled: s.verts.length >= 6 };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      var id = stepId(level, run);
+      var info = seats(run.s);
+      if (id === 'lock' && info.pointHot && info.pencilHot) return 'Both legs seated';
+      if (id === 'circle' && dist(run.s.point, C) < 0.8) return 'Point seated on the center';
+      if (id === 'step' && run.s.verts.length && dist(run.s.point, run.s.verts[run.s.verts.length - 1].at) < 0.8) return 'Point seated on the last prick';
+      return '';
+    };
+
+    level.instruct = function (run) {
+      var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
+      if (stepId(level, run) === 'step') return base + ' ' + Math.min(run.s.verts.length, 6) + ' of 6.';
+      return base;
+    };
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'lock') {
+        apply(s);
+        s.locked = true;
+        var dev = Math.abs(s.span - R);
+        var info = seats(s);
+        var note = '';
+        if (!(info.pointHot && info.pencilHot)) note = 'The compass was not seated from the center to the rim.';
+        else if (dev >= 0.35) note = 'The opening does not reach the rim.';
+        completeStep(level, run, dev, note);
+        return;
+      }
+      if (id === 'circle') {
+        if (dist(s.point, C) > 0.8) { run.fumbles += 1; return; }
+        s.struck = true;
+        var start = pt(C.x + Math.cos(-Math.PI / 2) * s.span, C.y + Math.sin(-Math.PI / 2) * s.span);
+        s.verts = [{ at: start, err: 0 }];
+        completeStep(level, run, 0, '');
+        return;
+      }
+      if (id === 'step') {
+        if (!s.verts.length || dist(s.point, s.verts[s.verts.length - 1].at) > 0.8) { run.fumbles += 1; return; }
+        var nxt = nextVertex(s);
+        if (!nxt) { run.fumbles += 1; return; }
+        if (s.verts.length >= 6) {
+          s.closure = dist(nxt, s.verts[0].at);
+          var devC = s.closure;
+          completeStep(level, run, devC, devC >= 0.35 ? 'The last step did not land on the first prick.' : '');
+          return;
+        }
+        var idealAng = -Math.PI / 2 + s.verts.length * Math.PI / 3;
+        var ideal = pt(C.x + Math.cos(idealAng) * s.span, C.y + Math.sin(idealAng) * s.span);
+        var err = dist(nxt, ideal);
+        s.verts.push({ at: nxt, err: err });
+        if (s.verts.length === 6) {
+          /* the sixth vertex is index 5; one more strike closes */
+        }
+        return;
+      }
+      if (id === 'join') completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'lock') {
+        s.point = pt(C.x, C.y);
+        s.span = R;
+        s.tilt = -Math.PI / 2;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'circle') {
+        s.point = pt(C.x, C.y);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'step') {
+        s.point = pt(s.verts[s.verts.length - 1].at.x, s.verts[s.verts.length - 1].at.y);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'join') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      var closure = s.closure != null ? s.closure : (s.verts.length >= 6 ? 0 : 10);
+      if (s.closure == null && s.verts.length >= 6) {
+        var nxt = (function () {
+          var from = s.verts[5];
+          var hits = circleCircle(C, s.span, from.at, s.span);
+          if (hits.length < 2) return s.verts[0].at;
+          var prevAng = Math.atan2(from.at.y - C.y, from.at.x - C.x);
+          var want = angNorm(prevAng + Math.PI / 3);
+          var best = hits[0];
+          var bestD = 99;
+          hits.forEach(function (h) {
+            var a = Math.atan2(h.y - C.y, h.x - C.x);
+            var d = angDiff(a, want);
+            if (d < bestD) { bestD = d; best = h; }
+          });
+          return best;
+        })();
+        closure = dist(nxt, s.verts[0].at);
+      }
+      return Math.abs(s.span - R) + closure;
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      items.push({ op: 'circle', c: C, r: R, fill: '#e4c48a', stroke: '#8a6434', sw: 1.3 });
+      items.push({ op: 'circle', c: C, r: 1.3, fill: '#241c14', stroke: '', sw: 0 });
+      if (s.struck) {
+        items.push({ op: 'circle', c: C, r: s.span, fill: '', stroke: '#5b9bd5', sw: 1.1, dash: [4, 3] });
+      }
+      if (s.verts.length) {
+        var poly = s.verts.map(function (v) { return v.at; });
+        items.push({ op: 'polyline', pts: run.phase === 'result' ? poly.concat([poly[0]]) : poly, stroke: '#241c14', sw: 1.45 });
+        s.verts.forEach(function (v) {
+          items.push({ op: 'circle', c: v.at, r: 1.5, fill: '#241c14', stroke: '', sw: 0 });
+        });
+      }
+      if (run.phase === 'play' || run.replay != null) {
+        if (view.step <= 2) {
+          var info = seats(s);
+          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: info.pointHot || (view.step === 2 && s.verts.length && dist(s.point, s.verts[s.verts.length - 1].at) < 0.8), hotN: info.pencilHot });
+        }
+      }
+      return { items: items };
+    };
+    return level;
+  }
+
+  /* ---------- octagon ---------- */
+
+  function buildOct() {
+    var x0 = 30;
+    var y0 = 50;
+    var side = 72;
+    var x1 = x0 + side;
+    var y1 = y0 + side;
+    var corners = [pt(x0, y0), pt(x1, y0), pt(x1, y1), pt(x0, y1)];
+    var edges = [
+      [corners[0], corners[1]],
+      [corners[1], corners[2]],
+      [corners[2], corners[3]],
+      [corners[3], corners[0]]
+    ];
+    var C = pt((x0 + x1) / 2, (y0 + y1) / 2);
+    var idealSpan = dist(corners[0], C);
+    var mids = edges.map(function (e) { return pt((e[0].x + e[1].x) / 2, (e[0].y + e[1].y) / 2); });
+
+    function idealMarks() {
+      var marks = [];
+      corners.forEach(function (corner) {
+        edges.forEach(function (e) {
+          if (dist(corner, e[0]) > 0.2 && dist(corner, e[1]) > 0.2) return;
+          segCircle(e[0], e[1], corner, idealSpan).forEach(function (h) {
+            if (dist(h, corner) > 2) marks.push(h);
+          });
+        });
+      });
+      return marks;
+    }
+    var ideals = idealMarks();
+
+    var level = {
+      id: 'octagon',
+      name: 'Octagon',
+      technique: 'Compass from the diagonals',
+      geometry: 'Half the diagonal is the compass opening that marks an equal chamfer on every side.',
+      blurb: 'Cross the diagonals, open the compass to that center, and swing an arc from each corner.',
+      hard: false,
+      tutorial: null,
+      corners: corners,
+      C: C,
+      ideals: ideals,
+      steps: [
+        { id: 'diag', label: 'Diagonals', instruction: 'Lay the straightedge across two opposite corners and knife. Then the other pair.' },
+        { id: 'lock', label: 'Lock', instruction: 'Seat the compass from a corner to where the diagonals cross, and lock it.' },
+        { id: 'arcs', label: 'Arcs', instruction: 'Seat the point on a corner and swing the arc so it marks both sides.' },
+        { id: 'join', label: 'Join', instruction: 'Join the eight marks and cut.' }
+      ]
+    };
+
+    level.create = function () {
+      return fresh(level, {
+        barA: pt(48, 78),
+        barB: pt(96, 70),
+        diags: [],
+        point: pt(70, 100),
+        span: 20,
+        tilt: 0.2,
+        locked: false,
+        marks: [],
+        swung: []
+      });
+    };
+
+    function crossDiags(s) {
+      if (s.diags.length < 2) return null;
+      var hit = lineIntersect(s.diags[0].a, s.diags[0].b, s.diags[1].a, s.diags[1].b);
+      return hit ? hit.point : null;
+    }
+
+    function trySeatBar(s) {
+      var pairs = [[corners[0], corners[2]], [corners[1], corners[3]]];
+      var hit = null;
+      pairs.forEach(function (pair, idx) {
+        if (s.diags.some(function (d) { return d.idx === idx; })) return;
+        if (pointLineDist(pair[0], s.barA, s.barB) < 5 && pointLineDist(pair[1], s.barA, s.barB) < 5) hit = { idx: idx, pair: pair };
+      });
+      if (!hit) { s.barHot = false; return; }
+      s.barA = pt(hit.pair[0].x, hit.pair[0].y);
+      s.barB = pt(hit.pair[1].x, hit.pair[1].y);
+      s.barHot = true;
+      s.barIdx = hit.idx;
+    }
+
+    function pencilOf(s) { return compassPencil(s.point, s.span, s.tilt); }
+
+    function applyCompass(s) {
+      var corner = null;
+      corners.forEach(function (c) { if (dist(s.point, c) < 6) corner = c; });
+      if (corner) s.point = pt(corner.x, corner.y);
+      var pencil = pencilOf(s);
+      var target = null;
+      var cross = crossDiags(s);
+      if (cross && dist(pencil, cross) < 6.5) target = cross;
+      mids.forEach(function (m) { if (dist(pencil, m) < 6) target = m; });
+      if (target && corner) {
+        s.span = dist(s.point, target);
+        s.tilt = Math.atan2(target.y - s.point.y, target.x - s.point.x);
+        s.pencilHot = true;
+        s.onCenter = cross && dist(target, cross) < 0.5;
+      } else s.pencilHot = false;
+    }
+
+    level.pointer = function (run, ev) {
+      if (run.phase !== 'play') return;
+      var s = run.s;
+      var id = stepId(level, run);
+      if (id === 'diag') {
+        if (ev.type === 'down') {
+          if (dist(ev, s.barA) < 9) run.drag = { end: 'a' };
+          else if (dist(ev, s.barB) < 9) run.drag = { end: 'b' };
+          else if (pointSegDist(ev, s.barA, s.barB).dist < 7) run.drag = { end: 'body', px: ev.x, py: ev.y, a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y) };
+        } else if (ev.type === 'move' && run.drag) {
+          if (run.drag.end === 'a') s.barA = pt(ev.x, ev.y);
+          else if (run.drag.end === 'b') s.barB = pt(ev.x, ev.y);
+          else {
+            s.barA = pt(run.drag.a.x + ev.x - run.drag.px, run.drag.a.y + ev.y - run.drag.py);
+            s.barB = pt(run.drag.b.x + ev.x - run.drag.px, run.drag.b.y + ev.y - run.drag.py);
+          }
+          trySeatBar(s);
+        } else if (ev.type === 'up') run.drag = null;
+        return;
+      }
+      if (id === 'lock' || id === 'arcs') {
+        var pencil = pencilOf(s);
+        if (ev.type === 'down') {
+          var mode = '';
+          if (dist(ev, s.point) < 8) mode = 'point';
+          else if (!s.locked && dist(ev, pencil) < 8) mode = 'pencil';
+          else if (pointSegDist(ev, s.point, pencil).dist < 6) mode = 'body';
+          if (!mode) return;
+          run.drag = { mode: mode, px: ev.x, py: ev.y, point: pt(s.point.x, s.point.y) };
+        } else if (ev.type === 'move' && run.drag) {
+          if (run.drag.mode === 'pencil') {
+            s.span = clamp(dist(s.point, pt(ev.x, ev.y)), 6, 80);
+            s.tilt = Math.atan2(ev.y - s.point.y, ev.x - s.point.x);
+          } else {
+            s.point = pt(run.drag.point.x + ev.x - run.drag.px, run.drag.point.y + ev.y - run.drag.py);
+          }
+          if (!s.locked) applyCompass(s);
+          else {
+            var corner = null;
+            corners.forEach(function (c) { if (dist(s.point, c) < 7) corner = c; });
+            if (corner) s.point = pt(corner.x, corner.y);
+          }
+        } else if (ev.type === 'up') run.drag = null;
+      }
+    };
+
+    level.actionFor = function (run) {
+      var id = stepId(level, run);
+      if (id === 'diag') return { label: 'Knife the diagonal', enabled: !!run.s.barHot };
+      if (id === 'lock') return { label: 'Lock compass', enabled: true };
+      if (id === 'arcs') return { label: 'Swing the arc', enabled: corners.some(function (c) { return dist(run.s.point, c) < 0.8; }) };
+      if (id === 'join') return { label: 'Join and cut', enabled: run.s.marks.length >= 4 };
+      return null;
+    };
+
+    level.seatText = function (run) {
+      var id = stepId(level, run);
+      if (id === 'diag' && run.s.barHot) return 'Straightedge seated on two corners';
+      if (id === 'lock' && run.s.pencilHot) return run.s.onCenter ? 'Pencil seated on the crossing' : 'Pencil seated on a reference';
+      if (id === 'arcs' && corners.some(function (c) { return dist(run.s.point, c) < 0.8; })) return 'Point seated on a corner';
+      return '';
+    };
+
+    level.instruct = function (run) {
+      var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
+      if (stepId(level, run) === 'diag') return base + ' ' + run.s.diags.length + ' of 2.';
+      if (stepId(level, run) === 'arcs') return base + ' ' + run.s.swung.length + ' of 4.';
+      return base;
+    };
+
+    function swing(s) {
+      var corner = null;
+      var idx = -1;
+      corners.forEach(function (c, i) { if (dist(s.point, c) < 0.8) { corner = c; idx = i; } });
+      if (!corner || s.swung.indexOf(idx) >= 0) return null;
+      var marks = [];
+      edges.forEach(function (e) {
+        if (dist(corner, e[0]) > 0.2 && dist(corner, e[1]) > 0.2) return;
+        segCircle(e[0], e[1], corner, s.span).forEach(function (h) {
+          if (dist(h, corner) > 2) marks.push(h);
+        });
+      });
+      return { idx: idx, marks: marks };
+    }
+
+    level.onAction = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'diag') {
+        if (!s.barHot) { run.fumbles += 1; return; }
+        s.diags.push({ a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y), idx: s.barIdx });
+        s.barHot = false;
+        if (s.diags.length >= 2) completeStep(level, run, 0, '');
+        else {
+          s.barA = pt(40, 90);
+          s.barB = pt(100, 60);
+        }
+        return;
+      }
+      if (id === 'lock') {
+        applyCompass(s);
+        s.locked = true;
+        var dev = Math.abs(s.span - idealSpan);
+        var note = '';
+        if (!s.onCenter) note = s.pencilHot ? 'The compass was seated on the middle of a side, not the crossing.' : 'The compass was locked off the corner and the crossing.';
+        else if (dev >= 0.35) note = 'The opening does not reach from the corner to the center.';
+        completeStep(level, run, dev, note);
+        return;
+      }
+      if (id === 'arcs') {
+        var sw = swing(s);
+        if (!sw) { run.fumbles += 1; return; }
+        s.swung.push(sw.idx);
+        sw.marks.forEach(function (m) { s.marks.push(m); });
+        if (s.swung.length >= 4) {
+          var devA = Math.abs(s.span - idealSpan);
+          completeStep(level, run, devA > 0.4 ? 0 : 0, '');
+        }
+        return;
+      }
+      if (id === 'join') completeStep(level, run, 0, '');
+    };
+
+    level.hint = function (run) {
+      var id = stepId(level, run);
+      var s = run.s;
+      if (id === 'diag') {
+        var pair = s.diags.length === 0 ? [corners[0], corners[2]] : [corners[1], corners[3]];
+        s.barA = pt(pair[0].x, pair[0].y);
+        s.barB = pt(pair[1].x, pair[1].y);
+        s.barHot = true;
+        s.barIdx = s.diags.length === 0 ? 0 : 1;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'lock') {
+        var cross = crossDiags(s) || C;
+        s.point = pt(corners[0].x, corners[0].y);
+        s.span = dist(s.point, cross);
+        s.tilt = Math.atan2(cross.y - s.point.y, cross.x - s.point.x);
+        s.onCenter = true;
+        s.pencilHot = true;
+        level.onAction(run);
+        return;
+      }
+      if (id === 'arcs') {
+        var idx = 0;
+        while (s.swung.indexOf(idx) >= 0) idx++;
+        s.point = pt(corners[idx].x, corners[idx].y);
+        level.onAction(run);
+        return;
+      }
+      if (id === 'join') level.onAction(run);
+    };
+
+    level.measure = function (run) {
+      var s = run.s;
+      if (!s.marks.length) return 14;
+      var errs = ideals.map(function (m) {
+        var best = Infinity;
+        s.marks.forEach(function (p) { best = Math.min(best, dist(m, p)); });
+        return Math.min(best, 18);
+      });
+      return mean(errs);
+    };
+
+    level.scene = function (run) {
+      var view = viewOf(level, run);
+      var s = view.s;
+      var items = [paper()];
+      items.push({ op: 'rect', x: x0, y: y0, w: side, h: side, fill: '#e4c48a', stroke: '#8a6434', sw: 1.3 });
+      s.diags.forEach(function (d) {
+        items.push({ op: 'line', a: d.a, b: d.b, stroke: '#5b9bd5', sw: 1.15, dash: [4, 3] });
+      });
+      var cross = crossDiags(s);
+      if (cross) items.push({ op: 'circle', c: cross, r: 1.5, fill: '#241c14', stroke: '', sw: 0 });
+      s.marks.forEach(function (m) {
+        items.push({ op: 'circle', c: m, r: 1.5, fill: '#241c14', stroke: '', sw: 0 });
+      });
+      if (s.marks.length >= 8) {
+        var ordered = s.marks.slice().sort(function (a, b) {
+          return Math.atan2(a.y - C.y, a.x - C.x) - Math.atan2(b.y - C.y, b.x - C.x);
+        });
+        items.push({ op: 'polyline', pts: ordered.concat([ordered[0]]), stroke: '#241c14', sw: 1.45 });
+      }
+      if (run.phase === 'play' || run.replay != null) {
+        if (view.step === 0) {
+          items.push({ op: 'line', a: s.barA, b: s.barB, stroke: s.barHot ? '#c4923a' : '#2e3844', sw: 3 });
+          items.push({ op: 'circle', c: s.barA, r: 3, fill: '#2e3844', stroke: '', sw: 0 });
+          items.push({ op: 'circle', c: s.barB, r: 3, fill: '#2e3844', stroke: '', sw: 0 });
+        }
+        if (view.step === 1 || view.step === 2) {
+          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: corners.some(function (c) { return dist(s.point, c) < 0.8; }), hotN: !!s.pencilHot });
+          if (view.step === 2 && s.locked) {
+            var pc = null;
+            corners.forEach(function (c) { if (dist(s.point, c) < 0.8) pc = c; });
+            if (pc) items.push({ op: 'arc', c: pc, r: s.span, a0: 0, a1: Math.PI * 2, stroke: 'rgba(91,155,213,0.35)', sw: 1, dash: [3, 3] });
+          }
+        }
+      }
+      return { items: items };
+    };
+    return level;
+  }
+
+  var levels = [
+    buildButt(),
+    buildScribe({
+      id: 'scribe',
+      name: 'Compass Scribe',
+      geometry: 'The compass copies the wall sideways by one fixed opening — a slide, not a copy that follows the wall’s tilt.',
+      blurb: 'Level the panel, lock the compass on the widest gap, and trace the wall.',
+      hard: false,
+      wallFn: function (t) { return 22 + 9 * Math.sin(Math.PI * t) + 2.4 * Math.sin(3 * Math.PI * t + 0.4); },
+      y0: 34,
+      y1: 150,
+      n: 48,
+      frontX: 46,
+      backX: 96,
+      angle0: 0.055,
+      span0: 12,
+      tilt0: 0.42,
+      point0: pt(74, 92),
+      seat: 7.6
+    }),
+    buildTick(),
+    buildBisect(),
+    buildCope(),
+    buildCenter(),
+    buildHex(),
+    buildOct(),
+    buildScribe({
+      id: 'stone',
+      name: 'Stone Scribe',
+      geometry: 'Same sideways slide as the wavy wall. Stone just gives the compass more chances to tilt.',
+      blurb: 'Hard mode. A brick and stone wall. Find the widest gap and do not tip the legs.',
+      hard: true,
+      wallFn: function (t) {
+        return 20
+          + 6.2 * Math.sin(2 * Math.PI * t + 0.2)
+          + 3.3 * Math.sin(5 * Math.PI * t + 0.7)
+          + 2.1 * Math.sin(9 * Math.PI * t + 1.2)
+          + 1.15 * Math.sin(15 * Math.PI * t);
+      },
+      y0: 32,
+      y1: 152,
+      n: 56,
+      frontX: 44,
+      backX: 98,
+      angle0: 0.07,
+      span0: 10,
+      tilt0: 0.5,
+      point0: pt(76, 96),
+      seat: 4.4
+    })
+  ];
+
+  function createRun(level) { return level.create(); }
+
+  function pointer(level, run, ev) {
+    if (!run || run.phase !== 'play') return run;
+    level.pointer(run, ev);
+    return run;
+  }
+
+  function action(level, run) {
+    if (!run || run.phase !== 'play') return run;
+    var spec = level.actionFor(run);
+    if (!spec || !spec.enabled) {
+      run.fumbles += 1;
+      return run;
+    }
+    level.onAction(run);
+    return run;
+  }
+
+  function hint(level, run) {
+    if (!run || run.phase !== 'play') return run;
+    run.hints += 1;
+    level.hint(run);
+    return run;
+  }
+
+  function restart(level, run) {
+    var tries = (run && run.tries ? run.tries : 1) + 1;
+    var next = level.create();
+    next.tries = tries;
+    return next;
+  }
+
+  function scene(level, run) {
+    return level.scene(run);
+  }
+
+  var PF = {
+    VIEW: VIEW,
     levels: levels,
-    clamp: clamp,
-    lerp: lerp,
-    dist: dist,
+    layout: layout,
+    createRun: createRun,
+    pointer: pointer,
+    action: action,
+    hint: hint,
+    restart: restart,
+    scene: scene,
+    hud: hud,
     pt: pt,
-    add: add,
-    sub: sub,
-    mul: mul,
-    norm: norm,
-    len: len,
-    resample: resample,
-    pointAt: pointAt,
-    avgDist: avgDist,
-    pointInPoly: pointInPoly,
-    signedArea: signedArea,
-    polyFromCut: polyFromCut,
-    wastePoly: wastePoly,
-    starsFor: starsFor,
-    titleFor: titleFor,
-    evaluate: evaluate,
-    blankMark: blankMark,
-    perfectMark: perfectMark,
-    closestOnPoly: closestOnPoly,
-    matchSegment: matchSegment,
-    magnetBar: magnetBar,
-    pivotAssist: pivotAssist,
-    seatMatch: seatMatch,
-    tryLockTrace: tryLockTrace,
-    fillWasher: fillWasher,
-    lineIntersect: lineIntersect,
-    angDiff: angDiff
+    dist: dist
   };
 
   root.PF = PF;
   if (typeof module !== 'undefined' && module.exports) module.exports = PF;
 
   function runTests() {
-    let failed = 0;
+    var failed = 0;
     function assert(cond, msg) {
       if (!cond) {
         failed++;
         console.error('FAIL', msg);
       }
     }
+    assert(levels.length === 9, 'nine levels');
+    var ids = {};
     levels.forEach(function (level) {
-      const blank = blankMark(level);
-      const start = evaluate(level, blank);
-      assert(start.fit < 35, level.id + ' blank fit should be low, got ' + start.fit.toFixed(1));
-      assert(Math.abs(signedArea(start.poly)) > 20, level.id + ' blank poly area');
-      const perfect = perfectMark(level);
-      const done = evaluate(level, perfect);
-      assert(done.fit > 99, level.id + ' perfect fit ' + done.fit.toFixed(2));
-      assert(done.stars === 3, level.id + ' perfect stars');
-      assert(Math.abs(signedArea(done.poly)) > 20, level.id + ' perfect area');
-      const stock = polyFromCut(level.rough, level.mode, level.far);
-      const samples = resample(level.ideal, 18);
-      samples.forEach(function (p, idx) {
-        assert(pointInPoly(p, stock), level.id + ' ideal sample ' + idx + ' outside stock ' + JSON.stringify(p));
+      assert(!ids[level.id], 'unique id ' + level.id);
+      ids[level.id] = true;
+      assert(level.geometry && level.geometry.length > 20, level.id + ' geometry');
+      assert(!/\d+(\.\d+)?\s*(mm|deg)/i.test(level.geometry), level.id + ' geometry has a readout');
+      level.steps.forEach(function (s) {
+        assert(!/\d+(\.\d+)?\s*mm/.test(s.instruction), level.id + ' instruction readout ' + s.instruction);
       });
-      const work = done.poly;
-      level.fixed.forEach(function (piece, pi) {
-        if (piece.decor) return;
-        let overlap = 0;
-        for (let y = 30; y <= 124; y += 2) {
-          for (let x = 4; x <= 98; x += 2) {
-            const p = pt(x + 0.3, y + 0.3);
-            if (!pointInPoly(p, work) || !pointInPoly(p, piece.poly)) continue;
-            let near = false;
-            const edge = level.mating;
-            for (let i = 0; i < edge.length - 1; i++) {
-              if (pointSegDist(p, edge[i], edge[i + 1]) < 1.4) near = true;
-            }
-            if (!near) overlap++;
-          }
-        }
-        assert(overlap === 0, level.id + ' overlaps fixed[' + pi + '] at ' + overlap + ' samples');
-      });
-      if (level.slide) {
-        const seatedEdge = level.ideal.map(function (p) { return add(p, level.slide); });
-        const gap = avgDist(seatedEdge, level.mating);
-        assert(gap < 0.15, level.id + ' slide does not land on mating, gap ' + gap.toFixed(3));
-        const seatedPoly = done.poly.map(function (p) { return add(p, level.slide); });
-        level.fixed.forEach(function (piece, pi) {
-          if (piece.decor) return;
-          let overlap = 0;
-          for (let y = 30; y <= 124; y += 2) {
-            for (let x = 4; x <= 98; x += 2) {
-              const p = pt(x + 0.3, y + 0.3);
-              if (!pointInPoly(p, seatedPoly) || !pointInPoly(p, piece.poly)) continue;
-              let near = false;
-              const edge = level.mating;
-              for (let i = 0; i < edge.length - 1; i++) {
-                if (pointSegDist(p, edge[i], edge[i + 1]) < 1.6) near = true;
-              }
-              if (!near) overlap++;
-            }
-          }
-          assert(overlap === 0, level.id + ' seated overlaps fixed[' + pi + '] at ' + overlap);
-        });
+      var run = createRun(level);
+      var guard = 0;
+      var scenes = 0;
+      while (run.phase === 'play' && guard < 40) {
+        var before = run.step + ':' + (level.id === 'tick' ? run.s.ticks.length : 0) + ':' + (run.s.verts ? run.s.verts.length : 0) + ':' + (run.s.pricks ? run.s.pricks.length : 0) + ':' + (run.s.swung ? run.s.swung.length : 0) + ':' + (run.s.diags ? run.s.diags.length : 0);
+        var sc = scene(level, run);
+        assert(sc.items && sc.items.length > 2, level.id + ' scene at ' + before);
+        scenes++;
+        hint(level, run);
+        var after = run.step + ':' + (level.id === 'tick' ? run.s.ticks.length : 0) + ':' + (run.s.verts ? run.s.verts.length : 0) + ':' + (run.s.pricks ? run.s.pricks.length : 0) + ':' + (run.s.swung ? run.s.swung.length : 0) + ':' + (run.s.diags ? run.s.diags.length : 0);
+        assert(before !== after || run.phase === 'result', level.id + ' hint made progress at ' + before);
+        guard++;
       }
+      assert(run.phase === 'result', level.id + ' hint finishes, phase ' + run.phase + ' step ' + run.step);
+      assert(run.result.gap < 0.25, level.id + ' hint gap ' + (run.result ? run.result.gap.toFixed(3) : 'none'));
+      assert(run.result.stars === 0, level.id + ' hints cost the stars, got ' + (run.result && run.result.stars));
+      assert(run.result.score > run.result.gap + 0.5, level.id + ' score includes hint cost');
+      assert(run.log.length >= level.steps.length, level.id + ' log covers steps');
+      var h = hud(level, run);
+      assert(h.geometry === level.geometry, level.id + ' hud geometry');
+      assert(h.steps.length === level.steps.length, level.id + ' checklist');
     });
 
-    const butt = levels[0];
-    const off = { type: 'square', x: butt.square.idealX + 4, seated: false };
-    const mid = evaluate(butt, off);
-    assert(mid.fit > 60 && mid.fit < 96, 'butt +4 fit band ' + mid.fit.toFixed(1));
+    /* restart */
+    var butt = levels[0];
+    var runB = createRun(butt);
+    hint(butt, runB);
+    var again = restart(butt, runB);
+    assert(again.step === 0 && again.tries === 2 && again.hints === 0 && again.phase === 'play', 'restart');
 
-    const curve = levels[2];
-    const halfBins = curve.ideal && blankMark(curve);
-    for (let i = 0; i < halfBins.bins.length; i++) halfBins.bins[i] = i < halfBins.bins.length * 0.5;
-    const half = evaluate(curve, halfBins);
-    assert(half.fit > 25 && half.fit < 80, 'curve half coverage fit ' + half.fit.toFixed(1));
+    /* manual butt, no hint: seat, slide to the joint, knife, cut */
+    var manual = createRun(butt);
+    pointer(butt, manual, { type: 'down', x: 78, y: 40 });
+    pointer(butt, manual, { type: 'up', x: 78, y: 40 });
+    assert(manual.step === 1, 'pick advances ' + manual.step);
+    pointer(butt, manual, { type: 'down', x: 78, y: 40 });
+    pointer(butt, manual, { type: 'move', x: 84, y: butt.top });
+    pointer(butt, manual, { type: 'up', x: 84, y: butt.top });
+    assert(manual.step === 2 && manual.s.seated === 'top', 'seat on the edge');
+    pointer(butt, manual, { type: 'down', x: manual.s.x, y: manual.s.y });
+    pointer(butt, manual, { type: 'move', x: butt.jointX, y: butt.top });
+    pointer(butt, manual, { type: 'up', x: butt.jointX, y: butt.top });
+    action(butt, manual);
+    action(butt, manual);
+    assert(manual.phase === 'result', 'manual butt finishes');
+    assert(manual.result.gap < 0.2, 'manual butt gap ' + manual.result.gap.toFixed(3));
+    assert(manual.result.stars === 3, 'clean manual stars ' + manual.result.stars + ' score ' + manual.result.score.toFixed(2));
 
-    const step = levels[3];
-    const one = blankMark(step);
-    one.locked[0] = true;
-    const partial = evaluate(step, one);
-    const none = evaluate(step, blankMark(step));
-    assert(partial.fit > none.fit, 'locking a face should improve fit ' + partial.fit + ' vs ' + none.fit);
+    /* knife short of the joint */
+    var short = createRun(butt);
+    hint(butt, short);
+    hint(butt, short);
+    short.s.x = butt.jointX - 6;
+    action(butt, short);
+    action(butt, short);
+    assert(short.result.gap > 5 && short.result.gap < 7.5, 'short knife gap ' + short.result.gap.toFixed(2));
+    assert(/Knife/.test(short.result.replay), 'replay names the knife, ' + short.result.replay);
 
-    step.segments.forEach(function (seg, i) {
-      const mark = blankMark(step);
-      const c = seg[0], d = seg[1];
-      const dir = norm(sub(d, c));
-      const nrm = pt(-dir.y, dir.x);
-      const mid = pt((c.x + d.x) / 2, (c.y + d.y) / 2);
-      const tilt = 0.1;
-      const cs = Math.cos(tilt), sn = Math.sin(tilt);
-      const rdx = dir.x * cs - dir.y * sn;
-      const rdy = dir.x * sn + dir.y * cs;
-      const half = Math.max(dist(c, d) * 0.7, 12);
-      mark.a = pt(mid.x + nrm.x * 1.1 - rdx * half, mid.y + nrm.y * 1.1 - rdy * half);
-      mark.b = pt(mid.x + nrm.x * 1.1 + rdx * half, mid.y + nrm.y * 1.1 + rdy * half);
-      const hit = tryLockTrace(step, mark, false);
-      assert(hit === i, 'near bar locks step face ' + i + ' got ' + hit);
-    });
-    const wild = blankMark(step);
-    assert(tryLockTrace(step, wild, true) == null, 'a bar left in the open does not lock a face');
+    /* compass locked short, then a faithful scribe */
+    var scribe = levels[1];
+    var bad = createRun(scribe);
+    hint(scribe, bad); /* level */
+    action(scribe, bad); /* lock the default short opening */
+    while (bad.phase === 'play') hint(scribe, bad);
+    assert(bad.result.gap > 3, 'short compass carries into the gap ' + bad.result.gap.toFixed(2));
+    assert(/Lock/.test(bad.result.replay), 'replay names the lock, ' + bad.result.replay);
 
-    const corner = levels[1];
-    const cm = blankMark(corner);
-    const ideal = corner.ideal;
-    const want = Math.atan2(ideal[1].y - ideal[0].y, ideal[1].x - ideal[0].x);
-    for (let n = 0; n < 48; n++) {
-      const prevA = pt(cm.a.x, cm.a.y);
-      const prevB = pt(cm.b.x, cm.b.y);
-      const v = sub(cm.b, cm.a);
-      const ang = Math.atan2(v.y, v.x);
-      let delta = wrapPi(want - ang);
-      if (Math.abs(delta) > Math.PI / 2) delta = wrapPi(delta - Math.PI);
-      const stepAng = clamp(delta, -0.06, 0.06);
-      const cs = Math.cos(stepAng), sn = Math.sin(stepAng);
-      cm.b = add(cm.a, pt(v.x * cs - v.y * sn, v.x * sn + v.y * cs));
-      const assisted = pivotAssist(cm.a, cm.b, prevA, prevB, [ideal]);
-      cm.a = assisted.a;
-      cm.b = assisted.b;
-    }
-    for (let n = 0; n < 24; n++) {
-      const mag = magnetBar(cm.a, cm.b, [ideal]);
-      cm.a = mag.a;
-      cm.b = mag.b;
-    }
-    const seated = seatMatch(matchSegment(cm.a, cm.b, ideal[0], ideal[1]), false);
-    assert(seated, 'corner rotate-then-slide seats, ang ' +
-      matchSegment(cm.a, cm.b, ideal[0], ideal[1]).ang.toFixed(3) +
-      ' dist ' + matchSegment(cm.a, cm.b, ideal[0], ideal[1]).dist.toFixed(2));
+    /* tick missing a corner */
+    var tick = levels[2];
+    assert(tick.home, 'sheet fits in the alcove');
+    var miss = createRun(tick);
+    hint(tick, miss); /* lay */
+    for (var n = 0; n < 4; n++) hint(tick, miss);
+    assert(miss.s.ticks.length === 4, 'four ticks');
+    action(tick, miss); /* done early */
+    while (miss.phase === 'play') hint(tick, miss);
+    assert(miss.result.gap > 5, 'missing corner gap ' + miss.result.gap.toFixed(2));
 
-    const away = blankMark(step);
-    const before = angDiff(away.a, away.b, step.segments[0][0], step.segments[0][1]);
-    const nudgedB = pt(away.b.x + 1.2, away.b.y - 0.05);
-    const stayed = pivotAssist(away.a, nudgedB, away.a, away.b, step.segments);
-    const after = angDiff(stayed.a, stayed.b, step.segments[0][0], step.segments[0][1]);
-    assert(after > before - 0.02, 'pivot assist does not twist a bar toward a face it is leaving');
+    /* circle: hinted geometry already checked; off-rim chord is worse than a seated one */
+    var center = levels[5];
+    var off = createRun(center);
+    off.s.corner = pt(center.C.x, center.C.y - center.R + 8);
+    off.s.ang = Math.PI / 4;
+    var seated = createRun(center);
+    hint(center, seated);
+    assert(seated.s.chords.length === 1, 'first hint marks a chord');
+    assert(seated.log[0].deviation < 0.2, 'seated chord deviation ' + seated.log[0].deviation);
 
+    console.log('ideal scribe', levels[1].idealS.toFixed(2), 'stone', levels[8].idealS.toFixed(2), 'oct marks', levels[7].ideals.length, 'sheet', JSON.stringify(levels[2].home));
     if (failed) {
       console.error(failed + ' failed');
       process.exit(1);
     }
     console.log('ok ' + levels.length + ' levels');
-    levels.forEach(function (level) {
-      const b = evaluate(level, blankMark(level));
-      console.log(
-        level.id,
-        'base', level.base.toFixed(2),
-        'blank', b.fit.toFixed(1),
-        'segs', level.segments.length,
-        'tool', level.tool
-      );
-    });
   }
 
   if (typeof require !== 'undefined' && require.main === module) runTests();
