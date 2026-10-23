@@ -166,17 +166,136 @@
     return Math.min(2.5, (angle - 0.42) * 4);
   }
 
+  /* Cross-section for a back-bevel. Its own box, never drawn over the work. */
+  var SECTION = { w: 160, h: 108 };
+  var SEC_WALL = 36;
+  var SEC_FACE = 64;
+  var SEC_THICK = 28;
+
+  function bevelWords(angle, kind) {
+    var low = angle < 0.09;
+    var high = angle > 0.42;
+    if (kind === 'cope') {
+      if (low) return 'The back is hitting the other piece.';
+      if (high) return 'The face is tipping off.';
+      return 'Only the face meets the other piece.';
+    }
+    if (low) return 'The back is touching the wall.';
+    if (high) return 'The face is tipping off the wall.';
+    return 'Only the front edge meets the wall.';
+  }
+
+  function bevelGeom(angle) {
+    var a = clamp(angle, -0.5, 0.7);
+    var retreat = a > 0.42 ? (a - 0.42) * 36 : 0;
+    var pivot = pt(SEC_WALL + retreat, SEC_FACE);
+    var inset = Math.tan(clamp(a, -0.48, 0.62)) * SEC_THICK;
+    var back = pt(pivot.x + inset, SEC_FACE - SEC_THICK);
+    var dir = norm(sub(back, pivot));
+    if (Math.hypot(back.x - pivot.x, back.y - pivot.y) < 0.4) dir = pt(Math.sin(a), -Math.cos(a));
+    var handle = add(pivot, mul(dir, 50));
+    return { angle: a, pivot: pivot, back: back, handle: handle, dir: dir };
+  }
+
+  function bevelFromFinger(x, y, guess) {
+    var a = guess || 0;
+    var i;
+    for (i = 0; i < 4; i++) {
+      var g = bevelGeom(a);
+      var dx = x - g.pivot.x;
+      var dy = y - g.pivot.y;
+      if (dy > -6) dy = -6;
+      a = clamp(Math.atan(-dx / dy), -0.35, 0.75);
+    }
+    return a;
+  }
+
+  function bevelHandleHit(angle, p) {
+    var g = bevelGeom(angle);
+    if (dist(p, g.handle) < 16) return true;
+    if (pointSegDist(p, g.pivot, g.handle).dist < 8) return true;
+    return false;
+  }
+
+  function dragBevel(run, ev) {
+    if (!ev.section) return;
+    var s = run.s;
+    if (ev.type === 'down') {
+      if (bevelHandleHit(s.bevel, ev)) run.drag = { mode: 'saw', ang: s.bevel };
+    } else if (ev.type === 'move' && run.drag && run.drag.mode === 'saw') {
+      s.bevel = bevelFromFinger(ev.x, ev.y, s.bevel);
+    } else if (ev.type === 'up') run.drag = null;
+  }
+
+  function arcArrow(c, r, a1) {
+    var ax = c.x + Math.cos(a1) * r;
+    var ay = c.y + Math.sin(a1) * r;
+    var tx = Math.cos(a1 + Math.PI / 2);
+    var ty = Math.sin(a1 + Math.PI / 2);
+    var nx = Math.cos(a1);
+    var ny = Math.sin(a1);
+    return {
+      op: 'poly',
+      pts: [
+        pt(ax + tx * 4.6, ay + ty * 4.6),
+        pt(ax - tx * 3.6 + nx * 2.1, ay - ty * 3.6 + ny * 2.1),
+        pt(ax - tx * 3.6 - nx * 2.1, ay - ty * 3.6 - ny * 2.1)
+      ],
+      fill: '#c4923a',
+      stroke: '',
+      sw: 0
+    };
+  }
+
+  function bevelSectionItems(angle, kind) {
+    var g = bevelGeom(angle);
+    var words = bevelWords(angle, kind);
+    var good = angle >= 0.09 && angle <= 0.42;
+    var items = [];
+    items.push({ op: 'rect', x: 0, y: 0, w: SECTION.w, h: SECTION.h, fill: '#f4efe4', stroke: '', sw: 0 });
+    var face = g.pivot;
+    var back = g.back;
+    items.push({ op: 'poly', pts: [face, back, pt(148, back.y), pt(148, face.y)], fill: '#e4c48a', stroke: '#8a6434', sw: 1.1 });
+    items.push({ op: 'rect', x: 8, y: 10, w: SEC_WALL - 8, h: 76, fill: kind === 'cope' ? '#d7b48a' : '#9a9188', stroke: '#5c564f', sw: 1 });
+    items.push({ op: 'text', t: kind === 'cope' ? 'piece' : 'wall', x: 9, y: 20, size: 14, color: '#2a241c' });
+    items.push({ op: 'text', t: 'back', x: Math.min(118, (back.x + 148) / 2), y: back.y - 5, size: 14, color: '#5c564f', align: 'center' });
+    items.push({ op: 'text', t: 'face', x: Math.min(118, (face.x + 148) / 2), y: face.y + 7, size: 14, color: '#5c564f', align: 'center' });
+    var arcC = pt(SEC_WALL, SEC_FACE);
+    var arcR = 50;
+    var a0 = -Math.PI / 2 - 0.2;
+    var a1 = -Math.PI / 2 + 0.95;
+    items.push({ op: 'arc', c: arcC, r: arcR, a0: a0, a1: a1, stroke: '#c4923a', sw: 2.6 });
+    items.push(arcArrow(arcC, arcR, a1));
+    items.push({ op: 'line', a: g.pivot, b: g.handle, stroke: '#2e3844', sw: 3.4 });
+    items.push({ op: 'grip', c: g.handle, r: 8.2, label: 'saw', lx: 12, ly: -2, labelSize: 7.5 });
+    items.push({ op: 'note', t: words, x: SECTION.w / 2, y: 98, size: 7.6, color: good ? '#2f6b3a' : '#8a4038', align: 'center' });
+    return { items: items, handle: g.handle, pivot: g.pivot };
+  }
+
+  function bevelStepScene(level, run, kind) {
+    var view = viewOf(level, run);
+    var step = level.steps[Math.min(view.step, level.steps.length - 1)];
+    if (!step || step.id !== 'bevel') return null;
+    if (run.phase !== 'play' && run.replay == null) return null;
+    var built = bevelSectionItems(view.s.bevel, kind);
+    return { w: SECTION.w, h: SECTION.h, items: built.items, handle: built.handle };
+  }
+
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  function layout(cssW, cssH) {
-    var s = Math.min(cssW / VIEW.w, cssH / VIEW.h);
+  function layoutBox(box, cssW, cssH) {
+    var s = Math.min(cssW / box.w, cssH / box.h);
     return {
       s: s,
-      ox: (cssW - VIEW.w * s) / 2,
-      oy: (cssH - VIEW.h * s) / 2,
-      w: VIEW.w,
-      h: VIEW.h
+      ox: (cssW - box.w * s) / 2,
+      oy: (cssH - box.h * s) / 2,
+      w: box.w,
+      h: box.h
     };
+  }
+
+  function layout(cssW, cssH) {
+    return layoutBox(VIEW, cssW, cssH);
   }
 
   function paper() {
@@ -291,8 +410,9 @@
     var tip = add(pt(s.x, s.y), mul(dir, 34));
     var tail = add(pt(s.x, s.y), mul(stockDir, 30));
     if (dist(p, pt(s.x, s.y)) < 10) return 'corner';
-    if (dist(p, tip) < 10) return 'tip';
+    if (dist(p, tip) < 14) return 'tip';
     if (pointSegDist(p, pt(s.x, s.y), tip).dist < 7) return 'blade';
+    if (dist(p, tail) < 12) return 'stock';
     if (pointSegDist(p, pt(s.x, s.y), tail).dist < 7) return 'stock';
     return '';
   }
@@ -363,9 +483,9 @@
       mateTop: 66,
       mateBot: 134,
       steps: [
-        { id: 'pick', label: 'Pick', instruction: 'Pick up the square.' },
-        { id: 'seat', label: 'Seat', instruction: 'Seat its stock on a long edge of the board.' },
-        { id: 'knife', label: 'Knife', instruction: 'Slide the blade to the other board’s end, then knife the line.' },
+        { id: 'pick', label: 'Pick', instruction: 'Pick up the square by the stock or the blade handle.' },
+        { id: 'seat', label: 'Seat', instruction: 'Drag the stock onto a long edge of the board.' },
+        { id: 'knife', label: 'Knife', instruction: 'Drag the blade to the other board’s end, then knife the line.' },
         { id: 'cut', label: 'Cut', instruction: 'Cut the knife line.' }
       ]
     };
@@ -499,7 +619,7 @@
       }
       if (run.phase === 'play' || run.replay != null) {
         if (view.step < 3) {
-          items.push({ op: 'square', x: s.x, y: s.y, ang: s.ang, hot: !!s.seated });
+          items.push({ op: 'square', x: s.x, y: s.y, ang: s.ang, hot: !!s.seated, tipLabel: 'blade', stockLabel: 'stock' });
         }
       }
       return { items: items };
@@ -548,6 +668,13 @@
     return pointInPoly(p, panelCorners(cfg, angle));
   }
 
+  function shimPoint(cfg, angle) {
+    var cs = panelCorners(cfg, angle);
+    var mid = pt((cs[1].x + cs[2].x) / 2, (cs[1].y + cs[2].y) / 2);
+    var c = pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2);
+    return add(mid, mul(norm(sub(mid, c)), 7));
+  }
+
   function scribeTraceX(cfg, wall, span, tilt, angle, y, wobble) {
     var yS = y - Math.sin(tilt) * span;
     var wx = wallAt(wall, yS, cfg.y0, cfg.y1);
@@ -588,10 +715,10 @@
       idealS: idealS,
       idealT: idealT,
       steps: [
-        { id: 'level', label: 'Level', instruction: 'Shim the panel until the bubble sits in the middle, then lock the shims.' },
-        { id: 'lock', label: 'Lock', instruction: 'Open the compass until both legs seat in the gap. Slide to the widest opening, then lock.' },
-        { id: 'scribe', label: 'Scribe', instruction: 'Run the point down the wall and keep the legs level.' },
-        { id: 'bevel', label: 'Back-bevel', instruction: 'Tip the saw so the back of the cut clears the wall, then set it.' },
+        { id: 'level', label: 'Level', instruction: 'Drag the shim sideways until the bubble sits in the middle.' },
+        { id: 'lock', label: 'Lock', instruction: 'Drag the point to the wall and the pencil to the panel, then lock.' },
+        { id: 'scribe', label: 'Scribe', instruction: 'Drag down the wall and keep the legs level.' },
+        { id: 'bevel', label: 'Back-bevel', instruction: 'Drag the saw to tilt it so only the front edge touches the wall.' },
         { id: 'cut', label: 'Cut', instruction: 'Cut the scribed line.' }
       ]
     };
@@ -656,7 +783,8 @@
       var s = run.s;
       var id = stepId(level, run);
       if (id === 'level') {
-        if (ev.type === 'down' && hitPanel(cfg, s.angle, ev)) {
+        var shim = shimPoint(cfg, s.angle);
+        if (ev.type === 'down' && (dist(ev, shim) < 14 || hitPanel(cfg, s.angle, ev))) {
           run.drag = { mode: 'shim', last: ev.x };
         } else if (ev.type === 'move' && run.drag && run.drag.mode === 'shim') {
           s.angle = clamp(s.angle + (ev.x - run.drag.last) * 0.0045, -0.28, 0.28);
@@ -717,12 +845,7 @@
           if (got >= wall.length - 1) commitScribe(run);
         }
       }
-      if (id === 'bevel') {
-        if (ev.type === 'down') run.drag = { mode: 'bevel', last: ev.y, ang: s.bevel };
-        else if (ev.type === 'move' && run.drag && run.drag.mode === 'bevel') {
-          s.bevel = clamp(run.drag.ang + (run.drag.last - ev.y) * 0.01, -0.3, 0.7);
-        } else if (ev.type === 'up') run.drag = null;
-      }
+      if (id === 'bevel') dragBevel(run, ev);
     };
 
     function scribeDeviation(s) {
@@ -770,7 +893,10 @@
     };
 
     level.seatText = function (run) {
-      if (stepId(level, run) !== 'lock' || run.s.locked) return '';
+      var id = stepId(level, run);
+      if (id === 'bevel') return bevelWords(run.s.bevel, 'wall');
+      if (id === 'level' && Math.abs(run.s.angle) < 0.012) return 'Bubble in the middle';
+      if (id !== 'lock' || run.s.locked) return '';
       var info = seats(run.s);
       if (info.pointHot && info.pencilHot) return 'Both legs seated';
       if (info.pointHot) return 'Point seated on the wall';
@@ -897,6 +1023,15 @@
         }
       }
       var showCompass = view.step === 1 || view.step === 2;
+      if ((run.phase === 'play' || run.replay != null) && view.step === 0) {
+        var shim = shimPoint(cfg, s.angle);
+        var hub = pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2);
+        var shimAng = Math.atan2(shim.y - hub.y, shim.x - hub.x);
+        items.push({ op: 'arc', c: hub, r: dist(hub, shim), a0: shimAng - 0.45, a1: shimAng + 0.55, stroke: '#c4923a', sw: 1.8 });
+        items.push(arcArrow(hub, dist(hub, shim), shimAng + 0.55));
+        items.push({ op: 'grip', c: shim, r: 5.2, label: 'shim', lx: 7, ly: -2 });
+        items.push({ op: 'text', t: 'level', x: bub.x + 12, y: bub.y, size: 12, color: '#3a322c' });
+      }
       if ((run.phase === 'play' || run.replay != null) && showCompass) {
         var info = seats(s);
         items.push({
@@ -905,21 +1040,30 @@
           span: view.step >= 2 ? s.lockedSpan : s.span,
           tilt: view.step >= 2 ? s.lockedTilt : s.tilt,
           hotP: info.pointHot,
-          hotN: info.pencilHot
+          hotN: info.pencilHot,
+          names: true
         });
       }
-      if ((run.phase === 'play' || run.replay != null) && (view.step === 3 || (run.replay != null && level.steps[view.step] && level.steps[view.step].id === 'bevel'))) {
-        items.push({ op: 'bevelchip', x: 64, y: 96, ang: s.bevel });
+      if ((run.phase === 'play' || run.replay != null) && view.step === 2) {
+        var startIdx = -1;
+        for (i = 0; i < wall.length; i++) {
+          if (s.samples[i] == null) { startIdx = i; break; }
+        }
+        if (startIdx >= 0) {
+          var sp = wall[startIdx];
+          items.push({ op: 'grip', c: pt(sp.x, sp.y), r: 4.4, label: 'drag', lx: -18, ly: -7 });
+        }
       }
       return { items: items };
     };
+    level.sectionScene = function (run) { return bevelStepScene(level, run, 'wall'); };
     return level;
   }
 
   /* ---------- tick stick ---------- */
 
   function buildTick() {
-    var alcove = [pt(16, 22), pt(92, 18), pt(106, 62), pt(76, 104), pt(14, 90)];
+    var alcove = [pt(16, 22), pt(92, 18), pt(100, 56), pt(68, 80), pt(14, 70)];
     var sheetW = 34;
     var sheetH = 40;
     var home = null;
@@ -931,7 +1075,7 @@
         if (corners.every(function (p) { return pointInPoly(p, alcove); })) home = { x: x, y: y, w: sheetW, h: sheetH };
       }
     }
-    var board = { x: 14, y: 118, w: 70, h: 44 };
+    var board = { x: 18, y: 92, w: 78, h: 58 };
     var nC = alcove.length;
 
     var level = {
@@ -946,10 +1090,10 @@
       home: home,
       board: board,
       steps: [
-        { id: 'lay', label: 'Lay sheet', instruction: 'Lay the sheet flat inside the alcove. It seats only when it is fully inside.' },
-        { id: 'tick', label: 'Tick', instruction: 'Seat the stick’s point on a corner and tick where it crosses the sheet.' },
-        { id: 'carry', label: 'Carry', instruction: 'Carry the sheet onto the board.' },
-        { id: 'replay', label: 'Replay', instruction: 'Seat the stick on each line so a tick meets the sheet, then prick the point.' },
+        { id: 'lay', label: 'Lay sheet', instruction: 'Drag the sheet until it sits fully inside the alcove.' },
+        { id: 'tick', label: 'Tick', instruction: 'Drag the point onto a corner, then tick where the stick crosses the sheet.' },
+        { id: 'carry', label: 'Carry', instruction: 'Drag the sheet onto the board.' },
+        { id: 'replay', label: 'Replay', instruction: 'Drag the stick so a tick meets the sheet, then prick the point.' },
         { id: 'cut', label: 'Cut', instruction: 'Cut the outline the pricks describe.' }
       ]
     };
@@ -997,10 +1141,23 @@
       return pt(s.point.x + Math.cos(s.ang) * 72, s.point.y + Math.sin(s.ang) * 72);
     }
 
+    function turnAt(point, ang) {
+      var reach = 22;
+      var p = pt(point.x + Math.cos(ang) * reach, point.y + Math.sin(ang) * reach);
+      var guard = 0;
+      while ((p.x < 10 || p.x > 110 || p.y < 10 || p.y > 156) && reach > 14 && guard < 8) {
+        reach -= 2;
+        p = pt(point.x + Math.cos(ang) * reach, point.y + Math.sin(ang) * reach);
+        guard++;
+      }
+      return p;
+    }
+
     function hitStick(s, p) {
-      if (dist(p, s.point) < 8) return 'point';
+      if (dist(p, s.point) < 12) return 'point';
+      if (dist(p, turnAt(s.point, s.ang)) < 12) return 'tail';
       var tail = stickTail(s);
-      if (dist(p, tail) < 8) return 'tail';
+      if (dist(p, tail) < 12) return 'tail';
       if (pointSegDist(p, s.point, tail).dist < 6) return 'body';
       return '';
     }
@@ -1308,6 +1465,9 @@
       });
       items.push({ op: 'rect', x: board.x, y: board.y, w: board.w, h: board.h, fill: '#e4c48a', stroke: '#8a6434', sw: 1 });
       items.push({ op: 'rect', x: s.sheet.x, y: s.sheet.y, w: s.sheet.w, h: s.sheet.h, fill: 'rgba(255,252,245,0.92)', stroke: '#5b9bd5', sw: 1.2 });
+      if ((run.phase === 'play' || run.replay != null) && (view.step === 0 || view.step === 2)) {
+        items.push({ op: 'text', t: 'sheet', x: s.sheet.x + 4, y: s.sheet.y + s.sheet.h / 2, size: 12, color: '#3d6f99' });
+      }
       s.ticks.forEach(function (t) {
         var edge = add(pt(s.sheet.x, s.sheet.y), t.edgeLocal);
         var inward = add(edge, mul(t.dir, Math.min(18, t.dist)));
@@ -1327,7 +1487,7 @@
       if (run.phase === 'play' || run.replay != null) {
         if (view.step === 1 || view.step === 3) {
           var ticks = s.ticks.map(function (t) { return t.dist; });
-          items.push({ op: 'stick', point: s.point, ang: s.ang, len: 72, ticks: ticks, hot: view.step === 1 ? seatedCorner(s) >= 0 : !!replayMatch(s) });
+          items.push({ op: 'stick', point: s.point, ang: s.ang, len: 72, ticks: ticks, hot: view.step === 1 ? seatedCorner(s) >= 0 : !!replayMatch(s), pointLabel: 'point', tailLabel: 'turn', turn: turnAt(s.point, s.ang) });
         }
       }
       return { items: items };
@@ -1379,11 +1539,11 @@
       nB: nB,
       W: W,
       steps: [
-        { id: 'offA', label: 'Offcut', instruction: 'Seat an offcut flush on one wall and pencil the inner edge.' },
-        { id: 'offB', label: 'Offcut', instruction: 'Seat the other offcut flush on the second wall and pencil it.' },
-        { id: 'bis', label: 'Bisector', instruction: 'Knife a line from the corner through where the pencil lines cross.' },
-        { id: 'bevel', label: 'Bevel', instruction: 'Lay the bevel on that line and lock it.' },
-        { id: 'saw', label: 'Saw', instruction: 'Match the saw to the bevel and lock the saw. No numbers — match the blade.' },
+        { id: 'offA', label: 'Offcut', instruction: 'Drag the offcut flush onto one wall, then pencil its inner edge.' },
+        { id: 'offB', label: 'Offcut', instruction: 'Drag the offcut flush onto the other wall, then pencil its inner edge.' },
+        { id: 'bis', label: 'Bisector', instruction: 'Drag an end through the corner and the crossing, then knife.' },
+        { id: 'bevel', label: 'Bevel', instruction: 'Drag the blade onto the knifed line, then lock the bevel.' },
+        { id: 'saw', label: 'Saw', instruction: 'Drag the saw blade until it lines up with the bevel.' },
         { id: 'cut', label: 'Cut', instruction: 'Cut the miter.' }
       ]
     };
@@ -1475,8 +1635,8 @@
       if (id === 'offA' || id === 'offB') {
         if (ev.type === 'down') {
           var cs = offcutCorners(s);
-          if (cs.some(function (c) { return dist(c, ev) < 10; }) || dist(ev, pt(s.off.x, s.off.y)) < 16) {
-            run.drag = { px: ev.x, py: ev.y, x: s.off.x, y: s.off.y, ang: s.off.ang, mode: dist(ev, pt(s.off.x, s.off.y)) < 10 ? 'move' : 'rot' };
+          if (cs.some(function (c) { return dist(c, ev) < 12; }) || dist(ev, pt(s.off.x, s.off.y)) < 16) {
+            run.drag = { px: ev.x, py: ev.y, x: s.off.x, y: s.off.y, ang: s.off.ang, mode: dist(ev, pt(s.off.x, s.off.y)) < 12 ? 'move' : 'rot' };
           }
         } else if (ev.type === 'move' && run.drag) {
           if (run.drag.mode === 'rot') s.off.ang = Math.atan2(ev.y - s.off.y, ev.x - s.off.x);
@@ -1490,8 +1650,10 @@
       }
       if (id === 'bis') {
         if (ev.type === 'down') {
-          if (dist(ev, s.barA) < 10) run.drag = { end: 'a' };
-          else if (dist(ev, s.barB) < 10) run.drag = { end: 'b' };
+          var da = dist(ev, s.barA);
+          var db = dist(ev, s.barB);
+          if (da < 12 && da <= db) run.drag = { end: 'a' };
+          else if (db < 12) run.drag = { end: 'b' };
           else if (pointSegDist(ev, s.barA, s.barB).dist < 7) run.drag = { end: 'body', px: ev.x, py: ev.y, a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y) };
         } else if (ev.type === 'move' && run.drag) {
           if (run.drag.end === 'a') s.barA = pt(ev.x, ev.y);
@@ -1512,14 +1674,21 @@
         return;
       }
       if (id === 'bevel') {
+        var origin = s.bevelOrigin;
+        var bladeDir = pt(Math.cos(s.bladeAng), Math.sin(s.bladeAng));
+        var tip = add(origin, mul(bladeDir, 32));
+        var stockDir = pt(Math.cos(s.stockAng), Math.sin(s.stockAng));
+        var stockA = add(origin, mul(stockDir, -16));
+        var stockB = add(origin, mul(stockDir, 16));
+        var onTip = dist(ev, tip) < 14;
+        var onStock = dist(ev, origin) < 12 || pointSegDist(ev, stockA, stockB).dist < 8;
+        var onBlade = pointSegDist(ev, origin, tip).dist < 7 && dist(ev, origin) > 10;
         if (ev.type === 'down') {
-          run.drag = { mode: dist(ev, s.bevelOrigin) < 12 ? 'blade' : 'move', px: ev.x, py: ev.y, o: pt(s.bevelOrigin.x, s.bevelOrigin.y) };
+          if (onTip || onBlade) run.drag = { mode: 'blade' };
+          else if (onStock) run.drag = { mode: 'move', px: ev.x, py: ev.y, o: pt(origin.x, origin.y) };
         } else if (ev.type === 'move' && run.drag) {
           if (run.drag.mode === 'blade') s.bladeAng = Math.atan2(ev.y - s.bevelOrigin.y, ev.x - s.bevelOrigin.x);
-          else {
-            s.bevelOrigin = pt(run.drag.o.x + ev.x - run.drag.px, run.drag.o.y + ev.y - run.drag.py);
-            s.stockAng = Math.atan2(ev.y - s.bevelOrigin.y, ev.x - s.bevelOrigin.x);
-          }
+          else s.bevelOrigin = pt(run.drag.o.x + ev.x - run.drag.px, run.drag.o.y + ev.y - run.drag.py);
           if (s.lines && run.s.bisector) {
             var diff = lineDiff(s.bladeAng, Math.atan2(run.s.bisector.b.y - run.s.bisector.a.y, run.s.bisector.b.x - run.s.bisector.a.x));
             if (diff < 0.05 && pointLineDist(s.bevelOrigin, run.s.bisector.a, run.s.bisector.b) < 10) {
@@ -1531,9 +1700,13 @@
         return;
       }
       if (id === 'saw') {
-        if (ev.type === 'down') run.drag = { mode: 'saw' };
-        else if (ev.type === 'move' && run.drag) {
-          s.sawAng = Math.atan2(ev.y - 146, ev.x - 36);
+        var sawOrigin = pt(36, 146);
+        var sawTip = add(sawOrigin, mul(pt(Math.cos(s.sawAng), Math.sin(s.sawAng)), 30));
+        var onSaw = dist(ev, sawTip) < 14 || pointSegDist(ev, sawOrigin, sawTip).dist < 8;
+        if (ev.type === 'down') {
+          if (onSaw) run.drag = { mode: 'saw' };
+        } else if (ev.type === 'move' && run.drag && run.drag.mode === 'saw') {
+          s.sawAng = Math.atan2(ev.y - sawOrigin.y, ev.x - sawOrigin.x);
           if (s.bevelLocked && lineDiff(s.sawAng, s.bladeAng) < 0.04) {
             s.sawAng = s.bladeAng;
             s.sawHot = true;
@@ -1676,19 +1849,20 @@
       if (s.bisector) items.push({ op: 'line', a: s.bisector.a, b: s.bisector.b, stroke: '#241c14', sw: 1.7 });
       if (run.phase === 'play' || run.replay != null) {
         if (view.step === 0 || view.step === 1) {
-          items.push({ op: 'offcut', x: s.off.x, y: s.off.y, ang: s.off.ang, w: W, len: 44, hot: !!s.off.seated });
+          items.push({ op: 'offcut', x: s.off.x, y: s.off.y, ang: s.off.ang, w: W, len: 44, hot: !!s.off.seated, grip: true });
         }
         if (view.step === 2) {
           items.push({ op: 'line', a: s.barA, b: s.barB, stroke: s.barSeated ? '#c4923a' : '#2e3844', sw: 3 });
-          items.push({ op: 'circle', c: s.barA, r: 3.2, fill: '#2e3844', stroke: '', sw: 0 });
-          items.push({ op: 'circle', c: s.barB, r: 3.2, fill: '#2e3844', stroke: '', sw: 0 });
+          items.push({ op: 'grip', c: s.barA, r: 5.2, label: 'end', lx: 7, ly: -6 });
+          items.push({ op: 'grip', c: s.barB, r: 5.2, label: 'end', lx: 7, ly: -6 });
         }
         if (view.step === 3) {
-          items.push({ op: 'bevel', origin: s.bevelOrigin, stockAng: s.stockAng, bladeAng: s.bladeAng, hot: !!s.bladeHot });
+          items.push({ op: 'bevel', origin: s.bevelOrigin, stockAng: s.stockAng, bladeAng: s.bladeAng, hot: !!s.bladeHot, grip: true });
         }
         if (view.step === 4) {
-          items.push({ op: 'saw', origin: pt(36, 146), ang: s.sawAng, hot: !!s.sawHot });
+          items.push({ op: 'saw', origin: pt(36, 146), ang: s.sawAng, hot: !!s.sawHot, len: 30, grip: 'saw' });
           items.push({ op: 'bevel', origin: pt(78, 146), stockAng: 0, bladeAng: s.bladeAng, hot: false });
+          items.push({ op: 'text', t: 'bevel', x: 78, y: 132, size: 12, color: '#5c564f', align: 'center' });
         }
       }
       if (run.phase === 'result' && run.replay == null) {
@@ -1723,10 +1897,10 @@
       tutorial: null,
       profile: profile,
       steps: [
-        { id: 'miter', label: 'Miter', instruction: 'Seat the saw on a fence and cut. The fence you want is the one that opens the profile.' },
-        { id: 'pencil', label: 'Pencil', instruction: 'Darken the edge the miter just revealed.' },
-        { id: 'cope', label: 'Cope', instruction: 'Saw along that pencil line.' },
-        { id: 'bevel', label: 'Back-cut', instruction: 'Tip the coping saw back so the face meets first.' },
+        { id: 'miter', label: 'Miter', instruction: 'Drag the saw onto the fence that opens the profile, then cut.' },
+        { id: 'pencil', label: 'Pencil', instruction: 'Drag along the edge the miter just revealed.' },
+        { id: 'cope', label: 'Cope', instruction: 'Drag the saw along that pencil line.' },
+        { id: 'bevel', label: 'Back-cut', instruction: 'Drag the saw to tilt it so only the face meets the other piece.' },
         { id: 'fit', label: 'Test', instruction: 'Bring the piece into the corner.' }
       ]
     };
@@ -1761,10 +1935,13 @@
       var s = run.s;
       var id = stepId(level, run);
       if (id === 'miter') {
-        if (ev.type === 'down' || ev.type === 'move') {
-          if (ev.type === 'down') run.drag = { mode: 'miter' };
-          if (!run.drag) return;
-          s.blade = Math.atan2(ev.y - 86, ev.x - 70);
+        var hub = pt(70, 86);
+        var tip = add(hub, pt(Math.cos(s.blade) * 36, Math.sin(s.blade) * 36));
+        var onSaw = dist(ev, tip) < 14 || pointSegDist(ev, hub, tip).dist < 8;
+        if (ev.type === 'down') {
+          if (onSaw) run.drag = { mode: 'miter' };
+        } else if (ev.type === 'move' && run.drag && run.drag.mode === 'miter') {
+          s.blade = Math.atan2(ev.y - hub.y, ev.x - hub.x);
           if (angDiff(s.blade, fenceIn) < 0.09) { s.blade = fenceIn; s.fenceHot = 'inside'; }
           else if (angDiff(s.blade, fenceOut) < 0.09) { s.blade = fenceOut; s.fenceHot = 'outside'; }
           else s.fenceHot = null;
@@ -1784,11 +1961,7 @@
         if (ev.type === 'up') run.drag = null;
         return;
       }
-      if (id === 'bevel') {
-        if (ev.type === 'down') run.drag = { last: ev.y, ang: s.bevel };
-        else if (ev.type === 'move' && run.drag) s.bevel = clamp(run.drag.ang + (run.drag.last - ev.y) * 0.012, -0.35, 0.75);
-        else if (ev.type === 'up') run.drag = null;
-      }
+      if (id === 'bevel') dragBevel(run, ev);
     };
 
     level.actionFor = function (run) {
@@ -1796,14 +1969,16 @@
       if (id === 'miter') return { label: 'Cut the miter', enabled: !!run.s.fenceHot };
       if (id === 'pencil') return { label: 'Pencil done', enabled: run.s.pencil.length > 3 };
       if (id === 'cope') return { label: 'Cope done', enabled: run.s.cope.length > 3 };
-      if (id === 'bevel') return { label: 'Set the back-cut', enabled: true };
+      if (id === 'bevel') return { label: 'Set the bevel', enabled: true };
       if (id === 'fit') return { label: 'Test the fit', enabled: true };
       return null;
     };
 
     level.seatText = function (run) {
-      if (stepId(level, run) === 'miter' && run.s.fenceHot === 'inside') return 'Saw seated on the inside fence';
-      if (stepId(level, run) === 'miter' && run.s.fenceHot === 'outside') return 'Saw seated on the outside fence';
+      var id = stepId(level, run);
+      if (id === 'miter' && run.s.fenceHot === 'inside') return 'Saw seated on the inside fence';
+      if (id === 'miter' && run.s.fenceHot === 'outside') return 'Saw seated on the outside fence';
+      if (id === 'bevel') return bevelWords(run.s.bevel, 'cope');
       return '';
     };
 
@@ -1877,24 +2052,27 @@
       var items = [paper()];
       if (!s.miterCut) {
         items.push({ op: 'rect', x: 24, y: 78, w: 70, h: 16, fill: '#e4c48a', stroke: '#8a6434', sw: 1 });
-        items.push({ op: 'text', t: 'face', x: 30, y: 74, size: 9, color: '#8a8175' });
-        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceIn) * 28, Math.sin(fenceIn) * 28)), stroke: 'rgba(91,155,213,0.85)', sw: 1.1, dash: [3, 2] });
-        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceOut) * 28, Math.sin(fenceOut) * 28)), stroke: 'rgba(91,155,213,0.85)', sw: 1.1, dash: [3, 2] });
-        items.push({ op: 'text', t: 'profile', x: 78, y: 64, size: 8, color: '#3d6f99' });
-        items.push({ op: 'text', t: 'back', x: 78, y: 112, size: 8, color: '#3d6f99' });
-        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(s.blade) * 32, Math.sin(s.blade) * 32)), stroke: s.fenceHot ? '#c4923a' : '#2e3844', sw: 1.8 });
-        items.push({ op: 'circle', c: pt(70, 86), r: 2.2, fill: '#2e3844', stroke: '', sw: 0 });
+        items.push({ op: 'text', t: 'face', x: 30, y: 72, size: 12, color: '#5c564f' });
+        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceIn) * 34, Math.sin(fenceIn) * 34)), stroke: 'rgba(91,155,213,0.85)', sw: 1.3, dash: [3, 2] });
+        items.push({ op: 'line', a: pt(70, 86), b: add(pt(70, 86), pt(Math.cos(fenceOut) * 34, Math.sin(fenceOut) * 34)), stroke: 'rgba(91,155,213,0.85)', sw: 1.3, dash: [3, 2] });
+        items.push({ op: 'arc', c: pt(70, 86), r: 30, a0: fenceOut, a1: fenceIn, stroke: '#c4923a', sw: 2 });
+        items.push({ op: 'text', t: 'back', x: 96, y: 58, size: 12, color: '#3d6f99' });
+        items.push({ op: 'text', t: 'profile', x: 96, y: 116, size: 12, color: '#3d6f99' });
+        var sawTip = add(pt(70, 86), pt(Math.cos(s.blade) * 36, Math.sin(s.blade) * 36));
+        items.push({ op: 'line', a: pt(70, 86), b: sawTip, stroke: s.fenceHot ? '#c4923a' : '#2e3844', sw: 2.4 });
+        items.push({ op: 'grip', c: sawTip, r: 5.4, label: 'saw', lx: 7, ly: -2 });
       } else {
         items.push({ op: 'poly', pts: [pt(8, 36)].concat(profile).concat([pt(8, 132)]), fill: '#d7b48a', stroke: '#8a6434', sw: 1 });
         items.push({ op: 'polyline', pts: profile, stroke: '#5c564f', sw: 1.6 });
         if (s.pencil.length > 1) items.push({ op: 'polyline', pts: s.pencil, stroke: '#241c14', sw: 1.35 });
         if (s.cope.length > 1) items.push({ op: 'polyline', pts: s.cope.map(function (p) { return pt(p.x + 1.4, p.y); }), stroke: '#8a5a20', sw: 1.2 });
-        if (view.step === 3 || (run.phase === 'result' && run.replay == null)) {
-          items.push({ op: 'bevelchip', x: 68, y: 108, ang: s.bevel });
+        if ((run.phase === 'play' || run.replay != null) && (view.step === 1 || view.step === 2)) {
+          items.push({ op: 'text', t: 'trace', x: 46, y: 30, size: 12, color: '#3d6f99' });
         }
       }
       return { items: items };
     };
+    level.sectionScene = function (run) { return bevelStepScene(level, run, 'cope'); };
     return level;
   }
 
@@ -1914,8 +2092,8 @@
       C: C,
       R: R,
       steps: [
-        { id: 'd1', label: 'Diameter', instruction: 'Seat the square’s corner on the rim, turn it so both legs cross the rim, and mark.' },
-        { id: 'd2', label: 'Diameter', instruction: 'Seat it somewhere else on the rim and mark a second chord.' },
+        { id: 'd1', label: 'Diameter', instruction: 'Drag the corner onto the rim, then drag the leg so both cross it.' },
+        { id: 'd2', label: 'Diameter', instruction: 'Drag the corner to another spot on the rim, then mark again.' },
         { id: 'prick', label: 'Prick', instruction: 'Prick where the two chords cross.' }
       ]
     };
@@ -1950,15 +2128,28 @@
       return Math.abs(dist(s.corner, C) - R) < 0.8;
     }
 
+    function legTip(s) {
+      var reach = 48;
+      var dir = pt(Math.cos(s.ang), Math.sin(s.ang));
+      var p = add(s.corner, mul(dir, reach));
+      var guard = 0;
+      while ((p.x < 12 || p.x > 108 || p.y < 14 || p.y > 156) && reach > 18 && guard < 10) {
+        reach -= 4;
+        p = add(s.corner, mul(dir, reach));
+        guard++;
+      }
+      return p;
+    }
+
     level.pointer = function (run, ev) {
       if (run.phase !== 'play') return;
       var s = run.s;
       var id = stepId(level, run);
       if (id !== 'd1' && id !== 'd2') return;
-      var tip = add(s.corner, mul(pt(Math.cos(s.ang), Math.sin(s.ang)), 48));
+      var tip = legTip(s);
       if (ev.type === 'down') {
-        if (dist(ev, tip) < 10) run.drag = { mode: 'rot' };
-        else if (dist(ev, s.corner) < 12 || pointSegDist(ev, s.corner, tip).dist < 8) run.drag = { mode: 'move', px: ev.x, py: ev.y, c: pt(s.corner.x, s.corner.y) };
+        if (dist(ev, tip) < 14) run.drag = { mode: 'rot' };
+        else if (dist(ev, s.corner) < 14 || pointSegDist(ev, s.corner, tip).dist < 8) run.drag = { mode: 'move', px: ev.x, py: ev.y, c: pt(s.corner.x, s.corner.y) };
       } else if (ev.type === 'move' && run.drag) {
         if (run.drag.mode === 'rot') s.ang = Math.atan2(ev.y - s.corner.y, ev.x - s.corner.x);
         else {
@@ -1982,6 +2173,7 @@
     level.seatText = function (run) {
       var id = stepId(level, run);
       if ((id === 'd1' || id === 'd2') && onRim(run.s)) return 'Corner seated on the rim';
+      if ((id === 'd1' || id === 'd2') && !chordOf(run.s)) return 'Turn the leg until both ends cross the rim';
       return '';
     };
 
@@ -2068,7 +2260,7 @@
         }
       }
       if ((run.phase === 'play' || run.replay != null) && (view.step === 0 || view.step === 1)) {
-        items.push({ op: 'square', x: s.corner.x, y: s.corner.y, ang: s.ang, hot: onRim(s), leg: 50, stock: 36 });
+        items.push({ op: 'square', x: s.corner.x, y: s.corner.y, ang: s.ang, hot: onRim(s), leg: 50, stock: 36, tipLabel: 'turn', heelLabel: 'corner', tipAt: legTip(s) });
       }
       return { items: items };
     };
@@ -2091,9 +2283,9 @@
       C: C,
       R: R,
       steps: [
-        { id: 'lock', label: 'Lock', instruction: 'Seat the compass from the center prick to the rim and lock it.' },
-        { id: 'circle', label: 'Circle', instruction: 'Strike the circle with that opening.' },
-        { id: 'step', label: 'Step', instruction: 'Seat the point on the last prick and strike the next crossing.' },
+        { id: 'lock', label: 'Lock', instruction: 'Drag the point to the center and the pencil to the rim, then lock.' },
+        { id: 'circle', label: 'Circle', instruction: 'Drag the point onto the center, then strike the circle.' },
+        { id: 'step', label: 'Step', instruction: 'Drag the point onto the last prick, then strike the next crossing.' },
         { id: 'join', label: 'Join', instruction: 'Join the points and cut.' }
       ]
     };
@@ -2207,8 +2399,14 @@
     };
 
     level.instruct = function (run) {
+      var id = stepId(level, run);
       var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
-      if (stepId(level, run) === 'step') return base + ' ' + Math.min(run.s.verts.length, 6) + ' of 6.';
+      if (id === 'circle' && dist(run.s.point, C) >= 0.8) return 'Drag the compass point onto the center, then strike.';
+      if (id === 'step') {
+        var seated = run.s.verts.length && dist(run.s.point, run.s.verts[run.s.verts.length - 1].at) < 0.8;
+        if (!seated) return 'Drag the compass point onto the last prick, then strike.';
+        return base + ' ' + Math.min(run.s.verts.length, 6) + ' of 6.';
+      }
       return base;
     };
 
@@ -2322,7 +2520,7 @@
       if (run.phase === 'play' || run.replay != null) {
         if (view.step <= 2) {
           var info = seats(s);
-          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: info.pointHot || (view.step === 2 && s.verts.length && dist(s.point, s.verts[s.verts.length - 1].at) < 0.8), hotN: info.pencilHot });
+          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: info.pointHot || (view.step === 2 && s.verts.length && dist(s.point, s.verts[s.verts.length - 1].at) < 0.8), hotN: info.pencilHot, names: true });
         }
       }
       return { items: items };
@@ -2375,9 +2573,9 @@
       C: C,
       ideals: ideals,
       steps: [
-        { id: 'diag', label: 'Diagonals', instruction: 'Lay the straightedge across two opposite corners and knife. Then the other pair.' },
-        { id: 'lock', label: 'Lock', instruction: 'Seat the compass from a corner to where the diagonals cross, and lock it.' },
-        { id: 'arcs', label: 'Arcs', instruction: 'Seat the point on a corner and swing the arc so it marks both sides.' },
+        { id: 'diag', label: 'Diagonals', instruction: 'Drag an end onto two opposite corners, then knife. Then the other pair.' },
+        { id: 'lock', label: 'Lock', instruction: 'Drag the point to a corner and the pencil to the crossing, then lock.' },
+        { id: 'arcs', label: 'Arcs', instruction: 'Drag the point onto a corner, then swing the arc across both sides.' },
         { id: 'join', label: 'Join', instruction: 'Join the eight marks and cut.' }
       ]
     };
@@ -2441,8 +2639,10 @@
       var id = stepId(level, run);
       if (id === 'diag') {
         if (ev.type === 'down') {
-          if (dist(ev, s.barA) < 9) run.drag = { end: 'a' };
-          else if (dist(ev, s.barB) < 9) run.drag = { end: 'b' };
+          var da = dist(ev, s.barA);
+          var db = dist(ev, s.barB);
+          if (da < 12 && da <= db) run.drag = { end: 'a' };
+          else if (db < 12) run.drag = { end: 'b' };
           else if (pointSegDist(ev, s.barA, s.barB).dist < 7) run.drag = { end: 'body', px: ev.x, py: ev.y, a: pt(s.barA.x, s.barA.y), b: pt(s.barB.x, s.barB.y) };
         } else if (ev.type === 'move' && run.drag) {
           if (run.drag.end === 'a') s.barA = pt(ev.x, ev.y);
@@ -2499,9 +2699,14 @@
     };
 
     level.instruct = function (run) {
+      var id = stepId(level, run);
       var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
-      if (stepId(level, run) === 'diag') return base + ' ' + run.s.diags.length + ' of 2.';
-      if (stepId(level, run) === 'arcs') return base + ' ' + run.s.swung.length + ' of 4.';
+      if (id === 'diag') return base + ' ' + run.s.diags.length + ' of 2.';
+      if (id === 'arcs') {
+        var onCorner = corners.some(function (c) { return dist(run.s.point, c) < 0.8; });
+        if (!onCorner) return 'Drag the compass point onto a corner, then swing the arc.';
+        return base + ' ' + run.s.swung.length + ' of 4.';
+      }
       return base;
     };
 
@@ -2623,11 +2828,11 @@
       if (run.phase === 'play' || run.replay != null) {
         if (view.step === 0) {
           items.push({ op: 'line', a: s.barA, b: s.barB, stroke: s.barHot ? '#c4923a' : '#2e3844', sw: 3 });
-          items.push({ op: 'circle', c: s.barA, r: 3, fill: '#2e3844', stroke: '', sw: 0 });
-          items.push({ op: 'circle', c: s.barB, r: 3, fill: '#2e3844', stroke: '', sw: 0 });
+          items.push({ op: 'grip', c: s.barA, r: 5.2, label: 'end', lx: 7, ly: -6 });
+          items.push({ op: 'grip', c: s.barB, r: 5.2, label: 'end', lx: 7, ly: -6 });
         }
         if (view.step === 1 || view.step === 2) {
-          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: corners.some(function (c) { return dist(s.point, c) < 0.8; }), hotN: !!s.pencilHot });
+          items.push({ op: 'compass', point: s.point, span: s.span, tilt: s.tilt, hotP: corners.some(function (c) { return dist(s.point, c) < 0.8; }), hotN: !!s.pencilHot, names: true });
           if (view.step === 2 && s.locked) {
             var pc = null;
             corners.forEach(function (c) { if (dist(s.point, c) < 0.8) pc = c; });
@@ -2729,16 +2934,24 @@
     return level.scene(run);
   }
 
+  function section(level, run) {
+    if (!level || !level.sectionScene) return null;
+    return level.sectionScene(run);
+  }
+
   var PF = {
     VIEW: VIEW,
+    SECTION: SECTION,
     levels: levels,
     layout: layout,
+    layoutBox: layoutBox,
     createRun: createRun,
     pointer: pointer,
     action: action,
     hint: hint,
     restart: restart,
     scene: scene,
+    section: section,
     hud: hud,
     pt: pt,
     dist: dist
@@ -2852,6 +3065,40 @@
     hint(center, seated);
     assert(seated.s.chords.length === 1, 'first hint marks a chord');
     assert(seated.log[0].deviation < 0.2, 'seated chord deviation ' + seated.log[0].deviation);
+
+    /* back-bevel is its own panel: the saw handle tilts it, the work canvas does not */
+    var scribeLv = levels[1];
+    var bev = createRun(scribeLv);
+    bev.step = 3;
+    var sec = section(scribeLv, bev);
+    assert(sec && sec.items && sec.items.length > 4, 'bevel section panel');
+    assert(sec.handle, 'section exposes the saw handle');
+    assert(!scene(scribeLv, bev).items.some(function (it) { return it.op === 'bevelchip'; }), 'bevel chip no longer covers the scribe');
+    var words = hud(scribeLv, bev).seat;
+    assert(words && !/\d/.test(words), 'bevel feedback has no readout: ' + words);
+    assert(/back is touching/.test(words), 'square saw says the back touches: ' + words);
+    assert(/front edge touches the wall/.test(hud(scribeLv, bev).instruction), 'bevel instruction names the drag');
+    var ang0 = bev.s.bevel;
+    pointer(scribeLv, bev, { type: 'down', x: 60, y: 80 });
+    pointer(scribeLv, bev, { type: 'move', x: 60, y: 30 });
+    pointer(scribeLv, bev, { type: 'up', x: 60, y: 30 });
+    assert(bev.s.bevel === ang0, 'work canvas does not tilt the saw');
+    pointer(scribeLv, bev, { type: 'down', x: sec.handle.x, y: sec.handle.y, section: true });
+    pointer(scribeLv, bev, { type: 'move', x: sec.handle.x + 16, y: sec.handle.y, section: true });
+    pointer(scribeLv, bev, { type: 'up', x: sec.handle.x + 16, y: sec.handle.y, section: true });
+    assert(bev.s.bevel > 0.12 && bev.s.bevel < 0.42, 'dragging the saw tilts it into the clear ' + bev.s.bevel.toFixed(3));
+    var midWords = hud(scribeLv, bev).seat;
+    assert(/front edge/.test(midWords), 'cleared back says only the front meets ' + midWords);
+    assert(!/\d/.test(midWords), 'tilted feedback has no number');
+    var copeLv = levels[4];
+    var copeRun = createRun(copeLv);
+    copeRun.step = 3;
+    copeRun.s.miterCut = true;
+    var copeSec = section(copeLv, copeRun);
+    assert(copeSec && copeSec.items.length > 4, 'cope section panel');
+    assert(!scene(copeLv, copeRun).items.some(function (it) { return it.op === 'bevelchip'; }), 'cope chip gone');
+    assert(/face meets the other piece/.test(hud(copeLv, copeRun).instruction), 'cope instruction');
+    assert(levels[8].sectionScene, 'stone shares the section');
 
     console.log('ideal scribe', levels[1].idealS.toFixed(2), 'stone', levels[8].idealS.toFixed(2), 'oct marks', levels[7].ideals.length, 'sheet', JSON.stringify(levels[2].home));
     if (failed) {
