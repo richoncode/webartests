@@ -5,6 +5,9 @@
   var SAVE_KEY = 'perfect-fit-v2';
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
+  var sectionEl = document.getElementById('section');
+  var sectionCanvas = document.getElementById('section-c');
+  var sectionCtx = sectionCanvas.getContext('2d');
   var menu = document.getElementById('menu');
   var dock = document.getElementById('dock');
   var playUi = document.getElementById('play-ui');
@@ -173,6 +176,26 @@
     ctx.arc(origin.x, origin.y, 1.3, 0, Math.PI * 2);
     ctx.fillStyle = it.hot ? '#e0a050' : '#d7dde4';
     ctx.fill();
+    if (it.tipLabel) drawGrip({ c: it.tipAt || add(origin, mul(dir, leg)), r: 4.6, label: it.tipLabel, lx: 6, ly: -3 });
+    if (it.stockLabel) drawGrip({ c: add(origin, mul(stockDir, stock * 0.65)), r: 4.4, label: it.stockLabel, lx: 6, ly: -7 });
+    if (it.heelLabel) drawGrip({ c: origin, r: 4.8, label: it.heelLabel, lx: 6, ly: -8 });
+  }
+
+  function drawGrip(it) {
+    var r = it.r || 5;
+    ctx.beginPath();
+    ctx.arc(it.c.x, it.c.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#2e3844';
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#e0a050';
+    ctx.stroke();
+    if (!it.label) return;
+    ctx.fillStyle = '#3a322c';
+    ctx.font = (it.labelSize || 5) + 'px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(it.label, it.c.x + (it.lx != null ? it.lx : r + 1.6), it.c.y + (it.ly || 0));
   }
 
   function drawCompass(it) {
@@ -208,6 +231,22 @@
     ctx.moveTo(pencil.x - d.x * 3.2, pencil.y - d.y * 3.2);
     ctx.lineTo(pencil.x, pencil.y);
     ctx.stroke();
+    if (it.names) {
+      ctx.fillStyle = '#3a322c';
+      ctx.font = '5px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('point', p.x + n.x * 9, p.y + n.y * 9);
+      ctx.fillText('pencil', pencil.x + n.x * 9, pencil.y + n.y * 9);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4.2, 0, Math.PI * 2);
+      ctx.strokeStyle = '#e0a050';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(pencil.x, pencil.y, 4.2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (it.span > 6) {
       ctx.strokeStyle = 'rgba(91,155,213,0.85)';
       ctx.lineWidth = 0.8;
@@ -234,6 +273,8 @@
     ctx.beginPath();
     ctx.arc(it.point.x, it.point.y, 1.8, 0, Math.PI * 2);
     ctx.fill();
+    if (it.pointLabel) drawGrip({ c: it.point, r: 4.4, label: it.pointLabel, lx: 6, ly: -6 });
+    if (it.tailLabel) drawGrip({ c: it.turn || add(it.point, mul(dir, 22)), r: 4.6, label: it.tailLabel, lx: 6, ly: -6 });
     ctx.strokeStyle = '#241c14';
     ctx.lineWidth = 1.1;
     (it.ticks || []).forEach(function (dist) {
@@ -258,6 +299,10 @@
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    if (it.grip) {
+      drawGrip({ c: { x: it.x, y: it.y }, r: 4.6, label: 'move', lx: 6, ly: -7 });
+      drawGrip({ c: add({ x: it.x, y: it.y }, mul(d, it.len / 2 - 2)), r: 4.4, label: 'turn', lx: 6, ly: -7 });
+    }
   }
 
   function drawBevel(it) {
@@ -277,11 +322,22 @@
     ctx.arc(origin.x, origin.y, 2.4, 0, Math.PI * 2);
     ctx.fillStyle = '#c4923a';
     ctx.fill();
+    if (it.grip) {
+      var tip = add(origin, mul(bladeDir, 32));
+      drawGrip({ c: tip, r: 5, label: 'blade', lx: 6, ly: -4 });
+      ctx.beginPath();
+      ctx.arc(origin.x, origin.y, 26, it.bladeAng - 0.85, it.bladeAng + 0.85);
+      ctx.strokeStyle = '#c4923a';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      drawGrip({ c: add(origin, mul(stockDir, 12)), r: 4.2, label: 'stock', lx: 6, ly: -8 });
+    }
   }
 
   function drawSaw(it) {
     var origin = it.origin;
     var dir = { x: Math.cos(it.ang), y: Math.sin(it.ang) };
+    var reach = it.len || 28;
     ctx.strokeStyle = '#8a8175';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -289,11 +345,19 @@
     ctx.lineTo(origin.x + 18, origin.y);
     ctx.stroke();
     ctx.strokeStyle = it.hot ? '#e0a050' : '#2e3844';
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(origin.x, origin.y);
-    ctx.lineTo(origin.x + dir.x * 28, origin.y + dir.y * 28);
+    ctx.lineTo(origin.x + dir.x * reach, origin.y + dir.y * reach);
     ctx.stroke();
+    if (it.grip) {
+      ctx.beginPath();
+      ctx.arc(origin.x, origin.y, reach * 0.85, it.ang - 0.9, it.ang + 0.9);
+      ctx.strokeStyle = '#c4923a';
+      ctx.lineWidth = 1.7;
+      ctx.stroke();
+      drawGrip({ c: add(origin, mul(dir, reach)), r: 5.4, label: it.grip, lx: 6, ly: -8 });
+    }
   }
 
   function drawBubble(it) {
@@ -312,37 +376,6 @@
     ctx.arc(bx, 0, 2.1, 0, Math.PI * 2);
     ctx.fillStyle = Math.abs(it.offset) < 0.18 ? '#7dcea0' : '#e7d2b4';
     ctx.fill();
-    ctx.restore();
-  }
-
-  function drawBevelChip(it) {
-    ctx.save();
-    ctx.translate(it.x, it.y);
-    ctx.fillStyle = '#f7f1e6';
-    ctx.strokeStyle = '#cfc6ba';
-    ctx.lineWidth = 0.7;
-    roundRect(-12, -8, 58, 52, 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#e4c48a';
-    ctx.strokeStyle = '#8a6434';
-    ctx.lineWidth = 0.7;
-    roundRect(0, 0, 22, 32, 1);
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = '#2e3844';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(0, 1);
-    ctx.lineTo(Math.sin(it.ang) * 30, Math.cos(it.ang) * 30);
-    ctx.stroke();
-    ctx.fillStyle = '#5c564f';
-    ctx.font = '3.2px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('section', -8, -3);
-    ctx.textAlign = 'center';
-    ctx.fillText('face', -6, 16);
-    ctx.fillText('back', 30, 16);
     ctx.restore();
   }
 
@@ -406,26 +439,27 @@
       ctx.setLineDash([]);
       return;
     }
-    if (item.op === 'text') {
+    if (item.op === 'text' || item.op === 'note') {
       ctx.fillStyle = item.color || '#5c564f';
-      ctx.font = ((item.size || 9) * 0.52) + 'px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+      var px = item.op === 'note' ? (item.size || 8) : ((item.size || 9) * 0.52);
+      ctx.font = px + 'px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
       ctx.textAlign = item.align || 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(item.t, item.x, item.y);
       return;
     }
-    if (item.op === 'square') drawSquare(item);
+    if (item.op === 'grip') drawGrip(item);
+    else if (item.op === 'square') drawSquare(item);
     else if (item.op === 'compass') drawCompass(item);
     else if (item.op === 'stick') drawStick(item);
     else if (item.op === 'offcut') drawOffcut(item);
     else if (item.op === 'bevel') drawBevel(item);
     else if (item.op === 'saw') drawSaw(item);
     else if (item.op === 'bubble') drawBubble(item);
-    else if (item.op === 'bevelchip') drawBevelChip(item);
   }
 
-  function paintScene(context, items, cssW, cssH) {
-    var lay = PF.layout(cssW, cssH);
+  function paintBox(context, items, cssW, cssH, box, margin) {
+    var lay = PF.layoutBox(box, cssW, cssH);
     var previous = ctx;
     ctx = context;
     ctx.save();
@@ -433,21 +467,51 @@
     ctx.scale(lay.s, lay.s);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.fillStyle = '#2a2118';
-    ctx.fillRect(-20, -20, PF.VIEW.w + 40, PF.VIEW.h + 40);
+    ctx.fillStyle = margin || '#2a2118';
+    ctx.fillRect(-40, -40, box.w + 80, box.h + 80);
     for (var i = 0; i < items.length; i++) drawItem(items[i]);
     ctx.restore();
     ctx = previous;
   }
 
+  function paintScene(context, items, cssW, cssH) {
+    paintBox(context, items, cssW, cssH, PF.VIEW, '#2a2118');
+  }
+
+  function currentSection() {
+    if (state.screen !== 'play' || !state.run) return null;
+    return PF.section(level(), state.run);
+  }
+
+  function paintSection(spec) {
+    if (!spec) return;
+    var rect = sectionCanvas.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var w = Math.max(1, Math.round(rect.width * dpr));
+    var h = Math.max(1, Math.round(rect.height * dpr));
+    if (sectionCanvas.width !== w || sectionCanvas.height !== h) {
+      sectionCanvas.width = w;
+      sectionCanvas.height = h;
+    }
+    sectionCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sectionCtx.clearRect(0, 0, rect.width, rect.height);
+    sectionCtx.fillStyle = '#f4efe4';
+    sectionCtx.fillRect(0, 0, rect.width, rect.height);
+    paintBox(sectionCtx, spec.items, rect.width, rect.height, PF.SECTION, '#f4efe4');
+  }
+
   function paint() {
+    var spec = currentSection();
+    sectionEl.classList.toggle('hidden', !spec);
     var size = resize();
     ctx.clearRect(0, 0, size.w, size.h);
     ctx.fillStyle = '#140e0a';
     ctx.fillRect(0, 0, size.w, size.h);
-    if (state.screen !== 'play' || !state.run) return;
-    var scene = PF.scene(level(), state.run);
-    paintScene(ctx, scene.items, size.w, size.h);
+    if (state.screen === 'play' && state.run) {
+      var scene = PF.scene(level(), state.run);
+      paintScene(ctx, scene.items, size.w, size.h);
+    }
+    if (spec) paintSection(spec);
   }
 
   function worldFromEvent(ev) {
@@ -472,6 +536,7 @@
     state.run = null;
     menu.classList.remove('hidden');
     dock.classList.add('hidden');
+    sectionEl.classList.add('hidden');
     stepsEl.classList.add('hidden');
     geometryEl.classList.add('hidden');
     coachEl.classList.add('hidden');
@@ -639,10 +704,37 @@
     afterMove(prev);
   }
 
+  function sectionFromEvent(ev) {
+    var rect = sectionCanvas.getBoundingClientRect();
+    var lay = PF.layoutBox(PF.SECTION, rect.width, rect.height);
+    return {
+      x: (ev.clientX - rect.left - lay.ox) / lay.s,
+      y: (ev.clientY - rect.top - lay.oy) / lay.s
+    };
+  }
+
+  function onSectionPointer(ev) {
+    if (state.screen !== 'play' || !state.run || state.run.phase !== 'play') return;
+    if (sectionEl.classList.contains('hidden')) return;
+    if (ev.cancelable && ev.type === 'pointerdown') ev.preventDefault();
+    var prev = els.seat.textContent;
+    var w = sectionFromEvent(ev);
+    var type = ev.type === 'pointerdown' ? 'down' : (ev.type === 'pointerup' || ev.type === 'pointercancel' ? 'up' : 'move');
+    if (type === 'down') {
+      try { sectionCanvas.setPointerCapture(ev.pointerId); } catch (err) { /* already gone */ }
+    }
+    PF.pointer(level(), state.run, { type: type, x: w.x, y: w.y, section: true });
+    afterMove(prev);
+  }
+
   canvas.addEventListener('pointerdown', onPointer);
   canvas.addEventListener('pointermove', onPointer);
   canvas.addEventListener('pointerup', onPointer);
   canvas.addEventListener('pointercancel', onPointer);
+  sectionCanvas.addEventListener('pointerdown', onSectionPointer);
+  sectionCanvas.addEventListener('pointermove', onSectionPointer);
+  sectionCanvas.addEventListener('pointerup', onSectionPointer);
+  sectionCanvas.addEventListener('pointercancel', onSectionPointer);
 
   els.restart.addEventListener('click', function () {
     if (state.screen !== 'play' || !state.run || state.run.phase !== 'play') return;
