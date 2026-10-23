@@ -22,7 +22,8 @@ The games list is `games/index.html`.
 - **Hint** does the single next correct step. Press it again to walk the whole job. Each hint adds to the score and drops a star.
 - The checklist is the job. The line under the title is the geometry, not a measurement.
 - Compass openings and bevels have no numeric readout. You match them by eye, against a wall, a rim, or a line you already drew.
-- A back-bevel is a separate cross-section under the work. Drag the saw along the arc until only the front edge meets the wall. The line under the picture says whether the back is touching, clear, or the face has tipped off. It never shows degrees.
+- Scribing drags the compass point along the wall. The pencil stays at the locked opening and draws that shape on the board. A sloppy finger still rides the wall; lifting off, tilting the legs, or skipping a stretch is what moves the line.
+- A back-bevel is the cross-section under the work. The saw enters on the scribe line and the handle swings around that pivot so the back of the cut is relieved. The line under the picture says whether the back is touching, clear, or the face has tipped off. It never shows degrees.
 - After the cut, the score is the leftover gap in millimetres, plus a penalty for extra tries, hints, and tools that missed their reference. Replay names the step that opened the gap.
 
 | Stars | What it takes |

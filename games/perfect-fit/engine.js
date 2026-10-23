@@ -166,11 +166,16 @@
     return Math.min(2.5, (angle - 0.42) * 4);
   }
 
-  /* Cross-section for a back-bevel. Its own box, never drawn over the work. */
-  var SECTION = { w: 160, h: 108 };
-  var SEC_WALL = 36;
-  var SEC_FACE = 64;
-  var SEC_THICK = 28;
+  /* End-on cross-section. The wall sits left of the board with a gap.
+     The saw pivots on the scribe line at the face corner. */
+  var SECTION = { w: 160, h: 118 };
+  var SEC_WALL_R = 28;
+  var SEC_BOARD = 44;
+  var SEC_FACE = 66;
+  var SEC_BACK = 36;
+  var SEC_THICK = SEC_FACE - SEC_BACK;
+  var SEC_HANDLE = 32;
+  var SEC_BOARD_R = 138;
 
   function bevelWords(angle, kind) {
     var low = angle < 0.09;
@@ -186,15 +191,15 @@
   }
 
   function bevelGeom(angle) {
-    var a = clamp(angle, -0.5, 0.7);
-    var retreat = a > 0.42 ? (a - 0.42) * 36 : 0;
-    var pivot = pt(SEC_WALL + retreat, SEC_FACE);
-    var inset = Math.tan(clamp(a, -0.48, 0.62)) * SEC_THICK;
-    var back = pt(pivot.x + inset, SEC_FACE - SEC_THICK);
-    var dir = norm(sub(back, pivot));
-    if (Math.hypot(back.x - pivot.x, back.y - pivot.y) < 0.4) dir = pt(Math.sin(a), -Math.cos(a));
-    var handle = add(pivot, mul(dir, 50));
-    return { angle: a, pivot: pivot, back: back, handle: handle, dir: dir };
+    var a = clamp(angle, -0.35, 0.75);
+    var retreat = a > 0.42 ? (a - 0.42) * 40 : 0;
+    var pivot = pt(SEC_BOARD + retreat, SEC_FACE);
+    var inset = Math.tan(clamp(a, -0.45, 0.62)) * SEC_THICK;
+    var back = pt(pivot.x + inset, SEC_BACK);
+    if (back.x < SEC_WALL_R + 4) back = pt(SEC_WALL_R + 4, SEC_BACK);
+    /* Handle is the far end of the blade, outside the board, below the face. */
+    var handle = pt(pivot.x - Math.sin(a) * SEC_HANDLE, pivot.y + Math.cos(a) * SEC_HANDLE);
+    return { angle: a, pivot: pivot, back: back, handle: handle };
   }
 
   function bevelFromFinger(x, y, guess) {
@@ -204,10 +209,14 @@
       var g = bevelGeom(a);
       var dx = x - g.pivot.x;
       var dy = y - g.pivot.y;
-      if (dy > -6) dy = -6;
-      a = clamp(Math.atan(-dx / dy), -0.35, 0.75);
+      if (dy < 8) dy = 8;
+      a = clamp(Math.atan2(-dx, dy), -0.35, 0.75);
     }
     return a;
+  }
+
+  function handleCanvasAng(a) {
+    return Math.atan2(Math.cos(a), -Math.sin(a));
   }
 
   function bevelHandleHit(angle, p) {
@@ -252,24 +261,54 @@
     var words = bevelWords(angle, kind);
     var good = angle >= 0.09 && angle <= 0.42;
     var items = [];
-    items.push({ op: 'rect', x: 0, y: 0, w: SECTION.w, h: SECTION.h, fill: '#f4efe4', stroke: '', sw: 0 });
     var face = g.pivot;
     var back = g.back;
-    items.push({ op: 'poly', pts: [face, back, pt(148, back.y), pt(148, face.y)], fill: '#e4c48a', stroke: '#8a6434', sw: 1.1 });
-    items.push({ op: 'rect', x: 8, y: 10, w: SEC_WALL - 8, h: 76, fill: kind === 'cope' ? '#d7b48a' : '#9a9188', stroke: '#5c564f', sw: 1 });
-    items.push({ op: 'text', t: kind === 'cope' ? 'piece' : 'wall', x: 9, y: 20, size: 14, color: '#2a241c' });
-    items.push({ op: 'text', t: 'back', x: Math.min(118, (back.x + 148) / 2), y: back.y - 5, size: 14, color: '#5c564f', align: 'center' });
-    items.push({ op: 'text', t: 'face', x: Math.min(118, (face.x + 148) / 2), y: face.y + 7, size: 14, color: '#5c564f', align: 'center' });
-    var arcC = pt(SEC_WALL, SEC_FACE);
-    var arcR = 50;
-    var a0 = -Math.PI / 2 - 0.2;
-    var a1 = -Math.PI / 2 + 0.95;
-    items.push({ op: 'arc', c: arcC, r: arcR, a0: a0, a1: a1, stroke: '#c4923a', sw: 2.6 });
-    items.push(arcArrow(arcC, arcR, a1));
-    items.push({ op: 'line', a: g.pivot, b: g.handle, stroke: '#2e3844', sw: 3.4 });
-    items.push({ op: 'grip', c: g.handle, r: 8.2, label: 'saw', lx: 12, ly: -2, labelSize: 7.5 });
-    items.push({ op: 'note', t: words, x: SECTION.w / 2, y: 98, size: 7.6, color: good ? '#2f6b3a' : '#8a4038', align: 'center' });
-    return { items: items, handle: g.handle, pivot: g.pivot };
+    var hd = norm(sub(g.handle, face));
+    var hn = pt(-hd.y, hd.x);
+    items.push({ op: 'rect', x: 0, y: 0, w: SECTION.w, h: SECTION.h, fill: '#f4efe4', stroke: '', sw: 0 });
+    items.push({
+      op: 'poly',
+      pts: [face, back, pt(SEC_BOARD_R, back.y), pt(SEC_BOARD_R, face.y)],
+      fill: '#e4c48a',
+      stroke: '#8a6434',
+      sw: 1.1
+    });
+    items.push({
+      op: 'rect',
+      x: 8,
+      y: 18,
+      w: SEC_WALL_R - 8,
+      h: 70,
+      fill: kind === 'cope' ? '#d7b48a' : '#9a9188',
+      stroke: '#5c564f',
+      sw: 1
+    });
+    items.push({ op: 'text', t: kind === 'cope' ? 'piece' : 'wall', x: 10, y: 28, size: 13, color: '#2a241c' });
+    items.push({ op: 'text', t: 'back', x: (back.x + SEC_BOARD_R) / 2, y: back.y - 6, size: 13, color: '#5c564f', align: 'center' });
+    items.push({ op: 'text', t: 'face', x: (face.x + SEC_BOARD_R) / 2, y: face.y + 8, size: 13, color: '#5c564f', align: 'center' });
+    items.push({ op: 'line', a: pt(face.x - 5, face.y), b: pt(face.x + 1, face.y), stroke: '#241c14', sw: 2.2 });
+    items.push({ op: 'text', t: kind === 'cope' ? 'line' : 'scribe', x: SEC_WALL_R + 2, y: (SEC_BACK + SEC_FACE) / 2, size: 12, color: '#241c14' });
+    var a0 = handleCanvasAng(-0.12);
+    var a1 = handleCanvasAng(0.48);
+    items.push({ op: 'arc', c: face, r: SEC_HANDLE, a0: a0, a1: a1, stroke: '#c4923a', sw: 2.4 });
+    items.push(arcArrow(face, SEC_HANDLE, a1));
+    items.push({ op: 'line', a: g.handle, b: back, stroke: '#2e3844', sw: 3.2 });
+    items.push({
+      op: 'poly',
+      pts: [
+        add(g.handle, add(mul(hn, 9), mul(hd, 3))),
+        add(g.handle, add(mul(hn, -9), mul(hd, 3))),
+        add(g.handle, add(mul(hn, -7), mul(hd, -5))),
+        add(g.handle, add(mul(hn, 7), mul(hd, -5)))
+      ],
+      fill: '#6b4226',
+      stroke: '#3a2414',
+      sw: 0.8
+    });
+    items.push({ op: 'circle', c: face, r: 2.2, fill: '#c4923a', stroke: '#241c14', sw: 0.6 });
+    items.push({ op: 'grip', c: g.handle, r: 7.4, label: 'saw', lx: hn.x * 12, ly: hn.y * 8, labelSize: 7 });
+    items.push({ op: 'note', t: words, x: SECTION.w / 2, y: 110, size: 7.2, color: good ? '#2f6b3a' : '#8a4038', align: 'center' });
+    return { items: items, handle: g.handle, pivot: face };
   }
 
   function bevelStepScene(level, run, kind) {
@@ -717,7 +756,7 @@
       steps: [
         { id: 'level', label: 'Level', instruction: 'Drag the shim sideways until the bubble sits in the middle.' },
         { id: 'lock', label: 'Lock', instruction: 'Drag the point to the wall and the pencil to the panel, then lock.' },
-        { id: 'scribe', label: 'Scribe', instruction: 'Drag down the wall and keep the legs level.' },
+        { id: 'scribe', label: 'Scribe', instruction: 'Drag the point along the wall. The pencil draws the line.' },
         { id: 'bevel', label: 'Back-bevel', instruction: 'Drag the saw to tilt it so only the front edge touches the wall.' },
         { id: 'cut', label: 'Cut', instruction: 'Cut the scribed line.' }
       ]
@@ -737,6 +776,7 @@
         lockedSpan: cfg.span0,
         lockedTilt: cfg.tilt0,
         samples: wall.map(function () { return null; }),
+        visited: wall.map(function () { return false; }),
         wobble: wall.map(function () { return 0; }),
         bevel: 0,
         bevelSet: false
@@ -816,33 +856,83 @@
         return;
       }
       if (id === 'scribe') {
-        if (ev.type === 'down' || ev.type === 'move') {
-          if (ev.type === 'down') run.drag = { mode: 'scribe', last: -1 };
-          if (!run.drag || run.drag.mode !== 'scribe') return;
-          var near = closestOnPoly(pt(ev.x, ev.y), wall);
-          var idx = clamp(Math.round(near.t * cfg.n), 0, cfg.n);
-          var y = wall[idx].y;
-          var tiltNow = Math.atan2(ev.y - wall[idx].y, ev.x - wall[idx].x);
-          var wobble = (tiltNow - s.lockedTilt) * s.lockedSpan * 0.55;
-          var from = run.drag.last < 0 ? idx : run.drag.last;
-          var lo = Math.min(from, idx);
-          var hi = Math.max(from, idx);
-          for (var i = lo; i <= hi; i++) {
-            var yy = wall[i].y;
-            s.samples[i] = scribeTraceX(cfg, wall, s.lockedSpan, s.lockedTilt, s.angle, yy, wobble);
-            s.wobble[i] = wobble;
+        /* The point rides the wall. The pencil stays at the locked opening.
+           Finger noise inside the ride band never moves the line. */
+        var RIDE = 6.5;
+        function yIndex(y) {
+          var t = clamp((y - cfg.y0) / (cfg.y1 - cfg.y0), 0, 1);
+          return clamp(Math.round(t * cfg.n), 0, cfg.n);
+        }
+        function ridePoint(x, y) {
+          var yy = clamp(y, cfg.y0, cfg.y1);
+          var wx = wallAt(wall, yy, cfg.y0, cfg.y1);
+          if (x <= wx + RIDE) return { x: wx, y: yy, riding: true };
+          return { x: x, y: yy, riding: false };
+        }
+        function pencilMark(px, py) {
+          var pen = compassPencil(pt(px, py), s.lockedSpan, s.lockedTilt);
+          var mid = (cfg.y0 + cfg.y1) / 2;
+          return pt(pen.x + s.angle * (pen.y - mid), pen.y);
+        }
+        function stampBetween(x0, y0, x1, y1) {
+          var i0 = yIndex(y0);
+          var i1 = yIndex(y1);
+          var spanI = i1 - i0;
+          var bothRide = ridePoint(x0, y0).riding && ridePoint(x1, y1).riding;
+          var dir = i1 >= i0 ? 1 : -1;
+          var i;
+          for (i = i0; dir > 0 ? i <= i1 : i >= i1; i += dir) {
+            var u = spanI === 0 ? 1 : (i - i0) / spanI;
+            var fx = x0 + (x1 - x0) * u;
+            var ridden = bothRide ? { x: wall[i].x, y: wall[i].y, riding: true } : ridePoint(fx, wall[i].y);
+            s.visited[i] = true;
+            var pen = pencilMark(ridden.x, ridden.y);
+            var j = yIndex(pen.y);
+            if (ridden.riding) s.samples[j] = pen.x;
+            else if (s.samples[j] == null) s.samples[j] = pen.x;
+            else s.samples[j] = s.samples[j] * 0.45 + pen.x * 0.55;
+            s.point = pt(ridden.x, ridden.y);
+            s.riding = ridden.riding;
           }
-          run.drag.last = idx;
-          var filled = s.samples.filter(function (v) { return v != null; }).length;
-          if (filled >= wall.length - 1 && ev.type === 'move') {
-            /* wait for pointer up to commit a full pass */
+        }
+        function smoothTo(raw, times) {
+          var k;
+          for (k = 0; k < times; k++) {
+            var nx = run.drag.fx + (raw.x - run.drag.fx) * 0.45;
+            var ny = run.drag.fy + (raw.y - run.drag.fy) * 0.45;
+            stampBetween(run.drag.fx, run.drag.fy, nx, ny);
+            run.drag.fx = nx;
+            run.drag.fy = ny;
           }
+          /* Height catches up while the filtered finger is still on the wall,
+             so a turnaround inks the end without copying a wild jump. */
+          if (ridePoint(run.drag.fx, run.drag.fy).riding) {
+            var y = run.drag.fy + clamp(raw.y - run.drag.fy, -8, 8);
+            stampBetween(run.drag.fx, run.drag.fy, ridePoint(run.drag.fx, y).x, y);
+            run.drag.fy = y;
+          }
+        }
+        if (ev.type === 'down') {
+          if (dist(ev, s.point) > 16) return;
+          run.drag = {
+            mode: 'scribe',
+            fx: s.point.x,
+            fy: s.point.y,
+            ox: ev.x - s.point.x,
+            oy: ev.y - s.point.y
+          };
+          stampBetween(s.point.x, s.point.y, s.point.x, s.point.y);
           return;
         }
-        if (ev.type === 'up' && run.drag) {
+        if (ev.type === 'move' && run.drag && run.drag.mode === 'scribe') {
+          smoothTo(pt(ev.x - run.drag.ox, ev.y - run.drag.oy), 1);
+          return;
+        }
+        if (ev.type === 'up' && run.drag && run.drag.mode === 'scribe') {
+          smoothTo(pt(ev.x - run.drag.ox, ev.y - run.drag.oy), 6);
           run.drag = null;
-          var got = s.samples.filter(function (v) { return v != null; }).length;
-          if (got >= wall.length - 1) commitScribe(run);
+          var covered = s.visited.filter(function (v) { return v; }).length;
+          if (covered >= wall.length - 1) commitScribe(run);
         }
       }
       if (id === 'bevel') dragBevel(run, ev);
@@ -874,11 +964,11 @@
         n++;
       }
       extra = Math.max(0, extra / (n || 1));
-      var uncovered = s.samples.filter(function (v) { return v == null; }).length;
+      var uncovered = s.visited.filter(function (v) { return !v; }).length;
       if (uncovered > 2) extra += uncovered * 0.15;
       var note = '';
-      if (uncovered > 2) note = 'The point left the wall before the scribe was finished.';
-      else if (extra >= 0.35) note = 'The legs tilted on the way down, so the line drifted.';
+      if (uncovered > 2) note = 'A section of the wall was skipped.';
+      else if (extra >= 0.35) note = 'The point came off the wall, so the line left the wall’s shape.';
       completeStep(level, run, extra, note);
     }
 
@@ -895,6 +985,13 @@
     level.seatText = function (run) {
       var id = stepId(level, run);
       if (id === 'bevel') return bevelWords(run.s.bevel, 'wall');
+      if (id === 'scribe') {
+        var seen = run.s.visited.filter(function (v) { return v; }).length;
+        if (seen >= wall.length - 1) return 'The line covers the wall';
+        if (run.s.riding) return 'Point is on the wall';
+        if (seen > 0) return 'The point is off the wall';
+        return '';
+      }
       if (id === 'level' && Math.abs(run.s.angle) < 0.012) return 'Bubble in the middle';
       if (id !== 'lock' || run.s.locked) return '';
       var info = seats(run.s);
@@ -905,13 +1002,7 @@
     };
 
     level.instruct = function (run) {
-      var id = stepId(level, run);
-      var base = level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
-      if (id === 'scribe') {
-        var got = run.s.samples.filter(function (v) { return v != null; }).length;
-        return base + ' Covered ' + got + ' of ' + wall.length + '.';
-      }
-      return base;
+      return level.steps[Math.min(run.step, level.steps.length - 1)].instruction;
     };
 
     level.onAction = function (run) {
@@ -968,6 +1059,7 @@
       if (id === 'scribe') {
         for (var i = 0; i < wall.length; i++) {
           s.samples[i] = scribeTraceX(cfg, wall, s.lockedSpan, s.lockedTilt, s.angle, wall[i].y, 0);
+          s.visited[i] = true;
           s.wobble[i] = 0;
         }
         commitScribe(run);
@@ -1006,11 +1098,41 @@
       items.push({ op: 'poly', pts: panelCorners(cfg, s.angle), fill: '#e7c98a', stroke: '#8a6434', sw: 1 });
       var bub = rotAround(pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2 - 8), pt((cfg.frontX + cfg.backX) / 2, (cfg.y0 + cfg.y1) / 2), s.angle);
       items.push({ op: 'bubble', c: bub, offset: clamp(s.angle / 0.07, -1, 1) });
-      var pencilPts = [];
-      for (i = 0; i < wall.length; i++) {
-        if (s.samples[i] != null) pencilPts.push(pt(s.samples[i], wall[i].y));
+      var panelNow = panelCorners(cfg, s.angle);
+      function edgePoint(inside, outside) {
+        var lo = inside;
+        var hi = outside;
+        var k;
+        for (k = 0; k < 12; k++) {
+          var mid = pt((lo.x + hi.x) / 2, (lo.y + hi.y) / 2);
+          if (pointInPoly(mid, panelNow)) lo = mid;
+          else hi = mid;
+        }
+        return lo;
       }
-      if (pencilPts.length > 1) items.push({ op: 'polyline', pts: pencilPts, stroke: '#241c14', sw: 1.5 });
+      var runPts = [];
+      function flushRun() {
+        if (runPts.length > 1) items.push({ op: 'polyline', pts: runPts, stroke: '#241c14', sw: 1.8 });
+        runPts = [];
+      }
+      for (i = 0; i < wall.length; i++) {
+        if (s.samples[i] == null) { flushRun(); continue; }
+        var mark = pt(s.samples[i], wall[i].y);
+        var onBoard = pointInPoly(mark, panelNow);
+        if (!onBoard) {
+          if (runPts.length) {
+            runPts.push(edgePoint(runPts[runPts.length - 1], mark));
+            flushRun();
+          }
+          continue;
+        }
+        if (!runPts.length && i > 0 && s.samples[i - 1] != null) {
+          var prevMark = pt(s.samples[i - 1], wall[i - 1].y);
+          if (!pointInPoly(prevMark, panelNow)) runPts.push(edgePoint(mark, prevMark));
+        }
+        runPts.push(mark);
+      }
+      flushRun();
       if (run.phase === 'result' && run.replay == null) {
         var idealPts = wall.map(function (p) { return pt(idealAt(p.y), p.y); });
         items.push({ op: 'polyline', pts: idealPts, stroke: 'rgba(76,175,80,0.0)', sw: 1 });
@@ -1039,20 +1161,12 @@
           point: pt(s.point.x, s.point.y),
           span: view.step >= 2 ? s.lockedSpan : s.span,
           tilt: view.step >= 2 ? s.lockedTilt : s.tilt,
-          hotP: info.pointHot,
+          hotP: info.pointHot || (view.step === 2 && s.riding),
           hotN: info.pencilHot,
-          names: true
+          names: true,
+          handle: view.step === 2 ? 'point' : '',
+          quiet: view.step === 2
         });
-      }
-      if ((run.phase === 'play' || run.replay != null) && view.step === 2) {
-        var startIdx = -1;
-        for (i = 0; i < wall.length; i++) {
-          if (s.samples[i] == null) { startIdx = i; break; }
-        }
-        if (startIdx >= 0) {
-          var sp = wall[startIdx];
-          items.push({ op: 'grip', c: pt(sp.x, sp.y), r: 4.4, label: 'drag', lx: -18, ly: -7 });
-        }
       }
       return { items: items };
     };
@@ -3084,8 +3198,8 @@
     pointer(scribeLv, bev, { type: 'up', x: 60, y: 30 });
     assert(bev.s.bevel === ang0, 'work canvas does not tilt the saw');
     pointer(scribeLv, bev, { type: 'down', x: sec.handle.x, y: sec.handle.y, section: true });
-    pointer(scribeLv, bev, { type: 'move', x: sec.handle.x + 16, y: sec.handle.y, section: true });
-    pointer(scribeLv, bev, { type: 'up', x: sec.handle.x + 16, y: sec.handle.y, section: true });
+    pointer(scribeLv, bev, { type: 'move', x: sec.handle.x - 8, y: sec.handle.y, section: true });
+    pointer(scribeLv, bev, { type: 'up', x: sec.handle.x - 8, y: sec.handle.y, section: true });
     assert(bev.s.bevel > 0.12 && bev.s.bevel < 0.42, 'dragging the saw tilts it into the clear ' + bev.s.bevel.toFixed(3));
     var midWords = hud(scribeLv, bev).seat;
     assert(/front edge/.test(midWords), 'cleared back says only the front meets ' + midWords);
@@ -3099,6 +3213,90 @@
     assert(!scene(copeLv, copeRun).items.some(function (it) { return it.op === 'bevelchip'; }), 'cope chip gone');
     assert(/face meets the other piece/.test(hud(copeLv, copeRun).instruction), 'cope instruction');
     assert(levels[8].sectionScene, 'stone shares the section');
+
+    /* A sloppy finger on the wall still leaves a clean offset. Pushing
+       through the wall cannot. Lifting off does move the line. */
+    function traceNoise(level, amp, mode) {
+      var run = createRun(level);
+      hint(level, run);
+      hint(level, run);
+      assert(run.step === 2, level.id + ' ready to scribe');
+      var wall = level.wall;
+      pointer(level, run, { type: 'down', x: run.s.point.x, y: run.s.point.y });
+      var startI = 0;
+      var best = 1e9;
+      var i;
+      for (i = 0; i < wall.length; i++) {
+        var dy = Math.abs(wall[i].y - run.s.point.y);
+        if (dy < best) { best = dy; startI = i; }
+      }
+      function walk(from, to) {
+        var dir = to >= from ? 1 : -1;
+        var i;
+        for (i = from; dir > 0 ? i <= to : i >= to; i += dir) {
+          var x = wall[i].x;
+          if (mode === 'through') x -= amp;
+          else if (mode === 'lift') x += amp;
+          else x += (i % 2 ? amp : -amp);
+          pointer(level, run, { type: 'move', x: x, y: wall[i].y });
+        }
+      }
+      if (startI > 0) walk(startI, 0);
+      walk(0, wall.length - 1);
+      var endX = wall[wall.length - 1].x;
+      if (mode === 'through') endX -= amp;
+      else if (mode === 'lift') endX += amp;
+      pointer(level, run, { type: 'up', x: endX, y: wall[wall.length - 1].y });
+      assert(run.step > 2, level.id + ' ' + mode + ' covered the wall, step ' + run.step);
+      while (run.phase === 'play') hint(level, run);
+      return run;
+    }
+    var clean = traceNoise(levels[1], 4.5, 'jitter');
+    assert(clean.phase === 'result', 'sloppy scribe still finishes the wall');
+    var cleanErr = 0;
+    for (var si = 0; si < levels[1].wall.length; si++) {
+      var want = levels[1].wall[si].x + levels[1].idealS;
+      cleanErr += Math.abs((clean.s.samples[si] == null ? 999 : clean.s.samples[si]) - want);
+    }
+    cleanErr /= levels[1].wall.length;
+    assert(cleanErr < 0.35, 'finger noise does not kink the scribe ' + cleanErr.toFixed(3));
+    assert(clean.result.gap < 0.35, 'sloppy scribe gap ' + clean.result.gap.toFixed(3));
+    var scLine = scene(levels[1], clean);
+    var offBoard = 0;
+    scLine.items.forEach(function (it) {
+      if (it.op !== 'polyline' || it.stroke !== '#241c14') return;
+      it.pts.forEach(function (p) {
+        var cs = [];
+        var ang = clean.s.angle;
+        var c = { x: (levels[1].cfg.frontX + levels[1].cfg.backX) / 2, y: (levels[1].cfg.y0 + levels[1].cfg.y1) / 2 };
+        var raw = [
+          { x: levels[1].cfg.frontX, y: levels[1].cfg.y0 },
+          { x: levels[1].cfg.backX, y: levels[1].cfg.y0 },
+          { x: levels[1].cfg.backX, y: levels[1].cfg.y1 },
+          { x: levels[1].cfg.frontX, y: levels[1].cfg.y1 }
+        ];
+        raw.forEach(function (q) {
+          var dx = q.x - c.x;
+          var dy = q.y - c.y;
+          cs.push({ x: c.x + dx * Math.cos(ang) - dy * Math.sin(ang), y: c.y + dx * Math.sin(ang) + dy * Math.cos(ang) });
+        });
+        var inside = false;
+        var j = cs.length - 1;
+        for (var ii = 0; ii < cs.length; ii++) {
+          if (((cs[ii].y > p.y) !== (cs[j].y > p.y)) &&
+              (p.x < (cs[j].x - cs[ii].x) * (p.y - cs[ii].y) / ((cs[j].y - cs[ii].y) || 1e-9) + cs[ii].x)) inside = !inside;
+          j = ii;
+        }
+        if (!inside) offBoard++;
+      });
+    });
+    assert(offBoard === 0, 'scribe stroke stays on the board, off ' + offBoard);
+    var pushed = traceNoise(levels[1], 8, 'through');
+    assert(pushed.result.gap < 0.35, 'a finger inside the wall still rides ' + pushed.result.gap.toFixed(3));
+    var lifted = traceNoise(levels[1], 16, 'lift');
+    assert(lifted.result.gap > 0.8, 'lifting off the wall moves the line ' + lifted.result.gap.toFixed(3));
+    var stoneClean = traceNoise(levels[8], 4.2, 'jitter');
+    assert(stoneClean.result.gap < 0.45, 'stone finger noise stays smooth ' + stoneClean.result.gap.toFixed(3));
 
     console.log('ideal scribe', levels[1].idealS.toFixed(2), 'stone', levels[8].idealS.toFixed(2), 'oct marks', levels[7].ideals.length, 'sheet', JSON.stringify(levels[2].home));
     if (failed) {

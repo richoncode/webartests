@@ -233,21 +233,26 @@
     ctx.stroke();
     if (it.names) {
       ctx.fillStyle = '#3a322c';
-      ctx.font = '5px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+      ctx.font = '5.4px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('point', p.x + n.x * 9, p.y + n.y * 9);
+      if (!it.handle) ctx.fillText('point', p.x + n.x * 9, p.y + n.y * 9);
       ctx.fillText('pencil', pencil.x + n.x * 9, pencil.y + n.y * 9);
+      if (!it.handle) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4.2, 0, Math.PI * 2);
+        ctx.strokeStyle = '#e0a050';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+      }
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4.2, 0, Math.PI * 2);
-      ctx.strokeStyle = '#e0a050';
-      ctx.lineWidth = 1.1;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(pencil.x, pencil.y, 4.2, 0, Math.PI * 2);
+      ctx.arc(pencil.x, pencil.y, 3.2, 0, Math.PI * 2);
+      ctx.strokeStyle = '#241c14';
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
-    if (it.span > 6) {
+    if (it.handle) drawGrip({ c: p, r: 6.6, label: it.handle, lx: -2, ly: -12, labelSize: 6 });
+    if (it.span > 6 && !it.quiet) {
       ctx.strokeStyle = 'rgba(91,155,213,0.85)';
       ctx.lineWidth = 0.8;
       ctx.setLineDash([1.4, 1.2]);
