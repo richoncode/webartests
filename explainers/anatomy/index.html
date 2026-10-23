@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Anatomy works: from prompt to a verified figure</title>
+<style>
+:root{--bg:#f6f5f1;--ink:#1b1b19;--mute:#66665f;--line:#d9d8d0;--card:#fff;--acc:#d2452b;--acc2:#2b6cd2}
+*{box-sizing:border-box}html,body{margin:0;overflow-x:hidden}
+body{font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:920px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:clamp(28px,6vw,44px);line-height:1.1;margin:.2em 0 .3em;letter-spacing:-.02em}
+h2{font-size:clamp(21px,4.5vw,28px);margin:48px 0 10px;letter-spacing:-.01em}
+.kicker{font:600 12px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}
+.lede{font-size:18px;color:#34342f;max-width:680px}
+a{color:var(--acc2)}code,.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;overflow-wrap:anywhere}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.pill{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px;font-size:13px;text-decoration:none;color:var(--ink)}
+.idea{background:var(--ink);color:#f6f5f1;border-radius:14px;padding:20px 22px;margin:22px 0}
+.idea b{color:#ffb4a5}
+/* flow */
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px;counter-reset:s;margin-top:14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px 52px;position:relative;transition:border-color .3s,box-shadow .3s,transform .3s}
+.step::before{counter-increment:s;content:counter(s);position:absolute;left:14px;top:13px;width:26px;height:26px;border-radius:50%;background:#ecebe4;display:grid;place-items:center;font:700 13px/1 ui-monospace,monospace;transition:background .3s,color .3s}
+.step h3{margin:0 0 3px;font-size:16px}.step p{margin:0;font-size:14px;color:var(--mute)}
+.step .ph{font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);float:right;margin-left:6px}
+.step.on{border-color:var(--acc);box-shadow:0 4px 18px rgba(210,69,43,.15);transform:translateY(-2px)}
+.step.on::before{background:var(--acc);color:#fff}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--mute);margin-top:10px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.loop{margin-top:12px;font-size:14px;color:var(--mute);border-left:3px solid var(--acc);padding-left:10px}
+svg.pipe{width:100%;height:auto;display:block;margin:16px 0 0}
+/* components */
+.comps{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:10px}
+details.comp{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden}
+details.comp summary{cursor:pointer;list-style:none;padding:14px 16px;font-weight:650;display:flex;justify-content:space-between;gap:10px}
+details.comp summary::-webkit-details-marker{display:none}
+details.comp summary::after{content:"+";font:400 20px/1 ui-monospace,monospace;color:var(--acc)}
+details.comp[open] summary::after{content:"–"}
+details.comp summary small{display:block;font-weight:400;color:var(--mute);font-size:13px}
+details.comp .body{padding:0 16px 14px;font-size:14px;border-top:1px solid var(--line)}
+details.comp .body ul{padding-left:18px;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card);border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#ecebe4;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+/* prompts */
+.q{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
+.q header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;background:#ecebe4;font-size:13px}
+.q header a{font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}
+.q blockquote{margin:0;padding:14px 16px;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+button.cp{flex:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:8px;padding:5px 10px;font:600 12px system-ui;cursor:pointer}
+button.cp.ok{background:#2a7a3b;border-color:#2a7a3b}
+.note{font-size:13px;color:var(--mute)}
+footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--mute)}
+@media (max-width:560px){table,tbody,tr,td{display:block;width:100%}tr:first-child{display:none}tr{border-bottom:1px solid var(--line)}td{border:0;padding:4px 12px}td:first-child{padding-top:12px;font-size:16px}td:last-child{padding-bottom:12px}td:nth-child(3)::before{content:"Time: ";font-weight:600}td:nth-child(4)::before{content:"Agent: ";font-weight:600}}
+@media (prefers-reduced-motion:reduce){.step{transition:none}}
+</style></head><body><main>
+
+<div class="kicker">Explainer · agent skill</div>
+<h1>How Anatomy works</h1>
+<p class="lede">Anatomy is an open-source agent skill that explains a technical idea by having the agent build a working, interactive isometric machine instead of a boxes-and-arrows diagram. This page walks through its pipeline, parts and actual instructions, all taken from the repository source.</p>
+<div class="pills">
+<a class="pill" href="https://github.com/wheresryan22/anatomy">GitHub repo</a>
+<a class="pill" href="https://skills.wheresryan.sh/anatomy">Docs site</a>
+<a class="pill" href="https://github.com/wheresryan22/anatomy/blob/main/LICENSE">MIT licence</a>
+<span class="pill">Claude Code · Codex · OpenCode · Antigravity · MiniMax Code</span>
+<span class="pill">Node 20.10+ · Chrome</span>
+</div>
+
+<div class="idea"><b>The one idea:</b> “The object is the explanation. Don't draw boxes, arrows and labels. Invent a real, well-made physical thing whose working <i>is</i> the concept.” <span class="note" style="color:#bbb">— SKILL.md</span><br><br>
+A cache key becomes a pin-tumbler lock. One GPU context serving many canvases becomes a gantry plotter whose single print head visits 16 wells. Every number the figure shows comes from the same model that moves its parts.</div>
+
+<h2>The flow: prompt → verified figure</h2>
+<p>SKILL.md sets out a ten-step workflow and says to “write the concept and the parts list before any geometry. Most of the quality is decided there.”</p>
+
+<svg class="pipe" viewBox="0 0 640 112" role="img" aria-label="Pipeline: prompt, plan, build, verify, output">
+ <g font-family="ui-monospace,Menlo,monospace" font-size="17" text-anchor="middle">
+  <g id="p0"><rect x="4" y="26" width="104" height="44" rx="10" fill="#fff" stroke="#1b1b19"/><text x="56" y="53">Prompt</text></g>
+  <g id="p1"><rect x="136" y="26" width="104" height="44" rx="10" fill="#fff" stroke="#1b1b19"/><text x="188" y="53">Plan 1–5</text></g>
+  <g id="p2"><rect x="268" y="26" width="104" height="44" rx="10" fill="#fff" stroke="#1b1b19"/><text x="320" y="53">Build 6–9</text></g>
+  <g id="p3"><rect x="400" y="26" width="104" height="44" rx="10" fill="#fff" stroke="#1b1b19"/><text x="452" y="53">Verify 10</text></g>
+  <g id="p4"><rect x="532" y="26" width="104" height="44" rx="10" fill="#1b1b19"/><text x="584" y="53" fill="#fff">Figure</text></g>
+  <path d="M108 48h28M240 48h28M372 48h28M504 48h28" stroke="#1b1b19" stroke-width="1.5"/>
+  <path d="M452 70 C452 92 320 92 320 70" fill="none" stroke="#d2452b" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="386" y="108" font-size="15" fill="#d2452b">iterate until audits read 0</text>
+ </g>
+</svg>
+
+<div class="flow" id="flow">
+ <div class="step" data-p="1"><span class="ph">plan</span><h3>Size it</h3><p>Pick a tier first: Figure, Hero or Epic. Quote time for a Hero; never start an Epic without the user choosing it.</p></div>
+ <div class="step" data-p="1"><span class="ph">plan</span><h3>Truth first</h3><p>Collect real sizes, counts, thresholds and curves. Ideally write a small pure model module that drives the readout, motion and caption.</p></div>
+ <div class="step" data-p="1"><span class="ph">plan</span><h3>Invent the object</h3><p>A machine whose mechanism maps one-to-one onto the concept, stated in one sentence: what moves and what that means.</p></div>
+ <div class="step" data-p="1"><span class="ph">plan</span><h3>Parts list</h3><p>At least 40 parts, grouped into base, structure, mechanism, controls and the one lit subject.</p></div>
+ <div class="step" data-p="1"><span class="ph">plan</span><h3>Plan the world</h3><p>World units of about 1 px, an azimuth of 45° and an elevation of 30° by default, fitted with <code>fitProjection</code>.</p></div>
+ <div class="step" data-p="2"><span class="ph">build</span><h3>Build geometry once</h3><p>Precompute static paths with the kit (<code>slabOf</code>, <code>cylinder</code>, <code>knurl</code>, lathe, tube…). Rebuild per frame only what changes shape.</p></div>
+ <div class="step" data-p="2"><span class="ph">build</span><h3>Paint back to front</h3><p>Painter's order. With pipes and round parts, <code>A.settle</code> measures true depth and <code>A.auditOrExit</code> ends the build.</p></div>
+ <div class="step" data-p="2"><span class="ph">build</span><h3>Frame it</h3><p>A card with <code>Fig n</code>, a title, a hint and a live readout. Words stay out of the drawing.</p></div>
+ <div class="step" data-p="2"><span class="ph">build</span><h3>Make it live</h3><p>Calm, eased motion and an idle tour. Responds to pointer and keyboard and goes still under reduced motion.</p></div>
+ <div class="step" data-p="3"><span class="ph">verify</span><h3>Verify like a critic</h3><p>Headless Chrome captures at desktop and 390 px, an audit and a line check run down to 0, 4× close-ups in both themes, and the agent reads every PNG.</p></div>
+</div>
+<div class="legend"><span style="--c:#ecebe4">Plan (no geometry yet)</span><span style="--c:#d2452b">Active step</span></div>
+<p class="loop">Time-keeping is built in: “have a working page that opens in the browser within the first hour”. The agent runs <code>date</code> at each step and reports back if a step takes more than twice its share.</p>
+
+<h2>Size tiers</h2>
+<table>
+<tr><th>Tier</th><th>Scope</th><th>Time, per SKILL.md</th><th>Agent behaviour</th></tr>
+<tr><td><b>Figure</b></td><td>One mechanism, 40–80 parts, SVG plus at most one WebGL layer</td><td>Budget up to an hour; “often finishes in well under an hour”</td><td>Names the size and builds without asking; doesn't quote a time</td></tr>
+<tr><td><b>Hero</b></td><td>A dense object, several WebGL layers or one 3D subject, 80–150 parts</td><td>About 2–4 hours</td><td>Says so, then builds unless you asked for something quick</td></tr>
+<tr><td><b>Epic</b></td><td>A whole vehicle, building or plant, or 3D on more than one subject</td><td>6 hours or more</td><td>“Do not start it.” Proposes a Hero version and builds the Epic only if you choose it</td></tr>
+</table>
+<p class="note">The video review reported much longer real runs (30–90 min per figure, with one issue citing over 48 hours). Those numbers come from the video, not the repo.</p>
+
+<h2>Components</h2>
+<p class="note">Tap a card to expand it.</p>
+<div class="comps">
+<details class="comp"><summary><span>SKILL.md<small>The main prompt the agent loads</small></span></summary><div class="body"><ul><li>Frontmatter <code>description</code> triggers the skill on requests for isometric illustrations, explanatory figures or interactive explainers, “even if they never say ‘isometric’”.</li><li>Contains the one idea, the 10-step workflow, short-form craft rules, WebGL and 3D rules, and pointers to the references.</li><li>Points to eight shipped examples and says to open the closest one first.</li></ul><a href="https://github.com/wheresryan22/anatomy/blob/main/SKILL.md">SKILL.md</a></div></details>
+<details class="comp"><summary><span>references/ (10 files)<small>Loaded only when needed</small></span></summary><div class="body"><ul>
+<li><code>craft.md</code>: parts vocabulary with recipes, tones, painter's order, pipes, and anti-patterns that got figures rejected</li>
+<li><code>kit.md</code>: the API</li><li><code>motion.md</code>: loops, springs, tours, keyboard, reduced motion</li>
+<li><code>verify.md</code>: capture and drive commands plus the review checklist</li><li><code>webgl.md</code>: shaders inside the drawing</li>
+<li><code>3d.md</code>: the beta turning mode</li><li><code>react.md</code>: the server/client split</li>
+<li><code>walkthrough.md</code>: the test-rig figure designed step by step</li><li><code>print.md</code>: A4 or Letter PDFs</li><li><code>publish.md</code>: the community gallery</li></ul>
+<a href="https://github.com/wheresryan22/anatomy/tree/main/references">references/</a></div></details>
+<details class="comp"><summary><span>Truth-first model<small>One pure module drives everything</small></span></summary><div class="body"><p>In the test-rig walkthrough the behaviour was copied into a pure model, <code>rig.ts</code>, from the library source: rest size 120 × 32, a press that swells it by 8%, a rubber-band lean <code>give·(1−1/(1+0.55·d/give))</code> and three springs. “The readout, the aria text, the caption numbers and every moving part read from this one model.”</p><a href="https://github.com/wheresryan22/anatomy/blob/main/references/walkthrough.md">walkthrough.md</a></div></details>
+<details class="comp"><summary><span>The kit (renderer)<small>kit/ — zero-dependency drawing core</small></span></summary><div class="body"><ul><li><code>iso-kit.ts/.mjs</code>: camera, solids, parts library, SVG string renderer, card and page builders</li><li><code>lathe.mjs</code> (round parts) and <code>tube.mjs</code> (pipes and cables)</li><li><code>gl.mjs</code>: a WebGL layer between a back SVG and a front SVG, in the same isometric camera</li><li><code>turn*.mjs</code>: the 3D mode (beta)</li><li><code>react/draw.tsx</code> and <code>react/live.tsx</code></li></ul><a href="https://github.com/wheresryan22/anatomy/tree/main/kit">kit/</a></div></details>
+<details class="comp"><summary><span>Geometry audit<small>kit/audit.mjs — proof, not eyeballing</small></span></summary><div class="body"><p><code>recorder</code> collects true shapes, <code>settle</code> ray-casts overlapping pairs for real depth, and <code>auditOrExit</code> runs clearance, terminal, loose-end, support, fold, crowding, stand-in, wobble and depth-order checks. It exits non-zero on any problem. The craft notes say the Raptor's hand-set keys “looked right at 1× and had 323 depth-order problems.”</p><a href="https://github.com/wheresryan22/anatomy/blob/main/kit/audit.mjs">kit/audit.mjs</a></div></details>
+<details class="comp"><summary><span>Chrome self-check<small>scripts/ — the agent looks at its own work</small></span></summary><div class="body"><ul><li><code>capture.mjs</code>: headless Chrome screenshots (desktop 1440, phone 390, hover, timed shots, 4× zoom, reduced motion). It also prints console errors and whether the page scrolls sideways.</li><li><code>drive.mjs</code>: scripted sequences, slow motion, contact sheets that catch pops, <code>--no-webgl</code></li><li><code>lines.mjs</code>: every line must end on something; it must print <code>line ends: 0</code></li><li><code>turn-check.mjs</code>: 3D fidelity, order, pops and performance</li></ul><a href="https://github.com/wheresryan22/anatomy/tree/main/scripts">scripts/</a></div></details>
+<details class="comp"><summary><span>Outputs<small>Source you own</small></span></summary><div class="body"><ul><li>A Node <code>build.mjs</code> that writes a standalone HTML page (add <code>--light</code> for the light theme)</li><li>A lone <code>.svg</code> via <code>figureSvg({standalone})</code></li><li>React/Next.js: geometry modules, a server component and one client component</li><li>Optional A4 PDFs in poster, drawing or detailed format (<code>print.mjs</code>)</li><li>Optional gallery pull request (<code>publish.mjs</code>), only when you ask</li></ul></div></details>
+<details class="comp"><summary><span>Evals<small>evals/evals.json</small></span></summary><div class="body"><p>Test prompts with expected outputs, such as a token-bucket rate limiter for a white-background blog as one HTML file, “nothing passes through anything… <code>--audit</code> ends <code>audit passed</code>.”</p><a href="https://github.com/wheresryan22/anatomy/blob/main/evals/evals.json">evals.json</a></div></details>
+</div>
+
+<h2>The actual instructions</h2>
+<p class="note">Short excerpts quoted verbatim from the repository (main branch, commit 1482e84). Copy buttons copy the quoted text.</p>
+<div id="prompts"></div>
+
+<h2>Try it</h2>
+<div class="q"><header><span>Install, then ask (README)</span><button class="cp">Copy</button></header><blockquote class="mono">npx skills add wheresryan22/anatomy -g
+/anatomy explain how a token bucket rate limiter works, interactive</blockquote></div>
+<p>The README's three habits: name the idea with its real numbers, or name the object and say what should move, and say where it will live (HTML, SVG or React; light or dark). In Codex, type <code>$anatomy</code>.</p>
+
+<h2>Limits (README)</h2>
+<ul><li>“It is not a chart library.” No axes or plots.</li><li>It draws machines, instruments, tools and furniture, not people or exact maps.</li><li>“It is slow on purpose.”</li><li>Shaders need WebGL, but the SVG still reads without it.</li><li>3D mode is beta: about 20 fps for the 380-part stress hand at 1440 px, and 13–15 fps on a throttled phone profile.</li></ul>
+
+<footer>Based on <a href="https://github.com/wheresryan22/anatomy">wheresryan22/anatomy</a> (MIT), read at commit 1482e84. Docs: <a href="https://skills.wheresryan.sh/anatomy">skills.wheresryan.sh/anatomy</a>. This is an independent explainer, not affiliated with the project.</footer>
+</main>
+<script>
+const G="https://github.com/wheresryan22/anatomy/blob/main/";
+const P=[
+["The one idea","SKILL.md","The object is the explanation. Don't draw boxes, arrows and labels. Invent a real, well-made physical thing whose working is the concept."],
+["Workflow order","SKILL.md","Work in this order. Write the concept and the parts list before any geometry. Most of the quality is decided there."],
+["Truth first","SKILL.md","Collect the real numbers and behaviour of the thing being explained: sizes, counts, thresholds, curves. The readout, motion and caption must all be true. If you can, write the model as a small pure module, like rig.ts in the test-rig example, and drive everything from it."],
+["Invent the object","SKILL.md","Pick a machine, tool, instrument or piece of furniture whose mechanism maps one-to-one onto the concept. Say in one sentence what moves and what that motion means. Never copy a reference image: take its finish, not its object."],
+["Epic gate","SKILL.md","Do not start it. Give the estimate, propose a Hero version that keeps the core of the idea, and list what the full version would add. Build the Epic only when the user chooses it."],
+["Highly detailed","SKILL.md","Every creation is highly detailed. This holds for every figure, however small the idea or the request: a quick explainer is still a dense, real machine, never a few slabs."],
+["Verify like a critic","SKILL.md","The owner finds faults by zooming in, so you zoom in first. Read every PNG you make."],
+["Lines resolve","SKILL.md","Every line ends on something: a face, another line or a terminal dot. Connectors are Wires whose terminal dots land on objects. There are no leader lines, balloons, dimension arrows or labels floating in the air."],
+["Anti-pattern: blueprint furniture","references/craft.md","Leader lines, balloons with numbers, dimension arrows, hatching, dashed hidden edges and floating labels belong in the legend and caption, not the drawing."],
+["Anti-pattern: fixing by eye","references/craft.md","Tuning a painter's key or nudging a waypoint until one screenshot looks right breaks another frame or another theme. The Raptor's hand-set keys looked right at 1× and had 323 depth-order problems. Measure (section 8, \"Clearance and crossings\"), then look."],
+["Review checklist: it is an object","references/verify.md","At a glance it reads as one real, well-made thing, and you can name it.\nIts mechanism maps to the concept: what moves and what that means can be said in one sentence."],
+["Publishing consent","references/publish.md","Publish only when the user asks to share or publish a figure. Never send anything without their explicit yes."]];
+const box=document.getElementById('prompts');
+P.forEach(([t,f,q])=>{const d=document.createElement('div');d.className='q';
+d.innerHTML=`<header><span><b>${t}</b><br><a href="${G}${f}">${f}</a></span><button class="cp">Copy</button></header><blockquote></blockquote>`;
+d.querySelector('blockquote').textContent=q;box.appendChild(d);});
+document.addEventListener('click',e=>{const b=e.target.closest('button.cp');if(!b)return;
+const t=b.closest('.q').querySelector('blockquote').textContent;
+(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();})
+.finally(()=>{b.textContent='Copied';b.classList.add('ok');setTimeout(()=>{b.textContent='Copy';b.classList.remove('ok')},1400)});});
+const steps=[...document.querySelectorAll('.step')];let i=0;
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function hi(n){steps.forEach((s,k)=>s.classList.toggle('on',k===n));const p=+steps[n].dataset.p;
+for(let k=0;k<5;k++){const r=document.querySelector('#p'+k+' rect');if(k<4)r.setAttribute('fill',k===p?'#ffe3dc':'#fff');}}
+hi(0);if(!rm)setInterval(()=>{i=(i+1)%steps.length;hi(i)},1800);
+steps.forEach((s,k)=>s.addEventListener('mouseenter',()=>{i=k;hi(k)}));
+</script></body></html>
