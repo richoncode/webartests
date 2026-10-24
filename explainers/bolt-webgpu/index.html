@@ -10,7 +10,7 @@ main{max-width:720px;margin:auto;padding:16px}h1{font-size:1.25rem;margin:0 0 4p
 button{font:inherit;padding:10px 14px;border:0;border-radius:8px;background:#76b900;color:#000;font-weight:600}
 button:disabled{opacity:.4}progress{width:100%;height:14px}
 #log{min-height:200px;max-height:55vh;overflow:auto;white-space:pre-wrap}
-.u{color:#9cf;margin-top:8px}.a{margin-top:4px}
+.u{color:#9cf;margin-top:8px}.pf{color:#888;font-size:.8rem;font-variant-numeric:tabular-nums;margin-top:2px}.a{margin-top:4px}
 form{display:flex;gap:8px}textarea{flex:1;font:inherit;padding:10px;border-radius:8px;border:1px solid #333;background:#000;color:#eee;min-height:48px}
 #stats{display:flex;gap:16px;font-variant-numeric:tabular-nums;color:#ccc;font-size:.9rem;flex-wrap:wrap}
 </style></head><body><main>
@@ -53,7 +53,7 @@ async function check(){
   if(!navigator.gpu){$('gpu').textContent='WebGPU not available in this browser. Try current Chrome, or Safari 26+ on Apple Silicon.';return}
   const ad=await navigator.gpu.requestAdapter();
   if(!ad){$('gpu').textContent='WebGPU present but no GPU adapter found.';return}
-  const f16=ad.features.has('shader-f16');
+  const f16=ad.features.has('shader-f16');window.HW='WebGPU'+(f16?' (fp16)':' (no fp16)');
   $('gpu').textContent='WebGPU ready'+(f16?' (fp16 supported).':'. Warning: no shader-f16, this q4f16 build may fail.');
   $('load').disabled=false;
 }
@@ -83,11 +83,12 @@ $('f').onsubmit=async e=>{
   history.push({role:'user',content:text});
   const inputs=tok.apply_chat_template(history,{add_generation_prompt:true,return_dict:true,enable_thinking:$('think').checked});
   let t0=performance.now(),tf=0,n=0,acc='';
+  const perf=()=>{const e=performance.now(),r=n>1&&tf?((n-1)/((e-tf)/1000)).toFixed(1):'–';say(`${tf?((tf-t0)/1000).toFixed(2):'–'}s first · ${r} tok/s · ${n} tok · ${window.HW||'WebGPU'} q4f16`,'pf')};
   const streamer=new T.TextStreamer(tok,{skip_prompt:true,skip_special_tokens:true,
     callback_function:s=>{acc+=s;out.textContent=acc},
     token_callback_function:()=>{n++;if(!tf){tf=performance.now();$('ttft').textContent=((tf-t0)/1000).toFixed(2)+' s'}
       else $('tps').textContent=((n-1)/((performance.now()-tf)/1000)).toFixed(1)+' tok/s';$('nt').textContent=n}});
-  try{await model.generate({...inputs,max_new_tokens:512,do_sample:false,streamer});history.push({role:'assistant',content:acc})}
+  try{await model.generate({...inputs,max_new_tokens:512,do_sample:false,streamer});history.push({role:'assistant',content:acc});perf()}
   catch(err){out.textContent='Generation failed: '+err.message;console.error(err)}
   $('send').disabled=false;
 };

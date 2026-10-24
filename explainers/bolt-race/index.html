@@ -106,7 +106,7 @@ if(!navigator.gpu){setSt(web,'no WebGPU','off');$('web-help').textContent='WebGP
 $('web-load').onclick=async()=>{
   $('web-load').disabled=true;$('web-bar').hidden=false;setSt(web,'loading','run');
   try{
-    const ad=await navigator.gpu.requestAdapter();if(!ad)throw new Error('no GPU adapter found');
+    const ad=await navigator.gpu.requestAdapter();if(!ad)throw new Error('no GPU adapter found');window.HW='WebGPU'+(ad.features.has('shader-f16')?' (fp16)':' (no fp16)');
     T=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1');
     tok=await T.AutoTokenizer.from_pretrained(MODEL);
     let building=null,t0=0;
@@ -120,12 +120,12 @@ $('web-load').onclick=async()=>{
 };
 async function runWeb(prompt){
   reset(web);if(!model){web.out.textContent='Load the model above to include this lane.';return}
-  setSt(web,'running','run');const m=meter(web);
+  setSt(web,'running','run');const m=meter(web);let n=0,tf=0;const t0=performance.now();
   try{
     const inputs=tok.apply_chat_template([{role:'user',content:prompt}],{add_generation_prompt:true,return_dict:true,enable_thinking:$('think').checked});
-    const streamer=new T.TextStreamer(tok,{skip_prompt:true,skip_special_tokens:true,callback_function:s=>{web.out.textContent+=s;web.out.scrollTop=1e9},token_callback_function:()=>m.tick()});
+    const streamer=new T.TextStreamer(tok,{skip_prompt:true,skip_special_tokens:true,callback_function:s=>{web.out.textContent+=s;web.out.scrollTop=1e9},token_callback_function:()=>{n++;if(!tf)tf=performance.now();m.tick()}});
     await model.generate({...inputs,max_new_tokens:+$('max').value||256,do_sample:false,streamer});
-    m.done();setSt(web,'done','ok');
+    m.done();setSt(web,'done','ok');const e=performance.now();web.out.textContent+=`\n\n${tf?((tf-t0)/1000).toFixed(2):'–'}s first · ${n>1?((n-1)/((e-tf)/1000)).toFixed(1):'–'} tok/s · ${n} tok · ${window.HW||'WebGPU'} q4f16`;
   }catch(e){m.done();setSt(web,'error','err');web.out.textContent+='\n\nError: '+e.message}
 }
 $('go').onclick=async()=>{
