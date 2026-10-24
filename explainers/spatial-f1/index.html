@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spatial F1 demo</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.js"></script>
+<script src="../../mcpmondays/mapbox/config.js"></script>
+<style>
+:root{--fg:#e8ecf2;--dim:#9aa4b2;--bg:#0b0e14}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif}
+header,main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:24px;margin:0 0 4px}
+p{margin:6px 0}.dim{color:var(--dim);font-size:14px}
+#map{width:100%;height:62vh;min-height:360px;border-radius:10px;position:relative}
+#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--dim)}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;align-items:center}
+button,select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #2a3240;background:#161b24;color:var(--fg)}
+a{color:#8ab4ff}
+</style></head><body>
+<header><h1>Spatial F1 demo</h1>
+<p class="dim">A low-poly F1 car lapping Circuit of the Americas (Austin) in 3D on Mapbox. Unofficial; not affiliated with Formula 1.</p></header>
+<main>
+<div id="map"><div id="notoken">Mapbox token missing.</div></div>
+<div class="ctl">
+<button id="play">Pause</button>
+<label>Speed <select id="spd"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="3">3×</option><option value="10">10×</option></select></label>
+<label><input type="checkbox" id="follow"> Chase cam</label>
+<span class="dim" id="stat"></span>
+</div>
+<h2 style="font-size:18px">What this is</h2>
+<p>The track line is the COTA centerline (5.5 km). The car follows it in a loop at a made-up pace (about a 1:36 lap at 1×, close to race pace), not real timing. The car is drawn about 6× real size so it reads at map zoom.</p>
+<p><b>Next:</b> real car positions from <a href="https://openf1.org">OpenF1</a> (2024/2025 Austin races report every car about 4 times a second, in F1's own x/y grid). Fitting that grid onto this centerline would let all 20 cars replay a real race window.</p>
+<h2 style="font-size:18px">Credits</h2>
+<p class="dim">Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
+</main>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+const $=id=>document.getElementById(id);
+if(!window.MAPBOX_PUBLIC_TOKEN){$('notoken').style.display='flex';throw 0}
+mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
+const gj=await (await fetch('cota.geojson')).json();
+let pts=gj.features[0].geometry.coordinates.map(c=>[c[0],c[1]]);
+const f=pts[0],l=pts[pts.length-1];if(f[0]!==l[0]||f[1]!==l[1])pts.push(f);
+// cumulative distance in metres
+const R=6371000,rad=Math.PI/180;
+const dist=(a,b)=>{const x=(b[0]-a[0])*rad*Math.cos((a[1]+b[1])/2*rad),y=(b[1]-a[1])*rad;return Math.hypot(x,y)*R};
+const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+dist(pts[i-1],pts[i]));
+const LEN=cum[cum.length-1];
+function at(d){d=((d%LEN)+LEN)%LEN;let i=1;while(cum[i]<d)i++;const t=(d-cum[i-1])/(cum[i]-cum[i-1]);const a=pts[i-1],b=pts[i];return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
+const center=[-97.6339,30.1347];
+const map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:15,pitch:60,bearing:-20,antialias:true});
+map.addControl(new mapboxgl.NavigationControl());
+const origin=mapboxgl.MercatorCoordinate.fromLngLat(center,0);const mScale=origin.meterInMercatorCoordinateUnits();
+let car=null,pos=0,playing=true,speed=1,last=performance.now();
+const V=LEN/96; // m/s
+const layer={id:'car3d',type:'custom',renderingMode:'3d',
+ onAdd(m,gl){this.cam=new THREE.Camera();this.scene=new THREE.Scene();
+  this.scene.add(new THREE.AmbientLight(0xffffff,1.2));const s=new THREE.DirectionalLight(0xffffff,2);s.position.set(50,-80,120);this.scene.add(s);
+  new GLTFLoader().load('f1-car.glb',g=>{const o=g.scene;const box=new THREE.Box3().setFromObject(o);const sz=box.getSize(new THREE.Vector3());
+   const k=5.6*6/Math.max(sz.x,sz.z);o.scale.setScalar(k);o.position.y=-box.min.y*k;
+   const inner=new THREE.Group();inner.add(o);inner.rotation.x=Math.PI/2; // glTF Y-up -> map Z-up
+   car=new THREE.Group();car.add(inner);this.scene.add(car);$('stat').textContent='';});
+  this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;},
+ render(gl,matrix){if(car){const p=at(pos),q=at(pos+4);
+   const mp=mapboxgl.MercatorCoordinate.fromLngLat(p,0);
+   car.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,0);
+   const dx=(q[0]-p[0])*Math.cos(p[1]*rad),dy=q[1]-p[1];car.rotation.z=Math.atan2(dy,dx)+HEAD;}
+  const M=new THREE.Matrix4().fromArray(matrix);
+  const T=new THREE.Matrix4().makeTranslation(origin.x,origin.y,origin.z).scale(new THREE.Vector3(mScale,-mScale,mScale));
+  this.cam.projectionMatrix=M.multiply(T);this.renderer.resetState();this.renderer.render(this.scene,this.cam);map.triggerRepaint();}};
+const HEAD=Number(new URLSearchParams(location.search).get('head')??Math.PI); // model faces -X; rotate to travel direction
+map.on('load',()=>{
+ map.addSource('cota',{type:'geojson',data:gj});
+ map.addLayer({id:'cota-casing',type:'line',source:'cota',paint:{'line-color':'#000','line-width':7,'line-opacity':.5}});
+ map.addLayer({id:'cota-line',type:'line',source:'cota',paint:{'line-color':'#ffd400','line-width':3}});
+ map.addLayer(layer);
+ const b=new mapboxgl.LngLatBounds();pts.forEach(p=>b.extend(p));map.fitBounds(b,{padding:30,pitch:55,bearing:-20,duration:0});
+});
+$('stat').textContent='Loading car…';
+function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;if(playing)pos+=V*speed*dt;
+ if($('follow').checked&&car){const p=at(pos),q=at(pos+30);const br=Math.atan2((q[0]-p[0])*Math.cos(p[1]*rad),q[1]-p[1])/rad;map.jumpTo({center:p,bearing:br,zoom:17.5,pitch:70})}
+ requestAnimationFrame(tick)}requestAnimationFrame(tick);
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('spd').onchange=e=>speed=+e.target.value;
+</script>
+</body></html>
