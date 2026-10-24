@@ -26,6 +26,8 @@ a{color:#9cf}audio{width:100%;margin-top:8px}.w{color:#fc6}code{color:#9cf}
 
 <div class="card"><h2>2. Audio</h2>
 <button id="rec">● Record</button><label><button id="upb" type="button">Upload file</button><input id="file" type="file" accept="audio/*,video/*" hidden></label>
+<div style="margin:.5em 0"><label>Mic: <select id="mic"><option value="">Default (click Record to list mics)</option></select></label>
+<div class="pf">Continuity can steal the default and pick your iPhone. Choose Built-in Microphone (MacBook) here; the choice is remembered.</div></div>
 <div class="pf" id="ainfo">No clip yet.</div><audio id="player" controls hidden></audio></div>
 
 <div class="card"><button id="run" disabled>3. Transcribe with selected</button> <span class="s">Runs engines one after another on the same clip.</span></div>
@@ -55,10 +57,26 @@ $('player').src=URL.createObjectURL(blob);$('player').hidden=false;$('run').disa
 async function setClip(blob){$('ainfo').textContent='Decoding…';try{showClip(await decode(await blob.arrayBuffer()),blob)}catch(e){$('ainfo').textContent='Could not decode audio: '+(e.message||e)+' (try a WAV or MP3 file)'}}
 window.__sttTest={decode,to16k,wav,showClip,get pcm(){return pcm}};
 $('upb').onclick=()=>$('file').click();$('file').onchange=e=>{const f=e.target.files[0];if(f)setClip(f)};
+const MICK='stt-mic';
+const isPhone=l=>/iphone|continuity|ipad/i.test(l);
+async function listMics(){const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId!=='default'&&d.deviceId!=='communications');
+const sel=$('mic'),saved=localStorage.getItem(MICK);sel.innerHTML='';
+ds.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||('Mic '+(i+1));sel.appendChild(o)});
+let pick=ds.find(d=>d.deviceId===saved)||ds.find(d=>/built-in|macbook/i.test(d.label)&&!isPhone(d.label))||ds.find(d=>!isPhone(d.label))||ds[0];
+if(pick){sel.value=pick.deviceId;localStorage.setItem(MICK,pick.deviceId)}return pick}
+async function openMic(){const base={channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false};
+const id=$('mic').value||localStorage.getItem(MICK);
+let s=await navigator.mediaDevices.getUserMedia({audio:id?{...base,deviceId:{exact:id}}:base}).catch(e=>{if(id&&e.name==='OverconstrainedError'){localStorage.removeItem(MICK);return navigator.mediaDevices.getUserMedia({audio:base})}throw e});
+const pick=await listMics(),got=s.getAudioTracks()[0]?.getSettings().deviceId;
+if(pick&&got&&got!==pick.deviceId){s.getTracks().forEach(t=>t.stop());s=await navigator.mediaDevices.getUserMedia({audio:{...base,deviceId:{exact:pick.deviceId}}})}
+return s}
+$('mic').onchange=()=>localStorage.setItem(MICK,$('mic').value);
+navigator.mediaDevices?.enumerateDevices?.().then(ds=>{if(ds.some(d=>d.kind==='audioinput'&&d.label))listMics()}).catch(()=>{});
+navigator.mediaDevices?.addEventListener?.('devicechange',()=>listMics().catch(()=>{}));
 // Record: capture raw PCM straight from the mic (no MediaRecorder/codec round trip), then resample to 16 kHz.
 $('rec').onclick=async()=>{if(recState){recState.stop();return}
 if(!navigator.mediaDevices?.getUserMedia){$('ainfo').textContent='Mic unavailable: this browser/page has no microphone access (needs HTTPS).';return}
-let s;try{s=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
+let s;try{s=await openMic()}
 catch(e){$('ainfo').textContent=(e.name==='NotAllowedError'||e.name==='SecurityError')?'Microphone permission denied. Allow mic access for this site (address bar → site settings) and try again.':e.name==='NotFoundError'?'No microphone found.':'Mic unavailable: '+e.message;return}
 try{const ctx=new AudioContext();await ctx.resume();const sr=ctx.sampleRate,src=ctx.createMediaStreamSource(s),chunks=[];
 const node=ctx.createScriptProcessor(4096,1,1);node.onaudioprocess=e=>chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
