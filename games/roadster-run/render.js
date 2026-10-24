@@ -62,6 +62,18 @@
     g.fillStyle = '#2a2a2a';
     g.fillRect(-46, 0, 10, 18);
     g.fillRect(36, 0, 10, 18);
+    g.fillStyle = '#07080c';
+    g.fillRect(-22, 22, 12, 8);
+    g.fillRect(10, 22, 12, 8);
+    g.beginPath();
+    g.ellipse(0, 16, 9, 5, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#3a121c';
+    g.fillRect(-54, 2, 10, 12);
+    g.fillRect(44, 2, 10, 12);
+    g.fillStyle = '#9fd4ff';
+    g.fillRect(-52, 6, 4, 4);
+    g.fillRect(46, 6, 4, 4);
   }
 
   function ensureFrames() {
@@ -170,23 +182,56 @@
     ctx.fillRect(0, h * 0.348, w, 2);
   }
 
-  function drawFlames(ctx, heat, on) {
-    if (!on) return;
-    var len = 60 * (0.8 + 0.4 * Math.random());
-    var alpha = 0.4 + 0.4 * Math.random();
-    ctx.fillStyle = heat < 0.04 ? ('rgba(180,220,255,' + alpha + ')') : heatCss(heat, alpha);
-    var i;
-    for (i = 0; i < 2; i++) {
-      var ox = i === 0 ? -12 : 12;
+  function flamePaint(heat, alpha) {
+    if (heat < 0.04) return 'rgba(180,220,255,' + alpha + ')';
+    return heatCss(heat, alpha);
+  }
+
+  function drawJet(ctx, x, y, dx, dy, len, heat, width) {
+    var mag = Math.sqrt(dx * dx + dy * dy) || 1;
+    dx /= mag;
+    dy /= mag;
+    var px = -dy;
+    var py = dx;
+    var alpha = 0.55 + 0.4 * Math.random();
+    var reach = len * (0.82 + Math.random() * 0.28);
+    ctx.fillStyle = flamePaint(heat, alpha * 0.45);
+    ctx.beginPath();
+    ctx.arc(x + dx * reach * 0.62, y + dy * reach * 0.62, width * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = flamePaint(heat, alpha);
+    ctx.beginPath();
+    ctx.moveTo(x + px * width, y + py * width);
+    ctx.lineTo(x + dx * reach + (Math.random() - 0.5) * width, y + dy * reach);
+    ctx.lineTo(x - px * width, y - py * width);
+    ctx.fill();
+  }
+
+  function drawThrusters(ctx, heat, jets) {
+    jets = jets || {};
+    var len;
+    if (jets.back) {
+      len = 78 * (0.8 + 0.35 * Math.random());
+      drawJet(ctx, -16, 26, 0, 1, len, heat, 7);
+      drawJet(ctx, 16, 26, 0, 1, len * (0.85 + Math.random() * 0.25), heat, 7);
+    }
+    if (jets.bottom) {
+      len = 52 * (0.75 + 0.4 * Math.random());
+      drawJet(ctx, 0, 18, 0, 1, len, heat, 11);
+      ctx.fillStyle = flamePaint(heat, 0.4);
       ctx.beginPath();
-      ctx.moveTo(ox - 6, 26);
-      ctx.lineTo(ox + (Math.random() - 0.5) * 10, 26 + len * (0.72 + Math.random() * 0.4));
-      ctx.lineTo(ox + 6, 26);
+      ctx.ellipse(0, 34, 18, 9, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (jets.side) {
+      var s = jets.side < 0 ? -1 : 1;
+      len = 70 * (0.8 + 0.4 * Math.random());
+      drawJet(ctx, s * 50, 6, s, 0, len, heat, 6);
+      drawJet(ctx, s * 48, 16, s, 0.2, len * 0.65, heat, 5);
     }
   }
 
-  function drawCar(ctx, cam, state, thrust) {
+  function drawCar(ctx, cam, state, jets) {
     var p = project(cam, state.x, state.y + 0.15, state.z + 0.4);
     if (!p) return;
     var ang = 0;
@@ -199,28 +244,26 @@
     ctx.translate(p.sx, p.sy);
     ctx.drawImage(ensureFrames()[idx], -size * 0.5, -size * 0.48, size, size);
     ctx.rotate(ang);
-    drawFlames(ctx, state.heat, thrust && state.fuel > 0 && state.heatLock <= 0);
+    ctx.scale(size / 160, size / 160);
+    drawThrusters(ctx, state.heat, jets);
     ctx.restore();
   }
 
-  function drawShadow(ctx, cam, x, z, deck, solid) {
-    var y = deck ? RR.DECK_H : 0;
-    var p = project(cam, x, y + 0.03, z);
+  function drawShadow(ctx, cam, shadow) {
+    if (!shadow) return;
+    var p = project(cam, shadow.x, shadow.y + 0.02, shadow.z);
     if (!p) return;
-    ctx.fillStyle = solid ? 'rgba(0,0,0,0.42)' : 'rgba(231,76,60,0.62)';
+    var sc = shadow.scale == null ? 1 : shadow.scale;
+    var alpha = shadow.alpha == null ? 0.42 : shadow.alpha;
+    ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
     ctx.beginPath();
-    ctx.ellipse(p.sx, p.sy, Math.max(6, 0.95 * p.scale), Math.max(3, 0.38 * p.scale), 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      p.sx, p.sy,
+      Math.max(2, 0.95 * p.scale * sc),
+      Math.max(1.5, 0.32 * p.scale * sc),
+      0, 0, Math.PI * 2
+    );
     ctx.fill();
-    if (!solid) {
-      ctx.strokeStyle = 'rgba(231,76,60,0.9)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(p.sx - 7, p.sy - 5);
-      ctx.lineTo(p.sx + 7, p.sy + 5);
-      ctx.moveTo(p.sx + 7, p.sy - 5);
-      ctx.lineTo(p.sx - 7, p.sy + 5);
-      ctx.stroke();
-    }
   }
 
   function cellColor(ch, deck, alt, alpha) {
@@ -386,7 +429,7 @@
     ctx.beginPath();
     ctx.moveTo(0, h * 0.6);
     ctx.lineTo(w, h * 0.6);
-    ctx.moveTo(w / 2, h * 0.6);
+    ctx.moveTo(w / 2, 0);
     ctx.lineTo(w / 2, h);
     ctx.stroke();
   }
@@ -401,12 +444,8 @@
     var row0 = Math.max(0, Math.floor((state.z - 6) / RR.ROW));
     var ri;
     for (ri = row1; ri >= row0; ri--) drawRow(ctx, cam, world, ri, state);
-    if (state.airborne && fx.predict) {
-      drawShadow(ctx, cam, fx.predict.x, fx.predict.z, fx.predict.solid ? fx.predict.deck : 0, !!fx.predict.solid);
-    } else if (!state.airborne) {
-      drawShadow(ctx, cam, state.x, state.z + 0.2, state.deck, true);
-    }
-    drawCar(ctx, cam, state, !!fx.thrust);
+    drawShadow(ctx, cam, RR.contactShadow(state, world));
+    drawCar(ctx, cam, state, fx.jets);
     if (fx.showZones) drawZones(ctx, w, h);
     if (fx.popups) {
       ctx.font = '700 16px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';

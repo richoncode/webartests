@@ -3,8 +3,10 @@
    - bottom 40% steers, top 60% thrusts (the zone is where the finger lands)
    - a tap steers on touch-down; a slide is one lane per 18% of width,
      and that first tap already counts as the first step
-   - double-tap latches a 0.6 s thrust burst; a hold starts immediately
-   - a barrel roll needs air, thrust, and an outward steer from an outer lane
+   - hold the top to fire the bottom and back thrusters
+   - double-tap the top on the side opposite the car to jump and barrel-roll across
+   - a same-side double-tap is still a 0.6 s thrust burst
+   - tilt, when enabled, leans speed and steers; a hard tip jumps the roll
    - the upper deck is a finite stretch that drops back to the ground
    - Endless is the first mode, ahead of the three authored tracks
 */
@@ -58,8 +60,24 @@
   var wheelUntil = 0;
   var scriptThrust = false;
   var lastThrustDown = 0;
+  var lastThrustSide = 0;
   var popups = [];
-  var shadow = null;
+  var TILT_SHARP = 24;
+  var tilt = {
+    enabled: false,
+    denied: false,
+    listening: false,
+    beta0: null,
+    gamma0: null,
+    lastBeta: null,
+    lastGamma: null,
+    pitch: 0,
+    roll: 0,
+    sharpArm: true,
+    cool: 0,
+    steerAcc: 0,
+    touchUntil: 0
+  };
   var fuelBonusGiven = false;
   var hintReturn = 'menu';
   var lastEdge = false;
@@ -67,7 +85,7 @@
   var lastTs = 0;
 
   function blankSave() {
-    return { v: 1, sound: true, hintSeen: false, best: { endless: 0 } };
+    return { v: 1, sound: true, hintSeen: false, tilt: false, best: { endless: 0 } };
   }
 
   function loadSave() {
@@ -80,6 +98,7 @@
         v: 1,
         sound: data.sound !== false,
         hintSeen: !!data.hintSeen,
+        tilt: !!data.tilt,
         best: data.best
       };
     } catch (err) {
@@ -122,6 +141,7 @@
       btn.addEventListener('click', function () { begin(btn.getAttribute('data-mode')); });
     });
     syncMute();
+    syncTilt();
   }
 
   function modeButton(id, name, blurb) {
@@ -169,8 +189,12 @@
     pointers = Object.create(null);
     rightDown = false;
     keys.thrust = false;
-    shadow = null;
     lastEdge = false;
+    lastThrustDown = 0;
+    lastThrustSide = 0;
+    tilt.cool = 0;
+    tilt.steerAcc = 0;
+    tilt.sharpArm = true;
     acc = 0;
     if (id === 'endless') world = Track.makeEndless(opt.seed != null ? { seed: opt.seed } : {});
     else world = Track.assemble(tr.chunks);
@@ -236,9 +260,9 @@
 
   function noteSteer(res) {
     if (!res) return;
-    if (res.type === 'roll') {
-      popup('BARREL ROLL');
-      Audio.blip(520, 0.18, 'square', 0.05);
+    if (res.type === 'roll' || res.type === 'jump') {
+      popup(res.type === 'jump' ? 'JUMP' : 'BARREL ROLL');
+      Audio.blip(res.type === 'jump' ? 640 : 520, 0.18, 'square', 0.05);
     } else if (res.type === 'lane') {
       Audio.blip(220, 0.05, 'square', 0.03);
     } else if (res.type === 'rumble') {
@@ -353,15 +377,54 @@
     var thrusting;
     while (acc >= RR.STEP && n < limit && state.alive && !state.finished) {
       if (steerQueue.length) noteSteer(RR.applySteer(state, steerQueue.shift(), thrustHeld()));
-      state.vz = Track.kmhAt(state.t, world.endless) / 3.6 * (state.slowT > 0 ? 0.82 : 1);
+      state.vz = speedNow();
       thrusting = thrustHeld();
       onEvents(RR.step(state, world, { thrust: thrusting }, RR.STEP));
       acc -= RR.STEP;
       n++;
       if (screen !== 'play') break;
     }
+    if (tilt.enabled) applyTilt(dt);
     if (world && world.endless && state && state.alive) {
       Track.grow(world, state.z + Track.lookaheadM(state.vz), state.t);
+    }
+  }
+
+  function speedNow() {
+    var vz = Track.kmhAt(state.t, world.endless) / 3.6 * (state.slowT > 0 ? 0.82 : 1);
+    if (tilt.enabled) {
+      var t = tilt.pitch / 28;
+      if (t > 1) t = 1;
+      if (t < -1) t = -1;
+      vz *= 1 + t * 0.42;
+      if (vz < 8) vz = 8;
+      if (vz > 48) vz = 48;
+    }
+    return vz;
+  }
+
+  function applyTilt(dt) {
+    if (!state) return;
+    if (tilt.cool > 0) tilt.cool = Math.max(0, tilt.cool - dt);
+    if (state.rollT > 0) return;
+    var g = tilt.roll;
+    if (g >= TILT_SHARP || g <= -TILT_SHARP) {
+      if (tilt.sharpArm && tilt.cool <= 0) {
+        tilt.sharpArm = false;
+        tilt.cool = 0.9;
+        noteSteer(RR.jumpRoll(state, g > 0 ? 1 : -1));
+      }
+      return;
+    }
+    if (Math.abs(g) < TILT_SHARP * 0.6) tilt.sharpArm = true;
+    if (performance.now() < tilt.touchUntil) return;
+    tilt.steerAcc += dt;
+    var want = 1;
+    if (g <= -16) want = 0;
+    else if (g >= 16) want = 2;
+    if (tilt.steerAcc >= 0.18 && want !== state.targetLane) {
+      tilt.steerAcc = 0;
+      noteSteer(RR.applySteer(state, want > state.targetLane ? 1 : -1, false));
     }
   }
 
@@ -404,7 +467,9 @@
   }
 
   function enqueue(dir) {
-    if (dir) steerQueue.push(dir < 0 ? -1 : 1);
+    if (!dir) return;
+    steerQueue.push(dir < 0 ? -1 : 1);
+    tilt.touchUntil = performance.now() + 480;
   }
 
   function slideSteer(rec, x) {
@@ -426,11 +491,20 @@
     var zone = zoneAt(p);
     if (e.button === 2 || zone === 'thrust') {
       pointers[e.pointerId] = { zone: 'thrust', startX: p.x, w: p.w };
-      if (e.button !== 2 && performance.now() - lastThrustDown <= DOUBLE_MS && state) {
-        state.burst = Math.max(state.burst, RR.BURST);
-        popup('BURST');
+      if (e.button !== 2 && state) {
+        var side = p.x < p.w * 0.5 ? -1 : 1;
+        var now = performance.now();
+        if (now - lastThrustDown <= DOUBLE_MS && lastThrustSide === side) {
+          var carSide = state.lane <= 0 ? -1 : state.lane >= 2 ? 1 : 0;
+          if (carSide === 0 || side === -carSide) noteSteer(RR.jumpRoll(state, side));
+          else {
+            state.burst = Math.max(state.burst, RR.BURST);
+            popup('BURST');
+          }
+        }
+        lastThrustDown = now;
+        lastThrustSide = side;
       }
-      if (e.button !== 2) lastThrustDown = performance.now();
       Audio.ensure();
     } else {
       var dir = zone === 'left' ? -1 : 1;
@@ -471,18 +545,22 @@
     return { state: preview, world: previewWorld };
   }
 
+  function jetsNow(thrusting) {
+    if (!state) return { back: false, bottom: false, side: 0 };
+    var hot = thrusting && state.fuel > 0 && state.heatLock <= 0;
+    return {
+      back: !!hot,
+      bottom: !!(hot || state.bottomPulse > 0),
+      side: state.rollT > 0 ? state.rollDir : 0
+    };
+  }
+
   function paint() {
     var pair = activeDrawState();
     var thrusting = screen === 'play' && thrustHeld();
-    if (pair.state && pair.state.airborne && screen === 'play') {
-      if (!shadow || shadow.at == null || pair.state.t - shadow.at > 0.08) {
-        shadow = RR.predictLanding(pair.state, pair.world, thrusting);
-        shadow.at = pair.state.t;
-      }
-    } else shadow = null;
     Draw.draw(ctx, canvas.width, canvas.height, pair.state, pair.world, {
       thrust: thrusting,
-      predict: shadow,
+      jets: screen === 'play' ? jetsNow(thrusting) : { back: false, bottom: false, side: 0 },
       showZones: screen === 'hint',
       popups: screen === 'play' || screen === 'crash' || screen === 'clear' ? popups : [],
       reduce: reduce
@@ -557,6 +635,10 @@
       heat: state ? state.heat : 0,
       heatLock: state ? state.heatLock : 0,
       burst: state ? state.burst : 0,
+      bottomPulse: state ? state.bottomPulse || 0 : 0,
+      jets: state ? jetsNow(screen === 'play' && thrustHeld()) : { back: false, bottom: false, side: 0 },
+      shadow: state && world ? RR.contactShadow(state, world) : null,
+      tilt: { enabled: tilt.enabled, pitch: tilt.pitch, roll: tilt.roll, denied: tilt.denied },
       score: state ? state.score : 0,
       combo: state ? state.combo : 1,
       rollCount: state ? state.rollCount : 0,
@@ -572,6 +654,106 @@
     };
   }
 
+  function deadZone(v, zone) {
+    if (v > zone) return v - zone;
+    if (v < -zone) return v + zone;
+    return 0;
+  }
+
+  function onOrient(e) {
+    if (!tilt.enabled || e.beta == null || e.beta !== e.beta) return;
+    var gamma = e.gamma == null || e.gamma !== e.gamma ? 0 : e.gamma;
+    tilt.lastBeta = e.beta;
+    tilt.lastGamma = gamma;
+    if (tilt.beta0 == null) {
+      tilt.beta0 = e.beta;
+      tilt.gamma0 = gamma;
+      tilt.pitch = 0;
+      tilt.roll = 0;
+      return;
+    }
+    var pitch = deadZone(tilt.beta0 - e.beta, 8);
+    var roll = deadZone(gamma - tilt.gamma0, 10);
+    tilt.pitch += (pitch - tilt.pitch) * 0.35;
+    tilt.roll += (roll - tilt.roll) * 0.35;
+  }
+
+  function syncTilt() {
+    var btn = document.getElementById('tilt');
+    var note = document.getElementById('tilt-note');
+    var cal = document.getElementById('tilt-cal');
+    if (!btn || !note || !cal) return;
+    if (tilt.enabled) {
+      btn.textContent = 'Recalibrate tilt';
+      note.textContent = 'Tilt on. Lean forward to speed up and back to slow down. Tip sideways to change lane. A hard tip jumps into a roll.';
+      cal.classList.remove('hidden');
+    } else {
+      btn.textContent = 'Enable tilt';
+      cal.classList.add('hidden');
+      note.textContent = tilt.denied ? 'Tilt unavailable. Touch steering still works.' : '';
+    }
+  }
+
+  function startTilt() {
+    tilt.enabled = true;
+    tilt.denied = false;
+    tilt.beta0 = null;
+    tilt.gamma0 = null;
+    tilt.pitch = 0;
+    tilt.roll = 0;
+    tilt.sharpArm = true;
+    save.tilt = true;
+    writeSave();
+    if (!tilt.listening) {
+      window.addEventListener('deviceorientation', onOrient);
+      tilt.listening = true;
+    }
+    syncTilt();
+  }
+
+  function denyTilt() {
+    tilt.enabled = false;
+    tilt.denied = true;
+    save.tilt = false;
+    writeSave();
+    syncTilt();
+  }
+
+  function recalibrate() {
+    if (tilt.lastBeta == null) {
+      tilt.beta0 = null;
+      return;
+    }
+    tilt.beta0 = tilt.lastBeta;
+    tilt.gamma0 = tilt.lastGamma;
+    tilt.pitch = 0;
+    tilt.roll = 0;
+    tilt.sharpArm = true;
+    var note = document.getElementById('tilt-note');
+    if (note && tilt.enabled) note.textContent = 'Calibrated to how you are holding the phone.';
+  }
+
+  function onTiltButton() {
+    Audio.ensure();
+    if (tilt.enabled) {
+      recalibrate();
+      return;
+    }
+    var Orient = window.DeviceOrientationEvent;
+    if (!Orient) {
+      denyTilt();
+      return;
+    }
+    if (typeof Orient.requestPermission === 'function') {
+      Orient.requestPermission().then(function (res) {
+        if (res === 'granted') startTilt();
+        else denyTilt();
+      }).catch(denyTilt);
+      return;
+    }
+    startTilt();
+  }
+
   document.getElementById('quit').addEventListener('click', showMenu);
   document.getElementById('restart').addEventListener('click', function () {
     Audio.ensure();
@@ -584,6 +766,11 @@
   muteBtn.addEventListener('click', toggleMute);
   menuMute.addEventListener('click', toggleMute);
   document.getElementById('how').addEventListener('click', openHintInfo);
+  document.getElementById('tilt').addEventListener('click', onTiltButton);
+  document.getElementById('tilt-cal').addEventListener('click', function () {
+    Audio.ensure();
+    recalibrate();
+  });
   hintGo.addEventListener('click', closeHint);
 
   app.addEventListener('pointerdown', onPointerDown);
@@ -635,6 +822,17 @@
     dismissHint: function () { closeHint(); return snapshot(); },
     setThrust: function (on) { scriptThrust = !!on; },
     steer: function (dir) { enqueue(dir < 0 ? -1 : 1); },
+    jump: function (dir) {
+      if (!state) return snapshot();
+      noteSteer(RR.jumpRoll(state, dir < 0 ? -1 : 1));
+      return snapshot();
+    },
+    enableTilt: function () { startTilt(); return snapshot(); },
+    recalibrate: function () { recalibrate(); return snapshot(); },
+    orient: function (beta, gamma) {
+      onOrient({ beta: beta, gamma: gamma });
+      return snapshot();
+    },
     step: function (sec) {
       var left = sec;
       var slice;
