@@ -83,12 +83,12 @@ $('f').onsubmit=async e=>{
   history.push({role:'user',content:text});
   const inputs=tok.apply_chat_template(history,{add_generation_prompt:true,return_dict:true,enable_thinking:$('think').checked});
   let t0=performance.now(),tf=0,n=0,acc='';
-  const perf=()=>{const e=performance.now(),r=n>1&&tf?((n-1)/((e-tf)/1000)).toFixed(1):'–';say(`${tf?((tf-t0)/1000).toFixed(2):'–'}s first · ${r} tok/s · ${n} tok · ${window.HW||'WebGPU'} q4f16`,'pf')};
+  const MAXT=2048;const perf=()=>{const e=performance.now(),r=n>1&&tf?((n-1)/((e-tf)/1000)).toFixed(1):'–';say(`${tf?((tf-t0)/1000).toFixed(2):'–'}s first · ${r} tok/s · ${n} tok${n>=MAXT?` · truncated (${MAXT}-tok limit)`:''} · ${window.HW||'WebGPU'} q4f16`,'pf')};
   const streamer=new T.TextStreamer(tok,{skip_prompt:true,skip_special_tokens:true,
     callback_function:s=>{acc+=s;out.textContent=acc},
     token_callback_function:()=>{n++;if(!tf){tf=performance.now();$('ttft').textContent=((tf-t0)/1000).toFixed(2)+' s'}
       else $('tps').textContent=((n-1)/((performance.now()-tf)/1000)).toFixed(1)+' tok/s';$('nt').textContent=n}});
-  try{await model.generate({...inputs,max_new_tokens:512,do_sample:false,streamer});history.push({role:'assistant',content:acc});perf()}
+  try{await model.generate({...inputs,max_new_tokens:MAXT,do_sample:false,streamer});history.push({role:'assistant',content:acc});perf()}
   catch(err){out.textContent='Generation failed: '+err.message;console.error(err)}
   $('send').disabled=false;
 };
