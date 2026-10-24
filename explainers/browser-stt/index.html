@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Speech-to-text in the browser: compare engines</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:16px/1.45 system-ui,-apple-system,sans-serif;background:#111;color:#eee}
+main{max-width:760px;margin:auto;padding:16px}h1{font-size:1.25rem;margin:0 0 4px}h2{font-size:1rem;margin:0 0 6px}
+.s{color:#aaa;font-size:.88rem;margin:0 0 8px}.card{background:#1c1c1c;border-radius:10px;padding:12px;margin-bottom:12px}
+button{font:inherit;padding:9px 13px;border:0;border-radius:8px;background:#4ab;color:#000;font-weight:600;margin:2px 4px 2px 0}
+button:disabled{opacity:.4}button.rec{background:#e55}progress{width:100%;height:10px}
+label.e{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #2a2a2a}label.e:first-of-type{border:0}
+.tx{white-space:pre-wrap;margin:6px 0;min-height:1.4em}.pf{color:#888;font-size:.8rem;font-variant-numeric:tabular-nums}
+a{color:#9cf}audio{width:100%;margin-top:8px}.w{color:#fc6}code{color:#9cf}
+</style></head><body><main>
+<h1>Speech-to-text in the browser</h1>
+<p class="s">Record or upload a clip, then run it through one or more engines on this device. Audio never leaves the browser. Models download once, then load from cache.</p>
+
+<div class="card"><h2>1. Engines</h2>
+<label class="e"><input type="checkbox" value="whistle" checked><div><b>Whistle on Needle</b> · Cactus · WASM/CPU · ~17 MB<br><span class="s">Needle is the engine; Whistle is its speech model. Up to 30 s per clip. en de fr es it nl pl.</span></div></label>
+<label class="e"><input type="checkbox" value="whisper-tiny" checked><div><b>Whisper tiny.en</b> · transformers.js · WebGPU (WASM fallback) · ~40 MB</div></label>
+<label class="e"><input type="checkbox" value="whisper-base"><div><b>Whisper base</b> · transformers.js · WebGPU (WASM fallback) · ~80 MB</div></label>
+<label class="e"><input type="checkbox" value="parakeet"><div><b>Parakeet TDT 0.6B v2</b> · NVIDIA via parakeet.js · WebGPU · <span class="w">~1.25 GB</span><br><span class="s">Heavy. Desktop with WebGPU only; skip on phones and Quest.</span></div></label>
+<div class="s" id="gpu"></div>
+</div>
+
+<div class="card"><h2>2. Audio</h2>
+<button id="rec">● Record</button><label><button id="upb" type="button">Upload file</button><input id="file" type="file" accept="audio/*,video/*" hidden></label>
+<div class="pf" id="ainfo">No clip yet.</div><audio id="player" controls hidden></audio></div>
+
+<div class="card"><button id="run" disabled>3. Transcribe with selected</button> <span class="s">Runs engines one after another on the same clip.</span></div>
+
+<div id="results"></div>
+
+<div class="card s"><h2 style="color:#eee">Notes</h2>
+<p>Speech-to-text only. No text-to-speech here yet.</p>
+<p><b>first</b> = time to first text (Whisper streams tokens; Whistle reports its own decoder first-token time; Parakeet returns all at once). <b>total</b> = wall time for the clip after the model is loaded. <b>RTF</b> = total ÷ clip length (lower is faster; under 1 is faster than real time). First run of each engine also includes warm-up.</p>
+<p>Whistle runs through the community <a href="https://github.com/afshinm/cactus-needle">cactus-needle</a> package (v0.3.0), wrapping <a href="https://github.com/cactus-compute/needle">Cactus Needle</a>. Whisper via <a href="https://huggingface.co/docs/transformers.js">transformers.js</a>. Parakeet via <a href="https://github.com/ysdede/parakeet.js">parakeet.js</a>.</p>
+</div>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+const AUDIO_SR=16000;let pcm=null,clipSec=0,recState=null;
+const hasGPU=!!navigator.gpu;let gpuOK=false;
+(async()=>{try{gpuOK=hasGPU&&!!(await navigator.gpu.requestAdapter())}catch{}
+$('gpu').textContent=gpuOK?'WebGPU available.':'No WebGPU here: Whisper falls back to WASM (slower); Parakeet unavailable.';})();
+
+async function decode(buf){const ctx=new AudioContext({sampleRate:AUDIO_SR});try{const ab=await ctx.decodeAudioData(buf);
+const ch=ab.numberOfChannels,n=ab.length,out=new Float32Array(n);for(let c=0;c<ch;c++){const d=ab.getChannelData(c);for(let i=0;i<n;i++)out[i]+=d[i]/ch}return out}finally{ctx.close()}}
+async function setClip(blob){$('ainfo').textContent='Decoding…';try{pcm=await decode(await blob.arrayBuffer());clipSec=pcm.length/AUDIO_SR;
+$('ainfo').textContent=`Clip ${clipSec.toFixed(1)} s · 16 kHz mono`+(clipSec>30?' · Whistle uses the first 30 s':'');
+$('player').src=URL.createObjectURL(blob);$('player').hidden=false;$('run').disabled=false}catch(e){$('ainfo').textContent='Could not decode audio: '+e.message}}
+$('upb').onclick=()=>$('file').click();$('file').onchange=e=>{const f=e.target.files[0];if(f)setClip(f)};
+$('rec').onclick=async()=>{if(recState){recState.stop();return}
+try{const s=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(s),parts=[];
+mr.ondataavailable=e=>parts.push(e.data);mr.onstop=()=>{s.getTracks().forEach(t=>t.stop());recState=null;$('rec').textContent='● Record';$('rec').classList.remove('rec');setClip(new Blob(parts,{type:mr.mimeType}))};
+mr.start();recState=mr;$('rec').textContent='■ Stop';$('rec').classList.add('rec');$('ainfo').textContent='Recording…'}catch(e){$('ainfo').textContent='Mic unavailable: '+e.message}};
+
+const mb=b=>(b/1048576).toFixed(b>1e8?0:1)+' MB';
+const loaded={};let CUR;
+function card(name){const d=document.createElement('div');d.className='card';d.innerHTML=`<h2>${name}</h2><progress hidden></progress><div class="pf st"></div><div class="tx"></div><div class="pf perf"></div>`;
+CUR.append(d);return{st:t=>d.querySelector('.st').textContent=t,bar:(p)=>{const b=d.querySelector('progress');b.hidden=p==null;if(p!=null)b.value=p,b.max=100},
+tx:t=>d.querySelector('.tx').textContent=t,perf:t=>d.querySelector('.perf').textContent=t}}
+function fmtPerf({first,total,size,backend}){return[first!=null?`${(first/1000).toFixed(2)}s first`:null,`${(total/1000).toFixed(2)}s total`,`RTF ${(total/1000/clipSec).toFixed(2)}`,size,backend].filter(Boolean).join(' · ')}
+
+// --- Whistle on Needle (cactus-needle, WASM worker) ---
+async function loadWhistle(ui){const {createWhistle}=await import('./vendor/cactus-needle/dist/browser/index.js');
+let total=0;const w=await createWhistle({onDownloadProgress:p=>{if(p.total)total=p.total;ui.bar(p.percentage??null);ui.st(`Downloading Whistle ${mb(p.loaded)}${p.total?' / '+mb(p.total):''}`)}});
+return{size:mb(total||16919407),backend:'WASM (CPU)',async run(a){const t0=performance.now();const r=await w.transcribe(a.length>30*AUDIO_SR?a.slice(0,30*AUDIO_SR):a,{language:'en'});
+return{text:r.text,first:r.timeToFirstTokenMs,total:performance.now()-t0}}}}
+
+// --- Whisper via transformers.js ---
+const TJS='https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1';
+async function loadWhisper(ui,model){const {pipeline,TextStreamer}=await import(TJS);const device=gpuOK?'webgpu':'wasm';
+const files={};const asr=await pipeline('automatic-speech-recognition',model,{device,dtype:device==='webgpu'?{encoder_model:'fp32',decoder_model_merged:'q4'}:'q8',
+progress_callback:p=>{if(p.status==='progress'&&p.total){files[p.file]=[p.loaded,p.total];const L=Object.values(files).reduce((s,f)=>s+f[0],0),T=Object.values(files).reduce((s,f)=>s+f[1],0);
+ui.bar(L/T*100);ui.st(`Downloading ${mb(L)} / ${mb(T)}`)}}});
+const T=Object.values(files).reduce((s,f)=>s+f[1],0);
+return{size:T?mb(T):'cached',backend:device==='webgpu'?'WebGPU':'WASM',async run(a){const t0=performance.now();let first=null,txt='';
+const streamer=new TextStreamer(asr.tokenizer,{skip_prompt:true,skip_special_tokens:true,callback_function:s=>{if(first==null)first=performance.now()-t0;txt+=s;ui.tx(txt)}});
+const r=await asr(a,{chunk_length_s:30,stride_length_s:5,streamer});return{text:r.text,first,total:performance.now()-t0}}}}
+
+// --- Parakeet via parakeet.js ---
+async function loadParakeet(ui){if(!gpuOK)throw new Error('Needs WebGPU.');const {fromHub}=await import('https://esm.sh/parakeet.js@1.4.4');
+const files={};const m=await fromHub('parakeet-tdt-0.6b-v2',{backend:'webgpu',encoderQuant:'fp16',decoderQuant:'int8',
+progress:p=>{files[p.file]=[p.loaded,p.total];const L=Object.values(files).reduce((s,f)=>s+f[0],0),T=Object.values(files).reduce((s,f)=>s+f[1],0);ui.bar(L/T*100);ui.st(`Downloading ${p.file} · ${mb(L)} / ${mb(T)}`)}});
+return{size:'~1.25 GB',backend:'WebGPU enc + WASM dec',async run(a){const t0=performance.now();const r=await m.transcribe(a,AUDIO_SR);return{text:r.utterance_text,first:null,total:performance.now()-t0}}}}
+
+const ENG={whistle:['Whistle on Needle',loadWhistle],'whisper-tiny':['Whisper tiny.en',ui=>loadWhisper(ui,'onnx-community/whisper-tiny.en')],
+'whisper-base':['Whisper base',ui=>loadWhisper(ui,'onnx-community/whisper-base')],parakeet:['Parakeet TDT 0.6B v2',loadParakeet]};
+$('run').onclick=async()=>{const sel=[...document.querySelectorAll('label.e input:checked')].map(i=>i.value);if(!sel.length||!pcm)return;$('run').disabled=true;
+const hr=document.createElement('div');hr.className='pf';hr.style.margin='4px 0 10px';hr.textContent=`— clip ${clipSec.toFixed(1)} s · ${new Date().toLocaleTimeString()} —`;CUR=document.createElement('div');CUR.append(hr);$('results').prepend(CUR);
+for(const k of sel){const [name,load]=ENG[k];const ui=card(name);try{if(!loaded[k]){ui.st('Loading…');const t=performance.now();loaded[k]=await load(ui);ui.bar(null);ui.st(`Loaded in ${((performance.now()-t)/1000).toFixed(1)} s`)}else ui.st('Cached in memory');
+ui.tx('…');const e=loaded[k];const r=await e.run(pcm);ui.tx(r.text.trim()||'(no speech detected)');ui.perf(fmtPerf({...r,size:e.size,backend:e.backend}))}
+catch(err){ui.bar(null);ui.st('Error: '+(err?.message||err));console.error(err);delete loaded[k]}}
+$('run').disabled=false};
+</script></body></html>
