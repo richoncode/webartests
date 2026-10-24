@@ -82,7 +82,26 @@ async function runServer(p,prompt){
   }catch(e){m.done();setSt(l,'error','err');l.out.textContent+=(l.out.textContent?'\n\n':'')+'Error: '+(e.message==='Failed to fetch'?'could not reach the server. Check the URL, that it is running, and CORS (OLLAMA_ORIGINS).':e.message)}
 }
 let T,tok,model;
+
+// The Bolt repo's config.json has no "transformers.js_config", so transformers.js
+// did not fetch the separate .onnx_data weight files. Inject the settings the
+// official onnx-community/gemma-4-E4B-it-ONNX build uses.
+async function boltConfig(T){
+  const cfg=await T.AutoConfig.from_pretrained(MODEL);
+  cfg['transformers.js_config']={...(cfg['transformers.js_config']||{}),
+    use_external_data_format:{'embed_tokens_q4f16.onnx':1,'decoder_model_merged_q4f16.onnx':2},
+    kv_cache_dtype:{q4f16:'float16',fp16:'float16'}};
+  return cfg;
+}
+function friendly(e){
+  const m=String(e&&e.message||e);
+  if(/memory|allocat|OOM|out of range|RangeError|Aborted|device.*lost/i.test(m))return 'Ran out of memory loading the model. This device is likely too small; try desktop Chrome on a computer with 16 GB or more. ('+m+')';
+  if(/fetch|network|Failed to load/i.test(m))return 'Could not download part of the model. Check the connection and try again. ('+m+')';
+  return 'Load failed: '+m;
+}
+const WARN='Heads up: this model needs about 5 GB of downloads and 4–5 GB of GPU memory. Phones, iPads and Quest headsets almost certainly cannot hold it. Best on desktop Chrome with 16 GB+ memory.';
 const web=lane('L-web');
+$('web-help').textContent=WARN;
 if(!navigator.gpu){setSt(web,'no WebGPU','off');$('web-help').textContent='WebGPU is not available in this browser. Try current Chrome, or Safari 26+ on Apple Silicon.';$('web-load').disabled=true}
 $('web-load').onclick=async()=>{
   $('web-load').disabled=true;$('web-bar').hidden=false;setSt(web,'loading','run');
@@ -90,9 +109,9 @@ $('web-load').onclick=async()=>{
     const ad=await navigator.gpu.requestAdapter();if(!ad)throw new Error('no GPU adapter found');
     T=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1');
     tok=await T.AutoTokenizer.from_pretrained(MODEL);
-    model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{dtype:'q4f16',device:'webgpu',progress_callback:i=>{if(i.status==='progress_total')$('web-bar').value=i.progress}});
+    model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{config:await boltConfig(T),dtype:'q4f16',device:'webgpu',progress_callback:i=>{if(i.status==='progress_total')$('web-bar').value=i.progress}});
     $('web-bar').hidden=true;setSt(web,'ready','ok');
-  }catch(e){setSt(web,'error','err');web.out.textContent='Load failed: '+e.message;$('web-load').disabled=false}
+  }catch(e){setSt(web,'error','err');web.out.textContent=friendly(e);$('web-load').disabled=false}
 };
 async function runWeb(prompt){
   reset(web);if(!model){web.out.textContent='Load the model above to include this lane.';return}

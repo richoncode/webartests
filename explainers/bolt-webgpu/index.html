@@ -16,6 +16,7 @@ form{display:flex;gap:8px}textarea{flex:1;font:inherit;padding:10px;border-radiu
 </style></head><body><main>
 <h1>Nemotron 3.5 Bolt E4B, in your browser</h1>
 <p class="s">Runs on your GPU with WebGPU. Nothing leaves this device. First load downloads about 4.9 GB, then it is cached.</p>
+<div class="card" style="border-color:#a60;color:#fc6">Heads up: phones, iPads and Quest headsets are almost certainly too small for this model (about 5 GB). Use desktop Chrome on a computer with 16 GB+ memory.</div>
 <div class="card"><div id="gpu">Checking WebGPU…</div>
 <div style="margin-top:8px"><button id="load" disabled>Download and load model</button></div>
 <progress id="bar" value="0" max="100" hidden></progress><div id="pt" class="s"></div></div>
@@ -29,6 +30,24 @@ const MODEL="danyalmalik/NVIDIA-Nemotron-3.5-Bolt-E4B-ONNX-WebGPU";
 const $=id=>document.getElementById(id);
 window.addEventListener('error',e=>say('Error: '+e.message,'a'));
 let tok,model,history=[];
+// The Bolt repo's config.json has no "transformers.js_config", so transformers.js
+// did not fetch the separate .onnx_data weight files. Inject the settings the
+// official onnx-community/gemma-4-E4B-it-ONNX build uses.
+async function boltConfig(T){
+  const cfg=await T.AutoConfig.from_pretrained(MODEL);
+  cfg['transformers.js_config']={...(cfg['transformers.js_config']||{}),
+    use_external_data_format:{'embed_tokens_q4f16.onnx':1,'decoder_model_merged_q4f16.onnx':2},
+    kv_cache_dtype:{q4f16:'float16',fp16:'float16'}};
+  return cfg;
+}
+function friendly(e){
+  const m=String(e&&e.message||e);
+  if(/memory|allocat|OOM|out of range|RangeError|Aborted|device.*lost/i.test(m))return 'Ran out of memory loading the model. This device is likely too small; try desktop Chrome on a computer with 16 GB or more. ('+m+')';
+  if(/fetch|network|Failed to load/i.test(m))return 'Could not download part of the model. Check the connection and try again. ('+m+')';
+  return 'Load failed: '+m;
+}
+const WARN='Heads up: this model needs about 5 GB of downloads and 4–5 GB of GPU memory. Phones, iPads and Quest headsets almost certainly cannot hold it. Best on desktop Chrome with 16 GB+ memory.';
+
 function say(t,c){const d=document.createElement('div');d.className=c;d.textContent=t;$('log').append(d);$('log').scrollTop=1e9;return d}
 async function check(){
   if(!navigator.gpu){$('gpu').textContent='WebGPU not available in this browser. Try current Chrome, or Safari 26+ on Apple Silicon.';return}
@@ -47,9 +66,9 @@ $('load').onclick=async()=>{
     const prog=i=>{if(i.status==='progress_total'){$('bar').value=i.progress;$('pt').textContent=`Downloading ${i.progress.toFixed(1)}%`}};
     tok=await T.AutoTokenizer.from_pretrained(MODEL);
     $('pt').textContent='Starting download…';
-    model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{dtype:'q4f16',device:'webgpu',progress_callback:prog});
+    model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{config:await boltConfig(T),dtype:'q4f16',device:'webgpu',progress_callback:prog});
     $('pt').textContent='Loaded. Ready.';$('bar').hidden=true;$('q').disabled=$('send').disabled=false;
-  }catch(e){$('pt').textContent='Load failed: '+e.message;console.error(e);$('load').disabled=false}
+  }catch(e){$('pt').textContent=friendly(e);console.error(e);$('load').disabled=false}
 };
 $('f').onsubmit=async e=>{
   e.preventDefault();const text=$('q').value.trim();if(!text)return;
