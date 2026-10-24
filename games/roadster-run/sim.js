@@ -191,6 +191,52 @@
     return { type: 'lane', lane: state.targetLane };
   }
 
+  /* Double-tap jump: pop off the road, spin, and cross one lane. */
+  function jumpRoll(state, dir) {
+    if (!dir || !state.alive || state.finished || state.rollT > 0) return { type: 'none' };
+    if (state.fuel <= 0.05) return { type: 'none' };
+    dir = dir < 0 ? -1 : 1;
+    state.fuel = Math.max(0, state.fuel - ROLL_FUEL);
+    state.rollT = 0.0001;
+    state.rollDir = dir;
+    state.rollDodged = false;
+    state.airborne = true;
+    if (state.vy < 10.4) state.vy = 10.4;
+    state.y = state.y < 0.02 ? 0.08 : state.y + 0.06;
+    var next = state.targetLane + dir;
+    if (next < 0) next = 0;
+    if (next > 2) next = 2;
+    state.targetLane = next;
+    state.bottomPulse = 0.32;
+    return { type: 'jump', dir: dir, lane: state.targetLane };
+  }
+
+  function contactShadow(state, world) {
+    var lane = laneFromX(state.x);
+    var t = state.t || 0;
+    var upperCh = world ? cellAt(world, state.z, lane, 1, t) : '.';
+    var groundCh = world ? cellAt(world, state.z, lane, 0, t) : '=';
+    var deck = 0;
+    var surface = 0;
+    var overFloor = isFloor(groundCh);
+    if (state.y > DECK_H * 0.35 && isFloor(upperCh)) {
+      deck = 1;
+      surface = DECK_H;
+      overFloor = true;
+    }
+    var height = Math.max(0, state.y - surface);
+    var lift = height / (height + 1.35);
+    return {
+      x: state.x,
+      z: state.z,
+      deck: deck,
+      y: surface,
+      height: height,
+      scale: 1 - lift * 0.7,
+      alpha: (overFloor ? 0.48 : 0.16) * (1 - lift * 0.82)
+    };
+  }
+
   function rollOffset(state) {
     if (state.rollT <= 0) return 0;
     var p = Math.min(1, state.rollT / ROLL_TIME);
@@ -299,6 +345,7 @@
     if (state.wobble > 0) state.wobble -= dt;
     if (state.slowT > 0) state.slowT -= dt;
     if (state.burst > 0) state.burst = Math.max(0, state.burst - dt);
+    if (state.bottomPulse > 0) state.bottomPulse = Math.max(0, state.bottomPulse - dt);
     if (state.heatLock > 0) state.heatLock = Math.max(0, state.heatLock - dt);
     if (!ghost && state.comboT > 0) {
       state.comboT -= dt;
@@ -598,6 +645,22 @@
     pred = predictLanding(s, w, false);
     eq(pred.solid === false, 'shadow miss');
 
+    s = createState({ vz: 16, lane: 1, targetLane: 1, fuel: 6, y: 0 });
+    var hopped = jumpRoll(s, 1);
+    eq(hopped.type === 'jump' && s.airborne && s.vy >= 10 && s.targetLane === 2, 'jump roll ' + hopped.type);
+    eq(Math.abs(s.fuel - 5.5) < 1e-9, 'jump fuel ' + s.fuel);
+    var y0 = s.y;
+    world = roadWorld(30);
+    for (i = 0; i < 36; i++) step(s, world, {}, STEP);
+    eq(s.y > y0 + 0.8 && s.rollT > 0, 'jump rises y' + s.y.toFixed(2) + ' roll' + s.rollT.toFixed(2));
+    s = createState({ fuel: 0, lane: 0, targetLane: 0 });
+    eq(jumpRoll(s, 1).type === 'none', 'dry tank does not jump');
+
+    var low = contactShadow(createState({ y: 0, z: 10, x: 0.4, lane: 1, targetLane: 1 }), roadWorld(8));
+    var high = contactShadow(createState({ y: 3.2, z: 10, x: 1.2, airborne: true, lane: 1, targetLane: 1 }), roadWorld(8));
+    eq(Math.abs(low.z - 10) < 1e-9 && Math.abs(high.z - 10) < 1e-9 && Math.abs(high.x - 1.2) < 1e-9, 'shadow stays under the car');
+    eq(high.scale < low.scale - 0.15 && high.alpha < low.alpha, 'shadow shrinks with height ' + high.scale.toFixed(2));
+
     return { ok: fails.length === 0, fails: fails, isp: ISP, mdot: MDOT_20KN, tankKg: TANK_KG };
   }
 
@@ -610,7 +673,8 @@
     isFloor: isFloor, isRamp: isRamp, isBlock: isBlock,
     cellAt: cellAt, moverLane: moverLane,
     createState: createState, cloneState: cloneState,
-    step: step, applySteer: applySteer, predictLanding: predictLanding,
+    step: step, applySteer: applySteer, jumpRoll: jumpRoll, predictLanding: predictLanding,
+    contactShadow: contactShadow,
     supportAt: supportAt, rollOffset: rollOffset, thrustingNow: thrustingNow,
     selfTest: selfTest
   };
