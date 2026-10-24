@@ -45,16 +45,33 @@ const hasGPU=!!navigator.gpu;let gpuOK=false;
 (async()=>{try{gpuOK=hasGPU&&!!(await navigator.gpu.requestAdapter())}catch{}
 $('gpu').textContent=gpuOK?'WebGPU available.':'No WebGPU here: Whisper falls back to WASM (slower); Parakeet unavailable.';})();
 
-async function decode(buf){const ctx=new AudioContext({sampleRate:AUDIO_SR});try{const ab=await ctx.decodeAudioData(buf);
-const ch=ab.numberOfChannels,n=ab.length,out=new Float32Array(n);for(let c=0;c<ch;c++){const d=ab.getChannelData(c);for(let i=0;i<n;i++)out[i]+=d[i]/ch}return out}finally{ctx.close()}}
-async function setClip(blob){$('ainfo').textContent='Decoding…';try{pcm=await decode(await blob.arrayBuffer());clipSec=pcm.length/AUDIO_SR;
+function mixMono(ab){const ch=ab.numberOfChannels,n=ab.length,out=new Float32Array(n);for(let c=0;c<ch;c++){const d=ab.getChannelData(c);for(let i=0;i<n;i++)out[i]+=d[i]/ch}return out}
+async function to16k(x,sr){if(sr===AUDIO_SR)return x;const n=Math.max(1,Math.ceil(x.length*AUDIO_SR/sr));const oc=new OfflineAudioContext(1,n,AUDIO_SR);const b=oc.createBuffer(1,x.length,sr);b.copyToChannel(x,0);const src=oc.createBufferSource();src.buffer=b;src.connect(oc.destination);src.start();return (await oc.startRendering()).getChannelData(0).slice()}
+async function decode(buf){if(!buf.byteLength)throw new Error('file is empty');const ctx=new AudioContext();try{const ab=await ctx.decodeAudioData(buf);return to16k(mixMono(ab),ab.sampleRate)}finally{ctx.close()}}
+function wav(x){const b=new ArrayBuffer(44+x.length*2),v=new DataView(b),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));w(0,'RIFF');v.setUint32(4,36+x.length*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,AUDIO_SR,true);v.setUint32(28,AUDIO_SR*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,x.length*2,true);for(let i=0;i<x.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32767,true);return new Blob([b],{type:'audio/wav'})}
+function showClip(x,blob){pcm=x;clipSec=pcm.length/AUDIO_SR;
 $('ainfo').textContent=`Clip ${clipSec.toFixed(1)} s · 16 kHz mono`+(clipSec>30?' · Whistle uses the first 30 s':'');
-$('player').src=URL.createObjectURL(blob);$('player').hidden=false;$('run').disabled=false}catch(e){$('ainfo').textContent='Could not decode audio: '+e.message}}
+$('player').src=URL.createObjectURL(blob);$('player').hidden=false;$('run').disabled=false}
+async function setClip(blob){$('ainfo').textContent='Decoding…';try{showClip(await decode(await blob.arrayBuffer()),blob)}catch(e){$('ainfo').textContent='Could not decode audio: '+(e.message||e)+' (try a WAV or MP3 file)'}}
+window.__sttTest={decode,to16k,wav,showClip,get pcm(){return pcm}};
 $('upb').onclick=()=>$('file').click();$('file').onchange=e=>{const f=e.target.files[0];if(f)setClip(f)};
+// Record: capture raw PCM straight from the mic (no MediaRecorder/codec round trip), then resample to 16 kHz.
 $('rec').onclick=async()=>{if(recState){recState.stop();return}
-try{const s=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(s),parts=[];
-mr.ondataavailable=e=>parts.push(e.data);mr.onstop=()=>{s.getTracks().forEach(t=>t.stop());recState=null;$('rec').textContent='● Record';$('rec').classList.remove('rec');setClip(new Blob(parts,{type:mr.mimeType}))};
-mr.start();recState=mr;$('rec').textContent='■ Stop';$('rec').classList.add('rec');$('ainfo').textContent='Recording…'}catch(e){$('ainfo').textContent='Mic unavailable: '+e.message}};
+if(!navigator.mediaDevices?.getUserMedia){$('ainfo').textContent='Mic unavailable: this browser/page has no microphone access (needs HTTPS).';return}
+let s;try{s=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
+catch(e){$('ainfo').textContent=(e.name==='NotAllowedError'||e.name==='SecurityError')?'Microphone permission denied. Allow mic access for this site (address bar → site settings) and try again.':e.name==='NotFoundError'?'No microphone found.':'Mic unavailable: '+e.message;return}
+try{const ctx=new AudioContext();await ctx.resume();const sr=ctx.sampleRate,src=ctx.createMediaStreamSource(s),chunks=[];
+const node=ctx.createScriptProcessor(4096,1,1);node.onaudioprocess=e=>chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+const mute=ctx.createGain();mute.gain.value=0;src.connect(node);node.connect(mute);mute.connect(ctx.destination);
+const t0=performance.now();
+recState={stop:async()=>{recState=null;node.disconnect();src.disconnect();s.getTracks().forEach(t=>t.stop());await ctx.close();
+$('rec').textContent='● Record';$('rec').classList.remove('rec');
+const n=chunks.reduce((a,c)=>a+c.length,0);if(n<sr*0.3){$('ainfo').textContent='Recording was empty or too short ('+((performance.now()-t0)/1000).toFixed(1)+' s). Hold Record a bit longer.';return}
+const raw=new Float32Array(n);let o=0;for(const c of chunks){raw.set(c,o);o+=c.length}
+let peak=0;for(let i=0;i<n;i++)peak=Math.max(peak,Math.abs(raw[i]));
+$('ainfo').textContent='Resampling…';try{const x=await to16k(raw,sr);showClip(x,wav(x));if(peak<1e-4)$('ainfo').textContent+=' · silent: check the mic input in System Settings'}catch(e){$('ainfo').textContent='Could not process recording: '+e.message}}};
+$('rec').textContent='■ Stop';$('rec').classList.add('rec');$('ainfo').textContent='Recording…'}
+catch(e){s.getTracks().forEach(t=>t.stop());$('ainfo').textContent='Could not start recording: '+e.message}};
 
 const mb=b=>(b/1048576).toFixed(b>1e8?0:1)+' MB';
 const loaded={};let CUR;
