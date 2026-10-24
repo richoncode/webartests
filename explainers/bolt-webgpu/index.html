@@ -63,12 +63,19 @@ $('load').onclick=async()=>{
   try{
     const T=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1');
     window.T=T;
-    const prog=i=>{if(i.status==='progress_total'){$('bar').value=i.progress;$('pt').textContent=`Downloading ${i.progress.toFixed(1)}%`}};
+    let building=null,t0=0;
+    const startBuild=()=>{if(building)return;t0=Date.now();$('bar').removeAttribute('value');
+      const tick=()=>{const s=Math.round((Date.now()-t0)/1000);$('pt').textContent=`Download done. Building the model on your GPU… ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} elapsed. This can take 1–5 minutes; the tab may look frozen. Please keep it open.`+(s>600?' (Over 10 minutes: it may have run out of memory. Check the browser console.)':'')};
+      tick();building=setInterval(tick,1000)};
+    const prog=i=>{if(i.status==='progress_total'){if(i.progress>=100)startBuild();else if(!building){$('bar').value=i.progress;$('pt').textContent=`Downloading ${i.progress.toFixed(1)}%`}}};
+    $('pt').textContent='Loading tokenizer…';
     tok=await T.AutoTokenizer.from_pretrained(MODEL);
-    $('pt').textContent='Starting download…';
-    model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{config:await boltConfig(T),dtype:'q4f16',device:'webgpu',progress_callback:prog});
-    $('pt').textContent='Loaded. Ready.';$('bar').hidden=true;$('q').disabled=$('send').disabled=false;
-  }catch(e){$('pt').textContent=friendly(e);console.error(e);$('load').disabled=false}
+    $('pt').textContent='Starting download… (cached files load fast on repeat visits)';
+    try{model=await T.AutoModelForCausalLM.from_pretrained(MODEL,{config:await boltConfig(T),dtype:'q4f16',device:'webgpu',progress_callback:prog});}
+    finally{clearInterval(building)}
+    if(t0)console.log('Bolt GPU build took',((Date.now()-t0)/1000).toFixed(1),'s');
+    $('pt').textContent='Ready. Ask something below.'+(t0?` (GPU build took ${Math.round((Date.now()-t0)/1000)} s)`:'');$('bar').hidden=true;$('q').disabled=$('send').disabled=false;
+  }catch(e){$('bar').hidden=true;$('pt').textContent=friendly(e);console.error(e);$('load').disabled=false}
 };
 $('f').onsubmit=async e=>{
   e.preventDefault();const text=$('q').value.trim();if(!text)return;
