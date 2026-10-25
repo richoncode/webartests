@@ -267,8 +267,8 @@ function buildVoice(ctx, preset, destination) {
 }
 
 /**
- * I3DL2-style send on the car engine. One tap per probe, in the order
- * forward, back, left, right, up.
+ * I3DL2-style send on the car engine. One tap per probe. The probe fan
+ * is variable length, so the graph grows to however many hits arrive.
  *
  * distance (m) → delay = distance / 343
  * level = reflect / (1 + distance / span)
@@ -279,14 +279,17 @@ function buildVoice(ctx, preset, destination) {
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
  * Open air keeps a real send (it used to be reflect 0.012, which was silence).
+ * A full set of misses is held near that five-ray open room. A closer wall
+ * adds on top of its own share, so one hit in a twenty-one ray fan still
+ * moves the wet sum. The sum is capped at 1.15.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
  * filtered. The wet bus is mixed after the compressor so the engine note does
- * not duck the tail. Reverb off closes that bus. A safety limiter after the
- * sum only catches peaks near full scale; the dry note alone stays under it.
+ * not duck the tail. Send (0–3, default 1) multiplies that bus only.
+ * Reverb off closes it. A safety limiter after the sum only catches peaks
+ * near full scale; the dry note alone stays under it.
  */
-const TAP_IDS = ["forward", "back", "left", "right", "up"];
 const ROOM_MAT = {
   glass: { reflect: 1.35, hf: 8800, lf: 160, rt: 1.25, span: 14 },
   concrete: { reflect: 1.25, hf: 3800, lf: 80, rt: 1.05, span: 16 },
@@ -294,17 +297,19 @@ const ROOM_MAT = {
   open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
 };
 const SOUND_MPS = 343;
+const OPEN_WET = 0.48;
+const HIT_CONTRAST = 0.55;
+const WET_CAP = 1.15;
+const MISS_DIST = 80;
 
 export function reverbMix(hits) {
   const list = Array.isArray(hits) ? hits : [];
   const rows = [];
-  for (let i = 0; i < TAP_IDS.length; i++) {
+  for (let i = 0; i < list.length; i++) {
     const hit = list[i] || {};
-    const id = hit.id || TAP_IDS[i];
     const kind = ROOM_MAT[hit.material] ? hit.material : "open";
     const mat = ROOM_MAT[kind];
-    const fallback = id === "up" ? 80 : 72;
-    const raw = num(hit.distance, fallback);
+    const raw = num(hit.distance, MISS_DIST);
     const dist = Math.max(2, Math.min(160, Math.round(raw / 2) * 2 || 2));
     const delay = Math.min(0.45, Math.max(0.008, dist / SOUND_MPS));
     let amp = mat.reflect / (1 + dist / mat.span);
@@ -319,8 +324,9 @@ export function reverbMix(hits) {
       fb = 0.16;
     }
     rows.push({
-      id,
+      id: hit.id || String(i),
       material: kind,
+      cover: hit.cover || "",
       distance: dist,
       delay,
       amp,
@@ -330,23 +336,36 @@ export function reverbMix(hits) {
       reflect: mat.reflect,
     });
   }
+  if (!rows.length) return { rows, dominant: null, wet: 0, trim: 1 };
+  const missAmp = ROOM_MAT.open.reflect / (1 + MISS_DIST / ROOM_MAT.open.span);
+  const share = OPEN_WET / rows.length;
+  for (const row of rows) {
+    row.amp = Math.max(0, share + (row.amp - missAmp) * HIT_CONTRAST);
+  }
   const sum = rows.reduce((s, row) => s + row.amp, 0);
-  const trim = sum > 1.15 ? 1.15 / sum : 1;
+  const trim = sum > WET_CAP ? WET_CAP / sum : 1;
   let wet = 0;
   for (const row of rows) {
     row.gain = row.amp * trim;
+    row.wet = row.gain;
     wet += row.gain;
   }
   const hard = rows.filter((row) => row.material === "glass" || row.material === "concrete");
-  hard.sort((a, b) => a.distance - b.distance);
+  hard.sort((a, b) => b.gain - a.gain);
   let dominant;
   if (hard.length) dominant = hard[0];
   else {
     const soft = rows.filter((row) => row.material === "grass");
-    soft.sort((a, b) => a.distance - b.distance);
+    soft.sort((a, b) => b.gain - a.gain);
     dominant = soft[0] || rows.slice().sort((a, b) => b.gain - a.gain)[0];
   }
   return { rows, dominant, wet, trim };
+}
+
+/** Same mix, shaped for the readout: each tap's wet is its post-trim gain. */
+export function roomFromHits(hits) {
+  const mix = reverbMix(hits);
+  return { taps: mix.rows, trim: mix.trim, wet: mix.wet, dominant: mix.dominant };
 }
 
 function outputCeiling(max) {
@@ -387,7 +406,11 @@ function diffuseTail(ctx, seconds) {
 
 function createRoom(ctx, source) {
   const taps = [];
-  for (let i = 0; i < TAP_IDS.length; i++) {
+  const wet = ctx.createGain();
+  wet.gain.value = 1;
+  let send = 1;
+
+  function makeTap() {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 120;
@@ -408,11 +431,9 @@ function createRoom(ctx, source) {
     delay.connect(gain);
     delay.connect(fb);
     fb.connect(delay);
-    taps.push({ hp, lp, delay, fb, gain });
+    gain.connect(wet);
+    return { hp, lp, delay, fb, gain };
   }
-  const wet = ctx.createGain();
-  wet.gain.value = 1;
-  for (const tap of taps) tap.gain.connect(wet);
 
   const out = ctx.createGain();
   out.gain.value = 1;
@@ -438,15 +459,21 @@ function createRoom(ctx, source) {
   tailIn.connect(tailTone);
   tailTone.connect(tail);
   tail.connect(tailGain);
-  tailGain.connect(out);
+  // Tail shares the wet bus, so Send and Reverb off scale it with the taps.
+  tailGain.connect(wet);
 
   function setHits(hits) {
     const now = ctx.currentTime;
     const mix = reverbMix(hits);
+    while (taps.length < mix.rows.length) taps.push(makeTap());
     const tc = 0.08;
     for (let i = 0; i < taps.length; i++) {
       const row = mix.rows[i];
       const tap = taps[i];
+      if (!row) {
+        tap.gain.gain.setTargetAtTime(0, now, tc);
+        continue;
+      }
       tap.delay.delayTime.setTargetAtTime(row.delay, now, tc);
       tap.hp.frequency.setTargetAtTime(row.lf, now, tc);
       tap.lp.frequency.setTargetAtTime(row.hf, now, tc);
@@ -463,6 +490,13 @@ function createRoom(ctx, source) {
     out.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.03);
   }
 
+  function setSend(scale) {
+    const n = Number(scale);
+    send = Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : 1;
+    wet.gain.setTargetAtTime(send, ctx.currentTime, 0.05);
+    return send;
+  }
+
   setHits([]);
   return {
     connect(dest) {
@@ -470,6 +504,10 @@ function createRoom(ctx, source) {
     },
     setHits,
     setEnabled,
+    setSend,
+    get send() {
+      return send;
+    },
   };
 }
 
@@ -591,6 +629,9 @@ export function createEngine(ctx) {
     },
     setSurroundings(hits) {
       return room.setHits(hits);
+    },
+    setSend(scale) {
+      return room.setSend(scale);
     },
     get muted() {
       return muted;

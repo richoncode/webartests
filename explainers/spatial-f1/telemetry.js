@@ -46,6 +46,45 @@ export function lapAt(laps, u) {
 }
 
 /**
+ * Fraction of the current lap, 0 at that lap's start and 1 at the next.
+ * Length is integrated metres between lap starts (the last lap uses
+ * lap_duration_s). pose() maps that same `s` onto the centerline, so the
+ * fraction is how far the car has run through this lap.
+ */
+export function lapProgress(samples, laps, u) {
+  if (!samples || !samples.length || !laps || !laps.length) return 0;
+  const lap = lapAt(laps, u);
+  let idx = 0;
+  for (let i = 0; i < laps.length; i++) {
+    if (laps[i].lap === lap) idx = i;
+  }
+  const startT = Number(laps[idx].t) || 0;
+  let endT;
+  if (idx + 1 < laps.length) endT = Number(laps[idx + 1].t);
+  else {
+    const dur = Number(laps[idx].lap_duration_s);
+    endT = dur > 0 ? startT + dur : samples[samples.length - 1].t;
+  }
+  const lastT = samples[samples.length - 1].t;
+  const firstT = samples[0].t;
+  const clampT = (t) => Math.min(Math.max(t, firstT), lastT);
+  const sNow = sampleAt(samples, clampT(u)).s;
+  const s0 = sampleAt(samples, clampT(startT)).s;
+  const endClamp = clampT(endT);
+  let length = sampleAt(samples, endClamp).s - s0;
+  if (endT > lastT + 1e-3 && length > 1) {
+    const covered = lastT - startT;
+    const full = endT - startT;
+    if (covered > 0.05 && full > covered) length *= full / covered;
+  }
+  if (!(length > 1)) return 0;
+  const p = (sNow - s0) / length;
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  return p;
+}
+
+/**
  * Map the playhead onto the centerline.
  * `trackLen` is one loop in metres. The cached window is two laps, so distance
  * is scaled to close on two loops. Speed itself stays in the samples.

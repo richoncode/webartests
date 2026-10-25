@@ -38,6 +38,16 @@ button:disabled{opacity:.3;cursor:default}
 .readouts{display:flex;flex-wrap:wrap;gap:14px 18px;flex:1}
 .readouts b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
 .readouts span{color:var(--dim);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.lapcell{display:flex;align-items:center;gap:10px}
+.lapprog{display:flex;align-items:center;gap:6px}
+.lapprog .track{width:72px;height:4px}
+.lapprog em{font-style:normal;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+.track.lap i{background:var(--blue)}
+.revpair{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1 1 280px;min-width:0}
+#room{flex:1 1 180px;min-width:0;line-height:1.35}
+.sendlab{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font-size:12px}
+.sendlab input{width:92px;accent-color:var(--blue)}
+.sendlab em{font-style:normal;font-variant-numeric:tabular-nums;min-width:36px}
 .drs{font-size:11px;font-weight:700;letter-spacing:.06em;color:#666;border:1px solid #2a3240;border-radius:99px;padding:4px 8px;align-self:center}
 .drs.on{color:#4caf50;border-color:#4caf50}
 .bars{display:grid;gap:6px;margin-top:10px}
@@ -61,6 +71,10 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 @media (max-width:640px){
   .eng{align-items:flex-start}
   .bars label{grid-template-columns:64px 1fr 44px}
+  .revpair{flex-basis:100%}
+  .lapprog .track{width:56px}
+  .sendlab input{width:72px}
+  header,main{padding:16px 14px}
 }
 @media (prefers-reduced-motion:reduce){
   .gear span.hit{color:inherit}
@@ -85,9 +99,12 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 </div>
 <button id="others" type="button" aria-pressed="false" title="Show other cars from this OpenF1 session">Other cars</button>
 <span class="dim" id="othersLegend" hidden></span>
-<button id="reverb" type="button" class="on" aria-pressed="true" title="Surroundings send on the engine">Reverb</button>
-<span class="dim" id="room" title="Side and top probes, I3DL2-style reverb">Listening…</span>
-<button id="probes" type="button" aria-pressed="false" title="Draw the surroundings rays">Ray probes</button>
+<span class="revpair">
+<button id="reverb" type="button" class="on" aria-pressed="true" title="Toggle the surroundings reverb">Reverb</button>
+<span class="dim" id="room" title="Probe-derived reverb">Probing…</span>
+<label class="sendlab">Send <input id="send" type="range" min="0" max="3" step="0.1" value="1" aria-label="Reverb send strength"> <em id="sendVal">1.0×</em></label>
+</span>
+<button id="rays" type="button" aria-pressed="false" title="Draw the ray probes">Rays</button>
 <button id="sound" class="primary icon" type="button" aria-pressed="false" aria-label="Unmute engine" title="Unmute engine">
 <svg id="spkOn" viewBox="0 0 24 24" aria-hidden="true" hidden>
 <path fill="currentColor" d="M3.8 9.2h3.4L12 5.1v13.8l-4.8-4.1H3.8z"/>
@@ -106,7 +123,13 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <div class="readouts">
 <div><b id="rpm">—</b><span>rpm</span></div>
 <div><b id="spdnum">—</b><span>km/h</span></div>
+<div class="lapcell">
 <div><b id="lap">—</b><span id="lapsub">lap</span></div>
+<div class="lapprog" id="lapProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Current lap progress">
+<div class="track lap"><i id="lapBar"></i></div>
+<em id="lapPct">0%</em>
+</div>
+</div>
 </div>
 <div class="drs" id="drs">DRS —</div>
 </div>
@@ -119,11 +142,11 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Telemetry time">
 <span class="clock" id="clock">0:00 / —</span>
 </div>
-<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press the speaker to hear RPM and throttle, then pick an engine voicing. Other cars, off until you turn it on, places NOR, LEC, and PIA from the same window. Reverb is on until you turn it off: the readout is the send (material, distance, delay, wet mix). Ray probes draws those rays. Drag the chase view to slide it, or right-drag to turn and pitch. It eases back when you let go. Choosing Chase from Overview flies the camera in. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
+<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press the speaker to hear RPM and throttle, then pick an engine voicing. The bar beside the lap is distance through the current lap. Other cars, off until you turn it on, places NOR, LEC, and PIA from the same window. Reverb lists the probe mix (material, distance, delay, wet). Send scales that wet path from dry to 3×. Rays draws the thin probes. Drag the chase view to slide it, or right-drag to turn and pitch. It eases back when you let go. Choosing Chase from Overview flies the camera in. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
 </div>
 <h2>What this is</h2>
 <p>The yellow line is the COTA centerline (about 5.5 km). The line is resampled every couple of metres and blurred with a short gaussian before the asphalt ribbon and the yellow stroke are built, and the map is told not to simplify those shapes, so a coarse vertex does not leave a pointed corner. A black casing keeps it readable. The car rides that loop on a 15 m asphalt ribbon with a concrete shoulder generated from the same smoothed line. Mapbox Standard still supplies the surrounding streets, 3D buildings, and 3D trees, lit at dusk. The ground uses Mapbox terrain so the hills stay visible when the chase view pitches down; exaggeration eases toward real scale at the chase zoom. Road names, route shields, and place labels are off, so the course does not read as a navigation map. Local streets and minor roads are redrawn at real-world width in asphalt gray, with a light sidewalk on the curb. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 0.9% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner. The cache itself has no coordinates and no yaw: <code>car_data</code> is speed, RPM, gear, throttle, brake, and DRS. OpenF1 <code>location</code>, which this page does not load, is only x, y, and z in a track grid, also with no heading. The nose is the centerline’s direction of travel. Other cars uses the same line for driver 4 (NOR), driver 16 (LEC), and driver 81 (PIA). Each marker sits where that driver’s own OpenF1 speed, integrated from the start of their lap, meets the start/finish. The wedges are drawn large enough to read on the whole circuit, in an unlit team color, with the driver’s acronym. In this window those three run behind driver 1, so the chase camera, which looks forward, also keeps each acronym on screen. The detailed car stays driver 1.</p>
-<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>. High-rev V6 is the default: the saw and square firing stack from the earlier Spatial F1 engine, colored with the live FireSim Audio resonator centers. Throaty V8, idle-heavy, and muted stay optional. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs. A few rays out the sides and the top of the car read buildings and landcover from the circuit’s map tiles, not only from what the chase view happens to have loaded. Glass, concrete, and grass change a short reverb on the engine: delay and wetness from the distance, brightness from the material. The dry note is not filtered. Reverb on mixes that send after the compressor, and the readout shows the dominant material, its distance and delay, and the wet mix. Open air stays drier than a wall and still has a send. Reverb off is the dry engine only. Ray probes draws the rays and the hit points.</p>
+<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>. High-rev V6 is the default: the saw and square firing stack from the earlier Spatial F1 engine, colored with the live FireSim Audio resonator centers. Throaty V8, idle-heavy, and muted stay optional. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs. Rays fan from the car’s left, through straight up, to the right every 15°, with extra rays pitched ±20° from vertical in 5° steps toward the nose and the tail. They read buildings, footbridges, grass, bushes, and trees from the circuit’s map tiles, not only from what the chase view happens to have loaded. A venue-sized park polygon is not vegetation. Glass, concrete, and grass change a short reverb on the engine: delay and wetness from the distance, brightness from the material. The dry note is not filtered. Reverb on mixes that send after the compressor. The readout names the loudest probe, and Send multiplies the wet path from 0 to 3×. Open air stays drier than a wall and still has a send. Reverb off is the dry engine only. Rays draws those probes as thin lines.</p>
 <p>Chase is the default camera. Its rest pose sits about 31.5 m behind the car anchor, and Mapbox pitch settles at 85°, the most level look the map allows, so the aim is the horizon. A critically damped spring follows that pose. The spring tracks the lens itself, held on the car's heading behind the rear, so a corner eases the camera instead of swinging it out beside the car. On a straight the distance stays put, because the spring is fed the target's velocity, and a corner eases instead of snapping. Choosing Chase from Overview flies the same spring from the current view into that pose, and the car eases from the overview size down to 5.5 m. Overview fits the whole circuit and draws the car at 16 m so it stays findable. Heading is the direction through the few metres of centerline either side of the car, in local east and north, and that angle yaws the car. When the ground between the lens and the car rises through the line of sight, pitch eases down from 85° just enough to lift the lens clear of the crest, beginning a short way before the hill, then eases back. The lens stays behind the car. Drag to slide the chase view. Right-drag, or ctrl-drag, turns and pitches it. The camera holds still while the pointer is down, and on release the offset eases back. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the anchor) tune the chase rest pose. <code>?head=</code> adds radians to the model. The default is 0, which points the nose along the direction of travel.</p>
 <h2>Credits</h2>
 <p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slices for drivers 1, 4, 16, and 81, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
@@ -132,9 +155,9 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {pose, lapAt, seekWithinLoop, headingFromPoints, smoothClosedLngLat, critDamp, alongTrack} from './telemetry.js';
-import {createEngine, reverbMix} from './engine-audio.js';
-import {attachSurroundSource, preloadSurroundings, sampleSurroundings, PROBE_RAYS} from './surroundings.js';
+import {pose, lapAt, lapProgress, seekWithinLoop, headingFromPoints, smoothClosedLngLat, critDamp, alongTrack} from './telemetry.js?v=2';
+import {createEngine, roomFromHits} from './engine-audio.js?v=2';
+import {attachSurroundSource, preloadSurroundings, sampleSurroundings, PROBE_RAYS, rayCarDir} from './surroundings.js?v=2';
 
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
@@ -236,12 +259,13 @@ const OTHER_SPECS=[
 ];
 let showOthers=false;
 let reverbOn=true;
-let showProbes=false;
+let showRays=false;
+let sendScale=1;
+let rayGroup=null;
+let rayMeshes=null;
 let otherEntries=[];
 let lastEnv=null;
-let lastMix=null;
 let nextProbe=0;
-const PROBE_COLOR={glass:0x5b9bd5, concrete:0xffb020, grass:0x7dffa0, open:0x8ec8ff};
 otherEntries=(await Promise.all(OTHER_SPECS.map(async spec=>{
   try{
     const r=await fetch(spec.url);
@@ -286,48 +310,79 @@ $('others').onclick=()=>{
   layoutTags();
   if(map) map.triggerRepaint();
 };
+function capWord(s){
+  const t=String(s||'');
+  return t ? t.charAt(0).toUpperCase()+t.slice(1) : '';
+}
+function formatRoom(hits, scale){
+  const room=roomFromHits(hits);
+  const sc=Number.isFinite(scale)?scale:1;
+  const wet=room.wet*sc;
+  const title=room.taps.map(t=>{
+    const who=t.cover&&t.cover!==t.material?t.cover+' '+t.material:t.material;
+    return t.id+': '+who+' '+t.distance+' m, '+Math.round(t.delay*1000)+' ms, wet '+(t.wet*sc).toFixed(2)+', fb '+t.fb.toFixed(2);
+  }).join(' · ');
+  const ranked=room.taps.filter(t=>t.material!=='open');
+  ranked.sort((a,b)=>b.wet-a.wet);
+  const top=ranked[0];
+  if(!top) return {text:'Open air · wet '+wet.toFixed(2), title:title||'No reflecting surface inside the probes'};
+  const name=top.cover&&top.cover!==top.material?capWord(top.cover)+' · '+top.material:capWord(top.material);
+  const text=name+' · '+top.distance+' m · delay '+Math.round(top.delay*1000)+' ms · wet '+wet.toFixed(2)+' · fb '+top.fb.toFixed(2)+' · '+Math.round(top.lf)+'–'+Math.round(top.hf)+' Hz';
+  return {text, title};
+}
+function paintRoom(){
+  const el=$('room');
+  if(!reverbOn){
+    el.textContent='Reverb off';
+    el.title='The surroundings send is bypassed. The dry engine is unchanged.';
+    return;
+  }
+  if(!lastEnv||!lastEnv.hits){
+    el.textContent='Probing…';
+    el.title='Left-to-right fan and the pitch rays off vertical';
+    return;
+  }
+  const view=formatRoom(lastEnv.hits, sendScale);
+  el.textContent=view.text;
+  el.title=view.title;
+}
+function applyRoom(){
+  if(!engine) return;
+  engine.setReverb(reverbOn);
+  engine.setSend(reverbOn?sendScale:0);
+  if(lastEnv&&lastEnv.hits) engine.setSurroundings(lastEnv.hits);
+}
 function paintReverbBtn(){
   $('reverb').classList.toggle('on', reverbOn);
   $('reverb').setAttribute('aria-pressed', reverbOn?'true':'false');
 }
-function matName(material){
-  if(material==='glass') return 'Glass';
-  if(material==='concrete') return 'Concrete';
-  if(material==='grass') return 'Grass';
-  return 'Open air';
-}
-function paintRoom(mix){
-  const el=$('room');
-  if(!reverbOn){
-    el.textContent='Reverb off';
-    el.title='Dry engine only. The surroundings send is closed.';
-    return;
-  }
-  if(!mix || !mix.dominant){
-    el.textContent='Listening…';
-    el.title='Side and top probes, I3DL2-style reverb';
-    return;
-  }
-  const d=mix.dominant;
-  const send=mix.body!=null?mix.body:mix.wet;
-  el.textContent=matName(d.material)+' · '+Math.round(d.distance)+' m · '+Math.round(d.delay*1000)+' ms · wet '+Math.round(send*100)+'%';
-  el.title=mix.rows.map(r=>r.id+': '+r.material+' '+Math.round(r.distance)+' m · '+Math.round(r.delay*1000)+' ms · gain '+r.gain.toFixed(2)+' · HF '+Math.round(r.hf)+' Hz').join(' · ')+' · send '+send.toFixed(2);
+function paintRaysBtn(){
+  $('rays').classList.toggle('on', showRays);
+  $('rays').setAttribute('aria-pressed', showRays?'true':'false');
+  if(rayGroup) rayGroup.visible=showRays;
 }
 $('reverb').onclick=()=>{
   reverbOn=!reverbOn;
   paintReverbBtn();
-  if(engine) engine.setReverb(reverbOn);
-  paintRoom(lastMix);
+  applyRoom();
+  paintRoom();
 };
-function paintProbesBtn(){
-  $('probes').classList.toggle('on', showProbes);
-  $('probes').setAttribute('aria-pressed', showProbes?'true':'false');
-}
-$('probes').onclick=()=>{
-  showProbes=!showProbes;
-  paintProbesBtn();
+$('rays').onclick=()=>{
+  showRays=!showRays;
+  paintRaysBtn();
+  syncRayLines();
   if(map) map.triggerRepaint();
 };
+$('send').addEventListener('input',()=>{
+  const v=Number($('send').value);
+  sendScale=Number.isFinite(v)?Math.max(0,Math.min(3,v)):1;
+  $('sendVal').textContent=sendScale.toFixed(1)+'×';
+  if(reverbOn) applyRoom();
+  paintRoom();
+});
+paintReverbBtn();
+paintRaysBtn();
+paintRoom();
 const presetSel=$('preset');
 if(presets.length){
   for(const p of presets){
@@ -387,7 +442,14 @@ function paint(){
   $('thrBar').style.width=Math.max(0,Math.min(100,f.thr))+'%';
   $('brkBar').style.width=(f.brk>=50?100:0)+'%';
   $('rpmBar').style.width=Math.max(0,Math.min(100,rpm/13000*100))+'%';
-  $('lap').textContent='Lap '+lapAt(laps, st.u);
+  const lapN=lapAt(laps, st.u);
+  const prog=lapProgress(samples, laps, st.u);
+  const pct=Math.round(prog*100);
+  $('lap').textContent='Lap '+lapN;
+  $('lapBar').style.width=pct+'%';
+  $('lapPct').textContent=pct+'%';
+  $('lapProg').setAttribute('aria-valuenow', String(pct));
+  $('lapProg').title='Lap '+lapN+' · '+pct+'% of this lap, by distance';
   $('drs').textContent=f.drs>=10?'DRS open':'DRS '+f.drs;
   $('drs').classList.toggle('on', f.drs>=10);
   $('clock').textContent=fmt(st.u)+' / '+fmt(st.dur);
@@ -718,8 +780,7 @@ $('sound').onclick=async()=>{
     // and oscillators started while suspended can stay silent after resume.
     if(!engine){
       engine=createEngine(audioCtx);
-      engine.setReverb(reverbOn);
-      if(lastEnv && lastEnv.hits) engine.setSurroundings(lastEnv.hits);
+      applyRoom();
     }
     const turningOn=!soundLive();
     if(turningOn){
@@ -977,65 +1038,54 @@ function layoutTags(){
     el.classList.toggle('edge', !!spot.edge);
   }
 }
-let probeGfx=null;
-function buildProbes(scene){
-  const group=new THREE.Group();
-  group.visible=false;
-  const rays=[];
-  const shaft=new THREE.CylinderGeometry(1, 1, 1, 7, 1, true);
-  const dotGeo=new THREE.SphereGeometry(1, 10, 8);
-  for(let i=0;i<5;i++){
-    const mat=new THREE.MeshBasicMaterial({color:PROBE_COLOR.open});
-    const mesh=new THREE.Mesh(shaft, mat);
-    mesh.frustumCulled=false;
-    const dotMat=new THREE.MeshBasicMaterial({color:PROBE_COLOR.open});
-    const dot=new THREE.Mesh(dotGeo, dotMat);
-    dot.frustumCulled=false;
-    group.add(mesh, dot);
-    rays.push({mesh, dot, mat, dotMat});
-  }
-  scene.add(group);
-  probeGfx={group, rays, dir:new THREE.Vector3(), up:new THREE.Vector3(0,1,0)};
+const RAY_TINT={
+  open:[0.55,0.68,0.8],
+  glass:[0.62,0.82,1],
+  concrete:[0.95,0.72,0.42],
+  grass:[0.45,0.78,0.5],
+};
+const rayUp=new THREE.Vector3(0,1,0);
+const rayDir=new THREE.Vector3();
+function syncRayLines(){
+  if(!rayMeshes) return;
+  const hits=(lastEnv&&lastEnv.hits)||[];
+  const byId=new Map(hits.map(h=>[h.id,h]));
+  PROBE_RAYS.forEach((ray,i)=>{
+    const dir=rayCarDir(ray);
+    const hit=byId.get(ray.id);
+    const dist=hit?Math.max(1.5, hit.distance):ray.max;
+    const c=RAY_TINT[(hit&&hit.material)||'open']||RAY_TINT.open;
+    const mesh=rayMeshes[i];
+    rayDir.set(dir.x, dir.y, dir.z);
+    if(rayDir.lengthSq()<1e-8) rayDir.set(0,0,1);
+    mesh.quaternion.setFromUnitVectors(rayUp, rayDir.normalize());
+    mesh.scale.set(1, dist, 1);
+    mesh.position.set(0, 0, 1.4);
+    mesh.material.color.setRGB(c[0], c[1], c[2]);
+  });
 }
-function syncProbes(mercOrigin, mScale){
-  if(!probeGfx) return;
-  const show=!!(showProbes && lastEnv && lastEnv.hits && lastEnv.hits.length);
-  probeGfx.group.visible=show;
-  if(!show || !map) return;
-  const ll=at(pos);
-  const mp=mapboxgl.MercatorCoordinate.fromLngLat(ll, groundAlt(ll)+3);
-  const ox=(mp.x-mercOrigin.x)/mScale;
-  const oy=-(mp.y-mercOrigin.y)/mScale;
-  const oz=(mp.z-mercOrigin.z)/mScale;
-  const mpp=(40075016.68557849/(512*Math.pow(2, map.getZoom())))*Math.cos(ll[1]*rad);
-  const radius=Math.max(1.6, Math.min(8, 3.4*mpp));
-  const hits=lastEnv.hits;
-  for(let i=0;i<probeGfx.rays.length;i++){
-    const hit=hits[i]||{id:i===4?'up':'open', distance:40, material:'open'};
-    const dist=Math.max(2, Number(hit.distance)||2);
-    let ex, ey, ez;
-    if(hit.id==='up'){
-      ex=ox; ey=oy; ez=oz+dist;
-    }else{
-      const spec=PROBE_RAYS[i]||{angle:0};
-      const ang=heading+spec.angle;
-      ex=ox+Math.cos(ang)*dist;
-      ey=oy+Math.sin(ang)*dist;
-      ez=oz;
-    }
-    const ray=probeGfx.rays[i];
-    const col=PROBE_COLOR[hit.material]||PROBE_COLOR.open;
-    ray.mat.color.setHex(col);
-    ray.dotMat.color.setHex(col);
-    const dx=ex-ox, dy=ey-oy, dz=ez-oz;
-    const len=Math.hypot(dx,dy,dz)||1;
-    ray.mesh.position.set(ox+dx*0.5, oy+dy*0.5, oz+dz*0.5);
-    ray.mesh.scale.set(radius, len, radius);
-    probeGfx.dir.set(dx/len, dy/len, dz/len);
-    ray.mesh.quaternion.setFromUnitVectors(probeGfx.up, probeGfx.dir);
-    ray.dot.position.set(ex, ey, ez);
-    ray.dot.scale.setScalar(radius*2.4);
-  }
+function buildRayGroup(scene){
+  const rayGeom=new THREE.CylinderGeometry(0.12, 0.12, 1, 4, 1, true);
+  rayGeom.translate(0, 0.5, 0);
+  rayMeshes=PROBE_RAYS.map(()=>{
+    const mat=new THREE.MeshBasicMaterial({
+      color:0x9ec8e8,
+      transparent:true,
+      opacity:0.42,
+      depthWrite:false,
+      depthTest:false
+    });
+    const mesh=new THREE.Mesh(rayGeom, mat);
+    mesh.frustumCulled=false;
+    mesh.renderOrder=3;
+    return mesh;
+  });
+  rayGroup=new THREE.Group();
+  rayGroup.frustumCulled=false;
+  for(const mesh of rayMeshes) rayGroup.add(mesh);
+  rayGroup.visible=showRays;
+  scene.add(rayGroup);
+  syncRayLines();
 }
 function placeOthers(u){
   for(const o of otherEntries){
@@ -1075,7 +1125,7 @@ function initMap(){
       const sun=new THREE.DirectionalLight(0xffffff,2);
       sun.position.set(50,-80,120);
       this.scene.add(sun);
-      buildProbes(this.scene);
+      buildRayGroup(this.scene);
       for(const o of otherEntries){
         const inner=new THREE.Group();
         inner.add(makeWedge(o.color));
@@ -1109,13 +1159,21 @@ function initMap(){
       this.renderer.autoClear=false;
     },
     render(gl,matrix){
+      const rigLL=at(pos);
+      const rigMp=mapboxgl.MercatorCoordinate.fromLngLat(rigLL, groundAlt(rigLL));
+      const rigX=(rigMp.x-origin.x)/mScale;
+      const rigY=-(rigMp.y-origin.y)/mScale;
+      const rigZ=(rigMp.z-origin.z)/mScale;
       if(car){
         fitCar();
-        const p=at(pos);
-        const mp=mapboxgl.MercatorCoordinate.fromLngLat(p, groundAlt(p));
-        car.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,(mp.z-origin.z)/mScale);
+        car.position.set(rigX, rigY, rigZ);
         // heading is atan2(north, east). HEAD still adds radians on the model.
         car.rotation.z=heading+HEAD;
+      }
+      if(rayGroup){
+        rayGroup.position.set(rigX, rigY, rigZ);
+        rayGroup.rotation.z=heading+HEAD;
+        rayGroup.visible=showRays;
       }
       const show=showOthers && otherEntries.length>0;
       for(const o of otherEntries){
@@ -1130,7 +1188,7 @@ function initMap(){
         o.root.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,(mp.z-origin.z)/mScale+1.6);
         o.root.rotation.z=(o.head||0)+HEAD;
       }
-      syncProbes(origin, mScale);
+      syncRayLines();
       const M=new THREE.Matrix4().fromArray(matrix);
       const T=new THREE.Matrix4().makeTranslation(origin.x,origin.y,origin.z).scale(new THREE.Vector3(mScale,-mScale,mScale));
       this.cam.projectionMatrix=M.multiply(T);
@@ -1202,9 +1260,14 @@ function initMap(){
   });
 }
 
+function markOpenAir(){
+  lastEnv={ready:true, label:'Open air', hits:PROBE_RAYS.map(r=>({id:r.id, distance:r.max, material:'open', cover:''}))};
+  paintRoom();
+}
 if(!window.MAPBOX_PUBLIC_TOKEN||!window.mapboxgl){
   $('notoken').style.display='flex';
   $('stat').textContent='Driver 1 · laps 52–53 · no map';
+  markOpenAir();
 }else{
   $('stat').textContent='Loading car…';
   try{initMap();}
@@ -1213,6 +1276,7 @@ if(!window.MAPBOX_PUBLIC_TOKEN||!window.mapboxgl){
     $('notoken').style.display='flex';
     $('notoken').textContent='Map failed to start. The engine panel still runs.';
     $('stat').textContent='Driver 1 · laps 52–53 · no map';
+    markOpenAir();
   }
 }
 setCamButtons();
@@ -1230,12 +1294,16 @@ function tick(now){
   if(mapReady && now>=nextProbe){
     nextProbe=now+250;
     try{
-      const env=sampleSurroundings(map, at(pos), heading);
+      const env=sampleSurroundings(map, at(pos), heading+HEAD);
       if(env && env.ready && env.hits){
         lastEnv=env;
-        lastMix=reverbMix(env.hits);
-        if(engine) engine.setSurroundings(env.hits);
-        paintRoom(lastMix);
+        paintRoom();
+        if(engine){
+          engine.setReverb(reverbOn);
+          engine.setSend(reverbOn?sendScale:0);
+          engine.setSurroundings(env.hits);
+        }
+        if(showRays) syncRayLines();
       }
     }catch(err){ console.error(err); }
   }
