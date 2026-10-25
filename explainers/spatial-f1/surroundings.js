@@ -549,6 +549,52 @@ function parseTile(buf, z, x, y) {
   return feats;
 }
 
+function isStand(props) {
+  const blob = (String((props && props.type) || "") + " " + String((props && props.class) || "")).toLowerCase();
+  return /\b(grandstand|stadium)\b/.test(blob);
+}
+
+/**
+ * One section per grandstand or stadium outer ring in the preloaded
+ * Streets tiles. Tile-edge splits stay separate; the ambience dedups
+ * points that land on top of each other. `ready` once those tiles have
+ * finished and at least one came back.
+ */
+export function grandstandSections() {
+  let loading = 0;
+  let ok = 0;
+  const sections = [];
+  const seen = new Set();
+  for (const row of tileCache.values()) {
+    if (!row) continue;
+    if (row.status === "loading") {
+      loading++;
+      continue;
+    }
+    if (row.status !== "ok" || !row.feats) continue;
+    ok++;
+    for (const feat of row.feats) {
+      if (!feat || feat.sourceLayer !== "building" || !isStand(feat.properties)) continue;
+      const polys = polysOf(feat.geometry);
+      const height = Number(feat.properties && feat.properties.height);
+      for (const poly of polys) {
+        const ring = poly && poly[0];
+        if (!ring || ring.length < 3) continue;
+        const first = ring[0];
+        if (!first || first.length < 2) continue;
+        const key = first[0].toFixed(5) + "," + first[1].toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        sections.push({
+          ring: ring.map((c) => [c[0], c[1]]),
+          height: Number.isFinite(height) && height > 2 ? height : 12,
+        });
+      }
+    }
+  }
+  return { ready: ok > 0 && loading === 0, sections };
+}
+
 /**
  * Fetch the Streets tiles under the circuit so probes can see a
  * grandstand or footbridge the chase frustum has not loaded.
