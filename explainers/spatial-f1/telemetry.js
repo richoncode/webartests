@@ -121,3 +121,111 @@ export function smoothHeading(state, target, distance, snapAt = 80) {
   state.angle += diff * a;
   return state.angle;
 }
+
+/**
+ * One step of a critically damped spring (ζ = 1).
+ * `target` and `targetVel` are the target at the end of this step.
+ * Once state matches a constant-velocity target, the lag is zero.
+ * The closed form stays stable for any positive dt.
+ */
+export function critDamp(x, v, target, targetVel, dt, omega) {
+  if (!(dt > 0) || !(omega > 0) || !Number.isFinite(x) || !Number.isFinite(target)) return [x, v];
+  const vel = Number.isFinite(targetVel) ? targetVel : 0;
+  const speed = Number.isFinite(v) ? v : 0;
+  const targetStart = target - vel * dt;
+  const y = x - targetStart;
+  const yd = speed - vel;
+  const decay = Math.exp(-omega * dt);
+  const B = yd + omega * y;
+  const yNew = (y + B * dt) * decay;
+  const vNew = vel + (yd - omega * B * dt) * decay;
+  return [target + yNew, vNew];
+}
+
+function xyDist(a, b) {
+  return Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+
+/** Evenly sample a closed metre polyline. The result is not duplicated shut. */
+function resampleClosed(pts, step) {
+  const n = pts.length;
+  if (n < 2) return pts.map((p) => [p[0], p[1]]);
+  const out = [pts[0]];
+  let acc = 0;
+  let prev = pts[0];
+  for (let i = 1; i <= n; i++) {
+    const cur = pts[i % n];
+    let seg = xyDist(prev, cur);
+    let a = prev;
+    while (acc + seg >= step && seg > 1e-8) {
+      const need = step - acc;
+      const k = need / seg;
+      out.push([a[0] + (cur[0] - a[0]) * k, a[1] + (cur[1] - a[1]) * k]);
+      a = [a[0] + (cur[0] - a[0]) * k, a[1] + (cur[1] - a[1]) * k];
+      seg -= need;
+      acc = 0;
+    }
+    acc += seg;
+    prev = cur;
+  }
+  if (out.length > 1 && xyDist(out[out.length - 1], out[0]) < step * 0.35) out.pop();
+  return out;
+}
+
+function gaussianClosed(pts, spacing, sigma) {
+  const n = pts.length;
+  const radK = Math.max(1, Math.ceil((3 * sigma) / spacing));
+  const w = [];
+  for (let k = -radK; k <= radK; k++) w.push(Math.exp(-0.5 * (k * spacing / sigma) ** 2));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let e = 0;
+    let north = 0;
+    let ws = 0;
+    for (let k = -radK; k <= radK; k++) {
+      const p = pts[(i + k + n) % n];
+      const g = w[k + radK];
+      e += p[0] * g;
+      north += p[1] * g;
+      ws += g;
+    }
+    out.push([e / ws, north / ws]);
+  }
+  return out;
+}
+
+/**
+ * Closed centerline for the ribbon and the yellow line.
+ * Dense-sample the source polyline, blur it with a short gaussian
+ * (corners round, long straights stay), then sample again at `stepM`.
+ * Returns a ring whose first and last positions match.
+ */
+export function smoothClosedLngLat(points, stepM = 2.5) {
+  const rad = Math.PI / 180;
+  if (!Array.isArray(points) || points.length < 4) {
+    return (points || []).map((p) => [p[0], p[1]]);
+  }
+  const ring = points.map((p) => [Number(p[0]), Number(p[1])]);
+  const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-12 && Math.abs(a[1] - b[1]) < 1e-12;
+  if (ring.length > 1 && same(ring[0], ring[ring.length - 1])) ring.pop();
+  const lat0 = ring[0][1] * rad;
+  const mLng = 111320 * Math.cos(lat0);
+  const mLat = 111320;
+  const xy = [];
+  for (const p of ring) {
+    const e = p[0] * mLng;
+    const north = p[1] * mLat;
+    const last = xy[xy.length - 1];
+    if (!last || xyDist(last, [e, north]) >= 0.75) xy.push([e, north]);
+  }
+  if (xy.length > 2 && xyDist(xy[0], xy[xy.length - 1]) < 0.75) xy.pop();
+  if (xy.length < 4) return points.map((p) => [p[0], p[1]]);
+
+  const step = Math.max(1.5, Number(stepM) || 2.5);
+  const dense = resampleClosed(xy, 2);
+  const blurred = gaussianClosed(dense, 2, 8);
+  const even = resampleClosed(blurred, step);
+  const ll = even.map((p) => [p[0] / mLng, p[1] / mLat]);
+  ll.push([ll[0][0], ll[0][1]]);
+  return ll;
+}
