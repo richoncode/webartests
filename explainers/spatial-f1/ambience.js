@@ -1,11 +1,13 @@
 /**
- * Crowd and wind beside the engine. Not a room model.
+ * Crowd, wind, and tire screech beside the engine. Not a room model.
  *
  * Each grandstand section gets several point sources along its long axis
  * so a pass-by changes level and Doppler per source. Doppler is the
  * source playback rate: Web Audio no longer shifts a PannerNode.
  * The listener is the car. Wind is filtered noise following OpenF1 km/h.
- * Both sit on one output gain the audio button closes.
+ * Tire is a narrow bandpass on a second noise loop: louder and higher
+ * as cornering g and brake g rise. All three sit on one output gain
+ * the audio button closes. Engine mute does not touch that gain.
  */
 
 export const SOUND_MPS = 343;
@@ -31,6 +33,75 @@ function enOf(lng, lat, origin) {
 export function windDrive(kmh) {
   const t = clamp(((Number(kmh) || 0) - 60) / 240, 0, 1);
   return { level: Math.pow(t, 1.35), hz: 480 + t * 1700 };
+}
+
+export const G_MPS2 = 9.81;
+
+/**
+ * Menger curvature (1/m) of three points in metres {e, n}.
+ * Zero when any side is under a metre, so a collapsed chord stays quiet.
+ */
+export function pathCurvature(a, b, c) {
+  if (!a || !b || !c) return 0;
+  const abx = b.e - a.e;
+  const aby = b.n - a.n;
+  const acx = c.e - a.e;
+  const acy = c.n - a.n;
+  const bcx = c.e - b.e;
+  const bcy = c.n - b.n;
+  const ab = Math.hypot(abx, aby);
+  const ac = Math.hypot(acx, acy);
+  const bc = Math.hypot(bcx, bcy);
+  if (ab < 1 || ac < 1 || bc < 1) return 0;
+  const cross = Math.abs(abx * acy - aby * acx);
+  return (2 * cross) / (ab * ac * bc);
+}
+
+/** Lateral g from speed (m/s) and path curvature (1/m): v²κ / g. */
+export function lateralG(speedMps, curvature) {
+  const v = Math.max(0, Number(speedMps) || 0);
+  const k = Math.max(0, Number(curvature) || 0);
+  return (v * v * k) / G_MPS2;
+}
+
+/**
+ * Brake g from the OpenF1 brake flag and the speed-trace acceleration (m/s²).
+ * This cache is only 0 or 100. Flag off (lift or coast) is not tire screech.
+ * Flag on uses the slowing of the trace, and a full flag floors the read at
+ * 1.1 g so the pedal still speaks when a ±0.2 s window blunts the spike.
+ */
+export function brakeGFromTrace(brk, accelMps2) {
+  const flag = clamp(Number(brk) || 0, 0, 100) / 100;
+  if (flag < 0.2) return 0;
+  const decelG = Math.max(0, -(Number(accelMps2) || 0)) / G_MPS2;
+  return Math.max(decelG, flag * 1.1);
+}
+
+const LAT_ON = 0.75;
+const LAT_SPAN = 6.4;
+const BRK_ON = 0.4;
+const BRK_SPAN = 6.2;
+const AXIS_CAP = 0.72;
+
+function axisLoad(g, on, span) {
+  const t = Math.max(0, (Number(g) || 0) - on) / span;
+  return Math.min(AXIS_CAP, t * AXIS_CAP);
+}
+
+/**
+ * Slip from cornering g and brake g. Each axis tops out at 0.72 so a hard
+ * corner and a hard brake together are louder, and higher, than either one.
+ * A straight under about 0.75 g with the brake flag up is silent.
+ * Tens of g (a fast sample sitting on a tight centerline bend, because the
+ * racing line is not fitted) clamp at that same hard-corner cap.
+ */
+export function tireDrive(latG, brakeG) {
+  const lat = Number(latG) || 0;
+  const brk = Number(brakeG) || 0;
+  const latN = axisLoad(lat, LAT_ON, LAT_SPAN);
+  const brkN = axisLoad(brk, BRK_ON, BRK_SPAN);
+  const level = clamp(Math.hypot(latN, brkN), 0, 1);
+  return { level, hz: 740 + level * 2200, latG: lat, brakeG: brk };
 }
 
 /**
@@ -221,9 +292,82 @@ function applyBiquad(src, c) {
   return out;
 }
 
+function addSweep(data, rate, t0, dur, f0, f1, amp, vibHz, vibDepth) {
+  const i0 = Math.max(0, Math.floor(t0 * rate));
+  const i1 = Math.min(data.length, Math.ceil((t0 + dur) * rate));
+  let phase = 0;
+  for (let i = i0; i < i1; i++) {
+    const t = i / rate;
+    const u = (t - t0) / dur;
+    const env = Math.sin(Math.PI * clamp(u, 0, 1));
+    const f = f0 + (f1 - f0) * u + Math.sin(2 * Math.PI * vibHz * t) * vibDepth;
+    phase += (2 * Math.PI * f) / rate;
+    data[i] += Math.sin(phase) * env * amp;
+  }
+}
+
+function addHorn(data, rate, t0, dur, f0, amp) {
+  const harms = [1, 0.55, 0.32, 0.16, 0.08];
+  const i0 = Math.max(0, Math.floor(t0 * rate));
+  const i1 = Math.min(data.length, Math.ceil((t0 + dur) * rate));
+  const phase = [0, 0, 0, 0, 0];
+  for (let i = i0; i < i1; i++) {
+    const u = (i / rate - t0) / dur;
+    const attack = Math.min(1, u / 0.06);
+    const release = Math.min(1, (1 - u) / 0.16);
+    const env = Math.max(0, Math.min(attack, release));
+    let s = 0;
+    for (let h = 0; h < harms.length; h++) {
+      phase[h] += (2 * Math.PI * f0 * (h + 1)) / rate;
+      s += Math.sin(phase[h]) * harms[h];
+    }
+    data[i] += Math.tanh(s * 1.35) * env * amp;
+  }
+}
+
+function addShout(data, rate, t0, dur, amp) {
+  const i0 = Math.max(0, Math.floor(t0 * rate));
+  const i1 = Math.min(data.length, Math.ceil((t0 + dur) * rate));
+  let p1 = 0;
+  let p2 = 0;
+  let p3 = 0;
+  for (let i = i0; i < i1; i++) {
+    const u = (i / rate - t0) / dur;
+    const env = Math.exp(-u * 3.4) * Math.min(1, u / 0.035);
+    p1 += (2 * Math.PI * 430) / rate;
+    p2 += (2 * Math.PI * 1280) / rate;
+    p3 += (2 * Math.PI * 2460) / rate;
+    const vowel = Math.sin(p1) * 0.72 + Math.sin(p2) * 0.42 + Math.sin(p3) * 0.2;
+    data[i] += vowel * env * amp;
+  }
+}
+
+function addClap(data, white, rate, t0, amp) {
+  const i0 = Math.max(0, Math.floor(t0 * rate));
+  const len = Math.max(1, Math.floor(rate * 0.014));
+  for (let i = 0; i < len; i++) {
+    const idx = i0 + i;
+    if (idx >= data.length) break;
+    const env = Math.exp(-i / (rate * 0.0032));
+    data[idx] += white[idx] * env * amp;
+  }
+}
+
+/** Whistles, a plastic horn, a shout, and a couple of claps on the murmur. */
+function addStadiumCues(data, white, rate) {
+  addSweep(data, rate, 0.48, 0.26, 2200, 3350, 0.34, 6.5, 28);
+  addHorn(data, rate, 1.42, 0.38, 233, 0.38);
+  addClap(data, white, rate, 1.08, 0.22);
+  addShout(data, rate, 2.18, 0.11, 0.36);
+  addClap(data, white, rate, 2.62, 0.16);
+  addSweep(data, rate, 2.88, 0.2, 3180, 2480, 0.22, 7.2, 22);
+  addHorn(data, rate, 3.38, 0.24, 466, 0.24);
+}
+
 /**
- * Stadium bed: layered speech-band murmur plus a few cheer swells.
- * Not lowpassed noise — that reads as wind or surf. Peak about 0.55.
+ * Stadium bed: layered speech-band murmur, cheer swells, and a few
+ * human cues (whistle, horn, shout, clap). Not lowpassed noise.
+ * Peak stays under about 0.72 so a horn can sit above the murmur.
  */
 export function renderCrowdBed(sr, seconds = 4) {
   const rate = sr > 8000 ? sr : 44100;
@@ -283,13 +427,21 @@ export function renderCrowdBed(sr, seconds = 4) {
   }
   let peak = 1e-6;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
-  const gain = 0.55 / peak;
+  const gain = 0.48 / peak;
+  for (let i = 0; i < n; i++) data[i] *= gain;
+  addStadiumCues(data, white, rate);
+  peak = 1e-6;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
+  if (peak > 0.72) {
+    const k = 0.72 / peak;
+    for (let i = 0; i < n; i++) data[i] *= k;
+  }
   const fade = Math.max(1, Math.floor(rate * 0.03));
   for (let i = 0; i < n; i++) {
     let w = 1;
     if (i < fade) w = i / fade;
     else if (i > n - fade) w = (n - 1 - i) / fade;
-    data[i] *= gain * w;
+    data[i] *= w;
   }
   return data;
 }
@@ -365,10 +517,44 @@ export function createAmbience(ctx) {
   windGain.connect(out);
   windSrc.start(0);
 
+  const tireBuf = ctx.createBuffer(1, Math.floor(sr), sr);
+  const tireData = tireBuf.getChannelData(0);
+  let tireSeed = 0x71e5 >>> 0;
+  for (let i = 0; i < tireData.length; i++) {
+    tireSeed = (Math.imul(1664525, tireSeed) + 1013904223) >>> 0;
+    tireData[i] = tireSeed / 4294967296 * 2 - 1;
+  }
+  const tireFade = Math.max(1, Math.floor(sr * 0.02));
+  for (let i = 0; i < tireFade; i++) {
+    const w = i / tireFade;
+    tireData[i] *= w;
+    tireData[tireData.length - 1 - i] *= w;
+  }
+  const tireSrc = ctx.createBufferSource();
+  tireSrc.buffer = tireBuf;
+  tireSrc.loop = true;
+  const tireHip = ctx.createBiquadFilter();
+  tireHip.type = "highpass";
+  tireHip.frequency.value = 480;
+  tireHip.Q.value = 0.7;
+  const tireBand = ctx.createBiquadFilter();
+  tireBand.type = "bandpass";
+  tireBand.frequency.value = 900;
+  tireBand.Q.value = 7;
+  const tireGain = ctx.createGain();
+  tireGain.gain.value = 0;
+  tireSrc.connect(tireHip);
+  tireHip.connect(tireBand);
+  tireBand.connect(tireGain);
+  tireGain.connect(out);
+  tireSrc.start(0);
+
   const voices = [];
   let placed = false;
   let crowdScale = 1;
   let windScale = 1;
+  let tireScale = 1;
+  let tireState = tireDrive(0, 0);
   let live = false;
 
   function place(sections) {
@@ -416,7 +602,11 @@ export function createAmbience(ctx) {
     windScale = clamp(Number(v) || 0, 0, 1.5);
   }
 
-  function update(lng, lat, heading, speedMps) {
+  function setTire(v) {
+    tireScale = clamp(Number(v) || 0, 0, 1.5);
+  }
+
+  function update(lng, lat, heading, speedMps, load) {
     const mLng = 111320 * Math.cos(ORIGIN[1] * Math.PI / 180);
     const east = (lng - ORIGIN[0]) * mLng;
     const north = (lat - ORIGIN[1]) * 111320;
@@ -452,6 +642,11 @@ export function createAmbience(ctx) {
     const wind = windDrive(kmh);
     setParam(windGain.gain, wind.level * windScale * 0.18, now, 0.08);
     setParam(band.frequency, wind.hz, now, 0.08);
+    if (load && (Number.isFinite(load.latG) || Number.isFinite(load.brakeG))) {
+      tireState = tireDrive(load.latG, load.brakeG);
+    }
+    setParam(tireGain.gain, tireState.level * tireScale * 0.48, now, 0.06);
+    setParam(tireBand.frequency, tireState.hz, now, 0.05);
     return {
       nearest: best ? best.dist : null,
       rate: best ? best.rate : 1,
@@ -461,6 +656,10 @@ export function createAmbience(ctx) {
       count: voices.length,
       kmh,
       live,
+      tire: tireState.level,
+      tireHz: tireState.hz,
+      latG: tireState.latG,
+      brakeG: tireState.brakeG,
     };
   }
 
@@ -470,6 +669,7 @@ export function createAmbience(ctx) {
     setLive,
     setCrowd,
     setWind,
+    setTire,
     connect(dest) {
       out.connect(dest);
     },

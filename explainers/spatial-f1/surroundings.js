@@ -1,13 +1,15 @@
 /**
  * Ray probes for the car's I3DL2-style reverb.
  *
- * The fan sits in the car's left–up–right plane: left, then every 15°
- * through straight up, to the right. From up, extra rays pitch toward
- * the nose and the tail in 5° steps out to ±20°. The straight-up ray
- * is the fan's, not a second pitch ray.
- * Forward and back of that, a shallow fan sweeps left and right so a
- * footbridge is hit on the way in, underneath, and on the way out.
- * Those rays carry a higher mix weight when they hit a bridge.
+ * Two aims, not one vertical fan:
+ *   stand  — a little above the horizon, across the front and both
+ *            sides, so a grandstand or building face is hit while you
+ *            are still approaching it and while it is beside the car.
+ *   bridge — an arc over the car. Shallow rays ahead meet a deck on
+ *            the way in, steeper rays look at the deck overhead, and
+ *            the shallow rays repeat behind the tail on the way out.
+ *            Those rays carry a higher mix weight only when the hit
+ *            is a bridge. A grandstand on the same ray is not boosted.
  *
  * The chase camera only keeps the tiles in front of the lens, so a
  * grandstand beside the car is often not in that set. The page also
@@ -39,60 +41,59 @@ const TREE_H = 8;
 const GRASS_MAX_U = Math.sin(25 * Math.PI / 180);
 const TILE_Z = 15;
 
-function fanRays() {
-  const rays = [];
-  for (let phi = 0; phi <= 180; phi += 15) {
-    let id = "fan-" + phi;
-    if (phi === 0) id = "left";
-    else if (phi === 90) id = "up";
-    else if (phi === 180) id = "right";
-    rays.push({ id, phi, max: RAY_MAX, kind: "fan" });
-  }
-  return rays;
+function pushAim(rays, kind, elev, yaw, weight) {
+  const side = yaw === 0 ? "0" : (yaw > 0 ? "L" + yaw : "R" + (-yaw));
+  const ray = {
+    id: kind + "-" + elev + "-" + side,
+    kind,
+    elev,
+    yaw,
+    max: RAY_MAX,
+  };
+  if (weight) ray.weight = weight;
+  rays.push(ray);
 }
 
-function pitchRays() {
+/**
+ * Front and sides, just above the horizon. 8° meets a wall. 32° clears
+ * a low verge (grass is ignored above 25°) and still meets a stand roof.
+ * ±70° is the corner of a stand you are approaching, between the nose
+ * and a pure side. Positive yaw is left.
+ */
+function standRays() {
   const rays = [];
-  for (let alpha = -20; alpha <= 20; alpha += 5) {
-    if (alpha === 0) continue;
-    const sign = alpha > 0 ? "+" : "";
-    rays.push({ id: "pitch" + sign + alpha, alpha, max: RAY_MAX, kind: "pitch" });
-  }
+  for (const yaw of [-90, -45, 0, 45, 90]) pushAim(rays, "stand", 8, yaw);
+  for (const yaw of [-90, -35, 0, 35, 90]) pushAim(rays, "stand", 32, yaw);
+  for (const yaw of [-70, 70]) pushAim(rays, "stand", 18, yaw);
   return rays;
 }
 
 /**
- * Shallow forward and back fans. Elevation is degrees above the horizon,
- * so a 16° ray still meets a 6.5 m deck about 20 m ahead. Yaw sweeps
- * left and right of the nose (positive yaw is left).
+ * Bridge arc. 16° meets a 6.5 m deck about 20 m ahead; 34° meets it
+ * closer. Overhead rays take the deck while the car is under it.
+ * The same shallow pair looks back on the way out. Yaw is a few degrees
+ * either side of the centreline. Weight applies only on a bridge hit.
  */
 function bridgeRays() {
   const rays = [];
-  const elevs = [16, 34];
-  const yaws = [-12, 0, 12];
+  const w = 2.8;
   for (const kind of ["ahead", "behind"]) {
-    for (const elev of elevs) {
-      for (const yaw of yaws) {
-        const side = yaw === 0 ? "0" : (yaw > 0 ? "L" + yaw : "R" + (-yaw));
-        rays.push({
-          id: kind + "-" + elev + "-" + side,
-          kind,
-          elev,
-          yaw,
-          weight: 2.8,
-          max: RAY_MAX,
-        });
-      }
+    for (const elev of [16, 34]) {
+      for (const yaw of [-12, 0, 12]) pushAim(rays, kind, elev, yaw, w);
     }
+  }
+  pushAim(rays, "above", 90, 0, w);
+  for (const elev of [62, 76]) {
+    for (const yaw of [-8, 0, 8]) pushAim(rays, "above", elev, yaw, w);
   }
   return rays;
 }
 
-export const PROBE_RAYS = fanRays().concat(pitchRays(), bridgeRays());
+export const PROBE_RAYS = standRays().concat(bridgeRays());
 
-/** Car frame: +x nose, +y left, +z up. */
+/** Car frame: +x nose, +y left, +z up. Elevation is degrees above the horizon. */
 export function rayCarDir(ray) {
-  if (ray && (ray.kind === "ahead" || ray.kind === "behind")) {
+  if (ray && (ray.kind === "ahead" || ray.kind === "behind" || ray.kind === "above" || ray.kind === "stand")) {
     const elev = ((Number(ray.elev) || 0) * Math.PI) / 180;
     const yaw = ((Number(ray.yaw) || 0) * Math.PI) / 180;
     const horiz = Math.cos(elev);
