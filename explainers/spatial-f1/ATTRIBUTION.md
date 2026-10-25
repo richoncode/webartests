@@ -42,6 +42,16 @@ SOFTWARE.
 - Query: `session_key=9888&driver_number=1&date>=2025-10-19T20:29:28.112&date<2025-10-19T20:32:44.386`
 - OpenF1 is an independent project and is not associated with Formula 1, the FIA, or Formula One Management. The cache is stored so the demo does not call the API at runtime. Field mapping: `engine-data-mapping.html`.
 
+## Other cars
+
+Same session, same OpenF1 `car_data` channel, cached so the page does not call the API. `t` is seconds from driver 1’s first sample (`2025-10-19T20:29:28.163Z`). `s_lap` is metres from each driver’s own lap start, trapezoid-integrated from `speed` in km/h. The marker color is not a team livery.
+
+- `openf1-9888-driver4.json` — driver 4, Lando NORRIS, McLaren. Drawn blue.
+- `openf1-9888-driver16.json` — driver 16, Charles LECLERC, Ferrari. Drawn orange.
+- `openf1-9888-driver81.json` — driver 81, Oscar PIASTRI, McLaren. Drawn green.
+
+Query shape: `session_key=9888&driver_number=…` from just before the lap that was in progress at the epoch through `2025-10-19T20:32:44.863Z`. Lap timing is OpenF1 `laps` for that driver. The along-track fraction was checked against OpenF1 `location` at the epoch; see `engine-data-mapping.html`.
+
 ## Sound
 Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Voicing presets in `engines/*.json` (high-rev V6, throaty V8, idle-heavy, muted) are configuration, not sampled recordings.
 
