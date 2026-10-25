@@ -15,6 +15,8 @@ const RATE_MIN = 0.86;
 const RATE_MAX = 1.16;
 const POINT_GAP = 14;
 const MAX_POINTS = 56;
+/** Per-source gain before distance. Slider 0 is silent; 1.5× is the strong end. */
+export const CROWD_VOICE_GAIN = 0.85;
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -180,27 +182,116 @@ export function crowdPoints(sections, originLL, spacing = 34) {
   return pts;
 }
 
-function fillNoise(data, sr, seconds, pole) {
-  let y = 0;
-  const n = data.length;
+function crowdRand(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 4294967296 * 2 - 1;
+  };
+}
+
+function bpCoeff(sr, freq, q) {
+  const w0 = 2 * Math.PI * freq / sr;
+  const alpha = Math.sin(w0) / (2 * q);
+  const a0 = 1 + alpha;
+  return {
+    b0: alpha / a0,
+    b1: 0,
+    b2: -alpha / a0,
+    a1: (-2 * Math.cos(w0)) / a0,
+    a2: (1 - alpha) / a0,
+  };
+}
+
+function applyBiquad(src, c) {
+  const out = new Float32Array(src.length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < src.length; i++) {
+    const x0 = src[i];
+    const y0 = c.b0 * x0 + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
+    x2 = x1;
+    x1 = x0;
+    y2 = y1;
+    y1 = y0;
+    out[i] = y0;
+  }
+  return out;
+}
+
+/**
+ * Stadium bed: layered speech-band murmur plus a few cheer swells.
+ * Not lowpassed noise — that reads as wind or surf. Peak about 0.55.
+ */
+export function renderCrowdBed(sr, seconds = 4) {
+  const rate = sr > 8000 ? sr : 44100;
+  const n = Math.max(1, Math.floor(rate * (seconds > 0.5 ? seconds : 4)));
+  const rnd = crowdRand(0xC0DA51);
+  const white = new Float32Array(n);
+  for (let i = 0; i < n; i++) white[i] = rnd();
+  const data = new Float32Array(n);
+  const syl = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    const white = Math.random() * 2 - 1;
-    y = y * pole + white * (1 - pole);
-    const slow = 0.72 + 0.28 * Math.sin((2 * Math.PI * 0.55 * i) / sr);
-    const grain = 0.85 + 0.15 * Math.sin((2 * Math.PI * 3.1 * i) / sr + 0.7);
-    data[i] = y * slow * grain;
+    const t = i / rate;
+    const m = 0.62
+      + 0.22 * Math.sin(2 * Math.PI * 3.4 * t) * Math.sin(2 * Math.PI * 5.1 * t + 0.6)
+      + 0.16 * Math.sin(2 * Math.PI * 2.15 * t + 1.2);
+    syl[i] = Math.max(0.28, m);
+  }
+  const cheers = new Float32Array(n);
+  const centers = [0.62, 1.55, 2.48, 3.32];
+  for (const c of centers) {
+    for (let i = 0; i < n; i++) {
+      const x = (i / rate - c) / 0.15;
+      cheers[i] += Math.exp(-x * x);
+    }
+  }
+  for (const c of [1.05, 2.85]) {
+    for (let i = 0; i < n; i++) {
+      const x = (i / rate - c) / 0.032;
+      cheers[i] += 0.85 * Math.exp(-x * x);
+    }
+  }
+  const layers = [
+    [230, 1.5, 0.85, syl],
+    [470, 1.7, 0.5, syl],
+    [860, 2.1, 0.8, syl],
+    [1350, 1.9, 0.62, syl],
+    [2000, 1.6, 0.32, syl],
+    [255, 1.4, 0.4, syl],
+    [980, 1.8, 0.38, syl],
+    [1550, 1.7, 0.28, syl],
+    [1050, 2.3, 1.15, cheers],
+    [1750, 2.1, 1.0, cheers],
+    [2450, 1.7, 0.55, cheers],
+  ];
+  for (const [f, q, g, env] of layers) {
+    const y = applyBiquad(white, bpCoeff(rate, f, q));
+    for (let i = 0; i < n; i++) data[i] += y[i] * g * env[i];
+  }
+  let hp = 0;
+  let lp = 0;
+  const hpA = Math.exp((-2 * Math.PI * 170) / rate);
+  const lpA = Math.exp((-2 * Math.PI * 3400) / rate);
+  for (let i = 0; i < n; i++) {
+    hp = hpA * hp + (1 - hpA) * data[i];
+    const high = data[i] - hp;
+    lp = lpA * lp + (1 - lpA) * high;
+    data[i] = lp;
   }
   let peak = 1e-6;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
-  const gain = 0.4 / peak;
-  const fade = Math.max(1, Math.floor(sr * 0.02));
+  const gain = 0.55 / peak;
+  const fade = Math.max(1, Math.floor(rate * 0.03));
   for (let i = 0; i < n; i++) {
     let w = 1;
     if (i < fade) w = i / fade;
     else if (i > n - fade) w = (n - 1 - i) / fade;
     data[i] *= gain * w;
   }
-  return seconds;
+  return data;
 }
 
 function setParam(param, value, now, tau) {
@@ -231,11 +322,19 @@ export function createAmbience(ctx) {
   out.gain.value = 0;
   const crowdBus = ctx.createGain();
   crowdBus.gain.value = 1;
-  crowdBus.connect(out);
+  const crowdComp = ctx.createDynamicsCompressor();
+  crowdComp.threshold.value = -12;
+  crowdComp.knee.value = 6;
+  crowdComp.ratio.value = 3;
+  crowdComp.attack.value = 0.008;
+  crowdComp.release.value = 0.18;
+  crowdBus.connect(crowdComp);
+  crowdComp.connect(out);
 
   const sr = ctx.sampleRate || 44100;
-  const crowdBuf = ctx.createBuffer(1, Math.floor(sr * 2), sr);
-  fillNoise(crowdBuf.getChannelData(0), sr, 2, 0.86);
+  const crowdSamples = renderCrowdBed(sr, 4);
+  const crowdBuf = ctx.createBuffer(1, crowdSamples.length, sr);
+  crowdBuf.getChannelData(0).set(crowdSamples);
 
   const windBuf = ctx.createBuffer(1, Math.floor(sr), sr);
   const windData = windBuf.getChannelData(0);
@@ -281,13 +380,13 @@ export function createAmbience(ctx) {
       src.loop = true;
       src.playbackRate.value = 1;
       const gain = ctx.createGain();
-      gain.gain.value = 0.16;
+      gain.gain.value = CROWD_VOICE_GAIN;
       const panner = ctx.createPanner();
       panner.panningModel = "equalpower";
       panner.distanceModel = "inverse";
-      panner.refDistance = 20;
-      panner.maxDistance = 400;
-      panner.rolloffFactor = 1.1;
+      panner.refDistance = 22;
+      panner.maxDistance = 420;
+      panner.rolloffFactor = 0.62;
       panner.coneInnerAngle = 360;
       panner.coneOuterAngle = 360;
       panner.coneOuterGain = 1;
@@ -295,7 +394,7 @@ export function createAmbience(ctx) {
       src.connect(gain);
       gain.connect(panner);
       panner.connect(crowdBus);
-      src.start(0, Math.random() * 1.8);
+      src.start(0, Math.random() * 3.6);
       voices.push({ src, p });
     }
     placed = true;

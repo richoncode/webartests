@@ -282,6 +282,9 @@ function buildVoice(ctx, preset, destination) {
  * A full set of misses is held near that five-ray open room. A closer wall
  * adds on top of its own share, so one hit in a twenty-one ray fan still
  * moves the wet sum. The sum is capped at 1.15.
+ * Forward and back bridge rays carry hit.weight. That weight applies only
+ * when the hit is a bridge, so the pass-under spikes wet and the loudest
+ * tap — the one the delay bar follows — is the short bridge reflection.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
@@ -323,6 +326,8 @@ export function reverbMix(hits) {
     } else {
       fb = 0.16;
     }
+    const facing = Number(hit.weight) > 1 ? Number(hit.weight) : 1;
+    const boost = (hit.cover === "bridge") ? facing : 1;
     rows.push({
       id: hit.id || String(i),
       material: kind,
@@ -330,6 +335,7 @@ export function reverbMix(hits) {
       distance: dist,
       delay,
       amp,
+      boost,
       fb,
       hf: mat.hf,
       lf: mat.lf,
@@ -340,7 +346,8 @@ export function reverbMix(hits) {
   const missAmp = ROOM_MAT.open.reflect / (1 + MISS_DIST / ROOM_MAT.open.span);
   const share = OPEN_WET / rows.length;
   for (const row of rows) {
-    row.amp = Math.max(0, share + (row.amp - missAmp) * HIT_CONTRAST);
+    const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
+    row.amp = Math.max(0, share + (row.amp - missAmp) * HIT_CONTRAST * boost);
   }
   const sum = rows.reduce((s, row) => s + row.amp, 0);
   const trim = sum > WET_CAP ? WET_CAP / sum : 1;

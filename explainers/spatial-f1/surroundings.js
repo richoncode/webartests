@@ -5,6 +5,9 @@
  * through straight up, to the right. From up, extra rays pitch toward
  * the nose and the tail in 5° steps out to ±20°. The straight-up ray
  * is the fan's, not a second pitch ray.
+ * Forward and back of that, a shallow fan sweeps left and right so a
+ * footbridge is hit on the way in, underneath, and on the way out.
+ * Those rays carry a higher mix weight when they hit a bridge.
  *
  * The chase camera only keeps the tiles in front of the lens, so a
  * grandstand beside the car is often not in that set. The page also
@@ -58,10 +61,48 @@ function pitchRays() {
   return rays;
 }
 
-export const PROBE_RAYS = fanRays().concat(pitchRays());
+/**
+ * Shallow forward and back fans. Elevation is degrees above the horizon,
+ * so a 16° ray still meets a 6.5 m deck about 20 m ahead. Yaw sweeps
+ * left and right of the nose (positive yaw is left).
+ */
+function bridgeRays() {
+  const rays = [];
+  const elevs = [16, 34];
+  const yaws = [-12, 0, 12];
+  for (const kind of ["ahead", "behind"]) {
+    for (const elev of elevs) {
+      for (const yaw of yaws) {
+        const side = yaw === 0 ? "0" : (yaw > 0 ? "L" + yaw : "R" + (-yaw));
+        rays.push({
+          id: kind + "-" + elev + "-" + side,
+          kind,
+          elev,
+          yaw,
+          weight: 2.8,
+          max: RAY_MAX,
+        });
+      }
+    }
+  }
+  return rays;
+}
+
+export const PROBE_RAYS = fanRays().concat(pitchRays(), bridgeRays());
 
 /** Car frame: +x nose, +y left, +z up. */
 export function rayCarDir(ray) {
+  if (ray && (ray.kind === "ahead" || ray.kind === "behind")) {
+    const elev = ((Number(ray.elev) || 0) * Math.PI) / 180;
+    const yaw = ((Number(ray.yaw) || 0) * Math.PI) / 180;
+    const horiz = Math.cos(elev);
+    const sign = ray.kind === "behind" ? -1 : 1;
+    return {
+      x: sign * horiz * Math.cos(yaw),
+      y: horiz * Math.sin(yaw),
+      z: Math.sin(elev),
+    };
+  }
   if (ray && ray.kind === "pitch") {
     const a = (Number(ray.alpha) || 0) * Math.PI / 180;
     return { x: Math.sin(a), y: 0, z: Math.cos(a) };
@@ -458,7 +499,8 @@ function castOne(ray, dir, features) {
   if (solid && (!soft || solid.distance <= soft.distance)) hit = solid;
   else if (soft) hit = soft;
   else hit = { distance: max, material: "open", cover: "" };
-  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "" };
+  const weight = Number(ray && ray.weight) > 0 ? Number(ray.weight) : 1;
+  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "", weight };
 }
 
 /**
