@@ -66,7 +66,30 @@ function buildVoice(ctx, preset, destination) {
   lfo.connect(lfoAmt);
   lfoAmt.connect(lope.gain);
 
-  filter.connect(shaper);
+  const filtSpec = preset.filter || {};
+  const filterMix = ctx.createGain();
+  filterMix.gain.value = clamp(Number(filtSpec.mix) ?? 1, 0, 1);
+  filter.connect(filterMix);
+  filterMix.connect(shaper);
+
+  const formantSpecs = Array.isArray(preset.formants) ? preset.formants : [];
+  const formantNodes = [];
+  for (const spec of formantSpecs) {
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = clamp(Number(spec.base) || 280, 40, 8000);
+    bp.Q.value = clamp(Number(spec.q) || 1, 0.2, 18);
+    const g = ctx.createGain();
+    g.gain.value = clamp(Number(spec.gain) || 0, 0, 2);
+    bp.connect(g);
+    g.connect(shaper);
+    formantNodes.push({
+      bp,
+      base: Number(spec.base) || 280,
+      rpm: Number(spec.rpm) || 0,
+    });
+  }
+
   shaper.connect(safety);
   safety.connect(lope);
   lope.connect(out);
@@ -91,6 +114,7 @@ function buildVoice(ctx, preset, destination) {
       g.gain.value = gain * weights[i];
       o.connect(g);
       g.connect(filter);
+      for (const f of formantNodes) g.connect(f.bp);
       o.start();
       started.push(o);
       oscs.push({ o, ratio });
@@ -103,9 +127,14 @@ function buildVoice(ctx, preset, destination) {
   let brown = 0;
   let peak = 0.001;
   const raw = new Float32Array(noiseLen);
+  const nz0 = preset.noise || {};
+  const poleIn = Number(nz0.brownPole);
+  const pole = Number.isFinite(poleIn) ? clamp(poleIn, 0.5, 0.995) : 0.98;
+  const exciteIn = Number(nz0.brownExcite);
+  const excite = Number.isFinite(exciteIn) ? clamp(exciteIn, 0.005, 1) : 0.02;
   for (let i = 0; i < noiseLen; i++) {
     const white = Math.random() * 2 - 1;
-    brown = brown * 0.98 + white * 0.02;
+    brown = brown * pole + white * excite;
     raw[i] = brown;
     peak = Math.max(peak, Math.abs(brown));
   }
@@ -159,6 +188,9 @@ function buildVoice(ctx, preset, destination) {
       now,
       0.05
     );
+    for (const f of formantNodes) {
+      f.bp.frequency.setTargetAtTime(clamp(f.base + rpmN * f.rpm, 40, 8000), now, tc);
+    }
 
     const lopeDepth = clamp(Number(preset.lope) || 0, 0, 0.42) * (1 - 0.5 * rpmN);
     const crank = Math.max(4, (Number(rpm) || 0) / 60) * (Number(preset.lopeRate) > 0 ? Number(preset.lopeRate) : 1);
