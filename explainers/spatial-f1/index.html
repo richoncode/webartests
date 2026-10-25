@@ -1,87 +1,368 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Spatial F1 demo</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.js"></script>
 <script src="../../mcpmondays/mapbox/config.js"></script>
 <style>
-:root{--fg:#e8ecf2;--dim:#9aa4b2;--bg:#0b0e14}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif}
-header,main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:24px;margin:0 0 4px}
-p{margin:6px 0}.dim{color:var(--dim);font-size:14px}
-#map{width:100%;height:62vh;min-height:360px;border-radius:10px;position:relative}
-#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--dim)}
-.ctl{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;align-items:center}
-button,select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #2a3240;background:#161b24;color:var(--fg)}
-a{color:#8ab4ff}
+:root{--fg:#e8ecf2;--dim:#9aa4b2;--bg:#0b0e14;--blue:#5b9bd5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif}
+header,main{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:24px;margin:0 0 4px}
+h2{font-size:18px;margin:22px 0 6px}
+p{margin:6px 0}
+.dim{color:var(--dim);font-size:14px}
+a{color:var(--blue)}
+#map{width:100%;height:min(62vh,640px);min-height:380px;border-radius:10px;position:relative}
+#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--dim);background:#0b0e14ee;z-index:3}
+.panel{margin-top:12px;background:#12161e;border:1px solid #2a3240;border-radius:12px;padding:12px}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px;align-items:center}
+button,select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #2a3240;background:#161b24;color:var(--fg);cursor:pointer}
+button:hover,select:hover{border-color:#3a4454}
+button.primary{background:#1e2d40;border-color:var(--blue);color:var(--blue)}
+button.on{background:#1e2d40;border-color:var(--blue);color:var(--blue)}
+.seg{display:inline-flex;border:1px solid #2a3240;border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0}
+.eng{display:flex;gap:14px;align-items:center}
+.gear{min-width:64px;text-align:center}
+.gear span{display:block;font-size:40px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.gear span.hit{color:#f0a040}
+.gear small{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.readouts{display:flex;flex-wrap:wrap;gap:14px 18px;flex:1}
+.readouts b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.readouts span{color:var(--dim);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.drs{font-size:11px;font-weight:700;letter-spacing:.06em;color:#666;border:1px solid #2a3240;border-radius:99px;padding:4px 8px;align-self:center}
+.drs.on{color:#4caf50;border-color:#4caf50}
+.bars{display:grid;gap:6px;margin-top:10px}
+.bars label{display:grid;grid-template-columns:72px 1fr 52px;gap:8px;align-items:center;color:var(--dim);font-size:12px}
+.bars em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
+.track{height:8px;background:#0b0e14;border-radius:99px;overflow:hidden;border:1px solid #2a3240}
+.track i{display:block;height:100%;width:0}
+.track.thr i{background:#4caf50}
+.track.brk i{background:#e74c3c}
+.track.rpm i{background:#f0a040}
+.seekrow{display:flex;align-items:center;gap:10px;margin-top:10px}
+.seekrow input{flex:1;accent-color:var(--blue)}
+.clock{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px;min-width:108px;text-align:right}
+.note{margin:8px 0 0}
+code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
+@media (max-width:640px){
+  .eng{align-items:flex-start}
+  .bars label{grid-template-columns:64px 1fr 44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .gear span.hit{color:inherit}
+}
 </style></head><body>
 <header><h1>Spatial F1 demo</h1>
-<p class="dim">A low-poly F1 car lapping Circuit of the Americas (Austin) in 3D on Mapbox. Unofficial; not affiliated with Formula 1.</p></header>
+<p class="dim">A low-poly F1 car on the Circuit of the Americas centerline, camera low and close behind it. RPM, throttle, and gear follow a cached OpenF1 trace and drive the sound. Unofficial; not affiliated with Formula 1.</p></header>
 <main>
-<div id="map"><div id="notoken">Mapbox token missing.</div></div>
+<div id="map"><div id="notoken">Mapbox token missing. The engine panel still runs.</div></div>
+<div class="panel">
 <div class="ctl">
-<button id="play">Pause</button>
+<button id="play" type="button">Pause</button>
 <label>Speed <select id="spd"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="3">3×</option><option value="10">10×</option></select></label>
-<label><input type="checkbox" id="follow"> Chase cam</label>
-<span class="dim" id="stat"></span>
+<div class="seg" role="group" aria-label="Camera">
+<button id="camCockpit" type="button" class="on" aria-pressed="true">Cockpit</button>
+<button id="camOverview" type="button" aria-pressed="false">Overview</button>
 </div>
-<h2 style="font-size:18px">What this is</h2>
-<p>The track line is the COTA centerline (5.5 km). The car follows it in a loop at a made-up pace (about a 1:36 lap at 1×, close to race pace), not real timing. The car is drawn about 6× real size so it reads at map zoom.</p>
-<p><b>Next:</b> real car positions from <a href="https://openf1.org">OpenF1</a> (2024/2025 Austin races report every car about 4 times a second, in F1's own x/y grid). Fitting that grid onto this centerline would let all 20 cars replay a real race window.</p>
-<h2 style="font-size:18px">Credits</h2>
-<p class="dim">Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
+<button id="sound" class="primary" type="button" aria-pressed="false">Sound</button>
+<span class="dim" id="stat">Loading telemetry…</span>
+</div>
+<div class="eng">
+<div class="gear"><span id="gear">–</span><small>Gear</small></div>
+<div class="readouts">
+<div><b id="rpm">—</b><span>rpm</span></div>
+<div><b id="spdnum">—</b><span>km/h</span></div>
+<div><b id="lap">—</b><span id="lapsub">lap</span></div>
+</div>
+<div class="drs" id="drs">DRS —</div>
+</div>
+<div class="bars">
+<label>Throttle <span class="track thr"><i id="thrBar"></i></span> <em id="thrTxt">—</em></label>
+<label>Brake <span class="track brk"><i id="brkBar"></i></span> <em id="brkTxt">—</em></label>
+<label>RPM <span class="track rpm"><i id="rpmBar"></i></span> <em id="rpmTxt">—</em></label>
+</div>
+<div class="seekrow">
+<input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Telemetry time">
+<span class="clock" id="clock">0:00 / —</span>
+</div>
+<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press Sound to hear RPM and throttle. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
+</div>
+<h2>What this is</h2>
+<p>The yellow line is the COTA centerline (5.5 km). The car rides that loop. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 1.5% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner.</p>
+<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
+<p>Cockpit is the default camera: low, a few metres behind the car, looking along the track. Overview restores the previous pitched map of the whole circuit. <code>?back=</code>, <code>?eye=</code>, and <code>?look=</code> are metres for that chase camera. <code>?head=</code> still rotates the model.</p>
+<h2>Credits</h2>
+<p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slice for driver 1, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
 </main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {pose, lapAt, seekWithinLoop} from './telemetry.js';
+import {createEngine} from './engine-audio.js';
+
 const $=id=>document.getElementById(id);
-if(!window.MAPBOX_PUBLIC_TOKEN){$('notoken').style.display='flex';throw 0}
-mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
-const gj=await (await fetch('cota.geojson')).json();
+const params=new URLSearchParams(location.search);
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function qnum(name, fallback, lo, hi){
+  const raw=params.get(name);
+  if(raw==null||raw==='') return fallback;
+  const v=Number(raw);
+  if(!Number.isFinite(v)||v<lo||v>hi) return fallback;
+  return v;
+}
+// Metres along the centerline. The model is drawn about 6× life size
+// (~34 m long, tail ~16 m behind the origin), so the default sits just behind that tail.
+const CAM={back:qnum('back',22,-40,250), eye:qnum('eye',3.6,0.4,80), look:qnum('look',64,8,500)};
+const HEAD=Number(params.get('head')??Math.PI);
+
+const telem=await fetch('openf1-9888-driver1.json').then(r=>{
+  if(!r.ok) throw new Error('telemetry '+r.status);
+  return r.json();
+});
+const samples=telem.samples;
+const laps=telem.laps;
+let trackLen=5513;
+let pos=0;
+let tPlay=0;
+let playing=true;
+let rate=1;
+let seeking=false;
+let shownGear=null;
+let gearTimer=0;
+let engine=null;
+let audioOn=false;
+let camMode=params.get('view')==='overview'?'overview':'cockpit';
+let map=null;
+let mapReady=false;
+let car=null;
+let last=performance.now();
+
+function fmt(t){
+  const s=Math.max(0,t);
+  const m=Math.floor(s/60);
+  const ss=Math.floor(s%60);
+  return m+':'+String(ss).padStart(2,'0');
+}
+function paint(){
+  const st=pose(tPlay, samples, trackLen);
+  pos=st.pos;
+  const f=st.frame;
+  const rpm=Math.round(f.rpm);
+  $('gear').textContent=f.gear===0?'N':String(f.gear);
+  if(shownGear!=null && f.gear!==shownGear && !reduceMotion){
+    $('gear').classList.add('hit');
+    clearTimeout(gearTimer);
+    gearTimer=setTimeout(()=>$('gear').classList.remove('hit'), 140);
+  }
+  shownGear=f.gear;
+  $('rpm').textContent=rpm.toLocaleString('en-US');
+  $('rpmTxt').textContent=rpm.toLocaleString('en-US');
+  $('spdnum').textContent=String(Math.round(f.spd));
+  $('thrTxt').textContent=Math.round(f.thr)+'%';
+  $('brkTxt').textContent=f.brk>=50?'ON':'OFF';
+  $('thrBar').style.width=Math.max(0,Math.min(100,f.thr))+'%';
+  $('brkBar').style.width=(f.brk>=50?100:0)+'%';
+  $('rpmBar').style.width=Math.max(0,Math.min(100,rpm/13000*100))+'%';
+  $('lap').textContent='Lap '+lapAt(laps, st.u);
+  $('drs').textContent=f.drs>=10?'DRS open':'DRS '+f.drs;
+  $('drs').classList.toggle('on', f.drs>=10);
+  $('clock').textContent=fmt(st.u)+' / '+fmt(st.dur);
+  if(!seeking) $('seek').value=String(Math.round((st.u/st.dur)*1000));
+  if(audioOn && engine) engine.update(f.rpm, f.thr, f.gear);
+  return st;
+}
+
+function setCamButtons(){
+  const cock=camMode==='cockpit';
+  $('camCockpit').classList.toggle('on', cock);
+  $('camOverview').classList.toggle('on', !cock);
+  $('camCockpit').setAttribute('aria-pressed', cock?'true':'false');
+  $('camOverview').setAttribute('aria-pressed', cock?'false':'true');
+}
+function setMapHandlers(){
+  if(!map) return;
+  const enable=camMode==='overview';
+  for(const h of ['dragPan','scrollZoom','dragRotate','doubleClickZoom','touchZoomRotate','boxZoom']){
+    if(map[h] && map[h][enable?'enable':'disable']) map[h][enable?'enable':'disable']();
+  }
+}
+function frameOverview(){
+  if(!mapReady) return;
+  const b=new mapboxgl.LngLatBounds();
+  pts.forEach(p=>b.extend(p));
+  map.fitBounds(b,{padding:30,pitch:55,bearing:-20,duration:reduceMotion?0:700});
+}
+function updateCockpit(){
+  if(!mapReady) return;
+  const backLL=at(pos-CAM.back);
+  const lookLL=at(pos+CAM.look);
+  let alt=CAM.eye;
+  if(map.getTerrain()){
+    const e=map.queryTerrainElevation(backLL);
+    if(e!=null) alt+=e;
+  }
+  const cam=map.getFreeCameraOptions();
+  cam.position=mapboxgl.MercatorCoordinate.fromLngLat(backLL, alt);
+  cam.lookAtPoint(lookLL);
+  map.setFreeCameraOptions(cam);
+}
+function applyCam(mode){
+  camMode=mode;
+  setCamButtons();
+  setMapHandlers();
+  if(mode==='overview') frameOverview();
+  else updateCockpit();
+}
+
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('spd').onchange=e=>{rate=+e.target.value};
+$('camCockpit').onclick=()=>applyCam('cockpit');
+$('camOverview').onclick=()=>applyCam('overview');
+$('sound').onclick=async()=>{
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  if(!Ctx){$('stat').textContent='Web Audio is unavailable in this browser.';return}
+  try{
+    if(!engine){
+      const ctx=new Ctx();
+      engine=createEngine(ctx);
+    }
+    if(!audioOn){
+      if(engine.context.state==='suspended') await engine.context.resume();
+      audioOn=true;
+      engine.setMuted(false);
+    }else{
+      engine.setMuted(!engine.muted);
+      if(!engine.muted && engine.context.state==='suspended') await engine.context.resume();
+    }
+  }catch(err){
+    console.error(err);
+    $('stat').textContent='Sound failed to start';
+    return;
+  }
+  const silent=!audioOn||engine.muted;
+  $('sound').textContent=silent?'Sound':'Mute';
+  $('sound').classList.toggle('primary', silent);
+  $('sound').setAttribute('aria-pressed', silent?'false':'true');
+  paint();
+};
+$('seek').addEventListener('pointerdown',()=>{seeking=true});
+window.addEventListener('pointerup',()=>{seeking=false});
+$('seek').addEventListener('input',()=>{
+  const st=pose(tPlay, samples, trackLen);
+  const u=(+$('seek').value/1000)*st.dur;
+  tPlay=seekWithinLoop(tPlay, st.dur, u);
+  paint();
+});
+window.addEventListener('keydown',e=>{
+  if(e.target.closest('input,select,textarea')) return;
+  if(e.code==='Space'){e.preventDefault();$('play').click()}
+});
+
+const gj=await fetch('cota.geojson').then(r=>r.json());
 let pts=gj.features[0].geometry.coordinates.map(c=>[c[0],c[1]]);
 const f=pts[0],l=pts[pts.length-1];if(f[0]!==l[0]||f[1]!==l[1])pts.push(f);
-// cumulative distance in metres
 const R=6371000,rad=Math.PI/180;
 const dist=(a,b)=>{const x=(b[0]-a[0])*rad*Math.cos((a[1]+b[1])/2*rad),y=(b[1]-a[1])*rad;return Math.hypot(x,y)*R};
 const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+dist(pts[i-1],pts[i]));
-const LEN=cum[cum.length-1];
-function at(d){d=((d%LEN)+LEN)%LEN;let i=1;while(cum[i]<d)i++;const t=(d-cum[i-1])/(cum[i]-cum[i-1]);const a=pts[i-1],b=pts[i];return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
+trackLen=cum[cum.length-1];
+function at(d){d=((d%trackLen)+trackLen)%trackLen;let i=1;while(cum[i]<d && i<cum.length-1)i++;const span=cum[i]-cum[i-1]||1;const t=(d-cum[i-1])/span;const a=pts[i-1],b=pts[i];return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
+
 const center=[-97.6339,30.1347];
-const map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:15,pitch:60,bearing:-20,antialias:true});
-map.addControl(new mapboxgl.NavigationControl());
-const origin=mapboxgl.MercatorCoordinate.fromLngLat(center,0);const mScale=origin.meterInMercatorCoordinateUnits();
-let car=null,pos=0,playing=true,speed=1,last=performance.now();
-const V=LEN/96; // m/s
-const layer={id:'car3d',type:'custom',renderingMode:'3d',
- onAdd(m,gl){this.cam=new THREE.Camera();this.scene=new THREE.Scene();
-  this.scene.add(new THREE.AmbientLight(0xffffff,1.2));const s=new THREE.DirectionalLight(0xffffff,2);s.position.set(50,-80,120);this.scene.add(s);
-  new GLTFLoader().load('f1-car.glb',g=>{const o=g.scene;const box=new THREE.Box3().setFromObject(o);const sz=box.getSize(new THREE.Vector3());
-   const k=5.6*6/Math.max(sz.x,sz.z);o.scale.setScalar(k);o.position.y=-box.min.y*k;
-   const inner=new THREE.Group();inner.add(o);inner.rotation.x=Math.PI/2; // glTF Y-up -> map Z-up
-   car=new THREE.Group();car.add(inner);this.scene.add(car);$('stat').textContent='';});
-  this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;},
- render(gl,matrix){if(car){const p=at(pos),q=at(pos+4);
-   const mp=mapboxgl.MercatorCoordinate.fromLngLat(p,0);
-   car.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,0);
-   const dx=(q[0]-p[0])*Math.cos(p[1]*rad),dy=q[1]-p[1];car.rotation.z=Math.atan2(dy,dx)+HEAD;}
-  const M=new THREE.Matrix4().fromArray(matrix);
-  const T=new THREE.Matrix4().makeTranslation(origin.x,origin.y,origin.z).scale(new THREE.Vector3(mScale,-mScale,mScale));
-  this.cam.projectionMatrix=M.multiply(T);this.renderer.resetState();this.renderer.render(this.scene,this.cam);map.triggerRepaint();}};
-const HEAD=Number(new URLSearchParams(location.search).get('head')??Math.PI); // model faces -X; rotate to travel direction
-map.on('load',()=>{
- map.addSource('cota',{type:'geojson',data:gj});
- map.addLayer({id:'cota-casing',type:'line',source:'cota',paint:{'line-color':'#000','line-width':7,'line-opacity':.5}});
- map.addLayer({id:'cota-line',type:'line',source:'cota',paint:{'line-color':'#ffd400','line-width':3}});
- map.addLayer(layer);
- const b=new mapboxgl.LngLatBounds();pts.forEach(p=>b.extend(p));map.fitBounds(b,{padding:30,pitch:55,bearing:-20,duration:0});
-});
-$('stat').textContent='Loading car…';
-function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;if(playing)pos+=V*speed*dt;
- if($('follow').checked&&car){const p=at(pos),q=at(pos+30);const br=Math.atan2((q[0]-p[0])*Math.cos(p[1]*rad),q[1]-p[1])/rad;map.jumpTo({center:p,bearing:br,zoom:17.5,pitch:70})}
- requestAnimationFrame(tick)}requestAnimationFrame(tick);
-$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
-$('spd').onchange=e=>speed=+e.target.value;
+function initMap(){
+  mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:16,pitch:75,bearing:-20,antialias:true});
+  map.addControl(new mapboxgl.NavigationControl());
+  const origin=mapboxgl.MercatorCoordinate.fromLngLat(center,0);
+  const mScale=origin.meterInMercatorCoordinateUnits();
+  const layer={id:'car3d',type:'custom',renderingMode:'3d',
+    onAdd(m,gl){
+      this.cam=new THREE.Camera();
+      this.scene=new THREE.Scene();
+      this.scene.add(new THREE.AmbientLight(0xffffff,1.2));
+      const sun=new THREE.DirectionalLight(0xffffff,2);
+      sun.position.set(50,-80,120);
+      this.scene.add(sun);
+      new GLTFLoader().load('f1-car.glb',g=>{
+        const o=g.scene;
+        const box=new THREE.Box3().setFromObject(o);
+        const sz=box.getSize(new THREE.Vector3());
+        const k=5.6*6/Math.max(sz.x,sz.z);
+        o.scale.setScalar(k);
+        o.position.y=-box.min.y*k;
+        const inner=new THREE.Group();
+        inner.add(o);
+        inner.rotation.x=Math.PI/2;
+        car=new THREE.Group();
+        car.add(inner);
+        this.scene.add(car);
+        $('stat').textContent='Driver 1 · laps 52–53';
+      }, undefined, err=>{
+        console.error(err);
+        $('stat').textContent='Car model failed to load';
+      });
+      this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});
+      this.renderer.autoClear=false;
+    },
+    render(gl,matrix){
+      if(car){
+        const p=at(pos), q=at(pos+4);
+        const mp=mapboxgl.MercatorCoordinate.fromLngLat(p,0);
+        car.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,0);
+        const dx=(q[0]-p[0])*Math.cos(p[1]*rad), dy=q[1]-p[1];
+        car.rotation.z=Math.atan2(dy,dx)+HEAD;
+      }
+      const M=new THREE.Matrix4().fromArray(matrix);
+      const T=new THREE.Matrix4().makeTranslation(origin.x,origin.y,origin.z).scale(new THREE.Vector3(mScale,-mScale,mScale));
+      this.cam.projectionMatrix=M.multiply(T);
+      this.renderer.resetState();
+      this.renderer.render(this.scene,this.cam);
+      map.triggerRepaint();
+    }
+  };
+  map.on('load',()=>{
+    map.addSource('cota',{type:'geojson',data:gj});
+    map.addLayer({id:'cota-casing',type:'line',source:'cota',paint:{'line-color':'#000','line-width':7,'line-opacity':.5}});
+    map.addLayer({id:'cota-line',type:'line',source:'cota',paint:{'line-color':'#ffd400','line-width':3}});
+    map.addLayer(layer);
+    mapReady=true;
+    setMapHandlers();
+    if(camMode==='overview') frameOverview();
+    else updateCockpit();
+  });
+  map.on('error',e=>{
+    const msg=(e&&e.error&&e.error.message)||'';
+    if(/token|unauthorized|401|403/i.test(msg)){
+      $('notoken').style.display='flex';
+      $('notoken').textContent='Mapbox rejected the token on this host. The engine panel still runs.';
+    }
+  });
+}
+
+if(!window.MAPBOX_PUBLIC_TOKEN||!window.mapboxgl){
+  $('notoken').style.display='flex';
+  $('stat').textContent='Driver 1 · laps 52–53 · no map';
+}else{
+  $('stat').textContent='Loading car…';
+  initMap();
+}
+setCamButtons();
+paint();
+
+function tick(now){
+  const dt=Math.min(0.1,(now-last)/1000);
+  last=now;
+  if(playing && !seeking) tPlay+=dt*rate;
+  if(tPlay<0) tPlay=0;
+  paint();
+  if(camMode==='cockpit') updateCockpit();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
 </script>
 </body></html>
