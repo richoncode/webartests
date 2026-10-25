@@ -36,5 +36,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Telemetry: `openf1-9888-driver1.json`
+- Cached slice of OpenF1 `car_data` for driver 1 (VER), Austin race session `9888`, laps 52–53.
+- API: https://api.openf1.org/v1/car_data — docs: https://openf1.org/
+- Query: `session_key=9888&driver_number=1&date>=2025-10-19T20:29:28.112&date<2025-10-19T20:32:44.386`
+- OpenF1 is an independent project and is not associated with Formula 1, the FIA, or Formula One Management. The cache is stored so the demo does not call the API at runtime. Field mapping: `engine-data-mapping.html`.
+
+## Sound
+Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Engine Sim (https://github.com/ange-yaghi/engine-sim, MIT, Ange Yaghi) is referenced as later work and is not vendored.
+
 ## Libraries
 Mapbox GL JS (Mapbox terms, map data © Mapbox © OpenStreetMap), three.js (MIT).

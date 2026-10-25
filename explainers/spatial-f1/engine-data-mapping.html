@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>OpenF1 engine data mapping · Spatial F1</title>
+<link rel="stylesheet" href="../../shared/css/main.css">
+<style>
+  a.back { display: inline-block; margin-bottom: 32px; color: #555; text-decoration: none; font-size: 14px; }
+  a.back:hover { color: #aaa; }
+  .page { max-width: 860px; }
+  h1 { max-width: 18em; }
+  h2 { margin-top: 40px; }
+  a { color: var(--accent-blue); }
+  code { font-family: var(--font-mono); font-size: 12.5px; color: #ddd; }
+  .table-wrap { overflow-x: auto; margin: 8px 0 18px; border: 1px solid #2a2a2a; border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #222; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { color: #888; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; background: #141414; }
+  td { color: #ccc; }
+  td:first-child { font-family: var(--font-mono); font-size: 12.5px; color: #e8e8e8; white-space: nowrap; }
+  .flow { margin: 8px 0 18px; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .flow li { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 10px 14px; color: #ccc; font-size: 14px; }
+  .flow li b { color: #fff; font-weight: 650; }
+  ul { color: #bbb; font-size: 14px; line-height: 1.7; max-width: 680px; padding-left: 18px; }
+  li { margin: 4px 0; }
+  .src { color: #888; font-size: 13px; }
+</style>
+</head>
+<body>
+<a class="back" href="./">← Spatial F1 demo</a>
+<div class="page">
+  <p class="section-label">Spatial F1</p>
+  <h1>OpenF1 engine data mapping</h1>
+  <p class="subtitle">How a cached <code>car_data</code> window drives the Spatial F1 gauges and sound, what was left on the panel, and what a later Engine Sim hookup would change.</p>
+
+  <div class="callout orange"><strong>Unofficial fan demo.</strong> Not affiliated with Formula 1, the FIA, Formula One Management, or any team. OpenF1 is an independent API. Formula 1 and F1 are trademarks of their owners.</div>
+
+  <h2>Why wire OpenF1 to an engine</h2>
+  <p>The map page already ran a car around the Circuit of the Americas centerline at a made-up pace. OpenF1 <a href="https://openf1.org/">publishes</a> the live-timing stream teams and broadcasts use: throttle, RPM, gear, brake, speed, DRS, and a separate location channel. That is the honest input to an engine view. RPM and throttle say what the power unit is doing. Gear says when the driver shifted. Speed says how the car should travel. Location is a map problem, not an engine problem.</p>
+  <p><a href="https://github.com/ange-yaghi/engine-sim">Engine Sim</a> (Ange Yaghi) is the usual way to turn those inputs into a physical exhaust note. It integrates gas dynamics and plays the result. Stock Engine Sim is a desktop app. Its gear ratios are not Formula 1 ratios, and it does not ship an F1 turbo-hybrid script. This page records the mapping so a later sim can take the same fields without inventing a second interpretation of the trace.</p>
+  <p>The demo that uses this mapping is the <a href="./">Spatial F1 page</a>.</p>
+
+  <h2>Field mapping</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>OpenF1</th><th>Engine input</th><th>In this demo</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>throttle</td><td>Throttle, 0–100</td><td>Strong. Sets synth loudness and how far the low-pass opens. Held as steps so a lift stays sharp.</td></tr>
+        <tr><td>rpm</td><td>Dyno-hold RPM</td><td>Strong. Pitch is this RPM, linearly interpolated between samples. The synth does not integrate its own RPM.</td></tr>
+        <tr><td>n_gear</td><td>Gear, 0–8</td><td>Weak as a ratio. Shown on the panel. A change fires a short gain dip. It does not rescale RPM. Stock Engine Sim ratios are not F1 ratios, so deriving RPM from gear would walk off the trace.</td></tr>
+        <tr><td>brake</td><td>UI only</td><td>0 or 100 in this window (pedal up or down). Bar and ON/OFF. No effect on the synth.</td></tr>
+        <tr><td>speed</td><td>UI only for the engine</td><td>km/h on the panel. Also integrated to move the car along the centerline. Not an engine input.</td></tr>
+        <tr><td>drs</td><td>UI only</td><td>Integer status. 10 or higher reads as open. Every sample in the cached window is 0.</td></tr>
+        <tr><td>location</td><td>Map / path only</td><td>Not in the cache. The car stays on the existing centerline. Fitting OpenF1 x/y onto longitude and latitude is later work.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Sample rate and interpolation</h2>
+  <p>OpenF1 describes <code>car_data</code> at about 3.7 Hz. The cached window measures a little faster than that headline: 735 samples across 196.2 s, median spacing 0.240 s, shortest 0.159 s, longest 0.840 s.</p>
+  <ul>
+    <li><strong>RPM</strong> is linearly interpolated. Pitch glides across the gap instead of stair-stepping every quarter second.</li>
+    <li><strong>Speed</strong> is linearly interpolated, then integrated with the trapezoid rule into metres (<code>s</code> on each sample). That distance moves the car.</li>
+    <li><strong>Throttle, brake, DRS, and gear</strong> use the sample at or before the clock. A throttle drop from 80 or more to 20 or less (15 of those in this window) arrives as a step. The synth follows a cut in a few tens of milliseconds. It does not ramp the pedal across the sample gap.</li>
+    <li><strong>Gear</strong> is an event. This window has 86 gear changes, gears 2 through 8. Each change dips the synth gain for about a tenth of a second. The RPM trace already contains the shift, so the dip is only an accent.</li>
+  </ul>
+  <p>The speed control (0.5×, 1×, 3×, 10×) scales the same clock the scrubber sets. Pause holds the clock. Sound, gauges, and distance stay on that clock.</p>
+
+  <h2>Dyno lock and a free engine</h2>
+  <p>Dyno lock holds RPM at the telemetry value and takes throttle from the trace. Load and tone follow the recording. A free engine would take throttle and gear as driver inputs and integrate RPM from torque, drag, and the gearbox. That RPM leaves the recorded trace as soon as the ratios, inertia, or aero drag disagree with the real car. Stock Engine Sim ratios would do that immediately. The demo ships dyno lock only.</p>
+  <div class="callout blue"><strong>What you hear</strong> is a browser synth aimed at a 4-stroke V6 firing rate: three combustion events per revolution, so frequency is <code>rpm / 60 × 3</code>. At 11,500 rpm that fundamental is about 575 Hz, with a few harmonics, a noise bed, and a low-pass that opens with throttle. Lifted throttle at high RPM stays audible (overrun) and quieter. This is not exhaust-gas synthesis.</div>
+
+  <h2>What this demo ships</h2>
+  <ol class="flow">
+    <li><b>Cache.</b> <code>openf1-9888-driver1.json</code> — driver 1 (VER), Austin race session 9888, laps 52 and 53. Fetched once from <code>car_data</code> with <code>date&gt;=2025-10-19T20:29:28.112</code> and <code>date&lt;2025-10-19T20:32:44.386</code>. The page does not call the API.</li>
+    <li><b>Why this window.</b> Two flying laps that loop cleanly: both ends are about 222 km/h, gear 5, full throttle, RPM near 11,500. Lap 53 is this car's fastest lap of that race, 98.107 s. Across the window RPM runs 5,454–12,032, throttle 0–100, speed 74–308 km/h, brake on for 128 samples.</li>
+    <li><b>Panel.</b> Gear, RPM, speed, lap, throttle, brake, DRS, and a scrubber, tied to Play and the speed control.</li>
+    <li><b>Sound.</b> The Web Audio dyno above. It starts after Sound (browsers block audio until a click).</li>
+    <li><b>Car.</b> Still the centerline loop. Integrated speed is 10,873 m. Two loops of the cached centerline are 11,039 m (5,519.6 m × 2). The player multiplies distance by 1.015 so the window closes on the loop. The racing line is not fitted, so braking is not aligned to corners.</li>
+    <li><b>Camera.</b> Cockpit is the default. The lens sits low behind the scaled car and looks forward along the centerline, so the car stays in the lower middle of the frame with the yellow line running ahead. Overview restores the earlier whole-circuit view (fit to the track, pitch 55°, bearing −20°). Map gestures are off in cockpit so the follow cam is not fighting a drag.</li>
+  </ol>
+
+  <h2>Later</h2>
+  <p>None of this is in the demo. The mapping above is what those pieces should consume.</p>
+  <ul>
+    <li><strong>Custom V6 script.</strong> A Formula 1 power-unit description in Engine Sim's <code>.mr</code> format: 1.6 L V6, the rev range in this trace, and ratios that can sit beside dyno lock. Stock example engines are the wrong machine.</li>
+    <li><strong>Turbo and wastegate sound.</strong> Stock Engine Sim builds the note from exhaust pulses. It has no separate blow-off or wastegate sample. Community turbo pieces change airflow and power; they do not add that hiss. A fork would add the valve as its own event, keyed off throttle lifts while boost is up.</li>
+    <li><strong>WASM, live sim.</strong> People have compiled Engine Sim v0.1.11a with Emscripten and hosted the desktop app in a page (the trail starts at <a href="https://github.com/ange-yaghi/engine-sim/issues/428">engine-sim#428</a>). Those builds are the whole program: starter, ignition, keyboard, on-screen dyno. They do not offer a supported way to pin RPM and throttle to this scrubber, and they are large next to a map page. When a build can be driven in dyno lock from the same clock, it can replace the synth without changing the JSON.</li>
+    <li><strong>Forced-induction fork.</strong> Same codebase, with the blow-off path and a hybrid deployment model if the trace grows an MGU field. OpenF1 <code>car_data</code> does not carry boost or energy-store state today.</li>
+    <li><strong>Multi-car.</strong> One JSON per driver, same schema. The panel already takes a single clock. More cars on the map wait on the location fit.</li>
+    <li><strong>Session 11396.</strong> A later Austin race. Cache it the same way once OpenF1 has the timing. This page does not fetch it.</li>
+    <li><strong>Location fit.</strong> OpenF1 <code>location</code> is the timing x/y grid. Mapping that grid onto the centerline (or replacing the centerline) would put braking on the right corners and let more than one car share the map.</li>
+    <li><strong>Free engine mode.</strong> Optional, beside dyno lock, once ratios and drag are close enough that integrated RPM is worth comparing to the trace. The trace stays the reference.</li>
+  </ul>
+
+  <h2>Sources</h2>
+  <p class="src"><a href="https://openf1.org/">OpenF1</a> · <a href="https://api.openf1.org/v1/car_data?session_key=9888&amp;driver_number=1">car_data for session 9888, driver 1</a> · <a href="https://github.com/ange-yaghi/engine-sim">ange-yaghi/engine-sim</a> · <a href="./">Spatial F1 demo</a> · <a href="ATTRIBUTION.md">Attributions</a></p>
+</div>
+</body>
+</html>
