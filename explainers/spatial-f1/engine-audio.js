@@ -275,15 +275,18 @@ export function createEngine(ctx) {
     if (!next || !Array.isArray(next.osc) || !next.osc.length) {
       throw new Error("engine preset needs an osc list");
     }
+    // Build first so a throw leaves the current voice running. The page
+    // starts this only after the AudioContext is running; oscillators
+    // begun while suspended often stay silent after resume.
+    const built = buildVoice(ctx, next, shift);
     const now = ctx.currentTime;
     if (voice) {
       const old = voice;
-      voice = null;
       old.fadeOut(now);
       old.stop(now + 0.04);
     }
     preset = next;
-    voice = buildVoice(ctx, next, shift);
+    voice = built;
     prevThr = null;
   }
 
