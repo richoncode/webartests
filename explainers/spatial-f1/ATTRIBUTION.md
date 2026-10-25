@@ -43,7 +43,7 @@ SOFTWARE.
 - OpenF1 is an independent project and is not associated with Formula 1, the FIA, or Formula One Management. The cache is stored so the demo does not call the API at runtime. Field mapping: `engine-data-mapping.html`.
 
 ## Sound
-Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Engine Sim (https://github.com/ange-yaghi/engine-sim, MIT, Ange Yaghi) is referenced as later work and is not vendored.
+Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Voicing presets in `engines/*.json` (high-rev V6, throaty V8, idle-heavy, muted) are original configuration, not sampled recordings. Engine Sim (https://github.com/ange-yaghi/engine-sim, MIT, Ange Yaghi) is referenced as later work and is not vendored.
 
 ## Libraries
 Mapbox GL JS (Mapbox terms, map data © Mapbox © OpenStreetMap), three.js (MIT).

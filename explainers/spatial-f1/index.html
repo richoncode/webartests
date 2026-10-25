@@ -59,7 +59,7 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 }
 </style></head><body>
 <header><h1>Spatial F1 demo</h1>
-<p class="dim">A low-poly F1 car on the Circuit of the Americas centerline, camera low and close behind it. RPM, throttle, and gear follow a cached OpenF1 trace and drive the sound. Unofficial; not affiliated with Formula 1.</p></header>
+<p class="dim">A low-poly F1 car on the Circuit of the Americas centerline. The chase camera sits behind and above it, looking along the nose. Streets and 3D buildings are on the map for context. RPM, throttle, and gear follow a cached OpenF1 trace and drive the sound. Unofficial; not affiliated with Formula 1.</p></header>
 <main>
 <div class="mapwrap">
 <div id="map"></div>
@@ -69,8 +69,9 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <div class="ctl">
 <button id="play" type="button">Pause</button>
 <label>Speed <select id="spd"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="3">3×</option><option value="10">10×</option></select></label>
+<label>Engine <select id="preset" aria-label="Engine preset"></select></label>
 <div class="seg" role="group" aria-label="Camera">
-<button id="camCockpit" type="button" class="on" aria-pressed="true">Cockpit</button>
+<button id="camChase" type="button" class="on" aria-pressed="true">Chase</button>
 <button id="camOverview" type="button" aria-pressed="false">Overview</button>
 </div>
 <button id="sound" class="primary" type="button" aria-pressed="false">Sound</button>
@@ -94,12 +95,12 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Telemetry time">
 <span class="clock" id="clock">0:00 / —</span>
 </div>
-<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press Sound to hear RPM and throttle. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
+<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press Sound, then pick an engine voicing. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
 </div>
 <h2>What this is</h2>
-<p>The yellow line is the COTA centerline (5.5 km). The car rides that loop. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 1.5% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner.</p>
-<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
-<p>Cockpit is the default camera: low, close behind the car, looking along the track. Overview restores the previous pitched map of the whole circuit. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the car) tune that chase camera. <code>?head=</code> still rotates the model.</p>
+<p>The yellow line is the COTA centerline (5.5 km), drawn with a black casing so it stays readable on the streets. The car rides that loop. The basemap is Mapbox Streets, and building footprints are extruded so the circuit sits among roads and blocks. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 1.5% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner.</p>
+<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>: high-rev V6, throaty V8, idle-heavy, or muted. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
+<p>Chase is the default camera: behind the car and a little above it, looking toward the nose so the yellow line runs ahead. Overview restores the pitched map of the whole circuit. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the car) tune that chase camera. <code>?head=</code> adds radians to the heading. The default is 0, which points the nose along the direction of travel.</p>
 <h2>Credits</h2>
 <p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slice for driver 1, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
 </main>
@@ -120,14 +121,24 @@ function qnum(name, fallback, lo, hi){
   if(!Number.isFinite(v)||v<lo||v>hi) return fallback;
   return v;
 }
-// The model is drawn about 6× life size (~34 m long, tail ~16 m behind the origin).
-// Zoom/pitch put the lens a few metres up; back is how far behind the origin that lens sits.
+function qrad(name, fallback){
+  const raw=params.get(name);
+  if(raw==null||raw==='') return fallback;
+  const v=Number(raw);
+  return Number.isFinite(v)?v:fallback;
+}
+// The model is drawn about 6× life size (~34 m long). The anchor is the glTF origin:
+// nose ~16 m ahead, tail ~18 m behind. back is how far behind that anchor the lens sits.
+// pitch 0 looks straight down; 62 is a chase from above and behind, not a bumper cam.
 const CAM={
-  back:qnum('back',34,-10,120),
-  zoom:qnum('zoom',21.2,15,22),
-  pitch:qnum('pitch',80,50,85),
+  back:qnum('back',30,-10,200),
+  zoom:qnum('zoom',20.05,14,22),
+  pitch:qnum('pitch',62,35,85),
 };
-const HEAD=Number(params.get('head')??Math.PI);
+// Nose is glTF +X (front wing, narrower tires). Rear wing and wider tires are −X.
+// The Y-up tilt leaves +X in the map's east/north plane, so travel angle alone
+// points the nose forward. ?head= adds radians. The previous default of π faced the tail forward.
+const HEAD=qrad('head', 0);
 
 const telem=await fetch('openf1-9888-driver1.json').then(r=>{
   if(!r.ok) throw new Error('telemetry '+r.status);
@@ -145,11 +156,58 @@ let shownGear=null;
 let gearTimer=0;
 let engine=null;
 let audioOn=false;
-let camMode=params.get('view')==='overview'?'overview':'cockpit';
+let camMode=params.get('view')==='overview'?'overview':'chase';
 let map=null;
 let mapReady=false;
 let car=null;
 let last=performance.now();
+
+const PRESET_URLS=[
+  'engines/v6-highrev.json',
+  'engines/v8-throaty.json',
+  'engines/idle-heavy.json',
+  'engines/muted.json',
+];
+let presets=[];
+try{
+  presets=await Promise.all(PRESET_URLS.map(async url=>{
+    const r=await fetch(url);
+    if(!r.ok) throw new Error(url+' '+r.status);
+    const data=await r.json();
+    if(!data||typeof data.id!=='string'||!Array.isArray(data.osc)||!data.osc.length) throw new Error(url+' is not an engine preset');
+    return data;
+  }));
+}catch(err){
+  console.error(err);
+  presets=[];
+}
+let activePreset=presets[0]||null;
+const presetSel=$('preset');
+if(presets.length){
+  for(const p of presets){
+    const opt=document.createElement('option');
+    opt.value=p.id;
+    opt.textContent=p.label||p.id;
+    presetSel.appendChild(opt);
+  }
+  presetSel.value=activePreset.id;
+  presetSel.title=activePreset.blurb||'';
+}else{
+  presetSel.disabled=true;
+  const opt=document.createElement('option');
+  opt.textContent='Presets failed';
+  presetSel.appendChild(opt);
+}
+presetSel.onchange=()=>{
+  const next=presets.find(p=>p.id===presetSel.value);
+  if(!next) return;
+  activePreset=next;
+  presetSel.title=next.blurb||'';
+  if(engine){
+    try{ engine.loadPreset(next); }
+    catch(err){ console.error(err); $('stat').textContent='Engine preset failed'; }
+  }
+};
 
 function fmt(t){
   const s=Math.max(0,t);
@@ -187,11 +245,11 @@ function paint(){
 }
 
 function setCamButtons(){
-  const cock=camMode==='cockpit';
-  $('camCockpit').classList.toggle('on', cock);
-  $('camOverview').classList.toggle('on', !cock);
-  $('camCockpit').setAttribute('aria-pressed', cock?'true':'false');
-  $('camOverview').setAttribute('aria-pressed', cock?'false':'true');
+  const chase=camMode==='chase';
+  $('camChase').classList.toggle('on', chase);
+  $('camOverview').classList.toggle('on', !chase);
+  $('camChase').setAttribute('aria-pressed', chase?'true':'false');
+  $('camOverview').setAttribute('aria-pressed', chase?'false':'true');
 }
 function setMapHandlers(){
   if(!map) return;
@@ -206,7 +264,7 @@ function frameOverview(){
   pts.forEach(p=>b.extend(p));
   map.fitBounds(b,{padding:30,pitch:55,bearing:-20,duration:reduceMotion?0:700});
 }
-function updateCockpit(){
+function updateChase(){
   if(!mapReady) return;
   try{
     const lat=at(pos)[1];
@@ -232,12 +290,12 @@ function applyCam(mode){
   setCamButtons();
   setMapHandlers();
   if(mode==='overview') frameOverview();
-  else updateCockpit();
+  else updateChase();
 }
 
 $('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
 $('spd').onchange=e=>{rate=+e.target.value};
-$('camCockpit').onclick=()=>applyCam('cockpit');
+$('camChase').onclick=()=>applyCam('chase');
 $('camOverview').onclick=()=>applyCam('overview');
 $('sound').onclick=async()=>{
   const Ctx=window.AudioContext||window.webkitAudioContext;
@@ -246,6 +304,7 @@ $('sound').onclick=async()=>{
     if(!engine){
       const ctx=new Ctx();
       engine=createEngine(ctx);
+      if(activePreset) engine.loadPreset(activePreset);
     }
     if(!audioOn){
       if(engine.context.state==='suspended') await engine.context.resume();
@@ -291,7 +350,7 @@ function at(d){d=((d%trackLen)+trackLen)%trackLen;let i=1;while(cum[i]<d && i<cu
 const center=[-97.6339,30.1347];
 function initMap(){
   mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
-  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:CAM.zoom,pitch:CAM.pitch,bearing:-20,maxPitch:85,antialias:true});
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/streets-v12',center,zoom:CAM.zoom,pitch:CAM.pitch,bearing:-20,maxPitch:85,antialias:true});
   map.addControl(new mapboxgl.NavigationControl());
   const origin=mapboxgl.MercatorCoordinate.fromLngLat(center,0);
   const mScale=origin.meterInMercatorCoordinateUnits();
@@ -330,6 +389,7 @@ function initMap(){
         const mp=mapboxgl.MercatorCoordinate.fromLngLat(p,0);
         car.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,0);
         const dx=(q[0]-p[0])*Math.cos(p[1]*rad), dy=q[1]-p[1];
+        // atan2(north, east) spins glTF +X (the nose) onto the direction of travel.
         car.rotation.z=Math.atan2(dy,dx)+HEAD;
       }
       const M=new THREE.Matrix4().fromArray(matrix);
@@ -341,14 +401,37 @@ function initMap(){
     }
   };
   map.on('load',()=>{
+    if(map.getLayer('building')) map.setLayoutProperty('building','visibility','none');
+    map.addLayer({
+      id:'buildings-3d',
+      source:'composite',
+      'source-layer':'building',
+      type:'fill-extrusion',
+      minzoom:14,
+      filter:['all',['!=',['get','type'],'building:part'],['==',['get','underground'],'false']],
+      paint:{
+        'fill-extrusion-color':'#b7bec8',
+        'fill-extrusion-opacity':0.94,
+        'fill-extrusion-height':['interpolate',['linear'],['zoom'],14.2,0,15.05,['max',['to-number',['get','height'],0],8]],
+        'fill-extrusion-base':['interpolate',['linear'],['zoom'],14.2,0,15.05,['to-number',['get','min_height'],0]]
+      }
+    });
     map.addSource('cota',{type:'geojson',data:gj});
-    map.addLayer({id:'cota-casing',type:'line',source:'cota',paint:{'line-color':'#000','line-width':7,'line-opacity':.5}});
-    map.addLayer({id:'cota-line',type:'line',source:'cota',paint:{'line-color':'#ffd400','line-width':3}});
+    const lineLayout={'line-join':'round','line-cap':'round'};
+    map.addLayer({id:'cota-casing',type:'line',source:'cota',layout:lineLayout,paint:{
+      'line-color':'#141414',
+      'line-width':['interpolate',['linear'],['zoom'],12,4,15,8,18,12,20,16],
+      'line-opacity':0.88
+    }});
+    map.addLayer({id:'cota-line',type:'line',source:'cota',layout:lineLayout,paint:{
+      'line-color':'#ffd400',
+      'line-width':['interpolate',['linear'],['zoom'],12,2,15,3.5,18,5.5,20,7]
+    }});
     map.addLayer(layer);
     mapReady=true;
     setMapHandlers();
     if(camMode==='overview') frameOverview();
-    else updateCockpit();
+    else updateChase();
   });
   map.on('error',e=>{
     const msg=(e&&e.error&&e.error.message)||'';
@@ -375,7 +458,7 @@ function tick(now){
   if(playing && !seeking) tPlay+=dt*rate;
   if(tPlay<0) tPlay=0;
   paint();
-  if(camMode==='cockpit') updateCockpit();
+  if(camMode==='chase') updateChase();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
