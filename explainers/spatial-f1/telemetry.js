@@ -77,14 +77,6 @@ export function seekWithinLoop(tPlay, dur, u) {
   return loops * dur + clamped;
 }
 
-/** Shortest signed angle difference, in radians. */
-export function wrapPi(delta) {
-  let d = delta;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
-}
-
 /**
  * Heading from a short chain of local east/north samples.
  * Returns atan2(north, east), the same convention as the car's yaw.
@@ -103,23 +95,6 @@ export function headingFromPoints(samples) {
   }
   if (sx === 0 && sy === 0) return 0;
   return Math.atan2(sy, sx);
-}
-
-/**
- * Ease `state.angle` toward `target` over travelled metres.
- * A real corner (more than ~11°) uses a shorter reach so the nose
- * still swings with the track. A jump larger than `snapAt` metres snaps.
- */
-export function smoothHeading(state, target, distance, snapAt = 80) {
-  if (state.angle == null || !Number.isFinite(state.angle) || distance > snapAt) {
-    state.angle = target;
-    return state.angle;
-  }
-  const diff = wrapPi(target - state.angle);
-  const reach = Math.abs(diff) > 0.2 ? 4.5 : 9;
-  const a = 1 - Math.exp(-Math.max(distance, 0) / reach);
-  state.angle += diff * a;
-  return state.angle;
 }
 
 /**
