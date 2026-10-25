@@ -282,9 +282,10 @@ function buildVoice(ctx, preset, destination) {
  * A full set of misses is held near that five-ray open room. A closer wall
  * adds on top of its own share, so one hit in a twenty-one ray fan still
  * moves the wet sum. The sum is capped at 1.15.
- * Forward and back bridge rays carry hit.weight. That weight applies only
- * when the hit is a bridge, so the pass-under spikes wet and the loudest
- * tap — the one the delay bar follows — is the short bridge reflection.
+ * Ahead, overhead, and behind rays carry hit.weight. That weight applies
+ * only when the hit is a bridge, so the pass-under spikes wet and the
+ * loudest tap — the one the delay bar follows — is the short bridge
+ * reflection. A grandstand on those rays is not boosted.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
