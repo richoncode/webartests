@@ -27,6 +27,7 @@ button.primary{background:#1e2d40;border-color:var(--blue);color:var(--blue)}
 button.on{background:#1e2d40;border-color:var(--blue);color:var(--blue)}
 button.icon{display:inline-flex;align-items:center;justify-content:center;width:42px;height:38px;padding:0}
 button.icon svg{width:22px;height:22px;display:block}
+button:disabled{opacity:.3;cursor:default}
 .seg{display:inline-flex;border:1px solid #2a3240;border-radius:8px;overflow:hidden}
 .seg button{border:0;border-radius:0}
 .eng{display:flex;gap:14px;align-items:center}
@@ -76,6 +77,8 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <button id="camChase" type="button" class="on" aria-pressed="true">Chase</button>
 <button id="camOverview" type="button" aria-pressed="false">Overview</button>
 </div>
+<button id="others" type="button" aria-pressed="false" title="Show other cars from this OpenF1 session">Other cars</button>
+<span class="dim" id="othersLegend" hidden></span>
 <button id="sound" class="primary icon" type="button" aria-pressed="false" aria-label="Unmute engine" title="Unmute engine">
 <svg id="spkOn" viewBox="0 0 24 24" aria-hidden="true" hidden>
 <path fill="currentColor" d="M3.8 9.2h3.4L12 5.1v13.8l-4.8-4.1H3.8z"/>
@@ -87,6 +90,7 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16 9.4l5 5.2M21 9.4l-5 5.2"/>
 </svg>
 </button>
+<span class="dim" id="room" title="Side and top probes, I3DL2-style reverb">Open air</span>
 <span class="dim" id="stat">Loading telemetry…</span>
 </div>
 <div class="eng">
@@ -107,21 +111,22 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Telemetry time">
 <span class="clock" id="clock">0:00 / —</span>
 </div>
-<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press the speaker to hear RPM and throttle, then pick an engine voicing. Drag the chase view to slide it, or right-drag to turn and pitch. It eases back when you let go. Choosing Chase from Overview flies the camera in. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
+<p class="dim note">Dyno lock on driver 1, Austin race session 9888, laps 52–53. Press the speaker to hear RPM and throttle, then pick an engine voicing. Other cars, off until you turn it on, places NOR, LEC, and PIA from the same window. Drag the chase view to slide it, or right-drag to turn and pitch. It eases back when you let go. Choosing Chase from Overview flies the camera in. <a href="engine-data-mapping.html">Engine data mapping</a>.</p>
 </div>
 <h2>What this is</h2>
-<p>The yellow line is the COTA centerline (about 5.5 km). The line is resampled every couple of metres and blurred with a short gaussian before the asphalt ribbon and the yellow stroke are built, and the map is told not to simplify those shapes, so a coarse vertex does not leave a pointed corner. A black casing keeps it readable. The car rides that loop on a 15 m asphalt ribbon with a concrete shoulder generated from the same smoothed line. Mapbox Standard still supplies the surrounding streets, 3D buildings, and 3D trees, lit at dusk. The ground uses Mapbox terrain so the hills stay visible when the chase view pitches down; exaggeration eases toward real scale at the chase zoom. Road names, route shields, and place labels are off, so the course does not read as a navigation map. Local streets and minor roads are redrawn at real-world width in asphalt gray, with a light sidewalk on the curb. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 0.9% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner. The cache itself has no coordinates and no yaw: <code>car_data</code> is speed, RPM, gear, throttle, brake, and DRS. OpenF1 <code>location</code>, which this page does not load, is only x, y, and z in a track grid, also with no heading. The nose is the centerline’s direction of travel.</p>
-<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>. High-rev V6 is the default: the saw and square firing stack from the earlier Spatial F1 engine, colored with the live FireSim Audio resonator centers. Throaty V8, idle-heavy, and muted stay optional. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
+<p>The yellow line is the COTA centerline (about 5.5 km). The line is resampled every couple of metres and blurred with a short gaussian before the asphalt ribbon and the yellow stroke are built, and the map is told not to simplify those shapes, so a coarse vertex does not leave a pointed corner. A black casing keeps it readable. The car rides that loop on a 15 m asphalt ribbon with a concrete shoulder generated from the same smoothed line. Mapbox Standard still supplies the surrounding streets, 3D buildings, and 3D trees, lit at dusk. The ground uses Mapbox terrain so the hills stay visible when the chase view pitches down; exaggeration eases toward real scale at the chase zoom. Road names, route shields, and place labels are off, so the course does not read as a navigation map. Local streets and minor roads are redrawn at real-world width in asphalt gray, with a light sidewalk on the curb. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 0.9% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner. The cache itself has no coordinates and no yaw: <code>car_data</code> is speed, RPM, gear, throttle, brake, and DRS. OpenF1 <code>location</code>, which this page does not load, is only x, y, and z in a track grid, also with no heading. The nose is the centerline’s direction of travel. Other cars uses the same line for driver 4 (NOR), driver 16 (LEC), and driver 81 (PIA). Each marker sits where that driver’s own OpenF1 speed, integrated from the start of their lap, meets the start/finish. The meshes are simple. The detailed car stays driver 1.</p>
+<p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>. High-rev V6 is the default: the saw and square firing stack from the earlier Spatial F1 engine, colored with the live FireSim Audio resonator centers. Throaty V8, idle-heavy, and muted stay optional. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs. A few rays out the sides and the top of the car read buildings and landcover. Glass, concrete, and grass change a short reverb on the engine: delay and wetness from the distance, brightness from the material. Open ground stays dry.</p>
 <p>Chase is the default camera. Its rest pose sits about 31.5 m behind the car anchor, and Mapbox pitch settles at 85°, the most level look the map allows, so the aim is the horizon. A critically damped spring follows that pose. The spring tracks the lens itself, held on the car's heading behind the rear, so a corner eases the camera instead of swinging it out beside the car. On a straight the distance stays put, because the spring is fed the target's velocity, and a corner eases instead of snapping. Choosing Chase from Overview flies the same spring from the current view into that pose, and the car eases from the overview size down to 5.5 m. Overview fits the whole circuit and draws the car at 16 m so it stays findable. Heading is the direction through the few metres of centerline either side of the car, in local east and north, and that angle yaws the car. When the ground between the lens and the car rises through the line of sight, pitch eases down from 85° just enough to lift the lens clear of the crest, beginning a short way before the hill, then eases back. The lens stays behind the car. Drag to slide the chase view. Right-drag, or ctrl-drag, turns and pitches it. The camera holds still while the pointer is down, and on release the offset eases back. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the anchor) tune the chase rest pose. <code>?head=</code> adds radians to the model. The default is 0, which points the nose along the direction of travel.</p>
 <h2>Credits</h2>
-<p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slice for driver 1, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
+<p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slices for drivers 1, 4, 16, and 81, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
 </main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {pose, lapAt, seekWithinLoop, headingFromPoints, smoothClosedLngLat, critDamp} from './telemetry.js';
+import {pose, lapAt, seekWithinLoop, headingFromPoints, smoothClosedLngLat, critDamp, alongTrack} from './telemetry.js';
 import {createEngine} from './engine-audio.js';
+import {attachSurroundSource, sampleSurroundings} from './surroundings.js';
 
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
@@ -161,6 +166,7 @@ const CHASE_OMEGA=5;
 const PITCH_DROP=45;
 const PITCH_AHEAD=22;
 let carMps=0;
+let carMeters=CHASE_M;
 let chaseSpring=null;
 let prevIdealEN=null;
 let prevIdealBear=null;
@@ -179,6 +185,7 @@ const telem=await fetch('openf1-9888-driver1.json').then(r=>{
 const samples=telem.samples;
 const laps=telem.laps;
 let trackLen=5513;
+let trackReady=false;
 let pos=0;
 let tPlay=0;
 let playing=true;
@@ -214,6 +221,49 @@ try{
   presets=[];
 }
 let activePreset=presets[0]||null;
+const OTHER_SPECS=[
+  {url:'openf1-9888-driver4.json', color:0x5b9bd5, name:'Blue'},
+  {url:'openf1-9888-driver16.json', color:0xf0a040, name:'Orange'},
+  {url:'openf1-9888-driver81.json', color:0x4caf50, name:'Green'},
+];
+let showOthers=false;
+let otherEntries=[];
+let lastEnv=null;
+let nextProbe=0;
+otherEntries=(await Promise.all(OTHER_SPECS.map(async spec=>{
+  try{
+    const r=await fetch(spec.url);
+    if(!r.ok) throw new Error(spec.url+' '+r.status);
+    const data=await r.json();
+    if(!data||!Array.isArray(data.samples)||!data.samples.length||!Array.isArray(data.laps)) throw new Error(spec.url+' incomplete');
+    return {color:spec.color, name:spec.name, acronym:data.name_acronym||spec.url, samples:data.samples, laps:data.laps, dist:0, head:0, root:null};
+  }catch(err){
+    console.error(err);
+    return null;
+  }
+}))).filter(Boolean);
+if(!otherEntries.length){
+  $('others').disabled=true;
+  $('others').title='No other-car telemetry in this session cache';
+}else{
+  $('othersLegend').textContent=otherEntries.map(o=>o.name+' '+o.acronym).join(' · ');
+}
+function paintOthersBtn(){
+  const on=showOthers && otherEntries.length>0;
+  $('others').classList.toggle('on', on);
+  $('others').setAttribute('aria-pressed', on?'true':'false');
+  $('othersLegend').hidden=!on;
+}
+$('others').onclick=()=>{
+  if($('others').disabled) return;
+  showOthers=!showOthers;
+  if(showOthers && trackReady){
+    try{ placeOthers(pose(tPlay, samples, trackLen).u); }
+    catch(err){ console.error(err); }
+  }
+  paintOthersBtn();
+  if(map) map.triggerRepaint();
+};
 const presetSel=$('preset');
 if(presets.length){
   for(const p of presets){
@@ -233,11 +283,16 @@ if(presets.length){
 presetSel.onchange=()=>{
   const next=presets.find(p=>p.id===presetSel.value);
   if(!next) return;
+  const prev=activePreset;
   activePreset=next;
   presetSel.title=next.blurb||'';
-  if(engine && engine.context.state==='running'){
-    try{ engine.loadPreset(next); }
-    catch(err){ console.error(err); $('stat').textContent='Engine preset failed'; }
+  if(!(engine && engine.context.state==='running')) return;
+  try{ engine.loadPreset(next); }
+  catch(err){
+    console.error(err);
+    activePreset=prev;
+    if(prev) presetSel.value=prev.id;
+    $('stat').textContent='Engine preset failed';
   }
 };
 
@@ -586,7 +641,10 @@ $('sound').onclick=async()=>{
   if(!pending){$('stat').textContent='Web Audio is unavailable in this browser.';return}
   watchAudio();
   try{
-    if(!engine) engine=createEngine(audioCtx);
+    if(!engine){
+      engine=createEngine(audioCtx);
+      if(lastEnv && lastEnv.hits) engine.setSurroundings(lastEnv.hits);
+    }
     await pending;
     if(audioCtx.state!=='running'){
       try{ await audioCtx.resume(); }catch(err){ console.error(err); }
@@ -743,6 +801,7 @@ const R=6371000,rad=Math.PI/180;
 const dist=(a,b)=>{const x=(b[0]-a[0])*rad*Math.cos((a[1]+b[1])/2*rad),y=(b[1]-a[1])*rad;return Math.hypot(x,y)*R};
 const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+dist(pts[i-1],pts[i]));
 trackLen=cum[cum.length-1];
+trackReady=true;
 function at(d){d=((d%trackLen)+trackLen)%trackLen;let i=1;while(cum[i]<d && i<cum.length-1)i++;const span=cum[i]-cum[i-1]||1;const t=(d-cum[i-1])/span;const a=pts[i-1],b=pts[i];return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
 function pathHeading(d){
   // Centred on the car, in one local frame. A look-ahead chord yaws the nose
@@ -773,9 +832,28 @@ function fitCar(){
       }
     }catch(err){ console.error(err); }
   }
+  carMeters=meters;
   const k=meters/carLong;
   carMesh.scale.setScalar(k);
   carMesh.position.y=-carBox.min.y*k;
+}
+function makeWedge(color){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color, roughness:0.5, metalness:0.12});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.9, 1.7), mat);
+  body.position.set(0.15, 0.5, 0);
+  const nose=new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.32, 1.45), mat);
+  nose.position.set(2.5, 0.28, 0);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.7, 1.9), mat);
+  wing.position.set(-2.15, 0.95, 0);
+  g.add(body, nose, wing);
+  return g;
+}
+function placeOthers(u){
+  for(const o of otherEntries){
+    o.dist=alongTrack(o.samples, o.laps, u, trackLen);
+    o.head=pathHeading(o.dist);
+  }
 }
 
 const center=[-97.6339,30.1347];
@@ -809,6 +887,16 @@ function initMap(){
       const sun=new THREE.DirectionalLight(0xffffff,2);
       sun.position.set(50,-80,120);
       this.scene.add(sun);
+      for(const o of otherEntries){
+        const inner=new THREE.Group();
+        inner.add(makeWedge(o.color));
+        inner.rotation.x=Math.PI/2;
+        const root=new THREE.Group();
+        root.add(inner);
+        root.visible=false;
+        this.scene.add(root);
+        o.root=root;
+      }
       new GLTFLoader().load('f1-car.glb',g=>{
         const o=g.scene;
         carBox=new THREE.Box3().setFromObject(o);
@@ -839,6 +927,18 @@ function initMap(){
         // heading is atan2(north, east). HEAD still adds radians on the model.
         car.rotation.z=heading+HEAD;
       }
+      const show=showOthers && otherEntries.length>0;
+      const markerScale=carMeters/CHASE_M;
+      for(const o of otherEntries){
+        if(!o.root) continue;
+        if(!show){ o.root.visible=false; continue; }
+        o.root.visible=true;
+        o.root.scale.setScalar(markerScale);
+        const p=at(o.dist||0);
+        const mp=mapboxgl.MercatorCoordinate.fromLngLat(p, groundAlt(p));
+        o.root.position.set((mp.x-origin.x)/mScale,-(mp.y-origin.y)/mScale,(mp.z-origin.z)/mScale);
+        o.root.rotation.z=(o.head||0)+HEAD;
+      }
       const M=new THREE.Matrix4().fromArray(matrix);
       const T=new THREE.Matrix4().makeTranslation(origin.x,origin.y,origin.z).scale(new THREE.Vector3(mScale,-mScale,mScale));
       this.cam.projectionMatrix=M.multiply(T);
@@ -851,6 +951,9 @@ function initMap(){
     enableTerrain();
     paveBasemap();
     hideNameLabels();
+    try{ attachSurroundSource(map); }
+    catch(err){ console.error(err); }
+    nextProbe=0;
     map.addSource('track-surface',{type:'geojson',tolerance:0,data:{type:'FeatureCollection',features:[
       {type:'Feature',properties:{k:'walk'},geometry:{type:'Polygon',coordinates:[trackRing(11)]}},
       {type:'Feature',properties:{k:'asp'},geometry:{type:'Polygon',coordinates:[trackRing(7.5)]}}
@@ -928,8 +1031,21 @@ function tick(now){
   last=now;
   if(playing && !seeking) tPlay+=dt*rate;
   if(tPlay<0) tPlay=0;
-  paint();
+  const st=paint();
   followHeading();
+  if(showOthers) placeOthers(st.u);
+  if(mapReady && now>=nextProbe){
+    nextProbe=now+250;
+    try{
+      const env=sampleSurroundings(map, at(pos), heading);
+      if(env && env.ready && env.hits){
+        lastEnv=env;
+        $('room').textContent=env.label;
+        $('room').title=env.hits.map(h=>h.id+': '+h.material+' '+Math.round(h.distance)+' m').join(' · ');
+        if(engine) engine.setSurroundings(env.hits);
+      }
+    }catch(err){ console.error(err); }
+  }
   if(camMode==='chase') updateChase(dt);
   requestAnimationFrame(tick);
 }

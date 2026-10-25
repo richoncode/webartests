@@ -69,6 +69,41 @@ export function pose(tPlay, samples, trackLen) {
   return { u, loops, frame, pos, scale, dur, sEnd };
 }
 
+/**
+ * Along-track metres for another car on the same clock.
+ * `s_lap / reference_m` is progress from the start/finish since that
+ * driver's own lap start. A lap change unwraps so the blend does not
+ * run backwards around the circuit. Speed stays in the samples.
+ */
+export function alongTrack(samples, laps, u, trackLen) {
+  const n = samples && samples.length;
+  if (!n || !(trackLen > 0)) return 0;
+  const refOf = (lap) => {
+    const row = laps && laps.find((item) => item.lap === lap);
+    const ref = row && Number(row.reference_m);
+    return ref > 100 ? ref : trackLen;
+  };
+  const metres = (sample) => ((Number(sample.s_lap) || 0) / refOf(sample.lap)) * trackLen;
+  const wrap = (m) => ((m % trackLen) + trackLen) % trackLen;
+  if (u <= samples[0].t) return wrap(metres(samples[0]));
+  if (u >= samples[n - 1].t) return wrap(metres(samples[n - 1]));
+  let lo = 0;
+  let hi = n - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].t <= u) lo = mid;
+    else hi = mid;
+  }
+  const a = samples[lo];
+  const b = samples[hi];
+  const span = b.t - a.t;
+  const k = span > 0 ? (u - a.t) / span : 0;
+  let sa = metres(a);
+  let sb = metres(b);
+  if (b.lap !== a.lap || sb + trackLen * 0.5 < sa) sb += trackLen;
+  return wrap(sa + (sb - sa) * k);
+}
+
 /** Keep a scrub inside the current loop of the window. */
 export function seekWithinLoop(tPlay, dur, u) {
   const clamped = Math.min(Math.max(u, 0), Math.max(dur - 1e-4, 0));

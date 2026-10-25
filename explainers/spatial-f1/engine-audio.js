@@ -14,8 +14,15 @@ export function firingHz(rpm, preset) {
   return Math.max(28, Math.min(1600, hz));
 }
 
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function clamp(v, a, b) {
-  return Math.max(a, Math.min(b, v));
+  const n = Number(v);
+  if (!Number.isFinite(n)) return a;
+  return n < a ? a : n > b ? b : n;
 }
 
 function distortionCurve(amount) {
@@ -30,10 +37,21 @@ function distortionCurve(amount) {
 }
 
 function makeWave(ctx, mags) {
-  const imag = new Float32Array(mags.length + 1);
-  const real = new Float32Array(mags.length + 1);
-  for (let i = 0; i < mags.length; i++) imag[i + 1] = Number(mags[i]) || 0;
-  return ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  const clean = [];
+  for (const m of mags) {
+    const n = Number(m);
+    if (Number.isFinite(n)) clean.push(Math.max(-1, Math.min(1, n)));
+  }
+  if (clean.length < 1) return null;
+  const imag = new Float32Array(clean.length + 1);
+  const real = new Float32Array(clean.length + 1);
+  for (let i = 0; i < clean.length; i++) imag[i + 1] = clean[i];
+  try {
+    return ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }
 
 const OSC_TYPES = new Set(["sine", "triangle", "sawtooth", "square"]);
@@ -68,7 +86,11 @@ function buildVoice(ctx, preset, destination) {
 
   const filtSpec = preset.filter || {};
   const filterMix = ctx.createGain();
-  filterMix.gain.value = clamp(Number(filtSpec.mix) ?? 1, 0, 1);
+  // Number(undefined) is NaN, and `NaN ?? 1` is still NaN. Assigning that
+  // to an AudioParam throws, so the graph never starts. The V6 file is the
+  // only preset that sets mix; the others omitted it and died here. An
+  // omitted mix is a full direct path.
+  filterMix.gain.value = clamp(num(filtSpec.mix, 1), 0, 1);
   filter.connect(filterMix);
   filterMix.connect(shaper);
 
@@ -99,16 +121,24 @@ function buildVoice(ctx, preset, destination) {
   const spreads = detune > 0.4 ? [-detune, 0, detune] : [0];
   const weights = spreads.length === 3 ? [0.34, 0.52, 0.34] : [1];
   const oscs = [];
-  const specs = Array.isArray(preset.osc) ? preset.osc : [];
+  const specs = (Array.isArray(preset.osc) ? preset.osc : []).filter((spec) => {
+    return spec && typeof spec === "object" && Number(spec.ratio) > 0 && Number.isFinite(Number(spec.gain));
+  });
+  if (!specs.length) throw new Error("engine preset needs an osc list");
   for (const spec of specs) {
-    const ratio = Number(spec.ratio) > 0 ? Number(spec.ratio) : 1;
-    const gain = clamp(Number(spec.gain) || 0, 0, 1.2);
+    const ratio = Number(spec.ratio);
+    const gain = clamp(Number(spec.gain), 0, 1.2);
     const wave = Array.isArray(spec.wave) && spec.wave.length ? makeWave(ctx, spec.wave.slice(0, 16)) : null;
     const type = OSC_TYPES.has(spec.type) ? spec.type : "sine";
     spreads.forEach((cents, i) => {
       const o = ctx.createOscillator();
-      if (wave) o.setPeriodicWave(wave);
-      else o.type = type;
+      try {
+        if (wave) o.setPeriodicWave(wave);
+        else o.type = type;
+      } catch (err) {
+        console.error(err);
+        o.type = "sine";
+      }
       o.detune.value = cents;
       const g = ctx.createGain();
       g.gain.value = gain * weights[i];
@@ -168,7 +198,7 @@ function buildVoice(ctx, preset, destination) {
     const master = clamp(Number(preset.master) || 0, 0, 1.5);
     const base = clamp(Number(gainSpec.base) || 0, 0, 0.6);
     const thrG = clamp(Number(gainSpec.throttle) || 0, 0, 0.8);
-    const floor = clamp(Number(gainSpec.rpmFloor) ?? 0.5, 0, 1);
+    const floor = clamp(num(gainSpec.rpmFloor, 0.5), 0, 1);
     const level = muted ? 0.0001 : master * (base + thrG * thr) * (floor + (1 - floor) * rpmN);
     const tc = 0.04;
 
@@ -236,6 +266,103 @@ function buildVoice(ctx, preset, destination) {
   return { update, fadeOut, stop };
 }
 
+/**
+ * I3DL2-style send on the car engine. One tap per probe, in the order
+ * forward, back, left, right, up.
+ *
+ * distance (m) → delay = distance / 343, amplitude = reflect / (1 + distance/12)
+ * material → highpass (LF cutoff) and lowpass (HF cutoff)
+ *   glass    reflects high: reflect 0.82, HF 9000 Hz, LF 180 Hz, longer tail
+ *   concrete reflects mid:  reflect 0.55, HF 3200 Hz, LF 90 Hz
+ *   grass    absorbs:       reflect 0.08, HF 900 Hz,  LF 220 Hz, almost no tail
+ *   open     dry:           reflect 0.012, so a field leaves the dry engine
+ * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.58. Grass stays near 0.1.
+ * The dry engine is not filtered. This is a send, mixed in after the hipass.
+ */
+const ROOM_MAT = {
+  glass: { reflect: 0.82, hf: 9000, lf: 180, rt: 1.05 },
+  concrete: { reflect: 0.55, hf: 3200, lf: 90, rt: 0.75 },
+  grass: { reflect: 0.08, hf: 900, lf: 220, rt: 0.28 },
+  open: { reflect: 0.012, hf: 1400, lf: 150, rt: 0.2 },
+};
+const SOUND_MPS = 343;
+
+function createRoom(ctx, source) {
+  const taps = [];
+  for (let i = 0; i < 5; i++) {
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 120;
+    hp.Q.value = 0.7;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2000;
+    lp.Q.value = 0.7;
+    const delay = ctx.createDelay(0.5);
+    delay.delayTime.value = 0.02;
+    const fb = ctx.createGain();
+    fb.gain.value = 0;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    source.connect(hp);
+    hp.connect(lp);
+    lp.connect(delay);
+    delay.connect(gain);
+    delay.connect(fb);
+    fb.connect(delay);
+    taps.push({ hp, lp, delay, fb, gain });
+  }
+  const wet = ctx.createGain();
+  wet.gain.value = 1;
+  for (const tap of taps) tap.gain.connect(wet);
+
+  function setHits(hits) {
+    const now = ctx.currentTime;
+    const list = Array.isArray(hits) ? hits : [];
+    const amps = [];
+    const tc = 0.12;
+    for (let i = 0; i < taps.length; i++) {
+      const hit = list[i] || {};
+      const kind = ROOM_MAT[hit.material] ? hit.material : "open";
+      const mat = ROOM_MAT[kind];
+      const raw = num(hit.distance, 80);
+      const dist = Math.max(2, Math.min(160, Math.round(raw / 2) * 2 || 2));
+      const delay = Math.min(0.45, Math.max(0.006, dist / SOUND_MPS));
+      let amp = kind === "open" && !list.length ? 0 : mat.reflect / (1 + dist / 12);
+      let fb = 0.03;
+      if (kind === "glass" || kind === "concrete") {
+        const rt = mat.rt * (0.7 + Math.min(dist, 70) / 140);
+        fb = Math.min(0.58, Math.pow(10, (-3 * delay) / Math.max(0.2, rt)));
+      } else if (kind === "grass") {
+        fb = 0.1;
+        amp *= 0.85;
+      } else {
+        fb = 0.02;
+      }
+      amps.push(amp);
+      const tap = taps[i];
+      tap.delay.delayTime.setTargetAtTime(delay, now, tc);
+      tap.hp.frequency.setTargetAtTime(mat.lf, now, tc);
+      tap.lp.frequency.setTargetAtTime(mat.hf, now, tc);
+      tap.fb.gain.setTargetAtTime(fb, now, tc);
+      tap._amp = amp;
+    }
+    const sum = amps.reduce((s, a) => s + a, 0);
+    const trim = sum > 0.85 ? 0.85 / sum : 1;
+    for (let i = 0; i < taps.length; i++) {
+      taps[i].gain.gain.setTargetAtTime(amps[i] * trim, now, tc);
+    }
+  }
+
+  setHits([]);
+  return {
+    connect(dest) {
+      wet.connect(dest);
+    },
+    setHits,
+  };
+}
+
 export function createEngine(ctx) {
   const master = ctx.createGain();
   master.gain.value = 0.0001;
@@ -261,6 +388,8 @@ export function createEngine(ctx) {
   shift.connect(master);
   master.connect(hip);
   hip.connect(comp);
+  const room = createRoom(ctx, hip);
+  room.connect(comp);
   comp.connect(analyser);
   analyser.connect(ctx.destination);
 
@@ -339,6 +468,9 @@ export function createEngine(ctx) {
     level,
     setMuted,
     loadPreset,
+    setSurroundings(hits) {
+      room.setHits(hits);
+    },
     get muted() {
       return muted;
     },
