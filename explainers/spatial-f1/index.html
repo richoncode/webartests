@@ -112,7 +112,7 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <h2>What this is</h2>
 <p>The yellow line is the COTA centerline (about 5.5 km). The line is resampled every couple of metres and blurred with a short gaussian before the asphalt ribbon and the yellow stroke are built, and the map is told not to simplify those shapes, so a coarse vertex does not leave a pointed corner. A black casing keeps it readable. The car rides that loop on a 15 m asphalt ribbon with a concrete shoulder generated from the same smoothed line. Mapbox Standard still supplies the surrounding streets, 3D buildings, and 3D trees, lit at dusk. The ground uses Mapbox terrain so the hills stay visible when the chase view pitches down; exaggeration eases toward real scale at the chase zoom. Road names, route shields, and place labels are off, so the course does not read as a navigation map. Local streets and minor roads are redrawn at real-world width in asphalt gray, with a light sidewalk on the curb. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 0.9% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner. The cache itself has no coordinates and no yaw: <code>car_data</code> is speed, RPM, gear, throttle, brake, and DRS. OpenF1 <code>location</code>, which this page does not load, is only x, y, and z in a track grid, also with no heading. The nose is the centerline’s direction of travel.</p>
 <p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The Engine menu loads a voicing from <code>engines/</code>. High-rev V6 is the default: the saw and square firing stack from the earlier Spatial F1 engine, colored with the live FireSim Audio resonator centers. Throaty V8, idle-heavy, and muted stay optional. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
-<p>Chase is the default camera. Its rest pose sits about 31.5 m behind the car anchor, and Mapbox pitch settles at 85°, the most level look the map allows, so the aim is the horizon. A critically damped spring follows that pose. The spring tracks the lens itself, held on the car's heading behind the rear, so a corner eases the camera instead of swinging it out beside the car. On a straight the distance stays put, because the spring is fed the target's velocity, and a corner eases instead of snapping. Choosing Chase from Overview flies the same spring from the current view into that pose, and the car eases from the overview size down to 5.5 m. Overview fits the whole circuit and draws the car at 16 m so it stays findable. Heading is the direction through the few metres of centerline either side of the car, in local east and north, and that angle yaws the car. When the ground between the lens and the car rises through the line of sight, pitch drops below 85° just enough to lift the lens clear of the crest, then eases back. The lens stays behind the car. Drag to slide the chase view. Right-drag, or ctrl-drag, turns and pitches it. The camera holds still while the pointer is down, and on release the offset eases back. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the anchor) tune the chase rest pose. <code>?head=</code> adds radians to the model. The default is 0, which points the nose along the direction of travel.</p>
+<p>Chase is the default camera. Its rest pose sits about 31.5 m behind the car anchor, and Mapbox pitch settles at 85°, the most level look the map allows, so the aim is the horizon. A critically damped spring follows that pose. The spring tracks the lens itself, held on the car's heading behind the rear, so a corner eases the camera instead of swinging it out beside the car. On a straight the distance stays put, because the spring is fed the target's velocity, and a corner eases instead of snapping. Choosing Chase from Overview flies the same spring from the current view into that pose, and the car eases from the overview size down to 5.5 m. Overview fits the whole circuit and draws the car at 16 m so it stays findable. Heading is the direction through the few metres of centerline either side of the car, in local east and north, and that angle yaws the car. When the ground between the lens and the car rises through the line of sight, pitch eases down from 85° just enough to lift the lens clear of the crest, beginning a short way before the hill, then eases back. The lens stays behind the car. Drag to slide the chase view. Right-drag, or ctrl-drag, turns and pitches it. The camera holds still while the pointer is down, and on release the offset eases back. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the anchor) tune the chase rest pose. <code>?head=</code> adds radians to the model. The default is 0, which points the nose along the direction of travel.</p>
 <h2>Credits</h2>
 <p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slice for driver 1, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
 </main>
@@ -155,12 +155,16 @@ const look={dlng:0,dlat:0,dbear:0,dpitch:0,dzoom:0};
 // Critically damped chase. omega is rad/s. Velocity feed-forward holds the
 // 31.5 m rest distance on a straight; the spring eases corners and the
 // flight in from overview. Pitch 85 and back 31.5 stay the rest pose.
-// A crest drops pitch immediately so the lens clears the hill; the rise eases.
+// A crest slews pitch down, starting a short distance before the hill, so the
+// lens clears it without a one-frame snap. The rise back to rest still eases.
 const CHASE_OMEGA=5;
+const PITCH_DROP=45;
+const PITCH_AHEAD=22;
 let carMps=0;
 let chaseSpring=null;
 let prevIdealEN=null;
 let prevIdealBear=null;
+let carAltHold=null;
 let audioCtx=null;
 let watchedCtx=null;
 // Nose is glTF +X (front wing, narrower tires). Rear wing and wider tires are −X.
@@ -365,7 +369,7 @@ function clearancePitch(carLL, east, north, anchor){
   else floor=Math.max(35, Math.asin(Math.min(1, need))/rad);
   if(floor>=want-0.2 || !pitchClears(floor, anchor, east, north, carLL)) return floor;
   let lo=floor, hi=want;
-  for(let i=0;i<6;i++){
+  for(let i=0;i<8;i++){
     const mid=(lo+hi)/2;
     if(pitchClears(mid, anchor, east, north, carLL)) lo=mid;
     else hi=mid;
@@ -381,7 +385,16 @@ function chaseSpec(){
   // as soon as the heading changes.
   const east=Math.cos(heading), north=Math.sin(heading);
   const anchor=offsetLL(carLL, -east*CAM.back, -north*CAM.back);
-  const pitch=clearancePitch(carLL, east, north, anchor);
+  // The ray test changes in steps when a DEM cell crosses it. Taking the
+  // pitch the car will need a short distance ahead lets the slew arrive
+  // before that cell, instead of copying the step onto the camera.
+  let pitch=clearancePitch(carLL, east, north, anchor);
+  const aheadLL=at(pos+PITCH_AHEAD);
+  const aheadH=pathHeading(pos+PITCH_AHEAD);
+  const ae=Math.cos(aheadH), an=Math.sin(aheadH);
+  const aheadAnchor=offsetLL(aheadLL, -ae*CAM.back, -an*CAM.back);
+  const aheadPitch=clearancePitch(aheadLL, ae, an, aheadAnchor);
+  if(aheadPitch<pitch) pitch=aheadPitch;
   const ground=chaseMetrics(carLL[1], CAM.zoom, pitch).ground;
   if(!(ground>1)) return null;
   const center=offsetLL(anchor, east*ground, north*ground);
@@ -463,11 +476,17 @@ function stepChaseSpring(ideal, dt){
   const [n, vn2]=critDamp(chaseSpring.n, chaseSpring.vn, en[1], vn, stepDt, CHASE_OMEGA);
   const bearTarget=chaseSpring.bearing+wrapDeg(ideal.bearing-chaseSpring.bearing);
   const [b, vb]=critDamp(chaseSpring.bearing, chaseSpring.vb, bearTarget, bearRate, stepDt, CHASE_OMEGA);
-  // Drop at once when a crest requires a lower pitch. Easing the drop leaves
-  // the lens behind the hill for the length of the climb. The rise still eases.
-  let p0=chaseSpring.pitch, vp0=chaseSpring.vp;
-  if(p0>ideal.pitch+0.35){ p0=ideal.pitch; vp0=0; }
-  const [p, vp]=critDamp(p0, vp0, ideal.pitch, 0, stepDt, CHASE_OMEGA);
+  // Slew downward. A one-frame copy of the clearance step is a visible pop,
+  // and the critically damped rise is too slow to clear a crest in time.
+  // The climb back to the rest pitch still eases.
+  let p=chaseSpring.pitch, vp=chaseSpring.vp;
+  if(ideal.pitch<p-1e-3){
+    p=Math.max(ideal.pitch, p-PITCH_DROP*stepDt);
+    vp=0;
+  }else{
+    const risen=critDamp(p, vp, ideal.pitch, 0, stepDt, CHASE_OMEGA);
+    p=risen[0]; vp=risen[1];
+  }
   const [z, vz]=critDamp(chaseSpring.zoom, chaseSpring.vz, ideal.zoom, 0, stepDt, CHASE_OMEGA);
   chaseSpring={e, n, ve:ve2, vn:vn2, bearing:b, vb, pitch:p, vp, zoom:z, vz};
 }
@@ -695,7 +714,11 @@ function terrainElev(ll){
 }
 function groundAlt(ll){
   const e=terrainElev(ll);
-  return e==null?0:e;
+  // A tile that has not loaded yet is null. Dropping the car to sea level
+  // for that frame is a 150 m pop, so hold the last real sample.
+  if(e==null) return carAltHold==null?0:carAltHold;
+  carAltHold=e;
+  return e;
 }
 function paveBasemap(){
   try{ map.setConfigProperty('basemap','colorRoads','#3a414b'); }
