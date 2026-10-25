@@ -215,7 +215,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {sampleAt, pose, lapAt, lapProgress, seekWithinLoop, headingFromPoints, smoothClosedLngLat, critDamp, alongTrack} from './telemetry.js?v=6';
 import {createEngine, roomFromHits} from './engine-audio.js?v=8';
 import {attachSurroundSource, preloadSurroundings, sampleSurroundings, grandstandSections, PROBE_RAYS, rayCarDir} from './surroundings.js?v=8';
-import {createAmbience, pathCurvature, lateralG, brakeGFromTrace, tireDrive, windDrive, TIRE_HZ_LO, TIRE_HZ_SPAN} from './ambience.js?v=8';
+import {createAmbience, pathCurvature, lateralG, brakeGFromTrace, tireDrive, windDrive, crowdPoints, crowdReach, dopplerRate, ORIGIN, TIRE_HZ_LO, TIRE_HZ_SPAN} from './ambience.js?v=8';
 
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
@@ -895,6 +895,43 @@ $('engMute').onclick=()=>{
   if(soundLive() && engine) engine.setMuted(engineMuted);
   paintEngineMute();
 };
+let crowdPts=null;
+function crowdGeometry(){
+  if(crowdPts) return crowdPts;
+  let pack=null;
+  try{ pack=grandstandSections(); }
+  catch(err){ console.error(err); return null; }
+  if(!pack || !pack.ready || !pack.sections || !pack.sections.length) return null;
+  crowdPts=crowdPoints(pack.sections, ORIGIN, 34);
+  standCount=pack.sections.length;
+  return crowdPts;
+}
+function crowdReadout(lng, lat, heading, speed){
+  const pts=crowdGeometry();
+  if(!pts || !pts.length) return null;
+  const mLng=111320*Math.cos(ORIGIN[1]*Math.PI/180);
+  const east=(lng-ORIGIN[0])*mLng;
+  const north=(lat-ORIGIN[1])*111320;
+  let best=null;
+  for(const p of pts){
+    const d=dopplerRate(east, north, heading, speed, p);
+    if(!best || d.dist<best.dist) best=d;
+  }
+  const reach=best?crowdReach(best.dist):0;
+  const wind=windDrive((Number(speed)||0)*3.6);
+  return {
+    crowdDist:best?best.dist:null,
+    crowdVol:reach*crowdScale,
+    nearest:best?best.dist:null,
+    rate:best?best.rate:1,
+    wind:wind.level,
+    windVol:wind.level*windScale,
+    hz:wind.hz,
+    count:pts.length,
+    kmh:(Number(speed)||0)*3.6,
+    live:false,
+  };
+}
 function tryPlaceCrowd(){
   if(!ambience || crowdPlaced) return;
   let pack=null;
@@ -1665,15 +1702,21 @@ function tick(now){
   const brakeG=brakeGFromTrace(st.frame.brk, longAccelAt(st.u));
   const tireNow=tireDrive(latG, brakeG);
   paintTire(tireNow);
+  let meterInfo=lastAmbience;
   if(ambience){
     try{
       tryPlaceCrowd();
       const ll=at(pos);
       lastAmbience=ambience.update(ll[0], ll[1], heading+HEAD, carMps, {latG, brakeG});
+      meterInfo=lastAmbience;
       paintAmbience(lastAmbience);
     }catch(err){ console.error(err); }
+  }else if(trackReady){
+    const ll=at(pos);
+    const preview=crowdReadout(ll[0], ll[1], heading+HEAD, carMps);
+    if(preview) meterInfo=preview;
   }
-  paintMeters(lastAmbience, tireNow);
+  paintMeters(meterInfo, tireNow);
   paintProbeMap();
   if(showOthers) placeOthers(st.u);
   layoutTags();
