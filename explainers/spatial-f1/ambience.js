@@ -29,6 +29,15 @@ function enOf(lng, lat, origin) {
   return [(lng - origin[0]) * mLng, (lat - origin[1]) * 111320];
 }
 
+/** 1 within 50 m of a source, linear to silence at 100 m, silent beyond. */
+export function crowdReach(dist) {
+  const d = Number(dist);
+  if (!(d >= 0)) return 0;
+  if (d <= 50) return 1;
+  if (d >= 100) return 0;
+  return (100 - d) / 50;
+}
+
 /** OpenF1 km/h → wind level 0..1 and a bandpass centre. Quiet near 74, full near 308. */
 export function windDrive(kmh) {
   const t = clamp(((Number(kmh) || 0) - 60) / 240, 0, 1);
@@ -82,6 +91,8 @@ const LAT_SPAN = 6.4;
 const BRK_ON = 0.4;
 const BRK_SPAN = 6.2;
 const AXIS_CAP = 0.72;
+export const TIRE_HZ_LO = 740;
+export const TIRE_HZ_SPAN = 2200;
 
 function axisLoad(g, on, span) {
   const t = Math.max(0, (Number(g) || 0) - on) / span;
@@ -101,7 +112,7 @@ export function tireDrive(latG, brakeG) {
   const latN = axisLoad(lat, LAT_ON, LAT_SPAN);
   const brkN = axisLoad(brk, BRK_ON, BRK_SPAN);
   const level = clamp(Math.hypot(latN, brkN), 0, 1);
-  return { level, hz: 740 + level * 2200, latG: lat, brakeG: brk };
+  return { level, hz: TIRE_HZ_LO + level * TIRE_HZ_SPAN, latG: lat, brakeG: brk };
 }
 
 /**
@@ -572,7 +583,7 @@ export function createAmbience(ctx) {
       panner.distanceModel = "inverse";
       panner.refDistance = 22;
       panner.maxDistance = 420;
-      panner.rolloffFactor = 0.62;
+      panner.rolloffFactor = 0;
       panner.coneInnerAngle = 360;
       panner.coneOuterAngle = 360;
       panner.coneOuterGain = 1;
@@ -581,7 +592,7 @@ export function createAmbience(ctx) {
       gain.connect(panner);
       panner.connect(crowdBus);
       src.start(0, Math.random() * 3.6);
-      voices.push({ src, p });
+      voices.push({ src, p, gain });
     }
     placed = true;
     setParam(crowdBus.gain, crowdScale, ctx.currentTime, 0.02);
@@ -633,6 +644,7 @@ export function createAmbience(ctx) {
     for (const voice of voices) {
       const d = dopplerRate(east, north, hdg, spd, voice.p);
       setParam(voice.src.playbackRate, d.rate, now, 0.035);
+      setParam(voice.gain.gain, CROWD_VOICE_GAIN * crowdReach(d.dist), now, 0.05);
       if (!best || d.dist < best.dist) {
         best = d;
         nearest = voice;
@@ -640,6 +652,7 @@ export function createAmbience(ctx) {
     }
     const kmh = spd * 3.6;
     const wind = windDrive(kmh);
+    const reach = best ? crowdReach(best.dist) : 0;
     setParam(windGain.gain, wind.level * windScale * 0.18, now, 0.08);
     setParam(band.frequency, wind.hz, now, 0.08);
     if (load && (Number.isFinite(load.latG) || Number.isFinite(load.brakeG))) {
@@ -652,6 +665,9 @@ export function createAmbience(ctx) {
       rate: best ? best.rate : 1,
       applied: nearest ? nearest.src.playbackRate.value : 1,
       wind: wind.level,
+      windVol: wind.level * windScale,
+      crowdDist: best ? best.dist : null,
+      crowdVol: reach * crowdScale,
       hz: wind.hz,
       count: voices.length,
       kmh,

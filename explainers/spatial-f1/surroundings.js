@@ -2,9 +2,9 @@
  * Ray probes for the car's I3DL2-style reverb.
  *
  * Two aims, not one vertical fan:
- *   stand  — a little above the horizon, across the front and both
- *            sides, so a grandstand or building face is hit while you
- *            are still approaching it and while it is beside the car.
+ *   stand  — low, so a wall sends the ray back. The side rays sit a
+ *            little forward of straight out, not exactly abeam, so the
+ *            face you are approaching counts as well as the one beside you.
  *   bridge — an arc over the car. Shallow rays ahead meet a deck on
  *            the way in, steeper rays look at the deck overhead, and
  *            the shallow rays repeat behind the tail on the way out.
@@ -55,16 +55,17 @@ function pushAim(rays, kind, elev, yaw, weight) {
 }
 
 /**
- * Front and sides, just above the horizon. 8° meets a wall. 32° clears
- * a low verge (grass is ignored above 25°) and still meets a stand roof.
- * ±70° is the corner of a stand you are approaching, between the nose
- * and a pure side. Positive yaw is left.
+ * Sides stay a few degrees above the horizon so they meet a wall instead
+ * of clearing the roof. Yaw is short of ±90°, toward the nose, so the
+ * ray looks slightly forward along the stand. The nose rays are low too.
+ * Positive yaw is left.
  */
 function standRays() {
   const rays = [];
-  for (const yaw of [-90, -45, 0, 45, 90]) pushAim(rays, "stand", 8, yaw);
-  for (const yaw of [-90, -35, 0, 35, 90]) pushAim(rays, "stand", 32, yaw);
-  for (const yaw of [-70, 70]) pushAim(rays, "stand", 18, yaw);
+  for (const elev of [2, 6]) {
+    for (const yaw of [-78, -66, 66, 78]) pushAim(rays, "stand", elev, yaw);
+  }
+  for (const yaw of [-22, 0, 22]) pushAim(rays, "stand", 3, yaw);
   return rays;
 }
 
