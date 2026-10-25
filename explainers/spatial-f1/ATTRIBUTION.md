@@ -43,7 +43,9 @@ SOFTWARE.
 - OpenF1 is an independent project and is not associated with Formula 1, the FIA, or Formula One Management. The cache is stored so the demo does not call the API at runtime. Field mapping: `engine-data-mapping.html`.
 
 ## Sound
-Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Voicing presets in `engines/*.json` (high-rev V6, throaty V8, idle-heavy, muted) are original configuration, not sampled recordings. Engine Sim (https://github.com/ange-yaghi/engine-sim, MIT, Ange Yaghi) is referenced as later work and is not vendored.
+Original Web Audio synth in `engine-audio.js` (dyno-locked to the cached RPM and throttle). Voicing presets in `engines/*.json` (high-rev V6, throaty V8, idle-heavy, muted) are configuration, not sampled recordings.
+
+The default high-rev V6 partials (saw at half and full firing frequency, square an octave up, small higher saw and triangle, gains 0.22 / 0.48 / 0.16 / 0.07 / 0.035) are the Spatial F1 engine from before the sine preset. This repository does not contain a separate Engine Sim or engine-test page. The body of that default copies the live FireSim Audio PhISEM tuning: bandpass centers 280 Hz, 1500 Hz, and 3400 Hz, Q 0.8 / 3.2 / 4.5, mix gains 0.55 / 0.9 / 0.42, brown-noise pole 0.97 with white excite 0.28, and tanh drive 1.35. That voice is what `experiments/firesimaudio/live/` plays; the constants live in `src/audio/phisem.ts` on `richoncode/firesim` branch `audio`. Engine Sim (https://github.com/ange-yaghi/engine-sim, MIT, Ange Yaghi) is referenced as later work and is not vendored.
 
 ## Libraries
-Mapbox GL JS (Mapbox terms, map data © Mapbox © OpenStreetMap), three.js (MIT).
+Mapbox GL JS (Mapbox terms, map data © Mapbox © OpenStreetMap), three.js (MIT). The circuit asphalt and shoulder are generated in the page from the COTA centerline. Street widths and the asphalt road color are paint overrides on Mapbox Standard.
