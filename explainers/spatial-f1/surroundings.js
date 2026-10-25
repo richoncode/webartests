@@ -1,54 +1,124 @@
 /**
- * Side and top probes for the car's I3DL2-style reverb.
+ * Ray probes for the car's I3DL2-style reverb.
  *
- * Five rays from the car: forward (approaching), back (departing),
- * left and right (here), and up. Horizontal rays walk building and
- * landuse polygons in plan. Up is a footprint test: the map has no roof
- * mesh, so a building polygon under the car is an overhead structure
- * and clear sky is open.
+ * The fan sits in the car's left–up–right plane: left, then every 15°
+ * through straight up, to the right. From up, extra rays pitch toward
+ * the nose and the tail in 5° steps out to ±20°. The straight-up ray
+ * is the fan's, not a second pitch ray.
  *
  * The chase camera only keeps the tiles in front of the lens, so a
  * grandstand beside the car is often not in that set. The page also
  * fetches the Streets tiles that cover the circuit and raycasts those,
  * independent of the view.
  *
- * Material heuristics, applied in engine-audio.js:
- *   glass    — building type commercial / office / retail / hotel, or taller than 40 m
- *   concrete — any other building (grandstands, houses, warehouses)
- *   grass    — landuse grass, park, wood, scrub, forest, pitch, farmland
- * A venue-sized park polygon (COTA is one sports_centre) is not a wall.
- * A ray that misses its boundary reports open air. Only a boundary the
- * ray actually reaches counts as grass.
+ * Mapbox Streets supplies the surfaces:
+ *   building     — grandstands and houses (concrete), tall or glazed (glass)
+ *   landuse      — grass, scrub (bushes), wood (trees). A venue-sized
+ *                  park polygon is not vegetation; the circuit sits inside one.
+ *   road bridge  — a footbridge centerline, thickened into a short deck
+ *   structure    — walls, not fences
+ *   tree         — point models, a small canopy, when the tile has them
+ * A miss stays open air. Standing inside the venue park does not invent
+ * a wall. Only a boundary a ray actually reaches counts.
  */
 
 import Pbf from 'https://cdn.jsdelivr.net/npm/pbf@3.2.1/+esm';
 import {VectorTile} from 'https://cdn.jsdelivr.net/npm/@mapbox/vector-tile@1.3.1/+esm';
 
-export const PROBE_RAYS = [
-  { id: "forward", angle: 0, max: 96 },
-  { id: "back", angle: Math.PI, max: 96 },
-  { id: "left", angle: Math.PI / 2, max: 72 },
-  { id: "right", angle: -Math.PI / 2, max: 72 },
-];
-
+const RAY_MAX = 80;
+const ORIGIN_Z = 0.85;
+const DEFAULT_BUILDING_H = 12;
+const GRASS_H = 2.4;
+const BRIDGE_HALF_M = 3.5;
+const BRIDGE_H = 6.5;
+const TREE_R = 5;
+const TREE_H = 8;
+const GRASS_MAX_U = Math.sin(25 * Math.PI / 180);
 const TILE_Z = 15;
-const tileCache = new Map();
+
+function fanRays() {
+  const rays = [];
+  for (let phi = 0; phi <= 180; phi += 15) {
+    let id = "fan-" + phi;
+    if (phi === 0) id = "left";
+    else if (phi === 90) id = "up";
+    else if (phi === 180) id = "right";
+    rays.push({ id, phi, max: RAY_MAX, kind: "fan" });
+  }
+  return rays;
+}
+
+function pitchRays() {
+  const rays = [];
+  for (let alpha = -20; alpha <= 20; alpha += 5) {
+    if (alpha === 0) continue;
+    const sign = alpha > 0 ? "+" : "";
+    rays.push({ id: "pitch" + sign + alpha, alpha, max: RAY_MAX, kind: "pitch" });
+  }
+  return rays;
+}
+
+export const PROBE_RAYS = fanRays().concat(pitchRays());
+
+/** Car frame: +x nose, +y left, +z up. */
+export function rayCarDir(ray) {
+  if (ray && ray.kind === "pitch") {
+    const a = (Number(ray.alpha) || 0) * Math.PI / 180;
+    return { x: Math.sin(a), y: 0, z: Math.cos(a) };
+  }
+  const phi = ((ray && Number(ray.phi)) || 0) * Math.PI / 180;
+  return { x: 0, y: Math.cos(phi), z: Math.sin(phi) };
+}
+
+function worldDir(local, heading) {
+  const fe = Math.cos(heading);
+  const fn = Math.sin(heading);
+  const le = -Math.sin(heading);
+  const ln = Math.cos(heading);
+  return {
+    e: fe * local.x + le * local.y,
+    n: fn * local.x + ln * local.y,
+    u: local.z,
+  };
+}
+
+function vegetationCover(props) {
+  const klass = String((props && props.class) || "").toLowerCase();
+  const type = String((props && props.type) || "").toLowerCase();
+  const blob = klass + " " + type;
+  if (/\b(wood|forest)\b/.test(blob)) return "trees";
+  if (/\bscrub\b/.test(blob)) return "bushes";
+  if (/\b(grass|meadow|garden|wetland|pitch|heath)\b/.test(blob)) return "grass";
+  return null;
+}
 
 function materialOf(props, sourceLayer) {
   const type = String((props && (props.type || props.class)) || "").toLowerCase();
-  const klass = String((props && props.class) || "").toLowerCase();
-  const blob = klass + " " + type;
-  if (sourceLayer === "landuse") {
-    if (/grass|wood|scrub|forest|park|garden|meadow|heath|farm|pitch|sand|wetland|cemetery|golf|recreation/.test(blob)) {
-      return "grass";
-    }
-    return null;
+  if (sourceLayer === "landuse" || sourceLayer === "landuse_overlay") {
+    const cover = vegetationCover(props);
+    if (!cover) return null;
+    return { mat: "grass", cover, height: GRASS_H };
   }
   if (sourceLayer === "building") {
     const height = Number(props && props.height);
-    if (/glass|window|commercial|office|retail|hotel|apartment/.test(type)) return "glass";
-    if (Number.isFinite(height) && height >= 40) return "glass";
-    return "concrete";
+    let mat = "concrete";
+    if (/glass|window|commercial|office|retail|hotel|apartment/.test(type)) mat = "glass";
+    else if (Number.isFinite(height) && height >= 40) mat = "glass";
+    const cover = type === "grandstand" ? "grandstand" : (type === "roof" ? "roof" : "building");
+    return { mat, cover, height: Number.isFinite(height) && height > 2 ? height : DEFAULT_BUILDING_H };
+  }
+  if (sourceLayer === "road") {
+    if (String((props && props.structure) || "").toLowerCase() !== "bridge") return null;
+    return { mat: "concrete", cover: "bridge", height: BRIDGE_H, bridge: true };
+  }
+  if (sourceLayer === "structure") {
+    const blob = (String((props && props.class) || "") + " " + type).toLowerCase();
+    if (!/wall|retaining_wall|bridge/.test(blob)) return null;
+    if (/bridge/.test(blob)) return { mat: "concrete", cover: "bridge", height: BRIDGE_H, bridge: true };
+    return { mat: "concrete", cover: "wall", height: 2.4, wall: true };
+  }
+  if (sourceLayer === "tree") {
+    return { mat: "grass", cover: "trees", height: TREE_H, tree: true };
   }
   return null;
 }
@@ -60,7 +130,21 @@ function polysOf(geom) {
   return [];
 }
 
-function toEN(ring, origin, mLng) {
+function linesOf(geom) {
+  if (!geom) return [];
+  if (geom.type === "LineString") return [geom.coordinates];
+  if (geom.type === "MultiLineString") return geom.coordinates;
+  return [];
+}
+
+function pointsOf(geom) {
+  if (!geom) return [];
+  if (geom.type === "Point") return [geom.coordinates];
+  if (geom.type === "MultiPoint") return geom.coordinates;
+  return [];
+}
+
+function toEN(ring, origin, mLng, close) {
   const step = ring.length > 160 ? Math.ceil(ring.length / 160) : 1;
   const out = [];
   for (let i = 0; i < ring.length; i += step) {
@@ -68,7 +152,7 @@ function toEN(ring, origin, mLng) {
     if (!c || c.length < 2) continue;
     out.push([(c[0] - origin[0]) * mLng, (c[1] - origin[1]) * 111320]);
   }
-  if (out.length > 2) {
+  if (close && out.length > 2) {
     const a = out[0];
     const b = out[out.length - 1];
     if (a[0] !== b[0] || a[1] !== b[1]) out.push([a[0], a[1]]);
@@ -78,6 +162,46 @@ function toEN(ring, origin, mLng) {
 
 function fromEN(e, n, origin, mLng) {
   return [origin[0] + e / mLng, origin[1] + n / 111320];
+}
+
+function bufferOpen(pts, half) {
+  if (!pts || pts.length < 2) return null;
+  const left = [];
+  const right = [];
+  const norm = (p, q) => {
+    const x = q[0] - p[0];
+    const y = q[1] - p[1];
+    const m = Math.hypot(x, y) || 1;
+    return [-y / m, x / m];
+  };
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[i];
+    const c = pts[Math.min(pts.length - 1, i + 1)];
+    const n1 = norm(a, b);
+    const n2 = norm(b, c);
+    let nx = n1[0] + n2[0];
+    let ny = n1[1] + n2[1];
+    const nm = Math.hypot(nx, ny) || 1;
+    nx /= nm;
+    ny /= nm;
+    left.push([b[0] + nx * half, b[1] + ny * half]);
+    right.push([b[0] - nx * half, b[1] - ny * half]);
+  }
+  const ring = left.concat(right.reverse());
+  if (!ring.length) return null;
+  ring.push([ring[0][0], ring[0][1]]);
+  return ring;
+}
+
+function circleEN(e, n, radius) {
+  const ring = [];
+  const nSeg = 10;
+  for (let i = 0; i <= nSeg; i++) {
+    const a = (i / nSeg) * Math.PI * 2;
+    ring.push([e + Math.cos(a) * radius, n + Math.sin(a) * radius]);
+  }
+  return ring;
 }
 
 function bboxDist(ring) {
@@ -110,10 +234,10 @@ function pointInRing(ring, x, y) {
   return inside;
 }
 
-function containsOrigin(rings) {
-  if (!rings.length || !pointInRing(rings[0], 0, 0)) return false;
+function containsPoint(rings, x, y) {
+  if (!rings.length || !pointInRing(rings[0], x, y)) return false;
   for (let h = 1; h < rings.length; h++) {
-    if (pointInRing(rings[h], 0, 0)) return false;
+    if (pointInRing(rings[h], x, y)) return false;
   }
   return true;
 }
@@ -132,18 +256,6 @@ function rayHit(ring, dx, dy, maxD) {
     if (t > 1.2 && u >= 0 && u <= 1 && t < best && t <= maxD) best = t;
   }
   return best < Infinity ? best : null;
-}
-
-function labelFor(hits) {
-  const hard = hits.filter((h) => h.material === "glass" || h.material === "concrete");
-  if (hard.length) {
-    hard.sort((a, b) => a.distance - b.distance);
-    const near = hard[0];
-    const name = near.material === "glass" ? "Glass" : "Concrete";
-    return name + " · " + Math.round(near.distance) + " m";
-  }
-  if (hits.some((h) => h.material === "grass" && h.distance < 36)) return "Grass · absorbing";
-  return "Open air";
 }
 
 function tileXY(ll, z) {
@@ -169,7 +281,7 @@ function tileId(t) {
 }
 
 function nearTileEdge(ll, bounds) {
-  if (!bounds) return false;
+  if (!bounds || !ll) return false;
   const mLng = 111320 * Math.cos(ll[1] * Math.PI / 180);
   const tolLng = 5 / mLng;
   const tolLat = 5 / 111320;
@@ -179,36 +291,102 @@ function nearTileEdge(ll, bounds) {
     || Math.abs(ll[1] - bounds.south) < tolLat;
 }
 
-function prepare(raw, origin) {
+function labelFor(hits) {
+  const hard = hits.filter((h) => h.material === "glass" || h.material === "concrete");
+  if (hard.length) {
+    hard.sort((a, b) => a.distance - b.distance);
+    const near = hard[0];
+    const name = near.cover && near.cover !== near.material ? near.cover : near.material;
+    const titled = name.charAt(0).toUpperCase() + name.slice(1);
+    return titled + " · " + Math.round(near.distance) + " m";
+  }
+  const soft = hits.filter((h) => h.material === "grass" && h.distance < 40);
+  if (soft.length) {
+    soft.sort((a, b) => a.distance - b.distance);
+    const name = soft[0].cover || "grass";
+    return name.charAt(0).toUpperCase() + name.slice(1) + " · " + Math.round(soft[0].distance) + " m";
+  }
+  return "Open air";
+}
+
+const tileCache = new Map();
+const TILE_LAYERS = ["building", "landuse", "landuse_overlay", "structure", "road", "tree"];
+
+export function featuresFromGeo(origin, items) {
   const mLng = 111320 * Math.cos(origin[1] * Math.PI / 180);
   const found = [];
   const seen = new Set();
-  for (const feat of raw) {
-    if (!feat || !feat.mat || !feat.polys || !feat.polys.length) continue;
-    const outer = feat.polys[0] && feat.polys[0][0] && feat.polys[0][0][0];
-    const key = outer
-      ? [outer[0].toFixed(5), outer[1].toFixed(5), feat.mat, feat.height || ""].join("|")
-      : "";
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
-    const polysEN = [];
-    for (const poly of feat.polys) {
-      const rings = [];
-      for (const ring of poly) {
-        if (!ring || ring.length < 3) continue;
-        const en = toEN(ring, origin, mLng);
-        if (en.length > 2) rings.push(en);
+  for (const feat of items || []) {
+    const sourceLayer = feat.sourceLayer;
+    const spec = materialOf(feat.properties, sourceLayer);
+    if (!spec) continue;
+    const props = feat.properties || {};
+    const keyParts = [
+      sourceLayer,
+      spec.cover,
+      props.height || "",
+      props.class || "",
+      props.type || "",
+    ];
+    let polysEN = [];
+    if (spec.tree) {
+      const pts = pointsOf(feat.geometry);
+      for (const c of pts) {
+        if (!c || c.length < 2) continue;
+        const e = (c[0] - origin[0]) * mLng;
+        const n = (c[1] - origin[1]) * 111320;
+        if (Math.hypot(e, n) > 100) continue;
+        polysEN.push([circleEN(e, n, TREE_R)]);
       }
-      if (rings.length) polysEN.push(rings);
+      keyParts.push(pts[0] ? pts[0][0].toFixed(5) : "");
+    } else if (spec.bridge || spec.wall) {
+      const lines = linesOf(feat.geometry);
+      const polys = polysOf(feat.geometry);
+      if (polys.length) {
+        for (const poly of polys) {
+          const rings = [];
+          for (const ring of poly) {
+            if (!ring || ring.length < 2) continue;
+            const en = toEN(ring, origin, mLng, true);
+            if (en.length > 2) rings.push(en);
+          }
+          if (rings.length) polysEN.push(rings);
+        }
+      }
+      for (const line of lines) {
+        const en = toEN(line, origin, mLng, false);
+        const half = spec.bridge ? BRIDGE_HALF_M : 0.8;
+        const ring = bufferOpen(en, half);
+        if (ring) polysEN.push([ring]);
+      }
+      const outer = lines[0] && lines[0][0];
+      if (outer) keyParts.push(outer[0].toFixed(5), outer[1].toFixed(5));
+    } else {
+      const polys = polysOf(feat.geometry);
+      for (const poly of polys) {
+        const rings = [];
+        for (const ring of poly) {
+          if (!ring || ring.length < 3) continue;
+          const en = toEN(ring, origin, mLng, true);
+          if (en.length > 2) rings.push(en);
+        }
+        if (rings.length) polysEN.push(rings);
+      }
+      const outer = polys[0] && polys[0][0] && polys[0][0][0];
+      if (outer) keyParts.push(outer[0].toFixed(5), outer[1].toFixed(5));
     }
     if (!polysEN.length) continue;
+    const key = keyParts.join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
     const near = Math.min(...polysEN.map((rings) => bboxDist(rings[0])));
-    if (near > 160) continue;
+    if (near > 140) continue;
     found.push({
-      mat: feat.mat,
+      mat: spec.mat,
+      cover: spec.cover,
       polys: polysEN,
       near,
-      height: feat.height,
+      height: spec.height,
       bounds: feat.bounds || null,
       origin,
       mLng,
@@ -221,127 +399,149 @@ function prepare(raw, origin) {
   return found;
 }
 
-function cast(features, heading) {
-  const hits = PROBE_RAYS.map((ray) => {
-    const ang = heading + ray.angle;
-    const dx = Math.cos(ang);
-    const dy = Math.sin(ang);
-    let solid = null;
-    let soft = null;
-    for (const feat of features) {
-      if (feat.near > ray.max + 24) continue;
-      let dist = null;
+function edgeHit(feat, e, n) {
+  if (!feat.bounds || !feat.origin || !feat.mLng) return false;
+  return nearTileEdge(fromEN(e, n, feat.origin, feat.mLng), feat.bounds);
+}
+
+function castOne(ray, dir, features) {
+  const max = ray.max;
+  const hcomp = Math.hypot(dir.e, dir.n);
+  let solid = null;
+  let soft = null;
+  const take = (slot, t, feat) => {
+    if (!(t > 1.2) || t > max) return slot;
+    if (!slot || t < slot.distance) {
+      return { distance: t, material: feat.mat, cover: feat.cover || feat.mat };
+    }
+    return slot;
+  };
+  for (const feat of features) {
+    const horizReach = hcomp > 1e-4 ? max * hcomp + 4 : 3;
+    if (feat.near > horizReach && feat.near > 1.5) continue;
+    const isGrass = feat.mat === "grass";
+    if (isGrass && dir.u > GRASS_MAX_U) continue;
+    const height = Number(feat.height) > 0 ? Number(feat.height) : (isGrass ? GRASS_H : DEFAULT_BUILDING_H);
+    const slot = (t) => {
+      if (isGrass) soft = take(soft, t, feat);
+      else solid = take(solid, t, feat);
+    };
+    if (dir.u > 0.02 && height > ORIGIN_Z) {
+      const tRoof = (height - ORIGIN_Z) / dir.u;
+      if (tRoof > 1.2 && tRoof <= max) {
+        const e = dir.e * tRoof;
+        const n = dir.n * tRoof;
+        if (!edgeHit(feat, e, n) && feat.polys.some((rings) => containsPoint(rings, e, n))) slot(tRoof);
+      }
+    }
+    if (hcomp > 1e-3) {
+      const dx = dir.e / hcomp;
+      const dy = dir.n / hcomp;
+      const planMax = max * hcomp;
+      let plan = null;
       for (const rings of feat.polys) {
         for (const ring of rings) {
-          const d = rayHit(ring, dx, dy, ray.max);
+          const d = rayHit(ring, dx, dy, planMax);
           if (d == null) continue;
-          if (feat.bounds) {
-            const hll = fromEN(dx * d, dy * d, feat.origin, feat.mLng);
-            if (nearTileEdge(hll, feat.bounds)) continue;
-          }
-          if (dist == null || d < dist) dist = d;
+          if (edgeHit(feat, dx * d, dy * d)) continue;
+          if (plan == null || d < plan) plan = d;
         }
       }
-      if (dist == null) continue;
-      if (feat.mat === "grass") {
-        if (!soft || dist < soft.distance) soft = { distance: dist, material: "grass" };
-      } else if (!solid || dist < solid.distance) {
-        solid = { distance: dist, material: feat.mat };
+      if (plan != null) {
+        const t = plan / hcomp;
+        const z = ORIGIN_Z + dir.u * t;
+        if (z <= height + 0.35) slot(t);
       }
     }
-    // A miss stays open. Standing inside the venue park must not invent
-    // a wall 12 m away: that polygon's boundary is hundreds of metres out,
-    // and the old synthetic grass hit kept the send dry at the pits.
-    let hit;
-    if (solid && (!soft || solid.distance <= soft.distance)) hit = solid;
-    else if (soft) hit = soft;
-    else hit = { distance: ray.max, material: "open" };
-    return { id: ray.id, distance: hit.distance, material: hit.material };
+  }
+  let hit = null;
+  if (solid && (!soft || solid.distance <= soft.distance)) hit = solid;
+  else if (soft) hit = soft;
+  else hit = { distance: max, material: "open", cover: "" };
+  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "" };
+}
+
+/**
+ * Pure probe cast. `features` are metres east/north of the car, the same
+ * shape featuresFromGeo() builds. Heading is atan2(north, east).
+ */
+export function hitsAlongRays(features, heading) {
+  const list = Array.isArray(features) ? features : [];
+  return PROBE_RAYS.map((ray) => {
+    const dir = worldDir(rayCarDir(ray), heading || 0);
+    return castOne(ray, dir, list);
   });
-
-  let overhead = null;
-  for (const feat of features) {
-    if (feat.mat === "grass") continue;
-    const inside = feat.polys.some((rings) => containsOrigin(rings));
-    if (!inside) continue;
-    const height = feat.height;
-    const distance = Number.isFinite(height) && height > 3 ? Math.max(6, Math.min(40, height * 0.4)) : 16;
-    if (!overhead || distance < overhead.distance) {
-      overhead = { id: "up", distance, material: feat.mat };
-    }
-  }
-  hits.push(overhead || { id: "up", distance: 80, material: "open" });
-  return { ready: true, label: labelFor(hits), hits };
 }
 
-function rawFromQueryFeature(feat, sourceLayer) {
-  const mat = materialOf(feat.properties, sourceLayer);
-  if (!mat) return null;
-  let polys = [];
-  try {
-    polys = polysOf(feat.geometry);
-  } catch {
-    return null;
-  }
-  if (!polys.length) return null;
-  return { mat, polys, height: Number(feat.properties && feat.properties.height), bounds: null };
-}
-
-function collectMap(map, origin) {
+function collectMap(map) {
   if (!map || typeof map.getSource !== "function" || !map.getSource("surround")) return null;
-  const raw = [];
-  for (const sourceLayer of ["building", "landuse"]) {
+  const items = [];
+  const jobs = [
+    ["surround", "building"],
+    ["surround", "landuse"],
+    ["surround", "landuse_overlay"],
+    ["surround", "structure"],
+    ["surround", "road"],
+  ];
+  try {
+    if (map.getSource("composite")) jobs.push(["composite", "tree"]);
+  } catch { /* composite is optional */ }
+  for (const [source, sourceLayer] of jobs) {
     let feats = [];
     try {
-      feats = map.querySourceFeatures("surround", { sourceLayer }) || [];
+      if (!map.getSource(source)) continue;
+      feats = map.querySourceFeatures(source, { sourceLayer }) || [];
     } catch {
       continue;
     }
     for (const feat of feats) {
-      const row = rawFromQueryFeature(feat, sourceLayer);
-      if (row) raw.push(row);
+      items.push({
+        geometry: feat.geometry,
+        properties: feat.properties,
+        sourceLayer,
+        bounds: null,
+      });
     }
   }
-  if (!raw.length) {
+  if (!items.length) {
     let loaded = false;
     try { loaded = map.isSourceLoaded("surround"); } catch { loaded = false; }
     if (!loaded) return null;
   }
-  return prepare(raw, origin);
+  return items;
 }
 
 function collectCached(origin) {
   const here = tileCache.get(tileId(tileXY(origin, TILE_Z)));
   if (!here || here.status !== "ok") return null;
-  const raw = [];
+  const items = [];
   for (const row of tileCache.values()) {
-    if (row && row.status === "ok" && row.feats) raw.push(...row.feats);
+    if (row && row.status === "ok" && row.feats) items.push(...row.feats);
   }
-  return prepare(raw, origin);
+  return items;
 }
 
 function parseTile(buf, z, x, y) {
   const tile = new VectorTile(new Pbf(buf));
   const bounds = tileBounds(z, x, y);
   const feats = [];
-  for (const sourceLayer of ["building", "landuse"]) {
+  for (const sourceLayer of TILE_LAYERS) {
     const layer = tile.layers[sourceLayer];
     if (!layer) continue;
     for (let i = 0; i < layer.length; i++) {
       const feat = layer.feature(i);
-      const mat = materialOf(feat.properties, sourceLayer);
-      if (!mat) continue;
-      let polys = [];
+      if (!materialOf(feat.properties, sourceLayer)) continue;
+      let geometry = null;
       try {
-        polys = polysOf(feat.toGeoJSON(x, y, z).geometry);
+        geometry = feat.toGeoJSON(x, y, z).geometry;
       } catch {
         continue;
       }
-      if (!polys.length) continue;
+      if (!geometry) continue;
       feats.push({
-        mat,
-        polys,
-        height: Number(feat.properties && feat.properties.height),
+        geometry,
+        properties: feat.properties,
+        sourceLayer,
         bounds,
       });
     }
@@ -351,7 +551,7 @@ function parseTile(buf, z, x, y) {
 
 /**
  * Fetch the Streets tiles under the circuit so probes can see a
- * grandstand that the chase frustum has not loaded.
+ * grandstand or footbridge the chase frustum has not loaded.
  */
 export function preloadSurroundings(points, token) {
   if (!token || !Array.isArray(points) || points.length < 2) return;
@@ -389,17 +589,22 @@ export function attachSurroundSource(map) {
   if (!map || map.getSource("surround")) return;
   map.addSource("surround", { type: "vector", url: "mapbox://mapbox.mapbox-streets-v8" });
   const layers = [
-    { id: "surround-landuse", "source-layer": "landuse" },
-    { id: "surround-buildings", "source-layer": "building" },
+    { id: "surround-landuse", "source-layer": "landuse", type: "fill" },
+    { id: "surround-landuse-overlay", "source-layer": "landuse_overlay", type: "fill" },
+    { id: "surround-buildings", "source-layer": "building", type: "fill" },
+    { id: "surround-structure", "source-layer": "structure", type: "line" },
+    { id: "surround-roads", "source-layer": "road", type: "line" },
   ];
   for (const spec of layers) {
     const layer = {
       id: spec.id,
-      type: "fill",
+      type: spec.type,
       source: "surround",
       "source-layer": spec["source-layer"],
       slot: "bottom",
-      paint: { "fill-opacity": 0, "fill-color": "#000000" },
+      paint: spec.type === "line"
+        ? { "line-opacity": 0, "line-color": "#000000", "line-width": 1 }
+        : { "fill-opacity": 0, "fill-color": "#000000" },
     };
     try {
       map.addLayer(layer);
@@ -422,13 +627,14 @@ export function attachSurroundSource(map) {
 export function sampleSurroundings(map, originLL, heading) {
   if (!originLL || !Number.isFinite(heading)) return { ready: false };
   try {
-    const cached = collectCached(originLL);
-    if (cached) return cast(cached, heading);
-    const fromMap = collectMap(map, originLL);
-    if (fromMap) return cast(fromMap, heading);
+    let items = collectCached(originLL);
+    if (!items) items = collectMap(map);
+    if (!items) return { ready: false };
+    const features = featuresFromGeo(originLL, items);
+    const hits = hitsAlongRays(features, heading);
+    return { ready: true, label: labelFor(hits), hits };
   } catch (err) {
     console.error(err);
     return { ready: false };
   }
-  return { ready: false };
 }
