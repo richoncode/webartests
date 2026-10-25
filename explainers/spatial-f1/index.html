@@ -16,8 +16,9 @@ h2{font-size:18px;margin:22px 0 6px}
 p{margin:6px 0}
 .dim{color:var(--dim);font-size:14px}
 a{color:var(--blue)}
-#map{width:100%;height:min(62vh,640px);min-height:380px;border-radius:10px;position:relative}
-#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--dim);background:#0b0e14ee;z-index:3}
+.mapwrap{position:relative}
+#map{width:100%;height:min(62vh,640px);min-height:380px;border-radius:10px}
+#notoken{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--dim);background:#0b0e14ee;border-radius:10px;z-index:3}
 .panel{margin-top:12px;background:#12161e;border:1px solid #2a3240;border-radius:12px;padding:12px}
 .ctl{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px;align-items:center}
 button,select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #2a3240;background:#161b24;color:var(--fg);cursor:pointer}
@@ -60,7 +61,10 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <header><h1>Spatial F1 demo</h1>
 <p class="dim">A low-poly F1 car on the Circuit of the Americas centerline, camera low and close behind it. RPM, throttle, and gear follow a cached OpenF1 trace and drive the sound. Unofficial; not affiliated with Formula 1.</p></header>
 <main>
-<div id="map"><div id="notoken">Mapbox token missing. The engine panel still runs.</div></div>
+<div class="mapwrap">
+<div id="map"></div>
+<div id="notoken">Mapbox token missing. The engine panel still runs.</div>
+</div>
 <div class="panel">
 <div class="ctl">
 <button id="play" type="button">Pause</button>
@@ -95,7 +99,7 @@ code{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.9em}
 <h2>What this is</h2>
 <p>The yellow line is the COTA centerline (5.5 km). The car rides that loop. Time on the scrubber is a cached OpenF1 <code>car_data</code> window, and speed from that window moves the car. Distance is scaled by about 1.5% so the two laps meet this centerline. The OpenF1 x/y grid is not fitted onto the map, so a brake in the trace is not pinned to the matching corner.</p>
 <p>Gauges and the synth read the same clock. RPM is interpolated. Throttle and gear stay as steps, and a gear change dips the sound. Brake, speed, and DRS are shown on the panel and do not retune the synth. The synth is Web Audio, a stand-in until a WASM Engine Sim can take the same inputs.</p>
-<p>Cockpit is the default camera: low, a few metres behind the car, looking along the track. Overview restores the previous pitched map of the whole circuit. <code>?back=</code>, <code>?eye=</code>, and <code>?look=</code> are metres for that chase camera. <code>?head=</code> still rotates the model.</p>
+<p>Cockpit is the default camera: low, close behind the car, looking along the track. Overview restores the previous pitched map of the whole circuit. <code>?zoom=</code>, <code>?pitch=</code>, and <code>?back=</code> (metres behind the car) tune that chase camera. <code>?head=</code> still rotates the model.</p>
 <h2>Credits</h2>
 <p class="dim">Telemetry: <a href="https://openf1.org/">OpenF1</a>, cached slice for driver 1, session 9888. Track: <a href="https://github.com/bacinger/f1-circuits">bacinger/f1-circuits</a> (MIT). Car: <a href="https://opengameart.org/content/low-poly-formula-1-car">Low poly Formula 1 car</a> by dreamsearchrepeat (CC0), generic paint, no team livery. Map © Mapbox © OpenStreetMap. 3D: three.js (MIT). Full details in <a href="ATTRIBUTION.md">ATTRIBUTION.md</a>. Formula 1 and F1 are trademarks of their owners; this is a fan demo.</p>
 </main>
@@ -116,9 +120,13 @@ function qnum(name, fallback, lo, hi){
   if(!Number.isFinite(v)||v<lo||v>hi) return fallback;
   return v;
 }
-// Metres along the centerline. The model is drawn about 6× life size
-// (~34 m long, tail ~16 m behind the origin), so the default sits just behind that tail.
-const CAM={back:qnum('back',22,-40,250), eye:qnum('eye',3.6,0.4,80), look:qnum('look',64,8,500)};
+// The model is drawn about 6× life size (~34 m long, tail ~16 m behind the origin).
+// Zoom/pitch put the lens a few metres up; back is how far behind the origin that lens sits.
+const CAM={
+  back:qnum('back',34,-10,120),
+  zoom:qnum('zoom',21.2,15,22),
+  pitch:qnum('pitch',80,50,85),
+};
 const HEAD=Number(params.get('head')??Math.PI);
 
 const telem=await fetch('openf1-9888-driver1.json').then(r=>{
@@ -200,17 +208,24 @@ function frameOverview(){
 }
 function updateCockpit(){
   if(!mapReady) return;
-  const backLL=at(pos-CAM.back);
-  const lookLL=at(pos+CAM.look);
-  let alt=CAM.eye;
-  if(map.getTerrain()){
-    const e=map.queryTerrainElevation(backLL);
-    if(e!=null) alt+=e;
+  try{
+    const lat=at(pos)[1];
+    // Mapbox world size is 512px tiles, so this is half the classic 256px Web Mercator scale.
+    const mpp=(40075016.68557849/(512*Math.pow(2, CAM.zoom)))*Math.cos(lat*rad);
+    const fov=(map.transform && map.transform.fov) || 0.6435011087932844;
+    const distPx=(map.transform && map.transform.cameraToCenterDistance) || (0.5/Math.tan(fov/2)*map.getCanvas().clientHeight);
+    const pitchRad=CAM.pitch*rad;
+    const height=distPx*Math.cos(pitchRad)*mpp;
+    const ground=height*Math.tan(pitchRad);
+    if(!(ground>5)) return;
+    const centerDist=-CAM.back+ground;
+    const centerLL=at(pos+centerDist);
+    const ahead=at(pos+centerDist+24);
+    const br=Math.atan2((ahead[0]-centerLL[0])*Math.cos(centerLL[1]*rad), ahead[1]-centerLL[1])/rad;
+    map.jumpTo({center:centerLL, bearing:br, pitch:CAM.pitch, zoom:CAM.zoom});
+  }catch(err){
+    console.error(err);
   }
-  const cam=map.getFreeCameraOptions();
-  cam.position=mapboxgl.MercatorCoordinate.fromLngLat(backLL, alt);
-  cam.lookAtPoint(lookLL);
-  map.setFreeCameraOptions(cam);
 }
 function applyCam(mode){
   camMode=mode;
@@ -276,7 +291,7 @@ function at(d){d=((d%trackLen)+trackLen)%trackLen;let i=1;while(cum[i]<d && i<cu
 const center=[-97.6339,30.1347];
 function initMap(){
   mapboxgl.accessToken=window.MAPBOX_PUBLIC_TOKEN;
-  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:16,pitch:75,bearing:-20,antialias:true});
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/satellite-streets-v12',center,zoom:CAM.zoom,pitch:CAM.pitch,bearing:-20,maxPitch:85,antialias:true});
   map.addControl(new mapboxgl.NavigationControl());
   const origin=mapboxgl.MercatorCoordinate.fromLngLat(center,0);
   const mScale=origin.meterInMercatorCoordinateUnits();

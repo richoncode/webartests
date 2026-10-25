@@ -113,15 +113,16 @@ export function createEngine(ctx) {
     const f = firingHz(rpm);
     for (const s of oscs) s.o.frequency.value = f * s.ratio;
 
-    const overrun = (1 - thr) * rpmN;
+    // Throttle owns loudness. A lifted pedal stays faintly audible so the RPM is still there.
     const gain = muted
       ? 0.0001
-      : (0.04 + 0.24 * thr) * (0.42 + 0.58 * rpmN) + overrun * 0.05;
+      : (0.035 + 0.3 * thr) * (0.4 + 0.6 * rpmN);
     master.gain.setTargetAtTime(gain, now, tc);
     filter.frequency.setTargetAtTime(240 + rpmN * 1500 + thr * 3800, now, tc);
     filter.Q.setTargetAtTime(0.55 + thr * 1.15, now, 0.05);
     noiseFilter.frequency.value = 500 + rpmN * 900 + thr * 400;
-    noiseGain.gain.setTargetAtTime(muted ? 0 : 0.012 + thr * 0.07 + overrun * 0.02, now, tc);
+    const overrun = (1 - thr) * rpmN;
+    noiseGain.gain.setTargetAtTime(muted ? 0 : 0.008 + thr * 0.07 + overrun * 0.012, now, tc);
 
     if (gear != null && prevGear != null && gear !== prevGear) {
       shift.gain.cancelScheduledValues(now);
@@ -142,9 +143,14 @@ export function createEngine(ctx) {
       sum += bins[i];
       wsum += bins[i] * (i / bins.length) * nyquist;
     }
+    const time = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(time);
+    let energy = 0;
+    for (let i = 0; i < time.length; i++) energy += time[i] * time[i];
     return {
       rms: sum / bins.length,
       centroid: sum > 0 ? wsum / sum : 0,
+      amp: Math.sqrt(energy / time.length),
     };
   }
 
