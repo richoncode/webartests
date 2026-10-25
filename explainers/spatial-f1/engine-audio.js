@@ -270,26 +270,124 @@ function buildVoice(ctx, preset, destination) {
  * I3DL2-style send on the car engine. One tap per probe, in the order
  * forward, back, left, right, up.
  *
- * distance (m) → delay = distance / 343, amplitude = reflect / (1 + distance/12)
- * material → highpass (LF cutoff) and lowpass (HF cutoff)
- *   glass    reflects high: reflect 0.82, HF 9000 Hz, LF 180 Hz, longer tail
- *   concrete reflects mid:  reflect 0.55, HF 3200 Hz, LF 90 Hz
- *   grass    absorbs:       reflect 0.08, HF 900 Hz,  LF 220 Hz, almost no tail
- *   open     dry:           reflect 0.012, so a field leaves the dry engine
- * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.58. Grass stays near 0.1.
- * The dry engine is not filtered. This is a send, mixed in after the hipass.
+ * distance (m) → delay = distance / 343
+ * level = reflect / (1 + distance / span)
+ *   glass    reflect 1.35, span 14 m, HF 8800 Hz, LF 160 Hz, RT 1.25 s
+ *   concrete reflect 1.25, span 16 m, HF 3800 Hz, LF 80 Hz,  RT 1.05 s
+ *   grass    reflect 0.07, span 10 m, HF 800 Hz,  LF 240 Hz, RT 0.22 s
+ *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
+ * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
+ * repeats stay audible without notching the firing frequency out.
+ * Open air keeps a real send (it used to be reflect 0.012, which was silence).
+ * Early reflections are the distance taps. The diffuse tail is a short noise
+ * burst of the dry note (not of the comb), scaled by the same wetness, so a
+ * harmonic null in one delay cannot silence the room. The dry engine is not
+ * filtered. The wet bus is mixed after the compressor so the engine note does
+ * not duck the tail. Reverb off closes that bus. A safety limiter after the
+ * sum only catches peaks near full scale; the dry note alone stays under it.
  */
+const TAP_IDS = ["forward", "back", "left", "right", "up"];
 const ROOM_MAT = {
-  glass: { reflect: 0.82, hf: 9000, lf: 180, rt: 1.05 },
-  concrete: { reflect: 0.55, hf: 3200, lf: 90, rt: 0.75 },
-  grass: { reflect: 0.08, hf: 900, lf: 220, rt: 0.28 },
-  open: { reflect: 0.012, hf: 1400, lf: 150, rt: 0.2 },
+  glass: { reflect: 1.35, hf: 8800, lf: 160, rt: 1.25, span: 14 },
+  concrete: { reflect: 1.25, hf: 3800, lf: 80, rt: 1.05, span: 16 },
+  grass: { reflect: 0.07, hf: 800, lf: 240, rt: 0.22, span: 10 },
+  open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
 };
 const SOUND_MPS = 343;
 
+export function reverbMix(hits) {
+  const list = Array.isArray(hits) ? hits : [];
+  const rows = [];
+  for (let i = 0; i < TAP_IDS.length; i++) {
+    const hit = list[i] || {};
+    const id = hit.id || TAP_IDS[i];
+    const kind = ROOM_MAT[hit.material] ? hit.material : "open";
+    const mat = ROOM_MAT[kind];
+    const fallback = id === "up" ? 80 : 72;
+    const raw = num(hit.distance, fallback);
+    const dist = Math.max(2, Math.min(160, Math.round(raw / 2) * 2 || 2));
+    const delay = Math.min(0.45, Math.max(0.008, dist / SOUND_MPS));
+    let amp = mat.reflect / (1 + dist / mat.span);
+    let fb;
+    if (kind === "glass" || kind === "concrete") {
+      const rt = mat.rt * (0.75 + Math.min(dist, 70) / 180);
+      fb = Math.min(0.34, Math.pow(10, (-3 * delay) / Math.max(0.25, rt)));
+    } else if (kind === "grass") {
+      fb = 0.08;
+      amp *= 0.75;
+    } else {
+      fb = 0.16;
+    }
+    rows.push({
+      id,
+      material: kind,
+      distance: dist,
+      delay,
+      amp,
+      fb,
+      hf: mat.hf,
+      lf: mat.lf,
+      reflect: mat.reflect,
+    });
+  }
+  const sum = rows.reduce((s, row) => s + row.amp, 0);
+  const trim = sum > 1.15 ? 1.15 / sum : 1;
+  let wet = 0;
+  for (const row of rows) {
+    row.gain = row.amp * trim;
+    wet += row.gain;
+  }
+  const hard = rows.filter((row) => row.material === "glass" || row.material === "concrete");
+  hard.sort((a, b) => a.distance - b.distance);
+  let dominant;
+  if (hard.length) dominant = hard[0];
+  else {
+    const soft = rows.filter((row) => row.material === "grass");
+    soft.sort((a, b) => a.distance - b.distance);
+    dominant = soft[0] || rows.slice().sort((a, b) => b.gain - a.gain)[0];
+  }
+  return { rows, dominant, wet, trim };
+}
+
+function outputCeiling(max) {
+  const n = 4096;
+  const curve = new Float32Array(n);
+  const knee = 0.72;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const ax = Math.abs(x);
+    let y = x;
+    if (ax > knee) {
+      const over = ax - knee;
+      const shaped = knee + (max - knee) * (1 - Math.exp(-over / (max - knee)));
+      y = Math.sign(x) * Math.min(max, shaped);
+    }
+    curve[i] = y;
+  }
+  return curve;
+}
+
+function diffuseTail(ctx, seconds) {
+  const n = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const buf = ctx.createBuffer(2, n, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < n; i++) {
+      const t = i / ctx.sampleRate;
+      // About -60 dB at `seconds`, independent per ear so it does not
+      // line up with the engine's harmonics and cancel them.
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-6.9 * t / seconds);
+    }
+    let peak = 0.001;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
+    for (let i = 0; i < n; i++) data[i] = data[i] / peak * 0.35;
+  }
+  return buf;
+}
+
 function createRoom(ctx, source) {
   const taps = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < TAP_IDS.length; i++) {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 120;
@@ -316,50 +414,62 @@ function createRoom(ctx, source) {
   wet.gain.value = 1;
   for (const tap of taps) tap.gain.connect(wet);
 
+  const out = ctx.createGain();
+  out.gain.value = 1;
+  wet.connect(out);
+
+  const tailIn = ctx.createBiquadFilter();
+  tailIn.type = "highpass";
+  tailIn.frequency.value = 140;
+  tailIn.Q.value = 0.7;
+  const tailTone = ctx.createBiquadFilter();
+  tailTone.type = "lowpass";
+  tailTone.frequency.value = 4200;
+  tailTone.Q.value = 0.7;
+  const tail = ctx.createConvolver();
+  tail.normalize = false;
+  tail.buffer = diffuseTail(ctx, 0.9);
+  const tailDrive = ctx.createGain();
+  tailDrive.gain.value = 0.2;
+  const tailGain = ctx.createGain();
+  tailGain.gain.value = 0.58;
+  source.connect(tailDrive);
+  tailDrive.connect(tailIn);
+  tailIn.connect(tailTone);
+  tailTone.connect(tail);
+  tail.connect(tailGain);
+  tailGain.connect(out);
+
   function setHits(hits) {
     const now = ctx.currentTime;
-    const list = Array.isArray(hits) ? hits : [];
-    const amps = [];
-    const tc = 0.12;
+    const mix = reverbMix(hits);
+    const tc = 0.08;
     for (let i = 0; i < taps.length; i++) {
-      const hit = list[i] || {};
-      const kind = ROOM_MAT[hit.material] ? hit.material : "open";
-      const mat = ROOM_MAT[kind];
-      const raw = num(hit.distance, 80);
-      const dist = Math.max(2, Math.min(160, Math.round(raw / 2) * 2 || 2));
-      const delay = Math.min(0.45, Math.max(0.006, dist / SOUND_MPS));
-      let amp = kind === "open" && !list.length ? 0 : mat.reflect / (1 + dist / 12);
-      let fb = 0.03;
-      if (kind === "glass" || kind === "concrete") {
-        const rt = mat.rt * (0.7 + Math.min(dist, 70) / 140);
-        fb = Math.min(0.58, Math.pow(10, (-3 * delay) / Math.max(0.2, rt)));
-      } else if (kind === "grass") {
-        fb = 0.1;
-        amp *= 0.85;
-      } else {
-        fb = 0.02;
-      }
-      amps.push(amp);
+      const row = mix.rows[i];
       const tap = taps[i];
-      tap.delay.delayTime.setTargetAtTime(delay, now, tc);
-      tap.hp.frequency.setTargetAtTime(mat.lf, now, tc);
-      tap.lp.frequency.setTargetAtTime(mat.hf, now, tc);
-      tap.fb.gain.setTargetAtTime(fb, now, tc);
-      tap._amp = amp;
+      tap.delay.delayTime.setTargetAtTime(row.delay, now, tc);
+      tap.hp.frequency.setTargetAtTime(row.lf, now, tc);
+      tap.lp.frequency.setTargetAtTime(row.hf, now, tc);
+      tap.fb.gain.setTargetAtTime(row.fb, now, tc);
+      tap.gain.gain.setTargetAtTime(row.gain, now, tc);
     }
-    const sum = amps.reduce((s, a) => s + a, 0);
-    const trim = sum > 0.85 ? 0.85 / sum : 1;
-    for (let i = 0; i < taps.length; i++) {
-      taps[i].gain.gain.setTargetAtTime(amps[i] * trim, now, tc);
-    }
+    // Same wetness as the early taps. The tail hears the dry note, so it
+    // still adds when a delay lands on a harmonic null.
+    tailDrive.gain.setTargetAtTime(Math.min(1, mix.wet) * 0.9, now, tc);
+    return mix;
+  }
+
+  function setEnabled(on) {
+    out.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.03);
   }
 
   setHits([]);
   return {
     connect(dest) {
-      wet.connect(dest);
+      out.connect(dest);
     },
     setHits,
+    setEnabled,
   };
 }
 
@@ -388,10 +498,18 @@ export function createEngine(ctx) {
   shift.connect(master);
   master.connect(hip);
   hip.connect(comp);
-  const room = createRoom(ctx, hip);
-  room.connect(comp);
   comp.connect(analyser);
-  analyser.connect(ctx.destination);
+  // Wet joins after the compressor. The dry engine stays unfiltered, and
+  // the tail is not ducked by the note that feeds the compressor.
+  const room = createRoom(ctx, hip);
+  room.connect(analyser);
+  // Linear through the dry preset peaks (about 0.5). Above 0.72 the sum
+  // eases toward full scale so a loud preset plus the send cannot clip.
+  const ceiling = ctx.createWaveShaper();
+  ceiling.curve = outputCeiling(0.94);
+  ceiling.oversample = "none";
+  analyser.connect(ceiling);
+  ceiling.connect(ctx.destination);
 
   let muted = false;
   let prevThr = null;
@@ -468,8 +586,11 @@ export function createEngine(ctx) {
     level,
     setMuted,
     loadPreset,
+    setReverb(on) {
+      room.setEnabled(!!on);
+    },
     setSurroundings(hits) {
-      room.setHits(hits);
+      return room.setHits(hits);
     },
     get muted() {
       return muted;
