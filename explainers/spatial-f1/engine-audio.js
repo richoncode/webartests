@@ -279,12 +279,14 @@ function buildVoice(ctx, preset, destination) {
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
  * Open air keeps a real send, summed near 0.16 so a miss is much drier than
- * a wall. A closer wall adds on top of its own share, so one hit still
- * moves the wet sum. The sum is capped at 1.15.
+ * a wall. Each hit adds on top of its share, scaled by the fan length, so
+ * wetness follows how much of the fan is lit. A corridor that lights about
+ * 80% of the rays reaches the 1.15 cap. One face, about half of that, stays
+ * under the cap. The sum is capped at 1.15.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
- * only when the hit is a bridge, so the pass-under spikes wet and the
- * loudest tap — the one the delay bar follows — is the short bridge
- * reflection. A grandstand on those rays is not boosted.
+ * only when the hit is a bridge, so the pass-under — every ray in the deck —
+ * is the other extreme, and the loudest tap the delay bar follows is that
+ * short reflection. A grandstand on those rays is not boosted.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
@@ -301,7 +303,12 @@ const ROOM_MAT = {
 };
 const SOUND_MPS = 343;
 const OPEN_WET = 0.16;
-const HIT_CONTRAST = 0.55;
+/**
+ * Per-hit addition is (material level − open level) × bridge boost × FILL / N.
+ * FILL is chosen so a both-sides corridor, concrete around 18 m, reaches
+ * the 1.15 cap, and one side of that corridor stays under it.
+ */
+const HIT_FILL = 2.5;
 const WET_CAP = 1.15;
 const MISS_DIST = 80;
 
@@ -347,7 +354,7 @@ export function reverbMix(hits) {
   const share = OPEN_WET / rows.length;
   for (const row of rows) {
     const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
-    row.amp = Math.max(0, share + (row.amp - missAmp) * HIT_CONTRAST * boost);
+    row.amp = Math.max(0, share + (row.amp - missAmp) * boost * (HIT_FILL / rows.length));
   }
   const sum = rows.reduce((s, row) => s + row.amp, 0);
   const trim = sum > WET_CAP ? WET_CAP / sum : 1;
