@@ -278,11 +278,12 @@ function buildVoice(ctx, preset, destination) {
  *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
- * Open air keeps a real send, summed near 0.05, so a miss is far drier than
- * a stadium. Hit energy is averaged across the fan and then curved, so a
- * few short-building hits barely rise and a both-sides grandstand — most of
- * the rays — reaches the 1.15 cap. The sum is capped at 1.15. A bridge
- * overhead still reaches that cap: the hits are close and weighted.
+ * Open air keeps a real send. The Min reverb slider is that floor (default
+ * 0.05) and the Max reverb slider is the ceiling (default 1.15) for a
+ * both-sides grandstand and for the bridge overhead. Hit energy is averaged
+ * across the fan and then curved, so a few short-building hits barely rise,
+ * and those two extremes land on the sliders. A bridge overhead still
+ * reaches the ceiling: the hits are close and weighted.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
  * only when the hit is a bridge, so the pass-under — every ray in the deck —
  * is the other extreme, and the loudest tap the delay bar follows is that
@@ -302,18 +303,30 @@ const ROOM_MAT = {
   open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
 };
 const SOUND_MPS = 343;
-const OPEN_WET = 0.05;
+/** Open-air floor and both-sides / bridge ceiling at the slider defaults. */
+export const REVERB_OPEN = 0.05;
+export const REVERB_CAP = 1.15;
+const OPEN_WET = REVERB_OPEN;
+const WET_CAP = REVERB_CAP;
+const REF_SPAN = REVERB_CAP - REVERB_OPEN;
 /**
  * Mean positive hit level, raised to HIT_POWER and scaled by HIT_GAIN.
- * A both-sides corridor (mean level near 0.40) reaches the cap. A short
- * building that lights only a slice of the fan stays near the open-air floor.
+ * A both-sides corridor (mean level near 0.40) fills the span from Min to
+ * Max. A short building that lights only a slice of the fan stays near Min.
  */
 const HIT_POWER = 2.15;
 const HIT_GAIN = 9.5;
-const WET_CAP = 1.15;
 const MISS_DIST = 80;
 
-export function reverbMix(hits) {
+function reverbBounds(bounds) {
+  const src = bounds || {};
+  const openWet = Number.isFinite(Number(src.openWet)) ? clamp(src.openWet, 0, 3) : OPEN_WET;
+  let wetCap = Number.isFinite(Number(src.wetCap)) ? clamp(src.wetCap, 0, 3) : WET_CAP;
+  if (wetCap < openWet) wetCap = openWet;
+  return { openWet, wetCap };
+}
+
+export function reverbMix(hits, bounds) {
   const list = Array.isArray(hits) ? hits : [];
   const rows = [];
   for (let i = 0; i < list.length; i++) {
@@ -351,8 +364,9 @@ export function reverbMix(hits) {
     });
   }
   if (!rows.length) return { rows, dominant: null, wet: 0, trim: 1 };
+  const { openWet, wetCap } = reverbBounds(bounds);
   const missAmp = ROOM_MAT.open.reflect / (1 + MISS_DIST / ROOM_MAT.open.span);
-  const share = OPEN_WET / rows.length;
+  const share = openWet / rows.length;
   let pos = 0;
   for (const row of rows) {
     const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
@@ -361,14 +375,17 @@ export function reverbMix(hits) {
     if (delta > 0) pos += delta;
   }
   const mean = pos / rows.length;
-  const extra = Math.min(WET_CAP - OPEN_WET, HIT_GAIN * Math.pow(mean, HIT_POWER));
+  const shaped = Math.min(REF_SPAN, HIT_GAIN * Math.pow(Math.max(0, mean), HIT_POWER));
+  const t = REF_SPAN > 0 ? shaped / REF_SPAN : 0;
+  const target = openWet + (wetCap - openWet) * t;
+  const extra = Math.max(0, target - openWet);
   const scale = pos > 0 ? extra / pos : 0;
   for (const row of rows) {
     const add = row.delta > 0 ? row.delta * scale : 0;
     row.amp = share + add;
   }
   const sum = rows.reduce((s, row) => s + row.amp, 0);
-  const trim = sum > WET_CAP ? WET_CAP / sum : 1;
+  const trim = sum > wetCap + 1e-4 ? wetCap / sum : 1;
   let wet = 0;
   for (const row of rows) {
     row.gain = row.amp * trim;
@@ -388,8 +405,8 @@ export function reverbMix(hits) {
 }
 
 /** Same mix, shaped for the readout: each tap's wet is its post-trim gain. */
-export function roomFromHits(hits) {
-  const mix = reverbMix(hits);
+export function roomFromHits(hits, bounds) {
+  const mix = reverbMix(hits, bounds);
   return { taps: mix.rows, trim: mix.trim, wet: mix.wet, dominant: mix.dominant };
 }
 
@@ -435,6 +452,8 @@ function createRoom(ctx, source) {
   wet.gain.value = 1;
   let send = 1;
   let wetAdj = 1;
+  let openWet = OPEN_WET;
+  let wetCap = WET_CAP;
 
   function makeTap() {
     const hp = ctx.createBiquadFilter();
@@ -488,9 +507,16 @@ function createRoom(ctx, source) {
   // Tail shares the wet bus, so Send and Reverb off scale it with the taps.
   tailGain.connect(wet);
 
+  function setBounds(bounds) {
+    const next = reverbBounds(bounds);
+    openWet = next.openWet;
+    wetCap = next.wetCap;
+    return next;
+  }
+
   function setHits(hits) {
     const now = ctx.currentTime;
-    const mix = reverbMix(hits);
+    const mix = reverbMix(hits, { openWet, wetCap });
     while (taps.length < mix.rows.length) taps.push(makeTap());
     const tc = 0.08;
     for (let i = 0; i < taps.length; i++) {
@@ -508,7 +534,8 @@ function createRoom(ctx, source) {
     }
     // Same wetness as the early taps. The tail hears the dry note, so it
     // still adds when a delay lands on a harmonic null.
-    tailDrive.gain.setTargetAtTime(Math.min(1, mix.wet) * 0.9, now, tc);
+    const tailLevel = Math.max(0, Math.min(2, mix.wet / WET_CAP)) * 0.9;
+    tailDrive.gain.setTargetAtTime(tailLevel, now, tc);
     return mix;
   }
 
@@ -544,6 +571,7 @@ function createRoom(ctx, source) {
     setEnabled,
     setSend,
     setWetAdj,
+    setBounds,
     get send() {
       return send;
     },
@@ -674,6 +702,9 @@ export function createEngine(ctx) {
     },
     setWetAdj(scale) {
       return room.setWetAdj(scale);
+    },
+    setReverbBounds(bounds) {
+      return room.setBounds(bounds);
     },
     get muted() {
       return muted;
