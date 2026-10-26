@@ -278,11 +278,11 @@ function buildVoice(ctx, preset, destination) {
  *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
- * Open air keeps a real send, summed near 0.16 so a miss is much drier than
- * a wall. Each hit adds on top of its share, scaled by the fan length, so
- * wetness follows how much of the fan is lit. A corridor that lights about
- * 80% of the rays reaches the 1.15 cap. One face, about half of that, stays
- * under the cap. The sum is capped at 1.15.
+ * Open air keeps a real send, summed near 0.05, so a miss is far drier than
+ * a stadium. Hit energy is averaged across the fan and then curved, so a
+ * few short-building hits barely rise and a both-sides grandstand — most of
+ * the rays — reaches the 1.15 cap. The sum is capped at 1.15. A bridge
+ * overhead still reaches that cap: the hits are close and weighted.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
  * only when the hit is a bridge, so the pass-under — every ray in the deck —
  * is the other extreme, and the loudest tap the delay bar follows is that
@@ -302,13 +302,14 @@ const ROOM_MAT = {
   open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
 };
 const SOUND_MPS = 343;
-const OPEN_WET = 0.16;
+const OPEN_WET = 0.05;
 /**
- * Per-hit addition is (material level − open level) × bridge boost × FILL / N.
- * FILL is chosen so a both-sides corridor, concrete around 18 m, reaches
- * the 1.15 cap, and one side of that corridor stays under it.
+ * Mean positive hit level, raised to HIT_POWER and scaled by HIT_GAIN.
+ * A both-sides corridor (mean level near 0.40) reaches the cap. A short
+ * building that lights only a slice of the fan stays near the open-air floor.
  */
-const HIT_FILL = 2.5;
+const HIT_POWER = 2.15;
+const HIT_GAIN = 9.5;
 const WET_CAP = 1.15;
 const MISS_DIST = 80;
 
@@ -352,9 +353,19 @@ export function reverbMix(hits) {
   if (!rows.length) return { rows, dominant: null, wet: 0, trim: 1 };
   const missAmp = ROOM_MAT.open.reflect / (1 + MISS_DIST / ROOM_MAT.open.span);
   const share = OPEN_WET / rows.length;
+  let pos = 0;
   for (const row of rows) {
     const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
-    row.amp = Math.max(0, share + (row.amp - missAmp) * boost * (HIT_FILL / rows.length));
+    const delta = (row.amp - missAmp) * boost;
+    row.delta = delta;
+    if (delta > 0) pos += delta;
+  }
+  const mean = pos / rows.length;
+  const extra = Math.min(WET_CAP - OPEN_WET, HIT_GAIN * Math.pow(mean, HIT_POWER));
+  const scale = pos > 0 ? extra / pos : 0;
+  for (const row of rows) {
+    const add = row.delta > 0 ? row.delta * scale : 0;
+    row.amp = share + add;
   }
   const sum = rows.reduce((s, row) => s + row.amp, 0);
   const trim = sum > WET_CAP ? WET_CAP / sum : 1;
