@@ -271,24 +271,29 @@ function buildVoice(ctx, preset, destination) {
  * is variable length, so the graph grows to however many hits arrive.
  *
  * distance (m) → delay = distance / 343
- * level = reflect / (1 + distance / span)
- *   glass    reflect 1.35, span 14 m, HF 8800 Hz, LF 160 Hz, RT 1.25 s
- *   concrete reflect 1.25, span 16 m, HF 3800 Hz, LF 80 Hz,  RT 1.05 s
- *   grass    reflect 0.07, span 10 m, HF 800 Hz,  LF 240 Hz, RT 0.22 s
- *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
- * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
- * repeats stay audible without notching the firing frequency out.
- * Open air keeps a real send. Min reverb is that floor (default 0.05) and
- * Max reverb is the ceiling (default 1.15, slider up to 30) for a both-sides
- * grandstand and for the bridge overhead. Hit energy is averaged across the
- * fan and then curved, so a few short-building hits barely rise, and those
- * two extremes land on the sliders. That mix is the wet bus. Min and Max are
- * the only wetness controls. A bridge overhead still
- * reaches the ceiling: the hits are close and weighted.
- * Ahead, overhead, and behind rays carry hit.weight. That weight applies
- * only when the hit is a bridge, so the pass-under — every ray in the deck —
- * is the other extreme, and the loudest tap the delay bar follows is that
- * short reflection. A grandstand on those rays is not boosted.
+ * level = reflect / (1 + distance / span) × bridgeWeight
+ *   glass    reflect 1.40, span 28 m, HF 8800 Hz, LF 160 Hz, RT 1.25 s
+ *   concrete reflect 1.25, span 36 m, HF 3800 Hz, LF 80 Hz,  RT 1.05 s
+ *   grass    reflect 0.70, span 24 m, HF 800 Hz,  LF 240 Hz, RT 0.22 s
+ *   open     reflect 0.20, span 40 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
+ * Every surface uses the same tail: 10^(-3·delay/RT60), capped at 0.34.
+ * Grass is a soft reflect, concrete and glass are hard, and an open miss
+ * is the lightest. A hit of any of those raises the mean, because each
+ * reflect stays above the open miss out to the ray length.
+ *
+ *   mean     = average(level)
+ *   openMiss = open reflect / (1 + 80 / open span)
+ *   lift     = max(0, mean / openMiss − 1)     // 0 when every probe misses
+ *   t        = min(1, (lift / ENCLOSE_LIFT) ^ HIT_POWER)
+ *   wet      = Min + (Max − Min) × t
+ *
+ * ENCLOSE_LIFT is the lift of a both-sides grandstand. The bridge overhead
+ * sits above it, so both fill Max. A one-sided wall climbs and stays under
+ * that. Close grass lifts the mean a little, so wet sits above Min.
+ * Min and Max are the only wetness sliders. Tap gains share `wet` in
+ * proportion to level. Ahead, overhead, and behind rays carry hit.weight,
+ * and that weight applies when the hit is a bridge. A grandstand on those
+ * rays is not boosted. The loudest level is the tap the delay bar follows.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
@@ -297,10 +302,10 @@ function buildVoice(ctx, preset, destination) {
  * near full scale; the dry note alone stays under it.
  */
 const ROOM_MAT = {
-  glass: { reflect: 1.35, hf: 8800, lf: 160, rt: 1.25, span: 14 },
-  concrete: { reflect: 1.25, hf: 3800, lf: 80, rt: 1.05, span: 16 },
-  grass: { reflect: 0.07, hf: 800, lf: 240, rt: 0.22, span: 10 },
-  open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
+  glass: { reflect: 1.4, hf: 8800, lf: 160, rt: 1.25, span: 28 },
+  concrete: { reflect: 1.25, hf: 3800, lf: 80, rt: 1.05, span: 36 },
+  grass: { reflect: 0.7, hf: 800, lf: 240, rt: 0.22, span: 24 },
+  open: { reflect: 0.2, hf: 1700, lf: 110, rt: 0.62, span: 40 },
 };
 const SOUND_MPS = 343;
 /** Open-air floor and both-sides / bridge ceiling at the slider defaults. */
@@ -310,15 +315,18 @@ export const REVERB_CAP = 1.15;
 export const REVERB_MAX = 30;
 const OPEN_WET = REVERB_OPEN;
 const WET_CAP = REVERB_CAP;
-const REF_SPAN = REVERB_CAP - REVERB_OPEN;
 /**
- * Mean positive hit level, raised to HIT_POWER and scaled by HIT_GAIN.
- * A both-sides corridor (mean level near 0.40) fills the span from Min to
- * Max. A short building that lights only a slice of the fan stays near Min.
+ * lift / ENCLOSE_LIFT, raised to HIT_POWER, fills the span from Min to Max.
+ * A both-sides corridor measures about this lift. The bridge overhead is
+ * higher. Close grass is a small lift, so it clears Min without reaching Max.
  */
-const HIT_POWER = 2.15;
-const HIT_GAIN = 9.5;
+const ENCLOSE_LIFT = 8;
+const HIT_POWER = 1.5;
 const MISS_DIST = 80;
+
+function materialLevel(mat, dist) {
+  return mat.reflect / (1 + dist / mat.span);
+}
 
 function reverbBounds(bounds) {
   const src = bounds || {};
@@ -338,19 +346,11 @@ export function reverbMix(hits, bounds) {
     const raw = num(hit.distance, MISS_DIST);
     const dist = Math.max(2, Math.min(160, Math.round(raw / 2) * 2 || 2));
     const delay = Math.min(0.45, Math.max(0.008, dist / SOUND_MPS));
-    let amp = mat.reflect / (1 + dist / mat.span);
-    let fb;
-    if (kind === "glass" || kind === "concrete") {
-      const rt = mat.rt * (0.75 + Math.min(dist, 70) / 180);
-      fb = Math.min(0.34, Math.pow(10, (-3 * delay) / Math.max(0.25, rt)));
-    } else if (kind === "grass") {
-      fb = 0.08;
-      amp *= 0.75;
-    } else {
-      fb = 0.16;
-    }
-    const facing = Number(hit.weight) > 1 ? Number(hit.weight) : 1;
-    const boost = (hit.cover === "bridge") ? facing : 1;
+    const amp = materialLevel(mat, dist);
+    const rt = Math.max(0.05, mat.rt * (0.75 + Math.min(dist, 70) / 180));
+    const fb = Math.min(0.34, Math.pow(10, (-3 * delay) / rt));
+    const arc = Number(hit.weight) > 1 ? Number(hit.weight) : 1;
+    const boost = hit.cover === "bridge" ? arc : 1;
     rows.push({
       id: hit.id || String(i),
       material: kind,
@@ -367,43 +367,28 @@ export function reverbMix(hits, bounds) {
   }
   if (!rows.length) return { rows, dominant: null, wet: 0, trim: 1 };
   const { openWet, wetCap } = reverbBounds(bounds);
-  const missAmp = ROOM_MAT.open.reflect / (1 + MISS_DIST / ROOM_MAT.open.span);
-  const share = openWet / rows.length;
-  let pos = 0;
+  const openMiss = materialLevel(ROOM_MAT.open, MISS_DIST);
+  let sum = 0;
   for (const row of rows) {
     const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
-    const delta = (row.amp - missAmp) * boost;
-    row.delta = delta;
-    if (delta > 0) pos += delta;
+    row.level = row.amp * boost;
+    sum += row.level;
   }
-  const mean = pos / rows.length;
-  const shaped = Math.min(REF_SPAN, HIT_GAIN * Math.pow(Math.max(0, mean), HIT_POWER));
-  const t = REF_SPAN > 0 ? shaped / REF_SPAN : 0;
-  const target = openWet + (wetCap - openWet) * t;
-  const extra = Math.max(0, target - openWet);
-  const scale = pos > 0 ? extra / pos : 0;
-  for (const row of rows) {
-    const add = row.delta > 0 ? row.delta * scale : 0;
-    row.amp = share + add;
-  }
-  const sum = rows.reduce((s, row) => s + row.amp, 0);
-  const trim = sum > wetCap + 1e-4 ? wetCap / sum : 1;
+  const mean = sum / rows.length;
+  const lift = Math.max(0, openMiss > 0 ? mean / openMiss - 1 : 0);
+  const t = Math.min(1, Math.pow(lift / ENCLOSE_LIFT, HIT_POWER));
+  const wetTarget = openWet + (wetCap - openWet) * t;
+  const scale = sum > 0 ? wetTarget / sum : 0;
+  let dominant = rows[0];
   let wet = 0;
   for (const row of rows) {
-    row.gain = row.amp * trim;
+    row.gain = row.level * scale;
     row.wet = row.gain;
+    row.amp = row.gain;
     wet += row.gain;
+    if (row.level > dominant.level) dominant = row;
   }
-  const hard = rows.filter((row) => row.material === "glass" || row.material === "concrete");
-  hard.sort((a, b) => b.gain - a.gain);
-  let dominant;
-  if (hard.length) dominant = hard[0];
-  else {
-    const soft = rows.filter((row) => row.material === "grass");
-    soft.sort((a, b) => b.gain - a.gain);
-    dominant = soft[0] || rows.slice().sort((a, b) => b.gain - a.gain)[0];
-  }
-  return { rows, dominant, wet, trim };
+  return { rows, dominant, wet, trim: 1 };
 }
 
 /** Same mix, shaped for the readout: each tap's wet is its post-trim gain. */
