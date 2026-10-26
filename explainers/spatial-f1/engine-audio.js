@@ -282,8 +282,8 @@ function buildVoice(ctx, preset, destination) {
  * Max reverb is the ceiling (default 1.15, slider up to 30) for a both-sides
  * grandstand and for the bridge overhead. Hit energy is averaged across the
  * fan and then curved, so a few short-building hits barely rise, and those
- * two extremes land on the sliders. The wet bus gain is that mix times Send
- * times Wet, so all four levers change the sound. A bridge overhead still
+ * two extremes land on the sliders. That mix is the wet bus. Min and Max are
+ * the only wetness controls. A bridge overhead still
  * reaches the ceiling: the hits are close and weighted.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
  * only when the hit is a bridge, so the pass-under — every ray in the deck —
@@ -293,8 +293,7 @@ function buildVoice(ctx, preset, destination) {
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
  * filtered. The wet bus is mixed after the compressor so the engine note does
- * not duck the tail. Send (0–3, default 1) and wet adj (0–2, default 1)
- * both multiply that bus. Reverb off closes it. A safety limiter after the sum only catches peaks
+ * not duck the tail. Reverb off closes it. A safety limiter after the sum only catches peaks
  * near full scale; the dry note alone stays under it.
  */
 const ROOM_MAT = {
@@ -453,8 +452,6 @@ function createRoom(ctx, source) {
   const taps = [];
   const wet = ctx.createGain();
   wet.gain.value = 1;
-  let send = 1;
-  let wetAdj = 1;
   let openWet = OPEN_WET;
   let wetCap = WET_CAP;
   let drive = 1;
@@ -509,7 +506,7 @@ function createRoom(ctx, source) {
   tailIn.connect(tailTone);
   tailTone.connect(tail);
   tail.connect(tailGain);
-  // Tail shares the wet bus, so Send and Reverb off scale it with the taps.
+  // Tail shares the wet bus, so Min, Max, and Reverb off scale it with the taps.
   tailGain.connect(wet);
 
   function setBounds(bounds) {
@@ -521,8 +518,8 @@ function createRoom(ctx, source) {
 
   function setHits(hits) {
     const now = ctx.currentTime;
-    // Taps stay on the default curve. Min and Max scale the wet bus, with
-    // Send and Wet, so the heard level matches the meter.
+    // Taps stay on the default curve. The wet bus is the Min–Max mix,
+    // so the heard level matches the meter.
     const shaped = reverbMix(hits);
     const mix = reverbMix(hits, { openWet, wetCap });
     drive = shaped.wet > 1e-4 ? mix.wet / shaped.wet : 0;
@@ -554,23 +551,8 @@ function createRoom(ctx, source) {
   }
 
   function applyWetGain() {
-    const sendGain = Math.max(0, Math.min(6, send * wetAdj));
-    busGain = sendGain * drive;
+    busGain = drive;
     wet.gain.setTargetAtTime(busGain, ctx.currentTime, 0.05);
-  }
-
-  function setSend(scale) {
-    const n = Number(scale);
-    send = Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : 1;
-    applyWetGain();
-    return send;
-  }
-
-  function setWetAdj(scale) {
-    const n = Number(scale);
-    wetAdj = Number.isFinite(n) ? Math.max(0, Math.min(2, n)) : 1;
-    applyWetGain();
-    return wetAdj;
   }
 
   setHits([]);
@@ -580,12 +562,7 @@ function createRoom(ctx, source) {
     },
     setHits,
     setEnabled,
-    setSend,
-    setWetAdj,
     setBounds,
-    get send() {
-      return send;
-    },
     get busGain() {
       return busGain;
     },
@@ -710,12 +687,6 @@ export function createEngine(ctx) {
     },
     setSurroundings(hits) {
       return room.setHits(hits);
-    },
-    setSend(scale) {
-      return room.setSend(scale);
-    },
-    setWetAdj(scale) {
-      return room.setWetAdj(scale);
     },
     setReverbBounds(bounds) {
       return room.setBounds(bounds);
