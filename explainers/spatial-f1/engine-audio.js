@@ -278,9 +278,8 @@ function buildVoice(ctx, preset, destination) {
  *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
- * Open air keeps a real send (it used to be reflect 0.012, which was silence).
- * A full set of misses is held near that five-ray open room. A closer wall
- * adds on top of its own share, so one hit in a twenty-one ray fan still
+ * Open air keeps a real send, summed near 0.16 so a miss is much drier than
+ * a wall. A closer wall adds on top of its own share, so one hit still
  * moves the wet sum. The sum is capped at 1.15.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
  * only when the hit is a bridge, so the pass-under spikes wet and the
@@ -290,8 +289,8 @@ function buildVoice(ctx, preset, destination) {
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
  * filtered. The wet bus is mixed after the compressor so the engine note does
- * not duck the tail. Send (0–3, default 1) multiplies that bus only.
- * Reverb off closes it. A safety limiter after the sum only catches peaks
+ * not duck the tail. Send (0–3, default 1) and wet adj (0–2, default 1)
+ * both multiply that bus. Reverb off closes it. A safety limiter after the sum only catches peaks
  * near full scale; the dry note alone stays under it.
  */
 const ROOM_MAT = {
@@ -301,7 +300,7 @@ const ROOM_MAT = {
   open: { reflect: 0.32, hf: 1700, lf: 110, rt: 0.62, span: 36 },
 };
 const SOUND_MPS = 343;
-const OPEN_WET = 0.48;
+const OPEN_WET = 0.16;
 const HIT_CONTRAST = 0.55;
 const WET_CAP = 1.15;
 const MISS_DIST = 80;
@@ -417,6 +416,7 @@ function createRoom(ctx, source) {
   const wet = ctx.createGain();
   wet.gain.value = 1;
   let send = 1;
+  let wetAdj = 1;
 
   function makeTap() {
     const hp = ctx.createBiquadFilter();
@@ -498,11 +498,23 @@ function createRoom(ctx, source) {
     out.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.03);
   }
 
+  function applyWetGain() {
+    const g = Math.max(0, Math.min(6, send * wetAdj));
+    wet.gain.setTargetAtTime(g, ctx.currentTime, 0.05);
+  }
+
   function setSend(scale) {
     const n = Number(scale);
     send = Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : 1;
-    wet.gain.setTargetAtTime(send, ctx.currentTime, 0.05);
+    applyWetGain();
     return send;
+  }
+
+  function setWetAdj(scale) {
+    const n = Number(scale);
+    wetAdj = Number.isFinite(n) ? Math.max(0, Math.min(2, n)) : 1;
+    applyWetGain();
+    return wetAdj;
   }
 
   setHits([]);
@@ -513,6 +525,7 @@ function createRoom(ctx, source) {
     setHits,
     setEnabled,
     setSend,
+    setWetAdj,
     get send() {
       return send;
     },
@@ -640,6 +653,9 @@ export function createEngine(ctx) {
     },
     setSend(scale) {
       return room.setSend(scale);
+    },
+    setWetAdj(scale) {
+      return room.setWetAdj(scale);
     },
     get muted() {
       return muted;
