@@ -271,7 +271,7 @@ function buildVoice(ctx, preset, destination) {
  * is variable length, so the graph grows to however many hits arrive.
  *
  * distance (m) → delay = distance / 343
- * level = hardness × max(0, 1 − distance / 80) × bridgeWeight
+ * level = hardness × max(0, 1 − distance / 80)
  *   grass              hardness 0.5  (soft)
  *   concrete, glass    hardness 2    (hard)
  *   open miss          hardness 0
@@ -287,14 +287,12 @@ function buildVoice(ctx, preset, destination) {
  *   t    = min(1, mean)
  *   wet  = Min + (Max − Min) × t
  *
- * Hardness 2 is the scale that lets a both-sides grandstand average about
- * 1 and fill Max. The bridge overhead averages higher. A one-sided wall
- * stays under 1. Close grass, at 0.5, lifts the mean a little. A miss is
- * 0, so open air is Min. Min and Max are the only wetness sliders. Tap
- * gains share `wet` in proportion to level. Ahead, overhead, and behind
- * rays carry hit.weight, and that weight applies when the hit is a bridge.
- * A grandstand on those rays is not boosted. The loudest level is the tap
- * the delay bar follows.
+ * Hardness 2 is the scale that lets a both-sides grandstand and the bridge
+ * overhead average at least 1 and fill Max. The deck is close concrete, so
+ * it fills Max on the same path as a wall. A one-sided wall stays under 1.
+ * Close grass, at 0.5, lifts the mean a little. A miss is 0, so open air
+ * is Min. Min and Max are the only wetness sliders. Tap gains share `wet`
+ * in proportion to level. The loudest level is the tap the delay bar follows.
  * Early reflections are the distance taps. The diffuse tail is a short noise
  * burst of the dry note (not of the comb), scaled by the same wetness, so a
  * harmonic null in one delay cannot silence the room. The dry engine is not
@@ -354,8 +352,6 @@ export function reverbMix(hits, bounds) {
     const amp = hardness * distanceRolloff(dist);
     const rt = Math.max(0.05, mat.rt * (0.75 + Math.min(dist, 70) / 180));
     const fb = Math.min(0.34, Math.pow(10, (-3 * delay) / rt));
-    const arc = Number(hit.weight) > 1 ? Number(hit.weight) : 1;
-    const boost = hit.cover === "bridge" ? arc : 1;
     rows.push({
       id: hit.id || String(i),
       material: kind,
@@ -363,7 +359,6 @@ export function reverbMix(hits, bounds) {
       distance: dist,
       delay,
       amp,
-      boost,
       fb,
       hf: mat.hf,
       lf: mat.lf,
@@ -374,8 +369,7 @@ export function reverbMix(hits, bounds) {
   const { openWet, wetCap } = reverbBounds(bounds);
   let sum = 0;
   for (const row of rows) {
-    const boost = Number(row.boost) > 0 ? Number(row.boost) : 1;
-    row.level = row.amp * boost;
+    row.level = row.amp;
     sum += row.level;
   }
   const mean = sum / rows.length;

@@ -12,10 +12,9 @@
  *   bridge — an arc over the car. Shallow rays ahead meet a deck on
  *            the way in, steeper rays look at the deck overhead, and
  *            the shallow rays repeat behind the tail on the way out.
- *            Those rays carry a higher mix weight only when the hit
- *            is a bridge. A grandstand on the same ray is not boosted.
  *            Overhead is the other extreme: the car is inside the deck,
- *            so the whole fan hits it.
+ *            so the whole fan hits close concrete. That room fills Max
+ *            on the same hardness and rolloff as a wall.
  *
  * The chase camera only keeps the tiles in front of the lens, so a
  * grandstand beside the car is often not in that set. The page also
@@ -47,17 +46,15 @@ const TREE_H = 8;
 const GRASS_MAX_U = Math.sin(25 * Math.PI / 180);
 const TILE_Z = 15;
 
-function pushAim(rays, kind, elev, yaw, weight) {
+function pushAim(rays, kind, elev, yaw) {
   const side = yaw === 0 ? "0" : (yaw > 0 ? "L" + yaw : "R" + (-yaw));
-  const ray = {
+  rays.push({
     id: kind + "-" + elev + "-" + side,
     kind,
     elev,
     yaw,
     max: RAY_MAX,
-  };
-  if (weight) ray.weight = weight;
-  rays.push(ray);
+  });
 }
 
 /**
@@ -83,19 +80,18 @@ function standRays() {
  * Bridge arc. 16° meets a 6.5 m deck about 20 m ahead; 34° meets it
  * closer. Overhead rays take the deck while the car is under it.
  * The same shallow pair looks back on the way out. Yaw is a few degrees
- * either side of the centreline. Weight applies only on a bridge hit.
+ * either side of the centreline.
  */
 function bridgeRays() {
   const rays = [];
-  const w = 2.8;
   for (const kind of ["ahead", "behind"]) {
     for (const elev of [16, 34]) {
-      for (const yaw of [-12, 0, 12]) pushAim(rays, kind, elev, yaw, w);
+      for (const yaw of [-12, 0, 12]) pushAim(rays, kind, elev, yaw);
     }
   }
-  pushAim(rays, "above", 90, 0, w);
+  pushAim(rays, "above", 90, 0);
   for (const elev of [62, 76]) {
-    for (const yaw of [-8, 0, 8]) pushAim(rays, "above", elev, yaw, w);
+    for (const yaw of [-8, 0, 8]) pushAim(rays, "above", elev, yaw);
   }
   return rays;
 }
@@ -511,8 +507,7 @@ function castOne(ray, dir, features) {
   if (solid && (!soft || solid.distance <= soft.distance)) hit = solid;
   else if (soft) hit = soft;
   else hit = { distance: max, material: "open", cover: "" };
-  const weight = Number(ray && ray.weight) > 0 ? Number(ray.weight) : 1;
-  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "", weight, height: hit.height || 0 };
+  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "", height: hit.height || 0 };
 }
 
 /**
