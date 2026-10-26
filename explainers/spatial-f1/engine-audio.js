@@ -305,10 +305,10 @@ const SOUND_MPS = 343;
 const OPEN_WET = 0.16;
 /**
  * Per-hit addition is (material level − open level) × bridge boost × FILL / N.
- * FILL is chosen so ~80% of the rays on concrete around 30 m sum to the cap,
- * and ~40% (one side of a corridor) stays near 0.7.
+ * FILL is chosen so a both-sides corridor, concrete around 18 m, reaches
+ * the 1.15 cap, and one side of that corridor stays under it.
  */
-const HIT_FILL = 3.6;
+const HIT_FILL = 2.5;
 const WET_CAP = 1.15;
 const MISS_DIST = 80;
 
