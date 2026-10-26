@@ -278,11 +278,12 @@ function buildVoice(ctx, preset, destination) {
  *   open     reflect 0.32, span 36 m, HF 1700 Hz, LF 110 Hz, RT 0.62 s
  * Hard-wall feedback is 10^(-3·delay/RT60), capped at 0.34 so the
  * repeats stay audible without notching the firing frequency out.
- * Open air keeps a real send. The Min reverb slider is that floor (default
- * 0.05) and the Max reverb slider is the ceiling (default 1.15) for a
- * both-sides grandstand and for the bridge overhead. Hit energy is averaged
- * across the fan and then curved, so a few short-building hits barely rise,
- * and those two extremes land on the sliders. A bridge overhead still
+ * Open air keeps a real send. Min reverb is that floor (default 0.05) and
+ * Max reverb is the ceiling (default 1.15, slider up to 30) for a both-sides
+ * grandstand and for the bridge overhead. Hit energy is averaged across the
+ * fan and then curved, so a few short-building hits barely rise, and those
+ * two extremes land on the sliders. The wet bus gain is that mix times Send
+ * times Wet, so all four levers change the sound. A bridge overhead still
  * reaches the ceiling: the hits are close and weighted.
  * Ahead, overhead, and behind rays carry hit.weight. That weight applies
  * only when the hit is a bridge, so the pass-under — every ray in the deck —
@@ -306,6 +307,8 @@ const SOUND_MPS = 343;
 /** Open-air floor and both-sides / bridge ceiling at the slider defaults. */
 export const REVERB_OPEN = 0.05;
 export const REVERB_CAP = 1.15;
+/** Top of the Max reverb slider. The default ceiling stays REVERB_CAP. */
+export const REVERB_MAX = 30;
 const OPEN_WET = REVERB_OPEN;
 const WET_CAP = REVERB_CAP;
 const REF_SPAN = REVERB_CAP - REVERB_OPEN;
@@ -320,8 +323,8 @@ const MISS_DIST = 80;
 
 function reverbBounds(bounds) {
   const src = bounds || {};
-  const openWet = Number.isFinite(Number(src.openWet)) ? clamp(src.openWet, 0, 3) : OPEN_WET;
-  let wetCap = Number.isFinite(Number(src.wetCap)) ? clamp(src.wetCap, 0, 3) : WET_CAP;
+  const openWet = Number.isFinite(Number(src.openWet)) ? clamp(src.openWet, 0, 2) : OPEN_WET;
+  let wetCap = Number.isFinite(Number(src.wetCap)) ? clamp(src.wetCap, 0, REVERB_MAX) : WET_CAP;
   if (wetCap < openWet) wetCap = openWet;
   return { openWet, wetCap };
 }
@@ -454,6 +457,8 @@ function createRoom(ctx, source) {
   let wetAdj = 1;
   let openWet = OPEN_WET;
   let wetCap = WET_CAP;
+  let drive = 1;
+  let busGain = 1;
 
   function makeTap() {
     const hp = ctx.createBiquadFilter();
@@ -516,11 +521,15 @@ function createRoom(ctx, source) {
 
   function setHits(hits) {
     const now = ctx.currentTime;
+    // Taps stay on the default curve. Min and Max scale the wet bus, with
+    // Send and Wet, so the heard level matches the meter.
+    const shaped = reverbMix(hits);
     const mix = reverbMix(hits, { openWet, wetCap });
-    while (taps.length < mix.rows.length) taps.push(makeTap());
+    drive = shaped.wet > 1e-4 ? mix.wet / shaped.wet : 0;
+    while (taps.length < shaped.rows.length) taps.push(makeTap());
     const tc = 0.08;
     for (let i = 0; i < taps.length; i++) {
-      const row = mix.rows[i];
+      const row = shaped.rows[i];
       const tap = taps[i];
       if (!row) {
         tap.gain.gain.setTargetAtTime(0, now, tc);
@@ -532,10 +541,11 @@ function createRoom(ctx, source) {
       tap.fb.gain.setTargetAtTime(row.fb, now, tc);
       tap.gain.gain.setTargetAtTime(row.gain, now, tc);
     }
-    // Same wetness as the early taps. The tail hears the dry note, so it
-    // still adds when a delay lands on a harmonic null.
-    const tailLevel = Math.max(0, Math.min(2, mix.wet / WET_CAP)) * 0.9;
+    // Reference tail. The wet bus scales it with the taps.
+    const tailLevel = Math.max(0, shaped.wet / WET_CAP) * 0.9;
     tailDrive.gain.setTargetAtTime(tailLevel, now, tc);
+    applyWetGain();
+    mix.bus = busGain;
     return mix;
   }
 
@@ -544,8 +554,9 @@ function createRoom(ctx, source) {
   }
 
   function applyWetGain() {
-    const g = Math.max(0, Math.min(6, send * wetAdj));
-    wet.gain.setTargetAtTime(g, ctx.currentTime, 0.05);
+    const sendGain = Math.max(0, Math.min(6, send * wetAdj));
+    busGain = sendGain * drive;
+    wet.gain.setTargetAtTime(busGain, ctx.currentTime, 0.05);
   }
 
   function setSend(scale) {
@@ -575,6 +586,9 @@ function createRoom(ctx, source) {
     get send() {
       return send;
     },
+    get busGain() {
+      return busGain;
+    },
   };
 }
 
@@ -603,18 +617,18 @@ export function createEngine(ctx) {
   shift.connect(master);
   master.connect(hip);
   hip.connect(comp);
-  comp.connect(analyser);
   // Wet joins after the compressor. The dry engine stays unfiltered, and
   // the tail is not ducked by the note that feeds the compressor.
   const room = createRoom(ctx, hip);
-  room.connect(analyser);
   // Linear through the dry preset peaks (about 0.5). Above 0.72 the sum
   // eases toward full scale so a loud preset plus the send cannot clip.
   const ceiling = ctx.createWaveShaper();
   ceiling.curve = outputCeiling(0.94);
   ceiling.oversample = "none";
-  analyser.connect(ceiling);
-  ceiling.connect(ctx.destination);
+  comp.connect(ceiling);
+  room.connect(ceiling);
+  ceiling.connect(analyser);
+  analyser.connect(ctx.destination);
 
   let muted = false;
   let prevThr = null;
@@ -705,6 +719,9 @@ export function createEngine(ctx) {
     },
     setReverbBounds(bounds) {
       return room.setBounds(bounds);
+    },
+    get wetBus() {
+      return room.busGain;
     },
     get muted() {
       return muted;
