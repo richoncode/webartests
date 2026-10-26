@@ -6,7 +6,9 @@
  *            around to behind the tail. In a corridor with buildings
  *            on both sides, ahead and behind, most of these rays meet
  *            a wall instead of clearing the roof. That set is about
- *            four fifths of the probes, so the corridor lights ~80%.
+ *            four fifths of the probes. In the both-sides corridor
+ *            about seven in ten of all probes hit; the overhead arc
+ *            misses, and the upper band still meets the facades.
  *   bridge — an arc over the car. Shallow rays ahead meet a deck on
  *            the way in, steeper rays look at the deck overhead, and
  *            the shallow rays repeat behind the tail on the way out.
@@ -59,17 +61,16 @@ function pushAim(rays, kind, elev, yaw, weight) {
 }
 
 /**
- * Low corridor fan. Elevation stays at 2°, 4°, and 6° so an 8–12 m
- * wall still intercepts the ray out to the 80 m limit. Yaw runs from
- * about 32° off the nose (forward along the stand) through abeam to
- * about 152° (back along the stand), on the left and the right.
- * Positive yaw is left. Straight down the track is left to the bridge
- * arc; these rays are the side faces forward and back.
+ * Corridor fan. 2° and 5° stay low enough to meet a short wall. 7° is
+ * the upper band: on the grandstands beside this circuit it strikes
+ * about 80% of the way up the facade, and a shorter building clears it.
+ * Yaw runs from about 32° off the nose through abeam to about 152°
+ * behind, on the left and the right. Positive yaw is left.
  */
 function standRays() {
   const rays = [];
   const yaws = [32, 42, 52, 62, 72, 82, 92, 102, 112, 122, 132, 142, 152];
-  for (const elev of [2, 4, 6]) {
+  for (const elev of [2, 5, 7]) {
     for (const yaw of yaws) {
       pushAim(rays, "stand", elev, yaw);
       pushAim(rays, "stand", elev, -yaw);
@@ -461,10 +462,10 @@ function castOne(ray, dir, features) {
   const hcomp = Math.hypot(dir.e, dir.n);
   let solid = null;
   let soft = null;
-  const take = (slot, t, feat) => {
+  const take = (slot, t, feat, height) => {
     if (!(t > 1.2) || t > max) return slot;
     if (!slot || t < slot.distance) {
-      return { distance: t, material: feat.mat, cover: feat.cover || feat.mat };
+      return { distance: t, material: feat.mat, cover: feat.cover || feat.mat, height };
     }
     return slot;
   };
@@ -475,8 +476,8 @@ function castOne(ray, dir, features) {
     if (isGrass && dir.u > GRASS_MAX_U) continue;
     const height = Number(feat.height) > 0 ? Number(feat.height) : (isGrass ? GRASS_H : DEFAULT_BUILDING_H);
     const slot = (t) => {
-      if (isGrass) soft = take(soft, t, feat);
-      else solid = take(solid, t, feat);
+      if (isGrass) soft = take(soft, t, feat, height);
+      else solid = take(solid, t, feat, height);
     };
     if (dir.u > 0.02 && height > ORIGIN_Z) {
       const tRoof = (height - ORIGIN_Z) / dir.u;
@@ -511,7 +512,7 @@ function castOne(ray, dir, features) {
   else if (soft) hit = soft;
   else hit = { distance: max, material: "open", cover: "" };
   const weight = Number(ray && ray.weight) > 0 ? Number(ray.weight) : 1;
-  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "", weight };
+  return { id: ray.id, distance: hit.distance, material: hit.material, cover: hit.cover || "", weight, height: hit.height || 0 };
 }
 
 /**
