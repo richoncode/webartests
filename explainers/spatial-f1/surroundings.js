@@ -1,15 +1,19 @@
 /**
  * Ray probes for the car's I3DL2-style reverb.
  *
- * Two aims, not one vertical fan:
- *   stand  — low, so a wall sends the ray back. The side rays sit a
- *            little forward of straight out, not exactly abeam, so the
- *            face you are approaching counts as well as the one beside you.
+ * Two aims, and the two loudest rooms:
+ *   stand  — a dense low fan on both sides, from forward of the nose
+ *            around to behind the tail. In a corridor with buildings
+ *            on both sides, ahead and behind, most of these rays meet
+ *            a wall instead of clearing the roof. That set is about
+ *            four fifths of the probes, so the corridor lights ~80%.
  *   bridge — an arc over the car. Shallow rays ahead meet a deck on
  *            the way in, steeper rays look at the deck overhead, and
  *            the shallow rays repeat behind the tail on the way out.
  *            Those rays carry a higher mix weight only when the hit
  *            is a bridge. A grandstand on the same ray is not boosted.
+ *            Overhead is the other extreme: the car is inside the deck,
+ *            so the whole fan hits it.
  *
  * The chase camera only keeps the tiles in front of the lens, so a
  * grandstand beside the car is often not in that set. The page also
@@ -55,17 +59,22 @@ function pushAim(rays, kind, elev, yaw, weight) {
 }
 
 /**
- * Sides stay a few degrees above the horizon so they meet a wall instead
- * of clearing the roof. Yaw is short of ±90°, toward the nose, so the
- * ray looks slightly forward along the stand. The nose rays are low too.
- * Positive yaw is left.
+ * Low corridor fan. Elevation stays at 2°, 4°, and 6° so an 8–12 m
+ * wall still intercepts the ray out to the 80 m limit. Yaw runs from
+ * about 32° off the nose (forward along the stand) through abeam to
+ * about 152° (back along the stand), on the left and the right.
+ * Positive yaw is left. Straight down the track is left to the bridge
+ * arc; these rays are the side faces forward and back.
  */
 function standRays() {
   const rays = [];
-  for (const elev of [2, 6]) {
-    for (const yaw of [-78, -66, 66, 78]) pushAim(rays, "stand", elev, yaw);
+  const yaws = [32, 42, 52, 62, 72, 82, 92, 102, 112, 122, 132, 142, 152];
+  for (const elev of [2, 4, 6]) {
+    for (const yaw of yaws) {
+      pushAim(rays, "stand", elev, yaw);
+      pushAim(rays, "stand", elev, -yaw);
+    }
   }
-  for (const yaw of [-22, 0, 22]) pushAim(rays, "stand", 3, yaw);
   return rays;
 }
 
