@@ -17,6 +17,10 @@
   "&hourly=temperature_2m,cloud_cover" \
   "&temperature_unit=fahrenheit&precipitation_unit=inch" \
   "&timezone=America%2FLos_Angeles&forecast_days=5"
+// forecast_days=5 returns 120 hourly entries starting at local midnight today,
+// 24 per calendar day even across a DST change (checked against the archive
+// API for 2025-11-02 and 2026-03-08). The launch rule needs the first 48 —
+// today and tomorrow — because it looks ahead to noon tomorrow.
 
 // Day 0 of the daily arrays is today, so the forecast strip's first column and
 // the today figures come from the same request. No second call, no drift
@@ -32,7 +36,7 @@
 // data, not the layout, so without it a firmware update that moves everything
 // around finds the same hash, skips the repaint, and leaves the old arrangement
 // on the glass until something in the weather happens to change.
-#define LAYOUT_VERSION      7
+#define LAYOUT_VERSION      8
 
 // The water filter is changed on the first Sunday of the month, and the badge
 // stands for three days: Sunday green, Monday yellow, Tuesday red. The colour
@@ -101,9 +105,9 @@
 // survive it: ArduinoJson reports IncompleteInput.
 // v2.3.0, not 2.2.0. The old version still answers, and when it stops the band
 // will vanish with no other symptom — the one failure the RTC cache cannot
-// cover, because it expires with the day. The collection is plural in 2.3.0
-// and the list response carries the mission's orbit, which the drift hint used
-// to need a second request for.
+// cover for a launch it has never seen. A launch already known stays until
+// lift-off. The collection is plural in 2.3.0 and the list response carries
+// the mission's orbit, which the drift hint used to need a second request for.
 #define LL2_PATH \
   "/2.3.0/launches/upcoming/?location__ids=11&limit=5&hide_recent_previous=true"
 #define LL2_DETAIL_FMT  "/2.3.0/launches/%s/?mode=detailed"
@@ -112,7 +116,14 @@
 // climbs into sunlight — the twilight effect. Show a launch when ALL hold:
 //   1. the local sky is clear or nearly so          (WX_CLEAR_MAX_CLOUD_PCT)
 //   2. lift-off falls after sunset or before sunrise (dusk margin below)
-//   3. lift-off is today, local time
+//   3. lift-off is between now and noon tomorrow, local time
+//
+// Rule 3 used to be "today, local time", which never showed a pre-dawn launch:
+// the evening wake skipped it as tomorrow's, and by the 06:00 wake it had
+// flown and dropped off the upcoming list. Looking ahead to noon tomorrow lets
+// the 18:00 wake (or a button press that evening) flag a 01:16 launch, and
+// lets the 06:00 wake see the whole morning. Every wake uses the same rule.
+#define LAUNCH_CUTOFF_HOUR       12   // consider launches until this hour tomorrow
 #define WX_CLEAR_MAX_CLOUD_PCT   35
 #define LAUNCH_DUSK_MARGIN_MIN   15   // count from sunset minus this
 // Best viewing runs from sunset to about 90 min after; flag those as prime.

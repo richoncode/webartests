@@ -315,8 +315,31 @@ private:
     char pct[8];
     snprintf(pct, sizeof(pct), "%d%%", m.launchChance);
     text(pct, r.x + r.w - PAD - TIME_W, r.y + 4, F_BIG, fg, TR_DATUM);
-    text(m.launchTime, r.x + r.w - PAD, r.y + 6,  F_MID,  fg, TR_DATUM);
-    text("chance tonight", r.x + r.w - PAD, r.y + 38, F_TINY, fg, TR_DATUM);
+
+    // A launch after midnight carries its weekday. It goes in front of the
+    // time when the column has room, with a little air before the percentage;
+    // mostly it does not ("THU 1:16 AM" is 215 px at F_MID and 150 at F_BODY
+    // against 142), so then the time keeps its size and the weekday takes the
+    // caption instead: "1:16 AM" over "chance THU".
+    const int16_t TIME_FIT = TIME_W - 8;
+    const GFXfont *tf = F_MID;
+    char when[24], caption[24];
+    snprintf(when, sizeof(when), "%s", m.launchTime);
+    snprintf(caption, sizeof(caption), "chance tonight");
+    if (m.launchDay[0]) {
+      char withDay[24];
+      snprintf(withDay, sizeof(withDay), "%s %s", m.launchDay, m.launchTime);
+      if (widthOf(withDay, F_MID) <= TIME_FIT) {
+        snprintf(when, sizeof(when), "%s", withDay);
+      } else if (widthOf(withDay, F_BODY) <= TIME_FIT) {
+        snprintf(when, sizeof(when), "%s", withDay);
+        tf = F_BODY;
+      } else {
+        snprintf(caption, sizeof(caption), "chance %s", m.launchDay);
+      }
+    }
+    text(when, r.x + r.w - PAD, r.y + (tf == F_MID ? 6 : 10), tf, fg, TR_DATUM);
+    text(caption, r.x + r.w - PAD, r.y + 38, F_TINY, fg, TR_DATUM);
   }
 
   // Paper and ink where a launch band is a slab of colour, with one stripe of
