@@ -25,7 +25,8 @@ static const CalendarEvent CALENDAR[] = {
   {  5,  8, EVT_BIRTHDAY, "RICHARD'S BIRTHDAY"      },
   {  6, 15, EVT_BIRTHDAY, "MAESTRO'S BIRTHDAY"      },
   {  9,  4, EVT_WILDLIFE, "CALIFORNIA WILDLIFE DAY" },
-  { 10, 10, EVT_BIRTHDAY, "TORI'S BIRTHDAY"         },
+  { 10, 11, EVT_BIRTHDAY, "TORI'S BIRTHDAY"         },
+  { 10, 15, EVT_BIRTHDAY, "UNCLE JIM'S BIRTHDAY"    },
 };
 static const int CALENDAR_N = sizeof(CALENDAR) / sizeof(CALENDAR[0]);
 
