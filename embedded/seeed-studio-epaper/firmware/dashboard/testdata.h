@@ -7,7 +7,7 @@
 #include "config.h"
 #include "calendar.h"
 
-static const int TEST_MODE_COUNT = 6;
+static const int TEST_MODE_COUNT = 7;
 
 inline void fillDay(DayForecast &d, const char *label, int code, int hi, int lo, int pp) {
   snprintf(d.label, sizeof(d.label), "%s", label);
@@ -80,6 +80,16 @@ inline void loadTestFrame(Model &m, int mode) {
       fillDay(m.days[3], "THU",    1, 74, 48, 20);
       fillDay(m.days[4], "FRI",    0, 80, 50, 0);
       m.bins = BIN_OUT;
+      break;
+
+    case 7:   // a pre-dawn launch seen the evening before — the weekday rides along
+      m.launchTonight = true; m.launchChance = 14;
+      snprintf(m.launchName, sizeof(m.launchName), "FALCON 9 - SDA TRANCHE 1 TRANSPORT LAYER A");
+      snprintf(m.launchDrift,   sizeof(m.launchDrift),   "drifts right");
+      snprintf(m.launchBooster, sizeof(m.launchBooster), "droneship");
+      snprintf(m.launchTime, sizeof(m.launchTime), "1:16 AM");
+      snprintf(m.launchDay,  sizeof(m.launchDay),  "TUE");
+      snprintf(m.launchPrep, sizeof(m.launchPrep), "out by 1:11");
       break;
   }
   snprintf(m.asOf, sizeof(m.asOf), "TEST MODE %d - not live data", mode);

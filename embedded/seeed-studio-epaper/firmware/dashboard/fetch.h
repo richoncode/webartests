@@ -213,10 +213,16 @@ inline bool weather(Model &m) {
     }
   }
 
+  // Today and tomorrow: the launch window runs to noon tomorrow, so a 01:16
+  // lift-off is judged against tomorrow's 01:00 entry, index 25. Open-Meteo
+  // lays out 24 entries per local day from midnight today, DST days included.
   JsonArrayConst cc = doc["hourly"]["cloud_cover"];
   m.haveCloud = false;
+  m.cloudHours = 0;
   if (!cc.isNull() && cc.size() >= 24) {
-    for (int i = 0; i < 24; i++) m.cloudPct[i] = (uint8_t)(cc[i] | 100);
+    int n = cc.size() >= 48 ? 48 : 24;
+    for (int i = 0; i < n; i++) m.cloudPct[i] = (uint8_t)(cc[i] | 100);
+    m.cloudHours = (uint8_t)n;
     m.haveCloud = true;
   }
 
@@ -259,10 +265,13 @@ inline bool airQuality(Model &m) {
 // A Vandenberg launch only earns the band when the sky here is clear enough to
 // see it. Cloud cover at the lift-off hour answers that; a daily weather code
 // cannot, and neither can the code for the current hour twelve hours earlier.
-inline bool skyIsClearAt(const Model &m, int hourOfDay) {
+// hourIdx is hours since local midnight today, the same index as cloudPct
+// (24 + hour for tomorrow). An index outside the hours actually fetched
+// is not treated as clear.
+inline bool skyIsClearAt(const Model &m, int hourIdx) {
   if (!m.haveCloud) return m.nowCode <= 2;          // fall back to the code
-  if (hourOfDay < 0 || hourOfDay > 23) return false;
-  return m.cloudPct[hourOfDay] <= WX_CLEAR_MAX_CLOUD_PCT;
+  if (hourIdx < 0 || hourIdx >= m.cloudHours) return false;
+  return m.cloudPct[hourIdx] <= WX_CLEAR_MAX_CLOUD_PCT;
 }
 
 // Launch Library throttles hard — a 429 says "expected available in 131
@@ -270,13 +279,18 @@ inline bool skyIsClearAt(const Model &m, int hourOfDay) {
 // pressed a few times in a row. A throttled fetch used to erase the band
 // outright, which reads as "no launch tonight" rather than "I could not ask".
 // So the answer is kept across sleeps and used when the network will not talk,
-// until the rocket has gone.
+// until the rocket has gone. Validity is the lift-off instant itself rather
+// than "same day, earlier minute": the window now crosses midnight, and a
+// 01:16 launch found at 18:00 has to survive a button press at 23:00 and a
+// wake after midnight alike.
 struct LaunchCache {
   uint32_t magic;
-  int  yday, liftoffMin, chance;
-  char id[40], name[52], drift[18], booster[40], time[12], prep[16];
+  time_t liftoffUtc;
+  int  chance;
+  char id[40], name[52], drift[18], booster[40], time[12], day[4], prep[16];
 };
-static const uint32_t LAUNCH_CACHE_MAGIC = 0x4C4E4331;
+// Bumped with the layout change: the old record's fields no longer line up.
+static const uint32_t LAUNCH_CACHE_MAGIC = 0x4C4E4332;
 RTC_DATA_ATTR LaunchCache rtcLaunch;
 
 inline void cacheToModel(Model &m) {
@@ -286,13 +300,13 @@ inline void cacheToModel(Model &m) {
   snprintf(m.launchDrift,   sizeof(m.launchDrift),   "%s", rtcLaunch.drift);
   snprintf(m.launchBooster, sizeof(m.launchBooster), "%s", rtcLaunch.booster);
   snprintf(m.launchTime,    sizeof(m.launchTime),    "%s", rtcLaunch.time);
+  snprintf(m.launchDay,     sizeof(m.launchDay),     "%s", rtcLaunch.day);
   snprintf(m.launchPrep,    sizeof(m.launchPrep),    "%s", rtcLaunch.prep);
 }
 
-// Good only for the day it was taken, and only until the rocket has left.
-inline bool cacheUsable(const struct tm &lt) {
-  return rtcLaunch.magic == LAUNCH_CACHE_MAGIC && rtcLaunch.yday == lt.tm_yday
-      && (lt.tm_hour * 60 + lt.tm_min) < rtcLaunch.liftoffMin;
+// Good only until the rocket has left.
+inline bool cacheUsable(time_t now) {
+  return rtcLaunch.magic == LAUNCH_CACHE_MAGIC && now < rtcLaunch.liftoffUtc;
 }
 
 inline bool launches(Model &m) {
@@ -309,9 +323,19 @@ inline bool launches(Model &m) {
   time_t nowT = time(nullptr);
   struct tm lt; localtime_r(&nowT, &lt);
 
+  // The window runs from now to noon tomorrow, local, on every wake. mktime
+  // normalises tm_mday past the end of the month (and 31 December into the new
+  // year), and tm_isdst = -1 makes it decide whether that noon is PDT or PST,
+  // so the evening before a DST change still lands on 12:00 wall-clock.
+  struct tm cut = lt;
+  cut.tm_mday += 1;
+  cut.tm_hour = LAUNCH_CUTOFF_HOUR; cut.tm_min = 0; cut.tm_sec = 0;
+  cut.tm_isdst = -1;
+  const time_t cutoff = mktime(&cut);
+
   JsonDocument doc;
   if (!httpGetJson(LL2_HOST, LL2_PATH, doc, &filter)) {
-    if (cacheUsable(lt)) {
+    if (cacheUsable(nowT)) {
       cacheToModel(m);
       Serial.println("  launch: list refused, showing the one already known");
       return true;
@@ -330,17 +354,24 @@ inline bool launches(Model &m) {
     struct tm g{};
     if (!strptime(net, "%Y-%m-%dT%H:%M:%S", &g)) continue;
     time_t utc = utcFromTm(g);
+    if (utc < nowT || utc > cutoff) continue;  // now until noon tomorrow
     struct tm local; localtime_r(&utc, &local);
-    if (local.tm_yday != lt.tm_yday) continue; // today only
+    const bool tomorrow = local.tm_yday != lt.tm_yday || local.tm_year != lt.tm_year;
 
+    // Minutes past local midnight on the launch's own day. The twilight curves
+    // are scored against today's sunrise and sunset even for a launch after
+    // midnight; tomorrow's differ by a minute or two, well inside the curves.
     int liftoff = local.tm_hour * 60 + local.tm_min;
-    int cloud = m.haveCloud ? m.cloudPct[local.tm_hour] : (m.nowCode <= 2 ? 10 : 70);
+    int hourIdx = (tomorrow ? 24 : 0) + local.tm_hour;
+    int cloud = hourIdx < m.cloudHours ? m.cloudPct[hourIdx]
+                                       : (m.nowCode <= 2 ? 10 : 70);
     const char *status = r["status"]["abbrev"] | "TBD";
     int chance = launchChance(liftoff, sunsetMin, sunriseMin, cloud, status);
 
-    // Every launch today is scored and the best one wins, rather than the first
-    // that clears a threshold: two launches in a day is rare but a pre-dawn one
-    // followed by an evening one would otherwise be decided by list order.
+    // Every launch in the window is scored and the best one wins, rather than
+    // the first that clears a threshold: two launches before noon tomorrow is
+    // rare, but a pre-dawn one followed by an evening one would otherwise be
+    // decided by list order.
     if (chance < LAUNCH_SHOW_MIN_PCT || chance <= bestChance) continue;
     bestChance = chance;
 
@@ -414,24 +445,29 @@ inline bool launches(Model &m) {
 
     char hhmm[10]; formatClock(liftoff, hhmm, sizeof(hhmm), false);
     snprintf(m.launchTime, sizeof(m.launchTime), "%s %s", hhmm, liftoff / 60 < 12 ? "AM" : "PM");
-    // The time to be outside, which is what a heads-up is for.
-    formatClock(liftoff - LAUNCH_PREP_MIN, hhmm, sizeof(hhmm), false);
+    // A launch after midnight carries its weekday, so "1:16 AM" on a Sunday
+    // evening cannot be read as the small hours just gone.
+    snprintf(m.launchDay, sizeof(m.launchDay), "%s", tomorrow ? weekdayShort(local.tm_wday) : "");
+    // The time to be outside, which is what a heads-up is for. Wrapped, so a
+    // 00:02 lift-off says "out by 11:57" rather than formatting a negative.
+    formatClock((liftoff - LAUNCH_PREP_MIN + 1440) % 1440, hhmm, sizeof(hhmm), false);
     snprintf(m.launchPrep, sizeof(m.launchPrep), "out by %s", hhmm);
 
     rtcLaunch.magic = LAUNCH_CACHE_MAGIC;
-    rtcLaunch.yday = lt.tm_yday; rtcLaunch.liftoffMin = liftoff; rtcLaunch.chance = chance;
+    rtcLaunch.liftoffUtc = utc; rtcLaunch.chance = chance;
     snprintf(rtcLaunch.id,      sizeof(rtcLaunch.id),      "%s", id);
     snprintf(rtcLaunch.name,    sizeof(rtcLaunch.name),    "%s", m.launchName);
     snprintf(rtcLaunch.drift,   sizeof(rtcLaunch.drift),   "%s", m.launchDrift);
     snprintf(rtcLaunch.booster, sizeof(rtcLaunch.booster), "%s", m.launchBooster);
     snprintf(rtcLaunch.time,    sizeof(rtcLaunch.time),    "%s", m.launchTime);
+    snprintf(rtcLaunch.day,     sizeof(rtcLaunch.day),     "%s", m.launchDay);
     snprintf(rtcLaunch.prep,    sizeof(rtcLaunch.prep),    "%s", m.launchPrep);
   }
 
-  // Nothing qualified, but something did earlier today and has not flown yet.
-  if (!m.launchTonight && cacheUsable(lt)) {
+  // Nothing qualified, but something did on an earlier wake and has not flown yet.
+  if (!m.launchTonight && cacheUsable(nowT)) {
     cacheToModel(m);
-    Serial.println("  launch: nothing in the list today, keeping the one already known");
+    Serial.println("  launch: nothing in the window, keeping the one already known");
   }
   return true;
 }

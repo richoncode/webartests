@@ -595,9 +595,14 @@
   function buildLive(wx, aq, ll) {
     var now = new Date(), day = wx.daily;
     var sunset = mins(day.sunset[0]), sunrise = mins(day.sunrise[0]);
-    var hourly = wx.hourly, cloudToday = {};
-    for (var i = 0; i < hourly.time.length; i++)
-      if (hourly.time[i].slice(0,10) === day.time[0]) cloudToday[+hourly.time[i].slice(11,13)] = hourly.cloud_cover[i];
+    // Cloud for today and tomorrow, keyed by hours since midnight today (24 +
+    // hour for tomorrow) — the same 48 entries the firmware keeps, because the
+    // launch window runs to noon tomorrow.
+    var hourly = wx.hourly, cloudByHour = {};
+    for (var i = 0; i < hourly.time.length; i++) {
+      var dIdx = day.time.indexOf(hourly.time[i].slice(0,10));
+      if (dIdx === 0 || dIdx === 1) cloudByHour[dIdx * 24 + +hourly.time[i].slice(11,13)] = hourly.cloud_cover[i];
+    }
 
     // peak temperature and the hour it happens, from today's hourly column
     var peakT = -999, peakAt = '';
@@ -611,20 +616,25 @@
       fc.push([k ? '' : 'TODAY', CODE(day.weathercode[k]), Math.round(day.temperature_2m_max[k]),
                Math.round(day.temperature_2m_min[k]), day.precipitation_probability_max[k] || 0]);
 
-    // the soonest launch today, scored
+    // The best launch between now and noon tomorrow, scored — the firmware's
+    // window on every wake. A launch after midnight carries its weekday.
     var best = null;
+    var cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12, 0, 0);
     (ll.results || []).forEach(function (r) {
       var t = new Date(r.net);
-      if (t.toDateString() !== now.toDateString()) return;
+      if (t < now || t > cutoff) return;
+      var tomorrow = t.toDateString() !== now.toDateString();
       var lift = t.getHours() * 60 + t.getMinutes();
-      var cl = cloudToday[t.getHours()];
+      var cl = cloudByHour[(tomorrow ? 24 : 0) + t.getHours()];
       var st = (r.status && (r.status.abbrev || r.status.name)) || 'TBD';
       var c = chanceOf(lift, sunset, sunrise, cl === undefined ? 50 : cl, st);
       if (!best || c > best.chance) best = {
         chance: c, lift: lift, cloud: cl, status: st,
         id: r.id, name: shortName(r.name || ''),
         txt: shortName(r.name || ''), time: hhmm(lift).replace(' AM','').replace(' PM',''),
-        sub: 'LOOK SSE · out by ' + hhmm(lift - 5).replace(' AM','').replace(' PM','')
+        ampm: lift < 720 ? 'AM' : 'PM',
+        day: tomorrow ? t.toLocaleDateString('en-US', {weekday:'short'}).toUpperCase() : '',
+        sub: 'LOOK SSE · out by ' + hhmm((lift - 5 + 1440) % 1440).replace(' AM','').replace(' PM','')
       };
     });
 
@@ -682,14 +692,12 @@
   function liveWhy(L, sunset, sunrise) {
     var b = L.Lc;
     var s = 'sunset ' + hhmm(sunset) + ' · AQI ' + L.aqi + ' · quote ' + (ALL_QUOTES.indexOf(L.quote) + 1) + ' of ' + ALL_QUOTES.length;
-    if (!b) return s + ' · <b>no Vandenberg launch today</b>, so the band carries the quote';
+    if (!b) return s + ' · <b>no Vandenberg launch before noon tomorrow</b>, so the band carries the quote';
     var rel = b.lift + PLUME_LAG_MIN - sunset;
-    return s + '<br>' + b.txt + ' at ' + hhmm(b.lift) + ' · ' + (rel < 0 ? (-rel) + ' min before' : rel + ' min after') +
+    return s + '<br>' + b.txt + ' at ' + (b.day ? b.day + ' ' : '') + hhmm(b.lift) + ' · ' + (rel < 0 ? (-rel) + ' min before' : rel + ' min after') +
       ' sunset · cloud ' + (b.cloud === undefined ? '?' : b.cloud) + '% · status ' + b.status +
       (b.orbit ? ' · orbit ' + b.orbit : '') + (b.landing ? ' · ' + b.landing : '') +
-      ' → <b>' + b.chance + '%</b>' + (b.chance >= LCH_SHOW_MIN ? ', shown' : ', under the ' + LCH_SHOW_MIN + '% floor so the quote shows') +
-      '<br><i>the firmware on the device still uses the old rule: it needs lift-off at or after ' +
-      hhmm(sunset - 15) + ', so it shows nothing tonight.</i>';
+      ' → <b>' + b.chance + '%</b>' + (b.chance >= LCH_SHOW_MIN ? ', shown' : ', under the ' + LCH_SHOW_MIN + '% floor so the quote shows');
   }
 
   function filterBadge(override) {
@@ -818,7 +826,10 @@
         '<div class="lch-sub">' + Lc.sub + '</div></div>' +
         '<div class="lch-mid">' +
           '<div class="chance">' + chance + '%</div>' +
-          '<div class="lch-time">' + Lc.time + ' PM<div class="lch-tz">chance tonight</div></div>' +
+          // The weekday does not fit in front of the time on the panel, so a
+          // launch after midnight names its day in the caption, as render.h does.
+          '<div class="lch-time">' + Lc.time + ' ' + (Lc.ampm || 'PM') +
+            '<div class="lch-tz">' + (Lc.day ? 'chance ' + Lc.day : 'chance tonight') + '</div></div>' +
         '</div>', 'launch', 'background:' + bc + ';color:' + bi);
     } else {
       var Q = quoteOverride ? {q: quoteOverride[0], who: quoteOverride[1],
