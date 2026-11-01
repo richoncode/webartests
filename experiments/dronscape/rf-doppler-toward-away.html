@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RF Doppler: toward or away</title>
+<style>
+:root{--bg:#0d0d0d;--card:#1a1a1a;--line:#2a2a2a;--accent:#5b9bd5;--muted:#a8a8a8;--green:#4caf50;--orange:#f0a040;--red:#e74c3c}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.55;font-size:16px}
+.wrap{max-width:920px;margin:0 auto;padding:48px 20px 80px}
+h1{font-size:2rem;margin:0 0 8px;letter-spacing:-.02em}
+h2{font-size:1.35rem;margin:36px 0 12px}
+h3{font-size:1.05rem;margin:22px 0 8px;color:var(--accent)}
+p{margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 18px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+a.back{display:inline-block;margin-bottom:22px;color:#555;font-size:14px;text-decoration:none}
+a.back:hover{color:#aaa;text-decoration:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:0 0 14px}
+.note{border-left:4px solid var(--accent)}
+.thesis{font-size:1.08rem;margin:0}
+.kicker{display:inline-block;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px solid #1e3a52;background:#0d1620;border-radius:999px;padding:2px 10px;margin:0 0 10px}
+.inset{background:#12161c;border:1px solid #243044;border-radius:16px;padding:18px 20px 8px;margin:0 0 16px;box-shadow:inset 4px 0 0 var(--accent)}
+.muted{color:var(--muted)}
+.small{font-size:.92rem;color:var(--muted)}
+ul,ol{margin:0 0 12px;padding-left:1.2rem}
+li{margin:0 0 8px}
+.toc a{display:block;padding:7px 0;border-bottom:1px solid var(--line)}
+.toc a:last-child{border-bottom:none}
+code,.rule{font-family:ui-monospace,SFMono-Regular,"SF Mono","Fira Code",Menlo,Consolas,monospace}
+code{background:#111;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.86em}
+.rule{font-size:.95rem;background:#111;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0 12px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--accent);font-weight:600}
+.geo{width:100%;height:auto;display:block;margin:8px 0 12px;background:#0e0e0e;border:1px solid var(--line);border-radius:12px}
+details{border:1px solid var(--line);border-radius:12px;padding:0 14px;margin:0 0 10px;background:#141414}
+.inset details{background:#0e1218}
+summary{cursor:pointer;padding:12px 0;font-weight:600;list-style:none;display:flex;gap:8px;align-items:baseline}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";color:var(--accent);font-size:.85rem}
+details[open] summary::before{content:"▾"}
+details[open]{padding-bottom:8px}
+.calc{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;margin:8px 0 12px}
+.calc label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
+input{background:#111;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;width:7.5rem}
+.out{font-size:1.15rem;font-weight:650}
+.out span{color:var(--accent)}
+.tag{display:inline-block;font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--accent);margin-right:4px}
+ol.steps{padding-left:1.3rem}
+ol.steps > li{margin:0 0 14px}
+@media(max-width:760px){
+  .wrap{padding:28px 16px 64px}
+  h1{font-size:1.6rem}
+  table.stack thead{display:none}
+  table.stack,table.stack tbody{display:block}
+  table.stack tr{display:block;border:1px solid var(--line);border-radius:12px;margin:0 0 12px;padding:6px 4px}
+  table.stack td{display:block;border:0;padding:3px 10px}
+  table.stack td[data-l]::before{content:attr(data-l) ": ";color:var(--muted);font-weight:600}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="./index.html">← Dronscape</a>
+<h1>RF Doppler: toward or away</h1>
+<p class="sub">Nov 1, 2026 · for Richard Bailey · a research note, not a build. Standalone page. Nothing here changes the Track 1 direction lock.</p>
+
+<div class="card note">
+<p class="thesis"><b>Thesis.</b> The sign of a tracked frequency change says whether a detected drone emission is closing or opening. The size of that change is a rough radial speed. Absolute frequency is mostly a statement about the clocks.</p>
+</div>
+
+<div class="card note">
+<b>Scope.</b> Track 1–adjacent parked research: could a supervisor get an “emitter closing” cue from a signal the aircraft is already transmitting, with no active radar? This page is a learning path and a garage test plan. It is outside building the C2 vignette until you ask.
+</div>
+
+<h2 id="skim">Skim</h2>
+<div class="card">
+<p><b>What we want.</b> Three things only: toward, away, and a rough radial speed. Radial means the part of the velocity aimed straight at the receiver or straight away from it. A full position, a bearing, and “is it a drone?” are other problems.</p>
+<p><b>One-way intuition.</b> The drone’s own transmitter is a stack of wave crests. Fly toward the receiver and the crests arrive more often, so the tone sits higher. Fly away and they arrive less often, so the tone sits lower. At multirotor speeds, about 5–15 m/s, the shift on a 2.4 or 5.8 GHz carrier is tens to a few hundred hertz. You see it as a peak moving on a waterfall, if the receiver’s own clock holds still enough to let an 80 Hz step show.</p>
+<p><b>Why the change matters.</b> Both crystals are wrong by parts per million. One part per million at 2.4 GHz is 2,400 Hz. The whole Doppler shift at 10 m/s is about 80 Hz. A single reading of the absolute frequency cannot say who moved. The useful number is the change from a moment when the emitter was still, or the difference between two receivers that share a clock.</p>
+<p><b>When a low-cost SDR can see it.</b> Software can make a 10 Hz bin. A warmed-up single dongle can show the sign on a clean continuous tone, inside a band it can actually tune, if you record a rest tone first and the run is short. It loses the sign on a hopping digital link, on a wide FM video carrier whose deviation is megahertz, and on a crossing pass, where the radial speed is about zero even though the aircraft is close and fast. A GPS-disciplined clock, or two coherent channels, is what makes the sign trustworthy enough to put in a product.</p>
+<p class="small" style="margin:0">SDR means a software-defined radio: the computer does the tuning and the measurement. The numbers above use <i>c</i> ≈ 3.00×10<sup>8</sup> m/s and are estimates, not lab results. No flight test has been run for this note.</p>
+</div>
+
+<div class="card toc" id="toc">
+<span class="kicker">On this page</span>
+<a href="#math">Math and RF theory <span class="muted">— the 80 Hz and the 193 Hz</span></a>
+<a href="#sdr">Low-cost radios and what Δf they can hold <span class="muted">— prices are approximate</span></a>
+<a href="#papers">Open research that touches this <span class="muted">— four links, checked</span></a>
+<a href="#emitters">Emitters we might hear</a>
+<a href="#measure">How a measurement would actually work</a>
+<a href="#antennas">Two antennas: angle versus two radials</a>
+<a href="#failures">What makes the sign lie</a>
+<a href="#product">A parked cue for Track 1</a>
+<a href="#rig">Basic test rig</a>
+<a href="#questions">Decisions for Richard</a>
+<a href="#changelog">Changelog</a>
+</div>
+
+<h2 id="math">Math and RF theory</h2>
+<div class="inset">
+<span class="kicker">Inset · teach this first</span>
+<p>For one-way listening (we hear the drone’s transmitter, we do not bounce a pulse off it), the frequency shift is</p>
+<p class="rule">Δf ≈ f · v<sub>radial</sub> / c</p>
+<p>Take <i>v</i><sub>radial</sub> as positive when the range is shrinking. Then Δf is positive when the emitter is closing: the tracked tone sits higher than its at-rest tone. A falling tone, below the rest tone, means opening. A steady approach at constant speed is a plateau, not a ramp. The tone steps up and stays up until the radial speed changes.</p>
+
+<svg class="geo" viewBox="0 0 680 168" role="img" aria-label="A receiver and three paths. Head-on approach raises the tone. Head-on departure lowers it. A crossing pass has almost no radial speed at the closest point.">
+  <rect x="0" y="0" width="680" height="168" fill="#0e0e0e"/>
+  <g transform="translate(118,88)">
+    <circle r="16" fill="none" stroke="#5b9bd5" stroke-width="2"/>
+    <path d="M-7,-22 L0,-8 L7,-22" fill="none" stroke="#5b9bd5" stroke-width="2"/>
+    <text y="36" text-anchor="middle" fill="#a8a8a8" font-size="12" font-family="ui-sans-serif,system-ui,sans-serif">receiver</text>
+  </g>
+  <g>
+    <line x1="250" y1="78" x2="430" y2="78" stroke="#4caf50" stroke-width="2"/>
+    <polygon points="250,78 264,72 264,84" fill="#4caf50"/>
+    <text x="250" y="62" fill="#4caf50" font-size="13" font-family="ui-sans-serif,system-ui,sans-serif">closing · tone up · Δf = +f v / c</text>
+  </g>
+  <g>
+    <line x1="250" y1="118" x2="430" y2="118" stroke="#f0a040" stroke-width="2"/>
+    <polygon points="430,118 416,112 416,124" fill="#f0a040"/>
+    <text x="250" y="142" fill="#f0a040" font-size="13" font-family="ui-sans-serif,system-ui,sans-serif">opening · tone down · Δf negative</text>
+  </g>
+  <g>
+    <line x1="500" y1="36" x2="640" y2="36" stroke="#e74c3c" stroke-width="2"/>
+    <polygon points="640,36 626,30 626,42" fill="#e74c3c"/>
+    <text x="500" y="58" fill="#e74c3c" font-size="13" font-family="ui-sans-serif,system-ui,sans-serif">crossing · Δf ≈ 0</text>
+    <text x="500" y="76" fill="#a8a8a8" font-size="12" font-family="ui-sans-serif,system-ui,sans-serif">close, still fast</text>
+  </g>
+</svg>
+
+<p><b>Worked numbers</b>, one-way, purely radial, <i>c</i> = 3.00×10<sup>8</sup> m/s. These are arithmetic, not measurements.</p>
+<div class="tbl">
+<table>
+<tr><th>Radial speed</th><th>2.4 GHz</th><th>5.8 GHz</th><th>What it feels like</th></tr>
+<tr><td>1.5 m/s</td><td>12 Hz</td><td>29 Hz</td><td>A walk. Easy to lose in clock drift.</td></tr>
+<tr><td>5 m/s</td><td>40 Hz</td><td>97 Hz</td><td>Slow multirotor, or a bike.</td></tr>
+<tr><td>10 m/s</td><td>80 Hz</td><td>193 Hz</td><td>The headline pair.</td></tr>
+<tr><td>15 m/s</td><td>120 Hz</td><td>290 Hz</td><td>Fast multirotor, still subsonic by a lot.</td></tr>
+</table>
+</div>
+<p>Check: 2.4×10<sup>9</sup> × 10 / 3.00×10<sup>8</sup> = 80 Hz. 5.8×10<sup>9</sup> × 10 / 3.00×10<sup>8</sup> = 193 Hz. A more precise <i>c</i> moves these by a fraction of a hertz.</p>
+<p><b>Geometry.</b> Head-on, the radial speed is the full speed, so the shift is as large as this formula gets. A crossing pass puts the velocity sideways at the closest point, so the radial part is about zero and the tone sits on the rest frequency for that instant, then falls as the emitter goes from coming in to going out. Near and loud does not mean a big Doppler shift.</p>
+<p><b>Bulk Doppler and propeller micro-Doppler are different jobs.</b> The bulk shift above is the motion of the whole aircraft, which is the toward/away cue. Spinning blades add a smaller, faster wiggle around that tone. That wiggle is a clue that the emitter has rotors. It does not say the aircraft is approaching.</p>
+<p><b>Passive radar is a neighbor, not this measurement.</b> A passive radar listens to someone else’s illuminator (LTE, DVB, FM) and to the echo off the aircraft. The echo’s Doppler depends on both legs of the path. Listening to the drone’s own transmitter is one-way, and only the aircraft’s radio has to be on. The papers in the third inset live mostly on the echo side. They are here so the two ideas stay distinct.</p>
+
+<details>
+<summary>Where the 80 Hz comes from</summary>
+<p>The emitter covers <i>v</i><sub>radial</sub> meters in one second. The wavelength is λ = <i>c</i> / <i>f</i>, so that distance holds <i>v</i><sub>radial</sub> / λ extra crests. Extra crests per second are hertz:</p>
+<p class="rule">Δf = v<sub>radial</sub> / λ = f · v<sub>radial</sub> / c</p>
+<p>Same result from range. The phase of the arriving wave changes as the path length changes. The extra frequency is −(<i>f</i>/<i>c</i>) times the range rate. Range rate is negative when the emitter approaches, so the extra frequency is positive.</p>
+<p>At 15 m/s, <i>v</i>/<i>c</i> is about 5×10<sup>−8</sup>. The relativistic correction is of order <i>v</i><sup>2</sup>/<i>c</i><sup>2</sup>, utterly smaller than an 80 Hz shift on a 2.4 GHz carrier. The first-order formula is the whole story at multirotor speed.</p>
+<p>At 2.4 GHz, λ ≈ 12.5 cm. At 5.8 GHz, λ ≈ 5.2 cm. That length shows up again when a second antenna is a baseline for angle.</p>
+</details>
+
+<details>
+<summary>One-way, a radar echo, and a cellular echo</summary>
+<p>One-way, this page: the transmitter is on the aircraft, the receiver is on the ground, and the shift is <i>f v</i><sub>radial</sub> / <i>c</i>.</p>
+<p>Monostatic radar, for contrast: the pulse goes out and the echo comes back, so a target flying straight at the radar produces about twice that shift, 2<i>f v</i>/<i>c</i>. At 2.4 GHz and 10 m/s that is about 160 Hz. We are not building that radar.</p>
+<p>Bistatic passive radar: the illuminator and the receiver are in different places. The shift is (<i>f</i>/<i>c</i>) times the sum of the radial speeds along the two legs (illuminator→aircraft and aircraft→receiver). Depending on geometry it lands between about zero and the two-way value. Forward scatter, with the aircraft crossing the line from a satellite to a ground dish, is a case where the bulk shift collapses and the blade wiggle is what remains. That is the DVB-S paper below.</p>
+</details>
+
+<details>
+<summary>Why 1 ppm is a few kilohertz, and the tone can still be a plateau</summary>
+<p>A fractional clock error ε moves the apparent carrier by ε · <i>f</i>. One part per million is 10<sup>−6</sup>.</p>
+<div class="tbl">
+<table>
+<tr><th>Clock error</th><th>At 2.4 GHz</th><th>At 5.8 GHz</th><th>Against the 80 Hz shift</th></tr>
+<tr><td>20 ppm</td><td>48 kHz</td><td>116 kHz</td><td>Hundreds of times larger</td></tr>
+<tr><td>4 ppm</td><td>9.6 kHz</td><td>23 kHz</td><td>Still much larger</td></tr>
+<tr><td>2 ppm</td><td>4.8 kHz</td><td>12 kHz</td><td>Still much larger</td></tr>
+<tr><td>1 ppm</td><td>2.4 kHz</td><td>5.8 kHz</td><td>About 30× at 2.4 GHz</td></tr>
+<tr><td>75 ppb (0.075 ppm)</td><td>180 Hz</td><td>435 Hz</td><td>Same order as the Doppler</td></tr>
+<tr><td>1 ppb</td><td>2.4 Hz</td><td>5.8 Hz</td><td>Smaller than the 10 m/s shift</td></tr>
+</table>
+</div>
+<p>80 Hz at 2.4 GHz is 0.033 ppm. Reading the sign from an absolute frequency, with no rest reference, wants a clock that stays inside a few hundredths of a ppm for the whole run. That is a GPS-disciplined oscillator or a good ovenized oscillator, not a dongle’s ordinary TCXO.</p>
+<p>With a rest reference the bar is kinder. You care how many hertz the tone walks while everyone is sitting still, over the same minute you later spend walking. If that walk is 5 Hz and the approach step is 40 Hz, the sign is visible even though the absolute frequency is kilohertz off. Warm the radio until the rest tone stops marching, then write down the leftover drift. That drift is the noise floor for the sign.</p>
+<p>On a constant-speed radial leg the Doppler offset itself is constant, so the slope of the trace is about zero while the aircraft is steadily closing. The sign lives in the height of the plateau above the rest tone. The slope becomes the useful sign on a pass-by: the tone is high on the way in, falls through the closest point, and is low on the way out.</p>
+</details>
+
+<details>
+<summary>Try another carrier or speed</summary>
+<p>Same estimate, Δf = <i>f</i> · <i>v</i> / <i>c</i>, with <i>c</i> = 3.00×10<sup>8</sup> m/s. Positive speed means closing.</p>
+<div class="calc">
+<label>Carrier (GHz)<input id="fGHz" type="number" min="0.01" step="0.1" value="2.4"></label>
+<label>Radial speed (m/s)<input id="vMs" type="number" step="0.5" value="10"></label>
+</div>
+<p class="out" id="calcOut" aria-live="polite"></p>
+<p class="small">Arithmetic only. It assumes a purely radial, one-way path and a perfect clock. It does not know your radio.</p>
+</details>
+</div>
+
+<h2 id="sdr">Low-cost radios and what Δf they can hold</h2>
+<div class="inset">
+<span class="kicker">Inset · hardware, honestly</span>
+<p>Every radio below can form a ~10 Hz FFT bin in software. A tenth of a second of a clean tone is enough for that bin. The limit is the clock, the band, and whether you have a second channel, not the FFT.</p>
+<p>A cheap single RTL-SDR can demo a <em>relative</em> frequency change on a clean continuous tone after warm-up, on a frequency it can tune. It cannot tune 2.4 or 5.8 GHz by itself. A GPS-disciplined reference, an ovenized reference, or coherent dual channels is what makes the sign trustworthy. Prices are approximate public listings checked Nov 1, 2026. Confirm the live street price before buying anything. Nothing here has been purchased or measured.</p>
+<div class="tbl">
+<table class="stack">
+<thead>
+<tr>
+<th>Radio</th>
+<th>Approx. price</th>
+<th>RX / TX</th>
+<th>2.4 / 5.8 GHz</th>
+<th>Clock</th>
+<th>~10–100 Hz</th>
+<th>Coherent dual RX</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-l="Radio"><b>RTL-SDR Blog V4</b>, and the similar V3</td>
+<td data-l="Approx. price">About $40–$90. rtl-sdr.com listed the V4 dongle at $39.95–$44.95 and a dipole kit at $54.95; V4 is end-of-line and was out of stock. SparkFun listed a V3 kit at $84.50.</td>
+<td data-l="RX / TX">RX only</td>
+<td data-l="2.4 / 5.8 GHz">Neither. Datasheet: 500 kHz–1.766 GHz.</td>
+<td data-l="Clock">1 ppm TCXO (V4 datasheet).</td>
+<td data-l="~10–100 Hz">Bin, yes. Sign, only as a warm relative demo on a clean CW inside that tuning range. 1 ppm at the top of the range is still ~1.8 kHz.</td>
+<td data-l="Coherent dual RX">No</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>HackRF One</b></td>
+<td data-l="Approx. price">SparkFun listed $339.95 and has retired it. Great Scott Gadgets sells through retailers and does not post one price. Check the current street price. Clones are a different radio.</td>
+<td data-l="RX / TX">Half-duplex. One TX path and one RX path, not at once.</td>
+<td data-l="2.4 / 5.8 GHz">Both. 1 MHz–6 GHz.</td>
+<td data-l="Clock">A Great Scott Gadgets engineer stated 20 ppm for the crystal (2017). SMA clock in and out, so an external reference can discipline it.</td>
+<td data-l="~10–100 Hz">Bin, yes, on both drone bands. 20 ppm at 2.4 GHz is 48 kHz, so the sign needs a rest tone and a short run, or that external clock. One channel.</td>
+<td data-l="Coherent dual RX">No</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>HackRF Pro</b> <span class="muted">(current successor)</span></td>
+<td data-l="Approx. price">SparkFun $400 on Nov 1, 2026, an authorized retailer. GSG’s own page lists shops and no single price.</td>
+<td data-l="RX / TX">Half-duplex, one channel, same idea as the One.</td>
+<td data-l="2.4 / 5.8 GHz">Both. Operating range 100 kHz–6 GHz.</td>
+<td data-l="Clock">Built-in TCXO. Neither GSG nor SparkFun published a ppm figure on the pages checked. Clock in and out.</td>
+<td data-l="~10–100 Hz">Bin, yes. The TCXO should wander less than the One’s 20 ppm crystal, and the ppm is unpublished, so treat the sign as “measure the rest drift, then decide.” Still one channel.</td>
+<td data-l="Coherent dual RX">No</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>LimeSDR Mini 2.0</b></td>
+<td data-l="Approx. price">Crowd Supply showed $630 and in stock on Nov 1, 2026. An earlier Lime announcement said $399, so the number moves. Check the live price.</td>
+<td data-l="RX / TX">Full duplex. 1 TX and 1 RX.</td>
+<td data-l="2.4 / 5.8 GHz">2.4 yes. 5.8 no. Range on the Crowd Supply table: 10 MHz–3.5 GHz.</td>
+<td data-l="Clock">That same table: ±1 ppm initial, ±4 ppm stable. 4 ppm at 2.4 GHz is 9.6 kHz.</td>
+<td data-l="~10–100 Hz">Bin, yes, at 2.4 GHz. The sign on a free-running board is a relative demo after warm-up. One RX, so no differential cancelation of the clock.</td>
+<td data-l="Coherent dual RX">No</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>ADALM-Pluto</b></td>
+<td data-l="Approx. price">About $250–$400. A Digi-Key listing showed $253.32 (qty 1). Another distributor listing showed $399.99 on Oct 31, 2026. Confirm the live price; a direct refetch of Digi-Key was blocked.</td>
+<td data-l="RX / TX">Full duplex. 1 TX and 1 RX, official.</td>
+<td data-l="2.4 / 5.8 GHz">2.4 yes. 5.8 no on the official range, 325 MHz–3.8 GHz (Analog Devices).</td>
+<td data-l="Clock">The ADI feature list checked here does not state a ppm. Plan as if absolute frequency is untrustworthy at the 80 Hz level until you measure the warmed board.</td>
+<td data-l="~10–100 Hz">Bin, yes, at 2.4 GHz. Sign from a rest tone on a clean CW. One official RX.</td>
+<td data-l="Coherent dual RX">No, not as sold. Two Plutos are not a coherent pair unless a clock is shared, which is a hardware project.</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>Ettus USRP B210</b></td>
+<td data-l="Approx. price">About $2,400–$2,600 list. Ettus board-only $2,387. Digilent $2,483. One enclosure bundle was listed at $2,578.</td>
+<td data-l="RX / TX">Full duplex. 2 TX and 2 RX.</td>
+<td data-l="2.4 / 5.8 GHz">Both. 70 MHz–6 GHz.</td>
+<td data-l="Clock">Digilent’s spec table: ±2.0 ppm, and separate lines of ±75 ppb with a GPS-unlocked TCXO reference and &lt;1 ppb with a GPS-locked reference. Treat the ppb lines as a GPS-referenced option, not as proof the bare $2,387 board already holds them. 10 MHz and PPS inputs are on the Ettus page. Confirm which reference is fitted before counting on a few hertz.</td>
+<td data-l="~10–100 Hz">Bin, yes, on both bands. Stock ±2 ppm is still kilohertz, so a single channel still wants a rest tone. Two coherent RX channels cancel the shared clock in the difference, which is the trustworthy sign. A GPS-locked external reference is the path that makes even the absolute residual sit still at a few hertz.</td>
+<td data-l="Coherent dual RX">Yes. Both chains of one AD9361.</td>
+</tr>
+<tr>
+<td data-l="Radio"><b>KrakenSDR</b>, KerberosSDR-class</td>
+<td data-l="Approx. price">KrakenRF listed KrakenSDR at $749. KerberosSDR, the 4-channel predecessor, was €329.92 and out of stock at one EU shop. Treat the older board as often unavailable.</td>
+<td data-l="RX / TX">RX only. KrakenSDR is five channels on one shared clock.</td>
+<td data-l="2.4 / 5.8 GHz">Neither. KrakenRF states 24 MHz–1.766 GHz, the RTL tuner range.</td>
+<td data-l="Clock">One local oscillator for all five tuners, plus their coherence sync. The shared clock is the point. It does not move the tuning range up to 2.4 GHz.</td>
+<td data-l="~10–100 Hz">Bin, yes, below 1.8 GHz. Differential sign between channels is the coherent case, and the Doppler at VHF/UHF is only a few hertz at walking speed, so the demo is harder even though the clock cancels. A 2.4 GHz drone link needs a downconverter on every channel, locked to that same clock. That is a different rig.</td>
+<td data-l="Coherent dual RX">Yes, five (Kraken) or four (Kerberos), under 1.8 GHz.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<details>
+<summary>Where the prices and clock numbers come from</summary>
+<ul>
+<li>RTL-SDR Blog V4 datasheet (rtl-sdr.com): 500 kHz–1.766 GHz, 1 ppm TCXO, receive only. Store listings seen Nov 1, 2026: V4 dongle $44.95 and a USB-C dongle $39.95, dipole kit $54.95, out of stock. The V4 end-of-line post says no further production; the V3 stays in production. SparkFun’s SDR category listed a V3 dipole kit at $84.50 and a discontinued V4 kit at $84.95.</li>
+<li>HackRF One: Great Scott Gadgets product page for 1 MHz–6 GHz, half duplex, clock SMA. Crystal stability of 20 ppm is a May 2017 reply by dominicgs on GitHub issue greatscottgadgets/hackrf#379, not a fresh lab measurement. SparkFun listed $339.95 on a retired product page.</li>
+<li>HackRF Pro: GSG product page and SparkFun ($400) for 100 kHz–6 GHz, half duplex, built-in TCXO, clock in/out. No ppm figure on either page.</li>
+<li>LimeSDR Mini 2.0: Crowd Supply product page, $630 in the price element, in stock, Nov 1, 2026. Comparison table on that page for range, 1 TX / 1 RX, full duplex, and ±1 ppm initial / ±4 ppm stable. Lime’s order-open announcement had said $399.</li>
+<li>ADALM-Pluto: Analog Devices feature list, 325 MHz–3.8 GHz, one transmitter and one receiver, full duplex, up to 20 MHz bandwidth. Digi-Key listing $253.32. NeutronUSA listing $399.99 with a page date of Oct 31, 2026. No ppm on the ADI feature list that was read.</li>
+<li>USRP B210: Ettus product page, board-only $2,387, 70 MHz–6 GHz, 2×2 coherent MIMO on the AD9361. Digilent listing $2,483 and the frequency-accuracy lines (±2 ppm, ±75 ppb GPS-unlocked TCXO reference, &lt;1 ppb GPS-locked). Cyth listed an enclosure bundle at $2,578. The ppb lines are quoted from that Digilent table; this note does not assume the bare board includes the GPS reference.</li>
+<li>KrakenSDR: krakenrf.com product page, $749, five coherent RX channels, 24 MHz–1.766 GHz. KerberosSDR: one EU listing at €329.92, out of stock, 4-channel coherent RTL-class.</li>
+</ul>
+<p>A downconverter in front of an RTL-SDR can move 2.4 GHz into the dongle’s range. The converter’s oscillator then sets the drift. A free-running mixer clock is often the worst clock in the chain. Count that rig only if the converter is locked to a reference you trust, or if a rest-tone test says the leftover drift is smaller than the Doppler step you expect.</p>
+<p>Unofficial Pluto firmware that retunes past 3.8 GHz is a community modification. The plan uses the official 3.8 GHz limit, so 5.8 GHz is out.</p>
+</details>
+
+<details>
+<summary>What a second channel buys, in one paragraph</summary>
+<p>Two receivers that share a clock hear the same emitter at <i>f</i><sub>1</sub> and <i>f</i><sub>2</sub>. The difference <i>f</i><sub>1</sub> − <i>f</i><sub>2</sub> cancels the shared oscillator and the emitter’s own crystal. What remains is the difference of the two radial speeds, times <i>f</i>/<i>c</i>. The sign of that difference says which antenna the emitter is closing on. Two separate dongles with two free-running clocks leave the difference of their clock errors in that subtraction, and that leftover is usually kilohertz. Coherence, or a GPS-locked reference on each site, is the difference between a demo and a cue you would show an operator.</p>
+</details>
+</div>
+
+<h2 id="papers">Open research that touches this</h2>
+<div class="inset">
+<span class="kicker">Inset · read these, they are open</span>
+<p>Four papers, each kept because the full text was readable and the link is open access. One line on why it matters for toward/away. These are their results, not ours.</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2108.07857" target="_blank" rel="noopener">Bhattacherjee et al., Experimental Study of Outdoor UAV Localization and Tracking using Passive RF Sensing</a> (arXiv:2108.07857). They track a DJI Inspire 2 outdoors by its own 2.4 GHz emission, using time-difference of arrival across four sensors. It is evidence that the aircraft’s own transmitter is a usable outdoor beacon. Their observable is arrival time, not the sign of a frequency shift, so it is the same signal and a different measurement.</li>
+<li><a href="https://arxiv.org/html/2509.25732v1" target="_blank" rel="noopener">Ji et al., Doppler-Based Multistatic Drone Tracking via Cellular Downlink Signals</a> (arXiv:2509.25732, HTML v1). Three passive receivers measure bistatic Doppler of LTE echoes off a drone and reconstruct a trajectory from Doppler alone. They report 90% of errors below 0.9 m in that experiment, with the drone about 20 m from the receivers and about 200 m from the base stations. This is the closest cousin: the sign and size of Doppler can carry motion. It is echo Doppler, two-legged, not the one-way shift of the drone’s own radio.</li>
+<li><a href="https://www.mdpi.com/2072-4292/12/18/3075" target="_blank" rel="noopener">Raja Abdullah et al., Passive Forward-Scattering Radar Using a DVB-S Signal for Drone Detection</a> (Remote Sensing 2020, 12(18), 3075). A satellite TV signal, a ground receiver, and the drone crossing that baseline. They pull a blade micro-Doppler feature to say a drone passed. That geometry is the crossing case, where bulk toward/away Doppler collapses and the rotor wiggle does the work.</li>
+<li><a href="https://www.mdpi.com/2504-446X/9/1/76" target="_blank" rel="noopener">Tang, Ma, Qu, and Mao, UAV Detection with Passive Radar: Algorithms, Applications, and Challenges</a> (Drones 2025, 9(1), 76). An open survey of passive-radar UAV detection: which illuminators people use, and how a range–Doppler map is built from echoes. Read it to see the neighboring field. The survey also separates that echo method from simply listening to the UAV’s own communications, which is the method on this page.</li>
+</ul>
+
+<details>
+<summary>How these four links were checked</summary>
+<p>Checked Nov 1, 2026. No other papers were added. Nothing paywalled was kept, and none of the four candidates was dropped.</p>
+<ul>
+<li><code>https://arxiv.org/abs/2108.07857</code> returned HTTP 200. The PDF URL returned 200. The abstract and the body were read.</li>
+<li><code>https://arxiv.org/html/2509.25732v1</code> returned HTTP 200, and the abstract and the Doppler method were read. The abs and PDF URLs for 2509.25732 also returned 200. The HTML copy is the one linked because the full text is on the page.</li>
+<li>Both MDPI articles are in fully open-access journals. Their full text was retrieved and read (titles, abstracts, and enough of the method to write the lines above). A direct request from this environment received HTTP 403 “Access Denied,” which is an edge bot wall, not a subscription page. They are kept as known-open mdpi.com articles whose text was actually read. DOI links for both resolve to the same MDPI URLs and hit the same wall from here: 10.3390/rs12183075 and 10.3390/drones9010076.</li>
+</ul>
+</details>
+</div>
+
+<h2 id="path">First principles, in the order you would build an opinion</h2>
+
+<h3 id="emitters">Emitters we might hear</h3>
+<div class="card">
+<p>On the ground, the Doppler we can use rides on a transmitter that is moving. That is the aircraft’s own radio: analog video, a digital video downlink, or telemetry. The pilot’s controller is usually sitting still, so a receiver near the pilot hears that uplink with almost no Doppler from the flight.</p>
+<p>Classic analog FPV often puts control on 2.4 GHz and a continuous video transmitter on 5.8 GHz. The video carrier is the tempting tone, and it is also wide FM, so the energy is spread over megahertz and an 80 Hz bulk shift can hide inside the deviation. A clean continuous tone is the v0 signal. A hopping digital link (many current camera drones) moves the carrier by far more than the Doppler, dwell by dwell. The Doppler, if it is recoverable at all, is a small residual inside each dwell, not the hop itself.</p>
+<details>
+<summary>Control, video, and telemetry, and why hopping is a later problem</summary>
+<p>Three emissions, three different chances:</p>
+<ul>
+<li><b>Uplink, controller to aircraft.</b> The transmitter is on the ground. A ground sensor next to it learns almost nothing about radial speed from that carrier. The aircraft sees the uplink shifted, and we are not on the aircraft.</li>
+<li><b>Downlink video or telemetry, aircraft to ground.</b> This is the one-way Doppler on this page. Analog video can be continuous for a whole flight. Digital telemetry may be packets. A packet still has a carrier offset, if the dwell is long enough to measure.</li>
+<li><b>Hopping and OFDM.</b> The channel can jump by many megahertz. The residual offset inside a hop is where Doppler and the two crystals live together. Tracking it means either staying inside one dwell or removing the known hop. Dwell times shorter than about a tenth of a second fight a 10 Hz bin. v0 does not take this on. The test rig uses a cooperative continuous tone on purpose.</li>
+</ul>
+<p>A drone that is silent (pre-programmed, no radio) gives this method nothing. Passive radar, the other field, still has a chance, because it uses an illuminator the aircraft does not control. That is a different project.</p>
+</details>
+</div>
+
+<h3 id="measure">How a measurement would actually work</h3>
+<div class="card">
+<p>Tune near the tone. Track the residual, the carrier-frequency offset, over time. Mark a rest segment with the emitter powered and still. The sign of toward/away is the sign of (tone now − rest tone). Positive means closing. The rough speed is that difference plugged back into <i>v</i> ≈ Δf · <i>c</i> / <i>f</i>, and only the radial part comes out.</p>
+<p>The slope, the sign of d(Δf)/dt, answers a different question: is the offset rising or falling right now? On a steady radial leg the slope is about zero while the plateau is already telling you the sign. On a pass-by, with no separate rest recording, the falling slope through the closest point is the moment the emitter goes from coming in to going out.</p>
+<p>A short coherent baseline is the other way to get a sign without a rest tone: the sign of (frequency at antenna A − frequency at antenna B), with one shared clock.</p>
+<details>
+<summary>Rest tone, pass-by, and what to plot</summary>
+<p>Plot tracked frequency against time, in hertz relative to the tuner, not the absolute carrier. Draw four bands on the plot if the motion is an out-and-back: rest, approach, rest, leave. Approach should sit above the rests. Leave should sit below them. The gap should be larger than the drift you measured inside the rest bands.</p>
+<p>A waterfall is the picture. A peak picker or a slow PLL on a narrow tone is the number. Decimate the IQ down to a few tens of kilohertz before the long FFT so a few-hertz bin is cheap. Keep the raw IQ until the plot makes sense.</p>
+<p>If the rest tone itself walks by 30 Hz during a one-minute sit, an expected 12 Hz walking shift at 2.4 GHz is not a fair test. Change the speed, the carrier, or the clock until the expected shift, from the table above, is several times the measured rest drift. Compute that expected hertz before anyone moves.</p>
+</details>
+</div>
+
+<h3 id="antennas">Two antennas</h3>
+<div class="card">
+<p>A short baseline answers “which way is the emitter?” A long baseline answers “which site is it closing on?” They are different measurements. v0 uses one antenna.</p>
+<details>
+<summary>Short baseline for angle, long baseline for two radials</summary>
+<p><b>Short baseline, a fraction of a meter, phase coherence required.</b> The phase difference between two antennas is about 2π (<i>d</i> sin θ) / λ. That θ is a direction of arrival. At 2.4 GHz, λ is 12.5 cm, and a single pair stays unambiguous only while the spacing is under about half a wavelength, around 6 cm. This gives an angle. It does not give toward versus away. Closing and opening can share the same bearing.</p>
+<p><b>Long baseline, tens of meters or more.</b> Each site has its own line of sight, so each has its own radial speed. One site can see a rising tone while the other sees a falling tone, which means the emitter is closing on the first and opening on the second. That is a differential Doppler, not a direction finder. The subtraction is only as good as the shared clock. Two coherent channels on one circuit board give you the short baseline (or as long as the cables). Two radios a hundred meters apart need a GPS-locked reference at each site, or a reference carried between them. Cables that long add loss and their own phase. This is a later experiment, listed under the test rig, not part of v0.</p>
+</details>
+</div>
+
+<h3 id="failures">What makes the sign lie</h3>
+<div class="card">
+<ul>
+<li><b>Local-oscillator drift.</b> The receiver’s clock walks during the run by more than the Doppler step. A rest segment measures this. If the rest is already wandering through the shift you hope to see, the sign is not yours yet.</li>
+<li><b>Multipath.</b> A bounce off a wall or a vehicle arrives with a different radial and a different delay. The peak hops between paths, or two tones beat. v0 wants a straight path in the open for that reason.</li>
+<li><b>Hop dwells.</b> The carrier jumps faster than the integration that would resolve 10–100 Hz. The tracker then follows the hop, which is kilohertz to megahertz, and the Doppler is a rounding error.</li>
+<li><b>Crossing geometry.</b> At the closest point the radial speed is about zero. A loud, near, fast aircraft can show a rest-like tone for that moment. The trace of a full pass falls through that point; a single snapshot does not.</li>
+</ul>
+<details>
+<summary>Two more, smaller, and easy to mistake for Doppler</summary>
+<p>The aircraft’s own crystal moves with temperature as the flight progresses. A slow thermal walk can look like a gentle opening or closing. The rest test does not catch a drift that only happens once the aircraft is working hard. Keep v0 on a beacon that stays at one temperature, or note the thermal trend on a long sit with the transmitter keyed and still.</p>
+<p>A wideband analog video signal has no single-hertz peak. A tracker locked to “the strongest bin” will wander with the modulation. That wander is not radial speed. Prefer a continuous unmodulated tone until the sign is boringly repeatable.</p>
+</details>
+</div>
+
+<h3 id="product">A parked cue for Track 1</h3>
+<div class="card note">
+<p>The vignette already shows link state: ok, degraded, lost. A parked cue beside that, “this emitter’s tone is up relative to its rest tone,” would mean the aircraft radio is closing on the sensor. Bearing stays a different sensor. The direction lock stays as it is. Active radar stays a different project. <code>direction-lock.md</code> stays untouched.</p>
+<p>The cue stays parked. Putting it in the vignette waits until you ask, and until a garage test has shown the sign on a cooperative tone.</p>
+</div>
+
+<h2 id="rig">Basic test rig</h2>
+<p class="muted">A plan for a garage or a clear lot. No hardware is specified as bought. No result is claimed.</p>
+<div class="card">
+<ol class="steps">
+<li><b>Goal of v0.</b> Show that the sign of the tracked frequency matches a known approach and a known departure, on a cooperative continuous beacon or a narrow tone. Not on a hopping DJI, and not on a wide FM video carrier, until the tone version is dull. Analog video can be a second experiment if you can find a stable residual inside it; it is a poor first proof because the modulation is huge next to 80 Hz.</li>
+<li><b>Parts.</b>
+<ul>
+<li>One receiver from the table that covers the beacon’s frequency. For a real 2.4 GHz tone that is a Pluto, a HackRF, or a LimeSDR Mini, not a bare RTL-SDR. An RTL-SDR is enough if the legal beacon you already have sits under 1.7 GHz, and you accept a smaller Doppler.</li>
+<li>An antenna for that band, the one that belongs with the transmitter or a small whip. One antenna for v0.</li>
+<li>A laptop that can run a waterfall. GNU Radio, CubicSDR, or a short Python capture of the IQ are all enough. No new software in this repo.</li>
+<li>A continuous-tone source you are allowed to turn on: a lab generator, the transmitter half of a radio you own, or a certified video sender only after the tone test works. A phone GPS is a weak speed sensor at a walk. A tape measure and a stopwatch are the ground truth on a short path.</li>
+</ul>
+</li>
+<li><b>Do the cabled check first.</b> Key the tone into a dummy load or through an attenuator, at the lowest power that still shows one clean peak, on a band you are allowed to use. Shift the transmitter by about +80 Hz, then about −80 Hz, by the radio’s own tuning. The tracker has to report those signs before anyone walks. This checks the software and the clock. It radiates almost nothing.</li>
+<li><b>Then a straight radial path.</b> Receiver fixed. Emitter starts still (rest), comes straight at the antenna, stops (rest), leaves straight away, stops (rest). First outdoors pass: a walk or a bike over a taped line of a few tens of meters, in a clear lot, only if that transmission is legal there. A 50–200 m path is worth it later if the site is safe and the band allows it. Compute the expected hertz first. A walk at 2.4 GHz is about 12 Hz, which is a harsh first demo. A bike, about 5 m/s and about 40 Hz at 2.4 GHz, is a kinder proxy. Do not use a road, and do not aim this at people as a tracking exercise.</li>
+<li><b>Capture.</b> Record IQ, or a waterfall plus a log of the peak frequency versus time. Mark the segments in the log as they happen: rest, approach, rest, leave. Plot the tracked peak. Write the expected hertz on the plot.</li>
+<li><b>Success, proposed.</b> On at least 5 runs, the approach segment sits above the neighboring rest segments, and the leave segment sits below them, by more than the drift inside those rests. Five is a proposal for you to change. Zero runs exist today. Rough speed, turning hertz back into m/s and comparing with the stopwatch, is a second line on the same plot and is optional for v0.</li>
+<li><b>Safety and the law.</b> Listening to someone else’s signal is receive-only: do not transmit back, do not jam, do not follow a person or an aircraft that is not part of your own test. Your own transmitter stays on a band and a power you are allowed to use; if that is unclear, stop at the cabled check. This note is a cue a supervisor might read. It is not a design for interfering with a link or for harming an aircraft.</li>
+</ol>
+<details>
+<summary>Later experiments, after the sign is repeatable</summary>
+<ul>
+<li><b>Coherent dual channel.</b> Two antennas on one shared clock (a B210, or a KrakenSDR on a band it can tune). Repeat the out-and-back and see the differential frequency carry the sign with no rest tone. This is the product-shaped version of the measurement.</li>
+<li><b>Outdoor multirotor, known continuous link.</b> The aircraft carries a continuous beacon you control, or a video transmitter that the cabled test has already shown has a trackable residual. Log GPS speed on the aircraft as ground truth. Still a radial out-and-back, then a deliberate crossing pass to watch the tone fall through zero.</li>
+<li><b>Hopping residual.</b> Only with a link whose hop plan you know. Ask whether a residual inside each dwell follows the same sign as the continuous-tone test. If the dwell is too short, write that down as a limit, not as a failure of the physics.</li>
+</ul>
+</details>
+</div>
+
+<h2 id="questions">Decisions for Richard</h2>
+<div class="card">
+<ol>
+<li>Does “emitter closing” stay a parked note, or do you want it named beside link state in the Track 1 vignette later?</li>
+<li>v0 signal: cabled tone only, a legal continuous beacon you already own, or a certified video transmitter after the tone works?</li>
+<li>If anything is bought: a 2.4 GHz-capable radio (Pluto, HackRF, or LimeSDR Mini) so the hertz match a drone band, or nothing until the cabled test is written down?</li>
+<li>Is v0 sign-only, or do you also want rough speed in m/s on the same plot?</li>
+<li>Is the proposed bar right: 5 runs, approach above rest, leave below rest, margin bigger than the measured rest drift?</li>
+<li>Site: garage and a clear lot, or is a 50–200 m path actually available and legal?</li>
+</ol>
+</div>
+
+<h2 id="changelog">Changelog</h2>
+<div class="card">
+<ul>
+<li><b>v1 · Nov 1, 2026 PT.</b> First research note. Learning path from the one-line thesis through the three insets to a garage test plan. Prices and paper links checked the same day. No hardware bought, no measurement taken, no other page in the repo links here.</li>
+</ul>
+</div>
+</div>
+<script>
+(function () {
+  var fIn = document.getElementById("fGHz");
+  var vIn = document.getElementById("vMs");
+  var out = document.getElementById("calcOut");
+  var c = 3.0e8;
+  function render() {
+    var fGHz = parseFloat(fIn.value);
+    var v = parseFloat(vIn.value);
+    if (!isFinite(fGHz) || !isFinite(v) || fGHz <= 0) {
+      out.textContent = "Enter a carrier above 0 and a speed.";
+      return;
+    }
+    var df = (fGHz * 1e9) * v / c;
+    var sign = df > 0.5 ? "closing, tone up" : df < -0.5 ? "opening, tone down" : "about zero, no radial cue";
+    out.innerHTML = "Δf ≈ <span>" + df.toFixed(1) + " Hz</span> · " + sign;
+  }
+  fIn.addEventListener("input", render);
+  vIn.addEventListener("input", render);
+  render();
+})();
+</script>
+</body>
+</html>
