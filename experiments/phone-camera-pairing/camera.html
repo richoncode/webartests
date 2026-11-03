@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0d0d">
+  <title>Wrist tracking — Phone ↔ Camera Pairing</title>
+  <link rel="stylesheet" href="pairing.css">
+</head>
+<body class="app">
+  <div class="flash" id="flash" aria-hidden="true"><b>PAIRED</b></div>
+  <div class="shell">
+    <div class="stage-wrap" id="stage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas class="overlay" id="overlay"></canvas>
+      <div class="hud">
+        <div class="pill" id="pill">
+          <div class="band load" id="band">STARTING</div>
+          <div class="who" id="who">Waiting for the camera</div>
+          <div class="note" id="note">Hold a phone in one hand so the fingers are hidden, and watch whether the wrist point stays on.</div>
+        </div>
+        <div class="held-card">
+          <div id="heldSingle">
+            <b id="heldNum">—</b>
+            <span>frames with a point, 5s</span>
+          </div>
+          <div class="held-split" id="heldSplit" hidden>
+            <div><b class="pose" id="heldPose">—</b><span>pose</span></div>
+            <div><b class="hand" id="heldHands">—</b><span>hands</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-controls">
+        <div class="seg" id="modeSeg" role="group" aria-label="Tracker">
+          <button type="button" data-value="pose" aria-pressed="true">Pose / wrist</button>
+          <button type="button" data-value="hands" aria-pressed="false">Hands</button>
+          <button type="button" data-value="both" aria-pressed="false">Both</button>
+        </div>
+        <div class="seg" id="sideSeg" role="group" aria-label="Which wrist">
+          <button type="button" data-value="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-value="left" aria-pressed="false">Left</button>
+          <button type="button" data-value="right" aria-pressed="false">Right</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <a class="back" href="./">← Experiment</a>
+      <p class="kicker">US 9,162,144 B2 · camera</p>
+      <h1>Can the camera see the wrist?</h1>
+      <p class="lede">The patent pairs a phone with the body holding it when their motion matches. This page checks the hard part: tracking the hand while the phone hides the fingers.</p>
+      <p class="hint">Pose / wrist follows the arm, so the point can survive a covered hand. Hands looks for fingers. Hold a phone in frame and compare the two percentages. Scribble across the picture — motion straight at the lens is the Z axis this test drops.</p>
+
+      <div class="card">
+        <h2>Tracker</h2>
+        <div class="stats">
+          <div class="stat"><span>Confidence</span><b id="confValue">—</b></div>
+          <div class="stat"><span>Landmark z</span><b id="depthZ">—</b></div>
+          <div class="stat"><span>Inference</span><b id="inferValue">—</b></div>
+          <div class="stat"><span>Frames</span><b id="fpsValue">—</b></div>
+          <div class="stat"><span>Pose model</span><b id="delegate" style="font-size:13px">…</b></div>
+          <div class="stat"><span>Point</span><b id="pointName" style="font-size:13px">—</b></div>
+        </div>
+        <div class="seg" id="modelSeg" role="group" aria-label="Pose model" style="margin-top:10px">
+          <button type="button" data-value="lite" aria-pressed="true">Lite pose</button>
+          <button type="button" data-value="full" aria-pressed="false">Full pose</button>
+        </div>
+        <p class="plot-label">Wrist position, normalized, y downward</p>
+        <canvas class="plot" id="posPlot"></canvas>
+        <p class="plot-label">Image-plane acceleration, y up</p>
+        <canvas class="plot" id="accPlot"></canvas>
+        <div class="row" style="margin-top:10px">
+          <select id="camSelect" aria-label="Camera"></select>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button type="button" id="startCam">Restart camera</button>
+          <button type="button" id="downloadTrail">Download trail</button>
+        </div>
+        <p class="hint" id="camNote">Starting the camera…</p>
+      </div>
+
+      <div class="card">
+        <h2>Pairing <span class="badge ok" id="pairedPill" hidden>Paired</span></h2>
+        <p>Plane-align both accelerations, drop Z, and compare 1.6s with dynamic time warping. A match flashes PAIRED here and on the phone.</p>
+        <div class="stats">
+          <div class="stat"><span>DTW</span><b id="dtwValue">—</b></div>
+          <div class="stat"><span>Correlation</span><b id="corrValue">—</b></div>
+          <div class="stat"><span>In plane</span><b id="planeValue">—</b></div>
+          <div class="stat"><span>Rotation</span><b id="angleValue">—</b></div>
+        </div>
+        <p class="plot-label">Both acceleration trails, scaled to the same height</p>
+        <canvas class="plot" id="dualPlot"></canvas>
+        <p class="hint" id="pairNote">Phone trail appears when a live link or an imported buffer is active.</p>
+        <p class="hint"><span id="phoneCount">0</span> live phone samples.</p>
+        <button type="button" id="selfCheck">Score a known gesture</button>
+      </div>
+
+      <div class="card">
+        <h2>Phone</h2>
+        <p>Scan to open the phone page on the same origin. Enable sensors there, scribble in view of this camera, then either join the live link or import the buffer.</p>
+        <canvas class="qr" id="phoneQr"></canvas>
+        <p class="hint"><a id="phoneUrl" href="phone.html">phone.html</a></p>
+        <div class="row">
+          <button type="button" id="copyPhone">Copy phone link</button>
+          <button class="primary" type="button" id="startLink">Start live link</button>
+        </div>
+        <div id="offerBox" hidden>
+          <p class="plot-label">Offer</p>
+          <canvas class="qr" id="offerQr"></canvas>
+          <p class="hint" id="offerHint"></p>
+          <textarea id="offerToken" spellcheck="false" readonly></textarea>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="copyOffer">Copy offer</button>
+          </div>
+          <p class="plot-label">Phone’s answer</p>
+          <textarea id="answerToken" spellcheck="false" autocapitalize="off" placeholder="Paste the answer token, or scan it"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="primary" type="button" id="applyAnswer">Apply answer</button>
+            <button type="button" id="scanAnswer">Scan answer</button>
+          </div>
+        </div>
+        <p class="hint" id="linkState">Live link is off. The short code above only opens the phone page.</p>
+      </div>
+
+      <div class="card">
+        <h2>Import a phone buffer</h2>
+        <p>Use this when the two devices cannot open a direct link. Do the gesture on camera, export from the phone within half a minute, and match the strongest 1.6 seconds of each.</p>
+        <input id="importFile" type="file" accept="application/json,.json">
+        <textarea id="importText" spellcheck="false" placeholder="Or paste the phone JSON" style="margin-top:8px"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" type="button" id="matchImport">Match buffer</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+  <script type="module" src="js/camera.js"></script>
+</body>
+</html>

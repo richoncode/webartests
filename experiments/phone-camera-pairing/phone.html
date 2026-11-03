@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0d0d">
+  <title>Phone IMU — Phone ↔ Camera Pairing</title>
+  <link rel="stylesheet" href="pairing.css">
+</head>
+<body class="doc">
+  <div class="flash" id="flash" aria-hidden="true"><b>PAIRED</b></div>
+  <div class="wrap">
+    <a class="back" href="./">← Experiment</a>
+    <p class="kicker">US 9,162,144 B2 · phone</p>
+    <h1>Phone motion</h1>
+    <p class="lede">The patent pairs a phone with the body holding it by matching their motion. This page reads the phone’s accelerometer and gyro so a laptop camera can compare that gesture with the wrist it sees.</p>
+
+    <p class="callout" id="sessionBanner" hidden><strong>Laptop session found.</strong> An answer code appears in the live-link section. Enable sensors, then scribble the phone across the laptop camera.</p>
+
+    <button class="primary big" id="enable" type="button">Enable sensors</button>
+    <p class="hint" id="sensorNote">iOS asks for motion access from this button. Nothing is recorded until you tap it. A laptop usually has no accelerometer.</p>
+    <p style="margin:12px 0"><span class="badge" id="sensorState">Sensors off</span></p>
+
+    <div class="stats" style="margin-top:8px">
+      <div class="stat"><span>ax incl. g</span><b class="x num" id="ax">—</b></div>
+      <div class="stat"><span>ay incl. g</span><b class="y num" id="ay">—</b></div>
+      <div class="stat"><span>az incl. g</span><b class="z num" id="az">—</b></div>
+      <div class="stat"><span>linear ax</span><b class="x num" id="lax">—</b></div>
+      <div class="stat"><span>linear ay</span><b class="y num" id="lay">—</b></div>
+      <div class="stat"><span>linear az</span><b class="z num" id="laz">—</b></div>
+      <div class="stat"><span>gyro α</span><b class="num" id="gx">—</b></div>
+      <div class="stat"><span>gyro β</span><b class="num" id="gy">—</b></div>
+      <div class="stat"><span>gyro γ</span><b class="num" id="gz">—</b></div>
+    </div>
+    <p class="hint">Acceleration is in device units, usually m/s². Gyro is degrees per second. <span id="count">0</span> samples · <span id="duration">0.0s</span> · <span id="rate">—</span></p>
+
+    <p class="plot-label">Acceleration, including gravity</p>
+    <canvas class="plot" id="accPlot"></canvas>
+    <p class="plot-label">Gyro</p>
+    <canvas class="plot" id="gyroPlot"></canvas>
+    <p class="plot-label">Plane-aligned linear acceleration (Z minimized)</p>
+    <canvas class="plot" id="planePlot"></canvas>
+    <p class="hint" id="planeFit">Plane fit appears once the phone has been moving for about a second.</p>
+
+    <h2 style="font-size:15px;margin:22px 0 8px">Recent samples</h2>
+    <div style="overflow:auto">
+      <table class="samples">
+        <thead>
+          <tr><th>t</th><th>ax</th><th>ay</th><th>az</th><th>gx</th><th>gy</th><th>gz</th></tr>
+        </thead>
+        <tbody id="sampleRows"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="copyBuf">Copy buffer</button>
+      <button type="button" id="downloadBuf">Download JSON</button>
+      <button type="button" id="clearBuf">Clear</button>
+    </div>
+    <p class="hint" id="exportNote">The buffer keeps about 30 seconds. Copy it into the camera page if the live link is awkward.</p>
+
+    <div class="card" style="margin-top:22px">
+      <h2>Live link</h2>
+      <p>Paste the offer from the camera page, or land here from its QR code. The answer goes back to the laptop. Samples then move on a WebRTC data channel. BroadcastChannel cannot cross to a phone, so it is not used.</p>
+      <textarea id="offerPaste" spellcheck="false" autocapitalize="off" placeholder="Paste the laptop offer token"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" type="button" id="joinBtn">Join laptop</button>
+      </div>
+      <p class="hint" id="linkState">No live link yet.</p>
+      <div id="answerBox" hidden>
+        <p class="plot-label">Answer for the laptop</p>
+        <canvas class="qr" id="answerQr" hidden></canvas>
+        <textarea id="answerToken" spellcheck="false" readonly style="margin-top:8px"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button type="button" id="copyAnswer">Copy answer</button>
+        </div>
+        <p class="hint" id="answerHint"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Match <span class="badge ok" id="pairedPill" hidden>Paired</span></h2>
+      <p>The laptop scores the last 1.6 seconds and sends the result here. DTW ≤ <span id="dtwGate"></span> and correlation ≥ <span id="corrGate"></span> flashes PAIRED on both screens.</p>
+      <div class="stats">
+        <div class="stat"><span>DTW</span><b class="num" id="remoteDtw">—</b></div>
+        <div class="stat"><span>Correlation</span><b class="num" id="remoteCorr">—</b></div>
+        <div class="stat"><span>Gate</span><b class="num" id="gateLabel">live</b></div>
+      </div>
+      <p class="plot-label">Acceleration shape, both sides scaled together</p>
+      <canvas class="plot" id="dualPlot"></canvas>
+      <p class="hint" id="scoreNote">Scribble the phone across the laptop camera.</p>
+    </div>
+  </div>
+  <script type="module" src="js/phone.js"></script>
+  <script type="module">
+    import { MATCH } from './js/dtw.js';
+    document.getElementById('dtwGate').textContent = MATCH.maxDtw.toFixed(2);
+    document.getElementById('corrGate').textContent = MATCH.minCorr.toFixed(2);
+  </script>
+</body>
+</html>
