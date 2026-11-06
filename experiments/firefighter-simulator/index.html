@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Situation Simulator — webartests</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #0d0d0d; color: #fff; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    button, select { font: inherit; color: inherit; }
+    button {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #ccc;
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    button:hover { border-color: #555; color: #fff; }
+    button:disabled { opacity: 0.3; cursor: default; }
+    button.primary { background: #1e2d40; border-color: #5b9bd5; color: #fff; }
+    button.active { border-color: #5b9bd5; color: #fff; background: #1e2d40; }
+    button.danger { border-color: #6a3030; color: #f0b4ae; }
+    a { color: #5b9bd5; }
+    canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #veil, #fail {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      background: #0d0d0d; padding: 24px;
+    }
+    #veil p, #fail .card { max-width: 520px; }
+    #fail[hidden], #veil[hidden], [hidden] { display: none !important; }
+    #fail .card, .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 22px 22px 18px;
+    }
+    #top {
+      position: fixed; z-index: 3; top: 0; left: 0; right: 0;
+      display: flex; gap: 16px; align-items: center;
+      padding: 10px 14px;
+      background: linear-gradient(#0d0d0d, rgba(13,13,13,0.88) 70%, rgba(13,13,13,0));
+      pointer-events: none;
+    }
+    #top > * { pointer-events: auto; }
+    a.back { color: #555; text-decoration: none; font-size: 14px; white-space: nowrap; }
+    a.back:hover { color: #aaa; }
+    .titles { min-width: 0; flex: 1; }
+    .titles strong { display: block; font-size: 16px; letter-spacing: -0.2px; }
+    .disclaimer { display: block; margin-top: 2px; color: #9a9a9a; font-size: 12px; line-height: 1.35; }
+    .clockblk { display: flex; gap: 6px; align-items: center; }
+    #clock {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 20px; min-width: 64px; text-align: right;
+    }
+    #sit {
+      position: fixed; z-index: 3; top: 74px; left: 14px; width: min(320px, calc(100vw - 360px));
+      background: rgba(18,18,18,0.9);
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 12px 14px 10px;
+    }
+    #sit h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: #5b9bd5; }
+    .gridnums { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 13px; color: #ddd; }
+    .gridnums span:nth-child(odd) { color: #8d8d8d; }
+    .gridnums b { font-weight: 600; font-variant-numeric: tabular-nums; }
+    #weather, #people, #feedback { margin: 8px 0 0; font-size: 12px; line-height: 1.4; color: #aaa; }
+    #feedback { color: #e7e7e7; }
+    #side {
+      position: fixed; z-index: 3; top: 74px; right: 14px; width: 320px;
+      bottom: 158px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .acts button, #sub button { width: 100%; text-align: left; }
+    #sub {
+      overflow: auto;
+      background: rgba(18,18,18,0.92);
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 12px;
+      min-height: 120px;
+    }
+    #sub h3 { margin: 0 0 8px; font-size: 14px; }
+    #sub p, #sub li { font-size: 12px; line-height: 1.45; color: #b5b5b5; }
+    #sub .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+    #sub .row button { width: auto; }
+    #dock {
+      position: fixed; z-index: 3; left: 14px; right: 14px; bottom: 12px;
+      display: flex; gap: 8px; align-items: stretch;
+    }
+    #units { display: flex; gap: 6px; flex: 1; overflow-x: auto; }
+    .unit {
+      min-width: 118px; text-align: left; padding: 8px 10px; border-radius: 12px;
+      background: #1a1a1a;
+    }
+    .unit b { display: block; font-size: 13px; }
+    .unit small { display: block; color: #888; font-size: 11px; line-height: 1.3; }
+    .unit.on { border-color: #5b9bd5; }
+    #modes { display: flex; flex-direction: column; gap: 4px; }
+    #modes button { padding: 6px 8px; font-size: 12px; }
+    #views { position: static; display: flex; gap: 6px; }
+    #views button { padding: 6px 8px; font-size: 12px; }
+    #demo-banner {
+      position: fixed; z-index: 4; left: 50%; bottom: 132px; transform: translateX(-50%);
+      width: min(560px, calc(100% - 380px));
+      background: #1e2d40; border: 1px solid #5b9bd5; border-radius: 14px;
+      padding: 12px 14px; display: flex; gap: 12px; align-items: center;
+    }
+    #demo-banner p { margin: 0; font-size: 14px; line-height: 1.4; }
+    #toast {
+      position: fixed; z-index: 5; top: 76px; left: 50%; transform: translateX(-50%);
+      background: #241816; border: 1px solid #e07a5f; color: #ffd7cc;
+      border-radius: 10px; padding: 8px 12px; font-size: 13px; max-width: 480px;
+    }
+    .modal {
+      position: fixed; z-index: 6; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    #brief.modal {
+      inset: auto;
+      left: 16px;
+      bottom: 168px;
+      width: min(520px, calc(100vw - 380px));
+      background: transparent;
+      padding: 0;
+      display: block;
+      pointer-events: none;
+    }
+    #brief .sheet { pointer-events: auto; max-height: none; padding: 16px 16px 12px; }
+    #brief .sheet h2 { font-size: 20px; }
+    #brief .sheet p { font-size: 13px; margin: 6px 0; }
+    #brief .actions button { font-size: 13px; padding: 7px 10px; }
+    .sheet {
+      width: min(720px, 100%);
+      max-height: min(82vh, 820px);
+      overflow: auto;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 22px 22px 18px;
+    }
+    .sheet h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.3px; }
+    .sheet h3 { margin: 16px 0 6px; font-size: 13px; letter-spacing: 0.8px; text-transform: uppercase; color: #5b9bd5; }
+    .sheet p, .sheet li { font-size: 14px; line-height: 1.5; color: #c8c8c8; }
+    .sheet .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .mono {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px; line-height: 1.45; white-space: pre-wrap;
+      background: #0d0d0d; border-radius: 10px; padding: 10px 12px; color: #d5d5d5;
+    }
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+      text-transform: uppercase; color: #f0a040; border: 1px solid #6a4a20;
+      border-radius: 6px; padding: 2px 6px; margin-bottom: 8px;
+    }
+    kbd { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; border: 1px solid #333; border-radius: 4px; padding: 0 4px; color: #ccc; }
+    @media (max-width: 980px) {
+      #sit { display: none; }
+      #side { left: 14px; width: auto; top: auto; bottom: 168px; max-height: 38vh; }
+      #demo-banner { width: calc(100% - 28px); left: 14px; transform: none; }
+      #brief.modal { width: calc(100% - 28px); left: 14px; bottom: 210px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="veil"><p>Loading the airfield…</p></div>
+  <div id="fail" hidden>
+    <div class="card">
+      <h1>The 3D scene did not start</h1>
+      <p id="fail-text">WebGL or the Three.js library failed to load.</p>
+      <p>Reload the page once the network is back. The exercise uses WebGL from <code>cdn.jsdelivr.net</code> and does not include a downloadable aircraft model.</p>
+      <p class="disclaimer">Modern 3D reconstruction inspired by the documented predecessor; not original software or validated firefighting training.</p>
+      <p><a href="https://archive.org/details/DTIC_ADA221132">Hughes Associates report, ESL-TR-86-35, on archive.org</a></p>
+    </div>
+  </div>
+
+  <header id="top">
+    <a class="back" href="../">← Experiments</a>
+    <div class="titles">
+      <strong>Situation Simulator</strong>
+      <span class="disclaimer">Modern 3D reconstruction inspired by the documented predecessor; not original software or validated firefighting training.</span>
+    </div>
+    <div class="clockblk">
+      <span id="clock">00:00</span>
+      <button type="button" id="speed" title="Game-clock speed">1×</button>
+      <button type="button" id="pause">Pause</button>
+      <button type="button" id="demo">Guided demo</button>
+      <button type="button" id="source-btn">Source</button>
+    </div>
+    <div id="views" role="group" aria-label="Viewpoint">
+      <button type="button" data-view="orbit" class="active">Orbit</button>
+      <button type="button" data-view="map">Map</button>
+      <button type="button" data-view="bumper">Bumper</button>
+      <button type="button" data-view="interior">Interior</button>
+    </div>
+  </header>
+
+  <section id="sit" aria-label="Situation status">
+    <h2 id="course-label">Exterior course</h2>
+    <div class="gridnums">
+      <span>Wing and engine</span><b id="n-wing">0</b>
+      <span>Running fuel</span><b id="n-run">0 ft</b>
+      <span>Fuel spill</span><b id="n-spill">0 sq ft</b>
+      <span>Pool fire</span><b id="n-pool">0 sq ft</b>
+      <span>Smoke</span><b id="n-smoke">0</b>
+    </div>
+    <p id="weather"></p>
+    <p id="people"></p>
+    <p id="feedback"></p>
+  </section>
+
+  <aside id="side">
+    <div class="acts" id="acts">
+      <button type="button" data-act="sizeup">Size-up</button>
+      <button type="button" data-act="command">Command</button>
+      <button type="button" data-act="control">Control</button>
+      <button type="button" data-act="extinguish">Extinguish</button>
+      <button type="button" data-act="protect">Protect</button>
+      <button type="button" data-act="rescue">Rescue</button>
+      <button type="button" data-act="vent">Vent</button>
+      <button type="button" data-act="overhaul">Overhaul</button>
+      <button type="button" data-act="log">Log</button>
+      <button type="button" data-act="end" class="danger">End exercise</button>
+    </div>
+    <div id="sub"></div>
+  </aside>
+
+  <footer id="dock">
+    <div id="units"></div>
+    <div id="modes">
+      <button type="button" data-mode="ready" class="active">Ready</button>
+      <button type="button" data-mode="hydrant">Hydrant</button>
+      <button type="button" data-mode="modulate">Modulate</button>
+      <button type="button" data-mode="standby">Stand-by</button>
+    </div>
+  </footer>
+
+  <div id="demo-banner" hidden>
+    <p id="demo-text"></p>
+    <button type="button" id="take-control">Take control</button>
+  </div>
+  <div id="toast" hidden></div>
+
+  <div id="brief" class="modal">
+    <div class="sheet">
+      <span class="tag">Toy exercise</span>
+      <h2 id="brief-title">Engine fire on the ramp</h2>
+      <p id="brief-copy"></p>
+      <p>Press <strong>Guided demo</strong> and watch a truck roll into range. Or take command: click Crash 3, click the ramp beside the flames, choose AFFF, and press Apply. Wind and temperature are distractors, as in the 1988 manual. They do not change this fire.</p>
+      <div class="actions">
+        <button type="button" class="primary" id="brief-demo">Guided demo</button>
+        <button type="button" id="brief-play">Take command</button>
+        <button type="button" id="brief-course">Switch to interior course</button>
+        <button type="button" id="brief-roll">New conditions</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="after" class="modal" hidden>
+    <div class="sheet" id="after-body"></div>
+  </div>
+
+  <div id="source" class="modal" hidden>
+    <div class="sheet">
+      <span class="tag">Source note</span>
+      <h2>What this page is</h2>
+      <p>Modern 3D reconstruction inspired by the documented predecessor; not original software or validated firefighting training.</p>
+      <p>Hughes Associates, Inc. — Christina Uyak, Tom Hughes, Jerry Back, and Wade Grimm — prepared <em>Situation Simulator for Firefighters</em>, ESL-TR-86-35, October 1988, for the Air Force Engineering and Services Center at Tyndall AFB. The work covered December 1984 through March 1986. The public scan is <a href="https://archive.org/details/DTIC_ADA221132">DTIC AD-A221132 on archive.org</a>. Appendix A is the operating manual.</p>
+      <h3>Documented, and modeled here as toy rules</h3>
+      <ul>
+        <li>Two courses: an exterior engine fire on the ramp, and an interior fire after landing with people still aboard.</li>
+        <li>Units from the manual: Crash 3 / P-15, Crash 4 / P-2, Crash 5 / P-2, Rescue 6 / P-10, Engine 7 structural, Crash 9 / P-13. Position them before firefighting. Hydrant, modulate, and stand-by are separate modes.</li>
+        <li>Activities: size-up, command, control, extinguish, protect, rescue, vent, overhaul, and a game clock. Command includes secure aircraft, communicate, request assistance, and return units.</li>
+        <li>Assistance: off-duty personnel, aircraft maintenance, disaster control, SCBA air resupply, mutual aid fire, foam resupply, tech services.</li>
+        <li>Tools: turret, handline, penetrator, portable extinguisher. Agents: AFFF, dry chemical, Halon, water. Pattern is straight stream or fog.</li>
+        <li>The 1988 program checked agent quantity and flow, whether the vehicle was close enough for the stream to reach, ventilation, smoke, and rescue timing. Using Halon before rescue, in the interior scenario, increased the death rate. Here that becomes an abstract unaccounted count.</li>
+        <li>Wind and temperature were displayed and did not affect the outcome. An after-action printout listed decisions, time, and fire size.</li>
+      </ul>
+      <h3>What the original showed</h3>
+      <p>Photographs of a C-141B with animated smoke and flame, played from a laserdisc on an NCR InteracTV-2 touchscreen, plus computer text and menus. The disc held about 30 minutes of audio and video on a side. It was not a real-time 3D scene. No copy of that disc was used here.</p>
+      <h3>Invented for this page</h3>
+      <p>The procedural aircraft, trucks, tarmac, flame, smoke, and spray are a modern WebGL picture. So are the orbit, map, bumper, and interior cameras, and the guided demo. The aircraft is C-141B-style geometry with no service markings. Every distance, flow, and “square foot” on the board is a made-up index.</p>
+      <p>This is not the 1984–86 software, not any later simulator, and not a fielded Air Force or Navy system. It is not a fire model and not tactical instruction. Do not use it as a procedure.</p>
+      <div class="actions">
+        <button type="button" id="source-close" class="primary">Back to the ramp</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script>
+    function showFail(message) {
+      const veil = document.getElementById('veil');
+      const fail = document.getElementById('fail');
+      const text = document.getElementById('fail-text');
+      if (veil) veil.hidden = true;
+      if (text) text.textContent = message;
+      if (fail) fail.hidden = false;
+    }
+    window.addEventListener('error', function (event) {
+      if (!window.__simBootedFlag) showFail(event.message || 'The simulator script failed.');
+    });
+    const watchdog = setTimeout(function () {
+      showFail('The 3D library did not finish loading. Check the network connection and reload.');
+    }, 12000);
+    window.__simBooted = function () {
+      window.__simBootedFlag = true;
+      clearTimeout(watchdog);
+    };
+    import('./app.js').catch(function (err) {
+      showFail('Could not start the simulator. The 3D library failed to load from the network. Reload once the connection is back.');
+    });
+  </script>
+</body>
+</html>
