@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ENGINES, ENTRY_LAYOUT, HYDRANTS, toolRange } from './sim.js';
+import { buildExtension } from './aircraft.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _muzzle = new THREE.Vector3();
@@ -17,6 +18,7 @@ const AGENT_COLOR = {
 };
 
 function flameHeight(zone) {
+  if (typeof zone.y === 'number') return zone.y;
   if (zone.kind === 'engine') return 3.35;
   if (zone.kind === 'wing') return 5.05;
   if (zone.kind === 'cabin') return 3.2;
@@ -599,6 +601,7 @@ export function createView(canvas) {
   runway.rotation.x = -Math.PI / 2;
   runway.position.set(78, 0.01, -10);
   runway.receiveShadow = true;
+  runway.userData.hideOnDeck = true;
   scene.add(runway);
   for (let z = -100; z <= 80; z += 14) {
     const dash = new THREE.Mesh(
@@ -606,6 +609,7 @@ export function createView(canvas) {
       new THREE.MeshBasicMaterial({ color: 0xf4f4f2 }),
     );
     dash.position.set(78, 0.03, z);
+    dash.userData.hideOnDeck = true;
     scene.add(dash);
   }
   const taxi = new THREE.Mesh(
@@ -613,18 +617,21 @@ export function createView(canvas) {
     new THREE.MeshBasicMaterial({ color: 0xe6c04a }),
   );
   taxi.position.set(40, 0.03, 8);
+  taxi.userData.hideOnDeck = true;
   scene.add(taxi);
   const taxiJoin = new THREE.Mesh(
     new THREE.BoxGeometry(38, 0.03, 0.28),
     new THREE.MeshBasicMaterial({ color: 0xe6c04a }),
   );
   taxiJoin.position.set(58, 0.03, 36);
+  taxiJoin.userData.hideOnDeck = true;
   scene.add(taxiJoin);
 
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xf7f7f5 });
   function paintLine(x, z, w, d) {
     const line = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), lineMat);
     line.position.set(x, 0.03, z);
+    line.userData.hideOnDeck = true;
     scene.add(line);
   }
   paintLine(0, -30, 70, 0.18);
@@ -652,6 +659,7 @@ export function createView(canvas) {
     );
     door.position.set(0, -h.h * 0.12, h.d / 2 + 0.05);
     box.add(roof, door);
+    box.userData.hideOnDeck = true;
     scene.add(box);
   }
 
@@ -661,6 +669,7 @@ export function createView(canvas) {
   const cab = new THREE.Mesh(new THREE.BoxGeometry(6.5, 3.2, 6.5), new THREE.MeshStandardMaterial({ color: 0x8aa0b3, roughness: 0.25, metalness: 0.4 }));
   cab.position.y = 9.2;
   shaft.add(cab);
+  shaft.userData.hideOnDeck = true;
   scene.add(shaft);
 
   for (const h of HYDRANTS) {
@@ -679,8 +688,73 @@ export function createView(canvas) {
   const metal = new THREE.MeshStandardMaterial({ color: 0xb7bcc2, roughness: 0.35, metalness: 0.55 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x2a2e32, roughness: 0.6, metalness: 0.3 });
   const interiorFloor = new THREE.MeshStandardMaterial({ color: 0x5c6166, roughness: 0.8 });
-  const aircraft = buildAircraft(paint, paintDark, belly, glass, metal, dark, interiorFloor);
+  const airMats = { paint, paintDark, glass, metal, dark, interiorFloor };
+  let aircraft = buildAircraft(paint, paintDark, belly, glass, metal, dark, interiorFloor);
   scene.add(aircraft.root);
+
+  const nearHangar = new THREE.Mesh(
+    new THREE.BoxGeometry(16, 9, 22),
+    new THREE.MeshStandardMaterial({ color: 0xb7b1a4, roughness: 0.8 }),
+  );
+  nearHangar.position.set(-22, 4.5, 0);
+  nearHangar.castShadow = true;
+  const nearDoor = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 5, 0.2),
+    new THREE.MeshStandardMaterial({ color: 0x3c4248, roughness: 0.6 }),
+  );
+  nearDoor.position.set(6.2, -1, 0);
+  nearHangar.add(nearDoor);
+  nearHangar.visible = false;
+  scene.add(nearHangar);
+
+  const centerRunway = new THREE.Mesh(
+    new THREE.PlaneGeometry(18, 160),
+    new THREE.MeshStandardMaterial({ color: 0x3e4246, roughness: 0.95 }),
+  );
+  centerRunway.rotation.x = -Math.PI / 2;
+  centerRunway.position.y = 0.015;
+  const runwayDress = new THREE.Group();
+  runwayDress.add(centerRunway);
+  for (let z = -70; z <= 70; z += 16) {
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 7), new THREE.MeshBasicMaterial({ color: 0xf4f4f2 }));
+    dash.position.set(0, 0.05, z);
+    runwayDress.add(dash);
+  }
+  runwayDress.visible = false;
+  scene.add(runwayDress);
+
+  const deckGroup = new THREE.Group();
+  const ocean = new THREE.Mesh(
+    new THREE.PlaneGeometry(520, 520),
+    new THREE.MeshStandardMaterial({ color: 0x1a4d66, roughness: 0.9 }),
+  );
+  ocean.rotation.x = -Math.PI / 2;
+  ocean.position.y = -0.02;
+  const deck = new THREE.Mesh(
+    new THREE.PlaneGeometry(70, 130),
+    new THREE.MeshStandardMaterial({ color: 0x4a4e52, roughness: 0.88 }),
+  );
+  deck.rotation.x = -Math.PI / 2;
+  deck.position.y = 0.02;
+  deck.receiveShadow = true;
+  deck.userData.pick = { type: 'ground' };
+  const island = new THREE.Mesh(
+    new THREE.BoxGeometry(8, 10, 18),
+    new THREE.MeshStandardMaterial({ color: 0x8d9398, roughness: 0.7 }),
+  );
+  island.position.set(28, 5, -8);
+  island.castShadow = true;
+  deckGroup.add(ocean, deck, island);
+  const deckLine = new THREE.MeshBasicMaterial({ color: 0xe6c04a });
+  for (const z of [-20, 0, 20]) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(36, 0.04, 0.25), deckLine);
+    line.position.set(-4, 0.05, z);
+    deckGroup.add(line);
+  }
+  deckGroup.visible = false;
+  scene.add(deckGroup);
+  let currentLayout = null;
+  let mapSpan = 46;
 
   const clip = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0.2);
   const flames = new Map();
@@ -790,7 +864,7 @@ export function createView(canvas) {
     bumperCam.updateProjectionMatrix();
     interiorCam.aspect = w / h;
     interiorCam.updateProjectionMatrix();
-    const halfH = 46;
+    const halfH = mapSpan;
     const halfW = halfH * (w / h);
     mapCam.left = -halfW;
     mapCam.right = halfW;
@@ -808,9 +882,75 @@ export function createView(canvas) {
     aircraft.fuseMat.clipShadows = open;
     aircraft.fuseMat.needsUpdate = true;
     if (next === 'interior') {
-      interiorCam.position.set(-0.15, 2.5, -9);
-      interiorCam.lookAt(0.4, 2.2, 8);
+      const cam = currentLayout && currentLayout.interior;
+      if (cam) {
+        interiorCam.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+        interiorCam.lookAt(cam.look[0], cam.look[1], cam.look[2]);
+      } else {
+        interiorCam.position.set(-0.15, 2.5, -9);
+        interiorCam.lookAt(0.4, 2.2, 8);
+      }
     }
+  }
+
+  function frameCamera(layout) {
+    const frame = layout.frame;
+    camera.position.set(frame.pos[0], frame.pos[1], frame.pos[2]);
+    controls.target.set(frame.target[0], frame.target[1], frame.target[2]);
+    focusing = 0;
+    controls.update();
+  }
+
+  function applyDressing(scenario) {
+    const mode = scenario.scene;
+    nearHangar.visible = mode === 'hangar';
+    runwayDress.visible = mode === 'runway';
+    deckGroup.visible = mode === 'deck';
+    apron.visible = mode !== 'deck';
+    scene.traverse((obj) => {
+      if (obj.userData && obj.userData.hideOnDeck) obj.visible = mode !== 'deck';
+    });
+    grass.visible = mode !== 'deck';
+    if (scenario.night) {
+      sun.intensity = 0.15;
+      hemi.intensity = 0.1;
+      fill.intensity = 0.05;
+      scene.background.setHex(0x12161c);
+      scene.fog.color.setHex(0x12161c);
+      sky.material.uniforms.top.value.setHex(0x0e141c);
+      sky.material.uniforms.horizon.value.setHex(0x3a2e28);
+      sky.material.uniforms.ground.value.setHex(0x101216);
+      renderer.toneMappingExposure = 0.82;
+    } else {
+      sun.intensity = 1.45;
+      hemi.intensity = 0.72;
+      fill.intensity = 0.38;
+      scene.background.setHex(0xb7c3ce);
+      scene.fog.color.setHex(0xc5d0da);
+      sky.material.uniforms.top.value.setHex(0x6d8caf);
+      sky.material.uniforms.horizon.value.setHex(0xe4d7c4);
+      sky.material.uniforms.ground.value.setHex(0x8b9084);
+      renderer.toneMappingExposure = 1.05;
+    }
+  }
+
+  function loadScenario(state) {
+    scene.remove(aircraft.root);
+    if (state.layout.shape === 'starlifter') {
+      aircraft = buildAircraft(paint, paintDark, belly, glass, metal, dark, interiorFloor);
+    } else {
+      aircraft = buildExtension(THREE, state.layout.shape, airMats, state.layout);
+    }
+    scene.add(aircraft.root);
+    currentLayout = state.layout;
+    mapSpan = state.layout.mapSpan || 46;
+    applyDressing(state.scenario);
+    frameCamera(state.layout);
+    resize();
+    for (const walker of walkers) scene.remove(walker.mesh);
+    walkers.length = 0;
+    shownRecovered = 0;
+    if (mode === 'interior') setMode('interior');
   }
 
   function focus(x, y, z) {
@@ -897,6 +1037,10 @@ export function createView(canvas) {
     flameMat.uniforms.uTime.value = clock.t;
     const dt = Math.min(realDt, 0.05);
 
+    const liveZones = new Set(state.zones.map((zone) => zone.id));
+    for (const [id, group] of flames) {
+      if (!liveZones.has(id)) group.visible = false;
+    }
     for (const zone of state.zones) {
       const flame = ensureFlame(zone);
       const hot = zone.intensity > 1;
@@ -1113,5 +1257,5 @@ export function createView(canvas) {
   }
 
   resize();
-  return { resize, setMode, focus, sync, pick, renderer };
+  return { resize, setMode, focus, sync, pick, renderer, loadScenario };
 }

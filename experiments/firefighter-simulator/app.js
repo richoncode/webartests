@@ -7,7 +7,7 @@ const ui = {
   started: false,
   paused: true,
   speed: 1,
-  course: 'exterior',
+  scenarioId: 'predecessor-exterior',
   selected: 'crash3',
   panel: 'command',
   tool: 'turret',
@@ -26,15 +26,13 @@ let last = performance.now();
 let toastTimer = 0;
 
 function makeState() {
-  const opts = {
-    seed: ui.seed >>> 0,
-    course: ui.course,
-    equipment: ui.rolled ? 'random' : 'full',
-  };
-  if (!ui.rolled) {
+  const id = ui.scenarioId || 'predecessor-exterior';
+  const opts = { seed: ui.seed >>> 0, scenario: id, equipment: 'full' };
+  if (!ui.rolled && (id === 'predecessor-exterior' || id === 'predecessor-interior')) {
     opts.forceBlocked = 'troop';
-    if (ui.course === 'exterior') opts.forceEngine = 'eng2';
+    if (id === 'predecessor-exterior') opts.forceEngine = 'eng2';
   }
+  if (ui.rolled && (id === 'predecessor-exterior' || id === 'predecessor-interior')) opts.equipment = 'random';
   return sim.createState(opts);
 }
 
@@ -51,7 +49,9 @@ function boot() {
   });
   window.addEventListener('resize', () => view.resize());
   bind();
+  view.loadScenario(state);
   renderBrief();
+  renderLibrary();
   renderSub();
   renderUnits();
   requestAnimationFrame(frame);
@@ -91,11 +91,13 @@ function bind() {
     renderUnits();
     toast('You have command. Click the ramp to position the selected truck.');
   });
-  $('brief-course').addEventListener('click', () => {
-    ui.course = ui.course === 'exterior' ? 'interior' : 'exterior';
-    state = makeState();
-    renderBrief();
-    renderSub();
+  $('brief-course').addEventListener('click', () => { $('library').hidden = false; });
+  $('library-close').addEventListener('click', () => { $('library').hidden = true; });
+  $('scenarios-btn').addEventListener('click', () => { $('library').hidden = false; });
+  $('library').addEventListener('click', (event) => {
+    const card = event.target.closest('[data-scenario]');
+    if (!card) return;
+    selectScenario(card.dataset.scenario);
   });
   $('brief-roll').addEventListener('click', () => {
     ui.rolled = true;
@@ -281,12 +283,54 @@ function toast(text) {
 }
 
 function renderBrief() {
-  const interior = ui.course === 'interior';
-  $('brief-title').textContent = interior ? 'Cabin fire after landing' : 'Engine fire on the ramp';
-  $('brief-copy').textContent = interior
-    ? 'People are still aboard, counted only as a number. Do not start with Halon.'
-    : 'Flames are just visible at the near engine. ' + (ui.rolled ? 'Conditions were re-rolled.' : 'This opening setup keeps that fire in view.');
-  $('brief-course').textContent = interior ? 'Switch to exterior course' : 'Switch to interior course';
+  const scenario = state.scenario;
+  $('brief-title').textContent = scenario.title;
+  $('brief-copy').textContent = scenario.brief + (scenario.assumption ? ' ' + scenario.assumption : '');
+  const tag = document.querySelector('#brief .tag');
+  if (tag) tag.textContent = scenario.fictional ? 'Fictional extension · toy' : 'Documented predecessor · toy';
+  $('brief-course').textContent = 'Scenario library';
+}
+
+function renderLibrary() {
+  const doc = [];
+  const fic = [];
+  for (const scenario of sim.SCENARIOS) {
+    const air = sim.AIRFRAMES[scenario.aircraft];
+    const card = `<button type="button" class="scen" data-scenario="${scenario.id}">
+      <b>${esc(scenario.title)}</b>
+      <small>${esc(air.name)} · ${esc(scenario.scene)}${scenario.night ? ' · night' : ''}</small>
+      <small>${scenario.fictional ? 'Fictional extension' : 'Documented predecessor'}</small>
+    </button>`;
+    (scenario.fictional ? fic : doc).push(card);
+  }
+  $('lib-doc').innerHTML = doc.join('');
+  $('lib-fic').innerHTML = fic.join('');
+}
+
+function selectScenario(id) {
+  ui.scenarioId = id;
+  ui.rolled = false;
+  ui.seed = 141;
+  demo = null;
+  state = makeState();
+  ui.started = false;
+  ui.paused = true;
+  ui.selected = state.scenario.plan.unit;
+  ui.tool = state.scenario.plan.tool;
+  ui.agent = state.scenario.plan.agent;
+  ui.panel = 'command';
+  ui.view = 'orbit';
+  view.loadScenario(state);
+  setView('orbit');
+  $('library').hidden = true;
+  $('brief').hidden = false;
+  $('after').hidden = true;
+  $('demo-banner').hidden = true;
+  $('demo').textContent = 'Guided demo';
+  $('pause').textContent = 'Pause';
+  renderBrief();
+  renderSub();
+  renderUnits();
 }
 
 function renderSub() {
@@ -294,7 +338,9 @@ function renderSub() {
   const unit = sim.getUnit(state, ui.selected);
   const who = unit ? unit.name + ' / ' + unit.type : 'No unit';
   if (!ui.started) {
-    root.innerHTML = '<h3>Waiting</h3><p>The aircraft is already on the ramp. Start the guided demo, or take command. Selecting a truck and clicking the concrete positions it, the way the 1988 touch map did.</p>';
+    root.innerHTML = state.fictional
+      ? '<h3>Waiting</h3><p>Fictional incident. Start the guided demo or take command. Click a truck, then click the ground to position it.</p>'
+      : '<h3>Waiting</h3><p>The aircraft is already on the ramp. Start the guided demo, or take command. Selecting a truck and clicking the concrete positions it, the way the 1988 touch map did.</p>';
     return;
   }
   if (ui.panel === 'extinguish' || ui.panel === 'control') {
@@ -421,14 +467,18 @@ function statusLabel(status) {
 function renderHud() {
   const numbers = sim.situationNumbers(state);
   $('clock').textContent = sim.formatClock(state.time);
-  $('course-label').textContent = (state.course === 'interior' ? 'Interior' : 'Exterior') + ' · toy index';
+  $('course-label').textContent = (state.fictional ? 'Fictional' : 'Documented') + ' · ' + state.scenario.title;
   $('n-wing').textContent = String(numbers.wingAndEngine);
   $('n-run').textContent = numbers.runningFeet + ' ft';
   $('n-spill').textContent = numbers.spillSqFt + ' sq ft';
   $('n-pool').textContent = numbers.poolSqFt + ' sq ft';
   $('n-smoke').textContent = String(numbers.smoke);
   const weather = state.weather;
-  $('weather').textContent = 'Wind ' + weather.windKt + ' kt from ' + weather.windFrom + '° · ' + weather.tempC + '°C · distractors, no effect';
+  $('weather').textContent = 'Wind ' + weather.windKt + ' kt from ' + weather.windFrom + '° · ' + weather.tempC + '°C · decorative only, no effect on this toy fire';
+  const goals = sim.objectiveStatus(state);
+  $('objectives').innerHTML = goals.map((goal) =>
+    '<li class="' + (goal.done ? 'done' : '') + '">' + (goal.done ? 'Done' : 'Open') + ' · ' + esc(goal.text) + '</li>'
+  ).join('');
   const people = state.people;
   $('people').textContent = people.known || people.recovered > 0
     ? 'Aboard ' + people.aboard + ' · recovered ' + people.recovered + ' · unaccounted ' + people.unaccounted + ' (abstract)'
@@ -469,12 +519,13 @@ function startDemo() {
   ui.rolled = false;
   ui.seed = 141;
   state = makeState();
-  ui.selected = 'crash3';
+  view.loadScenario(state);
+  ui.selected = state.scenario.plan.unit;
   ui.panel = 'extinguish';
-  ui.tool = 'turret';
-  ui.agent = 'afff';
+  ui.tool = state.scenario.plan.tool;
+  ui.agent = state.scenario.plan.agent;
   $('brief').hidden = true;
-  demo = { steps: ui.course === 'interior' ? interiorScript() : exteriorScript(), index: 0, armed: false };
+  demo = { steps: buildSteps(state), index: 0, armed: false };
   $('demo').textContent = 'Take control';
   $('demo-banner').hidden = false;
   armDemo();
@@ -490,7 +541,85 @@ function takeControl() {
   renderSub();
 }
 
-function exteriorScript() {
+function buildSteps(state) {
+  const plan = state.scenario.plan;
+  const zones = (plan.zones || ['seat']).map((id) => (id === 'seat' ? state.zones.find((zone) => zone.seat) : sim.zoneById(state, id)));
+  const entry = sim.openEntry(state, plan.entry || 'crew');
+  const steps = [];
+  steps.push(step(state.scenario.demoIntro, (s) => {
+    sim.sizeUp(s);
+    view.focus(zones[0].x, zones[0].y || 2, zones[0].z);
+    setView('orbit');
+  }, null, 8, 2));
+  if (plan.rescueFirst && state.people.aboard > 0 && entry) {
+    const rescueSpot = sim.parkingNearEntry(state, entry.id);
+    const applySpot = sim.parkingSpot(state, zones[0].id, plan.tool);
+    steps.push(step('Rescue goes to an open entrance. Another unit moves in to secure the aircraft.', (s) => {
+      ui.selected = plan.rescueUnit;
+      sim.orderMove(s, plan.rescueUnit, rescueSpot.x, rescueSpot.z);
+      sim.orderMove(s, plan.unit, applySpot.x, applySpot.z);
+    }, (s) => sim.getUnit(s, plan.rescueUnit).positioned && sim.getUnit(s, plan.unit).positioned, plan.driveTimeout || 28));
+    steps.push(step('Rescue is in. The secure step is a toy checklist, not a procedure.', (s) => {
+      sim.beginRescue(s, { unitId: plan.rescueUnit, entryId: entry.id });
+      if (plan.secure) sim.beginSecure(s, { unitId: plan.secureUnit || plan.unit, system: plan.secure });
+    }, (s) => !plan.secure || s.secured[plan.secure], 18));
+    steps.push(step('Agent on ' + zones[0].name + '.', (s) => {
+      ui.selected = plan.unit;
+      ui.tool = plan.tool;
+      ui.agent = plan.agent;
+      ui.panel = 'extinguish';
+      sim.beginApply(s, { unitId: plan.unit, tool: plan.tool, agent: plan.agent, zoneId: zones[0].id, pattern: 'straight' });
+      renderSub();
+    }, (s) => zones[0].intensity < 12 && s.people.aboard === 0, 80));
+    return steps;
+  }
+  zones.forEach((zone, index) => {
+    const spot = sim.parkingSpot(state, zone.id, plan.tool);
+    steps.push(step((index === 0 ? 'Moving onto ' : 'Next, ') + zone.name + '.', (s) => {
+      ui.selected = plan.unit;
+      sim.setUnitMode(s, plan.unit, 'ready');
+      sim.orderMove(s, plan.unit, spot.x, spot.z);
+      view.focus(zone.x, zone.y || 2, zone.z);
+    }, (s) => sim.getUnit(s, plan.unit).positioned, plan.driveTimeout || 26));
+    steps.push(step(plan.agent.toUpperCase() + ' on ' + zone.name + '. Out of range, the fire does not change.', (s) => {
+      ui.tool = plan.tool;
+      ui.agent = plan.agent;
+      ui.panel = 'extinguish';
+      sim.beginApply(s, { unitId: plan.unit, tool: plan.tool, agent: plan.agent, zoneId: zone.id, pattern: 'straight' });
+      renderSub();
+    }, (s) => zone.intensity <= 0, 40));
+  });
+  if (plan.overhaul) {
+    steps.push(step('Overhaul so this toy fire stays down.', (s) => {
+      sim.setUnitMode(s, plan.unit, 'ready');
+      sim.beginOverhaul(s, { unitId: plan.unit, zoneId: zones[0].id });
+    }, (s) => zones[0].overhauled, 14));
+  }
+  if (plan.rescue && state.people.aboard > 0 && entry) {
+    const rescueSpot = sim.parkingNearEntry(state, entry.id);
+    steps.push(step('Rescue to the ' + entry.name.toLowerCase() + '. People are a count, nothing graphic.', (s) => {
+      sim.setUnitMode(s, plan.unit, 'standby');
+      ui.selected = plan.rescueUnit;
+      sim.orderMove(s, plan.rescueUnit, rescueSpot.x, rescueSpot.z);
+    }, (s) => sim.getUnit(s, plan.rescueUnit).positioned, plan.driveTimeout || 24));
+    steps.push(step('Entry team is working the ' + entry.name.toLowerCase() + '.', (s) => {
+      sim.beginRescue(s, { unitId: plan.rescueUnit, entryId: entry.id });
+    }, (s) => s.people.aboard === 0, 70));
+  }
+  if (plan.secure && sim.getUnit(state, plan.secureUnit || 'engine7')) {
+    const secureId = plan.secureUnit || 'engine7';
+    steps.push(step('Securing ' + plan.secure + '. A checklist item in this toy, not a field procedure.', (s) => {
+      ui.selected = secureId;
+      sim.orderMove(s, secureId, 8, 12);
+    }, (s) => sim.getUnit(s, secureId).positioned, 24));
+    steps.push(step(plan.secure + ' secure.', (s) => {
+      sim.beginSecure(s, { unitId: secureId, system: plan.secure });
+    }, (s) => s.secured[plan.secure], 16));
+  }
+  return steps;
+}
+
+function exteriorScriptUnused() {
   const seat = state.zones.find((z) => z.seat);
   const entry = sim.openEntry(state, 'crew');
   const spot = sim.parkingSpot(state, seat.id, 'turret');
@@ -605,8 +734,12 @@ function openAfter(report) {
     .join('\n') || 'No zone grew enough to mark.';
   $('after-body').innerHTML = `
     <span class="tag">Illustrative after-action</span>
-    <h2>${report.course === 'interior' ? 'Interior' : 'Exterior'} course · ${sim.formatClock(report.time)}</h2>
+    <h2>${esc(report.title || 'Exercise')} · ${sim.formatClock(report.time)}</h2>
+    <p>${report.fictional ? 'Fictional extension. Not the 1988 simulator.' : 'Documented predecessor course, toy numbers.'}</p>
     <p>${esc(report.dispatch)}</p>
+    <h3>Objectives</h3>
+    <ul>${(report.objectives || []).map((goal) => `<li>${goal.done ? 'Done' : 'Open'} · ${esc(goal.text)}</li>`).join('')}</ul>
+    ${report.assumption ? `<p>${esc(report.assumption)}</p>` : ''}
     <h3>People, abstract count</h3>
     <p>Recovered ${report.people.recovered}. Still aboard ${report.people.aboard}. Unaccounted ${report.people.unaccounted}. No injury is shown.</p>
     <h3>Damage in this toy</h3>
@@ -634,9 +767,12 @@ function resetExercise(roll) {
   $('demo').textContent = 'Guided demo';
   $('demo-banner').hidden = true;
   state = makeState();
+  view.loadScenario(state);
   ui.started = true;
   ui.paused = false;
-  ui.selected = 'crash3';
+  ui.selected = state.scenario.plan.unit;
+  ui.tool = state.scenario.plan.tool;
+  ui.agent = state.scenario.plan.agent;
   ui.panel = 'command';
   $('pause').textContent = 'Pause';
   $('after').hidden = true;
@@ -663,6 +799,7 @@ function onKey(event) {
   else if (event.key === 'Escape') {
     $('source').hidden = true;
     $('after').hidden = true;
+    $('library').hidden = true;
   } else if (event.key === '?' ) {
     $('source').hidden = false;
   }

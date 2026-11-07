@@ -1,7 +1,11 @@
 // Illustrative incident-command rules for the 3D reconstruction.
-// Factors follow the 1988 manual (reach, agent quantity and flow, ventilation,
-// smoke, rescue timing, Halon-before-rescue, wind as a distractor).
-// Every number is made up for play. This is not a fire model.
+// The two predecessor scenarios follow factors named in the 1988 manual.
+// Every other scenario is a fictional extension. Every number is made up.
+// This is not a fire model.
+
+import { AIRFRAMES, SCENARIOS, getScenario } from './catalog.js';
+
+export { AIRFRAMES, SCENARIOS, getScenario, listScenarios } from './catalog.js';
 
 export const COURSES = ['exterior', 'interior'];
 
@@ -42,28 +46,23 @@ export const HYDRANTS = [
   { id: 'h2', x: -28, z: 16 },
 ];
 
-export const ENGINES = [
-  { id: 'eng1', name: 'No. 1 engine', x: -16, z: -2 },
-  { id: 'eng2', name: 'No. 2 engine', x: -7, z: -2 },
-  { id: 'eng3', name: 'No. 3 engine', x: 7, z: -2 },
-  { id: 'eng4', name: 'No. 4 engine', x: 16, z: -2 },
-];
+export const ENGINES = AIRFRAMES.starlifter.engines.map((engine) => ({
+  id: engine.id,
+  name: engine.name,
+  x: engine.x,
+  z: engine.z,
+}));
 
-export const ENTRY_LAYOUT = [
-  { id: 'crew', name: 'Crew door', kind: 'normal', x: -3.4, y: 1.5, z: -16 },
-  { id: 'troop', name: 'Troop door', kind: 'emergency', x: -3.4, y: 1.5, z: 8 },
-  { id: 'ramp', name: 'Cargo ramp', kind: 'normal', x: 0, y: 1.1, z: 23 },
-  { id: 'cutin', name: 'Cut-in', kind: 'cut-in', x: 3.4, y: 1.8, z: -2 },
-];
+export const ENTRY_LAYOUT = AIRFRAMES.starlifter.entries.map((entry) => ({ ...entry }));
 
 const TOOL_FLOW = { turret: 7.4, handline: 3.1, penetrator: 2.5, portable: 1.05 };
 const TOOL_RANGE = { turret: 28, handline: 14, penetrator: 7.2, portable: 4.2 };
 
 const AGENT_EFFECT = {
-  afff: { engine: 1, wing: 0.72, pool: 1.15, running: 0.9, cabin: 0.38 },
-  water: { engine: 0.26, wing: 0.48, pool: 0.16, running: 0.2, cabin: 0.9 },
-  drychem: { engine: 1.3, wing: 0.66, pool: 0.42, running: 0.5, cabin: 0.48 },
-  halon: { engine: 0.4, wing: 0.28, pool: 0.18, running: 0.18, cabin: 1.4 },
+  afff: { engine: 1, wing: 0.72, pool: 1.15, running: 0.9, cabin: 0.38, gear: 0.62, exposure: 0.8 },
+  water: { engine: 0.26, wing: 0.48, pool: 0.16, running: 0.2, cabin: 0.9, gear: 1.05, exposure: 0.75 },
+  drychem: { engine: 1.3, wing: 0.66, pool: 0.42, running: 0.5, cabin: 0.48, gear: 0.7, exposure: 0.45 },
+  halon: { engine: 0.4, wing: 0.28, pool: 0.18, running: 0.18, cabin: 1.4, gear: 0.3, exposure: 0.2 },
 };
 
 const FUSE_RX = 5.4;
@@ -112,18 +111,26 @@ export function suppressionRate(agent, tool, kind, pattern, modulate, ctx) {
   return rate;
 }
 
-export function insideFuselage(x, z) {
+export function insideFuselage(x, z, bounds) {
   if (!Number.isFinite(x) || !Number.isFinite(z)) return true;
-  return (x * x) / (FUSE_RX * FUSE_RX) + (z * z) / (FUSE_RZ * FUSE_RZ) < 1;
+  const rx = bounds?.rx ?? FUSE_RX;
+  const rz = bounds?.rz ?? FUSE_RZ;
+  return (x * x) / (rx * rx) + (z * z) / (rz * rz) < 1;
 }
 
-export function clampToRamp(x, z) {
+export function clampToRamp(x, z, bounds) {
+  const rz = bounds?.rz ?? FUSE_RZ;
   let px = clamp(x, -140, 140);
   let pz = clamp(z, -110, 110);
-  if (!insideFuselage(px, pz)) return { x: px, z: pz };
-  if (Math.hypot(px, pz) < 0.001) return { x: 0, z: FUSE_RZ + 1.5 };
-  const e = Math.sqrt((px * px) / (FUSE_RX * FUSE_RX) + (pz * pz) / (FUSE_RZ * FUSE_RZ));
+  if (!insideFuselage(px, pz, bounds)) return { x: px, z: pz };
+  if (Math.hypot(px, pz) < 0.001) return { x: 0, z: rz + 1.5 };
+  const rx = bounds?.rx ?? FUSE_RX;
+  const e = Math.sqrt((px * px) / (rx * rx) + (pz * pz) / (rz * rz));
   return { x: (px / e) * 1.04, z: (pz / e) * 1.04 };
+}
+
+function keepoutOf(state) {
+  return state?.layout?.keepout;
 }
 
 export function getUnit(state, id) {
@@ -302,8 +309,120 @@ function requirePositioned(state, unitId) {
   return found;
 }
 
+function resolveScenario(opts) {
+  if (opts.scenario) {
+    const found = getScenario(opts.scenario);
+    if (!found) throw new Error('Unknown scenario ' + opts.scenario);
+    return found;
+  }
+  return getScenario(opts.course === 'interior' ? 'predecessor-interior' : 'predecessor-exterior');
+}
+
+function blankZone(id, name, kind, x, y, z) {
+  return {
+    id, name, kind, x, y, z,
+    intensity: 0, fuel: 0, peak: 0, seat: false,
+    overhauled: false, knockedBy: null, reflashTimer: 0, reflashLogged: false,
+  };
+}
+
+function stageUnits(units, staging) {
+  if (!staging) return units;
+  let column = 0;
+  for (const unit of units) {
+    if (!unit.onScene) continue;
+    const x = (staging.x0 ?? -16) + column * (staging.gap ?? 10);
+    const z = staging.z ?? 32;
+    unit.x = x;
+    unit.z = z;
+    unit.staging = { x, z };
+    column += 1;
+  }
+  return units;
+}
+
+function unitsFor(scenario, opts, rng) {
+  const delay = !!(scenario.legacy && opts.equipment !== 'full' && (opts.forceDelay != null ? opts.forceDelay : rng() < 0.34));
+  let units = baseUnits(delay);
+  if (scenario.unitIds) {
+    units = scenario.unitIds.map((id) => units.find((unit) => unit.id === id)).filter(Boolean);
+  }
+  return stageUnits(units, scenario.staging);
+}
+
+function zonesFromLayout(layout, scenario) {
+  const zones = [];
+  for (const engine of layout.engines) zones.push(blankZone(engine.id, engine.name, 'engine', engine.x, engine.y, engine.z));
+  for (const wing of layout.wings) zones.push(blankZone(wing.id, wing.name, 'wing', wing.x, wing.y, wing.z));
+  for (const gear of layout.gear || []) zones.push(blankZone(gear.id, gear.name, 'gear', gear.x, gear.y, gear.z));
+  zones.push(blankZone('pool', 'Fuel pool', 'pool', 0, 0.2, 2));
+  zones.push(blankZone('running', 'Running fuel', 'running', 0, 0.25, 6));
+  zones.push(blankZone(layout.cabin.id, layout.cabin.name, 'cabin', layout.cabin.x, layout.cabin.y, layout.cabin.z));
+  if (scenario.exposure) zones.push(blankZone('hangar', 'Nearby hangar', 'exposure', -16, 3, 0));
+  for (const fire of scenario.fires || []) {
+    const zone = zones.find((item) => item.id === fire.id);
+    if (!zone) throw new Error(scenario.id + ' has no zone ' + fire.id);
+    if (fire.x != null) zone.x = fire.x;
+    if (fire.z != null) zone.z = fire.z;
+    if (fire.y != null) zone.y = fire.y;
+    zone.intensity = fire.intensity;
+    zone.fuel = fire.fuel == null ? 60 : fire.fuel;
+    zone.peak = fire.intensity;
+    zone.seat = !!fire.seat;
+  }
+  return zones;
+}
+
+function createCatalogState(opts, scenario) {
+  const seed = (opts.seed ?? 1) >>> 0;
+  const rng = mulberry32(seed);
+  const layout = AIRFRAMES[scenario.aircraft];
+  const occupants = scenario.occupants || 0;
+  const windKt = 4 + Math.floor(rng() * 22);
+  const windFrom = Math.floor(rng() * 360);
+  const tempC = Math.round((rng() * 34 - 2) * 10) / 10;
+  return {
+    course: scenario.course,
+    seed,
+    time: 0,
+    dispatch: scenario.brief,
+    scenario,
+    scenarioId: scenario.id,
+    fictional: true,
+    layout,
+    sizedUp: false,
+    firstAction: null,
+    ventOpen: false,
+    ended: false,
+    weather: { windKt, windFrom, tempC },
+    secured: { electrical: false, engines: false, apu: false, fuel: false, oxygen: false },
+    support: { offduty: false, maintenance: false, disaster: false, scba: false, foam: false, tech: false, mutual: false },
+    requests: {},
+    people: {
+      total: occupants,
+      aboard: occupants,
+      recovered: 0,
+      unaccounted: 0,
+      known: false,
+      halonExposure: 0,
+      untenable: 0,
+      lastExit: null,
+    },
+    smoke: scenario.smoke == null ? 12 : scenario.smoke,
+    units: unitsFor(scenario, opts, rng),
+    zones: zonesFromLayout(layout, scenario),
+    entries: layout.entries.map((entry) => ({ ...entry, blocked: entry.id === scenario.blocked, vented: false })),
+    log: [],
+    notes: [],
+    hud: { line: 'Fictional incident. Size-up is open. Wind and temperature are decorative.' },
+    stats: { shortStreams: 0, halonWhileAboard: false, usedWaterOnPool: false, ventUncovered: false },
+  };
+}
+
 export function createState(opts = {}) {
-  const course = opts.course === 'interior' ? 'interior' : 'exterior';
+  const scenario = resolveScenario(opts);
+  if (!scenario.legacy) return createCatalogState(opts, scenario);
+  const course = opts.course === 'interior' || scenario.course === 'interior' ? 'interior' : 'exterior';
   const seed = (opts.seed ?? 1) >>> 0;
   const rng = mulberry32(seed);
   const delayCrash5 = opts.equipment === 'full' ? false : opts.forceDelay != null ? !!opts.forceDelay : rng() < 0.34;
@@ -324,6 +443,10 @@ export function createState(opts = {}) {
     seed,
     time: 0,
     dispatch,
+    scenario,
+    scenarioId: scenario.id,
+    fictional: false,
+    layout: AIRFRAMES.starlifter,
     sizedUp: false,
     firstAction: null,
     ventOpen: false,
@@ -370,14 +493,15 @@ export function parkingSpot(state, zoneId, tool) {
     x = zone.x + ((x - zone.x) / dist) * keep;
     z = zone.z + ((z - zone.z) / dist) * keep;
   }
-  return clampToRamp(x, z);
+  return clampToRamp(x, z, keepoutOf(state));
 }
 
 export function parkingNearEntry(state, entryId) {
   const entry = state.entries.find((e) => e.id === entryId) || state.entries[0];
-  if (Math.abs(entry.x) < 1) return clampToRamp(8, entry.z + 4);
+  const bounds = keepoutOf(state);
+  if (Math.abs(entry.x) < 1) return clampToRamp(8, entry.z + 4, bounds);
   const side = Math.sign(entry.x) || -1;
-  return clampToRamp(entry.x + side * 7.5, entry.z);
+  return clampToRamp(entry.x + side * 7.5, entry.z, bounds);
 }
 
 export function openEntry(state, prefer) {
@@ -414,7 +538,7 @@ export function sizeUp(state) {
 export function orderMove(state, unitId, x, z) {
   const found = requireUnit(state, unitId);
   if (found.error) return found.error;
-  const spot = clampToRamp(x, z);
+  const spot = clampToRamp(x, z, keepoutOf(state));
   const unit = found.unit;
   if (unit.task && unit.task.type !== 'protect') unit.task = null;
   unit.dest = spot;
@@ -430,7 +554,7 @@ export function orderMove(state, unitId, x, z) {
 export function placeUnit(state, unitId, x, z) {
   const unit = getUnit(state, unitId);
   if (!unit) return { ok: false, reason: 'missing unit' };
-  const spot = clampToRamp(x, z);
+  const spot = clampToRamp(x, z, keepoutOf(state));
   unit.x = spot.x;
   unit.z = spot.z;
   unit.dest = null;
@@ -619,16 +743,16 @@ function nearHydrant(unit) {
   return HYDRANTS.some((h) => horizontalDistance(unit.x, unit.z, h.x, h.z) < 8);
 }
 
-function segmentHitsFuselage(x, z, tx, tz) {
+function segmentHitsFuselage(x, z, tx, tz, bounds) {
   for (let i = 1; i <= 10; i += 1) {
     const p = i / 10;
-    if (insideFuselage(x + (tx - x) * p, z + (tz - z) * p)) return true;
+    if (insideFuselage(x + (tx - x) * p, z + (tz - z) * p, bounds)) return true;
   }
   return false;
 }
 
-function viaAroundAircraft(unit, dest) {
-  if (!segmentHitsFuselage(unit.x, unit.z, dest.x, dest.z)) return null;
+function viaAroundAircraft(unit, dest, bounds) {
+  if (!segmentHitsFuselage(unit.x, unit.z, dest.x, dest.z, bounds)) return null;
   const candidates = [
     { x: -12, z: -30 },
     { x: 12, z: -30 },
@@ -640,8 +764,8 @@ function viaAroundAircraft(unit, dest) {
   let best = null;
   let bestLen = Infinity;
   for (const candidate of candidates) {
-    if (segmentHitsFuselage(unit.x, unit.z, candidate.x, candidate.z)) continue;
-    if (segmentHitsFuselage(candidate.x, candidate.z, dest.x, dest.z)) continue;
+    if (segmentHitsFuselage(unit.x, unit.z, candidate.x, candidate.z, bounds)) continue;
+    if (segmentHitsFuselage(candidate.x, candidate.z, dest.x, dest.z, bounds)) continue;
     const len = Math.hypot(unit.x - candidate.x, unit.z - candidate.z) + Math.hypot(dest.x - candidate.x, dest.z - candidate.z);
     if (len < bestLen) {
       best = candidate;
@@ -663,7 +787,7 @@ function moveUnits(state, dt) {
     }
     if (!unit.moving || !unit.dest || !unit.onScene) continue;
     if (unit.via && horizontalDistance(unit.x, unit.z, unit.via.x, unit.via.z) < 1.6) unit.via = null;
-    if (!unit.via) unit.via = viaAroundAircraft(unit, unit.dest);
+    if (!unit.via) unit.via = viaAroundAircraft(unit, unit.dest, keepoutOf(state));
     const target = unit.via || unit.dest;
     const dx = target.x - unit.x;
     const dz = target.z - unit.z;
@@ -684,8 +808,8 @@ function moveUnits(state, dt) {
     const step = Math.min(dist, unit.speed * dt);
     let nx = unit.x + (dx / dist) * step;
     let nz = unit.z + (dz / dist) * step;
-    if (insideFuselage(nx, nz)) {
-      const pushed = clampToRamp(nx, nz);
+    if (insideFuselage(nx, nz, keepoutOf(state))) {
+      const pushed = clampToRamp(nx, nz, keepoutOf(state));
       nx = pushed.x;
       nz = pushed.z;
     }
@@ -714,6 +838,8 @@ function growZone(zone, dt, state) {
   if (zone.kind === 'pool') growth = 1.15;
   if (zone.kind === 'running') growth = 0.9;
   if (zone.kind === 'cabin') growth = state.secured.electrical ? 0.35 : 1.45;
+  if (zone.kind === 'gear') growth = 0.7 + zone.intensity * 0.014;
+  if (zone.kind === 'exposure') growth = 0.55 + zone.intensity * 0.02;
   if (state.secured.fuel && (zone.kind === 'pool' || zone.kind === 'running' || zone.kind === 'engine')) growth *= 0.32;
   if (state.secured.engines && zone.kind === 'engine') growth *= 0.55;
   if (state.secured.oxygen && zone.kind === 'cabin') growth *= 0.72;
@@ -750,12 +876,16 @@ function spread(state) {
     if (!state.secured.fuel) {
       const pool = zoneById(state, 'pool');
       const running = zoneById(state, 'running');
-      pool.x = engine.x;
-      pool.z = engine.z + 2.2;
-      running.x = engine.x;
-      running.z = engine.z + 5;
-      if (!isProtected(state, pool)) ignite(pool, 8, 64);
-      if (!isProtected(state, running)) ignite(running, 5, 36);
+      if (pool && running && !(state.scenario && state.scenario.lockPool)) {
+        pool.x = engine.x;
+        pool.z = engine.z + 2.2;
+        running.x = engine.x;
+        running.z = engine.z + 5;
+      }
+      if (!(state.scenario && state.scenario.lockPool)) {
+        if (pool && !isProtected(state, pool)) ignite(pool, 8, 64);
+        if (running && !isProtected(state, running)) ignite(running, 5, 36);
+      }
     }
     if (engine.intensity > 72 && !state.secured.fuel) {
       const cabin = zoneById(state, 'cabin');
@@ -765,7 +895,20 @@ function spread(state) {
   for (const wing of state.zones.filter((z) => z.kind === 'wing' && z.intensity > 60)) {
     if (zoneControlled(state, wing.id)) continue;
     const cabin = zoneById(state, 'cabin');
-    if (!isProtected(state, cabin)) ignite(cabin, 8, 40);
+    if (cabin && !isProtected(state, cabin)) ignite(cabin, 8, 40);
+  }
+  const scenario = state.scenario;
+  if (scenario && scenario.poolSpreads) {
+    const pool = zoneById(state, 'pool');
+    if (pool && pool.intensity > 62 && !zoneControlled(state, pool.id)) {
+      const wing = zoneById(state, pool.x < 0 ? 'wingL' : 'wingR');
+      if (wing && !isProtected(state, wing)) ignite(wing, 6, 36);
+    }
+  }
+  if (scenario && scenario.exposure) {
+    const hangar = zoneById(state, 'hangar');
+    const hot = state.zones.some((zone) => zone.kind !== 'exposure' && zone.intensity > 50);
+    if (hangar && hot && !isProtected(state, hangar)) ignite(hangar, 5, 28);
   }
 }
 
@@ -1160,10 +1303,130 @@ export function summary(state) {
       damage: damageLabel(z),
     })),
     log: state.log.slice(),
-    notes: studyNotes(state),
+    notes: (state.fictional
+      ? ['This incident is a fictional extension for this page. It is not in the 1988 manual and is not evidence about later work.']
+      : []).concat(studyNotes(state)),
     firstAction: state.firstAction,
     numbers: situationNumbers(state),
+    scenarioId: state.scenarioId,
+    title: state.scenario ? state.scenario.title : '',
+    fictional: !!state.fictional,
+    objectives: objectiveStatus(state),
+    assumption: state.scenario && state.scenario.assumption ? state.scenario.assumption : '',
   };
+}
+
+export function objectiveStatus(state) {
+  const goals = (state.scenario && state.scenario.objectives) || [];
+  return goals.map((goal) => ({ id: goal.id, text: goal.text, done: !!goal.done(state) }));
+}
+
+function resolvePlanZone(state, id) {
+  if (id === 'seat') return state.zones.find((zone) => zone.seat) || null;
+  return zoneById(state, id);
+}
+
+function tickUntil(state, seconds, pred) {
+  let left = seconds;
+  while (left > 0) {
+    tick(state, 0.2);
+    left -= 0.2;
+    if (pred()) return true;
+  }
+  return !!pred();
+}
+
+export function runGuidedPlan(state) {
+  const plan = state.scenario && state.scenario.plan;
+  if (!plan) return { ok: false, reason: 'no plan', status: [] };
+  sizeUp(state);
+  const zoneIds = plan.zones && plan.zones.length ? plan.zones : ['seat'];
+  const zones = zoneIds.map((id) => resolvePlanZone(state, id));
+  if (zones.some((zone) => !zone)) return { ok: false, reason: 'missing zone', status: objectiveStatus(state) };
+
+  const drive = (unitId, x, z, seconds) => {
+    const moved = orderMove(state, unitId, x, z);
+    if (!moved.ok) return false;
+    return tickUntil(state, seconds, () => {
+      const unit = getUnit(state, unitId);
+      return unit && unit.positioned && !unit.moving;
+    });
+  };
+
+  if (plan.rescueFirst && plan.rescue && state.people.aboard > 0) {
+    const entry = openEntry(state, plan.entry || 'crew');
+    if (!entry) return { ok: false, reason: 'no entry', status: objectiveStatus(state) };
+    const rescueSpot = parkingNearEntry(state, entry.id);
+    const applySpot = parkingSpot(state, zones[0].id, plan.tool);
+    if (!drive(plan.rescueUnit, rescueSpot.x, rescueSpot.z, plan.driveTimeout || 30)) {
+      return { ok: false, reason: 'rescue did not arrive', status: objectiveStatus(state) };
+    }
+    if (!drive(plan.unit, applySpot.x, applySpot.z, plan.driveTimeout || 30)) {
+      return { ok: false, reason: 'attack unit did not arrive', status: objectiveStatus(state) };
+    }
+    const entered = beginRescue(state, { unitId: plan.rescueUnit, entryId: entry.id });
+    if (!entered.ok) return { ok: false, reason: entered.reason, status: objectiveStatus(state) };
+    if (plan.secure) beginSecure(state, { unitId: plan.secureUnit || plan.unit, system: plan.secure });
+    tickUntil(state, 20, () => !plan.secure || state.secured[plan.secure]);
+    const applied = beginApply(state, {
+      unitId: plan.unit,
+      tool: plan.tool,
+      agent: plan.agent,
+      zoneId: zones[0].id,
+      pattern: plan.pattern || 'straight',
+    });
+    if (!applied.ok) return { ok: false, reason: applied.reason, status: objectiveStatus(state) };
+    const finished = tickUntil(state, 90, () => zones[0].intensity < 12 && state.people.aboard === 0);
+    if (!finished) return { ok: false, reason: state.hud.line, status: objectiveStatus(state) };
+  } else {
+    for (const zone of zones) {
+      const spot = parkingSpot(state, zone.id, plan.tool);
+      if (!drive(plan.unit, spot.x, spot.z, plan.driveTimeout || 30)) {
+        return { ok: false, reason: 'did not reach ' + zone.name, status: objectiveStatus(state) };
+      }
+      if (getUnit(state, plan.unit).mode !== 'ready') setUnitMode(state, plan.unit, 'ready');
+      const applied = beginApply(state, {
+        unitId: plan.unit,
+        tool: plan.tool,
+        agent: plan.agent,
+        zoneId: zone.id,
+        pattern: plan.pattern || 'straight',
+      });
+      if (!applied.ok) return { ok: false, reason: applied.reason, status: objectiveStatus(state) };
+      const down = tickUntil(state, 40, () => zone.intensity <= 0);
+      if (!down) return { ok: false, reason: 'fire held on ' + zone.name, status: objectiveStatus(state) };
+      setUnitMode(state, plan.unit, 'standby');
+    }
+    if (plan.overhaul) {
+      const zone = zones[0];
+      setUnitMode(state, plan.unit, 'ready');
+      const over = beginOverhaul(state, { unitId: plan.unit, zoneId: zone.id });
+      if (over.ok) tickUntil(state, 12, () => zone.overhauled);
+    }
+    if (plan.rescue && state.people.aboard > 0) {
+      const entry = openEntry(state, plan.entry || 'crew');
+      if (!entry) return { ok: false, reason: 'no entry', status: objectiveStatus(state) };
+      const rescueSpot = parkingNearEntry(state, entry.id);
+      if (!drive(plan.rescueUnit, rescueSpot.x, rescueSpot.z, plan.driveTimeout || 30)) {
+        return { ok: false, reason: 'rescue did not arrive', status: objectiveStatus(state) };
+      }
+      const entered = beginRescue(state, { unitId: plan.rescueUnit, entryId: entry.id });
+      if (!entered.ok) return { ok: false, reason: entered.reason, status: objectiveStatus(state) };
+      const clear = tickUntil(state, 80, () => state.people.aboard === 0);
+      if (!clear) return { ok: false, reason: 'rescue incomplete', status: objectiveStatus(state) };
+    }
+    if (plan.secure && getUnit(state, plan.secureUnit || 'engine7')) {
+      const secureId = plan.secureUnit || 'engine7';
+      if (!drive(secureId, 8, 12, 24)) {
+        return { ok: false, reason: 'secure unit did not arrive', status: objectiveStatus(state) };
+      }
+      const secured = beginSecure(state, { unitId: secureId, system: plan.secure });
+      if (secured.ok) tickUntil(state, 14, () => state.secured[plan.secure]);
+    }
+  }
+
+  const status = objectiveStatus(state);
+  return { ok: status.every((goal) => goal.done), status, time: state.time, reason: state.hud.line };
 }
 
 export function endExercise(state) {

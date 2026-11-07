@@ -3,6 +3,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   createState,
+  runGuidedPlan,
+  objectiveStatus,
+  SCENARIOS,
+  AIRFRAMES,
   tick,
   sizeUp,
   orderMove,
@@ -269,5 +273,58 @@ assert(/laserdisc|videodisc/i.test(html), 'original visuals explained');
 assert(!/quintar/i.test(bundle), 'no Quintar branding');
 assert(!/Richard Bailey/i.test(bundle), 'no Richard attribution');
 assert(!/official (U\.S\. |US )?(Air Force|Navy) (training|trainer)/i.test(bundle), 'not presented as an official trainer');
+
+assert(SCENARIOS.length >= 12, 'at least 12 scenarios');
+const shapes = new Set(SCENARIOS.map((scenario) => AIRFRAMES[scenario.aircraft].shape));
+assert(shapes.size >= 6, 'at least 6 aircraft shapes, got ' + [...shapes].join(','));
+assert(SCENARIOS.filter((scenario) => !scenario.fictional).length === 2, 'exactly two documented scenarios');
+assert(SCENARIOS.some((scenario) => scenario.scene === 'runway'), 'runway scene');
+assert(SCENARIOS.some((scenario) => scenario.scene === 'hangar'), 'hangar scene');
+assert(SCENARIOS.some((scenario) => scenario.scene === 'deck'), 'deck scene');
+assert(SCENARIOS.some((scenario) => scenario.night), 'night scene');
+const seatKinds = new Set();
+for (const scenario of SCENARIOS) {
+  const state = createState({ scenario: scenario.id, seed: 4, equipment: 'full' });
+  assert(state.scenarioId === scenario.id, 'id ' + scenario.id);
+  assert(state.time === 0, 'fresh clock');
+  assert(state.log.length === 0, 'fresh log');
+  assert(state.layout.shape === AIRFRAMES[scenario.aircraft].shape, 'shape');
+  assert(state.zones.some((zone) => zone.seat && zone.intensity > 0), scenario.id + ' has a seat fire');
+  for (const zone of state.zones) {
+    assert(Number.isFinite(zone.x + zone.y + zone.z), scenario.id + ' anchor ' + zone.id);
+  }
+  if (!scenario.legacy) {
+    for (const engine of state.layout.engines) {
+      const zone = state.zones.find((item) => item.id === engine.id);
+      assert(zone && zone.x === engine.x && zone.z === engine.z, scenario.id + ' engine anchor ' + engine.id);
+    }
+  }
+  const hot = state.zones.find((zone) => zone.seat);
+  seatKinds.add(hot.kind);
+  const again = createState({ scenario: scenario.id, seed: 4, equipment: 'full' });
+  assert(again.zones.map((zone) => zone.id + ':' + zone.intensity).join() === state.zones.map((zone) => zone.id + ':' + zone.intensity).join(), scenario.id + ' deterministic');
+  const result = runGuidedPlan(state);
+  assert(result.ok, scenario.id + ' plan failed: ' + result.reason + ' ' + result.status.filter((goal) => !goal.done).map((goal) => goal.id).join(','));
+  assert(objectiveStatus(state).every((goal) => goal.done), scenario.id + ' objectives');
+}
+assert(seatKinds.has('engine') && seatKinds.has('cabin') && seatKinds.has('pool') && seatKinds.has('gear'), 'seat kinds ' + [...seatKinds].join(','));
+
+const dirty = createState({ scenario: 'deck-engine', seed: 2, equipment: 'full' });
+dirty.people.aboard = 1;
+dirty.time = 40;
+dirty.units.push({ id: 'mutual1', onScene: true });
+const clean = createState({ scenario: 'fighter-bay', seed: 9, equipment: 'full' });
+assert(clean.time === 0, 'switch resets clock');
+assert(!clean.units.some((unit) => unit.id === 'mutual1'), 'switch drops extra units');
+assert(clean.people.aboard === 1, 'fighter pilot count');
+assert(clean.layout.shape === 'fighterTwin', 'fighter shape');
+assert(clean.zones.find((zone) => zone.seat).id === 'engL', 'fighter seat');
+assert(clean.log.length === 0, 'switch clears the log');
+void dirty;
+
+const bundleScenarios = fs.readFileSync(path.join(__dirname, 'catalog.js'), 'utf8');
+assert(/Fictional extension/.test(bundleScenarios), 'fictional label in the catalog');
+assert(!/quintar/i.test(bundleScenarios), 'catalog has no Quintar');
+assert(!/Richard Bailey/i.test(bundleScenarios), 'catalog has no Richard');
 
 console.log('firefighter-simulator selftest ok');
