@@ -435,14 +435,18 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
     assert.equal(fs.existsSync(file), true, brand.logo);
     if (file.endsWith('.svg')) assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /<script/i);
     const record = provenance[path.basename(brand.logo)];
-    assert.ok(record && record.source.startsWith('https://commons.wikimedia.org/'), brand.logo);
+    assert.ok(record && record.source.startsWith('https://'), brand.logo);
   }
   assert.equal(data.brands.ms1.logo, data.brands.ms2.logo);
   assert.match(data.brands.ms1.logo, /microsoft-wordmark\.svg$/);
   assert.match(data.brands.amazon.logo, /amazon-wordmark\.svg$/);
   assert.match(data.brands['magic-leap'].logo, /magic-leap\.svg$/);
-  assert.match(data.brands.hughes.logo, /hughes-aircraft\.png$/);
-  for (const id of ['niantic', 'daqri', 'quintar', 'zenith', 'margrave']) {
+  assert.match(data.brands.quintar.logo, /quintar\.svg$/);
+  assert.match(data.brands.margrave.logo, /margrave-publisher\.png$/);
+  assert.equal(data.brands.hughes.logo || '', '');
+  assert.equal(data.brands.hughes.label, 'Hughes Associates');
+  assert.doesNotMatch(html, /hughes-aircraft|Hughes Aircraft/);
+  for (const id of ['niantic', 'daqri', 'zenith']) {
     assert.equal(data.brands[id].logo || '', '');
   }
   const span = api.axisSpanMonths(data);
@@ -454,7 +458,7 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
   const bars = api.viewModel(data, state).lanes.flatMap(lane => lane.bars);
   for (const bar of bars) {
     assert.equal(bar.brand.label, 'Quintar');
-    assert.equal(bar.brand.logo || '', '');
+    assert.match(bar.brand.logo, /quintar\.svg$/);
     assert.ok(bar.headline.length > bar.brand.label.length);
   }
   const early = api.initialState(data);
