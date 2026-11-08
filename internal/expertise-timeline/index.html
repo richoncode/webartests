@@ -239,6 +239,7 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .bar.is-dashed { background: var(--guess-bg); border-style: dashed; border-color: var(--guess); color: var(--guess-ink); }
 .bar.is-explore { background: var(--explore-bg); border-style: dotted; border-color: var(--guess); color: var(--guess-ink); }
 .bar.is-selected { box-shadow: inset 0 0 0 3px var(--selected); z-index: 2; }
+.bar.is-nudged { box-shadow: inset 3px 0 0 var(--muted); }
 .bar.is-related { box-shadow: inset 0 0 0 3px var(--related); z-index: 2; }
 .bar strong {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
@@ -538,19 +539,19 @@ li { margin: 6px 0; }
     "ms2": { "label": "Microsoft", "logo": "brands/microsoft-wordmark.svg" },
     "amazon": { "label": "Amazon.com", "logo": "brands/amazon-wordmark.svg" },
     "zenith": { "label": "Zenith" },
-    "hughes": { "label": "Hughes" },
     "new-resolutions": { "label": "New Resolutions" },
     "online-resources": { "label": "Online Resources" },
     "ace": { "label": "AC&E" },
     "lcc": { "label": "LCC" },
     "ifusion": { "label": "Ifusion" },
     "spc": { "label": "SPC", "full": "Software Productivity Consortium" },
-    "nada": { "label": "NADA" },
-    "daqri": { "label": "DAQRI" },
-    "margrave": { "label": "Margrave" },
-    "magic-leap": { "label": "Magic Leap" },
-    "niantic": { "label": "Niantic" },
-    "quintar": { "label": "Quintar" }
+    "nada": { "label": "NADA", "logo": "brands/nada.png" },
+    "daqri": { "label": "DAQRI", "logo": "brands/daqri.svg" },
+    "magic-leap": { "label": "Magic Leap", "logo": "brands/magic-leap.svg" },
+    "hughes": { "label": "Hughes Associates" },
+    "margrave": { "label": "Margrave", "logo": "brands/margrave-publisher.png" },
+    "niantic": { "label": "Niantic", "logo": "brands/niantic-icon.png" },
+    "quintar": { "label": "Quintar", "logo": "brands/quintar.svg" }
   },
   "milestones": [
     {
@@ -2299,7 +2300,7 @@ globalThis.StoryAPI = (function () {
   }
 
   var QUARTER_MIN_PX = 22;
-  var BAR_H = 52;
+  var BAR_H = 68;
   var BAR_GAP = 10;
   var LANE_PAD = 8;
   var YEAR_LABEL_PX = 34;
@@ -2693,16 +2694,41 @@ globalThis.StoryAPI = (function () {
       if (!text || max < 1) return 0;
       return Math.max(1, Math.min(max, Math.ceil(text.length / per)));
     }
-    var titleMax = width < 150 ? 1 : (width < 280 ? 2 : 3);
-    var subMax = width < 170 ? 0 : (width < 260 ? 1 : 2);
-    box.titleLines = lines(title, titleMax);
-    box.subLines = lines(subtitle, subMax);
+    box.titleLines = lines(title, 1);
+    box.subLines = lines(subtitle, width < 170 ? 0 : 1);
     box.showWhen = !!(when && width >= 130);
-    var height = 12 + 3 + box.titleLines * 16;
-    if (box.subLines) height += 2 + box.subLines * 15;
-    if (box.showWhen) height += 2 + 16;
-    box.height = height;
+    box.height = BAR_H;
     return box;
+  }
+
+  var NUDGE_MONTHS = 4;
+
+  function assignSlots(prepared) {
+    var placed = [];
+    prepared.forEach(function (item) {
+      var visualA = item.a;
+      var visualB = item.b;
+      var nudged = false;
+      var slot = 0;
+      while (true) {
+        var blocker = null;
+        placed.forEach(function (p) {
+          if (p.slot !== slot || p.visualB <= visualA) return;
+          if (!blocker || p.visualB < blocker.visualB) blocker = p;
+        });
+        if (!blocker) break;
+        var overlap = blocker.visualB - visualA;
+        if (overlap > 0 && overlap <= NUDGE_MONTHS && blocker.visualB < visualB - 0.5) {
+          visualA = blocker.visualB;
+          nudged = true;
+          continue;
+        }
+        slot += 1;
+      }
+      placed.push({ m: item.m, a: item.a, b: item.b, visualA: visualA, visualB: visualB, nudged: nudged, slot: slot });
+    });
+    var slots = placed.reduce(function (max, item) { return Math.max(max, item.slot + 1); }, 1);
+    return { placed: placed, slots: slots };
   }
 
   function layoutBars(data, state, trackId) {
@@ -2717,14 +2743,8 @@ globalThis.StoryAPI = (function () {
       var b = m.current ? axisEnd : monthNum(m.end, "end");
       return { m: m, a: a, b: b, startFrac: (a - axisStart) / span, endFrac: (b - axisStart) / span };
     }).sort(function (x, y) { return x.a - y.a || x.b - y.b; });
-    var placed = [];
-    prepared.forEach(function (item) {
-      var row = 0;
-      while (placed.some(function (p) { return p.row === row && p.b > item.a; })) row += 1;
-      item.row = row;
-      placed.push(item);
-    });
-    var rows = placed.reduce(function (max, item) { return Math.max(max, item.row + 1); }, 1);
+    var assignment = assignSlots(prepared);
+    var placed = assignment.placed;
     var windowed = typeof state.viewStart === "number" && typeof state.visibleMonths === "number" && state.visibleMonths > 0;
     var bars = placed.map(function (item) {
         var left;
@@ -2733,14 +2753,14 @@ globalThis.StoryAPI = (function () {
           var vis = state.visibleMonths;
           var origin = state.viewStart;
           var px = state.trackWidth;
-          if (item.b <= origin || item.a >= origin + vis) return null;
-          var rawLeft = (item.a - origin) / vis * px;
-          var rawRight = (item.b - origin) / vis * px;
+          if (item.visualB <= origin || item.visualA >= origin + vis) return null;
+          var rawLeft = (item.visualA - origin) / vis * px;
+          var rawRight = (item.visualB - origin) / vis * px;
           left = Math.max(0, rawLeft);
           width = Math.max(2, Math.min(px, rawRight) - left);
         } else {
-          left = item.startFrac * state.trackWidth;
-          width = Math.max(10, (item.endFrac - item.startFrac) * state.trackWidth);
+          left = (item.visualA - axisStart) / span * state.trackWidth;
+          width = Math.max(10, (item.visualB - item.visualA) / span * state.trackWidth);
           if (left + width > state.trackWidth - 2) width = Math.max(10, state.trackWidth - 2 - left);
         }
         var when = formatSpan(item.m, state.showYears);
@@ -2754,31 +2774,24 @@ globalThis.StoryAPI = (function () {
           var sel = data.milestones.filter(function (x) { return x.id === state.selected; })[0];
           related = !!(sel && sel.thread === item.m.thread);
         }
-        var aria = [face.title, face.subtitle, item.m.title, brand ? brand.full : "", trackById(data, trackId).name, mark, when].filter(Boolean).join(". ");
+        var nudgeNote = item.nudged ? "Drawn slightly apart from a neighbor. The date text is the source date." : "";
+        var aria = [face.title, face.subtitle, item.m.title, brand ? brand.full : "", trackById(data, trackId).name, mark, when, nudgeNote].filter(Boolean).join(". ");
         return {
           id: item.m.id, short: item.m.short, headline: face.title, subtitle: box.subLines ? face.subtitle : "",
           fullSubtitle: face.subtitle, mark: mark, when: box.showWhen ? when : "", fullWhen: when, aria: aria,
-          brand: box.showBrand ? brand : null,
-          left: left, width: width, height: box.height, row: item.row, showText: box.showText,
+          brand: box.showBrand ? brand : null, nudged: item.nudged,
+          left: left, width: width, height: BAR_H, row: item.slot, showText: box.showText,
           titleLines: box.titleLines, subLines: box.subLines,
           selected: selected, related: related,
           dashed: mark === "Guess", explore: mark === "Exploration" || mark === "Interest only"
         };
       }).filter(Boolean);
-    var rowHeight = {};
+    var slots = assignment.slots;
     bars.forEach(function (bar) {
-      rowHeight[bar.row] = Math.max(rowHeight[bar.row] || 0, bar.height);
+      bar.top = LANE_PAD + bar.row * (BAR_H + BAR_GAP);
     });
-    var rowIds = Object.keys(rowHeight).map(function (id) { return Number(id); }).sort(function (a, b) { return a - b; });
-    var tops = {};
-    var y = LANE_PAD;
-    rowIds.forEach(function (id) {
-      tops[id] = y;
-      y += rowHeight[id] + BAR_GAP;
-    });
-    bars.forEach(function (bar) { bar.top = tops[bar.row]; });
-    var height = bars.length ? (y - BAR_GAP + 6) : (LANE_PAD + 44);
-    return { rows: Math.max(1, rowIds.length), bars: bars, height: height };
+    var height = LANE_PAD + slots * BAR_H + Math.max(0, slots - 1) * BAR_GAP + 6;
+    return { rows: slots, bars: bars, height: height };
   }
 
   function detailModel(data, state) {
@@ -3071,6 +3084,7 @@ globalThis.StoryAPI = (function () {
           b.dataset.mid = bar.id;
           b.dataset.track = lane.id;
           if (bar.dashed) b.classList.add("is-dashed");
+          if (bar.nudged) b.classList.add("is-nudged");
           if (bar.explore) b.classList.add("is-explore");
           if (bar.selected) b.classList.add("is-selected");
           if (bar.related) b.classList.add("is-related");
@@ -3241,6 +3255,9 @@ globalThis.StoryAPI = (function () {
       popoutLines(data, milestone, state.showYears).forEach(function (line, index) {
         pop.appendChild(el(index === 0 ? "h3" : "p", "", line));
       });
+      if (anchor.classList && anchor.classList.contains("is-nudged")) {
+        pop.appendChild(el("p", "", "Drawn slightly apart from a neighbor so the bars fit in the lane. The date above is the source date."));
+      }
       anchor.setAttribute("aria-describedby", "popout");
       var rect = anchor.getBoundingClientRect();
       var margin = 8;
