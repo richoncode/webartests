@@ -443,10 +443,15 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
   assert.match(data.brands['magic-leap'].logo, /magic-leap\.svg$/);
   assert.match(data.brands.quintar.logo, /quintar\.svg$/);
   assert.match(data.brands.margrave.logo, /margrave-publisher\.png$/);
+  assert.match(data.brands.niantic.logo, /niantic-icon\.png$/);
+  assert.doesNotMatch(html, /niantic-logo\.svg|Scopely|SCOPELY/);
+  assert.match(data.brands.daqri.logo, /daqri\.svg$/);
+  assert.match(data.brands.nada.logo, /nada\.png$/);
+  assert.equal(fs.statSync(path.join(__dirname, 'brands/margrave-publisher.png')).size, 50241);
   assert.equal(data.brands.hughes.logo || '', '');
   assert.equal(data.brands.hughes.label, 'Hughes Associates');
-  assert.doesNotMatch(html, /hughes-aircraft|Hughes Aircraft/);
-  for (const id of ['niantic', 'daqri', 'zenith']) {
+  assert.doesNotMatch(html, /hughes-aircraft|Hughes Aircraft|jensen-hughes|Jensen Hughes/);
+  for (const id of ['zenith', 'ace', 'lcc', 'ifusion', 'spc', 'new-resolutions', 'online-resources']) {
     assert.equal(data.brands[id].logo || '', '');
   }
   const span = api.axisSpanMonths(data);
